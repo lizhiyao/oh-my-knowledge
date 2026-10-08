@@ -148,7 +148,7 @@ describe('Next Studio production boundary', () => {
     };
     assert.equal(shellOf(measureEn), shellOf(knowledgeEn));
     assert.match(knowledgeEn, /studio-utilities-trigger/);
-    for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge"']) {
+    for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge/candidates"']) {
       assert.ok(shellOf(measureEn).includes(href), `primary navigation links ${href}`);
     }
     assert.doesNotMatch(measureEn, /href="[^"]*[?&]lang=/, '英文页面链接同样不带语言参数');

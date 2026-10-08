@@ -2,6 +2,7 @@
 import { ExtractedKnowledge } from './extracted-knowledge';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import { useRouter } from 'next/navigation';
 import { Alert, Breadcrumb, Button, Popover, Space, Table, Tabs, Tag } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
@@ -39,6 +40,7 @@ function SourceRecords({endpoint,lang}: {endpoint:string;lang:Language}) {
   return value===undefined?<p role="status">{lang==='zh'?'正在读取原始记录…':'Loading source records…'}</p>:<RawRecords archive={value} lang={lang}/>;
 }
 function Trajectory({page,lang,initialTab}: {page:Extract<ObservePage,{pageKind:'trajectory'}>;lang:Language;initialTab:TrajectoryTab}) {
+  const href = useWorkspaceHref();
   const zh=lang==='zh'; const router=useRouter();
   const api=`/api/conversations/${encodeURIComponent(page.threadId)}/tasks/${encodeURIComponent(page.turnId)}`;
   const [connection,setConnection]=useState('connecting'); const [retry,setRetry]=useState(0);
@@ -72,10 +74,10 @@ function Trajectory({page,lang,initialTab}: {page:Extract<ObservePage,{pageKind:
   const connectionLabels:Record<string,string>={connecting:'正在连接',live:'实时更新中',reconnecting:'正在重连',failed:'更新失败'};
   return <div className="observe-trajectory" data-live-revision={page.revision}>
     <header className="observe-detail-header">
-      <Breadcrumb items={[{title:<Link href={OBSERVE_INDEX_PATH}>{zh?'对话列表':'Conversations'}</Link>},{title:<Link href={conversationPath(page.threadId)}>{zh?'对话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
+      <Breadcrumb items={[{title:<Link href={href(OBSERVE_INDEX_PATH)}>{zh?'对话列表':'Conversations'}</Link>},{title:<Link href={href(conversationPath(page.threadId))}>{zh?'对话详情':'Conversation details'}</Link>},{title:zh?'任务轨迹':'Task trajectory'}]}/>
     <div className="observe-detail-title trajectory-heading">
       <Popover trigger="click" content={<div className="trajectory-goal-detail">{model.summary.userGoal??(zh?'未记录用户请求':'No user request recorded')}</div>}>
-        <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal?conversationLabel(model.summary.userGoal):(zh?'任务轨迹':'Task trajectory')}</button></h1>
+        <h1 className="trajectory-goal"><button type="button" aria-label={zh?'查看完整任务请求':'View full task request'}>{model.summary.userGoal?conversationLabel(model.summary.userGoal, zh?'系统记录':'System record'):(zh?'任务轨迹':'Task trajectory')}</button></h1>
       </Popover>
       <Space className="trajectory-controls" size="small" wrap><ExtractedKnowledge threadId={page.threadId} turnId={page.turnId} lang={lang}/><Status status={page.status} lang={lang}/>{page.live&&<><Tag role="status">{zh?connectionLabels[connection]:connection}</Tag><Button size="small" onClick={()=>setFollow(!follow)}>{follow?(zh?'暂停跟随':'Pause following'):(zh?'跟随最新':'Follow latest')}</Button>{connection==='failed'&&<Button size="small" onClick={()=>{setConnection('connecting');setRetry(value=>value+1);}}>{zh?'重试连接':'Retry connection'}</Button>}</>}</Space>
     </div>

@@ -16,7 +16,7 @@ import { HealthView } from '../../../src/studio/web/components/observe/health';
 import { coverageOf, reportOf, skillOf, trendPointOf } from '../fixtures/health-report.js';
 import { reactText, visibleText } from '../../helpers/react-ssr.js';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 
 /**
  * 渲染成可比对的字符串：剥掉 React 的文本定界注释后按可见顺序断言，

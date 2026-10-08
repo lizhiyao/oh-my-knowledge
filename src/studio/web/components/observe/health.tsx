@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import { useRouter } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -25,10 +26,10 @@ const reportHref = (id: string) => `${HEALTH_REPORT_PREFIX}${encodeURIComponent(
 const trendHref = (skill: string) => `${SKILL_TREND_PREFIX}${encodeURIComponent(skill)}`;
 
 /** 报告、趋势、对比三页共用的前两级面包屑：地址与层级只写一遍，第三级由各自页面补。 */
-function healthCrumbs(copy: { knowledgeCrumb: string; listTitle: string }) {
+function healthCrumbs(copy: { knowledgeCrumb: string; listTitle: string }, href: (path: string) => string) {
   return [
-    { title: <Link href={KNOWLEDGE_INDEX_PATH}>{copy.knowledgeCrumb}</Link> },
-    { title: <Link href={HEALTH_INDEX_PATH}>{copy.listTitle}</Link> },
+    { title: <Link href={href(KNOWLEDGE_INDEX_PATH)}>{copy.knowledgeCrumb}</Link> },
+    { title: <Link href={href(HEALTH_INDEX_PATH)}>{copy.listTitle}</Link> },
   ];
 }
 
@@ -292,6 +293,7 @@ export function HealthView({ page, lang }: { page: HealthPage; lang: Language })
 }
 
 function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const router = useRouter();
   const [from, setFrom] = useState<string>();
@@ -305,7 +307,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
     <div className="observe-toolbar">
       <Typography.Text type="secondary">{copy.compareHint}</Typography.Text>
       <div className="observe-toolbar-actions">
-        <Button type="primary" disabled={!ready} onClick={() => { if (diffHref) router.push(diffHref); }}>{copy.compareBtn}</Button>
+        <Button type="primary" disabled={!ready} onClick={() => { if (diffHref) router.push(href(diffHref)); }}>{copy.compareBtn}</Button>
       </div>
     </div>
     <Table<HealthIndexRow>
@@ -331,7 +333,7 @@ function HealthIndex({ rows, lang }: { rows: HealthIndexRow[]; lang: Language })
         {
           title: copy.colReport,
           ellipsis: true,
-          render: (_, row) => <Link href={reportHref(row.id)} title={row.id}>{row.id}</Link>,
+          render: (_, row) => <Link href={href(reportHref(row.id))} title={row.id}>{row.id}</Link>,
         },
         { title: copy.colGenerated, width: 170, render: (_, row) => <span className="health-stamp">{displayTime(row.generatedAt, 'minute')}</span> },
         { title: copy.colHealth, width: 130, render: (_, row) => <BandTag tone={row.tone} label={bandLabel(row.healthBand, row.confidence, copy)}/> },
@@ -363,6 +365,7 @@ function failureFacts(skill: HealthSkillFacts, lang: Language): { label: string;
 }
 
 function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const { gap, coverage, tools, usage } = skill;
   const stabilityNote = tools.stability === 'very-unstable' && tools.failureRate !== null
@@ -402,7 +405,7 @@ function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }
   return <div className="health-skill">
     <div className="health-skill-head">
       <Typography.Text className={`health-skill-failure tone-${failure.tone}`}>{failure.label}</Typography.Text>
-      <Link href={trendHref(skill.skillName)}>{copy.viewTrend}</Link>
+      <Link href={href(trendHref(skill.skillName))}>{copy.viewTrend}</Link>
     </div>
     <Typography.Text className="health-skill-usage" type="secondary">{usageLine}</Typography.Text>
     <div className="health-skill-metrics">
@@ -429,6 +432,7 @@ function SkillPanel({ skill, lang }: { skill: HealthSkillFacts; lang: Language }
 }
 
 function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const caveat = report.confidence === 'high'
     ? undefined
@@ -438,7 +442,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        ...healthCrumbs(copy),
+        ...healthCrumbs(copy, href),
         { title: report.analysisId },
       ]}/>
       <div className="observe-detail-title">
@@ -512,6 +516,7 @@ function HealthReport({ report, lang }: { report: HealthReportFacts; lang: Langu
 }
 
 function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const { points, chart } = trend;
   const legend = [
@@ -523,7 +528,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        ...healthCrumbs(copy),
+        ...healthCrumbs(copy, href),
         { title: copy.trendCrumb },
       ]}/>
       <div className="observe-detail-title"><h1 title={trend.skillName}>{copy.trendHeading} · {trend.skillName}</h1></div>
@@ -563,7 +568,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
           pagination={false}
           dataSource={points}
           columns={[
-            { title: copy.colTimestamp, render: (_, point) => <Link className="health-stamp" href={reportHref(point.analysisId)}>{displayTime(point.generatedAt, 'minute')}</Link> },
+            { title: copy.colTimestamp, render: (_, point) => <Link className="health-stamp" href={href(reportHref(point.analysisId))}>{displayTime(point.generatedAt, 'minute')}</Link> },
             { title: copy.colSegs, width: 80, align: 'right', dataIndex: 'segmentCount' },
             { title: copy.colGap, width: 80, align: 'right', render: (_, point) => formatPercent(point.gapRate) },
             { title: copy.colWeighted, width: 80, align: 'right', render: (_, point) => formatPercent(point.weightedGapRate) },
@@ -585,6 +590,7 @@ function TrendPage({ trend, lang }: { trend: HealthTrendFacts; lang: Language })
 }
 
 function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const column = (title: string, cell: (row: HealthDiffRowLike) => ReactNode, width = 190) => ({
     title,
@@ -595,13 +601,13 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
   return <>
     <header className="observe-detail-header">
       <Breadcrumb items={[
-        ...healthCrumbs(copy),
+        ...healthCrumbs(copy, href),
         { title: copy.diffCrumb },
       ]}/>
       <div className="observe-detail-title"><h1>{copy.diffHeading}</h1></div>
       <div className="observe-detail-meta">
-        <span>{copy.diffFrom} <Link href={reportHref(diff.fromId)}>{diff.fromId}</Link> {displayTime(diff.fromAt, 'minute')}</span>
-        <span>{copy.diffTo} <Link href={reportHref(diff.toId)}>{diff.toId}</Link> {displayTime(diff.toAt, 'minute')}</span>
+        <span>{copy.diffFrom} <Link href={href(reportHref(diff.fromId))}>{diff.fromId}</Link> {displayTime(diff.fromAt, 'minute')}</span>
+        <span>{copy.diffTo} <Link href={href(reportHref(diff.toId))}>{diff.toId}</Link> {displayTime(diff.toAt, 'minute')}</span>
         <span>{copy.diffSortHint}</span>
       </div>
     </header>
@@ -618,7 +624,7 @@ function DiffPage({ diff, lang }: { diff: HealthDiffFacts; lang: Language }) {
         {
           title: copy.diffColSkill,
           ellipsis: true,
-          render: (_, row) => <><Link href={trendHref(row.skillName)} title={row.skillName}>{row.skillName}</Link>{row.presence === 'only-from' && <Tag color="success">{copy.diffTagRemoved}</Tag>}{row.presence === 'only-to' && <Tag color="processing">{copy.diffTagNew}</Tag>}</>,
+          render: (_, row) => <><Link href={href(trendHref(row.skillName))} title={row.skillName}>{row.skillName}</Link>{row.presence === 'only-from' && <Tag color="success">{copy.diffTagRemoved}</Tag>}{row.presence === 'only-to' && <Tag color="processing">{copy.diffTagNew}</Tag>}</>,
         },
         column(copy.diffColSegments, (row) => <Pair from={row.fromSegments === undefined ? null : String(row.fromSegments)} to={row.toSegments === undefined ? null : String(row.toSegments)} delta={row.deltas.segments}/>),
         column(copy.diffColWeightedGap, (row) => <Pair from={formatPercent(row.fromGap)} to={formatPercent(row.toGap)} delta={row.deltas.gap}/>),

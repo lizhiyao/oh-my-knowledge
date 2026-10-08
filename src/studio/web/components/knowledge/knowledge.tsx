@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import { useState } from 'react';
 import { Alert, Collapse, Descriptions, Empty, Input, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { DoctorGraphView, DoctorRuleView, DoctorSamplingView } from '../../../application/knowledge/doctor-format';
@@ -191,6 +192,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
   graph: DoctorGraphView | null;
   zh: boolean;
 }) {
+  const href = useWorkspaceHref();
   const detailHref = `${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(skillName)}`;
   return <>
     {sampling && <SamplingAlert sampling={sampling} zh={zh}/>}
@@ -201,7 +203,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
       <Text type="secondary">{displayTime(run.timestamp)}</Text>
       {isCurrent
         ? <Tag color="processing">{zh ? '当前' : 'current'}</Tag>
-        : <Link href={detailHref}>{zh ? '← 返回当前体检' : '← back to current run'}</Link>}
+        : <Link href={href(detailHref)}>{zh ? '← 返回当前体检' : '← back to current run'}</Link>}
     </Space>
     <DoctorRules rules={rules} zh={zh}/>
     {graph && <GraphStructure graph={graph} run={run} zh={zh}/>}
@@ -213,7 +215,7 @@ function DoctorPanel({ run, skillName, isCurrent, doctorRuns, rules, sampling, g
           return <li key={item.reportId}>
             {item.reportId === run.reportId
               ? <Text>{displayTime(item.timestamp)}</Text>
-              : <Link href={`${detailHref}?doctorRun=${encodeURIComponent(item.reportId)}`}>{displayTime(item.timestamp)}</Link>}
+              : <Link href={href(`${detailHref}?doctorRun=${encodeURIComponent(item.reportId)}`)}>{displayTime(item.timestamp)}</Link>}
             {counts}
           </li>;
         })}
@@ -232,6 +234,7 @@ export function ObservePanel({ observe, toolFailureRate, skillName, zh }: {
   skillName: string;
   zh: boolean;
 }) {
+  const href = useWorkspaceHref();
   return <>
     <Descriptions bordered size="small" column={2} items={[
       { key: 'gap', label: zh ? '知识缺口' : 'Knowledge gap', children: observeGapText(observe, zh, false) },
@@ -239,11 +242,12 @@ export function ObservePanel({ observe, toolFailureRate, skillName, zh }: {
       { key: 'segments', label: zh ? '片段数' : 'Segments', children: observe.segmentCount },
       { key: 'confidence', label: zh ? '可信度' : 'Confidence', children: observe.confidence === 'underpowered' ? (zh ? '样本不足，仅供参考' : 'Underpowered; indicative only') : observe.confidence },
     ]}/>
-    <div className="knowledge-observe-link"><Link href={`${SKILL_TREND_PREFIX}${encodeURIComponent(skillName)}`}>{zh ? '查看该 Skill 的趋势 →' : 'Trend for this skill →'}</Link></div>
+    <div className="knowledge-observe-link"><Link href={href(`${SKILL_TREND_PREFIX}${encodeURIComponent(skillName)}`)}>{zh ? '查看该 Skill 的趋势 →' : 'Trend for this skill →'}</Link></div>
   </>;
 }
 
 export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Language }) {
+  const href = useWorkspaceHref();
   const zh = lang === 'zh';
   const [query, setQuery] = useState('');
   if (page.pageKind === 'index') {
@@ -254,11 +258,11 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
 
       <div className="measure-heading"><h1>{zh ? '知识载体' : 'Knowledge artifacts'}</h1></div>
 
-      <div><Link href={KNOWLEDGE_CANDIDATES_PATH}>{zh ? '从工作日志提炼知识' : 'Extract knowledge from work logs'}</Link></div>
+      <div><Link href={href(KNOWLEDGE_CANDIDATES_PATH)}>{zh ? '查看提炼的知识' : 'View extracted knowledge'}</Link></div>
 
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识载体' : 'Search knowledge artifacts'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识载体' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
       <Table<KnowledgeRow> className="studio-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 1000 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无体检或生产观测数据。运行 ' : 'No doctor or observe data yet. Run '}<code>omk doctor</code>{zh ? ' 体检知识载体，或 ' : ' to audit an artifact, or '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 采集生产表现。' : ' to collect production evidence.'}</span>}/> }} columns={[
-        { title: zh ? '知识载体' : 'Knowledge artifact', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`} title={name}>{name}</Link> },
+        { title: zh ? '知识载体' : 'Knowledge artifact', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={href(`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`)} title={name}>{name}</Link> },
         { title: zh ? '健康' : 'Health', width: 140, render: (_, row) => <Health row={row}/> },
         { title: zh ? '健康体检' : 'Doctor', width: 140, render: (_, { doctor }) => doctor ? `${doctor.passCount}✓ ${doctor.warnCount}⚠ ${doctor.failCount}✗` : '—' },
         { title: zh ? '观测缺口' : 'Observe gap', width: 192, render: (_, { observe }) => observe ? observeGapText(observe, zh, true) : '—' },
@@ -272,7 +276,7 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
   const activeDoctor = doctorRun ?? doctor;
   return <>
     <KnowledgeSectionNav active="skills" lang={lang}/>
-    <div className="measure-heading"><div><Link href={KNOWLEDGE_INDEX_PATH}>{zh ? '返回知识列表' : 'Back to knowledge'}</Link><h1 title={row.skillName}>{row.skillName}</h1></div><Health row={row}/></div>
+    <div className="measure-heading"><div><Link href={href(KNOWLEDGE_INDEX_PATH)}>{zh ? '返回知识列表' : 'Back to knowledge'}</Link><h1 title={row.skillName}>{row.skillName}</h1></div><Health row={row}/></div>
     <Tabs className="studio-detail-tabs" items={[
       { key: 'doctor', label: zh ? '健康体检' : 'Doctor', children: activeDoctor ? <>
         <DoctorPanel

@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Alert, Button, Empty } from 'antd';
@@ -30,11 +31,12 @@ export function ReaderEmptyState({ lang, onRetry }: { lang: Language; onRetry: (
 }
 
 export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId: string; lang: Language }) {
+  const href = useWorkspaceHref();
   const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   const { messages } = turn;
   const fallback = turnFallback(turn);
-  const href = conversationPath(threadId, turn.task.sourceTurnId ?? turn.task.turnId);
-  if (fallback === 'unreadable') return <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={href}>{t('查看执行详情', 'Execution details')}</Link>}/>;
+  const detailHref = conversationPath(threadId, turn.task.sourceTurnId ?? turn.task.turnId);
+  if (fallback === 'unreadable') return <Alert type="warning" title={t('这一轮的原始记录读不出来，其余轮次仍可阅读。', 'The raw record for this turn is unreadable. Other turns remain readable.')} action={<Link href={href(detailHref)}>{t('查看执行详情', 'Execution details')}</Link>}/>;
   // Only collapse a complete leading context envelope; quoted/code examples and
   // incomplete records remain ordinary message text. Original evidence is untouched.
   const displayed = messages.flatMap(message => {
@@ -62,6 +64,7 @@ export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId:
 
 /** Keep the full timestamp accessible when consecutive turns share a date and zone. */
 export function ReaderTurnFooter({ turn, previousTimestamp, threadId, lang }: { turn: Turn; previousTimestamp?: string; threadId: string; lang: Language }) {
+  const href = useWorkspaceHref();
   const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   const { task } = turn;
   const timestamp = task.startTimestamp;
@@ -75,7 +78,7 @@ export function ReaderTurnFooter({ turn, previousTimestamp, threadId, lang }: { 
       <time dateTime={timestamp} title={fullTime} aria-label={fullTime}>{displayTime(timestamp, sameDay ? 'clock' : 'full')}</time>
     </div>
     {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
-    <Link href={conversationPath(threadId, task.sourceTurnId ?? task.turnId)}>{lang === 'zh' ? '执行详情' : 'Execution details'}</Link>
+    <Link href={href(conversationPath(threadId, task.sourceTurnId ?? task.turnId))}>{lang === 'zh' ? '执行详情' : 'Execution details'}</Link>
   </footer>;
 }
 

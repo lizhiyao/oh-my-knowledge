@@ -21,7 +21,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
     resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(({ workspace: root }) => { if (!active.signal.aborted) { setWorkspace(root); } }).catch(() => { if (!active.signal.aborted) setError(true); });
     return () => active.abort();
   }, []);
-  const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), lang });
+  const params = new URLSearchParams({ ...(workspace ? { workspace } : {}) });
   async function load() {
     controller.current?.abort(); const active = new AbortController(); controller.current = active;
     setBusy(true); setError(false);

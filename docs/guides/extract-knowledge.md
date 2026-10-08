@@ -43,7 +43,13 @@ Use the actual generation, not the example number. Edits create a new revision t
 
 ## Studio
 
-Run `omk studio` and open its returned address. On Knowledge, choose the work-log extraction entry, enter the same workspace and open it. Select a log, inspect the scope and configure the executor/model before generation. Candidates and original records appear side by side, including links to entity mentions. Editing, retaining, discarding and reopening use the same application and persistence protocol as CLI.
+Start `omk studio` and use the returned address. The primary **Knowledge** entry opens **Extracted knowledge**. Search titles or filter by undecided, retained, or discarded items. **Knowledge artifacts** separately presents doctor and observation data.
+
+Choose **Choose a conversation** or **Extract new knowledge**, then select **Extract knowledge** in a conversation or task detail. Confirm the selected messages, save location, and model first. You can also import a local log and preview its scope before generating. The save location travels with internal navigation. **Save location** changes this operation only; edit the long-term default through **Settings and help** in the sidebar. Existing data does not move.
+
+Review the content, conditions, and unknowns, then use **Inspect evidence** to locate the source. Narrow screens switch between **Candidate content** and **Source evidence**. Classification, time, and revision history expand on demand. Enter a reason to retain or discard. Editing creates a new revision that needs a new decision. Revisit older revisions or continue with the next undecided item.
+
+Reopen retained content under **Knowledge → Extracted knowledge**. Before using it in a task, review its conditions, manually update AGENTS.md, a skill, or another artifact, then evaluate the change in a controlled comparison. Retention does not automatically update artifacts or verify effects.
 
 ## Codex version check
 

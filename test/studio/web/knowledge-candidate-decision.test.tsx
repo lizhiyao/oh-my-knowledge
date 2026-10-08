@@ -3,13 +3,13 @@
  *
  * 措辞口径由 test/studio/application/candidate-status.test.ts 锁；这里只断言页面真正渲染出的文字。
  */
-import { CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { candidateMatches, nextPendingCandidateId, CandidateDecisionHeader, CandidateNextStep, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 
 const retained: NonNullable<KnowledgeCandidateDetail['maintenance']> = {
   revisionId: 'revision-1', choice: 'retain', reason: '值得复用', at: '2026-09-14T00:01:00Z',
@@ -21,6 +21,37 @@ const row = (choice: 'retain' | 'discard' | null, lang: 'zh' | 'en' = 'zh') =>
   renderToStaticMarkup(createElement(CandidateRowStatus, { choice, lang }));
 
 describe('candidate decision display', () => {
+  it('continues through every undecided item in list order, skips decided items and wraps without reopening the current item', () => {
+    const rows = [{ knowledgeId: 'retained', choice: 'retain' as const }, ...['first', 'second', 'third'].map(knowledgeId => ({ knowledgeId, choice: null }))];
+    expect(nextPendingCandidateId(rows, 'retained')).toBe('first');
+    expect(nextPendingCandidateId(rows, 'first')).toBe('second');
+    expect(nextPendingCandidateId(rows, 'second')).toBe('third');
+    expect(nextPendingCandidateId(rows, 'third')).toBe('first');
+    expect(nextPendingCandidateId(rows, 'missing')).toBe('first');
+    expect(nextPendingCandidateId([{ knowledgeId: 'only', choice: null }], 'only')).toBeUndefined();
+  });
+
+  it('finds retained or undecided knowledge by title without treating a decision as verification', () => {
+    const row = { title: 'Taro 判断更正', choice: 'retain' as const };
+    expect(candidateMatches(row, 'retain', ' taro ')).toBe(true);
+    expect(candidateMatches(row, 'pending', '')).toBe(false);
+    expect(candidateMatches({ ...row, choice: null }, 'pending', '判断')).toBe(true);
+    expect(candidateMatches(row, 'all', '其他')).toBe(false);
+  });
+
+  it('explains how to reopen and use retained content, with truthful browse actions and the selected folder', () => {
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(createElement(CandidateNextStep, { lang, choice: 'retain', workspace: '/isolated', pending: true, onNext() {} }));
+      expect(html).toContain(lang === 'zh' ? '人工整理' : 'manually update');
+      expect(html).toContain(lang === 'zh' ? '受控评测' : 'controlled comparison');
+      expect(html).toContain('href="/knowledge?workspace=%2Fisolated"');
+      expect(html).toContain('href="/measure?workspace=%2Fisolated"');
+      expect(html).toContain(lang === 'zh' ? '核对下一条待处理知识' : 'Review the next undecided item');
+    }
+    const discarded = renderToStaticMarkup(createElement(CandidateNextStep, { lang: 'zh', choice: 'discard', workspace: '/isolated', pending: false, onNext() {} }));
+    expect(discarded).toContain('历史仍可回看');
+    expect(discarded).not.toContain('查看评测记录');
+  });
   it('identifies the selected review view and the panel each switch controls in both languages', () => {
     for (const lang of ['zh', 'en'] as const) {
       for (const pane of ['candidate', 'evidence'] as const) {

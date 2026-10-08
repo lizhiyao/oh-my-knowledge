@@ -10,8 +10,17 @@
  * 也按它的结果算命中），别的展示面拿不到，只能各自决定要不要归一，于是轨迹页整页保留原文。
  * 上收到 application/display 与 `format.ts` 同层：那层已经是时间、百分比等展示格式的唯一 owner。
  */
-export function conversationLabel(value: string): string {
-  return value.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+export function conversationLabel(value: string, fallback = '系统记录'): string {
+  let visible = value.trim();
+  // 只处理宿主放在开头的已知包装；正文中的代码、引用及原始证据不套此口径。
+  if (/^(?:# Files mentioned by the user:|<in-app-browser-context\b)/i.test(visible)) {
+    const request = /^## My request(?: for Codex)?:\s*$/im.exec(visible);
+    if (request) visible = visible.slice(request.index + request[0].length).trim();
+    else visible = visible.replace(/^<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>\s*/i, '').trim();
+    if (/^(?:# Files mentioned by the user:|<in-app-browser-context\b)/i.test(visible)) return fallback;
+  }
+  if (/^<(?:codex_internal_context|external_codex_apps_open_page)\b/i.test(visible)) return fallback;
+  return visible.replace(/&#(?:x20|32);/gi, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(issues|pull)\/(\d+)/g, (_, type, number) => `${type === 'pull' ? 'PR' : 'Issue'} #${number}`)
     .replace(/\*\*/g, '').trim();
 }

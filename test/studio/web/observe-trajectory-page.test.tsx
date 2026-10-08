@@ -22,7 +22,7 @@ import type { ObservePage } from '../../../src/studio/http/pages/observe-page.js
 import type { ReplayProjection } from '../../../src/studio/view-models/conversations/replay.js';
 import { activeTabKey } from '../../helpers/react-ssr.js';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 
 const css = readFileSync(new URL('../../../src/studio/web/app/studio.css', import.meta.url), 'utf8');
 const rawTitle = '[https://github.com/example/repo/issues/375](https://github.com/example/repo/issues/375) 里报的登录超时';
