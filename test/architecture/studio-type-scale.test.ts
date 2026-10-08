@@ -141,6 +141,14 @@ describe('Studio 页级标题尺度', () => {
     expect(step860.length, '一个 860 档的块都没量到，扫描口径失效').toBeGreaterThan(0);
     expect(step860.join('\n'), '抽屉没有遮罩层：点内容区收不掉它').toContain('.studio-app.sidebar-open .studio-scrim{');
     expect(css, '遮罩在宽屏上也会显示：桌面态会被盖住').toContain('.studio-scrim{display:none}');
+    // 只检查断点数值会让「规范说单栏、实际仍是两栏」静默通过。
+    // 窄屏通过切换核对内容保留阅读高度，不能把原文挤成只有几像素的滚动窗。
+    const step1024 = blocksOf('max-width:1024px').join('\n');
+    const candidateGrid = step1024.match(/\.candidate-columns\{([^}]*)\}/)?.[1];
+    expect(candidateGrid, '1024 档缺少候选核对布局').toBeDefined();
+    expect(candidateGrid, '窄屏仍把列表和正文并排，正文会被压窄').toContain('grid-template-columns:minmax(0,1fr);');
+    expect(step1024, '窄屏缺少始终可达的视图切换').toMatch(/\.candidate-pane-switch\{display:flex/);
+    expect(step1024, '窄屏仍同时堆叠两块正文').toMatch(/\.candidate-content:not\(\.candidate-pane-active\),\.candidate-evidence:not\(\.candidate-pane-active\)\{display:none\}/);
   });
 
   it('对话阅读正文取 16px 与 1.85 倍行高', () => {

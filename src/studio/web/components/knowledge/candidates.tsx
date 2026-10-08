@@ -40,7 +40,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const [draft, setDraft] = useState('');
   const [reason, setReason] = useState('');
   const [citation, setCitation] = useState(0);
+  const [pane, setPane] = useState<'candidate' | 'evidence'>('candidate');
+  const candidateContent = useRef<HTMLElement | null>(null);
+  const evidenceHeading = useRef<HTMLHeadingElement | null>(null);
   const controller = useRef<AbortController | null>(null);
+  useEffect(() => {
+    // 查看依据会在窄屏隐藏触发按钮，焦点跟随到可见原文；桌面仍保持并列核对。
+    if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
+  }, [pane]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}): Promise<T> {
     const response = await fetch('/api/knowledge/candidates', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -74,7 +81,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   }
   async function open(id: string, revision?: string) {
     const next = await api<KnowledgeCandidateDetail>('show', { id, ...(revision ? { revision } : {}) });
-    setDetail(next); setCitation(0); setReason('');
+    setDetail(next); setCitation(0); setReason(''); setPane('candidate');
     const url = new URL(window.location.href); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
@@ -135,7 +142,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </aside>
-      <article className="candidate-content">
+      <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>
+      <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
         {!detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
           <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
             <Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/>
@@ -154,11 +162,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
                 <dt>{t('例外', 'Exceptions')}</dt><dd>{statement.context.exceptions.join('；') || '—'}</dd>
                 <dt>{t('未知信息', 'Unknowns')}</dt><dd>{statement.context.unknowns.join('；') || '—'}</dd>
                 <dt>{t('发生／适用时间', 'Occurrence / validity')}</dt><dd>{formatTime(statement.context.occurredDuring)} / {formatTime(statement.context.validDuring)}</dd></dl>
-              <Space wrap>{detail.revision.evidence.filter((link) => link.statementIds.includes(statement.statementId)).map((link) => <div key={link.evidenceLinkId}><Button size="small" onClick={() => setCitation(Math.max(0, detail.grounding.citations.findIndex((item) => item.evidenceLinkId === link.evidenceLinkId)))}>{t('查看依据', 'Inspect evidence')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[link.basis]}</Button><p>{({ supports: t('支持', 'Supports'), opposes: t('反对', 'Opposes'), background: t('背景', 'Background') })[link.relation]}：{link.interpretation}</p></div>)}</Space>
+              <Space wrap>{detail.revision.evidence.filter((link) => link.statementIds.includes(statement.statementId)).map((link) => <div key={link.evidenceLinkId}><Button size="small" onClick={() => { setCitation(Math.max(0, detail.grounding.citations.findIndex((item) => item.evidenceLinkId === link.evidenceLinkId))); setPane('evidence'); }}>{t('查看依据', 'Inspect evidence')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[link.basis]}</Button><p>{({ supports: t('支持', 'Supports'), opposes: t('反对', 'Opposes'), background: t('背景', 'Background') })[link.relation]}：{link.interpretation}</p></div>)}</Space>
             </section>)}
             <h3>{t('未来如何复用', 'Potential future use')}</h3><p>{detail.grounding.reuseRationale}</p>
             {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
-            <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => setCitation(detail.grounding.citations.length + index)}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
+            <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
           </div>
           <footer className="candidate-actions"><Input aria-label={t('处理理由', 'Decision reason')} placeholder={t('记录保留、舍弃或修订的理由', 'Reason for retaining, discarding, or editing')} value={reason} onChange={(event) => setReason(event.target.value)}/><Space wrap>
             <Button disabled={busy} onClick={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}>{t('修订', 'Edit')}</Button>
@@ -168,7 +176,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
                 : t('已记录舍弃决定与理由；该修订仍在历史中。', 'Recorded your decision to discard, with the reason; the revision stays in its history.')); })}>{choice === 'retain' ? t('保留', 'Retain') : t('舍弃', 'Discard')}</Button>)}</Space></footer>
         </>}
       </article>
-      <aside className="candidate-evidence"><h2>{t('原始依据', 'Source evidence')}</h2>
+      <aside id="candidate-evidence" className={`candidate-evidence${pane === 'evidence' ? ' candidate-pane-active' : ''}`}><h2 ref={evidenceHeading} tabIndex={-1}>{t('原始依据', 'Source evidence')}</h2>
         {detail && <Select style={{ width: '100%' }} aria-label={t('证据片段', 'Evidence excerpt')} value={citation} options={selections.map((item, index) => ({ value: index, label: `${item.label} · ${item.selection.quote.slice(0, 90)}` }))} onChange={setCitation}/>}
         <div className="candidate-scroll">{excerpt && selectedCitation ? <><p>{t('记录', 'Record')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('时间未知', 'Time unknown')}</p>
           <pre>{excerpt.text.slice(0, selectedCitation.selection.start)}<mark>{excerpt.text.slice(selectedCitation.selection.start, selectedCitation.selection.end)}</mark>{excerpt.text.slice(selectedCitation.selection.end)}</pre>
@@ -228,6 +236,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
+}
+
+export function CandidatePaneSwitch({ lang, pane, onChange }: { lang: Language; pane: 'candidate' | 'evidence'; onChange(value: 'candidate' | 'evidence'): void }) {
+  return <div className="candidate-pane-switch" role="group" aria-label={lang === 'zh' ? '核对视图' : 'Review view'}>
+    <Button aria-pressed={pane === 'candidate'} aria-controls="candidate-content" onClick={() => onChange('candidate')}>{lang === 'zh' ? '候选内容' : 'Candidate content'}</Button>
+    <Button aria-pressed={pane === 'evidence'} aria-controls="candidate-evidence" onClick={() => onChange('evidence')}>{lang === 'zh' ? '原始依据' : 'Source evidence'}</Button>
+  </div>;
 }
 
 /** 列表行只报用户做过的决定；恒定的复核维度在详情头说明一次，不逐行重复。 */
