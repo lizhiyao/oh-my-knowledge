@@ -26,3 +26,16 @@ export interface KnowledgeConversationPreview {
   sourceVersion: string;
   messages: KnowledgeCandidateSource['excerpts'];
 }
+
+/** Local review projection; extraction identity and maintenance data stay unchanged. */
+export interface KnowledgeReviewBatch {
+  runId: string;
+  rows: KnowledgeCandidateRow[];
+  total: number;
+  retained: number;
+  discarded: number;
+  pending: number;
+  missing: number;
+  complete: boolean;
+  nextId?: string;
+}
