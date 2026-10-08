@@ -1,6 +1,6 @@
 /**
- * 内容指纹工具单测。hashArtifactSource 是 install 受管记录与 eval 报告 artifactHashes 的共用指纹,
- * 落在 inputs 层供两侧消费——同一 skill 装出来与测出来的指纹必须落在同一空间。
+ * 内容指纹工具单测。hashArtifactSource 为来源解析与 Core artifact descriptor 提供共用指纹,
+ * 落在 sources 层供来源解析与测量消费。
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';

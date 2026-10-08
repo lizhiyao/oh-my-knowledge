@@ -123,7 +123,7 @@ A knowledge item is a reviewable fact, experience, or method. An artifact is a p
 1. **Observe and review**: inspect tasks and sources in Studio; extract knowledge or confirm observations, preserving conditions and review reasons.
 2. **Prepare a measurable change**: manually apply selected content to an artifact and turn reproducible problems into evaluation cases. Candidates do not take effect automatically.
 3. **Compare under control**: `doctor` performs preflight checks; `eval` compares control and treatment with a Decision, coverage, failed cases, and costs.
-4. **Adopt or improve further**: use evidence to `promote` or `rollback` managed skills. `evolve` screens candidate versions through A/B gates and compares again before writing back.
+4. **Adopt or improve further**: review evaluation evidence and decide adoption through your own release workflow. `evolve` screens candidate versions through A/B gates and compares again before writing back.
 
 These paths compose; they are not a mandatory linear state machine. Passing an evaluation does not mean knowledge has been written or a version published.
 

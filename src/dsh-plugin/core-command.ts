@@ -11,7 +11,6 @@ import {
 } from '../eval-workflows/hosts/application.js';
 import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
 import type { CoreCliRunOutcome, CoreCliSeriesOutcome } from '../eval-workflows/projections/contracts.js';
-import { managedDir } from '../knowledge-artifacts/governance/index.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';
 import type { JudgeConfig } from '../eval-workflows/instruments/contracts/config.js';
@@ -171,13 +170,7 @@ export async function runDshCoreEvaluation(input: Readonly<{
   });
   const result = await application.run({
     request, projectRoot, materializationRoot: machineLayout.resolvedInputsDir, resourceLeaseRoot: machineLayout.resourceLeasesDir,
-    signal: input.signal, managedEvidenceDirectory: managedDir(projectRoot),
-    onNotice(notice) {
-      if (notice.noticeKind === 'managed-evidence-failed') {
-        const message = notice.error instanceof Error ? notice.error.message : String(notice.error);
-        process.stderr.write(`警告：DSH Core 受管证据写入失败：${message}\n`);
-      }
-    },
+    signal: input.signal,
   });
   if (result.outcomeKind !== 'run' && result.outcomeKind !== 'series') throw new Error('DSH Core 需要执行评测。');
   return result;

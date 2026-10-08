@@ -394,7 +394,6 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
       resumeSourceLocator: '/repo/.omk/eval/previous.json',
       preflight: { doctor: 'required', connectivity: 'required' },
       diagnostic: 'enabled-outside-core',
-      managedEvidence: 'append',
       gold: { resourceId: gold.resourceId, comparisonMode: 'exploratory-post-hoc' },
       independentSeries: { repeatCount: 3, seriesInstanceId: 'repeat-series-run-20260830' },
     },

@@ -243,10 +243,10 @@
   <g class="font" filter="url(#dark-shadow)">
     <rect class="card-dark" x="1220" y="378" width="280" height="168" rx="8"/>
     <text x="1360" y="421" text-anchor="middle" class="node-title-light">Ship / Iterate</text>
-    <text x="1360" y="453" text-anchor="middle" class="node-copy-light">enough evidence: promote</text>
+    <text x="1360" y="453" text-anchor="middle" class="node-copy-light">enough evidence: adopt</text>
     <text x="1360" y="481" text-anchor="middle" class="node-copy-light">not enough: evolve candidate</text>
     <g class="mono">
-      <text x="1360" y="513" text-anchor="middle" class="cmd-light">omk promote · omk evolve</text>
+      <text x="1360" y="513" text-anchor="middle" class="cmd-light">omk eval · omk evolve</text>
     </g>
   </g>
 

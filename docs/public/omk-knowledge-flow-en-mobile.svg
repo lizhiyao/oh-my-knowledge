@@ -75,7 +75,7 @@
     <rect class="card card-dark" width="600" height="126"/>
     <text class="dark-title" x="300" y="46" text-anchor="middle">Promote / Iterate</text>
     <text class="dark-copy" x="300" y="80" text-anchor="middle">Accept proven versions, evolve weak ones</text>
-    <text class="dark-cmd mono" x="300" y="110" text-anchor="middle">omk promote · omk evolve</text>
+    <text class="dark-cmd mono" x="300" y="110" text-anchor="middle">omk eval · omk evolve</text>
   </g>
   <path class="arrow" d="M360 940 V984" stroke="#D97706" marker-end="url(#arrow-amber)"/>
 

@@ -1,11 +1,10 @@
 import 'server-only';
-import { nextAgentsContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext } from '../http/next-context';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext } from '../http/next-context';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../view-models/measure/core-runs';
 import type { AgentsPage } from '../http/pages/agents-page';
 import type { HealthPage } from '../http/pages/health-page';
 import type { InboxPage } from '../http/pages/inbox-page';
 import type { KnowledgePage } from '../http/pages/knowledge-page';
-import type { ManagedPage } from '../http/pages/managed-page';
 import type { ObservePage } from '../http/pages/observe-page';
 
 // 宿主按请求注入 AsyncLocalStorage store；两侧模块经 globalThis 上的 Symbol.for 键
@@ -34,10 +33,6 @@ export function requestInboxPage(): InboxPage {
 
 export function requestHealthPage(): HealthPage {
   return nextHealthContext.get();
-}
-
-export function requestManagedPage(): ManagedPage {
-  return nextManagedContext.get();
 }
 
 export function requestAgentsPage(): AgentsPage {

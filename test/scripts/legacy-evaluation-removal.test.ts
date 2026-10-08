@@ -76,11 +76,4 @@ describe('legacy evaluation implementation removal', () => {
     expect(inputContracts).not.toContain('interface EvaluationJob');
     expect(inputContracts).not.toContain('interface EvaluationRequest');
   });
-
-  it('does not retain legacy managed evidence compatibility', () => {
-    const managed = readFileSync(resolve('src/knowledge-artifacts/governance/contracts.ts'), 'utf8');
-    expect(managed).toContain("evidenceSource: 'evaluation-core'");
-    expect(managed).not.toContain("evidenceSource?: 'evaluation-core'");
-    expect(managed).not.toContain('comparability?:');
-  });
 });

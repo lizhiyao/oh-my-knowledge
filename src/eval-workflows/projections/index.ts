@@ -5,5 +5,4 @@ export * from './decision.js';
 export * from './diagnostic.js';
 export * from './evolution.js';
 export * from './gold.js';
-export * from './managed.js';
 export * from './source.js';

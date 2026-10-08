@@ -458,12 +458,6 @@ export default class Eval extends BaseCommand {
     'no-gate': Flags.boolean({
       description: bilingual({ zh: '关闭判定门禁', en: 'Disable verdict gate' }),
     }),
-    'no-evidence': Flags.boolean({
-      description: bilingual({
-        zh: '不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。',
-        en: 'Do not append this run as evidence to managed records (auto-written for installed skills by default).',
-      }),
-    }),
   };
 
   async run(): Promise<void> {

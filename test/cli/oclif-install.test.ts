@@ -4,7 +4,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -24,32 +24,6 @@ function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 describe('oclif install', () => {
-  it('登记失败明确提示已分发位置，修复目录后可以幂等重试', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'omk-install-register-'));
-    try {
-      const source = join(root, 'review');
-      const dest = join(root, 'destination');
-      await mkdir(source);
-      await writeFile(join(source, 'SKILL.md'), '# Review\n');
-      await mkdir(join(root, '.omk'));
-      const obstruction = join(root, '.omk', 'governance');
-      await writeFile(obstruction, 'blocked');
-      const args = [source, '--dest', dest];
-      await assert.rejects(() => runInstallCommand(args, { cwd: root }), (error: CommandRunError) => {
-        assert.equal(error.code, 1);
-        assert.match(error.stderr, /治理登记失败/);
-        assert.match(error.stderr, /--force/);
-        return true;
-      });
-      assert.equal(await readFile(join(dest, 'review', 'SKILL.md'), 'utf8'), '# Review\n');
-      await rm(obstruction);
-      await runInstallCommand([...args, '--force'], { cwd: root });
-      const records = await readdir(join(root, '.omk', 'governance', 'managed'));
-      assert.equal(records.filter((name) => name.endsWith('.json')).length, 1);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
 
   it('--help 默认 zh', async () => {
     const stdout = await renderCommandHelp('install');
@@ -322,14 +296,7 @@ describe('oclif install', () => {
     return skillDir;
   }
 
-  async function readSoleManagedRecord(projectDir: string): Promise<Record<string, unknown>> {
-    const dir = join(projectDir, '.omk', 'governance', 'managed');
-    const files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
-    assert.equal(files.length, 1, `expected exactly one managed record, got ${files.length}`);
-    return JSON.parse(await readFile(join(dir, files[0]), 'utf8'));
-  }
-
-  it('directory-skill:分发整目录 + 登记受管记录(--kind 可省自动推导)', async () => {
+  it('directory-skill:分发整目录(--kind 可省自动推导)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-'));
     try {
       await makeDirSkill(dir, 'review');
@@ -339,25 +306,9 @@ describe('oclif install', () => {
         env: cliEnv(),
       });
       assert.ok(stdout.includes('已安装 skill review'), `stdout missing copy msg:\n${stdout}`);
-      assert.ok(stdout.includes('已登记受管记录'), `stdout missing register msg:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'skill SKILL.md not distributed');
       assert.ok(existsSync(join(dest, 'review', 'references', 'cmd.md')), 'asset not distributed');
-
-      const record = await readSoleManagedRecord(dir);
-      assert.equal(record.recordKind, 'managed-artifact');
-      assert.equal(record.schemaVersion, 3);
-      assert.equal(record.name, 'review');
-      assert.equal(record.kind, 'skill');
-      assert.equal((record.source as Record<string, unknown>).sourceKind, 'file');
-      assert.equal(typeof record.contentHash, 'string');
-      assert.ok((record.contentHash as string).length > 0, 'contentHash empty');
-      assert.deepEqual(record.evidence, []);
-      assert.deepEqual(record.decisions, []);
-      const source = record.source as Record<string, unknown>;
-      assert.equal(source.isDirectorySkill, true);
-      const distribution = record.distribution as Array<Record<string, unknown>>;
-      assert.equal(distribution.length, 1);
-      assert.equal(distribution[0].path, join(dest, 'review'));
+      assert.ok(!existsSync(join(dir, '.omk')), 'installation must not create lifecycle metadata');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -373,14 +324,12 @@ describe('oclif install', () => {
         env: cliEnv(),
       });
       assert.ok(existsSync(join(dest, 'notes.md')), 'file-skill not distributed as .md');
-      const record = await readSoleManagedRecord(dir);
-      assert.equal((record.source as Record<string, unknown>).isDirectorySkill, false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('--dry-run 既不分发也不登记', async () => {
+  it('--dry-run 不分发', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-dry-'));
     try {
       await makeDirSkill(dir, 'review');
@@ -390,28 +339,26 @@ describe('oclif install', () => {
         env: cliEnv(),
       });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
-      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'dry-run must not write managed record');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('--force 重装幂等:仍是一条记录,分发不重复', async () => {
+  it('--force 重装幂等:覆盖已安装文件', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-force-'));
     try {
       await makeDirSkill(dir, 'review');
       const dest = join(dir, 'dist-skills');
       await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      await writeFile(join(dir, 'skills', 'review', 'SKILL.md'), '# Updated review\n');
       await runInstallCommand(['skills/review', '--dest', dest, '--force'], { cwd: dir, env: cliEnv() });
-      const record = await readSoleManagedRecord(dir);
-      const distribution = record.distribution as Array<Record<string, unknown>>;
-      assert.equal(distribution.length, 1, 'distribution must dedup by path');
+      assert.equal(await readFile(join(dest, 'review', 'SKILL.md'), 'utf8'), '# Updated review\n');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('就地接管:源即目标时不删源、登记成功(P1 数据丢失防护)', async () => {
+  it('源已在目标位置：源即目标时不删源(P1 数据丢失防护)', async () => {
     for (const force of [true, false]) {
       const dir = await mkdtemp(join(tmpdir(), 'omk-install-adopt-'));
       try {
@@ -425,10 +372,6 @@ describe('oclif install', () => {
         // 源必须还在(绝不能被自删)
         assert.ok(existsSync(join(source, 'SKILL.md')), `adopt(force=${force}) must not delete the source skill`);
         assert.ok(existsSync(join(source, 'references', 'cmd.md')), 'asset must survive');
-        const record = await readSoleManagedRecord(dir);
-        const distribution = record.distribution as Array<Record<string, unknown>>;
-        // 路径用 endsWith 比对,规避 macOS /var → /private/var 软链归一化差异。
-        assert.ok((distribution[0].path as string).endsWith(join('skills', 'review')), 'in-place adopt still records the distribution');
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
@@ -500,7 +443,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'should fall back to unknown_input');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'must not register a junk file as a skill');
+      assert.ok(!existsSync(join(dir, '.omk')), 'must not create metadata a junk file as a skill');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -537,7 +480,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'unsupported kind must not register');
+      assert.ok(!existsSync(join(dir, '.omk')), 'unsupported kind must not create metadata');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -560,47 +503,43 @@ describe('oclif install', () => {
     return repo;
   }
 
-  it('git 源:从当前仓库 ref 安装,分发整树 + 登记 sourceKind:git', async () => {
+  it('git 源:从当前仓库 ref 安装,分发整树', async () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
+      const history = join(repo, '.omk', 'governance', 'managed', 'old.json');
+      const previous = '{"original":"user history"}\n';
+      await mkdir(join(repo, '.omk', 'governance', 'managed'), { recursive: true });
+      await writeFile(history, previous);
       const { stdout } = await runInstallCommand(['git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
       assert.ok(stdout.includes('已安装 skill review'), `stdout missing copy msg:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'git skill SKILL.md not distributed');
       assert.ok(existsSync(join(dest, 'review', 'references', 'cmd.md')), 'git skill asset not distributed');
-      const record = await readSoleManagedRecord(repo);
-      const source = record.source as Record<string, unknown>;
-      assert.equal(source.sourceKind, 'git');
-      assert.equal(source.ref, 'HEAD');
-      assert.equal(source.locator, 'git:HEAD:skills/review');
-      assert.equal(source.isDirectorySkill, true);
-      assert.equal(record.name, 'review');
+      assert.equal(await readFile(history, 'utf8'), previous, 'installation must leave old user data untouched');
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
   });
 
-  it('git 源 --force 重装幂等:仍一条记录、分发不重复', async () => {
+  it('git 源 --force 重装幂等:覆盖已安装文件', async () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
       await runInstallCommand(['git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
       await runInstallCommand(['git:HEAD:skills/review', '--dest', dest, '--force'], { cwd: repo, env: cliEnv() });
-      const record = await readSoleManagedRecord(repo);
-      assert.equal((record.distribution as Array<unknown>).length, 1, 'distribution 应按 path 去重');
       assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'force 重装后目标仍在');
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
   });
 
-  it('git 源 --dry-run 不分发不登记,文案源中性', async () => {
+  it('git 源 --dry-run 不分发,文案源中性', async () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
       const { stdout } = await runInstallCommand(['git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
-      assert.ok(!existsSync(join(repo, '.omk', 'governance', 'managed')), 'dry-run must not register');
+      assert.ok(!existsSync(join(repo, '.omk')), 'dry-run must not create metadata');
       assert.ok(stdout.includes('将安装 skill review'), `plan 文案应源中性:\n${stdout}`);
       assert.ok(!stdout.includes('omk Agent Skill'), 'user skill 的 dry-run 不应提 omk Agent Skill');
     } finally {
@@ -608,10 +547,7 @@ describe('oclif install', () => {
     }
   });
 
-  it('git 源裸 spec 歧义:文件优先(command 集成记录 isDirectorySkill:false,防 evidence 静默剥离)', async () => {
-    // 同名同时存在 skills/dual.md 与 skills/dual/SKILL.md。eval(skill-loader resolveArtifacts)先试
-    // <name>.md 再 <name>/SKILL.md → 量的是文件;install 必须同样文件优先,否则注册成目录、contentHash
-    // 与 eval 不同,evidence 读时按 hash 门控被静默剥离、记录永久 stale。这里锁住 install command 的归类接线。
+  it('git 源裸 spec 歧义：文件优先，与评测输入解析一致', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'omk-install-gitdual-'));
     try {
       git(repo, ['init', '-q']);
@@ -624,9 +560,6 @@ describe('oclif install', () => {
       git(repo, ['commit', '-q', '-m', 'dual']);
       const dest = join(repo, 'dist-skills');
       await runInstallCommand(['git:HEAD:skills/dual', '--dest', dest], { cwd: repo, env: cliEnv() });
-      const record = await readSoleManagedRecord(repo);
-      const source = record.source as Record<string, unknown>;
-      assert.equal(source.isDirectorySkill, false, '裸 spec 歧义必须文件优先,与 eval 对齐');
       assert.ok(existsSync(join(dest, 'dual.md')), '应分发文件-skill,落点为 dual.md');
       assert.ok(!existsSync(join(dest, 'dual')), '不应分发目录-skill');
     } finally {
@@ -645,7 +578,7 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('git'), 'error should mention git repo');
       }
-      assert.ok(!existsSync(join(dir, '.omk', 'governance', 'managed')), 'must not register on error');
+      assert.ok(!existsSync(join(dir, '.omk')), 'must not create metadata on error');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

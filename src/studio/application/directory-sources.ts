@@ -6,7 +6,7 @@ import {
 } from '../../eval-workflows/artifact-store/index.js';
 import { createCoreStudioCatalog } from './measure/core-run-catalog.js';
 
-/** 目录既可以是定值，也可以是按请求解析的回调：Studio 是长会话，受管根要跟随项目首次 install。 */
+/** 目录既可以是定值，也可以是按请求解析的回调：长会话中按请求读取最新目录。 */
 export type StudioDirectoryValue = string | (() => string);
 
 /** 宿主解析后的可选目录 flag；未给出的键走默认策略。 */
@@ -37,7 +37,6 @@ export interface StudioDirectoryRoots {
   readonly observations: {
     readonly global: string;
   };
-  readonly managed: () => string;
 }
 
 /**
@@ -58,7 +57,6 @@ export function createStudioDirectorySources(
   agentsDir?: string;
   includeObserveCards: boolean;
   includeDoctorCards: boolean;
-  managedDir: () => string;
 } {
   const coreStoreFor = (directory: string) => createNodeCoreRunArtifactStore(directory, {
     contentResolver: createNodeCoreContentStore(resolve(directory, 'content')),
@@ -96,6 +94,5 @@ export function createStudioDirectorySources(
     ...(flags.agentsDir ? { agentsDir: resolve(flags.agentsDir) } : {}),
     includeObserveCards: !flags.global && !flags.analysesDir,
     includeDoctorCards: !flags.global && !flags.doctorsDir,
-    managedDir: () => roots.managed(),
   };
 }

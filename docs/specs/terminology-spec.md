@@ -439,7 +439,7 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 | EvaluandKind | ArtifactKind | object category |
 | evaluands | artifacts | object list in the request |
 | task.evaluand | task.artifact | the object a single task binds to |
-| evaluandHashes | Target artifact descriptor | full SHA-256 content identity sealed in Target config and managed evidence |
+| evaluandHashes | Target artifact descriptor | full SHA-256 content identity sealed in Target config |
 | skillHashes | Target artifact descriptor | unified artifact identity in Core lineage |
 | skill as the umbrella | artifact | skill falls back to a concrete subtype |
 | agent as the umbrella | artifact / agent runtime | choose by semantics |

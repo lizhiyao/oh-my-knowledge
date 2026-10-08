@@ -13,7 +13,6 @@ export type InstallMessageKey =
   | 'cli.install.kind_unsupported'
   | 'cli.install.copied'
   | 'cli.install.adopted'
-  | 'cli.install.registered'
   | 'cli.install.target_overlaps_source'
   | 'cli.install.path_not_found'
   | 'cli.install.skillmd_missing'
@@ -75,12 +74,8 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Installed skill {name}: {path}',
   },
   'cli.install.adopted': {
-    zh: '已就地接管 skill {name}（已在目标位置，未改动文件）：{path}',
-    en: 'Adopted skill {name} in place (already at target, files untouched): {path}',
-  },
-  'cli.install.registered': {
-    zh: '已登记受管记录 {id}：{store}',
-    en: 'Registered managed record {id}: {store}',
+    zh: 'skill {name} 已在目标位置（未改动文件）：{path}',
+    en: 'Skill {name} already at target (files untouched): {path}',
   },
   'cli.install.target_overlaps_source': {
     zh: '安装目标与源相互嵌套，拒绝执行（会删掉源或自我复制）。源：{source}；目标：{target}。请换一个不与源重叠的 --dest。',

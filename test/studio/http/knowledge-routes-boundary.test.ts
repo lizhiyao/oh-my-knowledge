@@ -10,11 +10,9 @@ describe('Studio knowledge route boundary', () => {
       'buildSkillIndex',
       'renderSkillHealthReport',
       'renderDoctorDetail',
-      'renderManagedList',
       'querySkillTrend',
       'querySkillDiff',
       '/api/skills',
-      '/api/managed',
       '/api/observe-health',
     ]) {
       expect(composition).not.toContain(forbidden);

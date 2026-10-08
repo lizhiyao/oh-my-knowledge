@@ -1,6 +1,6 @@
 # Evaluation Core artifact persistence
 
-> Status: implemented host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) and [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547). Production `omk eval`, Studio, managed evidence, Gold, resume, batch, and evolve now consume these Core artifacts. Legacy reports remain unreadable, and transported JSON never becomes a trusted Core capability.
+> Status: implemented host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) and [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547). Production `omk eval`, Studio, Gold, resume, batch, and evolve now consume these Core artifacts. Legacy reports remain unreadable, and transported JSON never becomes a trusted Core capability.
 
 ## 1. Boundary
 
@@ -79,7 +79,6 @@ The CLI dry-run projection accepts only the in-process `SealedRunPlan` capabilit
 
 The CLI run projection accepts one fully validated stored artifact chain. Operational completion, evidence completeness, conclusion status, and registered Decision remain separate inputs to the gate. A verdict is not release authority by itself: `PROGRESS` requires the stable `release-gates-passed` reason and `SOLO` requires `solo-layer-gate-passed`. `report-only` may skip the release gate only for a completed run; cancellation, budget exhaustion, and failure remain non-zero operational outcomes. Batch projection verifies every manifest child against its exact artifact-set identity and projects independent child outcomes without pooling scores, Reports, or statistical units.
 
-Managed evidence projection binds each OMK Target to the full SHA-256 artifact descriptor sealed in Target config, its exact Executor Runtime fingerprint reference, comparison-scoped roles, Dataset revision, all stage-plan digests, Report identity, status, and registered Decision. A Target may therefore be treatment in one Comparison and control in another without making the valid Core chain unprojectable. The projection deliberately omits the legacy 12-character content hash, locator heuristics, aliases, display scores, Runtime capabilities, and implementation facets. Baseline Targets remain visible for audit but are explicitly ineligible for managed evidence. The production writer consumes this projection directly in the same content-identity space and never translates it back into a legacy `EvaluationReport`.
 
 ## 10. Non-goals
 

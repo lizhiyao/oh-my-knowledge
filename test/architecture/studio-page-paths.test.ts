@@ -255,7 +255,7 @@ describe('Studio 页面地址的单一 owner 守门', () => {
     const pagesDir = join(STUDIO_DIR, 'http', 'pages');
     const loaders = readdirSync(pagesDir).filter((name) => name.endsWith('-page.ts')).sort();
     expect(loaders, '装载器数量变了，这条门禁需要重新核对覆盖面').toEqual([
-      'agents-page.ts', 'health-page.ts', 'inbox-page.ts', 'knowledge-page.ts', 'managed-page.ts', 'measure-page.ts', 'observe-page.ts',
+      'agents-page.ts', 'health-page.ts', 'inbox-page.ts', 'knowledge-page.ts', 'measure-page.ts', 'observe-page.ts',
     ]);
     for (const loader of loaders) {
       expect(readFileSync(join(pagesDir, loader), 'utf8'), `${loader} 没有导出地址识别谓词`).toMatch(/export function is\w+Path\(/u);

@@ -7,7 +7,6 @@ test/cli/observation-window.test.ts
 test/cli/observe-inbox-global.test.ts
 test/cli/oclif-evolve.test.ts
 test/cli/prepare-evaluation.test.ts
-test/cli/promote-run.test.ts
 test/cli/runtime-defaults.test.ts
 test/cli/sample-from-traces.test.ts
 test/cli/update-exit-latency.test.ts
@@ -58,7 +57,6 @@ test/executors/anthropic-api.test.ts
 test/executors/codex-trace.test.ts
 test/executors/runtime-fingerprint.test.ts
 test/executors/sigint-propagation.test.ts
-test/knowledge-artifacts/governance/install.test.ts
 test/knowledge-artifacts/sources/install-source.test.ts
 test/knowledge-artifacts/sources/materialize-copy.test.ts
 test/knowledge/validation.test.ts

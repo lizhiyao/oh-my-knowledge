@@ -173,7 +173,7 @@ describe('Next Studio production boundary', () => {
   it('projects a failing knowledge directory resolver to 503 without leaking the cause',async()=>{
     const root=await mkdtemp(join(tmpdir(),'omk-next-knowledge-error-'));roots.push(root);
     // 目录按请求解析，长会话里项目根可能已经消失：读不出事实要收敛成稳定 503，
-    // 而不是让 Next 流式吐出 200 或把带路径的原因透给浏览器。口径与受管根目录同源。
+    // 而不是让 Next 流式吐出 200 或把带路径的原因透给浏览器。
     const server=createNextStudioServer({port:0,analysesDir:()=>{throw new Error('EACCES /private/token');},doctorsDir:join(root,'doctors'),observationsDir:root});servers.push(server);
     const url=await server.start();
     for(const path of ['/knowledge','/knowledge/skills/audit']){

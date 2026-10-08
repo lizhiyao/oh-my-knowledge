@@ -136,7 +136,6 @@ omk eval [flags]
 - `--model` `option`:被测模型
 - `--no-debias-length` `boolean`:关 length-debias（默认开）
 - `--no-diagnostic` `boolean`:关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
-- `--no-evidence` `boolean`:不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
 - `--no-gate` `boolean`:关闭判定门禁
 - `--no-judge` `boolean`:跳过 LLM 评委
 - `--no-serve` `boolean`:不启 report server
@@ -297,7 +296,7 @@ omk evolve <skillPath> [flags]
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
 - `--samples` `option`:指定已有样本源；省略时先找 skill 私有样本，再找项目样本，都不存在时自动生成
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-- `--snapshot-only` `boolean`:只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。
+- `--snapshot-only` `boolean`:只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。默认仅在最终 Core 门禁通过后写回 source。
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
 - `--timeout` `option` (默认 `600`):单用例超时秒，默认 600
 
@@ -357,7 +356,7 @@ omk init my-project --samples 20
 
 ## omk install
 
-安装 omk 官方 Agent Skill，或登记并分发用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标；安装用户 skill 时同时登记一条受管记录。
+安装 omk 官方 Agent Skill，或安装用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标。
 
 **用法:**
 
@@ -400,7 +399,7 @@ omk install omk-agent-skill --to all
 omk install omk-agent-skill --dest ~/.my-agent/skills
 ```
 
-> 登记并分发用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）
+> 安装用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）
 
 ```bash
 omk install ./skills/review
@@ -412,46 +411,10 @@ omk install ./skills/review
 omk install git:main:skills/review
 ```
 
-> 从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证；记录钉实际 SHA）
+> 从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证）
 
 ```bash
 omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review
-```
-
-## omk list
-
-列出受管 skill 及其证据状态：生命周期（installed / measurable / promoted / stale）、最新 verdict、证据数、源。
-
-**用法:**
-
-```bash
-omk list [flags]
-```
-
-**Flags:**
-
-- `--global` `boolean`:看全局受管目录（~/.oh-my-knowledge/governance/managed）而非项目 .omk/governance/managed
-- `--json` `boolean`:输出 JSON（含完整可比性 marker），供脚本消费
-- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-
-**示例:**
-
-> 列出当前项目的受管 skill
-
-```bash
-omk list
-```
-
-> 列出全局受管 skill
-
-```bash
-omk list --global
-```
-
-> 机器可读 JSON 输出
-
-```bash
-omk list --json
 ```
 
 ## omk observe
@@ -470,7 +433,6 @@ omk observe [sessionsDir] [flags]
 
 **Flags:**
 
-- `--feedback` `boolean`:把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）
 - `--from` `option`:起始时间 ISO，优先级高于 --last
 - `--global` `boolean`:写全局 ~/.oh-my-knowledge/observe/health，而非项目 .omk/observe/health
 - `--kb` `option`:知识库 root，启用 KB-aware 分析
@@ -601,88 +563,6 @@ omk observe show <inboxId> [flags]
 - `--input-dir` `option`:inbox 数据目录
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 
-## omk promote
-
-把受管 skill 的当前版本按证据门禁「接受」为 promoted：默认仅放行 verdict=PROGRESS,在记录里追加一条带证据指针的人工决定。
-
-**用法:**
-
-```bash
-omk promote <name> [flags]
-```
-
-**参数:**
-
-- `name`(必填):受管 skill 名（omk list 里的 NAME）
-
-**Flags:**
-
-- `--accept-cautious` `boolean`:把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
-- `--actor` `option`:决定的 actor（默认取 git config user.name）
-- `--force` `boolean`:越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
-- `--global` `boolean`:操作全局受管目录而非项目 .omk/governance/managed
-- `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
-- `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
-- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-- `--reason` `option`:promote / 越门的理由（写入决定）
-
-**示例:**
-
-> promote 一个证据达标的 skill
-
-```bash
-omk promote review
-```
-
-> 接受 CAUTIOUS 结果（显式放宽门禁）
-
-```bash
-omk promote review --accept-cautious
-```
-
-> 越门 promote 并记录理由（人工 override）
-
-```bash
-omk promote review --force --reason "已人工复核"
-```
-
-## omk rollback
-
-回退受管 skill 当前版本的 promoted 接受：撤销最近一次 promote，在记录里追加一条 rollback 决定（源未漂移则状态回到 measurable，源已漂移则仍 stale）。
-
-**用法:**
-
-```bash
-omk rollback <name> [flags]
-```
-
-**参数:**
-
-- `name`(必填):受管 skill 名（omk list 里的 NAME）
-
-**Flags:**
-
-- `--actor` `option`:决定的 actor（默认取 git config user.name）
-- `--global` `boolean`:操作全局受管目录而非项目 .omk/governance/managed
-- `--json` `boolean`:输出 JSON（版本化信封）供脚本消费
-- `--kind` `option` (默认 `skill`):artifact 类型（当前仅 skill）
-- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-- `--reason` `option`:回退的理由（写入决定）
-
-**示例:**
-
-> 回退一个已 promoted 的 skill
-
-```bash
-omk rollback review
-```
-
-> 回退并记录理由
-
-```bash
-omk rollback review --reason "线上发现回归"
-```
-
 ## omk sample
 
 为指定 skill 生成评测用例，支持 batch、single 与 from-traces 模式。
@@ -748,7 +628,7 @@ omk studio [flags]
 - `--analyses-dir` `option`:观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
-- `--global` `boolean`:只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响
+- `--global` `boolean`:只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--no-open` `boolean`:不自动打开浏览器

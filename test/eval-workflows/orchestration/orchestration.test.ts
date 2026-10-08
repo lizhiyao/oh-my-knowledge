@@ -175,7 +175,6 @@ describe('production independent Series orchestration', () => {
           batch: false,
           preflight: { doctor: 'skip', connectivity: 'skip' },
           diagnostic: 'disabled',
-          managedEvidence: 'skip',
           independentSeries: {
             definition,
             memberships: definition.members.map((member) => ({

@@ -42,11 +42,8 @@ describe('source-resolver git', () => {
   it('物化目录-skill 到临时目录,含资产、排除 .omk', () => {
     const src = resolveInstallSource('git:HEAD:skills/review');
     try {
-      assert.equal(src.sourceKind, 'git');
       assert.equal(src.name, 'review');
       assert.equal(src.isDirectorySkill, true);
-      assert.equal(src.ref, 'HEAD');
-      assert.equal(src.locator, 'git:HEAD:skills/review');
       assert.ok(existsSync(join(src.localRoot, 'SKILL.md')), 'SKILL.md 应被物化');
       assert.ok(existsSync(join(src.localRoot, 'references', 'cmd.md')), '资产应被物化');
       assert.ok(!existsSync(join(src.localRoot, '.omk')), '.omk 评测数据不该被物化');
@@ -81,7 +78,6 @@ describe('source-resolver git', () => {
     try {
       assert.equal(d.isDirectorySkill, true);
       assert.equal(d.name, 'review');
-      assert.equal(d.locator, 'git:HEAD:skills/review/SKILL.md');
       assert.ok(existsSync(join(d.localRoot, 'references', 'cmd.md')), '应物化整树');
     } finally {
       d.cleanup();
@@ -92,7 +88,6 @@ describe('source-resolver git', () => {
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8' }).trim();
     const src = resolveInstallSource(`git:${sha}:skills/review`);
     try {
-      assert.equal(src.ref, sha);
       assert.ok(existsSync(join(src.localRoot, 'SKILL.md')));
     } finally {
       src.cleanup();

@@ -49,7 +49,7 @@ This path does not require logs. When real tasks are available, start with Studi
 
 **Primary target: authors and maintainers who repeatedly ship knowledge changes.** Not everyone who has written a prompt, but people whose knowledge artifacts are reused, shared, or versioned, and for whom a bad change creates regressions, additional cost, or operational risk. They need to answer: "is this a real improvement for the target task, and is it worth shipping?"
 
-**Secondary target: teams and platform maintainers who bear the consequences of adoption.** They decide whether to introduce, retain, or upgrade external knowledge inputs. They cannot rely only on the author's bundled benchmark; they need to evaluate against their own tasks, constraints, and samples, then record what they adopted and on what evidence (see [evidence-gated management](../specs/evidence-gated-management)).
+**Secondary target: teams and platform maintainers who bear the consequences of adoption.** They decide whether to introduce, retain, or upgrade external knowledge inputs. They cannot rely only on the author's bundled benchmark; they need to evaluate against their own tasks, constraints, and samples, retain evaluation reports and decide whether to adopt changes through their own release workflow.
 
 **Explicitly not the target: passive end-users.** Someone who installs a public skill and uses it directly usually has neither a sample set nor measurement intent; evaluation is additional overhead. omk does not require that person to become an evaluator. Eval artifacts therefore default to the evaluator's project workspace, not a passive user's install directory.
 

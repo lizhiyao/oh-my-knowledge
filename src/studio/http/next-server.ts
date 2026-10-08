@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextAgentsContext, nextHealthContext, nextInboxContext, nextManagedContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import {
   createCodexConversationCatalog,
@@ -17,9 +17,7 @@ import { isObservePath, loadObservePage, type ObservePage } from './pages/observ
 import { isKnowledgeCandidatesPath, isKnowledgePath, loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
 import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
 import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.js';
-import { isManagedPath, loadManagedPage, type ManagedPage } from './pages/managed-page.js';
 import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
-import { resolveManagedRootOption } from './managed-root.js';
 import { studioHostLanguage } from './language.js';
 
 /** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
@@ -30,7 +28,6 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
   // 页面组开关与 report-server 侧同源：裁掉的路径不接管，落回 HTTP adapter 得到 404，语义与独立宿主一致。
   const inboxRoutes = (options.studioPages ?? true) && (options.observationInbox ?? true);
   const pageRoutes = options.studioPages ?? true;
-  const resolveManagedRoot = resolveManagedRootOption(options.managedDir);
   // Agent 清单与采集报告按机器级全局存放（`omk agents` 的默认落点），不随项目 cwd 分叉。
   const agentsDir = options.agentsDir ?? globalLayout().observeAgentsDir;
   return createReportServer({ ...options, conversationCatalog, knowledgeQuery }, {
@@ -52,11 +49,10 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const observe = pageRoutes && (inbox || isObservePath(path));
       const knowledge = pageRoutes && isKnowledgePath(path);
       const candidates = pageRoutes && isKnowledgeCandidatesPath(path);
-      const managed = pageRoutes && isManagedPath(path);
       const health = pageRoutes && isHealthPath(path);
       const agents = pageRoutes && isAgentsPath(path);
-      if (!measure && !observe && !knowledge && !candidates && !managed && !health && !agents && !path.startsWith('/_next/')) return false;
-      if ((measure || observe || knowledge || candidates || managed || health || agents) && (request.method ?? 'GET') !== 'GET') {
+      if (!measure && !observe && !knowledge && !candidates && !health && !agents && !path.startsWith('/_next/')) return false;
+      if ((measure || observe || knowledge || candidates || health || agents) && (request.method ?? 'GET') !== 'GET') {
         response.writeHead(405, { ...TEXT_HEADERS, Allow: 'GET' });
         response.end('method_not_allowed'); return true;
       }
@@ -99,26 +95,12 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         }
         const doctorRun = searchParams.get('doctorRun');
         // 显式点名的轮次不存在时不静默回落到当前那次：那会让 URL 与所见证据不一致，
-        // 而同一宿主对 managed_not_found／skill_not_found 一律 404。
+        // 而同一宿主对 skill_not_found 一律 404。
         if (knowledgePage.pageKind === 'detail' && doctorRun
           && doctorRun !== knowledgePage.row.doctor?.reportId
           && !knowledgePage.doctorRuns.some((run) => run.reportId === doctorRun)) {
           response.writeHead(404, TEXT_HEADERS);
           response.end('doctor_run_not_found'); return true;
-        }
-      }
-      let managedPage: ManagedPage | undefined;
-      if (managed) {
-        try {
-          const loaded = loadManagedPage(resolveManagedRoot(), path);
-          if (loaded.status === 'record_not_found') {
-            response.writeHead(404, TEXT_HEADERS);
-            response.end('managed_not_found'); return true;
-          }
-          managedPage = loaded.page;
-        } catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
         }
       }
       let inboxPage: InboxPage | undefined;
@@ -169,7 +151,6 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
       else if (healthPage) await nextHealthContext.run(healthPage, () => handler(request, response));
       else if (knowledgePage) await nextKnowledgeContext.run(knowledgePage, () => handler(request, response));
-      else if (managedPage) await nextManagedContext.run(managedPage, () => handler(request, response));
       else if (observePage) await nextObserveContext.run(observePage, () => handler(request, response));
       else if (agentsPage) await nextAgentsContext.run(agentsPage, () => handler(request, response));
       else if (measurePage) await (measurePage.pageKind === 'index'

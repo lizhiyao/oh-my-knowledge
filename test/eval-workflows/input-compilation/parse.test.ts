@@ -90,7 +90,6 @@ function resolveWithDeterministicTestResources(
   resolved.orchestration.batch = request.values.orchestration.batch;
   resolved.orchestration.preflight = request.values.orchestration.preflight;
   resolved.orchestration.diagnostic = request.values.orchestration.diagnostic;
-  resolved.orchestration.managedEvidence = request.values.orchestration.managedEvidence;
   resolved.orchestration.independentSeries = request.values.orchestration.repeatCount > 1
     ? {
         repeatCount: request.values.orchestration.repeatCount,

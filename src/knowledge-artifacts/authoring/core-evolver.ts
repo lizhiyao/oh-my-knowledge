@@ -67,7 +67,6 @@ export interface CoreEvolverResult {
   bestSkillPath: string;
   allVersions: string[];
   runId?: string;
-  evidence?: StoredCoreRunArtifacts;
 }
 
 interface Measurement {
@@ -370,6 +369,6 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     trajectory,
     bestSkillPath: currentPath,
     allVersions,
-    ...(evidence === undefined ? {} : { runId: evidence.manifest.runId, evidence }),
+    ...(evidence === undefined ? {} : { runId: evidence.manifest.runId }),
   };
 }

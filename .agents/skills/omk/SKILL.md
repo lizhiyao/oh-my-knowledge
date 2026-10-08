@@ -4,7 +4,7 @@ description: |
   OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
 user-invocable: true
-argument-hint: "<agents|doctor|eval|evolve|init|install|list|observe|promote|rollback|sample|studio> [options]"
+argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [options]"
 ---
 
 # OMK — Observe. Measure. Know.
@@ -19,7 +19,7 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|list|observe|promote|rol
 2. 该显式调用本身视为用户确认。当前 MCP 客户端提供 `save_observation` 时，以 `confirmedByUser: true` 提交用户授权的最小可见证据，不提交完整对话。
 3. 如果没有明确候选，或同时存在多个无法唯一判断的候选，只追问要记录哪一项；确认目标前不调用工具。
 4. 如果当前客户端没有 `save_observation`，明确说明 OMK MCP 尚未连接；不要回退为 CLI 写文件，也不要声称已经保存。
-5. 快捷入口只保存 observation，不自动复核、生成 sample、写入 gold set 或 promote。
+5. 快捷入口只保存 observation，不自动复核、生成 sample 或写入 gold set。
 
 ## 第一步：检查环境
 
@@ -29,7 +29,7 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|list|observe|promote|rol
 npm i -g oh-my-knowledge@next
 ```
 
-omk CLI 顶层命令包括：`init` / `install` / `list` / `promote` / `rollback` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
+omk CLI 顶层命令包括：`init` / `install` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
 ### 在 Codex / 支持 MCP 的客户端中
 
@@ -44,7 +44,7 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 - 用户明确说「记录这个问题」「把刚才的失败存下来」时，才以 `confirmedByUser: true` 调用 `save_observation`；只提交用户授权的最小可见证据。
 - 用户只是纠正答案、指出知识不足或遇到重复工具失败时，可以建议记录并请求确认；确认前不要调用 `save_observation`。这条启发式路径是 best-effort，不能声称覆盖全部对话。
 - 普通追问、假设性例子、泛泛的不满意或没有明确知识缺口的反馈，不要记录 observation。
-- 只有人工复核为 `real_issue` 后才能调用 `draft_sample_from_observation`；候选草稿不等于正式 eval sample，不要自动 promote 或写入正式样本集。
+- 只有人工复核为 `real_issue` 后才能调用 `draft_sample_from_observation`；候选草稿不等于正式 eval sample，不要自动写入正式样本集。
 - 需要对话内复核时，先 `get_observation`，再 `review_observation`。所有结果都按 `coverageStatus: partial` 解读，不推断未提交的上下文、其它工具调用或隐藏推理。
 
 ### 在 DeepSeek Harness 中
@@ -66,8 +66,6 @@ Codex 是 omk 的一等 runtime。运行在 Codex 任务中时，`omk eval` / `d
 | 体检 skill 写法 | → `omk doctor` |
 | 浏览对话、任务轨迹与报告 | → `omk studio`（启动本地知识工作台） |
 | 看真实使用 trace | → `omk observe` |
-| 查看受管 skill 状态 | → `omk list` |
-| 按证据接受 / 回退某版本 | → `omk promote` / `omk rollback` |
 
 如果用户意图不明确，先扫描当前项目结构（skills/ 目录、项目级 eval-samples 文件、目录 skill 私有 `.omk/eval-samples.*`），然后推荐最合适的操作。
 
@@ -205,7 +203,7 @@ Studio 首页直接索引本机 Codex 对话。先选择对话，再选择任务
 2. **质量分数**：各 variant 的平均综合分（0-5 分）+ Δ + 95% CI
 3. **成本对比**：token 消耗、execCostUSD、评委花费、diagnostic 花费
 4. **低分样本**：哪些样本两个版本差异最大，rubric 期望 vs 实际差在哪
-5. **下一步动作**：基于 verdict 给出动作；`PROGRESS` 时明确说明可以进入发布流程、留存报告作为发布证据，受管 skill 继续 `omk promote`；其它 verdict 给出扩样 / 修复 / 重跑建议
+5. **下一步动作**：基于 verdict 给出动作；`PROGRESS` 时明确说明可以进入发布流程、留存报告作为发布证据；其它 verdict 给出扩样 / 修复 / 重跑建议
 
 示例输出：
 
@@ -214,7 +212,7 @@ v2 比 v1 更好（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
 - 质量：v2 平均 4.5 分 vs v1 平均 3.8 分（+18%）
 - 成本：v2 略高（$0.15 vs $0.12），因为输出更详细
 - 亮点：v2 在 s002（错误处理）上显著提升（2.5 → 4.5），因为新增了"列出所有缺失的错误处理场景"指令
-- 建议：v2 可以进入发布流程；留存本次报告作为发布证据。如果这是受管 skill，继续运行 `omk promote` 记录接受决定。s003（XSS 检测）仍然可以作为下一轮优化点。
+- 建议：v2 可以进入发布流程；留存本次报告作为发布证据。s003（XSS 检测）仍然可以作为下一轮优化点。
 ```
 
 ### evolve 模式

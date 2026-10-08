@@ -53,18 +53,6 @@ function renderNotice(notice: EvaluationNotice, lang: CliLang): void {
     case 'batch-item':
       process.stderr.write(lang === 'zh' ? `\nCore Batch：${notice.name}\n` : `\nCore Batch: ${notice.name}\n`);
       break;
-    case 'managed-evidence-recorded':
-      process.stderr.write(lang === 'zh' ? `已写入 ${notice.count} 条 Core 受管证据。\n` : `Recorded ${notice.count} Core managed evidence reference(s).\n`);
-      break;
-    case 'managed-evidence-failed': {
-      const message = notice.error instanceof Error ? notice.error.message : String(notice.error);
-      process.stderr.write(lang === 'zh' ? `警告：Core 受管证据写入失败：${message}\n` : `Warning: failed to record Core managed evidence: ${message}\n`);
-      break;
-    }
-    case 'series-managed-evidence-skipped':
-      process.stderr.write(lang === 'zh'
-        ? 'Core Series 不写入单次 member 受管证据；需由预注册的 Series 总体决定投影后再纳入生命周期。\n'
-        : 'Core Series does not write single-member managed evidence; lifecycle admission requires a preregistered Series-level decision projection.\n');
   }
 }
 

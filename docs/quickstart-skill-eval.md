@@ -72,7 +72,7 @@ Start with the **verdict** and its reason codes, then inspect the difference Δ,
 
 | Verdict | Next step |
 |---|---|
-| `PROGRESS` | Evidence supports improvement. Review case representativeness and warnings before your release process; use `omk promote <name>` to record acceptance for a managed skill. |
+| `PROGRESS` | Evidence supports improvement. Review case representativeness and warnings before your release process. |
 | `CAUTIOUS` | Read the specific reasons and warnings, address them, and rerun; do not accept automatically. |
 | `REGRESSION` | Diagnose failed cases and declining metrics, then reevaluate the revised artifact. |
 | `NOISE` | Current evidence does not distinguish the difference. Review case discrimination and sample design before deciding whether to measure more. |

@@ -6,14 +6,14 @@ export interface Artifact {
   source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
   content: string | null;
   // 整树内容指纹(hashArtifactSource:目录-skill 覆盖整棵可分发树、文件-skill 为单文件字节)。
-  // 解析期算好挂在这里，供 Core 封存 artifact descriptor 与 managed contentHash 落在同一空间。
+  // 解析期算好挂在这里，供 Core 封存 artifact descriptor。
   // 与 `content`(executor 注入的 trim 文本)解耦——指纹不依赖正文文本。
   // baseline / 无 skill 留空。
   contentHash?: string;
   locator?: string;
   ref?: string;
   // 本地 git variant 物化时 ref 解析出的 commit SHA。作为 sealed resource provenance 进入 Core；
-  // 不作为 managed 身份，也不生成工作树恢复命令。
+  // 不生成工作树恢复命令。
   resolvedCommit?: string;
   cwd?: string;
   // SKILL.md 约定的 directory-skill **真源**根目录(doctor 校验、dependency-checker 解析、

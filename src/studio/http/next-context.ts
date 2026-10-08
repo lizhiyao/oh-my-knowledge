@@ -4,7 +4,6 @@ import type { AgentsPage } from './pages/agents-page.js';
 import type { HealthPage } from './pages/health-page.js';
 import type { InboxPage } from './pages/inbox-page.js';
 import type { KnowledgePage } from './pages/knowledge-page.js';
-import type { ManagedPage } from './pages/managed-page.js';
 import type { ObservePage } from './pages/observe-page.js';
 
 /**
@@ -48,5 +47,4 @@ export const nextObserveContext = defineStudioRequestContext<ObservePage>('obser
 export const nextKnowledgeContext = defineStudioRequestContext<KnowledgePage>('knowledge');
 export const nextInboxContext = defineStudioRequestContext<InboxPage>('inbox');
 export const nextHealthContext = defineStudioRequestContext<HealthPage>('health');
-export const nextManagedContext = defineStudioRequestContext<ManagedPage>('managed');
 export const nextAgentsContext = defineStudioRequestContext<AgentsPage>('agents');

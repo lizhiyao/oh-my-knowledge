@@ -12,7 +12,6 @@ test/architecture/studio-type-scale.test.ts
 test/architecture/subprocess-bounded-exec.test.ts
 test/cli-i18n.test.ts
 test/cli-progress.test.ts
-test/cli/actor.test.ts
 test/cli/cli-exit.test.ts
 test/cli/doctor-eval-embed.test.ts
 test/cli/eval-preflight-hint.test.ts
@@ -20,7 +19,6 @@ test/cli/init-scaffold-conformance.test.ts
 test/cli/init-skill-md.test.ts
 test/cli/init-samples-i18n.test.ts
 test/cli/judge-models-validation.test.ts
-test/cli/list-render.test.ts
 test/cli/oclif-eval.test.ts
 test/cli/eval-task.test.ts
 test/cli/oclif-i18n.test.ts
@@ -119,8 +117,6 @@ test/knowledge-artifacts/doctor/health/parser.test.ts
 test/knowledge-artifacts/doctor/health/prompt-builder.test.ts
 test/knowledge-artifacts/doctor/health/registry.test.ts
 test/knowledge-artifacts/doctor/renderer.test.ts
-test/knowledge-artifacts/governance/observe-feedback.test.ts
-test/knowledge-artifacts/governance/promote-gate.test.ts
 test/knowledge-artifacts/sources/artifact-resolution.test.ts
 test/knowledge-artifacts/sources/content-hash.test.ts
 test/knowledge/application.test.ts

@@ -19,7 +19,6 @@ import { createNodeHostPreflightDeclarations } from './composition/node-prefligh
 import type { OmkRuntimeBindingFactories } from './types.js';
 import { executeProductEvaluation, type ProductEvaluationResult } from '../orchestration/evaluation-service.js';
 import { persistCoreArtifactSidecars } from '../orchestration/artifact-graph-persistence.js';
-import { projectCoreManagedEvidence } from '../projections/managed.js';
 import { projectCoreCliBatchOutcome } from '../projections/cli.js';
 import type { CoreCliBatchOutcome, CoreCliDryRunProjection } from '../projections/contracts.js';
 import type { OmkEvaluationProgressSink } from '../projections/runtime-progress.js';
@@ -39,10 +38,7 @@ export { createExecutorJudgeInvocationPort } from './evaluators/executor-judge-i
 
 export type EvaluationNotice =
   | { readonly noticeKind: 'doctor-skipped' }
-  | { readonly noticeKind: 'batch-item'; readonly name: string }
-  | { readonly noticeKind: 'managed-evidence-recorded'; readonly count: number }
-  | { readonly noticeKind: 'managed-evidence-failed'; readonly error: unknown }
-  | { readonly noticeKind: 'series-managed-evidence-skipped' };
+  | { readonly noticeKind: 'batch-item'; readonly name: string };
 
 type BatchItem = ReturnType<typeof discoverBatchSkills>[number];
 export interface EvaluationApplicationInput {
@@ -54,7 +50,6 @@ export interface EvaluationApplicationInput {
   readonly createProgressSink?: () => OmkEvaluationProgressSink;
   readonly onCompleted?: (result: ProductEvaluationResult & { readonly outputDirectory: string; readonly store: CoreRunArtifactStore }, request: CliEvaluationRequest) => Promise<void>;
   readonly store?: CoreRunArtifactStore;
-  readonly managedEvidenceDirectory?: string;
   readonly onNotice?: (notice: EvaluationNotice) => void;
   /** Entry-owned translation from a batch item to its normalized request. */
   readonly requestForBatchItem?: (item: BatchItem) => CliEvaluationRequest;
@@ -137,16 +132,6 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
     if (result.outcomeKind !== 'dry-run') {
       const artifacts = result.outcomeKind === 'run' ? [result.artifacts] : result.artifacts;
       for (const source of artifacts) await persistCoreArtifactSidecars({ source, outputDirectory, cwd: projectRoot });
-      if (compiled.orchestration.managedEvidence === 'append') {
-        if (result.outcomeKind === 'series') input.onNotice?.({ noticeKind: 'series-managed-evidence-skipped' });
-        else {
-          try {
-            const { recordCoreEvalEvidence } = await import('../../knowledge-artifacts/governance/evidence.js');
-            const written = recordCoreEvalEvidence(projectCoreManagedEvidence(result.artifacts), input.managedEvidenceDirectory === undefined ? undefined : { dir: input.managedEvidenceDirectory });
-            if (written.length > 0) input.onNotice?.({ noticeKind: 'managed-evidence-recorded', count: written.length });
-          } catch (error) { input.onNotice?.({ noticeKind: 'managed-evidence-failed', error }); }
-        }
-      }
     }
     const completed = { ...result, outputDirectory, store };
     await input.onCompleted?.(completed, request);

@@ -72,7 +72,7 @@ omk eval --control my-skill-v1 --treatment my-skill-v2
 
 | Verdict | 下一步 |
 |---|---|
-| `PROGRESS` | 证据支持改进。复核用例代表性与告警后进入自己的发布流程；已纳管的 skill 可用 `omk promote <name>` 记录接受决定。 |
+| `PROGRESS` | 证据支持改进。复核用例代表性与告警后进入自己的发布流程。 |
 | `CAUTIOUS` | 阅读报告的具体原因和告警，处理后重新评测，暂不自动接受。 |
 | `REGRESSION` | 从失败用例与变差的指标定位问题，修改后重新评测。 |
 | `NOISE` | 当前证据无法区分差异。检查用例区分度与样本设计，再决定是否补充测量。 |

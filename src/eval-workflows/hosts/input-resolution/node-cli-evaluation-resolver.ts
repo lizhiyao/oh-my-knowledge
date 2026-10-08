@@ -1072,7 +1072,6 @@ export async function resolveNodeCliEvaluationRequest(
       }),
       preflight: request.values.orchestration.preflight,
       diagnostic: request.values.orchestration.diagnostic,
-      managedEvidence: request.values.orchestration.managedEvidence,
       ...(loaded.requires === undefined ? {} : {
         dependencyRequirements: {
           baseDirectoryLocator: resolve(loaded.baseDir),

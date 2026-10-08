@@ -18,7 +18,7 @@ import {
 // 项目从注释到 skill 正文都是中文。name／目录名等身份字段两版一致，只有文字随语言。
 const INIT_OMK_GITIGNORE: Record<Lang, string> = {
   // 预置 .omk/.gitignore:测量 bulk + doctor --fix 备份(项目本地、不该入库)默认不入库;
-  // managed/ 治理档案 + 配置不在此列,默认 track。
+  // 配置不在此列，默认 track。
   zh: `# omk 测量 bulk 与 doctor --fix 备份（项目本地）——不入库；前导 / 锚定 .omk/ 顶层，不误伤嵌套同名目录。
 /eval/
 /doctor/

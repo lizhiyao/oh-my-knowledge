@@ -21,7 +21,7 @@ interface Srv { stop(): Promise<void> }
 
 describe('卡片合并 include 开关(server 级)', () => {
   let idxRoot: string; let emptyReports: string; let emptyAnalyses: string; let emptyDoctors: string;
-  let emptyObs: string; let emptyJobs: string; let emptyManaged: string; let proj: string;
+  let emptyObs: string; let emptyJobs: string; let proj: string;
   let origEnv: string | undefined;
   const dirs: string[] = [];
 
@@ -29,9 +29,9 @@ describe('卡片合并 include 开关(server 级)', () => {
     origEnv = process.env.OMK_ARTIFACT_INDEX_DIR;
     idxRoot = mkdtempSync(join(tmpdir(), 'omk-cg-idx-'));
     process.env.OMK_ARTIFACT_INDEX_DIR = idxRoot;
-    [emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj] =
-      ['rp', 'an', 'dr', 'ob', 'jb', 'mg', 'pj'].map((t) => mkdtempSync(join(tmpdir(), `omk-cg-${t}-`)));
-    dirs.push(idxRoot, emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, emptyManaged, proj);
+    [emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, proj] =
+      ['rp', 'an', 'dr', 'ob', 'jb', 'pj'].map((t) => mkdtempSync(join(tmpdir(), `omk-cg-${t}-`)));
+    dirs.push(idxRoot, emptyReports, emptyAnalyses, emptyDoctors, emptyObs, emptyJobs, proj);
     // 别项目卡片各一张(live 目录扫不到,只能靠卡片发现);真身写出来,免得被悬空过滤掉。
     writeMeasurementReportBundle({
       rootDir: proj,
@@ -69,7 +69,7 @@ describe('卡片合并 include 开关(server 级)', () => {
   function mkServer(include: boolean): Promise<{ url: string; srv: Srv }> {
     const srv = createReportServer({
       port: 0, analysesDir: emptyAnalyses, doctorsDir: emptyDoctors,
-      observationsDir: emptyObs, managedDir: emptyManaged,
+      observationsDir: emptyObs,
       includeObserveCards: include, includeDoctorCards: include,
     });
     return srv.start().then((url) => ({ url, srv }));
@@ -100,7 +100,7 @@ describe('卡片合并 include 开关(server 级)', () => {
     const missing = join(emptyAnalyses, 'does-not-exist');
     const srv = createReportServer({
       port: 0, analysesDir: missing, doctorsDir: emptyDoctors,
-      observationsDir: emptyObs, managedDir: emptyManaged,
+      observationsDir: emptyObs,
       includeObserveCards: true, includeDoctorCards: true,
     });
     const url = await srv.start();

@@ -37,7 +37,6 @@ function makeRoots(project: string, global: string) {
     observeHealth: { global: () => join(global, 'observe-health'), projectDefault: observeHealth.resolve },
     doctors: { global: () => join(global, 'doctors'), projectDefault: doctors.resolve },
     observations: { global: join(global, 'observe-inbox') },
-    managed: () => join(project, 'managed'),
   };
   return { input, observeHealth, doctors };
 }
