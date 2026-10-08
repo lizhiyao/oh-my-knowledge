@@ -2,12 +2,12 @@
 import Link from 'next/link';
 import { resolveKnowledgeWorkspace } from './workspace';
 import { ConversationExtractionDialog } from './conversation-extraction';
-import { workspaceHref } from '../layout/workspace-link';
+import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
+import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { type Language } from '../layout/shell';
-import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH } from '../../../http/page-paths';
 import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { displayTime } from '../../../application/display/format';
@@ -40,6 +40,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const [showImport, setShowImport] = useState(false);
   const [showRuns, setShowRuns] = useState(false);
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
+  const [batchRunId, setBatchRunId] = useState<string | null>(null);
+  const [previousId, setPreviousId] = useState<string | null>(null);
+  const [showBatchSummary, setShowBatchSummary] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [reason, setReason] = useState('');
@@ -82,10 +86,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: nextRows[0].knowledgeId }) : undefined;
     setRows(nextRows); setRuns(nextRuns);
     if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
+    return { rows: nextRows, runs: nextRuns };
   }
-  async function open(id: string, revision?: string, root = workspace) {
+  async function open(id: string, revision?: string, root = workspace, activateBatch = false) {
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
-    setDetail(next); setCitation(0); setReason(''); setPane('candidate');
+    setDetail(next); setCitation(0); setReason(''); setPane('candidate'); setShowBatchSummary(false); setNeedsRefresh(false);
+    if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
     const url = new URL(window.location.href); url.searchParams.set('id', id); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
@@ -93,7 +99,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
-      if (root) { await refresh(root, true); if (initialId) { const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id: initialId }); setDetail(next); } }
+      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, undefined, root); setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
     });
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
@@ -102,7 +108,35 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     setNotice(run.status === 'completed'
       ? t(`生成完成：${run.committed.length} 条候选，${run.rejections.length} 条输出未接纳。`, `Generated ${run.committed.length} candidates; ${run.rejections.length} outputs rejected.`)
       : t(`运行状态：${run.status}。请在生成记录中查看或恢复。`, `Run status: ${run.status}. Inspect or resume it in history.`));
-    await refresh(); if (run.committed[0]) await open(run.committed[0].knowledgeId);
+    await refresh(); if (run.committed[0]) { await open(run.committed[0].knowledgeId); setBatchRunId(run.runId); setPreviousId(null); }
+  }
+  function leaveBatch() {
+    setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all'); setPane('candidate');
+    const url = new URL(window.location.href); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
+  }
+  async function continueReview(id: string, revision?: string, advance = true) {
+    const current = await refresh();
+    const nextBatch = projectCandidateBatch(current.runs.find(run => run.runId === batchRunId), current.rows, id);
+    // A new revision is undecided even when its predecessor was already handled.
+    const currentPending = current.rows.find(row => row.knowledgeId === id)?.choice === null;
+    const target = advance && !currentPending ? nextBatch?.nextId : undefined;
+    await open(target ?? id, advance ? undefined : revision);
+    if (advance && nextBatch?.complete) setShowBatchSummary(true);
+  }
+  async function decide(choice: 'retain' | 'discard') {
+    if (!detail || needsRefresh || !reason.trim()) return;
+    const id = detail.revision.knowledgeId;
+    const revision = detail.revision.revisionId;
+    const latest = revision === detail.history.writeHeadRevisionId;
+    await api('maintain', { id, revision, generation: detail.history.generation, choice, reason: reason.trim() });
+    setPreviousId(id);
+    setNotice(choice === 'retain' ? t('已记录保留决定与理由。', 'Recorded your decision to retain, with the reason.')
+      : t('已记录舍弃决定与理由；该修订仍在历史中。', 'Recorded your decision to discard, with the reason; the revision stays in its history.'));
+    try { await continueReview(id, latest ? undefined : revision, latest); }
+    catch {
+      setNeedsRefresh(true);
+      setError(t('决定已保存，但未能读取最新进度。重新读取后再继续。', 'Your decision was saved, but progress could not be loaded. Reload before continuing.'));
+    }
   }
   type EditableDraft = Pick<KnowledgeCandidateDetail['revision'], 'title' | 'content' | 'entities' | 'evidence'>;
   const editableDraft: EditableDraft | null = draft ? JSON.parse(draft) : null;
@@ -128,8 +162,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     && entry.window.excerpts.some((excerpt) => excerpt.evidenceRef === selectedCitation?.selection.evidenceRef));
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
-  const visibleRows = rows.filter(row => candidateMatches(row, filter, query));
-  const nextPending = nextPendingCandidateId(rows, detail?.revision.knowledgeId);
+  const batch = projectCandidateBatch(runs.find(run => run.runId === batchRunId), rows, detail?.revision.knowledgeId);
+  const summary = showBatchSummary && batch?.complete;
+  const visibleRows = batch ? batch.rows : rows.filter(row => candidateMatches(row, filter, query));
+  const originHref = detail?.origin ? `${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}` : undefined;
   return <section className="knowledge-candidates">
     <KnowledgeSectionNav active="candidates" lang={lang}/>
     <header className="candidate-heading"><div><h1>{t('提炼的知识', 'Extracted knowledge')}</h1></div>
@@ -144,10 +180,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
           if (key === 'import') { setSnapshot(null); setShowImport(true); }
         } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
-    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
+    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
+    {needsRefresh && !error && detail && <Button disabled={busy} onClick={() => void work(() => continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId))}>{t('重新读取后继续', 'Reload to continue')}</Button>}
+    {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
-    {rows.length > 0 && <div className="candidate-library-tools">
+    {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
+    {rows.length > 0 && !batch && <div className="candidate-library-tools">
       <Input allowClear aria-label={t('搜索知识标题', 'Search knowledge titles')} placeholder={t('搜索知识标题', 'Search knowledge titles')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); setPane('candidate'); }}/>
       <Select aria-label={t('按处理状态筛选', 'Filter by decision')} value={filter} onChange={value => { setFilter(value); setDetail(null); setPane('candidate'); }} options={[
         { value: 'all', label: t(`全部 ${rows.length}`, `All ${rows.length}`) },
@@ -158,16 +196,15 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     </div>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
       onChoose={chooseConversation} onHistory={() => setShowRuns(true)}/>
-      : <div className="candidate-columns">
+      : <div className={`candidate-columns${summary ? ' candidate-columns-summary' : ''}`}>
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
-        {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
+        {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId, undefined, workspace, !batch))}>
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </aside>
-      <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>
+      {!summary && <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>}
       <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
-        {!detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
+        {summary && batch ? <div className="candidate-scroll"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch}/></div> : !detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
           <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
-            <CandidateNextStep lang={lang} choice={detail.maintenance?.choice ?? null} workspace={workspace} pending={!!nextPending} onNext={() => { setQuery(''); setFilter('all'); if (nextPending) void work(() => open(nextPending)); }}/>
             <details className="candidate-history"><summary>{t(`回看历史修订（第 ${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}／${detail.history.revisions.length} 版）`, `Revision history (${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}/${detail.history.revisions.length})`)}</summary><Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/></details>
             <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
             {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
@@ -189,15 +226,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
             {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
             <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
           </div>
-          <footer className="candidate-actions"><label className="candidate-reason">{t('处理理由', 'Decision reason')}<Input aria-label={t('处理理由', 'Decision reason')} placeholder={t('记录保留、舍弃或修订的理由', 'Reason for retaining, discarding, or editing')} value={reason} onChange={(event) => setReason(event.target.value)}/></label><Space wrap>
-            <Button disabled={busy} onClick={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}>{t('修订', 'Edit')}</Button>
-            {(['retain', 'discard'] as const).map((choice) => <Button key={choice} type={choice === 'retain' ? 'primary' : 'default'} disabled={busy || !reason.trim()} onClick={() => void work(async () => { await api('maintain', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, choice, reason }); await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
-              setNotice(choice === 'retain'
-                ? t('已记录保留决定与理由。', 'Recorded your decision to retain, with the reason.')
-                : t('已记录舍弃决定与理由；该修订仍在历史中。', 'Recorded your decision to discard, with the reason; the revision stays in its history.')); })}>{choice === 'retain' ? t('保留', 'Retain') : t('舍弃', 'Discard')}</Button>)}</Space></footer>
+          <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} onReason={setReason}
+            onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}
+            onDecision={choice => void work(() => decide(choice))}/>
         </>}
       </article>
-      <aside id="candidate-evidence" className={`candidate-evidence${pane === 'evidence' ? ' candidate-pane-active' : ''}`}><h2 ref={evidenceHeading} tabIndex={-1}>{t('原始依据', 'Source evidence')}</h2>
+      {!summary && <aside id="candidate-evidence" className={`candidate-evidence${pane === 'evidence' ? ' candidate-pane-active' : ''}`}><h2 ref={evidenceHeading} tabIndex={-1}>{t('原始依据', 'Source evidence')}</h2>
         {detail && <Select style={{ width: '100%' }} aria-label={t('证据片段', 'Evidence excerpt')} value={citation} options={selections.map((item, index) => ({ value: index, label: `${item.label} · ${item.selection.quote.slice(0, 90)}` }))} onChange={setCitation}/>}
         <div className="candidate-scroll">{excerpt && selectedCitation ? <><p>{t('记录', 'Record')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('时间未知', 'Time unknown')}</p>
           <pre>{excerpt.text.slice(0, selectedCitation.selection.start)}<mark>{excerpt.text.slice(selectedCitation.selection.start, selectedCitation.selection.end)}</mark>{excerpt.text.slice(selectedCitation.selection.end)}</pre>
@@ -205,14 +239,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={detail ? t('此来源不可用，不能核对完整证据。', 'This source is unavailable; full evidence cannot be checked.') : t('选择一条陈述查看依据。', 'Select a statement to inspect evidence.')}/>}
           {detail?.sources.map((entry, index) => entry.status === 'unavailable' ? <Alert key={index} type="warning" title={`${t('来源不可用', 'Source unavailable')}: ${entry.reason}`}/> : <Button key={index} danger size="small" disabled={busy} onClick={() => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot: entry.window.snapshotId }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}
         </div>
-      </aside>
+      </aside>}
     </div>}
     {showExtraction && <ConversationExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowExtraction(false)} onFinished={root => {
       void work(async () => {
         const changed = root !== workspace;
         await refresh(root, changed); setWorkspace(root); setWorkspaceDraft(root);
         if (changed) {
-          setQuery(''); setFilter('all'); setPane('candidate'); setSnapshot(null); setNotice('');
+          leaveBatch(); setNeedsRefresh(false); setSnapshot(null); setNotice('');
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
         }
       });
@@ -223,6 +257,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       ]);
       if (signal.aborted) return;
       setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setCitation(0); setReason(''); setPane('candidate');
+      setBatchRunId(candidateReviewRun(nextRuns, id)?.runId ?? null); setPreviousId(null); setShowBatchSummary(false); setNeedsRefresh(false);
       setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setSnapshot(null); setError(''); setNotice(''); setShowExtraction(false);
       const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
     }}/>}
@@ -232,7 +267,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
-          await refresh(root, true); setQuery(''); setFilter('all'); setPane('candidate'); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          await refresh(root, true); leaveBatch(); setNeedsRefresh(false); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
@@ -273,7 +308,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       </div>}
     </Drawer>
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p>{run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
 }
@@ -281,28 +316,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
 export function candidateMatches(row: Pick<KnowledgeCandidateRow, 'title' | 'choice'>, filter: 'all' | 'pending' | 'retain' | 'discard', query: string): boolean {
   return row.title.toLowerCase().includes(query.trim().toLowerCase())
     && (filter === 'all' || (filter === 'pending' ? row.choice === null : row.choice === filter));
-}
-
-/** 按列表顺序继续核对，走到末尾后回到较早的待处理项，始终跳过当前项。 */
-export function nextPendingCandidateId(rows: Pick<KnowledgeCandidateRow, 'knowledgeId' | 'choice'>[], selectedId?: string): string | undefined {
-  const current = rows.findIndex(row => row.knowledgeId === selectedId);
-  return [...rows.slice(current + 1), ...rows.slice(0, Math.max(current, 0))]
-    .find(row => row.choice === null)?.knowledgeId;
-}
-
-export function CandidateNextStep({ lang, choice, workspace, pending, onNext }: { lang: Language; choice: CandidateChoice; workspace: string; pending: boolean; onNext(): void }) {
-  const zh = lang === 'zh';
-  if (!choice && !pending) return null;
-  return <div className="candidate-next-step">
-    {choice && <>
-      <strong>{choice === 'retain' ? (zh ? '已保留，之后如何使用？' : 'Retained. How can you use it?') : (zh ? '已舍弃，历史仍可回看' : 'Discarded. Its history remains available')}</strong>
-      <p>{choice === 'retain'
-        ? (zh ? '可从“知识 → 提炼的知识”回看。用于实际任务前，按适用条件人工整理到 AGENTS.md、skill 或其他载体，再通过受控评测检查改动效果。' : 'Reopen it under Knowledge → Extracted knowledge. Before using it in a task, review its conditions, manually update AGENTS.md, a skill or another artifact, then evaluate the change in a controlled comparison.')
-        : (zh ? '该决定和来源仍保留；需要重新判断时，可回看原文或修订。' : 'The decision and source remain available. Review the source or revise the content if your judgment changes.')}</p>
-      {choice === 'retain' && <Space wrap><Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{zh ? '查看知识载体' : 'View knowledge artifacts'}</Link><Link href={workspaceHref(MEASURE_INDEX_PATH, workspace)}>{zh ? '查看评测记录' : 'View evaluation records'}</Link></Space>}
-    </>}
-    {pending && <Button size="small" onClick={onNext}>{zh ? '核对下一条待处理知识' : 'Review the next undecided item'}</Button>}
-  </div>;
 }
 
 export function CandidatePaneSwitch({ lang, pane, onChange }: { lang: Language; pane: 'candidate' | 'evidence'; onChange(value: 'candidate' | 'evidence'): void }) {
