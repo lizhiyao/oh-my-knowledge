@@ -11,3 +11,18 @@ export interface KnowledgeCandidateRun {
   committed: { knowledgeId: string; revisionId: string }[];
   rejections: { index: number; reasons: string[] }[];
 }
+
+/** Existing conversation-selection and preview operations; contains no source file paths. */
+export interface KnowledgeConversation {
+  threadId: string;
+  title: string;
+  cwd?: string;
+}
+export interface KnowledgeConversationDetail extends KnowledgeConversation {
+  tasks: { turnId: string; title: string }[];
+}
+export interface KnowledgeConversationPreview {
+  origin: NonNullable<KnowledgeCandidateSource['origin']>;
+  sourceVersion: string;
+  messages: KnowledgeCandidateSource['excerpts'];
+}

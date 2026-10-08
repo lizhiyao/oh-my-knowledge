@@ -1,13 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { resolveKnowledgeWorkspace } from './workspace';
+import { ConversationExtractionDialog } from './conversation-extraction';
 import { workspaceHref } from '../layout/workspace-link';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { type Language } from '../layout/shell';
-import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH } from '../../../http/page-paths';
 import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { displayTime } from '../../../application/display/format';
@@ -17,9 +17,8 @@ import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidat
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
-  const router = useRouter();
-  /** 页头按钮与空状态引导去的是同一个地址，跳转动作只写一遍。 */
-  const chooseConversation = () => router.push(workspaceHref(`${OBSERVE_INDEX_PATH}?view=recent`, workspace));
+  const [showExtraction, setShowExtraction] = useState(false);
+  const chooseConversation = () => setShowExtraction(true);
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
@@ -53,10 +52,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     // 查看依据会在窄屏隐藏触发按钮，焦点跟随到可见原文；桌面仍保持并列核对。
     if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
   }, [pane]);
-  async function api<T>(operation: string, fields: Record<string, unknown> = {}): Promise<T> {
+  async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
     const response = await fetch('/api/knowledge/candidates', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ workspace, operation, ...fields }), signal: controller.current?.signal,
+      body: JSON.stringify({ workspace, operation, ...fields }), signal: signal ?? controller.current?.signal,
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? 'knowledge_request_failed');
@@ -84,10 +83,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     setRows(nextRows); setRuns(nextRuns);
     if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
   }
-  async function open(id: string, revision?: string) {
-    const next = await api<KnowledgeCandidateDetail>('show', { id, ...(revision ? { revision } : {}) });
+  async function open(id: string, revision?: string, root = workspace) {
+    const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
     setDetail(next); setCitation(0); setReason(''); setPane('candidate');
-    const url = new URL(window.location.href); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
+    const url = new URL(window.location.href); url.searchParams.set('id', id); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
     void work(async () => {
@@ -157,7 +156,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         { value: 'discard', label: t(`已舍弃 ${rows.filter(row => row.choice === 'discard').length}`, `Discarded ${rows.filter(row => row.choice === 'discard').length}`) },
       ]}/>
     </div>}
-    {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
+    {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
       onChoose={chooseConversation} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
@@ -208,6 +207,25 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </div>
       </aside>
     </div>}
+    {showExtraction && <ConversationExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowExtraction(false)} onFinished={root => {
+      void work(async () => {
+        const changed = root !== workspace;
+        await refresh(root, changed); setWorkspace(root); setWorkspaceDraft(root);
+        if (changed) {
+          setQuery(''); setFilter('all'); setPane('candidate'); setSnapshot(null); setNotice('');
+          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
+        }
+      });
+    }} onReview={async (root, id, signal) => {
+      const [nextRows, nextRuns, nextDetail] = await Promise.all([
+        api<KnowledgeCandidateRow[]>('list', { workspace: root }, signal), api<KnowledgeCandidateRun[]>('runs', { workspace: root }, signal),
+        api<KnowledgeCandidateDetail>('show', { workspace: root, id }, signal),
+      ]);
+      if (signal.aborted) return;
+      setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setCitation(0); setReason(''); setPane('candidate');
+      setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setSnapshot(null); setError(''); setNotice(''); setShowExtraction(false);
+      const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
+    }}/>}
     <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在侧栏“设置与帮助”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
         <p className="candidate-help">{t('全局位置：', 'Global location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用全局位置', 'Use global location')}</Button>
@@ -314,8 +332,8 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
   </>;
 }
 
-export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, latest, failedToLoad, onChoose, onHistory }: {
-  lang: Language; hasWorkspace: boolean; loading: boolean; busy: boolean;
+export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory }: {
+  lang: Language; loading: boolean; busy: boolean;
   latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
@@ -324,11 +342,11 @@ export function KnowledgeCandidateStart({ lang, hasWorkspace, loading, busy, lat
     <div className="candidate-start-main">
       <h2>{t('选一段工作记录，找出值得复用的经验', 'Find reusable knowledge in a work log')}</h2>
       <p className="candidate-start-intro">{t('OMK 帮你整理其中的项目事实、解决方法和经验。你核对原文，决定哪些值得留下。', 'OMK proposes project facts, methods, and lessons. Compare them with the original text and choose what to keep.')}</p>
-      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{hasWorkspace ? t('从对话选择', 'Choose a conversation') : t('设置保存位置并开始', 'Choose where to save and begin')}</Button>
+      <div className="candidate-start-action"><Button type="primary" size="large" disabled={busy} onClick={onChoose}>{t('从对话选择', 'Choose a conversation')}</Button>
         <span>{t('先预览内容，再确认发送给模型。', 'Preview the content before confirming a model request.')}</span>
       </div>
       <ol className="candidate-steps">
-        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('打开观测对话，直接点击提炼知识。', 'Open an observed conversation and click Extract knowledge.')}</span></li>
+        <li><strong>{t('选择记录', 'Choose a record')}</strong><span>{t('在这里选择对话和轮次，或阅读对话时点击提炼这轮。', 'Choose a conversation and turn here, or click Extract this turn while reading.')}</span></li>
         <li><strong>{t('预览并提炼', 'Preview and extract')}</strong><span>{t('确认内容和模型，生成待核对的知识。', 'Confirm the content and model to propose knowledge.')}</span></li>
         <li><strong>{t('核对并保留', 'Review and keep')}</strong><span>{t('对照原文，保留、修改或舍弃。', 'Check the original text, then keep, edit, or discard.')}</span></li>
       </ol>

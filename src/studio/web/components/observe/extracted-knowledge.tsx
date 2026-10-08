@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ExtractConversation } from './extract-conversation';
+import { ExtractConversation } from '../knowledge/conversation-extraction';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input } from 'antd';
 import type { Language } from '../layout/shell';
 type Related = { runId: string; status: string; startedAt?: string; committed: { knowledgeId: string; title: string; choice: CandidateChoice }[] };
-export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: string; turnId?: string; lang: Language }) {
+export function ExtractedKnowledge({ threadId, turnId, lang, historyOnly = false }: { threadId: string; turnId?: string; lang: Language; historyOnly?: boolean }) {
   const zh = lang === 'zh';
   const [workspace, setWorkspace] = useState('');
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang }: { threadId: strin
       const value = await response.json(); if (!active.signal.aborted) setRuns(value);
     } catch { if (!active.signal.aborted) setError(true); } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
-  return <><div className="conversation-knowledge-actions"><ExtractConversation threadId={threadId} turnId={turnId} lang={lang} onFinished={() => { if (open && workspace) void load(); }}/><Button type="text" onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button></div>
+  return <><div className="conversation-knowledge-actions">{!historyOnly && <ExtractConversation threadId={threadId} turnId={turnId} lang={lang} onFinished={() => { if (open && workspace) void load(); }}/>}<Button type="text" onClick={() => { setOpen(true); if (workspace) void load(); }}>{zh ? '已提炼知识' : 'Extracted knowledge'}</Button></div>
     <Drawer title={zh ? '这条对话的提炼记录' : 'Extractions from this conversation'} open={open} onClose={() => setOpen(false)} size={560}>
       <p>{zh ? '查看所选知识目录中，这条对话的提炼结果。' : 'Show this conversation’s extraction results in the selected knowledge folder.'}</p>
       <Input disabled={busy} aria-label={zh ? '知识保存目录' : 'Knowledge folder'} value={workspace} onChange={event => { setWorkspace(event.target.value); setRuns([]); }}/>
