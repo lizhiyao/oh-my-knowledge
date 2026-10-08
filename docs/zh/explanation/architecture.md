@@ -96,7 +96,6 @@ knowledge-artifacts/
 ├── skills/       # skill frontmatter、硬规则与 workflow 定义
 ├── doctor/       # 静态与模型辅助的 artifact 健康检查
 ├── authoring/    # sample 生成与受控 skill 演进
-├── governance/   # 安装记录、证据门禁、promote 与 rollback 状态
 └── sources/      # 规范化来源指纹与可分发目录身份
 ```
 
@@ -134,7 +133,7 @@ executors/
 
 Runtime 的标准入口 `evaluate.ts` 从内部 `evaluation/` 模块导出原有 API。输入与评分器捕获供 Definition 编译使用，准备阶段负责封存和运行，结果复用先通过 Core 准入再执行重新评分、分析或决策。认证结果和 prepared capability 由同一个状态模块管理。捕获与编译不得依赖运行状态，内部模块不得反向导入用户 façade。这些内部模块不增加包子路径，也不改变现有身份与测量契约。
 
-载体发现、本地与 Git 来源解析、内容寻址副本归 `knowledge-artifacts/sources`，由 doctor、安装、治理和评测共用。要求存在评测样本的批量发现留在 `eval-workflows/inputs/batch-discovery.ts`；来源层不得导入 Workflow。
+载体发现、本地与 Git 来源解析、内容寻址副本归 `knowledge-artifacts/sources`，由 doctor、安装和评测共用。要求存在评测样本的批量发现留在 `eval-workflows/inputs/batch-discovery.ts`；来源层不得导入 Workflow。
 
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
@@ -177,13 +176,13 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | Core／Runtime | `eval-core`、包根及 `eval-runtime`；服务调用方与产品 Workflow | Core 约束执行和测量协议，Runtime 提供通用评分与接入；验证公开包、契约、调度和取消 |
 | Workflow | `eval-samples`、`projections`；CLI、DSH、Studio、载体改进 | 产品声明、版本化评分／分析、编排与评测产物存储；验证编译、结果投影及发布判断 |
 | Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
-| Knowledge artifacts | 内部调用；CLI、Workflow、观测与治理 | 载体生命周期与共用来源解析；验证源身份、隔离副本、安装、doctor 与治理调用链 |
+| Knowledge artifacts | 内部调用；CLI、Workflow 与观测 | 载体编写、健康检查与共用来源解析；验证源身份、隔离副本、安装与 doctor |
 | Observability／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
 | Evidence | 各产品领域与交付入口 | 跨来源证据布局与关联；不替代 Workflow 的评测产物校验，不决定评分或发布 |
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
 | Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
 
-CLI 与 DSH 的评测入口统一调用 `eval-workflows/hosts/application.ts`。该接口负责解析与编译请求、装配 Runtime、保存附属产物和受管证据；`orchestration/evaluation-service.ts` 通过注入能力统一预检、单次运行、恢复执行和独立 Series。其它 Workflow 子域仍不得反向导入 `hosts`。
+CLI 与 DSH 的评测入口统一调用 `eval-workflows/hosts/application.ts`。该接口负责解析与编译请求、装配 Runtime、保存附属产物；`orchestration/evaluation-service.ts` 通过注入能力统一预检、单次运行、恢复执行和独立 Series。其它 Workflow 子域仍不得反向导入 `hosts`。
 
 CLI 保留参数转换、环境分类、可执行文件与凭证解析、进度展示和 Studio 启动。Node provider 注册位于 `hosts/composition/node-runtime.ts`。DSH 提供 agent 上下文、执行器工厂和评委调用，不依赖 CLI 模块。Batch 的每个子项复用同一产品接口，CLI 只提供子项请求转换。共用宿主内部的分工如下：
 

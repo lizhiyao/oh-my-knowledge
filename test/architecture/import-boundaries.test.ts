@@ -259,11 +259,6 @@ const RULES: ForbiddenRule[] = [
     reason: 'Evidence 保存、验证与关联事实，不派生诊断。',
   },
   {
-    from: 'evidence/',
-    to: 'knowledge-artifacts/governance/',
-    reason: 'Evidence 不拥有知识载体生命周期或发布治理策略。',
-  },
-  {
     from: 'observability/',
     to: 'studio/',
     reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',

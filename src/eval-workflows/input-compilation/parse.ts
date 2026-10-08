@@ -625,11 +625,6 @@ export function parseCliEvaluationRequest(
     cliValue: booleanValue(flags['skip-connectivity'], 'skip-connectivity'),
     defaultValue: false, defaultSource: 'documented',
   }) as boolean;
-  const noEvidence = pick({
-    normalizedField: 'values.orchestration.managedEvidence',
-    cliKey: 'no-evidence', cliValue: booleanValue(flags['no-evidence'], 'no-evidence'),
-    defaultValue: false, defaultSource: 'documented',
-  }) as boolean;
   const verbose = pick({
     normalizedField: 'values.presentation.verbose',
     cliKey: 'verbose', cliValue: booleanValue(flags.verbose, 'verbose'),
@@ -695,7 +690,6 @@ export function parseCliEvaluationRequest(
         connectivity: skipConnectivity ? 'skip' : 'required',
       },
       diagnostic: noDiagnostic ? 'disabled' : 'enabled-outside-core',
-      managedEvidence: noEvidence ? 'skip' : 'append',
     },
     presentation: {
       outputDirectoryLocator,

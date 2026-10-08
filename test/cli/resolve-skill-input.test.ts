@@ -1,8 +1,4 @@
-/**
- * resolveSkillInput 的 isDirectorySkill 语义锁:**只看解析后形态、不看入参写法**。目录-skill 无论传目录还是
- * 传内部 SKILL.md 都判 true,扁平 .md 判 false —— 受管联动据此对齐 install 落的记录形态(P1 根因防回归:
- * 旧实现按「入参是不是目录」判,传 SKILL.md 文件路径会误得 false,匹配不到目录记录)。
- */
+/** 目录或内部 SKILL.md 都解析为目录 skill，扁平 .md 解析为文件 skill。 */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';

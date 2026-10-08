@@ -13,7 +13,6 @@ export function createEvolutionEvaluator(
         ...captured.explicitCliFlags,
         control,
         treatment,
-        'no-evidence': true,
         'no-serve': true,
         'report-only': true,
       },

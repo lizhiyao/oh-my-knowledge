@@ -45,7 +45,6 @@ describe('CLI evaluation input registry', () => {
     expect(defaults.get('no-serve')).toBe(true);
     expect(defaults.get('no-debias-length')).toBe(true);
     expect(defaults.get('no-diagnostic')).toBe('enabled-outside-core');
-    expect(defaults.get('no-evidence')).toBe('append');
     expect(defaults.get('report-only')).toBe('gate');
   });
 

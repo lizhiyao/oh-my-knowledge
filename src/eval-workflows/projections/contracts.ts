@@ -22,9 +22,6 @@ export const CORE_CLI_SERIES_OUTCOME_SCHEMA_VERSION =
   'omk.cli-core-series-outcome/v1' as const;
 export const CORE_DIAGNOSTIC_PROJECTION_SCHEMA_VERSION =
   'omk.core-diagnostic-projection/v1' as const;
-export const CORE_MANAGED_EVIDENCE_SCHEMA_VERSION =
-  'omk.core-managed-evidence/v1' as const;
-
 export type CoreDownstreamProjectionErrorCode =
   | 'CORE_PROJECTION_SOURCE_INVALID'
   | 'CORE_GOLD_SELECTOR_INVALID'
@@ -36,8 +33,7 @@ export type CoreDownstreamProjectionErrorCode =
   | 'CORE_CLI_PLAN_INVALID'
   | 'CORE_CLI_OPTIONS_INVALID'
   | 'CORE_CLI_BATCH_SOURCE_INVALID'
-  | 'CORE_CLI_SERIES_SOURCE_INVALID'
-  | 'CORE_MANAGED_EVIDENCE_SOURCE_INVALID';
+  | 'CORE_CLI_SERIES_SOURCE_INVALID';
 
 export class CoreDownstreamProjectionError extends Error {
   readonly code: CoreDownstreamProjectionErrorCode;
@@ -395,50 +391,4 @@ export interface CoreCliSeriesOutcome {
   }[];
   readonly decision?: CoreDecisionProjection;
   readonly gate: CoreCliGateProjection;
-}
-
-export interface CoreRuntimeIdentityReference {
-  readonly implementationId: string;
-  readonly version?: string;
-  readonly fingerprint: string;
-  readonly fingerprintBasis: 'content-derived' | 'environment-derived' | 'self-reported' | 'opaque';
-  readonly assuranceLevel: 'verified' | 'declared' | 'unknown';
-}
-
-export interface CoreManagedEvidenceProjection {
-  readonly projectionKind: 'core-managed-evidence';
-  readonly schemaVersion: typeof CORE_MANAGED_EVIDENCE_SCHEMA_VERSION;
-  readonly runId: string;
-  readonly reportId: string;
-  readonly reportDigest: string;
-  readonly runCreatedAt: string;
-  readonly status: EvaluationStatus;
-  readonly evidenceReadiness: 'decision-ready' | 'measurement-only' | 'insufficient';
-  readonly comparability: {
-    readonly runContractDigest: string;
-    readonly datasetRevisionDigest: string;
-    readonly executionPlanDigest: string;
-    readonly evaluationPlanDigest: string;
-    readonly analysisPlanDigest: string;
-    readonly decisionPlanDigest: string;
-  };
-  readonly sampleCount: number;
-  readonly targets: readonly {
-    readonly targetId: string;
-    readonly targetKind: string;
-    readonly comparisonRoles: readonly {
-      readonly comparisonId: string;
-      readonly comparisonRole: 'control' | 'treatment';
-    }[];
-    readonly managedEvidenceEligible: boolean;
-    readonly artifact: {
-      readonly resourceId: string;
-      readonly digest: string;
-      readonly mediaType: string;
-      readonly classification: 'public' | 'sensitive' | 'secret' | 'gold';
-      readonly size: number;
-    };
-    readonly executorRuntime: CoreRuntimeIdentityReference;
-  }[];
-  readonly decision?: CoreDecisionProjection;
 }

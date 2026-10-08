@@ -4,7 +4,7 @@ import { MEASURE_DETAIL_PREFIX, MEASURE_INDEX_PATH } from '../page-paths.js';
 /**
  * 评测两页的页面模型。缺页与数据源故障都在 Next 开始流式输出之前定下来：根 `loading.tsx`
  * 一旦先刷出壳层，页面里的 `notFound()` 就只能改视图、改不掉 200 状态码，所以「记录不存在」
- * 由宿主按与 `skill_not_found`／`managed_not_found`／`conversation_or_task_not_found` 同一口径回答，
+ * 由宿主按与 `skill_not_found`／`conversation_or_task_not_found` 同一口径回答，
  * 页面不再判第二次（#902 §三）。
  */
 export type MeasurePage =

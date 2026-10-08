@@ -4,7 +4,6 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
-import { resolveManagedDir, managedDir } from '../../knowledge-artifacts/governance/index.js';
 import {
   resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
@@ -105,9 +104,6 @@ export async function runStudio(
           projectDefault: (): string => resolveDoctorsDir(projectDoctorsDir()),
         },
         observations: { global: globalObservationsDir() },
-        // 传解析器而非解析结果:Studio 是长会话,受管根目录要按请求解析(项目首次 install 后从 global 切回
-        // project),与 omk list 同口径;若在此处一次性解析、冻结进 server,长会话里会与 CLI 分叉。
-        managed: () => resolveManagedDir(managedDir()),
       },
       {
         global: flags.global,
@@ -206,8 +202,8 @@ export default class Studio extends BaseCommand {
     }),
     global: Flags.boolean({
       description: bilingual({
-        zh: '只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响',
-        en: 'View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/; does not affect governance/managed',
+        zh: '只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先',
+        en: 'View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/',
       }),
     }),
     'no-open': Flags.boolean({

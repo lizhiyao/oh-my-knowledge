@@ -15,7 +15,6 @@ export interface ResolvedSkillInput {
   /**
    * 目标是否为目录-skill。**只看解析后形态、不看入参写法**：传目录 `skills/foo` 或传内部
    * `skills/foo/SKILL.md` 都判 true(两者 skillPath 都落到 `.../SKILL.md`),扁平 `bar.md` 判 false。
-   * 受管联动按此对齐 install 落的记录形态(`source.isDirectorySkill`),避免「传 SKILL.md 文件路径就匹配不到目录记录」。
    */
   isDirectorySkill: boolean;
 }

@@ -15,7 +15,7 @@ import { DEFAULT_TREES_DIR } from '../../evidence/storage/default-dirs.js';
 export interface IsolatedCopy {
   /** 副本根:目录-skill 为目录 `<treesDir>/<hash>`、单文件-skill 为 `<treesDir>/<hash>/<name>.md`。 */
   copyRoot: string;
-  /** = hashArtifactSource(copyRoot, isDirectorySkill);与 install 受管记录的 contentHash 同空间。 */
+  /** = hashArtifactSource(copyRoot, isDirectorySkill)。 */
   contentHash: string;
   isDirectorySkill: boolean;
 }

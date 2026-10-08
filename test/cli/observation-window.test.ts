@@ -47,11 +47,11 @@ it('filters actual trace sessions across timezone offsets and rejects invalid wi
       writeFileSync(join(traces, `${day}.jsonl`), records.map((record) => JSON.stringify(record)).join('\n'));
     }
     const options = { cwd: root, env: { OMK_ARTIFACT_INDEX_DIR: join(root, 'index') } };
-    await expect(runCommand(Observe, [traces, '--from', 'not-a-date', '--output-dir', output, '--no-feedback'], options))
+    await expect(runCommand(Observe, [traces, '--from', 'not-a-date', '--output-dir', output], options))
       .rejects.toMatchObject({ code: 2 });
     expect(existsSync(output)).toBe(false);
     for (const lang of ['zh', 'en']) {
-      const rendered = await runCommand(Observe, [traces, '--from', '2026-09-10T08:00:00+08:00', '--to', '2026-09-10T00:00:01Z', '--output-dir', output, '--no-feedback', '--lang', lang], options);
+      const rendered = await runCommand(Observe, [traces, '--from', '2026-09-10T08:00:00+08:00', '--to', '2026-09-10T00:00:01Z', '--output-dir', output, '--lang', lang], options);
       expect(rendered.stdout).toContain(lang === 'zh' ? '会话: 1' : 'sessions: 1');
       expect(rendered.stdout).toContain('audit10');
       expect(rendered.stdout).not.toContain('audit09');

@@ -12,7 +12,6 @@ describe('#531/#547 Core downstream projection boundary', () => {
       'src/eval-workflows/projections/diagnostic.ts',
       'src/eval-workflows/projections/evolution.ts',
       'src/eval-workflows/projections/gold.ts',
-      'src/eval-workflows/projections/managed.ts',
       'src/eval-workflows/projections/source.ts',
     ];
     const projectionSource = projectionFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
@@ -28,7 +27,6 @@ describe('#531/#547 Core downstream projection boundary', () => {
       'src/cli/lib/run-core-evaluation.ts',
       'src/eval-workflows/hosts/application.ts',
       'src/eval-workflows/orchestration/evaluation-service.ts',
-      'src/knowledge-artifacts/governance/evidence.ts',
       'src/cli/commands/eval/gold/compare.ts',
       'src/knowledge-artifacts/authoring/core-evolver.ts',
       'src/eval-workflows/orchestration/artifact-graph-persistence.ts',
@@ -38,7 +36,6 @@ describe('#531/#547 Core downstream projection boundary', () => {
     expect(cutoverConsumers).toContain('projectCoreCliRunOutcome');
     expect(cutoverConsumers).toContain('projectCoreCliBatchOutcome');
     expect(cutoverConsumers).toContain('projectCoreCliSeriesOutcome');
-    expect(cutoverConsumers).toContain('projectCoreManagedEvidence');
     expect(cutoverConsumers).toContain('projectCoreArtifactGraph');
     expect(cutoverConsumers).toContain('compareGoldToCoreRun');
     expect(cutoverConsumers).not.toContain("from '../../eval-workflows/run-evaluation.js'");

@@ -61,9 +61,6 @@ test/executors/mock-runtime/runtime.test.ts
 test/executors/result-validation.test.ts
 test/knowledge-artifacts/authoring/scaffold.test.ts
 test/knowledge-artifacts/doctor/report-parser.test.ts
-test/knowledge-artifacts/governance/core-evidence.test.ts
-test/knowledge-artifacts/governance/list-view.test.ts
-test/knowledge-artifacts/governance/store.test.ts
 test/knowledge-artifacts/sources/deploy-artifact.test.ts
 test/knowledge/executor.test.ts
 test/mcp/http.test.ts
@@ -86,7 +83,6 @@ test/studio/application/inbox-cache.test.ts
 test/studio/application/replay-routing.test.ts
 test/studio/application/skill-index-cache.test.ts
 test/studio/conversation-reader.test.ts
-test/studio/http/next-managed.test.ts
 test/studio/http/observe-next.test.ts
 test/studio/http/server-lifecycle.test.ts
 test/studio/web/health-react.test.tsx

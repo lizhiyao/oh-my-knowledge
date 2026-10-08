@@ -17,7 +17,6 @@ import {
   projectCoreCliRunOutcome,
   projectCoreCliSeriesOutcome,
   projectCoreDiagnostics,
-  projectCoreManagedEvidence,
   type CoreEvolutionEvidence,
 } from '../../src/eval-workflows/projections/index.js';
 import { projectCompletedCoreCliGate } from '../../src/eval-workflows/projections/cli-gate.js';
@@ -229,7 +228,7 @@ describe('Evaluation Core consumer cutover projections', () => {
   });
 
   it.each(['function', 'rag', 'agent'] as const)(
-    'keeps CLI, Studio, graph, and managed views on one authenticated %s chain',
+    'keeps CLI, Studio, and graph views on one authenticated %s chain',
     async (target) => {
       const source = await storedScenario(target, `cutover-${target}`);
       const cli = projectCoreCliRunOutcome(source, {
@@ -242,16 +241,12 @@ describe('Evaluation Core consumer cutover projections', () => {
         cwd: '/workspace/project',
         generatedAt: '2026-09-01T08:01:00.000Z',
       });
-      const managed = projectCoreManagedEvidence(source);
 
       assert.equal(cli.reportDigest, source.report.reportDigest);
       assert.equal(cli.gate.gateStatus, 'blocked');
       assert.equal(cli.gate.exitCode, 1);
       assert.ok(cli.gate.reasonCodes.includes('core-release-gate-not-passed'));
       assert.equal(studio.run.reportDigest, cli.reportDigest);
-      assert.equal(managed.reportDigest, cli.reportDigest);
-      assert.equal(managed.runCreatedAt, source.manifest.createdAt);
-      assert.equal(managed.comparability.runContractDigest, cli.runContractDigest);
       assert.equal(cli.diagnostic?.projectionKind, 'core-diagnostic');
       assert.equal(cli.diagnostic?.reportDigest, cli.reportDigest);
       assert.ok(cli.diagnostic?.findings.every((finding) => (
@@ -262,81 +257,8 @@ describe('Evaluation Core consumer cutover projections', () => {
         node.nodeKind === 'evaluation_run'
         && node.binding?.keys.reportDigest === cli.reportDigest
       )));
-      assert.deepEqual(managed.targets.map((entry) => ({
-        targetId: entry.targetId,
-        roles: entry.comparisonRoles,
-        eligible: entry.managedEvidenceEligible,
-      })), [{
-        targetId: 'control',
-        roles: [{
-          comparisonId: 'control-vs-treatment',
-          comparisonRole: 'control',
-        }],
-        eligible: false,
-      }, {
-        targetId: 'treatment',
-        roles: [{
-          comparisonId: 'control-vs-treatment',
-          comparisonRole: 'treatment',
-        }],
-        eligible: true,
-      }]);
-      assert.match(managed.targets[1].artifact.digest, /^sha256:[0-9a-f]{64}$/);
-      const encodedManaged = JSON.stringify(managed);
-      assert.ok(!encodedManaged.includes('/workspace/project'));
-      assert.ok(!encodedManaged.includes('capabilities'));
-      assert.ok(!encodedManaged.includes('implementationManifest'));
-      assert.equal(Object.isFrozen(managed), true);
     },
   );
-
-  it('preserves comparison-scoped roles for a Target used on both sides', async () => {
-    const source = await storedScenario('function', 'managed-comparison-roles', {
-      mutate(definition) {
-        const treatment = definition.targets.find((target) => target.targetId === 'treatment');
-        if (treatment === undefined) throw new Error('missing treatment fixture');
-        definition.targets.splice(1, 0, {
-          ...structuredClone(treatment),
-          targetId: 'middle',
-        });
-        definition.experiment.randomizationSlots.splice(1, 0, {
-          targetId: 'middle',
-          randomizationSlotId: 'slot-middle',
-        });
-        if (definition.experiment.assignment.assignmentKind === 'complete-block') {
-          definition.experiment.assignment.randomizationSlotIds.splice(1, 0, 'slot-middle');
-        }
-        definition.comparisons = [{
-          comparisonId: 'control-vs-middle',
-          controlTargetId: 'control',
-          treatmentTargetIds: ['middle'],
-          metricIds: ['correct'],
-        }, {
-          comparisonId: 'middle-vs-treatment',
-          controlTargetId: 'middle',
-          treatmentTargetIds: ['treatment'],
-          metricIds: ['correct'],
-        }];
-      },
-    });
-    const targets = projectCoreManagedEvidence(source).targets;
-
-    assert.deepEqual(targets.find((target) => target.targetId === 'middle')?.comparisonRoles, [{
-      comparisonId: 'control-vs-middle',
-      comparisonRole: 'treatment',
-    }, {
-      comparisonId: 'middle-vs-treatment',
-      comparisonRole: 'control',
-    }]);
-    assert.deepEqual(targets.find((target) => target.targetId === 'control')?.comparisonRoles, [{
-      comparisonId: 'control-vs-middle',
-      comparisonRole: 'control',
-    }]);
-    assert.deepEqual(targets.find((target) => target.targetId === 'treatment')?.comparisonRoles, [{
-      comparisonId: 'middle-vs-treatment',
-      comparisonRole: 'treatment',
-    }]);
-  });
 
   it('separates report-only gate skipping from operational failure', async () => {
     const completed = await storedScenario('function', 'report-only-completed');
@@ -480,15 +402,5 @@ describe('Evaluation Core consumer cutover projections', () => {
       exitCode: 1,
       reasonCodes: ['core-series-decision-not-ready'],
     });
-  });
-
-  it('refuses to invent managed identity when the sealed Target lacks an artifact descriptor', async () => {
-    const source = await storedScenario('function', 'managed-missing-artifact', {
-      withArtifacts: false,
-    });
-    assert.throws(
-      () => projectCoreManagedEvidence(source),
-      projectionError('CORE_MANAGED_EVIDENCE_SOURCE_INVALID'),
-    );
   });
 });

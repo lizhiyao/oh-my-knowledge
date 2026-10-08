@@ -33,7 +33,7 @@ omk evolve skills/my-skill.md --rounds 8
 omk eval --control original-skill --treatment skills/my-skill.md --samples release-validation.json
 ```
 
-不要把 `release-validation.json` 的失败反馈回同一次 evolve，否则它会变成新的选择集。需要人工审批时，可用 `--snapshot-only` 生成候选，审阅后再独立评测与 promote。
+不要把 `release-validation.json` 的失败反馈回同一次 evolve，否则它会变成新的选择集。需要人工审批时，可用 `--snapshot-only` 生成候选，审阅后再独立评测，通过自己的发布流程采用。
 
 ## 什么时候用它
 

@@ -38,7 +38,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 - `MeasurementPolicy` owns execution/evaluation concurrency, timeout, retry, cache, evidence, failure, event delivery, and the shared Run budget ledger.
 - `RuntimeBindingRequest` v4 contains only implementation and resource-lease requirements derived from Definition／resolved host resources. Executor qualification reuses the exact canonical `TargetDefinition.executionRequirements`; it does not maintain a second approximation. A registry may resolve bindings, but cannot override execution requirements, model, effort, prompt variant, protocol, evaluator identity, or behavior config. Its complete assembly contract is specified in [Evaluation Runtime Adapter](./evaluation-runtime-adapter.md).
 - `ResolvedHostResources` binds a stable resource ID and digest to an effect locator. It is not a Core schema and never enters canonical measurement JSON.
-- `EvaluationOrchestrationOptions` owns dry-run, resume locator, batch, independent Series repeats, preflight switches, diagnostic post-processing, gold post-hoc workflows, and managed-evidence append behavior.
+- `EvaluationOrchestrationOptions` owns dry-run, resume locator, batch, independent Series repeats, preflight switches, diagnostic post-processing, gold post-hoc workflows.
 - Sample-bundle `requires` is normalized as host-only `dependencyRequirements`, together with its `baseDirectoryLocator`, for the later doctor/preflight workflow. Relative files and preflight commands therefore keep the sample bundle's resolution semantics. This host context does not enter Core measurement digests and is never silently discarded.
 - `EvaluationPresentationOptions` owns output locator, index scope, language, server, verbosity, layered view, and CLI exit presentation. None changes `DecisionResult`.
 - Static RunOptions metadata may contain serializable annotations and summaries. The orchestrator creates run ID, cancellation, event writer, and buffers only when a Run actually starts.
@@ -114,7 +114,7 @@ Parse and compilation errors are host `CliEvaluationInputError` values with stab
 
 This layer is the production boundary. `omk eval` consumes its contracts through Runtime assembly and the Core host workflow, then persists the Core Plan, Bundles, and Report. The deleted legacy pipeline is neither double-run nor shadow-run, and no later layer reparses CLI input.
 
-The current boundary emits `omk.cli-evaluation-request/v3`, `omk.resolved-cli-evaluation-input/v6`, `omk.resolved-host-resources/v3`, and `omk.runtime-binding-request/v5`. Request v3, resolved input v6, and binding request v5 carry the optional host-declared judge deployment revision from `eval.yaml` into evaluator Runtime qualification. Earlier request shapes are not accepted.
+The current boundary emits `omk.cli-evaluation-request/v4`, `omk.resolved-cli-evaluation-input/v7`, `omk.resolved-host-resources/v3`, and `omk.runtime-binding-request/v5`. Request v3, resolved input v6, and binding request v5 carry the optional host-declared judge deployment revision from `eval.yaml` into evaluator Runtime qualification. Request v4 and resolved input v7 remove the retired managed-evidence orchestration field; Core Definition and Plan identities and measurement semantics are unchanged. Earlier request shapes are not accepted.
 
 `--no-cache` and the `noCache` config field have been removed because they no longer changed product behavior. Remove them from commands and `eval.yaml`; no replacement option is needed. Existing Core cache contracts and current measurement policy digests remain unchanged. Old cache files are not read.
 
@@ -149,7 +149,6 @@ The declarative registry classifies every live `omk eval` flag and every machine
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-gate` | `presentation.exitMode` | 300 | `"gate"` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>rename → --report-only |
 | CLI | `--no-judge` | `definition.judges.enabled` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-serve` | `presentation.serve` | 300 | `true` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |

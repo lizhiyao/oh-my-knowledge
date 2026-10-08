@@ -41,8 +41,6 @@
 │   ├── drafts/
 │   └── archive/
 │       └── source-records/
-├── governance/
-│   └── managed/
 ├── backups/
 │   └── doctor-fix/
 └── state/
@@ -64,7 +62,6 @@ The directory-skill authoring convention `<skill>/.omk/eval-samples.{json,yaml}`
 ├── eval/
 ├── doctor/
 ├── observe/
-├── governance/
 ├── backups/
 └── state/
     ├── cache/
@@ -93,11 +90,10 @@ Project and machine durable data use the same domains. Machine-specific material
 | `observe/inbox/` | candidate observations and human review state | No | ignored; may be sensitive |
 | `observe/drafts/` | sample drafts derived from observations | No | ignored |
 | `observe/archive/` | immutable source-record sidecars referenced by inbox reports | No | ignored; may be sensitive |
-| `governance/managed/` | install/evidence/promote/rollback history | No | tracked by default |
 | `backups/` | recovery copies made before automatic edits | No | ignored |
 | `state/` | jobs, locks, temporary files, and global rebuildable caches | Yes | ignored |
 
-`omk init` writes an internal `.omk/.gitignore` that ignores `eval/`, `doctor/`, `observe/`, `backups/`, and `state/`, while leaving `.gitignore` and `governance/` trackable.
+`omk init` writes an internal `.omk/.gitignore` that ignores `eval/`, `doctor/`, `observe/`, `backups/`, and `state/`, while leaving `.gitignore` trackable.
 
 ## Compatibility boundary
 
@@ -111,4 +107,3 @@ There is no top-level `runs`: it suggests disposable execution state, while eval
 
 - [who OMK is for](../explanation/who-omk-is-for.md)
 - [terminology spec](terminology-spec.md)
-- [evidence-gated management](evidence-gated-management.md)

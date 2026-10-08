@@ -252,7 +252,6 @@ function validateHostOptions(input: ResolvedCliEvaluationInput): void {
       || !['required', 'skip'].includes(orchestration.preflight.doctor)
       || !['required', 'skip'].includes(orchestration.preflight.connectivity)
       || !['enabled-outside-core', 'disabled'].includes(orchestration.diagnostic)
-      || !['append', 'skip'].includes(orchestration.managedEvidence)
       || (orchestration.gold !== undefined
         && orchestration.gold.comparisonMode !== 'exploratory-post-hoc')) fail({
     code: 'CLI_INPUT_INVALID',
@@ -1250,7 +1249,6 @@ export function compileCliEvaluationInput(
     }),
     preflight: resolvedInput.orchestration.preflight,
     diagnostic: resolvedInput.orchestration.diagnostic,
-    managedEvidence: resolvedInput.orchestration.managedEvidence,
     ...(resolvedInput.orchestration.dependencyRequirements === undefined ? {} : {
       dependencyRequirements: {
         baseDirectoryLocator:

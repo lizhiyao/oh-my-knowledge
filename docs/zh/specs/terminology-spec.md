@@ -441,7 +441,7 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 | EvaluandKind | ArtifactKind | 对象类别 |
 | evaluands | artifacts | 请求中的对象列表 |
 | task.evaluand | task.artifact | 单个任务绑定的对象 |
-| evaluandHashes | Target artifact descriptor | Target config 与 managed evidence 中封存的完整 SHA-256 内容身份 |
+| evaluandHashes | Target artifact descriptor | Target config 中封存的完整 SHA-256 内容身份 |
 | skillHashes | Target artifact descriptor | Core lineage 中统一的 artifact identity |
 | skill 作为总称 | artifact | skill 退回为具体子类 |
 | agent 作为总称 | artifact / agent runtime | 视语义选择 |

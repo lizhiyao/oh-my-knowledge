@@ -181,7 +181,6 @@ async function studioUrl(
         observeHealth: { global: layout.observeHealthDir, projectDefault: layout.observeHealthDir },
         doctors: { global: layout.doctorDir, projectDefault: layout.doctorDir },
         observations: { global: layout.observeInboxDir },
-        managed: () => layout.managedDir,
       },
       {
         reportsDir: layout.evalDir,

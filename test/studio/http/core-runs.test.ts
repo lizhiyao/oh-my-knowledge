@@ -162,7 +162,7 @@ describe('Evaluation catalog on the production host', () => {
           async loadTaskTrajectory() { return undefined; },
         },
         observationsDir: join(root, 'observations'), doctorsDir: join(root, 'doctors'),
-        analysesDir: join(root, 'analyses'), managedDir: join(root, 'managed'),
+        analysesDir: join(root, 'analyses'),
       });
 
       const list = await fetch(`${url}/api/reports`);

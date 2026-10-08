@@ -208,9 +208,6 @@ export const CLI_EVALUATION_INPUT_REGISTRY = [
     defaultValue: 'gate', defaultSource: 'documented',
     migration: { migrationKind: 'rename', target: '--report-only' },
   }),
-  cli('no-evidence', 'orchestration.managedEvidence', 'Orchestration', 'none', {
-    defaultValue: 'append', defaultSource: 'documented',
-  }),
 
   config('samples', 'orchestration.samplesLocator', 'Orchestration', 'none'),
   config('executor', 'definition.targetRuntime.implementationId', 'Definition', 'execution', {

@@ -16,7 +16,6 @@ describe('OMK storage layout', () => {
     assert.equal(actual.observeInboxDir, join('/repo', '.omk', 'observe', 'inbox'));
     assert.equal(actual.observeInboxReportsDir, join('/repo', '.omk', 'observe', 'inbox', 'reports'));
     assert.equal(actual.observeInboxCapturesDir, join('/repo', '.omk', 'observe', 'inbox', 'captures'));
-    assert.equal(actual.managedDir, join('/repo', '.omk', 'governance', 'managed'));
     assert.equal(actual.jobsDir, join('/repo', '.omk', 'state', 'jobs'));
     assert.equal(actual.tmpDir, join('/repo', '.omk', 'state', 'tmp'));
     for (const machineOnly of [
@@ -39,7 +38,6 @@ describe('OMK storage layout', () => {
     assert.equal(actual.doctorDir, join('/omk-home', 'doctor'));
     assert.equal(actual.observeHealthDir, join('/omk-home', 'observe', 'health'));
     assert.equal(actual.observeInboxDir, join('/omk-home', 'observe', 'inbox'));
-    assert.equal(actual.managedDir, join('/omk-home', 'governance', 'managed'));
     assert.equal(actual.toolsDir, join('/omk-home', 'state', 'tools'));
     assert.equal(actual.tunnelsDir, join('/omk-home', 'state', 'tunnels'));
     assert.equal(actual.resolvedInputsDir, join(

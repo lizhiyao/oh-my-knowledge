@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `list` (managed skills & evidence status) · `promote` (accept a version on evidence) · `rollback` (revoke a promotion) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build/docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -24,14 +24,14 @@ For full descriptions: `omk init --help`.
 
 <!-- omk:cli:init:flags:end -->
 
-Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` / `list` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The managed registry (`install` / `list` / `promote`, optionally global) is a separate layer `init` does not touch. The default three-case A/B template is a low-cost workflow check; `--samples 20` selects the first-party starter pack that meets the default heuristic evidence floor, not an a priori power plan. Starter samples are marked `llm-generated` and must be reviewed or replaced before serving as release evidence. The scaffold written to disk — both starter `SKILL.md` files, `.omk/.gitignore` and the starter sample pack — is generated in the resolved output language (`--lang` / `OMK_LANG` / saved settings / system locale), so an English run yields English prompts and English rubric criteria; the sample code, assertions and weights are identical in both languages. Existing scaffold files are never overwritten unless `--force` is explicit.
+Initializes an **omk project** in the target directory: knowledge artifacts to measure (today `skills/<name>/SKILL.md`) plus their eval samples (`eval-samples.json`) — the per-directory workspace that `omk eval` / `doctor` / `evolve` / `observe` all operate on. Like a git repo, you have one per measurement target (the sample set is the measurement context, so it travels with the artifact, not globally). The default three-case A/B template is a low-cost workflow check; `--samples 20` selects the first-party starter pack that meets the default heuristic evidence floor, not an a priori power plan. Starter samples are marked `llm-generated` and must be reviewed or replaced before serving as release evidence. The scaffold written to disk — both starter `SKILL.md` files, `.omk/.gitignore` and the starter sample pack — is generated in the resolved output language (`--lang` / `OMK_LANG` / saved settings / system locale), so an English run yields English prompts and English rubric criteria; the sample code, assertions and weights are identical in both languages. Existing scaffold files are never overwritten unless `--force` is explicit.
 
 ## `omk install`
 
 ```bash
 omk install omk-agent-skill            # built-in official omk Agent Skill (onboarding)
 omk install omk-agent-skill --to all
-omk install ./skills/review            # register + distribute a local skill (writes a managed record)
+omk install ./skills/review            # install a local skill
 omk install git:main:skills/review     # install from a ref of the current repo (SHA is immutable, a branch drifts)
 omk install ./skills/review --dest ~/.my-agent/skills
 ```
@@ -57,88 +57,7 @@ For full descriptions: `omk install --help`.
 
 Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
 
-Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/governance/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
-
 The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
-
-## `omk list`
-
-```bash
-omk list                 # managed skills in the current project (.omk/governance/managed)
-omk list --global        # globally managed skills (~/.oh-my-knowledge/governance/managed)
-omk list --json          # machine-readable output with full comparability markers
-```
-
-<!-- omk:cli:list:flags:start -->
-
-**Flags:**
-
-```text
-  --global        Show the global managed dir (~/.oh-my-knowledge/governance/managed) instead of project .omk/governance/managed
-  --json          Output JSON (with full comparability markers) for scripts
-  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-```
-
-For full descriptions: `omk list --help`.
-
-<!-- omk:cli:list:flags:end -->
-
-Lists managed skills with their **evidence status**, not just files: lifecycle state, the latest verdict bound to the current content, current/total evidence count, and source. The lifecycle is derived at read time — `installed` (no valid evidence), `measurable` (eval evidence bound to the current content fingerprint), `promoted` (current content has a human acceptance decision), `stale` (source content drifted off its evidence). Because the fingerprint covers a directory-skill's whole tree (`SKILL.md` + `references/`), editing any asset flips the skill to `stale`. `--json` emits a versioned envelope `{ schemaVersion, rows }` (rows with current valid evidence carry a comparability marker — `cliVersion`, optionally `judgePromptHash` / `debiasMode`) so scripts can detect shape changes. See [evidence-gated management](../specs/evidence-gated-management.md).
-
-## `omk promote`
-
-```bash
-omk promote review                      # accept the current version if its evidence passes the gate
-omk promote review --accept-cautious    # also accept a CAUTIOUS verdict
-omk promote review --force --reason "manually reviewed"   # override the gate, recorded as a human decision
-```
-
-<!-- omk:cli:promote:flags:start -->
-
-**Flags:**
-
-```text
-  --accept-cautious  also accept CAUTIOUS (default PROGRESS only)
-  --actor <value>    decision actor (defaults to git config user.name)
-  --force            override forceable gate blocks and force-promote, recorded as a human override (still refused with no current evidence or changed source hash)
-  --global           operate on the global managed dir instead of project .omk/governance/managed
-  --json             output JSON (versioned envelope) for scripts
-  --kind <value>     artifact kind (only skill today)
-  --lang <value>     Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-  --reason <value>   reason for the promotion / override (stored on the decision)
-```
-
-For full descriptions: `omk promote --help`.
-
-<!-- omk:cli:promote:flags:end -->
-
-Accepts a managed skill's current version as `promoted`, gated on its evidence, and appends a human decision (with an evidence pointer) to the record. The gate resolves against the latest **current** evidence (`contentHash` matching the record): the source must not be drifted/unreachable, current evidence must exist (no evidence ⇒ blocked, and `--force` cannot conjure one), the evidence's `judgePromptHash` (if present) must still be a current judge-prompt template, and the verdict must be `PROGRESS` (or `CAUTIOUS` with `--accept-cautious`). `--force` must be paired with a non-empty `--reason` and can only override source-unreachable / incomparable / verdict blocks; it still refuses missing current evidence or a reachable source whose content hash changed, because the decision would keep pointing at the old managed baseline. Re-promoting an already-promoted current version is an idempotent no-op. promote is the write-side counterpart to `omk list`. See [evidence-gated management](../specs/evidence-gated-management.md).
-
-## `omk rollback`
-
-```bash
-omk rollback review                          # revoke the current version's promoted acceptance
-omk rollback review --reason "regression found in prod"   # roll back and record a reason
-```
-
-<!-- omk:cli:rollback:flags:start -->
-
-**Flags:**
-
-```text
-  --actor <value>   decision actor (defaults to git config user.name)
-  --global          operate on the global managed dir instead of project .omk/governance/managed
-  --json            output JSON (versioned envelope) for scripts
-  --kind <value>    artifact kind (only skill today)
-  --lang <value>    Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-  --reason <value>  reason for the rollback (stored on the decision)
-```
-
-For full descriptions: `omk rollback --help`.
-
-<!-- omk:cli:rollback:flags:end -->
-
-Rolls back a managed skill's current `promoted` acceptance — the inverse of `omk promote`. Because decisions are an append-only event stream, rollback appends a `rollback` decision rather than deleting the promote; the lifecycle is then derived from the **latest** promote/rollback decision for the current content, so the state derives back to `measurable` — or stays `stale` if the source has since drifted off the baseline, since rollback does not probe the source. rollback is content-anchored and needs no gate (de-escalation is always safe): it operates purely on the record's promote/rollback history for `record.contentHash`. Rolling back a version that isn't promoted exits non-zero (nothing to roll back); rolling back an already-rolled-back version is an idempotent no-op; and `promote → rollback → promote` restores `promoted` (latest wins). See [evidence-gated management](../specs/evidence-gated-management.md).
 
 ## `omk doctor`
 
@@ -252,7 +171,6 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --model <value>                 Evaluated model
   --no-debias-length              Disable length-debias (default on)
   --no-diagnostic                 Disable the diagnostic projection over Core failures, missing evidence, exclusions, and stable reason codes.
-  --no-evidence                   Do not append this run as evidence to managed records (auto-written for installed skills by default).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server
@@ -306,7 +224,6 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 **Flags:**
 
 ```text
-  --feedback            Feed production-health observations back to managed skills of the same name (--no-feedback to disable)
   --from <value>        Start time ISO, overrides --last
   --global              Write to global ~/.oh-my-knowledge/observe/health instead of project .omk/observe/health
   --kb <value>          KB root, enables KB-aware analysis
@@ -424,7 +341,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --rounds <value>                Max iteration rounds, default 5
   --samples <value>               Existing sample source; otherwise discover skill-local then project samples, generating only when neither exists
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
-  --snapshot-only                 Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.
+  --snapshot-only                 Produce candidates under evolve/ without writing the source. By default, write back only after a final Core gate passes.
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
   --timeout <value>               Per-sample timeout sec, default 600
 ```
@@ -439,7 +356,7 @@ The CLI completion summary reports the whole evolve process cost: rewrites, opti
 
 `omk evolve` is a one-shot loop: it runs the doctor gate before each round by default (`--skip-doctor` to bypass), and **if the target skill has no eval samples yet, it auto-generates a batch first** (equivalent to running `omk sample`) before evolving. So for a brand-new skill, `omk evolve skills/foo.md` alone walks the full "doctor → generate samples → self-iterate" path. Existing samples are used as-is, never regenerated.
 
-On a **managed** skill (registered via `omk install`), a successful evolve also feeds the management layer: it records the winner as evidence and re-baselines the record to the new content, so `omk list` shows the skill `measurable` instead of `stale`. Advancing it to `promoted` stays a separate human `omk promote` call (evolve's statistical accept-gate is not a production-acceptance decision). `--snapshot-only` skips the source write entirely — the winner stays under `evolve/` for you to inspect and apply, and the managed record is left untouched.
+`--snapshot-only` leaves the source unchanged and keeps the winning version under `evolve/` for you to review and apply manually.
 
 ## `omk sample`
 
@@ -493,7 +410,7 @@ omk studio --no-open
   --analyses-dir <value>      Observe-health reports dir (optional, default project .omk/observe/health, falls back to global)
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)
-  --global                    View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/; does not affect governance/managed
+  --global                    View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --no-open                   Do not auto-open browser

@@ -62,7 +62,7 @@ describe('update check background refresh must not delay CLI exit', () => {
     const previousConnections = acceptedConnections;
     const t0 = Date.now();
     // doctor 指向不存在的 skill,快速失败(exit 1);runCliFailing 断掉退出码,计时照常
-    await runCliFailing(['doctor', join(home, 'no-such-skill')], 1, { env });
+    await runCliFailing(['doctor', join(home, 'no-such-skill'), '--model', 'fixture-model'], 1, { env });
     const ms = Date.now() - t0;
     // Prove the worker actually attempted the request; a skipped update check is
     // not evidence that detaching avoids holding the parent alive.

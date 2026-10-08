@@ -32,7 +32,6 @@ export function createStudioRequestHandler({
   analysesDir,
   doctorsDir,
   observationsDir,
-  managedDir,
   conversationCatalog,
   coreStudioCatalog,
   includeObserveCards = false,
@@ -52,7 +51,6 @@ export function createStudioRequestHandler({
   const query = knowledgeQuery ?? createKnowledgeQuery({ analysesDir, doctorsDir, observationsDir, includeObserveCards, includeDoctorCards });
   const knowledgeRoutes = createKnowledgeRoutes({
     query,
-    managedDir,
     includeObserveCards,
   });
   const observationRoutes = createObservationRoutes({

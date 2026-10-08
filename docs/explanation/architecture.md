@@ -96,7 +96,6 @@ knowledge-artifacts/
 ├── skills/       # skill frontmatter, hard rules, and workflow definitions
 ├── doctor/       # static and model-assisted artifact health checks
 ├── authoring/    # sample generation and controlled skill evolution
-├── governance/   # install records, evidence gates, promote, and rollback state
 └── sources/      # canonical source fingerprints and distributable-tree identity
 ```
 
@@ -142,7 +141,7 @@ results and prepared capabilities. Capture and compilation cannot depend on run
 state, and internal modules cannot import the public façade. These modules add no
 package subpaths and retain the existing identity and measurement contracts.
 
-Artifact discovery, local and Git source resolution, and content-addressed copies belong to `knowledge-artifacts/sources`. Doctor, installation, governance and evaluation consume that shared implementation. Batch discovery that requires evaluation samples stays in `eval-workflows/inputs/batch-discovery.ts`; the source layer must not import Workflow.
+Artifact discovery, local and Git source resolution, and content-addressed copies belong to `knowledge-artifacts/sources`. Doctor, installation and evaluation consume that shared implementation. Batch discovery that requires evaluation samples stays in `eval-workflows/inputs/batch-discovery.ts`; the source layer must not import Workflow.
 
 
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
@@ -189,14 +188,14 @@ need not become a public API. This inventory records domain boundaries without f
 | Core / Runtime | `eval-core`, package root and `eval-runtime`; service callers and product Workflow | Core execution and measurement contracts, Runtime adoption and generic scoring; verify published packages, contracts, scheduling and cancellation |
 | Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
-| Knowledge artifacts | Internal consumers in CLI, Workflow, observation and governance | Artifact lifecycle and shared source resolution; verify source identity, isolated copies, installation, doctor and governance |
+| Knowledge artifacts | Internal consumers in CLI, Workflow and observation | Artifact authoring, health checks and shared source resolution; verify source identity, isolated copies, installation and doctor |
 | Observability / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
 | Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
 | Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
 
 CLI and DSH evaluation entrypoints call `eval-workflows/hosts/application.ts`. The application
-resolves and compiles requests, assembles the Runtime, and saves sidecars and managed evidence.
+resolves and compiles requests, assembles the Runtime, and saves sidecars.
 `orchestration/evaluation-service.ts` owns preparation, single runs, resume and independent Series
 through injected capabilities. Other Workflow subdomains cannot import `hosts`.
 

@@ -31,8 +31,6 @@ export const SKILL_TREND_PREFIX = '/observe/skill-trend/';
 export const KNOWLEDGE_INDEX_PATH = '/knowledge';
 export const KNOWLEDGE_CANDIDATES_PATH = '/knowledge/candidates';
 export const KNOWLEDGE_SKILL_PREFIX = '/knowledge/skills/';
-export const MANAGED_LIST_PATH = '/knowledge/managed';
-export const MANAGED_DETAIL_PREFIX = '/knowledge/managed/';
 
 export const MEASURE_INDEX_PATH = '/measure';
 export const MEASURE_DETAIL_PREFIX = '/measure/';

@@ -246,7 +246,7 @@
     <text x="1360" y="453" text-anchor="middle" class="node-copy-light">证据足够：接受版本</text>
     <text x="1360" y="481" text-anchor="middle" class="node-copy-light">证据不足：生成候选版</text>
     <g class="mono">
-      <text x="1360" y="513" text-anchor="middle" class="cmd-light">omk promote · omk evolve</text>
+      <text x="1360" y="513" text-anchor="middle" class="cmd-light">omk eval · omk evolve</text>
     </g>
   </g>
 

@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由顶层命令构成完整闭环：`init`（初始化一个 omk 项目）·`install`（安装 omk 官方 Agent Skill）·`list`（受管 skill 与证据状态）·`promote`（按证据接受版本）·`rollback`（撤销一次 promote）·`doctor`（健康度体检）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（浏览本机对话、任务轨迹与知识载体报告）。
+omk 提供知识建设工作流命令：`init`（初始化项目）、`install`（安装 skill）、`doctor`（健康体检）、`eval`（受控评测）、`observe`（真实工作观测）、`evolve`（自动迭代）、`sample`（生成或补充用例）、`agents`（识别本机 Agent）与 `studio`（浏览知识及证据）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build/docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -24,14 +24,14 @@ omk init [目录]
 
 <!-- omk:cli:init:flags:end -->
 
-在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` / `list` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。受管登记表（`install` / `list` / `promote`，可全局）是另一层，不归 `init` 管。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到默认启发式证据下限的官方起步用例集，但不代表完成先验功效规划。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。写到磁盘的脚手架内容（两份起步 `SKILL.md`、`.omk/.gitignore` 与起步用例集）按解析出的输出语言（`--lang`／`OMK_LANG`／全局设置／系统 locale）生成：英文环境拿到的是英文题干与英文评分标准；用例中的代码、断言与权重两版完全一致。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
+在目标目录初始化一个 **omk 项目**：待测知识载体（今天是 `skills/<name>/SKILL.md`）+ 它们的评测用例（`eval-samples.json`）—— 这是 `omk eval` / `doctor` / `evolve` / `observe` 共同操作的「每目录工作区」。跟 git 仓库一样，一个测量目标一个项目（用例集就是测量上下文，随载体走、不全局共享）。默认 3 条 A/B 用例是低成本流程检查；`--samples 20` 会选择达到默认启发式证据下限的官方起步用例集，但不代表完成先验功效规划。起步用例标记为 `llm-generated`，作为发布证据前必须人工复核或替换。写到磁盘的脚手架内容（两份起步 `SKILL.md`、`.omk/.gitignore` 与起步用例集）按解析出的输出语言（`--lang`／`OMK_LANG`／全局设置／系统 locale）生成：英文环境拿到的是英文题干与英文评分标准；用例中的代码、断言与权重两版完全一致。除非显式传入 `--force`，`init` 不会覆盖已有脚手架文件。
 
 ## `omk install`
 
 ```bash
 omk install omk-agent-skill            # 内置 omk 官方 Agent Skill（onboarding）
 omk install omk-agent-skill --to all
-omk install ./skills/review            # 登记并分发本地 skill（写一条受管记录）
+omk install ./skills/review            # 安装本地 skill
 omk install git:main:skills/review     # 从当前仓库某个 ref 安装（SHA 不可变、分支随 ref 漂移）
 omk install ./skills/review --dest ~/.my-agent/skills
 ```
@@ -57,88 +57,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/governance/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
-
 默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
-
-## `omk list`
-
-```bash
-omk list                 # 当前项目的受管 skill（.omk/governance/managed）
-omk list --global        # 全局受管 skill（~/.oh-my-knowledge/governance/managed）
-omk list --json          # 机器可读输出，含完整可比性 marker
-```
-
-<!-- omk:cli:list:flags:start -->
-
-**Flags:**
-
-```text
-  --global        看全局受管目录（~/.oh-my-knowledge/governance/managed）而非项目 .omk/governance/managed
-  --json          输出 JSON（含完整可比性 marker），供脚本消费
-  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-```
-
-完整描述见 `omk list --help`。
-
-<!-- omk:cli:list:flags:end -->
-
-列出受管 skill 的**证据状态**，而非只列文件：生命周期状态、绑定当前内容的最新 verdict、当前/全部证据数、源。生命周期读时推导 —— `installed`（无有效证据）、`measurable`（eval 证据绑定到当前内容指纹）、`promoted`（当前内容有人工接受决定）、`stale`（源内容漂移、脱离证据）。因为指纹覆盖目录-skill 整棵树（`SKILL.md` + `references/`），改任一资产即把 skill 翻成 `stale`。`--json` 输出版本化信封 `{ schemaVersion, rows }`（有当前有效证据的行携带可比性 marker —— `cliVersion`，可选 `judgePromptHash` / `debiasMode`），让脚本能检测形态变更。参见[证据门控管理](../specs/evidence-gated-management.md)。
-
-## `omk promote`
-
-```bash
-omk promote review                      # 证据过门禁则把当前版本接受为 promoted
-omk promote review --accept-cautious    # 也接受 CAUTIOUS verdict
-omk promote review --force --reason "已人工复核"   # 越门，记为人工决定
-```
-
-<!-- omk:cli:promote:flags:start -->
-
-**Flags:**
-
-```text
-  --accept-cautious  把 CAUTIOUS 也算可接受（默认仅 PROGRESS）
-  --actor <value>    决定的 actor（默认取 git config user.name）
-  --force            越过可越门拦截强制 promote，记为人工 override 决定（无当前证据或源 hash 已变时仍拒）
-  --global           操作全局受管目录而非项目 .omk/governance/managed
-  --json             输出 JSON（版本化信封）供脚本消费
-  --kind <value>     artifact 类型（当前仅 skill）
-  --lang <value>     输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --reason <value>   promote / 越门的理由（写入决定）
-```
-
-完整描述见 `omk promote --help`。
-
-<!-- omk:cli:promote:flags:end -->
-
-把受管 skill 的当前版本按证据门禁接受为 `promoted`，并往记录里追加一条带证据指针的人工决定。门禁对最新一条**当前**证据判定（`contentHash` 与记录匹配）：源不能漂移/不可达、必须有当前证据（无证据即拦，`--force` 也无从锚定）、证据的 `judgePromptHash`（若有）须仍属当前评委模板、verdict 须为 `PROGRESS`（或加 `--accept-cautious` 接受 `CAUTIOUS`）。`--force` 必须配合非空 `--reason`，只可越过源不可达、不同比或 verdict 类拦截；不能越过缺当前证据，也不能越过源可达但内容 hash 已变的场景，因为 decision 仍会指向旧的受管基线。对已 promote 的当前版本重跑是幂等无操作。promote 是 `omk list` 的写侧对应。参见[证据门控管理](../specs/evidence-gated-management.md)。
-
-## `omk rollback`
-
-```bash
-omk rollback review                          # 撤销当前版本的 promoted 接受
-omk rollback review --reason "线上发现回归"   # 回退并记录理由
-```
-
-<!-- omk:cli:rollback:flags:start -->
-
-**Flags:**
-
-```text
-  --actor <value>   决定的 actor（默认取 git config user.name）
-  --global          操作全局受管目录而非项目 .omk/governance/managed
-  --json            输出 JSON（版本化信封）供脚本消费
-  --kind <value>    artifact 类型（当前仅 skill）
-  --lang <value>    输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --reason <value>  回退的理由（写入决定）
-```
-
-完整描述见 `omk rollback --help`。
-
-<!-- omk:cli:rollback:flags:end -->
-
-回退受管 skill 当前版本的 `promoted` 接受，是 `omk promote` 的反操作。决定是 append-only 事件流，故 rollback 不删除原 promote，而是追加一条 `rollback` 决定；生命周期再按当前内容**最近一条** promote/rollback 决定推导，源未漂移则回到 `measurable`，源已漂移则仍为 `stale`（rollback 不探源）。rollback 是内容锚定的：只看 `record.contentHash` 上的 promote/rollback 历史，不设门禁（降级永远安全）。回退一个未 promoted 的版本以非零码退出（无可回退）；回退一个已回退的版本是幂等无操作；`promote → rollback → promote` 会恢复 `promoted`（latest-wins）。参见[证据门控管理](../specs/evidence-gated-management.md)。
 
 ## `omk doctor`
 
@@ -252,7 +171,6 @@ omk eval gold compare <run-id> --gold-dir gold-dataset \
   --model <value>                 被测模型
   --no-debias-length              关 length-debias（默认开）
   --no-diagnostic                 关闭基于 Core 失败、缺失、排除与稳定 reason code 的诊断投影。
-  --no-evidence                   不把本次评测写成证据追加进受管记录(默认会为已 install 的 skill 自动写)。
   --no-gate                       关闭判定门禁
   --no-judge                      跳过 LLM 评委
   --no-serve                      不启 report server
@@ -306,7 +224,6 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 **Flags:**
 
 ```text
-  --feedback            把生产健康观测反哺已纳管的同名 skill（--no-feedback 关闭）
   --from <value>        起始时间 ISO，优先级高于 --last
   --global              写全局 ~/.oh-my-knowledge/observe/health，而非项目 .omk/observe/health
   --kb <value>          知识库 root，启用 KB-aware 分析
@@ -424,7 +341,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --rounds <value>                最大迭代轮数，默认 5
   --samples <value>               指定已有样本源；省略时先找 skill 私有样本，再找项目样本，都不存在时自动生成
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。
+  --snapshot-only                 只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。默认仅在最终 Core 门禁通过后写回 source。
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
   --timeout <value>               单用例超时秒，默认 600
 ```
@@ -439,7 +356,7 @@ CLI 完成摘要展示整次 evolve 的过程总成本，包括改写、可选�
 
 `omk evolve` 是一键闭环：每轮迭代前默认先跑 doctor 体检（`--skip-doctor` 可跳过）；**若目标 skill 还没有评测用例，会自动调用样本生成器先生成一批**（等价于先跑一遍 `omk sample`），随后进入自迭代。因此对一个全新 skill 直接 `omk evolve skills/foo.md` 即可走完「体检 → 生成用例 → 自迭代」。已有用例则原样使用，不重复生成。
 
-对**受管** skill（经 `omk install` 登记过的）：evolve 成功跑完还会联动管理层 —— 把胜出版本记成证据、并把记录 re-baseline 到新内容，于是 `omk list` 显示为 `measurable` 而非 `stale`。升到 `promoted` 仍是另一步人工 `omk promote`（evolve 的统计接受门不是生产接受决定）。`--snapshot-only` 完全跳过写回 source —— 胜出版本留在 `evolve/` 供你查看应用，受管记录不动。
+`--snapshot-only` 不写回源文件，胜出版本保留在 `evolve/`，供你核对后手动应用。
 
 ## `omk sample`
 
@@ -493,7 +410,7 @@ omk studio --no-open
   --analyses-dir <value>      观测健康报告目录（可选，默认项目级 .omk/observe/health，空则全局兜底）
   --dev                       dev 模式：子进程启动 + 热更新
   --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
-  --global                    只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先；governance/managed 不受影响
+  --global                    只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
   --no-open                   不自动打开浏览器

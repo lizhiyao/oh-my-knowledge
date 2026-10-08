@@ -41,8 +41,6 @@
 │   ├── drafts/
 │   └── archive/
 │       └── source-records/
-├── governance/
-│   └── managed/
 ├── backups/
 │   └── doctor-fix/
 └── state/
@@ -64,7 +62,6 @@
 ├── eval/
 ├── doctor/
 ├── observe/
-├── governance/
 ├── backups/
 └── state/
     ├── cache/
@@ -93,11 +90,10 @@
 | `observe/inbox/` | 待复核 observation 与人工状态 | 否 | 忽略，可能含敏感信息 |
 | `observe/drafts/` | 从 observation 生成的样本草稿 | 否 | 忽略 |
 | `observe/archive/` | inbox 报告引用的不可变原始记录归档 | 否 | 忽略，可能含敏感信息 |
-| `governance/managed/` | install／evidence／promote／rollback 历史 | 否 | 默认追踪 |
 | `backups/` | 自动修改前的恢复副本 | 否 | 忽略 |
 | `state/` | 任务、锁、临时文件及全局可重建缓存 | 是 | 忽略 |
 
-`omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `.gitignore` 与 `governance/`。
+`omk init` 会写内部 `.omk/.gitignore`，忽略 `eval/`、`doctor/`、`observe/`、`backups/` 和 `state/`，但不忽略 `.gitignore`。
 
 ## 兼容边界
 
@@ -111,4 +107,3 @@ v2 是唯一受支持的存储布局。OMK 不读取旧存储根，不提供迁�
 
 - [OMK 为谁而做](../explanation/who-omk-is-for.md)
 - [术语规范](terminology-spec.md)
-- [证据门控管理](evidence-gated-management.md)

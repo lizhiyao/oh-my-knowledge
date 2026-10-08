@@ -10,7 +10,6 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/diagnosis/contracts.ts',
   'src/knowledge-artifacts/doctor/contracts.ts',
   'src/executors/preflight/contracts.ts',
-  'src/knowledge-artifacts/governance/contracts.ts',
   'src/knowledge-artifacts/skills/contracts.ts',
   'src/knowledge-artifacts/contracts.ts',
   'src/eval-workflows/inputs/contracts/assertion.ts',

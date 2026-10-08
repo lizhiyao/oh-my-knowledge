@@ -9,7 +9,6 @@ import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-i
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
 import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX, SKILL_TREND_PREFIX } from '../../../http/page-paths';
 import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
-import { projectObserveBadge } from '../../../application/knowledge/managed-format';
 import { displayTime, formatPercent } from '../../../application/display/format';
 import type { SkillObserveSnapshot } from '../../../view-models/knowledge/skill-index';
 import { type Language } from '../layout/shell';
@@ -22,14 +21,14 @@ function Health({ row }: { row: KnowledgeRow }) {
 }
 
 /**
- * 生产观测缺口的读数。「样本不足」的判定留在 `projectObserveBadge`（与受管页同一 owner），
+ * 生产观测缺口的读数。「样本不足」按观测报告的 confidence 呈现，
  * 列表列与详情行共用本函数：同一状态在两处一个写「样本不足」、一个照常用比率，等于给两个结论。
  *
  * `withSegmentCount` 只在列表侧为真 —— 列表里没有别的列交代样本量，而详情页的「片段数」
  * 「可信度」就在同一组字段里，重复一次反而读成两个数。
  */
 export function observeGapText(observe: SkillObserveSnapshot, zh: boolean, withSegmentCount: boolean): string {
-  if (projectObserveBadge(observe) !== 'underpowered') return formatPercent(observe.gapRate);
+  if (observe.confidence !== 'underpowered') return formatPercent(observe.gapRate);
   if (!withSegmentCount) return zh ? '样本不足' : 'Underpowered';
   return zh ? `样本不足（${observe.segmentCount} 段）` : `Underpowered (${observe.segmentCount} segments)`;
 }

@@ -33,7 +33,7 @@ omk evolve skills/my-skill.md --rounds 8
 omk eval --control original-skill --treatment skills/my-skill.md --samples release-validation.json
 ```
 
-Do not feed failures from `release-validation.json` back into the same evolve session; doing so turns it into another selection set. For a human approval step, run evolve with `--snapshot-only`, inspect the candidate, then evaluate and promote it separately.
+Do not feed failures from `release-validation.json` back into the same evolve session; doing so turns it into another selection set. For a human approval step, run evolve with `--snapshot-only`, inspect the candidate, then evaluate it independently before adopting it through your release workflow.
 
 ## When to reach for it
 

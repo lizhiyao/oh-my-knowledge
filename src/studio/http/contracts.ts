@@ -19,8 +19,6 @@ export interface ReportServerOptions {
    * 默认取全局布局 ~/.oh-my-knowledge/observe/agents，与 `omk agents` 的默认写入位置同源。
    */
   agentsDir?: string;
-  /** 受管目录，或一个按请求动态解析它的函数。 */
-  managedDir?: string | (() => string);
   /** Source-neutral conversation inventory. Defaults to the local Codex catalog. */
   conversationCatalog?: ConversationCatalog;
   /** Evaluation 页面唯一事实源。提供后，/measure 与 /api/reports 只读 Core artifacts。 */

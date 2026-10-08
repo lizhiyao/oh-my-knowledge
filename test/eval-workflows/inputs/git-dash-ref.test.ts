@@ -1,5 +1,5 @@
 /**
- * 锁住 gitShowFile / gitShowBytes / gitLsTreeBlobs 的 `--` 隔断:用户可控 ref(经 managed locator
+ * 锁住 gitShowFile / gitShowBytes / gitLsTreeBlobs 的 `--` 隔断:用户可控 ref(经输入定位符
  * `git:<ref>:<spec>` 一路流到这三个 helper)若以 `-` 开头,绝不能被 git 当 option 解析 —— 必须 fail-closed
  * (返回 null / [])。同时正向断言普通 ref 仍能取到内容,防 `--` 写错把正常解析也打断。
  */

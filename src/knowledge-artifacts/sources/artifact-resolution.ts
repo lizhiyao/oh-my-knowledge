@@ -66,9 +66,7 @@ const GIT_FETCH_TIMEOUT_MS = 120_000;
 // 由 resolveGitRepoContext 解出 repoRoot 后逐处显式传入。
 export function gitShowFile(ref: string, filePath: string, cwd: string = process.cwd()): string | null {
   try {
-    // `--` 隔断 tree-ish:ref 可能来自盘上受管记录的 locator(用户可手改 / 随仓库分发,被 omk list 等只读
-    // 命令喂进来),前缀 `-` 的 ref 不得被当成 git 选项解析(与 #219 fetch 路径同口径,见
-    // feedback_git_subprocess_dashdash)。加 `--` 后 dash-ref 退化为「非法 object name」fail-closed,普通 ref 输出不变。
+    // `--` 隔断 tree-ish，避免用户传入的 ref 被解析为 git 选项（见 git-dash-ref 测试）。加 `--` 后 dash-ref 退化为「非法 object name」fail-closed,普通 ref 输出不变。
     return execFileSync('git', ['cat-file', 'blob', '--', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO, timeout: GIT_PROBE_TIMEOUT_MS }).trim();
   } catch {
     return null;
@@ -679,7 +677,7 @@ export function resolveArtifacts(
       const resolvedCommit = gitResolveCommit(ref, gitCtx.repoRoot) ?? undefined;
       if (resolved.isDir) {
         // git 目录-skill 忠实执行:物化整树到临时目录 → 落地内容寻址隔离副本 → executor cwd 锚副本,
-        // agent 读得到 references/ 资产、资产成为真实运行时输入。整树指纹与 install 受管记录的
+        // agent 读得到 references/ 资产、资产成为真实运行时输入。整树指纹与 Core artifact descriptor 的
         // contentHash 落同一空间 → evidence 可绑(见 docs/specs/evidence-gated-management.md §9)。
         const mat = materializeGitSkillTree(ref, resolved, gitCtx.repoRoot);
         let isolated: { execRoot?: string; contentHash: string; content: string };

@@ -7,7 +7,7 @@ export const OMK_TREE_DIGEST_ALGORITHM = 'omk.tree-sha256/v1' as const;
 
 /**
  * 载体可分发树的统一内容指纹。安装、评测与治理共用此算法，
- * 确保相同载体的证据和受管记录使用相同的内容身份。
+ * 确保相同载体的评测证据使用相同的内容身份。
  */
 
 /**

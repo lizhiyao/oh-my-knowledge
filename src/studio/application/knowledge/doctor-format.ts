@@ -3,7 +3,7 @@
  *
  * finding 的强弱分级、规则排序、采样降级判定都是「同一条 finding 在列表／详情／图例里必须读成同一种
  * 颜色」的口径，放在这里一次算完，React 树只取标签与色调，不重新解释体检引擎的词汇 —— 与
- * application/observe/health-format.ts、application/knowledge/managed-format.ts 同一条边界。
+ * application/observe/health-format.ts 同一条边界。
  */
 import type { DoctorRuleResult, DoctorRuleStatus } from '../../../knowledge-artifacts/doctor/contracts.js';
 import type { SkillGraphNodePreview, SkillGraphSnapshot } from '../../view-models/knowledge/skill-index.js';

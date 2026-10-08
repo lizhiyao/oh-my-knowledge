@@ -85,7 +85,7 @@ function moduleDomain(path: string): string {
   }
   if (
     topLevel === 'knowledge-artifacts'
-    && ['authoring', 'doctor', 'governance', 'skills', 'sources'].includes(subdomain)
+    && ['authoring', 'doctor', 'skills', 'sources'].includes(subdomain)
   ) {
     return `${topLevel}/${subdomain}`;
   }
@@ -318,7 +318,6 @@ describe('src 与 scripts 依赖图', () => {
     expect(moduleDomain('eval-core/contracts/comparability.ts')).toBe('eval-core/contracts');
     expect(moduleDomain('eval-core/compiler/index.ts')).toBe('eval-core/compiler');
     expect(moduleDomain('knowledge-artifacts/doctor/index.ts')).toBe('knowledge-artifacts/doctor');
-    expect(moduleDomain('knowledge-artifacts/governance/store.ts')).toBe('knowledge-artifacts/governance');
     expect(moduleDomain('knowledge-artifacts/sources/content-hash.ts')).toBe('knowledge-artifacts/sources');
     expect(moduleDomain('eval-workflows/inputs/load-samples.ts')).toBe('eval-workflows/inputs');
     expect(moduleDomain('eval-workflows/instruments/prompts/judge-prompts.ts')).toBe('eval-workflows/instruments');

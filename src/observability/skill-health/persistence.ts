@@ -21,31 +21,3 @@ export function persistObserveHealthReport(report: SkillHealthReport, outDir: st
   indexObserveWrite(report, jsonPath, outDir, id);
   return { id, jsonPath };
 }
-
-/**
- * SkillHealthReport → managed 反哺的结构化最小入参(#235)。纯映射、可单测 —— 把「observe 报告 →
- * ObserveReportView」这段层间胶水从 CLI 副作用里拆出来,免得 healthBand 取错字段 / observedAt 取错时刻
- * 这类映射 bug 无人验。`observedAt` 取**流量窗口结束时刻**(timeRange.to,空则退 generatedAt),不是「此刻」
- * 的 generatedAt —— 否则 latest-wins 会把所有观测当成一样新(见 ManagedObservation.observedAt)。
- * `healthBand` 由 observability 的 `healthBandOf` 逐 skill 算(阈值单一来源,注入以保可测)。
- */
-export function buildObserveReportView(
-  report: SkillHealthReport,
-  reportId: string,
-  healthBandOf: (weightedGapRate: number) => 'green' | 'yellow' | 'red',
-): import('../../knowledge-artifacts/governance/observe-feedback.js').ObserveReportView {
-  return {
-    reportId,
-    observedAt: report.meta.timeRange?.to || report.meta.generatedAt,
-    skills: Object.values(report.bySkill).map((s) => ({
-      skillName: s.skillName,
-      segmentCount: s.segmentCount,
-      gapRate: s.gap.gapRate,
-      weightedGapRate: s.gap.weightedGapRate,
-      confidence: s.confidence,
-      healthBand: healthBandOf(s.gap.weightedGapRate),
-      gapByType: s.gap.byType,
-    })),
-  };
-}
-

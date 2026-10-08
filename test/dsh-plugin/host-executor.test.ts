@@ -11,14 +11,6 @@ import {
   type DshSessionLike,
 } from '../../src/dsh-plugin/host-executor.js';
 import { apply, inject } from '../../src/dsh-plugin/index.js';
-import {
-  buildManagedArtifactRecord,
-  hashArtifactSource,
-  loadManagedRecord,
-  managedDir,
-  managedRecordId,
-  upsertManagedRecord,
-} from '../../src/knowledge-artifacts/governance/index.js';
 import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs/schemas/sample-set.js';
 
 type UnknownRecord = Record<string, unknown>;
@@ -398,7 +390,6 @@ describe('DSH plugin config boundary', () => {
     models: string[];
     artifactFiles: string[];
     graphFiles: string[];
-    managedEvidenceCount: number;
   }> {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-config-'));
     try {
@@ -411,15 +402,6 @@ describe('DSH plugin config boundary', () => {
       mkdirSync(join(dir, 'skills'));
       const skillPath = join(dir, 'skills', 'review.md');
       writeFileSync(skillPath, '# Review\nReturn a host-backed answer.\n');
-      const managed = managedDir(dir);
-      upsertManagedRecord(managed, buildManagedArtifactRecord({
-        name: 'review',
-        kind: 'skill',
-        source: { sourceKind: 'file', locator: skillPath, isDirectorySkill: false },
-        contentHash: hashArtifactSource(skillPath, false),
-        installedAt: '2026-09-01T00:00:00.000Z',
-        distribution: [],
-      }));
       const host = new FakeDshHost();
       let handler: ((invocation: UnknownRecord) => unknown) | undefined;
       const ctx = Object.assign(host, {
@@ -453,10 +435,6 @@ describe('DSH plugin config boundary', () => {
             .filter((file) => file.endsWith('derived/graph.json'))
             .sort()
           : [],
-        managedEvidenceCount: loadManagedRecord(
-          managed,
-          managedRecordId('skill', 'review'),
-        )?.evidence.length ?? 0,
       };
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -503,7 +481,6 @@ variants:
     assert.ok(result.artifactFiles.some((file) => file.endsWith('derived/card.md')));
     assert.equal(result.artifactFiles.some((file) => /(^|\/)reports\.json$/u.test(file)), false);
     assert.equal(result.graphFiles.filter((file) => file.endsWith('graph.json')).length, 1);
-    assert.equal(result.managedEvidenceCount, 1);
   });
 
   it('reuses inherited connectivity for the default same-model DSH judge', async () => {

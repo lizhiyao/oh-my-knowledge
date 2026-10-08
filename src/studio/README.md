@@ -5,7 +5,7 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 | 目录 | 职责 |
 | --- | --- |
 | `view-models/` | 跨层共享的类型契约，不含运行时计算。按域分子目录，与 `application/` 同名对齐。 |
-| `application/` | 查询、聚合和视图投影。按域分子目录：`conversations/`（对话与任务轨迹，含 `replay/` 的投影装配、卡片布局、操作摘要、时间格式和连线计算）、`knowledge/`（体检、受管与 skill 索引）、`measure/`（评测运行）、`observe/`（观测健康）、`settings/`（Studio 用户设置与生效值）。域名只由目录承担，文件名不变。 |
+| `application/` | 查询、聚合和视图投影。按域分子目录：`conversations/`（对话与任务轨迹，含 `replay/` 的投影装配、卡片布局、操作摘要、时间格式和连线计算）、`knowledge/`（体检与 skill 索引）、`measure/`（评测运行）、`observe/`（观测健康）、`settings/`（Studio 用户设置与生效值）。域名只由目录承担，文件名不变。 |
 | `http/` | 请求、响应、路由和服务生命周期。`app-host.ts` 定义应用宿主接口，不生成 HTML。`pages/` 放页面装载器：识别地址、装载证据、给出 400/404/503 契约，不渲染。它只服务 Next 宿主——`next-server.ts` 在流式响应前调它定状态码，`web/catalog.tsx` 经 AsyncLocalStorage 取同一份页面模型；HTTP adapter 的 `/api/*` JSON 路由不经过 `pages/`，自己也从不产出页面 HTML。页面地址的唯一 owner 是 `page-paths.ts`：宿主接管判断、页面装载器与 `web/` 的链接都按值取用它的常量，同一个地址不在三处各抄一遍。地址里的查询参数另有 owner `page-params.ts`（当前只有 `?tab=`：面板取值的两组键与默认值）：读的一侧是 `web/app/**` 的 RSC 路由页，写的一侧是 `'use client'` 组件，两侧按值取用同一组常量，键集合与组件真实渲染的面板由 `test/architecture/studio-page-params.test.ts` 对齐。 |
 | `web/` | Next.js 应用。`components/observe`、`measure`、`knowledge` 按地址分区组织，`components/observe/inbox` 跟随 `/observe/inbox`，`components/layout` 放共享外壳和主题。`components/` 根下只放跨分区共用的呈现原语：`tag-color.ts`（语义 tone → antd Tag 色名）、`conversation-link.ts` 与 `run-report-link.ts`（深链构造）、`tab-url.ts`（把当前面板浅写进地址，写侧唯一入口）。时间、百分比、耗时的展示口径不在 web 层：唯一 owner 是 `application/display/format.ts`，服务端投影和客户端组件都按值导入它，不各自另算一份。页面地址同理不在 web 层：唯一 owner 是 `http/page-paths.ts`，它刻意零 import，`'use client'` 组件才能按值取用而不把宿主能力拖进浏览器 chunk。 |
 
@@ -13,7 +13,7 @@ Studio 将观测记录和评测产物呈现给用户，不定义评分口径，�
 
 ## 页面宿主与 JSON 宿主
 
-CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的对话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情、候选知识与受管决策史页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
+CLI `studio`、DSH 插件 `/omk observe` 与 CLI 评测预览使用 `createNextStudioServer`。所有页面都由 Next 渲染：Observe 的对话与任务页、观测收件箱、观测健康四页、Measure、Knowledge 的列表／详情、候选知识页。HTTP adapter 不渲染页面 HTML：它只提供 `/api/*` 的 JSON 事实源、SSE、`/health` 与纯文本缺页／错误文档（`http/request-handler.ts`），外加一条站点入口 `GET /` → 302 `/observe`（原样带上 query，`http/routes/conversations.ts`）——根路径不在 Next 宿主的接管集合里，所以始终由 HTTP adapter 回答。这条重定向属于观测路由组，因此只在挂页面组时存在：只挂 `/measure` 的评测预览宿主对 `/` 给 404，与它把壳层品牌链接指向 `/measure` 是同一口径。Next 宿主只接管宿主已注册的路由组：被 `observationInbox`／`studioPages` 裁掉的组不再拦截，落回 HTTP adapter 得到 404，而不是改渲染一套手写页面。同一个 `studioPages` 开关也裁掉 `web/components/layout/shell` 的一级导航——不挂页面组的宿主没有可去的兄弟路由，渲染导航等于把用户导向 404。
 
 CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（`/api/reports`；评测页每次装载是静态的，没有 SSE）。宿主两种模式都不创建 observations 目录：收件箱为空是正常状态，目录只在真正写入观测数据时由写路径自己建（#1019）。`/measure` 只有一份实现：HTML 渲染层与其公开渲染导出已删除，评测运行状态、预算、coverage、observation 与 lineage 的口径集中在 `application/measure/core-run-format.ts`，中英文与未来任何界面都从这里取事实，不另算一份。
 
@@ -23,7 +23,7 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 页面取数不经 HTTP：所有 RSC 页面直接调 `application/`。因此下面这批地址是页面之外的机读投影，读者只有性能基线、外部工具契约和测试——「谁在读」决定了它能不能继续收缩，所以逐条写明。
 
-保留：`/health`、`/api/shutdown`、`/api/settings`（读写）、`/api/observe-inbox`（列表与 `/view` 投影、`review-state` 读写）、`/api/observe-health`（列表，基线的并发探针）、`/api/skills`（索引，基线的冷构建探针）、`/api/managed`、`/api/knowledge/candidates`、`/api/conversations/*`（含 SSE）、`/api/reports`（评测运行）。
+保留：`/health`、`/api/shutdown`、`/api/settings`（读写）、`/api/observe-inbox`（列表与 `/view` 投影、`review-state` 读写）、`/api/observe-health`（列表，基线的并发探针）、`/api/skills`（索引，基线的冷构建探针）、`/api/knowledge/candidates`、`/api/conversations/*`（含 SSE）、`/api/reports`（评测运行）。
 
 退出（`BREAKING-URL`，不补重定向、不留别名，也不登记为对外机读面；由 `test/studio/http/knowledge-routes-server.test.ts` 与 `observation-routes-server.test.ts` 钉住「落到宿主统一的纯文本 404」）：
 
@@ -79,39 +79,35 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 ## 知识分区页面盘点（React）
 
-`/knowledge` 顶部分区导航（`web/components/knowledge/section-nav.tsx`）给三个入口：知识载体（体检 + 生产观测的聚合）、Skill 健康度与受管决策史。知识载体与受管决策史此前都是没有入边的孤岛，只能手打地址访问；补真实入口之后才删除对应的 HTML 渲染层，避免出现「旧渲染层已删、入口仍缺失」的悬空窗口。观测健康四页共用这条导航，页面地址仍留在 `/observe/health` 下——入口按信息归属合并，已发布的深链与收藏不跟着搬家。收件箱刻意不进任何分区导航：它受宿主开关控制，在 DSH 上是 404，静态链接会承诺宿主未必提供的能力。
+知识分区导航（`web/components/knowledge/section-nav.tsx`）提供提炼的知识、知识载体与 Skill 健康度三个入口。观测健康页面继续使用 `/observe/health` 地址，共用知识分区导航。收件箱受宿主开关控制，不进入固定分区导航。
 
 | 页面 | 组件 | 数据来源 |
 | --- | --- | --- |
 | 候选知识 `/knowledge/candidates` | `web/components/knowledge/candidates.tsx` | 客户端经 `POST /api/knowledge/candidates` 读写，事实源在 `application/knowledge/knowledge-candidates.ts` |
-| 受管列表 `/knowledge/managed` | `web/components/knowledge/managed.tsx` | `http/pages/managed-page.ts` → `application/knowledge/managed-format.ts` 的 `projectManagedListRow` |
-| 决策史 `/knowledge/managed/:id` | 同上（`pageKind: 'detail'`） | `projectManagedTimeline` 的版本分段与事件行 |
 | 体检详情（原独立页） | `web/components/knowledge/knowledge.tsx` 的体检面板 | `application/knowledge/doctor-format.ts` 的 `projectDoctorRules`／`projectDoctorSampling` |
 | 知识载体结构（体检面板内） | 同上（`GraphStructure`） | `application/knowledge/doctor-format.ts` 的 `projectDoctorGraph` ← `SkillIndexEntry.graph` |
 
 候选知识页是唯一没有 `http/pages/` 装载器的 Next 页面：服务端只渲染空壳，`?workspace=`／`?id=` 的解析、数据装载和失败提示都发生在客户端，因此它不走页面装载器的 400／404／503 契约，读同一份事实源靠的是 `POST /api/knowledge/candidates` 的单一入口（`operation` 字段决定读还是写）。
 
-「知识载体结构」读的是体检产出的 graph sidecar（`application/knowledge/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only` 两档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。三档由「有内容哈希 → 有来源路径 → 只有名称」定出：体检正常产出前两档，`name-only` 只出现在既没有 `artifactHash` 也没有 `sourceLocator` 的 sidecar 上（跨机器搬来的、或被裁剪过的），不是一轮常规体检的结果。`sourceLocator` 是用户本机的绝对路径，与受管页同一条口径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 只取最新一轮，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。**多轮结构对比是明确的非目标**：一页同时只有一份结构证据，要做对比得先定义「对比什么、差多少算变化」，那是新需求而不是这里的缺口。
+「知识载体结构」读的是体检产出的 graph sidecar（`application/knowledge/skill-index.ts` 的 `doctorGraphForSkill` 投影），呈现绑定强度、分类计数与折叠的定义节点。口径由 `projectDoctorGraph` 定：只有 `content-hash` 支持「这份结构就是我改过的那份内容」，`source-locator`／`name-only` 两档弱绑定各有名字与配色，并在正文里直接写明下面的计数读不成内容证明——不把这句关键否定收进 tooltip。三档由「有内容哈希 → 有来源路径 → 只有名称」定出：体检正常产出前两档，`name-only` 只出现在既没有 `artifactHash` 也没有 `sourceLocator` 的 sidecar 上（跨机器搬来的、或被裁剪过的），不是一轮常规体检的结果。`sourceLocator` 是用户本机的绝对路径，不进页面模型；页面只带可跨机器核对的 `artifactHash`。sidecar 只取最新一轮，`?doctorRun=` 下钻到别的轮次时结构块会标注它来自哪一轮，避免把两件事读成一件事。**多轮结构对比是明确的非目标**：一页同时只有一份结构证据，要做对比得先定义「对比什么、差多少算变化」，那是新需求而不是这里的缺口。
 
-受管根目录按请求解析，不在启动时冻结，否则运行久了会跟 `omk list` 分叉（口径见 `http/managed-root.ts`）；JSON 路由 `/api/managed` 与页面宿主共用同一解析器。记录的 `source.locator`／`url` 是用户机器上的绝对路径，不进页面模型——RSC 会把 props 序列化进页面负载。
 
-「绝对路径不进页面」这条口径只约束页面模型，不扩展到 `/api/*`。它防的是一个具体机制：RSC 会把页面 props 序列化进 HTML 负载，所以字段挂在页面模型上，即使从没被渲染也会出现在响应里。JSON 路由没有这个机制，它是页面之外的机读投影（`/api/managed` 的机读口径由同名测试钉住），Studio 宿主又只监听本机，因此那里原样返回 `graph.sourceLocator`／`graph.doctor.graphPath`／`source.locator` 跟在终端里打印路径是同一件事，不构成跨信任边界的泄漏。仓库内对这两个路由的读者目前只有性能基线与测试，**没有 CLI 或 MCP 读者**——所以不动它不是因为有人在消费，而是收缩已发布的 JSON 契约要单独决定并说明影响，不在页面类改造里顺手做。
+「绝对路径不进页面」这条口径只约束页面模型，不扩展到 `/api/*`。它防的是一个具体机制：RSC 会把页面 props 序列化进 HTML 负载，所以字段挂在页面模型上，即使从没被渲染也会出现在响应里。JSON 路由没有这个机制，它是页面之外的机读投影，Studio 宿主又只监听本机，因此那里原样返回 `graph.sourceLocator`／`graph.doctor.graphPath` 跟在终端里打印路径是同一件事，不构成跨信任边界的泄漏。仓库内对这些路由的读者目前只有性能基线与测试，**没有 CLI 或 MCP 读者**——所以不动它不是因为有人在消费，而是收缩已发布的 JSON 契约要单独决定并说明影响，不在页面类改造里顺手做。
 
 ### 知识分区相对历史 HTML 版的显式减法
 
 - `/knowledge/doctors/:id` 独立体检页退役，无替代 URL：它的独有信息（逐条 finding 与修复建议、多采样 `k/n` 支持度、采样降级告警、跨轮次体检历史与 `?doctorRun=` 下钻）全部并进了 skill 详情的体检面板。全仓没有任何页面、CLI 或 MCP 输出链向该地址。
-- 受管页的时间显示从服务端本地时区改为显式 UTC 标注。同一时刻在两种宿主下读出不同墙上时间是原页面的缺陷，跨机器对账证据时尤其危险，因此不做兼容。
 - `SkillIndexEntry.observeHistory`（以及 `/api/skills` 里同名的展开字段）已退出契约：它与 `/observe/skill-trend/:skill` 读的是同一批 analyses 目录下的 observe-health 报告，页面只读 `observe`（最新一次），留一份只写不读的历次数组等于给同一条时间轴造第二个出口。观测历次记录的唯一承载面是趋势页。
 - 体检面板顶部的通过／警告／失败计数沿用报告自带的 `passCount`／`warnCount`／`failCount`，它们把信息性的 `:_summary` 也计入，因此该轮 `_summary` 仅为信息性（pass／warn）时列表会比规则项多一项——与列表页「健康体检」列同一份数，不改评分口径；`_summary` 自己失败时（全部采样解析失败，它是这一轮唯一的失败记录）它会作为失败规则出现在列表里，页面不会既报红又宣称「所有规则通过」。以上口径由测试显式钉住。
 
 ## HTML 渲染层的终点
 
-`src/studio/presentation/` 已随本批删除：最后两页只读报告（体检详情、受管历史）迁到 Next，共享外壳 `layout.ts`／`report-shell.ts`／`icons.ts` 与 `view-models/report-context.ts` 一并退出，因为 React 侧由 `web/components/layout/shell` 与 antd 提供外壳和图标。Studio 自此只有一份页面实现，Markdown 解析与纯文本计算留在 `application/`，`http/` 层不再产出页面 HTML。
+`src/studio/presentation/` 已随本批删除：只读报告迁到 Next，共享外壳 `layout.ts`／`report-shell.ts`／`icons.ts` 与 `view-models/report-context.ts` 一并退出，因为 React 侧由 `web/components/layout/shell` 与 antd 提供外壳和图标。Studio 自此只有一份页面实现，Markdown 解析与纯文本计算留在 `application/`，`http/` 层不再产出页面 HTML。
 
 语言不进地址，只看本机全局设置：`http/next-server.ts` 按请求把设置语言注入 `x-omk-studio-lang` 头，页面与标签标题都从这里取（`web/components/layout/page-titles.ts` 的 `requestStudioLang` 是唯一读取点）。地址里的 `lang` 参数既不生效也不被清理——不重定向、不参与渲染。语言是偏好而不是渲染前提：设置文件读坏（软链、超大、非法 JSON、schema 不符）时页面按内置默认 `zh` 照常渲染，损坏由 `GET /api/settings` 以 `settings_unavailable` 报告，不放大成整站 500（否则连诊断用的设置抽屉也一起不可用）。
 
 切换语言 = 写设置文件后重载当前页（`web/components/layout/switch-language.ts` 只改 `language` 字段，其余设置原样带上；重载天然保留当前 path 与其余 query，含 `?doctorRun=` 下钻，切语言不会换掉所见证据）。完整 Studio 页面把语言收进设置抽屉，只有宿主裁掉一级导航（只挂 `/measure`）时壳层才渲染独立的 `studio-lang` 按钮。与旧控件的两处显式减法沿用：不把选择写进 `localStorage`（偏好落在本机设置文件里，不在浏览器里），也不保留 URL fragment（站内页面无锚点跳转）。
 
-三张壳层回退页（`web/app/not-found.tsx`／`loading.tsx`／`error.tsx`）不自己声明语言。`error.tsx` 必须是客户端组件、拿不到 `headers()`，所以 `web/app/layout.tsx` 把按请求读到的 `x-omk-studio-lang` 经 `web/components/layout/language` 的上下文发下去，另两页跟随同一机制：读取点只有一个，取不到上下文时按内置默认 `zh` 渲染。缺页只有一份用户可见结果，且两类触发都在 Next 开始流式输出之前定下（#902 §三）：地址在宿主上没有对应路由 → 落回 HTTP adapter 的纯文本 404（`Not Found`）；有路由但记录不存在 → 宿主给纯文本专属码（`core_run_not_found`／`skill_not_found`／`managed_not_found`／`conversation_or_task_not_found`／`doctor_run_not_found`），口径与数据源的 503 同侧。两条都可被 `test/studio/http/next-studio.test.ts` 用 HTTP 断言钉住。段内 `notFound()` 担不起服务端缺页：根 `loading.tsx` 会先刷出壳层，状态码停在 200（实测），所以 `not-found` 带壳文档只是 Next 客户端路由失配时的边界。`error` 只在 Next 自己的错误边界里触发，没有稳定的 HTTP 断言路径。三页的语言由 `test/studio/web/fallback-language.test.tsx` 在渲染层钉住。
+三张壳层回退页（`web/app/not-found.tsx`／`loading.tsx`／`error.tsx`）不自己声明语言。`error.tsx` 必须是客户端组件、拿不到 `headers()`，所以 `web/app/layout.tsx` 把按请求读到的 `x-omk-studio-lang` 经 `web/components/layout/language` 的上下文发下去，另两页跟随同一机制：读取点只有一个，取不到上下文时按内置默认 `zh` 渲染。缺页只有一份用户可见结果，且两类触发都在 Next 开始流式输出之前定下（#902 §三）：地址在宿主上没有对应路由 → 落回 HTTP adapter 的纯文本 404（`Not Found`）；有路由但记录不存在 → 宿主给纯文本专属码（`core_run_not_found`／`skill_not_found`／`conversation_or_task_not_found`／`doctor_run_not_found`），口径与数据源的 503 同侧。两条都可被 `test/studio/http/next-studio.test.ts` 用 HTTP 断言钉住。段内 `notFound()` 担不起服务端缺页：根 `loading.tsx` 会先刷出壳层，状态码停在 200（实测），所以 `not-found` 带壳文档只是 Next 客户端路由失配时的边界。`error` 只在 Next 自己的错误边界里触发，没有稳定的 HTTP 断言路径。三页的语言由 `test/studio/web/fallback-language.test.tsx` 在渲染层钉住。
 
-页面标题按路由给出，补回 HTML 外壳时代 `<title>OMK · <页面名></title>` 提供的能力：`web/app/layout.tsx` 的 `metadata.title` 只留 `OMK Studio` 兜底与 `OMK · %s` 模板，15 个页面各自用 `generateMetadata` 从 `web/components/layout/page-titles.ts` 取标签，语言随本机设置切换。词条一律取自页面已有的可见措辞（面包屑、分区导航、`<h1>`），不另起第二套命名。详情页再拼上对象身份（运行 ID、skill 名、报告 ID、受管记录 ID），它取自**地址**而不是页面模型：标题只需要区分对象，不必为此起一次数据装载，也就不会把本机定位符带进标题。skill 名这类外部文本进标题仍只是转义后的文字，由知识详情页的宿主用例钉住。
+页面标题按路由给出，补回 HTML 外壳时代 `<title>OMK · <页面名></title>` 提供的能力：`web/app/layout.tsx` 的 `metadata.title` 只留 `OMK Studio` 兜底与 `OMK · %s` 模板，各页面各自用 `generateMetadata` 从 `web/components/layout/page-titles.ts` 取标签，语言随本机设置切换。词条一律取自页面已有的可见措辞（面包屑、分区导航、`<h1>`），不另起第二套命名。详情页再拼上对象身份（运行 ID、skill 名、报告 ID），它取自**地址**而不是页面模型：标题只需要区分对象，不必为此起一次数据装载，也就不会把本机定位符带进标题。skill 名这类外部文本进标题仍只是转义后的文字，由知识详情页的宿主用例钉住。

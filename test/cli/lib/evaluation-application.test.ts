@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNodeCoreBatchArtifactStore, createNodeCoreRunArtifactStore, type CoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { createNodeEvaluationApplication } from '../../../src/eval-workflows/hosts/application.js';
-import * as managedEvidence from '../../../src/knowledge-artifacts/governance/evidence.js';
 import type { EvalConfig } from '../../../src/eval-workflows/inputs/contracts/config.js';
 import { prepareCliEvaluation } from '../../../src/cli/lib/prepare-evaluation.js';
 import { runCoreEvaluationCommand } from '../../../src/cli/lib/run-core-evaluation.js';
@@ -90,7 +89,7 @@ describe('CLI product application', () => {
     }
     const store = createNodeCoreRunArtifactStore(input.outputDirectory);
     let saves = 0;
-    await expect(input.run({ batch: true, 'no-evidence': true }, {
+    await expect(input.run({ batch: true }, {
       ...store,
       async save(value) {
         saves += 1;
@@ -107,7 +106,7 @@ describe('CLI product application', () => {
   it.each(['before-first', 'between-children'] as const)('propagates batch cancellation without publishing a manifest: %s', async (boundary) => {
     const input = await fixture();
     await cp(join(input.root, 'skills', 'answer'), join(input.root, 'skills', 'second'), { recursive: true });
-    const prepared = input.prepare({ batch: true, 'no-evidence': true });
+    const prepared = input.prepare({ batch: true });
     const application = createNodeEvaluationApplication(prepared.environment);
     const controller = new AbortController();
     const reason = new Error('cancel batch');
@@ -120,7 +119,7 @@ describe('CLI product application', () => {
       resourceLeaseRoot: join(input.root, 'resource-leases'),
       signal: controller.signal,
       requestForBatchItem: (entry) => input.prepare({
-        batch: undefined, treatment: entry.skillPath, samples: entry.samplesPath, 'no-evidence': true,
+        batch: undefined, treatment: entry.skillPath, samples: entry.samplesPath,
       }).request,
       async onCompleted() {
         completed += 1;
@@ -158,7 +157,7 @@ describe('CLI product application', () => {
     const unrelated = join(input.root, 'unrelated');
     await mkdir(unrelated);
     vi.spyOn(process, 'cwd').mockReturnValue(unrelated);
-    const result = await input.run({ 'output-dir': undefined, 'no-evidence': true });
+    const result = await input.run({ 'output-dir': undefined });
     expect(result.outputDirectory).toBe(join(input.root, '.omk', 'eval'));
     expect(result.stored).toBeDefined();
     expect(await readdir(unrelated)).toEqual([]);
@@ -173,7 +172,7 @@ describe('CLI product application', () => {
 
   it('persists to an explicit relative output directory ahead of global output', async () => {
     const input = await fixture();
-    const result = await input.run({ global: true, 'output-dir': 'custom-reports', 'no-evidence': true });
+    const result = await input.run({ global: true, 'output-dir': 'custom-reports' });
     const directory = join(input.root, 'custom-reports');
     expect(result.outputDirectory).toBe(directory);
     expect(result.stored).toBeDefined();
@@ -189,7 +188,7 @@ describe('CLI product application', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(unrelated);
     const environment = { ...process.env, OMK_HOME: join(input.root, 'captured-home') };
     const globalDirectory = join(environment.OMK_HOME, 'eval');
-    const global = await input.run({ 'output-dir': globalDirectory, 'no-evidence': true }, undefined, { environment });
+    const global = await input.run({ 'output-dir': globalDirectory }, undefined, { environment });
     const runId = global.stored!.manifest.runId;
     // Finding the global run must still pass through the existing evidence trust gate.
     await expect(input.run({ 'output-dir': undefined, resume: runId }, undefined, { environment }))
@@ -203,32 +202,19 @@ describe('CLI product application', () => {
     expect((await injected.get(runId))?.report.reportDigest).toBe(global.stored!.report.reportDigest);
   });
 
-  it('rejects publication failure without announcing saved artifacts or appending managed evidence', async () => {
+  it('rejects publication failure without announcing saved artifacts', async () => {
     const input = await fixture();
     const store = createNodeCoreRunArtifactStore(input.outputDirectory);
-    const append = vi.spyOn(managedEvidence, 'recordCoreEvalEvidence');
     await expect(input.run({}, {
       ...store, async save() { throw new Error('fixture disk full'); },
     })).rejects.toMatchObject({ code: 'PRODUCTION_EVALUATION_ARTIFACT_PERSIST_FAILED' });
     expect(await store.list()).toEqual([]);
-    expect(append).not.toHaveBeenCalled();
     expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).not.toContain('Core 评测产物已保存');
   });
 
-  it('retains authenticated artifacts when managed evidence fails and emits a warning', async () => {
-    const input = await fixture();
-    vi.spyOn(managedEvidence, 'recordCoreEvalEvidence').mockImplementation(() => { throw new Error('fixture governance failure'); });
-    const result = await input.run();
-    expect(result.stored).toBeDefined();
-    const store = createNodeCoreRunArtifactStore(input.outputDirectory);
-    expect((await store.get(result.stored!.manifest.runId))?.report.reportDigest).toBe(result.stored!.report.reportDigest);
-    expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).toContain('警告：Core 受管证据写入失败：fixture governance failure');
-  });
-
-  it('does not announce a complete Series or append member evidence after one publication fails', async () => {
+  it('does not announce a complete Series after one publication fails', async () => {
     const input = await fixture();
     const store = createNodeCoreRunArtifactStore(input.outputDirectory);
-    const append = vi.spyOn(managedEvidence, 'recordCoreEvalEvidence');
     let saves = 0;
     await expect(input.run({ repeat: 2, 'bootstrap-samples': 100 }, {
       ...store,
@@ -240,7 +226,6 @@ describe('CLI product application', () => {
     })).rejects.toMatchObject({ code: 'PRODUCTION_EVALUATION_ARTIFACT_PERSIST_FAILED' });
     expect(saves).toBe(2);
     expect(await store.list()).toHaveLength(1);
-    expect(append).not.toHaveBeenCalled();
     expect(vi.mocked(process.stderr.write).mock.calls.flat().join('')).not.toContain('Core Series 已完成');
   });
 

@@ -2,12 +2,9 @@ test/architecture/dependency-graph.test.ts
 test/architecture/studio-client-runtime-closure.test.ts
 test/cli/doctor-retention.test.ts
 test/cli/evolve-autogen-guard.test.ts
-test/cli/list-probe.test.ts
-test/cli/list-run.test.ts
 test/cli/observe-persist.test.ts
 test/cli/oclif-dispatch.test.ts
 test/cli/resolve-skill-input.test.ts
-test/cli/rollback-run.test.ts
 test/cli/update-notify.test.ts
 test/diagnosis/observe-producer.test.ts
 test/diagnosis/schema.test.ts
@@ -78,14 +75,12 @@ test/scripts/release-reliability.test.ts
 test/shared/atomic-json.test.ts
 test/shared/file-lock.test.ts
 test/studio/application/cross-project-doctor-observe.test.ts
-test/studio/application/managed-format.test.ts
 test/studio/http/knowledge-candidates.test.ts
 test/studio/http/next-agents.test.ts
 test/studio/http/next-health.test.ts
 test/studio/http/next-inbox.test.ts
 test/studio/http/settings.test.ts
 test/studio/web/knowledge-doctor-tab.test.tsx
-test/studio/web/managed-react.test.tsx
 test/studio/web/observe-reader-states.test.tsx
 test/studio/web/observe-swimlane-lane.test.tsx
 test/studio/web/shell-language-switch.test.tsx

@@ -7,8 +7,6 @@ import { createReportServer } from '../../../src/studio/http/report-server.js';
 
 describe('Studio knowledge routes', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-routes-'));
-  const managedDir = join(root, 'managed');
-  let managedResolutions = 0;
   let server: ReturnType<typeof createReportServer> | undefined;
   let baseUrl = '';
 
@@ -18,10 +16,6 @@ describe('Studio knowledge routes', () => {
       analysesDir: join(root, 'analyses'),
       doctorsDir: join(root, 'doctors'),
       observationsDir: join(root, 'observations'),
-      managedDir: () => {
-        managedResolutions += 1;
-        return managedDir;
-      },
     });
     baseUrl = await server.start();
   });
@@ -31,25 +25,13 @@ describe('Studio knowledge routes', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('keeps managed directory resolution lazy and scoped to managed requests', async () => {
-    assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
-    assert.equal(managedResolutions, 0);
-
-    const api = await fetch(`${baseUrl}/api/managed`);
-    assert.equal(api.status, 200);
-    assert.deepEqual(await api.json(), { schemaVersion: 1, rows: [] });
-    assert.equal(managedResolutions, 1);
-
-    // 受管列表与决策史两页由 Next 宿主渲染：独立 HTML 宿主按设计不挂这两个路径，也不会为它们解析受管目录。
-    for (const path of ['/knowledge/managed', '/knowledge/managed/abcdef123456']) {
-      const retired = await fetch(`${baseUrl}${path}`, { redirect: 'manual' });
-      assert.equal(retired.status, 404, `${path} 已退役`);
-      assert.equal(retired.headers.get('location'), null, `${path} 不留重定向`);
+  it('removes managed history pages and API without redirects', async () => {
+    for (const path of ['/api/managed', '/knowledge/managed', '/knowledge/managed/abcdef123456']) {
+      const response = await fetch(`${baseUrl}${path}`, { redirect: 'manual' });
+      assert.equal(response.status, 404);
+      assert.equal(response.headers.get('location'), null);
+      assert.equal(await response.text(), 'Not Found');
     }
-    assert.equal(managedResolutions, 1);
-
-    assert.equal((await fetch(`${baseUrl}/not-found`)).status, 404);
-    assert.equal(managedResolutions, 1);
   });
 
   it('retires the health HTML pages on the standalone host while keeping their JSON APIs', async () => {

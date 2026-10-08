@@ -38,7 +38,7 @@ EvaluationPresentationOptions + static RunOptions metadata
 - `MeasurementPolicy` 负责 execution／evaluation concurrency、timeout、retry、cache、evidence、failure、event delivery 和共享 Run 预算账本；
 - `RuntimeBindingRequest` v4 只保存从 Definition／已解析宿主资源派生的 implementation 和 resource lease requirement。Executor qualification 直接复用 canonical `TargetDefinition.executionRequirements`，不维护第二份近似语义。宿主 registry 可以解析 binding，但不能覆盖 execution requirement、model、effort、prompt variant、protocol、evaluator identity 或行为配置。完整装配契约见 [Evaluation Runtime Adapter 规范](./evaluation-runtime-adapter.md)；
 - `ResolvedHostResources` 用稳定 resource ID 和 digest 绑定 effect locator。它不是 Core schema，也不进入 canonical measurement JSON；
-- `EvaluationOrchestrationOptions` 负责 dry-run、resume locator、batch、独立 Series repeat、preflight 开关、diagnostic 后处理、gold post-hoc workflow 和受管证据追加；
+- `EvaluationOrchestrationOptions` 负责 dry-run、resume locator、batch、独立 Series repeat、preflight 开关、diagnostic 后处理、gold post-hoc workflow；
 - Sample bundle 的 `requires` 会连同 `baseDirectoryLocator` 规范化成宿主侧 `dependencyRequirements`，供后续 doctor／preflight workflow 消费；相对文件与 preflight 命令因此继续锚定 sample bundle 根目录。该宿主上下文不进入 Core 测量 digest，也不能被静默丢弃；
 - `EvaluationPresentationOptions` 负责输出 locator、索引范围、语言、server、verbose、layered view 和 CLI exit 展示。这些字段都不能改变 `DecisionResult`；
 - 静态 RunOptions metadata 可以保存可序列化的 annotation 和 summary。只有真正启动 Run 时，orchestrator 才创建 run ID、取消信号、EventWriter 和 buffer。
@@ -114,7 +114,7 @@ Parse 和 Compile 错误使用宿主 `CliEvaluationInputError`，包含稳定 co
 
 本层已经是正式生产边界。`omk eval` 把这里产出的 contract 交给 Runtime 装配与 Core 宿主 workflow，并持久化 Core Plan、Bundle 和 Report。已删除的旧 pipeline 不会双跑或 shadow run，后续层也不会重新解析 CLI 输入。
 
-当前边界输出 `omk.cli-evaluation-request/v3`、`omk.resolved-cli-evaluation-input/v6`、`omk.resolved-host-resources/v3` 与 `omk.runtime-binding-request/v5`。Request v3、resolved input v6 和 binding request v5 会把 `eval.yaml` 中可选的宿主声明 judge deployment revision 传入 evaluator Runtime qualification。更早的 request 结构不会被接受。
+当前边界输出 `omk.cli-evaluation-request/v4`、`omk.resolved-cli-evaluation-input/v7`、`omk.resolved-host-resources/v3` 与 `omk.runtime-binding-request/v5`。Request v3、resolved input v6 和 binding request v5 会把 `eval.yaml` 中可选的宿主声明 judge deployment revision 传入 evaluator Runtime qualification。Request v4 与 resolved input v7 移除已退场的受管证据 orchestration 字段；Core Definition、Plan 身份与测量口径不变。更早的 request 结构不会被接受。
 
 `--no-cache` 与配置字段 `noCache` 已移除，因为它们已不改变产品行为。请从命令和 `eval.yaml` 中删除，无需替代选项。Core 缓存契约和当前测量 policy digest 保持不变，旧 cache 文件不会被读取。
 
@@ -149,7 +149,6 @@ Declarative registry 对每个正式 `omk eval` flag 和每个机器可枚举的
 | CLI | `--model` | `definition.targetRuntime.model` | 300 | — (environment-selection) | Definition | execution | `model-effort` | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-debias-length` | `definition.judges.lengthDebias` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-diagnostic` | `orchestration.diagnostic` | 300 | `"enabled-outside-core"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
-| CLI | `--no-evidence` | `orchestration.managedEvidence` | 300 | `"append"` (documented) | Orchestration | none | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-gate` | `presentation.exitMode` | 300 | `"gate"` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>rename → --report-only |
 | CLI | `--no-judge` | `definition.judges.enabled` | 300 | `true` (documented) | Definition | evaluation | — | `CLI_INPUT_INVALID`<br>retain |
 | CLI | `--no-serve` | `presentation.serve` | 300 | `true` (documented) | Presentation | none | — | `CLI_INPUT_INVALID`<br>retain |

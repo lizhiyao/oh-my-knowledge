@@ -54,15 +54,11 @@ describe('git-remote', () => {
     assert.equal(co.ref, expectSha, 'pin 的 SHA == 源仓库 HEAD');
   });
 
-  it('resolveRemoteGitSource:物化整树 + url/ref/locator 结构化,与本地整树哈同值(可绑)', () => {
+  it('resolveRemoteGitSource:物化整树，与本地内容身份一致', () => {
     const src = resolveRemoteGitSource(repo, 'HEAD', 'skills/review');
     cleanups.push(src.cleanup);
-    assert.equal(src.sourceKind, 'git');
     assert.equal(src.isDirectorySkill, true);
     assert.equal(src.name, 'review');
-    assert.equal(src.url, repo, 'url 结构化携带');
-    assert.match(src.ref!, /^[0-9a-f]{40}$/, 'ref pin SHA');
-    assert.ok(src.locator.startsWith(`git+${repo}@`), 'locator 是 git+<url>@<sha>:<spec> 身份串');
     // 副本含 references 资产,且整树哈 == 直接哈源仓库本地 checkout(绑定口径)
     assert.equal(readFileSync(join(src.localRoot, 'references', 'rules.md'), 'utf-8'), 'rule v1\n');
     assert.equal(hashArtifactSource(src.localRoot, true), hashArtifactSource(join(repo, 'skills', 'review'), true), '远端物化整树哈 == 本地真源整树哈');

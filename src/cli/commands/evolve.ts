@@ -8,28 +8,7 @@ import { tCli, type CliLang } from '../lib/i18n.js';
 import { formatSampleGenerationFailureHint } from '../lib/generation-failure-hint.js';
 import { ensureSkillSamples, SamplePreparationError } from '../../eval-workflows/sample-generation/skill-samples.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
-import type {
-  CoreEvolveOutcomeInput,
-  EvolveOutcomeResult,
-} from '../../knowledge-artifacts/governance/evolve-outcome.js';
-import { sanitizeCell } from '../lib/cell-format.js';
 import { envJudgeModels, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-
-/** Feedback failures remain non-fatal, but are distinct from an unmanaged/no-change result. */
-type EvolveFeedback =
-  | { status: 'recorded'; value: EvolveOutcomeResult }
-  | { status: 'not-applicable' }
-  | { status: 'failed'; error: unknown };
-
-async function recordEvolveOutcomeSafely(input: CoreEvolveOutcomeInput): Promise<EvolveFeedback> {
-  try {
-    const { recordCoreEvolveOutcome } = await import('../../knowledge-artifacts/governance/evolve-outcome.js');
-    const value = recordCoreEvolveOutcome(input);
-    return value ? { status: 'recorded', value } : { status: 'not-applicable' };
-  } catch (error) {
-    return { status: 'failed', error };
-  }
-}
 
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -63,8 +42,6 @@ export async function runEvolve(
     throw new CliExit(1);
   }
   const skillPath = resolvedInput.skillPath;
-  // evolve 目标的形态(目录-skill / 文件-skill),供受管联动按形态精确匹配记录。**取解析后形态**而非「入参是不是
-  // 目录」:帮助文档鼓励传 `skills/foo/SKILL.md`,若按入参判会得 false、匹配不到 install 落的目录记录(漂移永不消)。
   const skillIsDir = resolvedInput.isDirectorySkill;
 
   const samplesFile = resolvedInput.samplesPath;
@@ -138,7 +115,6 @@ export async function runEvolve(
     timeout: Math.max(1, Math.ceil(Number(flags.timeout) || 600)),
     effort: evolveEffort,
     'skip-doctor': flags['skip-doctor'],
-    'no-evidence': true,
     'no-serve': true,
     'report-only': true,
   }, { lang });
@@ -164,7 +140,7 @@ export async function runEvolve(
       evaluatePair,
       editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
       rejectMemory: !flags['no-reject-memory'],
-      // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md(供人工挑选 / promote)。
+      // --snapshot-only:不写回 source,候选只留在 evolve/<skillName>.r{N}.md（供人工挑选）。
       writeBackToSource: !flags['snapshot-only'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, decisionAccepted }): void {
@@ -210,36 +186,13 @@ export async function runEvolve(
     }
 
     if (flags['snapshot-only']) {
-      // 不写回 source —— 候选留在 evolve/ 供人工挑选;受管记录不动。
+      // 不写回 source —— 候选留在 evolve/ 供人工挑选。
       process.stderr.write(tCli('cli.evolve.snapshot_only_hint', lang, {
         dir: join(resolve(skillPath, '..'), 'evolve'),
       }));
-    } else {
-      // 受管 skill:把胜出版本记成带 verdict 的证据 + re-baseline → omk list 显 measurable。
-      // 升 promoted 仍由人 omk promote 决定(统计门 ≠ 人的接受)。未纳管 / 无改进 → 静默 no-op。
-      const recorded = await recordEvolveOutcomeSafely({
-        source: result.evidence!,
-        bestRound: result.bestRound,
-        skillPath: resolvedInput.skillPath,
-        skillDir: resolvedInput.skillDir,
-        isDirectorySkill: skillIsDir,
-      });
-      if (recorded.status === 'failed') {
-        const message = sanitizeCell(recorded.error instanceof Error ? recorded.error.message : String(recorded.error));
-        process.stderr.write(lang === 'zh'
-          ? `治理证据写入失败：${message}。评测产物已保留，请检查受管目录后补记证据。\n`
-          : `Managed evidence write failed: ${message}. Evaluation artifacts are preserved; check the managed directory and record the evidence again.\n`);
-      }
-      if (recorded.status === 'recorded') {
-        process.stderr.write(tCli('cli.evolve.evidence_recorded_managed', lang, {
-          name: recorded.value.name, verdict: recorded.value.verdict,
-        }));
-      }
     }
 
-    const publicResult = { ...result };
-    delete publicResult.evidence;
-    console.log(JSON.stringify(publicResult, null, 2));
+    console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
     if (err instanceof CliExit) throw err;
     console.error(tCli('cli.common.error_prefix', lang, {
@@ -357,8 +310,8 @@ export default class Evolve extends BaseCommand {
     }),
     'snapshot-only': Flags.boolean({
       description: bilingual({
-        zh: '只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。受管 skill 默认会写回 source 并记 Core 证据。',
-        en: 'Produce candidates under evolve/ without writing the source. Managed skills normally write back only after a final Core gate and record Core evidence.',
+        zh: '只产候选、不写回 source：胜出版本留在 evolve/，再由你人工选择。默认仅在最终 Core 门禁通过后写回 source。',
+        en: 'Produce candidates under evolve/ without writing the source. By default, write back only after a final Core gate passes.',
       }),
       default: false,
     }),

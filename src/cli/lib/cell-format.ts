@@ -1,9 +1,5 @@
 /**
- * 终端展示前的不可信字符洗白——`omk list` 与 `omk promote` 共用。受管 JSON 可随仓库分发、用户可手改
- * (store.ts validator 只收窄到「是字符串」,不卡内容),把它的字段(name / verdict / judgePromptHash /
- * reportId / sourceLabel 等)塞进终端输出前必须先洗,否则 ANSI / OSC 转义、BiDi 重排、零宽分割会破坏排版
- * 甚至伪造输出(清屏、改窗口标题、覆盖历史行误导审计)。一律映射到可见 U+FFFD;`--json` 路径保留原值
- * (JSON.stringify 自带控制符转义,脚本消费要的是原始值)。
+ * 终端展示前清理不可信字符，避免控制符、双向重排和零宽字符伪造输出。
  *
  * 用 Unicode **属性类**而非手列码点 —— 手列清单天然有缺口(BiDi、U+2028 / 2029、Tags 块都曾漏一轮补一轮),
  * 属性类一次覆盖整类、新码点自动纳入:
