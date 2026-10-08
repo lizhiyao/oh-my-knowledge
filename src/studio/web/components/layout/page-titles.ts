@@ -18,7 +18,7 @@ const TITLES = {
   measure: { zh: '评测记录', en: 'Evaluations' },
   measureRun: { zh: '运行', en: 'Run' },
   knowledge: { zh: '知识载体', en: 'Knowledge artifacts' },
-  candidates: { zh: '候选知识', en: 'Candidate knowledge' },
+  candidates: { zh: '提炼的知识', en: 'Extracted knowledge' },
   managed: { zh: '受管决策史', en: 'Managed history' },
   agents: { zh: '来源与采集', en: 'Sources and collection' },
 } as const;

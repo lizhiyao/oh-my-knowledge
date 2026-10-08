@@ -2,11 +2,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { resolveKnowledgeWorkspace } from './workspace';
+import { workspaceHref } from '../layout/workspace-link';
+import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { type Language } from '../layout/shell';
-import { KNOWLEDGE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { conversationPath } from '../conversation-link';
+import { conversationLabel } from '../../../application/display/conversation-label';
 import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
@@ -16,12 +19,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   const t = (cn: string, en: string) => zh ? cn : en;
   const router = useRouter();
   /** 页头按钮与空状态引导去的是同一个地址，跳转动作只写一遍。 */
-  const chooseConversation = () => router.push(OBSERVE_INDEX_PATH);
+  const chooseConversation = () => router.push(workspaceHref(`${OBSERVE_INDEX_PATH}?view=recent`, workspace));
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(!!initialWorkspace);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>('all');
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail | null>(null);
   const [source, setSource] = useState('');
@@ -124,51 +129,68 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     && entry.window.excerpts.some((excerpt) => excerpt.evidenceRef === selectedCitation?.selection.evidenceRef));
   const excerpt = evidenceSource?.status === 'available'
     ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
+  const visibleRows = rows.filter(row => candidateMatches(row, filter, query));
+  const nextPending = nextPendingCandidateId(rows, detail?.revision.knowledgeId);
   return <section className="knowledge-candidates">
-    <header className="candidate-heading"><div><Link href={KNOWLEDGE_INDEX_PATH}>{t('知识载体', 'Knowledge artifacts')}</Link><h1>{t('候选知识', 'Candidate knowledge')}</h1></div>
-      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('本次保存位置', 'Save location for this operation')}</Button>
-        {workspace && <Button disabled={busy} onClick={() => void work(async () => { setRuns(await api('runs')); setShowRuns(true); })}>{t('提炼记录', 'Extraction history')}</Button>}
-        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('从对话选择', 'Choose a conversation')}</Button>}
+    <KnowledgeSectionNav active="candidates" lang={lang}/>
+    <header className="candidate-heading"><div><h1>{t('提炼的知识', 'Extracted knowledge')}</h1></div>
+      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>
+        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
-        <Button disabled={busy || !workspace} onClick={() => { setSnapshot(null); setShowImport(true); }}>{t('导入日志文件', 'Import a log file')}</Button>
+        <Dropdown trigger={['click']} disabled={busy} menu={{ items: [
+          { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: !workspace },
+          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: !workspace },
+        ], onClick: ({ key }) => {
+          if (key === 'history') void work(async () => { setRuns(await api('runs')); setShowRuns(true); });
+          if (key === 'import') { setSnapshot(null); setShowImport(true); }
+        } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')}/>}
-    {detail?.origin && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{detail.origin.title}</Link>}
+    {detail?.origin && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
+    {rows.length > 0 && <div className="candidate-library-tools">
+      <Input allowClear aria-label={t('搜索知识标题', 'Search knowledge titles')} placeholder={t('搜索知识标题', 'Search knowledge titles')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); setPane('candidate'); }}/>
+      <Select aria-label={t('按处理状态筛选', 'Filter by decision')} value={filter} onChange={value => { setFilter(value); setDetail(null); setPane('candidate'); }} options={[
+        { value: 'all', label: t(`全部 ${rows.length}`, `All ${rows.length}`) },
+        { value: 'pending', label: t(`待处理 ${rows.filter(row => row.choice === null).length}`, `Undecided ${rows.filter(row => row.choice === null).length}`) },
+        { value: 'retain', label: t(`已保留 ${rows.filter(row => row.choice === 'retain').length}`, `Retained ${rows.filter(row => row.choice === 'retain').length}`) },
+        { value: 'discard', label: t(`已舍弃 ${rows.filter(row => row.choice === 'discard').length}`, `Discarded ${rows.filter(row => row.choice === 'discard').length}`) },
+      ]}/>
+    </div>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} hasWorkspace={!!workspace} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
       onChoose={chooseConversation} onHistory={() => setShowRuns(true)}/>
       : <div className="candidate-columns">
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
-        {rows.length ? rows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
-          <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('打开工作区或选择一份日志开始。', 'Open a workspace or select a log to begin.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
+        {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId))}>
+          <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </aside>
       <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>
       <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
         {!detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
           <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
-            <Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/>
+            <CandidateNextStep lang={lang} choice={detail.maintenance?.choice ?? null} workspace={workspace} pending={!!nextPending} onNext={() => { setQuery(''); setFilter('all'); if (nextPending) void work(() => open(nextPending)); }}/>
+            <details className="candidate-history"><summary>{t(`回看历史修订（第 ${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}／${detail.history.revisions.length} 版）`, `Revision history (${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}/${detail.history.revisions.length})`)}</summary><Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/></details>
             <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
             {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
             {organization?.knowledgeKind === 'method' && <p>{t('目的', 'Purpose')}：{organization.purpose}</p>}
             {detail.revision.content.statements.map((statement) => <section key={statement.statementId} className="candidate-statement">
               <h3>{detail.revision.entities.find((entity) => entity.entityId === statement.subject.entityId)?.label} {statement.relation} {statement.object ? detail.revision.entities.find((entity) => entity.entityId === statement.object!.entityId)?.label : ''}</h3>
-              <Space wrap><Tag>{statement.polarity === 'negative' ? t('否定陈述', 'Negative claim') : t('肯定陈述', 'Positive claim')}</Tag>
+              <details><summary>{t('陈述分类与时间', 'Claim classification and time')}</summary><Space wrap><Tag>{statement.polarity === 'negative' ? t('否定陈述', 'Negative claim') : t('肯定陈述', 'Positive claim')}</Tag>
                 <Tag>{({ descriptive: t('描述', 'Description'), normative: t('规范要求', 'Normative requirement'), capability: t('能力', 'Capability'), permission: t('许可', 'Permission') })[statement.modality]}</Tag>
                 {organization?.knowledgeKind === 'case' && organization.actionStatementIds.includes(statement.statementId) && <Tag>{t('行动', 'Action')}</Tag>}
                 {organization?.knowledgeKind === 'case' && organization.outcomeStatementIds.includes(statement.statementId) && <Tag>{t('结果', 'Outcome')}</Tag>}
                 {organization?.knowledgeKind === 'method' && organization.instructionStatementIds.includes(statement.statementId) && <Tag>{t('方法步骤', 'Instruction')}</Tag>}
-              </Space><p>{statement.context.scenario}</p>
+              </Space><p>{t('发生／适用时间', 'Occurrence / validity')}：{formatTime(statement.context.occurredDuring)} / {formatTime(statement.context.validDuring)}</p></details><p>{statement.context.scenario}</p>
               <dl><dt>{t('条件', 'Conditions')}</dt><dd>{statement.context.conditions.join('；') || t('未记录附加条件，不代表普遍适用', 'No additional conditions recorded; not universally applicable')}</dd>
                 <dt>{t('例外', 'Exceptions')}</dt><dd>{statement.context.exceptions.join('；') || '—'}</dd>
-                <dt>{t('未知信息', 'Unknowns')}</dt><dd>{statement.context.unknowns.join('；') || '—'}</dd>
-                <dt>{t('发生／适用时间', 'Occurrence / validity')}</dt><dd>{formatTime(statement.context.occurredDuring)} / {formatTime(statement.context.validDuring)}</dd></dl>
+                <dt>{t('未知信息', 'Unknowns')}</dt><dd>{statement.context.unknowns.join('；') || '—'}</dd></dl>
               <Space wrap>{detail.revision.evidence.filter((link) => link.statementIds.includes(statement.statementId)).map((link) => <div key={link.evidenceLinkId}><Button size="small" onClick={() => { setCitation(Math.max(0, detail.grounding.citations.findIndex((item) => item.evidenceLinkId === link.evidenceLinkId))); setPane('evidence'); }}>{t('查看依据', 'Inspect evidence')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[link.basis]}</Button><p>{({ supports: t('支持', 'Supports'), opposes: t('反对', 'Opposes'), background: t('背景', 'Background') })[link.relation]}：{link.interpretation}</p></div>)}</Space>
             </section>)}
             <h3>{t('未来如何复用', 'Potential future use')}</h3><p>{detail.grounding.reuseRationale}</p>
             {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
             <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
           </div>
-          <footer className="candidate-actions"><Input aria-label={t('处理理由', 'Decision reason')} placeholder={t('记录保留、舍弃或修订的理由', 'Reason for retaining, discarding, or editing')} value={reason} onChange={(event) => setReason(event.target.value)}/><Space wrap>
+          <footer className="candidate-actions"><label className="candidate-reason">{t('处理理由', 'Decision reason')}<Input aria-label={t('处理理由', 'Decision reason')} placeholder={t('记录保留、舍弃或修订的理由', 'Reason for retaining, discarding, or editing')} value={reason} onChange={(event) => setReason(event.target.value)}/></label><Space wrap>
             <Button disabled={busy} onClick={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}>{t('修订', 'Edit')}</Button>
             {(['retain', 'discard'] as const).map((choice) => <Button key={choice} type={choice === 'retain' ? 'primary' : 'default'} disabled={busy || !reason.trim()} onClick={() => void work(async () => { await api('maintain', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, choice, reason }); await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
               setNotice(choice === 'retain'
@@ -186,13 +208,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </div>
       </aside>
     </div>}
-    <Drawer title={t('本次保存位置', 'Save location for this operation')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
-      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在右上角“设置”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
+    <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
+      <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在侧栏“设置与帮助”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
         <p className="candidate-help">{t('全局位置：', 'Global location: ')}{defaultWorkspace}</p><Button disabled={busy || !defaultWorkspace} onClick={() => setWorkspaceDraft(defaultWorkspace)}>{t('使用全局位置', 'Use global location')}</Button>
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
-          await refresh(root, true); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          await refresh(root, true); setQuery(''); setFilter('all'); setPane('candidate'); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
@@ -236,6 +258,33 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p><Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
+}
+
+export function candidateMatches(row: Pick<KnowledgeCandidateRow, 'title' | 'choice'>, filter: 'all' | 'pending' | 'retain' | 'discard', query: string): boolean {
+  return row.title.toLowerCase().includes(query.trim().toLowerCase())
+    && (filter === 'all' || (filter === 'pending' ? row.choice === null : row.choice === filter));
+}
+
+/** 按列表顺序继续核对，走到末尾后回到较早的待处理项，始终跳过当前项。 */
+export function nextPendingCandidateId(rows: Pick<KnowledgeCandidateRow, 'knowledgeId' | 'choice'>[], selectedId?: string): string | undefined {
+  const current = rows.findIndex(row => row.knowledgeId === selectedId);
+  return [...rows.slice(current + 1), ...rows.slice(0, Math.max(current, 0))]
+    .find(row => row.choice === null)?.knowledgeId;
+}
+
+export function CandidateNextStep({ lang, choice, workspace, pending, onNext }: { lang: Language; choice: CandidateChoice; workspace: string; pending: boolean; onNext(): void }) {
+  const zh = lang === 'zh';
+  if (!choice && !pending) return null;
+  return <div className="candidate-next-step">
+    {choice && <>
+      <strong>{choice === 'retain' ? (zh ? '已保留，之后如何使用？' : 'Retained. How can you use it?') : (zh ? '已舍弃，历史仍可回看' : 'Discarded. Its history remains available')}</strong>
+      <p>{choice === 'retain'
+        ? (zh ? '可从“知识 → 提炼的知识”回看。用于实际任务前，按适用条件人工整理到 AGENTS.md、skill 或其他载体，再通过受控评测检查改动效果。' : 'Reopen it under Knowledge → Extracted knowledge. Before using it in a task, review its conditions, manually update AGENTS.md, a skill or another artifact, then evaluate the change in a controlled comparison.')
+        : (zh ? '该决定和来源仍保留；需要重新判断时，可回看原文或修订。' : 'The decision and source remain available. Review the source or revise the content if your judgment changes.')}</p>
+      {choice === 'retain' && <Space wrap><Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{zh ? '查看知识载体' : 'View knowledge artifacts'}</Link><Link href={workspaceHref(MEASURE_INDEX_PATH, workspace)}>{zh ? '查看评测记录' : 'View evaluation records'}</Link></Space>}
+    </>}
+    {pending && <Button size="small" onClick={onNext}>{zh ? '核对下一条待处理知识' : 'Review the next undecided item'}</Button>}
+  </div>;
 }
 
 export function CandidatePaneSwitch({ lang, pane, onChange }: { lang: Language; pane: 'candidate' | 'evidence'; onChange(value: 'candidate' | 'evidence'): void }) {

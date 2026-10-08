@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 import { ObserveWorkspace } from '../../../src/studio/web/components/observe/workspace.js';
 import type { ConversationListItem } from '../../../src/observability/view-models/conversation.js';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 const item: ConversationListItem = {
   threadId: 'thread/a', sourceThreadId: 'thread/a', sourceKind: 'codex',
   title: '[https://github.com/example/repo/issues/375](https://github.com/example/repo/issues/375) <script>bad</script>',
@@ -80,6 +80,18 @@ const renderIndex = (conversations: ConversationListItem[], lang: 'zh' | 'en' = 
   page: { pageKind: 'index', model: { conversations, totalTurnCount: 0, totalToolCallCount: 0, totalToolFailureCount: 0 }, revision: 'test' },
 }));
 const sidebarOf = (html: string): string => html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
+
+it('会话摘要提取真实请求并跳过系统续接，英文系统标题使用英文兜底', () => {
+  const tasks = ['# Files mentioned by the user:\n## image.png: /private/image.png\n## My request:\n查看图片', '<codex_internal_context>Continue', '<external_codex_apps_open_page>page']
+    .map((title, i) => ({ turnId: `turn-${i}`, title, status: 'completed' as const, eventCount: 1, toolCallCount: 0, toolFailureCount: 0, relatedSkillNames: [] }));
+  const row = conversation('wrapped', { title: '<codex_internal_context>Continue', tasks });
+  const html = renderIndex([row], 'en');
+  expect(html).toContain('System or attachment record');
+  expect(html).toContain('Latest request: 查看图片');
+  expect(html).not.toContain('codex_internal_context');
+  expect(html).not.toContain('/private/image.png');
+  expect(row.tasks).toBe(tasks);
+});
 
 it('长标题与长路径单行省略后，完整内容仍可通过提示取得', () => {
   const longTitle = 'A'.repeat(120);

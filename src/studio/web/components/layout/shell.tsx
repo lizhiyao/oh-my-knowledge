@@ -1,9 +1,11 @@
 'use client';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { workspaceHref } from './workspace-link';
 import { StudioUtilities } from './utilities';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
-import { KNOWLEDGE_INDEX_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_CANDIDATES_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
@@ -66,6 +68,8 @@ function PanelIcon({ direction }: { direction: 'collapse' | 'expand' }) {
 
 export function StudioShell({ lang, children, active, sidebar }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false; sidebar?: ReactNode }) {
   const navigation = useStudioNavigation();
+  const workspace = useSearchParams()?.get('workspace') ?? '';
+  const href = (path: string) => workspaceHref(path, workspace);
   const zh = lang === 'zh';
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -101,18 +105,18 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
     <div className={`studio-app${open ? ' sidebar-open' : ''}${collapsed ? ' sidebar-collapsed' : ''}`}>
       <header className="studio-mobile-bar">
         <button ref={drawerToggle} type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}>☰</button>
-        <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
+        <Link className="studio-brand" href={href(studioEntryPath(true))} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
       </header>
       {open ? <div className="studio-scrim" aria-hidden="true" onClick={() => { setOpen(false); drawerToggle.current?.focus(); }}/> : null}
       <aside className="studio-sidebar" onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
         <div className="studio-sidebar-head">
-          <Link className="studio-brand" href={studioEntryPath(true)} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
+          <Link className="studio-brand" href={href(studioEntryPath(true))} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
           <button type="button" className="studio-sidebar-collapse" aria-label={zh ? '收起侧栏' : 'Collapse sidebar'} title={zh ? '收起侧栏' : 'Collapse sidebar'} onClick={toggleCollapsed}><PanelIcon direction="collapse"/></button>
         </div>
         <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
-          <Link href={OBSERVE_INDEX_PATH} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
-          <Link href={MEASURE_INDEX_PATH} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
-          <Link href={KNOWLEDGE_INDEX_PATH} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
+          <Link href={href(OBSERVE_INDEX_PATH)} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
+          <Link href={href(MEASURE_INDEX_PATH)} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
+          <Link href={href(KNOWLEDGE_CANDIDATES_PATH)} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
         </nav>
         {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
         <StudioUtilities lang={lang}/>

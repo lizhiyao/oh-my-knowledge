@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import { MEASURE_INDEX_PATH } from '../../../http/page-paths';
 import { Alert, Collapse, Descriptions, Empty, Input, Table, Tabs, Tag, Typography } from 'antd';
 import type {
@@ -143,6 +144,7 @@ function Budget({ value, lang }: { value: CoreStudioBudget; lang: Language }) {
 }
 
 export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Language }) {
+  const href = useWorkspaceHref();
   const [query, setQuery] = useState('');
   const copy = COPY[lang];
   const filtered = useMemo(() => runs.filter((run) => `${run.runId} ${run.reportId}`.toLowerCase().includes(query.toLowerCase())), [runs, query]);
@@ -150,7 +152,7 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
     <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
     <Table<CoreStudioRunCard> className="studio-table" sticky size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
-      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={runReportHref(id)} className="measure-id" title={id}>{id}</Link> },
+      { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={href(runReportHref(id))} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
       { title: copy.evidenceStatus, width: 130, render: (_, run) => <Status value={run.status.evidenceStatus} lang={lang}/> },
       { title: copy.conclusionStatus, width: 140, render: (_, run) => <Status value={run.status.conclusionStatus} lang={lang}/> },
@@ -168,12 +170,13 @@ export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Langu
  * 主区表格负责多列对比，这里只保留切换所需的最低信息：运行 ID、运行状态、时间。
  */
 export function RunSidebar({ runs, activeRunId, lang }: { runs: CoreStudioRunCard[]; activeRunId?: string; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const sorted = [...runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return <nav className="measure-sidebar" aria-label={copy.listTitle}>
     <h2>{copy.listTitle}</h2>
     <div className="measure-sidebar-scroll">
-      {sorted.map(run => <Link key={run.runId} href={runReportHref(run.runId)} className={`measure-sidebar-link${run.runId === activeRunId ? ' selected' : ''}`} title={run.runId}>
+      {sorted.map(run => <Link key={run.runId} href={href(runReportHref(run.runId))} className={`measure-sidebar-link${run.runId === activeRunId ? ' selected' : ''}`} title={run.runId}>
         <span className="measure-sidebar-id">{run.runId}</span>
         <small><Status value={run.status.runStatus} lang={lang}/> <time dateTime={run.createdAt}>{displayTime(run.createdAt, 'minute')}</time></small>
       </Link>)}
@@ -377,6 +380,7 @@ function Lineage({ detail, copy }: { detail: CoreStudioRunDetail; copy: Copy }) 
 }
 
 export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang: Language }) {
+  const href = useWorkspaceHref();
   const copy = COPY[lang];
   const { run, stages } = detail;
   // Tabs／Collapse 默认只服务端渲染展开的那一块，证据必须整份在文档里，不靠点开才拉。
@@ -389,7 +393,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     </div>
   </div>;
   return <>
-    <div className="measure-heading"><div><Link href={MEASURE_INDEX_PATH}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
+    <div className="measure-heading"><div><Link href={href(MEASURE_INDEX_PATH)}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
     <Axes run={run} copy={copy} lang={lang}/>
     <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
     <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>

@@ -12,6 +12,15 @@ import { describe, it } from 'vitest';
 import { conversationLabel } from '../../../src/studio/application/display/conversation-label.js';
 
 describe('标题归一', () => {
+  it('摘要只展示附件包装中的实际请求，系统续接不冒充人类请求', () => {
+    const wrapped = '# Files mentioned by the user:\n## image.png: /private/image.png\n## My request:\n这是啥？';
+    assert.equal(conversationLabel(wrapped), '这是啥？');
+    assert.equal(conversationLabel('<in-app-browser-context>ambient</in-app-browser-context>\n## My request:\n继续'), '继续');
+    assert.equal(conversationLabel('<codex_internal_context source="goal">Continue working'), '系统记录');
+    assert.equal(conversationLabel('<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>', ''), '');
+    assert.equal(conversationLabel('# Files mentioned by the user:\n## truncated.png:', 'System record'), 'System record');
+    assert.equal(conversationLabel('解释 <codex_internal_context> 这个标签'), '解释 <codex_internal_context> 这个标签');
+  });
   it('把行内 Markdown 链接收成链接文字', () => {
     assert.equal(conversationLabel('[修复登录超时](https://example.com/a)'), '修复登录超时');
   });

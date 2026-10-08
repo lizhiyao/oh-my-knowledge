@@ -8,7 +8,7 @@ import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { resolveKnowledgeWorkspace } from '../knowledge/workspace';
 
 type Preview = { origin: NonNullable<KnowledgeCandidateSource['origin']>; sourceVersion: string; messages: KnowledgeCandidateSource['excerpts'] };
-const titleText = (text: string) => text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+import { conversationLabel } from '../../../application/display/conversation-label';
 
 /** A local confirmation on the observed conversation; execution stays in the shared application. */
 export function ExtractConversation({ threadId, turnId, lang, onFinished }: { threadId: string; turnId?: string; lang: Language; onFinished(): void }) {
@@ -86,7 +86,7 @@ export function ExtractConversation({ threadId, turnId, lang, onFinished }: { th
         {stage === 'loading' && !error && <Spin tip={t('正在读取当前对话…', 'Reading this conversation…')}><div style={{ height: 80 }}/></Spin>}
         {stage === 'confirm' && preview && <>
           <p className="conversation-extract-scope"><strong>{scope}</strong> · {t(`已选 ${selected.length} 条消息`, `${selected.length} messages selected`)}</p>
-          <p className="conversation-extract-title" title={titleText(preview.origin.title)}>{titleText(preview.origin.title)}</p>
+          <p className="conversation-extract-title" title={conversationLabel(preview.origin.title, t('系统或附件记录', 'System or attachment record'))}>{conversationLabel(preview.origin.title, t('系统或附件记录', 'System or attachment record'))}</p>
           <p>{t('将这些消息交给模型，提炼可复用的事实、方法和经验。', 'Send these messages to the model to extract reusable facts, methods and lessons.')}</p>
           <details className="conversation-extract-options"><summary>{t('查看／调整消息', 'View or adjust messages')}</summary>
             <Space><Button size="small" onClick={() => setSelected([...new Set(preview.messages.map(message => message.recordIndex))])}>{t('全选', 'Select all')}</Button><Button size="small" onClick={() => setSelected([])}>{t('清空', 'Clear')}</Button></Space>

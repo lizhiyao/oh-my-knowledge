@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import { Empty, Table, Tag, Timeline, Tooltip, Typography } from 'antd';
 import type { ManagedLifecycleLabel } from '../../../../knowledge-artifacts/governance/contracts';
 import type {
@@ -111,6 +112,7 @@ function gapAreaText(areas: { signalType: ManagedGapSignalType }[], zh: boolean)
 }
 
 function EventLine({ event, zh }: { event: ManagedTimelineEvent; zh: boolean }) {
+  const href = useWorkspaceHref();
   const badge = event.eventKind === 'observe' ? OBSERVE_BADGES[event.observeBadge ?? 'healthy'] : undefined;
   const gapAreas = event.gapAreas ?? [];
   return <div className="managed-event">
@@ -130,13 +132,14 @@ function EventLine({ event, zh }: { event: ManagedTimelineEvent; zh: boolean }) 
       {event.observeBadge === 'production_gap' && (
         <span className="managed-event-hint">{zh ? '建议补对应用例后重跑 omk eval' : 'add matching samples, then re-run omk eval'}</span>
       )}
-      {event.runId && <Link href={runReportHref(event.runId)}>{zh ? '查看报告 →' : 'report →'}</Link>}
+      {event.runId && <Link href={href(runReportHref(event.runId))}>{zh ? '查看报告 →' : 'report →'}</Link>}
       {event.reason && <em>{zh ? `「${event.reason}」` : `"${event.reason}"`}</em>}
     </div>
   </div>;
 }
 
 export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { pageKind: 'list' }>; lang: Language }) {
+  const href = useWorkspaceHref();
   const zh = lang === 'zh';
   return <>
     <KnowledgeSectionNav active="managed" lang={lang} />
@@ -175,7 +178,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
             title: zh ? '名称' : 'Name',
             dataIndex: ['row', 'name'],
             ellipsis: { showTitle: false },
-            render: (name: string, item) => <Link href={`${MANAGED_DETAIL_PREFIX}${encodeURIComponent(item.row.id)}`} title={name}>{name}</Link>,
+            render: (name: string, item) => <Link href={href(`${MANAGED_DETAIL_PREFIX}${encodeURIComponent(item.row.id)}`)} title={name}>{name}</Link>,
           },
           { title: zh ? '类型' : 'Kind', dataIndex: ['row', 'kind'], width: 110 },
           {
@@ -214,6 +217,7 @@ export function ManagedListView({ page, lang }: { page: Extract<ManagedPage, { p
 }
 
 export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, { pageKind: 'detail' }>; lang: Language }) {
+  const href = useWorkspaceHref();
   const zh = lang === 'zh';
   const items = page.segments.flatMap((segment) => {
     const header = segment.contentHash === null ? [] : [{
@@ -233,7 +237,7 @@ export function ManagedHistoryView({ page, lang }: { page: Extract<ManagedPage, 
     <KnowledgeSectionNav active="managed" lang={lang} />
     <div className="measure-heading">
       <div>
-        <Link href={MANAGED_LIST_PATH}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
+        <Link href={href(MANAGED_LIST_PATH)}>{zh ? '← 受管列表' : '← Managed skills'}</Link>
         <h1 title={page.name}>{page.name}</h1>
         <p>{[page.artifactKind, page.sourceKind, shortHash(page.contentHash), `${zh ? '纳管于' : 'since'} ${displayTime(page.installedAt)}`].join(' · ')}</p>
       </div>
