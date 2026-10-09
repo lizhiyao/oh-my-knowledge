@@ -327,3 +327,8 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .carrier-reports-panel .knowledge-table .ant-spin-container { height:100%; display:flex; flex-direction:column; }
 .carrier-reports-panel .knowledge-table .ant-table { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
 .carrier-reports-panel .knowledge-table .ant-pagination { flex-shrink:0; }
+
+.carrier-measurement-confirmation { display:flex; flex-direction:column; min-height:0; gap:var(--studio-space-3); }
+.carrier-measurement-samples pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.carrier-measurement-samples section { border-bottom:1px solid var(--studio-edge-default); padding-block:var(--studio-space-4); }
+.carrier-measurement-history { display:flex; flex-direction:column; min-height:0; }

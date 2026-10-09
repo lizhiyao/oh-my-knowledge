@@ -1,6 +1,6 @@
 import { digestCanonicalJson } from '../../../src/eval-core/contracts/index.js';
 import { describe, expect, it } from 'vitest';
-import { classifyNodeCliEnvironment } from '../../../src/cli/lib/evaluation-composition.js';
+import { classifyNodeCliEnvironment } from '../../../src/eval-workflows/hosts/node-environment.js';
 import { captureClassifiedEnvironment } from '../../../src/eval-workflows/hosts/adapters/shared/classified-environment.js';
 
 describe('Node CLI production environment', () => {

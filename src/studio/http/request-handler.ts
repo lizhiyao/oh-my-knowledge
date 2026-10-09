@@ -1,3 +1,5 @@
+import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
+import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
@@ -45,6 +47,7 @@ export function createStudioRequestHandler({
   const settingsRoutes = createSettingsRoutes();
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
   const artifactRoutes = createArtifactAuthoringRoutes();
+  const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
     catalog,
@@ -104,8 +107,10 @@ export function createStudioRequestHandler({
         response.end('Not Found');
         return;
       }
-      if (coreStudioRoute !== undefined) {
-        const coreResponse = await coreStudioRoute({
+      const selectedCoreRoute = studioPages && url.searchParams.get('workspace')
+        ? createCoreStudioRouteHandler({ catalog: carrierMeasureCatalog(url.searchParams.get('workspace')!, coreStudioCatalog), apiBasePath: '/api/reports' }) : coreStudioRoute;
+      if (selectedCoreRoute !== undefined) {
+        const coreResponse = await selectedCoreRoute({
           method: request.method,
           url: request.url,
         });
@@ -131,6 +136,7 @@ export function createStudioRequestHandler({
         if (await settingsRoutes(routeContext)) return;
         if (await candidateRoutes(routeContext)) return;
         if (await artifactRoutes(routeContext)) return;
+        if (await measurements.handle(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
         if (await observationRoutes(routeContext)) return;
@@ -158,6 +164,7 @@ export function createStudioRequestHandler({
   }
 
   function close(): void {
+    measurements.close();
     if (shutdownTimer !== undefined) clearTimeout(shutdownTimer);
     shutdownTimer = undefined;
     for (const closeStream of [...liveStreamClosers]) closeStream();

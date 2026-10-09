@@ -1,3 +1,4 @@
+import { carrierMeasureOrigin } from '../../application/measure/carrier-measurement.js';
 import type { CoreStudioCatalog, CoreStudioRunCard, CoreStudioRunDetail } from '../../view-models/measure/core-runs.js';
 import { MEASURE_DETAIL_PREFIX, MEASURE_INDEX_PATH } from '../page-paths.js';
 
@@ -29,10 +30,11 @@ function runIdOf(path: string): string | undefined {
   }
 }
 
-export async function loadMeasurePage(catalog: CoreStudioCatalog, path: string): Promise<MeasurePage | undefined> {
+export async function loadMeasurePage(catalog: CoreStudioCatalog, path: string, workspace?: string): Promise<MeasurePage | undefined> {
   if (path === MEASURE_INDEX_PATH) return { pageKind: 'index', runs: await catalog.list() };
   const runId = runIdOf(path);
   if (runId === undefined) return undefined;
   const [detail, runs] = await Promise.all([catalog.get(runId), catalog.list()]);
-  return detail ? { pageKind: 'run', detail, runs } : undefined;
+  const origin = detail && workspace ? carrierMeasureOrigin(workspace, runId, detail.run.runContractDigest) : undefined;
+  return detail ? { pageKind: 'run', detail: origin ? { ...detail, carrierOrigin: origin } : detail, runs } : undefined;
 }
