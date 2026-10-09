@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { KnowledgeDraftSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
 import { admitEntities, EntityModelMentionSchema, EntityModelSchema, locateQuote, QuoteLocatorSchema, type AdmittedEntityAnalysis } from './entities.js';
-import { checkExtractionResponse, extractionResponseChecker, type CheckedProposals, type ExtractionProposal } from './proposals.js';
+import { resolvedProposalProblems, type CheckedProposals, type ExtractionProposal } from './proposals.js';
 
 const id = z.string().min(1).max(256);
 const windowProposal = z.strictObject({
@@ -20,10 +20,6 @@ const rawResponse = WindowExtractionModelSchema.extend({
   entities: z.array(z.unknown()).max(256), mentions: z.array(z.unknown()).max(512), proposals: z.array(z.unknown()).max(12),
 });
 export interface CheckedWindowProposals extends CheckedProposals { analysis: AdmittedEntityAnalysis }
-
-export function generatedExtractionResponseChecker(version: string) {
-  return version === 'knowledge-extraction-v3' ? checkWindowExtractionResponse : extractionResponseChecker(version);
-}
 
 export function checkWindowExtractionResponse(input: unknown, excerpts: readonly EvidenceExcerpt[]): CheckedWindowProposals {
   const response = rawResponse.parse(input);
@@ -61,11 +57,12 @@ export function checkWindowExtractionResponse(input: unknown, excerpts: readonly
     if (reasons.length) { rejected.push({ index, reasons: [...new Set(reasons)] }); continue; }
     const uncertainties = [...new Set([...candidate.identityUncertainties,
       ...candidate.entityIds.flatMap(entityId => entityById.get(entityId)!.uncertainties)])];
-    const checked = checkExtractionResponse({ proposals: [{ proposalId: candidate.proposalId,
+    const proposal: ExtractionProposal = { proposalId: candidate.proposalId,
       draft: { ...candidate.draft, entities }, mentions, citations,
-      reuseRationale: candidate.reuseRationale, identityUncertainties: uncertainties }] }, excerpts);
-    if (checked.rejected.length) rejected.push({ index, reasons: checked.rejected.flatMap(value => value.reasons) });
-    else accepted.push(...checked.accepted);
+      reuseRationale: candidate.reuseRationale, identityUncertainties: uncertainties };
+    const problems = resolvedProposalProblems(proposal, excerpts);
+    if (problems.length) rejected.push({ index, reasons: problems });
+    else accepted.push(proposal);
   }
   return { analysis, accepted, rejected };
 }

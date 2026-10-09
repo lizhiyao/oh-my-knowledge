@@ -5,14 +5,13 @@ import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
 import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
 import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
-import { migrateKnowledgeWorkspace, previewKnowledgeMigration } from '../../../observability/knowledge-extraction/adapters/migrate-workspace.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('从选定工作日志提炼、核对和维护候选知识。', 'Extract, inspect, and maintain candidate knowledge from selected work logs.');
   static args = {
-    operation: Args.string({ required: true, options: ['capture', 'generate', 'runs', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities', 'migrate'],
-      description: description('归档、提炼、核对与维护知识；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订，migrate 显式升级旧存储。', 'Capture, extract, inspect, and maintain knowledge; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision, and migrate explicitly upgrades legacy storage.') }),
+    operation: Args.string({ required: true, options: ['capture', 'generate', 'runs', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('归档、提炼、核对与维护知识；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'Capture, extract, inspect, and maintain knowledge; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
@@ -29,9 +28,6 @@ export default class ObserveKnowledge extends BaseCommand {
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
     reason: Flags.string({ description: description('保留、舍弃或修订的理由。', 'Reason for retaining, discarding, or editing.') }),
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
-    'dry-run': Flags.boolean({ default: false, description: description('migrate：只预检和显示待迁移数量，不写入。', 'migrate: validate and preview counts without writing.') }),
-    'backup-dir': Flags.string({ description: description('migrate：用户指定的工作区外备份目录，须为绝对路径；恢复时沿用同一目录。迁移前停止旧 CLI 与 Studio 写入。', 'migrate: explicit absolute backup directory outside the workspace; reuse it to resume. Stop legacy CLI and Studio writers first.') }),
-    'preview-digest': Flags.string({ description: description('migrate：要求当前输入与此前 dry-run 的 previewDigest 一致。', 'migrate: require inputs to match a previous dry-run previewDigest.') }),
     executor: Flags.string({ description: description('生成执行器，沿用 OMK 的运行配置。', 'Generation executor, using OMK runtime configuration.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID，用于重试同一次运行。', 'generate: stable UUID for retrying the same run.') }),
@@ -42,8 +38,6 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --analysis <run-id>',
-    '<%= config.bin %> observe knowledge migrate --workspace ./knowledge --dry-run',
-    '<%= config.bin %> observe knowledge migrate --workspace ./knowledge --backup-dir /absolute/path/outside-workspace',
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
@@ -85,8 +79,6 @@ export default class ObserveKnowledge extends BaseCommand {
         case 'apply-entities': result = app.reviseUsingEntities(need(flags.id, 'id'), need(flags.revision, 'revision'), generation(),
           need(flags.analysis, 'analysis'), need(flags['entity-revision'], 'entity-revision'), draft(), need(flags.reason, 'reason'),
           flags['identity-uncertainties'] === undefined ? undefined : JSON.parse(flags['identity-uncertainties'])); break;
-        case 'migrate': result = flags['dry-run'] ? previewKnowledgeMigration(settings.workspace)
-          : migrateKnowledgeWorkspace(settings.workspace, need(flags['backup-dir'], 'backup-dir'), flags['preview-digest']); break;
         case 'source': result = app.source(need(flags.snapshot, 'snapshot')); break;
         case 'delete-source': app.deleteSource(need(flags.snapshot, 'snapshot')); result = { deleted: flags.snapshot }; break;
         case 'retain': case 'discard': {

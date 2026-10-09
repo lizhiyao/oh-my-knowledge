@@ -105,12 +105,12 @@ async function main() {
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
   const selected = args.prompt ? JSON.parse(readFileSync(args.prompt, 'utf8'))
     : { version: promptModule.EXTRACTION_PROMPT_VERSION, prompt: promptModule.EXTRACTION_PROMPT };
-  if (typeof selected.version !== 'string' || !selected.version.trim() || typeof selected.prompt !== 'string' || !selected.prompt.trim()) {
-    throw new Error('Prompt file must contain nonempty version and prompt strings.');
+  if (selected.version !== 'knowledge-extraction-v3' || typeof selected.prompt !== 'string' || !selected.prompt.trim()) {
+    throw new Error('Prompt file must use knowledge-extraction-v3 and contain a nonempty prompt string.');
   }
   const { configuredExtractionModel } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href);
-  const { generatedExtractionResponseChecker } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
-  const check = generatedExtractionResponseChecker(selected.version);
+  const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
+  const check = checkWindowExtractionResponse;
   const model = configuredExtractionModel('codex', args.model);
   mkdirSync(output); // Never overwrite an earlier run.
   const manifest = {

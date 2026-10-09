@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -73,25 +72,11 @@ describe('observe knowledge command wiring', () => {
     expect(applied.history.revisions[0]).toEqual(old.revision);
     await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
   });
-  it('previews and explicitly migrates legacy storage through the command without calling a model', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-migration-cli-')); roots.push(root);
-    const workspace = join(root, 'knowledge'); const runId = randomUUID(); const folder = join(workspace, 'runs'); mkdirSync(folder, { recursive: true });
-    const path = join(folder, `${runId}.json`);
-    const legacy = { runId, generation: 1, requestDigest: 'same-request', snapshotId: randomUUID(), sourceVersion: `sha256:${'a'.repeat(64)}`,
-      executor: 'fixture', model: 'fixture', promptVersion: 'knowledge-extraction-v2', promptHash: 'preserved-prompt', inputDigest: 'preserved-input',
-      actor: { actorKind: 'human', actorId: 'local-user' }, startedAt: '2026-10-08T00:00:00Z', status: 'generating', rawOutput: '{"proposals":[]}',
-      rejections: [], intents: [], committed: [] };
-    const bytes = JSON.stringify(legacy); writeFileSync(path, bytes);
-    const base = ['--workspace', workspace, '--json'];
-    const preview = JSON.parse((await runCommand(ObserveKnowledge, ['migrate', ...base, '--dry-run'], { cwd: root })).stdout);
-    expect(preview).toMatchObject({ status: 'preview', runs: 1 });
-    expect(readFileSync(path, 'utf8')).toBe(bytes);
-    await expect(runCommand(ObserveKnowledge, ['migrate', ...base], { cwd: root })).rejects.toMatchObject({ code: 2 });
-    const backup = join(root, 'backup');
-    const result = JSON.parse((await runCommand(ObserveKnowledge, ['migrate', ...base, '--backup-dir', backup, '--preview-digest', preview.previewDigest], { cwd: root })).stdout);
-    expect(result).toMatchObject({ status: 'completed', requiresMigration: false });
-    expect(readFileSync(join(backup, 'originals', 'runs', `${runId}.json`), 'utf8')).toBe(bytes);
-    const current = JSON.parse((await runCommand(ObserveKnowledge, ['runs', ...base], { cwd: root })).stdout)[0];
-    expect(current).toEqual({ ...legacy, runKind: 'knowledge-extraction-run', schemaVersion: 2 });
+  it('rejects removed migration operations and flags before touching the workspace', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-current-cli-')); roots.push(root);
+    for (const args of [['migrate'], ['list', '--dry-run'], ['list', '--backup-dir', '/outside'], ['list', '--preview-digest', 'digest']]) {
+      await expect(runCommand(ObserveKnowledge, [...args, '--workspace', join(root, 'knowledge')], { cwd: root })).rejects.toMatchObject({ code: args[0] === 'migrate' ? 1 : 2 });
+    }
+    expect(existsSync(join(root, 'knowledge'))).toBe(false);
   });
 });

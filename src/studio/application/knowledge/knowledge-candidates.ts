@@ -3,8 +3,6 @@ import {
   createLocalKnowledgeApplication,
   configuredExtractionModel,
   extractionRunSummary,
-  previewKnowledgeMigration,
-  migrateKnowledgeWorkspace,
   type KnowledgeApplication,
 } from '../../../observability/application.js';
 import { conversationExtractionSource } from '../conversations/conversation-extraction.js';
@@ -35,8 +33,6 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ ...common, operation: z.literal('entities'), analysisId: z.string().uuid(), revision: z.string().uuid().optional() }),
   z.strictObject({ ...common, operation: z.literal('correct-entities'), analysisId: z.string().uuid(), revision: z.string().uuid(), generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
   z.strictObject({ ...common, operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: z.string().uuid(), entityRevision: z.string().uuid(), draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional() }),
-  z.strictObject({ ...common, operation: z.literal('migration-preview') }),
-  z.strictObject({ ...common, operation: z.literal('migrate'), backupDirectory: text, previewDigest: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
   z.strictObject({ ...common, operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: z.string().uuid() }),
   z.strictObject({ ...common, operation: z.literal('resume'), id: text }),
@@ -83,8 +79,6 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
     case 'entities': return entityDetail(app.entities(request.analysisId, request.revision));
     case 'correct-entities': return entityDetail(app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason));
     case 'apply-entities': return candidateDetail(app.reviseUsingEntities(request.id, request.revision, request.generation, request.analysisId, request.entityRevision, request.draft, request.reason, request.identityUncertainties));
-    case 'migration-preview': return previewKnowledgeMigration(request.workspace);
-    case 'migrate': return migrateKnowledgeWorkspace(request.workspace, request.backupDirectory, request.previewDigest);
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
     case 'generate': {
       const run = await app.generate(request.snapshot, configuredExtractionModel(request.executor, request.model), request.runId, signal);

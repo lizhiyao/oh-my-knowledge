@@ -5,7 +5,6 @@ import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { ApplyEntitiesDialog } from './apply-entities';
-import { KnowledgeStorageMigrationDialog } from './storage-migration';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeSectionNav } from './section-nav';
@@ -46,9 +45,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showRuns, setShowRuns] = useState(false);
   const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
   const [applyingEntities, setApplyingEntities] = useState(false);
-  const [showMigration, setShowMigration] = useState(false);
-  const [migrationRequired, setMigrationRequired] = useState(false);
-  const [migrationWorkspace, setMigrationWorkspace] = useState(initialWorkspace);
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
   const [batchRunId, setBatchRunId] = useState<string | null>(null);
   const [previousId, setPreviousId] = useState<string | null>(null);
@@ -69,7 +65,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
   }, [pane]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
-    setMigrationWorkspace(String(fields.workspace ?? workspace));
     const response = await fetch('/api/knowledge/candidates', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ workspace, operation, ...fields }), signal: signal ?? controller.current?.signal,
@@ -83,12 +78,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const active = new AbortController(); controller.current = active; setBusy(true); setError('');
     try { await action(); } catch (cause) {
       if (active.signal.aborted) setNotice(t('已取消请求。可在生成记录中查看结果。', 'Request cancelled. Inspect generation history for its final state.'));
-      else if (cause instanceof Error && ['knowledge_migration_required', 'knowledge_migration_incomplete'].includes(cause.message)) {
-        setMigrationRequired(true); setError(cause.message === 'knowledge_migration_incomplete'
-          ? t('存储迁移尚未完成，请使用原外部备份继续迁移。', 'Storage migration is unfinished. Resume with its original external backup.')
-          : t('已有知识使用旧存储版本。预检并显式迁移后可继续。', 'Existing knowledge uses legacy storage. Preview and explicitly migrate it to continue.'));
-      } else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
+      else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
         ? t('内容已被其他操作更新，请重新打开后再处理。', 'Content changed. Reopen it before editing.')
+        : cause instanceof Error && cause.message === 'knowledge_storage_unsupported'
+          ? t('此知识目录的数据格式不受支持。请点击“保存位置”，选择一个空目录重新提炼知识。', 'This knowledge directory uses an unsupported format. Choose an empty directory under Save location and extract knowledge again.')
+        : cause instanceof Error && cause.message === 'knowledge_workspace_busy'
+          ? t('知识目录正在写入，请稍后重试。', 'The knowledge directory is being written. Try again shortly.')
         : cause instanceof Error && cause.message === 'knowledge_tags_invalid'
           ? t('标签格式不正确。使用中文、字母、数字、下划线、连字符或 /，不含空格；每个最多 80 字符，也不能只有数字。', 'Invalid tags. Use letters, numbers, underscores, hyphens or / without spaces; up to 80 characters each, and not only numbers.')
         : cause instanceof Error && cause.message === 'knowledge_capacity_exceeded'
@@ -103,7 +98,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     ]);
     const nextDetail = selectFirst && nextRows[0]
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: nextRows[0].knowledgeId }) : undefined;
-    setRows(nextRows); setRuns(nextRuns); setMigrationRequired(false);
+    setRows(nextRows); setRuns(nextRuns);
     if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
     return { rows: nextRows, runs: nextRuns };
   }
@@ -211,8 +206,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           if (key === 'import') { setSnapshot(null); setShowImport(true); }
         } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
-    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={migrationRequired ? <Button disabled={busy} onClick={() => setShowMigration(true)}>{t('预检并迁移', 'Preview and migrate')}</Button>
-      : needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
+    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
     {needsRefresh && !error && detail && <Button disabled={busy} onClick={() => void work(() => continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId))}>{t('重新读取后继续', 'Reload to continue')}</Button>}
     {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
@@ -278,11 +272,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       </aside>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
-    {showMigration && <KnowledgeStorageMigrationDialog workspace={migrationWorkspace} lang={lang} onClose={() => setShowMigration(false)} onDone={() => {
-      setShowMigration(false); setMigrationRequired(false); setError('');
-      setNotice(t('存储已升级，正在重新读取工作区。', 'Storage is upgraded. Reloading the workspace.'));
-      void work(async () => { await refresh(migrationWorkspace, true); setWorkspace(migrationWorkspace); setWorkspaceDraft(migrationWorkspace); leaveBatch(); });
-    }}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
       lang={lang} onClose={() => setEntityTarget(undefined)}/>}
     {applyingEntities && detail && <ApplyEntitiesDialog key={detail.revision.revisionId} detail={detail} workspace={workspace} lang={lang} onClose={() => setApplyingEntities(false)} onSaved={saved => {

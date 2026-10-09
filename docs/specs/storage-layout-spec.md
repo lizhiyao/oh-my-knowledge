@@ -97,13 +97,13 @@ Project and machine durable data use the same domains. Machine-specific material
 
 ## Compatibility boundary
 
-The v2 project-runtime tree is the only supported `.omk` layout. OMK neither reads old `.omk` roots nor provides a migration command for that tree, and never moves or deletes its old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only. The explicitly selected knowledge workspace below has its own versioned contracts and migration.
+The v2 project-runtime tree is the only supported `.omk` layout. OMK neither reads old `.omk` roots nor provides a migration command for that tree, and never moves or deletes its old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only. The explicitly selected knowledge workspace below has its own current versioned contracts.
 
 ## Explicit knowledge workspace
 
-The user chooses this workspace through settings or `--workspace`; it is separate from the project-runtime tree above. `items/<identity-digest>.json` uses `knowledge-item-history` v2. `runs/<run-id>.json` uses `knowledge-extraction-run` v2 and preserves raw output, historical prompt identity, prepared intents, and runtime metadata. `entities/<analysis-id>.json` uses `entity-analysis-history` v1 with immutable revisions, exact source bindings, and write receipts. Sources, topic tags, and artifact versions retain their own contracts.
+The user chooses this workspace through settings or `--workspace`; it is separate from the project-runtime tree above. `items/<identity-digest>.json` uses `knowledge-item-history` v2. `runs/<run-id>.json` uses `knowledge-extraction-run` v3 and preserves raw output, current v3 prompt identity, prepared intents, and runtime metadata. `entities/<analysis-id>.json` uses `entity-analysis-history` v1 with immutable revisions, exact source bindings, and write receipts. Sources, topic tags, and artifact versions retain their own contracts.
 
-Current writes serialize with `.knowledge-write.lock`. An unfinished explicit migration leaves `.entity-migration`, pausing current knowledge/run/entity readers and writers until recovery. `observe knowledge migrate --dry-run` is read-only; actual migration requires a user-selected external backup directory. See [entity storage conversion, recovery, and limits](entity-extraction.md#_6-storage-and-migration-proposal). These files can contain private excerpts and must be managed as local user data; they are not repository source assets.
+Current writes serialize with `.knowledge-write.lock`. Only current knowledge/run/entity structures and `knowledge-extraction-v3` are supported, without legacy readers, recovery, or migration. Old files remain untouched; choose an empty directory to extract again. Current runs retain idempotent recovery. See [current entity storage contracts](entity-extraction.md#_6-current-storage-contracts). These files can contain private excerpts and must be managed as local user data; they are not repository source assets.
 
 ## Why these names
 

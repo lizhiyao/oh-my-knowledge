@@ -12,7 +12,7 @@ import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { modelProposal, modelWindow, proposal } from './fixtures.js';
+import { modelWindow } from './fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -227,24 +227,6 @@ describe('shared knowledge application', () => {
     expect(app.resume(id).status).toBe('completed');
     expect(knowledge.list()).toHaveLength(1);
     expect(knowledge.list()[0].generation).toBe(1);
-    expect(generate).toHaveBeenCalledTimes(1);
-  });
-  it.each(['knowledge-extraction-v1', 'knowledge-extraction-v2'] as const)('resumes a persisted %s output using that version without another model call', async (version) => {
-    const { app, snapshot, model, runs, generate } = setup('Alpha 使用 Beta。');
-    const current = await app.generate(snapshot.snapshotId, model);
-    const candidate = version === 'knowledge-extraction-v1' ? proposal() : modelProposal();
-    if (version === 'knowledge-extraction-v1') Object.assign(candidate.citations[0].selection, { end: 14 });
-    const rawOutput = JSON.stringify({ proposals: [candidate] }).replaceAll('record-1', snapshot.excerpts[0].evidenceRef);
-    const runId = randomUUID();
-    runs.create({ ...current, runId, generation: 1, promptVersion: version, promptHash: 'frozen-version-hash',
-      status: 'generating', rawOutput, entityAnalysis: undefined, entityRejections: undefined, intents: [], rejections: [], committed: [] });
-    const recovered = app.resume(runId);
-    expect(recovered.status).toBe('completed');
-    expect(recovered.rawOutput).toBe(rawOutput);
-    expect(recovered.promptHash).toBe('frozen-version-hash');
-    expect(recovered.committed).toHaveLength(version === 'knowledge-extraction-v1' ? 0 : 1);
-    if (version === 'knowledge-extraction-v1') expect(recovered.rejections[0].reasons).toContain('citation:quote_mismatch');
-    else expect(app.detail(recovered.committed[0].knowledgeId).grounding.citations[0].selection).toMatchObject({ start: 0, end: 13 });
     expect(generate).toHaveBeenCalledTimes(1);
   });
   it('keeps invalid model output as failure evidence and treats an empty result as completed', async () => {

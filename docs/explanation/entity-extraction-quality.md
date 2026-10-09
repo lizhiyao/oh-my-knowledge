@@ -68,4 +68,6 @@ These are actual reported values from this run, not a production latency benchma
 
 The cases are short, synthetic, and selected by the implementing Agent. They do not cover real-log distributions, long conversations, independently judged object granularity, cross-log linking, cross-agent reuse, repeated-run stability, claim truth, or carrier effectiveness. The appropriate next quality evidence is independent adjudication of this corpus and a separately authorized real-log sample. Current functionality lets users inspect and correct results; that usability does not replace semantic validation.
 
-For reproduction, use the [extraction quality guide](../guides/extract-knowledge.md#reproduce-extraction-quality-checks). A new run is new evidence; it cannot silently replace this record. Entity and migration contracts are described in the [entity extraction specification](../specs/entity-extraction.md).
+For reproduction, use the [extraction quality guide](../guides/extract-knowledge.md#reproduce-extraction-quality-checks). A new run is new evidence; it cannot silently replace this record. Entity and current storage contracts are described in the [entity extraction specification](../specs/entity-extraction.md).
+
+This report preserves the original v2/v3 evidence captured at the time. Current runtime and quality tools support only v3, without replay or migration of older formats; historical results have not been recalculated.

@@ -25,7 +25,7 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
           : message === 'Knowledge tags invalid.' ? 'knowledge_tags_invalid'
           : /capacity|exceeds/i.test(message) ? 'knowledge_capacity_exceeded'
           : 'knowledge_request_failed';
-        response.writeHead(['knowledge_conflict', 'knowledge_migration_required', 'knowledge_migration_incomplete', 'knowledge_workspace_busy'].includes(code) ? 409 : 400, JSON_HEADERS);
+        response.writeHead(['knowledge_conflict', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(code) ? 409 : 400, JSON_HEADERS);
         response.end(JSON.stringify({ error: code }));
       } finally { response.off('close', cancel); liveStreams.delete(cancel); }
     },
