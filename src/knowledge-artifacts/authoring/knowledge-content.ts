@@ -3,7 +3,24 @@ import type { KnowledgeRevision } from '../../knowledge/contracts.js';
 import type { KnowledgeGrounding } from '../../knowledge/store.js';
 import type { AuthoredArtifactKind } from './library-contracts.js';
 
-export interface CarrierKnowledge { revision: KnowledgeRevision; grounding: KnowledgeGrounding; sourceWarnings: string[] }
+export interface CarrierKnowledge { revision: KnowledgeRevision; grounding: KnowledgeGrounding; sourceWarnings: string[]; tagging: { tags: string[] } }
+
+/** Exported properties describe this snapshot; they do not grant verification authority. */
+export function carrierMetadata(items: CarrierKnowledge[], kind: AuthoredArtifactKind): Record<string, unknown> {
+  const unique = (values: string[]) => [...new Set(values)];
+  const tags = [...new Map(items.flatMap(item => item.tagging.tags).map(tag => [tag.toLowerCase(), tag])).values()];
+  const properties = {
+    omk_schema: 'omk-knowledge-metadata/v1', tags,
+    summary: items.map(item => item.revision.title).join('；'),
+    knowledge_types: unique(items.map(item => item.revision.content.organization.knowledgeKind)),
+    scope: unique(items.flatMap(item => item.revision.content.statements.map(statement => statement.context.scenario))),
+    evidence_bases: unique(items.flatMap(item => item.revision.evidence.map(link => link.basis))),
+    verification_status: 'not_assessed',
+    knowledge_revisions: items.map(item => `${item.revision.knowledgeId}/${item.revision.revisionId}`),
+    source_versions: unique(items.flatMap(item => item.grounding.sourceBindings.map(binding => `${binding.snapshotId}/${binding.sourceVersion}`))),
+  };
+  return kind === 'prompt' ? properties : { metadata: Object.fromEntries(Object.entries(properties).map(([key, value]) => [key.startsWith('omk_') ? key : `omk_${key}`, typeof value === 'string' ? value : JSON.stringify(value)])) };
+}
 
 /** Render reviewed material without inventing instructions, time bounds or verification. */
 export function renderCarrierKnowledge(items: CarrierKnowledge[], lang: 'zh' | 'en'): string {
@@ -34,14 +51,30 @@ export function renderCarrierKnowledge(items: CarrierKnowledge[], lang: 'zh' | '
   }).join('\n\n');
 }
 
-export function composeCarrierContent(name: string, directoryName: string, artifactKind: AuthoredArtifactKind, material: string, baseContent: string, lang: 'zh' | 'en'): string {
+export function composeCarrierContent(name: string, directoryName: string, artifactKind: AuthoredArtifactKind, material: string, baseContent: string, lang: 'zh' | 'en', properties: Record<string, unknown>): string {
   const title = name.replace(/[\r\n]/g, ' ');
   const heading = lang === 'zh' ? '从工作记录保留的知识' : 'Knowledge retained from work records';
   const base = baseContent || (artifactKind === 'skill'
     ? `---\nname: ${JSON.stringify(directoryName)}\ndescription: ${JSON.stringify(lang === 'zh' ? `${title}：处理相关任务时参考已核对的工作经验，使用前核对适用条件与来源。` : `${title}: use reviewed work knowledge for related tasks after checking conditions and sources.`)}\n---\n\n# ${title}\n`
     : `# ${title}\n`);
-  if (!material) return base;
-  return `${base}${base.endsWith('\n') ? '' : '\n'}\n## ${heading}\n\n${material}\n`;
+  const match = base.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  let parsed: unknown;
+  try { parsed = match ? yaml.load(match[1]) : {}; } catch { throw new Error('carrier_invalid_metadata'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('carrier_invalid_metadata');
+  const previous = parsed as Record<string, unknown>;
+  if (artifactKind === 'prompt' && previous.tags != null && (!Array.isArray(previous.tags) || previous.tags.some(tag => typeof tag !== 'string'))) throw new Error('carrier_invalid_metadata');
+  if (artifactKind === 'skill' && previous.metadata != null && (typeof previous.metadata !== 'object' || Array.isArray(previous.metadata))) throw new Error('carrier_invalid_metadata');
+  const updated: Record<string, unknown> = { ...previous, ...properties, ...(artifactKind === 'prompt' ? { title } : {
+    metadata: { ...previous.metadata as Record<string, unknown> | undefined, ...properties.metadata as Record<string, unknown> },
+  }) };
+  // A generated header is a snapshot of the selected revisions/tags. Imported custom tags are kept on first import.
+  if (artifactKind === 'prompt' && previous.omk_schema !== 'omk-knowledge-metadata/v1' && Array.isArray(previous.tags)) {
+    updated.tags = [...new Set([...previous.tags.filter((tag): tag is string => typeof tag === 'string'), ...properties.tags as string[]])];
+  }
+  const prepared = JSON.stringify(previous) === JSON.stringify(updated) ? base
+    : `---\n${yaml.dump(updated, { noRefs: true, lineWidth: -1, forceQuotes: true, quotingType: '"' })}---\n${match ? base.slice(match[0].length) : `\n${base}`}`;
+  if (!material) return prepared;
+  return `${prepared}${prepared.endsWith('\n') ? '' : '\n'}\n## ${heading}\n\n${material}\n`;
 }
 
 /** Display names stay human-readable; actual skill directories obey the portable skill name contract. */

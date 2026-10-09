@@ -58,12 +58,13 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   async function preview() {
     setBusy(true); setError('');
     try { const next = await requestArtifact<CarrierDraft>(workspace, 'preview', { source, artifactKind: kind, name, ids: selected }); setDraft(next); setContent(next.content); }
-    catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
+    catch (cause) { setError(cause instanceof Error && cause.message === 'carrier_invalid_metadata'
+      ? t('本地文件头部需要有效的 YAML 属性；prompt 的 tags 应为字符串列表，skill 的 metadata 应为映射。请核对文件后再生成。', 'Use valid YAML properties in the source: prompt tags must be a string list and skill metadata a mapping. Review the file before generating.') : failure(cause)); } finally { setBusy(false); }
   }
   async function save() {
     if (!draft || uncertain) return;
     setBusy(true); setError('');
-    try { finish(await requestArtifact<CarrierDetail>(workspace, 'save', { artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs })); }
+    try { finish(await requestArtifact<CarrierDetail>(workspace, 'save', { artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections })); }
     catch (cause) {
       if (cause instanceof Error && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination'].includes(cause.message)) setError(failure(cause));
       else { setUncertain(true); setError(t('保存结果未能读取，请先核对已保存版本。', 'Save result could not be read. Check the saved version first.')); }

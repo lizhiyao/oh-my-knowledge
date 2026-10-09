@@ -3,7 +3,7 @@
  *
  * 措辞口径由 test/studio/application/candidate-status.test.ts 锁；这里只断言页面真正渲染出的文字。
  */
-import { candidateMatches, CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { candidateMatches, CandidateTags, CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from '../../../src/studio/web/components/knowledge/candidate-review.js';
 import type { KnowledgeReviewBatch, KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { createElement } from 'react';
@@ -28,6 +28,24 @@ describe('candidate decision display', () => {
     expect(candidateMatches(row, 'pending', '')).toBe(false);
     expect(candidateMatches({ ...row, choice: null }, 'pending', '判断')).toBe(true);
     expect(candidateMatches(row, 'all', '其他')).toBe(false);
+    const tagged = { ...row, tags: ['排障/证据判断', 'Taro'] };
+    expect(candidateMatches(tagged, 'retain', '证据')).toBe(true);
+    expect(candidateMatches(tagged, 'all', 'tag:排障')).toBe(true);
+    expect(candidateMatches(tagged, 'all', 'tag:#taro')).toBe(true);
+    expect(candidateMatches(tagged, 'all', 'tag:tar')).toBe(false);
+    expect(candidateMatches(tagged, 'pending', 'tag:Taro')).toBe(false);
+    expect(candidateMatches(tagged, 'all', 'tag:')).toBe(false);
+  });
+
+  it('offers explicit tag editing without presenting tags as verified knowledge', () => {
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(createElement(CandidateTags, { lang, tags: ['排障'], busy: false, changed: true, onChange() {}, onSave() {} }));
+      expect(html).toContain(lang === 'zh' ? '主题标签' : 'Topic tags');
+      expect(html).toContain(lang === 'zh' ? '保存标签' : 'Save tags');
+      expect(html).toContain(lang === 'zh' ? '不表示知识已验证' : 'do not verify it');
+      const disabled = renderToStaticMarkup(createElement(CandidateTags, { lang, tags: [], busy: false, changed: false, onChange() {}, onSave() {} }));
+      expect(disabled).toMatch(/<button[^>]*disabled=""/);
+    }
   });
 
   it('summarizes this batch with truthful next actions, its source and selected folder', () => {

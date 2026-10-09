@@ -121,6 +121,7 @@ test/knowledge-artifacts/sources/artifact-resolution.test.ts
 test/knowledge-artifacts/sources/content-hash.test.ts
 test/knowledge/application.test.ts
 test/knowledge/persistence.test.ts
+test/knowledge/tags.test.ts
 test/knowledge/trace-evidence-formats.test.ts
 test/mcp/principal.test.ts
 test/measurement-governance/prompt-registry-freeze.test.ts

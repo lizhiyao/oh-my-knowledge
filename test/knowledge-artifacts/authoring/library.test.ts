@@ -9,6 +9,7 @@ import { executeArtifactAuthoring } from '../../../src/studio/application/knowle
 import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
 import type { CarrierDetail, CarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
 import { modelProposal } from '../../knowledge/fixtures.js';
+import yaml from 'js-yaml';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -27,12 +28,47 @@ async function setup() {
   const entry = run.committed[0];
   const execute = (fields: Record<string, unknown>) => executeArtifactAuthoring({ workspace, ...fields }, 'zh');
   const preview = (fields: Record<string, unknown> = {}) => execute({ operation: 'preview', source: { sourceKind: 'new' }, artifactKind: 'skill', name: '工具使用', ids: [entry.knowledgeId], ...fields }) as CarrierDraft;
-  const save = (draft: CarrierDraft, content = draft.content) => execute({ operation: 'save', artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs }) as CarrierDetail;
+  const save = (draft: CarrierDraft, content = draft.content) => execute({ operation: 'save', artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections }) as CarrierDetail;
   const retain = () => { const current = app.detail(entry.knowledgeId); app.maintain(entry.knowledgeId, current.revision.revisionId, 'retain', '核对后维护', current.history.generation); };
   return { root, workspace, app, entry, snapshot, execute, preview, save, retain };
 }
 
 describe('reviewed knowledge carrier authoring', () => {
+  it('exports tag/property snapshots, rejects changed tags, and updates metadata without duplicating knowledge', async () => {
+    const s = await setup(); s.retain();
+    s.app.tag(s.entry.knowledgeId, 0, ['排障/证据判断', 'Taro']);
+    const header = (content: string) => yaml.load(content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    const draft = s.preview({ artifactKind: 'prompt' });
+    expect(header(draft.content)).toMatchObject({ tags: ['排障/证据判断', 'Taro'], knowledge_types: ['fact'], evidence_bases: ['inference'], verification_status: 'not_assessed', knowledge_revisions: [`${s.entry.knowledgeId}/${s.entry.revisionId}`] });
+    s.app.tag(s.entry.knowledgeId, 1, ['排障']);
+    expect(() => s.save(draft)).toThrow('conflict');
+    const first = s.save(s.preview({ artifactKind: 'prompt' }));
+    s.app.tag(s.entry.knowledgeId, 2, []);
+    const update = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId }, artifactKind: 'prompt' });
+    expect(header(update.content).tags).toEqual([]);
+    expect(update.content.match(/### 项目 Alpha 使用工具 Beta/g)).toHaveLength(1);
+    const second = s.save(update);
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: first.content });
+    expect(second.knowledgeRefs).toEqual(first.knowledgeRefs);
+    const skill = header(s.preview().content);
+    expect(skill.metadata).toMatchObject({ omk_tags: '[]', omk_knowledge_types: '["fact"]', omk_verification_status: 'not_assessed' });
+    expect(Object.values(skill.metadata as object).every(value => typeof value === 'string')).toBe(true);
+  });
+  it('preserves imported custom properties and body bytes while validating malformed property headers', async () => {
+    const s = await setup(); s.retain(); s.app.tag(s.entry.knowledgeId, 0, ['new']);
+    const local = join(s.root, 'prompt.md');
+    writeFileSync(local, '---\ntags:\n  - existing\ncustom: "kept"\n---\n\nOriginal body  \n\n');
+    const fields = { artifactKind: 'prompt', source: { sourceKind: 'local', path: local } };
+    const draft = s.preview(fields);
+    const metadata = yaml.load(draft.content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    expect(metadata).toMatchObject({ tags: ['existing', 'new'], custom: 'kept' });
+    expect(draft.content).toContain('\n\nOriginal body  \n\n');
+    expect(readFileSync(local, 'utf8')).not.toContain('omk_schema');
+    for (const invalid of ['tags: [unfinished', 'tags: single-value', 'tags: [123]']) {
+      writeFileSync(local, `---\n${invalid}\n---\nBody`);
+      expect(() => s.preview(fields)).toThrow('carrier_invalid_metadata');
+    }
+  });
   it('requires retained current revisions; rendering preserves conditions, uncertainty and source identity', async () => {
     const s = await setup();
     expect(() => s.preview()).toThrow('conflict');
@@ -126,7 +162,7 @@ describe('reviewed knowledge carrier authoring', () => {
       s.retain();
       const local = join(s.root, 'prompt.txt'); const original = 'Original instructions  \n\n'; writeFileSync(local, original);
       const draft = s.preview({ artifactKind: 'prompt', source: { sourceKind: 'local', path: local } });
-      expect(draft.content.startsWith(original)).toBe(true);
+      expect(draft.content.slice(draft.content.indexOf('\n---\n') + 5)).toContain(original);
       expect(draft.content).toContain(knowledgeKind === 'case' ? '行动' : '方法步骤');
       expect(draft.content).toContain(knowledgeKind === 'case' ? '尚无结果依据' : '明确目的');
       expect(s.save(draft).knowledgeRefs).toHaveLength(1);
