@@ -18,7 +18,7 @@ Version 1.0 is still **in Beta iteration**; APIs and storage contracts may chang
 
 ![OMK: from controlled evaluation to real-world feedback](./docs/public/omk-knowledge-flow-en-animated.gif)
 
-The diagram describes composable workflows: review knowledge and manually apply it to an artifact. Complete links across these stages and an automated end-to-end workflow remain partly unimplemented.
+The diagram describes composable workflows: review knowledge, generate and save a skill or prompt in Studio, then evaluate the change. Complete links across these stages and an automated end-to-end workflow remain partly unimplemented.
 
 ## Choose how to use OMK
 
@@ -59,7 +59,7 @@ omk studio
 
 Open the local URL returned by the command and select a local Codex conversation to inspect its task trajectory. No prior ingest or model call is needed; active tasks support live following. Claude Code, OpenClaw, and markdown logs enter observation reports through `omk observe`; see the [observation guide](docs/guides/observe-production.md).
 
-To preserve reusable knowledge, choose “Extract knowledge from work logs” on the knowledge page. Select a workspace and a Codex log excerpt, inspect the source, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. See the [extraction guide](docs/guides/extract-knowledge.md).
+To preserve reusable knowledge, choose “Choose a conversation” on the knowledge page. Select a conversation and turn, inspect the messages and workspace, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. Choose “Generate knowledge artifact” to review and save a skill or prompt explicitly. See the [extraction guide](docs/guides/extract-knowledge.md).
 
 ### Or compare two skills directly
 
@@ -121,7 +121,7 @@ Evaluation reuses the host’s model, credentials, tools, and sandbox, creating 
 A knowledge item is a reviewable fact, experience, or method. An artifact is a prompt, document, skill, or other carrier of that content. Candidate knowledge describes content awaiting review; a candidate version describes a proposed artifact version.
 
 1. **Observe and review**: inspect tasks and sources in Studio; extract knowledge or confirm observations, preserving conditions and review reasons.
-2. **Prepare a measurable change**: manually apply selected content to an artifact and turn reproducible problems into evaluation cases. Candidates do not take effect automatically.
+2. **Prepare a measurable change**: generate and review a skill or prompt from retained knowledge in Studio, or edit another artifact, and turn reproducible problems into evaluation cases. Candidates do not take effect automatically.
 3. **Compare under control**: `doctor` performs preflight checks; `eval` compares control and treatment with a Decision, coverage, failed cases, and costs.
 4. **Adopt or improve further**: review evaluation evidence and decide adoption through your own release workflow. `evolve` screens candidate versions through A/B gates and compares again before writing back.
 

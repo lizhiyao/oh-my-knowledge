@@ -204,3 +204,4 @@ test/studio/web/tab-url.test.ts
 test/studio/web/terminology-guard.test.ts
 test/studio/web/bilingual-copy.test.ts
 test/studio/web/settings-language.test.ts
+test/knowledge-artifacts/authoring/library.test.ts
