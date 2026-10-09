@@ -1,6 +1,6 @@
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,8 +9,10 @@ import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
+import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
+import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { modelProposal, proposal } from './fixtures.js';
+import { modelProposal, modelWindow, proposal } from './fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -23,6 +25,7 @@ function setup(text = 'Alpha 使用 Beta') {
   const evidence = new TraceEvidenceStore(join(root, 'sources'));
   const ports = {
     evidence, knowledge, runs, tags: new FileKnowledgeTags(join(root, 'tags'), 'test'), id: randomUUID, now: () => '2026-09-14T00:00:00Z',
+    entities: new FileEntityAnalysisStore(join(root, 'entities')),
     hash: (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex'),
     actor: { actorKind: 'human' as const, actorId: 'tester' },
   };
@@ -31,13 +34,136 @@ function setup(text = 'Alpha 使用 Beta') {
   const generate = vi.fn(async (_system: string, input: string) => {
     const data = JSON.parse(input);
     const ref = data.excerpts.find((entry: { text: string }) => entry.text === text).evidenceRef;
-    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(modelProposal()).replaceAll('record-1', ref))] }), durationMs: 5 };
+    return { output: JSON.stringify(modelWindow()).replaceAll('record-1', ref), durationMs: 5 };
   });
   const model: ExtractionModel = { executor: 'fake', model: 'test-model', generate };
-  return { app, snapshot, knowledge, runs, evidence, model, generate, ports, source };
+  return { app, snapshot, knowledge, runs, evidence, model, generate, ports, source, root };
 }
 
 describe('shared knowledge application', () => {
+  it('uses one window identity for entities and mentions across candidates', async () => {
+    const { app, snapshot, model, generate } = setup();
+    model.generate = async (_system, input) => {
+      const packet = modelWindow(); packet.proposals.push({ ...packet.proposals[0], proposalId: 'candidate-2' });
+      return { output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 5 };
+    };
+    const run = await app.generate(snapshot.snapshotId, model);
+    expect(run.committed).toHaveLength(2);
+    const first = app.detail(run.committed[0].knowledgeId); const second = app.detail(run.committed[1].knowledgeId);
+    expect(first.revision.entities).toEqual(second.revision.entities);
+    expect(first.grounding.mentions).toEqual(second.grounding.mentions);
+    expect(first.grounding.entityAnalysisRef).toEqual(second.grounding.entityAnalysisRef);
+    expect(app.entities(run.runId).revision.entities.map(entity => entity.entityId)).toEqual(first.revision.entities.map(entity => entity.entityId));
+    expect(generate).not.toHaveBeenCalled();
+  });
+  it('saves independent entities when there are no knowledge candidates or one entity was rejected', async () => {
+    const { app, snapshot, model } = setup();
+    const packet = modelWindow(); packet.proposals = [];
+    model.generate = async (_system, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const entitiesOnly = await app.generate(snapshot.snapshotId, model);
+    expect(entitiesOnly.committed).toEqual([]);
+    expect(app.entities(entitiesOnly.runId).revision.entities).toHaveLength(2);
+    packet.proposals = modelWindow().proposals; packet.mentions[1].selection.quote = 'invented';
+    const partial = await app.generate(snapshot.snapshotId, model);
+    expect(partial.status).toBe('completed'); expect(partial.committed).toEqual([]);
+    expect(partial.entityRejections).toHaveLength(2);
+    expect(partial.rejections[0].reasons).toContain('unknown_entity_analysis_reference');
+    expect(app.entities(partial.runId).revision.entities).toHaveLength(1);
+    const summary = await executeKnowledgeCandidateAction({ operation: 'runs', workspace: 'fixture' }, undefined, () => app);
+    expect(summary).toEqual(expect.arrayContaining([expect.objectContaining({ runId: entitiesOnly.runId,
+      committed: [], entityAnalysis: expect.objectContaining({ entityCount: 2, mentionCount: 2, rejectedCount: 0 }) })]));
+    expect(JSON.stringify(summary)).not.toContain('rawOutput');
+  });
+  it('recovers a lost entity commit acknowledgement with the same birth intent and no second model call', async () => {
+    const { app, snapshot, model, ports, generate, runs } = setup();
+    const original = ports.entities.write.bind(ports.entities);
+    const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce((command, actor) => {
+      original(command, actor); throw new Error('lost entity acknowledgement');
+    });
+    const runId = randomUUID();
+    await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('acknowledgement');
+    const prepared = runs.read(runId);
+    expect(prepared.status).toBe('prepared');
+    write.mockRestore(); expect(app.resume(runId).status).toBe('completed');
+    expect(app.entities(runId).history.generation).toBe(1);
+    expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it('rejects stale corrections, foreign identities and changed evidence without altering saved knowledge', async () => {
+    const { app, snapshot, model } = setup(); const run = await app.generate(snapshot.snapshotId, model);
+    const analysis = app.entities(run.runId);
+    const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
+    edit.entities[0].label = '新名称';
+    app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '核对名称');
+    expect(() => app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '过期修改')).toThrow('conflict');
+    const latest = app.entities(run.runId);
+    edit.entities[0].entityId = randomUUID();
+    expect(() => app.correctEntities(run.runId, latest.revision.revisionId, 2, edit, '外部身份')).toThrow('Unknown correction identity');
+    edit.entities[0].entityId = latest.revision.entities[0].entityId;
+    edit.mentions[0].selection.quote = 'invented';
+    expect(() => app.correctEntities(run.runId, latest.revision.revisionId, 2, edit, '虚构来源')).toThrow('correction');
+    expect(app.detail(run.committed[0].knowledgeId).revision.entities[0].label).toBe('Alpha');
+    expect(app.entities(run.runId).history.generation).toBe(2);
+  });
+  it.each(['binding', 'mention', 'label', 'author', 'unresolved', 'committed'] as const)('rejects corrupted %s in a prepared run before committing any knowledge', async target => {
+    const { app, snapshot, model, ports, knowledge, runs, root } = setup();
+    const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce(() => { throw new Error('stop before entity commit'); });
+    const runId = randomUUID(); await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('stop before');
+    write.mockRestore(); const prepared = runs.read(runId);
+    const path = join(root, 'runs', `${runId}.json`);
+    const stored = JSON.parse(readFileSync(path, 'utf8'));
+    if (target === 'binding') stored.intents[0].grounding.entityAnalysisRef.revisionId = randomUUID();
+    if (target === 'mention') stored.intents[0].grounding.mentions[0].selection.quote = 'Beta';
+    if (target === 'label') stored.intents[0].revision.entities[0].label = 'different object';
+    if (target === 'author') stored.entityAnalysis.revision.revisedBy.executionRef = randomUUID();
+    if (target === 'unresolved') stored.entityAnalysis.revision.entities[0].possibleEntityIds = [randomUUID()];
+    if (target === 'committed') { stored.status = 'completed'; stored.committed = []; }
+    writeFileSync(path, JSON.stringify(stored));
+    expect(() => app.resume(runId)).toThrow(); expect(knowledge.list()).toEqual([]);
+    expect(() => ports.entities.read(runId)).toThrow();
+    writeFileSync(path, JSON.stringify(prepared)); expect(app.resume(runId).status).toBe('completed');
+  });
+  it('projects entity inspection and correction without raw envelopes or native source paths', async () => {
+    const { app, snapshot, model, source } = setup(); const run = await app.generate(snapshot.snapshotId, model);
+    const execute = (fields: Record<string, unknown>) => executeKnowledgeCandidateAction({ workspace: 'fixture', ...fields }, undefined, () => app);
+    const detail = await execute({ operation: 'entities', analysisId: run.runId });
+    expect(detail).toMatchObject({ revision: { entities: [{ label: 'Alpha' }, { label: 'Beta' }] }, source: { status: 'available', excerpts: snapshot.excerpts } });
+    expect(JSON.stringify(detail)).not.toContain(source); expect(JSON.stringify(detail)).not.toContain('records');
+    const current = app.entities(run.runId);
+    const edit = { entities: structuredClone(current.revision.entities), mentions: current.revision.mentions };
+    edit.entities[0].label = '项目 Alpha';
+    const corrected = await execute({ operation: 'correct-entities', analysisId: run.runId, revision: current.revision.revisionId,
+      generation: 1, draft: edit, reason: '核对名称' });
+    expect(corrected).toMatchObject({ history: { generation: 2 } }); expect(JSON.stringify(corrected)).not.toContain(source);
+  });
+  it('allows explicitly reviewed uncertainty notes to change while preserving current entity ambiguity and old grounding', async () => {
+    const { app, snapshot, model } = setup(); const packet = modelWindow();
+    packet.entities[0].uncertainties = ['旧的身份待核对']; packet.proposals[0].identityUncertainties = ['补充的身份说明'];
+    model.generate = async (_prompt, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const run = await app.generate(snapshot.snapshotId, model); const before = app.detail(run.committed[0].knowledgeId);
+    const analysis = app.entities(run.runId); const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
+    edit.entities[0].uncertainties = ['当前仍有的身份限制'];
+    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '核对原文');
+    const draft = { title: before.revision.title, entities: before.revision.entities, content: before.revision.content, evidence: before.revision.evidence };
+    const reviewed = app.reviseUsingEntities(before.revision.knowledgeId, before.revision.revisionId, 1, run.runId, corrected.revision.revisionId, draft, '逐项核对后移除旧说明', []);
+    expect(reviewed.grounding.identityUncertainties).toEqual(['当前仍有的身份限制']);
+    expect(reviewed.history.grounding[0]).toEqual(before.grounding);
+  });
+  it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
+    const { app, snapshot, model, generate } = setup(); const controller = new AbortController();
+    const runtime = configuredExtractionModel('codex', 'fixture', async input => {
+      const result = await model.generate(input.system ?? '', input.prompt); controller.abort();
+      return { ...result, ok: true, durationApiMs: 5, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
+        costUSD: 0, costReportedByExecutor: false, stopReason: 'end_turn', numTurns: 1 };
+    });
+    const cancelled = await app.generate(snapshot.snapshotId, runtime, randomUUID(), controller.signal);
+    expect(cancelled).toMatchObject({ status: 'cancelled', runtime: { durationMs: 5, inputTokens: 7, outputTokens: 9 } });
+    expect(cancelled.runtime).not.toHaveProperty('costUSD');
+    expect(cancelled.rawOutput).toBeTruthy();
+    const completed = app.resume(cancelled.runId);
+    expect(completed.status).toBe('completed'); expect(completed.error).toBeUndefined();
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
   it('stores topic tags through the shared Studio action without changing claims, decisions or generation calls', async () => {
     const { app, snapshot, model, generate } = setup();
     const run = await app.generate(snapshot.snapshotId, model);
@@ -56,7 +182,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v2');
+    expect(run.promptVersion).toBe('knowledge-extraction-v3');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);
@@ -111,7 +237,7 @@ describe('shared knowledge application', () => {
     const rawOutput = JSON.stringify({ proposals: [candidate] }).replaceAll('record-1', snapshot.excerpts[0].evidenceRef);
     const runId = randomUUID();
     runs.create({ ...current, runId, generation: 1, promptVersion: version, promptHash: 'frozen-version-hash',
-      status: 'generating', rawOutput, intents: [], rejections: [], committed: [] });
+      status: 'generating', rawOutput, entityAnalysis: undefined, entityRejections: undefined, intents: [], rejections: [], committed: [] });
     const recovered = app.resume(runId);
     expect(recovered.status).toBe('completed');
     expect(recovered.rawOutput).toBe(rawOutput);
@@ -127,21 +253,31 @@ describe('shared knowledge application', () => {
     const failed = await app.generate(snapshot.snapshotId, model);
     expect(failed).toMatchObject({ status: 'failed', rawOutput: 'invalid JSON' });
     expect(app.list()).toEqual([]);
-    model.generate = async () => ({ output: '{"proposals":[]}', durationMs: 1 });
+    model.generate = async () => ({ output: '{"responseKind":"knowledge-extraction","schemaVersion":3,"entities":[],"mentions":[],"proposals":[]}', durationMs: 1 });
     expect(await app.generate(snapshot.snapshotId, model)).toMatchObject({ status: 'completed', committed: [] });
   });
-  it('corrects entity labels and evidence interpretation without changing source positions', async () => {
+  it('binds corrections to a new analysis and knowledge revision without changing historical positions', async () => {
     const { app, snapshot, model } = setup();
     const run = await app.generate(snapshot.snapshotId, model);
     const { knowledgeId, revisionId } = run.committed[0];
     const before = app.detail(knowledgeId);
     const draft = structuredClone({ title: before.revision.title, content: before.revision.content,
       entities: before.revision.entities, evidence: before.revision.evidence });
-    draft.entities[0].label = '项目 Alpha';
+    const analysis = app.entities(run.runId);
+    const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
+    edit.entities[0].label = '项目 Alpha';
+    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, analysis.history.generation, edit, '明确项目');
+    draft.entities = draft.entities.map(entity => {
+      const correctedEntity = corrected.revision.entities.find(value => value.entityId === entity.entityId)!;
+      return { entityId: entity.entityId, label: correctedEntity.label, description: correctedEntity.description };
+    });
     draft.evidence[0].interpretation = '仅描述本次任务，未证实未来仍适用';
-    const after = app.revise(knowledgeId, revisionId, 1, draft, '澄清实体与来源范围');
+    const after = app.reviseUsingEntities(knowledgeId, revisionId, 1, run.runId, corrected.revision.revisionId, draft, '澄清实体与来源范围');
     expect(after.revision.entities[0].label).toBe('项目 Alpha');
     expect(after.grounding.mentions).toEqual(before.grounding.mentions);
+    expect(before.grounding.entityAnalysisRef?.revisionId).toBe(analysis.revision.revisionId);
+    expect(after.grounding.entityAnalysisRef?.revisionId).toBe(corrected.revision.revisionId);
+    expect(app.detail(knowledgeId, revisionId).revision.entities[0].label).toBe('Alpha');
     expect(after.reviewStatus).toBe('pending');
     draft.entities[0].entityId = 'invented';
     expect(() => app.revise(knowledgeId, after.revision.revisionId, 2, draft, '错误身份')).toThrow();

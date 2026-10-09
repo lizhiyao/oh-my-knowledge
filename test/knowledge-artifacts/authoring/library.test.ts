@@ -8,7 +8,7 @@ import { createLocalKnowledgeApplication } from '../../../src/observability/appl
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
 import type { CarrierDetail, CarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
-import { modelProposal } from '../../knowledge/fixtures.js';
+import { modelWindow } from '../../knowledge/fixtures.js';
 import yaml from 'js-yaml';
 
 const roots: string[] = [];
@@ -22,7 +22,7 @@ async function setup() {
   const snapshot = app.capture({ path: source });
   const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', async generate(_system, input) {
     const ref = JSON.parse(input).excerpts.find((entry: { text: string }) => entry.text === 'Alpha 使用 Beta').evidenceRef;
-    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(modelProposal()).replaceAll('record-1', ref))] }), durationMs: 1 };
+    return { output: JSON.stringify(modelWindow()).replaceAll('record-1', ref), durationMs: 1 };
   } });
   expect(run).toMatchObject({ status: 'completed', rejections: [], committed: [expect.any(Object)] });
   const entry = run.committed[0];

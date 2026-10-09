@@ -29,20 +29,38 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href",
-    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
+    sourceSha256: 'cbaa3f298c72dacb5dc585ae5cd95bbd4f1388cb8c49cf707913bb9b9f1e831e',
     rationale: 'Loads only the built text-only Codex executor for explicit quality runs; the sealed source fixes the path independently of user arguments.',
   },
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
-    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
+    sourceSha256: 'cbaa3f298c72dacb5dc585ae5cd95bbd4f1388cb8c49cf707913bb9b9f1e831e',
     rationale: 'Loads only the built versioned extraction prompt for explicit quality runs; the sealed source fixes the path independently of user arguments.',
   },
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
-    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href",
-    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
-    rationale: 'Loads only the built version-selected proposal validator for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href",
+    sourceSha256: 'cbaa3f298c72dacb5dc585ae5cd95bbd4f1388cb8c49cf707913bb9b9f1e831e',
+    rationale: 'Loads only the built version-selected window/proposal validator for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+  },
+  {
+    importer: 'scripts/bench/entity-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href",
+    sourceSha256: 'ca17f7e87c971af4ba7fcc26e45bd09f510ff375db04e87511fe4a4a2d20ac5b',
+    rationale: 'Loads only the built text extraction executor for the frozen synthetic entity corpus; the sealed source fixes the path, and model calls require explicit invocation.',
+  },
+  {
+    importer: 'scripts/bench/entity-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
+    sourceSha256: 'ca17f7e87c971af4ba7fcc26e45bd09f510ff375db04e87511fe4a4a2d20ac5b',
+    rationale: 'Loads only the built versioned prompt; arbitrary prompt files are data, never imported code.',
+  },
+  {
+    importer: 'scripts/bench/entity-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href",
+    sourceSha256: 'ca17f7e87c971af4ba7fcc26e45bd09f510ff375db04e87511fe4a4a2d20ac5b',
+    rationale: 'Loads only the built validator selected by the recorded v2/v3 prompt version; the frozen gold standard stays outside model input.',
   },
   {
     importer: 'executors/anthropic/claude/sdk.ts',

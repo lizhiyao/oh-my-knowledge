@@ -1,10 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { runCommand } from '../helpers/run-command.js';
+import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
+import { modelWindow } from '../knowledge/fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -37,5 +40,58 @@ describe('observe knowledge command wiring', () => {
   it('rejects missing operation-specific parameters before accessing storage', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
     await expect(runCommand(ObserveKnowledge, ['retain', '--workspace', root], { cwd: root })).rejects.toMatchObject({ code: 2 });
+  });
+  it('inspects and corrects an independent entity result, then explicitly binds a new knowledge revision', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-entities-cli-')); roots.push(root);
+    const workspace = join(root, 'knowledge'); const source = join(root, 'trace.jsonl');
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+    const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: source });
+    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture',
+      generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
+    const base = ['--workspace', workspace, '--lang', 'zh'];
+    const inspect = await runCommand(ObserveKnowledge, ['entities', ...base, '--analysis', run.runId], { cwd: root });
+    expect(inspect.stdout).toContain('实体分析'); expect(inspect.stdout).toContain('Alpha');
+    const before = app.entities(run.runId);
+    const edit = { entities: structuredClone(before.revision.entities), mentions: before.revision.mentions };
+    edit.entities[0].label = '项目 Alpha';
+    const path = join(root, 'correction.json'); writeFileSync(path, JSON.stringify(edit));
+    const args = ['correct-entities', ...base, '--analysis', run.runId, '--entity-revision', before.revision.revisionId,
+      '--generation', '1', '--input', path, '--reason', '核对项目名称', '--json'];
+    const corrected = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
+    expect(corrected.history.generation).toBe(2);
+    const old = app.detail(run.committed[0].knowledgeId);
+    expect(old.revision.entities[0].label).toBe('Alpha');
+    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 1 });
+    const draft = { title: old.revision.title, entities: corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description })),
+      content: old.revision.content, evidence: old.revision.evidence };
+    const draftPath = join(root, 'knowledge.json'); writeFileSync(draftPath, JSON.stringify(draft));
+    const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-entities', ...base, '--id', old.revision.knowledgeId,
+      '--revision', old.revision.revisionId, '--generation', '1', '--analysis', run.runId,
+      '--entity-revision', corrected.revision.revisionId, '--input', draftPath, '--identity-uncertainties', '[]', '--reason', '明确知识主体', '--json'], { cwd: root })).stdout);
+    expect(applied.revision.entities[0].label).toBe('项目 Alpha');
+    expect(applied.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
+    expect(applied.history.revisions[0]).toEqual(old.revision);
+    await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
+  });
+  it('previews and explicitly migrates legacy storage through the command without calling a model', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-migration-cli-')); roots.push(root);
+    const workspace = join(root, 'knowledge'); const runId = randomUUID(); const folder = join(workspace, 'runs'); mkdirSync(folder, { recursive: true });
+    const path = join(folder, `${runId}.json`);
+    const legacy = { runId, generation: 1, requestDigest: 'same-request', snapshotId: randomUUID(), sourceVersion: `sha256:${'a'.repeat(64)}`,
+      executor: 'fixture', model: 'fixture', promptVersion: 'knowledge-extraction-v2', promptHash: 'preserved-prompt', inputDigest: 'preserved-input',
+      actor: { actorKind: 'human', actorId: 'local-user' }, startedAt: '2026-10-08T00:00:00Z', status: 'generating', rawOutput: '{"proposals":[]}',
+      rejections: [], intents: [], committed: [] };
+    const bytes = JSON.stringify(legacy); writeFileSync(path, bytes);
+    const base = ['--workspace', workspace, '--json'];
+    const preview = JSON.parse((await runCommand(ObserveKnowledge, ['migrate', ...base, '--dry-run'], { cwd: root })).stdout);
+    expect(preview).toMatchObject({ status: 'preview', runs: 1 });
+    expect(readFileSync(path, 'utf8')).toBe(bytes);
+    await expect(runCommand(ObserveKnowledge, ['migrate', ...base], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const backup = join(root, 'backup');
+    const result = JSON.parse((await runCommand(ObserveKnowledge, ['migrate', ...base, '--backup-dir', backup, '--preview-digest', preview.previewDigest], { cwd: root })).stdout);
+    expect(result).toMatchObject({ status: 'completed', requiresMigration: false });
+    expect(readFileSync(join(backup, 'originals', 'runs', `${runId}.json`), 'utf8')).toBe(bytes);
+    const current = JSON.parse((await runCommand(ObserveKnowledge, ['runs', ...base], { cwd: root })).stdout)[0];
+    expect(current).toEqual({ ...legacy, runKind: 'knowledge-extraction-run', schemaVersion: 2 });
   });
 });

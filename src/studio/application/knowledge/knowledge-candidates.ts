@@ -2,13 +2,26 @@ import {
   type ConversationCatalog,
   createLocalKnowledgeApplication,
   configuredExtractionModel,
+  extractionRunSummary,
+  previewKnowledgeMigration,
+  migrateKnowledgeWorkspace,
   type KnowledgeApplication,
 } from '../../../observability/application.js';
 import { conversationExtractionSource } from '../conversations/conversation-extraction.js';
 import { z } from 'zod';
+import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail } from '../../view-models/knowledge/knowledge-candidates.js';
 
 const text = z.string().trim().min(1);
 const common = { workspace: text };
+function entityDetail(detail: ReturnType<KnowledgeApplication['entities']>): KnowledgeEntityAnalysisDetail {
+  return { ...detail, source: detail.source.status === 'available'
+    ? { status: 'available', excerpts: detail.source.window.excerpts, limitations: detail.source.window.limitations } : detail.source };
+}
+function candidateDetail(detail: ReturnType<KnowledgeApplication['detail']>): KnowledgeCandidateDetail {
+  const { entityAnalysis, ...rest } = detail;
+  return { ...rest, ...(entityAnalysis ? { entityAnalysis: entityAnalysis.status === 'available'
+    ? { status: 'available' as const, ...entityDetail(entityAnalysis) } : entityAnalysis } : {}) };
+}
 const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversations') }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversation'), threadId: text }),
@@ -19,6 +32,11 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ ...common, operation: z.literal('tag'), id: text, generation: z.number().int().nonnegative(), tags: z.array(z.string()).max(32) }),
   z.strictObject({ ...common, operation: z.literal('runs') }),
   z.strictObject({ ...common, operation: z.literal('show'), id: text, revision: text.optional() }),
+  z.strictObject({ ...common, operation: z.literal('entities'), analysisId: z.string().uuid(), revision: z.string().uuid().optional() }),
+  z.strictObject({ ...common, operation: z.literal('correct-entities'), analysisId: z.string().uuid(), revision: z.string().uuid(), generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
+  z.strictObject({ ...common, operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: z.string().uuid(), entityRevision: z.string().uuid(), draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional() }),
+  z.strictObject({ ...common, operation: z.literal('migration-preview') }),
+  z.strictObject({ ...common, operation: z.literal('migrate'), backupDirectory: text, previewDigest: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
   z.strictObject({ ...common, operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: z.string().uuid() }),
   z.strictObject({ ...common, operation: z.literal('resume'), id: text }),
@@ -53,23 +71,28 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
   switch (request.operation) {
     case 'related': return app.runs().flatMap(run => {
       if (run.origin?.threadId !== request.threadId) return [];
-      return [{ runId: run.runId, status: run.status, startedAt: run.startedAt, committed: run.committed.map(ref => {
+      return [{ ...extractionRunSummary(run), committed: run.committed.map(ref => {
         const detail = app.detail(ref.knowledgeId);
         return { ...ref, title: detail.revision.title, choice: detail.maintenance?.choice ?? null };
       }) }];
     });
     case 'list': return app.list();
     case 'tag': return app.tag(request.id, request.generation, request.tags);
-    case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(({ runId, status, startedAt, committed, rejections }) => ({ runId, status, startedAt, committed, rejections }));
-    case 'show': return { ...app.detail(request.id, request.revision), origin: app.runs().find(run => run.committed.some(ref => ref.knowledgeId === request.id))?.origin };
+    case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(extractionRunSummary);
+    case 'show': return { ...candidateDetail(app.detail(request.id, request.revision)), origin: app.runs().find(run => run.committed.some(ref => ref.knowledgeId === request.id))?.origin };
+    case 'entities': return entityDetail(app.entities(request.analysisId, request.revision));
+    case 'correct-entities': return entityDetail(app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason));
+    case 'apply-entities': return candidateDetail(app.reviseUsingEntities(request.id, request.revision, request.generation, request.analysisId, request.entityRevision, request.draft, request.reason, request.identityUncertainties));
+    case 'migration-preview': return previewKnowledgeMigration(request.workspace);
+    case 'migrate': return migrateKnowledgeWorkspace(request.workspace, request.backupDirectory, request.previewDigest);
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
     case 'generate': {
       const run = await app.generate(request.snapshot, configuredExtractionModel(request.executor, request.model), request.runId, signal);
-      return { runId: run.runId, status: run.status, committed: run.committed, rejections: run.rejections };
+      return extractionRunSummary(run);
     }
-    case 'resume': { const run = app.resume(request.id, signal); return { runId: run.runId, status: run.status, committed: run.committed, rejections: run.rejections }; }
+    case 'resume': return extractionRunSummary(app.resume(request.id, signal));
     case 'delete-source': app.deleteSource(request.snapshot); return { deleted: request.snapshot };
     case 'maintain': return app.maintain(request.id, request.revision, request.choice, request.reason, request.generation);
-    case 'revise': return app.revise(request.id, request.revision, request.generation, request.draft, request.reason);
+    case 'revise': return candidateDetail(app.revise(request.id, request.revision, request.generation, request.draft, request.reason));
   }
 }

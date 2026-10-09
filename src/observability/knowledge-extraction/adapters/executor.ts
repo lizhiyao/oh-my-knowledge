@@ -20,7 +20,8 @@ export function configuredExtractionModel(executor: string, model: string, imple
         const result = await execute({ model, system, prompt: input,
           ...(cwd ? { cwd, allowedSkills: [] } : {}),
           timeoutMs: 300_000, abortSignal: signal });
-        signal?.throwIfAborted();
+        // Preserve a completed response if cancellation arrived just afterwards.
+        // The application saves output/usage before honoring that late cancellation.
         if (!result.ok || result.output === null) throw new Error(result.error ?? `Generation failed: ${result.stopReason}`);
         if (result.toolCalls?.length) throw new Error('Text extraction unexpectedly invoked a tool; output was rejected.');
         return {

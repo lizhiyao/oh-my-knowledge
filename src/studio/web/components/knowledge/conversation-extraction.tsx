@@ -8,6 +8,7 @@ import type { KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeConversa
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
+import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 
 type Scope = { threadId: string; turnId?: string };
 
@@ -42,6 +43,7 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
   const [adjust, setAdjust] = useState(false);
   const [error, setError] = useState('');
   const [run, setRun] = useState<KnowledgeCandidateRun>();
+  const [entityId, setEntityId] = useState<string>();
   const initialized = useRef(false);
   const mounted = useRef(true);
   const [reviewing, setReviewing] = useState(false);
@@ -137,7 +139,7 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
   }
   const candidateLink = (id: string) => `${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace: workspace.trim(), id })}`;
   const retry = () => !initialized.current ? initialize() : source ? prepare(source) : conversationId ? chooseConversation(conversationId) : initialize();
-  return <Modal centered title={t('提炼知识', 'Extract knowledge')} open width={640} closable={stage !== 'generating'} mask={{ closable: false }} onCancel={onClose}
+  return <><Modal centered title={t('提炼知识', 'Extract knowledge')} open width={640} closable={stage !== 'generating'} mask={{ closable: false }} onCancel={onClose}
     footer={stage === 'confirm' ? <Space><Button onClick={onClose}>{t('取消', 'Cancel')}</Button><Button type="primary" disabled={!selected.length || !workspace.trim() || !model.trim()} onClick={() => void generate()}>{t('开始提炼', 'Start extraction')}</Button></Space>
       : stage === 'generating' ? <Button onClick={() => controller.current?.abort()}>{t('取消提炼', 'Cancel extraction')}</Button>
         : <Button onClick={onClose}>{t('关闭', 'Close')}</Button>}>
@@ -151,12 +153,13 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
         workspace={workspace} onWorkspace={setWorkspace} executor={executor} onExecutor={value => { setExecutor(value); setModel(''); setAdjust(true); }} model={model} onModel={setModel} adjust={adjust} onAdjust={setAdjust} lang={lang}/>}
       {stage === 'generating' && <div className="conversation-extract-progress"><Spin/><p>{t('正在提炼知识…', 'Extracting knowledge…')}</p><p>{t('完成后直接进入候选核对。', 'Review candidates as soon as extraction completes.')}</p></div>}
       {stage === 'result' && run && <><Alert type={run.status === 'completed' ? 'success' : 'warning'} title={run.status === 'completed' ? t(`提炼完成，${run.committed.length} 条候选知识`, `Completed: ${run.committed.length} candidates`) : t('提炼未完成，请查看提炼记录。', 'Extraction incomplete. Check extraction history.')}/>
-        {run.status === 'completed' && !run.committed.length && <p>{t('这次没有找到可保存的知识，可以换一段包含明确事实或处理结果的对话。', 'No knowledge was found to save. Try a conversation with explicit facts or outcomes.')}</p>}
+        {run.status === 'completed' && !run.committed.length && <p>{run.entityAnalysis ? t('本次返回零条知识候选，实体分析已独立保存，可按需核对。', 'This extraction returned zero knowledge candidates. Its independent entity analysis is saved and available for inspection.') : t('本次返回零条知识候选，请查看提炼记录中的接纳结果。', 'This extraction returned zero knowledge candidates. Check the admission results in extraction history.')}</p>}
+        <EntityAnalysisSummary run={run} lang={lang} onOpen={setEntityId}/>
         {run.rejections.length > 0 && <p>{t(`${run.rejections.length} 条输出未通过引用或格式校验。`, `${run.rejections.length} outputs failed citation or format validation.`)}</p>}
         {run.committed.map(item => <p key={item.knowledgeId}>{onReview ? <Button type="link" loading={reviewing} onClick={() => void openSaved(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Button> : <Link href={candidateLink(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Link>}</p>)}
       </>}
     </div>
-  </Modal>;
+  </Modal>{entityId && <EntityAnalysisDrawer workspace={workspace.trim()} analysisId={entityId} lang={lang} onClose={() => setEntityId(undefined)}/>}</>;
 }
 
 export function ConversationExtractionPicker({ conversations, conversation, conversationId, loading, lang, onConversation, onScope }: {

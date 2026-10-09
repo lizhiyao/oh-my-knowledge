@@ -7,7 +7,9 @@ import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input } from 'antd';
 import type { Language } from '../layout/shell';
-type Related = { runId: string; status: string; startedAt?: string; committed: { knowledgeId: string; title: string; choice: CandidateChoice }[] };
+import type { KnowledgeCandidateRun } from '../../../view-models/knowledge/knowledge-candidates';
+import { EntityAnalysisDrawer, EntityAnalysisSummary } from '../knowledge/entity-analysis';
+type Related = Omit<KnowledgeCandidateRun, 'committed'> & { committed: { knowledgeId: string; title: string; choice: CandidateChoice }[] };
 export function ExtractedKnowledge({ threadId, turnId, lang, historyOnly = false }: { threadId: string; turnId?: string; lang: Language; historyOnly?: boolean }) {
   const zh = lang === 'zh';
   const [workspace, setWorkspace] = useState('');
@@ -15,6 +17,7 @@ export function ExtractedKnowledge({ threadId, turnId, lang, historyOnly = false
   const [runs, setRuns] = useState<Related[]>([]);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [entityId, setEntityId] = useState<string>();
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => { const active = new AbortController();
@@ -38,6 +41,8 @@ export function ExtractedKnowledge({ threadId, turnId, lang, historyOnly = false
       <Button disabled={!workspace.trim()} loading={busy} onClick={() => void load()}>{zh ? '读取记录' : 'Load history'}</Button>
       {error && <Alert type="error" title={zh ? '无法读取，请检查保存目录。' : 'Could not load history. Check the folder.'}/>}
       {!busy && !error && runs.length === 0 && <Empty description={zh ? '当前目录尚无这条对话的提炼记录。' : 'No extractions for this conversation in this folder.'}/>}
-      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{extractionRunStatusLabel(run.status, lang)} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>{run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`${KNOWLEDGE_CANDIDATES_PATH}?${link}`}>{item.title}</Link> · {candidateDecisionLabel(item.choice, lang)}</p>; })}</section>)}
-    </Drawer></>;
+      {runs.map(run => <section key={run.runId} className="candidate-statement"><p>{extractionRunStatusLabel(run.status, lang)} · {run.startedAt}</p><p>{zh ? '候选数量：' : 'Candidates: '}{run.committed.length}</p>
+        <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setOpen(false); setEntityId(analysisId); }}/>
+        {run.committed.map(item => { const link = new URLSearchParams(params); link.set('id', item.knowledgeId); return <p key={item.knowledgeId}><Link href={`${KNOWLEDGE_CANDIDATES_PATH}?${link}`}>{item.title}</Link> · {candidateDecisionLabel(item.choice, lang)}</p>; })}</section>)}
+    </Drawer>{entityId && <EntityAnalysisDrawer workspace={workspace} analysisId={entityId} lang={lang} onClose={() => setEntityId(undefined)}/>}</>;
 }

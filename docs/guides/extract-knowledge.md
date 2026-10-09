@@ -22,9 +22,9 @@ Generation sends selected excerpts and coverage limitations to the configured ex
 
 Local Node code reads and parses the log; the model receives only the prepared selected excerpts. CLI and Studio share this application flow. Codex runs in an empty temporary working directory with the executor’s read-only sandbox and ignore-user-config/ignore-rules arguments, and is instructed not to call tools. Any observed tool call causes rejection of the output; this is not a strict guarantee against all file access. API requests provide no tools. The keyword-excerpt entry has been removed; existing local-rule run records remain readable.
 
-Current generation uses `knowledge-extraction-v2`. The model provides only a verbatim quote from the specified excerpt; the program requires a unique match within that excerpt and computes UTF-16 positions. It does not normalize text or find substitute evidence in another message. Missing or repeated matches reject the proposal. The prompt requires conditions, counterexamples, later corrections and unverified steps that affect a conclusion to remain in its statement context; actual retention still needs individual review.
+Current generation uses `knowledge-extraction-v3`: one call returns independent entity analysis and knowledge candidates referencing its shared catalog. The model provides verbatim phrases from specified excerpts, optionally with adjacent context. The host locates a unique match and computes UTF-16 positions without normalizing text or searching other messages. Ambiguous locations reject the affected mention or citation; invalid entities cannot support knowledge candidates. Actual retention of conditions, counterexamples, later corrections, and unverified steps still needs individual review.
 
-v2 changes the prompt and model output contract, a `BREAKING-COMPARABILITY` change: differences in accepted counts between versions cannot directly establish better knowledge quality. Original model output stays unchanged; candidates store the program-derived positions separately. Existing candidates and runs need no migration. Resuming a v1 run retains v1 strict offset validation, without automatically repairing old records or calling the model again.
+v3 changes prompts, model transport, and identity allocation scope, a `BREAKING-COMPARABILITY` change. Accepted counts alone do not establish better knowledge quality. Knowledge histories and extraction runs also upgrade to storage v2 and require the explicit migration below. Raw output remains preserved; derived positions are stored separately. Migrated historical runs resume with their original prompt/admission semantics, without repairing citations or calling the model again.
 
 Zero candidates is valid. Invalid proposals retain rejection reasons. Exact quote matching checks location integrity, not truth. Recorded behavior, source assertions and inference remain distinct; missing conditions and times remain unknown.
 
@@ -37,13 +37,30 @@ omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revis
 
 Read the revision identity and `history.generation` from the latest detail. `discard` uses the same arguments and records a reason without deleting history. On conflicts, reread and inspect changes before retrying.
 
-For edits, copy only `title`, `content`, `entities` and `evidence` from the returned `revision` into a JSON draft. Correct statements, entity labels, context or evidence interpretations:
+For edits, copy only `title`, `content`, `entities` and `evidence` from the returned `revision` into a JSON draft. Edit titles, statements, context, or evidence interpretations. Change labels or assignments in bound analyses through the next section:
 
 ```bash
 omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 2 --input ./draft.json --reason 'Clarify the applicable conditions'
 ```
 
-Use the actual generation, not the example number. Edits create a new revision that awaits review and does not inherit the previous retain choice. Source positions remain bound; new entity identities or source references require new extraction. Read old revisions using `show --revision <old-revision-id>`.
+Use the actual generation, not the example number. Edits create a new revision without inheriting the previous retention choice. Source positions remain bound. Correct new mentions/entities against the same analysis source; never invent references. New source windows require new extraction. Read old revisions using `show --revision <old-revision-id>`.
+
+## Inspect entities and apply corrections
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --analysis <run-id> --json
+omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation <read-generation> --input ./entities.json --reason 'Separate same-name entities using the source' --json
+```
+
+`entities` reads the current revision by default; use `--entity-revision` for history. Correction drafts contain only the returned `revision.entities` and `revision.mentions`. Preserve existing identities; new entities/mentions use distinct `new:<local-name>` identifiers, which the host replaces with UUIDs. An existing mention identity cannot move to different text. Mentions must exactly reference the selected source, and every entity needs an admitted mention. Use `identityStatus: unresolved` with `uncertainties` for unknown entities. `possibleEntityIds` may reference proposed entities; do not select one as an established identity.
+
+Corrections append an entity revision without rewriting knowledge. To apply a chosen revision, inspect each statement's subject/object. Copy the referenced catalog entities' `entityId`, `label`, and `description` into the knowledge draft. Explicitly choose roles after a split:
+
+```bash
+omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <knowledge-revision-id> --generation <read-knowledge-generation> --analysis <run-id> --entity-revision <chosen-entity-revision-id> --input ./draft.json --reason 'Clarify entities in the statements' --json
+```
+
+This creates a knowledge revision bound to the exact analysis revision. Prior additional identity notes are preserved by default. Explicitly update them with `--identity-uncertainties '["Reviewed remaining note"]'`; `'[]'` clears prior notes, while current catalog uncertainties always remain. Inspect statement conditions/unknowns separately in the knowledge editor. Historical analysis, knowledge, and decisions remain inspectable; make a new retention decision. Only the same source window is supported. Unavailable snapshots prevent corrections or application. Independent analysis may contain zero entities and does not require knowledge candidates. See [entity extraction design and limits](../specs/entity-extraction.md).
 
 ## Studio
 
@@ -57,13 +74,28 @@ Review the content, conditions, and unknowns, then use **Inspect evidence** to l
 
 Reopen retained content under **Knowledge → Extracted knowledge**. Retention does not automatically edit artifacts; **Generate knowledge artifact** starts explicit generation and saving.
 
+Results, extraction history, and a conversation's extracted knowledge offer **Inspect entities and references**, including zero-candidate results. Candidate details open the bound entity revision. Inspect names, qualifiers, ambiguity, mention assignments, and source text. Add an entity and reassign mentions to split it, or explicitly merge/remove false entities. Select source text to add an omitted mention. Save with a correction reason, then choose **Apply current entity revision** in knowledge details and inspect every subject/object before saving a knowledge revision. Entity inspection is optional for each extraction.
+
+## Explicitly upgrade a legacy knowledge workspace
+
+Stop legacy CLI/Studio writers, run a read-only preview, then choose a new external backup directory. Use an absolute path with an existing parent:
+
+```bash
+omk observe knowledge migrate --workspace ./knowledge --dry-run --json
+omk observe knowledge migrate --workspace ./knowledge --backup-dir /absolute/path/outside-workspace --preview-digest <previewDigest> --json
+```
+
+Preview validates all histories/runs. `previewDigest` rejects changes after preview. External backups preserve original bytes of converted files. Atomic replacement retains permissions, identities, content, maintenance, prompts, raw output, and digests. Tags, sources, and artifacts are outside this conversion. Current readers do not accept legacy formats.
+
+After interruption, reuse the original backup directory. While the migration marker exists, current knowledge/run/entity reads and writes pause. Run status and lock age never justify taking over a writer. Active/unverifiable locks, changed content, and damaged backups are refused. The tool cannot establish that all legacy writers stopped; stop them explicitly. Limits are 2048 files, 16 MiB per file, and 256 MiB total. Studio offers **Preview and migrate** for legacy or unfinished storage, requiring an explicit external backup and migration action. See [rollback and migration limits](../specs/entity-extraction.md#_6-storage-and-migration-proposal).
+
 ## Organize and find knowledge
 
 Edit **Topic tags** in candidate details and explicitly save them. Use Chinese characters, letters, numbers, underscores, hyphens, or `/` for nesting, without spaces or purely numeric names. Each knowledge item allows up to 32 tags of 80 characters each. Duplicate tags are case-insensitive. Tags are user-maintained, make no additional model call, and do not verify knowledge. Editing tags leaves claims, sources, revisions, and retention decisions unchanged.
 
 The library searches titles and tags. `tag:debugging` matches “debugging” and nested tags such as “debugging/evidence”, together with the decision filter. Tags organize topics; knowledge types, applicability conditions, and evidence classifications still come from the selected knowledge revision.
 
-Tag history is stored separately in `tags/<identity-digest>.json` under the knowledge directory, using `omk-knowledge-tags/v1`. Records bind the knowledge identity and preserve tags, modification time, and actor. Existing knowledge, source, and run records require no migration. Unset tags are empty; concurrent updates reject stale generations and require reloading and review. Tags persist across knowledge revisions as organization information; check that they still apply.
+Tag history is stored separately in `tags/<identity-digest>.json` under the knowledge directory, using `omk-knowledge-tags/v1`. Records bind the knowledge identity and preserve tags, modification time, and actor. Tagging itself requires no migration of knowledge, source, or run records; the storage-v2 migration above remains separate. Unset tags are empty; concurrent updates reject stale generations and require reloading and review. Tags persist across knowledge revisions as organization information; check that they still apply.
 
 ## Generate and save knowledge artifacts
 
@@ -109,6 +141,15 @@ The workspace contains source snapshots, revisions and raw generation output, wh
 For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
 
 ## Reproduce extraction quality checks
+
+Entity coverage has a separate 12-case corpus, `test/fixtures/entity-extraction-quality.json`: names and pronouns, homonyms, changing statement roles, later correction, abstract plans, entities without knowledge, unresolved references, missing context, environment instances, repeated quotations, untrusted source instructions, and an empty window. Critical positions, identity separations, uncertainty, and role checks are frozen before output; the model receives source messages and coverage limits, never these answers.
+
+```bash
+yarn build:runtime
+node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --output /absolute/outside/repository/new-entity-run
+```
+
+The tool makes at most 12 calls without automatic retries. Use `--prompt /absolute/previous-run/prompt.json` for a frozen v2 or v3 prompt; retain exact prompt bytes, corpus and input digests, and review outputs separately. Output must be a new directory outside the checkout. A successful exit means capture and structural admission succeeded, not semantic acceptance. Inspect and authorize message transmission before model calls; unreported cost remains unknown. The completed [v2/v3 report](../explanation/entity-extraction-quality.md) includes original evidence and its self-review limits.
 
 Contributors can run six fixed cases in `test/fixtures/knowledge-extraction-quality.json`: empty content, unverified success, later correction, conditional rules, insufficient evaluation evidence, and a single outcome with gaps. These are synthetic scenarios and a repository rule excerpt, with review criteria written before generation; they are not an independently reviewed gold set or a representative sample of real conversations.
 

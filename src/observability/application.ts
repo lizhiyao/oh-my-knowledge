@@ -38,6 +38,14 @@ export {
   createLocalKnowledgeApplication,
 } from './knowledge-extraction/local.js';
 export {
+  migrateKnowledgeWorkspace,
+  previewKnowledgeMigration,
+} from './knowledge-extraction/adapters/migrate-workspace.js';
+export { KnowledgeStorageStateError } from './knowledge-extraction/adapters/storage-state.js';
+export type { KnowledgeMigrationPreview } from './knowledge-extraction/adapters/migrate-workspace.js';
+export { extractionRunSummary } from './knowledge-extraction/runs.js';
+export type { ExtractionRunSummary } from './knowledge-extraction/runs.js';
+export {
   confidenceOf,
   effectiveObserveBand,
   measuredToolFailureRate,

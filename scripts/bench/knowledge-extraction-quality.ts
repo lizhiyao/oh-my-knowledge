@@ -62,7 +62,8 @@ interface QualityRun {
   prompt: string;
   signal: AbortSignal;
   generate: (prompt: string, input: string, signal: AbortSignal) => Promise<{ output: string }>;
-  check: (response: unknown, excerpts: ReturnType<typeof qualityInput>['excerpts']) => { accepted: unknown[]; rejected: unknown[] };
+  check: (response: unknown, excerpts: ReturnType<typeof qualityInput>['excerpts']) => { accepted: unknown[]; rejected: unknown[]; analysis?: { rejected: unknown[] } };
+  input?: (sample: QualityCase) => ReturnType<typeof qualityInput>;
 }
 
 /** Serial calls avoid leaving a second executor running if local persistence fails. */
@@ -71,7 +72,7 @@ export async function captureQualityCases(run: QualityRun) {
   let attempted = 0;
   for (const sample of run.cases) {
     if (run.signal.aborted) break;
-    const data = qualityInput(sample);
+    const data = (run.input ?? qualityInput)(sample);
     const input = JSON.stringify(data);
     const record: Record<string, unknown> = {
       caseId: sample.caseId, provenance: sample.provenance, inputDigest: digest(input), input: data,
@@ -83,8 +84,9 @@ export async function captureQualityCases(run: QualityRun) {
       record.runtime = result;
       const checked = run.check(JSON.parse(result.output), data.excerpts);
       record.checked = checked;
-      if (checked.rejected.length) failed = true;
-      console.log(`${sample.caseId}: output captured; ${checked.rejected.length} structural rejections; semantic review pending`);
+      const rejections = checked.rejected.length + (checked.analysis?.rejected.length ?? 0);
+      if (rejections) failed = true;
+      console.log(`${sample.caseId}: output captured; ${rejections} structural rejections; semantic review pending`);
     } catch (error) {
       failed = true;
       record.failure = error instanceof Error ? error.message : String(error);
@@ -107,8 +109,8 @@ async function main() {
     throw new Error('Prompt file must contain nonempty version and prompt strings.');
   }
   const { configuredExtractionModel } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href);
-  const { extractionResponseChecker } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href);
-  const check = extractionResponseChecker(selected.version);
+  const { generatedExtractionResponseChecker } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
+  const check = generatedExtractionResponseChecker(selected.version);
   const model = configuredExtractionModel('codex', args.model);
   mkdirSync(output); // Never overwrite an earlier run.
   const manifest = {

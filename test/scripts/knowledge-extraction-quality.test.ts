@@ -6,8 +6,10 @@ import {
   captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
 } from '../../scripts/bench/knowledge-extraction-quality.js';
 import { checkExtractionResponse, extractionResponseChecker } from '../../src/observability/knowledge-extraction/proposals.js';
+import { generatedExtractionResponseChecker } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { entityQualityCases, entityQualityInput, expectedEntityMentions, parseEntityQualityCorpus } from '../../scripts/bench/entity-extraction-quality.js';
 
-import { modelProposal, proposal } from '../knowledge/fixtures.js';
+import { modelProposal, modelWindow, proposal } from '../knowledge/fixtures.js';
 
 const roots: string[] = [];
 const tempRoot = () => {
@@ -21,6 +23,20 @@ afterEach(() => {
 const cases = parseQualityCases(readFileSync(new URL('../fixtures/knowledge-extraction-quality.json', import.meta.url), 'utf8'));
 
 describe('knowledge extraction quality evidence', () => {
+  it('freezes entity identities and UTF-16 repeated occurrences without sending the gold answers to the model', () => {
+    const corpus = parseEntityQualityCorpus(readFileSync(new URL('../fixtures/entity-extraction-quality.json', import.meta.url), 'utf8'));
+    expect(corpus.cases).toHaveLength(12);
+    const repeated = corpus.cases.find(sample => sample.caseId === 'repeated-quote')!;
+    expect(expectedEntityMentions(repeated).slice(0, 2).map(mention => mention.start)).toEqual([3, 11]);
+    const sample = entityQualityCases(corpus).find(sample => sample.caseId === 'missing-context')!;
+    const input = entityQualityInput(corpus, sample);
+    expect(input.limitations).toContain(corpus.cases.find(entry => entry.caseId === sample.caseId)!.limitations![0]);
+    expect(JSON.stringify(input)).not.toContain('possibleEntities'); expect(JSON.stringify(input)).not.toContain('reviewChecks');
+    const invalid = structuredClone(corpus); invalid.cases[0].mentions[0].occurrence = 99;
+    expect(() => parseEntityQualityCorpus(JSON.stringify(invalid))).toThrow();
+    invalid.cases[0].mentions[0].occurrence = 0; invalid.cases[0].roles[0].subject = 'invented';
+    expect(() => parseEntityQualityCorpus(JSON.stringify(invalid))).toThrow();
+  });
   it('requires explicit model and output, rejecting malformed or repeated flags before calling a model', () => {
     expect(parseQualityArguments(['--model', 'fixed-model', '--output', '/outside/new'])).toEqual({
       model: 'fixed-model', output: '/outside/new', prompt: undefined,
@@ -108,6 +124,18 @@ describe('knowledge extraction quality evidence', () => {
       generate: async () => { calls += 1; return { output: '{"proposals":[]}' }; },
     })).rejects.toThrow();
     expect(calls).toBe(1);
+  });
+  it('records independent v3 entities and treats entity rejections as structural failure even with zero knowledge', async () => {
+    const sample = { caseId: 'entity-only', provenance: 'synthetic', messages: [{ role: 'user' as const, text: 'Alpha 使用 Beta' }], reviewChecks: ['按对象核对'] };
+    const packet = modelWindow(); packet.proposals = []; packet.mentions[1].selection.quote = 'invented';
+    const output = tempRoot();
+    const result = await captureQualityCases({ cases: [sample], output, prompt: 'fixed-v3', signal: new AbortController().signal,
+      check: generatedExtractionResponseChecker('knowledge-extraction-v3'),
+      generate: async () => ({ output: JSON.stringify(packet).replaceAll('record-1', 'entity-only:0') }) });
+    expect(result).toMatchObject({ failed: true, attempted: 1 });
+    const record = JSON.parse(readFileSync(join(output, 'entity-only.json'), 'utf8'));
+    expect(record.checked.accepted).toEqual([]); expect(record.checked.analysis.entities).toHaveLength(1);
+    expect(record.checked.analysis.rejected).toHaveLength(2); expect(record.semanticReview).toBe('pending');
   });
 
   it('records cancellation and makes no further model calls', async () => {

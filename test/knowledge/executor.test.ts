@@ -20,7 +20,7 @@ describe('knowledge generation executor boundary', () => {
         ...(outcome === 'tool' ? { toolCalls: [{ tool: 'read_file', input: {}, output: '', success: true }] } : {}) };
     });
     const promise = model.generate('system', 'selected text', controller.signal);
-    if (outcome === 'success') expect(await promise).toMatchObject({ output: '{"proposals":[]}' });
+    if (outcome === 'success' || outcome === 'cancel') expect(await promise).toMatchObject({ output: '{"proposals":[]}', inputTokens: 1, outputTokens: 1 });
     else await expect(promise).rejects.toThrow();
     expect(directory).not.toBe('');
     expect(existsSync(directory)).toBe(false);
