@@ -4,17 +4,12 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { withFileLock } from '../../../shared/file-lock.js';
 
-export const MIGRATION_STATE_FILE = '.entity-migration';
 export const WORKSPACE_LOCK_FILE = '.knowledge-write.lock';
-export const MigrationStateSchema = z.strictObject({
-  migrationKind: z.literal('entity-storage-v2'), schemaVersion: z.literal(1),
-  migrationId: z.string().uuid(), backupDirectory: z.string().min(1),
-});
 const lockOwner = z.strictObject({ owner: z.string().uuid(), pid: z.number().int().positive(),
   hostname: z.string().min(1), acquiredAt: z.iso.datetime({ offset: true }) });
 
 export class KnowledgeStorageStateError extends Error {
-  constructor(readonly stateCode: 'knowledge_migration_required' | 'knowledge_migration_incomplete' | 'knowledge_workspace_busy') {
+  constructor(readonly stateCode: 'knowledge_storage_unsupported' | 'knowledge_workspace_busy') {
     super(stateCode); this.name = 'KnowledgeStorageStateError';
   }
 }
@@ -23,24 +18,12 @@ export function checkStorageDirectory(root: string): void {
   const stat = lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid knowledge storage directory.');
 }
-export function readMigrationState(root: string) {
-  checkStorageDirectory(root);
-  const path = join(root, MIGRATION_STATE_FILE);
-  if (!existsSync(path)) return undefined;
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_384) throw new Error('Invalid migration state.');
-  return MigrationStateSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
-}
-export function assertWorkspaceReady(root: string): void {
-  if (readMigrationState(root)) throw new KnowledgeStorageStateError('knowledge_migration_incomplete');
-}
 export function assertCurrentStorage(value: unknown, storage: 'knowledge' | 'run'): void {
-  if (!value || typeof value !== 'object') return;
-  const data = value as Record<string, unknown>;
-  if ((storage === 'knowledge' && data.storeKind === 'knowledge-item-history' && data.schemaVersion === 1)
-    || (storage === 'run' && data.runKind === undefined && data.schemaVersion === undefined && typeof data.runId === 'string')) {
-    throw new KnowledgeStorageStateError('knowledge_migration_required');
-  }
+  const data = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const current = storage === 'knowledge'
+    ? data.storeKind === 'knowledge-item-history' && data.schemaVersion === 2
+    : data.runKind === 'knowledge-extraction-run' && data.schemaVersion === 3 && data.promptVersion === 'knowledge-extraction-v3';
+  if (!current) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
 }
 
 /** A stored lock is not proof of a live owner. Only local SIG0/ESRCH permits recovery. */
@@ -80,9 +63,9 @@ function recoverDeadLock(path: string, depth: number): void {
   }
 }
 export function withWorkspaceWrite<T>(root: string, operation: () => T): T {
-  assertWorkspaceReady(root);
+  checkStorageDirectory(root);
   const path = join(root, WORKSPACE_LOCK_FILE);
   recoverStorageLock(path);
-  return withFileLock(path, () => { assertWorkspaceReady(root); return operation(); },
+  return withFileLock(path, () => { checkStorageDirectory(root); return operation(); },
     { recoverStale: false, label: 'knowledge workspace' });
 }

@@ -72,10 +72,10 @@ async function main() {
   const corpusText = readFileSync(resolve(repo, 'test/fixtures/entity-extraction-quality.json'), 'utf8');
   const corpus = parseEntityQualityCorpus(corpusText);
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
-  const selected = z.strictObject({ version: z.enum(['knowledge-extraction-v2', 'knowledge-extraction-v3']), prompt: exactText }).parse(args.prompt
+  const selected = z.strictObject({ version: z.literal('knowledge-extraction-v3'), prompt: exactText }).parse(args.prompt
     ? JSON.parse(readFileSync(args.prompt, 'utf8')) : { version: promptModule.EXTRACTION_PROMPT_VERSION, prompt: promptModule.EXTRACTION_PROMPT });
   const { configuredExtractionModel } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href);
-  const { generatedExtractionResponseChecker } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
+  const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
   const model = configuredExtractionModel('codex', args.model);
   const cases = entityQualityCases(corpus);
   mkdirSync(output); // A second invocation cannot overwrite or silently retry this run.
@@ -91,7 +91,7 @@ async function main() {
   process.once('SIGINT', abort); process.once('SIGTERM', abort);
   try {
     const result = await captureQualityCases({ cases, output, prompt: selected.prompt, signal: controller.signal,
-      input: sample => entityQualityInput(corpus, sample), check: generatedExtractionResponseChecker(selected.version),
+      input: sample => entityQualityInput(corpus, sample), check: checkWindowExtractionResponse,
       generate: (prompt, input, signal) => model.generate(prompt, input, signal) });
     writeFileSync(resolve(output, 'manifest.json'), JSON.stringify({ ...manifest, ...result,
       status: result.aborted ? 'cancelled' : result.failed ? 'structural_failures' : 'captured', finishedAt: new Date().toISOString() }, null, 2));

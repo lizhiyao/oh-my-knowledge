@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { EntityAnalysisContext, EntityAnalysisEditor, EntityAnalysisSummary } from '../../../src/studio/web/components/knowledge/entity-analysis.js';
 import { EntityKnowledgeRoles } from '../../../src/studio/web/components/knowledge/apply-entities.js';
-import { KnowledgeMigrationScope } from '../../../src/studio/web/components/knowledge/storage-migration.js';
 import { KnowledgeCandidateStart } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { draft } from '../../knowledge/fixtures.js';
@@ -46,14 +45,5 @@ describe('entity analysis user views', () => {
     const html = renderToStaticMarkup(createElement(EntityKnowledgeRoles, { detail: knowledge, analysis: detail,
       roles: [{ statementId: 'usage', subjectId: '', objectId: '' }], disabled: false, lang: 'zh', onChange() {} }));
     expect(html).toContain('明确选择主体'); expect(html).toContain('原对象已被移除'); expect(html).toContain('系统不会替你任选一个');
-  });
-  it('distinguishes read-only preview, pending recovery and actual completion', () => {
-    const preview = { status: 'preview' as const, requiresMigration: true, items: 2, runs: 3, alreadyCurrent: 1, bytes: 100, previewDigest: 'digest' };
-    const html = renderToStaticMarkup(createElement(KnowledgeMigrationScope, { preview, lang: 'zh' }));
-    expect(html).toContain('只读预检'); expect(html).toContain('2 份知识历史、3 份提炼运行'); expect(html).toContain('尚未改动文件');
-    const pending = renderToStaticMarkup(createElement(KnowledgeMigrationScope, { preview: { ...preview, status: 'resume_required' }, lang: 'zh' }));
-    expect(pending).toContain('上次指定的外部备份目录'); expect(pending).not.toContain('只读预检');
-    const completed = renderToStaticMarkup(createElement(KnowledgeMigrationScope, { preview: { ...preview, status: 'completed', requiresMigration: false }, lang: 'zh' }));
-    expect(completed).toContain('原始字节已保存在'); expect(completed).not.toContain('尚未改动文件');
   });
 });

@@ -7,12 +7,12 @@ import { EntityAnalysisWriteSchema, validateEntityAnalysis } from '../../knowled
 import { validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
 export const ExtractionRunSchema = z.strictObject({
-  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(2),
+  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(3),
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
   origin: EvidenceWindowSchema.shape.origin,
   executor: z.string().min(1), model: z.string().min(1),
-  promptVersion: z.enum(['knowledge-extraction-v1', 'knowledge-extraction-v2', 'knowledge-extraction-v3', 'knowledge-local-rules-v1']), promptHash: z.string(), inputDigest: z.string(),
+  promptVersion: z.literal('knowledge-extraction-v3'), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),
@@ -29,15 +29,14 @@ export const ExtractionRunSchema = z.strictObject({
     costUSD: z.number().optional(),
   }).optional(),
 }).superRefine((run, context) => {
-  if (run.promptVersion === 'knowledge-extraction-v3' && ['prepared', 'completed'].includes(run.status) && !run.entityAnalysis) {
+  if (['prepared', 'completed'].includes(run.status) && !run.entityAnalysis) {
     context.addIssue({ code: 'custom', path: ['entityAnalysis'], message: 'Prepared window extraction needs an entity intent, including empty results.' });
   }
   if (run.entityAnalysis && (run.entityAnalysis.analysisId !== run.runId || run.entityAnalysis.snapshotId !== run.snapshotId
     || run.entityAnalysis.sourceVersion !== run.sourceVersion || run.entityAnalysis.expectedGeneration !== 0
-    || run.entityAnalysis.expectedHeadRevisionId !== null || run.promptVersion !== 'knowledge-extraction-v3')) {
+    || run.entityAnalysis.expectedHeadRevisionId !== null)) {
     context.addIssue({ code: 'custom', path: ['entityAnalysis'], message: 'Entity intent does not match the extraction window.' });
   }
-  if (run.promptVersion !== 'knowledge-extraction-v3') return;
   const add = (path: (string | number)[], message: string) => context.addIssue({ code: 'custom', path, message });
   if (['prepared', 'completed'].includes(run.status) && run.rawOutput === undefined) add(['rawOutput'], 'Prepared extraction needs its original output.');
   const analysis = run.entityAnalysis?.revision;

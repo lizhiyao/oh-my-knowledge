@@ -7,7 +7,7 @@ import { applyEntityAnalysisWrite, EntityAnalysisEnvelopeSchema, EntityAnalysisW
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 import { withFileLock } from '../../../shared/file-lock.js';
-import { assertWorkspaceReady, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
+import { checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 export class FileEntityAnalysisStore implements EntityAnalysisStore {
@@ -18,7 +18,7 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
     if (existsSync(this.root)) { const stat = lstatSync(this.root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid entity directory.'); }
   }
   read(id: string): EntityAnalysisEnvelope {
-    assertWorkspaceReady(this.workspaceRoot); this.checkRoot(); const path = this.path(id); const stat = lstatSync(path);
+    checkStorageDirectory(this.workspaceRoot); this.checkRoot(); const path = this.path(id); const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES) throw new Error('Invalid entity file.');
     const entry = EntityAnalysisEnvelopeSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
     if (entry.analysisId !== id) throw new Error('Entity analysis identity mismatch.');

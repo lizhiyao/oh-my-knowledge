@@ -5,11 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
 } from '../../scripts/bench/knowledge-extraction-quality.js';
-import { checkExtractionResponse, extractionResponseChecker } from '../../src/observability/knowledge-extraction/proposals.js';
-import { generatedExtractionResponseChecker } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { entityQualityCases, entityQualityInput, expectedEntityMentions, parseEntityQualityCorpus } from '../../scripts/bench/entity-extraction-quality.js';
 
-import { modelProposal, modelWindow, proposal } from '../knowledge/fixtures.js';
+import { modelWindow } from '../knowledge/fixtures.js';
 
 const roots: string[] = [];
 const tempRoot = () => {
@@ -81,9 +80,10 @@ describe('knowledge extraction quality evidence', () => {
   it('preserves original output and structural failures without turning accepted proposals into a semantic verdict', async () => {
     const output = tempRoot();
     let count = 0;
-    const outputs = ['not-json', '{"proposals":[{}]}', '{"proposals":[]}'];
+    const empty = { responseKind: 'knowledge-extraction', schemaVersion: 3, entities: [], mentions: [], proposals: [] };
+    const outputs = ['not-json', JSON.stringify({ ...empty, proposals: [{}] }), JSON.stringify(empty)];
     const result = await captureQualityCases({ cases: cases.slice(0, 3), output, prompt: 'fixed',
-      signal: new AbortController().signal, check: checkExtractionResponse,
+      signal: new AbortController().signal, check: checkWindowExtractionResponse,
       generate: async () => ({ output: outputs[count++]! }),
     });
     expect(result).toEqual({ failed: true, aborted: false, attempted: 3 });
@@ -91,37 +91,15 @@ describe('knowledge extraction quality evidence', () => {
     expect(records[0].runtime.output).toBe('not-json');
     expect(records[0].failure).toBeTruthy();
     expect(records[1].checked.rejected).toHaveLength(1);
-    expect(records[2].checked).toEqual({ accepted: [], rejected: [] });
+    expect(records[2].checked).toMatchObject({ accepted: [], rejected: [], analysis: { entities: [], mentions: [], rejected: [] } });
     expect(records.every((record) => record.semanticReview === 'pending')).toBe(true);
-  });
-
-  it('captures each prompt version with its own admission policy and the same input bytes', async () => {
-    const sample = { caseId: 'quote-position', provenance: 'synthetic', messages: [{ role: 'user' as const, text: 'Alpha 使用 Beta。' }], reviewChecks: ['引用必须逐字匹配'] };
-    const records = [];
-    for (const version of ['knowledge-extraction-v1', 'knowledge-extraction-v2']) {
-      const output = tempRoot();
-      const candidate = version === 'knowledge-extraction-v1' ? proposal() : modelProposal();
-      if (version === 'knowledge-extraction-v1') Object.assign(candidate.citations[0].selection, { end: 14 });
-      const raw = JSON.stringify({ proposals: [candidate] }).replaceAll('record-1', 'quote-position:0');
-      await captureQualityCases({ cases: [sample], output, prompt: version, signal: new AbortController().signal,
-        check: extractionResponseChecker(version), generate: async () => ({ output: raw }),
-      });
-      const record = JSON.parse(readFileSync(join(output, 'quote-position.json'), 'utf8'));
-      expect(record.runtime.output).toBe(raw);
-      records.push(record);
-    }
-    expect(records[0].inputDigest).toBe(records[1].inputDigest);
-    expect(records[0].checked.rejected[0].reasons).toContain('citation:quote_mismatch');
-    expect(records[1].checked.rejected).toEqual([]);
-    expect(records[1].checked.accepted[0].citations[0].selection).toMatchObject({ start: 0, end: 13 });
-    expect(records[1].semanticReview).toBe('pending');
   });
 
   it('stops subsequent calls when an output cannot be persisted', async () => {
     let calls = 0;
     await expect(captureQualityCases({ cases, output: join(tempRoot(), 'missing'), prompt: 'fixed',
-      signal: new AbortController().signal, check: checkExtractionResponse,
-      generate: async () => { calls += 1; return { output: '{"proposals":[]}' }; },
+      signal: new AbortController().signal, check: checkWindowExtractionResponse,
+      generate: async () => { calls += 1; return { output: JSON.stringify({ ...modelWindow(), entities: [], mentions: [], proposals: [] }) }; },
     })).rejects.toThrow();
     expect(calls).toBe(1);
   });
@@ -130,7 +108,7 @@ describe('knowledge extraction quality evidence', () => {
     const packet = modelWindow(); packet.proposals = []; packet.mentions[1].selection.quote = 'invented';
     const output = tempRoot();
     const result = await captureQualityCases({ cases: [sample], output, prompt: 'fixed-v3', signal: new AbortController().signal,
-      check: generatedExtractionResponseChecker('knowledge-extraction-v3'),
+      check: checkWindowExtractionResponse,
       generate: async () => ({ output: JSON.stringify(packet).replaceAll('record-1', 'entity-only:0') }) });
     expect(result).toMatchObject({ failed: true, attempted: 1 });
     const record = JSON.parse(readFileSync(join(output, 'entity-only.json'), 'utf8'));
@@ -143,7 +121,7 @@ describe('knowledge extraction quality evidence', () => {
     const controller = new AbortController();
     let calls = 0;
     const result = await captureQualityCases({ cases, output, prompt: 'fixed', signal: controller.signal,
-      check: checkExtractionResponse, generate: async () => {
+      check: checkWindowExtractionResponse, generate: async () => {
         calls += 1;
         controller.abort();
         throw new Error('cancelled');

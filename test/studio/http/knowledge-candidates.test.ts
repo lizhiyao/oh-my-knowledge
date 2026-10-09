@@ -115,30 +115,19 @@ describe('Studio candidate action boundary', () => {
     const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });
-  it('projects legacy and pending migration states, preserves backup bytes, and protects migration mutations', async () => {
-    const selected = join(root, 'legacy'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });
-    const runId = randomUUID(); const path = join(folder, `${runId}.json`); const backup = join(root, 'external-backup');
-    const legacy = { runId, generation: 1, requestDigest: 'request', snapshotId: randomUUID(), sourceVersion: `sha256:${'a'.repeat(64)}`,
-      executor: 'fixture', model: 'fixture', promptVersion: 'knowledge-extraction-v2', promptHash: 'preserved', inputDigest: 'preserved',
-      actor: { actorKind: 'human', actorId: 'fixture' }, startedAt: '2026-10-08T00:00:00Z', status: 'generating', rejections: [], intents: [], committed: [] };
-    const original = JSON.stringify(legacy); writeFileSync(path, original);
+  it('rejects unsupported storage and removed operations without altering files or exposing data', async () => {
+    const selected = join(root, 'unsupported'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });
+    const path = join(folder, `${randomUUID()}.json`);
+    const original = JSON.stringify({ schemaVersion: 0, privateValue: 'private-sensitive-value' }); writeFileSync(path, original);
     const required = await post({ workspace: selected, operation: 'runs' }); expect(required.status).toBe(409);
-    expect(await required.json()).toEqual({ error: 'knowledge_migration_required' });
-    const preview = await (await post({ workspace: selected, operation: 'migration-preview' })).json(); expect(preview.runs).toBe(1);
-    const request = { workspace: selected, operation: 'migrate', backupDirectory: backup, previewDigest: preview.previewDigest };
-    expect((await post(request, 'https://untrusted.example')).status).toBe(403); expect(existsSync(backup)).toBe(false);
-    writeFileSync(path, JSON.stringify(legacy, null, 2));
-    expect((await post(request)).status).toBe(409); expect(existsSync(backup)).toBe(false);
-    const migrated = await post({ workspace: selected, operation: 'migrate', backupDirectory: backup }); expect(migrated.status).toBe(200);
-    expect((await migrated.json()).status).toBe('completed');
-    expect(JSON.parse(readFileSync(join(backup, 'originals', 'runs', `${runId}.json`), 'utf8'))).toEqual(legacy);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ ...legacy, runKind: 'knowledge-extraction-run', schemaVersion: 2 });
-    const state = join(selected, '.entity-migration');
-    writeFileSync(state, JSON.stringify({ migrationKind: 'entity-storage-v2', schemaVersion: 1, migrationId: randomUUID(), backupDirectory: 'private-sensitive-backup' }));
-    const pending = await post({ workspace: selected, operation: 'list' }); expect(pending.status).toBe(409);
-    expect(await pending.json()).toEqual({ error: 'knowledge_migration_incomplete' });
-    const resume = await post({ workspace: selected, operation: 'migration-preview' }); expect(resume.status).toBe(200);
-    const body = await resume.text(); expect(body).toContain('resume_required'); expect(body).not.toContain('private-sensitive-backup'); rmSync(state);
+    expect(await required.json()).toEqual({ error: 'knowledge_storage_unsupported' });
+    const backup = join(root, 'external-backup');
+    for (const operation of ['migration-preview', 'migrate']) {
+      const response = await post({ workspace: selected, operation, backupDirectory: backup });
+      expect(response.status).toBe(400);
+      const body = await response.text(); expect(body).not.toContain(root); expect(body).not.toContain('private-sensitive-value');
+    }
+    expect(existsSync(backup)).toBe(false); expect(readFileSync(path, 'utf8')).toBe(original);
   });
   it('protects carrier measurement mutations and redacts invalid input without model execution', async () => {
     const send = (body: string, origin?: string) => fetch(`${url}/api/knowledge/measurements`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body });

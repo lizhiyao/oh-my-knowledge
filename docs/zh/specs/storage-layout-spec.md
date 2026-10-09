@@ -97,13 +97,13 @@
 
 ## 兼容边界
 
-v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存储根，不提供针对这棵目录的迁移命令，也不会自动搬动或删除旧数据。已有旧 `.omk` 数据保持原样，但不会被 v2 读侧发现；用户可以先备份，再显式删除。Evaluation Core bundle 只支持 manifest v2 与 `report.json`。下面由用户明确选择的知识工作区使用独立的版本化契约与迁移。
+v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存储根，不提供针对这棵目录的迁移命令，也不会自动搬动或删除旧数据。已有旧 `.omk` 数据保持原样，但不会被 v2 读侧发现；用户可以先备份，再显式删除。Evaluation Core bundle 只支持 manifest v2 与 `report.json`。下面由用户明确选择的知识工作区使用独立的当前版本契约。
 
 ## 明确选择的知识工作区
 
-用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`runs/<run-id>.json` 使用 `knowledge-extraction-run` v2，保留原始输出、旧 prompt 身份、已准备的意图与用量。`entities/<analysis-id>.json` 使用 `entity-analysis-history` v1，保存不可变修订、精确来源绑定与写入回执。来源、主题标签及载体版本沿用各自契约。
+用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`runs/<run-id>.json` 使用 `knowledge-extraction-run` v3，保留原始输出、当前 v3 prompt 身份、已准备的意图与用量。`entities/<analysis-id>.json` 使用 `entity-analysis-history` v1，保存不可变修订、精确来源绑定与写入回执。来源、主题标签及载体版本沿用各自契约。
 
-当前写入通过 `.knowledge-write.lock` 串行化。未完成的显式迁移留下 `.entity-migration`，知识／运行／实体读取与写入暂停，等待恢复。`observe knowledge migrate --dry-run` 只读；实际迁移须指定工作区外的备份目录。转换、恢复与限制见[实体存储迁移方案](entity-extraction.md#_6-存储与迁移方案)。这些文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
+当前写入通过 `.knowledge-write.lock` 串行化。只支持当前知识／运行／实体结构及 `knowledge-extraction-v3`，不提供旧格式读取、恢复或迁移。旧文件保持原样；需要重新提炼时选择空目录。当前运行仍保留幂等恢复能力。边界见[当前实体存储契约](entity-extraction.md#_6-当前存储契约)。这些文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
 
 ## 为什么这样命名
 

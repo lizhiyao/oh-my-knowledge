@@ -8,7 +8,7 @@ import { applyKnowledgeWrite, validateKnowledgeHistory } from '../../../knowledg
 import {
   canonicalJson, KnowledgeEnvelopeSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../../../knowledge/store.js';
-import { assertCurrentStorage, assertWorkspaceReady, checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
+import { assertCurrentStorage, checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const digest = (value: unknown): string => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
@@ -24,7 +24,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return join(this.root, `${digest([this.namespace, knowledgeId]).slice(7)}.json`);
   }
   list(): KnowledgeEnvelope[] {
-    assertWorkspaceReady(this.workspaceRoot); checkStorageDirectory(this.root);
+    checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     if (!existsSync(this.root)) return [];
     return readdirSync(this.root).filter((name) => name.endsWith('.json')).sort().map((name) => {
       const entry = this.load(join(this.root, name));
@@ -38,7 +38,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return entry;
   }
   private load(path: string): KnowledgeEnvelope {
-    assertWorkspaceReady(this.workspaceRoot); checkStorageDirectory(this.root);
+    checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES) throw new Error('Invalid knowledge file.');
     const raw = JSON.parse(readFileSync(path, 'utf8')); assertCurrentStorage(raw, 'knowledge');

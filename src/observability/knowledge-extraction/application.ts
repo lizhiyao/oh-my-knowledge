@@ -7,7 +7,7 @@ import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.j
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
 import type { ExtractionRun, ExtractionRunStore } from './runs.js';
-import { extractionResponseChecker, type ExtractionProposal } from './proposals.js';
+import type { ExtractionProposal } from './proposals.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { EntityModelSchema } from './entities.js';
 import { checkWindowExtractionResponse } from './window-proposals.js';
@@ -81,7 +81,7 @@ export class KnowledgeApplication {
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
     let run: ExtractionRun = {
-      runKind: 'knowledge-extraction-run', schemaVersion: 2,
+      runKind: 'knowledge-extraction-run', schemaVersion: 3,
       runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
       ...(window.origin ? { origin: window.origin } : {}),
       executor: model.executor, model: model.model, promptVersion: EXTRACTION_PROMPT_VERSION,
@@ -121,7 +121,7 @@ export class KnowledgeApplication {
     }
     if (run.status !== 'prepared') return run;
     signal?.throwIfAborted();
-    if (run.entityAnalysis) this.ports.entities.write(run.entityAnalysis, run.entityAnalysis.revision.revisedBy);
+    this.ports.entities.write(run.entityAnalysis!, run.entityAnalysis!.revision.revisedBy);
     for (const intent of run.intents) {
       signal?.throwIfAborted();
       this.ports.knowledge.write({
@@ -139,22 +139,11 @@ export class KnowledgeApplication {
   }
   revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
     const previous = this.detail(knowledgeId, expectedRevisionId);
-    if (previous.grounding.entityAnalysisRef) {
-      const ref = previous.grounding.entityAnalysisRef;
-      return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason);
-    }
-    const draft = KnowledgeDraftSchema.parse(input);
-    // Reuse exact source positions while allowing labels and evidence interpretations
-    // to be corrected. The shared history validator rejects ungrounded identities or links.
-    const revision: KnowledgeRevision = { ...previous.revision, ...draft, revisionId: this.ports.id(),
-      parentRevision: { knowledgeId, revisionId: expectedRevisionId }, revisedAt: this.ports.now(), revisedBy: this.ports.actor, revisionReason: reason };
-    const grounding: KnowledgeGrounding = { ...previous.grounding, revisionId: revision.revisionId,
-      mentions: previous.grounding.mentions.filter((mention) => draft.entities.some((entity) => entity.entityId === mention.entityId)),
-      citations: previous.grounding.citations.filter((citation) => draft.evidence.some((link) => link.evidenceLinkId === citation.evidenceLinkId)),
-    };
-    this.ports.knowledge.write({ knowledgeId, requestId: this.ports.id(), expectedGeneration, commandKind: 'append_revision', expectedHeadRevisionId: expectedRevisionId, revision, grounding }, this.ports.actor);
-    return this.detail(knowledgeId, revision.revisionId);
+    const ref = previous.grounding.entityAnalysisRef;
+    if (!ref) throw new Error('Knowledge has no bound entity analysis.');
+    return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason);
   }
+
   correctEntities(analysisId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
     const previous = this.entities(analysisId, expectedRevisionId);
     if (previous.source.status !== 'available') throw new Error('Entity source unavailable.');
@@ -190,7 +179,7 @@ export class KnowledgeApplication {
     const analysis = this.entities(analysisId, analysisRevisionId);
     if (analysis.source.status !== 'available') throw new Error('Entity source unavailable.');
     const excerpts = analysis.source.window.excerpts;
-    if ((previous.grounding.entityAnalysisRef && previous.grounding.entityAnalysisRef.analysisId !== analysisId)
+    if (previous.grounding.entityAnalysisRef?.analysisId !== analysisId
       || previous.grounding.sourceBindings.some(binding => binding.snapshotId !== analysis.history.snapshotId || binding.sourceVersion !== analysis.history.sourceVersion)) {
       throw new Error('Entity analysis belongs to a different evidence window.');
     }
@@ -221,34 +210,30 @@ export class KnowledgeApplication {
   }
   private prepare(run: ExtractionRun, window: EvidenceWindow): ExtractionRun {
     const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId };
-    if (run.promptVersion === 'knowledge-extraction-v3') {
-      const checked = checkWindowExtractionResponse(JSON.parse(run.rawOutput!), window.excerpts);
-      const entityIds = new Map(checked.analysis.entities.map(entity => [entity.entityId, this.ports.id()]));
-      const mentionIds = new Map(checked.analysis.mentions.map(mention => [mention.mentionId, this.ports.id()]));
-      const entityAnalysis: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: run.runId,
-        snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
-        revision: { revisionId: this.ports.id(), revisedAt: this.ports.now(), revisedBy: actor, revisionReason: '从选定工作日志分析对象，等待核对',
-          entities: checked.analysis.entities.map(entity => ({ ...entity, entityId: entityIds.get(entity.entityId)!,
-            possibleEntityIds: entity.possibleEntityIds.map(id => entityIds.get(id)!) })),
-          mentions: checked.analysis.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId)!, entityId: entityIds.get(mention.entityId)! })),
-          limitations: window.limitations,
-        } };
-      return this.saveRun(run, { status: 'prepared', error: undefined, finishedAt: undefined, entityAnalysis, entityRejections: checked.analysis.rejected, rejections: checked.rejected,
-        intents: checked.accepted.map(proposal => this.intent(proposal, window, actor, { entityIds, mentionIds,
-          ref: { analysisId: run.runId, revisionId: entityAnalysis.revision.revisionId } })) });
-    }
-    const checked = extractionResponseChecker(run.promptVersion)(JSON.parse(run.rawOutput!), window.excerpts);
-    return this.saveRun(run, { status: 'prepared', error: undefined, finishedAt: undefined, rejections: checked.rejected,
-      intents: checked.accepted.map((proposal) => this.intent(proposal, window, actor)) });
+    const checked = checkWindowExtractionResponse(JSON.parse(run.rawOutput!), window.excerpts);
+    const entityIds = new Map(checked.analysis.entities.map(entity => [entity.entityId, this.ports.id()]));
+    const mentionIds = new Map(checked.analysis.mentions.map(mention => [mention.mentionId, this.ports.id()]));
+    const entityAnalysis: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: run.runId,
+      snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
+      revision: { revisionId: this.ports.id(), revisedAt: this.ports.now(), revisedBy: actor, revisionReason: '从选定工作日志分析对象，等待核对',
+        entities: checked.analysis.entities.map(entity => ({ ...entity, entityId: entityIds.get(entity.entityId)!,
+          possibleEntityIds: entity.possibleEntityIds.map(id => entityIds.get(id)!) })),
+        mentions: checked.analysis.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId)!, entityId: entityIds.get(mention.entityId)! })),
+        limitations: window.limitations,
+      } };
+    return this.saveRun(run, { status: 'prepared', error: undefined, finishedAt: undefined, entityAnalysis, entityRejections: checked.analysis.rejected, rejections: checked.rejected,
+      intents: checked.accepted.map(proposal => this.intent(proposal, window, actor, { entityIds, mentionIds,
+        ref: { analysisId: run.runId, revisionId: entityAnalysis.revision.revisionId } })) });
   }
+
   private saveRun(run: ExtractionRun, update: Partial<ExtractionRun>): ExtractionRun {
     const next = { ...run, ...update, generation: run.generation + 1 };
     this.ports.runs.save(next, run.generation);
     return next;
   }
   private intent(proposal: ExtractionProposal, window: EvidenceWindow, actor: KnowledgeActor,
-    shared?: { entityIds: Map<string, string>; mentionIds: Map<string, string>; ref: NonNullable<KnowledgeGrounding['entityAnalysisRef']> }): ExtractionRun['intents'][number] {
-    const entityIds = shared?.entityIds ?? new Map(proposal.draft.entities.map((entity) => [entity.entityId, this.ports.id()]));
+    shared: { entityIds: Map<string, string>; mentionIds: Map<string, string>; ref: NonNullable<KnowledgeGrounding['entityAnalysisRef']> }): ExtractionRun['intents'][number] {
+    const entityIds = shared.entityIds;
     const draft: KnowledgeDraft = {
       ...proposal.draft,
       entities: proposal.draft.entities.map((entity) => ({ ...entity, entityId: entityIds.get(entity.entityId)! })),
@@ -262,10 +247,10 @@ export class KnowledgeApplication {
       observationRefs: [], derivations: [], createdAt: now, revisedAt: now, createdBy: actor, revisedBy: actor, revisionReason: '从选定工作日志提炼，等待人工复核' };
     return { requestId: this.ports.id(), revision, grounding: {
       revisionId: revision.revisionId,
-      mentions: proposal.mentions.map((mention) => ({ ...mention, ...(shared ? { mentionId: shared.mentionIds.get(mention.mentionId)! } : {}), entityId: entityIds.get(mention.entityId)! })),
+      mentions: proposal.mentions.map((mention) => ({ ...mention, mentionId: shared.mentionIds.get(mention.mentionId)!, entityId: entityIds.get(mention.entityId)! })),
       citations: proposal.citations, reuseRationale: proposal.reuseRationale, identityUncertainties: proposal.identityUncertainties,
       sourceBindings: [{ snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, evidenceRefs: [...new Set([...draft.evidence.map((link) => link.evidenceRef), ...proposal.mentions.map((mention) => mention.selection.evidenceRef)])] }],
-      ...(shared ? { entityAnalysisRef: shared.ref } : {}),
+      entityAnalysisRef: shared.ref,
     } };
   }
 }
