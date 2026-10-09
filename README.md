@@ -8,11 +8,13 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**Observe. Measure. Know.** Make knowledge changes in your AI application evidence-backed.
+**Observe. Measure. Know.** Make knowledge useful for people and AI.
 
-OMK is a toolkit for observing, evaluating, and improving knowledge in AI applications. Inspect how real tasks ran, extract reviewable knowledge items from work logs, and measure changes to prompts, RAG, skills, agents, or workflows to inform adoption, rollback, and further improvement.
+OMK is a knowledge-building tool for agent users and AI application developers. Discover, preserve, and maintain knowledge with sources from real collaboration between people and AI. Help people build understanding, methods, and reasons for decisions, and give AI suitable knowledge for later tasks.
 
-**Observe** preserves real behavior and its sources. **Measure** fixes models and cases, controls and records execution conditions, and compares knowledge artifacts. **Know** connects decisions back to evidence. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
+Knowledge can include domain insights, tradeoffs, working methods, collaboration experience, and personal or project goals, preferences, and constraints. OMK is working toward helping users manage, revise, and reuse this knowledge across conversations and agents. Complete cross-agent management and reuse are not yet implemented.
+
+**Observe** preserves real work and sources for knowledge building. **Know** extracts, maintains, and reuses knowledge with evidence. **Measure** tests specific changes when needed: fix models and cases, control and record execution conditions, and compare knowledge artifacts such as prompts, RAG, skills, agents, or workflows. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
 
 Version 1.0 is still **in Beta iteration**; APIs and storage contracts may change. Read the [migration guide](docs/guides/v1-preview-migration.md) before upgrading an older installation.
 
@@ -33,7 +35,7 @@ The diagram describes composable workflows: review knowledge, generate and save 
 
 | Goal | Entry point | What you get |
 |---|---|---|
-| Understand a real task | [Studio and task trajectories](docs/guides/observe-production.md) | Conversation, execution, results, and knowledge lanes with inspectable source records |
+| Find knowledge worth preserving from real tasks | [Studio and task trajectories](docs/guides/observe-production.md) | Source records for reviewing successful approaches, user corrections, and knowledge gaps, with conversation, execution, results, and knowledge lanes |
 | Preserve knowledge from work | [Extract knowledge from logs](docs/guides/extract-knowledge.md) | Candidate knowledge with sources and conditions; revise, retain, or discard it |
 | Record a confirmed knowledge problem | [MCP feedback](docs/guides/mcp-integration.md) | An observation for review; draft a case after confirming a real issue |
 | Decide whether to adopt a change | [Evaluation quickstart](docs/quickstart-skill-eval.md) | A version decision, uncertainty, failed cases, and scoring evidence |
