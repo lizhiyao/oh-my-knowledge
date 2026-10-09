@@ -118,16 +118,18 @@ describe('Studio 页级标题尺度', () => {
     // 1280 管「候选三栏→两栏」，1024 管「侧栏收窄、阅读页头紧凑、候选两栏→单栏」，
     // 860 管「整个应用切抽屉导航，页头、工具条与时间轴一起退到窄屏形态」。
     // 同一档保留多个块是刻意的：块与块之间有先后，合并成一个块会改变层叠顺序。
-    // 高度档不参与宽度阶梯——它管候选起始页在矮窗口里的纵向紧凑。
-    const widths = [...new Set([...css.matchAll(/@media\(max-width:(\d+)px\)/g)].map((m) => Number(m[1])))];
+    // 高度档不参与宽度阶梯：700 管候选纵向紧凑，600 管载体弹层。
+    const media = [...css.matchAll(/@media([^{}]+)\{/g)];
+    const widths = [...new Set(media.flatMap(m => [...m[1].matchAll(/max-width:(\d+)px/g)].map(value => Number(value[1]))))];
     expect([...widths].sort((a, b) => a - b), '断点又长出了阶梯外的宽度档').toEqual([860, 1024, 1280]);
-    const heights = [...new Set([...css.matchAll(/@media\(max-height:(\d+)px\)/g)].map((m) => Number(m[1])))];
-    expect(heights, '高度档应只有一个，且明确不参与宽度阶梯').toEqual([700]);
+    const heights = [...new Set(media.flatMap(m => [...m[1].matchAll(/max-height:(\d+)px/g)].map(value => Number(value[1]))))];
+    expect(heights.sort((a, b) => a - b), '高度档出现了既有 600／700 以外的数值').toEqual([600, 700]);
     // 860 档把侧栏变成盖在内容上的抽屉，那它必须自带两条关闭路径：Esc 与遮罩点击。
     // 真实页面上量过：接这两条之前，抽屉点开只能再点页头那个按钮收回去，Esc 按了没反应。
     // 同一档有多个块（见上），因此按块收集而不是只取第一个。
+    // 逗号表示多个独立条件；and 保留为完整条件，不能误算成无高度限制的宽度档。
     const blocksOf = (condition: string) =>
-      [...css.matchAll(new RegExp(`@media\\(${condition}\\)\\{`, 'g'))].map((m) => {
+      media.filter(m => m[1].split(',').some(query => query.trim() === condition)).map((m) => {
         let depth = 1;
         let i = m.index + m[0].length;
         while (i < css.length && depth > 0) {
@@ -137,18 +139,21 @@ describe('Studio 页级标题尺度', () => {
         }
         return css.slice(m.index + m[0].length, i - 1);
       });
-    const step860 = blocksOf('max-width:860px');
+    const step860 = blocksOf('(max-width:860px)');
     expect(step860.length, '一个 860 档的块都没量到，扫描口径失效').toBeGreaterThan(0);
     expect(step860.join('\n'), '抽屉没有遮罩层：点内容区收不掉它').toContain('.studio-app.sidebar-open .studio-scrim{');
     expect(css, '遮罩在宽屏上也会显示：桌面态会被盖住').toContain('.studio-scrim{display:none}');
     // 只检查断点数值会让「规范说单栏、实际仍是两栏」静默通过。
     // 窄屏通过切换核对内容保留阅读高度，不能把原文挤成只有几像素的滚动窗。
-    const step1024 = blocksOf('max-width:1024px').join('\n');
+    const step1024 = blocksOf('(max-width:1024px)').join('\n');
     const candidateGrid = step1024.match(/\.candidate-columns\{([^}]*)\}/)?.[1];
     expect(candidateGrid, '1024 档缺少候选核对布局').toBeDefined();
     expect(candidateGrid, '窄屏仍把列表和正文并排，正文会被压窄').toContain('grid-template-columns:minmax(0,1fr);');
     expect(step1024, '窄屏缺少始终可达的视图切换').toMatch(/\.candidate-pane-switch\{display:flex/);
     expect(step1024, '窄屏仍同时堆叠两块正文').toMatch(/\.candidate-content:not\(\.candidate-pane-active\),\.candidate-evidence:not\(\.candidate-pane-active\)\{display:none\}/);
+    const shortWindow = blocksOf('(max-width:1280px) and (max-height:700px)').join('\n');
+    expect(shortWindow, '矮窗口缺少核对视图切换').toMatch(/\.candidate-pane-switch\{display:flex/);
+    expect(shortWindow, '矮窗口继续上下堆叠正文，阅读区被操作区挤压').toContain('grid-template-columns:minmax(0,1fr);');
   });
 
   it('对话阅读正文取 16px 与 1.85 倍行高', () => {
