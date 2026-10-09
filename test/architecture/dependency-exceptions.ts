@@ -27,6 +27,24 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/knowledge-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href",
+    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
+    rationale: 'Loads only the built text-only Codex executor for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+  },
+  {
+    importer: 'scripts/bench/knowledge-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
+    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
+    rationale: 'Loads only the built versioned extraction prompt for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+  },
+  {
+    importer: 'scripts/bench/knowledge-extraction-quality.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href",
+    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
+    rationale: 'Loads only the built strict proposal validator for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+  },
+  {
     importer: 'executors/anthropic/claude/sdk.ts',
     expression: 'CLAUDE_AGENT_SDK_PACKAGE',
     sourceSha256: 'c4d92bdfa7385281fba50233c15f365ba3a6020eab5a4609b829577c70214b4a',

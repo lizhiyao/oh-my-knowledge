@@ -91,3 +91,16 @@ Resume handles already persisted output or pending writes, never regenerating. I
 The workspace contains source snapshots, revisions and raw generation output, which can contain private data. `delete-source --snapshot <snapshot-id>` removes that snapshot and leaves an unavailable marker. It does not alter the original log or erase quoted text in revisions or model output; it is not a complete workspace wipe. Missing, corrupt or deleted sources remain explicitly unavailable.
 
 For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
+
+## Reproduce extraction quality checks
+
+Contributors can run six fixed cases in `test/fixtures/knowledge-extraction-quality.json`: empty content, unverified success, later correction, conditional rules, insufficient evaluation evidence, and a single outcome with gaps. These are synthetic scenarios and a repository rule excerpt, with review criteria written before generation; they are not an independently reviewed gold set or a representative sample of real conversations.
+
+```bash
+yarn build:runtime
+node dist-scripts/bench/knowledge-extraction-quality.js --model <fixed-model> --output /absolute/outside/repository/new-run
+```
+
+This developer tool uses the existing Codex executor and makes one call per case without retries. Inspect the selected message text and authorize its transmission before running; costs are unknown unless reported. It includes the message-only coverage limitation and excludes review criteria from model input. It writes only to a new directory outside the checkout, preserving the prompt, corpus, digests, raw outputs, rejection reasons, and runtime metadata. Interrupting stops further calls. A successful exit means capture and structural validation succeeded; semantic review remains pending.
+
+Review every output against its case criteria and original messages, recording omissions, misinterpretations and unnecessary candidates. Keep self-review distinct from independent human review. For a prompt comparison, preserve the first run’s `prompt.json`, use `--prompt /absolute/first-run/prompt.json` to reproduce that version, keep model and corpus identical, and verify matching input digests. One run per case can expose a failure; it cannot establish stable extraction quality, a population improvement, or carrier effectiveness. Keep the current prompt when no observed failure justifies changing it.
