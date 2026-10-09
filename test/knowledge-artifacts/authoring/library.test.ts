@@ -8,7 +8,7 @@ import { createLocalKnowledgeApplication } from '../../../src/observability/appl
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
 import type { CarrierDetail, CarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
-import { proposal } from '../../knowledge/fixtures.js';
+import { modelProposal } from '../../knowledge/fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -21,8 +21,9 @@ async function setup() {
   const snapshot = app.capture({ path: source });
   const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', async generate(_system, input) {
     const ref = JSON.parse(input).excerpts.find((entry: { text: string }) => entry.text === 'Alpha 使用 Beta').evidenceRef;
-    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(proposal()).replaceAll('record-1', ref))] }), durationMs: 1 };
+    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(modelProposal()).replaceAll('record-1', ref))] }), durationMs: 1 };
   } });
+  expect(run).toMatchObject({ status: 'completed', rejections: [], committed: [expect.any(Object)] });
   const entry = run.committed[0];
   const execute = (fields: Record<string, unknown>) => executeArtifactAuthoring({ workspace, ...fields }, 'zh');
   const preview = (fields: Record<string, unknown> = {}) => execute({ operation: 'preview', source: { sourceKind: 'new' }, artifactKind: 'skill', name: '工具使用', ids: [entry.knowledgeId], ...fields }) as CarrierDraft;

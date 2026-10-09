@@ -3,7 +3,7 @@ import { KnowledgeDraftSchema } from '../../knowledge/contracts.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
 import type { ExtractionRun, ExtractionRunStore } from './runs.js';
-import { checkExtractionResponse, type ExtractionProposal } from './proposals.js';
+import { extractionResponseChecker, type ExtractionProposal } from './proposals.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 
 export interface ExtractionModel {
@@ -122,7 +122,7 @@ export class KnowledgeApplication {
     return this.detail(knowledgeId, revision.revisionId);
   }
   private prepare(run: ExtractionRun, window: EvidenceWindow): ExtractionRun {
-    const checked = checkExtractionResponse(JSON.parse(run.rawOutput!), window.excerpts);
+    const checked = extractionResponseChecker(run.promptVersion)(JSON.parse(run.rawOutput!), window.excerpts);
     const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId };
     return this.saveRun(run, { status: 'prepared', rejections: checked.rejected,
       intents: checked.accepted.map((proposal) => this.intent(proposal, window, actor)) });
