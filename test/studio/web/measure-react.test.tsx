@@ -64,8 +64,41 @@ describe('measure react detail keeps every projected fact in the served document
 
   it('puts the decision ahead of the evidence panels instead of an overall score', () => {
     const html = runDetail(detail(), 'en');
-    assert.ok(html.indexOf('PROGRESS') < html.indexOf('ant-tabs-nav'), 'decision must be readable without opening a panel');
+    assert.ok(html.indexOf('The report has a policy decision') < html.indexOf('Run status'), 'conclusion precedes operational status');
+    assert.ok(html.includes('Recorded decision and policy') && html.includes('PROGRESS'), 'the recorded decision stays accessible');
     assert.ok(!html.includes('综合状态') && !html.includes('Overall'));
+  });
+
+  it('front-loads insufficient evidence and limitations in both languages despite completed, complete and conclusive states', () => {
+    const base = detail();
+    const view = { ...base, dataset: { ...base.dataset, sampleCount: 1 }, decision: {
+      ...base.decision!, implementation: { ...base.decision!.implementation, implementationId: 'omk.release-decision/v7' },
+      verdict: 'UNDERPOWERED', reasonCodes: ['comparison-not-significant', 'comparison-sample-size-below-minimum'],
+    } };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = runDetail(view, lang);
+      const conclusion = lang === 'zh' ? '证据不足，暂不能判断改动效果' : 'Insufficient evidence to assess the change';
+      const limits = lang === 'zh' ? '不能直接外推其它任务的收益' : 'does not establish benefits on other tasks';
+      const states = html.indexOf('measure-state-axes');
+      for (const text of [conclusion, limits, 'UNDERPOWERED']) {
+        assert.ok(html.indexOf(text) >= 0 && html.indexOf(text) < states, `${text} must precede operational states`);
+      }
+      assert.ok(html.includes('comparison-sample-size-below-minimum'), 'raw reason remains served');
+      assert.ok(html.includes(`class="measure-conclusion-details" tabindex="0" role="region" aria-label="${lang === 'zh' ? '结论详情' : 'Conclusion details'}"`), 'bounded long conclusions have a named keyboard scroll entry');
+      assert.ok(!html.includes('可形成结论'), 'a decided policy is not proof of effectiveness');
+    }
+  });
+
+  it('escapes unknown verdicts and reason codes in the prominent summary', () => {
+    const base = detail();
+    const malicious = '<script>alert(1)</script>';
+    const view = { ...base, decision: { ...base.decision!, verdict: malicious, reasonCodes: [malicious] } };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = runDetail(view, lang);
+      const top = html.slice(html.indexOf('measure-conclusion'), html.indexOf('measure-state-axes'));
+      assert.ok(top.includes(reactText(malicious)), 'custom verdict and reason stay visible');
+      assert.ok(!html.includes(malicious), 'all projected text is escaped');
+    }
   });
 
   /**
@@ -75,7 +108,7 @@ describe('measure react detail keeps every projected fact in the served document
   it('serves inactive tab and collapse content in the same response', () => {
     const html = runDetail(detail(), 'en');
     assert.equal(html.match(/class="ant-tabs-content/g)?.length, 3, 'every tab panel is in the document');
-    assert.equal(html.match(/class="ant-collapse-item/g)?.length, 4, 'every evidence panel is in the document');
+    assert.equal(html.match(/class="ant-collapse-item/g)?.length, 5, 'every evidence panel is in the document');
     assert.ok(html.includes('run-plan'), 'lineage sits in the last collapse panel');
     assert.ok(html.includes('quality:observed=4.25'), 'observations sit in the last collapse panel');
   });
@@ -193,7 +226,7 @@ describe('measure react list keeps the three status axes orthogonal', () => {
     assert.ok(html.includes('证据状态'));
     assert.ok(html.includes('结论状态'));
     assert.ok(!html.includes('综合状态'));
-    for (const value of ['已完成', '已取消', '预算耗尽', '失败', '完整', '部分缺失', '无法解析', '可形成结论', '证据不足', '未评估']) {
+    for (const value of ['已完成', '已取消', '预算耗尽', '失败', '完整', '部分缺失', '无法解析', '已作出判定', '尚未作出判定', '未评估']) {
       assert.ok(html.includes(value), `missing status label: ${value}`);
     }
     assert.ok(html.includes('href="/measure/core-run-1"'));
