@@ -50,10 +50,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [draft, setDraft] = useState('');
   const [reason, setReason] = useState('');
   const [citation, setCitation] = useState(0);
+  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
   const [pane, setPane] = useState<'candidate' | 'evidence'>('candidate');
   const candidateContent = useRef<HTMLElement | null>(null);
   const evidenceHeading = useRef<HTMLHeadingElement | null>(null);
   const controller = useRef<AbortController | null>(null);
+  useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); }, [detail]);
   useEffect(() => {
     // 查看依据会在窄屏隐藏触发按钮，焦点跟随到可见原文；桌面仍保持并列核对。
     if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
@@ -74,6 +76,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       if (active.signal.aborted) setNotice(t('已取消请求。可在生成记录中查看结果。', 'Request cancelled. Inspect generation history for its final state.'));
       else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
         ? t('内容已被其他操作更新，请重新打开后再处理。', 'Content changed. Reopen it before editing.')
+        : cause instanceof Error && cause.message === 'knowledge_tags_invalid'
+          ? t('标签格式不正确。使用中文、字母、数字、下划线、连字符或 /，不含空格；每个最多 80 字符，也不能只有数字。', 'Invalid tags. Use letters, numbers, underscores, hyphens or / without spaces; up to 80 characters each, and not only numbers.')
         : cause instanceof Error && cause.message === 'knowledge_capacity_exceeded'
           ? t('超出保存或输入上限，请缩小记录范围或删除不再需要的来源快照。', 'Capacity exceeded. Narrow the selection or delete unneeded snapshots.')
           : t('操作未完成。请检查路径、输入格式和执行器配置；生成详情可通过 CLI 查看。', 'Operation failed. Check paths, input format, and executor settings; use CLI for generation details.'));
@@ -140,6 +144,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       setError(t('决定已保存，但未能读取最新进度。重新读取后再继续。', 'Your decision was saved, but progress could not be loaded. Reload before continuing.'));
     }
   }
+  async function saveTags() {
+    if (!detail || needsRefresh) return;
+    const id = detail.revision.knowledgeId;
+    await api('tag', { id, generation: detail.tagging.generation, tags: tagsDraft });
+    try {
+      await refresh(); await open(id, detail.revision.revisionId);
+      setNotice(t('标签已保存，知识内容和保留决定保持原样。', 'Tags saved. Knowledge content and retention decisions are unchanged.'));
+    } catch {
+      setNeedsRefresh(true);
+      setError(t('标签已保存，但未能读取最新结果。重新读取后再继续。', 'Tags were saved, but the result could not be loaded. Reload before continuing.'));
+    }
+  }
   type EditableDraft = Pick<KnowledgeCandidateDetail['revision'], 'title' | 'content' | 'entities' | 'evidence'>;
   const editableDraft: EditableDraft | null = draft ? JSON.parse(draft) : null;
   function updateDraft(edit: (value: EditableDraft) => void) {
@@ -188,7 +204,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
     {rows.length > 0 && !batch && <div className="candidate-library-tools">
-      <Input allowClear aria-label={t('搜索知识标题', 'Search knowledge titles')} placeholder={t('搜索知识标题', 'Search knowledge titles')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); setPane('candidate'); }}/>
+      <Input allowClear aria-label={t('搜索标题或标签', 'Search titles or tags')} placeholder={t('搜索标题或标签；tag:排障 精确筛选标签', 'Search titles or tags; tag:debugging filters by tag')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); setPane('candidate'); }}/>
       <Select aria-label={t('按处理状态筛选', 'Filter by decision')} value={filter} onChange={value => { setFilter(value); setDetail(null); setPane('candidate'); }} options={[
         { value: 'all', label: t(`全部 ${rows.length}`, `All ${rows.length}`) },
         { value: 'pending', label: t(`待处理 ${rows.filter(row => row.choice === null).length}`, `Undecided ${rows.filter(row => row.choice === null).length}`) },
@@ -207,6 +223,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
         {summary && batch ? <div className="candidate-scroll"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.committed.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div> : !detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
           <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
+            <CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>
             <details className="candidate-history"><summary>{t(`回看历史修订（第 ${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}／${detail.history.revisions.length} 版）`, `Revision history (${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}/${detail.history.revisions.length})`)}</summary><Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/></details>
             <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
             {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
@@ -317,9 +334,24 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   </section>;
 }
 
-export function candidateMatches(row: Pick<KnowledgeCandidateRow, 'title' | 'choice'>, filter: 'all' | 'pending' | 'retain' | 'discard', query: string): boolean {
-  return row.title.toLowerCase().includes(query.trim().toLowerCase())
-    && (filter === 'all' || (filter === 'pending' ? row.choice === null : row.choice === filter));
+export function candidateMatches(row: Pick<KnowledgeCandidateRow, 'title' | 'choice' | 'tags'>, filter: 'all' | 'pending' | 'retain' | 'discard', query: string): boolean {
+  const search = query.trim().toLowerCase();
+  const tagQuery = search.startsWith('tag:') ? search.slice(4).replace(/^#/, '') : undefined;
+  const matches = tagQuery !== undefined ? !!tagQuery && (row.tags ?? []).some(tag => tag.toLowerCase() === tagQuery || tag.toLowerCase().startsWith(`${tagQuery}/`))
+    : row.title.toLowerCase().includes(search) || (row.tags ?? []).some(tag => tag.toLowerCase().includes(search));
+  return matches && (filter === 'all' || (filter === 'pending' ? row.choice === null : row.choice === filter));
+}
+
+export function CandidateTags({ lang, tags, busy, changed, onChange, onSave }: {
+  lang: Language; tags: string[]; busy: boolean; changed: boolean; onChange(tags: string[]): void; onSave(): void;
+}) {
+  const zh = lang === 'zh';
+  return <div className="candidate-form">
+    <label>{zh ? '主题标签' : 'Topic tags'}<Select mode="tags" aria-label={zh ? '主题标签' : 'Topic tags'} value={tags} disabled={busy} maxCount={32} maxTagCount="responsive"
+      onChange={onChange} placeholder={zh ? '例如：排障/证据判断、Taro' : 'For example: debugging/evidence, Taro'}/></label>
+    <p className="candidate-help">{zh ? '使用中文、字母、数字、下划线、连字符或 /，不含空格；最多 32 个。标签用于组织与检索，不表示知识已验证。' : 'Use letters, numbers, underscores, hyphens or /, without spaces; up to 32 tags. Tags organize knowledge and do not verify it.'}</p>
+    <Button disabled={busy || !changed} onClick={onSave}>{zh ? '保存标签' : 'Save tags'}</Button>
+  </div>;
 }
 
 export function CandidatePaneSwitch({ lang, pane, onChange }: { lang: Language; pane: 'candidate' | 'evidence'; onChange(value: 'candidate' | 'evidence'): void }) {

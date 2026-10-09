@@ -1,6 +1,7 @@
 import type { KnowledgeActor, KnowledgeDraft, KnowledgeRevision } from '../../knowledge/contracts.js';
 import { KnowledgeDraftSchema } from '../../knowledge/contracts.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
+import type { KnowledgeTagStore } from '../../knowledge/tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
 import type { ExtractionRun, ExtractionRunStore } from './runs.js';
 import { extractionResponseChecker, type ExtractionProposal } from './proposals.js';
@@ -13,7 +14,7 @@ export interface ExtractionModel {
   }>;
 }
 export interface KnowledgeApplicationPorts {
-  evidence: EvidenceStore; knowledge: KnowledgeStore; runs: ExtractionRunStore;
+  evidence: EvidenceStore; knowledge: KnowledgeStore; runs: ExtractionRunStore; tags: KnowledgeTagStore;
   id(): string; now(): string; hash(value: unknown): string;
   actor: KnowledgeActor;
 }
@@ -23,12 +24,15 @@ export class KnowledgeApplication {
   constructor(private readonly ports: KnowledgeApplicationPorts) {}
   capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow { return this.ports.evidence.capture(selection, signal); }
   list() {
-    return this.ports.knowledge.list().map((history) => ({
+    return this.ports.knowledge.list().map((history) => {
+      const tags = this.ports.tags.read(history.knowledgeId).tags;
+      return {
       knowledgeId: history.knowledgeId, revisionId: history.writeHeadRevisionId,
       generation: history.generation, title: history.revisions.at(-1)!.title,
       reviewStatus: 'pending' as const,
       choice: history.maintenance.filter((entry) => entry.revisionId === history.writeHeadRevisionId).at(-1)?.choice ?? null,
-    }));
+      ...(tags.length ? { tags } : {}),
+    }; });
   }
   runs() { return this.ports.runs.list(); }
   source(snapshotId: string, version?: string) { return this.ports.evidence.read(snapshotId, version); }
@@ -41,9 +45,14 @@ export class KnowledgeApplication {
     if (!revision || !grounding) throw new Error('Knowledge revision is missing.');
     return {
       history, revision, grounding, reviewStatus: 'pending' as const,
+      tagging: this.ports.tags.read(knowledgeId),
       maintenance: history.maintenance.filter((entry) => entry.revisionId === selected).at(-1) ?? null,
       sources: grounding.sourceBindings.map((binding) => this.source(binding.snapshotId, binding.sourceVersion)),
     };
+  }
+  tag(knowledgeId: string, generation: number, tags: unknown) {
+    this.ports.knowledge.read(knowledgeId);
+    return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
   }
   async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal): Promise<ExtractionRun> {
     signal?.throwIfAborted();

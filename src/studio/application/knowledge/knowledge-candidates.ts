@@ -16,6 +16,7 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ ...common, operation: z.literal('capture-conversation'), threadId: text, turnId: text.optional(), sourceVersion: text, recordIndexes: z.array(z.number().int().nonnegative()).min(1).max(1000) }),
   z.strictObject({ ...common, operation: z.literal('related'), threadId: text }),
   z.strictObject({ ...common, operation: z.literal('list') }),
+  z.strictObject({ ...common, operation: z.literal('tag'), id: text, generation: z.number().int().nonnegative(), tags: z.array(z.string()).max(32) }),
   z.strictObject({ ...common, operation: z.literal('runs') }),
   z.strictObject({ ...common, operation: z.literal('show'), id: text, revision: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
@@ -58,6 +59,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
       }) }];
     });
     case 'list': return app.list();
+    case 'tag': return app.tag(request.id, request.generation, request.tags);
     case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(({ runId, status, startedAt, committed, rejections }) => ({ runId, status, startedAt, committed, rejections }));
     case 'show': return { ...app.detail(request.id, request.revision), origin: app.runs().find(run => run.committed.some(ref => ref.knowledgeId === request.id))?.origin };
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);

@@ -47,7 +47,7 @@ Use the actual generation, not the example number. Edits create a new revision t
 
 ## Studio
 
-Start `omk studio` and use the returned address. The primary **Knowledge** entry opens **Extracted knowledge**. Search titles or filter by undecided, retained, or discarded items. **Knowledge artifacts** opens saved artifacts; doctor and observation data remain in the **Doctor and observe** tab.
+Start `omk studio` and use the returned address. The primary **Knowledge** entry opens **Extracted knowledge**. Search titles or tags, or filter by undecided, retained, or discarded items. **Knowledge artifacts** opens saved artifacts; doctor and observation data remain in the **Doctor and observe** tab.
 
 While reading an observed conversation, choose **Extract this turn** to confirm that turn’s selected messages, save location, and model directly. On the Knowledge page, **Choose a conversation** or **Extract new knowledge** lets you select a conversation and turn in place. Choose the entire conversation when a wider scope is needed. Expand message and configuration adjustments as needed; the model is called only after **Start extraction**. Successful extraction opens candidate review directly. Empty results, failure, or cancellation keep a result message; recover saved content through **Extraction history** or the conversation’s **Extracted knowledge**.
 
@@ -57,9 +57,21 @@ Review the content, conditions, and unknowns, then use **Inspect evidence** to l
 
 Reopen retained content under **Knowledge → Extracted knowledge**. Retention does not automatically edit artifacts; **Generate knowledge artifact** starts explicit generation and saving.
 
+## Organize and find knowledge
+
+Edit **Topic tags** in candidate details and explicitly save them. Use Chinese characters, letters, numbers, underscores, hyphens, or `/` for nesting, without spaces or purely numeric names. Each knowledge item allows up to 32 tags of 80 characters each. Duplicate tags are case-insensitive. Tags are user-maintained, make no additional model call, and do not verify knowledge. Editing tags leaves claims, sources, revisions, and retention decisions unchanged.
+
+The library searches titles and tags. `tag:debugging` matches “debugging” and nested tags such as “debugging/evidence”, together with the decision filter. Tags organize topics; knowledge types, applicability conditions, and evidence classifications still come from the selected knowledge revision.
+
+Tag history is stored separately in `tags/<identity-digest>.json` under the knowledge directory, using `omk-knowledge-tags/v1`. Records bind the knowledge identity and preserve tags, modification time, and actor. Existing knowledge, source, and run records require no migration. Unset tags are empty; concurrent updates reject stale generations and require reloading and review. Tags persist across knowledge revisions as organization information; check that they still apply.
+
 ## Generate and save knowledge artifacts
 
 Choose **Generate knowledge artifact** on a retained candidate or completed batch, or **Generate from retained knowledge** in **Knowledge artifacts**. Choose skill or prompt, enter a name, inspect the selected retained knowledge, and choose **Generate and review**. Initial selections include only the current candidate or retained items from this batch; explicitly add other retained items if needed, up to 100 per operation. Generation organizes existing material while retaining conditions, exceptions, unknowns, claim and evidence classifications, quotes, and source versions. It makes no additional model call.
+
+Generation also exports a property snapshot: title, summary, topic tags, knowledge types, scenarios, evidence classifications, and exact knowledge/source versions. The summary uses knowledge titles, scenarios come from claim contexts, and multiple evidence classifications can coexist. `verification_status: not_assessed` means this generation provides no truth or task-effect validation. Prompts use top-level YAML properties with `tags` as a list, readable by tools such as [Obsidian](https://obsidian.md/help/properties). Skills retain required `name`/`description` fields and put additional properties in the specification's `metadata` string mapping; lists are encoded as JSON strings.
+
+Properties use `omk-knowledge-metadata/v1` and describe knowledge incorporated in this artifact version; editing them does not update the knowledge library. Updating an OMK-generated artifact recomputes these properties. The first import of a local prompt preserves custom fields and existing tags. Tag changes after preview also reject stale saves. Older artifacts are not rewritten in the background; `manifest.json` remains authoritative for artifact and knowledge revision associations.
 
 Review and edit the new content, then choose **Save artifact**. Content is saved directly under the current knowledge directory as `artifacts/<artifact-id>/vN/content/<directory-name>/SKILL.md` or `artifacts/<artifact-id>/vN/content/<directory-name>.md`. The artifact detail opens with the actual artifact path, content, knowledge sources, and version history. Display names may contain Chinese text. New artifacts receive distinct file names; skill frontmatter names match their directory names, and valid frontmatter is checked on save, following the [Agent Skills format](https://agentskills.io/specification). No clipboard step is required. Source links open the exact incorporated knowledge revision. Saving does not verify truth or effectiveness; check applicability and run a controlled evaluation before use.
 

@@ -12,4 +12,5 @@ export type CarrierRow = Pick<CarrierDetail, 'artifactId' | 'name' | 'artifactKi
 export interface CarrierDraft {
   artifactId: string; artifactKind: AuthoredArtifactKind; name: string; directoryName: string;
   source: CarrierSource; baselineRevisionId: string | null; baselineHash: string | null; baseContent: string; content: string; knowledgeRefs: CarrierKnowledgeRef[]; selectedRefs: CarrierKnowledgeRef[];
+  tagSelections: { knowledgeId: string; generation: number }[];
 }

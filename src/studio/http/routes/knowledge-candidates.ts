@@ -20,6 +20,7 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
         if (response.destroyed) return;
         const message = error instanceof Error ? error.message : '';
         const code = /conflict/i.test(message) ? 'knowledge_conflict'
+          : message === 'Knowledge tags invalid.' ? 'knowledge_tags_invalid'
           : /capacity|exceeds/i.test(message) ? 'knowledge_capacity_exceeded'
           : 'knowledge_request_failed';
         response.writeHead(code === 'knowledge_conflict' ? 409 : 400, JSON_HEADERS);

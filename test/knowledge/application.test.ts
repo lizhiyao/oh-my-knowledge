@@ -8,6 +8,7 @@ import { KnowledgeApplication, type ExtractionModel } from '../../src/observabil
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
+import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { modelProposal, proposal } from './fixtures.js';
 
@@ -21,7 +22,7 @@ function setup(text = 'Alpha 使用 Beta') {
   const runs = new FileExtractionRunStore(join(root, 'runs'));
   const evidence = new TraceEvidenceStore(join(root, 'sources'));
   const ports = {
-    evidence, knowledge, runs, id: randomUUID, now: () => '2026-09-14T00:00:00Z',
+    evidence, knowledge, runs, tags: new FileKnowledgeTags(join(root, 'tags'), 'test'), id: randomUUID, now: () => '2026-09-14T00:00:00Z',
     hash: (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex'),
     actor: { actorKind: 'human' as const, actorId: 'tester' },
   };
@@ -37,6 +38,19 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
+  it('stores topic tags through the shared Studio action without changing claims, decisions or generation calls', async () => {
+    const { app, snapshot, model, generate } = setup();
+    const run = await app.generate(snapshot.snapshotId, model);
+    const id = run.committed[0].knowledgeId;
+    const before = app.detail(id);
+    const execute = (fields: Record<string, unknown>) => executeKnowledgeCandidateAction({ workspace: 'fixture', ...fields }, undefined, () => app);
+    await expect(execute({ operation: 'tag', id, generation: 0, tags: ['排障', 'Taro'] })).resolves.toEqual({ generation: 1, tags: ['排障', 'Taro'] });
+    expect(app.detail(id).history).toEqual(before.history);
+    expect(app.list()[0]).toMatchObject({ tags: ['排障', 'Taro'] });
+    await expect(execute({ operation: 'tag', id, generation: 0, tags: ['other'] })).rejects.toThrow('conflict');
+    await expect(execute({ operation: 'tag', id: 'missing', generation: 0, tags: ['other'] })).rejects.toThrow();
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
   it('generates once, assigns host identities, and preserves raw response and source bindings', async () => {
     const { app, snapshot, model, generate, source } = setup('前文😀Alpha 使用 Beta。');
     const id = randomUUID();
