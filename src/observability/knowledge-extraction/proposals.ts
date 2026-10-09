@@ -1,4 +1,5 @@
 import type { EntityMention, EvidenceExcerpt, EvidenceSelection, KnowledgeDraft } from '../../knowledge/contracts.js';
+import { GroundingSchema } from '../../knowledge/store.js';
 import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
 /** Host-resolved proposal using the shared window's temporary model identities. */
@@ -22,6 +23,9 @@ export function resolvedProposalProblems(proposal: ExtractionProposal, excerpts:
   const evidence = new Set(excerpts.map(excerpt => excerpt.evidenceRef));
   if (evidence.size !== excerpts.length) throw new Error('Ambiguous evidence window.');
   const reasons: string[] = [];
+  if (!GroundingSchema.shape.identityUncertainties.safeParse(proposal.identityUncertainties).success) {
+    return ['invalid_structure:identityUncertainties'];
+  }
   const draftResult = validateKnowledgeDraft(proposal.draft, evidence);
   if (!draftResult.accepted) reasons.push(...draftResult.problems.map(problem => `${problem.code}:${problem.path}`));
   reasons.push(...validateGroundingReferences(proposal.draft, proposal, evidence));

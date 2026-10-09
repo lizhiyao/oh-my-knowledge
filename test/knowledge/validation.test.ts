@@ -51,6 +51,16 @@ describe('window model admission', () => {
     const raw = modelWindow(); mutate(raw);
     expect(check(raw, excerpts).accepted).toEqual([]);
   });
+  it('rejects a composed uncertainty list beyond the grounding limit without losing valid siblings or entity analysis', () => {
+    const raw = modelWindow();
+    raw.entities.forEach((entity, index) => { entity.uncertainties = Array.from({ length: 32 }, (_, item) => `对象${index}-${item}`); });
+    const valid = { ...structuredClone(raw.proposals[0]), proposalId: 'other' };
+    raw.proposals[0].identityUncertainties = ['额外身份不确定性']; raw.proposals.push(valid);
+    const result = check(raw, excerpts);
+    expect(result.analysis.entities).toHaveLength(2);
+    expect(result.rejected).toEqual([{ index: 0, reasons: ['invalid_structure:identityUncertainties'] }]);
+    expect(result.accepted).toHaveLength(1); expect(result.accepted[0].identityUncertainties).toHaveLength(64);
+  });
   it('requires the current response discriminator and version', () => {
     for (const value of [{ proposals: [] }, { ...modelWindow(), schemaVersion: 2 }]) expect(() => check(value, excerpts)).toThrow();
   });
