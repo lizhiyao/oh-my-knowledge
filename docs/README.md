@@ -1,5 +1,7 @@
 # OMK Documentation
 
+OMK builds knowledge from real collaboration between people and AI: preserve sources, help people build understanding and methods, and give AI suitable knowledge for later tasks. User-controlled management and reuse across conversations and agents is an ongoing product direction, not a fully implemented capability.
+
 Choose an entry for your task. Version 1.0 is still in Beta iteration; existing users should read the [migration guide](./guides/v1-preview-migration.md) first. [简体中文 index](./zh/README.md).
 
 ## Choose an interface

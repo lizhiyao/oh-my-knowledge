@@ -1,12 +1,20 @@
 # Who omk is for (and what it solves)
 
-> This is omk's positioning note. Before you read the architecture, the statistics, or the three stages, it defines who omk helps, which decisions it supports, and the scope in which those decisions hold. Every design decision (defaults, storage attribution, command shape) should ultimately trace back to this page.
+> This is omk's positioning note. Before you read the architecture, statistics, or three stages, it explains how knowledge serves people and AI, which capabilities are available, and which directions still need implementation and validation. Every design decision (defaults, storage attribution, command shape) should ultimately trace back to this page.
 
 ## In one line
 
-**Observe. Measure. Know.** OMK makes knowledge changes in AI applications evidence-backed. It does not assign context-free quality scores. It helps the people who bear the consequences of a change decide whether that change created enough incremental value to ship, under an explicit target audience, task set, model, and acceptance standard.
+**Observe. Measure. Know.** Make knowledge useful for people and AI. OMK discovers, preserves, and maintains knowledge with sources from real collaboration between people and AI. It helps people build understanding, methods, and reasons for decisions, and gives AI suitable knowledge for later tasks.
 
 OMK delivers these capabilities through the CLI, Studio, eval-runtime, and the DSH plugin: command-line workflows, local inspection and review, evaluation embedded in Node.js services, and integration with an existing DeepSeek Harness profile. The workbench is one interface, not the definition of the whole product.
+
+## The value of knowledge for people and AI
+
+Knowledge can include domain insights, tradeoffs and reasons for decisions, working methods, collaboration experience, and personal or project goals, preferences, and constraints. It can help people understand problems, make decisions, and carry experience forward, while giving AI useful context and methods for later tasks. Its value extends beyond correcting agents or reducing errors.
+
+Observation preserves how this knowledge formed and where it came from, including successful approaches, user corrections, and gaps exposed by failures. Temporary discussion, unverified AI suggestions, user-confirmed understanding, and conclusions validated in practice must remain distinct. Recording or extracting conversation content does not automatically make it reliable knowledge.
+
+OMK is working toward helping users manage, revise, and reuse their knowledge across conversations and agents; this is not fully implemented. Today, users can extract, review, and maintain knowledge from selected records, then generate and save retained knowledge as a skill or prompt. Supporting multiple observation sources is not complete cross-agent knowledge management, and adding knowledge to context does not prove it was used correctly.
 
 ## First principle: there is no context-free "good knowledge"
 
@@ -21,9 +29,9 @@ An evaluation result therefore needs an explicit **evaluation contract**:
 
 The contract does not have to be a standalone configuration file. It is formed by the project's sample set, runtime configuration, and release gates. Eval samples are not neutral truth. They are an executable expression of that contract. omk does not erase differences between people's standards; it makes the standard and its scope explicit, then makes versions comparable under the same contract. "Ready to ship" in a report means: **under this model, sample set, and acceptance standard, the available evidence supports shipping.**
 
-## The problem: two distinct decisions
+## Testing AI task effects: two distinct decisions
 
-"Any good?" usually conflates two questions that require different evaluation designs.
+When testing a knowledge artifact's effects on AI tasks, "Any good?" usually conflates two questions that require different evaluation designs. Controlled evaluation provides evidence for these decisions; it does not replace assessing how knowledge helps people understand, develop methods, or reuse what they learned.
 
 **Change efficacy — is this change a real improvement, or noise?** A new knowledge version scores higher, but is that a genuine gain or random eval variation? omk answers with a verdict that carries uncertainty: Bootstrap confidence intervals, length de-biasing, and Krippendorff α when human gold is available, rather than two isolated scores.
 
@@ -31,9 +39,11 @@ The contract does not have to be a standalone configuration file. It is formed b
 
 These decisions can share measurement infrastructure, but they cannot be collapsed into one universal ruler. Authors shipping a revision primarily care about change efficacy; adopters deciding whether to bring in external knowledge care more about incremental value.
 
-## The first workflow
+## Choose knowledge-building and verification entry points as needed
 
-omk's first workflow is the pre-ship loop for a knowledge artifact:
+Starting from real work, inspect tasks in Studio, extract and review knowledge, preserve conditions and sources, and generate artifacts for later work as needed. Retaining knowledge does not require building an evaluation set every time. Use controlled comparison when you need to test a specific artifact change's effects on tasks.
+
+If you already have two artifact versions, you can start directly with the pre-ship verification path:
 
 ```text
 change a skill / prompt / agent artifact
@@ -43,43 +53,46 @@ change a skill / prompt / agent artifact
 → decide ship / don't ship
 ```
 
-This path does not require logs. When real tasks are available, start with Studio observation, knowledge extraction, and review, then apply selected content to artifacts and cases. Both paths share one principle: decisions should remain traceable to sources and an evaluation contract.
+This path does not require logs. Knowledge-maintenance decisions should remain traceable to sources; effectiveness judgments also need an evaluation contract and evidence scope. Retaining knowledge, writing an artifact, passing evaluation, and publishing are separate records.
 
-## Current target users: two hypotheses to validate
+## Who builds knowledge: specific benefits still need validation
 
-**Primary target: authors and maintainers who repeatedly ship knowledge changes.** Not everyone who has written a prompt, but people whose knowledge artifacts are reused, shared, or versioned, and for whom a bad change creates regressions, additional cost, or operational risk. They need to answer: "is this a real improvement for the target task, and is it worth shipping?"
+**Agent users.** People who want to preserve understanding, methods, and context from working with AI, then consult, revise, and reuse them in later work. They need to know what is worth keeping, its evidence, and where it applies, and gradually use suitable knowledge with different agents. Maintaining knowledge does not require them to take on evaluation work first.
 
-**Secondary target: teams and platform maintainers who bear the consequences of adoption.** They decide whether to introduce, retain, or upgrade external knowledge inputs. They cannot rely only on the author's bundled benchmark; they need to evaluate against their own tasks, constraints, and samples, retain evaluation reports and decide whether to adopt changes through their own release workflow.
+**AI application and knowledge artifact authors and maintainers.** Their knowledge artifacts are reused, shared, or versioned, and a bad change may create regressions, additional cost, or operational risk. They need both to preserve real working experience and to answer: "is this a real improvement for the target task, and is it worth adopting or shipping?"
 
-**Explicitly not the target: passive end-users.** Someone who installs a public skill and uses it directly usually has neither a sample set nor measurement intent; evaluation is additional overhead. omk does not require that person to become an evaluator. Eval artifacts therefore default to the evaluator's project workspace, not a passive user's install directory.
+**Teams and platform maintainers who bear the consequences of adoption.** They decide whether to introduce, retain, or upgrade external knowledge inputs and manage knowledge for their tasks and constraints. When they intend to measure effects, they cannot rely only on the author's bundled benchmark; they should evaluate against their own cases and preserve evidence. Evaluation artifacts default to the evaluator's project workspace, not a user's install directory.
 
-These are omk's **product hypotheses**, not established market facts. In particular, team governance becomes a second pillar only if real teams are willing to define their own evaluation contracts and use them repeatedly. A coherent argument in this document is not proof of demand.
+These describe product direction and intended beneficiaries, not established market facts. Whether knowledge preservation is worth its review and maintenance costs, whether reuse across agents brings benefits, and which users need controlled evaluation must be tested through real work.
 
 ## What would validate the demand
 
-Agreeing that "knowledge changes should have evidence" is not the same as investing time in evaluation. Stronger product signals are:
+Agreeing that knowledge has value is not the same as investing time in maintaining or evaluating it. Stronger product signals are:
 
+- a user reviews and retains knowledge from real collaboration, then consults, revises, or reuses it later;
+- retained knowledge helps a person understand a problem or make a decision, or helps AI complete a later task correctly;
 - a maintainer brings a live change rather than a demo artifact;
 - they create or review samples that represent their own requirements;
 - report evidence changes a ship, rollback, or sample-expansion decision;
 - they run omk again when the next change occurs.
 
-This page can only state **who omk expects to benefit**. Whether those people care enough to bear the evaluation cost must be demonstrated through repeated use. Product priorities should serve users who exhibit those behaviors before expanding for a persona that is logically plausible but not yet present.
+This page can only state **who omk expects to benefit**. Assess actual reuse benefits alongside the costs of reading, review, maintenance, and measurement. Product priorities should follow real use and repeated reuse; counts of logs, reports, or candidates cannot replace that evidence.
 
-## Which stage serves whom
+## Which needs each entry point serves
 
-omk's three stages reach different audiences:
+Observation, knowledge maintenance, and controlled measurement serve different needs and can be combined for the current goal:
 
+- **Knowledge extraction and maintenance**: organize facts, experience, and methods worth keeping from selected sources; review conditions, revisions, and reasons; generate and explicitly save knowledge artifacts.
 - **doctor (check)**: the pre-ship health gate. Authors use it before trusting an eval; adopters can use it to rule out structural, dependency, and measurability problems.
 - **eval (evaluate)**: the release decision core. It needs an evaluation contract and measurement intent, so it belongs to author iteration and adoption decisions. Passive users do not need to run it.
-- **observe (observe)**: the real-usage feedback loop. It finds gaps in real session traces that the current contract does not cover and feeds the next sample set. It does not replace controlled eval and should not be the first surface a new user must understand.
+- **observe (observe)**: provides real collaboration and sources for knowledge building, including successful approaches, user corrections, and knowledge gaps. These can inform cases when testing a change, but observation signals cannot replace controlled comparison or establish causality.
 
 ## Boundaries: what omk doesn't do
 
 - **It doesn't produce a universal knowledge-quality ranking.** Different users and tasks may produce different conclusions. omk compares versions under an explicit contract; it does not assign context-free value.
 - **It doesn't extrapolate beyond the evaluation contract.** A report cannot make promises about users, tasks, models, or constraints that its samples did not cover.
 - **It doesn't independently adjudicate truth.** omk provides no independent source of truth and does not rule on whether knowledge is correct on its own. It measures results against the cases, assertions, and gold you provide. Factual correctness is testable, but you supply the standard.
-- **It doesn't serve passive users.** See above.
+- **It doesn't require evaluation for every knowledge-maintenance step.** Users can preserve and reuse knowledge as needed; controlled judgments about task effects still require explicit models, cases, and acceptance standards.
 - **It doesn't mix the model into the variables.** Hold the model fixed and vary only the knowledge to attribute the difference to the knowledge itself. That is the precondition for "comparable," not a limitation.
 
 ## Read next

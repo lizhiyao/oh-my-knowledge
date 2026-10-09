@@ -2,7 +2,8 @@
   <div class="wrap">
     <span class="tag"><span class="dot"></span> <b>OMK</b> · 1.0 Beta 持续迭代</span>
     <h1>Observe. Measure.<br/><span class="em">Know.</span></h1>
-    <p class="sub"><b>让 AI 应用的知识改动有据可依。</b><br/>从真实任务提炼知识，受控比较 prompt、RAG、skill、agent 与 workflow 的改动，依据证据决定是否采纳。</p>
+    <p class="sub"><b>让知识服务于人和 AI。</b><br/>从人与 AI 的真实协作中沉淀有来源的知识，帮助人积累理解、方法和判断依据，并让 AI 在后续任务中使用合适的知识。</p>
+    <p class="sub">持续建设方向：以用户为中心，让知识跨会话、跨 Agent 管理、修订和复用。</p>
     <div class="cta">
       <span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><span class="copy" onclick="omkCopy('npm i -g oh-my-knowledge@next', this)">复制 ⧉</span></span>
       <a class="lnk" href="/zh/quickstart-skill-eval">命令行评测 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/eval-runtime">Node.js 服务接入 <span class="ar">→</span></a><a class="lnk" href="/zh/guides/observe-production">查看任务轨迹 <span class="ar">→</span></a>
@@ -26,8 +27,8 @@
     <div class="sec-head"><h2>从当前任务开始</h2><p class="lead">CLI 执行工作流，Studio 浏览与复核证据，eval-runtime 将评测嵌入服务，DSH 插件直接复用宿主环境。</p></div>
     <div class="cap-grid">
       <div class="cap o">
-        <div class="ic">01</div><h3>看清真实任务</h3>
-        <p>从本机 Codex 对话进入任务轨迹，核对请求、工具调用、结果与知识访问；实时跟随不调用模型。</p><code class="cmd2">omk studio</code>
+        <div class="ic">01</div><h3>发现值得沉淀的知识</h3>
+        <p>从本机 Codex 对话核对成功经验、用户纠正与知识缺口的依据，保留请求、执行与结果；实时跟随不调用模型。</p><code class="cmd2">omk studio</code>
         <p><a class="lnk" href="/zh/guides/observe-production">打开观测指南 <span class="ar">→</span></a></p>
       </div>
       <div class="cap d">
@@ -69,7 +70,7 @@
 <section class="band" id="workflow">
   <div class="wrap">
     <div class="sec-head"><h2>从证据到改动，每一步都有边界</h2><p class="lead">知识内容是一条事实、经验或方法；知识载体是承载它们的 prompt、文档或 skill。提炼产生待复核内容，人工形成载体改动后再评测；保留知识、采纳改动与发布版本是不同决定。</p></div>
-    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>看任务、核对来源与覆盖范围。</p></div><div class="cap in"><h3>Measure</h3><p>控制并记录条件，比较改动表现。</p></div><div class="cap in"><h3>Know</h3><p>保留依据，决定采纳、回退或继续改进。</p></div></div>
+    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>从真实协作发现知识，核对来源与覆盖范围。</p></div><div class="cap in"><h3>Measure</h3><p>控制并记录条件，检验知识载体改动的效果。</p></div><div class="cap in"><h3>Know</h3><p>提炼和维护有依据的知识，供人和 AI 复用。</p></div></div>
     <p><a class="lnk" href="/zh/explanation/knowledge">理解知识内容与载体 <span class="ar">→</span></a></p>
   </div>
 </section>
