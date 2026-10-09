@@ -1,3 +1,5 @@
+import { CarrierMeasurementConfirmation } from '../../../src/studio/web/components/measure/carrier-measurement';
+import type { CarrierMeasurementPlan } from '../../../src/studio/view-models/measure/carrier-measurement';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -262,4 +264,19 @@ describe('measure sidebar run switcher', () => {
     assert.ok(renderToString(createElement(RunSidebar, { runs: [], lang: 'zh' })).includes('尚无评测记录'));
     assert.ok(renderToString(createElement(RunSidebar, { runs: [], lang: 'en' })).includes('No evaluations yet'));
   });
+});
+
+it('shows the reviewed local samples and exact versions before authorizing model calls, with literal external text', () => {
+  const plan: CarrierMeasurementPlan = {measurementId:'attempt',expiresAt:'2026-01-01T00:00:00Z',treatment:{artifactId:'carrier',revisionId:'revision',version:2,name:'new',contentHash:'new-hash',knowledgeRefs:[],content:'new'},control:{label:'old',path:'/local/old.md',contentHash:'old-hash',content:'old'},samplesPath:'/local/samples.json',samples:[{sampleId:'<script>unsafe()</script>',input:'<script>payload()</script>',provenance:'human',criteria:'exact criterion'}],executor:'codex',model:'fixed-model',judgeModel:null,trials:3,executionCoordinates:6,evaluatorCount:1,scoringModels:[],runContractDigest:'contract'};
+  for(const lang of ['zh','en'] as const) {
+    const html=renderToString(createElement(CarrierMeasurementConfirmation,{plan,lang}));
+    for(const fact of ['fixed-model','exact criterion','/local/samples.json','&lt;script&gt;payload()','&lt;script&gt;unsafe()'])assert.ok(html.includes(fact));
+    assert.ok(!html.includes('<script>payload'));
+    assert.ok(html.includes(lang==='zh'?'确认后才调用模型':'Models are called only after confirmation'));
+    assert.ok(html.includes(lang==='zh'?'费用无法提前准确估算':'Cost cannot be estimated precisely'));
+  }
+});
+it('links measurement evidence back to the exact evaluated carrier version', () => {
+  const view={...detail(),carrierOrigin:{artifactId:'carrier',revisionId:'revision',version:2,name:'<script>carrier</script>'}};
+  const html=runDetail(view,'zh');assert.ok(html.includes('/knowledge?artifact=carrier&amp;version=2'));assert.ok(html.includes('回到待测载体'));assert.ok(html.includes('&lt;script&gt;carrier&lt;/script&gt;'));
 });

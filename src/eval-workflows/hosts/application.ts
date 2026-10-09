@@ -1,6 +1,6 @@
 import { resolve, join } from 'node:path';
 import { schemaIdentityKey, type CoreSchemaValidator } from '../../eval-core/contracts/index.js';
-import { compileCliEvaluationInput, type CliEvaluationRequest } from '../input-compilation/index.js';
+import { compileCliEvaluationInput, type CliEvaluationRequest, type CliEvaluationCompileResult } from '../input-compilation/index.js';
 import {
   createNodeCoreRunArtifactStore,
   createNodeCoreContentStore,
@@ -51,6 +51,9 @@ export interface EvaluationApplicationInput {
   readonly onCompleted?: (result: ProductEvaluationResult & { readonly outputDirectory: string; readonly store: CoreRunArtifactStore }, request: CliEvaluationRequest) => Promise<void>;
   readonly store?: CoreRunArtifactStore;
   readonly onNotice?: (notice: EvaluationNotice) => void;
+  /** Host confirmation boundary: validate the exact resolved definition and policy before Runtime preparation. */
+  readonly expectedRunContractDigest?: string;
+  readonly validateCompiled?: (compiled: CliEvaluationCompileResult) => void;
   /** Entry-owned translation from a batch item to its normalized request. */
   readonly requestForBatchItem?: (item: BatchItem) => CliEvaluationRequest;
 }
@@ -126,9 +129,10 @@ function createApplication(host: ApplicationHost): EvaluationApplication {
       ...(host.implementationIds === undefined ? {} : { hostExecutorImplementationIds: host.implementationIds, hostOwnedEffortImplementationIds: host.implementationIds }),
     });
     const compiled = compileCliEvaluationInput(resolved);
+    input.validateCompiled?.(compiled);
     const composition = await host.compose({ compiled, projectRoot, outputDirectory, resourceLeaseRoot: input.resourceLeaseRoot });
     const store = input.store ?? runStore(outputDirectory, composition.contentResolver, projectRoot, host.globalFallbackDirectory);
-    const result = await executeProductEvaluation({ host: { compiled, ...composition, artifactStore: store }, request, signal: input.signal, createProgressSink: input.createProgressSink, idPrefix: host.idPrefix });
+    const result = await executeProductEvaluation({ host: { compiled, ...composition, artifactStore: store }, request, signal: input.signal, createProgressSink: input.createProgressSink, expectedRunContractDigest: input.expectedRunContractDigest, idPrefix: host.idPrefix });
     if (result.outcomeKind !== 'dry-run') {
       const artifacts = result.outcomeKind === 'run' ? [result.artifacts] : result.artifacts;
       for (const source of artifacts) await persistCoreArtifactSidecars({ source, outputDirectory, cwd: projectRoot });

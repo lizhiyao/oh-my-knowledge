@@ -25,6 +25,8 @@ export interface ProductEvaluationExecutionInput {
   readonly request: CliEvaluationRequest;
   readonly signal?: AbortSignal;
   readonly createProgressSink?: () => OmkEvaluationProgressSink;
+  /** Confirmation belongs to the host; execution must use the reviewed sealed contract. */
+  readonly expectedRunContractDigest?: string;
   readonly idPrefix?: string;
 }
 
@@ -48,6 +50,7 @@ export async function executeProductEvaluation(input: ProductEvaluationExecution
     throw new TypeError('--resume 只接受 Core runId，不接受旧报告路径。');
   }
   const independentSeries = host.compiled.orchestration.independentSeries;
+  if (independentSeries && input.expectedRunContractDigest) throw new Error('evaluation_plan_conflict');
   if (independentSeries !== undefined) {
     if (sourceRunId !== undefined) throw new TypeError('Independent Series resume 必须按 member runId 单独执行。');
     const createdAt = new Date().toISOString();
@@ -76,6 +79,7 @@ export async function executeProductEvaluation(input: ProductEvaluationExecution
     return { outcomeKind: 'series', artifacts, outcome: projectCoreCliSeriesOutcome({ evolution, members: artifacts, ...projection }) };
   }
   const prepared = await createProductionEvaluationWorkflow(host).prepare({ signal: input.signal });
+  if (input.expectedRunContractDigest && prepared.plan.digests.runContractDigest !== input.expectedRunContractDigest) throw new Error('evaluation_plan_conflict');
   let artifacts: StoredCoreRunArtifacts;
   if (sourceRunId !== undefined) {
     const resume = await prepared.resolveResumeDisposition({

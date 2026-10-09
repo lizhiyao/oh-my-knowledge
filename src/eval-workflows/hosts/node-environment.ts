@@ -5,7 +5,7 @@ import {
   NodeCliProductionCompositionError,
   type NodeEvaluationEnvironment,
   type ClassifiedEnvironmentEntry,
-} from '../../eval-workflows/hosts/application.js';
+} from './application.js';
 
 const CREDENTIAL_ENVIRONMENT = new Set([
   'ANTHROPIC_API_KEY',

@@ -168,6 +168,7 @@ export interface CoreStudioDecision {
 }
 
 export interface CoreStudioRunDetail {
+  readonly carrierOrigin?: { artifactId: string; revisionId: string; version: number; name: string };
   readonly detailKind: 'studio-core-run-detail';
   readonly schemaVersion: 'omk.studio-core-run-detail/v1';
   readonly run: CoreStudioRunCard;

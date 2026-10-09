@@ -205,3 +205,4 @@ test/studio/web/terminology-guard.test.ts
 test/studio/web/bilingual-copy.test.ts
 test/studio/web/settings-language.test.ts
 test/knowledge-artifacts/authoring/library.test.ts
+test/eval-workflows/hosts/carrier-measurement.test.ts

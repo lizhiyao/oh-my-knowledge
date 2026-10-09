@@ -1,3 +1,4 @@
+import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
@@ -132,8 +133,10 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       // 页面只拿装载好的事实，不再自己判第二次「记录不存在」（#902 §三）。
       if (measure) {
         try {
-          if (!options.coreStudioCatalog) throw new Error('unavailable');
-          measurePage = await loadMeasurePage(options.coreStudioCatalog, path);
+          const workspace = pageRoutes ? searchParams.get('workspace') : null;
+          const catalog = workspace ? carrierMeasureCatalog(workspace, options.coreStudioCatalog) : options.coreStudioCatalog;
+          if (!catalog) throw new Error('unavailable');
+          measurePage = await loadMeasurePage(catalog, path, workspace ?? undefined);
         } catch {
           response.writeHead(503, TEXT_HEADERS);
           response.end(CORE_STUDIO_SOURCE_UNAVAILABLE); return true;

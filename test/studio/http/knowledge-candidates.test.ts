@@ -83,6 +83,15 @@ describe('Studio candidate action boundary', () => {
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
+  it('protects carrier measurement mutations and redacts invalid input without model execution', async () => {
+    const send = (body: string, origin?: string) => fetch(`${url}/api/knowledge/measurements`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body });
+    expect((await send(JSON.stringify({ operation: 'start', workspace, id: 'invalid' }), 'https://untrusted.example')).status).toBe(403);
+    expect((await send('invalid')).status).toBe(400);
+    const invalid = await send(JSON.stringify({ operation: 'preview', input: { workspace, secret: 'private-value' } }));
+    expect(invalid.status).toBe(400);
+    const body = await invalid.text(); expect(body).not.toContain(root); expect(body).not.toContain('private-value');
+    expect((await send(JSON.stringify({ operation: 'list', workspace, artifactId: 'invalid', version: 1, unknown: true }))).status).toBe(400);
+  });
   it('routes artifact authoring through the same trusted Studio boundary with redacted errors', async () => {
     const send = (body: string, origin?: string) => fetch(`${url}/api/knowledge/artifacts`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body });
     expect(await (await send(JSON.stringify({ operation: 'list', workspace }))).json()).toEqual([]);

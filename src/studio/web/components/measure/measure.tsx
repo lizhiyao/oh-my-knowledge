@@ -396,6 +396,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     <div className="measure-heading"><div><Link href={href(MEASURE_INDEX_PATH)}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
     <Axes run={run} copy={copy} lang={lang}/>
     <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
+    {detail.carrierOrigin && <p><Link href={href(`/knowledge?artifact=${encodeURIComponent(detail.carrierOrigin.artifactId)}&version=${detail.carrierOrigin.version}`)}>{lang === 'zh' ? '回到待测载体' : 'Back to evaluated artifact'}：{detail.carrierOrigin.name} · v{detail.carrierOrigin.version}</Link></p>}
     <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>
     <Tabs className="studio-detail-tabs" items={[
       { key: 'scope', label: copy.scopeTab, forceRender: true, children: scopePanel },
