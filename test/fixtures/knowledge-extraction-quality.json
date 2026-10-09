@@ -1,0 +1,105 @@
+[
+  {
+    "caseId": "no-reusable-content",
+    "provenance": "synthetic",
+    "messages": [
+      {
+        "role": "user",
+        "text": "好，谢谢。"
+      },
+      {
+        "role": "assistant",
+        "text": "不客气。"
+      }
+    ],
+    "reviewChecks": [
+      "应返回零候选，不把礼貌应答整理为方法。"
+    ]
+  },
+  {
+    "caseId": "unverified-success",
+    "provenance": "synthetic",
+    "messages": [
+      {
+        "role": "user",
+        "text": "检查这个补丁是否修复了故障。"
+      },
+      {
+        "role": "assistant",
+        "text": "补丁已经修复了故障，测试全部通过。"
+      }
+    ],
+    "reviewChecks": [
+      "没有工具结果，AI 自述不能变成 direct_observation 支持的已验证效果。",
+      "若保留，应明确这是来源说法、验证记录缺失；允许零候选。"
+    ]
+  },
+  {
+    "caseId": "corrected-release",
+    "provenance": "synthetic-derived-from-codex-knowledge-debugger-failure",
+    "messages": [
+      {
+        "role": "user",
+        "text": "检查并发布当前版本。"
+      },
+      {
+        "role": "assistant",
+        "text": "版本已经可以发布。"
+      },
+      {
+        "role": "user",
+        "text": "不对，发布失败了，而且你没有先检查 doctor 和 eval 证据。"
+      }
+    ],
+    "reviewChecks": [
+      "最终纠正必须保留；不能提取为发布成功或直接允许发布。",
+      "旧说法只能作为被纠正的说法或案例背景，不能作为有效规则。"
+    ]
+  },
+  {
+    "caseId": "conditional-ci-rule",
+    "provenance": "repository-rule-excerpt",
+    "messages": [
+      {
+        "role": "user",
+        "text": "普通局部修改用 ci:quick 精准验证；跨模块、依赖、构建／打包、CI 门禁变化必须本地完整 yarn ci。首次 push 后事实未变化时复用本地结果，以远端 CI 补充确认。"
+      }
+    ],
+    "reviewChecks": [
+      "应提取可复用的条件性方法或规则，不漏掉普通局部与跨模块两类条件。",
+      "不得泛化为每轮必须完整 yarn ci；必须保留事实未变化这一复用条件。"
+    ]
+  },
+  {
+    "caseId": "completed-underpowered",
+    "provenance": "synthetic-derived-from-carrier-acceptance",
+    "messages": [
+      {
+        "role": "user",
+        "text": "这个载体的改动有效吗？"
+      },
+      {
+        "role": "assistant",
+        "text": "运行已完成，证据完整，策略已作出判定。实际判定是 UNDERPOWERED，只有 1 个模拟验收用例，暂不能判断改动是否有效。"
+      }
+    ],
+    "reviewChecks": [
+      "不能把运行完成或已判定提炼成效果验证成功。",
+      "保留证据不足、1 个模拟用例及不能外推效果的限制。"
+    ]
+  },
+  {
+    "caseId": "single-outcome-with-gaps",
+    "provenance": "synthetic",
+    "messages": [
+      {
+        "role": "user",
+        "text": "这一次在测试环境里，重启进程后请求恢复了。没有记录版本、根因或后续运行情况。"
+      }
+    ],
+    "reviewChecks": [
+      "应保留为一次有缺口的案例，而不是普遍有效的修复方法。",
+      "保留测试环境、一次恢复以及版本、根因与后续情况缺失。"
+    ]
+  }
+]
