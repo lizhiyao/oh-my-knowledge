@@ -22,6 +22,10 @@ Generation sends selected excerpts and coverage limitations to the configured ex
 
 Local Node code reads and parses the log; the model receives only the prepared selected excerpts. CLI and Studio share this application flow. Codex runs in an empty temporary working directory with the executor’s read-only sandbox and ignore-user-config/ignore-rules arguments, and is instructed not to call tools. Any observed tool call causes rejection of the output; this is not a strict guarantee against all file access. API requests provide no tools. The keyword-excerpt entry has been removed; existing local-rule run records remain readable.
 
+Current generation uses `knowledge-extraction-v2`. The model provides only a verbatim quote from the specified excerpt; the program requires a unique match within that excerpt and computes UTF-16 positions. It does not normalize text or find substitute evidence in another message. Missing or repeated matches reject the proposal. The prompt requires conditions, counterexamples, later corrections and unverified steps that affect a conclusion to remain in its statement context; actual retention still needs individual review.
+
+v2 changes the prompt and model output contract, a `BREAKING-COMPARABILITY` change: differences in accepted counts between versions cannot directly establish better knowledge quality. Original model output stays unchanged; candidates store the program-derived positions separately. Existing candidates and runs need no migration. Resuming a v1 run retains v1 strict offset validation, without automatically repairing old records or calling the model again.
+
 Zero candidates is valid. Invalid proposals retain rejection reasons. Exact quote matching checks location integrity, not truth. Recorded behavior, source assertions and inference remain distinct; missing conditions and times remain unknown.
 
 ## Inspect and maintain

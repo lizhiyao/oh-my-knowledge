@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/validation.js';
 import { KnowledgeTimeSchema, type KnowledgeDraft } from '../../src/knowledge/contracts.js';
-import { checkExtractionResponse, type ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
+import { checkExtractionResponse, extractionResponseChecker, type ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
 
-import { draft, proposal } from './fixtures.js';
+import { draft, modelProposal, proposal } from './fixtures.js';
 const evidence = new Set(['record-1']);
 
 describe('model output validation', () => {
@@ -30,6 +30,70 @@ describe('model output validation', () => {
     expect(result.accepted).toHaveLength(1);
     expect(result.rejected).toEqual([{ index: 1, reasons: expect.any(Array) }]);
     expect(result.rejected[0].reasons.length).toBeGreaterThan(0);
+  });
+});
+
+describe('quote-only model admission', () => {
+  const check = extractionResponseChecker('knowledge-extraction-v2');
+  const excerpts = [{ evidenceRef: 'record-1', text: '前文😀Alpha 使用 Beta。后文' }];
+  it('computes exact UTF-16 positions without altering the original response', () => {
+    const raw = { proposals: [modelProposal()] };
+    const before = structuredClone(raw);
+    const result = check(raw, excerpts);
+    expect(result.rejected).toEqual([]);
+    expect(result.accepted[0].mentions[0].selection).toEqual({ evidenceRef: 'record-1', quote: 'Alpha', start: 4, end: 9 });
+    expect(result.accepted[0].citations[0].selection).toEqual({ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', start: 4, end: 17 });
+    expect(raw).toEqual(before);
+    expect(check({ proposals: [] }, excerpts)).toEqual({ accepted: [], rejected: [] });
+  });
+  it.each([
+    ['missing', 'Alpha使用Beta', excerpts, 'citation:quote_mismatch'],
+    ['repeated', 'Alpha 使用 Beta', [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta；Alpha 使用 Beta' }], 'citation:ambiguous_quote'],
+    ['overlapping', 'aaa', [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta aaaa' }], 'citation:ambiguous_quote'],
+    ['foreign source', 'Alpha 使用 Beta', excerpts, 'citation:unknown_evidence'],
+  ] as const)('rejects %s quotes while preserving partial acceptance and original indices', (name, quote, source, reason) => {
+    const invalid = modelProposal();
+    invalid.proposalId = 'other';
+    invalid.citations[0].selection.quote = quote;
+    if (name === 'foreign source') invalid.citations[0].selection.evidenceRef = 'outside';
+    const result = check({ proposals: [invalid, modelProposal()] }, [...source, { evidenceRef: 'elsewhere', text: quote }]);
+    expect(result.rejected[0]).toMatchObject({ index: 0, reasons: expect.arrayContaining([reason]) });
+    if (name !== 'repeated') expect(result.accepted).toHaveLength(1);
+    else expect(result.accepted).toEqual([]);
+  });
+  it('admits an expanded verbatim quote that distinguishes repeated short mentions', () => {
+    const candidate = modelProposal();
+    candidate.mentions[0].selection.quote = 'Alpha 使用 Beta；';
+    candidate.mentions[1].selection.quote = 'Beta；';
+    candidate.citations[0].selection.quote = 'Alpha 使用 Beta；';
+    const result = check({ proposals: [candidate] }, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta；Alpha 使用 Beta' }]);
+    expect(result.rejected).toEqual([]);
+    expect(result.accepted[0].citations[0].selection).toMatchObject({ start: 0, end: 14 });
+  });
+  it('requires a unique excerpt identity and rejects duplicate proposal identities even when one quote fails', () => {
+    expect(() => check({ proposals: [] }, [...excerpts, ...excerpts])).toThrow('Ambiguous evidence window');
+    const invalid = modelProposal(); invalid.citations[0].selection.quote = 'missing';
+    const result = check({ proposals: [invalid, modelProposal()] }, excerpts);
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected.every(({ reasons }) => reasons.includes('duplicate_proposal'))).toBe(true);
+  });
+  it.each([
+    (p: ReturnType<typeof modelProposal>) => { p.citations[0].selection.quote = ''; },
+    (p: ReturnType<typeof modelProposal>) => { Object.assign(p.citations[0].selection, { start: 0, end: 14 }); },
+    (p: ReturnType<typeof modelProposal>) => { p.mentions[0].entityId = 'outside'; },
+    (p: ReturnType<typeof modelProposal>) => { p.citations[0].evidenceLinkId = 'outside'; },
+    (p: ReturnType<typeof modelProposal>) => { Object.assign(p, { reviewStatus: 'supported' }); },
+  ])('keeps transport and grounding authority strict', (mutate) => {
+    const invalid = modelProposal(); mutate(invalid);
+    expect(check({ proposals: [invalid] }, excerpts).accepted).toEqual([]);
+  });
+  it('selects the original admission policy for frozen versions and refuses unregistered versions', () => {
+    const raw = proposal(); raw.citations[0].selection.end += 1;
+    for (const version of ['knowledge-extraction-v1', 'knowledge-local-rules-v1']) {
+      expect(extractionResponseChecker(version)({ proposals: [raw] }, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta。' }]).rejected[0].reasons).toContain('citation:quote_mismatch');
+    }
+    expect(() => extractionResponseChecker('unregistered')).toThrow('Unsupported');
+    expect(check({ proposals: [modelProposal()] }, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta。' }]).accepted).toHaveLength(1);
   });
 });
 

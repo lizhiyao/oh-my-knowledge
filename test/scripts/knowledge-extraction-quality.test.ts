@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
 } from '../../scripts/bench/knowledge-extraction-quality.js';
-import { checkExtractionResponse } from '../../src/observability/knowledge-extraction/proposals.js';
+import { checkExtractionResponse, extractionResponseChecker } from '../../src/observability/knowledge-extraction/proposals.js';
+
+import { modelProposal, proposal } from '../knowledge/fixtures.js';
 
 const roots: string[] = [];
 const tempRoot = () => {
@@ -75,6 +77,28 @@ describe('knowledge extraction quality evidence', () => {
     expect(records[1].checked.rejected).toHaveLength(1);
     expect(records[2].checked).toEqual({ accepted: [], rejected: [] });
     expect(records.every((record) => record.semanticReview === 'pending')).toBe(true);
+  });
+
+  it('captures each prompt version with its own admission policy and the same input bytes', async () => {
+    const sample = { caseId: 'quote-position', provenance: 'synthetic', messages: [{ role: 'user' as const, text: 'Alpha 使用 Beta。' }], reviewChecks: ['引用必须逐字匹配'] };
+    const records = [];
+    for (const version of ['knowledge-extraction-v1', 'knowledge-extraction-v2']) {
+      const output = tempRoot();
+      const candidate = version === 'knowledge-extraction-v1' ? proposal() : modelProposal();
+      if (version === 'knowledge-extraction-v1') Object.assign(candidate.citations[0].selection, { end: 14 });
+      const raw = JSON.stringify({ proposals: [candidate] }).replaceAll('record-1', 'quote-position:0');
+      await captureQualityCases({ cases: [sample], output, prompt: version, signal: new AbortController().signal,
+        check: extractionResponseChecker(version), generate: async () => ({ output: raw }),
+      });
+      const record = JSON.parse(readFileSync(join(output, 'quote-position.json'), 'utf8'));
+      expect(record.runtime.output).toBe(raw);
+      records.push(record);
+    }
+    expect(records[0].inputDigest).toBe(records[1].inputDigest);
+    expect(records[0].checked.rejected[0].reasons).toContain('citation:quote_mismatch');
+    expect(records[1].checked.rejected).toEqual([]);
+    expect(records[1].checked.accepted[0].citations[0].selection).toMatchObject({ start: 0, end: 13 });
+    expect(records[1].semanticReview).toBe('pending');
   });
 
   it('stops subsequent calls when an output cannot be persisted', async () => {

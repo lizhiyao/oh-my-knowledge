@@ -9,14 +9,14 @@ import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { proposal } from './fixtures.js';
+import { modelProposal, proposal } from './fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function setup() {
+function setup(text = 'Alpha 使用 Beta') {
   const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-app-')); roots.push(root);
   const source = join(root, 'log.jsonl');
-  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }));
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'test');
   const runs = new FileExtractionRunStore(join(root, 'runs'));
   const evidence = new TraceEvidenceStore(join(root, 'sources'));
@@ -29,8 +29,8 @@ function setup() {
   const snapshot = app.capture({ path: source });
   const generate = vi.fn(async (_system: string, input: string) => {
     const data = JSON.parse(input);
-    const ref = data.excerpts.find((entry: { text: string }) => entry.text === 'Alpha 使用 Beta').evidenceRef;
-    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(proposal()).replaceAll('record-1', ref))] }), durationMs: 5 };
+    const ref = data.excerpts.find((entry: { text: string }) => entry.text === text).evidenceRef;
+    return { output: JSON.stringify({ proposals: [JSON.parse(JSON.stringify(modelProposal()).replaceAll('record-1', ref))] }), durationMs: 5 };
   });
   const model: ExtractionModel = { executor: 'fake', model: 'test-model', generate };
   return { app, snapshot, knowledge, runs, evidence, model, generate, ports, source };
@@ -38,11 +38,13 @@ function setup() {
 
 describe('shared knowledge application', () => {
   it('generates once, assigns host identities, and preserves raw response and source bindings', async () => {
-    const { app, snapshot, model, generate, source } = setup();
+    const { app, snapshot, model, generate, source } = setup('前文😀Alpha 使用 Beta。');
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.rawOutput).toBeTruthy();
+    expect(run.promptVersion).toBe('knowledge-extraction-v2');
+    expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
+    expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);
     expect(run.runtime).not.toHaveProperty('costUSD');
     expect(generate.mock.calls[0][1]).not.toContain(source);
@@ -50,6 +52,7 @@ describe('shared knowledge application', () => {
     expect(entry.revision.knowledgeId).not.toBe('candidate-1');
     expect(entry.revision.entities[0].entityId).not.toBe('project');
     expect(entry.grounding.mentions[0].entityId).toBe(entry.revision.entities[0].entityId);
+    expect(entry.grounding.citations[0].selection).toMatchObject({ start: 4, end: 17, quote: 'Alpha 使用 Beta' });
     expect(entry.reviewStatus).toBe('pending');
     expect(entry.revision.createdBy).toMatchObject({ actorKind: 'agent', executionRef: id });
     expect(await app.generate(snapshot.snapshotId, model, id)).toEqual(run);
@@ -84,6 +87,24 @@ describe('shared knowledge application', () => {
     expect(app.resume(id).status).toBe('completed');
     expect(knowledge.list()).toHaveLength(1);
     expect(knowledge.list()[0].generation).toBe(1);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it.each(['knowledge-extraction-v1', 'knowledge-extraction-v2'] as const)('resumes a persisted %s output using that version without another model call', async (version) => {
+    const { app, snapshot, model, runs, generate } = setup('Alpha 使用 Beta。');
+    const current = await app.generate(snapshot.snapshotId, model);
+    const candidate = version === 'knowledge-extraction-v1' ? proposal() : modelProposal();
+    if (version === 'knowledge-extraction-v1') Object.assign(candidate.citations[0].selection, { end: 14 });
+    const rawOutput = JSON.stringify({ proposals: [candidate] }).replaceAll('record-1', snapshot.excerpts[0].evidenceRef);
+    const runId = randomUUID();
+    runs.create({ ...current, runId, generation: 1, promptVersion: version, promptHash: 'frozen-version-hash',
+      status: 'generating', rawOutput, intents: [], rejections: [], committed: [] });
+    const recovered = app.resume(runId);
+    expect(recovered.status).toBe('completed');
+    expect(recovered.rawOutput).toBe(rawOutput);
+    expect(recovered.promptHash).toBe('frozen-version-hash');
+    expect(recovered.committed).toHaveLength(version === 'knowledge-extraction-v1' ? 0 : 1);
+    if (version === 'knowledge-extraction-v1') expect(recovered.rejections[0].reasons).toContain('citation:quote_mismatch');
+    else expect(app.detail(recovered.committed[0].knowledgeId).grounding.citations[0].selection).toMatchObject({ start: 0, end: 13 });
     expect(generate).toHaveBeenCalledTimes(1);
   });
   it('keeps invalid model output as failure evidence and treats an empty result as completed', async () => {

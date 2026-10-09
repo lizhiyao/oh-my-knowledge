@@ -29,20 +29,20 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href",
-    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
+    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
     rationale: 'Loads only the built text-only Codex executor for explicit quality runs; the sealed source fixes the path independently of user arguments.',
   },
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
-    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
+    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
     rationale: 'Loads only the built versioned extraction prompt for explicit quality runs; the sealed source fixes the path independently of user arguments.',
   },
   {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href",
-    sourceSha256: '1c617d460ee490c0b325f01e52118df9c134c2299bc3d750d7cdf1df44c59c2d',
-    rationale: 'Loads only the built strict proposal validator for explicit quality runs; the sealed source fixes the path independently of user arguments.',
+    sourceSha256: 'a91f1ee94a5613697d323e17af2abba8b7e6e57d3b8c14bf3ff86a1e4c58d083',
+    rationale: 'Loads only the built version-selected proposal validator for explicit quality runs; the sealed source fixes the path independently of user arguments.',
   },
   {
     importer: 'executors/anthropic/claude/sdk.ts',

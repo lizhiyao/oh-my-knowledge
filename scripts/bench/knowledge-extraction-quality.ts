@@ -107,7 +107,8 @@ async function main() {
     throw new Error('Prompt file must contain nonempty version and prompt strings.');
   }
   const { configuredExtractionModel } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href);
-  const { checkExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href);
+  const { extractionResponseChecker } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/proposals.js')).href);
+  const check = extractionResponseChecker(selected.version);
   const model = configuredExtractionModel('codex', args.model);
   mkdirSync(output); // Never overwrite an earlier run.
   const manifest = {
@@ -123,7 +124,7 @@ async function main() {
   process.once('SIGINT', abort); process.once('SIGTERM', abort);
   try {
     const result = await captureQualityCases({ cases, output, prompt: selected.prompt, signal: controller.signal,
-      generate: (prompt, input, signal) => model.generate(prompt, input, signal), check: checkExtractionResponse });
+      generate: (prompt, input, signal) => model.generate(prompt, input, signal), check });
     writeFileSync(resolve(output, 'manifest.json'), JSON.stringify({ ...manifest, ...result,
       status: result.aborted ? 'cancelled' : result.failed ? 'failed' : 'captured', finishedAt: new Date().toISOString(),
     }, null, 2));

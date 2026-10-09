@@ -1,5 +1,5 @@
 import type { KnowledgeDraft } from '../../src/knowledge/contracts.js';
-import type { ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
+import type { ExtractionModelProposal, ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
 
 export function draft(): KnowledgeDraft {
   return {
@@ -41,3 +41,13 @@ export function proposal(): ExtractionProposal {
   };
 }
 
+
+/** v2 model transport deliberately has no numeric positions. */
+export function modelProposal(): ExtractionModelProposal {
+  const full = proposal();
+  const quoteOnly = ({ evidenceRef, quote }: ExtractionProposal['citations'][number]['selection']) => ({ evidenceRef, quote });
+  return { ...full,
+    mentions: full.mentions.map((mention) => ({ ...mention, selection: quoteOnly(mention.selection) })),
+    citations: full.citations.map((citation) => ({ ...citation, selection: quoteOnly(citation.selection) })),
+  };
+}
