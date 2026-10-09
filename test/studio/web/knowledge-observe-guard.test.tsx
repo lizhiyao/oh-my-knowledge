@@ -12,7 +12,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
 import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page';
 import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query';
-import { KnowledgeView, observeGapText } from '../../../src/studio/web/components/knowledge/knowledge';
+import { KnowledgeReports, KnowledgeView, observeGapText } from '../../../src/studio/web/components/knowledge/knowledge';
 import type { SkillIndex, SkillIndexEntry, SkillObserveSnapshot } from '../../../src/studio/view-models/knowledge/skill-index';
 import { reactText } from '../../helpers/react-ssr.js';
 
@@ -40,7 +40,7 @@ function queryFor(entries: SkillIndexEntry[]): KnowledgeQuery {
 function renderIndex(entries: SkillIndexEntry[]): string {
   const page = loadKnowledgePage(queryFor(entries), '/knowledge', 'zh');
   assert.ok(page && page.pageKind === 'index');
-  return renderToString(createElement(KnowledgeView, { page, lang: 'zh' }));
+  return renderToString(createElement(KnowledgeReports, { page, lang: 'zh' }));
 }
 
 describe('知识列表的 underpowered 口径', () => {

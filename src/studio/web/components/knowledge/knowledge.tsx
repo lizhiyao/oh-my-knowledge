@@ -7,12 +7,13 @@ import type { DoctorGraphView, DoctorRuleView, DoctorSamplingView } from '../../
 import { projectDoctorRules, projectDoctorSampling } from '../../../application/knowledge/doctor-format';
 import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-index';
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
-import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX, SKILL_TREND_PREFIX } from '../../../http/page-paths';
+import { KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX, SKILL_TREND_PREFIX } from '../../../http/page-paths';
 import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
 import { displayTime, formatPercent } from '../../../application/display/format';
 import type { SkillObserveSnapshot } from '../../../view-models/knowledge/skill-index';
 import { type Language } from '../layout/shell';
 import { tagStatus } from '../tag-color';
+import { ArtifactLibrary } from './artifact-library';
 import { KnowledgeSectionNav } from './section-nav';
 
 const { Text } = Typography;
@@ -245,20 +246,12 @@ export function ObservePanel({ observe, toolFailureRate, skillName, zh }: {
   </>;
 }
 
-export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Language }) {
+export function KnowledgeReports({ page, lang }: { page: Extract<KnowledgePage, { pageKind: 'index' }>; lang: Language }) {
   const href = useWorkspaceHref();
   const zh = lang === 'zh';
   const [query, setQuery] = useState('');
-  if (page.pageKind === 'index') {
-    const rows = page.rows.filter((row) => row.skillName.toLowerCase().includes(query.toLowerCase()));
-    return <>
-
-      <KnowledgeSectionNav active="skills" lang={lang}/>
-
-      <div className="measure-heading"><h1>{zh ? '知识载体' : 'Knowledge artifacts'}</h1></div>
-
-      <div><Link href={href(KNOWLEDGE_CANDIDATES_PATH)}>{zh ? '查看提炼的知识' : 'View extracted knowledge'}</Link></div>
-
+  const rows = page.rows.filter(row => row.skillName.toLowerCase().includes(query.toLowerCase()));
+  return <div className="carrier-reports-panel">
       <div className="observe-toolbar knowledge-toolbar"><Input.Search allowClear placeholder={zh ? '搜索知识载体' : 'Search knowledge artifacts'} value={query} onChange={(event) => setQuery(event.target.value)}/><Space><Text type="secondary">{page.summary.totalSkills} {zh ? '个知识载体' : 'knowledge artifacts'}</Text><Tag color="error">{page.summary.red} {zh ? '红' : 'red'}</Tag><Tag color="warning">{page.summary.yellow} {zh ? '黄' : 'yellow'}</Tag><Tag color="success">{page.summary.green} {zh ? '绿' : 'green'}</Tag></Space></div>
       <Table<KnowledgeRow> className="studio-table knowledge-table" size="small" rowKey="skillName" tableLayout="fixed" scroll={{ x: 1000 }} dataSource={rows} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span>{zh ? '尚无体检或生产观测数据。运行 ' : 'No doctor or observe data yet. Run '}<code>omk doctor</code>{zh ? ' 体检知识载体，或 ' : ' to audit an artifact, or '}<code>{'omk observe <trace-dir>'}</code>{zh ? ' 采集生产表现。' : ' to collect production evidence.'}</span>}/> }} columns={[
         { title: zh ? '知识载体' : 'Knowledge artifact', dataIndex: 'skillName', ellipsis: true, render: (name: string) => <Link href={href(`${KNOWLEDGE_SKILL_PREFIX}${encodeURIComponent(name)}`)} title={name}>{name}</Link> },
@@ -268,6 +261,21 @@ export function KnowledgeView({ page, lang }: { page: KnowledgePage; lang: Langu
         { title: zh ? '更新时间' : 'Updated', width: 184, ellipsis: true, render: (_, row) => displayTime([row.doctor?.timestamp, row.observe?.generatedAt].filter((value): value is string => Boolean(value)).sort().at(-1)) },
         { title: zh ? '问题' : 'Findings', dataIndex: 'insightCount', width: 72, align: 'right' },
       ]}/>
+  </div>;
+}
+
+export function KnowledgeView({ page, lang, initialTab = 'library' }: { page: KnowledgePage; lang: Language; initialTab?: 'library' | 'reports' }) {
+  const href = useWorkspaceHref();
+  const zh = lang === 'zh';
+  if (page.pageKind === 'index') {
+    return <>
+
+      <KnowledgeSectionNav active="skills" lang={lang}/>
+
+      <div className="measure-heading"><h1>{zh ? '知识载体' : 'Knowledge artifacts'}</h1></div>
+
+      <ArtifactLibrary lang={lang} initialTab={initialTab} reports={<KnowledgeReports page={page} lang={lang}/>}/>
+
     </>;
   }
   const { row, insights, toolFailureRate, doctorRuns, doctorRun, graph } = page;

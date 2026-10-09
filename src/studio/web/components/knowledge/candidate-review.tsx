@@ -18,16 +18,16 @@ export function CandidateReviewProgress({ batch, lang, busy, previous, onPreviou
   </div>;
 }
 
-export function CandidateReviewSummary({ batch, lang, workspace, originHref, busy, onRevisit, onLibrary }: {
-  batch: KnowledgeReviewBatch; lang: Language; workspace: string; originHref?: string; busy: boolean; onRevisit(): void; onLibrary(): void;
+export function CandidateReviewSummary({ batch, lang, workspace, originHref, busy, onRevisit, onLibrary, onGenerate }: {
+  batch: KnowledgeReviewBatch; lang: Language; workspace: string; originHref?: string; busy: boolean; onRevisit(): void; onLibrary(): void; onGenerate(): void;
 }) {
   const zh = lang === 'zh';
   return <section className="candidate-batch-summary">
     <h2>{zh ? '本批核对完成' : 'Batch review complete'}</h2>
     <p>{zh ? `已保留 ${batch.retained} 条，已舍弃 ${batch.discarded} 条。` : `${batch.retained} retained, ${batch.discarded} discarded.`}</p>
     <p>{zh ? '决定、理由和历史修订均已保存，可随时回看。' : 'Decisions, reasons and revisions are saved and can be revisited.'}</p>
-    {batch.retained > 0 && <><p>{zh ? '保留表示愿意维护，不等于内容已得到证实。用于实际任务前，按适用条件人工整理到 AGENTS.md、skill 或其他载体，再通过受控评测检查改动效果。' : 'Retaining means choosing to maintain this content, not verifying its truth. Before use, review its conditions, manually update AGENTS.md, a skill or another artifact, then evaluate the change in a controlled comparison.'}</p>
-      <Space wrap><Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{zh ? '查看知识载体' : 'View knowledge artifacts'}</Link><Link href={workspaceHref(MEASURE_INDEX_PATH, workspace)}>{zh ? '查看评测记录' : 'View evaluation records'}</Link></Space></>}
+    {batch.retained > 0 && <><p>{zh ? '保留表示愿意维护，不等于内容已得到证实。可将本批保留内容生成到 skill 或 prompt，核对后保存，再通过受控评测检查改动效果。' : 'Retaining means choosing to maintain this content, not verifying its truth. Generate a skill or prompt from the retained items in this batch, review and save it, then evaluate the change in a controlled comparison.'}</p>
+      <Space wrap><Button type="primary" disabled={busy} onClick={onGenerate}>{zh ? '生成知识载体' : 'Generate knowledge artifact'}</Button><Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{zh ? '查看知识载体' : 'View knowledge artifacts'}</Link><Link href={workspaceHref(MEASURE_INDEX_PATH, workspace)}>{zh ? '查看评测记录' : 'View evaluation records'}</Link></Space></>}
     <Space wrap><Button disabled={busy} onClick={onRevisit}>{zh ? '回看最后处理的候选' : 'Revisit the last item'}</Button><Button disabled={busy} onClick={onLibrary}>{zh ? '返回全部知识' : 'All knowledge'}</Button></Space>
     {originHref && <Link href={originHref}>{zh ? '返回来源对话' : 'Back to source conversation'}</Link>}
   </section>;

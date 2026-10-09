@@ -13,6 +13,7 @@ import { RequestBodyError } from './request-errors.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { studioHostLanguage } from './language.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
+import { createArtifactAuthoringRoutes } from './routes/artifact-authoring.js';
 import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
@@ -43,6 +44,7 @@ export function createStudioRequestHandler({
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
+  const artifactRoutes = createArtifactAuthoringRoutes();
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
   const conversationRoutes = createConversationRoutes({
     catalog,
@@ -128,6 +130,7 @@ export function createStudioRequestHandler({
       if (studioPages) {
         if (await settingsRoutes(routeContext)) return;
         if (await candidateRoutes(routeContext)) return;
+        if (await artifactRoutes(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
         if (await conversationRoutes(routeContext)) return;
         if (await observationRoutes(routeContext)) return;

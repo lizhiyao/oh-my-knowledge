@@ -33,17 +33,18 @@ describe('candidate decision display', () => {
   it('summarizes this batch with truthful next actions, its source and selected folder', () => {
     const batch: KnowledgeReviewBatch = { runId: 'one', rows: [], total: 3, retained: 1, discarded: 2, pending: 0, missing: 0, complete: true };
     for (const lang of ['zh', 'en'] as const) {
-      const html = renderToStaticMarkup(createElement(CandidateReviewSummary, { batch, lang, workspace: '/isolated', originHref: '/observe/source?workspace=%2Fisolated', busy: false, onRevisit() {}, onLibrary() {} }));
+      const html = renderToStaticMarkup(createElement(CandidateReviewSummary, { batch, lang, workspace: '/isolated', originHref: '/observe/source?workspace=%2Fisolated', busy: false, onRevisit() {}, onLibrary() {}, onGenerate() {} }));
       expect(html).toContain(lang === 'zh' ? '已保留 1 条，已舍弃 2 条。' : '1 retained, 2 discarded.');
-      expect(html).toContain(lang === 'zh' ? '人工整理' : 'manually update');
+      expect(html).toContain(lang === 'zh' ? '生成知识载体' : 'Generate knowledge artifact');
       expect(html).toContain(lang === 'zh' ? '受控评测' : 'controlled comparison');
       expect(html).toContain('href="/knowledge?workspace=%2Fisolated"');
       expect(html).toContain('href="/measure?workspace=%2Fisolated"');
       expect(html).toContain('href="/observe/source?workspace=%2Fisolated"');
     }
-    const discarded = renderToStaticMarkup(createElement(CandidateReviewSummary, { batch: { ...batch, retained: 0, discarded: 3 }, lang: 'zh', workspace: '/isolated', busy: false, onRevisit() {}, onLibrary() {} }));
+    const discarded = renderToStaticMarkup(createElement(CandidateReviewSummary, { batch: { ...batch, retained: 0, discarded: 3 }, lang: 'zh', workspace: '/isolated', busy: false, onRevisit() {}, onLibrary() {}, onGenerate() {} }));
     expect(discarded).toContain('历史修订均已保存');
     expect(discarded).not.toContain('查看评测记录');
+    expect(discarded).not.toContain('生成知识载体');
   });
   it('reports unavailable candidates without counting them as handled', () => {
     const html = renderToStaticMarkup(createElement(CandidateReviewProgress, { batch: { runId: 'one', rows: [], total: 3, retained: 1, discarded: 0, pending: 1, missing: 1, complete: false }, lang: 'zh', busy: true, previous: true, onPrevious() {}, onLibrary() {} }));

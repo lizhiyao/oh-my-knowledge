@@ -83,4 +83,15 @@ describe('Studio candidate action boundary', () => {
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
+  it('routes artifact authoring through the same trusted Studio boundary with redacted errors', async () => {
+    const send = (body: string, origin?: string) => fetch(`${url}/api/knowledge/artifacts`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body });
+    expect(await (await send(JSON.stringify({ operation: 'list', workspace }))).json()).toEqual([]);
+    expect((await send(JSON.stringify({ operation: 'list', workspace }), 'https://untrusted.example')).status).toBe(403);
+    expect((await send('invalid')).status).toBe(400);
+    const invalid = await send(JSON.stringify({ operation: 'show', workspace, id: 'private-invalid' }));
+    expect(await invalid.text()).not.toContain(root);
+    expect((await send(JSON.stringify({ operation: 'list', workspace, unknown: true }))).status).toBe(400);
+    expect((await send(JSON.stringify({ workspace, content: 'x'.repeat(3 * 1024 * 1024) }))).status).toBe(413);
+  });
+
 });

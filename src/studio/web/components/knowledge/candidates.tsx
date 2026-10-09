@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { resolveKnowledgeWorkspace } from './workspace';
+import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
@@ -14,9 +15,10 @@ import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: { lang: Language; initialWorkspace?: string; initialId?: string }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
+  const [authoringIds, setAuthoringIds] = useState<string[] | null>(null);
   const [showExtraction, setShowExtraction] = useState(false);
   const chooseConversation = () => setShowExtraction(true);
   const [workspace, setWorkspace] = useState(initialWorkspace);
@@ -92,14 +94,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
     setDetail(next); setCitation(0); setReason(''); setPane('candidate'); setShowBatchSummary(false); setNeedsRefresh(false);
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
-    const url = new URL(window.location.href); url.searchParams.set('id', id); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
+    const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
     void work(async () => {
       const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
-      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, undefined, root); setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
+      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
     });
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
@@ -112,7 +114,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
   }
   function leaveBatch() {
     setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all'); setPane('candidate');
-    const url = new URL(window.location.href); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
+    const url = new URL(window.location.href); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
   }
   async function continueReview(id: string, revision?: string, advance = true) {
     const current = await refresh();
@@ -203,7 +205,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
       </aside>
       {!summary && <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>}
       <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
-        {summary && batch ? <div className="candidate-scroll"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch}/></div> : !detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
+        {summary && batch ? <div className="candidate-scroll"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.committed.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div> : !detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
           <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
             <details className="candidate-history"><summary>{t(`回看历史修订（第 ${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}／${detail.history.revisions.length} 版）`, `Revision history (${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}/${detail.history.revisions.length})`)}</summary><Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/></details>
             <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
@@ -226,6 +228,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
             {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
             <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
           </div>
+          {detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <div className="candidate-carrier-action"><Button type="primary" disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button></div>}
           <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} onReason={setReason}
             onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}
             onDecision={choice => void work(() => decide(choice))}/>
@@ -241,13 +244,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         </div>
       </aside>}
     </div>}
+    {authoringIds && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
     {showExtraction && <ConversationExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowExtraction(false)} onFinished={root => {
       void work(async () => {
         const changed = root !== workspace;
         await refresh(root, changed); setWorkspace(root); setWorkspaceDraft(root);
         if (changed) {
           leaveBatch(); setNeedsRefresh(false); setSnapshot(null); setNotice('');
-          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
+          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         }
       });
     }} onReview={async (root, id, signal) => {
@@ -268,7 +272,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId }: 
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
           await refresh(root, true); leaveBatch(); setNeedsRefresh(false); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
-          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); window.history.replaceState(null, '', url);
+          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
     </Drawer>

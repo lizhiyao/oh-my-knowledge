@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
   return pageTitle('candidates', await requestStudioLang());
 }
-export default async function Page({ searchParams }: { searchParams: Promise<{ workspace?: string; id?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ workspace?: string; id?: string; revision?: string }> }) {
   const params = await searchParams;
   const lang = await requestStudioLang();
-  return <StudioShell lang={lang} active="knowledge"><KnowledgeCandidates lang={lang} initialWorkspace={params.workspace ?? ''} initialId={params.id}/></StudioShell>;
+  return <StudioShell lang={lang} active="knowledge"><KnowledgeCandidates lang={lang} initialWorkspace={params.workspace ?? ''} initialId={params.id} initialRevision={params.revision}/></StudioShell>;
 }

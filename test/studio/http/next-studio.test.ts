@@ -79,7 +79,7 @@ describe('Next Studio production boundary', () => {
     assert.equal(noRoute.status, 404);
     assert.equal(await noRoute.text(), 'Not Found');
     assert.equal((await fetch(`${urlA}/measure`,{method:'POST'})).status,405);
-    const knowledge = await fetch(`${urlA}/knowledge`);
+    const knowledge = await fetch(`${urlA}/knowledge?view=reports`);
     const knowledgeHtml = await knowledge.text();
     assert.equal(knowledge.status, 200);
     // 语言不进地址：站内链接一律不带 lang，渲染语言由本机设置决定。
