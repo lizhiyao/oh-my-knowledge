@@ -25,6 +25,7 @@ import {
   formatObservation,
   formatProvenance,
   formatRuntimeIdentity,
+  formatRunConclusion,
   formatUsage,
   statusTone,
 } from '../../../application/measure/core-run-format';
@@ -54,10 +55,10 @@ const COPY = {
     cache: '缓存', observations: '观测', reasons: '原因码', taskEvidence: '任务产物与验收', passed: '通过', failed: '不通过', missing: '缺失',
     analysisResults: '分析结果', resultId: '结果 ID', node: '节点', mode: '模式', result: '结果',
     exclusionCount: '排除数', outputSchema: '输出 Schema', assumptions: '假设检查', recordDigest: '记录摘要',
-    decision: '决策', policy: '策略', verdict: '判定', digest: '摘要', noDecision: '本次运行尚无判定。',
+    policy: '策略', verdict: '判定', digest: '摘要', noDecision: '本次运行尚无判定。',
     lineage: '产物谱系', document: '文档', schema: 'Schema', identityDigest: '身份摘要', documentDigest: '文档摘要',
     scopeTab: '评测范围', evidenceTab: '证据与定义',
-    hint: '运行完成不代表改动有效；需要结合证据与结论判断。',
+    conclusion: '评测结论', conclusionDetails: '结论详情', limitations: '适用范围与限制', decisionDetails: '原始判定与策略',
     sidebarEmpty: '尚无评测记录。',
     none: '无', notAvailable: '—',
   },
@@ -81,10 +82,10 @@ const COPY = {
     cache: 'Cache', observations: 'Observations', reasons: 'Reason codes', taskEvidence: 'Task artifacts and acceptance', passed: 'Passed', failed: 'Failed', missing: 'Missing',
     analysisResults: 'Analysis results', resultId: 'Result ID', node: 'Node', mode: 'Mode', result: 'Result',
     exclusionCount: 'Exclusions', outputSchema: 'Output schema', assumptions: 'Assumptions', recordDigest: 'Record digest',
-    decision: 'Decision', policy: 'Policy', verdict: 'Verdict', digest: 'Digest', noDecision: 'This run has no decision yet.',
+    policy: 'Policy', verdict: 'Verdict', digest: 'Digest', noDecision: 'This run has no decision yet.',
     lineage: 'Artifact lineage', document: 'Document', schema: 'Schema', identityDigest: 'Identity digest', documentDigest: 'Document digest',
     scopeTab: 'Evaluation scope', evidenceTab: 'Evidence and definitions',
-    hint: 'A completed run does not imply an effective change. Review its evidence and conclusions.',
+    conclusion: 'Evaluation conclusion', conclusionDetails: 'Conclusion details', limitations: 'Scope and limitations', decisionDetails: 'Recorded decision and policy',
     sidebarEmpty: 'No evaluations yet.',
     none: 'None', notAvailable: '—',
   },
@@ -99,7 +100,7 @@ type Copy = Record<keyof (typeof COPY)['zh'], string>;
  */
 const VALUE_LABELS: Record<string, string> = {
   completed: '已完成', cancelled: '已取消', 'budget-exhausted': '预算耗尽', failed: '失败', 'budget-censored': '预算截断',
-  complete: '完整', partial: '部分缺失', unresolvable: '无法解析', conclusive: '可形成结论', inconclusive: '证据不足',
+  complete: '完整', partial: '部分缺失', unresolvable: '无法解析', conclusive: '已作出判定', inconclusive: '尚未作出判定',
   'not-evaluated': '未评估', decided: '已判定', 'not-decided': '未判定', 'within-budget': '预算内', exhausted: '已耗尽',
   unverifiable: '不可验证',
   'self-contained': '自包含', resolvable: '可回溯', 'summary-only': '仅摘要',
@@ -383,6 +384,7 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
   const href = useWorkspaceHref();
   const copy = COPY[lang];
   const { run, stages } = detail;
+  const conclusion = formatRunConclusion(detail, lang);
   // Tabs／Collapse 默认只服务端渲染展开的那一块，证据必须整份在文档里，不靠点开才拉。
   const scopePanel = <div className="measure-tab">
     <Plan detail={detail} copy={copy}/>
@@ -394,14 +396,21 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
   </div>;
   return <>
     <div className="measure-heading"><div><Link href={href(MEASURE_INDEX_PATH)}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
+    <section className="measure-conclusion" aria-label={copy.conclusion}>
+      <Alert type={conclusion.tone === 'neutral' ? 'info' : conclusion.tone} showIcon title={<h2>{conclusion.title}</h2>} description={<div className="measure-conclusion-details" tabIndex={0} role="region" aria-label={copy.conclusionDetails}>
+        <p>{conclusion.summary}</p>
+        {detail.decision?.verdict && <p>{copy.verdict}{lang === 'zh' ? '：' : ': '}<Code value={detail.decision.verdict}/></p>}
+        <div aria-label={copy.limitations}><strong>{copy.limitations}</strong>{conclusion.limitations.map(limit => <p key={limit}>{limit}</p>)}</div>
+        {!!conclusion.reasons.length && <ul>{conclusion.reasons.map(({ code, label }, index) => <li key={`${code}-${index}`} title={code}>{label}</li>)}</ul>}
+      </div>}/>
+    </section>
     <Axes run={run} copy={copy} lang={lang}/>
-    <Alert className="measure-hint" type="info" showIcon title={copy.hint}/>
     {detail.carrierOrigin && <p><Link href={href(`/knowledge?artifact=${encodeURIComponent(detail.carrierOrigin.artifactId)}&version=${detail.carrierOrigin.version}`)}>{lang === 'zh' ? '回到待测载体' : 'Back to evaluated artifact'}：{detail.carrierOrigin.name} · v{detail.carrierOrigin.version}</Link></p>}
-    <section className="measure-section measure-decision"><h2>{copy.decision}</h2><DecisionPanel decision={detail.decision} copy={copy} lang={lang}/></section>
     <Tabs className="studio-detail-tabs" items={[
       { key: 'scope', label: copy.scopeTab, forceRender: true, children: scopePanel },
       { key: 'analysis', label: copy.analysisResults, forceRender: true, children: <AnalysisRecords records={stages.analysis.records} copy={copy} lang={lang}/> },
       { key: 'evidence', label: copy.evidenceTab, forceRender: true, children: <Collapse items={[
+        { key: 'decision', label: copy.decisionDetails, forceRender: true, children: <DecisionPanel decision={detail.decision} copy={copy} lang={lang}/> },
         { key: 'identities', label: copy.identities, forceRender: true, children: <Identities detail={detail} copy={copy} lang={lang}/> },
         { key: 'execution', label: copy.executionRecords, forceRender: true, children: <ExecutionRecords records={stages.execution.records} copy={copy} lang={lang}/> },
         { key: 'evaluation', label: copy.evaluationRecords, forceRender: true, children: <EvaluationRecords records={stages.evaluation.records} copy={copy} lang={lang}/> },

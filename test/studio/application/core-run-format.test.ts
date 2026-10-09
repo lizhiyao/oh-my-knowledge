@@ -6,6 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
+import { detail } from '../fixtures/core-run-view.js';
 import type {
   CoreStudioBudget,
   CoreStudioEvaluationRecord,
@@ -23,6 +24,7 @@ import {
   formatRuntimeIdentity,
   formatUsage,
   statusTone,
+  formatRunConclusion,
 } from '../../../src/studio/application/measure/core-run-format.js';
 
 function budget(over: Partial<CoreStudioBudget> = {}): CoreStudioBudget {
@@ -59,8 +61,8 @@ function observation(over: Partial<CoreStudioMetricObservation>): CoreStudioMetr
 }
 
 describe('状态取值的着色口径', () => {
-  it('表达结论的取值按好坏着色，与它出现在哪个字段无关', () => {
-    for (const value of ['completed', 'complete', 'conclusive', 'within-budget', 'decided', 'observed', 'passed', 'self-contained']) {
+  it('运行完成、覆盖与失败取值沿用各自状态色', () => {
+    for (const value of ['completed', 'complete', 'within-budget', 'observed', 'passed', 'self-contained']) {
       assert.equal(statusTone(value), 'success', value);
     }
     for (const value of ['cancelled', 'budget-exhausted', 'exhausted', 'partial', 'inconclusive', 'not-evaluated', 'not-decided', 'missing', 'unverifiable', 'summary-only', 'budget-censored']) {
@@ -73,7 +75,7 @@ describe('状态取值的着色口径', () => {
 
   it('只表达事实的取值一律不着色，未列出的取值也不着色', () => {
     // 数据分级、缓存命中、`resolvable` 都只说明「是什么」，染成任何一档颜色都等于伪造结论。
-    for (const value of ['public', 'sensitive', 'secret', 'gold', 'not-used', 'miss', 'replay', 'transparent-hit', 'resolvable', 'unknown-future-status', '']) {
+    for (const value of ['conclusive', 'decided', 'public', 'sensitive', 'secret', 'gold', 'not-used', 'miss', 'replay', 'transparent-hit', 'resolvable', 'unknown-future-status', '']) {
       assert.equal(statusTone(value), 'neutral', value);
     }
   });
@@ -184,5 +186,85 @@ describe('测量身份、观测与假设检查', () => {
       formatAssumptionCheck({ assumptionId: 'iid', checkStatus: 'failed', reasonCode: 'unequal-variance' }),
       'iid=failed (unequal-variance)',
     );
+  });
+});
+
+describe('报告结论与限制', () => {
+  function release(verdict: string) {
+    const view = detail();
+    return { ...view, decision: { ...view.decision!, implementation: { ...view.decision!.implementation, implementationId: 'omk.release-decision/v7' }, verdict } };
+  }
+
+  it('运行完成且已作出判定仍可以是证据不足，原因与适用范围同时呈现', () => {
+    const view = release('UNDERPOWERED');
+    view.decision.reasonCodes = ['comparison-not-significant', 'comparison-sample-size-below-minimum', 'unrecognized-reason'];
+    const before = JSON.stringify(view);
+    for (const lang of ['zh', 'en'] as const) {
+      const result = formatRunConclusion(view, lang);
+      assert.equal(result.tone, 'warning');
+      assert.match(result.title, lang === 'zh' ? /证据不足/ : /Insufficient evidence/);
+      assert.match(result.limitations[0], /2/);
+      assert.match(result.limitations[0], lang === 'zh' ? /不能直接外推/ : /does not establish benefits on other tasks/);
+      assert.deepEqual(result.reasons.map(reason => reason.code), view.decision.reasonCodes);
+      assert.notEqual(result.reasons[0].label, result.reasons[0].code);
+      assert.equal(result.reasons[2].label, 'unrecognized-reason');
+    }
+    assert.equal(JSON.stringify(view), before, 'presentation leaves the measured report unchanged');
+  });
+
+  it('未检出差异不宣称等效；谨慎、退步与缺少对照各有明确结论', () => {
+    const noise = formatRunConclusion(release('NOISE'), 'zh');
+    assert.match(noise.summary, /不代表两个版本等效/);
+    for (const [verdict, title, tone] of [
+      ['CAUTIOUS', '尚不足以确认改进，仍需复核', 'warning'],
+      ['REGRESSION', '本次比较支持表现退步', 'error'],
+      ['SOLO', '缺少版本对照，不能判断改进', 'warning'],
+      ['PROGRESS', '本次比较支持改进', 'success'],
+    ]) {
+      const result = formatRunConclusion(release(verdict), 'zh');
+      assert.equal(result.title, title);
+      assert.equal(result.tone, tone);
+      assert.ok(result.limitations.length > 0);
+    }
+  });
+
+  it('记录为改进时仍前置运行、证据及来源限制，不覆盖原始判定', () => {
+    const view = release('PROGRESS');
+    const restricted = {
+      ...view,
+      run: { ...view.run, status: { ...view.run.status, runStatus: 'cancelled' as const, evidenceStatus: 'partial' as const } },
+      reportProvenance: { ...view.reportProvenance, trust: 'declared' as const },
+    };
+    const result = formatRunConclusion(restricted, 'zh');
+    assert.equal(result.tone, 'warning');
+    assert.match(result.summary, /原始判定为 PROGRESS/);
+    assert.equal(result.limitations.length, 4);
+    assert.match(result.limitations.join(' '), /来源未达到已验证等级/);
+    assert.equal(restricted.decision.verdict, 'PROGRESS');
+  });
+
+  it('无判定、未判定和判定失败不能被运行状态包装成有效', () => {
+    const view = release('PROGRESS');
+    assert.match(formatRunConclusion({ ...view, decision: undefined }, 'zh').title, /未生成效果判定/);
+    for (const decisionStatus of ['not-decided', 'failed'] as const) {
+      const result = formatRunConclusion({ ...view, decision: { ...view.decision, decisionStatus, errorCode: 'decision-error' } }, 'en');
+      assert.notEqual(result.tone, 'success');
+      assert.equal(result.reasons.at(-1)?.code, 'decision-error');
+    }
+  });
+
+  it('自定义策略同名代码、未知版本和原型属性名保持原文，不借用官方解释', () => {
+    const view = release('PROGRESS');
+    for (const implementationId of ['custom-policy', 'omk.release-decision/v8']) {
+      const custom = { ...view, decision: { ...view.decision, implementation: { ...view.decision.implementation, implementationId }, reasonCodes: ['comparison-significant-progress'] } };
+      const result = formatRunConclusion(custom, 'en');
+      assert.equal(result.tone, 'neutral');
+      assert.equal(result.reasons[0].label, 'comparison-significant-progress');
+    }
+    for (const verdict of ['constructor', '__proto__', 'toString', 'FUTURE']) {
+      const result = formatRunConclusion({ ...release(verdict), decision: { ...release(verdict).decision, reasonCodes: [verdict] } }, 'zh');
+      assert.equal(result.tone, 'neutral');
+      assert.equal(result.reasons[0].label, verdict);
+    }
   });
 });
