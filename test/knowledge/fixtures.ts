@@ -1,5 +1,6 @@
 import type { KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import type { ExtractionModelProposal, ExtractionProposal } from '../../src/observability/knowledge-extraction/proposals.js';
+import type { WindowExtractionModel } from '../../src/observability/knowledge-extraction/window-proposals.js';
 
 export function draft(): KnowledgeDraft {
   return {
@@ -49,5 +50,17 @@ export function modelProposal(): ExtractionModelProposal {
   return { ...full,
     mentions: full.mentions.map((mention) => ({ ...mention, selection: quoteOnly(mention.selection) })),
     citations: full.citations.map((citation) => ({ ...citation, selection: quoteOnly(citation.selection) })),
+  };
+}
+
+export function modelWindow(): WindowExtractionModel {
+  const candidate = modelProposal();
+  const { entities, ...content } = candidate.draft;
+  return { responseKind: 'knowledge-extraction', schemaVersion: 3,
+    entities: entities.map(entity => ({ ...entity, qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [] })),
+    mentions: candidate.mentions,
+    proposals: [{ proposalId: candidate.proposalId, draft: content, entityIds: entities.map(entity => entity.entityId),
+      mentionIds: candidate.mentions.map(mention => mention.mentionId), citations: candidate.citations,
+      reuseRationale: candidate.reuseRationale, identityUncertainties: candidate.identityUncertainties }],
   };
 }

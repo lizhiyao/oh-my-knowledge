@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
+import { modelWindow } from '../../knowledge/fixtures.js';
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
@@ -82,6 +84,61 @@ describe('Studio candidate action boundary', () => {
     expect(invalid.status).toBe(400);
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
+  });
+  it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {
+    const entitySource = join(root, 'entity.jsonl');
+    writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
+    const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: entitySource });
+    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => ({
+      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
+    const inspection = await post({ operation: 'entities', analysisId: run.runId }); expect(inspection.status).toBe(200);
+    const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
+    const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
+    const edit = { entities: before.revision.entities, mentions: before.revision.mentions }; edit.entities[0].label = '项目 Alpha';
+    const request = { operation: 'correct-entities', analysisId: run.runId, revision: before.revision.revisionId, generation: 1, draft: edit, reason: '核对项目名称' };
+    expect((await post(request, 'https://untrusted.example')).status).toBe(403);
+    const corrected = await (await post(request)).json(); expect(corrected.history.generation).toBe(2);
+    const stale = await post(request); expect(stale.status).toBe(409); expect(await stale.json()).toEqual({ error: 'knowledge_conflict' });
+    const candidate = await (await post({ operation: 'show', id: run.committed[0].knowledgeId })).json();
+    expect(candidate.entityAnalysis.revision.revisionId).toBe(before.revision.revisionId);
+    expect(candidate.entityAnalysis.source).not.toHaveProperty('window');
+    const entities = corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description }));
+    const applied = await post({ operation: 'apply-entities', id: candidate.revision.knowledgeId, revision: candidate.revision.revisionId,
+      generation: candidate.history.generation, analysisId: run.runId, entityRevision: corrected.revision.revisionId,
+      draft: { title: candidate.revision.title, content: candidate.revision.content, evidence: candidate.revision.evidence, entities }, reason: '明确陈述主体', identityUncertainties: [] });
+    expect(applied.status).toBe(200);
+    const latest = await applied.json(); expect(latest.history.revisions).toHaveLength(2);
+    expect(latest.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
+    const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
+    expect(summaries.find((entry: { runId: string }) => entry.runId === run.runId).entityAnalysis.entityCount).toBe(2);
+    await post({ operation: 'delete-source', snapshot: snapshot.snapshotId });
+    const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
+    expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
+  });
+  it('projects legacy and pending migration states, preserves backup bytes, and protects migration mutations', async () => {
+    const selected = join(root, 'legacy'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });
+    const runId = randomUUID(); const path = join(folder, `${runId}.json`); const backup = join(root, 'external-backup');
+    const legacy = { runId, generation: 1, requestDigest: 'request', snapshotId: randomUUID(), sourceVersion: `sha256:${'a'.repeat(64)}`,
+      executor: 'fixture', model: 'fixture', promptVersion: 'knowledge-extraction-v2', promptHash: 'preserved', inputDigest: 'preserved',
+      actor: { actorKind: 'human', actorId: 'fixture' }, startedAt: '2026-10-08T00:00:00Z', status: 'generating', rejections: [], intents: [], committed: [] };
+    const original = JSON.stringify(legacy); writeFileSync(path, original);
+    const required = await post({ workspace: selected, operation: 'runs' }); expect(required.status).toBe(409);
+    expect(await required.json()).toEqual({ error: 'knowledge_migration_required' });
+    const preview = await (await post({ workspace: selected, operation: 'migration-preview' })).json(); expect(preview.runs).toBe(1);
+    const request = { workspace: selected, operation: 'migrate', backupDirectory: backup, previewDigest: preview.previewDigest };
+    expect((await post(request, 'https://untrusted.example')).status).toBe(403); expect(existsSync(backup)).toBe(false);
+    writeFileSync(path, JSON.stringify(legacy, null, 2));
+    expect((await post(request)).status).toBe(409); expect(existsSync(backup)).toBe(false);
+    const migrated = await post({ workspace: selected, operation: 'migrate', backupDirectory: backup }); expect(migrated.status).toBe(200);
+    expect((await migrated.json()).status).toBe('completed');
+    expect(JSON.parse(readFileSync(join(backup, 'originals', 'runs', `${runId}.json`), 'utf8'))).toEqual(legacy);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ ...legacy, runKind: 'knowledge-extraction-run', schemaVersion: 2 });
+    const state = join(selected, '.entity-migration');
+    writeFileSync(state, JSON.stringify({ migrationKind: 'entity-storage-v2', schemaVersion: 1, migrationId: randomUUID(), backupDirectory: 'private-sensitive-backup' }));
+    const pending = await post({ workspace: selected, operation: 'list' }); expect(pending.status).toBe(409);
+    expect(await pending.json()).toEqual({ error: 'knowledge_migration_incomplete' });
+    const resume = await post({ workspace: selected, operation: 'migration-preview' }); expect(resume.status).toBe(200);
+    const body = await resume.text(); expect(body).toContain('resume_required'); expect(body).not.toContain('private-sensitive-backup'); rmSync(state);
   });
   it('protects carrier measurement mutations and redacts invalid input without model execution', async () => {
     const send = (body: string, origin?: string) => fetch(`${url}/api/knowledge/measurements`, { method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body });

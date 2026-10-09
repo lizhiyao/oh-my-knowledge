@@ -22,9 +22,9 @@ omk observe knowledge list --workspace ./knowledge --json
 
 日志由本地 Node 读取和解析，模型只接收整理后的选定片段；CLI 与 Studio 共用这一应用流程。Codex 在空临时工作目录运行，沿用执行器的只读 sandbox、忽略用户配置和规则的调用参数，并要求不调用工具。若实际发生工具调用，本次输出不接纳；这不是禁止所有文件访问的强隔离保证。API 请求不提供工具。此前的关键词摘录入口已移除，旧的本地规则运行记录仍可读取。
 
-当前生成使用 `knowledge-extraction-v2`。模型只提供指定片段的逐字摘录，程序在该片段中唯一匹配后计算 UTF-16 位置；不修饰原文、不跨消息寻找替代依据，找不到或出现多处匹配时拒绝对应候选。提示词要求把影响结论的条件、反例、后续纠正及未验证环节保留在陈述上下文中，但这项要求的实际保留效果仍需逐条复核。
+当前生成使用 `knowledge-extraction-v3`，一次调用返回独立实体分析和引用共同实体的知识候选。模型提供指定片段的逐字短语，可附紧邻前后文；程序唯一定位后计算 UTF-16 位置，不修饰原文、不跨消息寻找替代依据。无法唯一定位时拒绝对应提及或依据；不合法实体不能支撑知识候选。条件、反例、后续纠正及未验证环节的实际保留效果仍需逐条复核。
 
-v2 改变提示词和模型输出契约，属于 `BREAKING-COMPARABILITY`：不能把两版接纳数量的差异直接解释为知识质量提升。原始模型输出保留不变，候选另存程序计算的位置；已有候选与运行无需迁移。恢复 v1 运行仍按 v1 的精确偏移校验，不会自动修复旧记录，也不重新调用模型。
+v3 改变提示词、模型输出与身份分配范围，属于 `BREAKING-COMPARABILITY`：接纳数量变化不能直接解释为知识质量提升。本次知识历史和提炼运行存储升级到 v2，旧数据需要下文的显式迁移。原始模型输出保留，另存程序计算的位置；迁移后恢复旧运行仍使用其原有 prompt 和接纳语义，不自动修复原文引用，也不重新调用模型。
 
 允许零候选，部分输出不合法时保留拒绝原因。引用匹配只说明位置存在，不能证明陈述为真。来源中的行为、他人说法和提炼推断分别呈现；未知时间与条件不补成确定事实。
 
@@ -37,13 +37,30 @@ omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revis
 
 从最新 `show` 结果读取修订身份与 `history.generation`。`discard` 使用同样参数，记录舍弃理由，不删除历史。并发修改导致版本冲突时，重新读取并核对差异，不能盲目重试旧内容。
 
-修订输入只包含 `title`、`content`、`entities`、`evidence`，可从 `show` 的 `revision` 中取这四项保存为 JSON。修改标题、陈述、实体名称、上下文或证据解释后执行：
+修订输入只包含 `title`、`content`、`entities`、`evidence`，可从 `show` 的 `revision` 中取这四项保存为 JSON。修改标题、陈述、上下文或证据解释后执行；绑定实体分析的知识须通过下一节修改实体名称或对应：
 
 ```bash
 omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 2 --input ./draft.json --reason '补充适用条件'
 ```
 
-使用实际读取的 generation，不照抄示例数字。修订生成新版本，旧内容和处理理由仍保留，新版本不继承旧版本的保留选择。原文位置继续绑定；新增实体身份或新来源引用需要新的提炼，不能凭空填入引用。可用 `show --revision <old-revision-id>` 查看旧版本。
+使用实际读取的 generation，不照抄示例数字。修订生成新版本，旧内容和处理理由仍保留，新版本不继承旧版本的保留选择。原文位置继续绑定；新提及或实体必须在同一分析的原文中纠正，不能凭空填入引用。新来源窗口需要新的提炼。可用 `show --revision <old-revision-id>` 查看旧版本。
+
+## 核对实体并应用纠正
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --analysis <run-id> --json
+omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation <read-generation> --input ./entities.json --reason '根据原文拆分同名对象' --json
+```
+
+`entities` 默认读取最新实体修订，可用 `--entity-revision` 查看历史。纠正草稿只包含返回的 `revision.entities` 和 `revision.mentions`。已有身份保持不变；新增实体或提及使用唯一的 `new:<local-name>`，由宿主分配 UUID。同一提及身份不能换到另一段原文。提及必须精确引用所选来源；每个对象至少有一处有效提及。未知对象使用 `identityStatus: unresolved`，保留 `uncertainties`，可填写指向明确对象的 `possibleEntityIds`，不任选一个替代。
+
+纠正实体保存新修订，不覆盖已生成的知识。将选定实体修订应用到知识时，先核对每条陈述的主体／对象；从实体修订取所引用实体的 `entityId`、`label`、`description`，写入知识草稿的 `entities`。拆分后明确选择新主体／对象，再执行：
+
+```bash
+omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <knowledge-revision-id> --generation <read-knowledge-generation> --analysis <run-id> --entity-revision <chosen-entity-revision-id> --input ./draft.json --reason '明确陈述中的对象' --json
+```
+
+此操作创建知识新修订并绑定精确的实体分析修订。默认保留原附加身份不确定性；可通过 `--identity-uncertainties '["核对后仍需保留的说明"]'` 明确更新，`'[]'` 清除原说明，当前实体分析中的不确定性仍自动保留。陈述中的条件与未知信息另在知识修订中核对。原实体分析、原知识及维护决定均可回看；新知识需重新决定保留或舍弃。仅限同一来源窗口，来源快照不可用时不能纠正或应用。独立实体结果允许零对象，也不要求同时存在知识候选。详见[实体提取设计与限制](../specs/entity-extraction.md)。
 
 ## Studio
 
@@ -57,13 +74,28 @@ omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revis
 
 保留内容可从“知识 → 提炼的知识”重新打开。保留不会自动改写载体；点击“生成知识载体”才进入生成与保存。
 
+提炼结果、提炼记录和对话的已提炼知识提供“核对实体与指代”，零知识候选也可查看独立实体结果。知识详情可打开绑定的实体修订。实体抽屉中核对名称、限定信息、歧义、提及对应及原文；可新增对象后重新分配提及以拆分，也可明确合并或删除误识别。选择来源消息并选中原文可补充遗漏提及。填写纠正理由后保存实体新修订，再在知识详情点击“应用实体最新修订”，核对每条陈述的主体／对象，保存新的知识修订。无需每次提炼先经过实体核对。
+
+## 显式升级旧知识工作区
+
+停止旧版本 CLI／Studio 对工作区的写入，先执行只读预检，再选择工作区外的新备份目录。它的父目录须已存在，路径须为绝对路径：
+
+```bash
+omk observe knowledge migrate --workspace ./knowledge --dry-run --json
+omk observe knowledge migrate --workspace ./knowledge --backup-dir /absolute/path/outside-workspace --preview-digest <previewDigest> --json
+```
+
+预检校验全部知识历史与运行；`previewDigest` 可拒绝预检后变化的输入。外部备份保留待转换文件的原始字节，逐文件原子替换保留权限，不改变身份、正文、维护历史、prompt、原始输出或摘要。标签、来源和载体不参与此转换。旧格式不由当前读取器兼容。
+
+中断后再次执行同一命令，沿用原备份目录。迁移标记存在时当前知识／运行／实体读取与写入暂停；不会根据运行状态或锁年龄抢占写入。活跃或归属未知的锁、内容变化、损坏的备份会被拒绝。工具不能证明所有旧写入器均已停止，不能代替停止旧进程。预检最多覆盖 2048 份文件、每份 16 MiB、总计 256 MiB。Studio 遇到旧格式或未完成迁移时提供“预检并迁移”，预览后由用户明确填写外部备份并执行。回退与限制见[存储迁移方案](../specs/entity-extraction.md#_6-存储与迁移方案)。
+
 ## 组织与检索知识
 
 在候选详情的“主题标签”中编辑并明确保存标签。使用中文、字母、数字、下划线、连字符或 `/` 表示层级，不含空格，也不能只有数字；单条知识最多 32 个标签，每个最多 80 字符。重复标签不区分大小写。标签由用户维护，不额外调用模型，也不表示内容已验证；编辑标签不改变知识陈述、来源、修订或保留决定。
 
 列表搜索支持标题与标签。输入 `tag:排障` 可匹配“排障”及“排障/证据判断”等子标签，并可结合处理状态筛选。标签用于组织主题，知识类型、适用条件和证据分类仍来自对应知识修订，不用标签替代这些字段。
 
-标签历史单独保存到知识目录的 `tags/<identity-digest>.json`，使用 `omk-knowledge-tags/v1`，绑定知识身份，记录标签、修改时间与操作者。已有知识、来源和运行记录无需迁移。未设置标签时为空；并发修改拒绝旧 generation，读取后核对再保存。标签属于知识的组织信息，知识修订后仍保留，需核对它们是否仍适用。
+标签历史单独保存到知识目录的 `tags/<identity-digest>.json`，使用 `omk-knowledge-tags/v1`，绑定知识身份，记录标签、修改时间与操作者。标签本身不要求迁移知识、来源或运行记录；上文的存储 v2 迁移是另一项要求。未设置标签时为空；并发修改拒绝旧 generation，读取后核对再保存。标签属于知识的组织信息，知识修订后仍保留，需核对它们是否仍适用。
 
 ## 生成并保存知识载体
 
@@ -109,6 +141,15 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 首次使用请逐条记录来源忠实度、适用范围、未来复用价值，以及误提炼、遗漏和修订原因。自动测试不能替代这项判断。
 
 ## 复现提取质量检查
+
+实体覆盖另有 12 场景语料 `test/fixtures/entity-extraction-quality.json`：名称与代词、同名对象、陈述角色变化、后续纠正、抽象计划、无知识的实体、未消解指代、缺少上下文、环境实例、重复引用、不可信来源指令及空窗口。关键位置、必须分开的身份、歧义和角色标准在输出前冻结；模型只接收来源消息及覆盖限制，不接收这些答案。
+
+```bash
+yarn build:runtime
+node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --output /absolute/outside/repository/new-entity-run
+```
+
+工具最多调用 12 次，无自动重试。可用 `--prompt /absolute/previous-run/prompt.json` 选择冻结的 v2 或 v3 提示词；保留精确提示词字节、语料及输入摘要，另行复核输出。输出必须是仓库外的新目录。退出成功表示采集与结构接纳完成，不代表语义通过。调用前核对并授权发送消息；未报告费用仍为未知。已完成的[v2／v3 报告](../explanation/entity-extraction-quality.md)提供原始证据及自审限制。
 
 贡献者可运行 `test/fixtures/knowledge-extraction-quality.json` 中的 6 个固定场景：无可复用内容、未验证的成功自述、后续纠正、条件性规则、评测证据不足，以及存在缺口的单次结果。场景来自合成消息和仓库规则摘录，复核标准在生成前确定；它们尚不是经过独立复核的金标准，也不代表真实对话总体。
 

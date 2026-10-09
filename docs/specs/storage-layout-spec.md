@@ -97,7 +97,13 @@ Project and machine durable data use the same domains. Machine-specific material
 
 ## Compatibility boundary
 
-The v2 tree is the only supported storage layout. OMK neither reads old storage roots nor provides a migration command, and it never moves or deletes old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only.
+The v2 project-runtime tree is the only supported `.omk` layout. OMK neither reads old `.omk` roots nor provides a migration command for that tree, and never moves or deletes its old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only. The explicitly selected knowledge workspace below has its own versioned contracts and migration.
+
+## Explicit knowledge workspace
+
+The user chooses this workspace through settings or `--workspace`; it is separate from the project-runtime tree above. `items/<identity-digest>.json` uses `knowledge-item-history` v2. `runs/<run-id>.json` uses `knowledge-extraction-run` v2 and preserves raw output, historical prompt identity, prepared intents, and runtime metadata. `entities/<analysis-id>.json` uses `entity-analysis-history` v1 with immutable revisions, exact source bindings, and write receipts. Sources, topic tags, and artifact versions retain their own contracts.
+
+Current writes serialize with `.knowledge-write.lock`. An unfinished explicit migration leaves `.entity-migration`, pausing current knowledge/run/entity readers and writers until recovery. `observe knowledge migrate --dry-run` is read-only; actual migration requires a user-selected external backup directory. See [entity storage conversion, recovery, and limits](entity-extraction.md#_6-storage-and-migration-proposal). These files can contain private excerpts and must be managed as local user data; they are not repository source assets.
 
 ## Why these names
 

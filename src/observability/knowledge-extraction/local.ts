@@ -6,6 +6,7 @@ import { TraceEvidenceStore } from './adapters/trace-evidence.js';
 import { FileKnowledgeStore } from './adapters/knowledge-store.js';
 import { FileExtractionRunStore } from './adapters/run-store.js';
 import { FileKnowledgeTags } from './adapters/knowledge-tags.js';
+import { FileEntityAnalysisStore } from './adapters/entity-store.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
 export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
@@ -13,9 +14,10 @@ export function createLocalKnowledgeApplication(root: string): KnowledgeApplicat
   const workspace = resolve(root);
   return new KnowledgeApplication({
     evidence: new TraceEvidenceStore(join(workspace, 'sources')),
-    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local'),
-    runs: new FileExtractionRunStore(join(workspace, 'runs')),
+    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
+    runs: new FileExtractionRunStore(join(workspace, 'runs'), workspace),
     tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local'),
+    entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
     id: randomUUID, now: () => new Date().toISOString(),
     hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
     actor: { actorKind: 'human', actorId: 'local-user' },

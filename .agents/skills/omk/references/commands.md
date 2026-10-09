@@ -509,18 +509,24 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):操作：归档、生成、运行列表、恢复、列表、详情、保留、舍弃、修订、来源或删除来源。
+- `operation`(必填):归档、提炼、核对与维护知识；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订，migrate 显式升级旧存储。
 
 **Flags:**
 
+- `--analysis` `option`:entities／correct-entities／apply-entities：实体分析身份，与提炼运行身份一致。
+- `--backup-dir` `option`:migrate：用户指定的工作区外备份目录，须为绝对路径；恢复时沿用同一目录。迁移前停止旧 CLI 与 Studio 写入。
+- `--dry-run` `boolean`:migrate：只预检和显示待迁移数量，不写入。
 - `--end-record` `option`:最后一条记录序号，包含。
+- `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
 - `--executor` `option`:生成执行器，沿用 OMK 的运行配置。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--id` `option`:知识身份；resume 时为运行身份。
-- `--input` `option`:revise：包含 title、content、entities、evidence 的 JSON 草稿。
+- `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
+- `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--model` `option`:生成模型，沿用已配置模型。
+- `--preview-digest` `option`:migrate：要求当前输入与此前 dry-run 的 previewDigest 一致。
 - `--reason` `option`:保留、舍弃或修订的理由。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
@@ -541,6 +547,18 @@ omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> 
 
 ```bash
 omk observe knowledge list --workspace ./knowledge
+```
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --analysis <run-id>
+```
+
+```bash
+omk observe knowledge migrate --workspace ./knowledge --dry-run
+```
+
+```bash
+omk observe knowledge migrate --workspace ./knowledge --backup-dir /absolute/path/outside-workspace
 ```
 
 ## omk observe show

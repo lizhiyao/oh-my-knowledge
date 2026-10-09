@@ -1,4 +1,5 @@
 import type { ConversationCatalog } from '../../../observability/application.js';
+import { KnowledgeStorageStateError } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { JSON_HEADERS } from '../errors.js';
 import { readJsonObjectBody } from '../request-errors.js';
@@ -19,11 +20,12 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
       } catch (error) {
         if (response.destroyed) return;
         const message = error instanceof Error ? error.message : '';
-        const code = /conflict/i.test(message) ? 'knowledge_conflict'
+        const code = error instanceof KnowledgeStorageStateError ? error.stateCode
+          : /conflict/i.test(message) ? 'knowledge_conflict'
           : message === 'Knowledge tags invalid.' ? 'knowledge_tags_invalid'
           : /capacity|exceeds/i.test(message) ? 'knowledge_capacity_exceeded'
           : 'knowledge_request_failed';
-        response.writeHead(code === 'knowledge_conflict' ? 409 : 400, JSON_HEADERS);
+        response.writeHead(['knowledge_conflict', 'knowledge_migration_required', 'knowledge_migration_incomplete', 'knowledge_workspace_busy'].includes(code) ? 409 : 400, JSON_HEADERS);
         response.end(JSON.stringify({ error: code }));
       } finally { response.off('close', cancel); liveStreams.delete(cancel); }
     },

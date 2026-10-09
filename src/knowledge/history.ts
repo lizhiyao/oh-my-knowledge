@@ -64,7 +64,7 @@ export function applyKnowledgeWrite(existing: KnowledgeEnvelope | undefined, com
   }
   const nextReceipt = { requestId: command.requestId, commandDigest, committedGeneration: generation + 1, revisionId };
   const next = KnowledgeEnvelopeSchema.parse({
-    storeKind: 'knowledge-item-history', schemaVersion: 1, namespace,
+    storeKind: 'knowledge-item-history', schemaVersion: 2, namespace,
     knowledgeId: command.knowledgeId, generation: generation + 1,
     writeHeadRevisionId: revisions.at(-1)!.revisionId,
     revisions, grounding, maintenance, receipts: [...(existing?.receipts ?? []), nextReceipt],

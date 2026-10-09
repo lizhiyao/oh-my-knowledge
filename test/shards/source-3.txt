@@ -60,6 +60,8 @@ test/executors/sigint-propagation.test.ts
 test/knowledge-artifacts/sources/install-source.test.ts
 test/knowledge-artifacts/sources/materialize-copy.test.ts
 test/knowledge/validation.test.ts
+test/knowledge/entities.test.ts
+test/knowledge/migration.test.ts
 test/mcp/mcp-server.test.ts
 test/mcp/tool-language.test.ts
 test/observability/conversation-semantic-projection.test.ts
@@ -84,3 +86,4 @@ test/studio/http/observation-routes-server.test.ts
 test/studio/web/fallback-language.test.tsx
 test/studio/web/inbox-react-safety.test.tsx
 test/studio/web/knowledge-candidate-decision.test.tsx
+test/studio/web/entity-analysis.test.tsx

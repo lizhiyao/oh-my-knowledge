@@ -10,6 +10,7 @@ export const GroundingSchema = z.strictObject({
   sourceBindings: z.array(z.strictObject({ snapshotId: z.string().uuid(), sourceVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/), evidenceRefs: z.array(id).min(1) })).min(1),
   reuseRationale: z.string().min(1).max(4096),
   identityUncertainties: z.array(z.string().min(1).max(4096)).max(64),
+  entityAnalysisRef: z.strictObject({ analysisId: z.string().uuid(), revisionId: z.string().uuid() }).optional(),
 });
 export type KnowledgeGrounding = z.infer<typeof GroundingSchema>;
 export const MaintenanceSchema = z.strictObject({
@@ -18,7 +19,7 @@ export const MaintenanceSchema = z.strictObject({
 });
 export type MaintenanceChoice = z.infer<typeof MaintenanceSchema>;
 export const KnowledgeEnvelopeSchema = z.strictObject({
-  storeKind: z.literal('knowledge-item-history'), schemaVersion: z.literal(1),
+  storeKind: z.literal('knowledge-item-history'), schemaVersion: z.literal(2),
   namespace: id, knowledgeId: id, generation: z.number().int().positive(), writeHeadRevisionId: id,
   revisions: z.array(KnowledgeRevisionSchema).min(1),
   grounding: z.array(GroundingSchema).min(1),

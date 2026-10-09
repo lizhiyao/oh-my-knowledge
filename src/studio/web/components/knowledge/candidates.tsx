@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
+import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
+import { ApplyEntitiesDialog } from './apply-entities';
+import { KnowledgeStorageMigrationDialog } from './storage-migration';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeSectionNav } from './section-nav';
@@ -41,6 +44,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [busy, setBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showRuns, setShowRuns] = useState(false);
+  const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
+  const [applyingEntities, setApplyingEntities] = useState(false);
+  const [showMigration, setShowMigration] = useState(false);
+  const [migrationRequired, setMigrationRequired] = useState(false);
+  const [migrationWorkspace, setMigrationWorkspace] = useState(initialWorkspace);
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
   const [batchRunId, setBatchRunId] = useState<string | null>(null);
   const [previousId, setPreviousId] = useState<string | null>(null);
@@ -61,6 +69,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
   }, [pane]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
+    setMigrationWorkspace(String(fields.workspace ?? workspace));
     const response = await fetch('/api/knowledge/candidates', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ workspace, operation, ...fields }), signal: signal ?? controller.current?.signal,
@@ -74,7 +83,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const active = new AbortController(); controller.current = active; setBusy(true); setError('');
     try { await action(); } catch (cause) {
       if (active.signal.aborted) setNotice(t('已取消请求。可在生成记录中查看结果。', 'Request cancelled. Inspect generation history for its final state.'));
-      else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
+      else if (cause instanceof Error && ['knowledge_migration_required', 'knowledge_migration_incomplete'].includes(cause.message)) {
+        setMigrationRequired(true); setError(cause.message === 'knowledge_migration_incomplete'
+          ? t('存储迁移尚未完成，请使用原外部备份继续迁移。', 'Storage migration is unfinished. Resume with its original external backup.')
+          : t('已有知识使用旧存储版本。预检并显式迁移后可继续。', 'Existing knowledge uses legacy storage. Preview and explicitly migrate it to continue.'));
+      } else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
         ? t('内容已被其他操作更新，请重新打开后再处理。', 'Content changed. Reopen it before editing.')
         : cause instanceof Error && cause.message === 'knowledge_tags_invalid'
           ? t('标签格式不正确。使用中文、字母、数字、下划线、连字符或 /，不含空格；每个最多 80 字符，也不能只有数字。', 'Invalid tags. Use letters, numbers, underscores, hyphens or / without spaces; up to 80 characters each, and not only numbers.')
@@ -90,7 +103,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     ]);
     const nextDetail = selectFirst && nextRows[0]
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: nextRows[0].knowledgeId }) : undefined;
-    setRows(nextRows); setRuns(nextRuns);
+    setRows(nextRows); setRuns(nextRuns); setMigrationRequired(false);
     if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
     return { rows: nextRows, runs: nextRuns };
   }
@@ -198,7 +211,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           if (key === 'import') { setSnapshot(null); setShowImport(true); }
         } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
-    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
+    {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={migrationRequired ? <Button disabled={busy} onClick={() => setShowMigration(true)}>{t('预检并迁移', 'Preview and migrate')}</Button>
+      : needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
     {needsRefresh && !error && detail && <Button disabled={busy} onClick={() => void work(() => continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId))}>{t('重新读取后继续', 'Reload to continue')}</Button>}
     {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
@@ -213,7 +227,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       ]}/>
     </div>}
     {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={chooseConversation} onHistory={() => setShowRuns(true)}/>
+      onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onEntities={analysisId => setEntityTarget({ analysisId })}/>
       : <div className={`candidate-columns${summary ? ' candidate-columns-summary' : ''}`}>
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
         {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId, undefined, workspace, !batch))}>
@@ -243,6 +257,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
             </section>)}
             <h3>{t('未来如何复用', 'Potential future use')}</h3><p>{detail.grounding.reuseRationale}</p>
             {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
+            {detail.grounding.entityAnalysisRef && <Space wrap><Button disabled={busy} onClick={() => setEntityTarget({ analysisId: detail.grounding.entityAnalysisRef!.analysisId, revision: detail.grounding.entityAnalysisRef!.revisionId })}>{t('核对绑定的实体修订', 'Inspect bound entity revision')}</Button>
+              <Button disabled={busy || needsRefresh || detail.revision.revisionId !== detail.history.writeHeadRevisionId} onClick={() => setApplyingEntities(true)}>{t('应用实体最新修订', 'Apply current entity revision')}</Button></Space>}
             <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
           </div>
           {detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <div className="candidate-carrier-action"><Button type="primary" disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button></div>}
@@ -262,6 +278,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       </aside>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
+    {showMigration && <KnowledgeStorageMigrationDialog workspace={migrationWorkspace} lang={lang} onClose={() => setShowMigration(false)} onDone={() => {
+      setShowMigration(false); setMigrationRequired(false); setError('');
+      setNotice(t('存储已升级，正在重新读取工作区。', 'Storage is upgraded. Reloading the workspace.'));
+      void work(async () => { await refresh(migrationWorkspace, true); setWorkspace(migrationWorkspace); setWorkspaceDraft(migrationWorkspace); leaveBatch(); });
+    }}/>}
+    {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
+      lang={lang} onClose={() => setEntityTarget(undefined)}/>}
+    {applyingEntities && detail && <ApplyEntitiesDialog key={detail.revision.revisionId} detail={detail} workspace={workspace} lang={lang} onClose={() => setApplyingEntities(false)} onSaved={saved => {
+      setApplyingEntities(false); setDetail(saved); setReason(''); setNeedsRefresh(false);
+      setNotice(t('已保存绑定实体新修订的知识。请重新核对并决定保留或舍弃。', 'Saved knowledge bound to the new entity revision. Review it and make a new retention decision.'));
+      void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
+    }}/>}
     {showExtraction && <ConversationExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowExtraction(false)} onFinished={root => {
       void work(async () => {
         const changed = root !== workspace;
@@ -317,7 +345,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       <Input aria-label={t('修订理由', 'Revision reason')} value={reason} placeholder={t('修订理由', 'Revision reason')} onChange={(event) => setReason(event.target.value)}/>
       {editableDraft && <div className="candidate-form">
         <label>{t('标题', 'Title')}<Input value={editableDraft.title} onChange={(event) => updateDraft((value) => { value.title = event.target.value; })}/></label>
-        {editableDraft.entities.map((entity, index) => <label key={entity.entityId}>{t('实体名称', 'Entity name')}<Input value={entity.label} onChange={(event) => updateDraft((value) => { value.entities[index].label = event.target.value; })}/></label>)}
+        {detail?.grounding.entityAnalysisRef && <p>{t('实体名称来自已绑定的分析。需要改名称或对应时，先核对实体，再应用实体修订。', 'Entity names come from the bound analysis. Inspect entities and apply an entity revision to change names or assignments.')}</p>}
+        {editableDraft.entities.map((entity, index) => <label key={entity.entityId}>{t('实体名称', 'Entity name')}<Input value={entity.label} disabled={!!detail?.grounding.entityAnalysisRef} onChange={(event) => updateDraft((value) => { value.entities[index].label = event.target.value; })}/></label>)}
         {editableDraft.evidence.map((link, index) => <label key={link.evidenceLinkId}>{t('证据解释', 'Evidence interpretation')}<Input.TextArea value={link.interpretation} rows={2} onChange={(event) => updateDraft((value) => { value.evidence[index].interpretation = event.target.value; })}/></label>)}
         {editableDraft.content.statements.map((statement, index) => <section key={statement.statementId} className="candidate-form candidate-statement">
           <label>{t('陈述', 'Statement')}<Input.TextArea value={statement.relation} rows={3} onChange={(event) => updateDraft((value) => { value.content.statements[index].relation = event.target.value; })}/></label>
@@ -329,7 +358,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       </div>}
     </Drawer>
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p>{run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p>
+        <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
+        {run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating', 'cancelled', 'failed'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
 }
@@ -381,9 +412,9 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
   </>;
 }
 
-export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory }: {
+export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory, onEntities }: {
   lang: Language; loading: boolean; busy: boolean;
-  latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void;
+  latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void; onEntities?(id: string): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const emptyResult = latest?.status === 'completed' && latest.committed.length === 0;
@@ -408,6 +439,7 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
         {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <p>{t('暂时无法读取已有记录。请检查保存位置。', 'Could not load existing records. Check the save location.')}</p> : latest ? <>
           <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionRunStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionRunStatusLabel(latest.status, lang)}`)}</strong>
           <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
+          {onEntities && <EntityAnalysisSummary run={latest} lang={lang} disabled={busy} onOpen={onEntities}/>}
           <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
         </> : <p>{t('还没有提炼记录，从左侧选择一份工作记录开始。', 'No extractions yet. Choose a work log to begin.')}</p>}
       </div>

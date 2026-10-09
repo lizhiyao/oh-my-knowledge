@@ -8,6 +8,7 @@ import { applyKnowledgeWrite, validateKnowledgeHistory } from '../../../knowledg
 import {
   canonicalJson, KnowledgeEnvelopeSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../../../knowledge/store.js';
+import { assertCurrentStorage, assertWorkspaceReady, checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const digest = (value: unknown): string => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
@@ -15,7 +16,7 @@ const digest = (value: unknown): string => `sha256:${createHash('sha256').update
 /** Adapter roots and actor identity come from trusted host composition, not request payloads. */
 export class FileKnowledgeStore implements KnowledgeStore {
   private readonly root: string;
-  constructor(root: string, private readonly namespace: string) {
+  constructor(root: string, private readonly namespace: string, private readonly workspaceRoot = root) {
     if (!root.trim() || !namespace.trim()) throw new Error('Explicit knowledge root and namespace required.');
     this.root = resolve(root);
   }
@@ -23,6 +24,7 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return join(this.root, `${digest([this.namespace, knowledgeId]).slice(7)}.json`);
   }
   list(): KnowledgeEnvelope[] {
+    assertWorkspaceReady(this.workspaceRoot); checkStorageDirectory(this.root);
     if (!existsSync(this.root)) return [];
     return readdirSync(this.root).filter((name) => name.endsWith('.json')).sort().map((name) => {
       const entry = this.load(join(this.root, name));
@@ -36,9 +38,11 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return entry;
   }
   private load(path: string): KnowledgeEnvelope {
+    assertWorkspaceReady(this.workspaceRoot); checkStorageDirectory(this.root);
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES) throw new Error('Invalid knowledge file.');
-    const entry = KnowledgeEnvelopeSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const raw = JSON.parse(readFileSync(path, 'utf8')); assertCurrentStorage(raw, 'knowledge');
+    const entry = KnowledgeEnvelopeSchema.parse(raw);
     if (entry.namespace !== this.namespace) throw new Error('Knowledge namespace mismatch.');
     validateKnowledgeHistory(entry);
     return entry;
@@ -49,13 +53,17 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const commandDigest = digest({ namespace: this.namespace, actor: { actorKind: actor.actorKind, actorId: actor.actorId }, command });
     if (!command.requestId.trim() || !Number.isSafeInteger(command.expectedGeneration) || command.expectedGeneration < 0) throw new Error('Invalid write request.');
     const path = this.path(command.knowledgeId);
-    return withFileLock(`${path}.lock`, () => {
+    checkStorageDirectory(this.root);
+    return withWorkspaceWrite(this.workspaceRoot, () => {
+      recoverStorageLock(`${path}.lock`);
+      return withFileLock(`${path}.lock`, () => {
       const existing = existsSync(path) ? this.read(command.knowledgeId) : undefined;
       const next = applyKnowledgeWrite(existing, command, actor, this.namespace, commandDigest);
       if (next === existing) return next.receipts.find((item) => item.requestId === command.requestId)!;
       if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('capacity_exceeded');
       writeJsonFileAtomic(path, next);
       return next.receipts.at(-1)!;
-    }, { recoverStale: false });
+      }, { recoverStale: false });
+    });
   }
 }

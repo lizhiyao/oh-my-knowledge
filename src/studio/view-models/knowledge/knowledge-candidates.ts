@@ -1,16 +1,25 @@
 import type {
   KnowledgeApplication,
   EvidenceWindow,
+  ExtractionRunSummary,
+  KnowledgeMigrationPreview,
 } from '../../../observability/application.js';
 
-export type KnowledgeCandidateDetail = ReturnType<KnowledgeApplication['detail']> & { origin?: EvidenceWindow['origin'] };
+type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
+export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> & {
+  entityAnalysis?: ({ status: 'available' } & KnowledgeEntityAnalysisDetail)
+    | { status: 'unavailable'; reason: 'analysis_unavailable' };
+  origin?: EvidenceWindow['origin'];
+};
 export type KnowledgeCandidateSource = EvidenceWindow;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
-export interface KnowledgeCandidateRun {
-  runId: string; status: string; startedAt?: string;
-  committed: { knowledgeId: string; revisionId: string }[];
-  rejections: { index: number; reasons: string[] }[];
-}
+export type KnowledgeCandidateRun = Omit<ExtractionRunSummary, 'startedAt'> & { startedAt?: string };
+export type KnowledgeStorageMigrationPreview = KnowledgeMigrationPreview;
+type EntityDetail = ReturnType<KnowledgeApplication['entities']>;
+export type KnowledgeEntityAnalysisDetail = Omit<EntityDetail, 'source'> & {
+  source: { status: 'available'; excerpts: EvidenceWindow['excerpts']; limitations: EvidenceWindow['limitations'] }
+    | Exclude<EntityDetail['source'], { status: 'available' }>;
+};
 
 /** Existing conversation-selection and preview operations; contains no source file paths. */
 export interface KnowledgeConversation {
