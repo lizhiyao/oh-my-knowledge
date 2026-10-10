@@ -1,6 +1,6 @@
 # 实体身份规则（设计草案）
 
-状态：本稿定义 [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 的身份规则与正反例。P2 实现 §8 已批准契约；P3 界面完善与 P4／P5 独立标注、模型验收待完成。当前实现以[实体提取规范](./entity-extraction.md)为准。
+状态：本稿定义 [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 的身份规则与正反例。P2 实现 §8 已批准契约，P3 界面已交付；[P4 标注指南](./entity-extraction-evaluation.md)仍是待独立复核草案，P5 模型验收尚未完成。当前实现以[实体提取规范](./entity-extraction.md)为准。
 
 本稿沿用[知识的概念定义](../explanation/knowledge.md)：实体是知识描述的事物，知识表达它在特定上下文中的状态、关系或行为。规则由 OMK 自主实现，借鉴成熟设计，不要求引入第三方记忆框架、图数据库或额外模型。
 

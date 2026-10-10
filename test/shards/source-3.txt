@@ -75,6 +75,7 @@ test/observability/inbox/signal-detection.test.ts
 test/observability/inbox/source-record-archive.test.ts
 test/scripts/docs-mermaid.test.ts
 test/scripts/knowledge-extraction-quality.test.ts
+test/scripts/entity-extraction-review.test.ts
 test/scripts/legacy-evaluation-removal.test.ts
 test/scripts/review-governance.test.ts
 test/studio/application/directory-sources.test.ts
