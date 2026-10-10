@@ -55,6 +55,40 @@ All 28 admitted entities, 44 mentions and five knowledge candidates were reviewe
 
 Omitting optional knowledge is not an automatic failure, but reduces downstream association coverage. Original program `semanticReview: pending` fields remain unchanged. Self-review is stored separately in `agentReview`; endpoint checking is not presented as a semantic verdict.
 
+## Workflow acceptance with recorded outputs
+
+On 2026-10-10, the same 11 outputs were replayed through the current build at source commit `9caf1215136e1751a5b6ab3c610c10b22cda049a` in an isolated temporary workspace, with **zero new model calls**. Actual source capture, extraction application, file storage, search and Studio interactions admitted 28 entities, 44 mentions and five knowledge candidates. The model adapter returns recorded output without invoking an external model. Source text, roles and original record indexes stay unchanged; only output `evidenceRef` values are rebound bijectively to new snapshots. Original outputs and scores remain unchanged. New runs identify recorded-output replay rather than impersonating the original measurement identity.
+
+[Download the workflow acceptance summary](/entity-extraction-v6-workflow.json): per-window counts, original/rebound output digests and reference mappings, Chrome interaction checks and digests of local run materials. Real conversation text, annotations, original paths and historical outputs are not published.
+
+| Acceptance path | Observed result |
+|---|---|
+| Source capture → extraction application → storage → search | All 11 windows completed; 44 mention positions matched; 28 entities were searchable and five knowledge candidates bound the initial entity revision. |
+| Entity inspection, folded identity and expanded source | Installed Chrome used DOM and real interactions to inspect all 28 entities at both 1280×800 and 1280×500: 56 entity views and 88 source expansions/highlights, without document-root overflow. |
+| Workspace search, pagination and filtering | The 28 entities paginated as 20 + 8; PG found the same window identity for PostgreSQL, project/shop Nova stayed separate, and the unresolved filter found the unknown object. |
+| Entity → source conversation → task → raw-record detail | 11 navigations and raw-source reads at each height, totaling 22. The catalog was reconstructed from the same synthetic messages. Missing original timestamps produced an explicit limited-trajectory notice; this does not validate a complete semantic timeline. |
+| Save entity corrections and revisit old revisions | One entity description changed in each analysis, with 11 successful saves. Old revisions, mention identities and positions were preserved. Knowledge, source and run bytes stayed unchanged before explicit application; knowledge did not automatically follow entity revisions. |
+| Explicitly apply the latest entity revision to knowledge | All five existing knowledge candidates saved new association revisions; old knowledge history, statement content and evidence were preserved. |
+| Missing source | After deleting one source in the isolated workspace only, stored entities and mentions remained readable; correction was read-only and could not be saved. |
+
+Run results and all interaction checks were self-reviewed. Chrome reported no page-script errors. This is interaction/DOM acceptance without screenshots, not color, native-window, mobile or overall visual acceptance. Corrections preserved entity identities and mention positions; merge/split behavior was not revalidated. The source catalog is not a complete real agent log. These results validate the current application path for recorded outputs; they do not improve the original 39/40 score or prove new extraction performance.
+
+## Preparing a small real-conversation evaluation
+
+Seven windows were prepared from previously redacted material used for knowledge extraction: 21 window messages, with three deliberately overlapping messages and 18 unique messages across two source groups. Time, indexes, input digests and coverage limits were retained, with the v6 prompt/Schema frozen. Self-review covered 31 knowledge-relevant entity expectations, example source anchors and allowed alternatives. Anchors are not exhaustive mention annotations; extra entities require source-based itemized review. Name bytes do not mechanically determine identity, and overall precision/F1 is not computed.
+
+| Window | Review focus |
+|---|---|
+| `real-symbolication-scope` | Software names, domain concepts and symbolication conditions; example paths are not actual observations. |
+| `real-protected-correction` | Separate methods, fields, owning classes and libraries; later concrete regressions narrow earlier judgments. |
+| `real-retained-adapters` | Separate removals from retained adaptations; preserve version, release and unverified status. |
+| `real-session-before-resolution` | Separate Session concepts from instances; counts do not supply concrete identities or future explanations. |
+| `real-session-after-resolution` | Judge before/after windows separately, without injecting later evidence into the earlier window; distinguish master from released versions. |
+| `real-historical-product-claim` | Separate two Memory features and configuration; historical source assertions are not current official facts. |
+| `real-acknowledgement` | An isolated “OK” has no antecedent entity; both entity and knowledge results may be empty. |
+
+Materials and the self-review page remain local. **Entity model evaluation has not run; new model calls total zero.** The sample is software-heavy and includes previously viewed knowledge outputs; it is neither blind nor representative of real logs. Before/after windows are not independent samples. Preparation does not mean model outputs have passed, and author self-review is not independent human evidence. The proposed later execution is at most seven calls, one round, without automatic retries and with unknown cost; this preparation does not expand prior data-transmission authorization.
+
 ## Usage and limits
 
 The executor reported 93,345 uncached input tokens, 135,168 cache-read tokens and 10,003 output tokens. None of the 11 records reported a dollar cost; cost is unknown and unreported placeholder zeros are not measurements. Wall-clock duration was 196.440 seconds. No tool calls or subagents were observed; this is not a general isolation guarantee.
@@ -63,6 +97,6 @@ This is one small capture. Backend model revision, seed, sampling parameters and
 
 ## Next steps and reproduction
 
-This diagnostic took priority over a larger, costlier run; it does not automatically authorize more model calls. Before another freeze, name prefixes and reasonable complete boundaries should be defined and their alternatives included in advance. Viewed windows are development regressions; old answers and this report must not be rescored. Knowledge relation wording is a separate follow-up, with entity correctness and knowledge readability reviewed separately. Remaining Chrome folding, correction and shorter-window acceptance is tracked in [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127).
+This diagnostic took priority over a larger, costlier run; it does not automatically authorize more model calls. Before another freeze, name prefixes and reasonable complete boundaries should be defined and their alternatives included in advance. Viewed windows are development regressions; old answers and this report must not be rescored. Knowledge relation wording is a separate follow-up, with entity correctness and knowledge readability reviewed separately. Recorded-output workflow and real-conversation preparation status is tracked in [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127).
 
 Public evidence supports offline digest checks and replay of the 11 outputs with frozen checks v3 and the admission runtime. Full-corpus replay must preserve `notAttempted` for unselected windows rather than dropping them to imply complete acceptance. A rebuild with changed runtime digests needs a new measurement identity. Reuse the original build and historical reports without impersonating their identities.

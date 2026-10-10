@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeApplication, type ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
+import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
+import type { EvidenceWindow } from '../../src/observability/knowledge-extraction/evidence.js';
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
@@ -41,6 +43,54 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
+  it('replays all eleven recorded v6 responses through capture, storage and entity search without model execution', async () => {
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
+      frozen: { prompt: { prompt: string }; inputs: { caseId: string; input: { excerpts: EvidenceWindow['excerpts'] } }[] };
+      captures: { records: { caseId: string; result: { captureStatus: string; output: string } }[] }[];
+    };
+    const root = mkdtempSync(join(tmpdir(), 'omk-entity-recorded-replay-')); roots.push(root);
+    const app = createLocalKnowledgeApplication(root);
+    let replayed = 0; let mentionCount = 0;
+    for (const capture of evidence.captures.flatMap(group => group.records)) {
+      expect(capture.result.captureStatus).toBe('output');
+      const original = evidence.frozen.inputs.find(input => input.caseId === capture.caseId)!.input.excerpts;
+      const snapshot = app.capture({ path: join(root, `${capture.caseId}.jsonl`),
+        origin: { threadId: capture.caseId, title: capture.caseId },
+        records: original.map(excerpt => ({ recordIndex: excerpt.recordIndex, raw: JSON.stringify({ type: 'response_item',
+          ...(excerpt.timestamp ? { timestamp: excerpt.timestamp } : {}), payload: { type: 'message', role: excerpt.role,
+            content: [{ type: excerpt.role === 'user' ? 'input_text' : 'output_text', text: excerpt.text }] } }) })),
+      });
+      expect(snapshot.excerpts.map(({ recordIndex, role, text }) => ({ recordIndex, role, text })))
+        .toEqual(original.map(({ recordIndex, role, text }) => ({ recordIndex, role, text })));
+      const refs = new Map(original.map((excerpt, index) => [excerpt.evidenceRef, snapshot.excerpts[index].evidenceRef]));
+      const rebound = JSON.stringify(JSON.parse(capture.result.output, (key: string, value: unknown) => {
+        if (key !== 'evidenceRef') return value;
+        const ref = refs.get(String(value)); expect(ref).toBeDefined(); return ref;
+      }));
+      const run = await app.generate(snapshot.snapshotId, { executor: 'recorded-output-replay', model: 'recorded-v6',
+        generate: async (system, input) => {
+          expect(system).toBe(evidence.frozen.prompt.prompt);
+          expect(JSON.parse(input).excerpts).toEqual(snapshot.excerpts);
+          replayed++; return { output: rebound, durationMs: 0 };
+        },
+      });
+      expect(run.status).toBe('completed'); expect(run.rawOutput).toBe(rebound);
+      expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
+      const detail = app.entities(run.runId); mentionCount += detail.revision.mentions.length;
+      for (const entity of detail.revision.entities) {
+        expect(app.queryEntities({ query: entity.label, threadId: capture.caseId }).rows.map(row => row.entityId)).toContain(entity.entityId);
+        expect(app.entityDetail(run.runId, entity.entityId).mentionChecks.every(check => check.positionStatus === 'matched')).toBe(true);
+      }
+      for (const committed of run.committed) {
+        const knowledge = app.detail(committed.knowledgeId);
+        expect(knowledge.grounding.entityAnalysisRef).toEqual({ analysisId: run.runId, revisionId: detail.revision.revisionId });
+        expect(knowledge.entityAnalysis?.status).toBe('available');
+      }
+    }
+    expect(replayed).toBe(11); expect(mentionCount).toBe(44);
+    expect(app.queryEntities({ pageSize: 100 })).toMatchObject({ entityCount: 28, analysisCount: 11, unavailableAnalyses: 0 });
+    expect(app.list()).toHaveLength(5);
+  });
   it('uses one window identity for entities and mentions across candidates', async () => {
     const { app, snapshot, model, generate } = setup();
     model.generate = async (_system, input) => {
