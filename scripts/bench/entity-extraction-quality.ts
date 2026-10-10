@@ -4,7 +4,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { captureQualityCases, parseQualityArguments, qualityInput, qualityOutputRoot, type QualityCase } from './knowledge-extraction-quality.js';
-import type { checkWindowExtractionResponse } from '../../dist/observability/knowledge-extraction/window-proposals.js';
 
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1);
@@ -23,6 +22,14 @@ const CorpusSchema = z.strictObject({
 });
 export type EntityQualityCorpus = z.infer<typeof CorpusSchema>;
 
+// Consumer projection only; the current window validator owns structural admission.
+type CriticalCheckInput = {
+  analysis: { entities: { entityId: string; identityStatus: 'proposed' | 'unresolved'; possibleEntityIds: string[] }[];
+    mentions: { entityId: string; selection: { evidenceRef: string; start: number; end: number } }[]; rejected: unknown[] };
+  accepted: { draft: { content: { statements: { subject: { entityId: string }; object?: { entityId: string }; relation: string }[] } } }[];
+  rejected: unknown[];
+};
+
 export function parseEntityQualityArguments(args: string[]) {
   const remaining: string[] = []; let repeat: number | undefined;
   for (let index = 0; index < args.length; index += 2) {
@@ -35,7 +42,7 @@ export function parseEntityQualityArguments(args: string[]) {
 }
 
 /** Frozen source-span and identity checks are evidence, not a general semantic accuracy score. */
-export function checkCriticalEntities(sample: EntityQualityCorpus['cases'][number], checked: ReturnType<typeof checkWindowExtractionResponse>) {
+export function checkCriticalEntities(sample: EntityQualityCorpus['cases'][number], checked: CriticalCheckInput) {
   const expected = expectedEntityMentions(sample);
   const matches = expected.map(gold => {
     const included = checked.analysis.mentions.filter(mention => mention.selection.evidenceRef === gold.evidenceRef
