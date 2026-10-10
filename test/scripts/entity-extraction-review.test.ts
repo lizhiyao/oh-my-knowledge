@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
-import { entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
+import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v4.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -34,7 +34,7 @@ function receipt() {
     decisions: corpus.cases.map(value => ({ caseId: value.caseId, decision: 'approved', rationale: 'Read sources and annotations; agree.' })), disputes: [] };
 }
 
-describe('entity extraction review v2', () => {
+describe('entity extraction review with author evidence', () => {
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
     expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(8);
     expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(8);
@@ -56,6 +56,13 @@ describe('entity extraction review v2', () => {
     expect(Object.keys(input)).toEqual(['excerpts', 'limitations']);
     expect(input.excerpts[0].text).toBe(repeated.messages[0].text);
     for (const field of ['referentKinds', 'semanticChecks', 'projectGroup', 'split', 'alternatives']) expect(JSON.stringify(input)).not.toContain(field);
+    const historical = readFileSync(new URL('../fixtures/entity-extraction-review.json', import.meta.url), 'utf8');
+    expect(reviewDigest(historical)).toBe('sha256:a9752138e4365b050b2b54c1a49d26f59cdcdd5958738d32950a10b7f56ce6ff');
+    expect(() => parseEntityReviewCorpus(historical)).toThrow();
+    const replaced = reviewMentions(corpus.cases.find(value => value.caseId === 'dev-replacement')!);
+    expect(replaced.slice(0, 2).map(value => value.spans[0].quote)).toEqual(['config.json', 'config.json']);
+    expect(replaced[0].entity).not.toBe(replaced[1].entity);
+    expect(replaced[0].spans[0].start).not.toBe(replaced[1].spans[0].start);
   });
 
   it('requires exact allowed boundaries and separates false merges, false splits and missing mentions', () => {
@@ -89,6 +96,42 @@ describe('entity extraction review v2', () => {
     const otherAnchor = structuredClone(sample); otherAnchor.messages.push({ role: 'user', text: 'Unrelated later observation.' });
     otherAnchor.roles[0] = { ...otherAnchor.roles[0], messageIndex: 1, anchor: { quote: 'Unrelated later observation.', occurrence: 0 } };
     expect(checkEntityReview(otherAnchor, check(packet())).roles[0].endpointStatus).toBe('not_observed');
+  });
+
+  it('accepts prefrozen backticked instance boundaries without losing component links', () => {
+    const instances = corpus.cases.find(value => value.caseId === 'dev-instances')!;
+    const raw = modelWindow(); raw.proposals = [];
+    raw.entities = ['component', 'test', 'prod'].map((entityId, index) => ({ ...raw.entities[0], entityId, label: entityId,
+      referentKind: index === 0 ? 'component' : 'instance',
+      componentRef: index === 0 ? null : { entityId: 'component', mentionIds: [entityId], rationale: 'Explicit instance of Sieve.' } }));
+    raw.mentions = ['Sieve', '`sieve/dev01`', '`sieve/prod01`'].map((quote, index) => ({ ...raw.mentions[0],
+      mentionId: raw.entities[index].entityId, entityId: raw.entities[index].entityId, selection: { evidenceRef: 'dev-instances:0', quote } }));
+    const admitted = checkWindowExtractionResponse(raw, entityReviewInput(instances).excerpts);
+    expect(admitted.analysis.rejected).toEqual([]);
+    const result = checkEntityReview(instances, admitted);
+    expect(result.criticalMentionRecall).toEqual({ matched: 3, total: 3, value: 1 });
+    expect(result.identities.every(value => value.status === 'matched')).toBe(true);
+  });
+
+  it('does not reject source-scoped unresolved knowledge merely because the source is truncated', () => {
+    const truncated = corpus.cases.find(value => value.caseId === 'val-truncated')!;
+    const raw = modelWindow();
+    raw.entities = [{ ...raw.entities[0], entityId: 'unknown', label: '它', identityStatus: 'unresolved',
+      uncertainties: ['Source has no antecedent.'] }];
+    raw.mentions = [{ ...raw.mentions[0], entityId: 'unknown', selection: { evidenceRef: 'val-truncated:0', quote: '它' } }];
+    const proposal = raw.proposals[0]; proposal.entityIds = ['unknown']; proposal.mentionIds = ['m1'];
+    proposal.draft.title = '身份未知对象的失败主张，待调查';
+    const statement = proposal.draft.content.statements[0];
+    statement.subject.entityId = 'unknown'; delete statement.object; statement.relation = '据本条消息失败，尚待调查';
+    statement.context.scenario = '仅此截断消息'; statement.context.unknowns = ['主体身份及失败原因未知'];
+    proposal.draft.evidence[0].evidenceRef = 'val-truncated:0';
+    proposal.citations[0].selection = { evidenceRef: 'val-truncated:0', quote: truncated.messages[0].text };
+    proposal.identityUncertainties = ['主体未消解，不补充来源外候选。'];
+    const admitted = checkWindowExtractionResponse(raw, entityReviewInput(truncated).excerpts);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]); expect(admitted.accepted).toHaveLength(1);
+    const result = checkEntityReview(truncated, admitted);
+    expect(result.unexpectedKnowledge).toBe(false); expect(result.identities[0].status).toBe('matched');
+    expect(result.semanticReview).toBe('pending');
   });
 
   it('detects component and membership semantics even when production structure accepts them', () => {
@@ -157,8 +200,36 @@ describe('entity extraction review v2', () => {
     expect(() => reviewReceiptStatus(JSON.stringify(receipt()), corpus, measurementId, '2019-01-01T00:00:00Z')).toThrow('precede');
     const html = entityReviewHtml({ ...corpus, cases: [{ ...sample, messages: [{ role: 'user', text: '<script>unsafe</script> Alpha drives Beta.' }] }] }, measurementId);
     expect(html).not.toContain('<script>unsafe</script>'); expect(html).toContain('&lt;script&gt;');
-    const captured = entityReviewHtml(corpus, measurementId, { annotationReview: 'attested_independent_human', hasCaptures: true });
+    const captured = entityReviewHtml(corpus, measurementId, { annotationReview: 'attested_independent_human', authorReview: 'pending', hasCaptures: true });
     expect(captured).toContain('已提供捕获'); expect(captured).not.toContain('尚无模型输出');
+  });
+
+  it('records complete author judgment without counting it as independent approval or overriding disagreements', () => {
+    const author = { selfReviewVersion: 'omk-entity-author-review/v1', measurementId, reviewer: corpus.authors[0],
+      reviewedAt: '2020-01-01T00:00:00Z', reviewedBeforeOutputs: true, decisions: receipt().decisions };
+    const approved = authorReviewStatus(JSON.stringify(author), corpus, measurementId, '2020-02-01T00:00:00Z');
+    expect(approved.status).toBe('completed');
+    expect(annotationReadiness(approved.status, 'pending')).toEqual({ goldReady: false, exploratoryReady: true });
+    expect(annotationReadiness('pending', 'pending')).toEqual({ goldReady: false, exploratoryReady: false });
+    expect(annotationReadiness('pending', 'attested_independent_human')).toEqual({ goldReady: true, exploratoryReady: true });
+    for (const statuses of [['completed', 'changes_requested'], ['changes_requested', 'attested_independent_human']] as const)
+      expect(annotationReadiness(statuses[0], statuses[1])).toEqual({ goldReady: false, exploratoryReady: false });
+    const changes = structuredClone(author); changes.decisions[0].decision = 'changes_requested';
+    expect(authorReviewStatus(JSON.stringify(changes), corpus, measurementId).status).toBe('changes_requested');
+    expect(authorReviewStatus(undefined, corpus, measurementId).status).toBe('pending');
+    expect(() => reviewReceiptStatus(JSON.stringify(author), corpus, measurementId)).toThrow();
+    for (const mutate of [
+      (value: typeof author) => { value.reviewer = 'not-an-author'; },
+      (value: typeof author) => { value.measurementId = reviewDigest('other'); },
+      (value: typeof author) => { value.decisions.pop(); },
+      (value: typeof author) => { value.decisions[0] = value.decisions[1]; },
+      (value: typeof author) => { value.decisions[0].rationale = ''; },
+      (value: typeof author) => { value.reviewedAt = '2999-01-01T00:00:00Z'; },
+    ]) { const value = structuredClone(author); mutate(value); expect(() => authorReviewStatus(JSON.stringify(value), corpus, measurementId)).toThrow(); }
+    expect(() => authorReviewStatus(JSON.stringify(author), corpus, measurementId, '2019-01-01T00:00:00Z')).toThrow('precede');
+    expect(entityReviewHtml(corpus, measurementId, { annotationReview: 'pending', authorReview: 'completed', hasCaptures: false }))
+      .toContain('作者自审：completed；独立人工标注复核：pending');
+    expect(parseEntityReviewArguments(['--corpus', '/c', '--output', '/out', '--self-review', '/s'])).toMatchObject({ selfReview: '/s' });
   });
 
   it('exposes only an explicit offline input/output interface', () => {

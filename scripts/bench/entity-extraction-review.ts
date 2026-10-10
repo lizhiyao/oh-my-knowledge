@@ -33,19 +33,45 @@ const ReceiptSchema = z.strictObject({
   decisions: z.array(z.strictObject({ caseId: text, decision: z.enum(['approved', 'changes_requested']), rationale: text })),
   disputes: z.array(z.strictObject({ caseId: text, question: text, resolution: text, adjudicator: text })),
 });
+const AuthorReviewSchema = z.strictObject({
+  selfReviewVersion: z.literal('omk-entity-author-review/v1'), measurementId: digest,
+  reviewer: text, reviewedAt: isoTime, reviewedBeforeOutputs: z.literal(true),
+  decisions: z.array(z.strictObject({ caseId: text, decision: z.enum(['approved', 'changes_requested']), rationale: text })),
+});
+
+function validateReview(record: z.infer<typeof AuthorReviewSchema> | z.infer<typeof ReceiptSchema>,
+  corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
+  if (record.measurementId !== measurementId) throw new Error('Review receipt is for a different measurement identity.');
+  if (new Date(record.reviewedAt).getTime() > Date.now()) throw new Error('Review time is in the future.');
+  if (outputsStartedAt && new Date(record.reviewedAt).getTime() > new Date(outputsStartedAt).getTime()) throw new Error('Gold review must precede output capture.');
+  const cases = new Set(corpus.cases.map(sample => sample.caseId));
+  if (record.decisions.length !== cases.size || new Set(record.decisions.map(value => value.caseId)).size !== cases.size
+    || record.decisions.some(value => !cases.has(value.caseId))) throw new Error('Review must cover every case exactly once.');
+}
+
+export function authorReviewStatus(raw: string | undefined, corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
+  if (raw === undefined) return { status: 'pending' as const, receipt: null };
+  const receipt = AuthorReviewSchema.parse(JSON.parse(raw));
+  validateReview(receipt, corpus, measurementId, outputsStartedAt);
+  if (!corpus.authors.some(author => author.toLowerCase() === receipt.reviewer.toLowerCase())) throw new Error('Author review needs a corpus author.');
+  return { status: receipt.decisions.some(value => value.decision === 'changes_requested') ? 'changes_requested' as const : 'completed' as const, receipt };
+}
 
 export function reviewReceiptStatus(raw: string | undefined, corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
   if (raw === undefined) return { status: 'pending' as const, receipt: null };
   const receipt = ReceiptSchema.parse(JSON.parse(raw));
-  if (receipt.measurementId !== measurementId) throw new Error('Review receipt is for a different measurement identity.');
+  validateReview(receipt, corpus, measurementId, outputsStartedAt);
   if (corpus.authors.some(author => author.toLowerCase() === receipt.reviewer.toLowerCase())) throw new Error('Corpus author cannot attest independent review.');
-  if (new Date(receipt.reviewedAt).getTime() > Date.now()) throw new Error('Review time is in the future.');
-  if (outputsStartedAt && new Date(receipt.reviewedAt).getTime() > new Date(outputsStartedAt).getTime()) throw new Error('Gold review must precede output capture.');
   const cases = new Set(corpus.cases.map(sample => sample.caseId));
-  if (receipt.decisions.length !== cases.size || new Set(receipt.decisions.map(value => value.caseId)).size !== cases.size
-    || receipt.decisions.some(value => !cases.has(value.caseId)) || receipt.disputes.some(value => !cases.has(value.caseId))) throw new Error('Review must cover every case exactly once.');
+  if (receipt.disputes.some(value => !cases.has(value.caseId))) throw new Error('Review dispute references an unknown case.');
   if (receipt.disputes.some(value => corpus.authors.some(author => author.toLowerCase() === value.adjudicator.toLowerCase()))) throw new Error('Dispute adjudication needs an independent reviewer.');
   return { status: receipt.decisions.some(value => value.decision === 'changes_requested') ? 'changes_requested' as const : 'attested_independent_human' as const, receipt };
+}
+
+export function annotationReadiness(author: ReturnType<typeof authorReviewStatus>['status'], independent: ReturnType<typeof reviewReceiptStatus>['status']) {
+  const blocked = author === 'changes_requested' || independent === 'changes_requested';
+  return { goldReady: !blocked && independent === 'attested_independent_human',
+    exploratoryReady: !blocked && (author === 'completed' || independent === 'attested_independent_human') };
 }
 
 export function reviewCapture(raw: string, corpus: EntityReviewCorpus, measurementId: string,
@@ -98,16 +124,16 @@ export function parseEntityReviewArguments(args: string[]) {
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
     const name = args[index]; const value = args[index + 1];
-    if (!['--corpus', '--output', '--captures', '--review'].includes(name) || values.has(name) || !value?.trim() || value.startsWith('--')) throw new Error('Expected unique --corpus, --output and optional --captures / --review pairs.');
+    if (!['--corpus', '--output', '--captures', '--review', '--self-review'].includes(name) || values.has(name) || !value?.trim() || value.startsWith('--')) throw new Error('Expected unique --corpus, --output and optional --captures / --review / --self-review pairs.');
     values.set(name, value);
   }
   if (!values.has('--corpus') || !values.has('--output')) throw new Error('Provide --corpus and external --output explicitly.');
-  return { corpus: values.get('--corpus')!, output: values.get('--output')!, captures: values.get('--captures'), review: values.get('--review') };
+  return { corpus: values.get('--corpus')!, output: values.get('--output')!, captures: values.get('--captures'), review: values.get('--review'), selfReview: values.get('--self-review') };
 }
 
 const escape = (value: unknown) => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 export function entityReviewHtml(corpus: EntityReviewCorpus, measurementId: string,
-  state = { annotationReview: 'pending', hasCaptures: false }) {
+  state = { annotationReview: 'pending', authorReview: 'pending', hasCaptures: false }) {
   const cases = corpus.cases.map(sample => `<article id="${sample.caseId}"><h2>${escape(sample.caseId)} · ${escape(sample.split)}</h2>
     <p>项目 ${escape(sample.projectGroup)} ／ 会话 ${escape(sample.conversationGroup)} ／ ${escape(sample.tags.join('，'))}</p>
     ${sample.messages.map((message, index) => `<h3>消息 ${index} · ${message.role}</h3><pre>${escape(message.text)}</pre>`).join('')}
@@ -119,10 +145,10 @@ export function entityReviewHtml(corpus: EntityReviewCorpus, measurementId: stri
     <p>知识策略：${escape(sample.knowledgePolicy)}。限制：${escape(sample.limitations.join('；'))}</p></article>`).join('');
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-    <title>实体标注独立复核草案</title><style>body{font:16px/1.7 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#222}article{border-top:1px solid #ccc;padding-top:24px;margin-top:32px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f5f5;padding:16px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
-    <h1>实体标注独立复核草案</h1><p>标注复核：${escape(state.annotationReview)}；${state.hasCaptures ? '已提供捕获，输出语义复核待完成' : '尚无模型输出'}。这是合成关键提及集，不代表真实日志准确率。验证集按项目／会话预留，公开可见，不是盲测集。</p>
+    <title>实体标注复核记录</title><style>body{font:16px/1.7 system-ui;margin:32px auto;padding:0 20px;max-width:1100px;color:#222}article{border-top:1px solid #ccc;padding-top:24px;margin-top:32px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f5f5;padding:16px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left;overflow-wrap:anywhere}code{overflow-wrap:anywhere}</style>
+    <h1>实体标注复核记录</h1><p>作者自审：${escape(state.authorReview)}；独立人工标注复核：${escape(state.annotationReview)}；${state.hasCaptures ? '已提供捕获，输出语义复核待完成' : '尚无模型输出'}。这是合成关键提及集，不代表真实日志准确率。验证集按项目／会话预留，公开可见，不是盲测集。</p>
     <p>指南：${ENTITY_GUIDE_VERSION}；检查：${ENTITY_CHECK_VERSION}；测量身份：<code>${escape(measurementId)}</code>。</p>
-    <p>逐项确认来源边界、身份组、允许表达、候选及集合、角色和人工语义标准。不同意时先裁决、修改版本并重建本包；不得看输出后修改答案。填写 review-template.json，每个案例独立给出批准或需修改及理由，签署作者独立性声明。程序只能核对声明，不能证明复核人真实独立。</p>
+    <p>作者可完成逐例语义自审，保存 self-review.json 后继续工程与探索性验收；这不要求用户承担复核，也不计入独立人工证据。独立复核使用 review-template.json，逐例填写批准或需修改及理由，签署作者独立性声明。需修正标注时升级版本并重建本包；不得看输出后修改答案。程序只能核对声明，不能证明判断正确或复核人真实独立。</p>
     <nav>${corpus.cases.map(sample => `<a href="#${sample.caseId}">${escape(sample.caseId)}</a>`).join(' ／ ')}</nav>${cases}</html>`;
 }
 
@@ -164,12 +190,15 @@ async function main() {
   const captureText = args.captures ? readFileSync(resolve(args.captures), 'utf8') : undefined;
   const result = captureText === undefined ? null : reviewCapture(captureText, corpus, measurementId, checkWindowExtractionResponse);
   const review = reviewReceiptStatus(args.review ? readFileSync(resolve(args.review), 'utf8') : undefined, corpus, measurementId, result?.capture.startedAt);
-  const manifest = { ...identity, measurementId, annotationReview: review.status, provenance: corpus.provenance,
+  const author = authorReviewStatus(args.selfReview ? readFileSync(resolve(args.selfReview), 'utf8') : undefined, corpus, measurementId, result?.capture.startedAt);
+  const readiness = annotationReadiness(author.status, review.status);
+  const manifest = { ...identity, measurementId, annotationReview: review.status, authorReview: author.status, provenance: corpus.provenance,
     splitCounts: { development: corpus.cases.filter(sample => sample.split === 'development').length,
       validation: corpus.cases.filter(sample => sample.split === 'validation').length },
-    conclusion: !result ? 'not_evaluated' : review.status === 'attested_independent_human' ? 'semantic_review_pending'
-      : review.status === 'changes_requested' ? 'annotation_changes_requested' : 'annotation_review_pending',
-    goldReady: review.status === 'attested_independent_human', modelCallsByThisCommand: 0,
+    conclusion: author.status === 'changes_requested' || review.status === 'changes_requested' ? 'annotation_changes_requested'
+      : !result ? 'not_evaluated' : readiness.goldReady ? 'semantic_review_pending'
+      : readiness.exploratoryReady ? 'exploratory_semantic_review_pending' : 'annotation_review_pending',
+    ...readiness, modelCallsByThisCommand: 0,
     coverage: 'Synthetic critical mentions only; no overall precision/F1, real-log accuracy or population stability claim.',
     captureSummary: result?.summary ?? null };
   mkdirSync(output); // Refuse overwrite even for offline checking.
@@ -177,15 +206,16 @@ async function main() {
   save('manifest.json', manifest); writeFileSync(resolve(output, 'corpus.json'), corpusText);
   writeFileSync(resolve(output, 'annotation-guide.md'), guideText.replace('\0', '\n\n---\n\n'));
   writeFileSync(resolve(output, 'annotation-guide.en.md'), guides[0]); writeFileSync(resolve(output, 'annotation-guide.zh.md'), guides[1]);
-  writeFileSync(resolve(output, 'review.html'), entityReviewHtml(corpus, measurementId, { annotationReview: review.status, hasCaptures: !!result }));
+  writeFileSync(resolve(output, 'review.html'), entityReviewHtml(corpus, measurementId, { annotationReview: review.status, authorReview: author.status, hasCaptures: !!result }));
   save('review-template.json', { reviewVersion: 'omk-entity-annotation-review/v1', measurementId,
     reviewer: '', reviewedAt: '', reviewKind: 'independent-human', reviewedBeforeOutputs: true, independenceAttestation: false,
     decisions: corpus.cases.map(sample => ({ caseId: sample.caseId, decision: 'changes_requested', rationale: '' })), disputes: [] });
   save('inputs.json', corpus.cases.map(sample => ({ caseId: sample.caseId, split: sample.split,
     inputDigest: reviewDigest(JSON.stringify(entityReviewInput(sample))), input: entityReviewInput(sample) })));
   if (review.receipt) save('review.json', review.receipt);
+  if (author.receipt) save('self-review.json', author.receipt);
   if (result) { writeFileSync(resolve(output, 'captures.json'), captureText!); save('checks.json', result.records); save('unattempted.json', result.unattempted); }
-  console.log(`Evidence: ${output}. Annotation review: ${review.status}. Model calls: 0. Semantic review: pending.`);
+  console.log(`Evidence: ${output}. Author review: ${author.status}. Independent annotation review: ${review.status}. Model calls: 0. Semantic review: pending.`);
   if (result && result.summary.captureStatus !== 'captured') process.exitCode = 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
