@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
-import { entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
+import { ENTITY_CHECK_VERSION, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
@@ -35,6 +35,62 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('replays the selected v6 diagnostic without hiding unattempted windows, boundary misses or missing independent evidence', () => {
+    type Capture = ReturnType<typeof reviewCapture>['capture'];
+    type Outcome = ReturnType<typeof reviewCapturedOutput>;
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
+      conclusion: string; goldReady: boolean; annotationReview: string;
+      manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string; checkVersion: string };
+      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; identity: Record<string, unknown> };
+      execution: { selectedCaseIds: string[]; repeats: number; maxCalls: number; attempted: number; recorded: number };
+      captures: Capture[]; records: (Outcome & { caseId: string; outputDigest: string })[];
+      agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; outputDigest: string; rationale: string }[] };
+      statistics: { plannedCriticalMentions: number; matchedCriticalMentions: number; missingCriticalMentions: number; notEvaluableIdentityPairs: number; usdCost: string; reportedCostUSD: null };
+      fullCorpusSplitSummaries: { split: string; notAttempted: number; captureStatus: string }[];
+      reproducibility: { captureDriverText: string; captureDriverDigest: string };
+    };
+    expect(evidence.manifest.checkVersion).toBe(ENTITY_CHECK_VERSION);
+    expect(evidence.manifest.checkVersion).toBe('omk-entity-critical-checks/v3');
+    expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
+    expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
+    expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
+    expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
+    expect(reviewDigest(evidence.reproducibility.captureDriverText)).toBe(evidence.reproducibility.captureDriverDigest);
+    const frozen = JSON.parse(evidence.frozen.corpusText) as { cases: EntityReviewCase[] };
+    expect(frozen.cases).toHaveLength(36);
+    const captured = evidence.captures.flatMap(capture => capture.records);
+    expect(captured).toHaveLength(11);
+    expect(evidence.execution).toMatchObject({ repeats: 1, maxCalls: 11, attempted: 11, recorded: 11 });
+    expect(new Set(captured.map(record => record.caseId))).toEqual(new Set(evidence.execution.selectedCaseIds));
+    for (const record of captured) {
+      const sample = frozen.cases.find(sample => sample.caseId === record.caseId)!;
+      const input = entityReviewInput(sample);
+      expect(record.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
+      if (record.result.captureStatus !== 'output') throw new Error('Expected diagnostic output');
+      const replayed = reviewCapturedOutput(sample, record.result.output,
+        response => checkWindowExtractionResponse(response, input.excerpts));
+      const published = evidence.records.find(outcome => outcome.caseId === record.caseId)!;
+      expect(published.outputDigest).toBe(reviewDigest(record.result.output));
+      expect({ captureStatus: published.captureStatus, structuralRejections: published.structuralRejections, checks: published.checks })
+        .toEqual(JSON.parse(JSON.stringify({ captureStatus: replayed.captureStatus, structuralRejections: replayed.structuralRejections, checks: replayed.checks })));
+      const decision = evidence.agentReview.decisions.filter(value => value.caseId === record.caseId);
+      expect(decision).toHaveLength(1); expect(decision[0].outputDigest).toBe(published.outputDigest);
+      expect(decision[0].rationale.length).toBeGreaterThan(20);
+    }
+    expect(evidence.records).toHaveLength(11); expect(evidence.agentReview.decisions).toHaveLength(11);
+    const sum = (count: (record: typeof evidence.records[number]) => number) => evidence.records.reduce((n, record) => n + count(record), 0);
+    expect(evidence.statistics).toMatchObject({ plannedCriticalMentions: 40, matchedCriticalMentions: 39,
+      missingCriticalMentions: 1, notEvaluableIdentityPairs: 3, usdCost: 'unknown', reportedCostUSD: null });
+    expect(sum(record => record.checks!.criticalMentions.filter(value => value.status === 'matched').length)).toBe(39);
+    expect(evidence.fullCorpusSplitSummaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ split: 'development', notAttempted: 25, captureStatus: 'incomplete' }),
+      expect.objectContaining({ split: 'validation', notAttempted: 0, captureStatus: 'captured' }),
+    ]));
+    expect(evidence.conclusion).toBe('selected_strict_regression_not_passed');
+    expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
+    expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed' });
+  });
+
   it('audits the immutable published v4 two-round evidence without converting self-review or missing cost into a pass', () => {
     type Captured = ReturnType<typeof reviewCapture>['capture'];
     type Checked = ReturnType<typeof reviewCapture>['records'][number];
