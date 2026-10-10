@@ -54,6 +54,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Entity extraction v6: 11-window diagnostic](./explanation/entity-extraction-v6-diagnostic.md)
 - [Entity extraction v6: single-round real-conversation diagnostic](./explanation/entity-extraction-v6-real-pilot.md)
 - [Entity extraction v7: six-case diagnostic](./explanation/entity-extraction-v7-diagnostic.md)
+- [Entity extraction v8: five-window granularity diagnostic](./explanation/entity-extraction-v8-diagnostic.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)
