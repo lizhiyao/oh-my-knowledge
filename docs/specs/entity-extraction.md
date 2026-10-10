@@ -2,6 +2,8 @@
 
 Status: implemented for #1119. Only current data structures are supported, without legacy readers, recovery, or migration. The [v2/v3 comparison report](../explanation/entity-extraction-quality.md) preserves historical results and one pending object-granularity adjudication. Research and structural validation do not prove model performance.
 
+See the [entity identity rules (design draft)](./entity-identity.md) for subsequent rules and examples covering components/instances, collections/unresolved identities, renames/versions, and later corrections. They are not part of the current implementation and do not change this specification's current contracts or historical acceptance results.
+
 ## 1. User outcome and scope
 
 Users inspect which objects selected records discuss, which mentions refer to the same object, and which remain uncertain. Multiple knowledge candidates reference the same analysis. People, files, systems, rules, concepts, and plans can be entities; subject and object are statement roles. See [How OMK understands knowledge](../explanation/knowledge.md).
