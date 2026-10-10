@@ -1,0 +1,1406 @@
+{
+  "acceptanceVersion": "omk-entity-replay-acceptance/v1",
+  "conclusion": "recorded-output-workflow-passed-after-visible-negation-fix-not-new-model-quality-evidence",
+  "baseSourceCommit": "19d5ac2d5032b6d16bd47f07ebd8533f6fbca97e",
+  "finalUiSourceDigest": "sha256:f0eb62fc823d492d68e0d443185af384689bf6a954eb108e530c725fe290a0d6",
+  "originalMeasurementId": "sha256:64bc62416231101ae1b2010da66421202b0c9f2b60bb4868a6fd07146affb8ca",
+  "evidenceDigest": "sha256:10ed81cd422c5eb14593edd61420a3f7d68731fbaaec8f217bf4d7cb9d7a5d19",
+  "externalModelCalls": 0,
+  "replayedOutputs": 5,
+  "acceptedEntities": 13,
+  "acceptedMentions": 23,
+  "knowledgeCandidates": 6,
+  "acceptedStatements": 16,
+  "referenceRebinding": "Only evidenceRef values are rebound bijectively to new snapshots; original message texts, roles, indexes and output bytes remain unchanged. Application assigns fresh persistent entity/mention/run identities; their mappings are recorded. Replay runs are not original model measurements.",
+  "cases": [
+    {
+      "caseId": "dev-session-properties",
+      "analysisId": "a2a37ac6-7208-4b24-8330-6a051d9dbeee",
+      "snapshotId": "cc0165f4-e27f-49ac-b3f2-97b4a9bc8a01",
+      "revisionId": "b7ce3227-4805-4b03-a986-5e5abfe0c04b",
+      "originalInputDigest": "sha256:a0f800512678596663dd36b477bd60106f4242663d6570acef2923b25fcf4720",
+      "originalOutputDigest": "sha256:d1fd43e1aba5f717b84f74b0cb94c1e73be7d507ef168ad2f8cff8068b41ef85",
+      "reboundOutputDigest": "sha256:bf25f6991f9ceac9f399b0926f27e02e5b17ba49acf93cb987719924eb4bd0cc",
+      "referenceMap": {
+        "dev-session-properties:0": "cc0165f4-e27f-49ac-b3f2-97b4a9bc8a01:0",
+        "dev-session-properties:1": "cc0165f4-e27f-49ac-b3f2-97b4a9bc8a01:1"
+      },
+      "entityMap": {
+        "e1": "0a4e3426-888c-4c7a-bd7c-c37252f6a644",
+        "e2": "7baf2f39-40a8-4915-bf18-39ca7413f885"
+      },
+      "mentionMap": {
+        "m1": "018a738c-8ce8-4176-9c8c-72b33a802633",
+        "m2": "38e22926-c398-4d6b-812c-ad6fdbcaf0ff",
+        "m3": "fbdafbfe-f71b-46c4-9fcb-e7751636d268",
+        "m4": "8c75279c-0412-4375-9059-6b57d2f5289e",
+        "m5": "be51c70d-4d8f-4c00-ab55-b0d1665dd291"
+      },
+      "originalLimitations": [
+        "Synthetic selected messages only; no tool, system or surrounding records. Not a real-conversation transcript."
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "persistedPayloadsMatchOriginal": true,
+      "allKnowledgeBindingsAvailable": true,
+      "entityCount": 2,
+      "mentionCount": 5,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "dev-independent-metrics",
+      "analysisId": "9b1a701b-0b05-4d75-8add-403f7489abd6",
+      "snapshotId": "09068bfe-0657-4ec9-926c-6927d605fd3d",
+      "revisionId": "22699577-757e-4fc5-95f1-da03d292a916",
+      "originalInputDigest": "sha256:39b1acd88183d4ae244205076761adfc5b63cf887f44be811132911f51e5c846",
+      "originalOutputDigest": "sha256:04d4ea2891e78a56d7361dde64b385911a5dccf00280170005a6ff18ead123ab",
+      "reboundOutputDigest": "sha256:19ff6de363ff2b5792c9fb55a504bbc8c52b04bfaa49b08109f5321e053398eb",
+      "referenceMap": {
+        "dev-independent-metrics:0": "09068bfe-0657-4ec9-926c-6927d605fd3d:0"
+      },
+      "entityMap": {
+        "e1": "482533dd-8537-46d0-a0d8-a51338bf8eb3",
+        "e2": "dddcaa2b-d40f-4072-a361-28f399691fc7",
+        "e3": "fec8f978-da42-44bd-9e1e-72ccaa9ecdc4"
+      },
+      "mentionMap": {
+        "m1": "68a099cb-7ad8-4583-8220-73748c87210c",
+        "m2": "97756bb9-d76f-4260-b6f4-a84dd2111c66",
+        "m3": "2b9303bb-0a2e-4841-9edd-512bc1abd7dc",
+        "m4": "14b908e3-72e6-49f5-a633-0dfcccd77e44",
+        "m5": "649f9d07-25da-4102-a5a7-ddbb870e6e01"
+      },
+      "originalLimitations": [
+        "Synthetic selected message only; no tools or surrounding records. Not a real-conversation transcript."
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "persistedPayloadsMatchOriginal": true,
+      "allKnowledgeBindingsAvailable": true,
+      "entityCount": 3,
+      "mentionCount": 5,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "dev-operation-concept",
+      "analysisId": "acb279c6-4ca9-47e8-a958-790dca16467b",
+      "snapshotId": "7f70e576-e445-4977-aaf1-1c5b48377f41",
+      "revisionId": "1cd8f449-5ec2-4d32-a06e-8464f38d159a",
+      "originalInputDigest": "sha256:128b90c152fa70ce3fd497ee6b5c24272f15adece34070d519437dcf1cd18576",
+      "originalOutputDigest": "sha256:9552f4607a2e49322c9345ad351cf5070882da871e34b768c1e9ff96046eef75",
+      "reboundOutputDigest": "sha256:706b048c4cfbc964159defd77e926ab0138d76ea1489828b499d79bccf0e6fdf",
+      "referenceMap": {
+        "dev-operation-concept:0": "7f70e576-e445-4977-aaf1-1c5b48377f41:0"
+      },
+      "entityMap": {
+        "e1": "026301d6-b74a-4183-b80f-458e47a561b5",
+        "e2": "727dbacb-38c8-4c23-8de2-bc9ec231d49a",
+        "e3": "68b0ca06-6d13-4a52-b459-1ee7dc55a71c"
+      },
+      "mentionMap": {
+        "m1": "0aa03d69-43a7-47dd-a1a0-939df5c39940",
+        "m2": "1f4db30a-ad6b-41e0-938f-2bfef58a34e5",
+        "m3": "5d0c38f8-6055-4502-b413-b679eff18d1c",
+        "m4": "ae313703-8d1f-4a6b-af5e-5dd0be403580",
+        "m5": "155e2cd0-429c-4d84-a9c0-d2df89780fc6"
+      },
+      "originalLimitations": [
+        "Synthetic selected message only; no tools or surrounding records. Not a real-conversation transcript."
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "persistedPayloadsMatchOriginal": true,
+      "allKnowledgeBindingsAvailable": true,
+      "entityCount": 3,
+      "mentionCount": 5,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "held-policy-properties",
+      "analysisId": "3d129c8f-673e-4de2-8cd7-38699978972f",
+      "snapshotId": "370a4448-fcdd-4222-a51d-9a6cf643e868",
+      "revisionId": "89047183-6a45-439a-855f-371381d9f674",
+      "originalInputDigest": "sha256:e4d0bc38b6714ca3ec64434d08ce9a5a2db3f6aa84d44686ce7ffee9bacc75f6",
+      "originalOutputDigest": "sha256:4c70aa689fd6164815d8d4ca02e6300265608d966f296636aa503fdcc3e222a6",
+      "reboundOutputDigest": "sha256:d5b47b177e26e4c7c571772485778c5412c0d53b7245783e3aeb474ab1c6609f",
+      "referenceMap": {
+        "held-policy-properties:0": "370a4448-fcdd-4222-a51d-9a6cf643e868:0"
+      },
+      "entityMap": {
+        "e1": "56779cd6-722a-4c07-8eaa-092ed00fc3fb",
+        "e2": "4f02f332-0fa9-4dc3-8aca-8c2de780833c",
+        "e3": "11b5576e-ea1d-46b1-9bc2-209a18e03db6"
+      },
+      "mentionMap": {
+        "m1": "0cb839f3-bbc1-4cb4-9b3f-23cdab2b3dfa",
+        "m2": "2e411076-6ed3-4af3-b241-6c1ab350c46e",
+        "m3": "1f43a92b-99c7-4d8e-9018-2a6c485c2da1",
+        "m4": "8a170346-68b9-44fd-add3-c2df10a3f913"
+      },
+      "originalLimitations": [
+        "Synthetic selected message only; no tools or surrounding records. Not a real-conversation transcript."
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "persistedPayloadsMatchOriginal": true,
+      "allKnowledgeBindingsAvailable": true,
+      "entityCount": 3,
+      "mentionCount": 4,
+      "knowledgeCount": 2
+    },
+    {
+      "caseId": "held-unnamed-metric-concepts",
+      "analysisId": "9d8349a0-7fb6-4e83-a1be-6f60d08dcffa",
+      "snapshotId": "bcdcacb1-3837-46cb-83f8-a1b61149baae",
+      "revisionId": "31172b8d-35d2-47c8-9c2f-61583d53a846",
+      "originalInputDigest": "sha256:ee50708e33b19d102c33fd7e4f8605621b127a85271a7d8d21548faa0f74c20d",
+      "originalOutputDigest": "sha256:b639dd282f0ae8de26995958e50669fbf79df0cf9473fd6e76e8d220df6a2289",
+      "reboundOutputDigest": "sha256:b826e72a22990b884dcd269a6655d690a94b31cef61f9fcd41caa2b72a0942ce",
+      "referenceMap": {
+        "held-unnamed-metric-concepts:0": "bcdcacb1-3837-46cb-83f8-a1b61149baae:0"
+      },
+      "entityMap": {
+        "e1": "c5951ee2-2194-4ff0-a5bd-4df49ce76e82",
+        "e2": "fb266b20-b0e4-43aa-85b8-79ce903061bf"
+      },
+      "mentionMap": {
+        "m1": "b201a62c-ec27-4efa-b0e0-2a7b2328c7ef",
+        "m2": "7fc859c5-d807-4df9-a670-68092942a6e3",
+        "m3": "714ef3e8-400a-4574-98f6-b49c96b9c0da",
+        "m4": "368b3c49-062c-4385-99e4-62cc0fbd2bc2"
+      },
+      "originalLimitations": [
+        "Synthetic selected message only; no tools or surrounding records. Not a real-conversation transcript."
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "persistedPayloadsMatchOriginal": true,
+      "allKnowledgeBindingsAvailable": true,
+      "entityCount": 2,
+      "mentionCount": 4,
+      "knowledgeCount": 1
+    }
+  ],
+  "layoutBoundary": {
+    "browser": "154.0.8037.98",
+    "checks": [
+      {
+        "route": "/observe",
+        "height": 800,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 800,
+          "rootScrollHeight": 800
+        }
+      },
+      {
+        "route": "/measure",
+        "height": 800,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 800,
+          "rootScrollHeight": 800
+        }
+      },
+      {
+        "route": "/knowledge",
+        "height": 800,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 800,
+          "rootScrollHeight": 800
+        }
+      },
+      {
+        "route": "/measure/workflow-missing-report",
+        "height": 800,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 800,
+          "rootScrollHeight": 800
+        }
+      },
+      {
+        "route": "/observe",
+        "height": 500,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 500,
+          "rootScrollHeight": 500
+        }
+      },
+      {
+        "route": "/measure",
+        "height": 500,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 500,
+          "rootScrollHeight": 500
+        }
+      },
+      {
+        "route": "/knowledge",
+        "height": 500,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 500,
+          "rootScrollHeight": 500
+        }
+      },
+      {
+        "route": "/measure/workflow-missing-report",
+        "height": 500,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "rootWidth": 1280,
+          "rootScrollWidth": 1280,
+          "rootHeight": 500,
+          "rootScrollHeight": 500
+        }
+      }
+    ],
+    "pageErrors": [],
+    "limits": "Measure is empty and missing-report only; no populated four-lane report.",
+    "externalModelCalls": 0
+  },
+  "chrome": {
+    "acceptanceVersion": "omk-entity-replay-acceptance/v1",
+    "browser": "154.0.8037.98",
+    "method": "DOM and real interactions",
+    "externalModelCalls": 0,
+    "checks": [
+      {
+        "caseId": "dev-session-properties",
+        "entity": "Session",
+        "height": 800,
+        "sourceMentions": 4,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-session-properties",
+        "entity": "Session 归属适配",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "会话总数指标 S_total",
+        "height": 800,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "活跃会话指标 S_active",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "告警规则 R",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "状态更新",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "初始化",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "生命周期",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "寿险",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "保险",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "保单 P7",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "entity": "点击率",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "entity": "转化率",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "dev-session-properties",
+        "entity": "Session",
+        "height": 500,
+        "sourceMentions": 4,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-session-properties",
+        "entity": "Session 归属适配",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "会话总数指标 S_total",
+        "height": 500,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "活跃会话指标 S_active",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "entity": "告警规则 R",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "状态更新",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "初始化",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "entity": "生命周期",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "寿险",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "保险",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-properties",
+        "entity": "保单 P7",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "entity": "点击率",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "entity": "转化率",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "dev-session-properties",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-policy-properties",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "dev-session-properties",
+        "knowledgeTitle": "Session 的归属含义与计数规则",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "knowledgeTitle": "区分会话总数与活跃会话指标，并记录告警规则的指标依赖",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "knowledgeTitle": "状态更新与初始化的操作概念区别",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-policy-properties",
+        "knowledgeTitle": "寿险属于保险类别",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-policy-properties",
+        "knowledgeTitle": "保单 P7 的保额与等待期条款记录",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "knowledgeTitle": "点击率与转化率的区分及窗口内计算口径",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-policy-properties",
+        "unavailableSourceReadOnly": true
+      }
+    ],
+    "pageErrors": []
+  },
+  "sourceNavigation": {
+    "method": "Chrome DOM, real Codex catalog on isolated reconstructed message logs; awaited task URL and read raw source",
+    "results": [
+      {
+        "caseId": "dev-session-properties",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-policy-properties",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "dev-session-properties",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "dev-independent-metrics",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "dev-operation-concept",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-policy-properties",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-unnamed-metric-concepts",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      }
+    ]
+  },
+  "knowledgeContent": {
+    "baseline": {
+      "browser": "154.0.8037.98",
+      "checks": [
+        {
+          "caseId": "dev-session-properties",
+          "statementId": "s3",
+          "height": 800,
+          "polarity": "negative",
+          "defaultVisibleText": "Session 在状态更新时新增计数\n陈述分类与时间\n\n用户说明 Session 状态更新的计数行为。\n\n条件\n发生 Session 状态更新。\n例外\n—\n未知信息\n窗口未提供实现或测试证据；助手所述归属适配检查尚未确认结果。\n查看依据 · 来源中的说法\n\n支持：用户明确否定状态更新新增计数。",
+          "negativeVisible": false
+        },
+        {
+          "caseId": "dev-session-properties",
+          "knowledgeId": "04316658-6fe2-4faa-a0df-2b289db31337",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-independent-metrics",
+          "knowledgeId": "f92d1c37-d861-4a0c-a502-f605116c25f8",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-operation-concept",
+          "knowledgeId": "cf785272-4e1b-4c83-bf14-31e898dddcee",
+          "height": 800,
+          "statementCount": 4,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "40efbf29-1d63-4a9d-adb3-72ba4517abb9",
+          "height": 800,
+          "statementCount": 1,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "3c49aa37-4d9b-44d3-b5c3-a449ec61e4d2",
+          "height": 800,
+          "statementCount": 2,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-unnamed-metric-concepts",
+          "knowledgeId": "31fbf052-22a7-4a9b-b937-ed3d09679c6f",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-session-properties",
+          "statementId": "s3",
+          "height": 500,
+          "polarity": "negative",
+          "defaultVisibleText": "Session 在状态更新时新增计数\n陈述分类与时间\n\n用户说明 Session 状态更新的计数行为。\n\n条件\n发生 Session 状态更新。\n例外\n—\n未知信息\n窗口未提供实现或测试证据；助手所述归属适配检查尚未确认结果。\n查看依据 · 来源中的说法\n\n支持：用户明确否定状态更新新增计数。",
+          "negativeVisible": false
+        },
+        {
+          "caseId": "dev-session-properties",
+          "knowledgeId": "04316658-6fe2-4faa-a0df-2b289db31337",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "dev-independent-metrics",
+          "knowledgeId": "f92d1c37-d861-4a0c-a502-f605116c25f8",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "dev-operation-concept",
+          "knowledgeId": "cf785272-4e1b-4c83-bf14-31e898dddcee",
+          "height": 500,
+          "statementCount": 4,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "40efbf29-1d63-4a9d-adb3-72ba4517abb9",
+          "height": 500,
+          "statementCount": 1,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "3c49aa37-4d9b-44d3-b5c3-a449ec61e4d2",
+          "height": 500,
+          "statementCount": 2,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-unnamed-metric-concepts",
+          "knowledgeId": "31fbf052-22a7-4a9b-b937-ed3d09679c6f",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        }
+      ],
+      "realPreparation": {
+        "cases": 3,
+        "messages": 12
+      },
+      "externalModelCalls": 0
+    },
+    "afterFix": {
+      "browser": "154.0.8037.98",
+      "checks": [
+        {
+          "caseId": "dev-session-properties",
+          "statementId": "s3",
+          "height": 800,
+          "polarity": "negative",
+          "defaultVisibleText": "否定陈述Session 在状态更新时新增计数\n陈述分类与时间\n\n用户说明 Session 状态更新的计数行为。\n\n条件\n发生 Session 状态更新。\n例外\n—\n未知信息\n窗口未提供实现或测试证据；助手所述归属适配检查尚未确认结果。\n查看依据 · 来源中的说法\n\n支持：用户明确否定状态更新新增计数。",
+          "negativeVisible": true
+        },
+        {
+          "caseId": "dev-session-properties",
+          "knowledgeId": "04316658-6fe2-4faa-a0df-2b289db31337",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-independent-metrics",
+          "knowledgeId": "f92d1c37-d861-4a0c-a502-f605116c25f8",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-operation-concept",
+          "knowledgeId": "cf785272-4e1b-4c83-bf14-31e898dddcee",
+          "height": 800,
+          "statementCount": 4,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "40efbf29-1d63-4a9d-adb3-72ba4517abb9",
+          "height": 800,
+          "statementCount": 1,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "3c49aa37-4d9b-44d3-b5c3-a449ec61e4d2",
+          "height": 800,
+          "statementCount": 2,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "held-unnamed-metric-concepts",
+          "knowledgeId": "31fbf052-22a7-4a9b-b937-ed3d09679c6f",
+          "height": 800,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 800,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 800,
+            "scrollHeight": 800
+          }
+        },
+        {
+          "caseId": "dev-session-properties",
+          "statementId": "s3",
+          "height": 500,
+          "polarity": "negative",
+          "defaultVisibleText": "否定陈述Session 在状态更新时新增计数\n陈述分类与时间\n\n用户说明 Session 状态更新的计数行为。\n\n条件\n发生 Session 状态更新。\n例外\n—\n未知信息\n窗口未提供实现或测试证据；助手所述归属适配检查尚未确认结果。\n查看依据 · 来源中的说法\n\n支持：用户明确否定状态更新新增计数。",
+          "negativeVisible": true
+        },
+        {
+          "caseId": "dev-session-properties",
+          "knowledgeId": "04316658-6fe2-4faa-a0df-2b289db31337",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "dev-independent-metrics",
+          "knowledgeId": "f92d1c37-d861-4a0c-a502-f605116c25f8",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "dev-operation-concept",
+          "knowledgeId": "cf785272-4e1b-4c83-bf14-31e898dddcee",
+          "height": 500,
+          "statementCount": 4,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "40efbf29-1d63-4a9d-adb3-72ba4517abb9",
+          "height": 500,
+          "statementCount": 1,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-policy-properties",
+          "knowledgeId": "3c49aa37-4d9b-44d3-b5c3-a449ec61e4d2",
+          "height": 500,
+          "statementCount": 2,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        },
+        {
+          "caseId": "held-unnamed-metric-concepts",
+          "knowledgeId": "31fbf052-22a7-4a9b-b937-ed3d09679c6f",
+          "height": 500,
+          "statementCount": 3,
+          "geometry": {
+            "width": 1280,
+            "height": 500,
+            "clientWidth": 1280,
+            "scrollWidth": 1280,
+            "clientHeight": 500,
+            "scrollHeight": 500
+          }
+        }
+      ],
+      "realPreparation": {
+        "cases": 3,
+        "messages": 12
+      },
+      "externalModelCalls": 0
+    }
+  },
+  "finding": {
+    "priority": "P2",
+    "problem": "Negative polarity was hidden in closed classification details, so the default heading could read as a positive claim.",
+    "caseId": "dev-session-properties",
+    "statementId": "s3",
+    "baselineConfirmedHeights": [
+      800,
+      500
+    ],
+    "fix": "Render a negative-claim label in the heading directly from saved polarity, without parsing or rewriting relation text.",
+    "status": "fixed-and-rechecked"
+  },
+  "localArtifacts": [
+    {
+      "name": "replay.mjs",
+      "digest": "sha256:445b17bd3799c54795c4da2ea4dc39101f0fdba4c9c941719916087c509ee233"
+    },
+    {
+      "name": "replay-manifest.json",
+      "digest": "sha256:07c35d49c29906ee997847290d81f65dc5a316eb9f086ac719babbd4af087af9"
+    },
+    {
+      "name": "chrome-flow.mjs",
+      "digest": "sha256:2e6539966665dca9e48746e3b10a463e68b3b1927179deae378a512293fa571c"
+    },
+    {
+      "name": "chrome-acceptance.json",
+      "digest": "sha256:3588fed8e0eede3f4e7c9af756ca7298d2830b5647b2e0c553a7b1cb6d01c6c4"
+    },
+    {
+      "name": "chrome-source-links.mjs",
+      "digest": "sha256:1297b4a5ff1f03df6e2396ffc1c492326dd19b137060fbd48db68121cc8615f1"
+    },
+    {
+      "name": "source-link-final.json",
+      "digest": "sha256:760db16f422148b6ac6c06079f8282e8d74b78a2d5a2fb74907620a3059497e7"
+    },
+    {
+      "name": "chrome-content.mjs",
+      "digest": "sha256:a2f8ea1ae33a11ff7b685f90087468d3129ec8e4c240dc0ab803df8ef7c1a601"
+    },
+    {
+      "name": "chrome-content-baseline.json",
+      "digest": "sha256:f38d19fe43a88d0da0e0477948dca8d91e38ffc4f50c31443f9196ba512f35b4"
+    },
+    {
+      "name": "chrome-content-final.mjs",
+      "digest": "sha256:5d2e71ff525006270e117d8128b3287b129e0a9c6be65e59b1c8d8ad88b82331"
+    },
+    {
+      "name": "chrome-content-final.json",
+      "digest": "sha256:c9a7f04481f4c2211f203669aacb7449fa3018135e06275ffc56fb4e221f3a94"
+    },
+    {
+      "name": "prepare-real.py",
+      "digest": "sha256:b2afce4c24b9e516ca483e31838b13a96ac37e341d70b431ba6b78feb338a09b"
+    },
+    {
+      "name": "chrome-layout-final.mjs",
+      "digest": "sha256:42075993dc1c274173379370ea82cfa5aa8b9e1309b4cf4f3642ecc77620c0a3"
+    },
+    {
+      "name": "chrome-layout-final.json",
+      "digest": "sha256:d6cb45e5a3569ab65b9ce40503cd046e1595f8d8d3c846645d5935fef170803c"
+    }
+  ],
+  "realPreparation": {
+    "packetVersion": "omk-real-entity-review/v1",
+    "status": "prepared-not-executed",
+    "split": "development_only",
+    "caseCount": 3,
+    "messageCount": 12,
+    "uniqueMessageCount": 9,
+    "sourceGroupCount": 1,
+    "requiredEntityExpectations": 17,
+    "annotationScope": "knowledge-relevant-entity-expectations-not-exhaustive-mentions",
+    "externalModelCalls": 0,
+    "authorReview": "completed",
+    "independentReview": "not_performed",
+    "goldReady": false,
+    "priorOutputs": "previously-viewed-v6-development-material-not-blind",
+    "proposedExecution": {
+      "status": "not_authorized",
+      "maxCalls": 3,
+      "repeats": 1,
+      "retries": 0,
+      "executor": "codex",
+      "model": "gpt-6.1-sol",
+      "costUSD": "unknown",
+      "sentFields": [
+        "selected input files with timestamps, record indices and coverage limits",
+        "frozen v8 prompt including Schema"
+      ],
+      "excludedFields": [
+        "annotations",
+        "guide",
+        "review/provenance files and native paths",
+        "historical outputs"
+      ]
+    },
+    "packetDigest": "sha256:ed0bde9430ccd324fc0a73e01e0ac27e3573f6dce52753e6baba0bf6df975ec9",
+    "promptDigest": "sha256:e6f220f67c0d4ea9707672ad8737f8aa4d6f0263e5f37da949f0ab41f0f17038",
+    "cases": [
+      {
+        "caseId": "real-session-before-resolution",
+        "messageCount": 3,
+        "requiredEntityExpectations": 4,
+        "inputDigest": "sha256:bca598bf038a225cb6287f47e60da911e0cd218b4ad3a23c65a3bbfebb010c86"
+      },
+      {
+        "caseId": "real-session-after-resolution",
+        "messageCount": 5,
+        "requiredEntityExpectations": 5,
+        "inputDigest": "sha256:a9ce559c67cec2e531c6e744581e35b71af7c09f76c20f188d3002074ef46d1d"
+      },
+      {
+        "caseId": "real-protected-correction",
+        "messageCount": 4,
+        "requiredEntityExpectations": 8,
+        "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0"
+      }
+    ]
+  },
+  "limits": [
+    "Five recorded synthetic outputs exercise current application/storage/UI behavior; no new model quality result or changed 21/21 score.",
+    "Installed Chrome is headless; DOM and interactions at 1280x800/1280x500 do not validate screenshots, color, native windows, mobile or screen readers.",
+    "Entity/source/correction receipts predate the heading-only patch; those paths and backend bytes are unchanged. All candidate content and default polarity are checked again on the final production build.",
+    "One entity description per analysis is corrected; merge/split behavior is not revalidated.",
+    "Conversation logs are reconstructed only from original synthetic messages; missing original timestamps prevent complete semantic trajectory acceptance.",
+    "Real preparation uses previously viewed software-only development material: one source group, deliberate before/after overlap, no independent or representative sample.",
+    "Real text, annotations, raw paths and prior outputs remain local. The three-call v8 real plan is not authorized or executed.",
+    "Author self-review is not independent human evidence; remaining 43 synthetic windows and overall quality are unverified."
+  ]
+}

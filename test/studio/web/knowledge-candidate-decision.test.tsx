@@ -3,7 +3,7 @@
  *
  * 措辞口径由 test/studio/application/candidate-status.test.ts 锁；这里只断言页面真正渲染出的文字。
  */
-import { candidateMatches, CandidateTags, CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { candidateMatches, CandidateStatementHeading, CandidateTags, CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from '../../../src/studio/web/components/knowledge/candidate-review.js';
 import type { KnowledgeReviewBatch, KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { createElement } from 'react';
@@ -22,6 +22,22 @@ const row = (choice: 'retain' | 'discard' | null, lang: 'zh' | 'en' = 'zh') =>
   renderToStaticMarkup(createElement(CandidateRowStatus, { choice, lang }));
 
 describe('candidate decision display', () => {
+  it('marks negative claims in the default heading without rewriting their relation or hiding the object', () => {
+    const entities = [{ entityId: 'session', label: 'Session' }, { entityId: 'metric', label: '<Count>' }];
+    for (const lang of ['zh', 'en'] as const) {
+      for (const object of [undefined, { entityId: 'metric' }] as const) {
+        const statement = { subject: { entityId: 'session' }, relation: '在状态更新时新增计数', polarity: 'negative' as const, ...(object ? { object } : {}) };
+        const html = renderToStaticMarkup(createElement(CandidateStatementHeading, { statement, entities, lang }));
+        expect(html).toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
+        expect(html).not.toContain('<details');
+        expect(html).toContain('Session'); expect(html).toContain(statement.relation);
+        if (object) expect(html).toContain('&lt;Count&gt;');
+        const positive = renderToStaticMarkup(createElement(CandidateStatementHeading, { statement: { ...statement, polarity: 'positive' }, entities, lang }));
+        expect(positive).not.toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
+        expect(positive).toContain(statement.relation);
+      }
+    }
+  });
   it('finds retained or undecided knowledge by title without treating a decision as verification', () => {
     const row = { title: 'Taro 判断更正', choice: 'retain' as const };
     expect(candidateMatches(row, 'retain', ' taro ')).toBe(true);
