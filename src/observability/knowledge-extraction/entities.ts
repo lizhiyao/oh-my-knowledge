@@ -1,15 +1,15 @@
 import { z } from 'zod';
-import { EntityMentionSchema, EvidenceSelectionSchema, type EvidenceExcerpt, type EvidenceSelection } from '../../knowledge/contracts.js';
+import { EntityMentionSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
+import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../knowledge/entity-identity.js';
+import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256);
 const text = z.string().trim().min(1).max(4096);
-export const QuoteLocatorSchema = EvidenceSelectionSchema.omit({ start: true, end: true }).extend({
-  prefix: z.string().max(4096).optional(), suffix: z.string().max(4096).optional(),
-});
 export const EntityModelSchema = z.strictObject({
   entityId: id, label: text, description: text, qualifiers: z.array(text).max(32),
   identityStatus: z.enum(['proposed', 'unresolved']),
   possibleEntityIds: z.array(id).max(32), uncertainties: z.array(text).max(32),
+  ...entityIdentityShape(id),
 }).superRefine((entity, context) => {
   if (entity.identityStatus === 'unresolved' && !entity.uncertainties.length) {
     context.addIssue({ code: 'custom', path: ['uncertainties'], message: 'Unresolved identity needs a reason.' });
@@ -18,32 +18,13 @@ export const EntityModelSchema = z.strictObject({
     context.addIssue({ code: 'custom', path: ['possibleEntityIds'], message: 'Possible targets belong to unresolved identities.' });
   }
 });
-export const EntityModelMentionSchema = EntityMentionSchema.extend({ selection: QuoteLocatorSchema });
+export const EntityModelMentionSchema = EntityMentionSchema.extend({ selection: QuoteOccurrenceLocatorSchema });
 export type EntityModel = z.infer<typeof EntityModelSchema>;
 export interface EntityAdmissionRejection { component: 'entity' | 'mention'; index: number; reasons: string[] }
 export interface AdmittedEntityAnalysis {
   entities: EntityModel[];
   mentions: z.infer<typeof EntityMentionSchema>[];
   rejected: EntityAdmissionRejection[];
-}
-
-/** Exact adjacent context disambiguates repeated names without trusting generated offsets. */
-export function locateQuote(locator: z.infer<typeof QuoteLocatorSchema>, excerpts: readonly EvidenceExcerpt[]): EvidenceSelection | string {
-  const matches = excerpts.filter(excerpt => excerpt.evidenceRef === locator.evidenceRef);
-  if (matches.length !== 1) return 'unknown_evidence';
-  const source = matches[0].text;
-  let position = source.indexOf(locator.quote); let selected: number | undefined;
-  while (position >= 0) {
-    const before = source.slice(0, position); const after = source.slice(position + locator.quote.length);
-    if ((locator.prefix === undefined || before.endsWith(locator.prefix))
-      && (locator.suffix === undefined || after.startsWith(locator.suffix))) {
-      if (selected !== undefined) return 'ambiguous_quote';
-      selected = position;
-    }
-    position = source.indexOf(locator.quote, position + 1);
-  }
-  if (selected === undefined) return 'quote_mismatch';
-  return { evidenceRef: locator.evidenceRef, quote: locator.quote, start: selected, end: selected + locator.quote.length };
 }
 
 function duplicates(values: readonly string[]) {
@@ -71,12 +52,14 @@ export function admitEntities(rawEntities: readonly unknown[], rawMentions: read
     if (new Set(entity.data.possibleEntityIds).size !== entity.data.possibleEntityIds.length) {
       rejected.push({ component: 'entity', index, reasons: ['duplicate_possible_entity'] }); return [];
     }
+    const problems = entityIdentityProblems(entity.data);
+    if (problems.length) { rejected.push({ component: 'entity', index, reasons: problems }); return []; }
     return [{ entity: entity.data, index }];
   });
   const acceptedMentions = mentions.flatMap((mention, index) => {
     if (!mention.success) { rejected.push({ component: 'mention', index, reasons: ['invalid_structure'] }); return []; }
     if (duplicateMentions.has(mention.data.mentionId)) { rejected.push({ component: 'mention', index, reasons: ['duplicate_mention'] }); return []; }
-    const selection = locateQuote(mention.data.selection, excerpts);
+    const selection = locateQuoteOccurrence(mention.data.selection, excerpts);
     if (typeof selection === 'string') { rejected.push({ component: 'mention', index, reasons: [selection] }); return []; }
     return [{ mention: { ...mention.data, selection }, index }];
   });
@@ -98,6 +81,7 @@ export function admitEntities(rawEntities: readonly unknown[], rawMentions: read
     const supported = new Set(retainedMentions.map(({ mention }) => mention.entityId));
     retainedEntities = retainedEntities.filter(({ entity, index }) => {
       const reasons: string[] = [];
+      reasons.push(...entityIdentityReferenceProblems(entity, byId, retainedMentions.map(value => value.mention)));
       if (!supported.has(entity.entityId)) reasons.push('entity_without_mention');
       if (entity.possibleEntityIds.some(target => !byId.has(target) || target === entity.entityId)) reasons.push('unknown_possible_entity');
       if (entity.possibleEntityIds.some(target => byId.get(target)?.identityStatus === 'unresolved')) reasons.push('unresolved_possible_entity');

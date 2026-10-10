@@ -1,6 +1,6 @@
 # Entity identity rules (design draft)
 
-Status: this document delivers the P1 identity rules and positive/negative examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127), for subsequent implementation and annotation. They are not yet part of the extraction prompt, Schema, storage, or acceptance tooling. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
+Status: this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). P2 implements the approved contracts in section 8; P3 interface completion and P4/P5 independent annotation and model acceptance remain pending. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
 
 This draft follows the [knowledge definition](../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
 
@@ -48,7 +48,7 @@ The phrase “production Quartz” alone does not determine granularity. Reuse t
 
 **Components and instances are not interchangeable subjects.** “Instance P failed” can help users find related experience through the component; it does not imply “all instances of this component failed.” Retrieving related knowledge and generalizing a claim to related objects are different actions.
 
-Component-instance and component-version links are semantics this draft requires retaining. P2 will determine whether relation fields are needed and specify versioned contracts and querying. This draft does not claim that current formats fully express those links.
+Component-instance and component-version links are semantics this draft requires retaining. P2 defines the versioned relation fields in section 8. Full relation operations and querying remain P3 work.
 
 ## 4. Collections, unresolved identities, and mention positions
 
@@ -63,9 +63,9 @@ Component-instance and component-version links are semantics this draft requires
 
 A known collection may retain known members and membership gaps; an incomplete list is not the complete set. Candidates must have the same referential level: when “they” could mean different combinations, individual A and B cannot become interchangeable singleton candidates. If candidate combinations cannot be represented with evidence, preserve an explanation and uncertainty rather than invent collection identities without supported mentions.
 
-Each admitted source position corresponds to one mention. Collection mentions, membership relations, and individual claims supported by “both” must be represented separately, not through duplicated positions. The existing duplicate-position rejection stays in place. P2 must define and verify membership, plural ambiguity, and evidence bindings for individual claims.
+Each admitted source position corresponds to one mention. Collection mentions, membership relations, and individual claims supported by “both” must be represented separately, not through duplicated positions. The existing duplicate-position rejection stays in place. Section 8 defines membership, plural ambiguity and evidence bindings. Structural tests do not establish their model extraction quality.
 
-Quotes are continuous source text. For repeated text, prefixes and suffixes must be directly adjacent to that occurrence. The host accepts only a unique exact match; fuzzy matching or choosing the first match must not conceal quote errors. The current UTF-16 positioning convention remains unchanged.
+Quotes are continuous source text. Repeated text requires an explicit zero-based occurrence, including overlapping matches; unique matches may omit it. The host rejects ambiguous positions without fuzzy matching or choosing the first. UTF-16 positions remain host computed. Section 8 replaces the old adjacent-context selector.
 
 ## 5. Renames, copies, plans, and execution
 
@@ -93,7 +93,7 @@ Subsequent storage and presentation must:
 - Preserve parent revisions, rationale, and original evidence for new analyses. Existing knowledge keeps the exact revision used at generation; applying corrections requires a new knowledge revision, and old bindings remain inspectable.
 - Never arbitrarily choose a new object to inherit an old knowledge subject after a split. Unavailable sources, incomplete membership, and failed linked-knowledge reads each have explicit limits rather than “no objects / no knowledge.”
 
-These requirements supplement the [existing revision and storage boundaries](./entity-extraction.md); this stage changes no data. P2 must identify semantics the current format cannot express, public-contract and existing-data impacts, then determine versions and replacement handling. It does not presume compatibility layers, automatic migration, or new persistent indexes.
+These requirements supplement the [revision and storage boundaries](./entity-extraction.md). Section 8 defines the approved versioned replacement and existing-data impacts, without compatibility readers, automatic migration, or persistent indexes.
 
 ## 7. From rules to implementation and acceptance
 
@@ -111,3 +111,46 @@ Acceptance cannot compare entity counts alone. Check referential levels, require
 Allow synonymous labels and additional source-supported objects. Do not substitute an abstract component for an explicit instance, distribute collective results to individuals, or drop conditions affecting reuse. Cross-environment claims about a component can qualify when the source establishes no required separate instances and preserves all conditions. Independent review must apply these rules rather than count returned IDs.
 
 The [historical two-round report](../explanation/entity-extraction-repeat-quality.md) and frozen evidence remain unchanged. It failed the instance criteria frozen for that run; this draft does not revise gold, inflate historical scores, or recompute old results. New identity rules, annotations, and checks need a new measurement identity before reporting subsequent quality. Independent review and new model acceptance have not yet occurred.
+
+## 8. P2 contracts and replacement plan (approved)
+
+This replacement plan was approved on 2026-10-10. P2 implements identity contracts, prompt/admission, host mapping, write/recovery, and correction round trips. Full link operations in P3 and independent quality acceptance in P4/P5 remain pending.
+
+### 8.1 Minimal identity structure
+
+Add three required fields to existing entities without creating another global registry:
+
+| Field | Semantics and validation |
+|---|---|
+| `referentKind` | `object`, `component`, `instance`, `version`, `collection`, `plan`, or `activity`. Ordinary people, files, tools, rules, and concepts may use `object`. This is a referential level, not a confidence rating. |
+| `componentRef` | `null`, or a link containing `entityId`, `mentionIds`, and `rationale`. Only an instance/version may link to one proposed component. Target and mentions must belong to this analysis, including at least one mention of the instance/version. Use `null` when component identity is absent; never invent it from matching names. |
+| `collection` | `null` for other levels; a collection contains `memberEntityIds`, `completeness`, `mentionIds`, and `rationale`. Completeness is `complete`, `partial`, or `unknown`. At least one supporting mention belongs to the collection. Member references must be unique and closed, without direct or indirect self-containment. |
+
+Membership completeness and identity resolution are distinct. A known collection may have membership gaps and remain `proposed`. `partial` needs at least one known member; `unknown` lists no definite members. Both require uncertainty reasons. An unresolved collection must use unknown membership, never substitute candidate identities for members; its `possibleEntityIds` can reference only proposed collections. Other unresolved objects also require candidates at the same `referentKind`.
+
+Links are judgments proposed by a model or user; structural admission does not prove them true. Exact mentions, `basis`, `rationale`, and uncertainty retain identity evidence. Plans and executions remain separate; knowledge statements express their specific relations without extending a general graph relation vocabulary.
+
+### 8.2 Quotes and admission
+
+New model locators contain only `evidenceRef`, a continuous source `quote`, and optional zero-based `occurrence`. The host enumerates every exact occurrence in the message, including overlaps. An index may be omitted for a unique match; multiple matches require one. Reject missing indexes, out-of-range indexes, and source mismatches separately. Do not trust generated character offsets, retain legacy context selectors, or select the first occurrence by default.
+
+This reduces the burden of constructing long adjacent context; it does not prove correct semantic positioning. Duplicate source-span assignment is still rejected. A collection produces one assigned mention. Individual claims must reference each member's own mention and source evidence supporting the claim; never duplicate a collection span to satisfy member coverage. Case actions/outcomes may reference only `descriptive` statements; plan requirements keep their actual modality.
+
+An invalid link makes its containing entity inadmissible. Dependent mentions, collections, unresolved candidates, and knowledge continue through reference-closure rejection with explicit reasons. Dropping invalid links or members must not silently produce “complete” data. Corrections must preserve or explicitly edit these fields; merging must not automatically transfer outcomes.
+
+### 8.3 Versions and existing-data impact
+
+| Object | Previous → current | Impact |
+|---|---|---|
+| Entity history | `entity-analysis-history` v1 → v2 | Adds referential levels, component links, and membership. Reject old histories and count them as unavailable analyses in the catalog. |
+| Extraction run | `knowledge-extraction-run` v3 → v4 | Binds prepared intents, raw model output, and new prompt identity. Reject old runs; they cannot resume. |
+| Prompt/model output | `knowledge-extraction-v3` / output v3 → v4 | New identity and locator semantics with new hashes; old responses do not enter the new validator. |
+| Knowledge history | `knowledge-item-history` v2 → v2 | Content and grounding shape stay unchanged. Old knowledge content remains readable; bindings to old entity histories show the analysis as unavailable. |
+
+Keep old files unchanged, without automatic rewriting, deletion, conversion, migration, or compatibility readers. Users select a new empty knowledge directory and re-extract original records. Only new-version runs can resume with their original idempotent identities. New same-named objects do not inherit old knowledge bindings. Historical quality reports, corpus, and evidence are not recomputed.
+
+### 8.4 Delivery boundary
+
+This stage implements identity/link validation, model locators, prompts, host identity mapping, and write/recovery boundaries, while making existing correction entry points pass all new fields intact. P3 completes visible membership/component operations and retrieval experience; P2 does not call descriptive-text-only presentation complete.
+
+Regression checks use no model calls and cover empty results, homonym isolation, collections/uncertainty, cascading rejection of invalid links, repeated quotes, case roles, idempotent recovery, and unsupported-version rejection. Independent annotation, real data, and new model calls remain P4/P5 work. Historical acceptance entry points must not silently pair new prompts with old entity criteria.

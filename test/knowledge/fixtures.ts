@@ -47,11 +47,26 @@ export function modelWindow(): WindowExtractionModel {
   const candidate = proposal();
   const quoteOnly = ({ evidenceRef, quote }: ExtractionProposal['citations'][number]['selection']) => ({ evidenceRef, quote });
   const { entities, ...content } = candidate.draft;
-  return { responseKind: 'knowledge-extraction', schemaVersion: 3,
-    entities: entities.map(entity => ({ ...entity, qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [] })),
+  return { responseKind: 'knowledge-extraction', schemaVersion: 4,
+    entities: entities.map(entity => ({ ...entity, qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
+      referentKind: 'object', componentRef: null, collection: null })),
     mentions: candidate.mentions.map(mention => ({ ...mention, selection: quoteOnly(mention.selection) })),
     proposals: [{ proposalId: candidate.proposalId, draft: content, entityIds: entities.map(entity => entity.entityId),
       mentionIds: candidate.mentions.map(mention => mention.mentionId), citations: candidate.citations.map(citation => ({ ...citation, selection: quoteOnly(citation.selection) })),
       reuseRationale: candidate.reuseRationale, identityUncertainties: candidate.identityUncertainties }],
   };
+}
+
+/** Distinct component, instance and collective identity in one immutable source window. */
+export function identityWindow(): WindowExtractionModel {
+  const packet = modelWindow();
+  packet.entities[0].referentKind = 'component';
+  packet.entities[1].referentKind = 'instance';
+  packet.entities[1].componentRef = { entityId: 'project', mentionIds: ['m2'], rationale: '原文描述所属组件' };
+  packet.entities.push({ ...packet.entities[0], entityId: 'group', label: '它们', description: '原文共同指代的两个对象',
+    referentKind: 'collection', collection: { memberEntityIds: ['project', 'tool'], completeness: 'complete',
+      mentionIds: ['m3'], rationale: '原文明示共同指代' } });
+  packet.mentions.push({ mentionId: 'm3', entityId: 'group', basis: 'inference', rationale: '复数指代',
+    selection: { evidenceRef: 'record-1', quote: '它们' } });
+  return packet;
 }

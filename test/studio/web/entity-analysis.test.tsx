@@ -9,10 +9,10 @@ import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../..
 import { draft } from '../../knowledge/fixtures.js';
 
 const revision = { revisionId: 'revision-1', revisedAt: '2026-10-08T00:00:00Z', revisedBy: { actorKind: 'agent' as const, actorId: 'fixture', executionRef: 'run' }, revisionReason: '等待核对', limitations: ['仅所选消息'],
-  entities: [{ entityId: 'project', label: 'Alpha <script>alert(1)</script>', description: '本次项目', qualifiers: ['测试环境'], identityStatus: 'proposed' as const, possibleEntityIds: [], uncertainties: [] },
-    { entityId: 'unknown', label: '这个项目', description: '不能确定的对象', qualifiers: [], identityStatus: 'unresolved' as const, possibleEntityIds: ['project'], uncertainties: ['无法从窗口确定'] }],
+  entities: [{ entityId: 'project', label: 'Alpha <script>alert(1)</script>', description: '本次项目', qualifiers: ['测试环境'], identityStatus: 'proposed' as const, possibleEntityIds: [], uncertainties: [], referentKind: 'object' as const, componentRef: null, collection: null },
+    { entityId: 'unknown', label: '这个项目', description: '不能确定的对象', qualifiers: [], identityStatus: 'unresolved' as const, possibleEntityIds: ['project'], uncertainties: ['无法从窗口确定'], referentKind: 'object' as const, componentRef: null, collection: null }],
   mentions: [{ mentionId: 'mention-1', entityId: 'project', selection: { evidenceRef: 'record-1', start: 0, end: 5, quote: 'Alpha' }, basis: 'explicit' as const, rationale: '项目名称' }] };
-const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 'entity-analysis-history', schemaVersion: 1,
+const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 'entity-analysis-history', schemaVersion: 2,
   analysisId: 'analysis', snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}`, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
   receipts: [{ requestId: 'request', commandDigest: 'digest', committedGeneration: 1, revisionId: revision.revisionId }] },
   source: { status: 'available', excerpts: [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], limitations: ['仅所选消息'] } };
@@ -40,6 +40,18 @@ describe('entity analysis user views', () => {
     expect(html).toContain('&lt;script&gt;'); expect(html).not.toContain('<script>'); expect(html).toContain('项目名称');
     const readonly = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail, draft: { entities: revision.entities, mentions: revision.mentions }, editable: false, lang: 'en', onChange() {} }));
     expect(readonly).toMatch(/<button[^>]*disabled=""[^>]*><span>Add or split an entity/);
+  });
+  it('preserves relation evidence by blocking destructive controls until link editing is supported', () => {
+    const entities = structuredClone(revision.entities);
+    const linked = { ...entities[0], referentKind: 'collection' as const, collection: { memberEntityIds: ['unknown'],
+      completeness: 'complete' as const, mentionIds: ['mention-1'], rationale: '<script>source</script>' } };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail,
+        draft: { entities: [linked, entities[1]], mentions: revision.mentions }, editable: true, lang, onChange() {} }));
+      expect(html).toContain(lang === 'zh' ? '关联及成员编辑待后续补齐' : 'link and member editing is pending');
+      expect(html).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除此对象及其提及/ : /<button[^>]*disabled=""[^>]*><span>Remove this entity and its mentions/);
+      expect(html).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除误识别提及/ : /<button[^>]*disabled=""[^>]*><span>Remove false mention/);
+    }
   });
   it('requires explicit replacement roles after removal rather than choosing the first remaining entity', () => {
     const knowledge = { revision: { content: draft().content } };

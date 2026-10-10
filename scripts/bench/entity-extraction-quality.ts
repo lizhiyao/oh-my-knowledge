@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { captureQualityCases, parseQualityArguments, qualityInput, qualityOutputRoot, type QualityCase } from './knowledge-extraction-quality.js';
+import { assertHistoricalQualityRuntime, captureQualityCases, parseQualityArguments, qualityInput, qualityOutputRoot, type QualityCase } from './knowledge-extraction-quality.js';
 
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1);
@@ -130,6 +130,7 @@ async function main() {
   const corpusText = readFileSync(resolve(repo, 'test/fixtures/entity-extraction-quality.json'), 'utf8');
   const corpus = parseEntityQualityCorpus(corpusText);
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
+  assertHistoricalQualityRuntime(promptModule.EXTRACTION_PROMPT_VERSION);
   const selected = z.strictObject({ version: z.literal('knowledge-extraction-v3'), prompt: exactText }).parse(args.prompt
     ? JSON.parse(readFileSync(args.prompt, 'utf8')) : { version: promptModule.EXTRACTION_PROMPT_VERSION, prompt: promptModule.EXTRACTION_PROMPT });
   const { configuredExtractionModel } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href);

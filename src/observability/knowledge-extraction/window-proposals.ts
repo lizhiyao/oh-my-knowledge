@@ -1,17 +1,18 @@
 import { z } from 'zod';
 import { KnowledgeDraftSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
-import { admitEntities, EntityModelMentionSchema, EntityModelSchema, locateQuote, QuoteLocatorSchema, type AdmittedEntityAnalysis } from './entities.js';
+import { admitEntities, EntityModelMentionSchema, EntityModelSchema, type AdmittedEntityAnalysis } from './entities.js';
+import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 import { resolvedProposalProblems, type CheckedProposals, type ExtractionProposal } from './proposals.js';
 
 const id = z.string().min(1).max(256);
 const windowProposal = z.strictObject({
   proposalId: id, draft: KnowledgeDraftSchema.omit({ entities: true }),
   entityIds: z.array(id).min(1).max(256), mentionIds: z.array(id).min(1).max(512),
-  citations: z.array(z.strictObject({ evidenceLinkId: id, selection: QuoteLocatorSchema })).min(1).max(512),
+  citations: z.array(z.strictObject({ evidenceLinkId: id, selection: QuoteOccurrenceLocatorSchema })).min(1).max(512),
   reuseRationale: z.string().min(1).max(4096), identityUncertainties: z.array(z.string().min(1).max(4096)).max(64),
 });
 export const WindowExtractionModelSchema = z.strictObject({
-  responseKind: z.literal('knowledge-extraction'), schemaVersion: z.literal(3),
+  responseKind: z.literal('knowledge-extraction'), schemaVersion: z.literal(4),
   entities: z.array(EntityModelSchema).max(256), mentions: z.array(EntityModelMentionSchema).max(512),
   proposals: z.array(windowProposal).max(12),
 });
@@ -50,7 +51,7 @@ export function checkWindowExtractionResponse(input: unknown, excerpts: readonly
       return [mention];
     });
     const citations = candidate.citations.flatMap(citation => {
-      const selection = locateQuote(citation.selection, excerpts);
+      const selection = locateQuoteOccurrence(citation.selection, excerpts);
       if (typeof selection === 'string') { reasons.push(`citation:${selection}`); return []; }
       return [{ ...citation, selection }];
     });

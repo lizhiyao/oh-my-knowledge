@@ -7,12 +7,12 @@ import { EntityAnalysisWriteSchema, validateEntityAnalysis } from '../../knowled
 import { validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
 export const ExtractionRunSchema = z.strictObject({
-  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(3),
+  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(4),
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
   origin: EvidenceWindowSchema.shape.origin,
   executor: z.string().min(1), model: z.string().min(1),
-  promptVersion: z.literal('knowledge-extraction-v3'), promptHash: z.string(), inputDigest: z.string(),
+  promptVersion: z.literal('knowledge-extraction-v4'), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),

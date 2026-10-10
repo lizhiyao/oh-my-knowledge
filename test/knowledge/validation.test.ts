@@ -1,12 +1,18 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/validation.js';
 import { KnowledgeTimeSchema, type KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import { checkWindowExtractionResponse as check, type WindowExtractionModel } from '../../src/observability/knowledge-extraction/window-proposals.js';
 
+import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { draft, modelWindow } from './fixtures.js';
 const evidence = new Set(['record-1']);
 
 describe('window model admission', () => {
+  it('freezes the v4 prompt identity separately from historical v3 quality evidence', () => {
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v4');
+    expect('sha256:' + createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('sha256:77fc3ef5b0bd8ad1e470cb279c50359a4966c9dedfc6503672b4d307ad8f4715');
+  });
   const excerpts = [{ evidenceRef: 'record-1', text: '前文😀Alpha 使用 Beta。后文' }];
   it('resolves UTF-16 positions, preserves raw output, and admits an empty window result', () => {
     const raw = modelWindow(); const before = structuredClone(raw);
@@ -62,7 +68,7 @@ describe('window model admission', () => {
     expect(result.accepted).toHaveLength(1); expect(result.accepted[0].identityUncertainties).toHaveLength(64);
   });
   it('requires the current response discriminator and version', () => {
-    for (const value of [{ proposals: [] }, { ...modelWindow(), schemaVersion: 2 }]) expect(() => check(value, excerpts)).toThrow();
+    for (const value of [{ proposals: [] }, { ...modelWindow(), schemaVersion: 2 }, { ...modelWindow(), schemaVersion: 3 }]) expect(() => check(value, excerpts)).toThrow();
   });
 });
 

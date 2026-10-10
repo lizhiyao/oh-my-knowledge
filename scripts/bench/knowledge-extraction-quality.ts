@@ -97,12 +97,20 @@ export async function captureQualityCases(run: QualityRun) {
   return { failed, aborted: run.signal.aborted, attempted };
 }
 
+/** Historical evidence requires its original validator as well as its frozen prompt and gold. */
+export function assertHistoricalQualityRuntime(version: unknown): void {
+  if (version !== 'knowledge-extraction-v3') {
+    throw new Error('Historical v3 quality runs require the frozen base revision; current runtime cannot re-score old gold. P4 must freeze a new measurement identity first.');
+  }
+}
+
 async function main() {
   const args = parseQualityArguments(process.argv.slice(2));
   const output = qualityOutputRoot(repo, args.output);
   const corpusText = readFileSync(resolve(repo, 'test/fixtures/knowledge-extraction-quality.json'), 'utf8');
   const cases = parseQualityCases(corpusText);
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
+  assertHistoricalQualityRuntime(promptModule.EXTRACTION_PROMPT_VERSION);
   const selected = args.prompt ? JSON.parse(readFileSync(args.prompt, 'utf8'))
     : { version: promptModule.EXTRACTION_PROMPT_VERSION, prompt: promptModule.EXTRACTION_PROMPT };
   if (selected.version !== 'knowledge-extraction-v3' || typeof selected.prompt !== 'string' || !selected.prompt.trim()) {
