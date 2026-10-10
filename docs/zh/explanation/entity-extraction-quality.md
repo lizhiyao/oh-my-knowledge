@@ -1,12 +1,14 @@
 # 实体提取 v3：观测结果与限制
 
+最新的[16 场景两轮验收](./entity-extraction-repeat-quality.md)发现了重复的提及失败及环境身份范围问题。本文保留 2026-10-09 的原始 v2／v3 对照，不用新语料重算历史结果。
+
 本轮小规模合成语料支持的结论是：新版提供独立实体结果，提及记录更精确。它**尚不能证明知识中的对象错误减少、真实日志提取可靠或跨 Agent 复用有效**。一处对象粒度问题仍待裁决。本文记录已完成的对照，不是发布质量认证。
 
 ## 证据与复核范围
 
 2026-10-09 UTC，`knowledge-extraction-v2` 与 `knowledge-extraction-v3` 各对相同的 12 个合成窗口运行一次，使用现有 Codex 执行器和 `gpt-6.1-sol`：共 24 次调用，无自动重试。语料、38 处关键提及位置、20 个重要局部对象、必须分开的身份、未消解指代及角色复核标准均在输出前冻结。复核标准不发送给模型。两版逐例输入摘要一致。
 
-[下载完整证据 JSON](/entity-extraction-v3-quality.json)：精确提示词字节与摘要、语料字节与摘要、输入、冻结的提及位置、原始输出及摘要、接纳结果、实际报告的用量和逐例 Agent 复核。采集记录原先将语义复核标为 pending；另列的 `agentReview` 保存本次后续复核，不覆盖原始输出。语料也位于 `test/fixtures/entity-extraction-quality.json`。
+[下载完整证据 JSON](/entity-extraction-v3-quality.json)：精确提示词字节与摘要、语料字节与摘要、输入、冻结的提及位置、原始输出及摘要、接纳结果、实际报告的用量和逐例 Agent 复核。采集记录原先将语义复核标为 pending；另列的 `agentReview` 保存本次后续复核，不覆盖原始输出。当时的 12 场景语料原文保存在该 JSON；仓库的 `test/fixtures/entity-extraction-quality.json` 已扩展为另一个摘要的 16 场景语料。
 
 | 身份 | SHA-256 |
 |---|---|
