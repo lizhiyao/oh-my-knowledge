@@ -1,4 +1,5 @@
-import type { ConversationCatalog } from '../../../observability/application.js';
+import type { ConversationCatalog, ConversationAutoExtraction } from '../../../observability/application.js';
+import { executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
 import { KnowledgeStorageStateError } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { JSON_HEADERS } from '../errors.js';
@@ -6,16 +7,19 @@ import { readJsonObjectBody } from '../request-errors.js';
 import { createStudioRouter } from './router.js';
 import type { LiveStreamRegistry } from './contracts.js';
 
-export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog) {
-  return createStudioRouter([{
-    pattern: '/api/knowledge/candidates', method: 'POST', mutation: true,
+export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction) {
+  return createStudioRouter(['candidates', 'auto-extraction'].map(resource => ({
+    pattern: `/api/knowledge/${resource}`, method: 'POST', mutation: true,
     async handler({ request, response }) {
       const input = await readJsonObjectBody(request);
       const controller = new AbortController();
       const cancel = () => controller.abort();
       response.once('close', cancel); liveStreams.add(cancel);
       try {
-        const result = await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
+        if (resource === 'auto-extraction' && !automation) throw new Error('Automation service unavailable.');
+        const result = resource === 'auto-extraction' && automation
+          ? await executeAutoExtractionAction(input, automation, controller.signal)
+          : await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
         if (!response.destroyed) { response.writeHead(200, JSON_HEADERS); response.end(JSON.stringify(result)); }
       } catch (error) {
         if (response.destroyed) return;
@@ -29,5 +33,5 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
         response.end(JSON.stringify({ error: code }));
       } finally { response.off('close', cancel); liveStreams.delete(cancel); }
     },
-  }]);
+  })));
 }

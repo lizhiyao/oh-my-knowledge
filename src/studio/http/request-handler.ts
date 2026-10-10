@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   createCodexConversationCatalog,
   ObservationReviewStateValidationError,
+  ConversationAutoExtraction,
 } from '../../observability/application.js';
 
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
@@ -45,7 +46,8 @@ export function createStudioRequestHandler({
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
-  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog);
+  const automation = new ConversationAutoExtraction(catalog);
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -164,6 +166,7 @@ export function createStudioRequestHandler({
   }
 
   function close(): void {
+    automation.close();
     measurements.close();
     if (shutdownTimer !== undefined) clearTimeout(shutdownTimer);
     shutdownTimer = undefined;

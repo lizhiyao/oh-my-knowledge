@@ -34,7 +34,7 @@ it('presents projects and readable conversation links without raw Markdown or ta
 it('opens a reader with in-place extraction and retains project navigation', () => {
   const html = renderToStaticMarkup(createElement(ObserveWorkspace, { lang: 'zh', page: { pageKind: 'conversation', model: item, navigation: index, revision: 'test' } }));
   expect(html).toContain('对话内容'); expect(html).toContain('正在读取对话');
-  expect(html).toContain('提炼知识'); expect(html).toContain('已提炼知识');
+  expect(html).toContain('开启自动提炼'); expect(html).toContain('知识待办'); expect(html).not.toContain('已提炼知识');
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
   expect(html).not.toContain('ant-pagination');
   expect(html).not.toContain('最近轮次优先');

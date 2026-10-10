@@ -6,20 +6,20 @@ import { Alert, Button, Checkbox, Empty, Input, Modal, Select, Space, Spin } fro
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeConversation, KnowledgeConversationDetail, KnowledgeConversationPreview } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
-import { resolveKnowledgeWorkspace } from './workspace';
+import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 
 type Scope = { threadId: string; turnId?: string };
 
 /** The reading action selects its own turn; opening the dialog never calls a model. */
-export function ExtractConversation({ threadId, turnId, lang, onFinished, disabled = false, small = false }: Scope & {
-  lang: Language; onFinished?(workspace: string): void; disabled?: boolean; small?: boolean;
+export function ExtractConversation({ threadId, turnId, lang, onFinished, onReview, disabled = false, small = false }: Scope & {
+  lang: Language; onFinished?(workspace: string): void; onReview?(workspace: string, id: string, signal: AbortSignal): Promise<void>; disabled?: boolean; small?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return <><Button type={small ? 'text' : 'primary'} size={small ? 'small' : 'middle'} disabled={disabled} onClick={() => setOpen(true)}>
     {turnId ? (lang === 'zh' ? '提炼这轮' : 'Extract this turn') : (lang === 'zh' ? '提炼整条对话' : 'Extract conversation')}
-  </Button>{open && <ConversationExtractionDialog source={{ threadId, ...(turnId ? { turnId } : {}) }} lang={lang} onClose={() => setOpen(false)} onFinished={onFinished}/>}</>;
+  </Button>{open && <ConversationExtractionDialog source={{ threadId, ...(turnId ? { turnId } : {}) }} lang={lang} onClose={() => setOpen(false)} onFinished={onFinished} onReview={onReview ? async (workspace, id, signal) => { await onReview(workspace, id, signal); onFinished?.(workspace); setOpen(false); } : undefined}/>}</>;
 }
 
 /** Both Observe and Knowledge use one local preview and one explicit model confirmation. */
@@ -125,7 +125,7 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
       const captured = await api<KnowledgeCandidateSource>('capture-conversation', { workspace: workspace.trim(), ...source, sourceVersion: preview.sourceVersion, recordIndexes: selected }, active.signal);
       const result = await api<KnowledgeCandidateRun>('generate', { workspace: workspace.trim(), snapshot: captured.snapshotId, executor, model: model.trim(), runId: crypto.randomUUID() }, active.signal);
       if (active.signal.aborted) return;
-      setRun(result); setStage('result');
+      setRun(result); setStage('result'); notifyKnowledgeChange(workspace.trim());
       if (result.status === 'completed' && result.committed[0]) {
         if (!onReview) onFinished?.(workspace.trim());
         await reviewCandidate(result.committed[0].knowledgeId, active.signal);
@@ -133,7 +133,7 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
     } catch (cause) {
       if (!mounted.current) return;
       if (!active.signal.aborted) setError(explain(cause));
-      else setError(t('已请求取消。已保存的结果可在“已提炼知识”或“提炼记录”中查看。', 'Cancellation requested. Check Extracted knowledge or Extraction history for saved results.'));
+      else setError(t('已请求取消。已保存的结果可在“知识待办”或“提炼记录”中查看。', 'Cancellation requested. Check Knowledge inbox or Extraction history for saved results.'));
       setStage('result'); onFinished?.(workspace.trim());
     } finally { if (controller.current === active) controller.current = null; }
   }

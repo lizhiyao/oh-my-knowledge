@@ -25,7 +25,7 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('conversation'), threadId: text }),
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('preview-conversation'), threadId: text, turnId: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture-conversation'), threadId: text, turnId: text.optional(), sourceVersion: text, recordIndexes: z.array(z.number().int().nonnegative()).min(1).max(1000) }),
-  z.strictObject({ ...common, operation: z.literal('related'), threadId: text }),
+  z.strictObject({ ...common, operation: z.literal('queue'), threadId: text.optional(), projectId: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('list') }),
   z.strictObject({ ...common, operation: z.literal('tag'), id: text, generation: z.number().int().nonnegative(), tags: z.array(z.string()).max(32) }),
   z.strictObject({ ...common, operation: z.literal('runs') }),
@@ -65,13 +65,16 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
   }
   const app = create(request.workspace);
   switch (request.operation) {
-    case 'related': return app.runs().flatMap(run => {
-      if (run.origin?.threadId !== request.threadId) return [];
-      return [{ ...extractionRunSummary(run), committed: run.committed.map(ref => {
-        const detail = app.detail(ref.knowledgeId);
-        return { ...ref, title: detail.revision.title, choice: detail.maintenance?.choice ?? null };
-      }) }];
-    });
+    case 'queue': {
+      if (request.threadId && request.projectId) throw new Error('Select one knowledge scope.');
+      const projectThreads = request.projectId && catalog ? new Set((await catalog.listConversations()).conversations
+        .filter(item => (item.project?.projectId ?? item.cwd) === request.projectId).map(item => item.threadId)) : undefined;
+      if (request.projectId && !catalog) throw new Error('Conversation catalog unavailable.');
+      const runs = app.runs().filter(run => request.threadId ? run.origin?.threadId === request.threadId
+        : projectThreads ? Boolean(run.origin && projectThreads.has(run.origin.threadId)) : true);
+      const ids = new Set(runs.flatMap(run => run.committed.map(ref => ref.knowledgeId)));
+      return { rows: app.list().filter(row => ids.has(row.knowledgeId)), runs: runs.map(extractionRunSummary) };
+    }
     case 'list': return app.list();
     case 'tag': return app.tag(request.id, request.generation, request.tags);
     case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(extractionRunSummary);

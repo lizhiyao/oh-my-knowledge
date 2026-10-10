@@ -9,6 +9,7 @@ import { AGENTS_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths'
 import type { ConversationListItem } from '../../../../observability/view-models/conversation';
 import { StudioShell, type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
+import { KnowledgeInbox } from '../knowledge/inbox';
 import { ConversationReader } from './reader';
 import { displayTime } from '../../../application/display/format';
 import { conversationLabel } from '../../../application/display/conversation-label';
@@ -84,6 +85,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
         return <details key={id} className={selected && projectId(selected) === id ? 'selected-project' : undefined} open={selected ? projectId(selected) === id : view === id}>
           <summary><span title={directory ? `${name}\n${directory}` : name}>{name}</span><span title={t(`${visible.length} 个对话`, `${visible.length} conversations`)}>{visible.length}</span></summary>
           <button className="observe-project-overview" onClick={() => choose(id)}>{t('查看项目对话', 'View project conversations')}</button>
+          <KnowledgeInbox key={id} projectId={id} lang={lang}/>
           {shown.map(item => { const meta = item.archived ? t('已归档', 'Archived') : item.model ?? item.sourceKind; return <Link key={item.threadId} className={`observe-session-link${item.threadId === selected?.threadId ? ' selected' : ''}`} aria-current={item.threadId === selected?.threadId ? 'page' : undefined} title={conversationLabel(item.title, t('系统或附件记录', 'System or attachment record'))} href={href(conversationPath(item.threadId))}><span>{running(item) && <i className="studio-running-dot"/>}{conversationLabel(item.title, t('系统或附件记录', 'System or attachment record'))}</span><small title={meta}>{meta}</small></Link>; })}
           {visible.length > PROJECT_SESSION_LIMIT && <button className="observe-project-overview" onClick={() => choose(id)}>{t(`查看全部 ${visible.length} 个对话`, `View all ${visible.length} conversations`)}</button>}
         </details>;
@@ -107,6 +109,7 @@ export function ObserveWorkspace({ page, lang }: { page: Exclude<ObservePage, { 
       <div className="observe-workspace-tools"><ActivityNotice activity={activity} lang={lang}/></div>
       {selected ? <ConversationReader key={selected.threadId} item={selected} revision={page.revision} lang={lang} title={conversationLabel(selected.title, t('系统或附件记录', 'System or attachment record'))} project={projectName(selected, zh)}/> : <>
         <header className="observe-project-header"><div className="observe-project-heading"><h1>{heading}</h1><Link className="observe-source-entry" href={href(AGENTS_INDEX_PATH)}>{t('来源与采集', 'Sources and collection')}</Link></div><p>{t(`${rows.length} 个对话`, `${rows.length} conversations`)}{group ? ` · ${t('同一项目的工作记录', 'Work recorded in this project')}` : ` · ${t('打开对话，阅读工作过程', 'Open a conversation to read the work')}`}</p></header>
+        {group && <div className="observe-project-inbox"><KnowledgeInbox key={view} projectId={view} lang={lang}/></div>}
         <div className="observe-session-list">{listed.rows.map(item => {
           const label = conversationLabel(item.title, t('系统或附件记录', 'System or attachment record'));
           const latest = [...item.tasks].reverse().map(task => conversationLabel(task.title, '')).find(Boolean);

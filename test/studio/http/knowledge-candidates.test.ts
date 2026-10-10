@@ -35,6 +35,21 @@ describe('Studio candidate action boundary', () => {
   const post = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/candidates`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace, ...body }),
   });
+  it('previews automation without permission, requires fresh explicit consent, and can stop before any call', async () => {
+    const auto = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/auto-extraction`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
+    });
+    expect((await auto({ operation: 'status', workspace, threadId: 'thread' }, 'https://untrusted.example')).status).toBe(403);
+    const preview = await (await auto({ operation: 'preview', threadId: 'thread' })).json();
+    expect(preview.turnCount).toBe(1); expect(preview.messages).toHaveLength(2);
+    expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toBeNull();
+    const consent = { operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
+    expect((await auto({ ...consent, maxCalls: 0 })).status).toBe(400);
+    changed = true; expect((await auto(consent)).status).toBe(409); changed = false;
+    expect((await auto(consent)).status).toBe(200);
+    expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
+    expect(createLocalKnowledgeApplication(workspace).runs()).toHaveLength(0);
+  });
   it('uses the selected local workspace and shared capture operation', async () => {
     expect(await (await post({ operation: 'list' })).json()).toEqual([]);
     const captured = await post({ operation: 'capture', source });

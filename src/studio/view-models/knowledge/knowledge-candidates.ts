@@ -13,6 +13,8 @@ export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> &
 export type KnowledgeCandidateSource = EvidenceWindow;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
 export type KnowledgeCandidateRun = Omit<ExtractionRunSummary, 'startedAt'> & { startedAt?: string };
+export interface KnowledgeCandidateQueue { rows: KnowledgeCandidateRow[]; runs: KnowledgeCandidateRun[] }
+export type { AutoExtractionState, AutoExtractionPreview } from '../../../observability/application.js';
 type EntityDetail = ReturnType<KnowledgeApplication['entities']>;
 export type KnowledgeEntityAnalysisDetail = Omit<EntityDetail, 'source'> & {
   source: { status: 'available'; excerpts: EvidenceWindow['excerpts']; limitations: EvidenceWindow['limitations'] }
