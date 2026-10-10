@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AnalyzedEntity, EntityAnalysisEnvelope } from '../../knowledge/entities.js';
+import type { AnalyzedEntity, EntityAnalysisEnvelope } from '../../knowledge/entities/contracts.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import type { EvidenceWindow, SourceResolution } from './evidence.js';
 

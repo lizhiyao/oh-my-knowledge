@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../../../knowledge/contracts.js';
-import { applyEntityAnalysisWrite, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, validateEntityAnalysisHistory,
-  type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../../knowledge/entities.js';
+import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../../knowledge/entities/history.js';
+import { EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../../knowledge/entities/contracts.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 import { withFileLock } from '../../../shared/file-lock.js';

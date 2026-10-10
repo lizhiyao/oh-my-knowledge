@@ -55,6 +55,8 @@ Applying entities preserves prior additional identity uncertainty notes by defau
 
 `knowledge` owns pure contracts, references, and revision invariants. `observability/knowledge-extraction` owns selected windows, model transport, admission, and application workflows; file adapters implement storage. Studio and CLI share the workflow. Evaluation Core does not own observed entities or filesystem effects.
 
+Entity domain code lives in `src/knowledge/entities/`: `contracts.ts` defines entity analyses and storage ports, `identity.ts` defines identity and link rules, `validation.ts` checks analysis references and mentions, and `history.ts` handles immutable revisions and deterministic write rules. Consumers import by responsibility directly; this module does not invoke models, read or write files, or depend on Studio. Model-output admission and joint entity/knowledge extraction remain orchestrated by `observability/knowledge-extraction`, whose adapters still implement entity file storage. Directory boundaries add no model invocations or user steps.
+
 Persist a reservation before invoking the model, and raw output/reported usage before preparing entity and knowledge write intents. Recovery uses allocated identities, the current prompt identity, and idempotent commands without invoking the model again. Commit entities before knowledge; interrupted knowledge intents remain resumable.
 
 Only selected excerpts and scope limitations are sent. Native paths stay local; instructions in logs cannot expand reading or invoke tools. Unreported cost is unknown, not zero.

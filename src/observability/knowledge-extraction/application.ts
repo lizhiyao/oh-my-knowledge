@@ -1,7 +1,8 @@
 import type { KnowledgeActor, KnowledgeDraft, KnowledgeRevision } from '../../knowledge/contracts.js';
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../../knowledge/contracts.js';
 import { z } from 'zod';
-import { EntityAnalysisDraftSchema, validateEntityAnalysis, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../knowledge/entities.js';
+import { EntityAnalysisDraftSchema, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../knowledge/entities/contracts.js';
+import { validateEntityAnalysis } from '../../knowledge/entities/validation.js';
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
@@ -13,7 +14,7 @@ import { EntityModelSchema } from './entities.js';
 import { checkWindowExtractionResponse } from './window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
-import { mapEntityIdentity } from '../../knowledge/entity-identity.js';
+import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
