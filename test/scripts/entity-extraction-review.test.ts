@@ -38,17 +38,18 @@ describe('entity extraction review with author evidence', () => {
   it.each([
     { version: 'v6', windows: 36, calls: 11, critical: 40, matched: 39, missing: 1, notEvaluable: 3, unattempted: 25, conclusion: 'selected_strict_regression_not_passed' },
     { version: 'v7', windows: 42, calls: 6, critical: 22, matched: 20, missing: 2, notEvaluable: 11, unattempted: 36, conclusion: 'targeted_behaviors_observed_strict_regression_not_passed' },
+    { version: 'v8', windows: 48, calls: 5, critical: 21, matched: 21, missing: 0, notEvaluable: 0, unattempted: 43, conclusion: 'selected_granularity_behaviors_observed_full_quality_unverified' },
   ])('replays $version diagnostic without hiding unattempted windows, misses or missing independent evidence', expected => {
     type Capture = ReturnType<typeof reviewCapture>['capture'];
     type Outcome = ReturnType<typeof reviewCapturedOutput>;
     const evidence = JSON.parse(readFileSync(new URL(`../../docs/public/entity-extraction-${expected.version}-diagnostic.json`, import.meta.url), 'utf8')) as {
       conclusion: string; goldReady: boolean; annotationReview: string;
       manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string; checkVersion: string };
-      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; identity: Record<string, unknown>; authorReview?: unknown };
-      execution: { selectedCaseIds: string[]; repeats: number; maxCalls: number; attempted: number; recorded: number; status?: string; executorInvocations?: number; startedAt?: string };
+      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; preparedPlanText?: string; identity: Record<string, unknown>; authorReview?: unknown };
+      execution: { selectedCaseIds: string[]; repeats: number; maxCalls: number; attempted: number; recorded: number; status?: string; executorInvocations?: number; startedAt?: string; preparedPlanDigest?: string };
       captureCompletion?: { status: string; planned: number; recorded: number; executorInvocations: number; originalDriverStatus: string; driverExitCode: number; localDriverIssue: string };
-      captures: Capture[]; records: (Outcome & { caseId: string; outputDigest: string })[];
-      agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; outputDigest: string; rationale: string }[] };
+      captures: Capture[]; records: (Outcome & { caseId: string; outputDigest: string; checked?: ReturnType<typeof checkWindowExtractionResponse> })[];
+      agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; outputDigest: string; rationale: string; reviewedEntityIds?: string[]; reviewedMentionIds?: string[]; reviewedProposals?: { proposalId: string; statementIds: string[]; evidenceLinkIds: string[] }[] }[] };
       statistics: { plannedCriticalMentions: number; matchedCriticalMentions: number; missingCriticalMentions: number; notEvaluableIdentityPairs: number; wrongMerges: number; wrongSplits: number; identityMismatches: number; structuralRejectingOutputs: number; usdCost: string; reportedCostUSD: null };
       fullCorpusSplitSummaries: { split: string; notAttempted: number; captureStatus: string }[];
       reproducibility: { captureDriverText: string; captureDriverDigest: string };
@@ -80,6 +81,15 @@ describe('entity extraction review with author evidence', () => {
       const decision = evidence.agentReview.decisions.filter(value => value.caseId === record.caseId);
       expect(decision).toHaveLength(1); expect(decision[0].outputDigest).toBe(published.outputDigest);
       expect(decision[0].rationale.length).toBeGreaterThan(20);
+      if (expected.version === 'v8') {
+        const raw = JSON.parse(record.result.output) as ReturnType<typeof packet>;
+        expect(published.checked).toEqual(JSON.parse(JSON.stringify(checkWindowExtractionResponse(raw, input.excerpts))));
+        expect(decision[0].reviewedEntityIds).toEqual(raw.entities.map(value => value.entityId));
+        expect(decision[0].reviewedMentionIds).toEqual(raw.mentions.map(value => value.mentionId));
+        expect(decision[0].reviewedProposals).toEqual(raw.proposals.map(value => ({ proposalId: value.proposalId,
+          statementIds: value.draft.content.statements.map(statement => statement.statementId),
+          evidenceLinkIds: value.draft.evidence.map(link => link.evidenceLinkId) })));
+      }
     }
     expect(evidence.records).toHaveLength(expected.calls); expect(evidence.agentReview.decisions).toHaveLength(expected.calls);
     const sum = (count: (record: typeof evidence.records[number]) => number) => evidence.records.reduce((n, record) => n + count(record), 0);
@@ -99,6 +109,21 @@ describe('entity extraction review with author evidence', () => {
     expect(evidence.conclusion).toBe(expected.conclusion);
     expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
     expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed' });
+    if (expected.version === 'v8') {
+      expect(evidence.execution).toMatchObject({ status: 'captured', executorInvocations: 5 });
+      expect(reviewDigest(evidence.frozen.preparedPlanText!)).toBe(evidence.execution.preparedPlanDigest);
+      expect(evidence.reproducibility.captureDriverText).toContain('state.recorded === plan.caseCount');
+      expect(evidence.statistics).toMatchObject({ acceptedEntities: 13, acceptedMentions: 23, acceptedKnowledgeCandidates: 6, acceptedStatements: 16 });
+      expect(sum(record => record.checked!.analysis.entities.length)).toBe(13);
+      expect(sum(record => record.checked!.analysis.mentions.length)).toBe(23);
+      expect(sum(record => record.checked!.accepted.length)).toBe(6);
+      expect(sum(record => record.checked!.accepted.reduce((n, value) => n + value.draft.content.statements.length, 0))).toBe(16);
+      expect(evidence.fullCorpusSplitSummaries).toEqual(evidence.captures.map(capture => {
+        const replay = reviewCapture(JSON.stringify(capture), parseEntityReviewCorpus(evidence.frozen.corpusText), evidence.manifest.measurementId, checkWindowExtractionResponse);
+        return { split: capture.split, ...replay.summary };
+      }));
+      expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), parseEntityReviewCorpus(evidence.frozen.corpusText), evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
+    }
     if (expected.version === 'v7') {
       expect(evidence.execution).toMatchObject({ status: 'incomplete', executorInvocations: 6 });
       expect(evidence.captureCompletion).toMatchObject({ status: 'captured', planned: 6, recorded: 6, executorInvocations: 6, originalDriverStatus: 'incomplete', driverExitCode: 1 });
