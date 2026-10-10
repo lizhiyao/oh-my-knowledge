@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v5`，语料 `omk-entity-quality/v7`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v7`／响应 Schema v4。**历史 v6 诊断及作者自审已完成；v7 尚未执行模型语义验收，独立人工复核与全量质量验收仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
+状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v5`，语料 `omk-entity-quality/v7`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v7`／响应 Schema v4。**历史 v6 诊断及作者自审已完成；v7 六场景单轮复验完成，三项期望行为出现，严格 20／22 未通过且粒度待裁决；独立人工复核与全量质量验收仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
 
 ## 1. 版本与适用范围
 
@@ -12,7 +12,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 历史 `test/fixtures/entity-extraction-review-v6.json` 是公开合成集：28 个开发窗口、8 个新预留验证窗口，共 128 个关键提及。旧 v5 的全部 24 个公开窗口转为开发回归，另加入苹果、键盘、保险和 Node／OMK 的 4 个讨论示例；`val-`／`fresh-` 前缀保留历史身份，实际 split 均为 development。8 个 `held-` 验证窗口按项目／会话与开发集隔离，覆盖普通实物、材料、保险与教学概念、同名异义、类概念／具体对象、明确别名、歧义和空知识结果。它不是隐藏盲测集，也不代表真实日志分布；验证窗口不得用于提示词调参，作者了解答案不算独立复核。未来真实日志须另行最小化、授权、分组和复核。[v6 诊断报告](../explanation/entity-extraction-v6-diagnostic.md)保留 11 份输出及自审：严格关键提及 39／40，未通过冻结门槛。8 个新验证窗口现已查看输出，后续只作开发回归；不能宣称盲测收益。已有输出的应用动线已完成验收；随后获批的[真实会话单轮诊断](../explanation/entity-extraction-v6-real-pilot.md)完成 7 次采集与逐例自审，暴露核心概念遗漏、指代歧义保留不足及陈述否定范围问题，整体质量仍需改进。运行完成不代表语义通过，离线检查或动线通过不证明模型改进有效。
 
-当前 `test/fixtures/entity-extraction-review-v7.json` 共 42 个窗口、150 个关键提及：40 个开发回归与 2 个新预留验证窗口。旧 v6 的全部 36 个窗口转为 development，保留原 caseId（含 `held-` 前缀）；在新 v7 中，开发案例的完整名称 Rule F9 与短标记 F9 预先列为等价边界；旧 v6 备选及未命中计数不变。另增加 4 个合成开发场景，覆盖 Session 概念／属性、助手自行选择回答、用户明确澄清及正负规范拆分。2 个新窗口按项目／会话隔离，核对产品名不得机械拆词，以及集体行动不能机械分配给成员。新窗口公开可见、未调用模型，不称为隐藏盲测或独立证据；真实正文不进入语料。v7 模型语义效果尚未验收，不重算 v6 的 39／40 或真实小批计数。
+当前 `test/fixtures/entity-extraction-review-v7.json` 共 42 个窗口、150 个关键提及：40 个开发回归与 2 个新预留验证窗口。旧 v6 的全部 36 个窗口转为 development，保留原 caseId（含 `held-` 前缀）；在新 v7 中，开发案例的完整名称 Rule F9 与短标记 F9 预先列为等价边界；旧 v6 备选及未命中计数不变。另增加 4 个合成开发场景，覆盖 Session 概念／属性、助手自行选择回答、用户明确澄清及正负规范拆分。2 个新窗口按项目／会话隔离，核对产品名不得机械拆词，以及集体行动不能机械分配给成员。新窗口冻结时公开可见、尚无模型输出，不称为隐藏盲测或独立证据；真实正文不进入语料。随后[六场景单轮复验](../explanation/entity-extraction-v7-diagnostic.md)完成并逐例自审，严格关键提及 20／22，计数与状态更新的独立身份粒度待裁决；两新预留窗口现已查看输出，后续只作开发回归，冻结 split 与计数不回写。独立复核、v7 真实小批及整体质量仍未完成，不重算 v6 的 39／40 或真实小批计数。
 
 ## 2. 标注单位与允许表达
 

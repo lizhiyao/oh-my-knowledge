@@ -35,17 +35,21 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
-  it('replays the selected v6 diagnostic without hiding unattempted windows, boundary misses or missing independent evidence', () => {
+  it.each([
+    { version: 'v6', windows: 36, calls: 11, critical: 40, matched: 39, missing: 1, notEvaluable: 3, unattempted: 25, conclusion: 'selected_strict_regression_not_passed' },
+    { version: 'v7', windows: 42, calls: 6, critical: 22, matched: 20, missing: 2, notEvaluable: 11, unattempted: 36, conclusion: 'targeted_behaviors_observed_strict_regression_not_passed' },
+  ])('replays $version diagnostic without hiding unattempted windows, misses or missing independent evidence', expected => {
     type Capture = ReturnType<typeof reviewCapture>['capture'];
     type Outcome = ReturnType<typeof reviewCapturedOutput>;
-    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
+    const evidence = JSON.parse(readFileSync(new URL(`../../docs/public/entity-extraction-${expected.version}-diagnostic.json`, import.meta.url), 'utf8')) as {
       conclusion: string; goldReady: boolean; annotationReview: string;
       manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string; checkVersion: string };
-      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; identity: Record<string, unknown> };
-      execution: { selectedCaseIds: string[]; repeats: number; maxCalls: number; attempted: number; recorded: number };
+      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; identity: Record<string, unknown>; authorReview?: unknown };
+      execution: { selectedCaseIds: string[]; repeats: number; maxCalls: number; attempted: number; recorded: number; status?: string; executorInvocations?: number; startedAt?: string };
+      captureCompletion?: { status: string; planned: number; recorded: number; executorInvocations: number; originalDriverStatus: string; driverExitCode: number; localDriverIssue: string };
       captures: Capture[]; records: (Outcome & { caseId: string; outputDigest: string })[];
       agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; outputDigest: string; rationale: string }[] };
-      statistics: { plannedCriticalMentions: number; matchedCriticalMentions: number; missingCriticalMentions: number; notEvaluableIdentityPairs: number; usdCost: string; reportedCostUSD: null };
+      statistics: { plannedCriticalMentions: number; matchedCriticalMentions: number; missingCriticalMentions: number; notEvaluableIdentityPairs: number; wrongMerges: number; wrongSplits: number; identityMismatches: number; structuralRejectingOutputs: number; usdCost: string; reportedCostUSD: null };
       fullCorpusSplitSummaries: { split: string; notAttempted: number; captureStatus: string }[];
       reproducibility: { captureDriverText: string; captureDriverDigest: string };
     };
@@ -57,10 +61,10 @@ describe('entity extraction review with author evidence', () => {
     expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
     expect(reviewDigest(evidence.reproducibility.captureDriverText)).toBe(evidence.reproducibility.captureDriverDigest);
     const frozen = JSON.parse(evidence.frozen.corpusText) as { cases: EntityReviewCase[] };
-    expect(frozen.cases).toHaveLength(36);
+    expect(frozen.cases).toHaveLength(expected.windows);
     const captured = evidence.captures.flatMap(capture => capture.records);
-    expect(captured).toHaveLength(11);
-    expect(evidence.execution).toMatchObject({ repeats: 1, maxCalls: 11, attempted: 11, recorded: 11 });
+    expect(captured).toHaveLength(expected.calls);
+    expect(evidence.execution).toMatchObject({ repeats: 1, maxCalls: expected.calls, attempted: expected.calls, recorded: expected.calls });
     expect(new Set(captured.map(record => record.caseId))).toEqual(new Set(evidence.execution.selectedCaseIds));
     for (const record of captured) {
       const sample = frozen.cases.find(sample => sample.caseId === record.caseId)!;
@@ -77,18 +81,31 @@ describe('entity extraction review with author evidence', () => {
       expect(decision).toHaveLength(1); expect(decision[0].outputDigest).toBe(published.outputDigest);
       expect(decision[0].rationale.length).toBeGreaterThan(20);
     }
-    expect(evidence.records).toHaveLength(11); expect(evidence.agentReview.decisions).toHaveLength(11);
+    expect(evidence.records).toHaveLength(expected.calls); expect(evidence.agentReview.decisions).toHaveLength(expected.calls);
     const sum = (count: (record: typeof evidence.records[number]) => number) => evidence.records.reduce((n, record) => n + count(record), 0);
-    expect(evidence.statistics).toMatchObject({ plannedCriticalMentions: 40, matchedCriticalMentions: 39,
-      missingCriticalMentions: 1, notEvaluableIdentityPairs: 3, usdCost: 'unknown', reportedCostUSD: null });
-    expect(sum(record => record.checks!.criticalMentions.filter(value => value.status === 'matched').length)).toBe(39);
+    expect(evidence.statistics).toMatchObject({ plannedCriticalMentions: expected.critical, matchedCriticalMentions: expected.matched,
+      missingCriticalMentions: expected.missing, notEvaluableIdentityPairs: expected.notEvaluable, usdCost: 'unknown', reportedCostUSD: null });
+    expect(sum(record => record.checks!.criticalMentions.filter(value => value.status === 'matched').length)).toBe(expected.matched);
+    expect(sum(record => record.checks!.criticalMentions.filter(value => value.status !== 'matched').length)).toBe(evidence.statistics.missingCriticalMentions);
+    expect(sum(record => record.checks!.identityPairs.filter(value => value.status === 'not_evaluable').length)).toBe(evidence.statistics.notEvaluableIdentityPairs);
+    expect(sum(record => record.checks!.identityPairs.filter(value => value.status === 'wrong_merge').length)).toBe(evidence.statistics.wrongMerges);
+    expect(sum(record => record.checks!.identityPairs.filter(value => value.status === 'wrong_split').length)).toBe(evidence.statistics.wrongSplits);
+    expect(sum(record => record.checks!.identities.filter(value => value.status === 'mismatched').length)).toBe(evidence.statistics.identityMismatches);
+    expect(evidence.records.filter(record => record.structuralRejections.length).length).toBe(evidence.statistics.structuralRejectingOutputs);
     expect(evidence.fullCorpusSplitSummaries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ split: 'development', notAttempted: 25, captureStatus: 'incomplete' }),
+      expect.objectContaining({ split: 'development', notAttempted: expected.unattempted, captureStatus: 'incomplete' }),
       expect.objectContaining({ split: 'validation', notAttempted: 0, captureStatus: 'captured' }),
     ]));
-    expect(evidence.conclusion).toBe('selected_strict_regression_not_passed');
+    expect(evidence.conclusion).toBe(expected.conclusion);
     expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
     expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed' });
+    if (expected.version === 'v7') {
+      expect(evidence.execution).toMatchObject({ status: 'incomplete', executorInvocations: 6 });
+      expect(evidence.captureCompletion).toMatchObject({ status: 'captured', planned: 6, recorded: 6, executorInvocations: 6, originalDriverStatus: 'incomplete', driverExitCode: 1 });
+      expect(evidence.captureCompletion!.localDriverIssue).toContain('state.recorded === 11');
+      expect(evidence.reproducibility.captureDriverText).toContain('state.recorded === 11');
+      expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), parseEntityReviewCorpus(evidence.frozen.corpusText), evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
+    }
   });
 
   it('audits the immutable published v4 two-round evidence without converting self-review or missing cost into a pass', () => {
