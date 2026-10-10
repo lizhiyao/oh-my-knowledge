@@ -1,0 +1,627 @@
+{
+  "evidenceVersion": "omk-real-entity-public-summary/v1",
+  "measurement": {
+    "measurementId": "sha256:1a848e2c896ae224180ab83798cb3228f2eeb98349668a0aeba5ce1886c67332",
+    "packetDigest": "sha256:ed0bde9430ccd324fc0a73e01e0ac27e3573f6dce52753e6baba0bf6df975ec9",
+    "promptDigest": "sha256:e6f220f67c0d4ea9707672ad8737f8aa4d6f0263e5f37da949f0ab41f0f17038",
+    "promptVersion": "knowledge-extraction-v8",
+    "inputDigests": [
+      {
+        "caseId": "real-session-before-resolution",
+        "inputDigest": "sha256:bca598bf038a225cb6287f47e60da911e0cd218b4ad3a23c65a3bbfebb010c86"
+      },
+      {
+        "caseId": "real-session-after-resolution",
+        "inputDigest": "sha256:a9ce559c67cec2e531c6e744581e35b71af7c09f76c20f188d3002074ef46d1d"
+      },
+      {
+        "caseId": "real-protected-correction",
+        "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0"
+      }
+    ],
+    "runtimeDigest": "sha256:d7beeacfcd09d16213902222184832a391e3f5476bbdbd339ab168fd520b3777",
+    "dependencyDigest": "sha256:35027c64e0e501c0cea3286bd48bdd44d67e85140a1cdbe44a704550d07eab83",
+    "nodeVersion": "24.21.0",
+    "responseSchemaVersion": 4,
+    "reviewVersion": "omk-real-entity-review/v1",
+    "annotationScope": "knowledge-relevant-entity-expectations-not-exhaustive-mentions",
+    "model": "gpt-6.1-sol",
+    "executor": "codex",
+    "repeats": 1,
+    "plannedCalls": 3,
+    "retries": 0,
+    "concurrency": 2,
+    "runtimeSourceCommit": "6bfd2f72a2624a78b7c2f040ac15995dcb9b2e47",
+    "repositoryCommit": "3da58a5e1bd59c91aebe88276c378d400b1b35b1",
+    "sourceGroups": 1,
+    "windowMessages": 12,
+    "uniqueMessages": 9,
+    "independentReview": "not_performed",
+    "goldReady": false,
+    "priorOutputs": "previously-viewed-v6-development-material-not-blind",
+    "costUSD": null,
+    "reasoningEffort": "executor-default-not-explicitly-set",
+    "backendRevision": "not-reported",
+    "captureDriverDigest": "sha256:c62d28fccf712dc2873a15c7143e21517fdd1ed121a4828d7fdc1014df05c3b4"
+  },
+  "capture": {
+    "status": "captured",
+    "startedAt": "2026-10-10T18:03:14.017Z",
+    "finishedAt": "2026-10-10T18:06:58.541Z",
+    "attempted": 3,
+    "recorded": 3,
+    "executorInvocations": 3
+  },
+  "selfReview": {
+    "reviewVersion": "omk-real-entity-self-review/v1",
+    "status": "completed",
+    "reviewer": "omk-implementation-agent",
+    "reviewedAt": "2026-10-10T18:13:10.710065+00:00",
+    "summary": {
+      "expectedObjects": 17,
+      "expectedObjectsLocated": 17,
+      "missingExpectedObjects": 0,
+      "frozenReferentKindMismatches": 1,
+      "entitySemanticIssueWindows": 0,
+      "knowledgeIssueWindows": 2,
+      "reviewedEntities": 41,
+      "reviewedMentions": 50,
+      "reviewedKnowledgeCandidates": 7,
+      "reviewedStatements": 19,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "independentReview": "not_performed",
+      "goldReady": false,
+      "conclusion": "targeted_entity_behaviors_observed_but_knowledge_needs_improvement"
+    }
+  },
+  "evidenceDigests": {
+    "plan.json": "sha256:f4daae2bf9c67d0447565390b8c0c9e5c63acc99ba04c87cd3cec008db87ee41",
+    "manifest.json": "sha256:efe1e63cddb154549ebf733ccae373c634ccba6bb97e5d872908ece302f6c936",
+    "prompt.json": "sha256:03147d7bedd1bbf714d133ebaa4d61fcbe72a28de2443a1369820d477c58d29d",
+    "review-packet.json": "sha256:ed0bde9430ccd324fc0a73e01e0ac27e3573f6dce52753e6baba0bf6df975ec9",
+    "runtime-files.json": "sha256:149b1f9799f8e80e6665f944b4c611b51b2a0646a1638fda69e63ae83d703063",
+    "checks.json": "sha256:33848aaca0cc685b94be1e6e7cf6ef7d21e1dcfd784f8d72132cc069c8075a62",
+    "self-review.json": "sha256:2de0cf97fa0748d68627d23917e770b53daad9ef98514088890f77c68e670e79",
+    "review.html": "sha256:0f074fbc28357fbc04f42906f1f9d49644bc037f7d955d79fe0e60cebe216652",
+    "application-replay.json": "sha256:ef7af812c42ac2ede85eefa0b3153d1f00545235b3b9d26638113ffe85dbf801",
+    "capture-real-v8.mjs": "sha256:c62d28fccf712dc2873a15c7143e21517fdd1ed121a4828d7fdc1014df05c3b4",
+    "inspect-real-v8.mjs": "sha256:ceccbd937bb51de13bc0e55f7ad2b9cf1e32365d06957f877cc74b54f7fd8a29",
+    "review-real-v8.py": "sha256:d229491cd1bee66be00028af6e1c1a7fc0967c389e74eef9a613fc2ed333f339",
+    "replay-real-v8.mjs": "sha256:ad8430d56d3d84c97816dc3f71306295c3df214584a6411c926089123973d4ff"
+  },
+  "applicationReplay": {
+    "externalModelCalls": 0,
+    "allRunsCompleted": true,
+    "sourceCommit": "3da58a5e1bd59c91aebe88276c378d400b1b35b1",
+    "evidenceReferenceRebindingOnly": true,
+    "originalMessagesPreserved": true,
+    "reopenedAllPayloadsMatch": true,
+    "uiAcceptance": "not_repeated_in_this_run"
+  },
+  "publication": {
+    "rawInputs": "local_only",
+    "rawOutputs": "local_only",
+    "annotations": "local_only",
+    "originalPaths": "not_published",
+    "reviewReasons": "bilingual_report_summary_only"
+  },
+  "cases": [
+    {
+      "caseId": "real-session-before-resolution",
+      "inputDigest": "sha256:bca598bf038a225cb6287f47e60da911e0cd218b4ad3a23c65a3bbfebb010c86",
+      "outputDigest": "sha256:ad1a2e920f8c9b1c4b8864efe91d3105e41dd6b69ebc6c69d1fb94e2ce019057",
+      "runtimeDigest": "sha256:d88a1debf020f6cefe6f0be96ff3199b04795e1f80c07076578acff41a75f61f",
+      "captureDigest": "sha256:0f1206bc9a2d17eebf26f461095023181b7fb45f22ce03cd2bd2c39e607169bb",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 13,
+        "mentions": 15,
+        "knowledgeCandidates": 2,
+        "statements": 4
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 9932,
+        "outputTokens": 3399,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "costReportedByExecutor": false,
+        "durationMs": 87212,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T18:03:14.019Z",
+        "finishedAt": "2026-10-10T18:04:41.233Z",
+        "wallClockDurationMs": 87213.98941600001
+      },
+      "selfReview": {
+        "decision": "no_semantic_issue_found",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e6",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e4",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "version"
+            ],
+            "observedReferentKind": "version"
+          },
+          {
+            "observedEntityId": "e5",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": [],
+        "reviewedCounts": {
+          "entities": 13,
+          "mentions": 15,
+          "knowledgeCandidates": 2,
+          "statements": 4
+        }
+      },
+      "applicationReplay": {
+        "snapshotId": "42b5bd6a-d700-4614-8829-7e3160f755ae",
+        "runId": "65fa079d-8e07-4479-b5ae-e64a228656d1",
+        "revisionId": "d79ae418-af2f-438c-803a-f071607721f9",
+        "entityCount": 13,
+        "mentionCount": 15,
+        "knowledgeCount": 2,
+        "referenceMap": {
+          "real-session-before-resolution:0": "42b5bd6a-d700-4614-8829-7e3160f755ae:0",
+          "real-session-before-resolution:1": "42b5bd6a-d700-4614-8829-7e3160f755ae:1",
+          "real-session-before-resolution:2": "42b5bd6a-d700-4614-8829-7e3160f755ae:2"
+        },
+        "entityMap": {
+          "e1": "5ec7c35f-c872-408d-a06e-cb4d136aa5b1",
+          "e2": "4de7e77f-48b7-4a70-9202-4e80a114e929",
+          "e3": "bcda9b88-b5c0-423e-b286-838314254a76",
+          "e4": "a978dbef-f054-4732-aec7-a479b9a88b81",
+          "e5": "2e0045cc-2306-4f4b-a311-fcd4e1fa8764",
+          "e6": "b758ba45-a147-4e75-b00e-b60fe523edd5",
+          "e7": "7d1dae0e-15dd-4f75-97bf-8a5c0fef01ac",
+          "e8": "2ac6979f-4981-4784-b7c8-ee39d1cb7e7c",
+          "e9": "98b91f8f-7df7-42eb-86e9-7236582f8442",
+          "e10": "91bf330f-91df-47f5-b1e4-631126fb03ce",
+          "e11": "b6509963-5e17-47c1-bccb-401203bd66ca",
+          "e12": "e622b682-bc3e-49d9-9514-e65dab50f101",
+          "e13": "07ac54dc-9f94-4f0e-8f7d-719b72075dd2"
+        },
+        "mentionMap": {
+          "m1": "30d12487-5835-49d1-a108-6d7ddade15b5",
+          "m2": "88fff05c-08ac-4729-a73d-69b68a4f1518",
+          "m3": "9d0a2476-e86a-4da2-8076-3074a9e9329f",
+          "m4": "781ce554-f6de-49b6-8d40-20ca8f5145a1",
+          "m5": "8d25e9d4-39e7-45cc-a1a6-d8de89170cd5",
+          "m6": "4e4294fb-018e-4fd3-87fa-2fbcb887cc1c",
+          "m7": "04469728-403e-447e-91c8-9d3141c01e19",
+          "m8": "f817286f-86c7-4539-aa71-72c38803e32b",
+          "m9": "aa2a682f-5ffa-4656-b960-619705d5f57f",
+          "m10": "2c9b134e-6221-4a81-a8a7-e05c4e107e59",
+          "m11": "8a1af68f-cdef-4387-8551-5b9c7c0fa710",
+          "m12": "379e5b9e-fda0-4be6-9bd7-8984af92ae96",
+          "m13": "9e9e57c4-c001-4811-8f0b-fd6f83d3ff1b",
+          "m14": "ccb8ff34-235c-4f49-a5c5-17a93a18f602",
+          "m15": "84fccc29-dc48-4576-8da4-ea5368d54f58"
+        },
+        "originalOutputDigest": "sha256:ad1a2e920f8c9b1c4b8864efe91d3105e41dd6b69ebc6c69d1fb94e2ce019057",
+        "reboundOutputDigest": "sha256:4da2c03cec5fc5330ad4f24dcaffe714613c7399a5763dbb9cf4a974ffd1bbac",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true,
+        "reopenedAllPayloadsMatch": true
+      }
+    },
+    {
+      "caseId": "real-session-after-resolution",
+      "inputDigest": "sha256:a9ce559c67cec2e531c6e744581e35b71af7c09f76c20f188d3002074ef46d1d",
+      "outputDigest": "sha256:d5d70fc06b79cf0793e84aef9892be019aacf5d5878a928ca326d562952847d1",
+      "runtimeDigest": "sha256:e09c0b1e34d5d05ed0542096f68361ea6bfb80b236bbb6c2b7270eee90422d4a",
+      "captureDigest": "sha256:83c05f36a69e3db9b11bba10785dfdbec2517c095cd80773b029c1f68ff010c3",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 11,
+        "mentions": 17,
+        "knowledgeCandidates": 3,
+        "statements": 8
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 10162,
+        "outputTokens": 4482,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "costReportedByExecutor": false,
+        "durationMs": 113444,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T18:03:14.022Z",
+        "finishedAt": "2026-10-10T18:05:07.467Z",
+        "wallClockDurationMs": 113445.03791700001
+      },
+      "selfReview": {
+        "decision": "knowledge_modality_issue_with_kind_dispute",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e3",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "version"
+            ],
+            "observedReferentKind": "version"
+          },
+          {
+            "observedEntityId": "e5",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e4",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": false,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "version"
+          }
+        ],
+        "issues": [
+          {
+            "issueKind": "frozen_referent_kind_mismatch",
+            "entityId": "e4",
+            "proposalId": null,
+            "statementId": null,
+            "frozenCheckIndex": null
+          },
+          {
+            "issueKind": "modality_strength_error",
+            "entityId": "e2",
+            "proposalId": "p2",
+            "statementId": "s5",
+            "frozenCheckIndex": null
+          }
+        ],
+        "reviewedCounts": {
+          "entities": 11,
+          "mentions": 17,
+          "knowledgeCandidates": 3,
+          "statements": 8
+        }
+      },
+      "applicationReplay": {
+        "snapshotId": "991c1816-5027-4152-8222-598ed715adf5",
+        "runId": "484323a5-9d12-401f-a100-fe844a291c68",
+        "revisionId": "35560c58-fcfc-4e1f-bcef-dcdcac21c148",
+        "entityCount": 11,
+        "mentionCount": 17,
+        "knowledgeCount": 3,
+        "referenceMap": {
+          "real-session-after-resolution:0": "991c1816-5027-4152-8222-598ed715adf5:0",
+          "real-session-after-resolution:1": "991c1816-5027-4152-8222-598ed715adf5:1",
+          "real-session-after-resolution:2": "991c1816-5027-4152-8222-598ed715adf5:2",
+          "real-session-after-resolution:3": "991c1816-5027-4152-8222-598ed715adf5:3",
+          "real-session-after-resolution:4": "991c1816-5027-4152-8222-598ed715adf5:4"
+        },
+        "entityMap": {
+          "e1": "f4ee6eb3-d761-4329-a9e6-ca42ea28532d",
+          "e2": "e102b29f-6889-4032-a084-c88f3438678c",
+          "e3": "35847e14-e771-416f-99a4-1e1a661ace20",
+          "e4": "f3dff520-7d80-44b7-97dd-d452129b0620",
+          "e5": "31312097-d8d0-4ad9-aa94-e28e3ae88890",
+          "e6": "a78e3bfc-e7d0-470e-8ed7-9f8dfafbf408",
+          "e7": "a2c0532a-02b0-4979-9897-0518d5b349ca",
+          "e8": "1c4d1166-48ed-4b48-970f-ea5288181491",
+          "e9": "bff21d2e-ae56-48b5-9fa3-68d703f7c058",
+          "e10": "c95c294b-8ce1-4a62-b6ba-e968dafe3c65",
+          "e11": "5fab0c24-5a61-4bc0-a113-093aef908ab6"
+        },
+        "mentionMap": {
+          "m1": "1d152463-9de8-4d72-9912-3df31dc5570d",
+          "m2": "ce59148e-3362-4d5c-b23a-46b6c208eded",
+          "m3": "fb306d77-45bf-4bbc-8e9d-c6aa9085b710",
+          "m4": "41e080fb-5e9f-4567-b9e3-f3ef1ffd2372",
+          "m5": "5bfd671e-e31b-4f11-8bbe-bdc62af8c7ba",
+          "m6": "cebd1736-b7d5-4b44-91aa-ec7ac3f412da",
+          "m7": "cd2fec68-18e9-45e0-ac48-1ef663546a2b",
+          "m8": "8ba6925a-09c3-476b-8d51-1e571ae8b141",
+          "m9": "e9d31f10-b509-4722-bd45-98fcfa6a5d69",
+          "m10": "21c3fd43-a02b-4070-b306-11502973176c",
+          "m11": "165aee74-81bc-49a6-bc64-8e5a54b221e4",
+          "m12": "9a3a409f-a770-4bda-8b87-bf762d7fc729",
+          "m13": "889ab9eb-0757-4d1b-9ed4-ba011786f6b9",
+          "m14": "88e2e0e9-b211-404e-9f64-05aeebd3a6a0",
+          "m15": "f5cee48e-2d02-40f3-bfcb-a54ff1d1a598",
+          "m16": "afd41b57-370c-4dd0-b16a-50b27573986d",
+          "m17": "0bf43fad-7804-4acb-94e7-6ba7c6ca292e"
+        },
+        "originalOutputDigest": "sha256:d5d70fc06b79cf0793e84aef9892be019aacf5d5878a928ca326d562952847d1",
+        "reboundOutputDigest": "sha256:2ca3a9bae95afca32616d5d3ff9453db357d93befebcad7d8095c70e7883ac14",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true,
+        "reopenedAllPayloadsMatch": true
+      }
+    },
+    {
+      "caseId": "real-protected-correction",
+      "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0",
+      "outputDigest": "sha256:fee17291aa189093e7ca81d4fe4addca7d1b0ddef7358327f97671460b9a2a67",
+      "runtimeDigest": "sha256:50be184e0ca27885ebf227be30cc0b5108ee44499e79b093bb206b9c9e68da24",
+      "captureDigest": "sha256:978daf544ff3529b036fd25861f663fd54733a2a25f75bf3c8ac1fc32bd06c27",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 17,
+        "mentions": 18,
+        "knowledgeCandidates": 2,
+        "statements": 7
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 10678,
+        "outputTokens": 5512,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "costReportedByExecutor": false,
+        "durationMs": 137305,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T18:04:41.234Z",
+        "finishedAt": "2026-10-10T18:06:58.541Z",
+        "wallClockDurationMs": 137305.596625
+      },
+      "selfReview": {
+        "decision": "knowledge_coverage_gap",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "component"
+          },
+          {
+            "observedEntityId": "e3",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "component"
+          },
+          {
+            "observedEntityId": "e7",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e11",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e13",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e14",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e8",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e10",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "component"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": [
+          {
+            "issueKind": "knowledge_coverage_gap",
+            "entityId": "e14",
+            "proposalId": null,
+            "statementId": null,
+            "frozenCheckIndex": 2
+          }
+        ],
+        "reviewedCounts": {
+          "entities": 17,
+          "mentions": 18,
+          "knowledgeCandidates": 2,
+          "statements": 7
+        }
+      },
+      "applicationReplay": {
+        "snapshotId": "a047076c-02cd-48a4-8d97-dd4c182a9632",
+        "runId": "c934b832-dbb0-4229-aeba-f774d42f0357",
+        "revisionId": "ecdcc1fe-2ad7-4bf3-ad13-c0790bfbbade",
+        "entityCount": 17,
+        "mentionCount": 18,
+        "knowledgeCount": 2,
+        "referenceMap": {
+          "real-protected-correction:0": "a047076c-02cd-48a4-8d97-dd4c182a9632:0",
+          "real-protected-correction:1": "a047076c-02cd-48a4-8d97-dd4c182a9632:1",
+          "real-protected-correction:2": "a047076c-02cd-48a4-8d97-dd4c182a9632:2",
+          "real-protected-correction:3": "a047076c-02cd-48a4-8d97-dd4c182a9632:3"
+        },
+        "entityMap": {
+          "e1": "33745723-33f0-4892-af3c-b3eddbd1842a",
+          "e2": "c830a2e8-6359-4d31-8c4a-a59a2d8a4158",
+          "e3": "b70ed4f2-fed7-4920-b726-59061f687178",
+          "e4": "cf28e101-a72d-41a9-8aab-07004c036c0f",
+          "e5": "753b75ac-a6b8-4d4b-b99a-1090b96ef7af",
+          "e6": "e39578a1-24c5-47bf-a34e-4e17897810c0",
+          "e7": "4fd64457-66de-470c-b91d-f941aa98b901",
+          "e8": "2ef04b7f-14e1-4595-9039-0bc2d1c98cc7",
+          "e9": "a91239e3-2b36-4756-b75f-15d3017c7d5b",
+          "e10": "69059c5b-342f-4162-8164-8470f5044249",
+          "e11": "e7f1d962-b662-44b6-9c57-216fda7bfce5",
+          "e12": "0fc33261-7c73-4dd1-b400-b4984410a053",
+          "e13": "7d21f5db-35b7-4159-a494-4191c0b5549c",
+          "e14": "b6afb1fa-2742-4685-8f1f-48f313dceac7",
+          "e15": "ba272ec4-e512-462a-843d-2ae4eb164191",
+          "e16": "74097d2a-4733-43d7-874f-f178cd165d33",
+          "e17": "71648077-c8b0-4d4a-b22a-56d40e540a38"
+        },
+        "mentionMap": {
+          "m1": "278ca4cf-86f0-4ddf-96b1-f34faf1cddba",
+          "m2": "b76813be-bb44-45f0-8f4e-bd4c64c386d7",
+          "m3": "541c0e63-9e99-494c-8653-13c16decfe4b",
+          "m4": "4ed18c92-8afe-46bf-97af-7f0e41e16a3d",
+          "m5": "ec2e8d9c-94f1-4401-ac76-960e46a29864",
+          "m6": "62f89ea7-a9d1-4bd0-aaa7-6a3f2bfd7f8b",
+          "m7": "a082727b-e2c9-4a56-94de-cbb2a03c0fb0",
+          "m8": "8b6c2e97-111e-4c26-bba9-d70f04098a7b",
+          "m9": "bf2dc44a-ebf1-4830-a2b2-b9dcd6af0b39",
+          "m10": "0c613915-5153-482f-a682-c201725e7960",
+          "m11": "cd2bd135-85fc-46e3-a3a2-7700de9b7ed9",
+          "m12": "c41abc70-5eb1-4276-9477-213f1f28428c",
+          "m13": "0a266789-173c-4f1c-bab1-756989c16e64",
+          "m14": "653f9f2a-c9b3-41f7-aefb-0a06ee1aa27b",
+          "m15": "6e620f8d-3e46-4465-b894-91d75cc7f456",
+          "m16": "f57e1e44-64ec-4cc5-891a-114b74b3c54f",
+          "m17": "097ab505-e524-4e10-a0cf-eff39e1a8a66",
+          "m18": "6aad1bed-1806-40ec-b67c-8def5adc4053"
+        },
+        "originalOutputDigest": "sha256:fee17291aa189093e7ca81d4fe4addca7d1b0ddef7358327f97671460b9a2a67",
+        "reboundOutputDigest": "sha256:1b73928fd954d28d38290415d51b5caa4568bda60a819b9b2a53218ce5efa145",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true,
+        "reopenedAllPayloadsMatch": true
+      }
+    }
+  ]
+}

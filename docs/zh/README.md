@@ -56,6 +56,7 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 - [实体提取 v7：六场景复验](./explanation/entity-extraction-v7-diagnostic.md)
 - [实体提取 v8：五窗口粒度诊断](./explanation/entity-extraction-v8-diagnostic.md)
 - [实体提取 v8：已有输出动线验收](./explanation/entity-extraction-v8-workflow.md)
+- [实体提取 v8：三窗口真实会话诊断](./explanation/entity-extraction-v8-real-pilot.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [术语规范](./specs/terminology-spec.md)
 
 - [验证本地任务结果](./guides/local-tasks.md)
