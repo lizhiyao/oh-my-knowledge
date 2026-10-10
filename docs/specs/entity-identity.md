@@ -4,6 +4,10 @@ Status: this document defines identity rules and examples for [Issue #1127](http
 
 This draft follows the [knowledge definition](../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
 
+Entity extraction first identifies the things and concepts discussed, such as apples, OMK, keyboards, insurance and Node; it then uses context to group names and references, retain ambiguity and associate knowledge. Ordinary objects and abstract concepts are in scope, beyond names of people, places, organizations or software components. Exhaustively listing nouns is not the goal.
+
+Apple may mean a fruit or company, a keyboard may mean a category or one device, and insurance may mean a domain concept or a product. Only source context establishes meaning or associations. Semantic categories differ from the referent levels in `referentKind`: the current `description` explains source-supported meaning and `qualifiers` records owners, uses, domains or projects, without adding mandatory categories or storage fields. Component, instance, version and collection distinctions remain where the source requires them.
+
 ## 1. What users need to find through entities
 
 Entity extraction should help people and AI answer these questions, rather than list as many nouns as possible:

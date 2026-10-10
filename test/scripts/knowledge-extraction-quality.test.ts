@@ -24,7 +24,7 @@ const cases = parseQualityCases(readFileSync(new URL('../fixtures/knowledge-extr
 describe('knowledge extraction quality evidence', () => {
   it('refuses to combine historical gold and prompts with a replacement runtime before model setup', () => {
     expect(() => assertHistoricalQualityRuntime('knowledge-extraction-v3')).not.toThrow();
-    for (const version of ['knowledge-extraction-v4', 'knowledge-extraction-v5', undefined]) {
+    for (const version of ['knowledge-extraction-v4', 'knowledge-extraction-v5', 'knowledge-extraction-v6', undefined]) {
       expect(() => assertHistoricalQualityRuntime(version)).toThrow('frozen base revision');
     }
   });

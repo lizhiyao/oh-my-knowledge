@@ -108,6 +108,9 @@ describe('entity analysis user views', () => {
     expect(html).toContain('<mark>Alpha</mark>'); expect(html).toContain('提出对应，待核对');
     expect(html).toContain('主体 · 使用'); expect(html).toContain('仍绑定实体旧修订'); expect(html).toContain('不等于语义已验证');
     expect(html).toContain('revision=old-revision'); expect(html).toContain('workspace=%2Fworkspace+space');
+    expect(html.indexOf('本次项目')).toBeLessThan(html.indexOf('原文提及'));
+    expect(html.indexOf('原文提及')).toBeLessThan(html.indexOf('关联知识'));
+    expect(html.indexOf('关联知识')).toBeLessThan(html.indexOf('<details><summary>身份层次与关联</summary>'));
     expect(html).toContain('&lt;script&gt;'); expect(html).not.toContain('<script>');
     const unavailable = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, mentionChecks: [{ mentionId: 'mention-1', positionStatus: 'unavailable' }], source: { status: 'unavailable', reason: 'deleted', detail: 'deleted' } }, workspace: '/workspace', lang: 'en', onRevision() {} }));
     expect(unavailable).toContain('Source snapshot unavailable'); expect(unavailable).not.toContain('<mark>');

@@ -4,13 +4,13 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v3`，语料 `omk-entity-quality/v5`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v5`／响应 Schema v4。**独立人工复核与新模型验收尚未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保持这两项待办。
+状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v4`，语料 `omk-entity-quality/v6`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v6`／响应 Schema v4。**独立人工复核与新模型验收尚未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保持这两项待办。
 
 ## 1. 版本与适用范围
 
-本指南采用[实体身份规则](./entity-identity.md)及[实体提取契约](./entity-extraction.md)。v2／v3／v4 的语料、报告及原始输出保持原样。v5 针对[两轮 v4 结果](../explanation/entity-extraction-v4-repeat-quality.md)暴露的类型推断、共同指代归属及否定歧义修订提示词。新的标注预先允许带完整身份限定的边界，并补齐共同指代；检查 v3 展示关系、语气与肯否，不自动判断语义。新口径不重算旧报告，不能直接比较旧计数。这是 `BREAKING-COMPARABILITY`；生产提示词升级到 v5，响应仍为 Schema v4，实体／知识／运行文件格式不变。
+本指南采用[实体身份规则](./entity-identity.md)及[实体提取契约](./entity-extraction.md)。v2／v3／v4／v5 的语料、报告及冻结构建保持原样。v6 将开放的事物与概念识别纳入主要验收范围，保留既有身份／引用／否定回归；指南升级到 v4，检查算法保持 v3。提示词与语料／指南身份改变，属于 `BREAKING-COMPARABILITY`；模型响应和实体／知识／运行文件格式不变，不重算旧结果，计数不可直接横比。
 
-`test/fixtures/entity-extraction-review-v5.json` 是公开的合成标注集：16 个开发窗口、8 个新预留验证窗口，共 84 个关键提及。已经看过 v4 输出的全部 16 个窗口现在用于开发回归；`val-` 前缀仅保留历史案例身份，实际 split 为 development。另编写 8 个 `fresh-` 窗口，按项目和会话与开发集隔离，并拒绝跨集合的重复消息窗口。新增窗口用于验证类型依据、实例、共同属性、集合／分配性、否定要求、成员缺口、替换及纠正／计划。它不是隐藏的盲测集，也不代表真实日志分布；新验证窗口不得用于提示词调参，作者了解合成答案也不能宣称独立复核。未来真实语料另行最小化、授权、分组和复核，不能把合成窗口混入真实日志分母。当前没有 v5 模型输出，离线检查不证明这些修订有效。
+`test/fixtures/entity-extraction-review-v6.json` 是公开合成集：28 个开发窗口、8 个新预留验证窗口，共 128 个关键提及。旧 v5 的全部 24 个公开窗口转为开发回归，另加入苹果、键盘、保险和 Node／OMK 的 4 个讨论示例；`val-`／`fresh-` 前缀保留历史身份，实际 split 均为 development。8 个 `held-` 验证窗口按项目／会话与开发集隔离，覆盖普通实物、材料、保险与教学概念、同名异义、类概念／具体对象、明确别名、歧义和空知识结果。它不是隐藏盲测集，也不代表真实日志分布；验证窗口不得用于提示词调参，作者了解答案不算独立复核。未来真实日志须另行最小化、授权、分组和复核。当前没有 v6 模型输出，离线检查不证明改进有效。
 
 ## 2. 标注单位与允许表达
 
@@ -27,6 +27,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 集合指代是一个集合提及，不能复制为多个成员的同跨度提及。实例／版本与组件分开；仅改变环境条件不强制拆身份。工具和日志、计划和执行、删除后新建与改名分别处理。同名或相同路径不足以归并。来源截断不自动要求空知识；可记录未消解主体的来源主张与待调查状态，不补充缺失身份或推广结论。确实存在两种合理身份方案时，先裁决，或在输出前显式表达允许方案；当前草案不支持多个相互冲突的身份分区，争议未解决的案例不能冻结。
 
 类型依据与身份消解分别判断：名称、调用、故障或“节点”称呼不能单独证明组件／部署实例。身份已知但类型未知用 proposed object，保留类型依据不足；来源明确的模块职责或部署实例不能降为 object。完整限定描述与短名可以预先列为等价边界，但不能看新输出后放宽。共同指代与其属性分别识别：their／它们 指集合，属性短语不能只归给一个成员。关系与 polarity 必须一起读，不能重复否定；“未失败”不等于“成功”，“未禁止”不等于“要求”。这些判断保留在逐例语义标准中，不由关键词规则代替。
+
+开放识别须逐例核对普通实物、抽象概念与专有对象的覆盖，以及 description 是否忠实说明语境中的含义。语义类别不等于 referentKind；概念和具体对象可以都用 object，不能因层次相同而合并。保险产品名字含“计划”不证明 plan。记录关键提及之外的遗漏、误提取和未经来源支持的类别／含义；未穷尽标注不计算总体 precision／F1。没有知识候选仍须核对实体覆盖；只有空知识结果不能证明知识关联可靠。
 
 ## 3. 分层结果与通过门槛
 
@@ -58,7 +60,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v5.json \
+  --corpus test/fixtures/entity-extraction-review-v6.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 

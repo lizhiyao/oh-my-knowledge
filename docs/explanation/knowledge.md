@@ -2,6 +2,10 @@
 
 **Entities are the things knowledge describes; knowledge expresses their states, relationships, or actions in a specific context.**
 
+Entity extraction first identifies the things and concepts discussed, such as apples, OMK, keyboards, insurance and Node; it then uses context to group names and references, retain ambiguity and associate knowledge. Ordinary objects and abstract concepts are in scope, beyond names of people, places, organizations or software components. Exhaustively listing nouns is not the goal.
+
+Apple may mean a fruit or company, a keyboard may mean a category or one device, and insurance may mean a domain concept or a product. Only source context establishes meaning or associations. Semantic categories differ from the referent levels in `referentKind`: the current `description` explains source-supported meaning and `qualifiers` records owners, uses, domains or projects, without adding mandatory categories or storage fields. Component, instance, version and collection distinctions remain where the source requires them.
+
 **How knowledge is expressed:**
 
 > **Time scope + scenario + conditions + entity A + relation or action + entity B (if any)**
@@ -13,4 +17,4 @@ A plays the subject and B the object in this statement; their roles can switch i
 
 This formula describes the basic structure for expressing knowledge. Factual knowledge can be expressed in a single statement, while case-based and procedural knowledge typically consist of multiple statements. Prompts, skills, agents, and workflows are knowledge carriers. Observation provides evidence for knowledge from real work, while evaluation tests whether specific changes to knowledge carriers improve task performance.
 
-Entity relationships and retrieval above describe a design direction, not an existing entity knowledge store or search interface. See the [knowledge construction domain model (draft)](../specs/knowledge-domain-model.md) for relationships and data structures.
+The current entity catalog supports inspection and retrieval of window-local objects, source mentions and linked knowledge. Canonical cross-log identity, cross-Agent associations and reuse benefits remain to be implemented and validated. See the [knowledge construction domain model (draft)](../specs/knowledge-domain-model.md) for relationships and data structures.

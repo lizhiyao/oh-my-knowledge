@@ -6,7 +6,7 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v5.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v6.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -90,13 +90,13 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(16);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(28);
     expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(8);
-    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(84);
+    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(128);
     for (const mutate of [
-      (copy: typeof corpus) => { copy.cases[16].projectGroup = copy.cases[0].projectGroup; },
-      (copy: typeof corpus) => { copy.cases[16].conversationGroup = copy.cases[0].conversationGroup; },
-      (copy: typeof corpus) => { copy.cases[16].messages = copy.cases[0].messages; },
+      (copy: typeof corpus) => { copy.cases[28].projectGroup = copy.cases[0].projectGroup; },
+      (copy: typeof corpus) => { copy.cases[28].conversationGroup = copy.cases[0].conversationGroup; },
+      (copy: typeof corpus) => { copy.cases[28].messages = copy.cases[0].messages; },
       (copy: typeof corpus) => { copy.cases[0].mentions[0].alternatives[0].occurrence = 99; },
       (copy: typeof corpus) => { copy.cases[0].entities[0].component = 'file'; },
       (copy: typeof corpus) => { copy.cases[3].entities[2].collection!.members.push('pair'); },
@@ -116,7 +116,10 @@ describe('entity extraction review with author evidence', () => {
     const prior = readFileSync(new URL('../fixtures/entity-extraction-review-v4.json', import.meta.url), 'utf8');
     expect(reviewDigest(prior)).toBe('sha256:ad31afbbb1db44bc98dc2e8e6f545419f39317e5d83f745382c445d715cf4b67');
     expect(() => parseEntityReviewCorpus(prior)).toThrow();
-    expect(corpus.cases.slice(0, 16).every(value => value.split === 'development')).toBe(true);
+    const v5 = readFileSync(new URL('../fixtures/entity-extraction-review-v5.json', import.meta.url), 'utf8');
+    expect(reviewDigest(v5)).toBe('sha256:df117b4b56060a845fda00f4d57b91de71c24f3e33d6962d77d314782b971ca1');
+    expect(() => parseEntityReviewCorpus(v5)).toThrow();
+    expect(corpus.cases.slice(0, 28).every(value => value.split === 'development')).toBe(true);
     const replaced = reviewMentions(corpus.cases.find(value => value.caseId === 'dev-replacement')!);
     expect(replaced.slice(0, 2).map(value => value.spans[0].quote)).toEqual(['config.json', 'config.json']);
     expect(replaced[0].entity).not.toBe(replaced[1].entity);
@@ -139,6 +142,30 @@ describe('entity extraction review with author evidence', () => {
     const split = packet(); split.proposals = []; split.mentions[0].selection.occurrence = 0;
     split.mentions[1].selection = { evidenceRef: 'roles:0', quote: 'Alpha', occurrence: 1 };
     expect(checkEntityReview(alias, checkWindowExtractionResponse(split, entityReviewInput(alias).excerpts)).identityPairs[0].status).toBe('wrong_split');
+  });
+
+  it('admits ordinary objects and concepts while detecting same-level homonym merges and alias splits', () => {
+    for (const caseId of ['dev-apple-senses', 'held-policy-terms', 'held-material-object', 'held-database-alias', 'held-empty-knowledge']) {
+      const sample = corpus.cases.find(value => value.caseId === caseId)!;
+      const output = modelWindow(); output.proposals = [];
+      output.entities = sample.entities.map(value => ({ ...output.entities[0], entityId: value.entityKey,
+        label: value.entityKey, description: value.rationale, referentKind: 'object', componentRef: null, collection: null }));
+      output.mentions = sample.mentions.map(value => ({ ...output.mentions[0], mentionId: value.mentionKey, entityId: value.entity,
+        selection: { evidenceRef: `${caseId}:${value.messageIndex}`, ...value.alternatives[0] } }));
+      const admit = () => checkWindowExtractionResponse(output, entityReviewInput(sample).excerpts);
+      expect(admit().analysis.rejected).toEqual([]);
+      const result = checkEntityReview(sample, admit());
+      expect(result.criticalMentionRecall.value).toBe(1);
+      expect(result.identityPairs.every(pair => pair.status === 'matched')).toBe(true);
+      if (sample.entities.length > 1) {
+        output.mentions[1].entityId = output.entities[0].entityId;
+        expect(checkEntityReview(sample, admit()).identityPairs.some(pair => pair.status === 'wrong_merge')).toBe(true);
+      } else {
+        output.entities.push({ ...output.entities[0], entityId: 'duplicate' });
+        output.mentions[1].entityId = 'duplicate';
+        expect(checkEntityReview(sample, admit()).identityPairs.some(pair => pair.status === 'wrong_split')).toBe(true);
+      }
+    }
   });
 
   it('uses cited endpoints across synonyms, preserves optional omission and leaves direction conflicts for semantic review', () => {
