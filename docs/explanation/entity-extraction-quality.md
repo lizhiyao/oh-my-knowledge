@@ -1,12 +1,14 @@
 # Entity extraction v3: observed results and limits
 
+The latest [two-round acceptance on 16 cases](./entity-extraction-repeat-quality.md) found recurring mention failures and environment identity-scope defects. This page preserves the original 2026-10-09 v2/v3 comparison; the new corpus does not recalculate historical results.
+
 The current result supports independent entity inspection and more precise mention records on this small synthetic corpus. It does **not** establish fewer object errors in extracted knowledge, reliable performance on real-user logs, or cross-agent reuse benefits. One object-granularity question remains unresolved. This report records a completed comparison, not a release-quality certification.
 
 ## Evidence and review scope
 
 On 2026-10-09 UTC, `knowledge-extraction-v2` and `knowledge-extraction-v3` each ran once on the same 12 synthetic windows through the configured Codex executor with `gpt-6.1-sol`: 24 calls, no automatic retries. The corpus, 38 critical mention positions, 20 important local objects, identity separations, unresolved references, and role checks were frozen before outputs. Review criteria were excluded from model input. Per-case input digests match across versions.
 
-[Download the complete evidence JSON](/entity-extraction-v3-quality.json): exact prompt bytes and hashes, corpus bytes and hash, inputs, frozen mention positions, raw outputs and hashes, admitted results, actual reported usage, and per-case Agent review. Capture records originally mark semantic review as pending; the separate `agentReview` records this subsequent review without rewriting raw outputs. The corpus also lives at `test/fixtures/entity-extraction-quality.json`.
+[Download the complete evidence JSON](/entity-extraction-v3-quality.json): exact prompt bytes and hashes, corpus bytes and hash, inputs, frozen mention positions, raw outputs and hashes, admitted results, actual reported usage, and per-case Agent review. Capture records originally mark semantic review as pending; the separate `agentReview` records this subsequent review without rewriting raw outputs. That JSON preserves the original 12-case corpus text; `test/fixtures/entity-extraction-quality.json` now contains an expanded 16-case corpus with a different digest.
 
 | Identity | SHA-256 |
 |---|---|
