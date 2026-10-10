@@ -12,6 +12,8 @@ export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> &
 };
 export type KnowledgeCandidateSource = EvidenceWindow;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
+export type KnowledgeEntityCatalog = ReturnType<KnowledgeApplication['queryEntities']>;
+export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source'> & Pick<KnowledgeEntityAnalysisDetail, 'source'>;
 export type KnowledgeCandidateRun = Omit<ExtractionRunSummary, 'startedAt'> & { startedAt?: string };
 export interface KnowledgeCandidateQueue { rows: KnowledgeCandidateRow[]; runs: KnowledgeCandidateRun[] }
 export type { AutoExtractionState, AutoExtractionPreview } from '../../../observability/application.js';

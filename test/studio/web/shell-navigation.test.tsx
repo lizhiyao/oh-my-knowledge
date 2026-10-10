@@ -74,7 +74,7 @@ it('keeps an operation folder on internal links without forwarding a selected it
 it('renders every primary and knowledge section entry with the same folder, while Knowledge opens existing extractions', () => {
   current.search = 'workspace=%2Fexplicit&id=selected&lang=en';
   const html = renderToString(createElement(StudioShell, { lang: 'zh', active: 'knowledge', children: createElement(KnowledgeSectionNav, { active: 'candidates', lang: 'zh' }) }));
-  for (const path of ['/observe', '/measure', '/knowledge/candidates', '/knowledge', '/observe/health']) {
+  for (const path of ['/observe', '/measure', '/knowledge/candidates', '/knowledge/entities', '/knowledge', '/observe/health']) {
     expect(html).toContain(`href="${path}?workspace=%2Fexplicit"`);
   }
   expect(html).toContain('提炼的知识');

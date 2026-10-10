@@ -31,6 +31,8 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ ...common, operation: z.literal('runs') }),
   z.strictObject({ ...common, operation: z.literal('show'), id: text, revision: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('entities'), analysisId: z.string().uuid(), revision: z.string().uuid().optional() }),
+  z.strictObject({ ...common, operation: z.literal('entity-catalog'), query: text.max(512).optional(), identityStatus: z.enum(['all', 'proposed', 'unresolved']).optional(), sourceStatus: z.enum(['all', 'available', 'unavailable']).optional(), threadId: text.optional(), analysisId: z.string().uuid().optional(), page: z.number().int().min(1).max(100_000).optional(), pageSize: z.number().int().min(1).max(100).optional() }),
+  z.strictObject({ ...common, operation: z.literal('entity-detail'), analysisId: z.string().uuid(), entityId: z.string().uuid(), revision: z.string().uuid().optional() }),
   z.strictObject({ ...common, operation: z.literal('correct-entities'), analysisId: z.string().uuid(), revision: z.string().uuid(), generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
   z.strictObject({ ...common, operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: z.string().uuid(), entityRevision: z.string().uuid(), draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional() }),
   z.strictObject({ ...common, operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
@@ -80,6 +82,12 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
     case 'runs': return app.runs().sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(extractionRunSummary);
     case 'show': return { ...candidateDetail(app.detail(request.id, request.revision)), origin: app.runs().find(run => run.committed.some(ref => ref.knowledgeId === request.id))?.origin };
     case 'entities': return entityDetail(app.entities(request.analysisId, request.revision));
+    case 'entity-catalog': return app.queryEntities({ query: request.query, identityStatus: request.identityStatus, sourceStatus: request.sourceStatus,
+      threadId: request.threadId, analysisId: request.analysisId, page: request.page, pageSize: request.pageSize });
+    case 'entity-detail': {
+      const value = app.entityDetail(request.analysisId, request.entityId, request.revision);
+      return { ...value, ...entityDetail(value) };
+    }
     case 'correct-entities': return entityDetail(app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason));
     case 'apply-entities': return candidateDetail(app.reviseUsingEntities(request.id, request.revision, request.generation, request.analysisId, request.entityRevision, request.draft, request.reason, request.identityUncertainties));
     case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);

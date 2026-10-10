@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
+import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/observability/knowledge-extraction/adapters/storage-state.js';
 
 const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined }));
@@ -23,6 +24,15 @@ const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storag
 afterEach(() => { faults.beforeRecovery = undefined; for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 describe('current knowledge storage', () => {
+  it('reads an empty entity catalog without creating storage and refuses over-capacity catalogs without truncating', () => {
+    const workspace = root(); const directory = join(workspace, 'entities');
+    const store = new FileEntityAnalysisStore(directory, workspace);
+    expect(store.list()).toEqual({ histories: [], unavailable: 0 }); expect(existsSync(directory)).toBe(false);
+    mkdirSync(directory); const file = join(directory, `${randomUUID()}.json`); writeFileSync(file, '{}');
+    expect(store.list()).toEqual({ histories: [], unavailable: 1 }); expect(readFileSync(file, 'utf8')).toBe('{}');
+    truncateSync(file, 65 * 1024 * 1024);
+    expect(() => store.list()).toThrow('capacity exceeded');
+  });
   it('rejects unsupported envelopes and prompt policies without rewriting the original bytes', () => {
     const workspace = root(); const items = join(workspace, 'items'); const runs = join(workspace, 'runs');
     mkdirSync(items); mkdirSync(runs);

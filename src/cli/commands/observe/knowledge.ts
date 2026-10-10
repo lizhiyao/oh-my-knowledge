@@ -22,7 +22,12 @@ export default class ObserveKnowledge extends BaseCommand {
     snapshot: Flags.string({ description: description('generate／source／delete-source：归档身份。', 'generate/source/delete-source: snapshot identity.') }),
     id: Flags.string({ description: description('知识身份；resume 时为运行身份。', 'Knowledge identity; run identity for resume.') }),
     revision: Flags.string({ description: description('查看或处理的明确修订身份。', 'Explicit revision to inspect or maintain.') }),
-    analysis: Flags.string({ description: description('entities／correct-entities／apply-entities：实体分析身份，与提炼运行身份一致。', 'entities/correct-entities/apply-entities: entity analysis identity, equal to the extraction run identity.') }),
+    analysis: Flags.string({ description: description('entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。', 'entities: inspect an analysis, or search the workspace if omitted; required for correction/application, equal to the extraction run identity.') }),
+    query: Flags.string({ description: description('entities：搜索名称、原文提及、限定条件及来源。', 'entities: search names, source mentions, qualifiers, and origin.') }),
+    'identity-status': Flags.string({ options: ['all', 'proposed', 'unresolved'], description: description('entities：筛选身份对应状态。', 'entities: filter identity assignment status.') }),
+    'source-status': Flags.string({ options: ['all', 'available', 'unavailable'], description: description('entities：筛选原文可用状态。', 'entities: filter source availability.') }),
+    page: Flags.integer({ min: 1, description: description('entities：检索页码，从 1 开始。', 'entities: search page, starting at 1.') }),
+    'page-size': Flags.integer({ min: 1, max: 100, description: description('entities：每页对象数，默认 20，最多 100。', 'entities: entities per page, default 20, maximum 100.') }),
     'entity-revision': Flags.string({ description: description('实体分析的明确修订身份；纠正或应用时必填。', 'Explicit entity analysis revision; required for corrections or applying entities.') }),
     'identity-uncertainties': Flags.string({ description: description('apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。', 'apply-entities: reviewed additional identity uncertainties as a JSON array; omitted preserves prior notes, [] clears them, and current entity ambiguity is always retained.') }),
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
@@ -38,6 +43,7 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --analysis <run-id>',
+    '<%= config.bin %> observe knowledge entities --workspace ./knowledge --query Atlas --json',
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
@@ -73,7 +79,15 @@ export default class ObserveKnowledge extends BaseCommand {
         case 'resume': result = app.resume(need(flags.id, 'id'), signal); break;
         case 'list': result = app.list(); break;
         case 'show': result = app.detail(need(flags.id, 'id'), flags.revision); break;
-        case 'entities': result = app.entities(need(flags.analysis, 'analysis'), flags['entity-revision']); break;
+        case 'entities': {
+          if (flags.analysis) result = app.entities(flags.analysis, flags['entity-revision']);
+          else {
+            if (flags['entity-revision']) this.error('--entity-revision requires --analysis', { exit: 2 });
+            result = app.queryEntities({ query: flags.query, identityStatus: flags['identity-status'] as 'all' | 'proposed' | 'unresolved' | undefined,
+              sourceStatus: flags['source-status'] as 'all' | 'available' | 'unavailable' | undefined, page: flags.page, pageSize: flags['page-size'] });
+          }
+          break;
+        }
         case 'correct-entities': result = app.correctEntities(need(flags.analysis, 'analysis'), need(flags['entity-revision'], 'entity-revision'),
           generation(), draft(), need(flags.reason, 'reason')); break;
         case 'apply-entities': result = app.reviseUsingEntities(need(flags.id, 'id'), need(flags.revision, 'revision'), generation(),
@@ -101,6 +115,13 @@ function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en'): string {
   if (Array.isArray(value)) return value.length ? value.map((entry) => formatKnowledgeResult(entry, lang)).join('\n\n') : (lang === 'zh' ? '暂无记录。' : 'No records.');
   if (!value || typeof value !== 'object') return String(value);
   const item = value as Record<string, unknown>;
+  if ('rows' in item && 'entityCount' in item) {
+    const catalog = item as ReturnType<ReturnType<typeof createLocalKnowledgeApplication>['queryEntities']>;
+    return [lang === 'zh' ? `${catalog.total} 个匹配对象 · 第 ${catalog.page} 页；身份对应仍需核对。` : `${catalog.total} matching entities · page ${catalog.page}; identity assignments need review.`,
+      ...(catalog.unavailableAnalyses ? [lang === 'zh' ? `${catalog.unavailableAnalyses} 份分析不可读，结果不完整。` : `${catalog.unavailableAnalyses} unreadable analyses; results are incomplete.`] : []),
+      ...(catalog.knowledgeStatus === 'unavailable' ? [lang === 'zh' ? '关联知识不可读，数量未知。' : 'Linked knowledge unavailable; counts unknown.'] : []),
+      ...catalog.rows.map(row => `${row.label} · ${row.identityStatus} · ${row.mentionCount} ${lang === 'zh' ? '处提及' : 'mentions'} · ${row.knowledgeCount ?? '—'} ${lang === 'zh' ? '条知识' : 'knowledge items'}\n${row.analysisId} / ${row.entityId} / ${row.revisionId}\n${row.qualifiers.join(' / ')} · ${row.sourceStatus}`)].join('\n\n');
+  }
   if ('history' in item && (item.history as { storeKind?: string })?.storeKind === 'entity-analysis-history') {
     const analysis = item as ReturnType<ReturnType<typeof createLocalKnowledgeApplication>['entities']>;
     return [lang === 'zh' ? '实体分析，身份对应仍需核对。' : 'Entity analysis; identity assignments need review.',

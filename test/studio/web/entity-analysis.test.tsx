@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { EntityAnalysisContext, EntityAnalysisEditor, EntityAnalysisSummary } from '../../../src/studio/web/components/knowledge/entity-analysis.js';
 import { EntityKnowledgeRoles } from '../../../src/studio/web/components/knowledge/apply-entities.js';
+import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { KnowledgeCandidateStart } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { draft } from '../../knowledge/fixtures.js';
@@ -45,5 +46,19 @@ describe('entity analysis user views', () => {
     const html = renderToStaticMarkup(createElement(EntityKnowledgeRoles, { detail: knowledge, analysis: detail,
       roles: [{ statementId: 'usage', subjectId: '', objectId: '' }], disabled: false, lang: 'zh', onChange() {} }));
     expect(html).toContain('明确选择主体'); expect(html).toContain('原对象已被移除'); expect(html).toContain('系统不会替你任选一个');
+  });
+  it('shows highlighted source spans, actual knowledge roles and older bindings without asserting verification', () => {
+    const value = { ...detail, entity: revision.entities[0], knowledgeStatus: 'available' as const, mentionChecks: [{ mentionId: 'mention-1', positionStatus: 'matched' as const }],
+      knowledge: [{ knowledgeId: 'knowledge', revisionId: 'knowledge-revision', title: '项目使用工具', entityRevisionId: 'old-revision', currentEntityRevision: false, choice: 'retain' as const,
+        roles: [{ statementId: 'statement', role: 'subject' as const, relation: '使用' }] }] };
+    const html = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: value, workspace: '/workspace space', lang: 'zh', onRevision() {} }));
+    expect(html).toContain('<mark>Alpha</mark>'); expect(html).toContain('提出对应，待核对');
+    expect(html).toContain('主体 · 使用'); expect(html).toContain('仍绑定实体旧修订'); expect(html).toContain('不等于语义已验证');
+    expect(html).toContain('revision=old-revision'); expect(html).toContain('workspace=%2Fworkspace+space');
+    expect(html).toContain('&lt;script&gt;'); expect(html).not.toContain('<script>');
+    const unavailable = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, mentionChecks: [{ mentionId: 'mention-1', positionStatus: 'unavailable' }], source: { status: 'unavailable', reason: 'deleted', detail: 'deleted' } }, workspace: '/workspace', lang: 'en', onRevision() {} }));
+    expect(unavailable).toContain('Source snapshot unavailable'); expect(unavailable).not.toContain('<mark>');
+    const unknown = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, knowledge: [], knowledgeStatus: 'unavailable' }, workspace: '/workspace', lang: 'zh', onRevision() {} }));
+    expect(unknown).toContain('无法判断是否存在关联'); expect(unknown).not.toContain('没有当前知识修订');
   });
 });

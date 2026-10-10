@@ -513,22 +513,27 @@ omk observe knowledge <operation> [flags]
 
 **Flags:**
 
-- `--analysis` `option`:entities／correct-entities／apply-entities：实体分析身份，与提炼运行身份一致。
+- `--analysis` `option`:entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。
 - `--end-record` `option`:最后一条记录序号，包含。
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
 - `--executor` `option`:生成执行器，沿用 OMK 的运行配置。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--id` `option`:知识身份；resume 时为运行身份。
+- `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
 - `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--model` `option`:生成模型，沿用已配置模型。
+- `--page` `option`:entities：检索页码，从 1 开始。
+- `--page-size` `option`:entities：每页对象数，默认 20，最多 100。
+- `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
 - `--reason` `option`:保留、舍弃或修订的理由。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
 - `--source` `option`:capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。
+- `--source-status` `all|available|unavailable`:entities：筛选原文可用状态。
 - `--start-record` `option`:从零开始的非空记录序号，包含。
 - `--workspace` `option`:本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。
 
@@ -548,6 +553,10 @@ omk observe knowledge list --workspace ./knowledge
 
 ```bash
 omk observe knowledge entities --workspace ./knowledge --analysis <run-id>
+```
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --query Atlas --json
 ```
 
 ## omk observe show

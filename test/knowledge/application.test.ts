@@ -1,6 +1,6 @@
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -73,6 +73,46 @@ describe('shared knowledge application', () => {
     expect(summary).toEqual(expect.arrayContaining([expect.objectContaining({ runId: entitiesOnly.runId,
       committed: [], entityAnalysis: expect.objectContaining({ entityCount: 2, mentionCount: 2, rejectedCount: 0 }) })]));
     expect(JSON.stringify(summary)).not.toContain('rawOutput');
+  });
+  it('searches source-window entities without merging names, including entities with no knowledge', async () => {
+    const { app, model, source } = setup();
+    const first = app.capture({ path: source, origin: { threadId: 'first', title: 'A 项目', cwd: '/a' } });
+    const second = app.capture({ path: source, origin: { threadId: 'second', title: 'B 项目', cwd: '/b' } });
+    const packet = modelWindow(); packet.proposals = [];
+    model.generate = async (_system, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const firstRun = await app.generate(first.snapshotId, model); await app.generate(second.snapshotId, model);
+    const matches = app.queryEntities({ query: 'Alpha', pageSize: 1 });
+    expect(matches).toMatchObject({ total: 2, page: 1, entityCount: 4, analysisCount: 2, unavailableAnalyses: 0 });
+    expect(matches.rows[0].knowledgeCount).toBe(0);
+    expect(matches.rows[0]).not.toHaveProperty('surfaces');
+    const next = app.queryEntities({ query: 'Alpha', page: 999, pageSize: 1 }); expect(next.page).toBe(2);
+    expect(next.rows[0].entityId).not.toBe(matches.rows[0].entityId);
+    const scoped = app.queryEntities({ threadId: 'first' }); expect(scoped.rows).toHaveLength(2);
+    expect(scoped.rows.every(row => row.analysisId === firstRun.runId)).toBe(true);
+    app.deleteSource(first.snapshotId);
+    expect(app.queryEntities({ sourceStatus: 'unavailable', threadId: 'first' }).rows).toHaveLength(2);
+    expect(() => app.queryEntities({ pageSize: 101 })).toThrow();
+  });
+  it('links current knowledge with actual bound entity revisions and reports corrupt storage without false zeroes', async () => {
+    const { app, model, snapshot, root, knowledge } = setup(); const run = await app.generate(snapshot.snapshotId, model);
+    const before = app.entities(run.runId); const entityId = before.revision.entities[0].entityId;
+    expect(app.entityDetail(run.runId, entityId).knowledge[0]).toMatchObject({ currentEntityRevision: true, roles: [{ role: 'subject', relation: '使用' }] });
+    expect(app.entityDetail(run.runId, entityId).mentionChecks[0].positionStatus).toBe('matched');
+    const edit = structuredClone({ entities: before.revision.entities, mentions: before.revision.mentions }); edit.entities[0].label = 'Alpha 新名称';
+    const corrected = app.correctEntities(run.runId, before.revision.revisionId, 1, edit, '纠正名称');
+    const current = app.entityDetail(run.runId, entityId);
+    expect(current.entity.label).toBe('Alpha 新名称');
+    expect(current.knowledge[0]).toMatchObject({ entityRevisionId: before.revision.revisionId, currentEntityRevision: false });
+    expect(app.entityDetail(run.runId, entityId, before.revision.revisionId).entity.label).toBe('Alpha');
+    expect(app.queryEntities({ query: 'Alpha 新名称' }).rows[0].outdatedKnowledgeCount).toBe(1);
+    expect(app.detail(run.committed[0].knowledgeId).grounding.entityAnalysisRef?.revisionId).not.toBe(corrected.revision.revisionId);
+    const badFile = join(root, 'entities', `${randomUUID()}.json`); const badBytes = '{broken'; writeFileSync(badFile, badBytes);
+    expect(app.queryEntities()).toMatchObject({ total: 2, unavailableAnalyses: 1 }); expect(readFileSync(badFile, 'utf8')).toBe(badBytes);
+    symlinkSync(join(root, 'entities', `${run.runId}.json`), join(root, 'entities', `${randomUUID()}.json`));
+    expect(app.queryEntities()).toMatchObject({ total: 2, unavailableAnalyses: 2 });
+    const read = vi.spyOn(knowledge, 'list').mockImplementation(() => { throw new Error('private-path'); });
+    expect(app.queryEntities().rows.every(row => row.knowledgeCount === null)).toBe(true);
+    expect(app.entityDetail(run.runId, entityId)).toMatchObject({ knowledgeStatus: 'unavailable', knowledge: [] }); read.mockRestore();
   });
   it('recovers a lost entity commit acknowledgement with the same birth intent and no second model call', async () => {
     const { app, snapshot, model, ports, generate, runs } = setup();
