@@ -6,7 +6,7 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v7.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v8.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -104,7 +104,8 @@ describe('entity extraction review with author evidence', () => {
       expect(evidence.captureCompletion).toMatchObject({ status: 'captured', planned: 6, recorded: 6, executorInvocations: 6, originalDriverStatus: 'incomplete', driverExitCode: 1 });
       expect(evidence.captureCompletion!.localDriverIssue).toContain('state.recorded === 11');
       expect(evidence.reproducibility.captureDriverText).toContain('state.recorded === 11');
-      expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), parseEntityReviewCorpus(evidence.frozen.corpusText), evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
+      // Audit the receipt against its immutable historical corpus, not the current corpus reader.
+      expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), JSON.parse(evidence.frozen.corpusText) as typeof corpus, evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
     }
   });
 
@@ -163,13 +164,13 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(40);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(46);
     expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(2);
-    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(150);
+    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(168);
     for (const mutate of [
-      (copy: typeof corpus) => { copy.cases[40].projectGroup = copy.cases[0].projectGroup; },
-      (copy: typeof corpus) => { copy.cases[40].conversationGroup = copy.cases[0].conversationGroup; },
-      (copy: typeof corpus) => { copy.cases[40].messages = copy.cases[0].messages; },
+      (copy: typeof corpus) => { copy.cases[46].projectGroup = copy.cases[0].projectGroup; },
+      (copy: typeof corpus) => { copy.cases[46].conversationGroup = copy.cases[0].conversationGroup; },
+      (copy: typeof corpus) => { copy.cases[46].messages = copy.cases[0].messages; },
       (copy: typeof corpus) => { copy.cases[0].mentions[0].alternatives[0].occurrence = 99; },
       (copy: typeof corpus) => { copy.cases[0].entities[0].component = 'file'; },
       (copy: typeof corpus) => { copy.cases[3].entities[2].collection!.members.push('pair'); },
@@ -195,7 +196,10 @@ describe('entity extraction review with author evidence', () => {
     const v6 = readFileSync(new URL('../fixtures/entity-extraction-review-v6.json', import.meta.url), 'utf8');
     expect(reviewDigest(v6)).toBe('sha256:e19f086900284a36f714b27239003e0d0720984e3a6f6cea93a779f64b883338');
     expect(() => parseEntityReviewCorpus(v6)).toThrow();
-    expect(corpus.cases.slice(0, 40).every(value => value.split === 'development')).toBe(true);
+    const v7 = readFileSync(new URL('../fixtures/entity-extraction-review-v7.json', import.meta.url), 'utf8');
+    expect(reviewDigest(v7)).toBe('sha256:f8abb08120091d4abf9d88a47086b8e3ba921c9bdcf3ee3249ae935eb6a3ef0a');
+    expect(() => parseEntityReviewCorpus(v7)).toThrow();
+    expect(corpus.cases.slice(0, 42).every(value => value.split === 'development')).toBe(true);
     const rule = corpus.cases.find(value => value.caseId === 'fresh-negative-requirement')!;
     expect(rule.mentions.find(value => value.mentionKey === 'rule-first')!.alternatives).toEqual([
       { quote: 'F9', occurrence: 0 }, { quote: 'Rule F9', occurrence: 0 },
@@ -204,6 +208,28 @@ describe('entity extraction review with author evidence', () => {
     expect(replaced.slice(0, 2).map(value => value.spans[0].quote)).toEqual(['config.json', 'config.json']);
     expect(replaced[0].entity).not.toBe(replaced[1].entity);
     expect(replaced[0].spans[0].start).not.toBe(replaced[1].spans[0].start);
+  });
+
+  it.each(['dev-property-values', 'held-unnamed-metric-concepts'])('checks the prefrozen %s identity boundary without demanding property entities or collapsing independent concepts', caseId => {
+    const sample = corpus.cases.find(value => value.caseId === caseId)!;
+    const output = modelWindow();
+    output.proposals = [];
+    output.entities = sample.entities.map(entity => ({ ...output.entities[0], entityId: entity.entityKey,
+      label: entity.entityKey, description: entity.rationale }));
+    output.mentions = sample.mentions.map(mention => ({ mentionId: mention.mentionKey, entityId: mention.entity,
+      basis: 'explicit', rationale: mention.rationale,
+      selection: { evidenceRef: `${sample.caseId}:${mention.messageIndex}`, ...mention.alternatives[0] } }));
+    const admit = () => checkWindowExtractionResponse(output, entityReviewInput(sample).excerpts);
+    expect(admit().analysis.rejected).toEqual([]);
+    const checked = checkEntityReview(sample, admit());
+    expect(checked.criticalMentionRecall).toEqual({ matched: sample.mentions.length, total: sample.mentions.length, value: 1 });
+    expect(checked.identityPairs.every(pair => pair.status === 'matched')).toBe(true);
+    // This exercises the offline checker with a fabricated response, not model capability or knowledge coverage.
+    if (caseId === 'held-unnamed-metric-concepts') {
+      output.entities = output.entities.slice(0, 1);
+      output.mentions.forEach(mention => { mention.entityId = output.entities[0].entityId; });
+      expect(checkEntityReview(sample, admit()).identityPairs.some(pair => pair.status === 'wrong_merge')).toBe(true);
+    }
   });
 
   it('requires exact allowed boundaries and separates false merges, false splits and missing mentions', () => {
@@ -224,7 +250,7 @@ describe('entity extraction review with author evidence', () => {
     expect(checkEntityReview(alias, checkWindowExtractionResponse(split, entityReviewInput(alias).excerpts)).identityPairs[0].status).toBe('wrong_split');
   });
 
-  it('detects omitted concepts and premature disambiguation in v7 without rejecting valid nested spans or explicit clarification', () => {
+  it('detects omitted concepts and premature disambiguation in v8 without rejecting valid nested spans or explicit clarification', () => {
     for (const caseId of ['dev-session-properties', 'dev-unconfirmed-memory', 'dev-confirmed-memory']) {
       const sample = corpus.cases.find(value => value.caseId === caseId)!;
       const output = modelWindow(); output.proposals = [];
@@ -244,7 +270,7 @@ describe('entity extraction review with author evidence', () => {
         output.mentions = output.mentions.filter(mention => mention.entityId !== 'session');
         const missing = checkEntityReview(sample, checkWindowExtractionResponse(output, excerpts));
         expect(missing.criticalMentions.filter(value => value.status === 'missing')).toHaveLength(4);
-        expect(missing.criticalMentions.filter(value => value.status === 'matched')).toHaveLength(3);
+        expect(missing.criticalMentions.filter(value => value.status === 'matched').map(value => value.mentionKey)).toEqual(['adaptation']);
       } else if (caseId === 'dev-unconfirmed-memory') {
         output.entities = output.entities.filter(entity => entity.entityId !== 'unknown');
         output.mentions[0].entityId = 'atlas';

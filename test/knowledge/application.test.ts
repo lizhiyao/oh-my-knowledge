@@ -183,7 +183,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v7' });
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v8' });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -352,7 +352,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v7');
+    expect(run.promptVersion).toBe('knowledge-extraction-v8');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);
