@@ -1,0 +1,1616 @@
+{
+  "acceptanceVersion": "omk-entity-replay-acceptance/v1",
+  "reviewedAt": "2026-10-10",
+  "conclusion": "recorded-output-workflow-passed-not-new-extraction-quality-evidence",
+  "sourceCommit": "9caf1215136e1751a5b6ab3c610c10b22cda049a",
+  "originalMeasurementId": "sha256:3713a3acf59a2591c4f7a6bed205ede3422b336ad336bb31491919e901a4b6ea",
+  "evidenceDigest": "sha256:28759d75e20e2a502b8deb5a3f3e9a6a13fbcb117c74a1dceba012b7e4cf6118",
+  "externalModelCalls": 0,
+  "replayedOutputs": 11,
+  "acceptedEntities": 28,
+  "acceptedMentions": 44,
+  "knowledgeCandidates": 5,
+  "referenceRebinding": "Only evidenceRef values are rebound bijectively to newly captured snapshot references; original texts, roles, record indexes, output files and quality scores are preserved. Replay run IDs are new, not original model-run identities.",
+  "cases": [
+    {
+      "caseId": "fresh-type-evidence",
+      "analysisId": "7d4e7dc7-97e7-49e7-93ac-7a14d350f6d6",
+      "snapshotId": "5424ebdd-75c0-4bcc-8758-cd5bb19e5522",
+      "revisionId": "33846087-630c-486a-bb75-570c05ae7f1b",
+      "originalInputDigest": "sha256:78bef89b316158bf0d0b7c69c78abe0e84ce981d9434c9b505c9d6c820cd6aea",
+      "originalOutputDigest": "sha256:287e3b89fd66e0a887ef41e2eb4f746f820fc8278baa52808ac70d4a60c98a86",
+      "reboundOutputDigest": "sha256:01424ec887746d04e22e252f6d5e0dd83bf39385eaf4711b5701dc8c85383c0b",
+      "referenceMap": {
+        "fresh-type-evidence:0": "5424ebdd-75c0-4bcc-8758-cd5bb19e5522:0"
+      },
+      "originalLimitations": [
+        "合成来源说法，非工具观测；只包含这些消息，未提供发生时间或总体代表性。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 2,
+      "mentionCount": 4,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "fresh-shared-property",
+      "analysisId": "ef17dd28-d1fe-4007-87d7-d7afcb6693ed",
+      "snapshotId": "8c30dda1-4509-4896-8ae1-de7075747700",
+      "revisionId": "7a689fa6-0ec8-4a9e-9478-9d802a92f120",
+      "originalInputDigest": "sha256:6e2e05e6b6bf42b04e02c77006d7c18a0339979c8aafa00a975d4c673e2c5930",
+      "originalOutputDigest": "sha256:3b8695a44aae6d2b040ccca12817e74d4fa1750cf975206734d9d43e73c01f33",
+      "reboundOutputDigest": "sha256:a3a1872e8f8da098edf264647c21633c6ff935ca1279f0e8dea0f08353eac8ef",
+      "referenceMap": {
+        "fresh-shared-property:0": "8c30dda1-4509-4896-8ae1-de7075747700:0"
+      },
+      "originalLimitations": [
+        "合成来源说法，非工具观测；只包含这些消息，未提供发生时间或总体代表性。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 3,
+      "mentionCount": 4,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "fresh-negative-requirement",
+      "analysisId": "783817fd-c422-49de-95d3-cb04c2eb2b84",
+      "snapshotId": "556a1820-6be1-4e73-82ee-a23d1c058389",
+      "revisionId": "c18fdafe-5d7e-4105-84a2-6e8930e82a37",
+      "originalInputDigest": "sha256:d575678a1913d981f02c5ba03956616f7355723f921cd2b265230cba34bbdeff",
+      "originalOutputDigest": "sha256:486b3ceab5864268566724ad5263fc9a299467a7faee9db2e5455634e2f52023",
+      "reboundOutputDigest": "sha256:8f02b29911e3184a24c45cc88235a77a0d60462ded83add2849fd33b1ccb1078",
+      "referenceMap": {
+        "fresh-negative-requirement:0": "556a1820-6be1-4e73-82ee-a23d1c058389:0"
+      },
+      "originalLimitations": [
+        "合成来源说法，非工具观测；只包含这些消息，未提供发生时间或总体代表性。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 3,
+      "mentionCount": 5,
+      "knowledgeCount": 2
+    },
+    {
+      "caseId": "held-fruit-shop",
+      "analysisId": "07846266-54e1-44ef-a18e-29a6901b00b7",
+      "snapshotId": "32c6650c-a6be-4179-9381-05cf5e252146",
+      "revisionId": "4606cf6d-e626-4015-ba95-f9aef12c53a2",
+      "originalInputDigest": "sha256:d7bdb1daaae769773aa30f2f3335f8f263f649927e84cfe9b54a42fde947c508",
+      "originalOutputDigest": "sha256:52acaf646b594440ac0fd37bfb80adbe106018781bacb865dce7553df7483252",
+      "reboundOutputDigest": "sha256:852699876a62bde8573721e8a7d91e42b715d9e9a06bc7713181d7a2060640be",
+      "referenceMap": {
+        "held-fruit-shop:0": "32c6650c-a6be-4179-9381-05cf5e252146:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 2,
+      "mentionCount": 4,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "held-mouse-levels",
+      "analysisId": "c834695b-cc24-4ef4-87c9-cbe795a04f0e",
+      "snapshotId": "e1f5b710-5736-40fa-bc1d-56811389211d",
+      "revisionId": "ad808f28-8917-44f8-a417-539e96bf3316",
+      "originalInputDigest": "sha256:ad380eaecd6ee786c6314ebd38c27b55dcc0d6700ba7634d908c97b77a966b32",
+      "originalOutputDigest": "sha256:70e0642b1b8050f5079f1f437352e2aae49d534dc65d964de7f84465671f3645",
+      "reboundOutputDigest": "sha256:6f9672651c80d12a7c0cbc6242bcb68ed99c596e1d2de8cbce7c9f6c3f9cd520",
+      "referenceMap": {
+        "held-mouse-levels:0": "e1f5b710-5736-40fa-bc1d-56811389211d:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 3,
+      "mentionCount": 4,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "held-policy-terms",
+      "analysisId": "666c4ce4-aeb1-4312-9cc3-b3480f4ba522",
+      "snapshotId": "b9c9a5b0-206a-44c3-93d1-faae0b4e4bc0",
+      "revisionId": "c3d61cf5-dce1-4378-a47a-3c36ccc90446",
+      "originalInputDigest": "sha256:3118912858ac51a1f30bc1f9bfd731ef98f808e64f818e6a83f53a8d0dcd2ef4",
+      "originalOutputDigest": "sha256:f653fe3e09d9b1fc02aa9927d66fa1fb713712cd1684fefc17f71669f03d12e7",
+      "reboundOutputDigest": "sha256:4adb9dfd624d7f77713dffa2a9826e220ff4b0450a201f360af3269f610b16c4",
+      "referenceMap": {
+        "held-policy-terms:0": "b9c9a5b0-206a-44c3-93d1-faae0b4e4bc0:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 4,
+      "mentionCount": 4,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "held-learning-concepts",
+      "analysisId": "0c81048f-7314-4b24-90ae-d8e90beb5036",
+      "snapshotId": "c6eb6716-db6d-4da8-83d9-bddcba1c4511",
+      "revisionId": "0e0379aa-5736-4556-b79c-e1f2f2ec537b",
+      "originalInputDigest": "sha256:299279070b87b4ee9833b7584133c843a95d4395f3b6d7e810dd99319b15dc70",
+      "originalOutputDigest": "sha256:a8e669ef00e7fe3995b680e3e62cf68d3062a10188e465e1dc84ac1f02b2402b",
+      "reboundOutputDigest": "sha256:081c4103aa03a9100d312c17509f859948e4d1d30a66bb9ae815bfbaf9776a30",
+      "referenceMap": {
+        "held-learning-concepts:0": "c6eb6716-db6d-4da8-83d9-bddcba1c4511:0",
+        "held-learning-concepts:1": "c6eb6716-db6d-4da8-83d9-bddcba1c4511:1"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 3,
+      "mentionCount": 5,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "held-database-alias",
+      "analysisId": "e4e82e19-a7cc-499c-a106-0a5983c4f573",
+      "snapshotId": "f0e6960c-f8ef-49b4-b0f7-11732fc8bdc4",
+      "revisionId": "3fb17e40-1088-4c18-8866-9551b9d22b65",
+      "originalInputDigest": "sha256:dd649a6dbb42514b30151f238174b0beeaaeea4bf0ec287a13bca1669e96a56b",
+      "originalOutputDigest": "sha256:807513d6f1e36e4eca310fab24164912b9b4813cefd544a591584e11c20ebb52",
+      "reboundOutputDigest": "sha256:b81004684c845511f9dc1e84238d41ca55c9f357ed0773e6c883b78670e2df8c",
+      "referenceMap": {
+        "held-database-alias:0": "f0e6960c-f8ef-49b4-b0f7-11732fc8bdc4:0",
+        "held-database-alias:1": "f0e6960c-f8ef-49b4-b0f7-11732fc8bdc4:1"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 1,
+      "mentionCount": 4,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "held-name-ambiguity",
+      "analysisId": "110b552b-95fa-45f7-9d6d-dc772e7f349f",
+      "snapshotId": "405dc09d-eebd-4737-8a09-9c40ab9ca480",
+      "revisionId": "8d0c54ec-1637-41e6-9299-9579ae0473fd",
+      "originalInputDigest": "sha256:233752c1331ab44d0a2259b723a77b0e09d07c0e896c6bb3d4911be5db2d4733",
+      "originalOutputDigest": "sha256:7021c2310f7f71777e950d64bf253f180fb949a1dd6c6df2ff62c63569a74ca3",
+      "reboundOutputDigest": "sha256:a2746a9800af7269d62dac66f976cd69432831b4b24aa29bfb73612785694742",
+      "referenceMap": {
+        "held-name-ambiguity:0": "405dc09d-eebd-4737-8a09-9c40ab9ca480:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 3,
+      "mentionCount": 3,
+      "knowledgeCount": 0
+    },
+    {
+      "caseId": "held-material-object",
+      "analysisId": "9a8240ea-7d68-4eea-9b9f-108338ecf111",
+      "snapshotId": "655bc7f9-e2b6-4094-8e1e-1cc2af8345cf",
+      "revisionId": "6087c684-4f17-49f6-9a23-f5f20c5e8cd1",
+      "originalInputDigest": "sha256:48b37c617507da4952bc7fe9b662cb757e9f462440298a7492972fd3ac2a7525",
+      "originalOutputDigest": "sha256:e5db6c4cc9b27f3547b5d0739f66c251cf1528b870ff6f267bf00adf7cb04dfe",
+      "reboundOutputDigest": "sha256:d07e7d3f152cf73ebd3f7b87789309fe30e37fbfca3697ebfd59c4e2ecb818e0",
+      "referenceMap": {
+        "held-material-object:0": "655bc7f9-e2b6-4094-8e1e-1cc2af8345cf:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 2,
+      "mentionCount": 5,
+      "knowledgeCount": 1
+    },
+    {
+      "caseId": "held-empty-knowledge",
+      "analysisId": "c19c5a52-c4c2-4f11-a0b5-7de13c8c89a9",
+      "snapshotId": "9244fd62-7376-4df1-a5fa-5363027dc073",
+      "revisionId": "bf2734b2-2f5b-4b25-84eb-dcc1e6168ae1",
+      "originalInputDigest": "sha256:9e558fa001bdb8f320eb9a76219c486f59f30f22b39d11f8233acbe5c0ebab7c",
+      "originalOutputDigest": "sha256:b7c6191179e9d32ec6c057ee3e5114bdf869a6a4510056a0521b0df65d262bb5",
+      "reboundOutputDigest": "sha256:84f750409aac0eb5089a38670adaa1cd10e48e47a6ecbbd99d4d173f32532993",
+      "referenceMap": {
+        "held-empty-knowledge:0": "9244fd62-7376-4df1-a5fa-5363027dc073:0"
+      },
+      "originalLimitations": [
+        "合成来源说法；只包含这些消息，无工具观测，不代表真实日志分布。"
+      ],
+      "replayLimitations": [
+        "Explicit messages from an observed conversation; surrounding context and unselected records are omitted. Source text may be redacted by observation."
+      ],
+      "entityCount": 2,
+      "mentionCount": 2,
+      "knowledgeCount": 0
+    }
+  ],
+  "chrome": {
+    "acceptanceVersion": "omk-entity-replay-acceptance/v1",
+    "browser": "154.0.8037.98",
+    "method": "DOM and real interactions",
+    "externalModelCalls": 0,
+    "checks": [
+      {
+        "caseId": "fresh-type-evidence",
+        "entity": "Lumen",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "entity": "Oriel",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "docs-a/policy.md",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "docs-b/policy.md",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "上述两个文件",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "Rule F9",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "deployment plan",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "audit.log",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 2,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "entity": "青柠",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "entity": "青柠书店",
+        "height": 800,
+        "sourceMentions": 3,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "鼠标（类别）",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "输入设备",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "用户桌上的鼠标",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "免赔额",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "等待期",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "安心甲号",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "安心甲号的条款",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "递归",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "调用栈",
+        "height": 800,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "调用顺序",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-database-alias",
+        "entity": "PostgreSQL",
+        "height": 800,
+        "sourceMentions": 4,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "项目 Nova",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "商店 Nova",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "需要改名的未明对象",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-material-object",
+        "entity": "丝绸",
+        "height": 800,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-material-object",
+        "entity": "这条围巾",
+        "height": 800,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "entity": "陶瓷",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "entity": "雨伞",
+        "height": 800,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 800,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 800,
+          "scrollHeight": 800
+        }
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "entity": "Lumen",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "entity": "Oriel",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "docs-a/policy.md",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "docs-b/policy.md",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "entity": "上述两个文件",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "Rule F9",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "deployment plan",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "entity": "audit.log",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 2,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "entity": "青柠",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "entity": "青柠书店",
+        "height": 500,
+        "sourceMentions": 3,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "鼠标（类别）",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "输入设备",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "entity": "用户桌上的鼠标",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "免赔额",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "等待期",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "安心甲号",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-policy-terms",
+        "entity": "安心甲号的条款",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "递归",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "调用栈",
+        "height": 500,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "entity": "调用顺序",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-database-alias",
+        "entity": "PostgreSQL",
+        "height": 500,
+        "sourceMentions": 4,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "项目 Nova",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "商店 Nova",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "entity": "需要改名的未明对象",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-material-object",
+        "entity": "丝绸",
+        "height": 500,
+        "sourceMentions": 2,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-material-object",
+        "entity": "这条围巾",
+        "height": 500,
+        "sourceMentions": 3,
+        "knowledgeLinks": 1,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "entity": "陶瓷",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "entity": "雨伞",
+        "height": 500,
+        "sourceMentions": 1,
+        "knowledgeLinks": 0,
+        "geometry": {
+          "width": 1280,
+          "height": 500,
+          "clientWidth": 1280,
+          "scrollWidth": 1280,
+          "clientHeight": 500,
+          "scrollHeight": 500
+        }
+      },
+      {
+        "caseId": "held-database-alias",
+        "aliasSearch": "PG → PostgreSQL",
+        "passed": true
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-policy-terms",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-database-alias",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-material-object",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "correctionSaved": true,
+        "oldRevisionAccessible": true,
+        "mentionIdentityAndPositionsUnchanged": true
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "knowledgeTitle": "Oriel 的调度模块职责",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "knowledgeTitle": "部署计划中的 F9 要求不得停用 audit.log",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "knowledgeTitle": "audit.log 被称为至今未失败，但没有执行成功检查",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "knowledgeTitle": "递归教学例子通过调用栈展示调用顺序",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-material-object",
+        "knowledgeTitle": "这条围巾的制作材料是丝绸",
+        "explicitApplySaved": true,
+        "oldKnowledgeHistoryPreserved": true,
+        "statementAndEvidenceUnchanged": true
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "unavailableSourceReadOnly": true
+      }
+    ],
+    "pageErrors": []
+  },
+  "sourceNavigation": {
+    "method": "Chrome DOM, real Codex catalog on isolated reconstructed message logs; awaited task URL and read raw source",
+    "results": [
+      {
+        "caseId": "fresh-type-evidence",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-policy-terms",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-database-alias",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-material-object",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "height": 800,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 800,
+        "rootScrollHeight": 800
+      },
+      {
+        "caseId": "fresh-type-evidence",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "fresh-shared-property",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "fresh-negative-requirement",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-fruit-shop",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-mouse-levels",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-policy-terms",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-learning-concepts",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-database-alias",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-name-ambiguity",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-material-object",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      },
+      {
+        "caseId": "held-empty-knowledge",
+        "height": 500,
+        "trajectoryStatus": "limited-missing-original-timestamps",
+        "rawSourceRead": true,
+        "width": 1280,
+        "rootWidth": 1280,
+        "rootScrollWidth": 1280,
+        "rootHeight": 500,
+        "rootScrollHeight": 500
+      }
+    ]
+  },
+  "localArtifacts": [
+    {
+      "name": "replay.mjs",
+      "digest": "sha256:6ae409a8e155be5ed5ea4bcb50ed011b35ba324acac3ba04f5331cdccfd30a5b"
+    },
+    {
+      "name": "replay-manifest.json",
+      "digest": "sha256:bcb70d1a332c81e69816a1e71c0d884f38f38ba46140b00c499b446cb98d4bcf"
+    },
+    {
+      "name": "chrome-flow.mjs",
+      "digest": "sha256:a68db17834712007f64a93bbf838d461ce87c91b8b4010bea178cafba8d37bb9"
+    },
+    {
+      "name": "chrome-acceptance.json",
+      "digest": "sha256:b70e9dcd5b1dd4cccb74d0edf3e18b7a49a6a133d3b39440307bbd07ef931699"
+    },
+    {
+      "name": "catalog-preview.mjs",
+      "digest": "sha256:d1aa1112a2b121f0748a0c96c6f50c4486b7691f1a4cd61e031af41530e430ce"
+    },
+    {
+      "name": "catalog.json",
+      "digest": "sha256:3de7f0fdc03a2329b833e90d7fcd4178157665fd1ab0075b93d476b161d8972d"
+    },
+    {
+      "name": "chrome-source-links.mjs",
+      "digest": "sha256:f74ddf66e991eec188e42cbc63e700fd570c030a17ab62c72ff9af40b78e6fb1"
+    },
+    {
+      "name": "source-link-final.json",
+      "digest": "sha256:0dea9b076cbb80db19a9113259f224dccae35ad3dfc6102b42f08a6ac31902e1"
+    },
+    {
+      "name": "chrome-global.mjs",
+      "digest": "sha256:45b66bd856eb0dda35e32c4daa6c0063d5da513689b04adbc55e617964822213"
+    },
+    {
+      "name": "chrome-global.json",
+      "digest": "sha256:7cefeb0f5518d1c2ad5a1242a3d37d2a2dce6df973643b91346d10bd86758290"
+    },
+    {
+      "name": "real-review/chrome-check.json",
+      "digest": "sha256:15f41f8c3b2a450e8b22c9da46e4d2ef672726a4cdc4e7aca1269c06e6299d80"
+    }
+  ],
+  "realPreparation": {
+    "packetVersion": "omk-real-entity-review/v1",
+    "status": "prepared-not-executed",
+    "caseCount": 7,
+    "messageCount": 21,
+    "uniqueMessageCount": 18,
+    "sourceGroupCount": 2,
+    "requiredEntityExpectations": 31,
+    "annotationScope": "knowledge-relevant-entity-expectations-not-exhaustive-mentions",
+    "externalModelCalls": 0,
+    "authorReview": "completed",
+    "independentReview": "not_performed",
+    "goldReady": false,
+    "priorKnowledgeOutputs": "previously-reviewed-development-material-not-blind",
+    "proposedExecution": {
+      "status": "not_authorized",
+      "maxCalls": 7,
+      "repeats": 1,
+      "retries": 0,
+      "costUSD": null,
+      "sendOnly": "selected input files plus frozen v6 prompt and Schema; no annotations, provenance paths, guide or old outputs"
+    },
+    "packetDigest": "sha256:30f7726fd8c9e19c3abb1e561e2884d44df7972b3e891c8282e17526558b2a06",
+    "promptDigest": "sha256:a30cdfe20296d3294bbea7920b839934573bf0b69e27fbc4788493d57fdffffb",
+    "cases": [
+      {
+        "caseId": "real-symbolication-scope",
+        "focus": "软件名称、领域概念和条件",
+        "messageCount": 2,
+        "requiredEntityExpectations": 3,
+        "inputDigest": "sha256:c49fe62c48f0ff8f4456fc1f701ddf70659aade9f721cd80c20f221e59bd4edc"
+      },
+      {
+        "caseId": "real-protected-correction",
+        "focus": "代码标识、所属对象与晚到纠正",
+        "messageCount": 4,
+        "requiredEntityExpectations": 8,
+        "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0"
+      },
+      {
+        "caseId": "real-retained-adapters",
+        "focus": "改动、版本和必要例外",
+        "messageCount": 3,
+        "requiredEntityExpectations": 6,
+        "inputDigest": "sha256:6f770df7b8bb78b7671403adf2dc8fd2fbfd46fef58679bd946c2e9e7b34cc37"
+      },
+      {
+        "caseId": "real-session-before-resolution",
+        "focus": "计数差异未消解",
+        "messageCount": 3,
+        "requiredEntityExpectations": 4,
+        "inputDigest": "sha256:bca598bf038a225cb6287f47e60da911e0cd218b4ad3a23c65a3bbfebb010c86"
+      },
+      {
+        "caseId": "real-session-after-resolution",
+        "focus": "补充上下文后修正解释",
+        "messageCount": 5,
+        "requiredEntityExpectations": 5,
+        "inputDigest": "sha256:a9ce559c67cec2e531c6e744581e35b71af7c09f76c20f188d3002074ef46d1d"
+      },
+      {
+        "caseId": "real-historical-product-claim",
+        "focus": "同名概念、层次与历史范围",
+        "messageCount": 3,
+        "requiredEntityExpectations": 5,
+        "inputDigest": "sha256:1cf20040d9e30099558fb7d9f6cb3a699e6f44e6baa99d48a82cafb27e2a64de"
+      },
+      {
+        "caseId": "real-acknowledgement",
+        "focus": "上下文不足的空结果",
+        "messageCount": 1,
+        "requiredEntityExpectations": 0,
+        "inputDigest": "sha256:0d21d00e2cb7cfe06878503f2fe4f8236691a4cddb2ab439441fc9359dc1a9fd"
+      }
+    ],
+    "domCheck": {
+      "browser": "154.0.8037.98",
+      "method": "DOM",
+      "caseCards": 7,
+      "messages": 21,
+      "externalModelCalls": 0
+    }
+  },
+  "limits": [
+    "Recorded synthetic outputs validate application/storage/UI behavior, not new model extraction performance.",
+    "Chrome was the installed binary, headless, with DOM/real interactions at 1280x800 and 1280x500. This is not screenshot, color, native-window or mobile visual acceptance.",
+    "Correction keeps identities/spans unchanged and updates one entity description in each analysis; this replay does not revalidate merge/split behavior.",
+    "Observed conversations are reconstructed solely from the original synthetic message excerpts, not full original agent sessions. Missing timestamps prevent semantic trajectory acceptance; raw source navigation is verified.",
+    "The seven real windows are software-heavy development material, with three repeated messages in a deliberate before/after pair; neither representative nor blind.",
+    "Real preparation is local only. No real input, annotation, original path or old output is included in this public file. Model execution has not occurred or been authorized.",
+    "Author/implementer self-review is completed; independent human review and full quality acceptance remain incomplete."
+  ],
+  "globalLibrary": {
+    "browser": "154.0.8037.98",
+    "method": "DOM and real interactions",
+    "results": [
+      {
+        "pagination": "20 + 8 = 28",
+        "passed": true
+      },
+      {
+        "globalAlias": "PG → PostgreSQL",
+        "passed": true
+      },
+      {
+        "homonyms": "project and shop Nova stay separate",
+        "passed": true
+      },
+      {
+        "unresolvedFilter": 1,
+        "passed": true
+      }
+    ],
+    "externalModelCalls": 0
+  }
+}
