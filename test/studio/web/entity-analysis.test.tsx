@@ -41,16 +41,57 @@ describe('entity analysis user views', () => {
     const readonly = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail, draft: { entities: revision.entities, mentions: revision.mentions }, editable: false, lang: 'en', onChange() {} }));
     expect(readonly).toMatch(/<button[^>]*disabled=""[^>]*><span>Add or split an entity/);
   });
-  it('preserves relation evidence by blocking destructive controls until link editing is supported', () => {
+  it('offers membership correction and source navigation while requiring explicit unlinking before destructive edits', () => {
     const entities = structuredClone(revision.entities);
+    entities[1].possibleEntityIds = [];
     const linked = { ...entities[0], referentKind: 'collection' as const, collection: { memberEntityIds: ['unknown'],
       completeness: 'complete' as const, mentionIds: ['mention-1'], rationale: '<script>source</script>' } };
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail,
         draft: { entities: [linked, entities[1]], mentions: revision.mentions }, editable: true, lang, onChange() {} }));
-      expect(html).toContain(lang === 'zh' ? '关联及成员编辑待后续补齐' : 'link and member editing is pending');
-      expect(html).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除此对象及其提及/ : /<button[^>]*disabled=""[^>]*><span>Remove this entity and its mentions/);
+      expect(html).toContain(lang === 'zh' ? '成员完整性' : 'Membership completeness');
+      expect(html).toContain(lang === 'zh' ? '已知成员' : 'Known members');
+      expect(html).toContain(lang === 'zh' ? '定位依据：' : 'Locate evidence: ');
+      expect(html).toContain('&lt;script&gt;source&lt;/script&gt;'); expect(html).not.toContain('<script>');
+      // Removing the owner removes its own link; other entities are never rewritten.
+      expect(html).not.toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除此对象及其提及/ : /<button[^>]*disabled=""[^>]*><span>Remove this entity and its mentions/);
       expect(html).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除误识别提及/ : /<button[^>]*disabled=""[^>]*><span>Remove false mention/);
+      const member = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail,
+        draft: { entities: [linked, entities[1]], mentions: revision.mentions }, initialEntityId: 'unknown', editable: true, lang, onChange() {} }));
+      expect(member).toContain(lang === 'zh' ? '请先核对这些对象' : 'correct these entities');
+      expect(member).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>删除此对象及其提及/ : /<button[^>]*disabled=""[^>]*><span>Remove this entity and its mentions/);
+    }
+  });
+  it('shows component and collection links at the selected revision, exact evidence and unknown membership in both languages', () => {
+    const component = { ...revision.entities[0], referentKind: 'component' as const };
+    const instance = { ...component, entityId: 'instance', label: '测试部署', referentKind: 'instance' as const,
+      componentRef: { entityId: 'project', mentionIds: ['instance-mention'], rationale: '这是组件在测试中的实例' } };
+    const group = { ...component, entityId: 'group', label: '它们', referentKind: 'collection' as const,
+      collection: { memberEntityIds: ['project', 'instance'], completeness: 'partial' as const, mentionIds: ['group-mention'], rationale: '指向二者，还可能有其他成员' }, uncertainties: ['窗口未列全成员'] };
+    const value = { ...detail, revision: { ...revision, entities: [component, instance, group], mentions: [...revision.mentions,
+      { ...revision.mentions[0], mentionId: 'instance-mention', entityId: 'instance', selection: { evidenceRef: 'record-1', start: 9, end: 13, quote: 'Beta' } },
+      { ...revision.mentions[0], mentionId: 'group-mention', entityId: 'group', selection: { evidenceRef: 'record-1', start: 14, end: 16, quote: '它们' } }] },
+      source: { status: 'available' as const, excerpts: [{ evidenceRef: 'record-1', recordIndex: 0, eventKind: 'message', text: 'Alpha 使用 Beta；它们' }], limitations: [] },
+      entity: group, mentionChecks: [], knowledge: [], knowledgeStatus: 'available' as const };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: value, workspace: '/space <script>', lang, onRevision() {} }));
+      expect(html).toContain(lang === 'zh' ? '仅部分成员已知' : 'Partial membership');
+      expect(html).toContain(lang === 'zh' ? '不会自动归属每个成员' : 'not automatically attributed');
+      expect(html).toContain('<mark>它们</mark>'); expect(html).toContain('revision=revision-1'); expect(html).toContain('entity=instance');
+      expect(html).toContain('窗口未列全成员'); expect(html).not.toContain('<script>');
+      const componentView = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, entity: component }, workspace: '/space', lang, onRevision() {} }));
+      expect(componentView).toContain(lang === 'zh' ? '关联的实例／版本' : 'Linked instances / versions');
+      expect(componentView).toContain(lang === 'zh' ? '所属集合' : 'Member of collections');
+      const instanceView = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, entity: instance }, workspace: '/space', lang, onRevision() {} }));
+      expect(instanceView).toContain(lang === 'zh' ? '关联组件' : 'Linked component'); expect(instanceView).toContain('<mark>Beta</mark>');
+      expect(instanceView).toContain('这是组件在测试中的实例');
+      const unknown = { ...group, collection: { ...group.collection, completeness: 'unknown' as const, memberEntityIds: [] } };
+      const unknownView = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, entity: unknown }, workspace: '/space', lang, onRevision() {} }));
+      expect(unknownView).toContain(lang === 'zh' ? '尚不能确定成员' : 'Members cannot be determined');
+      const readonly = renderToStaticMarkup(createElement(EntityAnalysisEditor, { detail: { ...value, source: { status: 'unavailable', reason: 'deleted', detail: 'deleted' } },
+        draft: value.revision, initialEntityId: 'instance', editable: false, lang, onChange() {} }));
+      expect(readonly).toContain(lang === 'zh' ? '移除组件关联' : 'Remove component link');
+      expect(readonly).toMatch(lang === 'zh' ? /<button[^>]*disabled=""[^>]*><span>定位依据：/ : /<button[^>]*disabled=""[^>]*><span>Locate evidence:/);
     }
   });
   it('requires explicit replacement roles after removal rather than choosing the first remaining entity', () => {

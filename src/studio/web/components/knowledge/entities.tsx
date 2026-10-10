@@ -9,6 +9,7 @@ import { conversationPath } from '../conversation-link';
 import { displayTime } from '../../../application/display/format';
 import { KnowledgeSectionNav } from './section-nav';
 import { EntityAnalysisDrawer } from './entity-analysis';
+import { EntityRelations, referentLabel } from './entity-relations';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 
 type Target = { analysisId: string; entityId: string; revision?: string };
@@ -93,7 +94,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
         <div className="entity-library-summary">{catalog && t(`${catalog.total} 个匹配对象 · 工作区 ${catalog.analysisCount} 份分析`, `${catalog.total} matching entities · ${catalog.analysisCount} workspace analyses`)} {loading && <Spin size="small"/>}</div>
         <div className="entity-library-scroll">{catalog?.rows.map(row => <button className={`entity-library-row ${target?.analysisId === row.analysisId && target.entityId === row.entityId ? 'selected' : ''}`} key={`${row.analysisId}:${row.entityId}`} onClick={() => select(row)}>
           <span className="entity-library-row-title" title={row.label}>{row.label}</span><Tag>{row.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应', 'Proposed')}</Tag>
-          <span className="entity-library-row-meta" title={[...row.qualifiers, row.origin?.title ?? ''].join(' · ')}>{row.qualifiers.join(' / ') || row.description}</span>
+          <span className="entity-library-row-meta" title={[...row.qualifiers, row.origin?.title ?? ''].join(' · ')}>{referentLabel(row.referentKind, lang)} · {row.qualifiers.join(' / ') || row.description}</span>
           <span className="entity-library-row-meta">{row.origin?.title || t('导入来源', 'Imported source')} · {row.mentionCount} {t('处提及', 'mentions')} · {row.knowledgeCount ?? '—'} {t('条知识', 'knowledge items')}{row.sourceStatus === 'unavailable' ? ` · ${t('原文不可用', 'Source unavailable')}` : ''}</span>
         </button>)}
           {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={OBSERVE_INDEX_PATH}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
@@ -126,6 +127,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
   return <article className="entity-library-article"><h2>{entity.label}</h2>
     <Tag>{entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应，待核对', 'Proposed assignment, needs review')}</Tag>
     <p>{entity.description}</p><p>{entity.qualifiers.join(' · ') || t('未给出项目、版本或环境限定。', 'No project, version, or environment qualifiers provided.')}</p>
+    <EntityRelations detail={detail} entity={entity} workspace={workspace} lang={lang}/>
     {entity.uncertainties.map((value, index) => <Alert key={index} type="warning" title={value}/>)}
     {!!entity.possibleEntityIds.length && <p>{t('可能对应：', 'Possible identities: ')}{entity.possibleEntityIds.map(id => {
       const value = revision.entities.find(value => value.entityId === id)!;

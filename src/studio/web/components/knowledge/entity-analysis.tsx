@@ -5,6 +5,7 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entity-identity';
 import { displayTime } from '../../../application/display/format';
+import { EntityRelationFields, identityProblemLabel } from './entity-relations';
 
 type Draft = Pick<KnowledgeEntityAnalysisDetail['revision'], 'entities' | 'mentions'>;
 type Entity = Draft['entities'][number];
@@ -64,11 +65,14 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
   const editable = !!detail && current && detail.source.status === 'available' && !busy;
   const changed = !!detail && JSON.stringify(draft) !== JSON.stringify({ entities: detail.revision.entities, mentions: detail.revision.mentions });
   const byEntity = new Map(draft.entities.map(entity => [entity.entityId, entity]));
-  const basicComplete = draft.entities.every(entity => !entityIdentityProblems(entity).length && !entityIdentityReferenceProblems(entity, byEntity, draft.mentions).length
-    && entity.label.trim() && entity.description.trim()
+  const relationProblems = draft.entities.flatMap(entity => [...entityIdentityProblems({ ...entity, uncertainties: savedLines(entity.uncertainties) }), ...entityIdentityReferenceProblems(entity, byEntity, draft.mentions)]
+    .map(code => ({ entity, code })));
+  const basicComplete = !relationProblems.length && draft.entities.every(entity => entity.label.trim() && entity.description.trim()
     && draft.mentions.some(mention => mention.entityId === entity.entityId)
     && (entity.identityStatus !== 'unresolved' || savedLines(entity.uncertainties).length)
-    && entity.possibleEntityIds.every(id => id !== entity.entityId && draft.entities.some(target => target.entityId === id && target.identityStatus === 'proposed')))
+    && entity.possibleEntityIds.every(id => id !== entity.entityId && draft.entities.some(target => target.entityId === id && target.identityStatus === 'proposed'))
+    && (!entity.componentRef || (entity.componentRef.mentionIds.length && entity.componentRef.rationale.trim()))
+    && (!entity.collection || (entity.collection.mentionIds.length && entity.collection.rationale.trim())))
     && draft.mentions.every(mention => mention.rationale.trim());
   return <Drawer open className="entity-analysis-drawer" title={t('核对实体与指代', 'Inspect entities and references')} size="min(900px, 100vw)" onClose={() => { controller.current?.abort(); onClose(); }}
     extra={<Space><Button disabled={busy} onClick={() => void load()}>{changed ? t('重新读取（放弃草稿）', 'Reload (discard draft)') : t('读取最新修订', 'Load current revision')}</Button>
@@ -88,7 +92,9 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
         {!current && <Alert type="info" title={t('正在查看历史修订。读取最新修订后可纠正。', 'Viewing a historical revision. Load the current revision to correct it.')}/>}
         {initialEntityId && !draft.entities.some(entity => entity.entityId === initialEntityId) && <Alert type="info" title={t('所选对象不在此修订中。请选择其他对象，或切换历史修订核对。', 'The selected entity is absent from this revision. Choose another entity or inspect history.')}/>}
         <EntityAnalysisEditor detail={detail} draft={draft} initialEntityId={initialEntityId} editable={editable} lang={lang} onChange={setDraft}/>
-        {!basicComplete && editable && <Alert type="info" title={t('请补齐对象名称、描述和原文提及；歧义需有理由，可能目标须指向明确提出的对象。', 'Complete names, descriptions, and source mentions. Unresolved identities need reasons and proposed targets.')}/>}
+        {!!relationProblems.length && editable && <Alert type="warning" title={t('关联尚未完整，请纠正后再保存。', 'Correct incomplete links before saving.')} description={<ul>{relationProblems.map(({ entity, code }) =>
+          <li key={`${entity.entityId}:${code}`}>{entity.label || t('未命名对象', 'Unnamed entity')}：{identityProblemLabel(code, lang)}</li>)}</ul>}/>}
+        {!basicComplete && editable && <Alert type="info" title={t('请补齐名称、描述、原文提及和判断理由；歧义及不完整成员需有理由，候选须指向同层次的明确对象。', 'Complete names, descriptions, source mentions and link rationales. Ambiguity and incomplete membership need reasons; candidates must be proposed entities at the same level.')}/>}
         <label className="entity-history-label">{t('纠正理由', 'Correction reason')}<Input.TextArea disabled={!editable} value={reason} rows={2}
           placeholder={t('说明哪些对象或对应关系需要纠正，以及原文依据。', 'Describe the correction and the original evidence.')} onChange={event => setReason(event.target.value)}/></label>
       </>}
@@ -121,8 +127,13 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
   const excerpt = excerpts.find(value => value.evidenceRef === excerptId);
   const mentions = draft.mentions.filter(mention => mention.entityId === selected);
   const linkedMentionIds = new Set(draft.entities.flatMap(value => [...(value.componentRef?.mentionIds ?? []), ...(value.collection?.mentionIds ?? [])]));
-  const hasIdentityLinks = !!entity && (!!entity.componentRef || !!entity.collection || draft.entities.some(value =>
-    value.componentRef?.entityId === selected || value.collection?.memberEntityIds.includes(selected)) || mentions.some(value => linkedMentionIds.has(value.mentionId)));
+  // Dependent links must be corrected explicitly; deleting or merging never rewrites their meaning.
+  const dependencies = draft.entities.filter(value => value.entityId !== selected && (value.componentRef?.entityId === selected
+    || value.collection?.memberEntityIds.includes(selected) || value.possibleEntityIds.includes(selected)
+    || mentions.some(mention => [...(value.componentRef?.mentionIds ?? []), ...(value.collection?.mentionIds ?? [])].includes(mention.mentionId))));
+  const mergeBlocked = !!dependencies.length || !!entity?.componentRef || !!entity?.collection;
+  const mergeCandidate = draft.entities.find(value => value.entityId === mergeTarget && value.entityId !== selected
+    && value.identityStatus === 'proposed' && value.referentKind === entity?.referentKind);
   function edit(action: (next: Draft) => void) { const next = structuredClone(draft); action(next); onChange(next); }
   function changeEntity(patch: Partial<Entity>) { edit(next => { const entity = next.entities.find(value => value.entityId === selected); if (entity) Object.assign(entity, patch); }); }
   function inspect(selection: Draft['mentions'][number]['selection']) {
@@ -139,12 +150,11 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
           referentKind: 'object', componentRef: null, collection: null })); setSelected(entityId);
       }}>{t('新增对象／拆分对象', 'Add or split an entity')}</Button>
       {entity && <div className="candidate-form">
-        <p><Tag>{({ object: t('对象', 'Object'), component: t('组件', 'Component'), instance: t('实例', 'Instance'), version: t('版本', 'Version'), collection: t('集合', 'Collection'), plan: t('计划', 'Plan'), activity: t('活动', 'Activity') })[entity.referentKind]}</Tag></p>
-        {hasIdentityLinks && <Alert type="info" title={t('此对象涉及组件或集合依据。当前可纠正名称、描述和限定；关联及成员编辑待后续补齐，合并、删除或转移依据暂不可用。', 'This entity participates in component or collection evidence. Names, descriptions and qualifiers remain editable; link and member editing is pending. Merge, removal and evidence reassignment are unavailable.')}/>}
         <label>{t('名称', 'Name')}<Input disabled={!editable} value={entity.label} onChange={event => changeEntity({ label: event.target.value })}/></label>
         <label>{t('描述这个对象', 'Describe this entity')}<Input.TextArea disabled={!editable} value={entity.description} rows={2} onChange={event => changeEntity({ description: event.target.value })}/></label>
         <label>{t('项目／版本／环境等限定（每行一项）', 'Project/version/environment qualifiers (one per line)')}<Input.TextArea disabled={!editable} value={entity.qualifiers.join('\n')} rows={2} onChange={event => changeEntity({ qualifiers: lines(event.target.value) })}/></label>
-        <label>{t('身份对应', 'Identity assignment')}<Select disabled={!editable || hasIdentityLinks} value={entity.identityStatus} options={[
+        <EntityRelationFields entity={entity} entities={draft.entities} mentions={draft.mentions} editable={editable} sourceAvailable={detail.source.status === 'available'} lang={lang} onChange={changeEntity} onInspect={mention => inspect(mention.selection)}/>
+        <label>{t('身份对应', 'Identity assignment')}<Select disabled={!editable} value={entity.identityStatus} options={[
           { value: 'proposed', label: t('提出对应，待核对', 'Proposed assignment, needs review') }, { value: 'unresolved', label: t('无法确定，保留歧义', 'Unresolved, retain ambiguity') },
         ]} onChange={identityStatus => changeEntity({ identityStatus, ...(identityStatus === 'proposed' ? { possibleEntityIds: [] } : {}) })}/></label>
         {entity.identityStatus === 'unresolved' && <label>{t('可能对应的对象（也可以未知）', 'Possible entities (may remain unknown)')}<Select mode="multiple" disabled={!editable} value={entity.possibleEntityIds}
@@ -152,15 +162,17 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
           onChange={possibleEntityIds => changeEntity({ possibleEntityIds })}/></label>}
         <label>{t('不确定性与理由（每行一项；歧义对象必填）', 'Uncertainties and reasons (one per line; required if unresolved)')}<Input.TextArea disabled={!editable} value={entity.uncertainties.join('\n')} rows={2} onChange={event => changeEntity({ uncertainties: lines(event.target.value) })}/></label>
         <details><summary>{t('合并或删除此对象', 'Merge or remove this entity')}</summary>
-          <Select aria-label={t('合并到对象', 'Merge into entity')} disabled={!editable || hasIdentityLinks} value={mergeTarget} style={{ width: '100%' }} placeholder={t('明确选择合并目标', 'Explicitly choose the merge target')}
+          {!!dependencies.length && <Alert type="info" title={t('合并或删除前，请先核对这些对象的组件、成员、候选或依据引用。', 'Before merging or removing, correct these entities’ component, membership, candidate or evidence references.')} description={<div>{dependencies.map(value =>
+            <Button key={value.entityId} onClick={() => { setSelected(value.entityId); setMergeTarget(undefined); }}>{t('核对：', 'Inspect: ')}{value.label}</Button>)}</div>}/>}
+          {(entity.componentRef || entity.collection) && <p className="candidate-help">{t('合并前请明确移除当前对象的组件或集合信息，并核对目标对象；删除会一并移除当前对象自己的信息。', 'Before merging, explicitly remove this entity’s component or collection information and check the target. Removal also removes this entity’s own information.')}</p>}
+          <Select aria-label={t('合并到对象', 'Merge into entity')} disabled={!editable || mergeBlocked} value={mergeTarget} style={{ width: '100%' }} placeholder={t('明确选择合并目标', 'Explicitly choose the merge target')}
             options={draft.entities.filter(value => value.entityId !== selected && value.identityStatus === 'proposed' && value.referentKind === entity.referentKind).map(value => ({ value: value.entityId, label: optionLabel(value) }))} onChange={setMergeTarget}/>
-          <Button disabled={!editable || hasIdentityLinks || !mergeTarget} onClick={() => { if (!mergeTarget) return; edit(next => {
-            next.mentions = next.mentions.map(mention => mention.entityId === selected ? { ...mention, entityId: mergeTarget, rationale: t('用户纠正对应；具体依据见本修订理由。', 'Assignment corrected by user; see this revision’s reason for evidence.') } : mention);
-            next.entities = next.entities.filter(value => value.entityId !== selected).map(value => ({ ...value,
-              possibleEntityIds: [...new Set(value.possibleEntityIds.map(id => id === selected ? mergeTarget : id))].filter(id => id !== value.entityId) }));
-          }); setSelected(mergeTarget); setMergeTarget(undefined); }}>{t('合并提及到所选对象', 'Merge mentions into selected entity')}</Button>
-          <Button danger disabled={!editable || hasIdentityLinks} onClick={() => edit(next => {
-            next.entities = next.entities.filter(value => value.entityId !== selected).map(value => ({ ...value, possibleEntityIds: value.possibleEntityIds.filter(id => id !== selected) }));
+          <Button disabled={!editable || mergeBlocked || !mergeCandidate} onClick={() => { if (!mergeCandidate || mergeBlocked) return; edit(next => {
+            next.mentions = next.mentions.map(mention => mention.entityId === selected ? { ...mention, entityId: mergeCandidate.entityId, rationale: t('用户纠正对应；具体依据见本修订理由。', 'Assignment corrected by user; see this revision’s reason for evidence.') } : mention);
+            next.entities = next.entities.filter(value => value.entityId !== selected);
+          }); setSelected(mergeCandidate.entityId); setMergeTarget(undefined); }}>{t('合并提及到所选对象', 'Merge mentions into selected entity')}</Button>
+          <Button danger disabled={!editable || !!dependencies.length} onClick={() => edit(next => {
+            next.entities = next.entities.filter(value => value.entityId !== selected);
             next.mentions = next.mentions.filter(mention => mention.entityId !== selected);
           })}>{t('删除此对象及其提及', 'Remove this entity and its mentions')}</Button>
         </details>
@@ -171,6 +183,9 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
       {mentions.map(mention => <section className="candidate-statement" key={mention.mentionId}>
         <p><Tag>{mention.basis === 'explicit' ? t('明确提及', 'Explicit') : t('推断对应', 'Inferred assignment')}</Tag><q>{mention.selection.quote}</q></p>
         <Button size="small" disabled={detail.source.status === 'unavailable'} onClick={() => inspect(mention.selection)}>{t('定位原文', 'Locate source')}</Button>
+        {linkedMentionIds.has(mention.mentionId) && <p className="candidate-help">{t('此提及被用作关联依据。转移或删除前，先在以下对象中重新选择依据：', 'This mention supports a link. Before reassigning or removing it, choose replacement evidence in: ')}{draft.entities.filter(value =>
+          [...(value.componentRef?.mentionIds ?? []), ...(value.collection?.mentionIds ?? [])].includes(mention.mentionId)).map(value =>
+          <Button key={value.entityId} size="small" onClick={() => { setSelected(value.entityId); setMergeTarget(undefined); }}>{value.label}</Button>)}</p>}
         <label>{t('这一处对应哪个对象', 'Entity for this mention')}<Select disabled={!editable || linkedMentionIds.has(mention.mentionId)} style={{ width: '100%' }} value={mention.entityId}
           options={draft.entities.map(value => ({ value: value.entityId, label: optionLabel(value) }))} onChange={entityId => edit(next => {
             const value = next.mentions.find(value => value.mentionId === mention.mentionId)!; value.entityId = entityId;
