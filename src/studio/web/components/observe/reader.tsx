@@ -16,7 +16,6 @@ import type { ReaderState } from '../../../application/conversations/reader-stat
 import { conversationPath } from '../conversation-link';
 import { Status } from './activity';
 import { ExtractedKnowledge } from './extracted-knowledge';
-import { ExtractConversation } from '../knowledge/conversation-extraction';
 
 type Turn = ConversationReaderPage['turns'][number];
 
@@ -41,10 +40,10 @@ export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId:
   // Only collapse a complete leading context envelope; quoted/code examples and
   // incomplete records remain ordinary message text. Original evidence is untouched.
   const displayed = messages.flatMap(message => {
-    const context = message.role === 'user' && message.text.match(/^(<environment_context>[\s\S]*?<\/environment_context>)(?=\s|$)/);
+    const context = message.role === 'user' && message.text.match(/^(<environment_context>[\s\S]*?<\/environment_context>|# AGENTS\.md instructions for [^\n]+\n+<INSTRUCTIONS>[\s\S]*?<\/INSTRUCTIONS>)(?=\s|$)/);
     if (!context) return [message];
     const remainder = message.text.slice(context[0].length);
-    return [{ role: 'context', text: context[1] }, ...(remainder.trim() ? [{ ...message, text: remainder }] : [])];
+    return [{ role: context[1].startsWith('# AGENTS.md') ? 'instructions' : 'context', text: context[1] }, ...(remainder.trim() ? [{ ...message, text: remainder }] : [])];
   });
   const groups: { role: string; messages: { role: string; text: string }[] }[] = [];
   for (const message of displayed) {
@@ -53,7 +52,7 @@ export function ReaderTurnBody({ turn, threadId, lang }: { turn: Turn; threadId:
     if (message.role === 'assistant' && previous?.role === 'assistant') previous.messages.push(message);
     else groups.push({ role: message.role, messages: [message] });
   }
-  if (fallback === 'messages') return <>{groups.map((group, index) => group.role === 'context' ? <details className="observe-context" key={index}><summary>{t('环境上下文', 'Environment context')}</summary><pre tabIndex={0}>{group.messages[0].text}</pre></details> : <section className={`observe-reading-message ${group.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{group.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong>{group.messages.map((message, messageIndex) => <div className="observe-message-text" key={messageIndex}><Markdown remarkPlugins={[remarkGfm]} components={{
+  if (fallback === 'messages') return <>{groups.map((group, index) => ['context', 'instructions'].includes(group.role) ? <details className="observe-context" key={index}><summary>{group.role === 'instructions' ? t('注入的项目与个人指令', 'Injected project and personal instructions') : t('环境上下文', 'Environment context')}</summary><pre tabIndex={0}>{group.messages[0].text}</pre></details> : <section className={`observe-reading-message ${group.role === 'user' ? 'human' : 'assistant'}`} key={index}><strong>{group.role === 'user' ? t('你', 'You') : t('助手', 'Assistant')}</strong>{group.messages.map((message, messageIndex) => <div className="observe-message-text" key={messageIndex}><Markdown remarkPlugins={[remarkGfm]} components={{
     a: ({ href, children }) => href ? <Link href={href} prefetch={false}>{children}</Link> : <span>{children}</span>,
     // Source images remain explicit links: reading a trace must not contact remote image hosts.
     img: ({ src, alt }) => typeof src === 'string' && src ? <Link href={src} prefetch={false}>{alt || t('图片', 'Image')}</Link> : <span>{alt}</span>,
@@ -79,7 +78,7 @@ export function ReaderTurnFooter({ turn, previousTimestamp, threadId, lang }: { 
       <time dateTime={timestamp} title={fullTime} aria-label={fullTime}>{displayTime(timestamp, sameDay ? 'clock' : 'full')}</time>
     </div>
     {task.toolCallCount > 0 && <details className="observe-tool-summary"><summary>{t(`${task.toolCallCount} 次工具调用`, `${task.toolCallCount} tool calls`)}{task.toolFailureCount > 0 ? ` · ${t(`${task.toolFailureCount} 次报错`, `${task.toolFailureCount} errors`)}` : ''}</summary><p>{t('调用记录、知识访问和原始依据可在执行详情中查看。报错不等于最终工作失败。', 'Open execution details for calls, knowledge access and raw evidence. Errors do not determine the final outcome.')}</p></details>}
-    <ExtractConversation threadId={threadId} turnId={task.sourceTurnId ?? task.turnId} lang={lang} small disabled={turn.unavailable || !turn.messages.length}/>
+    <ExtractedKnowledge threadId={threadId} turnId={task.sourceTurnId ?? task.turnId} lang={lang} disabled={turn.unavailable || !turn.messages.length}/>
     <Link href={href(conversationPath(threadId, task.sourceTurnId ?? task.turnId))}>{lang === 'zh' ? '执行详情' : 'Execution details'}</Link>
   </footer>;
 }
@@ -156,7 +155,7 @@ export function ConversationReader({ item, revision, lang, title, project }: { i
   }
   const state: ReaderState = readerState({ loaded, failed, turnCount: turns.length });
   return <>
-    <header className="observe-reader-header"><div><h1 title={title}>{title}</h1><div className="observe-reader-meta"><span title={item.cwd ? `${project}\n${item.cwd}` : project}>{project}</span><span title={item.model ?? item.sourceKind}>{item.model ?? item.sourceKind}</span><span>{t(`${item.turnCount ?? item.tasks.length} 轮对话`, `${item.turnCount ?? item.tasks.length} turns`)}</span></div></div><ExtractedKnowledge threadId={item.threadId} lang={lang} historyOnly/></header>
+    <header className="observe-reader-header"><div><h1 title={title}>{title}</h1><div className="observe-reader-meta"><span title={item.cwd ? `${project}\n${item.cwd}` : project}>{project}</span><span title={item.model ?? item.sourceKind}>{item.model ?? item.sourceKind}</span><span>{t(`${item.turnCount ?? item.tasks.length} 轮对话`, `${item.turnCount ?? item.tasks.length} turns`)}</span></div></div><ExtractedKnowledge threadId={item.threadId} lang={lang}/></header>
     <div className="observe-conversation-reader" ref={pane} aria-label={t('对话内容', 'Conversation content')} onScroll={() => {
       const element = pane.current; if (!element) return;
       const frame: ReadingFrame = { scrollHeight: element.scrollHeight, scrollTop: element.scrollTop, clientHeight: element.clientHeight };

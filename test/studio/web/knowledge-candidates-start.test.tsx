@@ -35,7 +35,9 @@ describe('knowledge extraction onboarding', () => {
   it('starts extraction in place instead of navigating to a selection page', () => {
     const html = renderToStaticMarkup(createElement(ExtractedKnowledge, { lang: 'zh', threadId: 'thread/a', turnId: 'turn&b' }));
     expect(html).toContain('提炼这轮');
-    expect(html).toContain('已提炼知识');
+    expect(html).not.toContain('已提炼知识');
+    const header = renderToStaticMarkup(createElement(ExtractedKnowledge, { threadId: 'thread', lang: 'zh' }));
+    expect(header).toContain('开启自动提炼'); expect(header).toContain('知识待办');
     expect(html).not.toContain('href=');
     expect(html).toContain('<button');
   });

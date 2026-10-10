@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { resolveKnowledgeWorkspace } from './workspace';
+import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
@@ -15,9 +15,9 @@ import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
-import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource } from '../../../view-models/knowledge/knowledge-candidates';
+import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [authoringIds, setAuthoringIds] = useState<string[] | null>(null);
@@ -29,7 +29,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(!!initialWorkspace);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>(scope ? 'pending' : 'all');
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail | null>(null);
   const [source, setSource] = useState('');
@@ -71,6 +71,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error ?? 'knowledge_request_failed');
+    if (['maintain', 'revise', 'apply-entities', 'resume'].includes(operation)) notifyKnowledgeChange(workspace);
     return data as T;
   }
   async function work(action: () => Promise<void>) {
@@ -92,20 +93,24 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     } finally { controller.current = null; setBusy(false); setLoading(false); }
   }
   async function refresh(root = workspace, selectFirst = false) {
-    const [nextRows, nextRuns] = await Promise.all([
+    const { rows: nextRows, runs: nextRuns } = scope ? await api<KnowledgeCandidateQueue>('queue', { workspace: root, ...scope }) : await Promise.all([
       api<KnowledgeCandidateRow[]>('list', { workspace: root }),
       api<KnowledgeCandidateRun[]>('runs', { workspace: root }),
-    ]);
-    const nextDetail = selectFirst && nextRows[0]
-      ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: nextRows[0].knowledgeId }) : undefined;
+    ]).then(([rows, runs]) => ({ rows, runs }));
+    const first = scope ? nextRows.find(row => row.choice === null) ?? nextRows[0] : nextRows[0];
+    const nextDetail = selectFirst && first
+      ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: first.knowledgeId }) : undefined;
     setRows(nextRows); setRuns(nextRuns);
-    if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason(''); }
+    if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason('');
+      if (scope && first) setBatchRunId(candidateReviewRun(nextRuns, first.knowledgeId)?.runId ?? null);
+    }
     return { rows: nextRows, runs: nextRuns };
   }
   async function open(id: string, revision?: string, root = workspace, activateBatch = false) {
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
     setDetail(next); setCitation(0); setReason(''); setPane('candidate'); setShowBatchSummary(false); setNeedsRefresh(false);
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
+    if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
   useEffect(() => {
@@ -126,6 +131,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   }
   function leaveBatch() {
     setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all'); setPane('candidate');
+    if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
   }
   async function continueReview(id: string, revision?: string, advance = true) {
@@ -135,7 +141,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const currentPending = current.rows.find(row => row.knowledgeId === id)?.choice === null;
     const target = advance && !currentPending ? nextBatch?.nextId : undefined;
     await open(target ?? id, advance ? undefined : revision);
-    if (advance && nextBatch?.complete) setShowBatchSummary(true);
+    if (advance && nextBatch?.complete) {
+      const nextPending = scope && current.rows.find(row => row.choice === null && row.knowledgeId !== id);
+      if (nextPending) { await open(nextPending.knowledgeId); setBatchRunId(candidateReviewRun(current.runs, nextPending.knowledgeId)?.runId ?? null); }
+      else setShowBatchSummary(true);
+    }
   }
   async function decide(choice: 'retain' | 'discard') {
     if (!detail || needsRefresh || !reason.trim()) return;
@@ -193,16 +203,16 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const visibleRows = batch ? batch.rows : rows.filter(row => candidateMatches(row, filter, query));
   const originHref = detail?.origin ? `${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}` : undefined;
   return <section className="knowledge-candidates">
-    <KnowledgeSectionNav active="candidates" lang={lang}/>
-    <header className="candidate-heading"><div><h1>{t('提炼的知识', 'Extracted knowledge')}</h1></div>
-      <Space wrap><Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>
-        {rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
+    {!embedded && <KnowledgeSectionNav active="candidates" lang={lang}/>}
+    <header className="candidate-heading"><div><h1>{scope ? t('知识待办', 'Knowledge inbox') : t('提炼的知识', 'Extracted knowledge')}</h1></div>
+      <Space wrap>{!embedded && <Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>}
+        {!embedded && rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Dropdown trigger={['click']} disabled={busy} menu={{ items: [
           { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: !workspace },
-          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: !workspace },
+          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: !workspace || embedded },
         ], onClick: ({ key }) => {
-          if (key === 'history') void work(async () => { setRuns(await api('runs')); setShowRuns(true); });
+          if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
           if (key === 'import') { setSnapshot(null); setShowImport(true); }
         } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
@@ -220,7 +230,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         { value: 'discard', label: t(`已舍弃 ${rows.filter(row => row.choice === 'discard').length}`, `Discarded ${rows.filter(row => row.choice === 'discard').length}`) },
       ]}/>
     </div>}
-    {rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
+    {rows.length === 0 && scope ? <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
       onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onEntities={analysisId => setEntityTarget({ analysisId })}/>
       : <div className={`candidate-columns${summary ? ' candidate-columns-summary' : ''}`}>
       <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>

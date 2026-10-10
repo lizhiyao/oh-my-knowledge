@@ -62,3 +62,7 @@ export type {
 export type {
   EvidenceWindow,
 } from './knowledge-extraction/evidence.js';
+
+export { conversationExtractionSource } from './knowledge-extraction/conversation-source.js';
+export { ConversationAutoExtraction } from './knowledge-extraction/auto-extraction.js';
+export type { AutoExtractionState, AutoExtractionPreview } from './knowledge-extraction/auto-extraction.js';

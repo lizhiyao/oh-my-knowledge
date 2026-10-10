@@ -195,3 +195,21 @@ function expectButton(html: string, label: string, disabled: boolean) {
   assert.ok(button, html);
   assert.equal(button[1].includes('disabled'), disabled);
 }
+
+
+describe('明确注入的规则', () => {
+  const instructions = '# AGENTS.md instructions for /project\n\n<INSTRUCTIONS>\n# 个人指令\n浏览器使用 Chrome\n</INSTRUCTIONS>';
+  it('完整的规则默认折叠，原文可展开，后续请求仍直接显示', () => {
+    const html = body(turn({}, { messages: [{ role: 'user', text: `${instructions}\n请修复这个问题` }] }));
+    assert.match(html, /<details class="observe-context"><summary>注入的项目与个人指令<\/summary>/);
+    assert.match(html, /浏览器使用 Chrome/);
+    assert.match(html, /<p>请修复这个问题<\/p>/);
+    assert.doesNotMatch(html, /<details[^>]*open/);
+  });
+  it('代码示例、助手文本和不完整规则保留正常显示', () => {
+    for (const message of [{ role: 'user', text: `\`\`\`\n${instructions}\n\`\`\`` },
+      { role: 'assistant', text: instructions }, { role: 'user', text: instructions.replace('</INSTRUCTIONS>', '') }]) {
+      assert.doesNotMatch(body(turn({}, { messages: [message] })), /<details class="observe-context"/);
+    }
+  });
+});

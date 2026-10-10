@@ -346,3 +346,13 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .entity-apply-modal .ant-modal-body { min-height:0;overflow:auto;overscroll-behavior:contain; }
 .entity-apply-modal .ant-modal-footer { flex-shrink:0; }
 @media (max-width:860px) { .entity-editor { grid-template-columns:minmax(0,1fr); } .entity-analysis-drawer .ant-drawer-header { flex-wrap:wrap;gap:var(--studio-space-3); } }
+
+.conversation-knowledge-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--studio-space-2);max-width:60%}
+.auto-extraction-status{font-size:12px;color:var(--studio-ink-muted)}
+.knowledge-inbox-review{height:calc(100dvh - 170px);min-height:360px}
+.knowledge-inbox-review>.knowledge-candidates{height:100%;min-height:0}
+.observe-project-inbox{margin-bottom:var(--studio-space-4)}
+.observe-projects .ant-btn{margin:var(--studio-space-1) var(--studio-space-2);max-width:calc(100% - 16px);font-size:12px}
+@media(max-width:1024px){.conversation-knowledge-actions{max-width:100%;justify-content:flex-start}.knowledge-inbox-review{height:calc(100dvh - 160px)}}
+
+.auto-extraction-confirmation pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:30vh;overflow:auto}.auto-extraction-confirmation label{display:block;margin-block:var(--studio-space-3)}

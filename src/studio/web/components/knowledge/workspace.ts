@@ -7,3 +7,8 @@ export async function resolveKnowledgeWorkspace(explicit = '', signal?: AbortSig
   return { workspace: explicit.trim() || settings.effective.workspace, defaultWorkspace: settings.effective.workspace,
     executor: settings.effective.executor, model: settings.effective.model };
 }
+
+/** Refresh source-scoped inbox counts after a saved review or generation. */
+export function notifyKnowledgeChange(workspace: string) {
+  window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: workspace }));
+}

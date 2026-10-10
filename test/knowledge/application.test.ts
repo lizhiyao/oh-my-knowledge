@@ -208,8 +208,8 @@ describe('shared knowledge application', () => {
     const ref = run.committed[0];
     app.maintain(ref.knowledgeId, ref.revisionId, 'retain', 'Checked', 1);
     app.deleteSource(snapshot.snapshotId);
-    const related = await executeKnowledgeCandidateAction({ operation: 'related', workspace: 'fixture', threadId: 'thread' }, undefined, () => app);
-    expect(related).toMatchObject([{ runId: run.runId, committed: [{ knowledgeId: ref.knowledgeId, choice: 'retain' }] }]);
+    const related = await executeKnowledgeCandidateAction({ operation: 'queue', workspace: 'fixture', threadId: 'thread' }, undefined, () => app);
+    expect(related).toMatchObject({ rows: [{ knowledgeId: ref.knowledgeId, choice: 'retain' }], runs: [{ runId: run.runId }] });
     const detail = await executeKnowledgeCandidateAction({ operation: 'show', workspace: 'fixture', id: ref.knowledgeId }, undefined, () => app);
     expect(detail).toMatchObject({ origin, sources: [{ status: 'unavailable', reason: 'deleted' }] });
   });
