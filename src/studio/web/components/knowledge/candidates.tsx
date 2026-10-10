@@ -17,6 +17,15 @@ import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
+export function CandidateStatementHeading({ statement, entities, lang }: {
+  statement: Pick<KnowledgeCandidateDetail['revision']['content']['statements'][number], 'subject' | 'object' | 'relation' | 'polarity'>;
+  entities: Pick<KnowledgeCandidateDetail['revision']['entities'][number], 'entityId' | 'label'>[]; lang: Language;
+}) {
+  return <h3>{statement.polarity === 'negative' && <Tag>{lang === 'zh' ? '否定陈述' : 'Negative claim'}</Tag>}
+    {entities.find(entity => entity.entityId === statement.subject.entityId)?.label} {statement.relation} {statement.object ? entities.find(entity => entity.entityId === statement.object!.entityId)?.label : ''}
+  </h3>;
+}
+
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
@@ -247,7 +256,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
             {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
             {organization?.knowledgeKind === 'method' && <p>{t('目的', 'Purpose')}：{organization.purpose}</p>}
             {detail.revision.content.statements.map((statement) => <section key={statement.statementId} className="candidate-statement">
-              <h3>{detail.revision.entities.find((entity) => entity.entityId === statement.subject.entityId)?.label} {statement.relation} {statement.object ? detail.revision.entities.find((entity) => entity.entityId === statement.object!.entityId)?.label : ''}</h3>
+              <CandidateStatementHeading statement={statement} entities={detail.revision.entities} lang={lang}/>
               <details><summary>{t('陈述分类与时间', 'Claim classification and time')}</summary><Space wrap><Tag>{statement.polarity === 'negative' ? t('否定陈述', 'Negative claim') : t('肯定陈述', 'Positive claim')}</Tag>
                 <Tag>{({ descriptive: t('描述', 'Description'), normative: t('规范要求', 'Normative requirement'), capability: t('能力', 'Capability'), permission: t('许可', 'Permission') })[statement.modality]}</Tag>
                 {organization?.knowledgeKind === 'case' && organization.actionStatementIds.includes(statement.statementId) && <Tag>{t('行动', 'Action')}</Tag>}
