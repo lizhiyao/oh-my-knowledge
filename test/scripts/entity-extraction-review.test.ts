@@ -35,6 +35,63 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('replays the published v4 two-round evidence without converting self-review or missing cost into a pass', () => {
+    type Captured = ReturnType<typeof reviewCapture>['capture'];
+    type Checked = ReturnType<typeof reviewCapture>['records'][number];
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v4-repeat-quality.json', import.meta.url), 'utf8')) as {
+      conclusion: string; goldReady: boolean; annotationReview: string;
+      manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string };
+      frozen: { corpusText: string; guides: { en: string; zh: string }; prompt: { prompt: string }; identity: Record<string, unknown> };
+      captures: Captured[]; records: (Checked & { outputDigest: string; executorReported: { inputTokens: number; cacheReadTokens: number; outputTokens: number; costReportedByExecutor: boolean } })[];
+      agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; repeat: number; outputDigest: string; rationale: string; issues: unknown[] }[] };
+      statistics: { total: { recorded: number; matchedCriticalMentions: number; notEvaluableIdentityPairs: number; identityMismatches: number; reportedUncachedInputTokens: number; reportedCacheReadTokens: number; reportedOutputTokens: number; costReportingRecords: number; reportedCostUSD: null; usdCost: string } };
+    };
+    expect(evidence.frozen.corpusText).toBe(corpusText);
+    expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
+    expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
+    expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
+    expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
+    expect(evidence.captures.map(value => value.split).sort()).toEqual(['development', 'validation']);
+    const replayed = evidence.captures.flatMap(capture => {
+      expect(capture.repeats).toBe(2);
+      const replay = reviewCapture(JSON.stringify(capture), corpus, evidence.manifest.measurementId, checkWindowExtractionResponse);
+      expect(replay.unattempted).toEqual([]);
+      expect(replay.summary).toMatchObject({ callFailures: 0, parseFailures: 0, cancellations: 0, structuralRejectingOutputs: 0, semanticReview: 'pending' });
+      return replay.records;
+    });
+    expect(replayed).toHaveLength(32);
+    const keys = new Set<string>();
+    for (const outcome of replayed) {
+      const key = `${outcome.repeat}:${outcome.caseId}`;
+      expect(keys.has(key)).toBe(false); keys.add(key);
+      const published = evidence.records.find(value => value.repeat === outcome.repeat && value.caseId === outcome.caseId)!;
+      if (outcome.captureStatus !== 'captured' || published.captureStatus !== 'captured') throw new Error('Expected captured output');
+      expect(published.checks).toEqual(outcome.checks); expect(published.checked).toEqual(outcome.checked);
+      const captured = evidence.captures.flatMap(value => value.records).find(value => value.repeat === outcome.repeat && value.caseId === outcome.caseId)!;
+      expect(captured.result.captureStatus).toBe('output');
+      if (captured.result.captureStatus !== 'output') throw new Error('Expected actual model output');
+      expect(published.outputDigest).toBe(reviewDigest(captured.result.output));
+      const decisions = evidence.agentReview.decisions.filter(value => value.caseId === outcome.caseId && value.repeat === outcome.repeat);
+      expect(decisions).toHaveLength(1); expect(decisions[0].outputDigest).toBe(published.outputDigest);
+      expect(decisions[0].rationale.length).toBeGreaterThan(20);
+    }
+    expect(evidence.records).toHaveLength(32); expect(evidence.agentReview.decisions).toHaveLength(32);
+    expect(evidence.agentReview.decisions.filter(value => value.issues.length)).toHaveLength(7);
+    const sum = (read: (record: typeof evidence.records[number]) => number) => evidence.records.reduce((n, record) => n + read(record), 0);
+    expect(evidence.statistics.total).toMatchObject({ recorded: 32,
+      matchedCriticalMentions: sum(record => record.checks!.criticalMentions.filter(value => value.status === 'matched').length),
+      notEvaluableIdentityPairs: sum(record => record.checks!.identityPairs.filter(value => value.status === 'not_evaluable').length),
+      identityMismatches: sum(record => record.checks!.identities.filter(value => value.status === 'mismatched').length),
+      reportedUncachedInputTokens: sum(record => record.executorReported.inputTokens),
+      reportedCacheReadTokens: sum(record => record.executorReported.cacheReadTokens),
+      reportedOutputTokens: sum(record => record.executorReported.outputTokens),
+      costReportingRecords: 0, reportedCostUSD: null, usdCost: 'unknown' });
+    expect(evidence.records.every(value => value.executorReported.costReportedByExecutor === false)).toBe(true);
+    expect(evidence.conclusion).toBe('frozen_regression_not_passed'); expect(evidence.goldReady).toBe(false);
+    expect(evidence.annotationReview).toBe('pending');
+    expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed' });
+  });
+
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
     expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(8);
     expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(8);
