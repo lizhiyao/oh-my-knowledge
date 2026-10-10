@@ -49,7 +49,8 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
       const existing = existsSync(path) ? this.read(command.analysisId) : undefined;
       const next = applyEntityAnalysisWrite(existing, command, actor, digest);
       if (next !== existing) {
-        if (Buffer.byteLength(JSON.stringify(next)) > MAX_BYTES) throw new Error('Entity capacity exceeded.');
+        // Match the atomic writer's bytes so every successful write remains readable.
+        if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('Entity capacity exceeded.');
         writeJsonFileAtomic(path, next);
       }
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;
