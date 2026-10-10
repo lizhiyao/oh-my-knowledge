@@ -6,7 +6,7 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v6.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v7.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -146,13 +146,13 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(28);
-    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(8);
-    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(128);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(40);
+    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(2);
+    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(150);
     for (const mutate of [
-      (copy: typeof corpus) => { copy.cases[28].projectGroup = copy.cases[0].projectGroup; },
-      (copy: typeof corpus) => { copy.cases[28].conversationGroup = copy.cases[0].conversationGroup; },
-      (copy: typeof corpus) => { copy.cases[28].messages = copy.cases[0].messages; },
+      (copy: typeof corpus) => { copy.cases[40].projectGroup = copy.cases[0].projectGroup; },
+      (copy: typeof corpus) => { copy.cases[40].conversationGroup = copy.cases[0].conversationGroup; },
+      (copy: typeof corpus) => { copy.cases[40].messages = copy.cases[0].messages; },
       (copy: typeof corpus) => { copy.cases[0].mentions[0].alternatives[0].occurrence = 99; },
       (copy: typeof corpus) => { copy.cases[0].entities[0].component = 'file'; },
       (copy: typeof corpus) => { copy.cases[3].entities[2].collection!.members.push('pair'); },
@@ -175,7 +175,14 @@ describe('entity extraction review with author evidence', () => {
     const v5 = readFileSync(new URL('../fixtures/entity-extraction-review-v5.json', import.meta.url), 'utf8');
     expect(reviewDigest(v5)).toBe('sha256:df117b4b56060a845fda00f4d57b91de71c24f3e33d6962d77d314782b971ca1');
     expect(() => parseEntityReviewCorpus(v5)).toThrow();
-    expect(corpus.cases.slice(0, 28).every(value => value.split === 'development')).toBe(true);
+    const v6 = readFileSync(new URL('../fixtures/entity-extraction-review-v6.json', import.meta.url), 'utf8');
+    expect(reviewDigest(v6)).toBe('sha256:e19f086900284a36f714b27239003e0d0720984e3a6f6cea93a779f64b883338');
+    expect(() => parseEntityReviewCorpus(v6)).toThrow();
+    expect(corpus.cases.slice(0, 40).every(value => value.split === 'development')).toBe(true);
+    const rule = corpus.cases.find(value => value.caseId === 'fresh-negative-requirement')!;
+    expect(rule.mentions.find(value => value.mentionKey === 'rule-first')!.alternatives).toEqual([
+      { quote: 'F9', occurrence: 0 }, { quote: 'Rule F9', occurrence: 0 },
+    ]);
     const replaced = reviewMentions(corpus.cases.find(value => value.caseId === 'dev-replacement')!);
     expect(replaced.slice(0, 2).map(value => value.spans[0].quote)).toEqual(['config.json', 'config.json']);
     expect(replaced[0].entity).not.toBe(replaced[1].entity);
@@ -198,6 +205,65 @@ describe('entity extraction review with author evidence', () => {
     const split = packet(); split.proposals = []; split.mentions[0].selection.occurrence = 0;
     split.mentions[1].selection = { evidenceRef: 'roles:0', quote: 'Alpha', occurrence: 1 };
     expect(checkEntityReview(alias, checkWindowExtractionResponse(split, entityReviewInput(alias).excerpts)).identityPairs[0].status).toBe('wrong_split');
+  });
+
+  it('detects omitted concepts and premature disambiguation in v7 without rejecting valid nested spans or explicit clarification', () => {
+    for (const caseId of ['dev-session-properties', 'dev-unconfirmed-memory', 'dev-confirmed-memory']) {
+      const sample = corpus.cases.find(value => value.caseId === caseId)!;
+      const output = modelWindow(); output.proposals = [];
+      output.entities = sample.entities.map(value => ({ ...output.entities[0], entityId: value.entityKey,
+        label: value.entityKey, description: value.rationale, identityStatus: value.identityStatus,
+        possibleEntityIds: value.possibleEntities, uncertainties: value.identityStatus === 'unresolved' ? [value.rationale] : [] }));
+      output.mentions = sample.mentions.map(value => ({ ...output.mentions[0], mentionId: value.mentionKey, entityId: value.entity,
+        selection: { evidenceRef: `${caseId}:${value.messageIndex}`, ...value.alternatives[0] } }));
+      const excerpts = entityReviewInput(sample).excerpts;
+      const admitted = checkWindowExtractionResponse(output, excerpts);
+      expect(admitted.analysis.rejected).toEqual([]);
+      const good = checkEntityReview(sample, admitted);
+      expect(good.criticalMentions.every(value => value.status === 'matched')).toBe(true);
+      expect(good.identities.every(value => value.status === 'matched')).toBe(true);
+      if (caseId === 'dev-session-properties') {
+        output.entities = output.entities.filter(entity => entity.entityId !== 'session');
+        output.mentions = output.mentions.filter(mention => mention.entityId !== 'session');
+        const missing = checkEntityReview(sample, checkWindowExtractionResponse(output, excerpts));
+        expect(missing.criticalMentions.filter(value => value.status === 'missing')).toHaveLength(4);
+        expect(missing.criticalMentions.filter(value => value.status === 'matched')).toHaveLength(3);
+      } else if (caseId === 'dev-unconfirmed-memory') {
+        output.entities = output.entities.filter(entity => entity.entityId !== 'unknown');
+        output.mentions[0].entityId = 'atlas';
+        output.mentions[0].rationale = 'Assistant chose Atlas, but user did not confirm.';
+        const guessed = checkEntityReview(sample, checkWindowExtractionResponse(output, excerpts));
+        expect(guessed.criticalMentions.every(value => value.status === 'matched')).toBe(true);
+        expect(guessed.identityPairs.some(value => value.status === 'wrong_merge')).toBe(true);
+        expect(guessed.identities.find(value => value.entity === 'unknown')!.problems).toContain('identity_status');
+      }
+    }
+  });
+
+  it('keeps polarity review separate from structural admission for the atomic-statement regression', () => {
+    const sample = corpus.cases.find(value => value.caseId === 'dev-session-atomic-negation')!;
+    const output = modelWindow();
+    output.entities = [{ ...output.entities[0], entityId: 'session', label: 'Session', description: sample.entities[0].rationale }];
+    output.mentions = sample.mentions.map(value => ({ ...output.mentions[0], mentionId: value.mentionKey, entityId: 'session',
+      selection: { evidenceRef: `${sample.caseId}:0`, ...value.alternatives[0] } }));
+    const proposal = output.proposals[0];
+    proposal.entityIds = ['session']; proposal.mentionIds = output.mentions.map(value => value.mentionId);
+    const base = proposal.draft.content.statements[0];
+    proposal.draft.content.statements = [
+      { ...base, statementId: 'count', subject: { entityId: 'session' }, object: undefined, relation: '总数按初始化记录计算', modality: 'normative', polarity: 'positive' },
+      { ...base, statementId: 'update', subject: { entityId: 'session' }, object: undefined, relation: '状态更新增加分母', modality: 'normative', polarity: 'negative' },
+    ];
+    proposal.draft.evidence = sample.roles.map((role, index) => ({ ...proposal.draft.evidence[0], evidenceLinkId: role.roleKey,
+      evidenceRef: `${sample.caseId}:0`, statementIds: [proposal.draft.content.statements[index].statementId] }));
+    proposal.citations = sample.roles.map(role => ({ evidenceLinkId: role.roleKey,
+      selection: { evidenceRef: `${sample.caseId}:0`, ...role.anchor } }));
+    const checked = checkEntityReview(sample, checkWindowExtractionResponse(output, entityReviewInput(sample).excerpts));
+    expect(checked.roles.map(role => role.observed.map(statement => ({ relation: statement.relation, polarity: statement.polarity, modality: statement.modality })))).toEqual([
+      [{ relation: '总数按初始化记录计算', polarity: 'positive', modality: 'normative' }],
+      [{ relation: '状态更新增加分母', polarity: 'negative', modality: 'normative' }],
+    ]);
+    expect(checked.roles.every(role => role.semanticReview === 'pending')).toBe(true);
+    expect(checked.semanticReview).toBe('pending');
   });
 
   it('admits ordinary objects and concepts while detecting same-level homonym merges and alias splits', () => {
