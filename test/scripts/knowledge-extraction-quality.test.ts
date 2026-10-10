@@ -6,7 +6,7 @@ import {
   captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
 } from '../../scripts/bench/knowledge-extraction-quality.js';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
-import { entityQualityCases, entityQualityInput, expectedEntityMentions, parseEntityQualityCorpus } from '../../scripts/bench/entity-extraction-quality.js';
+import { checkCriticalEntities, entityQualityCases, entityQualityInput, expectedEntityMentions, parseEntityQualityArguments, parseEntityQualityCorpus } from '../../scripts/bench/entity-extraction-quality.js';
 
 import { modelWindow } from '../knowledge/fixtures.js';
 
@@ -24,7 +24,7 @@ const cases = parseQualityCases(readFileSync(new URL('../fixtures/knowledge-extr
 describe('knowledge extraction quality evidence', () => {
   it('freezes entity identities and UTF-16 repeated occurrences without sending the gold answers to the model', () => {
     const corpus = parseEntityQualityCorpus(readFileSync(new URL('../fixtures/entity-extraction-quality.json', import.meta.url), 'utf8'));
-    expect(corpus.cases).toHaveLength(12);
+    expect(corpus.cases).toHaveLength(16);
     const repeated = corpus.cases.find(sample => sample.caseId === 'repeated-quote')!;
     expect(expectedEntityMentions(repeated).slice(0, 2).map(mention => mention.start)).toEqual([3, 11]);
     const sample = entityQualityCases(corpus).find(sample => sample.caseId === 'missing-context')!;
@@ -35,6 +35,39 @@ describe('knowledge extraction quality evidence', () => {
     expect(() => parseEntityQualityCorpus(JSON.stringify(invalid))).toThrow();
     invalid.cases[0].mentions[0].occurrence = 0; invalid.cases[0].roles[0].subject = 'invented';
     expect(() => parseEntityQualityCorpus(JSON.stringify(invalid))).toThrow();
+  });
+  it('separates omitted knowledge, missed mentions, identity merging and unresolved alternatives', () => {
+    const corpus = parseEntityQualityCorpus(readFileSync(new URL('../fixtures/entity-extraction-quality.json', import.meta.url), 'utf8'));
+    const sample = corpus.cases.find(sample => sample.caseId === 'unresolved-choice')!;
+    const empty = checkWindowExtractionResponse({ responseKind: 'knowledge-extraction', schemaVersion: 3, entities: [], mentions: [], proposals: [] }, qualityInput(entityQualityCases(corpus).find(value => value.caseId === sample.caseId)!).excerpts);
+    const result = checkCriticalEntities(sample, empty);
+    expect(result.criticalMentions.every(value => !value.covered)).toBe(true);
+    expect(result.separations.every(value => !value.passed)).toBe(true);
+    expect(result.unresolved[0].passed).toBe(false);
+    expect(result.semanticReview).toBe('pending'); expect(result.independentReview).toBe('not_performed');
+    const input = ['--output', '/outside/new', '--model', 'fixed', '--repeat', '2'];
+    expect(parseEntityQualityArguments(input).repeat).toBe(2);
+    expect(() => parseEntityQualityArguments([...input, '--repeat', '1'])).toThrow();
+    expect(() => parseEntityQualityArguments(['--output', '/outside/new', '--model', 'fixed', '--repeat', '3'])).toThrow();
+  });
+  it('detects a structurally valid merged identity and role swap against frozen spans', () => {
+    const sample = { caseId: 'role-check', messages: [{ role: 'user' as const, text: 'Alpha 使用 Beta' }],
+      mentions: [{ mentionKey: 'alpha', entity: 'alpha', messageIndex: 0, quote: 'Alpha', occurrence: 0 },
+        { mentionKey: 'beta', entity: 'beta', messageIndex: 0, quote: 'Beta', occurrence: 0 }],
+      separate: [['alpha', 'beta'] as [string, string]], roles: [{ subject: 'alpha', object: 'beta', relationKeywords: ['使用'] }], checks: ['Keep roles and identities.'] };
+    const excerpts = qualityInput({ ...sample, provenance: 'synthetic', reviewChecks: sample.checks }).excerpts;
+    const packet = JSON.parse(JSON.stringify(modelWindow()).replaceAll('record-1', 'role-check:0'));
+    const checked = checkWindowExtractionResponse(packet, excerpts);
+    expect(checkCriticalEntities(sample, checked).separations[0].passed).toBe(true);
+    expect(checkCriticalEntities(sample, checked).roles[0].status).toBe('matched');
+    packet.proposals[0].draft.content.statements[0].subject.entityId = 'tool'; packet.proposals[0].draft.content.statements[0].object.entityId = 'project';
+    expect(checkCriticalEntities(sample, checkWindowExtractionResponse(packet, excerpts)).roles[0].status).toBe('mismatched');
+    packet.proposals = []; packet.entities = packet.entities.slice(0, 1); packet.mentions[1].entityId = 'project';
+    const merged = checkWindowExtractionResponse(packet, excerpts); expect(merged.analysis.rejected).toEqual([]);
+    const result = checkCriticalEntities(sample, merged);
+    expect(result.criticalMentions.every(mention => mention.exact)).toBe(true);
+    expect(result.separations[0].passed).toBe(false); expect(result.roles[0].status).toBe('not_observed');
+    expect(result.semanticReview).toBe('pending');
   });
   it('requires explicit model and output, rejecting malformed or repeated flags before calling a model', () => {
     expect(parseQualityArguments(['--model', 'fixed-model', '--output', '/outside/new'])).toEqual({

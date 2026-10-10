@@ -54,6 +54,14 @@ omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-i
 
 `entities` reads the current revision by default; use `--entity-revision` for history. Correction drafts contain only the returned `revision.entities` and `revision.mentions`. Preserve existing identities; new entities/mentions use distinct `new:<local-name>` identifiers, which the host replaces with UUIDs. An existing mention identity cannot move to different text. Mentions must exactly reference the selected source, and every entity needs an admitted mention. Use `identityStatus: unresolved` with `uncertainties` for unknown entities. `possibleEntityIds` may reference proposed entities; do not select one as an established identity.
 
+Without `--analysis`, `entities` searches current objects across workspace analyses:
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --query Atlas --identity-status unresolved --page-size 20 --json
+```
+
+Search covers names, source mentions, qualifiers, and origin. `--source-status unavailable` finds unavailable-source results; `--page` selects a page. Same-name results preserve separate analysis/entity identities. JSON includes analysis/entity/revision identities, mention and linked-knowledge counts, and a separate older-binding count. Unreadable knowledge makes counts `null`, not zero. Corrupt analyses contribute to `unavailableAnalyses` rather than disappearing silently.
+
 Corrections append an entity revision without rewriting knowledge. To apply a chosen revision, inspect each statement's subject/object. Copy the referenced catalog entities' `entityId`, `label`, and `description` into the knowledge draft. Explicitly choose roles after a split:
 
 ```bash
@@ -85,6 +93,8 @@ Review the content, conditions, and unknowns, then use **Inspect evidence** to l
 Reopen retained content under **Knowledge → Extracted knowledge**. Retention does not automatically edit artifacts; **Generate knowledge artifact** starts explicit generation and saving.
 
 Results, extraction history, and a conversation's extracted knowledge offer **Inspect entities and references**, including zero-candidate results. Candidate details open the bound entity revision. Inspect names, qualifiers, ambiguity, mention assignments, and source text. Add an entity and reassign mentions to split it, or explicitly merge/remove false entities. Select source text to add an omitted mention. Save with a correction reason, then choose **Apply current entity revision** in knowledge details and inspect every subject/object before saving a knowledge revision. Entity inspection is optional for each extraction.
+
+**Knowledge → Entities** provides separate search and pagination, with identity-ambiguity and source-availability filters. Select an entity to inspect qualifiers, possible identities, highlighted source spans, message roles/times, and its actual subject/object roles in linked knowledge. Switch historical revisions, return to the source conversation, or open corrections. Narrow screens switch between list and detail. Knowledge links show the entity revision actually bound by the current knowledge revision; older bindings have an explicit notice and inspection link. Corrections do not automatically rewrite knowledge. Saved mentions remain visible after source deletion, but cannot be rechecked or corrected. Entity links carry workspace, analysis, entity, and optional exact revision identities; identical names never merge results.
 
 ## Organize and find knowledge
 
@@ -139,14 +149,14 @@ For initial acceptance, inspect source fidelity, scope and future usefulness, re
 
 ## Reproduce extraction quality checks
 
-Entity coverage has a separate 12-case corpus, `test/fixtures/entity-extraction-quality.json`: names and pronouns, homonyms, changing statement roles, later correction, abstract plans, entities without knowledge, unresolved references, missing context, environment instances, repeated quotations, untrusted source instructions, and an empty window. Critical positions, identity separations, uncertainty, and role checks are frozen before output; the model receives source messages and coverage limits, never these answers.
+Entity coverage uses the 16-case `test/fixtures/entity-extraction-quality.json` corpus (`omk-entity-quality/v2`). Beyond the original 12 cases it covers tool/log granularity, project-scoped paths and explicit renaming, corrections across turns with environment separation, and plans versus execution. Critical positions, identity separations, uncertainty, and role checks are frozen before output; the model receives source messages and coverage limits, never these answers. These remain synthetic cases, not a real-log distribution.
 
 ```bash
 yarn build:runtime
-node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --output /absolute/outside/repository/new-entity-run
+node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --repeat 2 --output /absolute/outside/repository/new-entity-run
 ```
 
-The tool makes at most 12 calls without automatic retries. Use `--prompt /absolute/previous-run/prompt.json` for a frozen prompt using the current v3 format; retain exact prompt bytes, corpus and input digests, and review outputs separately. Output must be a new directory outside the checkout. A successful exit means capture and structural admission succeeded, not semantic acceptance. Inspect and authorize message transmission before model calls; unreported cost remains unknown. The completed [v2/v3 report](../explanation/entity-extraction-quality.md) includes original evidence and its self-review limits; v2 is historical evidence and can no longer be replayed with the current tool.
+Each case defaults to one call; `--repeat 2` makes two independent samples, at most 32 calls, without automatic retries. Separate subdirectories preserve each output. `critical-checks.json` uses `omk-entity-critical-checks/v1` to distinguish exact/containing spans, identity groups, separation, ambiguity, and observed knowledge roles. Optional knowledge omissions differ from role errors; extra entities still need semantic review. Repeated sampling is not deterministic replay or population-level stability evidence. Use `--prompt /absolute/previous-run/prompt.json` for a frozen prompt using the current v3 format; retain exact prompt bytes, corpus and input digests, and review outputs separately. Output must be a new directory outside the checkout. A successful exit means capture and structural admission succeeded, not semantic acceptance. Inspect and authorize message transmission before model calls; unreported cost remains unknown. The completed [v2/v3 report](../explanation/entity-extraction-quality.md) includes original evidence and its self-review limits; v2 is historical evidence and can no longer be replayed with the current tool.
 
 Contributors can run six fixed cases in `test/fixtures/knowledge-extraction-quality.json`: empty content, unverified success, later correction, conditional rules, insufficient evaluation evidence, and a single outcome with gaps. These are synthetic scenarios and a repository rule excerpt, with review criteria written before generation; they are not an independently reviewed gold set or a representative sample of real conversations.
 

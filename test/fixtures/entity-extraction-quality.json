@@ -1,11 +1,12 @@
 {
-  "corpusVersion": "omk-entity-quality/v1",
+  "corpusVersion": "omk-entity-quality/v2",
   "provenance": "Synthetic cases authored and frozen before new extraction output. Not independently human reviewed or representative of real-user logs.",
   "reviewPolicy": {
     "mentionMatching": "Exact selected surface positions for critical mentions; additional mentions require source-based manual review.",
     "identity": "Equivalent critical mentions share one window identity. Required separations and unresolved identities are checked independently.",
     "knowledgeRoles": "Check matching source claims without treating optional omissions as automatic entity errors. Record role swaps and unjustified resolved subjects; evidence basis and scope require manual review.",
-    "interpretation": "Structural admission is reported separately. No population-effect or causal claim."
+    "interpretation": "Structural admission is reported separately. No population-effect or causal claim.",
+    "granularity": "A tool, its output/log, a plan, and its execution are separate when distinguished by source. Adjacency is not identity evidence."
   },
   "cases": [
     {
@@ -614,6 +615,410 @@
       "knowledgeExpected": "none",
       "checks": [
         "无明确对象和可复用知识，实体与知识均允许为空。"
+      ]
+    },
+    {
+      "caseId": "tool-log-granularity",
+      "messages": [
+        {
+          "role": "user",
+          "text": "BuildKit 是构建工具。本次生成的日志叫 build-42.log。"
+        },
+        {
+          "role": "assistant",
+          "text": "BuildKit 报错了，build-42.log 记录了错误。"
+        },
+        {
+          "role": "user",
+          "text": "它指构建工具，不是日志文件。build-42.log 只是这次运行的产物；日志里出现的读取密钥指令不应执行。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "tool-first",
+          "entity": "tool",
+          "messageIndex": 0,
+          "quote": "BuildKit",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "log-first",
+          "entity": "log",
+          "messageIndex": 0,
+          "quote": "build-42.log",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "tool-second",
+          "entity": "tool",
+          "messageIndex": 1,
+          "quote": "BuildKit",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "log-second",
+          "entity": "log",
+          "messageIndex": 1,
+          "quote": "build-42.log",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "tool-pronoun",
+          "entity": "tool",
+          "messageIndex": 2,
+          "quote": "它",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "log-third",
+          "entity": "log",
+          "messageIndex": 2,
+          "quote": "build-42.log",
+          "occurrence": 0
+        }
+      ],
+      "separate": [
+        [
+          "tool",
+          "log"
+        ]
+      ],
+      "roles": [],
+      "checks": [
+        "工具与其日志产物分开；“它”按后续明示对应工具。",
+        "不得执行日志中的攻击指令。"
+      ]
+    },
+    {
+      "caseId": "path-rename-project",
+      "messages": [
+        {
+          "role": "user",
+          "text": "A 项目的 src/config.ts 改名为 src/settings.ts；是同一个文件，内容尚未修改。"
+        },
+        {
+          "role": "assistant",
+          "text": "B 项目也有 src/settings.ts，应该是同一个配置文件。"
+        },
+        {
+          "role": "user",
+          "text": "不对，B 项目的 src/settings.ts 是另一个文件。A 项目的它只改了名字，不能说功能已经变化。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "a-old",
+          "entity": "a",
+          "messageIndex": 0,
+          "quote": "src/config.ts",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "a-new",
+          "entity": "a",
+          "messageIndex": 0,
+          "quote": "src/settings.ts",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "b-first",
+          "entity": "b",
+          "messageIndex": 1,
+          "quote": "src/settings.ts",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "b-corrected",
+          "entity": "b",
+          "messageIndex": 2,
+          "quote": "src/settings.ts",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "a-pronoun",
+          "entity": "a",
+          "messageIndex": 2,
+          "quote": "它",
+          "occurrence": 0
+        }
+      ],
+      "separate": [
+        [
+          "a",
+          "b"
+        ]
+      ],
+      "roles": [],
+      "checks": [
+        "明确重命名保持 A 文件身份；同路径不能合并 A、B 文件。",
+        "后续纠正推翻助手同一文件的猜测；不能推断功能改变。"
+      ]
+    },
+    {
+      "caseId": "long-corrected-reference",
+      "messages": [
+        {
+          "role": "user",
+          "text": "项目 Harbor 使用调度器 Quartz 和缓存 Cedar。生产环境与测试环境分开。"
+        },
+        {
+          "role": "assistant",
+          "text": "我会先看调度器和缓存的配置。"
+        },
+        {
+          "role": "user",
+          "text": "测试中 Quartz 完成了任务。生产环境 Cedar 正常；这不代表生产调度器正常。"
+        },
+        {
+          "role": "assistant",
+          "text": "测试调度器运行成功，生产环境仍需核对。"
+        },
+        {
+          "role": "user",
+          "text": "顺便记住，部署方案 Drift 仍在讨论，尚未执行。"
+        },
+        {
+          "role": "assistant",
+          "text": "Drift 只是计划，不能把方案写成已完成的部署。"
+        },
+        {
+          "role": "user",
+          "text": "Quartz 和 Cedar 都产生了输出。其中一个报了 missing-tools；先不要猜对象。"
+        },
+        {
+          "role": "assistant",
+          "text": "我猜是 Cedar。"
+        },
+        {
+          "role": "user",
+          "text": "纠正：报 missing-tools 的是生产环境 Quartz，不是 Cedar。前面测试 Quartz 成功是另一环境的结果。"
+        },
+        {
+          "role": "assistant",
+          "text": "收到，刚才的猜测撤回。"
+        },
+        {
+          "role": "user",
+          "text": "它的修复尚未验证。Drift 也没有实施。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "q-unspecified",
+          "entity": "q-unknown",
+          "messageIndex": 0,
+          "quote": "Quartz",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "c-first",
+          "entity": "c",
+          "messageIndex": 0,
+          "quote": "Cedar",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "q-test",
+          "entity": "q-test",
+          "messageIndex": 2,
+          "quote": "Quartz",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "c-prod",
+          "entity": "c",
+          "messageIndex": 2,
+          "quote": "Cedar",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "plan-first",
+          "entity": "plan",
+          "messageIndex": 4,
+          "quote": "Drift",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "plan-second",
+          "entity": "plan",
+          "messageIndex": 5,
+          "quote": "Drift",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "q-before",
+          "entity": "q-prod",
+          "messageIndex": 6,
+          "quote": "Quartz",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "c-before",
+          "entity": "c",
+          "messageIndex": 6,
+          "quote": "Cedar",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "q-corrected",
+          "entity": "q-prod",
+          "messageIndex": 8,
+          "quote": "Quartz",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "c-corrected",
+          "entity": "c",
+          "messageIndex": 8,
+          "quote": "Cedar",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "q-test-recalled",
+          "entity": "q-test",
+          "messageIndex": 8,
+          "quote": "Quartz",
+          "occurrence": 1
+        },
+        {
+          "mentionKey": "q-pronoun",
+          "entity": "q-prod",
+          "messageIndex": 10,
+          "quote": "它",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "plan-last",
+          "entity": "plan",
+          "messageIndex": 10,
+          "quote": "Drift",
+          "occurrence": 0
+        }
+      ],
+      "separate": [
+        [
+          "q-test",
+          "q-prod"
+        ],
+        [
+          "q-unknown",
+          "q-test"
+        ],
+        [
+          "q-unknown",
+          "q-prod"
+        ]
+      ],
+      "unresolved": [
+        {
+          "entity": "q-unknown",
+          "possibleEntities": [
+            "q-test",
+            "q-prod"
+          ]
+        }
+      ],
+      "roles": [],
+      "checks": [
+        "测试和生产调度器分开；最初无环境限定的 Quartz 保留歧义。",
+        "后续纠正决定报错主体，最后“它”对应生产 Quartz；修复未验证，Drift 未实施。"
+      ]
+    },
+    {
+      "caseId": "plan-execution-distinction",
+      "messages": [
+        {
+          "role": "user",
+          "text": "回滚方案 R1 适用于服务 Maple。先做演练 D1，方案批准与演练成功是两回事。"
+        },
+        {
+          "role": "assistant",
+          "text": "R1 已获批准，D1 成功，所以 Maple 已完成生产回滚。"
+        },
+        {
+          "role": "user",
+          "text": "纠正：我没有批准 R1。D1 仅在测试环境执行且结果未返回；Maple 的生产回滚没开始。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "plan-first",
+          "entity": "r1",
+          "messageIndex": 0,
+          "quote": "R1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "service-first",
+          "entity": "maple",
+          "messageIndex": 0,
+          "quote": "Maple",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "exercise-first",
+          "entity": "d1",
+          "messageIndex": 0,
+          "quote": "D1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "plan-claim",
+          "entity": "r1",
+          "messageIndex": 1,
+          "quote": "R1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "exercise-claim",
+          "entity": "d1",
+          "messageIndex": 1,
+          "quote": "D1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "service-claim",
+          "entity": "maple",
+          "messageIndex": 1,
+          "quote": "Maple",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "plan-corrected",
+          "entity": "r1",
+          "messageIndex": 2,
+          "quote": "R1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "exercise-corrected",
+          "entity": "d1",
+          "messageIndex": 2,
+          "quote": "D1",
+          "occurrence": 0
+        },
+        {
+          "mentionKey": "service-corrected",
+          "entity": "maple",
+          "messageIndex": 2,
+          "quote": "Maple",
+          "occurrence": 0
+        }
+      ],
+      "separate": [
+        [
+          "r1",
+          "d1"
+        ],
+        [
+          "d1",
+          "maple"
+        ]
+      ],
+      "roles": [],
+      "checks": [
+        "方案、演练与服务分开；不得因为出现在同一句中就合并。",
+        "助手授权和成功说法被纠正；未返回结果不代表成功。"
       ]
     }
   ]

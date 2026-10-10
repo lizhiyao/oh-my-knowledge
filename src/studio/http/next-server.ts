@@ -15,7 +15,7 @@ import {
 import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
 import { isObservePath, loadObservePage, type ObservePage } from './pages/observe-page.js';
 
-import { isKnowledgeCandidatesPath, isKnowledgePath, loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
+import { isKnowledgeCandidatesPath, isKnowledgeEntitiesPath, isKnowledgePath, loadKnowledgePage, type KnowledgePage } from './pages/knowledge-page.js';
 import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-page.js';
 import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
@@ -49,7 +49,7 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       const inbox = inboxRoutes && isInboxPath(path);
       const observe = pageRoutes && (inbox || isObservePath(path));
       const knowledge = pageRoutes && isKnowledgePath(path);
-      const candidates = pageRoutes && isKnowledgeCandidatesPath(path);
+      const candidates = pageRoutes && (isKnowledgeCandidatesPath(path) || isKnowledgeEntitiesPath(path));
       const health = pageRoutes && isHealthPath(path);
       const agents = pageRoutes && isAgentsPath(path);
       if (!measure && !observe && !knowledge && !candidates && !health && !agents && !path.startsWith('/_next/')) return false;

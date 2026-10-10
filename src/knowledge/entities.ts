@@ -47,6 +47,8 @@ export const EntityAnalysisWriteSchema = z.strictObject({
 });
 export type EntityAnalysisWrite = z.infer<typeof EntityAnalysisWriteSchema>;
 export interface EntityAnalysisStore {
+  /** A corrupt analysis is reported separately; other saved analyses remain discoverable. */
+  list(): { histories: EntityAnalysisEnvelope[]; unavailable: number };
   read(analysisId: string): EntityAnalysisEnvelope;
   write(command: EntityAnalysisWrite, actor: KnowledgeActor): EntityAnalysisEnvelope['receipts'][number];
 }

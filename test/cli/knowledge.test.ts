@@ -48,6 +48,10 @@ describe('observe knowledge command wiring', () => {
     const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture',
       generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
     const base = ['--workspace', workspace, '--lang', 'zh'];
+    const found = JSON.parse((await runCommand(ObserveKnowledge, ['entities', ...base, '--query', 'Alpha', '--page-size', '1', '--json'], { cwd: root })).stdout);
+    expect(found).toMatchObject({ total: 1, pageSize: 1, rows: [{ label: 'Alpha', knowledgeCount: 1 }] });
+    expect((await runCommand(ObserveKnowledge, ['entities', ...base, '--query', 'Alpha'], { cwd: root })).stdout).toContain('1 个匹配对象');
+    await expect(runCommand(ObserveKnowledge, ['entities', ...base, '--entity-revision', 'orphan'], { cwd: root })).rejects.toMatchObject({ code: 2 });
     const inspect = await runCommand(ObserveKnowledge, ['entities', ...base, '--analysis', run.runId], { cwd: root });
     expect(inspect.stdout).toContain('实体分析'); expect(inspect.stdout).toContain('Alpha');
     const before = app.entities(run.runId);

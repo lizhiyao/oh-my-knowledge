@@ -11,6 +11,8 @@ import type { ExtractionProposal } from './proposals.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { EntityModelSchema } from './entities.js';
 import { checkWindowExtractionResponse } from './window-proposals.js';
+import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
+import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
@@ -48,6 +50,50 @@ export class KnowledgeApplication {
     const revision = history.revisions.find(value => value.revisionId === (revisionId ?? history.writeHeadRevisionId));
     if (!revision) throw new Error('Entity analysis revision is missing.');
     return { history, revision, source: this.source(history.snapshotId, history.sourceVersion) };
+  }
+  private entityOrigin(history: ReturnType<EntityAnalysisStore['read']>, source: ReturnType<KnowledgeApplication['source']>) {
+    if (source.status === 'available') return source.window.origin;
+    try {
+      const run = this.ports.runs.read(history.analysisId);
+      return run.snapshotId === history.snapshotId && run.sourceVersion === history.sourceVersion ? run.origin : undefined;
+    } catch { return undefined; }
+  }
+  private entityKnowledge() {
+    try { return { status: 'available' as const, histories: this.ports.knowledge.list() }; }
+    catch { return { status: 'unavailable' as const, histories: [] }; }
+  }
+  queryEntities(input: EntityQuery = {}) {
+    const saved = this.ports.entities.list(); const knowledge = this.entityKnowledge();
+    const byAnalysis = new Map<string, KnowledgeEnvelope[]>();
+    for (const history of knowledge.histories) {
+      const ref = history.grounding.find(value => value.revisionId === history.writeHeadRevisionId)?.entityAnalysisRef;
+      if (ref) { const group = byAnalysis.get(ref.analysisId) ?? []; group.push(history); byAnalysis.set(ref.analysisId, group); }
+    }
+    const rows: EntitySearchRow[] = saved.histories.flatMap(history => {
+      const revision = history.revisions.at(-1)!;
+      const source = this.source(history.snapshotId, history.sourceVersion); const origin = this.entityOrigin(history, source);
+      return revision.entities.map(entity => {
+        const mentions = revision.mentions.filter(mention => mention.entityId === entity.entityId);
+        const links = entityKnowledgeLinks(byAnalysis.get(history.analysisId) ?? [], history, entity.entityId);
+        return { ...entity, analysisId: history.analysisId, revisionId: revision.revisionId, generation: history.generation,
+          revisedAt: revision.revisedAt, mentionCount: mentions.length, surfaces: [...new Set(mentions.map(mention => mention.selection.quote))],
+          sourceStatus: source.status, ...(origin ? { origin } : {}),
+          knowledgeCount: knowledge.status === 'available' ? links.length : null,
+          outdatedKnowledgeCount: knowledge.status === 'available' ? links.filter(link => !link.currentEntityRevision).length : null };
+      });
+    });
+    return { ...queryEntityRows(rows, input), analysisCount: saved.histories.length, unavailableAnalyses: saved.unavailable, knowledgeStatus: knowledge.status };
+  }
+  entityDetail(analysisId: string, entityId: string, revisionId?: string) {
+    const detail = this.entities(analysisId, revisionId);
+    const entity = detail.revision.entities.find(value => value.entityId === entityId);
+    if (!entity) throw new Error('Entity is absent from the selected revision.');
+    const knowledge = this.entityKnowledge(); const origin = this.entityOrigin(detail.history, detail.source);
+    const mentionChecks = detail.revision.mentions.filter(mention => mention.entityId === entityId).map(mention => ({ mentionId: mention.mentionId,
+      positionStatus: detail.source.status === 'unavailable' ? 'unavailable' as const
+        : validateEvidenceSelection(mention.selection, detail.source.window.excerpts).length ? 'mismatch' as const : 'matched' as const }));
+    return { ...detail, entity, knowledge: entityKnowledgeLinks(knowledge.histories, detail.history, entityId),
+      mentionChecks, knowledgeStatus: knowledge.status, ...(origin ? { origin } : {}) };
   }
   detail(knowledgeId: string, revisionId?: string) {
     const history = this.ports.knowledge.read(knowledgeId);

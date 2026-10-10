@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../../../knowledge/contracts.js';
 import { applyEntityAnalysisWrite, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, validateEntityAnalysisHistory,
@@ -16,6 +16,21 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
   private path(id: string) { return join(this.root, `${EntityAnalysisWriteSchema.shape.analysisId.parse(id)}.json`); }
   private checkRoot() {
     if (existsSync(this.root)) { const stat = lstatSync(this.root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid entity directory.'); }
+  }
+  list(): ReturnType<EntityAnalysisStore['list']> {
+    checkStorageDirectory(this.workspaceRoot); this.checkRoot();
+    const histories: EntityAnalysisEnvelope[] = []; let unavailable = 0;
+    if (!existsSync(this.root)) return { histories, unavailable };
+    const files = readdirSync(this.root).filter(name => name.endsWith('.json')).sort();
+    // A query is never silently truncated into an apparently complete catalog.
+    if (files.length > 4096) throw new Error('Entity catalog capacity exceeded.');
+    let bytes = 0;
+    for (const name of files) {
+      try { bytes += lstatSync(join(this.root, name)).size; } catch { unavailable += 1; continue; }
+      if (bytes > 64 * 1024 * 1024) throw new Error('Entity catalog capacity exceeded.');
+      try { histories.push(this.read(name.slice(0, -5))); } catch { unavailable += 1; }
+    }
+    return { histories, unavailable };
   }
   read(id: string): EntityAnalysisEnvelope {
     checkStorageDirectory(this.workspaceRoot); this.checkRoot(); const path = this.path(id); const stat = lstatSync(path);

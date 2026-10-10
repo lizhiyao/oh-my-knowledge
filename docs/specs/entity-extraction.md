@@ -10,6 +10,8 @@ The first release covers one immutable source window. Matching names, paths, typ
 
 Users keep the select-records → extract entry point. Results and history provide optional entity inspection and correction, including runs with no knowledge candidates. Entity review is not a mandatory extra step.
 
+The workspace entity catalog is a query projection of existing window analyses, not a canonical cross-log identity registry. Studio and CLI search current entities, mentions, qualifiers, and origins while preserving analysis/entity/revision identities; exact revisions support history inspection. Linked knowledge counts only current knowledge revisions and exposes their actual entity bindings and subject/object roles. Older bindings, discard choices, and unavailable sources remain visible without implying verification.
+
 ## 2. Research and decisions
 
 | Primary source | Relevant practice | OMK decision |
@@ -62,6 +64,8 @@ Only selected excerpts and scope limitations are sent. Native paths stay local; 
 This is a `BREAKING-SCHEMA` reduction in supported formats: old envelopes, prompt runs, and model output are no longer read, resumed, or converted. There is no migration command, automatic rewrite, or deletion; old files remain untouched. Choose a new empty knowledge directory and extract again from the original logs. Run storage explicitly changes from v2 to v3. Older runs are unsupported, including v2 runs using the v3 prompt; knowledge histories remain v2. Prompt bytes and admission semantics are unchanged, and historical quality evidence is not recalculated.
 
 Writes serialize through the workspace's `.knowledge-write.lock`. Only a local PID proven exited by SIG0 returning ESRCH permits recovery; lock age and run status are insufficient. Recoverers serialize by the original owner identity to avoid deleting a later live lock. Interrupted recovery guards follow the same rule.
+
+The entity catalog reads current `entities` histories without writing duplicate entities or a persistent index; storage versions stay unchanged. Corrupt, unsupported, and symlink files count as unreadable analyses; healthy analyses remain searchable with an explicit incomplete-result notice. One scan allows at most 4,096 JSON files and 64 MiB total file size, then fails rather than silently truncating. Queries default to 20 entities per page, allow at most 100, and sort by revision time and stable identities. Unreadable linked knowledge makes counts unknown, not zero. Unavailable sources prevent correction.
 
 ## 7. Quality and completion evidence
 

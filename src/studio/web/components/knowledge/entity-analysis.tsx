@@ -25,8 +25,8 @@ export function EntityAnalysisSummary({ run, lang, disabled = false, onOpen }: {
   </div>;
 }
 
-export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, lang, onClose, onSaved }: {
-  workspace: string; analysisId: string; initialRevision?: string; lang: Language; onClose(): void; onSaved?(): void;
+export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, initialEntityId, lang, onClose, onSaved }: {
+  workspace: string; analysisId: string; initialRevision?: string; initialEntityId?: string; lang: Language; onClose(): void; onSaved?(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [detail, setDetail] = useState<KnowledgeEntityAnalysisDetail>();
@@ -83,7 +83,8 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, l
           onChange={revision => void load(revision)} options={detail.history.revisions.map((revision, index) => ({ value: revision.revisionId,
             label: `${index + 1} · ${displayTime(revision.revisedAt)} · ${revision.revisionReason}` }))}/></label>
         {!current && <Alert type="info" title={t('正在查看历史修订。读取最新修订后可纠正。', 'Viewing a historical revision. Load the current revision to correct it.')}/>}
-        <EntityAnalysisEditor detail={detail} draft={draft} editable={editable} lang={lang} onChange={setDraft}/>
+        {initialEntityId && !draft.entities.some(entity => entity.entityId === initialEntityId) && <Alert type="info" title={t('所选对象不在此修订中。请选择其他对象，或切换历史修订核对。', 'The selected entity is absent from this revision. Choose another entity or inspect history.')}/>}
+        <EntityAnalysisEditor detail={detail} draft={draft} initialEntityId={initialEntityId} editable={editable} lang={lang} onChange={setDraft}/>
         {!basicComplete && editable && <Alert type="info" title={t('请补齐对象名称、描述和原文提及；歧义需有理由，可能目标须指向明确提出的对象。', 'Complete names, descriptions, and source mentions. Unresolved identities need reasons and proposed targets.')}/>}
         <label className="entity-history-label">{t('纠正理由', 'Correction reason')}<Input.TextArea disabled={!editable} value={reason} rows={2}
           placeholder={t('说明哪些对象或对应关系需要纠正，以及原文依据。', 'Describe the correction and the original evidence.')} onChange={event => setReason(event.target.value)}/></label>
@@ -103,11 +104,11 @@ export function EntityAnalysisContext({ detail, lang }: { detail: KnowledgeEntit
 }
 
 /** User-authored local edits only. Admission and host identities are owned by the application. */
-export function EntityAnalysisEditor({ detail, draft, editable, lang, onChange }: {
-  detail: KnowledgeEntityAnalysisDetail; draft: Draft; editable: boolean; lang: Language; onChange(value: Draft): void;
+export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable, lang, onChange }: {
+  detail: KnowledgeEntityAnalysisDetail; draft: Draft; initialEntityId?: string; editable: boolean; lang: Language; onChange(value: Draft): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  const [selected, setSelected] = useState(draft.entities[0]?.entityId ?? '');
+  const [selected, setSelected] = useState(initialEntityId ?? draft.entities[0]?.entityId ?? '');
   const [mergeTarget, setMergeTarget] = useState<string>();
   const [excerptId, setExcerptId] = useState('');
   const [range, setRange] = useState<{ start: number; end: number }>();
@@ -122,10 +123,10 @@ export function EntityAnalysisEditor({ detail, draft, editable, lang, onChange }
     setExcerptId(selection.evidenceRef); setRange({ start: selection.start, end: selection.end });
   }
   useEffect(() => { if (range && excerptField.current) { excerptField.current.focus(); excerptField.current.setSelectionRange(range.start, range.end); } }, [excerptId, range]);
-  useEffect(() => { if (!draft.entities.some(entity => entity.entityId === selected)) setSelected(draft.entities[0]?.entityId ?? ''); }, [draft, selected]);
+  useEffect(() => { if (!draft.entities.some(entity => entity.entityId === selected)) setSelected(''); }, [draft, selected]);
   return <div className="entity-editor">
     <div className="entity-editor-list"><h3>{t('对象', 'Entities')}</h3>
-      {draft.entities.length ? <Select aria-label={t('选择核对对象', 'Choose entity')} style={{ width: '100%' }} value={selected} onChange={value => { setSelected(value); setMergeTarget(undefined); }}
+      {draft.entities.length ? <Select aria-label={t('选择核对对象', 'Choose entity')} placeholder={t('明确选择对象', 'Explicitly choose an entity')} style={{ width: '100%' }} value={selected || undefined} onChange={value => { setSelected(value); setMergeTarget(undefined); }}
         options={draft.entities.map(entity => ({ value: entity.entityId, label: optionLabel(entity) }))}/> : <Empty description={t('没有接纳的实体。可从来源补充遗漏的提及。', 'No admitted entities. Add omitted mentions from the source.')}/>}
       <Button disabled={!editable} onClick={() => {
         const entityId = `new:${crypto.randomUUID()}`; edit(next => next.entities.push({ entityId, label: '', description: '', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [] })); setSelected(entityId);

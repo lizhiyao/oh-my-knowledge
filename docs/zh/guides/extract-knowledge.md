@@ -54,6 +54,14 @@ omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-i
 
 `entities` 默认读取最新实体修订，可用 `--entity-revision` 查看历史。纠正草稿只包含返回的 `revision.entities` 和 `revision.mentions`。已有身份保持不变；新增实体或提及使用唯一的 `new:<local-name>`，由宿主分配 UUID。同一提及身份不能换到另一段原文。提及必须精确引用所选来源；每个对象至少有一处有效提及。未知对象使用 `identityStatus: unresolved`，保留 `uncertainties`，可填写指向明确对象的 `possibleEntityIds`，不任选一个替代。
 
+省略 `--analysis` 时，`entities` 检索工作区内各分析的当前对象：
+
+```bash
+omk observe knowledge entities --workspace ./knowledge --query Atlas --identity-status unresolved --page-size 20 --json
+```
+
+搜索覆盖名称、原文提及、限定条件及来源；`--source-status unavailable` 查找原文不可用的结果，`--page` 翻页。同名结果保持各自分析和实体身份。JSON 包含分析／实体／修订身份、提及与关联知识数量，旧绑定数量单独列出；关联知识不可读时数量为 `null`，不能当作零。损坏分析计入 `unavailableAnalyses`，不会悄悄消失。
+
 纠正实体保存新修订，不覆盖已生成的知识。将选定实体修订应用到知识时，先核对每条陈述的主体／对象；从实体修订取所引用实体的 `entityId`、`label`、`description`，写入知识草稿的 `entities`。拆分后明确选择新主体／对象，再执行：
 
 ```bash
@@ -85,6 +93,8 @@ omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id>
 保留内容可从“知识 → 提炼的知识”重新打开。保留不会自动改写载体；点击“生成知识载体”才进入生成与保存。
 
 提炼结果、提炼记录和对话的知识待办提供“核对实体与指代”，零知识候选也可查看独立实体结果。知识详情可打开绑定的实体修订。实体抽屉中核对名称、限定信息、歧义、提及对应及原文；可新增对象后重新分配提及以拆分，也可明确合并或删除误识别。选择来源消息并选中原文可补充遗漏提及。填写纠正理由后保存实体新修订，再在知识详情点击“应用实体最新修订”，核对每条陈述的主体／对象，保存新的知识修订。无需每次提炼先经过实体核对。
+
+“知识 → 实体”提供独立检索与分页，按身份歧义或原文可用性筛选。选择对象即可查看限定信息、可能对应、原文高亮、来源消息的角色／时间，以及关联知识中主体／对象的实际角色。详情可以切换历史修订、回到来源对话，或打开纠正抽屉；窄屏在列表与详情之间切换。关联知识始终展示当前知识修订实际绑定的实体版本，旧绑定有明确提示和查看链接；保存实体纠正不自动改写知识。来源删除后保存的提及仍显示，但无法重新核对或纠正。实体链接可带工作区、分析、实体和明确修订身份，名称相同不会自动合并。
 
 ## 组织与检索知识
 
@@ -139,14 +149,14 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 
 ## 复现提取质量检查
 
-实体覆盖另有 12 场景语料 `test/fixtures/entity-extraction-quality.json`：名称与代词、同名对象、陈述角色变化、后续纠正、抽象计划、无知识的实体、未消解指代、缺少上下文、环境实例、重复引用、不可信来源指令及空窗口。关键位置、必须分开的身份、歧义和角色标准在输出前冻结；模型只接收来源消息及覆盖限制，不接收这些答案。
+实体覆盖使用 16 场景语料 `test/fixtures/entity-extraction-quality.json`（`omk-entity-quality/v2`）：原有 12 类场景外，增加工具与日志粒度、跨项目路径及明确改名、跨轮纠正与环境区分、方案与执行分开。关键位置、必须分开的身份、歧义和角色标准在输出前冻结；模型只接收来源消息及覆盖限制，不接收这些答案。这仍是合成场景，不代表真实日志分布。
 
 ```bash
 yarn build:runtime
-node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --output /absolute/outside/repository/new-entity-run
+node dist-scripts/bench/entity-extraction-quality.js --model <fixed-model> --repeat 2 --output /absolute/outside/repository/new-entity-run
 ```
 
-工具最多调用 12 次，无自动重试。可用 `--prompt /absolute/previous-run/prompt.json` 选择当前 v3 格式的冻结提示词；保留精确提示词字节、语料及输入摘要，另行复核输出。输出必须是仓库外的新目录。退出成功表示采集与结构接纳完成，不代表语义通过。调用前核对并授权发送消息；未报告费用仍为未知。已完成的[v2／v3 报告](../explanation/entity-extraction-quality.md)提供原始证据及自审限制；v2 是历史证据，当前工具不再支持重放。
+默认每个场景调用一次；`--repeat 2` 是两次独立采样，最多 32 次调用，无自动重试。每次输出保存在独立子目录，`critical-checks.json` 按 `omk-entity-critical-checks/v1` 分开记录精确／包含位置、身份组、分离、歧义及已观察到的知识角色；遗漏可选知识与角色错误分开，额外对象仍需语义复核。重复调用不是重放保证，也不证明总体稳定性。可用 `--prompt /absolute/previous-run/prompt.json` 选择当前 v3 格式的冻结提示词；保留精确提示词字节、语料及输入摘要，另行复核输出。输出必须是仓库外的新目录。退出成功表示采集与结构接纳完成，不代表语义通过。调用前核对并授权发送消息；未报告费用仍为未知。已完成的[v2／v3 报告](../explanation/entity-extraction-quality.md)提供原始证据及自审限制；v2 是历史证据，当前工具不再支持重放。
 
 贡献者可运行 `test/fixtures/knowledge-extraction-quality.json` 中的 6 个固定场景：无可复用内容、未验证的成功自述、后续纠正、条件性规则、评测证据不足，以及存在缺口的单次结果。场景来自合成消息和仓库规则摘录，复核标准在生成前确定；它们尚不是经过独立复核的金标准，也不代表真实对话总体。
 

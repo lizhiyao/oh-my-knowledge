@@ -109,6 +109,15 @@ describe('Studio candidate action boundary', () => {
     const inspection = await post({ operation: 'entities', analysisId: run.runId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
     const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
+    const catalog = await (await post({ operation: 'entity-catalog', query: 'Alpha', pageSize: 1 })).json();
+    expect(catalog.rows[0]).toMatchObject({ analysisId: run.runId, mentionCount: 1, knowledgeCount: 1 });
+    expect(JSON.stringify(catalog)).not.toContain('rawOutput'); expect(JSON.stringify(catalog)).not.toContain(root);
+    for (const bad of [{ page: 0 }, { pageSize: 101 }, { analysisId: '../private' }, { unsafe: true }]) {
+      expect((await post({ operation: 'entity-catalog', ...bad })).status).toBe(400);
+    }
+    const entityResponse = await post({ operation: 'entity-detail', analysisId: run.runId, entityId: before.revision.entities[0].entityId });
+    expect(entityResponse.status).toBe(200); const entityText = await entityResponse.text(); expect(entityText).not.toContain(root); expect(entityText).not.toContain('private-raw-value');
+    expect(JSON.parse(entityText).knowledge[0].roles[0].role).toBe('subject');
     const edit = { entities: before.revision.entities, mentions: before.revision.mentions }; edit.entities[0].label = '项目 Alpha';
     const request = { operation: 'correct-entities', analysisId: run.runId, revision: before.revision.revisionId, generation: 1, draft: edit, reason: '核对项目名称' };
     expect((await post(request, 'https://untrusted.example')).status).toBe(403);
