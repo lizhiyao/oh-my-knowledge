@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,8 @@ import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/observability/knowledge-extraction/adapters/storage-state.js';
+import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
+import type { EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
 const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined }));
 vi.mock('node:fs', async importOriginal => {
@@ -24,6 +26,41 @@ const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storag
 afterEach(() => { faults.beforeRecovery = undefined; for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 describe('current knowledge storage', () => {
+  it('rejects an entity revision that exceeds readable disk capacity, preserving the previous history and releasing locks', () => {
+    const workspace = root(); const directory = join(workspace, 'entities');
+    const store = new FileEntityAnalysisStore(directory, workspace);
+    const actor = { actorKind: 'human' as const, actorId: 'tester' };
+    const command: EntityAnalysisWrite = {
+      requestId: randomUUID(), analysisId: randomUUID(), snapshotId: randomUUID(), sourceVersion: `sha256:${'0'.repeat(64)}`,
+      expectedGeneration: 0, expectedHeadRevisionId: null,
+      revision: { revisionId: randomUUID(), revisedAt: '2026-10-10T00:00:00Z', revisedBy: actor,
+        revisionReason: '初始分析', entities: [], mentions: [], limitations: [] },
+    };
+    store.write(command, actor);
+    const path = join(directory, `${command.analysisId}.json`); const before = readFileSync(path, 'utf8');
+    const entities = Array.from({ length: 256 }, () => ({ entityId: randomUUID(), label: '对象', description: '来源中的对象',
+      qualifiers: Array<string>(32).fill('界'.repeat(670)), identityStatus: 'proposed' as const,
+      possibleEntityIds: [], uncertainties: [], referentKind: 'object' as const, componentRef: null, collection: null }));
+    const edit: EntityAnalysisWrite = { ...command, requestId: randomUUID(), expectedGeneration: 1,
+      expectedHeadRevisionId: command.revision.revisionId,
+      revision: { ...command.revision, revisionId: randomUUID(), parentRevisionId: command.revision.revisionId,
+        entities, mentions: entities.map((entity, index) => ({ mentionId: randomUUID(), entityId: entity.entityId,
+          basis: 'explicit' as const, rationale: '原文提及',
+          selection: { evidenceRef: 'record-1', start: index, end: index + 1, quote: '界' } })) },
+    };
+    const candidate = applyEntityAnalysisWrite(store.read(command.analysisId), edit, actor, 'size-check');
+    expect(Buffer.byteLength(JSON.stringify(candidate))).toBeLessThan(16 * 1024 * 1024);
+    expect(Buffer.byteLength(JSON.stringify(candidate, null, 2))).toBeGreaterThan(16 * 1024 * 1024);
+    expect(() => store.write(edit, actor)).toThrow('Entity capacity exceeded');
+    expect(readFileSync(path, 'utf8')).toBe(before);
+    expect(store.read(command.analysisId).generation).toBe(1);
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+    expect(readdirSync(directory)).toEqual([`${command.analysisId}.json`]);
+    edit.revision.entities = entities.map(entity => ({ ...entity, qualifiers: [] }));
+    store.write(edit, actor);
+    expect(store.read(command.analysisId)).toMatchObject({ generation: 2, writeHeadRevisionId: edit.revision.revisionId });
+    expect(store.list()).toMatchObject({ unavailable: 0, histories: [expect.objectContaining({ generation: 2 })] });
+  });
   it('reads an empty entity catalog without creating storage and refuses over-capacity catalogs without truncating', () => {
     const workspace = root(); const directory = join(workspace, 'entities');
     const store = new FileEntityAnalysisStore(directory, workspace);
