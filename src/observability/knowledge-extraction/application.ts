@@ -13,6 +13,7 @@ import { EntityModelSchema } from './entities.js';
 import { checkWindowExtractionResponse } from './window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
+import { mapEntityIdentity } from '../../knowledge/entity-identity.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
@@ -127,7 +128,7 @@ export class KnowledgeApplication {
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
     let run: ExtractionRun = {
-      runKind: 'knowledge-extraction-run', schemaVersion: 3,
+      runKind: 'knowledge-extraction-run', schemaVersion: 4,
       runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
       ...(window.origin ? { origin: window.origin } : {}),
       executor: model.executor, model: model.model, promptVersion: EXTRACTION_PROMPT_VERSION,
@@ -206,8 +207,7 @@ export class KnowledgeApplication {
     const entityIds = mapIds(edit.entities.map(entity => entity.entityId), knownEntities);
     const mentionIds = mapIds(edit.mentions.map(mention => mention.mentionId), knownMentions);
     const draft = EntityAnalysisDraftSchema.parse({
-      entities: edit.entities.map(entity => ({ ...entity, entityId: entityIds.get(entity.entityId),
-        possibleEntityIds: entity.possibleEntityIds.map(id => entityIds.get(id)) })),
+      entities: edit.entities.map(entity => mapEntityIdentity(entity, entityIds, mentionIds)),
       mentions: edit.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId), entityId: entityIds.get(mention.entityId) })),
       limitations: previous.revision.limitations,
     });
@@ -262,8 +262,7 @@ export class KnowledgeApplication {
     const entityAnalysis: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: run.runId,
       snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
       revision: { revisionId: this.ports.id(), revisedAt: this.ports.now(), revisedBy: actor, revisionReason: '从选定工作日志分析对象，等待核对',
-        entities: checked.analysis.entities.map(entity => ({ ...entity, entityId: entityIds.get(entity.entityId)!,
-          possibleEntityIds: entity.possibleEntityIds.map(id => entityIds.get(id)!) })),
+        entities: checked.analysis.entities.map(entity => mapEntityIdentity(entity, entityIds, mentionIds)),
         mentions: checked.analysis.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId)!, entityId: entityIds.get(mention.entityId)! })),
         limitations: window.limitations,
       } };

@@ -12,7 +12,7 @@ import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { modelWindow } from './fixtures.js';
+import { identityWindow, modelWindow } from './fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -115,7 +115,8 @@ describe('shared knowledge application', () => {
     expect(app.entityDetail(run.runId, entityId)).toMatchObject({ knowledgeStatus: 'unavailable', knowledge: [] }); read.mockRestore();
   });
   it('recovers a lost entity commit acknowledgement with the same birth intent and no second model call', async () => {
-    const { app, snapshot, model, ports, generate, runs } = setup();
+    const { app, snapshot, model, ports, generate, runs } = setup('Alpha 使用 Beta；它们共同失败。');
+    generate.mockImplementation(async (_system, input) => ({ output: JSON.stringify(identityWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 5 }));
     const original = ports.entities.write.bind(ports.entities);
     const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce((command, actor) => {
       original(command, actor); throw new Error('lost entity acknowledgement');
@@ -127,7 +128,56 @@ describe('shared knowledge application', () => {
     write.mockRestore(); expect(app.resume(runId).status).toBe('completed');
     expect(app.entities(runId).history.generation).toBe(1);
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
+    const analysis = app.entities(runId);
+    expect(analysis.history.schemaVersion).toBe(2);
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v4' });
+    const [component, instance, group] = analysis.revision.entities;
+    const [, instanceMention, groupMention] = analysis.revision.mentions;
+    expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
+    expect(group.collection).toMatchObject({ memberEntityIds: [component.entityId, instance.entityId], mentionIds: [groupMention.mentionId] });
+    expect(instance.entityId).not.toBe('tool');
+    expect(analysis.revision).toEqual(prepared.entityAnalysis!.revision);
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it('maps new correction links together and rejects broken references without changing old bindings', async () => {
+    const { app, snapshot, model } = setup('Alpha 使用 Beta；它们共同失败。');
+    model.generate = async (_system, input) => ({ output: JSON.stringify(identityWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const run = await app.generate(snapshot.snapshotId, model); const before = app.entities(run.runId);
+    const edit = structuredClone({ entities: before.revision.entities, mentions: before.revision.mentions });
+    edit.entities[0].entityId = 'new:component'; edit.mentions[0].entityId = 'new:component';
+    edit.mentions[0].mentionId = 'new:mention';
+    edit.entities[1].componentRef!.entityId = 'new:component';
+    edit.entities[1].componentRef!.mentionIds.push('new:mention');
+    edit.entities[2].collection!.memberEntityIds[0] = 'new:component';
+    const after = app.correctEntities(run.runId, before.revision.revisionId, 1, edit, '显式替换对象身份及依据');
+    expect(after.revision.entities[0].entityId).not.toBe(before.revision.entities[0].entityId);
+    expect(after.revision.entities[1].componentRef).toMatchObject({ entityId: after.revision.entities[0].entityId,
+      mentionIds: [after.revision.mentions[1].mentionId, after.revision.mentions[0].mentionId] });
+    expect(after.revision.entities[2].collection!.memberEntityIds[0]).toBe(after.revision.entities[0].entityId);
+    expect(app.entities(run.runId, before.revision.revisionId).revision).toEqual(before.revision);
+    expect(app.detail(run.committed[0].knowledgeId).grounding.entityAnalysisRef!.revisionId).toBe(before.revision.revisionId);
+    const invalid = structuredClone({ entities: after.revision.entities, mentions: after.revision.mentions });
+    invalid.entities[1].componentRef!.mentionIds = ['new:absent'];
+    expect(() => app.correctEntities(run.runId, after.revision.revisionId, 2, invalid, '无依据')).toThrow('mapping');
+    invalid.entities[1].componentRef!.mentionIds = [after.revision.mentions[1].mentionId];
+    invalid.entities[0].referentKind = 'object';
+    expect(() => app.correctEntities(run.runId, after.revision.revisionId, 2, invalid, '改变关联目标层次')).toThrow('invalid_component_target');
+    expect(app.entities(run.runId).history.generation).toBe(2);
+  });
+  it('rejects old entity and run files without rewriting them while keeping knowledge bodies readable', async () => {
+    const { app, snapshot, model, root, runs } = setup(); const run = await app.generate(snapshot.snapshotId, model);
+    const entityPath = join(root, 'entities', `${run.runId}.json`); const runPath = join(root, 'runs', `${run.runId}.json`);
+    const oldEntity = JSON.parse(readFileSync(entityPath, 'utf8')); oldEntity.schemaVersion = 1;
+    for (const entity of oldEntity.revisions[0].entities) { delete entity.referentKind; delete entity.componentRef; delete entity.collection; }
+    const oldRun = { ...run, schemaVersion: 3, promptVersion: 'knowledge-extraction-v3' };
+    const entityBytes = JSON.stringify(oldEntity); const runBytes = JSON.stringify(oldRun);
+    writeFileSync(entityPath, entityBytes); writeFileSync(runPath, runBytes);
+    expect(() => runs.read(run.runId)).toThrow('knowledge_storage_unsupported');
+    expect(() => app.resume(run.runId)).toThrow('knowledge_storage_unsupported');
+    expect(() => app.entities(run.runId)).toThrow();
+    expect(app.queryEntities()).toMatchObject({ total: 0, unavailableAnalyses: 1 });
+    expect(app.detail(run.committed[0].knowledgeId).revision.title).toBe('项目 Alpha 使用工具 Beta');
+    expect(readFileSync(entityPath, 'utf8')).toBe(entityBytes); expect(readFileSync(runPath, 'utf8')).toBe(runBytes);
   });
   it('rejects stale corrections, foreign identities and changed evidence without altering saved knowledge', async () => {
     const { app, snapshot, model } = setup(); const run = await app.generate(snapshot.snapshotId, model);
@@ -145,7 +195,7 @@ describe('shared knowledge application', () => {
     expect(app.detail(run.committed[0].knowledgeId).revision.entities[0].label).toBe('Alpha');
     expect(app.entities(run.runId).history.generation).toBe(2);
   });
-  it.each(['binding', 'mention', 'label', 'author', 'unresolved', 'committed'] as const)('rejects corrupted %s in a prepared run before committing any knowledge', async target => {
+  it.each(['binding', 'mention', 'label', 'author', 'unresolved', 'committed', 'component', 'collection'] as const)('rejects corrupted %s in a prepared run before committing any knowledge', async target => {
     const { app, snapshot, model, ports, knowledge, runs, root } = setup();
     const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce(() => { throw new Error('stop before entity commit'); });
     const runId = randomUUID(); await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('stop before');
@@ -157,6 +207,8 @@ describe('shared knowledge application', () => {
     if (target === 'label') stored.intents[0].revision.entities[0].label = 'different object';
     if (target === 'author') stored.entityAnalysis.revision.revisedBy.executionRef = randomUUID();
     if (target === 'unresolved') stored.entityAnalysis.revision.entities[0].possibleEntityIds = [randomUUID()];
+    if (target === 'component') { stored.entityAnalysis.revision.entities[0].referentKind = 'instance'; stored.entityAnalysis.revision.entities[0].componentRef = { entityId: randomUUID(), mentionIds: [stored.entityAnalysis.revision.mentions[0].mentionId], rationale: '不存在的组件' }; }
+    if (target === 'collection') { stored.entityAnalysis.revision.entities[0].referentKind = 'collection'; stored.entityAnalysis.revision.entities[0].collection = { memberEntityIds: [stored.entityAnalysis.revision.entities[0].entityId], completeness: 'complete', mentionIds: [stored.entityAnalysis.revision.mentions[0].mentionId], rationale: '循环成员' }; }
     if (target === 'committed') { stored.status = 'completed'; stored.committed = []; }
     writeFileSync(path, JSON.stringify(stored));
     expect(() => app.resume(runId)).toThrow(); expect(knowledge.list()).toEqual([]);
@@ -222,7 +274,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v3');
+    expect(run.promptVersion).toBe('knowledge-extraction-v4');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);
@@ -275,7 +327,7 @@ describe('shared knowledge application', () => {
     const failed = await app.generate(snapshot.snapshotId, model);
     expect(failed).toMatchObject({ status: 'failed', rawOutput: 'invalid JSON' });
     expect(app.list()).toEqual([]);
-    model.generate = async () => ({ output: '{"responseKind":"knowledge-extraction","schemaVersion":3,"entities":[],"mentions":[],"proposals":[]}', durationMs: 1 });
+    model.generate = async () => ({ output: '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}', durationMs: 1 });
     expect(await app.generate(snapshot.snapshotId, model)).toMatchObject({ status: 'completed', committed: [] });
   });
   it('binds corrections to a new analysis and knowledge revision without changing historical positions', async () => {

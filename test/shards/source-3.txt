@@ -61,6 +61,8 @@ test/knowledge-artifacts/sources/install-source.test.ts
 test/knowledge-artifacts/sources/materialize-copy.test.ts
 test/knowledge/validation.test.ts
 test/knowledge/entities.test.ts
+test/knowledge/entity-identity.test.ts
+test/knowledge/quote-occurrence.test.ts
 test/knowledge/storage.test.ts
 test/mcp/mcp-server.test.ts
 test/mcp/tool-language.test.ts

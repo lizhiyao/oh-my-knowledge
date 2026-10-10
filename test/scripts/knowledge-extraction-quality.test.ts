@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
+  assertHistoricalQualityRuntime, captureQualityCases, parseQualityArguments, parseQualityCases, qualityInput, qualityOutputRoot,
 } from '../../scripts/bench/knowledge-extraction-quality.js';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { checkCriticalEntities, entityQualityCases, entityQualityInput, expectedEntityMentions, parseEntityQualityArguments, parseEntityQualityCorpus } from '../../scripts/bench/entity-extraction-quality.js';
@@ -22,6 +22,12 @@ afterEach(() => {
 const cases = parseQualityCases(readFileSync(new URL('../fixtures/knowledge-extraction-quality.json', import.meta.url), 'utf8'));
 
 describe('knowledge extraction quality evidence', () => {
+  it('refuses to combine historical gold and prompts with a replacement runtime before model setup', () => {
+    expect(() => assertHistoricalQualityRuntime('knowledge-extraction-v3')).not.toThrow();
+    for (const version of ['knowledge-extraction-v4', undefined]) {
+      expect(() => assertHistoricalQualityRuntime(version)).toThrow('frozen base revision');
+    }
+  });
   it('freezes entity identities and UTF-16 repeated occurrences without sending the gold answers to the model', () => {
     const corpus = parseEntityQualityCorpus(readFileSync(new URL('../fixtures/entity-extraction-quality.json', import.meta.url), 'utf8'));
     expect(corpus.cases).toHaveLength(16);
@@ -39,7 +45,7 @@ describe('knowledge extraction quality evidence', () => {
   it('separates omitted knowledge, missed mentions, identity merging and unresolved alternatives', () => {
     const corpus = parseEntityQualityCorpus(readFileSync(new URL('../fixtures/entity-extraction-quality.json', import.meta.url), 'utf8'));
     const sample = corpus.cases.find(sample => sample.caseId === 'unresolved-choice')!;
-    const empty = checkWindowExtractionResponse({ responseKind: 'knowledge-extraction', schemaVersion: 3, entities: [], mentions: [], proposals: [] }, qualityInput(entityQualityCases(corpus).find(value => value.caseId === sample.caseId)!).excerpts);
+    const empty = checkWindowExtractionResponse({ responseKind: 'knowledge-extraction', schemaVersion: 4, entities: [], mentions: [], proposals: [] }, qualityInput(entityQualityCases(corpus).find(value => value.caseId === sample.caseId)!).excerpts);
     const result = checkCriticalEntities(sample, empty);
     expect(result.criticalMentions.every(value => !value.covered)).toBe(true);
     expect(result.separations.every(value => !value.passed)).toBe(true);
@@ -113,7 +119,7 @@ describe('knowledge extraction quality evidence', () => {
   it('preserves original output and structural failures without turning accepted proposals into a semantic verdict', async () => {
     const output = tempRoot();
     let count = 0;
-    const empty = { responseKind: 'knowledge-extraction', schemaVersion: 3, entities: [], mentions: [], proposals: [] };
+    const empty = { responseKind: 'knowledge-extraction', schemaVersion: 4, entities: [], mentions: [], proposals: [] };
     const outputs = ['not-json', JSON.stringify({ ...empty, proposals: [{}] }), JSON.stringify(empty)];
     const result = await captureQualityCases({ cases: cases.slice(0, 3), output, prompt: 'fixed',
       signal: new AbortController().signal, check: checkWindowExtractionResponse,
@@ -136,11 +142,11 @@ describe('knowledge extraction quality evidence', () => {
     })).rejects.toThrow();
     expect(calls).toBe(1);
   });
-  it('records independent v3 entities and treats entity rejections as structural failure even with zero knowledge', async () => {
+  it('records independent entities and treats entity rejections as structural failure even with zero knowledge', async () => {
     const sample = { caseId: 'entity-only', provenance: 'synthetic', messages: [{ role: 'user' as const, text: 'Alpha 使用 Beta' }], reviewChecks: ['按对象核对'] };
     const packet = modelWindow(); packet.proposals = []; packet.mentions[1].selection.quote = 'invented';
     const output = tempRoot();
-    const result = await captureQualityCases({ cases: [sample], output, prompt: 'fixed-v3', signal: new AbortController().signal,
+    const result = await captureQualityCases({ cases: [sample], output, prompt: 'fixed-current', signal: new AbortController().signal,
       check: checkWindowExtractionResponse,
       generate: async () => ({ output: JSON.stringify(packet).replaceAll('record-1', 'entity-only:0') }) });
     expect(result).toMatchObject({ failed: true, attempted: 1 });

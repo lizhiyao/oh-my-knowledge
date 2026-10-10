@@ -1,32 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import { applyEntityAnalysisWrite, EntityAnalysisEnvelopeSchema, validateEntityAnalysisHistory, type EntityAnalysisWrite } from '../../src/knowledge/entities.js';
-import { admitEntities, locateQuote, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
+import { admitEntities, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
+import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { identityWindow } from './fixtures.js';
 
 const entityId = 'cf13bba6-6385-455b-b0c0-c4d4e4931b10';
 const mentionId = '6ad46f7c-7959-43b4-ae97-c240f9a1c422';
 const revisionId = '4b345101-b542-4ac3-87c1-f05cdf0356b7';
 const actor = { actorKind: 'human' as const, actorId: 'reviewer' };
 const entity = (entityId: string): EntityModel => ({ entityId, label: 'Echo', description: '选定窗口中的对象',
-  qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [] });
+  qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null });
 const mention = (entityId: string, mentionId: string, quote = 'Echo') => ({ entityId, mentionId,
-  selection: { evidenceRef: 'r', quote } as { evidenceRef: string; quote: string; prefix?: string; suffix?: string }, basis: 'explicit' as const, rationale: '原文明确出现' });
+  selection: { evidenceRef: 'r', quote } as { evidenceRef: string; quote: string; occurrence?: number }, basis: 'explicit' as const, rationale: '原文明确出现' });
 const excerpts = [{ evidenceRef: 'r', text: '😀 Echo 调用 Echo，前者是服务，后者是工具。' }];
 
 describe('window entity admission', () => {
-  it('locates a short repeated surface using exact adjacent context and UTF-16 positions', () => {
-    expect(locateQuote({ evidenceRef: 'r', quote: 'Echo', prefix: '😀 ', suffix: ' 调用' }, excerpts))
-      .toEqual({ evidenceRef: 'r', quote: 'Echo', start: 3, end: 7 });
-    expect(locateQuote({ evidenceRef: 'r', quote: 'Echo', prefix: '调用 ' }, excerpts))
-      .toEqual({ evidenceRef: 'r', quote: 'Echo', start: 11, end: 15 });
-    expect(locateQuote({ evidenceRef: 'r', quote: 'Echo' }, excerpts)).toBe('ambiguous_quote');
-    expect(locateQuote({ evidenceRef: 'r', quote: 'Echo', prefix: '😀' }, excerpts)).toBe('quote_mismatch');
-    expect(locateQuote({ evidenceRef: 'outside', quote: 'Echo' }, excerpts)).toBe('unknown_evidence');
-    expect(locateQuote({ evidenceRef: 'r', quote: 'Echo' }, [...excerpts, ...excerpts])).toBe('unknown_evidence');
-    expect(locateQuote({ evidenceRef: 'r', quote: 'aaa' }, [{ evidenceRef: 'r', text: 'aaaa' }])).toBe('ambiguous_quote');
+  it('admits one collective mention and rejects dependent entities and knowledge when a component link is broken', () => {
+    const packet = identityWindow(); const source = [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta；它们共同失败。' }];
+    const accepted = checkWindowExtractionResponse(packet, source);
+    expect(accepted.analysis.rejected).toEqual([]); expect(accepted.accepted).toHaveLength(1);
+    expect(accepted.analysis.mentions.filter(mention => mention.selection.quote === '它们')).toHaveLength(1);
+    packet.entities[1].componentRef!.entityId = 'missing';
+    const before = structuredClone(packet); const rejected = checkWindowExtractionResponse(packet, source);
+    expect(rejected.analysis.entities.map(entity => entity.entityId)).toEqual(['project']);
+    expect(rejected.analysis.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: 'entity', index: 1, reasons: expect.arrayContaining(['unknown_component']) }),
+      expect.objectContaining({ component: 'entity', index: 2, reasons: expect.arrayContaining(['unknown_collection_member']) }),
+    ]));
+    expect(rejected.accepted).toEqual([]); expect(rejected.rejected[0].reasons).toContain('unknown_entity_analysis_reference');
+    expect(packet).toEqual(before);
   });
   it('preserves distinct same-named objects and immutable raw output', () => {
-    const first = mention('service', 'm1'); first.selection = { ...first.selection, prefix: '😀 ' };
-    const second = mention('tool', 'm2'); second.selection = { ...second.selection, prefix: '调用 ' };
+    const first = mention('service', 'm1'); first.selection = { ...first.selection, occurrence: 0 };
+    const second = mention('tool', 'm2'); second.selection = { ...second.selection, occurrence: 1 };
     const input = { entities: [entity('service'), entity('tool')], mentions: [first, second] };
     const before = structuredClone(input);
     const result = admitEntities(input.entities, input.mentions, excerpts);
@@ -73,6 +79,20 @@ describe('window entity admission', () => {
     expect(duplicate.entities).toEqual([]);
     expect(duplicate.rejected.filter(value => value.component === 'mention')).toHaveLength(2);
     expect(admitEntities([{ ...entity('a'), identityStatus: 'unresolved' }], [], excerpts).rejected[0].reasons).toEqual(['invalid_structure']);
+  });
+  it('keeps a known partial group distinct from unknown identity and requires candidates at the same level', () => {
+    const group: EntityModel = { ...entity('group'), referentKind: 'collection', uncertainties: ['其它成员未列出'],
+      collection: { memberEntityIds: ['a'], completeness: 'partial', mentionIds: ['m2'], rationale: '明确的集合及一个成员' } };
+    const uncertain: EntityModel = { ...entity('unknown'), referentKind: 'collection', identityStatus: 'unresolved',
+      possibleEntityIds: ['group'], uncertainties: ['不确定指哪个集合'],
+      collection: { memberEntityIds: [], completeness: 'unknown', mentionIds: ['m3'], rationale: '未消解集合指代' } };
+    const source = [{ evidenceRef: 'r', text: 'Echo 和其它成员；它们还在；那些失败了。' }];
+    const mentions = [mention('a', 'm1'), mention('group', 'm2', '它们'), mention('unknown', 'm3', '那些')];
+    expect(admitEntities([entity('a'), group, uncertain], mentions, source).rejected).toEqual([]);
+    uncertain.possibleEntityIds = ['a'];
+    expect(admitEntities([entity('a'), group, uncertain], mentions, source).rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: 'entity', index: 2, reasons: ['possible_entity_level_mismatch'] }),
+    ]));
   });
 });
 

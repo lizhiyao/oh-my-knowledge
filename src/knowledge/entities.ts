@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EntityMentionSchema, KnowledgeActorSchema, type KnowledgeActor } from './contracts.js';
 import { canonicalJson } from './store.js';
+import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from './entity-identity.js';
 
 const text = z.string().trim().min(1).max(4096);
 const uuid = z.string().uuid();
@@ -10,6 +11,7 @@ export const AnalyzedEntitySchema = z.strictObject({
   entityId: uuid, label: text, description: text, qualifiers: z.array(text).max(32),
   identityStatus: z.enum(['proposed', 'unresolved']),
   possibleEntityIds: z.array(uuid).max(32), uncertainties: z.array(text).max(32),
+  ...entityIdentityShape(uuid),
 }).superRefine((entity, context) => {
   if (entity.identityStatus === 'unresolved' && !entity.uncertainties.length) {
     context.addIssue({ code: 'custom', path: ['uncertainties'], message: 'Unresolved identity needs a reason.' });
@@ -31,7 +33,7 @@ export const EntityAnalysisRevisionSchema = EntityAnalysisDraftSchema.extend({
 });
 export type EntityAnalysisRevision = z.infer<typeof EntityAnalysisRevisionSchema>;
 export const EntityAnalysisEnvelopeSchema = z.strictObject({
-  storeKind: z.literal('entity-analysis-history'), schemaVersion: z.literal(1),
+  storeKind: z.literal('entity-analysis-history'), schemaVersion: z.literal(2),
   analysisId: uuid, snapshotId: uuid, sourceVersion,
   generation: z.number().int().positive(), writeHeadRevisionId: uuid,
   revisions: z.array(EntityAnalysisRevisionSchema).min(1).max(1024),
@@ -61,6 +63,7 @@ export function validateEntityAnalysis(draft: EntityAnalysisDraft): string[] {
   const mentions = new Set(draft.mentions.map(mention => mention.mentionId));
   if (mentions.size !== draft.mentions.length) problems.push('duplicate_mention');
   const positions = new Set<string>();
+  const byId = new Map(draft.entities.map(entity => [entity.entityId, entity]));
   for (const mention of draft.mentions) {
     if (!ids.has(mention.entityId)) problems.push('unknown_entity');
     if (mention.selection.start >= mention.selection.end
@@ -70,6 +73,7 @@ export function validateEntityAnalysis(draft: EntityAnalysisDraft): string[] {
     positions.add(position);
   }
   for (const entity of draft.entities) {
+    problems.push(...entityIdentityProblems(entity), ...entityIdentityReferenceProblems(entity, byId, draft.mentions));
     if (!draft.mentions.some(mention => mention.entityId === entity.entityId)) problems.push('entity_without_mention');
     if (new Set(entity.possibleEntityIds).size !== entity.possibleEntityIds.length) problems.push('duplicate_possible_entity');
     for (const target of entity.possibleEntityIds) {
@@ -122,7 +126,7 @@ export function applyEntityAnalysisWrite(existing: EntityAnalysisEnvelope | unde
     || (existing?.writeHeadRevisionId ?? null) !== command.expectedHeadRevisionId
     || (command.revision.parentRevisionId ?? null) !== command.expectedHeadRevisionId) throw new Error('Entity analysis conflict.');
   const next = EntityAnalysisEnvelopeSchema.parse({
-    storeKind: 'entity-analysis-history', schemaVersion: 1,
+    storeKind: 'entity-analysis-history', schemaVersion: 2,
     analysisId: command.analysisId, snapshotId: command.snapshotId, sourceVersion: command.sourceVersion,
     generation: command.expectedGeneration + 1, writeHeadRevisionId: command.revision.revisionId,
     revisions: [...(existing?.revisions ?? []), command.revision],
