@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, Select, Space, Spin, Tag } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
-import { entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entity-identity';
+import { entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entities/identity';
 import { displayTime } from '../../../application/display/format';
 import { EntityRelationFields, identityProblemLabel } from './entity-relations';
 

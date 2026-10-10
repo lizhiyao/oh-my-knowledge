@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { KnowledgeActorSchema } from '../../knowledge/contracts.js';
 import { canonicalJson, GroundingSchema } from '../../knowledge/store.js';
 import { KnowledgeRevisionSchema } from '../../knowledge/contracts.js';
-import { EntityAnalysisWriteSchema, validateEntityAnalysis } from '../../knowledge/entities.js';
+import { EntityAnalysisWriteSchema } from '../../knowledge/entities/contracts.js';
+import { validateEntityAnalysis } from '../../knowledge/entities/validation.js';
 import { validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
 export const ExtractionRunSchema = z.strictObject({

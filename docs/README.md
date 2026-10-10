@@ -51,6 +51,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)
 - [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md)
 - [Entity extraction](./specs/entity-extraction.md) · [v3 quality results and limits](./explanation/entity-extraction-quality.md) · [v4 two-round results and limits](./explanation/entity-extraction-v4-repeat-quality.md)
+- [Entity extraction v6: 11-window diagnostic](./explanation/entity-extraction-v6-diagnostic.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)

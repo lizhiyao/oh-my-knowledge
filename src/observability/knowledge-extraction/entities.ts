@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EntityMentionSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
-import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../knowledge/entity-identity.js';
+import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../knowledge/entities/identity.js';
 import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256);

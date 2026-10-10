@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape,
-  type EntityIdentity } from '../../src/knowledge/entity-identity.js';
+  type EntityIdentity } from '../../src/knowledge/entities/identity.js';
 
 const entity = (entityId: string, referentKind: EntityIdentity['referentKind'] = 'object'): EntityIdentity => ({
   entityId, referentKind, componentRef: null, collection: null,
