@@ -126,8 +126,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
   const excerpts = detail.source.status === 'available' ? detail.source.excerpts : [];
   return <article className="entity-library-article"><h2>{entity.label}</h2>
     <Tag>{entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应，待核对', 'Proposed assignment, needs review')}</Tag>
-    <p>{entity.description}</p><p>{entity.qualifiers.join(' · ') || t('未给出项目、版本或环境限定。', 'No project, version, or environment qualifiers provided.')}</p>
-    <EntityRelations detail={detail} entity={entity} workspace={workspace} lang={lang}/>
+    <p>{entity.description}</p><p>{entity.qualifiers.join(' · ') || t('未给出进一步的对象限定。', 'No further entity qualifiers provided.')}</p>
     {entity.uncertainties.map((value, index) => <Alert key={index} type="warning" title={value}/>)}
     {!!entity.possibleEntityIds.length && <p>{t('可能对应：', 'Possible identities: ')}{entity.possibleEntityIds.map(id => {
       const value = revision.entities.find(value => value.entityId === id)!;
@@ -166,5 +165,8 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
           <Link href={entityUrl(workspace, { analysisId: history.analysisId, entityId: entity.entityId, revision: link.entityRevisionId })}>{t('查看知识绑定的实体修订', 'Inspect the entity revision bound by knowledge')}</Link>
           <p className="candidate-help">{link.choice === 'retain' ? t('已保留；不等于语义已验证。', 'Retained; semantic validity is not verified.') : link.choice === 'discard' ? t('已舍弃；历史关联仍保留。', 'Discarded; its historical association remains.') : t('等待处理；不等于语义已验证。', 'Pending; semantic validity is not verified.')}</p>
         </section>)}
+    <details><summary>{t('身份层次与关联', 'Referent level and links')}</summary>
+      <EntityRelations detail={detail} entity={entity} workspace={workspace} lang={lang}/>
+    </details>
   </article>;
 }

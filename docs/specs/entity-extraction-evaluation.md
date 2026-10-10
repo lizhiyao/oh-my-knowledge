@@ -4,13 +4,13 @@ description: Annotation, layered checks and independent review for entity extrac
 
 # Entity extraction quality evaluation
 
-Status: P4 checker and author-reviewed annotations. Guide `omk-entity-annotation/v3`, corpus `omk-entity-quality/v5`, checker `omk-entity-critical-checks/v3`; targets `knowledge-extraction-v5` / response Schema v4. **Independent human annotation review and new model evaluation are incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) tracks both.
+Status: P4 checker and author-reviewed annotations. Guide `omk-entity-annotation/v4`, corpus `omk-entity-quality/v6`, checker `omk-entity-critical-checks/v3`; targets `knowledge-extraction-v6` / response Schema v4. **Independent human annotation review and new model evaluation are incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) tracks both.
 
 ## 1. Versions and scope
 
-This guide follows the [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md). Historical v2/v3/v4 corpora, reports and raw outputs remain unchanged. v5 revises the prompt for unsupported types, shared-reference attribution and negation ambiguity found in the [two v4 rounds](../explanation/entity-extraction-v4-repeat-quality.md). New annotations allow complete identity qualifiers in advance and include shared references; checker v3 exposes relation, modality and polarity without a semantic verdict. Old reports are not re-scored and counts are not directly comparable. This is `BREAKING-COMPARABILITY`: the production prompt becomes v5, response Schema remains v4, and entity/knowledge/run file formats stay unchanged.
+This guide follows the [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md). Historical v2/v3/v4/v5 corpora, reports and frozen builds remain unchanged. v6 makes open recognition of things and concepts a primary evaluation concern while retaining identity, citation and negation regressions. Guide becomes v4; checker algorithm remains v3. Prompt and corpus/guide identities change: `BREAKING-COMPARABILITY`. Response and entity/knowledge/run file formats remain unchanged. Old results are not re-scored and counts cannot be directly compared.
 
-`test/fixtures/entity-extraction-review-v5.json` is a public synthetic set: 16 development windows, eight new reserved validation windows and 84 critical mentions. All 16 windows whose v4 outputs have been inspected now serve development regression; their `val-` prefix preserves historical case identity only, with actual split development. Eight new `fresh-` windows use separate project/conversation groups; duplicate source windows cannot cross splits. New coverage includes type evidence, instances, shared properties, collective/distributive claims, negative requirements, missing members, replacement and correction/plans. It is neither a hidden blind set nor representative real logs. New validation windows must not inform prompt tuning; author knowledge of synthetic answers is not independent review. Future real data requires separate minimization, authorization, grouping and review, with no synthetic windows in its denominator. No v5 model outputs exist yet; offline checks do not prove these revisions effective.
+`test/fixtures/entity-extraction-review-v6.json` is a public synthetic set with 28 development windows, eight new reserved validation windows and 128 critical mentions. All 24 public v5 windows become development regressions, plus four discussion examples about Apple, keyboards, insurance and Node/OMK. The `val-`/`fresh-` prefixes preserve historical identities only; their actual split is development. Eight `held-` windows have separate project/conversation groups and cover ordinary objects, materials, insurance and learning concepts, homonyms, categories versus particular objects, explicit aliases, ambiguity and empty knowledge results. This is not a hidden blind set or representative real logs. Validation windows must not inform prompt tuning; author knowledge of answers is not independent review. Future real logs need separate minimization, authorization, grouping and review. There are no v6 model outputs; offline checks do not prove improvements.
 
 ## 2. Annotation units and allowed expressions
 
@@ -27,6 +27,8 @@ Freeze source messages, roles, omitted records and window limitations before ann
 A collective reference is one collection mention, not duplicate member mentions at the same span. Instances/versions differ from their component; environmental conditions alone do not force new identities. Distinguish tools from logs, plans from executions, replacement from rename. Matching names or paths are insufficient to merge. Truncated sources do not automatically require empty knowledge: an unresolved subject may retain a source assertion and pending investigation, without filling missing identity or generalizing conclusions. If two identity schemes are reasonable, adjudicate first or explicitly allow alternatives before outputs; this draft does not encode conflicting identity partitions, so unresolved disputes cannot be frozen.
 
 Judge type evidence separately from identity resolution: names, calls, failures or “node” labels alone do not prove components/deployed instances. A known identity with unknown type stays proposed object with type uncertainty; explicit module roles or deployment instances must not be downgraded. Qualified descriptions and short names may be prefrozen alternatives, never widened after new outputs. Distinguish shared references from their properties: their/它们 refers to a collection; a property phrase cannot identify just one member. Read relation and polarity together without double negation; “not failed” does not mean “passed”, and “not prohibited” does not mean “required”. Per-case semantic criteria preserve these judgments without keyword classifiers.
+
+Review ordinary objects, abstract concepts and named objects case by case, including whether descriptions faithfully explain contextual meanings. Semantic category is not referentKind: a concept and a particular object may both be object without sharing identity. A product named “Plan” is not necessarily a plan. Record omissions, false extractions and unsupported categories/meanings beyond critical mentions; incomplete annotation does not support overall precision/F1. Inspect entity coverage even with no knowledge proposals; empty knowledge alone does not establish reliable associations.
 
 ## 3. Layered results and acceptance threshold
 
@@ -58,7 +60,7 @@ Update compiled artifacts, then prepare an external bundle:
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v5.json \
+  --corpus test/fixtures/entity-extraction-review-v6.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 

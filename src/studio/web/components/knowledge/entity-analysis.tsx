@@ -152,8 +152,7 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
       {entity && <div className="candidate-form">
         <label>{t('名称', 'Name')}<Input disabled={!editable} value={entity.label} onChange={event => changeEntity({ label: event.target.value })}/></label>
         <label>{t('描述这个对象', 'Describe this entity')}<Input.TextArea disabled={!editable} value={entity.description} rows={2} onChange={event => changeEntity({ description: event.target.value })}/></label>
-        <label>{t('项目／版本／环境等限定（每行一项）', 'Project/version/environment qualifiers (one per line)')}<Input.TextArea disabled={!editable} value={entity.qualifiers.join('\n')} rows={2} onChange={event => changeEntity({ qualifiers: lines(event.target.value) })}/></label>
-        <EntityRelationFields entity={entity} entities={draft.entities} mentions={draft.mentions} editable={editable} sourceAvailable={detail.source.status === 'available'} lang={lang} onChange={changeEntity} onInspect={mention => inspect(mention.selection)}/>
+        <label>{t('所属人／用途／项目等限定（每行一项）', 'Owner/use/project qualifiers (one per line)')}<Input.TextArea disabled={!editable} value={entity.qualifiers.join('\n')} rows={2} onChange={event => changeEntity({ qualifiers: lines(event.target.value) })}/></label>
         <label>{t('身份对应', 'Identity assignment')}<Select disabled={!editable} value={entity.identityStatus} options={[
           { value: 'proposed', label: t('提出对应，待核对', 'Proposed assignment, needs review') }, { value: 'unresolved', label: t('无法确定，保留歧义', 'Unresolved, retain ambiguity') },
         ]} onChange={identityStatus => changeEntity({ identityStatus, ...(identityStatus === 'proposed' ? { possibleEntityIds: [] } : {}) })}/></label>
@@ -161,6 +160,10 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
           options={draft.entities.filter(value => value.entityId !== selected && value.identityStatus === 'proposed' && value.referentKind === entity.referentKind).map(value => ({ value: value.entityId, label: optionLabel(value) }))}
           onChange={possibleEntityIds => changeEntity({ possibleEntityIds })}/></label>}
         <label>{t('不确定性与理由（每行一项；歧义对象必填）', 'Uncertainties and reasons (one per line; required if unresolved)')}<Input.TextArea disabled={!editable} value={entity.uncertainties.join('\n')} rows={2} onChange={event => changeEntity({ uncertainties: lines(event.target.value) })}/></label>
+        <details open={!!entity.componentRef || !!entity.collection || entity.referentKind !== 'object'}><summary>{t('身份层次与关联', 'Referent level and links')}</summary>
+          <p className="candidate-help">{t('这里区分对象、组件、实例等所指层次。水果、公司、软件或概念的含义写在对象描述中。', 'These levels distinguish objects, components and instances. Describe meanings such as fruit, company, software or concept in the entity description.')}</p>
+          <EntityRelationFields entity={entity} entities={draft.entities} mentions={draft.mentions} editable={editable} sourceAvailable={detail.source.status === 'available'} lang={lang} onChange={changeEntity} onInspect={mention => inspect(mention.selection)}/>
+        </details>
         <details><summary>{t('合并或删除此对象', 'Merge or remove this entity')}</summary>
           {!!dependencies.length && <Alert type="info" title={t('合并或删除前，请先核对这些对象的组件、成员、候选或依据引用。', 'Before merging or removing, correct these entities’ component, membership, candidate or evidence references.')} description={<div>{dependencies.map(value =>
             <Button key={value.entityId} onClick={() => { setSelected(value.entityId); setMergeTarget(undefined); }}>{t('核对：', 'Inspect: ')}{value.label}</Button>)}</div>}/>}
