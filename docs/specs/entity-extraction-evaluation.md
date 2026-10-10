@@ -4,13 +4,13 @@ description: Annotation, layered checks and independent review for entity extrac
 
 # Entity extraction quality evaluation
 
-Status: P4 checker and author-reviewed annotations. Guide `omk-entity-annotation/v2`, corpus `omk-entity-quality/v4`, checker `omk-entity-critical-checks/v2`; targets `knowledge-extraction-v4` / response Schema v4. **Independent human annotation review and new model evaluation are incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) tracks both.
+Status: P4 checker and author-reviewed annotations. Guide `omk-entity-annotation/v3`, corpus `omk-entity-quality/v5`, checker `omk-entity-critical-checks/v3`; targets `knowledge-extraction-v5` / response Schema v4. **Independent human annotation review and new model evaluation are incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) tracks both.
 
 ## 1. Versions and scope
 
-This guide follows the [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md). Historical v2 gold, v1 checks, v3 prompt reports and raw outputs remain unchanged. The original v3 annotation draft also remains intact. Current v4 fixes contradictory same-path replacement sources, adds backticked instance boundaries and permits source-scoped failure assertions about unresolved subjects. New checks do not re-score old reports and their counts are not directly comparable. This is a `BREAKING-COMPARABILITY` measurement identity, without changing the production prompt, Schema or user storage.
+This guide follows the [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md). Historical v2/v3/v4 corpora, reports and raw outputs remain unchanged. v5 revises the prompt for unsupported types, shared-reference attribution and negation ambiguity found in the [two v4 rounds](../explanation/entity-extraction-v4-repeat-quality.md). New annotations allow complete identity qualifiers in advance and include shared references; checker v3 exposes relation, modality and polarity without a semantic verdict. Old reports are not re-scored and counts are not directly comparable. This is `BREAKING-COMPARABILITY`: the production prompt becomes v5, response Schema remains v4, and entity/knowledge/run file formats stay unchanged.
 
-`test/fixtures/entity-extraction-review-v4.json` is a public synthetic annotation set: eight development windows, eight reserved validation windows and 50 critical mentions. Project and conversation groups cannot cross splits; identical message windows cannot cross either. Coverage includes Chinese, English, code, repeated names, coreference, late corrections, environments, instances, versions, collections and truncated sources. It is neither a hidden blind set nor representative real logs; validation windows must not inform prompt tuning. Future real data requires separate minimization, authorization, grouping and review; synthetic windows cannot enter its denominator.
+`test/fixtures/entity-extraction-review-v5.json` is a public synthetic set: 16 development windows, eight new reserved validation windows and 84 critical mentions. All 16 windows whose v4 outputs have been inspected now serve development regression; their `val-` prefix preserves historical case identity only, with actual split development. Eight new `fresh-` windows use separate project/conversation groups; duplicate source windows cannot cross splits. New coverage includes type evidence, instances, shared properties, collective/distributive claims, negative requirements, missing members, replacement and correction/plans. It is neither a hidden blind set nor representative real logs. New validation windows must not inform prompt tuning; author knowledge of synthetic answers is not independent review. Future real data requires separate minimization, authorization, grouping and review, with no synthetic windows in its denominator. No v5 model outputs exist yet; offline checks do not prove these revisions effective.
 
 ## 2. Annotation units and allowed expressions
 
@@ -26,6 +26,8 @@ Freeze source messages, roles, omitted records and window limitations before ann
 
 A collective reference is one collection mention, not duplicate member mentions at the same span. Instances/versions differ from their component; environmental conditions alone do not force new identities. Distinguish tools from logs, plans from executions, replacement from rename. Matching names or paths are insufficient to merge. Truncated sources do not automatically require empty knowledge: an unresolved subject may retain a source assertion and pending investigation, without filling missing identity or generalizing conclusions. If two identity schemes are reasonable, adjudicate first or explicitly allow alternatives before outputs; this draft does not encode conflicting identity partitions, so unresolved disputes cannot be frozen.
 
+Judge type evidence separately from identity resolution: names, calls, failures or “node” labels alone do not prove components/deployed instances. A known identity with unknown type stays proposed object with type uncertainty; explicit module roles or deployment instances must not be downgraded. Qualified descriptions and short names may be prefrozen alternatives, never widened after new outputs. Distinguish shared references from their properties: their/它们 refers to a collection; a property phrase cannot identify just one member. Read relation and polarity together without double negation; “not failed” does not mean “passed”, and “not prohibited” does not mean “required”. Per-case semantic criteria preserve these judgments without keyword classifiers.
+
 ## 3. Layered results and acceptance threshold
 
 | Layer | Recorded checks | Limits |
@@ -34,7 +36,7 @@ A collective reference is one collection mention, not duplicate member mentions 
 | Structural admission | Envelope Schema rejection, rejected mentions/entities/proposals and itemized reasons. | Structural rejection of valid JSON is a captured output, never `capture_failures`. Rejected item counts include cascading consequences, not independent mistakes. |
 | Critical mentions | Exact matches/missing/ambiguous mentions, broad-boundary candidates and critical mention recall. | Annotation is not exhaustive: precision/F1 are `null`; extra mentions need human review and are not automatically false positives. |
 | Identity | Required same/different mention pairs, wrong merges/splits and granularity/candidate/component/member differences. | Unaligned mentions or missing references are `not_evaluable`, never passes. Correlated pair counts are not independent-sample accuracy. |
-| Knowledge links | Statements linked to the source anchor and their endpoints; reversed endpoints raise review prompts; no statement is `not_observed`. | Matching endpoints do not establish correct relations or truth. Other statements sharing an anchor, broad citations and synonyms require human review. |
+| Knowledge links | Statements linked to the source anchor, endpoints, relation, modality and polarity; reversed endpoints raise review prompts; no statement is `not_observed`. | Matching endpoints do not establish correct relations or truth. Other statements sharing an anchor, broad citations and synonyms require human review. |
 | Independent semantics | Per-case `semanticChecks` cover conditions, time, negation, assertions/observations, plans/completion, case organization and late corrections. | `optional` permits no knowledge; omission differs from error. Knowledge under `none` requires an issue. Empty results do not establish reliable knowledge links. |
 
 Frozen synthetic critical regression threshold: every planned call has a record; no call/parse failure, cancellation, unattempted item or structural rejection; 100% critical mention matches; all same/different mention pairs and identity links match without `not_evaluable`; independent human review approves generated knowledge roles, conditions and status with no unresolved disputes. Omitted optional knowledge supports entity-only conclusions and leaves knowledge-link coverage insufficient. This tool never automatically declares the entire threshold passed: `semanticReview` stays `pending`, with unverified scope reported.
@@ -56,7 +58,7 @@ Update compiled artifacts, then prepare an external bundle:
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v4.json \
+  --corpus test/fixtures/entity-extraction-review-v5.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 

@@ -130,7 +130,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v4' });
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v5' });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -138,6 +138,31 @@ describe('shared knowledge application', () => {
     expect(instance.entityId).not.toBe('tool');
     expect(analysis.revision).toEqual(prepared.entityAnalysis!.revision);
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it('reads and resumes the current run format with its original prompt identity without another model call', async () => {
+    const { app, snapshot, model, runs, ports, generate, root } = setup();
+    const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce(() => { throw new Error('interrupted before entity write'); });
+    const runId = randomUUID();
+    await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('interrupted');
+    write.mockRestore();
+    const prepared = runs.read(runId);
+    const historical = { ...prepared, promptVersion: 'knowledge-extraction-v4', promptHash: 'frozen-original-prompt', requestDigest: 'frozen-original-request' };
+    const file = join(root, 'runs', `${runId}.json`); const bytes = JSON.stringify(historical);
+    writeFileSync(file, bytes);
+    expect(runs.read(runId)).toEqual(historical); expect(readFileSync(file, 'utf8')).toBe(bytes);
+    // A new v5 request cannot reuse the identity of a v4 generation.
+    await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('identity conflict');
+    const resumed = app.resume(runId);
+    expect(resumed).toMatchObject({ status: 'completed', schemaVersion: 4,
+      promptVersion: historical.promptVersion, promptHash: historical.promptHash, requestDigest: historical.requestDigest, rawOutput: prepared.rawOutput });
+    expect(app.entities(runId).revision).toEqual(prepared.entityAnalysis!.revision);
+    expect(generate).toHaveBeenCalledTimes(1);
+    const completedBytes = readFileSync(file, 'utf8');
+    expect(app.resume(runId)).toEqual(resumed); expect(readFileSync(file, 'utf8')).toBe(completedBytes);
+    for (const promptVersion of ['', 'knowledge-extraction-v0', 'unknown', 'knowledge-extraction-v5\n']) {
+      const invalidBytes = JSON.stringify({ ...resumed, promptVersion }); writeFileSync(file, invalidBytes);
+      expect(() => runs.read(runId)).toThrow(); expect(readFileSync(file, 'utf8')).toBe(invalidBytes);
+    }
   });
   it('maps new correction links together and rejects broken references without changing old bindings', async () => {
     const { app, snapshot, model } = setup('Alpha 使用 Beta；它们共同失败。');
@@ -274,7 +299,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v4');
+    expect(run.promptVersion).toBe('knowledge-extraction-v5');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);

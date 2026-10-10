@@ -12,7 +12,7 @@ export const ExtractionRunSchema = z.strictObject({
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
   origin: EvidenceWindowSchema.shape.origin,
   executor: z.string().min(1), model: z.string().min(1),
-  promptVersion: z.literal('knowledge-extraction-v4'), promptHash: z.string(), inputDigest: z.string(),
+  promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),

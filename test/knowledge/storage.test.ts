@@ -33,7 +33,7 @@ describe('current knowledge storage', () => {
     truncateSync(file, 65 * 1024 * 1024);
     expect(() => store.list()).toThrow('capacity exceeded');
   });
-  it('rejects unsupported envelopes and prompt policies without rewriting the original bytes', () => {
+  it('rejects unsupported storage envelopes without rewriting the original bytes', () => {
     const workspace = root(); const items = join(workspace, 'items'); const runs = join(workspace, 'runs');
     mkdirSync(items); mkdirSync(runs);
     const knowledge = new FileKnowledgeStore(items, 'local', workspace); const runStore = new FileExtractionRunStore(runs, workspace);

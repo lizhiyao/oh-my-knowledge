@@ -9,9 +9,9 @@ import { draft, modelWindow } from './fixtures.js';
 const evidence = new Set(['record-1']);
 
 describe('window model admission', () => {
-  it('freezes the v4 prompt identity separately from historical v3 quality evidence', () => {
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v4');
-    expect('sha256:' + createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('sha256:77fc3ef5b0bd8ad1e470cb279c50359a4966c9dedfc6503672b4d307ad8f4715');
+  it('freezes the v5 prompt identity separately from historical quality evidence', () => {
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v5');
+    expect('sha256:' + createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('sha256:8d7174c13f2b336979c5da01330ef00e3076309d194364e74d0abef11c2d39ad');
   });
   const excerpts = [{ evidenceRef: 'record-1', text: '前文😀Alpha 使用 Beta。后文' }];
   it('resolves UTF-16 positions, preserves raw output, and admits an empty window result', () => {
