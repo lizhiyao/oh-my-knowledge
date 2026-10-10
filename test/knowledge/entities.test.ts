@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyEntityAnalysisWrite, EntityAnalysisEnvelopeSchema, validateEntityAnalysisHistory, type EntityAnalysisWrite } from '../../src/knowledge/entities.js';
+import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
+import { EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 import { admitEntities, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { identityWindow } from './fixtures.js';
