@@ -87,7 +87,9 @@ Seven windows were prepared from previously redacted material used for knowledge
 | `real-historical-product-claim` | Separate two Memory features and configuration; historical source assertions are not current official facts. |
 | `real-acknowledgement` | An isolated “OK” has no antecedent entity; both entity and knowledge results may be empty. |
 
-Materials and the self-review page remain local. **Entity model evaluation has not run; new model calls total zero.** The sample is software-heavy and includes previously viewed knowledge outputs; it is neither blind nor representative of real logs. Before/after windows are not independent samples. Preparation does not mean model outputs have passed, and author self-review is not independent human evidence. The proposed later execution is at most seven calls, one round, without automatic retries and with unknown cost; this preparation does not expand prior data-transmission authorization.
+Materials and the self-review page remain local. **At preparation time, entity model evaluation had not run; new model calls totaled zero.** The sample is software-heavy and includes previously viewed knowledge outputs; it is neither blind nor representative of real logs. Before/after windows are not independent samples. Preparation does not mean model outputs have passed, and author self-review is not independent human evidence. The proposed later execution is at most seven calls, one round, without automatic retries and with unknown cost; this preparation does not expand prior data-transmission authorization.
+
+Following separate explicit user approval, seven captures, itemwise self-review and application replay are now complete; semantic quality still needs improvement. See the [single-round real-conversation diagnostic](./entity-extraction-v6-real-pilot.md). This section and the public workflow summary preserve preparation-time records without replacing original states or synthetic scores.
 
 ## Usage and limits
 

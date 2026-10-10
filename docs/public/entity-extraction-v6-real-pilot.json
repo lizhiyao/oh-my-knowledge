@@ -1,0 +1,792 @@
+{
+  "evidenceVersion": "omk-real-entity-public-summary/v1",
+  "measurement": {
+    "measurementId": "sha256:1f32b9c95a8162966daf64e9702235609a3faccb3a920eec8c4f0fce61603e88",
+    "packetDigest": "sha256:30f7726fd8c9e19c3abb1e561e2884d44df7972b3e891c8282e17526558b2a06",
+    "promptDigest": "sha256:a30cdfe20296d3294bbea7920b839934573bf0b69e27fbc4788493d57fdffffb",
+    "promptVersion": "knowledge-extraction-v6",
+    "runtimeDigest": "sha256:0f93997ce43aa10688eb5951838509cdee44d8564df44cb2438b62c4d91d0b49",
+    "dependencyDigest": "sha256:35027c64e0e501c0cea3286bd48bdd44d67e85140a1cdbe44a704550d07eab83",
+    "nodeVersion": "24.21.0",
+    "responseSchemaVersion": 4,
+    "reviewVersion": "omk-real-entity-review/v1",
+    "annotationScope": "knowledge-relevant-entity-expectations-not-exhaustive-mentions",
+    "model": "gpt-6.1-sol",
+    "executor": "codex",
+    "repeats": 1,
+    "plannedCalls": 7,
+    "retries": 0,
+    "concurrency": 2,
+    "runtimeSourceCommit": "9caf1215136e1751a5b6ab3c610c10b22cda049a",
+    "repositoryCommit": "1173285ee9f349e101e3772ecf2d236f2b8f494e",
+    "sourceGroups": 2,
+    "windowMessages": 21,
+    "uniqueMessages": 18,
+    "independentReview": "not_performed",
+    "goldReady": false,
+    "priorOutputs": "previously-viewed-knowledge-development-material-not-blind",
+    "costUSD": null,
+    "reasoningEffort": "executor-default-not-explicitly-set",
+    "backendRevision": "not-reported",
+    "captureDriverDigest": "sha256:50667de32847db71ebc27e24a90d02a550064bdfa7a5e4b38666c0a3ab054303"
+  },
+  "capture": {
+    "status": "captured",
+    "startedAt": "2026-10-10T15:40:26.822Z",
+    "finishedAt": "2026-10-10T15:46:34.520Z",
+    "attempted": 7,
+    "recorded": 7,
+    "executorInvocations": 7
+  },
+  "selfReview": {
+    "reviewVersion": "omk-real-entity-self-review/v1",
+    "status": "completed",
+    "reviewer": "omk-implementation-agent",
+    "reviewedAt": "2026-10-10T15:51:14.858811+00:00",
+    "summary": {
+      "expectedObjects": 31,
+      "expectedObjectsLocated": 28,
+      "missingExpectedObjects": 3,
+      "frozenReferentKindMismatches": 3,
+      "entitySemanticIssueWindows": 4,
+      "knowledgeIssueWindows": 1,
+      "reviewedEntities": 79,
+      "reviewedMentions": 93,
+      "reviewedKnowledgeCandidates": 12,
+      "reviewedStatements": 32,
+      "precision": null,
+      "recall": null,
+      "f1": null,
+      "independentReview": "not_performed",
+      "goldReady": false,
+      "conclusion": "needs_improvement"
+    }
+  },
+  "evidenceDigests": {
+    "plan.json": "sha256:6535204e23506252cecaa634e6cdc217ba26e979ca2b91c17e85ac01fbae6f96",
+    "manifest.json": "sha256:140b36461662bedb5a10e67e08e9c67cd91d1ac9a5e4503a6450491441f75c4c",
+    "prompt.json": "sha256:822d6124653740dc97606ea36220dff6a98a4bfecc754734ab0bea2ca1101bc3",
+    "review-packet.json": "sha256:30f7726fd8c9e19c3abb1e561e2884d44df7972b3e891c8282e17526558b2a06",
+    "runtime-files.json": "sha256:4b900712f430c390b13e85e41fd983b7f33e459b10e508370cc15ce1e7c26123",
+    "checks.json": "sha256:297d283f1df80b74924b244771e35ec513a13946c80b1eb05cdcd412af960af2",
+    "self-review.json": "sha256:b10dc407a4cf2ed30678682e375904b68b18d73e9f4c1b8b68f8da5e6b44bdf4",
+    "review.html": "sha256:0bdd9f8498b85a0c89df066e653c1704ee4100d038531e9f2a632b32e44142e7",
+    "application-replay.json": "sha256:4c8347c4f4813526c306979cfab7ebf0d391f32dac2f7710353c35710f58e047",
+    "capture-real.mjs": "sha256:50667de32847db71ebc27e24a90d02a550064bdfa7a5e4b38666c0a3ab054303",
+    "inspect-real.mjs": "sha256:787b7d4e0373d4db053861b5c8c30c14b1cd0b365950d5ed1905a2d18b801535",
+    "review-real.py": "sha256:6889115a4c2322ad3e2f9893cc108097ac433385b42bd8144a083b854ff664f8",
+    "replay-real.mjs": "sha256:4463240238bdc46be17844d9da518128c806057c1fffe041df4239312de042cd"
+  },
+  "applicationReplay": {
+    "externalModelCalls": 0,
+    "allRunsCompleted": true,
+    "evidenceReferenceRebindingOnly": true,
+    "originalMessagesPreserved": true,
+    "uiAcceptance": "not_repeated_in_this_run"
+  },
+  "publication": {
+    "rawInputs": "local_only",
+    "rawOutputs": "local_only",
+    "annotations": "local_only",
+    "originalPaths": "not_published",
+    "reviewReasons": "bilingual_report_summary_only"
+  },
+  "cases": [
+    {
+      "caseId": "real-symbolication-scope",
+      "inputDigest": "sha256:c49fe62c48f0ff8f4456fc1f701ddf70659aade9f721cd80c20f221e59bd4edc",
+      "outputDigest": "sha256:154f0aa10726a07b518b9394418d6740c80742d1f7f8a1fcfba131078e9754f9",
+      "runtimeDigest": "sha256:c729bee97f54c0bfd1b7a0ea68b5dbde9357b6e52074f63a074dfc057f25f914",
+      "captureDigest": "sha256:bfb686a19aa8be688df964361db20420a02e27ad0576d482a5c2a5a5287522c8",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 7,
+        "mentions": 12,
+        "knowledgeCandidates": 2,
+        "statements": 6
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 8774,
+        "outputTokens": 4223,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 119889,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:40:26.823Z",
+        "finishedAt": "2026-10-10T15:42:26.716Z",
+        "wallClockDurationMs": 119892.04550000001
+      },
+      "selfReview": {
+        "decision": "no_semantic_issue_found",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e3",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": []
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:154f0aa10726a07b518b9394418d6740c80742d1f7f8a1fcfba131078e9754f9",
+        "reboundOutputDigest": "sha256:66d2ddbe3f971da2939e1478d46b8a720b631209d43562e9389fc59eb7a62d1a",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-protected-correction",
+      "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0",
+      "outputDigest": "sha256:2566230279fb8d8ad15654605a261c69da9ed29b4c745b885ed3040ed797ff0c",
+      "runtimeDigest": "sha256:036bda023543800eb24830cc84e43bd0f3fac679c056f87e289146832e8a5699",
+      "captureDigest": "sha256:967150b8b6d7169cc04825e39e6cb7862a0c8fa93e6314c9178c915d44642fad",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 18,
+        "mentions": 21,
+        "knowledgeCandidates": 1,
+        "statements": 4
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 9693,
+        "outputTokens": 4985,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 136660,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:40:26.826Z",
+        "finishedAt": "2026-10-10T15:42:43.488Z",
+        "wallClockDurationMs": 136661.306208
+      },
+      "selfReview": {
+        "decision": "no_semantic_issue_found",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e3",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": false,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "component"
+          },
+          {
+            "observedEntityId": "e9",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e11",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e13",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e14",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e7",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e10",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": []
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:2566230279fb8d8ad15654605a261c69da9ed29b4c745b885ed3040ed797ff0c",
+        "reboundOutputDigest": "sha256:066bc4a5393dd7ffa4ee0b4c24d656fa10b970024de07adb92df78b310dba85d",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-retained-adapters",
+      "inputDigest": "sha256:6f770df7b8bb78b7671403adf2dc8fd2fbfd46fef58679bd946c2e9e7b34cc37",
+      "outputDigest": "sha256:bb1e461d8fd4ca2e203d9734c484ded160501377b090aec63e249a42076922c9",
+      "runtimeDigest": "sha256:d1988e7099e2947fcbcaf47f0088738ee6cbe62ebb0929049f6cc3e7f9cacfda",
+      "captureDigest": "sha256:29ee0f22b8aa2c6a791a3b890a7a114ac5b41766af186d5770acfda8e226d42f",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 16,
+        "mentions": 16,
+        "knowledgeCandidates": 2,
+        "statements": 4
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 8991,
+        "outputTokens": 3739,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 102673,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:42:26.717Z",
+        "finishedAt": "2026-10-10T15:44:09.391Z",
+        "wallClockDurationMs": 102673.682542
+      },
+      "selfReview": {
+        "decision": "needs_improvement",
+        "expectedObjects": [
+          {
+            "observedEntityId": null,
+            "status": "missing",
+            "identityStatusMatches": null,
+            "referentKindMatches": null,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": null
+          },
+          {
+            "observedEntityId": "e9",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e13",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e11",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e12",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": [
+          {
+            "issueType": "missing_primary_concept",
+            "severity": "semantic_failure"
+          }
+        ]
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:bb1e461d8fd4ca2e203d9734c484ded160501377b090aec63e249a42076922c9",
+        "reboundOutputDigest": "sha256:de6fdb5044613db2684eed4636eddaed0ad336f82596e46c8f03d3b175c45cbb",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-session-before-resolution",
+      "inputDigest": "sha256:bca598bf038a225cb6287f47e60da911e0cd218b4ad3a23c65a3bbfebb010c86",
+      "outputDigest": "sha256:98f60bb51ee14b06183c6189847f4f47edfd2191f97cd1ca0aabc55308b5cdac",
+      "runtimeDigest": "sha256:edbb63e73257e672b789a2ef8a904c78592e41a1118658431f51e0f3460e97b3",
+      "captureDigest": "sha256:b629dfbb3aa367600de60f8a593ce7d36911df063d615b5f916175d50fa29a0b",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 11,
+        "mentions": 13,
+        "knowledgeCandidates": 2,
+        "statements": 6
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 8947,
+        "outputTokens": 4473,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 116770,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:42:43.489Z",
+        "finishedAt": "2026-10-10T15:44:40.261Z",
+        "wallClockDurationMs": 116771.502958
+      },
+      "selfReview": {
+        "decision": "needs_improvement",
+        "expectedObjects": [
+          {
+            "observedEntityId": null,
+            "status": "missing",
+            "identityStatusMatches": null,
+            "referentKindMatches": null,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": null
+          },
+          {
+            "observedEntityId": "e7",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "version"
+            ],
+            "observedReferentKind": "version"
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": [
+          {
+            "issueType": "missing_primary_concept",
+            "severity": "semantic_failure"
+          }
+        ]
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:98f60bb51ee14b06183c6189847f4f47edfd2191f97cd1ca0aabc55308b5cdac",
+        "reboundOutputDigest": "sha256:2a1f5c4b7043c264bd63ce6a3365f25011a7848d32638d95f2ac6076c3770bc8",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-session-after-resolution",
+      "inputDigest": "sha256:a9ce559c67cec2e531c6e744581e35b71af7c09f76c20f188d3002074ef46d1d",
+      "outputDigest": "sha256:90df10cb50d3142270fc224adb70ed5c6019cf0f330bbd9bbb61b42fc279a710",
+      "runtimeDigest": "sha256:9a5cc26adceed1a183302cbea333dbd8c1909d94c197b8f511e8919a19dbdc9d",
+      "captureDigest": "sha256:3cf7e4c64e56617919714c6c038ba331437d2ad49f0f57922e3f031d85e53d47",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 18,
+        "mentions": 21,
+        "knowledgeCandidates": 2,
+        "statements": 6
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 9175,
+        "outputTokens": 4600,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 129203,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:44:09.392Z",
+        "finishedAt": "2026-10-10T15:46:18.597Z",
+        "wallClockDurationMs": 129204.21683300001
+      },
+      "selfReview": {
+        "decision": "needs_improvement",
+        "expectedObjects": [
+          {
+            "observedEntityId": null,
+            "status": "missing",
+            "identityStatusMatches": null,
+            "referentKindMatches": null,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": null
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object",
+              "version"
+            ],
+            "observedReferentKind": "version"
+          },
+          {
+            "observedEntityId": "e9",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e7",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": false,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "version"
+          }
+        ],
+        "issues": [
+          {
+            "issueType": "missing_primary_concept",
+            "severity": "semantic_failure"
+          },
+          {
+            "issueType": "mixed_polarity_scope",
+            "proposalId": "p1",
+            "statementId": "s1",
+            "severity": "knowledge_representation_failure"
+          }
+        ]
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:90df10cb50d3142270fc224adb70ed5c6019cf0f330bbd9bbb61b42fc279a710",
+        "reboundOutputDigest": "sha256:f217d32795d20510c9df0e27bb44df9af81aceea9d0adbc71f4b149912fe6b43",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-historical-product-claim",
+      "inputDigest": "sha256:1cf20040d9e30099558fb7d9f6cb3a699e6f44e6baa99d48a82cafb27e2a64de",
+      "outputDigest": "sha256:21b41bbf3e02f309a3aecb337b46ce8403fb00cb777f33dc61a63405ee29e682",
+      "runtimeDigest": "sha256:ca7d0c08551a03d1825861efcf268b6628f03192933d6954d79b254fcdcfc901",
+      "captureDigest": "sha256:aac8991dbca38d433fa16d38ef8280af322ab57f2f7452a88da2d126e52fb0dd",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 9,
+        "mentions": 10,
+        "knowledgeCandidates": 3,
+        "statements": 6
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 8986,
+        "outputTokens": 4416,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 114256,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:44:40.262Z",
+        "finishedAt": "2026-10-10T15:46:34.519Z",
+        "wallClockDurationMs": 114257.19404199999
+      },
+      "selfReview": {
+        "decision": "needs_improvement",
+        "expectedObjects": [
+          {
+            "observedEntityId": "e1",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e2",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": false,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "component"
+          },
+          {
+            "observedEntityId": "e4",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e3",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          },
+          {
+            "observedEntityId": "e5",
+            "status": "located",
+            "identityStatusMatches": true,
+            "referentKindMatches": true,
+            "expectedReferentKinds": [
+              "object"
+            ],
+            "observedReferentKind": "object"
+          }
+        ],
+        "issues": [
+          {
+            "issueType": "ambiguous_mention_assigned_single_identity",
+            "entityId": "e2",
+            "mentionId": "m2",
+            "severity": "semantic_failure"
+          }
+        ]
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:21b41bbf3e02f309a3aecb337b46ce8403fb00cb777f33dc61a63405ee29e682",
+        "reboundOutputDigest": "sha256:f32f7be8e9af55853cf9ecd4969f9518155f72b1a01cec64f7c765b3f7b054b8",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    },
+    {
+      "caseId": "real-acknowledgement",
+      "inputDigest": "sha256:0d21d00e2cb7cfe06878503f2fe4f8236691a4cddb2ab439441fc9359dc1a9fd",
+      "outputDigest": "sha256:715522ab9dbb78e6f2c2721f025f6a07894a0e9823ed26109f8ba6f3a576ef61",
+      "runtimeDigest": "sha256:dcf3c47e055d5e41b470301c77b5a7dbc74734baf3b0931f8a4d14c97bbcc6eb",
+      "captureDigest": "sha256:dc9069f7aca01d6e6e324ceda83ac17e0c820948eb3eada1a659ca1a0a912780",
+      "captureStatus": "output",
+      "parseFailure": null,
+      "rootRejection": null,
+      "rejectedEntities": 0,
+      "rejectedKnowledge": 0,
+      "counts": {
+        "entities": 0,
+        "mentions": 0,
+        "knowledgeCandidates": 0,
+        "statements": 0
+      },
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 8538,
+        "outputTokens": 27,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "durationMs": 14133,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "toolCalls": 0,
+      "timing": {
+        "startedAt": "2026-10-10T15:46:18.597Z",
+        "finishedAt": "2026-10-10T15:46:32.731Z",
+        "wallClockDurationMs": 14133.751874999958
+      },
+      "selfReview": {
+        "decision": "no_semantic_issue_found",
+        "expectedObjects": [],
+        "issues": []
+      },
+      "applicationReplay": {
+        "originalOutputDigest": "sha256:715522ab9dbb78e6f2c2721f025f6a07894a0e9823ed26109f8ba6f3a576ef61",
+        "reboundOutputDigest": "sha256:715522ab9dbb78e6f2c2721f025f6a07894a0e9823ed26109f8ba6f3a576ef61",
+        "allMentionsMatched": true,
+        "allEntitiesSearchable": true,
+        "allKnowledgeBindingsAvailable": true
+      }
+    }
+  ]
+}

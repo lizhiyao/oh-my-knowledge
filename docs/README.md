@@ -52,6 +52,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md)
 - [Entity extraction](./specs/entity-extraction.md) · [v3 quality results and limits](./explanation/entity-extraction-quality.md) · [v4 two-round results and limits](./explanation/entity-extraction-v4-repeat-quality.md)
 - [Entity extraction v6: 11-window diagnostic](./explanation/entity-extraction-v6-diagnostic.md)
+- [Entity extraction v6: single-round real-conversation diagnostic](./explanation/entity-extraction-v6-real-pilot.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)
