@@ -1,6 +1,6 @@
 # Entity extraction from selected records
 
-Status: the #1119 foundation and #1127 P2 contract replacement are implemented. New model and independent acceptance remain pending. Only current data structures are supported, without legacy readers, recovery, or migration. The [v2/v3 comparison report](../explanation/entity-extraction-quality.md) preserves historical results and one pending object-granularity adjudication. Research and structural validation do not prove model performance.
+Status: the #1119 foundation and #1127 P2/P3 contract and interface changes are implemented. The [P4 evaluation guide and offline checker](./entity-extraction-evaluation.md) prepare draft annotations; independent review and new model acceptance remain pending. Only current data structures are supported, without legacy readers, recovery, or migration. The [v2/v3 comparison report](../explanation/entity-extraction-quality.md) preserves historical results and one pending object-granularity adjudication. Research and structural validation do not prove model performance.
 
 See the [entity identity rules](./entity-identity.md) for components/instances, collections/unresolved identities, renames/versions, and later corrections. Section 8 defines the approved current contracts; Studio supports link/member inspection and correction. Historical acceptance results stay unchanged; independent semantic acceptance of the new prompt remains pending.
 

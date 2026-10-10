@@ -1,0 +1,69 @@
+---
+description: Annotation, layered checks and independent review for entity extraction.
+---
+
+# Entity extraction quality evaluation
+
+Status: P4 checker and annotation draft. Guide `omk-entity-annotation/v1`, corpus `omk-entity-quality/v3`, checker `omk-entity-critical-checks/v2`; targets `knowledge-extraction-v4` / response Schema v4. **Independent human annotation review and new model evaluation are incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) tracks both.
+
+## 1. Versions and scope
+
+This guide follows the [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md). Historical v2 gold, v1 checks, v3 prompt reports and raw outputs remain unchanged. New checks do not re-score old reports and their counts are not directly comparable. This is a `BREAKING-COMPARABILITY` measurement identity, without changing the production prompt, Schema or user storage.
+
+`test/fixtures/entity-extraction-review.json` is a public synthetic draft: eight development windows, eight reserved validation windows and 50 critical mentions. Project and conversation groups cannot cross splits; identical message windows cannot cross either. Coverage includes Chinese, English, code, repeated names, coreference, late corrections, environments, instances, versions, collections and truncated sources. It is neither a hidden blind set nor representative real logs; validation windows must not inform prompt tuning. Future real data requires separate minimization, authorization, grouping and review; synthetic windows cannot enter its denominator.
+
+## 2. Annotation units and allowed expressions
+
+Freeze source messages, roles, omitted records and window limitations before annotating each item:
+
+| Annotation | Rule |
+|---|---|
+| Critical mention | Names and references needed for retrieval, identity or understanding knowledge, rather than every noun. Keep message index, verbatim quote and zero-based occurrence; count overlapping matches and use UTF-16 half-open spans. |
+| Allowed boundary | `alternatives` lists equivalent boundaries agreed before outputs, such as a complete code identifier with or without backticks. An arbitrary broad quotation containing the name is not a hit; broader boundaries are review candidates. |
+| Identity group | Mentions with the same `entityKey` must merge; different groups must remain separate. Model IDs and labels are not gold. Align source spans before comparing mention pairs. |
+| Granularity and links | Annotate allowed `referentKinds`, identity status, explicit candidates, component and collection membership/completeness. Alternatives need prior agreement; uncertain sources retain uncertainty. |
+| Knowledge roles | Annotate source anchor, subject, object and interpretation first. Relations may use synonymous wording. A human checks semantics, direction, negation, conditions, time and corrections against the full window; missing keywords are not errors. |
+
+A collective reference is one collection mention, not duplicate member mentions at the same span. Instances/versions differ from their component; environmental conditions alone do not force new identities. Distinguish tools from logs, plans from executions, replacement from rename. Matching names or paths are insufficient to merge. If two identity schemes are reasonable, adjudicate first or explicitly allow alternatives before outputs; this draft does not encode conflicting identity partitions, so unresolved disputes cannot be frozen.
+
+## 3. Layered results and acceptance threshold
+
+| Layer | Recorded checks | Limits |
+|---|---|---|
+| Calls and capture | Separate call failures, JSON parse failures, cancellation and unattempted items. | Internal checker exceptions stop the run instead of becoming model failures; no retries hide failures. |
+| Structural admission | Envelope Schema rejection, rejected mentions/entities/proposals and itemized reasons. | Structural rejection of valid JSON is a captured output, never `capture_failures`. Rejected item counts include cascading consequences, not independent mistakes. |
+| Critical mentions | Exact matches/missing/ambiguous mentions, broad-boundary candidates and critical mention recall. | Annotation is not exhaustive: precision/F1 are `null`; extra mentions need human review and are not automatically false positives. |
+| Identity | Required same/different mention pairs, wrong merges/splits and granularity/candidate/component/member differences. | Unaligned mentions or missing references are `not_evaluable`, never passes. Correlated pair counts are not independent-sample accuracy. |
+| Knowledge links | Statements linked to the source anchor and their endpoints; reversed endpoints raise review prompts; no statement is `not_observed`. | Matching endpoints do not establish correct relations or truth. Other statements sharing an anchor, broad citations and synonyms require human review. |
+| Independent semantics | Per-case `semanticChecks` cover conditions, time, negation, assertions/observations, plans/completion, case organization and late corrections. | `optional` permits no knowledge; omission differs from error. Knowledge under `none` requires an issue. Empty results do not establish reliable knowledge links. |
+
+Frozen synthetic critical regression threshold: every planned call has a record; no call/parse failure, cancellation, unattempted item or structural rejection; 100% critical mention matches; all same/different mention pairs and identity links match without `not_evaluable`; independent human review approves generated knowledge roles, conditions and status with no unresolved disputes. Omitted optional knowledge supports entity-only conclusions and leaves knowledge-link coverage insufficient. This tool never automatically declares the entire threshold passed: `semanticReview` stays `pending`, with unverified scope reported.
+
+This threshold covers specific boundaries, not overall quality. Two repeats supply at most two samples; passing both does not establish population stability or cross-Agent benefits. Real-log sampling and thresholds are separately predefined, never adjusted after seeing outcomes.
+
+## 4. Independent review, disputes and freezing
+
+1. The implementer/author checks source closure, positions, grouping and contracts, then prepares a review bundle. This is self-review, not independent review.
+2. A person independent of the authors checks each case's guide, allowed boundaries, identity groups, roles and semantic criteria. Complete `review-template.json` with `approved` or `changes_requested` per case, rationale, reviewer, timestamp and independence declaration. An independent model judge does not equal independent human review.
+3. Adjudicate disputes before seeing outputs, recording the question, resolution and independent adjudicator. Unresolved disputes use `changes_requested`. Corpus/guide/checker changes require a version change and new bundle; editing a receipt cannot approve a different digest.
+4. The receipt covers every case, binds the measurement identity and predates output capture. The checker rejects author self-attestation, omissions, wrong digests and post-hoc approval. It checks record closure and declarations, not actual reviewer identity or judgment correctness; `attested_independent_human` is a declaration, not an effectiveness conclusion.
+5. The measurement identity combines corpus, bilingual guide, compiled checker and production runtime digests, dependency manifest/lockfile digest, Node version, raw UTF-8 prompt digest and versions. Rebuilding changes identity if artifact bytes change; retain the frozen build for evaluation. The bundle preserves both original guide files and a combined reading copy. Runtime promptHash uses canonical JSON hashing rather than the raw UTF-8 digest here; do not interchange them.
+
+## 5. Offline review tool and evidence
+
+Update compiled artifacts, then prepare an external bundle:
+
+```bash
+yarn build:runtime
+node dist-scripts/bench/entity-extraction-review.js \
+  --corpus test/fixtures/entity-extraction-review.json \
+  --output /private/tmp/omk-entity-review-unique
+```
+
+The output must be absolute, outside the repository, with an existing parent and nonexistent destination; symlinks into the repository are rejected. It preserves raw corpus, bilingual guide, `review.html` with positions and annotations, review template, model inputs/digests and measurement manifest. Without a receipt, `goldReady: false`. The default template requests changes and has no signature; it cannot approve anything without completion.
+
+Optional `--review /absolute/review.json` validates a receipt; optional `--captures /absolute/captures.json` checks existing captures only. **No executor entry exists: this command makes zero model calls.** Preparing a bundle or signing annotations does not authorize data transmission or model execution.
+
+Capture format `omk-entity-captures/v1` contains the same `measurementId`, one split, one or two planned repeats, start time, executor/model and records with `caseId`, repeat index, frozen input digest and result. Results are `output` (verbatim text and optional original usage), `call_failure` or `cancelled`, with optional executor-reported `durationMs` and `costUSD`; omit unknown values instead of inserting zero. Unknown, duplicate, excess and input-mismatched records are rejected. Raw captures and admission results remain intact. Unattempted records are itemized; unchecked critical mentions stay outside the matching denominator and have their own count. Aggregate only reported usage, duration and cost. Total cost is `unknown` if any recorded attempt lacks reported cost, while the reported subtotal remains visible; partial cost coverage is not the whole-run cost.
+
+Structural rejections do not fail capture status; call/parse failures, cancellation or incomplete plans cause a nonzero exit. Successful exit only means offline inspection completed. Raw outputs, itemized admission, original usage and every failure remain available; semantic review stays pending. P5 executes model evaluation only within concrete authorization and obtains itemized independent output review.

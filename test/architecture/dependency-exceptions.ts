@@ -27,6 +27,18 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/entity-extraction-review.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
+    sourceSha256: '19a7de16de7280f51fe43ad4caec7acfbb74138aa690eba14b559b0b58a619ab',
+    rationale: 'Offline v4 inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
+  },
+  {
+    importer: 'scripts/bench/entity-extraction-review.ts',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href",
+    sourceSha256: '19a7de16de7280f51fe43ad4caec7acfbb74138aa690eba14b559b0b58a619ab',
+    rationale: 'Offline v4 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
+  },
+  {
     importer: 'scripts/bench/knowledge-extraction-quality.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/adapters/executor.js')).href",
     sourceSha256: '8f9167d73dee75779076ba1b7d5aabfe33a4b1190182fa1a0196c4565c2f3f24',

@@ -1,0 +1,1647 @@
+{
+  "corpusVersion": "omk-entity-quality/v3",
+  "guideVersion": "omk-entity-annotation/v1",
+  "provenance": "synthetic",
+  "authors": [
+    "omk-implementation-agent"
+  ],
+  "annotationScope": "critical_mentions",
+  "cases": [
+    {
+      "caseId": "dev-rename",
+      "projectGroup": "dev-docs",
+      "conversationGroup": "dev-rename",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "项目 Pavo 的 a.md 改名为 b.md，还是同一文件。"
+        },
+        {
+          "role": "user",
+          "text": "它仍保存操作约定。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "rename",
+        "coreference"
+      ],
+      "entities": [
+        {
+          "entityKey": "project",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "file",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "project",
+          "entity": "project",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Pavo",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "old-name",
+          "entity": "file",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "a.md",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "new-name",
+          "entity": "file",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "b.md",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "pronoun",
+          "entity": "file",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "它",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "file-state",
+          "subject": "file",
+          "object": null,
+          "messageIndex": 1,
+          "anchor": {
+            "quote": "它仍保存操作约定。",
+            "occurrence": 0
+          },
+          "interpretation": "文件仍保存操作约定；不是项目被改名。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "a.md、b.md、它必须归入同一文件；没有依据推断内容变化。"
+      ]
+    },
+    {
+      "caseId": "dev-environment",
+      "projectGroup": "dev-scheduler",
+      "conversationGroup": "dev-environment",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "Pavo 使用 Rill 调度器。测试环境里 Rill 通过，生产环境里 Rill 报错；生产修复尚未验证。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "environment"
+      ],
+      "entities": [
+        {
+          "entityKey": "project",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "scheduler",
+          "referentKinds": [
+            "component"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "project",
+          "entity": "project",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Pavo",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "scheduler-name",
+          "entity": "scheduler",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Rill",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "test-ref",
+          "entity": "scheduler",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Rill",
+              "occurrence": 1
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "prod-ref",
+          "entity": "scheduler",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Rill",
+              "occurrence": 2
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "uses",
+          "subject": "project",
+          "object": "scheduler",
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "Pavo 使用 Rill 调度器。",
+            "occurrence": 0
+          },
+          "interpretation": "Pavo 使用 Rill；中文同义关系允许。"
+        },
+        {
+          "roleKey": "prod-error",
+          "subject": "scheduler",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "生产环境里 Rill 报错",
+            "occurrence": 0
+          },
+          "interpretation": "报错属于 Rill 的生产环境。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "三个 Rill 是同一组件；环境是陈述条件，没有明确部署实例。",
+        "测试通过不推广到生产；生产修复不能写成已验证。"
+      ]
+    },
+    {
+      "caseId": "dev-instances",
+      "projectGroup": "dev-sieve",
+      "conversationGroup": "dev-instances",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "Sieve is a component. Its test instance `sieve/dev01` passed; its production instance `sieve/prod01` failed."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "code",
+        "instances"
+      ],
+      "entities": [
+        {
+          "entityKey": "component",
+          "referentKinds": [
+            "component"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "test",
+          "referentKinds": [
+            "instance"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": "component",
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "prod",
+          "referentKinds": [
+            "instance"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": "component",
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "component",
+          "entity": "component",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Sieve",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "test",
+          "entity": "test",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "sieve/dev01",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "prod",
+          "entity": "prod",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "sieve/prod01",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "test-pass",
+          "subject": "test",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "Its test instance `sieve/dev01` passed",
+            "occurrence": 0
+          },
+          "interpretation": "成功只属于测试实例。"
+        },
+        {
+          "roleKey": "prod-fail",
+          "subject": "prod",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "its production instance `sieve/prod01` failed",
+            "occurrence": 0
+          },
+          "interpretation": "失败属于生产实例。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "两个实例不可合并；分别关联 Sieve 组件；不能把组件本身的状态写成整体通过。"
+      ]
+    },
+    {
+      "caseId": "dev-collective",
+      "projectGroup": "dev-pair",
+      "conversationGroup": "dev-collective",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "对象 Atlas 和 Birch 一起参加检查。它们一共发现了 3 个问题，没记录各自的数量。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "collection"
+      ],
+      "entities": [
+        {
+          "entityKey": "atlas",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "birch",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "pair",
+          "referentKinds": [
+            "collection"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": {
+            "members": [
+              "atlas",
+              "birch"
+            ],
+            "completeness": "complete"
+          },
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "atlas",
+          "entity": "atlas",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Atlas",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "birch",
+          "entity": "birch",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Birch",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "pair",
+          "entity": "pair",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "它们",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "total",
+          "subject": "pair",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "它们一共发现了 3 个问题",
+            "occurrence": 0
+          },
+          "interpretation": "集合发现 3 个，个体数量未知。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "它们是完整成员集合；集合提及仅绑定一次，不分别重复给两个成员。",
+        "3 个是总数；不得分配为每个成员各发现 3 个。"
+      ]
+    },
+    {
+      "caseId": "dev-unresolved",
+      "projectGroup": "dev-workers",
+      "conversationGroup": "dev-unresolved",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "西区对象 W 和东区对象 E 都有别名 Worker。它报错了，目前不知道是哪一个。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "ambiguity"
+      ],
+      "entities": [
+        {
+          "entityKey": "west",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "east",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "unknown",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "unresolved",
+          "possibleEntities": [
+            "west",
+            "east"
+          ],
+          "component": null,
+          "collection": null,
+          "rationale": "它有两个明确候选，来源未裁决。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "west",
+          "entity": "west",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "W",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "east",
+          "entity": "east",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "E",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "unknown",
+          "entity": "unknown",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "它",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "unknown-error",
+          "subject": "unknown",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "它报错了",
+            "occurrence": 0
+          },
+          "interpretation": "错误归属尚未消解的对象，不擅自归给 W 或 E。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "W 与 E 分开；它保留 unresolved 和两个候选。",
+        "别名 Worker 是共同介绍，不要求两实体重复绑定同一原文跨度。"
+      ]
+    },
+    {
+      "caseId": "dev-repeated-code",
+      "projectGroup": "dev-console",
+      "conversationGroup": "dev-repeated-code",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "😀 `Echo` printed Echo, then Echo stopped. All three names refer to the same command."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "code",
+        "repeated-name",
+        "utf16"
+      ],
+      "entities": [
+        {
+          "entityKey": "command",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "code",
+          "entity": "command",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Echo",
+              "occurrence": 0
+            },
+            {
+              "quote": "`Echo`",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "printed",
+          "entity": "command",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Echo",
+              "occurrence": 1
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "stopped",
+          "entity": "command",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Echo",
+              "occurrence": 2
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "stopped",
+          "subject": "command",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "Echo stopped",
+            "occurrence": 0
+          },
+          "interpretation": "停止属于同一命令，不能凭第一处引用说明第三处来源。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "Echo 三处分别定位；UTF-16 包括 emoji 的两个代码单元；无重复报价时不得任选位置。"
+      ]
+    },
+    {
+      "caseId": "dev-plan-run",
+      "projectGroup": "dev-rollout",
+      "conversationGroup": "dev-plan-run",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "R7 是生产发布计划。D7 是按 R7 执行的测试演练，演练已完成；生产发布还没开始。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "plan",
+        "activity"
+      ],
+      "entities": [
+        {
+          "entityKey": "plan",
+          "referentKinds": [
+            "plan"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "drill",
+          "referentKinds": [
+            "activity"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "plan-name",
+          "entity": "plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "R7",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "drill",
+          "entity": "drill",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "D7",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "plan-ref",
+          "entity": "plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "R7",
+              "occurrence": 1
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "follows",
+          "subject": "drill",
+          "object": "plan",
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "D7 是按 R7 执行的测试演练",
+            "occurrence": 0
+          },
+          "interpretation": "演练按计划进行；方向是 D7 → R7。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "计划 R7 与执行活动 D7 分开。",
+        "测试演练完成不是生产发布完成；案例行动和结果应为来源支持的描述陈述。"
+      ]
+    },
+    {
+      "caseId": "dev-replacement",
+      "projectGroup": "dev-files",
+      "conversationGroup": "dev-replacement",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "删除旧对象 old/config.json，然后在原路径新建对象 new/config.json；这不是改名。"
+        },
+        {
+          "role": "user",
+          "text": "只有 new/config.json 支持新格式，旧对象不支持。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "replacement",
+        "later-correction"
+      ],
+      "entities": [
+        {
+          "entityKey": "old",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "new",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "old",
+          "entity": "old",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "old/config.json",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "new",
+          "entity": "new",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "new/config.json",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "new-ref",
+          "entity": "new",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "new/config.json",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "old-ref",
+          "entity": "old",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "旧对象",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "new-format",
+          "subject": "new",
+          "object": null,
+          "messageIndex": 1,
+          "anchor": {
+            "quote": "new/config.json 支持新格式",
+            "occurrence": 0
+          },
+          "interpretation": "支持属于新对象；旧对象的否定独立保留。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "删除后新建是不同对象；同路径不能继承身份。",
+        "新格式支持范围不能推广到旧对象。"
+      ]
+    },
+    {
+      "caseId": "val-rename",
+      "projectGroup": "val-packages",
+      "conversationGroup": "val-rename",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "The file draft.txt was renamed to final.txt, retaining its identity."
+        },
+        {
+          "role": "user",
+          "text": "It still contains the launch checklist."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "rename",
+        "coreference"
+      ],
+      "entities": [
+        {
+          "entityKey": "file",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "old",
+          "entity": "file",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "draft.txt",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "new",
+          "entity": "file",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "final.txt",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "it",
+          "entity": "file",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "It",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "contains",
+          "subject": "file",
+          "object": null,
+          "messageIndex": 1,
+          "anchor": {
+            "quote": "It still contains the launch checklist.",
+            "occurrence": 0
+          },
+          "interpretation": "文件仍包含清单。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "改名与 It 延续同一文件，未证明清单内容改变。"
+      ]
+    },
+    {
+      "caseId": "val-environment",
+      "projectGroup": "val-cache",
+      "conversationGroup": "val-environment",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "Beryl is our cache component. Beryl passed in staging; Beryl timed out in production. The production fix is only a suggestion."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "environment",
+        "plan"
+      ],
+      "entities": [
+        {
+          "entityKey": "cache",
+          "referentKinds": [
+            "component"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "name",
+          "entity": "cache",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Beryl",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "staging",
+          "entity": "cache",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Beryl",
+              "occurrence": 1
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "production",
+          "entity": "cache",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Beryl",
+              "occurrence": 2
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "prod-timeout",
+          "subject": "cache",
+          "object": null,
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "Beryl timed out in production",
+            "occurrence": 0
+          },
+          "interpretation": "生产超时，不能推广为全组件无法工作。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "一个组件，环境保留在条件中。",
+        "生产修复仅建议，不是已发生行动或已经成功。"
+      ]
+    },
+    {
+      "caseId": "val-versions",
+      "projectGroup": "val-parcel",
+      "conversationGroup": "val-versions",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "Parcel is the component. The archived packages Parcel-v1 and Parcel-v2 are distinct immutable version objects."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "version",
+        "code"
+      ],
+      "entities": [
+        {
+          "entityKey": "component",
+          "referentKinds": [
+            "component"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "v1",
+          "referentKinds": [
+            "version"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": "component",
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "v2",
+          "referentKinds": [
+            "version"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": "component",
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "component",
+          "entity": "component",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Parcel",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "v1",
+          "entity": "v1",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Parcel-v1",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "v2",
+          "entity": "v2",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Parcel-v2",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "两个不可变版本包分离并关联组件；短字符串 Parcel 不能替代版本包完整边界。"
+      ]
+    },
+    {
+      "caseId": "val-partial-members",
+      "projectGroup": "val-cluster",
+      "conversationGroup": "val-partial-members",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "检查对象 Cedrus、Dahlia 及其他未具名节点。它们至少包括这两个节点，完整名单缺失。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "chinese",
+        "collection",
+        "partial-coverage"
+      ],
+      "entities": [
+        {
+          "entityKey": "cedrus",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "dahlia",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "group",
+          "referentKinds": [
+            "collection"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": {
+            "members": [
+              "cedrus",
+              "dahlia"
+            ],
+            "completeness": "partial"
+          },
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "cedrus",
+          "entity": "cedrus",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Cedrus",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "dahlia",
+          "entity": "dahlia",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Dahlia",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "group",
+          "entity": "group",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "它们",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "集合成员有两个已知节点，完整性 partial；不能补造其他节点或标 complete。"
+      ]
+    },
+    {
+      "caseId": "val-truncated",
+      "projectGroup": "val-fragment",
+      "conversationGroup": "val-truncated",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "它失败了，需要稍后调查。"
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。",
+        "窗口从这条消息开始；没有提供先行对象。"
+      ],
+      "tags": [
+        "chinese",
+        "coreference",
+        "truncation"
+      ],
+      "entities": [
+        {
+          "entityKey": "unknown",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "unresolved",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "窗口没有先行对象，无法确定身份。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "it",
+          "entity": "unknown",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "它",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "none",
+      "semanticChecks": [
+        "它未消解，没有明确候选；不得从窗口外补充身份。",
+        "此截断消息无可靠可复用结论，本场景不得生成知识。"
+      ]
+    },
+    {
+      "caseId": "val-namespaces",
+      "projectGroup": "val-repositories",
+      "conversationGroup": "val-namespaces",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "repo-a/config.json and repo-b/config.json are unrelated files. Do not merge them because their basenames match."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "code",
+        "same-name"
+      ],
+      "entities": [
+        {
+          "entityKey": "file-a",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "file-b",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "a",
+          "entity": "file-a",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "repo-a/config.json",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "b",
+          "entity": "file-b",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "repo-b/config.json",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "两个命名空间的同名文件必须分开；边界包括仓库名。"
+      ]
+    },
+    {
+      "caseId": "val-late-correction",
+      "projectGroup": "val-diagnosis",
+      "conversationGroup": "val-late-correction",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "assistant",
+          "text": "Flint caused the outage; Garnet was healthy."
+        },
+        {
+          "role": "user",
+          "text": "Correction: Garnet caused the outage. Flint was healthy; the earlier diagnosis was wrong."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "later-correction",
+        "cross-round"
+      ],
+      "entities": [
+        {
+          "entityKey": "flint",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "garnet",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "flint-first",
+          "entity": "flint",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Flint",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "garnet-first",
+          "entity": "garnet",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Garnet",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "garnet-corrected",
+          "entity": "garnet",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "Garnet",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "flint-corrected",
+          "entity": "flint",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "Flint",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "corrected-cause",
+          "subject": "garnet",
+          "object": null,
+          "messageIndex": 1,
+          "anchor": {
+            "quote": "Garnet caused the outage.",
+            "occurrence": 0
+          },
+          "interpretation": "Garnet 是纠正后的原因；需说明来源主张、纠正与时间。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "保留来源主张与晚到纠正；不能把先前错误诊断当成已确认事实。",
+        "同一实体跨轮延续，Garnet 才是最终纠正中的原因；这仍是用户来源主张。"
+      ]
+    },
+    {
+      "caseId": "val-tool-log",
+      "projectGroup": "val-builder",
+      "conversationGroup": "val-tool-log",
+      "split": "validation",
+      "messages": [
+        {
+          "role": "user",
+          "text": "Nettle wrote nettle.log. It will overwrite that log next time; that has not happened yet."
+        }
+      ],
+      "limitations": [
+        "仅包含选定的消息；未包含工具调用、工具结果及窗口之外的记录。"
+      ],
+      "tags": [
+        "english",
+        "tool-log",
+        "future"
+      ],
+      "entities": [
+        {
+          "entityKey": "tool",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        },
+        {
+          "entityKey": "log",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "原文明确指向这个对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "tool",
+          "entity": "tool",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Nettle",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "log",
+          "entity": "log",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "nettle.log",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "it",
+          "entity": "tool",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "It",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        },
+        {
+          "mentionKey": "log-ref",
+          "entity": "log",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "that log",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称或有上下文依据的指代。"
+        }
+      ],
+      "roles": [
+        {
+          "roleKey": "wrote",
+          "subject": "tool",
+          "object": "log",
+          "messageIndex": 0,
+          "anchor": {
+            "quote": "Nettle wrote nettle.log.",
+            "occurrence": 0
+          },
+          "interpretation": "工具写出日志，方向 Nettle → nettle.log。"
+        }
+      ],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "工具与日志分开，It 指工具，that log 指日志。",
+        "下次覆盖属于未来计划，不能记录为已发生结果。"
+      ]
+    }
+  ]
+}
