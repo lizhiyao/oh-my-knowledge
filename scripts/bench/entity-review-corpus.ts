@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const ENTITY_CHECK_VERSION = 'omk-entity-critical-checks/v2';
-export const ENTITY_GUIDE_VERSION = 'omk-entity-annotation/v1';
+export const ENTITY_GUIDE_VERSION = 'omk-entity-annotation/v2';
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1).max(8192);
 const exactText = z.string().min(1).max(32768).refine(value => value.trim().length > 0);
@@ -15,7 +15,7 @@ const entity = z.strictObject({
   rationale: text,
 });
 export const EntityReviewCorpusSchema = z.strictObject({
-  corpusVersion: z.literal('omk-entity-quality/v3'), guideVersion: z.literal(ENTITY_GUIDE_VERSION),
+  corpusVersion: z.literal('omk-entity-quality/v4'), guideVersion: z.literal(ENTITY_GUIDE_VERSION),
   provenance: z.literal('synthetic'), authors: z.array(text).min(1),
   annotationScope: z.literal('critical_mentions'),
   cases: z.array(z.strictObject({
