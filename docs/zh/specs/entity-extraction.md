@@ -63,13 +63,15 @@
 
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
-`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4，仅支持 `knowledge-extraction-v4`，保存当前提示词身份、原始输出、准备好的实体／知识意图及用量。当前运行恢复复用已分配身份和幂等命令，不重新调用模型。
+`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4；存储按文件 Schema 校验，`promptVersion` 保存 `knowledge-extraction-vN`（正整数版本）的来源身份，当前生成使用 v5。提示词身份与文件格式独立，读取及恢复已有 Schema v4 运行时保留原提示词版本、摘要、原始输出和实体／知识意图，不重新提炼，也不自动升级结果。新生成请求的摘要绑定当前提示词，不能借旧 runId 复用不同提示词的请求。这不是旧文件格式兼容读取器；Schema v3 等旧文件格式仍拒绝。
 
 已批准的替换属于 `BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY`：实体历史 v1 → v2，运行与模型响应 v3 → v4，提示词身份为 `knowledge-extraction-v4`。新提示词字节与接纳语义使用新摘要，新质量验收须有新的测量身份。历史报告、语料和证据不重算、不修改。历史 v3 验收脚本在 v4 运行时配置模型前即拒绝，包括传入冻结 v3 提示词的情况；复现须使用其冻结的基线版本。新模型验收前须由 P4 定义新的语料与检查身份。
 
 不添加兼容 reader、迁移、自动改写或删除。旧实体历史显示不可用，旧运行不能恢复；旧知识 v2 正文仍可读，但所绑定旧实体分析不可用。用户选择新的空知识目录，从原始日志重新提炼；新实体不会自动接管旧知识绑定。
 
-当前 v4 提示词原始 UTF-8 字节摘要：`sha256:77fc3ef5b0bd8ad1e470cb279c50359a4966c9dedfc6503672b4d307ad8f4715`。运行记录的 `promptHash` 沿用规范化 JSON 摘要；本摘要冻结原始字节，不表示模型质量通过。
+v5 仅修改类型依据、共同指代及否定表达指令；模型响应 v4、实体历史 v2、知识历史 v2 和运行文件 v4 保持原格式，无需迁移。提示词字节及语料／指南／检查身份变化，属于 `BREAKING-COMPARABILITY`。历史质量入口仍限定于原运行时，即使向 v5 传入旧提示词也不能执行旧验收；新模型验收待完成。
+
+当前 v5 提示词原始 UTF-8 字节摘要：`sha256:8d7174c13f2b336979c5da01330ef00e3076309d194364e74d0abef11c2d39ad`。运行记录的 `promptHash` 沿用规范化 JSON 摘要；本摘要冻结原始字节，不表示模型质量通过。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

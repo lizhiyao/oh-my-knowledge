@@ -10,7 +10,7 @@ export interface EntityReviewAdmission {
     rejected: unknown[];
   };
   accepted: { proposalId: string; draft: { content: { statements: { statementId: string; subject: { entityId: string };
-    object?: { entityId: string }; relation: string }[] }; evidence: { evidenceLinkId: string; statementIds: string[] }[] };
+    object?: { entityId: string }; relation: string; modality: string; polarity: string }[] }; evidence: { evidenceLinkId: string; statementIds: string[] }[] };
     citations: { evidenceLinkId: string; selection: { evidenceRef: string; start: number; end: number } }[] }[];
   rejected: unknown[];
 }
@@ -64,7 +64,7 @@ export function checkEntityReview(sample: EntityReviewCase, checked: EntityRevie
       const links = proposal.draft.evidence.filter(link => link.statementIds.includes(statement.statementId));
       if (!proposal.citations.some(citation => links.some(link => link.evidenceLinkId === citation.evidenceLinkId) && covers(citation.selection, anchor))) return [];
       return [{ proposalId: proposal.proposalId, statementId: statement.statementId, subject: statement.subject.entityId,
-        object: statement.object?.entityId ?? null, relation: statement.relation }];
+        object: statement.object?.entityId ?? null, relation: statement.relation, modality: statement.modality, polarity: statement.polarity }];
     }));
     const subject = mapped(gold.subject); const object = gold.object ? mapped(gold.object) : null;
     // Endpoints and provenance provide candidates, never a keyword-based semantic verdict.
