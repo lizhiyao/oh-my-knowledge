@@ -2,7 +2,7 @@
 
 Status: the #1119 foundation and #1127 P2 contract replacement are implemented. New model and independent acceptance remain pending. Only current data structures are supported, without legacy readers, recovery, or migration. The [v2/v3 comparison report](../explanation/entity-extraction-quality.md) preserves historical results and one pending object-granularity adjudication. Research and structural validation do not prove model performance.
 
-See the [entity identity rules](./entity-identity.md) for components/instances, collections/unresolved identities, renames/versions, and later corrections. Section 8 defines the approved current contracts; full link/member editing remains P3 work. Historical acceptance results stay unchanged.
+See the [entity identity rules](./entity-identity.md) for components/instances, collections/unresolved identities, renames/versions, and later corrections. Section 8 defines the approved current contracts; Studio supports link/member inspection and correction. Historical acceptance results stay unchanged; independent semantic acceptance of the new prompt remains pending.
 
 ## 1. User outcome and scope
 
@@ -43,7 +43,7 @@ An independent entity analysis contains entities, mentions, identity ambiguity, 
 
 ## 4. Corrections and knowledge revisions
 
-Entity analysis has immutable revisions, parent revisions, authors, timestamps, and reasons, with generation/head checks and idempotent write identities. Users can reassign mentions, split/merge local objects, add omitted mentions, remove false mentions, and retain ambiguity. A mention identity cannot move to different source text; relocation creates another mention. Corrections explicitly retain or change all identity fields and supporting references. The current Studio editor keeps links intact and blocks destructive edits affecting link evidence; full member/link editing is pending P3.
+Entity analysis has immutable revisions, parent revisions, authors, timestamps, and reasons, with generation/head checks and idempotent write identities. Users can reassign mentions, split/merge local objects, add omitted mentions, remove false mentions, and retain ambiguity. A mention identity cannot move to different source text; relocation creates another mention. Studio explicitly corrects level, component links, collection members/completeness and evidence. Field changes do not silently remove other information; inconsistent drafts must be corrected. Before merging/removing entities or reassigning mentions, explicitly correct dependent component, membership, candidate and evidence references. The UI lists dependent entities for inspection; it does not drop references or infer membership completeness. Before merging, explicitly remove the original entity's own link information and inspect the target; removal deletes its own information but does not rewrite other entities. Original revisions and source snapshots remain preserved.
 
 Knowledge grounding binds an exact analysis revision. Later corrections do not overwrite old knowledge. Applying a correction requires checking statement roles and evidence, and produces another knowledge revision. Splitting an old object does not let the workflow pick one replacement subject arbitrarily.
 
