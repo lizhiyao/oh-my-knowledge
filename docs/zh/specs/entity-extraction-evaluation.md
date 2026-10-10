@@ -4,13 +4,15 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v4`，语料 `omk-entity-quality/v6`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v6`／响应 Schema v4。**11 个窗口的单轮诊断及作者自审已完成，独立人工复核与全量质量验收仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
+状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v5`，语料 `omk-entity-quality/v7`，检查 `omk-entity-critical-checks/v3`；适用于 `knowledge-extraction-v7`／响应 Schema v4。**历史 v6 诊断及作者自审已完成；v7 尚未执行模型语义验收，独立人工复核与全量质量验收仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
 
 ## 1. 版本与适用范围
 
-本指南采用[实体身份规则](./entity-identity.md)及[实体提取契约](./entity-extraction.md)。v2／v3／v4／v5 的语料、报告及冻结构建保持原样。v6 将开放的事物与概念识别纳入主要验收范围，保留既有身份／引用／否定回归；指南升级到 v4，检查算法保持 v3。提示词与语料／指南身份改变，属于 `BREAKING-COMPARABILITY`；模型响应和实体／知识／运行文件格式不变，不重算旧结果，计数不可直接横比。
+本指南采用[实体身份规则](./entity-identity.md)及[实体提取契约](./entity-extraction.md)。v2／v3／v4／v5／v6 的语料、报告及冻结构建保持原样。v7 补足核心概念、保留未获澄清的指代歧义并拆分正负命题，保留开放的事物与概念识别及既有身份／引用／否定回归；指南升级到 v5，检查算法保持 v3。提示词与语料／指南身份改变，属于 `BREAKING-COMPARABILITY`；模型响应和实体／知识／运行文件格式不变，不重算旧结果，计数不可直接横比。
 
-`test/fixtures/entity-extraction-review-v6.json` 是公开合成集：28 个开发窗口、8 个新预留验证窗口，共 128 个关键提及。旧 v5 的全部 24 个公开窗口转为开发回归，另加入苹果、键盘、保险和 Node／OMK 的 4 个讨论示例；`val-`／`fresh-` 前缀保留历史身份，实际 split 均为 development。8 个 `held-` 验证窗口按项目／会话与开发集隔离，覆盖普通实物、材料、保险与教学概念、同名异义、类概念／具体对象、明确别名、歧义和空知识结果。它不是隐藏盲测集，也不代表真实日志分布；验证窗口不得用于提示词调参，作者了解答案不算独立复核。未来真实日志须另行最小化、授权、分组和复核。[v6 诊断报告](../explanation/entity-extraction-v6-diagnostic.md)保留 11 份输出及自审：严格关键提及 39／40，未通过冻结门槛。8 个新验证窗口现已查看输出，后续只作开发回归；不能宣称盲测收益。已有输出的应用动线已完成验收；随后获批的[真实会话单轮诊断](../explanation/entity-extraction-v6-real-pilot.md)完成 7 次采集与逐例自审，暴露核心概念遗漏、指代歧义保留不足及陈述否定范围问题，整体质量仍需改进。运行完成不代表语义通过，离线检查或动线通过不证明模型改进有效。
+历史 `test/fixtures/entity-extraction-review-v6.json` 是公开合成集：28 个开发窗口、8 个新预留验证窗口，共 128 个关键提及。旧 v5 的全部 24 个公开窗口转为开发回归，另加入苹果、键盘、保险和 Node／OMK 的 4 个讨论示例；`val-`／`fresh-` 前缀保留历史身份，实际 split 均为 development。8 个 `held-` 验证窗口按项目／会话与开发集隔离，覆盖普通实物、材料、保险与教学概念、同名异义、类概念／具体对象、明确别名、歧义和空知识结果。它不是隐藏盲测集，也不代表真实日志分布；验证窗口不得用于提示词调参，作者了解答案不算独立复核。未来真实日志须另行最小化、授权、分组和复核。[v6 诊断报告](../explanation/entity-extraction-v6-diagnostic.md)保留 11 份输出及自审：严格关键提及 39／40，未通过冻结门槛。8 个新验证窗口现已查看输出，后续只作开发回归；不能宣称盲测收益。已有输出的应用动线已完成验收；随后获批的[真实会话单轮诊断](../explanation/entity-extraction-v6-real-pilot.md)完成 7 次采集与逐例自审，暴露核心概念遗漏、指代歧义保留不足及陈述否定范围问题，整体质量仍需改进。运行完成不代表语义通过，离线检查或动线通过不证明模型改进有效。
+
+当前 `test/fixtures/entity-extraction-review-v7.json` 共 42 个窗口、150 个关键提及：40 个开发回归与 2 个新预留验证窗口。旧 v6 的全部 36 个窗口转为 development，保留原 caseId（含 `held-` 前缀）；在新 v7 中，开发案例的完整名称 Rule F9 与短标记 F9 预先列为等价边界；旧 v6 备选及未命中计数不变。另增加 4 个合成开发场景，覆盖 Session 概念／属性、助手自行选择回答、用户明确澄清及正负规范拆分。2 个新窗口按项目／会话隔离，核对产品名不得机械拆词，以及集体行动不能机械分配给成员。新窗口公开可见、未调用模型，不称为隐藏盲测或独立证据；真实正文不进入语料。v7 模型语义效果尚未验收，不重算 v6 的 39／40 或真实小批计数。
 
 ## 2. 标注单位与允许表达
 
@@ -29,6 +31,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 类型依据与身份消解分别判断：名称、调用、故障或“节点”称呼不能单独证明组件／部署实例。身份已知但类型未知用 proposed object，保留类型依据不足；来源明确的模块职责或部署实例不能降为 object。完整限定描述与短名可以预先列为等价边界，但不能看新输出后放宽。共同指代与其属性分别识别：their／它们 指集合，属性短语不能只归给一个成员。关系与 polarity 必须一起读，不能重复否定；“未失败”不等于“成功”，“未禁止”不等于“要求”。这些判断保留在逐例语义标准中，不由关键词规则代替。
 
 开放识别须逐例核对普通实物、抽象概念与专有对象的覆盖，以及 description 是否忠实说明语境中的含义。语义类别不等于 referentKind；概念和具体对象可以都用 object，不能因层次相同而合并。保险产品名字含“计划”不证明 plan。记录关键提及之外的遗漏、误提取和未经来源支持的类别／含义；未穷尽标注不计算总体 precision／F1。没有知识候选仍须核对实体覆盖；只有空知识结果不能证明知识关联可靠。
+
+v7 逐项语义核对另需确认：核心概念不被统计／适配对象替代，概念短跨度与复合对象完整跨度可以重叠但不能复制同一跨度；产品名含词不自动拆概念。助手选择回答不等于用户澄清，最初含糊提及保留 unresolved 及同层候选（层次不一致时空候选加理由），明确澄清后才重新判断先前提及。一条 statement 只有统一 modality／polarity 的命题，正负要求分开陈述、分别引用；不能靠 context 将单一 negative 限定到后半句，也不能将一个集体谓词机械拆成成员事实。这些标准由逐例复核执行，结构接纳不使用关键词推断或补写结果。
 
 ## 3. 分层结果与通过门槛
 
@@ -60,7 +64,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v6.json \
+  --corpus test/fixtures/entity-extraction-review-v7.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 

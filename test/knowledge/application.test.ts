@@ -13,6 +13,7 @@ import { FileExtractionRunStore } from '../../src/observability/knowledge-extrac
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
+import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow } from './fixtures.js';
 
@@ -43,7 +44,7 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
-  it('replays all eleven recorded v6 responses through capture, storage and entity search without model execution', async () => {
+  it('replays eleven recorded v6 responses through the current application without claiming new model generation', async () => {
     const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
       frozen: { prompt: { prompt: string }; inputs: { caseId: string; input: { excerpts: EvidenceWindow['excerpts'] } }[] };
       captures: { records: { caseId: string; result: { captureStatus: string; output: string } }[] }[];
@@ -69,12 +70,14 @@ describe('shared knowledge application', () => {
       }));
       const run = await app.generate(snapshot.snapshotId, { executor: 'recorded-output-replay', model: 'recorded-v6',
         generate: async (system, input) => {
-          expect(system).toBe(evidence.frozen.prompt.prompt);
+          expect(system).toBe(EXTRACTION_PROMPT);
+          expect(system).not.toBe(evidence.frozen.prompt.prompt);
           expect(JSON.parse(input).excerpts).toEqual(snapshot.excerpts);
           replayed++; return { output: rebound, durationMs: 0 };
         },
       });
       expect(run.status).toBe('completed'); expect(run.rawOutput).toBe(rebound);
+      expect(run.promptVersion).toBe(EXTRACTION_PROMPT_VERSION);
       expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
       const detail = app.entities(run.runId); mentionCount += detail.revision.mentions.length;
       for (const entity of detail.revision.entities) {
@@ -180,7 +183,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v6' });
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v7' });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -349,7 +352,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v6');
+    expect(run.promptVersion).toBe('knowledge-extraction-v7');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);
