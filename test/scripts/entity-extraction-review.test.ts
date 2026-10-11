@@ -6,7 +6,7 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v10.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v11.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -53,7 +53,8 @@ describe('entity extraction review with author evidence', () => {
       fullCorpusSplitSummaries: { split: string; notAttempted: number; uncheckedCriticalMentions: number }[];
       reproducibility: { captureDriverText: string; captureDriverDigest: string; inspectionDriverText: string; inspectionDriverDigest: string };
     };
-    const frozen = parseEntityReviewCorpus(evidence.frozen.corpusText);
+    // Historical v10 metadata is deliberately rejected by the current reader; audit the immutable frozen shape.
+    const frozen = JSON.parse(evidence.frozen.corpusText) as typeof corpus;
     expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
     expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
     expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
@@ -105,6 +106,68 @@ describe('entity extraction review with author evidence', () => {
     expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed', goldReady: false });
     expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
     expect(evidence.conclusion).toBe('selected_semantics_observed_strict_boundary_regression_not_passed');
+  });
+
+  it('reuses recorded v10 outputs to distinguish complete names from owner-property phrases', () => {
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v10-diagnostic.json', import.meta.url), 'utf8')) as {
+      frozen: { corpusText: string }; captures: ReturnType<typeof reviewCapture>['capture'][];
+      statistics: { matchedCriticalMentions: number; missingCriticalMentions: number };
+    };
+    const before = JSON.stringify(evidence);
+    const historical = JSON.parse(evidence.frozen.corpusText) as typeof corpus;
+    for (const sample of corpus.cases) {
+      const old = historical.cases.find(value => value.caseId === sample.caseId)!;
+      expect(entityReviewInput(sample)).toEqual(entityReviewInput(old));
+      expect(sample.entities).toEqual(old.entities); expect(sample.roles).toEqual(old.roles);
+      for (const mention of sample.mentions) {
+        const original = old.mentions.find(value => value.mentionKey === mention.mentionKey)!;
+        const extra = sample.caseId === 'held-code-state-without-sha' && mention.mentionKey === 'state-tested'
+          ? [{ quote: '当前 main 的被测代码', occurrence: 0 }]
+          : sample.caseId === 'held-config-literal-types' && mention.mentionKey === 'field'
+            ? [{ quote: 'enabled 字段', occurrence: 0 }] : [];
+        expect(mention.alternatives).toEqual([...original.alternatives, ...extra]);
+      }
+    }
+    for (const captured of evidence.captures.flatMap(value => value.records)) {
+      if (captured.result.captureStatus !== 'output') throw new Error('Expected recorded v10 output');
+      const selected = corpus.cases.find(sample => sample.caseId === captured.caseId)!;
+      expect(selected.split).toBe('development');
+      const input = entityReviewInput(selected);
+      expect(captured.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
+      const checked = reviewCapturedOutput(selected, captured.result.output,
+        response => checkWindowExtractionResponse(response, input.excerpts));
+      expect(checked.structuralRejections).toEqual([]);
+      expect(checked.checks!.semanticReview).toBe('pending');
+      if (captured.caseId === 'held-code-state-without-sha') {
+        expect(checked.checks!.criticalMentions.find(value => value.mentionKey === 'state-tested')!.status).toBe('matched');
+        expect(checked.checks!.criticalMentions.find(value => value.mentionKey === 'state-unreleased')).toMatchObject({
+          status: 'missing', boundaryCandidates: ['m4'],
+        });
+        const corrected = JSON.parse(captured.result.output) as ReturnType<typeof packet>;
+        const oldOutput = structuredClone(corrected);
+        const mention = corrected.mentions.find(value => value.mentionId === 'm4')!;
+        // This authored correction exercises location/admission only, never a new model result or a rescore.
+        mention.selection = { evidenceRef: `${selected.caseId}:0`, quote: 'main', occurrence: 1 };
+        const correctedAdmission = checkWindowExtractionResponse(corrected, input.excerpts);
+        expect(correctedAdmission.analysis.rejected).toEqual([]); expect(correctedAdmission.rejected).toEqual([]);
+        expect(correctedAdmission.analysis.mentions.find(value => value.mentionId === 'm4')!.selection).toEqual({
+          evidenceRef: `${selected.caseId}:0`, quote: 'main', start: 34, end: 38,
+        });
+        const correction = checkEntityReview(selected, correctedAdmission);
+        expect(correction.criticalMentions.every(value => value.status === 'matched')).toBe(true);
+        expect(correction.identityPairs.every(value => value.status === 'matched')).toBe(true);
+        expect(corrected.proposals).toEqual(oldOutput.proposals); expect(corrected.entities).toEqual(oldOutput.entities);
+        for (const quote of ['main 上的改造', input.excerpts[0].text]) {
+          mention.selection = { evidenceRef: `${selected.caseId}:0`, quote };
+          expect(checkEntityReview(selected, checkWindowExtractionResponse(corrected, input.excerpts))
+            .criticalMentions.find(value => value.mentionKey === 'state-unreleased')!.status).toBe('missing');
+        }
+      } else {
+        expect(checked.checks!.criticalMentions.every(value => value.status === 'matched')).toBe(true);
+      }
+    }
+    expect(JSON.stringify(evidence)).toBe(before);
+    expect(evidence.statistics).toMatchObject({ matchedCriticalMentions: 10, missingCriticalMentions: 3 });
   });
 
   it.each([
@@ -268,8 +331,8 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(56);
-    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(4);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(58);
+    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(2);
     expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(199);
     for (const mutate of [
       (copy: typeof corpus) => { copy.cases[52].projectGroup = copy.cases[0].projectGroup; },
@@ -313,6 +376,11 @@ describe('entity extraction review with author evidence', () => {
       .map(value => ({ ...value, roles: value.roles.map(role => ({ ...role, coverage: 'if_selected' })) })));
     // No v9 model outputs have been viewed; its two reserved windows remain validation.
     expect(corpus.cases.slice(0, 54).filter(value => value.split === 'validation')).toHaveLength(2);
+    const v10 = readFileSync(new URL('../fixtures/entity-extraction-review-v10.json', import.meta.url), 'utf8');
+    expect(reviewDigest(v10)).toBe('sha256:40819fc1698b76b8921ab6d39bd57a6027b5d12460e2ce61d4d802f587443473');
+    expect(() => parseEntityReviewCorpus(v10)).toThrow();
+    expect(corpus.cases.filter(value => value.split === 'validation').map(value => value.caseId)).toEqual(
+      (JSON.parse(v10) as typeof corpus).cases.filter(value => value.split === 'validation' && !['held-code-state-without-sha', 'held-config-literal-types'].includes(value.caseId)).map(value => value.caseId));
     const rule = corpus.cases.find(value => value.caseId === 'fresh-negative-requirement')!;
     expect(rule.mentions.find(value => value.mentionKey === 'rule-first')!.alternatives).toEqual([
       { quote: 'F9', occurrence: 0 }, { quote: 'Rule F9', occurrence: 0 },
