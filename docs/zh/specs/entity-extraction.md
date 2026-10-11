@@ -71,7 +71,7 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
-`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4；存储按文件 Schema 校验，`promptVersion` 保存 `knowledge-extraction-vN`（正整数版本）的来源身份，当前生成使用 v10。提示词身份与文件格式独立，读取及恢复已有 Schema v4 运行时保留原提示词版本、摘要、原始输出和实体／知识意图，不重新提炼，也不自动升级结果。新生成请求的摘要绑定当前提示词，不能借旧 runId 复用不同提示词的请求。这不是旧文件格式兼容读取器；Schema v3 等旧文件格式仍拒绝。
+`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4；存储按文件 Schema 校验，`promptVersion` 保存 `knowledge-extraction-vN`（正整数版本）的来源身份，当前生成使用 v11。提示词身份与文件格式独立，读取及恢复已有 Schema v4 运行时保留原提示词版本、摘要、原始输出和实体／知识意图，不重新提炼，也不自动升级结果。新生成请求的摘要绑定当前提示词，不能借旧 runId 复用不同提示词的请求。这不是旧文件格式兼容读取器；Schema v3 等旧文件格式仍拒绝。
 
 已批准的替换属于 `BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY`：实体历史 v1 → v2，运行与模型响应 v3 → v4，提示词身份为 `knowledge-extraction-v4`。新提示词字节与接纳语义使用新摘要，新质量验收须有新的测量身份。历史报告、语料和证据不重算、不修改。历史 v3 验收脚本在 v4 运行时配置模型前即拒绝，包括传入冻结 v3 提示词的情况；复现须使用其冻结的基线版本。新模型验收前须由 P4 定义新的语料与检查身份。
 
@@ -89,7 +89,9 @@ v10 在一个完整迭代中落实[身份规则 §2.2／§3.1](./entity-identity
 
 beta 阶段按完整迭代批次统一冻结提示词身份，不为每次文字编辑升号。`promptVersion` 是测量批次的来源标记，不是产品发版；具体字节由 `promptHash` 绑定。冻结后的规则实质变更使用新的测量身份，不拿旧报告代表新提示词。
 
-当前 v10 原始 UTF-8 提示词摘要：`sha256:639253ead5f92f7d05f69cc85c06396068a8974363cba5334205388722fcdc9b`。运行文件 `promptHash` 仍采用规范化 JSON 摘要；此处只冻结原始字节，不代表效果验收通过。
+v11 统一[提及边界规则 §2.3](./entity-identity.md)：指向同一对象的完整名称可以保留，属性归属短语须选择实际对象名称，重复短名重新定位 occurrence。语料 v11／指南 v9，检查算法 v4 不变，构成 `BREAKING-COMPARABILITY`；响应 v4／实体与知识历史 v2／运行 v4 不变，无迁移。仅在新开发标注中添加两个完整名称备选，已查看窗口转为开发回归；复用 v10 五份输出验证边界匹配及构造修正的接纳，不新增模型调用。原始输出、冻结标注和 10／13 保留，尚无 v11 模型效果证据。
+
+当前 v11 原始 UTF-8 提示词摘要：`sha256:0e4456776bcce15074b54562eacb06b7426a7d0e3da6c078b46bd4265652015c`。运行文件 `promptHash` 仍采用规范化 JSON 摘要；此处只冻结原始字节，不代表效果验收通过。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

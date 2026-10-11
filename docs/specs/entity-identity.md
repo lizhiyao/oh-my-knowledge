@@ -78,7 +78,22 @@ These are synthetic examples, not new frozen annotation answers:
 
 Distinguish three outcomes: related generated knowledge missing a critical value is information loss; unselected optional configuration knowledge is not observed; an absent predeclared mandatory fact is a knowledge coverage gap. None automatically means entity omission. Freeze mandatory facts, equivalent expressions, and scope before output; programs do not complete facts through field-keyword rules.
 
-**This section is a subsequent design adjudication.** v10 aligns the prompt, corpus v10, guide v8, and checker v4; original v9 frozen identities remain, while effectiveness review is incomplete. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
+**This section is a subsequent design adjudication.** v10 aligns the prompt, corpus v10, guide v8, and checker v4; original v9 frozen identities remain, with the subsequent five-case diagnostic complete at the original 10/13 critical mentions, below the boundary threshold. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
+
+### 2.3 Mention boundaries: complete names and property ownership
+
+**A mention must denote its bound thing; minimizing character count is not the goal.** Complete names or qualified descriptions that independently denote the same object can remain. Properties, results or whole statements do not become aliases merely by containing the object's name.
+
+| Source expression | Allowed mention boundary | Avoid |
+|---|---|---|
+| “当前 main 的被测代码与已发布 r2 均通过。” | The current code state can use “当前 main” or “当前 main 的被测代码”; identity still depends on the whole source. | Rejecting a complete description for being longer, or treating the entire sentence as a version name. |
+| “服务 S 的 enabled 字段在测试环境为布尔值 false。” | The field can use “enabled” or “enabled 字段”; value, type and environment belong in knowledge statements. | Stripping every “字段” suffix mechanically, or using the entire assignment statement as a field name. |
+| “main 上的改造还未发布。” | Select “main” for the code-state mention; the change and unreleased status form knowledge about that state. | Treating the whole property phrase “main 上的改造” as a code-state alias. |
+| “这把键盘的重量为 800 克。” | Select “这把键盘” for the keyboard; weight and value belong in its statement. | Binding the whole weight phrase as the keyboard's name. |
+
+Distinguish complete descriptions from property ownership semantically, without mechanically cutting at “的” or “上的”. Properties meeting section 2.1's independent-discussion criteria may have their own identities; qualifiers may also be essential parts of names. Inspect source location, bound identity and statement scope separately. When narrowing to a repeated short name, recompute occurrence instead of copying the unique longer phrase's index.
+
+Evaluation only matches equivalent boundaries declared before outputs exactly. A longer quotation containing a short name supplies review cues, never automatic trimming, completion or keyword/regex-based meaning judgments. Prompt/corpus v11 and guide v9 implement this section. The two viewed output windows serve only as development regressions; offline replay demonstrates matching/admission, not changed model choices under the new prompt. Original v10 outputs, annotations and 10/13 remain, without retrospective passing scores.
 
 ## 3. Components, versions, and deployment instances
 
@@ -113,7 +128,7 @@ Component-instance and component-version links are semantics this draft requires
 
 Branch and code state do not substitute for each other, and one source position cannot be duplicated into two mentions. `componentRef` still requires a continuing component and an association supported by the source; a branch name cannot create a component. A version identity does not establish reproducible build evidence, and a branch identity cannot turn a single result into a persistent property.
 
-Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is implemented in the v10 prompt/guide and pre-annotated synthetic cases, without new model effectiveness acceptance.
+Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is implemented in the v10 prompt/guide and pre-annotated synthetic cases, with the subsequent five-case diagnostic observing expected code-state knowledge under self-review but retaining mention-boundary issues. Original 10/13 critical mentions remain; overall quality has not passed.
 
 ## 4. Collections, unresolved identities, and mention positions
 
