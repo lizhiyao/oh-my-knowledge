@@ -6,7 +6,7 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v9.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v10.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -16,7 +16,7 @@ const sample: EntityReviewCase = {
     component: null, collection: null, rationale: 'Distinct objects.' })),
   mentions: ['Alpha', 'Beta'].map(quote => ({ mentionKey: quote.toLowerCase(), entity: quote.toLowerCase(), messageIndex: 0,
     alternatives: [{ quote, occurrence: 0 }], rationale: 'Explicit name.' })),
-  roles: [{ roleKey: 'drives', subject: 'alpha', object: 'beta', messageIndex: 0,
+  roles: [{ roleKey: 'drives', coverage: 'if_selected', subject: 'alpha', object: 'beta', messageIndex: 0,
     anchor: { quote: 'Alpha drives Beta.', occurrence: 0 }, interpretation: 'Alpha drives Beta; equivalent wording allowed.' }],
   knowledgePolicy: 'optional', semanticChecks: ['Verify meaning independently.'],
 };
@@ -54,7 +54,6 @@ describe('entity extraction review with author evidence', () => {
       fullCorpusSplitSummaries: { split: string; notAttempted: number; captureStatus: string }[];
       reproducibility: { captureDriverText: string; captureDriverDigest: string };
     };
-    expect(evidence.manifest.checkVersion).toBe(ENTITY_CHECK_VERSION);
     expect(evidence.manifest.checkVersion).toBe('omk-entity-critical-checks/v3');
     expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
     expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
@@ -72,12 +71,17 @@ describe('entity extraction review with author evidence', () => {
       const input = entityReviewInput(sample);
       expect(record.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
       if (record.result.captureStatus !== 'output') throw new Error('Expected diagnostic output');
-      const replayed = reviewCapturedOutput(sample, record.result.output,
+      const inspected = { ...sample, roles: sample.roles.map(role => ({ ...role, coverage: 'if_selected' as const })) };
+      const replayed = reviewCapturedOutput(inspected, record.result.output,
         response => checkWindowExtractionResponse(response, input.excerpts));
       const published = evidence.records.find(outcome => outcome.caseId === record.caseId)!;
       expect(published.outputDigest).toBe(reviewDigest(record.result.output));
+      // Inspect stable structural projections only; current coverage obligations never re-score frozen v3 evidence.
+      const stableChecks = { ...replayed.checks! };
+      Reflect.deleteProperty(stableChecks, 'knowledgeCoverage');
       expect({ captureStatus: published.captureStatus, structuralRejections: published.structuralRejections, checks: published.checks })
-        .toEqual(JSON.parse(JSON.stringify({ captureStatus: replayed.captureStatus, structuralRejections: replayed.structuralRejections, checks: replayed.checks })));
+        .toEqual(JSON.parse(JSON.stringify({ captureStatus: replayed.captureStatus, structuralRejections: replayed.structuralRejections,
+          checks: { ...stableChecks, checkVersion: evidence.manifest.checkVersion } })));
       const decision = evidence.agentReview.decisions.filter(value => value.caseId === record.caseId);
       expect(decision).toHaveLength(1); expect(decision[0].outputDigest).toBe(published.outputDigest);
       expect(decision[0].rationale.length).toBeGreaterThan(20);
@@ -120,6 +124,7 @@ describe('entity extraction review with author evidence', () => {
       expect(sum(record => record.checked!.accepted.reduce((n, value) => n + value.draft.content.statements.length, 0))).toBe(16);
       // Historical digests and checker v3 are audited above; the current reader deliberately rejects v8.
       const historicalCorpus = JSON.parse(evidence.frozen.corpusText) as typeof corpus;
+      historicalCorpus.cases.forEach(sample => sample.roles.forEach(role => { role.coverage = 'if_selected'; }));
       expect(evidence.fullCorpusSplitSummaries).toEqual(evidence.captures.map(capture => {
         const replay = reviewCapture(JSON.stringify(capture), historicalCorpus, evidence.manifest.measurementId, checkWindowExtractionResponse);
         return { split: capture.split, ...replay.summary };
@@ -191,9 +196,9 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the synthetic draft and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(52);
-    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(2);
-    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(182);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(56);
+    expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(4);
+    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(199);
     for (const mutate of [
       (copy: typeof corpus) => { copy.cases[52].projectGroup = copy.cases[0].projectGroup; },
       (copy: typeof corpus) => { copy.cases[52].conversationGroup = copy.cases[0].conversationGroup; },
@@ -210,7 +215,7 @@ describe('entity extraction review with author evidence', () => {
     const input = entityReviewInput(repeated);
     expect(Object.keys(input)).toEqual(['excerpts', 'limitations']);
     expect(input.excerpts[0].text).toBe(repeated.messages[0].text);
-    for (const field of ['referentKinds', 'semanticChecks', 'projectGroup', 'split', 'alternatives']) expect(JSON.stringify(input)).not.toContain(field);
+    for (const field of ['referentKinds', 'semanticChecks', 'projectGroup', 'split', 'alternatives', 'coverage', 'interpretation']) expect(JSON.stringify(input)).not.toContain(field);
     const historical = readFileSync(new URL('../fixtures/entity-extraction-review.json', import.meta.url), 'utf8');
     expect(reviewDigest(historical)).toBe('sha256:a9752138e4365b050b2b54c1a49d26f59cdcdd5958738d32950a10b7f56ce6ff');
     expect(() => parseEntityReviewCorpus(historical)).toThrow();
@@ -229,9 +234,13 @@ describe('entity extraction review with author evidence', () => {
     const v8 = readFileSync(new URL('../fixtures/entity-extraction-review-v8.json', import.meta.url), 'utf8');
     expect(reviewDigest(v8)).toBe('sha256:86171b6ed03edf8bc71a0cfce7a66ac982ef610055927092ea151dddee9c9587');
     expect(() => parseEntityReviewCorpus(v8)).toThrow();
-    expect(corpus.cases.slice(0, 48)).toEqual((JSON.parse(v8) as typeof corpus).cases
-      .map(value => ({ ...value, split: 'development' })));
-    expect(corpus.cases.slice(0, 48).every(value => value.split === 'development')).toBe(true);
+    const v9 = readFileSync(new URL('../fixtures/entity-extraction-review-v9.json', import.meta.url), 'utf8');
+    expect(reviewDigest(v9)).toBe('sha256:703a98fb468a0394e6ff6de40e2bc1724ef193530914132217e163a7c61996c7');
+    expect(() => parseEntityReviewCorpus(v9)).toThrow();
+    expect(corpus.cases.slice(0, 54)).toEqual((JSON.parse(v9) as typeof corpus).cases
+      .map(value => ({ ...value, roles: value.roles.map(role => ({ ...role, coverage: 'if_selected' })) })));
+    // No v9 model outputs have been viewed; its two reserved windows remain validation.
+    expect(corpus.cases.slice(0, 54).filter(value => value.split === 'validation')).toHaveLength(2);
     const rule = corpus.cases.find(value => value.caseId === 'fresh-negative-requirement')!;
     expect(rule.mentions.find(value => value.mentionKey === 'rule-first')!.alternatives).toEqual([
       { quote: 'F9', occurrence: 0 }, { quote: 'Rule F9', occurrence: 0 },
@@ -280,6 +289,72 @@ describe('entity extraction review with author evidence', () => {
     const split = packet(); split.proposals = []; split.mentions[0].selection.occurrence = 0;
     split.mentions[1].selection = { evidenceRef: 'roles:0', quote: 'Alpha', occurrence: 1 };
     expect(checkEntityReview(alias, checkWindowExtractionResponse(split, entityReviewInput(alias).excerpts)).identityPairs[0].status).toBe('wrong_split');
+  });
+
+  it('keeps required knowledge separate from entity coverage, optional absence and semantic completeness', () => {
+    const selected = corpus.cases.find(value => value.caseId === 'dev-config-rationale')!;
+    const output = modelWindow();
+    const base = output.proposals[0];
+    output.entities = selected.entities.map(entity => ({ ...output.entities[0], entityId: entity.entityKey,
+      label: entity.entityKey, description: entity.rationale }));
+    output.mentions = selected.mentions.map(mention => ({ ...output.mentions[0], mentionId: mention.mentionKey,
+      entityId: mention.entity, selection: { evidenceRef: `${selected.caseId}:0`, ...mention.alternatives[0] } }));
+    base.entityIds = output.entities.map(entity => entity.entityId);
+    base.mentionIds = output.mentions.map(mention => mention.mentionId);
+    base.draft.content.statements = [{ ...base.draft.content.statements[0], subject: { entityId: 'field' },
+      object: undefined, relation: '配置合理' }];
+    base.draft.evidence[0].evidenceRef = `${selected.caseId}:0`;
+    base.draft.evidence[0].basis = 'source_assertion';
+    base.citations[0].selection = { evidenceRef: `${selected.caseId}:0`, quote: selected.messages[0].text };
+    const review = () => checkEntityReview(selected, checkWindowExtractionResponse(output, entityReviewInput(selected).excerpts));
+    expect(review().checkVersion).toBe(ENTITY_CHECK_VERSION);
+    expect(ENTITY_CHECK_VERSION).toBe('omk-entity-critical-checks/v4');
+    expect(review().criticalMentionRecall.value).toBe(1);
+    expect(review().roles[0]).toMatchObject({ endpointStatus: 'endpoints_matched', semanticReview: 'pending' });
+    // An endpoint match with a lossy sentence still requires semantic review; there is no literal-keyword pass.
+    expect(review().knowledgeCoverage[0]).toMatchObject({ coverage: 'required', status: 'needs_review', semanticReview: 'pending',
+      interpretation: selected.roles[0].interpretation, candidates: [{ proposalId: base.proposalId, statementId: 'usage' }] });
+    base.draft.content.statements[0].subject.entityId = 'client';
+    expect(review().knowledgeCoverage[0].status).toBe('needs_review');
+    // An existing owner subject is reviewable even when the field-subject endpoint projection differs.
+    expect(review().knowledgeCoverage[0].candidates).toHaveLength(1);
+    base.entityIds = ['absent'];
+    expect(review().knowledgeCoverage[0].status).toBe('not_evaluable');
+    output.proposals = [];
+    expect(review().criticalMentionRecall.value).toBe(1);
+    expect(review().knowledgeCoverage[0]).toMatchObject({ status: 'required_not_observed', candidates: [], semanticReview: 'pending' });
+    const optional = { ...selected, roles: selected.roles.map(role => ({ ...role, coverage: 'if_selected' as const })) };
+    expect(checkEntityReview(optional, checkWindowExtractionResponse(output, entityReviewInput(optional).excerpts))
+      .knowledgeCoverage[0].status).toBe('not_observed');
+    const conflicting = structuredClone(corpus);
+    conflicting.cases.find(value => value.caseId === selected.caseId)!.knowledgePolicy = 'none';
+    expect(() => parseEntityReviewCorpus(JSON.stringify(conflicting))).toThrow('Required knowledge contradicts none policy');
+    const unmarked = structuredClone(corpus);
+    Reflect.deleteProperty(unmarked.cases.find(value => value.caseId === selected.caseId)!.roles[0], 'coverage');
+    expect(() => parseEntityReviewCorpus(JSON.stringify(unmarked))).toThrow();
+    expect(entityReviewHtml(corpus, measurementId)).toContain('coverage 为 required');
+  });
+
+  it('allows prefrozen tested-state levels while keeping distinct commits apart and unknown SHAs out of resolution', () => {
+    for (const caseId of ['dev-branch-commits', 'held-code-state-without-sha']) {
+      const selected = corpus.cases.find(value => value.caseId === caseId)!;
+      const output = modelWindow(); output.proposals = [];
+      output.entities = selected.entities.map(entity => ({ ...output.entities[0], entityId: entity.entityKey,
+        label: entity.entityKey, description: entity.rationale, referentKind: entity.referentKinds[0] }));
+      output.mentions = selected.mentions.map(mention => ({ ...output.mentions[0], mentionId: mention.mentionKey,
+        entityId: mention.entity, selection: { evidenceRef: `${selected.caseId}:0`, ...mention.alternatives[0] } }));
+      const review = () => checkEntityReview(selected, checkWindowExtractionResponse(output, entityReviewInput(selected).excerpts));
+      expect(review().identities.every(identity => identity.status === 'matched')).toBe(true);
+      if (caseId === 'held-code-state-without-sha') {
+        output.entities[0].referentKind = 'version';
+        expect(review().identities.every(identity => identity.status === 'matched')).toBe(true);
+        output.entities[0].identityStatus = 'unresolved'; output.entities[0].uncertainties = ['未提供 SHA'];
+        expect(review().identities[0].problems).toContain('identity_status');
+      } else {
+        output.mentions[3].entityId = 'a1';
+        expect(review().identityPairs.some(pair => pair.status === 'wrong_merge')).toBe(true);
+      }
+    }
   });
 
   it('detects omitted concepts and premature disambiguation in v8 without rejecting valid nested spans or explicit clarification', () => {

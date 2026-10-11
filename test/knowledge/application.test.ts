@@ -94,6 +94,46 @@ describe('shared knowledge application', () => {
     expect(app.queryEntities({ pageSize: 100 })).toMatchObject({ entityCount: 28, analysisCount: 11, unavailableAnalyses: 0 });
     expect(app.list()).toHaveLength(5);
   });
+  it('preserves configuration literal types, scope and unknown code-state identity after reopening stored knowledge', async () => {
+    const text = "当前 master 的被测代码尚未发布；客户端 C 的 enabled 在测试环境为布尔值 false，在生产环境为字符串 'false'。";
+    const { app, snapshot, ports, model, root } = setup(text);
+    const output = modelWindow();
+    output.entities[0] = { ...output.entities[0], label: '当前 master', referentKind: 'version',
+      description: '本次被测代码状态', uncertainties: ['未记录提交标识'], qualifiers: ['本次状态，尚未发布'] };
+    output.entities[1] = { ...output.entities[1], label: 'enabled', description: '客户端 C 的配置字段', qualifiers: ['所属客户端 C'] };
+    output.mentions[0].selection.quote = '当前 master'; output.mentions[1].selection.quote = 'enabled';
+    const candidate = output.proposals[0];
+    const original = candidate.draft.content.statements[0];
+    candidate.draft.content.statements = [
+      { ...original, statementId: 'code-state', subject: { entityId: 'project' }, object: undefined,
+        relation: '本次被测代码已发布', polarity: 'negative', context: { ...original.context, scenario: '本次被测代码状态',
+          conditions: ['仅本次代码状态'], unknowns: ['未记录提交标识，不代表身份未消解'] } },
+      ...(['test-value', 'production-value'] as const).map((statementId, index) => ({ ...original, statementId,
+        subject: { entityId: 'tool' }, object: undefined, relation: index ? "配置值为字符串 'false'" : '配置值为布尔值 false',
+        context: { ...original.context, scenario: '客户端 C 的 enabled 配置', conditions: [index ? '生产环境' : '测试环境'],
+          unknowns: ['未记录开关的运行效果，不能推断已禁用'] } })),
+    ];
+    candidate.draft.evidence[0].statementIds = candidate.draft.content.statements.map(statement => statement.statementId);
+    candidate.draft.evidence[0].basis = 'source_assertion';
+    candidate.citations[0].selection.quote = text;
+    model.generate = async () => ({ output: JSON.stringify(output).replaceAll('record-1', snapshot.excerpts[0].evidenceRef), durationMs: 0 });
+    const run = await app.generate(snapshot.snapshotId, model);
+    expect(run.status).toBe('completed'); expect(run.entityRejections).toEqual([]); expect(run.rejections).toEqual([]);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      runs: new FileExtractionRunStore(join(root, 'runs')), entities: new FileEntityAnalysisStore(join(root, 'entities')),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    const detail = reopened.detail(run.committed[0].knowledgeId);
+    expect(detail.entityAnalysis?.status).toBe('available');
+    expect(detail.grounding.entityAnalysisRef?.analysisId).toBe(run.runId);
+    expect(detail.revision.content.statements.map(({ relation, context }) => ({ relation, context })))
+      .toEqual(candidate.draft.content.statements.map(({ relation, context }) => ({ relation, context })));
+    expect(detail.revision.evidence[0].basis).toBe('source_assertion');
+    expect(detail.revision.content.statements[0].polarity).toBe('negative');
+    expect(reopened.entities(run.runId).revision.entities.find(entity => entity.label === '当前 master'))
+      .toMatchObject({ identityStatus: 'proposed', referentKind: 'version', uncertainties: ['未记录提交标识'] });
+    expect(reopened.queryEntities({ query: 'enabled' }).rows).toHaveLength(1);
+    expect(reopened.queryEntities({ query: 'master' }).rows).toHaveLength(1);
+  });
   it('uses one window identity for entities and mentions across candidates', async () => {
     const { app, snapshot, model, generate } = setup();
     model.generate = async (_system, input) => {
@@ -183,7 +223,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v9' });
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v10' });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -352,7 +392,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v9');
+    expect(run.promptVersion).toBe('knowledge-extraction-v10');
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);

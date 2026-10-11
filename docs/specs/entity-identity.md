@@ -78,7 +78,7 @@ These are synthetic examples, not new frozen annotation answers:
 
 Distinguish three outcomes: related generated knowledge missing a critical value is information loss; unselected optional configuration knowledge is not observed; an absent predeclared mandatory fact is a knowledge coverage gap. None automatically means entity omission. Freeze mandatory facts, equivalent expressions, and scope before output; programs do not complete facts through field-keyword rules.
 
-**This section is a subsequent design adjudication.** Current prompt v9, corpus v9, guide v7, and checker algorithm v3 keep their frozen identities; implementation and effectiveness review await the next complete iteration. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
+**This section is a subsequent design adjudication.** v10 aligns the prompt, corpus v10, guide v8, and checker v4; original v9 frozen identities remain, while effectiveness review is incomplete. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
 
 ## 3. Components, versions, and deployment instances
 
@@ -113,7 +113,7 @@ Component-instance and component-version links are semantics this draft requires
 
 Branch and code state do not substitute for each other, and one source position cannot be duplicated into two mentions. `componentRef` still requires a continuing component and an association supported by the source; a branch name cannot create a component. A version identity does not establish reproducible build evidence, and a branch identity cannot turn a single result into a persistent property.
 
-Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is not yet part of the current frozen guide or new model acceptance.
+Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is implemented in the v10 prompt/guide and pre-annotated synthetic cases, without new model effectiveness acceptance.
 
 ## 4. Collections, unresolved identities, and mention positions
 

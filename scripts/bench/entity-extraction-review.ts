@@ -141,6 +141,7 @@ export function entityReviewHtml(corpus: EntityReviewCorpus, measurementId: stri
     ${reviewMentions(sample).map(mention => `<tr><td>${escape(mention.mentionKey)}</td><td>${escape(mention.entity)}</td><td>${mention.spans.map(span => `${escape(span.evidenceRef)} [${span.start}, ${span.end})`).join('<br>')}</td><td>${escape(JSON.stringify(mention.alternatives))}<br>${escape(mention.rationale)}</td></tr>`).join('')}</table>
     <h3>身份、候选、组件及集合</h3><pre>${escape(JSON.stringify(sample.entities, null, 2))}</pre>
     <h3>知识角色及人工语义标准</h3><pre>${escape(JSON.stringify(sample.roles, null, 2))}</pre>
+    <p>coverage 为 required 的事实须覆盖；if_selected 仅在选择相关知识时核对信息保留。端点或引文命中不表示值、类型、条件与理由完整；已有陈述须按全文复核，空结果不算知识通过。</p>
     <ul>${sample.semanticChecks.map(check => `<li>${escape(check)}</li>`).join('')}</ul>
     <p>知识策略：${escape(sample.knowledgePolicy)}。限制：${escape(sample.limitations.join('；'))}</p></article>`).join('');
   return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -176,7 +177,7 @@ async function main() {
     .map(path => readFileSync(resolve(repo, path), 'utf8'));
   const guideText = guides.join('\0');
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
-  if (promptModule.EXTRACTION_PROMPT_VERSION !== 'knowledge-extraction-v9') throw new Error('This measurement requires the built v9 prompt/runtime.');
+  if (promptModule.EXTRACTION_PROMPT_VERSION !== 'knowledge-extraction-v10') throw new Error('This measurement requires the built v10 prompt/runtime.');
   const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
   const identity = { corpusVersion: corpus.corpusVersion, checkVersion: ENTITY_CHECK_VERSION, guideVersion: ENTITY_GUIDE_VERSION,
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),

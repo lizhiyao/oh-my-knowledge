@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const ENTITY_CHECK_VERSION = 'omk-entity-critical-checks/v3';
-export const ENTITY_GUIDE_VERSION = 'omk-entity-annotation/v7';
+export const ENTITY_CHECK_VERSION = 'omk-entity-critical-checks/v4';
+export const ENTITY_GUIDE_VERSION = 'omk-entity-annotation/v8';
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1).max(8192);
 const exactText = z.string().min(1).max(32768).refine(value => value.trim().length > 0);
@@ -15,7 +15,7 @@ const entity = z.strictObject({
   rationale: text,
 });
 export const EntityReviewCorpusSchema = z.strictObject({
-  corpusVersion: z.literal('omk-entity-quality/v9'), guideVersion: z.literal(ENTITY_GUIDE_VERSION),
+  corpusVersion: z.literal('omk-entity-quality/v10'), guideVersion: z.literal(ENTITY_GUIDE_VERSION),
   provenance: z.literal('synthetic'), authors: z.array(text).min(1),
   annotationScope: z.literal('critical_mentions'),
   cases: z.array(z.strictObject({
@@ -25,7 +25,7 @@ export const EntityReviewCorpusSchema = z.strictObject({
     entities: z.array(entity).min(1),
     mentions: z.array(z.strictObject({ mentionKey: key, entity: key, messageIndex: z.number().int().nonnegative(),
       alternatives: z.array(quote).min(1), rationale: text })).min(1),
-    roles: z.array(z.strictObject({ roleKey: key, subject: key, object: key.nullable(), messageIndex: z.number().int().nonnegative(),
+    roles: z.array(z.strictObject({ roleKey: key, coverage: z.enum(['required', 'if_selected']), subject: key, object: key.nullable(), messageIndex: z.number().int().nonnegative(),
       anchor: quote, interpretation: text })),
     knowledgePolicy: z.enum(['optional', 'none']), semanticChecks: z.array(text).min(1),
   })).min(2).max(64),
@@ -77,7 +77,10 @@ export function parseEntityReviewCorpus(raw: string): EntityReviewCorpus {
     if (refs.some(ref => !byId.has(ref))) throw new Error('Unclosed annotation identity.');
     const positions = reviewMentions(sample).flatMap(value => value.spans.map(span => `${span.evidenceRef}:${span.start}:${span.end}`));
     if (!unique(positions)) throw new Error('Duplicate annotation position.');
-    for (const role of sample.roles) reviewSpan(sample, role.messageIndex, role.anchor);
+    for (const role of sample.roles) {
+      reviewSpan(sample, role.messageIndex, role.anchor);
+      if (sample.knowledgePolicy === 'none' && role.coverage === 'required') throw new Error('Required knowledge contradicts none policy.');
+    }
     for (const value of sample.entities) {
       if (!sample.mentions.some(mention => mention.entity === value.entityKey)) throw new Error('Annotation entity has no mention.');
       if (!unique(value.referentKinds) || !unique(value.possibleEntities) || !unique(value.collection?.members ?? [])) throw new Error('Duplicate identity choice.');
