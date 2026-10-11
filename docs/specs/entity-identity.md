@@ -136,6 +136,20 @@ Branch and code state do not substitute for each other, and one source position 
 
 Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is implemented in the v10 prompt/guide and pre-annotated synthetic cases, with the subsequent five-case diagnostic observing expected code-state knowledge under self-review but retaining mention-boundary issues. Original 10/13 critical mentions remain; overall quality has not passed.
 
+### 3.2 Release packages and the build under test
+
+**A shared name or topic does not establish the same artifact; identity qualifications cannot transfer between objects.** Discussing a released package and later testing a real build does not establish that the tested build is that release. Matching version strings or a test after publication also do not establish this association. Retain only source-supported release status, version, environment, and test scope.
+
+| Source expression | Identity and statements to use | Handling to reject |
+|---|---|---|
+| “The released beta still awaits backend acceptance; this test used a real beta build.” | The known tested build may be `version`; its release status, precise build, and correspondence with the earlier package remain unknown. If both are independently identified, keep separate records without claiming confirmed difference. | Describing the tested build as released beta or attributing its results to the release package. |
+| “R is the release package and T is a local build; they are different artifacts.” | Two source-distinguished objects with their own qualifications and results. | Merging because names or version strings match. |
+| “The test used the previously mentioned release package R, the same artifact.” | Merge mentions using that explicit association, retaining the source basis in their rationales; results still have this test's conditions. | Forcing a new version for every test or generalizing one result to every environment. |
+
+When release status or artifact correspondence is unknown, the known tested object may remain `proposed`; a missing SHA does not make it `unresolved`. Retain unknowns in entity `uncertainties` and affected statement `context.unknowns`, without inventing qualifications in `description`/`qualifiers`. A statement's “version unknown” cannot repair a subject entity incorrectly qualified as released; review the entity and knowledge references together.
+
+Prompt v14 implements this rule without response or storage changes. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements. The original v13 real regression's identity error and failed conclusion remain unchanged.
+
 ## 4. Collections, unresolved identities, and mention positions
 
 **A collection is one jointly referenced object; an unresolved identity means the target is unknown.** A generic “unknown” label cannot substitute for both.
