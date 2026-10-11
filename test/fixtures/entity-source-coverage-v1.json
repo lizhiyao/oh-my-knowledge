@@ -1,0 +1,116 @@
+{
+  "reviewVersion": "omk-entity-source-coverage/v1",
+  "provenance": "synthetic",
+  "sample": {
+    "caseId": "critical-source-coverage",
+    "projectGroup": "source-coverage",
+    "conversationGroup": "source-coverage",
+    "split": "development",
+    "messages": [
+      {
+        "role": "user",
+        "text": "Handler 是事件处理函数。Session 表示事件归属。Session 会在多条记录中出现；这里仍在讨论同一个归属概念。"
+      },
+      {
+        "role": "assistant",
+        "text": "Handler 复制归属是为了固定 Session。当前复制范围过大，需要收窄。仅在跨异步事件时需要固定归属，同步路径无需复制。修正后迟到错误不能影响新 Session。"
+      },
+      {
+        "role": "user",
+        "text": "纠正：前述收窄尚未实施，只是计划；设备行为也未验证。Session 仍表示同一个归属概念。"
+      }
+    ],
+    "limitations": ["合成开发回归，只覆盖选定三条消息；没有工具或设备验证。"],
+    "tags": ["critical-sources", "repeated-name", "late-correction"],
+    "entities": [
+      {
+        "entityKey": "handler",
+        "referentKinds": ["object"],
+        "identityStatus": "proposed",
+        "possibleEntities": [],
+        "component": null,
+        "collection": null,
+        "rationale": "明确作为事件处理函数，没有持续组件依据。"
+      },
+      {
+        "entityKey": "session",
+        "referentKinds": ["object"],
+        "identityStatus": "proposed",
+        "possibleEntities": [],
+        "component": null,
+        "collection": null,
+        "rationale": "三条消息明确谈同一个事件归属概念，不是具体实例。"
+      }
+    ],
+    "mentions": [
+      {
+        "mentionKey": "handler-name",
+        "entity": "handler",
+        "messageIndex": 0,
+        "alternatives": [{"quote": "Handler", "occurrence": 0}],
+        "rationale": "明确函数名。"
+      },
+      {
+        "mentionKey": "session-name",
+        "entity": "session",
+        "messageIndex": 0,
+        "alternatives": [{"quote": "Session", "occurrence": 0}],
+        "rationale": "明确归属概念；其余普通重复不列为必需提及。"
+      }
+    ],
+    "roles": [
+      {
+        "roleKey": "purpose",
+        "coverage": "required",
+        "subject": "handler",
+        "object": "session",
+        "messageIndex": 1,
+        "anchor": {"quote": "Handler 复制归属是为了固定 Session。", "occurrence": 0},
+        "interpretation": "保留复制的固定归属目的，来源说法不表示实现正确或修正完成。"
+      },
+      {
+        "roleKey": "current-limit",
+        "coverage": "required",
+        "subject": "handler",
+        "object": null,
+        "messageIndex": 1,
+        "anchor": {"quote": "当前复制范围过大，需要收窄。", "occurrence": 0},
+        "interpretation": "当前范围过大的来源判断及待修正限制，不写成已经收窄。"
+      },
+      {
+        "roleKey": "async-condition",
+        "coverage": "required",
+        "subject": "handler",
+        "object": "session",
+        "messageIndex": 1,
+        "anchor": {"quote": "仅在跨异步事件时需要固定归属，同步路径无需复制。", "occurrence": 0},
+        "interpretation": "保留异步条件与同步例外，不变成所有事件均需复制。"
+      },
+      {
+        "roleKey": "late-constraint",
+        "coverage": "required",
+        "subject": "handler",
+        "object": "session",
+        "messageIndex": 1,
+        "anchor": {"quote": "修正后迟到错误不能影响新 Session。", "occurrence": 0},
+        "interpretation": "迟到错误不影响新归属是修正约束，没有实际修正或运行结果证据。"
+      },
+      {
+        "roleKey": "correction",
+        "coverage": "required",
+        "subject": "handler",
+        "object": null,
+        "messageIndex": 2,
+        "anchor": {"quote": "纠正：前述收窄尚未实施，只是计划；设备行为也未验证。", "occurrence": 0},
+        "interpretation": "保留计划未实施及设备未验证限制，不能把前文‘修正后’当成已完成。"
+      }
+    ],
+    "knowledgePolicy": "optional",
+    "semanticChecks": [
+      "这是定向开发诊断的预声明必需知识，不改变原 60 窗口关键提及评分；空知识仍结构合法，但本诊断的五项义务未覆盖。",
+      "分别检查五项原文依据、陈述含义、条件、语气、时间和证据 basis；引文及端点命中只提供复核线索。",
+      "普通重复提及无需全部保存；关键依据不能只留在同一消息的完整原文中让用户自行寻找。",
+      "不由标识子串补概念，不新增外部对象，不推断已经修复或设备通过。"
+    ]
+  }
+}
