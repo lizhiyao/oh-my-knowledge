@@ -44,6 +44,22 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
+  it('rejects identifier fragments in new corrections without changing stored history or moving the old mention', async () => {
+    const text = '_prefixAlphaSuffix；Alpha 使用 Beta';
+    const { app, snapshot, model, root } = setup(text);
+    const packet = modelWindow(); packet.mentions[0].selection.occurrence = 1;
+    model.generate = async () => ({ output: JSON.stringify(packet).replaceAll('record-1', snapshot.excerpts[0].evidenceRef), durationMs: 0 });
+    const run = await app.generate(snapshot.snapshotId, model);
+    expect(run.entityRejections).toEqual([]); expect(run.committed).toHaveLength(1);
+    const before = app.entities(run.runId), file = join(root, 'entities', `${run.runId}.json`);
+    const bytes = readFileSync(file);
+    const edit = structuredClone({ entities: before.revision.entities, mentions: before.revision.mentions });
+    edit.mentions[0] = { ...edit.mentions[0], mentionId: 'new:identifier-piece',
+      selection: { ...edit.mentions[0].selection, start: 7, end: 12 } };
+    expect(() => app.correctEntities(run.runId, before.revision.revisionId, before.history.generation, edit, '错误子串')).toThrow('mention_identifier_fragment');
+    expect(readFileSync(file)).toEqual(bytes);
+    expect(app.entities(run.runId).history).toEqual(before.history);
+  });
   it('replays eleven recorded v6 responses through the current application without claiming new model generation', async () => {
     const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
       frozen: { prompt: { prompt: string }; inputs: { caseId: string; input: { excerpts: EvidenceWindow['excerpts'] } }[] };
@@ -223,7 +239,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: 'knowledge-extraction-v11' });
+    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: EXTRACTION_PROMPT_VERSION });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -392,7 +408,7 @@ describe('shared knowledge application', () => {
     const id = randomUUID();
     const run = await app.generate(snapshot.snapshotId, model, id);
     expect(run.status).toBe('completed');
-    expect(run.promptVersion).toBe('knowledge-extraction-v11');
+    expect(run.promptVersion).toBe(EXTRACTION_PROMPT_VERSION);
     expect(run.rawOutput).toBe((await generate.mock.results[0].value).output);
     expect(JSON.parse(run.rawOutput!).proposals[0].citations[0].selection).not.toHaveProperty('start');
     expect(run.committed).toHaveLength(1);

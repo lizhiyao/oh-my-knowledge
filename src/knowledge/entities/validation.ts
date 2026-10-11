@@ -1,6 +1,29 @@
 import type { EntityAnalysisDraft } from './contracts.js';
 import { canonicalJson } from '../store.js';
 import { entityIdentityProblems, entityIdentityReferenceProblems } from './identity.js';
+import type { EvidenceExcerpt, EvidenceSelection } from '../contracts.js';
+import { validateEvidenceSelection } from '../validation.js';
+
+function adjacentIdentifierText(source: string, index: number, step: 1 | -1): boolean {
+  for (; index >= 0 && index < source.length; index += step) {
+    if (/[A-Za-z0-9]/.test(source[index])) return true;
+    if (!/[_$]/.test(source[index])) return false;
+  }
+  return false;
+}
+
+/** Reject an ASCII identifier fragment, without treating lexical boundaries as semantic verification. */
+export function validateEntityMentionSelection(selection: EvidenceSelection, excerpts: readonly EvidenceExcerpt[]): string[] {
+  const problems = validateEvidenceSelection(selection, excerpts).map(problem => problem.code);
+  if (problems.length) return problems;
+  const source = excerpts.find(excerpt => excerpt.evidenceRef === selection.evidenceRef)!.text;
+  // Underscores/dollar signs alone can be markup; an adjacent identifier must contain a letter or digit.
+  const cutsStart = /^[A-Za-z0-9_$]/.test(selection.quote)
+    && adjacentIdentifierText(source, selection.start - 1, -1);
+  const cutsEnd = /[A-Za-z0-9_$]$/.test(selection.quote)
+    && adjacentIdentifierText(source, selection.end, 1);
+  return cutsStart || cutsEnd ? ['mention_identifier_fragment'] : [];
+}
 
 /** Reference closure is structural admission, never semantic identity verification. */
 export function validateEntityAnalysis(draft: EntityAnalysisDraft): string[] {

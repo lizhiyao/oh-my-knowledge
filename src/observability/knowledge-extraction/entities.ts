@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EntityMentionSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
 import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../knowledge/entities/identity.js';
+import { validateEntityMentionSelection } from '../../knowledge/entities/validation.js';
 import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256);
@@ -61,6 +62,8 @@ export function admitEntities(rawEntities: readonly unknown[], rawMentions: read
     if (duplicateMentions.has(mention.data.mentionId)) { rejected.push({ component: 'mention', index, reasons: ['duplicate_mention'] }); return []; }
     const selection = locateQuoteOccurrence(mention.data.selection, excerpts);
     if (typeof selection === 'string') { rejected.push({ component: 'mention', index, reasons: [selection] }); return []; }
+    const problems = validateEntityMentionSelection(selection, excerpts);
+    if (problems.length) { rejected.push({ component: 'mention', index, reasons: problems }); return []; }
     return [{ mention: { ...mention.data, selection }, index }];
   });
   const positions = duplicates(acceptedMentions.map(({ mention }) => JSON.stringify([mention.selection.evidenceRef, mention.selection.start, mention.selection.end])));
