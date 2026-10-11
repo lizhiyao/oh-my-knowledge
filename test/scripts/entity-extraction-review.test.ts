@@ -35,6 +35,87 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('audits the stopped v11 boundary diagnostic without turning annotation gaps or unattempted cases into passes', () => {
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v11-boundary-diagnostic.json', import.meta.url), 'utf8')) as {
+      conclusion: string; goldReady: boolean; annotationReview: string;
+      manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string };
+      frozen: { identity: Record<string, unknown>; corpusText: string; guides: { en: string; zh: string };
+        prompt: { prompt: string }; authorReview: unknown; preparedPlanText: string };
+      execution: { status: string; startedAt: string; maxCalls: number; attempted: number; recorded: number;
+        executorInvocations: number; modelCallsExecuted: number; modelCalls: number; automaticRetries: number;
+        preparedPlanDigest: string; originalManifestText: string; originalManifestDigest: string;
+        unattemptedCaseIds: string[]; reviewed: { caseId: string; disposition: string; stopReason: string }[] };
+      captures: ReturnType<typeof reviewCapture>['capture'][];
+      records: (ReturnType<typeof reviewCapturedOutput> & { caseId: string; outputDigest: string })[];
+      statistics: { matchedCriticalMentions: number; missingCriticalMentions: number };
+      fullCorpusSplitSummaries: { split: string; notAttempted: number; uncheckedCriticalMentions: number }[];
+      agentReview: { status: string; independentHumanReview: string; decisions: { caseId: string; outputDigest: string;
+        disposition: string; stopReason: string; reviewedEntityIds: string[]; reviewedMentionIds: string[];
+        reviewedProposals: { proposalId: string; statementIds: string[]; evidenceLinkIds: string[]; citationCount: number }[];
+        roleReviews: { roleKey: string; coverage: string; status: string }[];
+        boundaryFindings: { mentionKey: string; classification: string; strictStatus: string }[] }[] };
+      baselineComparison: { sourceEvidenceDigest: string; originalScore: string; historicalScoreUnchanged: boolean; contemporaneousControlCalls: number };
+    };
+    const frozen = parseEntityReviewCorpus(evidence.frozen.corpusText);
+    expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
+    expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
+    expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
+    expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
+    expect(reviewDigest(evidence.frozen.preparedPlanText)).toBe(evidence.execution.preparedPlanDigest);
+    expect(JSON.parse(evidence.frozen.preparedPlanText)).toMatchObject({ modelCallsExecuted: 0, maxCalls: 3 });
+    expect(reviewDigest(evidence.execution.originalManifestText)).toBe(evidence.execution.originalManifestDigest);
+    expect(JSON.parse(evidence.execution.originalManifestText)).toMatchObject({ modelCallsExecuted: 1, recorded: 1 });
+    expect(evidence.execution).toMatchObject({ status: 'stopped_annotation_coverage_gap', maxCalls: 3,
+      attempted: 1, recorded: 1, executorInvocations: 1, modelCallsExecuted: 1, modelCalls: 1, automaticRetries: 0,
+      unattemptedCaseIds: ['held-config-literal-types', 'dev-keyboard-levels'] });
+    const captures = evidence.captures.flatMap(capture => capture.records);
+    expect(captures.map(value => value.caseId)).toEqual(['held-code-state-without-sha']);
+    expect(evidence.records).toHaveLength(1); expect(evidence.agentReview.decisions).toHaveLength(1);
+    const record = captures[0], selected = frozen.cases.find(value => value.caseId === record.caseId)!;
+    expect(selected.split).toBe('development');
+    const input = entityReviewInput(selected);
+    expect(record.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
+    if (record.result.captureStatus !== 'output') throw new Error('Expected one preserved diagnostic output');
+    const replayed = reviewCapturedOutput(selected, record.result.output,
+      response => checkWindowExtractionResponse(response, input.excerpts));
+    expect(evidence.records[0]).toMatchObject(JSON.parse(JSON.stringify(replayed)));
+    expect(evidence.records[0].outputDigest).toBe(reviewDigest(record.result.output));
+    expect(replayed.checks!.criticalMentions.map(value => [value.mentionKey, value.status])).toEqual([
+      ['state-tested', 'matched'], ['state-unreleased', 'matched'], ['release', 'missing'],
+    ]);
+    expect(replayed.checks!.identityPairs.filter(value => value.status === 'not_evaluable')).toHaveLength(2);
+    expect(replayed.checks!.semanticReview).toBe('pending');
+    const raw = JSON.parse(record.result.output) as ReturnType<typeof packet>, decision = evidence.agentReview.decisions[0];
+    expect(decision).toMatchObject({ caseId: record.caseId, outputDigest: evidence.records[0].outputDigest,
+      disposition: 'stop', stopReason: 'annotation_coverage_gap',
+      boundaryFindings: [{ mentionKey: 'release', classification: 'annotation_coverage_gap', strictStatus: 'missing' }] });
+    expect(decision.reviewedEntityIds).toEqual(raw.entities.map(value => value.entityId));
+    expect(decision.reviewedMentionIds).toEqual(raw.mentions.map(value => value.mentionId));
+    expect(decision.reviewedProposals).toEqual(raw.proposals.map(value => ({ proposalId: value.proposalId,
+      statementIds: value.draft.content.statements.map(statement => statement.statementId),
+      evidenceLinkIds: value.draft.evidence.map(link => link.evidenceLinkId), citationCount: value.citations.length })));
+    expect(decision.roleReviews.map(value => [value.roleKey, value.coverage])).toEqual(selected.roles.map(value => [value.roleKey, value.coverage]));
+    expect(decision.roleReviews.filter(value => value.coverage === 'required')).toEqual([
+      expect.objectContaining({ roleKey: 'current-result', status: 'observed_consistent_on_self_review' }),
+    ]);
+    expect(evidence.fullCorpusSplitSummaries).toEqual(evidence.captures.map(capture => ({ split: capture.split,
+      ...reviewCapture(JSON.stringify(capture), frozen, evidence.manifest.measurementId, checkWindowExtractionResponse).summary })));
+    expect(evidence.fullCorpusSplitSummaries.map(value => value.notAttempted)).toEqual([57, 2]);
+    expect(evidence.fullCorpusSplitSummaries.reduce((n, value) => n + value.uncheckedCriticalMentions, 0)).toBe(196);
+    expect(evidence.statistics).toMatchObject({ plannedWindows: 3, attemptedWindows: 1, unattemptedWindows: 2,
+      plannedCriticalMentions: 9, checkedCriticalMentions: 3, uncheckedPlannedCriticalMentions: 6,
+      matchedCriticalMentions: 2, missingCriticalMentions: 1, acceptedEntities: 3, acceptedMentions: 4,
+      acceptedKnowledgeCandidates: 1, acceptedStatements: 3, unobservedPlannedRequiredKnowledgeRoles: 2,
+      usdCost: 'unknown', reportedCostUSD: null });
+    expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), frozen, evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
+    expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
+    expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed' });
+    expect(evidence.baselineComparison).toMatchObject({ originalScore: '10/13', historicalScoreUnchanged: true, contemporaneousControlCalls: 0 });
+    expect(reviewDigest(readFileSync(new URL('../../docs/public/entity-extraction-v10-diagnostic.json', import.meta.url), 'utf8')))
+      .toBe(evidence.baselineComparison.sourceEvidenceDigest);
+    expect(evidence.conclusion).toBe('target_main_boundary_observed_stopped_annotation_coverage_gap_full_quality_unverified');
+  });
+
   it('audits v10 captures without rescoring longer boundaries or hiding incomplete splits', () => {
     const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v10-diagnostic.json', import.meta.url), 'utf8')) as {
       conclusion: string; goldReady: boolean; annotationReview: string;
