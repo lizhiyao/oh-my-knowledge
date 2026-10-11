@@ -6,8 +6,11 @@ import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/ent
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v11.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
+// Historical frozen data is audited as immutable shape, never accepted by the current reader.
+const v11Text = readFileSync(new URL('../fixtures/entity-extraction-review-v11.json', import.meta.url), 'utf8');
+const v11 = JSON.parse(v11Text) as typeof corpus;
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
   caseId: 'roles', projectGroup: 'project', conversationGroup: 'conversation', split: 'development',
@@ -35,6 +38,88 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('audits all source occurrences and admits qualified names without accepting claims, attributes or member lists', () => {
+    const audit = JSON.parse(readFileSync(new URL('../../docs/public/entity-name-annotation-v12-audit.json', import.meta.url), 'utf8')) as {
+      sourceCorpusDigest: string; corpusDigest: string; modelCallsExecuted: number; goldReady: boolean;
+      statistics: { reviewedWindows: number; reviewedCriticalMentions: number; changedWindows: number; changedMentions: number; addedAlternatives: number };
+      decisions: { caseId: string; split: string; sourceInputDigest: string; reviewedMentionKeys: string[]; reviewedEntityKeys: string[];
+        changes: { mentionKey: string; added: { quote: string; occurrence: number; start: number; end: number }[] }[];
+        rejectedCandidates: { mentionKey: string; quote: string; occurrence: number; start: number; end: number }[] }[];
+    };
+    expect(audit.sourceCorpusDigest).toBe(reviewDigest(v11Text)); expect(audit.corpusDigest).toBe(reviewDigest(corpusText));
+    expect(audit.modelCallsExecuted).toBe(0); expect(audit.goldReady).toBe(false);
+    expect(audit.statistics).toEqual({ reviewedWindows: 60, reviewedCriticalMentions: 199, changedWindows: 19,
+      changedMentions: 26, addedAlternatives: 32, rejectedCandidates: 60 });
+    expect(audit.decisions.map(value => value.caseId)).toEqual(corpus.cases.map(value => value.caseId));
+    expect(() => parseEntityReviewCorpus(v11Text)).toThrow();
+    for (const sample of corpus.cases) {
+      const old = v11.cases.find(value => value.caseId === sample.caseId)!;
+      const decision = audit.decisions.find(value => value.caseId === sample.caseId)!;
+      expect(entityReviewInput(sample)).toEqual(entityReviewInput(old));
+      expect(sample.entities).toEqual(old.entities); expect(sample.roles).toEqual(old.roles);
+      expect(sample.semanticChecks).toEqual(old.semanticChecks); expect(sample.split).toBe(old.split);
+      expect(decision.sourceInputDigest).toBe(reviewDigest(JSON.stringify({ messages: sample.messages, limitations: sample.limitations })));
+      expect(decision.reviewedMentionKeys).toEqual(sample.mentions.map(value => value.mentionKey));
+      expect(decision.reviewedEntityKeys).toEqual(sample.entities.map(value => value.entityKey));
+      for (const mention of sample.mentions) {
+        const prior = old.mentions.find(value => value.mentionKey === mention.mentionKey)!;
+        const additions = decision.changes.find(value => value.mentionKey === mention.mentionKey)?.added ?? [];
+        expect(mention.alternatives).toEqual([...prior.alternatives, ...additions.map(({ quote, occurrence }) => ({ quote, occurrence }))]);
+        expect({ ...mention, alternatives: prior.alternatives, rationale: prior.rationale }).toEqual(prior);
+      }
+      const admission = (mentionKey: string, selection: { quote: string; occurrence: number }) => {
+        const mention = sample.mentions.find(value => value.mentionKey === mentionKey)!;
+        const output = modelWindow(); output.proposals = [];
+        output.entities = [{ ...output.entities[0], entityId: mention.entity, label: mention.entity }];
+        output.mentions = [{ mentionId: 'boundary', entityId: mention.entity, basis: 'explicit', rationale: 'Synthetic source-boundary probe, not model output.',
+          selection: { evidenceRef: `${sample.caseId}:${mention.messageIndex}`, quote: selection.quote, occurrence: selection.occurrence } }];
+        return checkWindowExtractionResponse(output, entityReviewInput(sample).excerpts);
+      };
+      for (const change of decision.changes) for (const added of change.added) {
+        const admitted = admission(change.mentionKey, added);
+        expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+        expect(admitted.analysis.mentions[0].selection).toMatchObject({ start: added.start, end: added.end, quote: added.quote });
+        expect(checkEntityReview(sample, admitted).criticalMentions.find(value => value.mentionKey === change.mentionKey)!.status).toBe('matched');
+      }
+      for (const rejected of decision.rejectedCandidates) {
+        const admitted = admission(rejected.mentionKey, rejected);
+        // Source validity alone never makes a semantically wrong widened span an exact gold match.
+        expect(admitted.analysis.rejected).toEqual([]);
+        expect(checkEntityReview(sample, admitted).criticalMentions.find(value => value.mentionKey === rejected.mentionKey)!.status).toBe('missing');
+      }
+    }
+    const replay = JSON.parse(readFileSync(new URL('../../docs/public/entity-name-annotation-v12-replay.json', import.meta.url), 'utf8')) as {
+      measurementId: string; frozen: { identity: { corpusDigest: string; guideDigest: string }; guides: { en: string; zh: string }; authorReview: unknown };
+      historicalDigests: Record<string, string>; records: { sourceEvidence: string; sourceEvidenceDigest: string;
+        caseId: string; inputDigest: string; outputDigest: string; originalOutput: string;
+        originalOutcome: ReturnType<typeof reviewCapturedOutput>; replayedOutcome: ReturnType<typeof reviewCapturedOutput> }[];
+    };
+    expect(replay).toMatchObject({ purpose: 'offline_coverage_only_no_new_model_score', modelCallsExecuted: 0,
+      newModelOutputs: 0, goldReady: false, originalScores: { v10: '10/13', v11: '2/3' }, recordedOutputsReplayed: 6 });
+    expect(reviewDigest(JSON.stringify(replay.frozen.identity))).toBe(replay.measurementId);
+    expect(replay.frozen.identity.corpusDigest).toBe(audit.corpusDigest);
+    expect(reviewDigest(replay.frozen.guides.en + '\0' + replay.frozen.guides.zh)).toBe(replay.frozen.identity.guideDigest);
+    for (const [path, hash] of Object.entries(replay.historicalDigests)) {
+      expect(reviewDigest(readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8'))).toBe(hash);
+    }
+    expect(authorReviewStatus(JSON.stringify(replay.frozen.authorReview), corpus, replay.measurementId).status).toBe('completed');
+    expect(replay.records).toHaveLength(6);
+    for (const record of replay.records) {
+      const raw = readFileSync(new URL(`../../docs/public/${record.sourceEvidence}`, import.meta.url), 'utf8');
+      expect(reviewDigest(raw)).toBe(record.sourceEvidenceDigest);
+      const source = JSON.parse(raw) as { captures: ReturnType<typeof reviewCapture>['capture'][]; records: typeof replay.records[number]['originalOutcome'][] };
+      expect(source.captures.flatMap(value => value.records).find(value => value.caseId === record.caseId)!.result)
+        .toMatchObject({ captureStatus: 'output', output: record.originalOutput });
+      const sample = corpus.cases.find(value => value.caseId === record.caseId)!, input = entityReviewInput(sample);
+      expect(reviewDigest(JSON.stringify(input))).toBe(record.inputDigest);
+      expect(reviewDigest(record.originalOutput)).toBe(record.outputDigest);
+      const checked = reviewCapturedOutput(sample, record.originalOutput, response => checkWindowExtractionResponse(response, input.excerpts));
+      expect(JSON.parse(JSON.stringify(checked))).toEqual(record.replayedOutcome);
+      expect(checked.checked).toEqual(record.originalOutcome.checked);
+      expect(checked.checks!.semanticReview).toBe('pending');
+    }
+  });
+
   it('audits the stopped v11 boundary diagnostic without turning annotation gaps or unattempted cases into passes', () => {
     const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v11-boundary-diagnostic.json', import.meta.url), 'utf8')) as {
       conclusion: string; goldReady: boolean; annotationReview: string;
@@ -56,7 +141,7 @@ describe('entity extraction review with author evidence', () => {
         boundaryFindings: { mentionKey: string; classification: string; strictStatus: string }[] }[] };
       baselineComparison: { sourceEvidenceDigest: string; originalScore: string; historicalScoreUnchanged: boolean; contemporaneousControlCalls: number };
     };
-    const frozen = parseEntityReviewCorpus(evidence.frozen.corpusText);
+    const frozen = JSON.parse(evidence.frozen.corpusText) as typeof corpus;
     expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
     expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
     expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
@@ -196,7 +281,7 @@ describe('entity extraction review with author evidence', () => {
     };
     const before = JSON.stringify(evidence);
     const historical = JSON.parse(evidence.frozen.corpusText) as typeof corpus;
-    for (const sample of corpus.cases) {
+    for (const sample of v11.cases) {
       const old = historical.cases.find(value => value.caseId === sample.caseId)!;
       expect(entityReviewInput(sample)).toEqual(entityReviewInput(old));
       expect(sample.entities).toEqual(old.entities); expect(sample.roles).toEqual(old.roles);
@@ -211,7 +296,7 @@ describe('entity extraction review with author evidence', () => {
     }
     for (const captured of evidence.captures.flatMap(value => value.records)) {
       if (captured.result.captureStatus !== 'output') throw new Error('Expected recorded v10 output');
-      const selected = corpus.cases.find(sample => sample.caseId === captured.caseId)!;
+      const selected = v11.cases.find(sample => sample.caseId === captured.caseId)!;
       expect(selected.split).toBe('development');
       const input = entityReviewInput(selected);
       expect(captured.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
@@ -453,7 +538,7 @@ describe('entity extraction review with author evidence', () => {
     const v9 = readFileSync(new URL('../fixtures/entity-extraction-review-v9.json', import.meta.url), 'utf8');
     expect(reviewDigest(v9)).toBe('sha256:703a98fb468a0394e6ff6de40e2bc1724ef193530914132217e163a7c61996c7');
     expect(() => parseEntityReviewCorpus(v9)).toThrow();
-    expect(corpus.cases.slice(0, 54)).toEqual((JSON.parse(v9) as typeof corpus).cases
+    expect(v11.cases.slice(0, 54)).toEqual((JSON.parse(v9) as typeof corpus).cases
       .map(value => ({ ...value, roles: value.roles.map(role => ({ ...role, coverage: 'if_selected' })) })));
     // No v9 model outputs have been viewed; its two reserved windows remain validation.
     expect(corpus.cases.slice(0, 54).filter(value => value.split === 'validation')).toHaveLength(2);

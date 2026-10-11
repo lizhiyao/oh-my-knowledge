@@ -4,7 +4,7 @@ description: Annotation, layered checks and independent review for entity extrac
 
 # Entity extraction quality evaluation
 
-Status: P4 tooling and author-reviewed annotations. Guide `omk-entity-annotation/v9`, corpus `omk-entity-quality/v11`, checker `omk-entity-critical-checks/v4`; applies to `knowledge-extraction-v11`/response Schema v4. **v11 clarifies mention boundaries for complete names versus owner-property phrases. The authorized three-case diagnostic ran one case: the second main is correct, with 2/3 strict mentions. Incomplete frozen alternatives for “已发布 r2” triggered stopping; neither remaining case ran. Historical v10 remains 10/13; the three-case gate, independent review and full quality remain incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) retains pending work.
+Status: P4 tooling and author-reviewed annotations. Guide `omk-entity-annotation/v10`, corpus `omk-entity-quality/v12`, checker `omk-entity-critical-checks/v4`; applies to `knowledge-extraction-v11`/response Schema v4. **Corpus v12 has a source-based complete-name audit: 60 windows/199 critical mentions, adding 32 alternatives with itemwise rationales. Prompt remains v11 and checker v4; this iteration makes zero model calls. The stopped v11 diagnostic remains 2/3 and v10 remains 10/13. Replay under revised annotations is not extraction-effectiveness evidence. Independent review and full quality remain incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) retains pending work.
 
 ## 1. Versions and scope
 
@@ -20,11 +20,13 @@ Historical `test/fixtures/entity-extraction-review-v9.json` contains 54 windows 
 
 Historical `test/fixtures/entity-extraction-review-v10.json` contains 60 windows and 199 critical mentions: 56 development/4 reserved validation. The 54 v9 windows retain sources, identities, mentions, and semantic criteria, with existing roles explicitly marked `coverage: if_selected` only in the new copy; old files stay unchanged. With no v9 outputs, its two reserved windows remain validation, without a blind-test claim. Four new development windows cover continuing branches/distinct commits, same-named field ownership, configuration values/reasoning, and background configuration. Two group-isolated validation windows cover tested states without SHAs and boolean/string types. New mandatory coverage is predeclared before output. Sources are synthetic and public, without real messages. Guide v8, prompt v10, corpus v10, and checker v4 constitute `BREAKING-COMPARABILITY`; response/storage remain unchanged, without migration. Implementation made no new model calls; the subsequently authorized [five-case diagnostic](../explanation/entity-extraction-v10-diagnostic.md) completed five calls and itemwise self-review, with 10/13 critical mentions, three longer boundaries and four not-evaluable identity pairs retained. The strict gate does not pass. Selected modality and four mandatory knowledge roles match self-review expectations, without independent evidence or overall quality acceptance. Another 55 windows/186 critical mentions remain untested; the two viewed validation windows may only become development regressions, without rewriting frozen splits.
 
-Current `test/fixtures/entity-extraction-review-v11.json` retains all 60 windows/199 critical mentions and unchanged sources, identities and knowledge roles. The two v10 validation windows whose outputs have been viewed become development in the new copy: 58 development/two reserved validation windows. The two v9 validation windows without outputs remain reserved. Only the new development annotations add the complete-name alternatives “当前 main 的被测代码” and “enabled 字段”; “main 上的改造” still does not name the code state. Guide v9, prompt v11 and corpus v11 constitute `BREAKING-COMPARABILITY`; checker algorithm v4, response and storage formats remain unchanged.
+Historical `test/fixtures/entity-extraction-review-v11.json` retains all 60 windows/199 critical mentions and unchanged sources, identities and knowledge roles. The two v10 validation windows whose outputs have been viewed become development in the new copy: 58 development/two reserved validation windows. The two v9 validation windows without outputs remain reserved. Only the new development annotations add the complete-name alternatives “当前 main 的被测代码” and “enabled 字段”; “main 上的改造” still does not name the code state. Guide v9, prompt v11 and corpus v11 constitute `BREAKING-COMPARABILITY`; checker algorithm v4, response and storage formats remain unchanged.
 
 Offline regression reuses the five original v10 outputs to check that the two complete names match and the owner-property phrase still appears as a boundary candidate. An authored correction copy separately checks location, structural admission and identity correspondence for the second `main`; this copy is not model output. Old input digests, knowledge text, original outputs and frozen annotations/10/13 score remain unchanged. Replay under new development annotations is neither v11 model effectiveness nor a historical score increase. The offline repair stage made zero new calls.
 
 The subsequently authorized [three-case boundary diagnostic](../explanation/entity-extraction-v11-boundary-diagnostic.md) ran exactly one call. Its original model output selects the second main correctly and retains required code-state knowledge on itemwise self-review. Strict mentions match 2/3: the complete qualified name “已发布 r2” is absent from frozen alternatives, triggering the preregistered stop rule. The other two cases/six critical mentions/two required configuration roles remain unobserved; independent evidence and full quality have not passed. Corpus, prompt, old outputs and all historical scores stay unchanged; reasonable-name self-review does not become a strict match.
+
+Current `test/fixtures/entity-extraction-review-v12.json`/guide v10 audits all 60 windows/199 critical mentions, preserving sources, identities, knowledge roles, semantic criteria and the 58 development/two reserved validation split. Nineteen windows/26 mentions gain 32 contiguous source alternatives covering projects, type-plus-name expressions, qualified English instances, owner-qualified files/fields, location descriptions and time-qualified activities. Sixty candidates inappropriate as names for their bound objects are also recorded. See the [complete-name coverage audit](../explanation/entity-name-annotation-coverage.md) for itemwise rationales. This iteration has no new model outputs. Prompt v11 bytes and checker algorithm v4 stay unchanged; changed corpus/guide and compiled tool digests create a new measurement identity and `BREAKING-COMPARABILITY`, with unchanged response/storage and no migration. Revising a viewed gap is development-annotation maintenance, not blind preregistered labeling, independent evidence or retrospective score improvement.
 
 ## 2. Annotation units and allowed expressions
 
@@ -65,6 +67,15 @@ Branch/tested-state review follows [identity rules section 3.1](./entity-identit
 
 Configuration review follows [identity rules section 2.2](./entity-identity.md): selected knowledge retains exact values, types, owners, scope, conditions, source reasoning, and unknowns affecting judgment/reuse. An existing owner may be the subject with field and value stated; field endpoint differences are only review cues. Description, qualifiers, or accessible quotations do not establish complete statements. Each role declares `coverage: required` for mandatory facts or `if_selected` for retention when selected. Missing critical values in related knowledge are information loss; absent optional knowledge is not_observed; absent mandatory facts are coverage gaps. These differ from entity omission. A `none` policy cannot contain required roles.
 
+### 2.1 Itemwise complete-name audit
+
+1. Read the source, identity group and every boundary for each existing critical mention. Audit the same occurrence rather than substituting another same-named mention elsewhere.
+2. Consider type words, articles/demonstratives, owners, location and time qualifications; add only contiguous noun descriptions centered on the same referent. “已发布 r2”, “Its test instance `sieve/dev01`” and “昨天的更新活动 U1” can be qualified names. Stop before pass/failure/assignment predicates.
+3. Check the phrase's actual head: “项目 Pavo 的 a.md” denotes the file and “客户端 L 的 errorStatus” the field, permitting overlap with shorter owner mentions. Neither entire phrase denotes its owner. Plural member lists are not individual names; Session counts are not aliases for Session.
+4. Recompute occurrence and UTF-16 bounds independently for each added quote; preserve old alternatives, itemwise reasons and rejected examples. Matching stays exact, without accepting arbitrary containing spans or replacing review with suffix regexes.
+
+The audit covers every existing critical mention, without claiming all possible synonymous/nested descriptions or annotating every noun. A newly discovered post-output gap retains that run's strict miss and stop, with repairs in an explicitly versioned revision. Recorded outputs only check coverage and excluded boundaries offline, never new model-quality evidence.
+
 ## 3. Layered results and acceptance threshold
 
 | Layer | Recorded checks | Limits |
@@ -96,7 +107,7 @@ Update compiled artifacts, then prepare an external bundle:
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v11.json \
+  --corpus test/fixtures/entity-extraction-review-v12.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 
