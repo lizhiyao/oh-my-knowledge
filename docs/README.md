@@ -58,6 +58,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Entity extraction v8: recorded-output workflow](./explanation/entity-extraction-v8-workflow.md)
 - [Entity extraction v8: three-window real-conversation diagnostic](./explanation/entity-extraction-v8-real-pilot.md)
 - [Entity extraction v10: five-case knowledge-retention diagnostic](./explanation/entity-extraction-v10-diagnostic.md)
+- [Entity extraction v12: targeted regression and missing mentions](./explanation/entity-extraction-v12-target-regression.md)
 - [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)

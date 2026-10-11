@@ -38,6 +38,69 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('keeps v12 target omissions and the unattempted control visible after stopping within the authorized budget', () => {
+    const text = readFileSync(new URL('../../docs/public/entity-extraction-v12-target-regression.json', import.meta.url), 'utf8');
+    const evidence = JSON.parse(text) as {
+      conclusion: string; measurement: { measurementId: string; identity: { promptVersion: string; promptDigest: string; annotationDigest: string };
+        plannedWindows: number; plannedMessages: number; plannedRealMessages: number; plannedSyntheticMessages: number;
+        plannedObjectExpectations: number; plannedTargetMentions: number; goldReady: boolean; independentReview: string };
+      capture: { status: string; attempted: number; recorded: number; modelCallsAuthorized: number; executorInvocations: number;
+        modelCallsExecuted: number; budgetClosed: boolean; unusedCalls: number; remainingCallsAuthorizedForFurtherExecution: number };
+      totals: Record<string, number | string | null>; failures: Record<string, number>;
+      cases: { caseId: string; outputDigest: string; counts: Record<string, number>; programSemanticReview: string;
+        usage: { costReportedByExecutor: boolean; costUSD: null };
+        selfReview: { status: string; disposition: string; reviewedCounts: Record<string, number>; independentHumanReview: string; goldReady: boolean;
+          targetMentions: { checkKey: string; status: string; matchedMentionIds: string[]; rationaleMatching: string }[];
+          requiredKnowledgeRoles: { status: string; statementRefs: string[] }[]; issues: { issueKind: string }[] } }[];
+      unattempted: { caseId: string; repeat: number }[];
+      applicationReplay: { status: string; externalModelCalls: number; noNewOutputStorageOrUIAcceptanceClaim: boolean };
+      historicalEvidence: { files: { file: string; digest: string }[]; syntheticV10Score: string; syntheticV11Score: string; syntheticV12FollowupScore: string };
+      evidenceDigests: Record<string, string>; publication: Record<string, string>;
+      overallPrecision: null; overallRecall: null; overallF1: null;
+    };
+    expect(reviewDigest(JSON.stringify(evidence.measurement.identity))).toBe(evidence.measurement.measurementId);
+    expect(evidence.measurement.identity).toMatchObject({ promptVersion: 'knowledge-extraction-v12',
+      promptDigest: evidence.evidenceDigests['prompt.txt'], annotationDigest: evidence.evidenceDigests['annotations.json'] });
+    expect(evidence.measurement).toMatchObject({ plannedWindows: 2, plannedMessages: 5, plannedRealMessages: 4,
+      plannedSyntheticMessages: 1, plannedObjectExpectations: 15, plannedTargetMentions: 8, goldReady: false, independentReview: 'not_performed' });
+    expect(evidence.capture).toMatchObject({ status: 'stopped_on_self_review', attempted: 1, recorded: 1,
+      modelCallsAuthorized: 2, executorInvocations: 1, modelCallsExecuted: 1, budgetClosed: true,
+      unusedCalls: 1, remainingCallsAuthorizedForFurtherExecution: 0 });
+    expect(evidence.cases.map(item => item.caseId)).toEqual(['real-protected-correction']);
+    expect(evidence.unattempted).toEqual([{ caseId: 'synthetic-source-boundaries', repeat: 1,
+      reason: 'Stopped after confirmed missing required target mentions in the first real-window self-review.' }]);
+    for (const field of ['entities', 'mentions', 'knowledgeCandidates', 'statements', 'citations']) {
+      expect(evidence.totals[field]).toBe(evidence.cases.reduce((count, item) => count + item.counts[field], 0));
+    }
+    const item = evidence.cases[0];
+    expect(item.selfReview).toMatchObject({ status: 'completed', disposition: 'stop', independentHumanReview: 'not_performed', goldReady: false });
+    expect(item.selfReview.reviewedCounts).toEqual(item.counts);
+    expect(item.programSemanticReview).toBe('pending');
+    expect(item.usage).toMatchObject({ costReportedByExecutor: false, costUSD: null });
+    // Public projections audit the stop and missing scope, not private semantic correctness.
+    expect(item.selfReview.targetMentions.map(target => target.checkKey)).toEqual(['table-session', 'late-session']);
+    expect(item.selfReview.targetMentions.every(target => target.status === 'required_not_observed'
+      && !target.matchedMentionIds.length && target.rationaleMatching === 'not_evaluable')).toBe(true);
+    expect(item.selfReview.issues.map(issue => issue.issueKind)).toEqual(['required_target_mention_not_observed', 'required_target_mention_not_observed']);
+    expect(item.selfReview.requiredKnowledgeRoles).toEqual([{ roleKey: 'configuration-value-and-rationale',
+      status: 'observed_consistent_on_self_review', statementRefs: ['p2/s6'] }]);
+    expect(evidence.totals).toMatchObject({ objectExpectationsChecked: 9, objectExpectationsFound: 9,
+      objectExpectationsConsistentOnSelfReview: 9, objectExpectationsUnattempted: 6,
+      targetMentionsChecked: 2, targetMentionsMatched: 0, targetMentionsMissing: 2, targetMentionsUnattempted: 6,
+      requiredKnowledgeRolesObservedOnSelfReview: 1, issuesOnSelfReview: 2, usdCost: 'unknown', reportedCostUSD: null });
+    expect(Object.values(evidence.failures).every(count => count === 0)).toBe(true);
+    expect(evidence.conclusion).toBe('needs_improvement');
+    expect(evidence.applicationReplay).toMatchObject({ status: 'not_performed_for_this_failed_batch', externalModelCalls: 0,
+      noNewOutputStorageOrUIAcceptanceClaim: true });
+    for (const prior of evidence.historicalEvidence.files) {
+      expect(reviewDigest(readFileSync(new URL(`../../${prior.file}`, import.meta.url), 'utf8'))).toBe(prior.digest);
+    }
+    expect(evidence.historicalEvidence).toMatchObject({ syntheticV10Score: '10/13', syntheticV11Score: '2/3', syntheticV12FollowupScore: '6/6' });
+    expect([evidence.overallPrecision, evidence.overallRecall, evidence.overallF1]).toEqual([null, null, null]);
+    expect(evidence.publication).toMatchObject({ rawInputs: 'local_only', rawOutputs: 'local_only', annotations: 'local_only', originalPaths: 'not_published' });
+    expect(text).not.toMatch(/\/private\/|\/Users\/|"(?:text|output|quote|rationale|sourceProvenance|selection)"\s*:/u);
+  });
+
   it('audits real regression provenance without publishing private text or hiding failed semantics behind replay', () => {
     type Counts = { entities: number; mentions: number; knowledgeCandidates: number; statements: number };
     const text = readFileSync(new URL('../../docs/public/entity-extraction-v11-real-regression.json', import.meta.url), 'utf8');
