@@ -4,7 +4,9 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v4`；适用于 `knowledge-extraction-v11`／响应 Schema v4。**语料 v12 已按来源系统核对完整名称：60 窗口／199 关键提及，新增 32 个备选并保留逐例理由。提示词仍为 v11、检查仍为 v4；本轮模型调用 0。原 v11 停止诊断的 2／3 及 v10 的 10／13 均不改，新标注的离线回放不计提取效果。独立复核和整体质量仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
+状态：P4 的检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v4`；适用于当前 `knowledge-extraction-v12`／响应 Schema v4。**语料 v12 已按来源系统核对完整名称：60 窗口／199 关键提及，新增 32 个备选并保留逐例理由。完整名称审核时提示词为 v11、检查为 v4；该轮模型调用 0。原 v11 停止诊断的 2／3 及 v10 的 10／13 均不改，新标注的离线回放不计提取效果。独立复核和整体质量仍未完成。** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 保留未完成项。
+
+当前提示词 v12 修正来源绑定与库／版本表达，见[实体提取规范 §6](./entity-extraction.md)。本指南 v10 的标注答案和关键检查 v4 评分规则不变，新的提示词／接纳运行产物须进入新测量身份。冻结的 v11 指南字节仍在历史报告中；此处适用范围更新不回写旧摘要、不重算分数。现有输出重放与构造修正只验证接纳和存储，本轮没有新模型效果验收。
 
 ## 1. 版本与适用范围
 

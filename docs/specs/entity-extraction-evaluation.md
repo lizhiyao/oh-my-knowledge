@@ -4,7 +4,9 @@ description: Annotation, layered checks and independent review for entity extrac
 
 # Entity extraction quality evaluation
 
-Status: P4 tooling and author-reviewed annotations. Guide `omk-entity-annotation/v10`, corpus `omk-entity-quality/v12`, checker `omk-entity-critical-checks/v4`; applies to `knowledge-extraction-v11`/response Schema v4. **Corpus v12 has a source-based complete-name audit: 60 windows/199 critical mentions, adding 32 alternatives with itemwise rationales. Prompt remains v11 and checker v4; this iteration makes zero model calls. The stopped v11 diagnostic remains 2/3 and v10 remains 10/13. Replay under revised annotations is not extraction-effectiveness evidence. Independent review and full quality remain incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) retains pending work.
+Status: P4 tooling and author-reviewed annotations. Guide `omk-entity-annotation/v10`, corpus `omk-entity-quality/v12`, checker `omk-entity-critical-checks/v4`; applies to current `knowledge-extraction-v12`/response Schema v4. **Corpus v12 has a source-based complete-name audit: 60 windows/199 critical mentions, adding 32 alternatives with itemwise rationales. The complete-name audit used prompt v11 and checker v4, with zero model calls. The stopped v11 diagnostic remains 2/3 and v10 remains 10/13. Replay under revised annotations is not extraction-effectiveness evidence. Independent review and full quality remain incomplete.** [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) retains pending work.
+
+Current prompt v12 repairs source binding and library/version representation; see [entity extraction section 6](./entity-extraction.md). Guide v10 annotation answers and critical checker v4 scoring rules remain unchanged; the new prompt/admission runtime must enter a new measurement identity. Frozen v11 guide bytes remain in historical reports. Updating applicability here neither rewrites old digests nor recalculates scores. Recorded-output replay and authored corrections verify admission/storage only, without new model-effectiveness acceptance.
 
 ## 1. Versions and scope
 

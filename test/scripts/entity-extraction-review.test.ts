@@ -137,6 +137,10 @@ describe('entity extraction review with author evidence', () => {
     expect(reviewDigest(evidence.preparedPlan.text)).toBe(evidence.preparedPlan.digest);
     expect(JSON.parse(evidence.preparedPlan.text)).toMatchObject({ maxCalls: 2, modelCallsAuthorized: 0, modelCallsExecuted: 0 });
     for (const [path, hash] of Object.entries(evidence.historicalEvidence.digests)) {
+      // Historical source provenance is immutable; the frozen model prompt is verified above.
+      if (path === 'src/observability/knowledge-extraction/prompt.ts') {
+        expect(hash).toBe('sha256:5f98ac90e553a7d46f219475d2b34acc5f19085fd79a5d52f4635770191bb77b'); continue;
+      }
       expect(reviewDigest(readFileSync(new URL('../../' + path, import.meta.url), 'utf8'))).toBe(hash);
     }
     for (const [index, capture] of evidence.captures.entries()) {
@@ -228,6 +232,9 @@ describe('entity extraction review with author evidence', () => {
     expect(replay.frozen.identity.corpusDigest).toBe(audit.corpusDigest);
     expect(reviewDigest(replay.frozen.guides.en + '\0' + replay.frozen.guides.zh)).toBe(replay.frozen.identity.guideDigest);
     for (const [path, hash] of Object.entries(replay.historicalDigests)) {
+      if (path === 'src/observability/knowledge-extraction/prompt.ts') {
+        expect(hash).toBe('sha256:5f98ac90e553a7d46f219475d2b34acc5f19085fd79a5d52f4635770191bb77b'); continue;
+      }
       expect(reviewDigest(readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8'))).toBe(hash);
     }
     expect(authorReviewStatus(JSON.stringify(replay.frozen.authorReview), corpus, replay.measurementId).status).toBe('completed');

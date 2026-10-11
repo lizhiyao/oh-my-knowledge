@@ -42,6 +42,60 @@ describe('window entity admission', () => {
     expect(result.mentions.map(value => value.selection.start)).toEqual([3, 11]);
     expect(input).toEqual(before);
   });
+  it('rejects an identifier substring at its requested occurrence without shifting to a later concept mention', () => {
+    const source = [{ evidenceRef: 'r', text: '_pendingTaskStatus；固定 Task；迟到事件不影响新 Task。' }];
+    const mentions = [mention('task', 'bad', 'Task'), mention('task', 'good', 'Task')];
+    mentions[0].selection.occurrence = 0; mentions[1].selection.occurrence = 1;
+    const input = { entities: [entity('task')], mentions };
+    const before = structuredClone(input);
+    const admitted = admitEntities(input.entities, mentions, source);
+    expect(admitted.rejected).toEqual([{ component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] }]);
+    expect(admitted.mentions).toEqual([expect.objectContaining({ mentionId: 'good', selection: {
+      evidenceRef: 'r', quote: 'Task', start: source[0].text.indexOf('Task', 13), end: source[0].text.indexOf('Task', 13) + 4,
+    } })]);
+    expect(input).toEqual(before);
+    const unsupported = admitEntities(input.entities, [mentions[0]], source);
+    expect(unsupported.entities).toEqual([]);
+    expect(unsupported.rejected).toContainEqual({ component: 'entity', index: 0, reasons: ['entity_without_mention'] });
+  });
+  it.each(['TaskBoard', '_pendingTaskStatus', 'task_Task', 'Task_status', 'pre$Task', 'Task42'])('rejects a partial ASCII identifier in %s', text => {
+    const result = admitEntities([entity('task')], [mention('task', 'm', 'Task')], [{ evidenceRef: 'r', text }]);
+    expect(result.rejected).toContainEqual({ component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] });
+  });
+  it.each(['固定Task对象', '*Task*', '_Task_', '`Task`', 'Task 归属适配', 'Task.js', '(Task)'])('preserves possible standalone mention boundaries in %s without asserting semantic identity', text => {
+    expect(admitEntities([entity('task')], [mention('task', 'm', 'Task')], [{ evidenceRef: 'r', text }]).rejected).toEqual([]);
+  });
+  it('admits an entire field identifier and distinct overlapping library/version mentions with an explicit component link', () => {
+    const source = [{ evidenceRef: 'r', text: 'runtime 3.2 覆写 _pendingTaskStatus。' }];
+    const version: EntityModel = { ...entity('version'), referentKind: 'version',
+      componentRef: { entityId: 'library', mentionIds: ['v'], rationale: '该版本属于原文持续讨论的库' } };
+    const result = admitEntities([{ ...entity('library'), referentKind: 'component' }, version, entity('field')],
+      [mention('library', 'l', 'runtime'), mention('version', 'v', 'runtime 3.2'), mention('field', 'f', '_pendingTaskStatus')], source);
+    expect(result.rejected).toEqual([]);
+    expect(result.entities[1].componentRef).toEqual(version.componentRef);
+    expect(result.mentions.map(item => [item.selection.start, item.selection.end])).toEqual([[0, 7], [0, 11], [15, 33]]);
+  });
+  it('rejects dependent knowledge instead of replacing a bad mention reference, while leaving citations exact-only', () => {
+    const packet = identityWindow();
+    packet.entities = packet.entities.slice(0, 1); packet.entities[0].referentKind = 'object';
+    packet.mentions = [
+      { ...packet.mentions[0], selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: 0 } },
+      { ...packet.mentions[0], mentionId: 'good', selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: 1 } },
+    ];
+    const candidate = packet.proposals[0]; candidate.entityIds = ['project']; candidate.mentionIds = ['m1'];
+    candidate.draft.content.statements = [{ ...candidate.draft.content.statements[0], subject: { entityId: 'project' }, object: undefined }];
+    candidate.draft.content.organization = { knowledgeKind: 'fact' };
+    candidate.draft.evidence[0].statementIds = candidate.draft.content.statements.map(item => item.statementId);
+    candidate.citations[0].selection = { evidenceRef: 'record-1', quote: 'Alpha', occurrence: 0 };
+    packet.proposals.push({ ...candidate, proposalId: 'valid', mentionIds: ['good'] });
+    const before = structuredClone(packet);
+    const checked = checkWindowExtractionResponse(packet, [{ evidenceRef: 'record-1', text: '_prefixAlphaSuffix；Alpha。' }]);
+    expect(checked.analysis.rejected).toEqual([{ component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] }]);
+    expect(checked.rejected).toEqual([{ index: 0, reasons: ['unknown_mention_analysis_reference'] }]);
+    expect(checked.accepted.map(item => item.proposalId)).toEqual(['valid']);
+    expect(checked.accepted[0].citations[0].selection.start).toBe(7);
+    expect(packet).toEqual(before);
+  });
   it('rejects all colliding identities even when one object has invalid structure', () => {
     const result = admitEntities([entity('a'), { entityId: 'a' }], [mention('a', 'm')], [{ evidenceRef: 'r', text: 'Echo' }]);
     expect(result.entities).toEqual([]); expect(result.mentions).toEqual([]);

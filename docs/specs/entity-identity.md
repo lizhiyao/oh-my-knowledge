@@ -93,11 +93,17 @@ Distinguish three outcomes: related generated knowledge missing a critical value
 
 Distinguish complete descriptions from property ownership semantically, without mechanically cutting at “的” or “上的”. Properties meeting section 2.1's independent-discussion criteria may have their own identities; qualifiers may also be essential parts of names. Inspect source location, bound identity and statement scope separately. When narrowing to a repeated short name, recompute occurrence instead of copying the unique longer phrase's index.
 
+**Matching characters inside an identifier do not establish a mention of that concept.** In “_pendingTaskStatus；固定 Task；迟到事件不影响新 Task”, concept mentions have occurrence 1 and 2; occurrence 0 is inside the field. Indices still count every exact match, without skipping fields, renumbering or moving to the next match. The field may use its full identifier; statement citations may include it. Each `rationale` explains the selected occurrence, not another same-named occurrence such as the final sentence instead of a table row. Two occurrences require separate mentions.
+
+New generation and correction reject `mention_identifier_fragment` when a mention cuts an ASCII letter/digit identifier, which may contain internal `_`/`$`. Standalone Markdown wrappers, adjacent Chinese text and punctuation are not rejected for that reason; whole identifiers remain admissible. This lexical check does not verify Chinese segmentation, same-name meanings, rationales or every language's identifier syntax. Position `matched` still means exact source text only. Existing revisions are not rechecked or rewritten; statement citations do not use this mention constraint.
+
 Evaluation only matches equivalent boundaries declared before outputs exactly. A longer quotation containing a short name supplies review cues, never automatic trimming, completion or keyword/regex-based meaning judgments. Prompt/corpus v11 and guide v9 implement this section. The two viewed output windows serve only as development regressions; offline replay demonstrates matching/admission, not changed model choices under the new prompt. Original v10 outputs, annotations and 10/13 remain, without retrospective passing scores.
 
 ## 3. Components, versions, and deployment instances
 
 **A component identity defaults to the system or module the source continues to discuss. Environment, version, and time usually qualify statements rather than automatically creating entities.** Create separate identities when the source explicitly discusses individually referable deployments, instances, or version objects. Component-instance relations require evidence, not matching names.
+
+Architectural responsibilities in the source can support component identity without the literal words “persistent system/module”: a library continuously overridden/upgraded, or a class implementing client adaptation through inheritance and method overrides, can have `component` evidence. A class name, function name, single call or failure alone is insufficient. Retain a persistent library separately from independently discussed version objects. Where a component name independently denotes that library within a version phrase, its short span may overlap the complete version span without copying an identical position. `componentRef` uses an existing component and source mentions; do not infer an undiscussed library from a version name or create objects for ordinary version conditions.
 
 | Source expression | Required identity and claims | Disallowed treatment |
 |---|---|---|

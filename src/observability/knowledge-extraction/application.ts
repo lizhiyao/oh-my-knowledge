@@ -2,7 +2,7 @@ import type { KnowledgeActor, KnowledgeDraft, KnowledgeRevision } from '../../kn
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../../knowledge/contracts.js';
 import { z } from 'zod';
 import { EntityAnalysisDraftSchema, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../knowledge/entities/contracts.js';
-import { validateEntityAnalysis } from '../../knowledge/entities/validation.js';
+import { validateEntityAnalysis, validateEntityMentionSelection } from '../../knowledge/entities/validation.js';
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
@@ -212,7 +212,7 @@ export class KnowledgeApplication {
       mentions: edit.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId), entityId: entityIds.get(mention.entityId) })),
       limitations: previous.revision.limitations,
     });
-    const problems = [...validateEntityAnalysis(draft), ...draft.mentions.flatMap(mention => validateEvidenceSelection(mention.selection, previous.source.status === 'available' ? previous.source.window.excerpts : []).map(problem => problem.code))];
+    const problems = [...validateEntityAnalysis(draft), ...draft.mentions.flatMap(mention => validateEntityMentionSelection(mention.selection, previous.source.status === 'available' ? previous.source.window.excerpts : []))];
     if (problems.length) throw new Error(`Invalid entity correction: ${problems.join(',')}`);
     this.ports.entities.write({ analysisId, snapshotId: previous.history.snapshotId, sourceVersion: previous.history.sourceVersion,
       requestId: this.ports.id(), expectedGeneration, expectedHeadRevisionId: expectedRevisionId,
