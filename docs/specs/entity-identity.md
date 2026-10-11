@@ -54,6 +54,32 @@ This rule determines the need for independent identities; it does not remove sou
 
 **This section records the follow-up design decision of 2026-10-11, not new answers for the current frozen acceptance.** The separate count/state-update expectations in the [v7 six-scenario diagnostic](../explanation/entity-extraction-v7-diagnostic.md) differ from this section. Original output, frozen corpus, checker, and strict result of 20/22 remain unchanged and are not rescored as passing. v8 aligns the prompt, annotation guide, and pre-adjudicated positive/negative examples with this decision and freezes a new measurement identity. Viewed windows serve only as development regressions; new validation windows must be determined before output. This decision changes no Schema, storage, or retrieval capability. The current entity extraction specification defines prompt implementation; passing extraction quality is not yet established.
 
+### 2.2 Configuration points and associated knowledge retention
+
+**Configuration values normally belong in knowledge about an object; strings, booleans, and numbers do not automatically become entities.** A field independently discussed for its purpose, value, or suitability may retain an identity. Background configuration does not require an entity or knowledge candidate for every item. A value independently defined, compared, or repeatedly discussed as a state concept is assessed under section 2.1.
+
+When selecting knowledge about a configuration point, retain any value or qualifier whose removal would change the source judgment or prevent reuse of the setting in the corresponding knowledge statements:
+
+- The object or field, exact value, and source-supported owner/environment/version scope; do not change code literal case or type.
+- Source purpose, constraints, or reasoning, plus conditions, exceptions, and unknowns affecting reuse; do not invent mechanisms where reasoning is absent.
+- Original evidence and the limits of the source assertion; a judgment of suitability does not establish tool verification or universal validity.
+
+A field subject can state “configuration value is `unhandled`,” with its client and scope in context. Without a separate field identity, an existing owner can be the subject with the field name and value stated explicitly. Do not invent an entity when ownership is unknown. `description` and `qualifiers` aid identification but do not replace substantive knowledge statements; locating the field name or returning to the source does not establish retention of the configuration fact in derived knowledge.
+
+These are synthetic examples, not new frozen annotation answers:
+
+| Source expression | Objects and knowledge to retain | Handling to reject |
+|---|---|---|
+| “Client L's `errorStatus = 'unhandled'` is appropriate because unhandled exceptions in this host do not imply process crashes.” | When selecting this judgment, retain the field, exact value, owner, host scope, and source reasoning; without tool evidence it remains a source assertion. | Only stating “configuration is appropriate” or retaining the field entity alone; inventing other hosts' behavior from the field name. |
+| “Client L's `errorStatus` is `'unhandled'`; client M's same-named field is `'fatal'`.” | Associate each field/value with its owner; independently discussed field identities cannot be merged. | Merging by name and assigning one client's value to the other. |
+| “The same service's `enabled` is boolean `false` in test and string `'false'` in production.” | Retain types and environments; environment differences do not automatically split the field identity. | Rewriting both as “disabled” or inferring runtime effects absent from the source. |
+| Background configuration lists several fields; this window only discusses deployment failure and requires no complete configuration summary. | Deployment knowledge may suffice; unselected configuration knowledge is not observed. | Creating entities for every key/value or inferring complete configuration knowledge from entity coverage. |
+| Before output, “cover L's configuration value and reasoning” was frozen as mandatory; output contains only the field entity and no related knowledge candidate. | Entity extraction succeeded, but mandatory knowledge coverage is unmet. | Treating structurally allowed empty knowledge as coverage success or adding mandatory facts after seeing output. |
+
+Distinguish three outcomes: related generated knowledge missing a critical value is information loss; unselected optional configuration knowledge is not observed; an absent predeclared mandatory fact is a knowledge coverage gap. None automatically means entity omission. Freeze mandatory facts, equivalent expressions, and scope before output; programs do not complete facts through field-keyword rules.
+
+**This section is a subsequent design adjudication.** Current prompt v9, corpus v9, guide v7, and checker algorithm v3 keep their frozen identities; implementation and effectiveness review await the next complete iteration. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
+
 ## 3. Components, versions, and deployment instances
 
 **A component identity defaults to the system or module the source continues to discuss. Environment, version, and time usually qualify statements rather than automatically creating entities.** Create separate identities when the source explicitly discusses individually referable deployments, instances, or version objects. Component-instance relations require evidence, not matching names.
@@ -72,6 +98,22 @@ The phrase “production Quartz” alone does not determine granularity. Reuse t
 **Components and instances are not interchangeable subjects.** “Instance P failed” can help users find related experience through the component; it does not imply “all instances of this component failed.” Retrieving related knowledge and generalizing a claim to related objects are different actions.
 
 Component-instance and component-version links are semantics this draft requires retaining. P2 defines the versioned relation fields in section 8. Full relation operations and querying remain P3 work.
+
+### 3.1 Branch names and tested code states
+
+**Names such as `master`/`main` do not determine referent level; the object discussed in the source does.** A branch is a continuing moving code pointer, retained as `object`. An individually compared, tested, or archived code state may be `version`, without requiring a commit SHA or formal version number. The source must support separately referable states; preserve unknown reproduction identifiers rather than inventing SHAs, release numbers, or release facts.
+
+| Source expression | Identity and statements to use | Handling to reject |
+|---|---|---|
+| “The fix merged into master; later development continues on this branch.” | A continuing master branch object; the merge is a separate statement. | Treating a moving branch as a fixed commit or release package. |
+| “Compare master commits a1 and a2, each running the same test.” | Two separately referable version states; retain a branch identity when the source also discusses it. | Merging tested versions because their branch names match. |
+| “The current tested master code and released beta.2 both pass; master's changes remain unreleased, and no commit identifier is recorded.” | The tested state may be `version`, with unknown commit and unreleased status; a branch `object` model must qualify statements by this tested state and source time. | Rejecting a version solely because its name is master; inventing a SHA, declaring a release, or generalizing success to all future master states. |
+| “Yesterday's and today's master builds differ; compare their results separately.” | One continuing branch and two source-distinguished code states; retain only identities actually mentioned. | Merging explicitly distinct tested states or splitting branches merely by date. |
+| “master passed,” without specifying whether the window discusses a branch or a build. | Retain the known object with unknown granularity/test scope; unresolved identity requires the referent itself to be unknown. | Declaring unresolved identity just because a SHA is absent or inventing a deployment/version. |
+
+Branch and code state do not substitute for each other, and one source position cannot be duplicated into two mentions. `componentRef` still requires a continuing component and an association supported by the source; a branch name cannot create a component. A version identity does not establish reproducible build evidence, and a branch identity cannot turn a single result into a persistent property.
+
+Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is not yet part of the current frozen guide or new model acceptance.
 
 ## 4. Collections, unresolved identities, and mention positions
 
