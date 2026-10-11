@@ -52,6 +52,20 @@ describe('candidate decision display', () => {
     expect(candidateMatches(tagged, 'pending', 'tag:Taro')).toBe(false);
     expect(candidateMatches(tagged, 'all', 'tag:')).toBe(false);
   });
+  it('renders exact configuration literals and tested-state claims without interpreting their values', () => {
+    for (const lang of ['zh', 'en'] as const) {
+      for (const [relation, polarity] of [['配置值为布尔值 false', 'positive'], ["配置值为字符串 'false'", 'positive'], ['本次被测代码已发布', 'negative']] as const) {
+        const statement = { subject: { entityId: 'field' }, relation, polarity };
+        const html = renderToStaticMarkup(createElement(CandidateStatementHeading, {
+          statement, entities: [{ entityId: 'field', label: 'enabled / 当前 master' }], lang,
+        }));
+        expect(html).toContain(relation.replaceAll("'", '&#x27;'));
+        expect(html).toContain('enabled / 当前 master');
+        expect(html).not.toContain('已禁用');
+        if (polarity === 'negative') expect(html).toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
+      }
+    }
+  });
 
   it('offers explicit tag editing without presenting tags as verified knowledge', () => {
     for (const lang of ['zh', 'en'] as const) {

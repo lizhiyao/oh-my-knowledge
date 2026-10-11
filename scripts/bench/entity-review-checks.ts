@@ -75,9 +75,18 @@ export function checkEntityReview(sample: EntityReviewCase, checked: EntityRevie
     observed: statements, semanticReview: 'pending' };
   });
   const matched = mentions.filter(mention => mention.status === 'matched').length;
+  const structuralRejections = checked.analysis.rejected.length + checked.rejected.length;
+  // This is a predeclared review obligation, never a semantic verdict inferred from keywords or endpoint matches.
+  const knowledgeCoverage = sample.roles.map(role => ({ roleKey: role.roleKey, coverage: role.coverage,
+    interpretation: role.interpretation,
+    status: structuralRejections ? 'not_evaluable' : checked.accepted.length ? 'needs_review'
+      : role.coverage === 'required' ? 'required_not_observed' : 'not_observed',
+    candidates: checked.accepted.flatMap(proposal => proposal.draft.content.statements.map(statement => ({
+      proposalId: proposal.proposalId, statementId: statement.statementId,
+    }))), semanticReview: 'pending' }));
   return { checkVersion: ENTITY_CHECK_VERSION, criticalMentions: mentions,
     criticalMentionRecall: { matched, total: mentions.length, value: matched / mentions.length },
-    precision: null, f1: null, annotationScope: 'critical_mentions', identityPairs, identities, roles,
+    precision: null, f1: null, annotationScope: 'critical_mentions', identityPairs, identities, roles, knowledgeCoverage,
     unexpectedKnowledge: sample.knowledgePolicy === 'none' && !!checked.accepted.length,
     unmatchedMentionsNeedReview: checked.analysis.mentions.filter(mention => !reviewMentions(sample).some(gold => gold.spans.some(span => sameSpan(mention.selection, span)))).map(mention => mention.mentionId),
     semanticReview: 'pending' };
