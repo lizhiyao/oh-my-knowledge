@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
-import { ENTITY_CHECK_VERSION, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
+import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { modelWindow } from '../knowledge/fixtures.js';
@@ -36,6 +36,91 @@ function receipt() {
     reviewKind: 'independent-human', reviewedBeforeOutputs: true, independenceAttestation: true,
     decisions: corpus.cases.map(value => ({ caseId: value.caseId, decision: 'approved', rationale: 'Read sources and annotations; agree.' })), disputes: [] };
 }
+
+describe('critical source coverage diagnostic v1 (authored responses, no model calls)', () => {
+  const fixture = JSON.parse(readFileSync(new URL('../fixtures/entity-source-coverage-v1.json', import.meta.url), 'utf8'));
+  const sample = EntityReviewCorpusSchema.shape.cases.element.parse(fixture.sample);
+  // This targeted fixture is not added to the frozen 60-window corpus or its mention denominator.
+  function authored() {
+    const output = modelWindow();
+    output.entities[0] = { ...output.entities[0], entityId: 'handler', label: 'Handler', description: '事件处理函数' };
+    output.entities[1] = { ...output.entities[1], entityId: 'session', label: 'Session', description: '事件归属概念' };
+    output.mentions.forEach((mention, index) => {
+      mention.entityId = output.entities[index].entityId;
+      mention.selection = { evidenceRef: `${sample.caseId}:0`, quote: output.entities[index].label, occurrence: 0 };
+      mention.rationale = '首条消息明确定义对象，后文保持同一含义。';
+    });
+    const proposal = output.proposals[0];
+    proposal.entityIds = output.entities.map(entity => entity.entityId);
+    proposal.draft.title = '事件归属复制的目的、范围与待修正约束';
+    const meanings = [
+      { relation: '复制归属用于固定', modality: 'descriptive', polarity: 'positive', conditions: [], exceptions: [], unknowns: [] },
+      { relation: '当前复制范围过大', modality: 'descriptive', polarity: 'positive', conditions: [], exceptions: [], unknowns: ['收窄尚未实施'] },
+      { relation: '需要固定归属', modality: 'descriptive', polarity: 'positive', conditions: ['跨异步事件'], exceptions: ['同步路径无需复制'], unknowns: [] },
+      { relation: '使迟到错误影响新归属', modality: 'normative', polarity: 'negative', conditions: ['修正后须满足的约束'], exceptions: [], unknowns: ['修正尚未实施'] },
+      { relation: '收窄已经实施', modality: 'descriptive', polarity: 'negative', conditions: [], exceptions: [], unknowns: ['设备行为未验证'] },
+    ] as const;
+    const context = proposal.draft.content.statements[0].context;
+    proposal.draft.content.statements = sample.roles.map((role, index) => ({
+      statementId: role.roleKey, subject: { entityId: role.subject }, ...(role.object ? { object: { entityId: role.object } } : {}),
+      relation: meanings[index].relation, modality: meanings[index].modality, polarity: meanings[index].polarity,
+      context: { ...context, scenario: '合成对话中的来源判断与修正计划', conditions: [...meanings[index].conditions],
+        exceptions: [...meanings[index].exceptions], unknowns: [...meanings[index].unknowns] },
+    }));
+    proposal.draft.evidence = sample.roles.map(role => ({ evidenceLinkId: role.roleKey, evidenceRef: `${sample.caseId}:${role.messageIndex}`,
+      statementIds: [role.roleKey], relation: 'supports', basis: 'source_assertion', interpretation: role.interpretation }));
+    proposal.citations = sample.roles.map(role => ({ evidenceLinkId: role.roleKey,
+      selection: { evidenceRef: `${sample.caseId}:${role.messageIndex}`, ...role.anchor } }));
+    return output;
+  }
+  function inspect(output: ReturnType<typeof authored>) {
+    const checked = checkWindowExtractionResponse(output, entityReviewInput(sample).excerpts);
+    expect(checked.rejected).toEqual([]);
+    expect(checked.analysis.rejected).toEqual([]);
+    return { checked, review: checkEntityReview(sample, checked) };
+  }
+  it('locates distinct purposes, limits, conditions, constraints and corrections without requiring every repeated name', () => {
+    expect(fixture).toMatchObject({ reviewVersion: 'omk-entity-source-coverage/v1', provenance: 'synthetic' });
+    const output = authored(); const before = structuredClone(output);
+    const { checked, review } = inspect(output);
+    expect(review.roles.map(role => role.endpointStatus)).toEqual(Array(5).fill('endpoints_matched'));
+    expect(review.criticalMentionRecall).toMatchObject({ matched: 2, total: 2 });
+    expect(checked.analysis.mentions).toHaveLength(2);
+    expect(checked.accepted[0].citations).toHaveLength(5);
+    expect(review.semanticReview).toBe('pending');
+    expect(output).toEqual(before);
+  });
+  it('does not treat an entity name or access to the same complete message as a located key source', () => {
+    const output = authored();
+    const citation = output.proposals[0].citations[1];
+    citation.selection = { evidenceRef: `${sample.caseId}:1`, quote: 'Session', occurrence: 0 };
+    const { review } = inspect(output);
+    expect(review.criticalMentionRecall).toMatchObject({ matched: 2, total: 2 });
+    expect(review.roles[1]).toMatchObject({ roleKey: 'current-limit', endpointStatus: 'not_observed', observed: [] });
+    expect(review.knowledgeCoverage[1].status).toBe('needs_review');
+  });
+  it('exposes a misplaced citation even when another statement has the same endpoints', () => {
+    const output = authored();
+    // All statements still have structurally valid evidence, and all five quotes still exist.
+    output.proposals[0].draft.evidence[3].statementIds = ['purpose'];
+    output.proposals[0].draft.evidence[0].statementIds.push('late-constraint');
+    const { review } = inspect(output);
+    expect(review.roles[3]).toMatchObject({ roleKey: 'late-constraint', endpointStatus: 'endpoints_matched' });
+    expect(review.roles[3].observed.map(value => value.statementId)).toEqual(['purpose']);
+    expect(review.roles[3].observed.some(value => value.statementId === 'late-constraint')).toBe(false);
+    expect(review.semanticReview).toBe('pending');
+  });
+  it('keeps exact citations separate from semantic truth and permits structurally empty knowledge', () => {
+    const output = authored();
+    output.proposals[0].draft.content.statements[4].polarity = 'positive'; // Contradicts the correction.
+    const { review } = inspect(output);
+    expect(review.roles[4]).toMatchObject({ endpointStatus: 'endpoints_matched', semanticReview: 'pending' });
+    output.proposals = [];
+    const empty = inspect(output);
+    expect(empty.review.criticalMentionRecall).toMatchObject({ matched: 2, total: 2 });
+    expect(empty.review.knowledgeCoverage.every(role => role.status === 'required_not_observed')).toBe(true);
+  });
+});
 
 describe('entity extraction review with author evidence', () => {
   it('keeps v12 target omissions and the unattempted control visible after stopping within the authorized budget', () => {

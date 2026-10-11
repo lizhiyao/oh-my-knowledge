@@ -177,7 +177,7 @@ async function main() {
     .map(path => readFileSync(resolve(repo, path), 'utf8'));
   const guideText = guides.join('\0');
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);
-  if (promptModule.EXTRACTION_PROMPT_VERSION !== 'knowledge-extraction-v12') throw new Error('This measurement requires the built v12 prompt/runtime.');
+  if (promptModule.EXTRACTION_PROMPT_VERSION !== 'knowledge-extraction-v13') throw new Error('This measurement requires the built v13 prompt/runtime.');
   const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
   const identity = { corpusVersion: corpus.corpusVersion, checkVersion: ENTITY_CHECK_VERSION, guideVersion: ENTITY_GUIDE_VERSION,
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),
