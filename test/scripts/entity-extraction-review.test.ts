@@ -35,6 +35,78 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('audits v10 captures without rescoring longer boundaries or hiding incomplete splits', () => {
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v10-diagnostic.json', import.meta.url), 'utf8')) as {
+      conclusion: string; goldReady: boolean; annotationReview: string;
+      manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string; checkVersion: string };
+      frozen: { identity: Record<string, unknown>; corpusText: string; guides: { en: string; zh: string };
+        prompt: { prompt: string }; authorReview: unknown; preparedPlanText: string };
+      execution: { startedAt: string; maxCalls: number; repeats: number; modelCalls: number; executorInvocations: number;
+        selectedCaseIds: string[]; originalManifestText: string; originalManifestDigest: string; preparedPlanDigest: string };
+      captures: ReturnType<typeof reviewCapture>['capture'][];
+      records: (ReturnType<typeof reviewCapturedOutput> & { caseId: string; outputDigest: string })[];
+      agentReview: { status: string; independentHumanReview: string; goldReady: boolean; decisions: {
+        caseId: string; outputDigest: string; reviewedEntityIds: string[]; reviewedMentionIds: string[];
+        reviewedProposals: { proposalId: string; statementIds: string[]; evidenceLinkIds: string[]; citationCount: number }[];
+        roleReviews: { roleKey: string; coverage: string; statementIds: string[] }[]; boundaryFindings: unknown[] }[] };
+      statistics: { matchedCriticalMentions: number; missingCriticalMentions: number; notEvaluableIdentityPairs: number };
+      fullCorpusSplitSummaries: { split: string; notAttempted: number; uncheckedCriticalMentions: number }[];
+      reproducibility: { captureDriverText: string; captureDriverDigest: string; inspectionDriverText: string; inspectionDriverDigest: string };
+    };
+    const frozen = parseEntityReviewCorpus(evidence.frozen.corpusText);
+    expect(reviewDigest(evidence.frozen.corpusText)).toBe(evidence.manifest.corpusDigest);
+    expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
+    expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
+    expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
+    expect(reviewDigest(evidence.frozen.preparedPlanText)).toBe(evidence.execution.preparedPlanDigest);
+    expect(reviewDigest(evidence.execution.originalManifestText)).toBe(evidence.execution.originalManifestDigest);
+    expect(JSON.parse(evidence.execution.originalManifestText)).toMatchObject({ modelCalls: 0, executorInvocations: 5, recorded: 5 });
+    expect(evidence.execution).toMatchObject({ maxCalls: 5, repeats: 1, modelCalls: 5, executorInvocations: 5 });
+    expect(evidence.manifest.checkVersion).toBe(ENTITY_CHECK_VERSION);
+    for (const prefix of ['capture', 'inspection'] as const) {
+      expect(reviewDigest(evidence.reproducibility[`${prefix}DriverText`])).toBe(evidence.reproducibility[`${prefix}DriverDigest`]);
+    }
+    const captures = evidence.captures.flatMap(capture => capture.records);
+    expect(captures).toHaveLength(5);
+    expect(new Set(captures.map(record => record.caseId))).toEqual(new Set(evidence.execution.selectedCaseIds));
+    expect(evidence.records).toHaveLength(5); expect(evidence.agentReview.decisions).toHaveLength(5);
+    for (const record of captures) {
+      const sample = frozen.cases.find(sample => sample.caseId === record.caseId)!;
+      const input = entityReviewInput(sample);
+      expect(record.inputDigest).toBe(reviewDigest(JSON.stringify(input)));
+      if (record.result.captureStatus !== 'output') throw new Error('Expected five diagnostic outputs');
+      const replayed = reviewCapturedOutput(sample, record.result.output, response => checkWindowExtractionResponse(response, input.excerpts));
+      const published = evidence.records.find(outcome => outcome.caseId === record.caseId)!;
+      expect(published).toMatchObject(JSON.parse(JSON.stringify(replayed)));
+      expect(published.outputDigest).toBe(reviewDigest(record.result.output));
+      const decisions = evidence.agentReview.decisions.filter(value => value.caseId === record.caseId);
+      expect(decisions).toHaveLength(1);
+      const decision = decisions[0]; const raw = JSON.parse(record.result.output) as ReturnType<typeof packet>;
+      expect(decision.outputDigest).toBe(published.outputDigest);
+      expect(decision.reviewedEntityIds).toEqual(raw.entities.map(entity => entity.entityId));
+      expect(decision.reviewedMentionIds).toEqual(raw.mentions.map(mention => mention.mentionId));
+      expect(decision.reviewedProposals).toEqual(raw.proposals.map(proposal => ({ proposalId: proposal.proposalId,
+        statementIds: proposal.draft.content.statements.map(statement => statement.statementId),
+        evidenceLinkIds: proposal.draft.evidence.map(link => link.evidenceLinkId), citationCount: proposal.citations.length })));
+      expect(decision.roleReviews.map(role => [role.roleKey, role.coverage])).toEqual(sample.roles.map(role => [role.roleKey, role.coverage]));
+      expect(decision.boundaryFindings).toHaveLength(replayed.checks!.criticalMentions.filter(mention => mention.status !== 'matched').length);
+      expect(replayed.checks!.semanticReview).toBe('pending');
+    }
+    expect(evidence.statistics).toMatchObject({ matchedCriticalMentions: 10, missingCriticalMentions: 3, notEvaluableIdentityPairs: 4,
+      acceptedEntities: 17, acceptedMentions: 22, acceptedKnowledgeCandidates: 5, acceptedStatements: 12 });
+    expect(evidence.agentReview.decisions.find(decision => decision.caseId === 'held-code-state-without-sha')).toMatchObject({
+      semanticStatus: 'knowledge_retention_consistent_code_state_mention_boundary_issue',
+    });
+    expect(evidence.fullCorpusSplitSummaries).toEqual(evidence.captures.map(capture => ({ split: capture.split,
+      ...reviewCapture(JSON.stringify(capture), frozen, evidence.manifest.measurementId, checkWindowExtractionResponse).summary })));
+    expect(evidence.fullCorpusSplitSummaries.map(value => value.notAttempted)).toEqual([53, 2]);
+    expect(evidence.fullCorpusSplitSummaries.reduce((sum, value) => sum + value.uncheckedCriticalMentions, 0)).toBe(186);
+    expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), frozen, evidence.manifest.measurementId, evidence.execution.startedAt).status).toBe('completed');
+    expect(evidence.agentReview).toMatchObject({ status: 'completed', independentHumanReview: 'not_performed', goldReady: false });
+    expect(evidence.goldReady).toBe(false); expect(evidence.annotationReview).toBe('pending');
+    expect(evidence.conclusion).toBe('selected_semantics_observed_strict_boundary_regression_not_passed');
+  });
+
   it.each([
     { version: 'v6', windows: 36, calls: 11, critical: 40, matched: 39, missing: 1, notEvaluable: 3, unattempted: 25, conclusion: 'selected_strict_regression_not_passed' },
     { version: 'v7', windows: 42, calls: 6, critical: 22, matched: 20, missing: 2, notEvaluable: 11, unattempted: 36, conclusion: 'targeted_behaviors_observed_strict_regression_not_passed' },
