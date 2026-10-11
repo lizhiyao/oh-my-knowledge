@@ -38,6 +38,71 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('audits real regression provenance without publishing private text or hiding failed semantics behind replay', () => {
+    type Counts = { entities: number; mentions: number; knowledgeCandidates: number; statements: number };
+    const text = readFileSync(new URL('../../docs/public/entity-extraction-v11-real-regression.json', import.meta.url), 'utf8');
+    const evidence = JSON.parse(text) as {
+      conclusion: string; measurement: { measurementId: string; identity: {
+        promptVersion: string; promptDigest: string; annotationDigest: string; runtimeDigest: string;
+      }; goldReady: boolean; independentReview: string; windowMessages: number; uniqueMessages: number };
+      capture: { status: string; modelCallsAuthorized: number; modelCallsExecuted: number; attempted: number; recorded: number; executorInvocations: number };
+      totals: Record<string, number | string | null>;
+      cases: { caseId: string; outputDigest: string; counts: Counts; programSemanticReview: string;
+        usage: { costReportedByExecutor: boolean; costUSD: null; inputTokens: number; cacheReadTokens: number; outputTokens: number };
+        selfReview: { reviewedCounts: Counts; independentHumanReview: string; goldReady: boolean;
+          expectedObjects: { planned: number; found: number; consistentOnSelfReview: number };
+          requiredKnowledgeRoles: { status: string; statementRefs: string[] }[]; issues: { issueKind: string; mentionId?: string }[] };
+        applicationReplay: { originalOutputDigest: string; reopenedAllPayloadsMatch: boolean; allMentionsMatched: boolean } }[];
+      localDriverCorrection: { originalDriverDigest: string; fixedDriverDigest: string; originalManifestDigest: string;
+        originalDriverExitCode: number; actualModelCallsBeforeCorrection: number; newModelCallsForCorrection: number; outputDigest: string };
+      applicationReplay: { externalModelCalls: number; recordedRunsReplayed: number; reopenedAllPayloadsMatch: boolean };
+      historicalEvidence: { files: { file: string; digest: string }[]; syntheticV10Score: string; syntheticV11Score: string; syntheticV12FollowupScore: string };
+      evidenceDigests: Record<string, string>; publication: Record<string, string>;
+      overallPrecision: null; overallRecall: null; overallF1: null;
+    };
+    expect(reviewDigest(JSON.stringify(evidence.measurement.identity))).toBe(evidence.measurement.measurementId);
+    expect(evidence.measurement.identity.promptVersion).toBe('knowledge-extraction-v11');
+    // Historical evidence stays bound to its frozen prompt even after production moves to a later version.
+    expect(evidence.measurement.identity.promptDigest).toBe(evidence.evidenceDigests['prompt.txt']);
+    expect(evidence.measurement).toMatchObject({ goldReady: false, independentReview: 'not_performed', windowMessages: 9, uniqueMessages: 9 });
+    expect(evidence.capture).toMatchObject({ status: 'stopped_on_self_review', modelCallsAuthorized: 2, modelCallsExecuted: 2, attempted: 2, recorded: 2, executorInvocations: 2 });
+    expect(evidence.cases.map(item => item.caseId)).toEqual(['real-session-after-resolution', 'real-protected-correction']);
+    for (const field of ['entities', 'mentions', 'knowledgeCandidates', 'statements'] as const) {
+      expect(evidence.totals[field]).toBe(evidence.cases.reduce((count, item) => count + item.counts[field], 0));
+    }
+    for (const item of evidence.cases) {
+      expect(item.selfReview.reviewedCounts).toEqual(item.counts);
+      expect(item.selfReview).toMatchObject({ independentHumanReview: 'not_performed', goldReady: false });
+      expect(item.programSemanticReview).toBe('pending');
+      expect(item.usage).toMatchObject({ costReportedByExecutor: false, costUSD: null });
+      expect(item.applicationReplay.originalOutputDigest).toBe(item.outputDigest);
+      expect(item.applicationReplay.reopenedAllPayloadsMatch).toBe(true);
+    }
+    expect(evidence.totals).toMatchObject({ expectedObjectsPlanned: 13, expectedObjectsFound: 12,
+      expectedObjectsConsistentOnSelfReview: 11, requiredKnowledgeRolesPlanned: 3,
+      requiredKnowledgeRolesObservedOnSelfReview: 3, issuesOnSelfReview: 4, usdCost: 'unknown', reportedCostUSD: null });
+    expect(evidence.cases.flatMap(item => item.selfReview.requiredKnowledgeRoles)
+      .every(role => role.status === 'observed_consistent_on_self_review' && role.statementRefs.length > 0)).toBe(true);
+    expect(evidence.cases[1].selfReview.issues).toContainEqual({ issueKind: 'source_mention_boundary_error', entityId: 'e6', mentionId: 'm11' });
+    expect(evidence.conclusion).toBe('needs_improvement');
+    // Replay preserves an exactly locatable but semantically wrong substring; this audit does not verify private semantics.
+    expect(evidence.cases[1].applicationReplay.allMentionsMatched).toBe(true);
+    expect(evidence.applicationReplay).toMatchObject({ externalModelCalls: 0, recordedRunsReplayed: 2, reopenedAllPayloadsMatch: true });
+    const correction = evidence.localDriverCorrection;
+    expect(correction).toMatchObject({ originalDriverExitCode: 1, actualModelCallsBeforeCorrection: 1, newModelCallsForCorrection: 0 });
+    expect(correction.outputDigest).toBe(evidence.cases[0].outputDigest);
+    expect(correction.originalDriverDigest).toBe(evidence.evidenceDigests['capture-real-followup.original.mjs']);
+    expect(correction.fixedDriverDigest).toBe(evidence.evidenceDigests['capture-real-followup.mjs']);
+    expect(correction.originalManifestDigest).toBe(evidence.evidenceDigests['manifest.first-driver-failure.original.json']);
+    for (const prior of evidence.historicalEvidence.files) {
+      expect(reviewDigest(readFileSync(new URL(`../../${prior.file}`, import.meta.url), 'utf8'))).toBe(prior.digest);
+    }
+    expect(evidence.historicalEvidence).toMatchObject({ syntheticV10Score: '10/13', syntheticV11Score: '2/3', syntheticV12FollowupScore: '6/6' });
+    expect([evidence.overallPrecision, evidence.overallRecall, evidence.overallF1]).toEqual([null, null, null]);
+    expect(evidence.publication).toMatchObject({ rawInputs: 'local_only', rawOutputs: 'local_only', annotations: 'local_only', originalPaths: 'not_published' });
+    expect(text).not.toMatch(/\/private\/|\/Users\/|"(?:text|output|quote|rationale|sourceProvenance|selection)"\s*:/u);
+  });
+
   it('replays the two authorized v12 follow-up outputs without pooling history or treating absent optional knowledge as a pass', () => {
     const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v12-followup-diagnostic.json', import.meta.url), 'utf8')) as {
       manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string };
