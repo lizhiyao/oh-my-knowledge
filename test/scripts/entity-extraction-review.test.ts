@@ -38,6 +38,69 @@ function receipt() {
 }
 
 describe('entity extraction review with author evidence', () => {
+  it('replays the two authorized v12 follow-up outputs without pooling history or treating absent optional knowledge as a pass', () => {
+    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v12-followup-diagnostic.json', import.meta.url), 'utf8')) as {
+      manifest: { measurementId: string; corpusDigest: string; guideDigest: string; promptHash: string };
+      frozen: { identity: unknown; corpusFile: string; corpusDigest: string; guides: { en: string; zh: string };
+        prompt: { version: string; prompt: string }; authorReview: unknown };
+      preparedPlan: { text: string; digest: string };
+      captures: ReturnType<typeof reviewCapture>['capture'][]; records: ReturnType<typeof reviewCapture>['records'];
+      fullCorpusSplitSummaries: ReturnType<typeof reviewCapture>['summary'][];
+      historicalEvidence: { digests: Record<string, string> };
+      agentReview: { records: { caseId: string; outputDigest: string; reviewedEntityIds: string[]; reviewedMentionIds: string[];
+        entityReviews: { entityId: string }[]; mentionReviews: { mentionId: string }[];
+        roleReviews: { roleKey: string; coverage: string; status: string }[] }[] };
+    };
+    expect(evidence).toMatchObject({ goldReady: false, execution: { modelCallsAuthorized: 2, modelCallsExecuted: 2,
+      executorInvocations: 2, maxCalls: 2, automaticRetries: 0, unattemptedCaseIds: [], unusedAuthorizedCalls: 0 },
+    statistics: { uniqueOutputs: 2, checkedCriticalMentions: 6, matchedCriticalMentions: 6, identityPairsMatched: 7,
+      acceptedEntities: 4, acceptedMentions: 7, acceptedProposals: 1, acceptedStatements: 2, requiredKnowledgeRolesSelfReviewed: 2,
+      optionalKnowledgeRolesNotObserved: 1, usdCost: 'unknown' },
+    historicalEvidence: { originalScores: { v10: '10/13', v11: '2/3' }, oldResultsUnchanged: true,
+      oldMainOutputIncludedInNewScore: false, unusedPriorAuthorizationTransferred: false },
+    offlineInspection: { modelCallsExecuted: 0, exitCodes: { development: 1, validation: 1 } } });
+    expect(evidence.frozen.corpusFile).toBe('test/fixtures/entity-extraction-review-v12.json');
+    const frozenText = readFileSync(new URL('../../' + evidence.frozen.corpusFile, import.meta.url), 'utf8');
+    const frozen = JSON.parse(frozenText) as typeof corpus;
+    expect(reviewDigest(frozenText)).toBe(evidence.manifest.corpusDigest);
+    expect(evidence.frozen.corpusDigest).toBe(evidence.manifest.corpusDigest);
+    expect(reviewDigest(JSON.stringify(evidence.frozen.identity))).toBe(evidence.manifest.measurementId);
+    expect(reviewDigest(evidence.frozen.guides.en + '\0' + evidence.frozen.guides.zh)).toBe(evidence.manifest.guideDigest);
+    expect(evidence.frozen.prompt.version).toBe('knowledge-extraction-v11');
+    expect(reviewDigest(evidence.frozen.prompt.prompt)).toBe(evidence.manifest.promptHash);
+    expect(authorReviewStatus(JSON.stringify(evidence.frozen.authorReview), frozen, evidence.manifest.measurementId).status).toBe('completed');
+    expect(reviewDigest(evidence.preparedPlan.text)).toBe(evidence.preparedPlan.digest);
+    expect(JSON.parse(evidence.preparedPlan.text)).toMatchObject({ maxCalls: 2, modelCallsAuthorized: 0, modelCallsExecuted: 0 });
+    for (const [path, hash] of Object.entries(evidence.historicalEvidence.digests)) {
+      expect(reviewDigest(readFileSync(new URL('../../' + path, import.meta.url), 'utf8'))).toBe(hash);
+    }
+    for (const [index, capture] of evidence.captures.entries()) {
+      const replay = reviewCapture(JSON.stringify(capture), frozen, evidence.manifest.measurementId, checkWindowExtractionResponse);
+      expect(JSON.parse(JSON.stringify(replay.summary))).toEqual(Object.fromEntries(Object.entries(evidence.fullCorpusSplitSummaries[index]).filter(([key]) => key !== 'split')));
+      expect(replay.summary.captureStatus).toBe('incomplete');
+      expect(replay.summary.semanticReview).toBe('pending');
+      if (capture.split === 'development') expect(JSON.parse(JSON.stringify(replay.records))).toEqual(evidence.records);
+      else expect(replay.records).toEqual([]);
+    }
+    expect(evidence.records.map(value => value.caseId)).toEqual(['held-config-literal-types', 'dev-keyboard-levels']);
+    for (const record of evidence.records) {
+      const review = evidence.agentReview.records.find(value => value.caseId === record.caseId)!;
+      const capture = evidence.captures[0].records.find(value => value.caseId === record.caseId)!;
+      if (capture.result.captureStatus !== 'output' || record.captureStatus !== 'captured' || !record.checked) throw new Error('Expected original captured output and admission');
+      expect(review.outputDigest).toBe(reviewDigest(capture.result.output));
+      expect(review.entityReviews.map(value => value.entityId)).toEqual(record.checked.analysis.entities.map(value => value.entityId));
+      expect(review.mentionReviews.map(value => value.mentionId)).toEqual(record.checked.analysis.mentions.map(value => value.mentionId));
+    }
+    const keyboard = evidence.records[1];
+    if (keyboard.captureStatus !== 'captured' || !keyboard.checked || !keyboard.checks) throw new Error('Expected captured keyboard entities');
+    expect(keyboard.checked.accepted).toEqual([]);
+    expect(keyboard.checks.unmatchedMentionsNeedReview).toEqual(['m4']);
+    expect(keyboard.checks.knowledgeCoverage[0]).toMatchObject({ coverage: 'if_selected', status: 'not_observed', semanticReview: 'pending' });
+    expect(evidence.agentReview.records[1].roleReviews).toMatchObject([{ roleKey: 'clean', coverage: 'if_selected', status: 'not_observed' }]);
+    expect(evidence.fullCorpusSplitSummaries.map(value => value.notAttempted)).toEqual([56, 2]);
+    expect(evidence.fullCorpusSplitSummaries.map(value => value.uncheckedCriticalMentions)).toEqual([189, 4]);
+  });
+
   it('audits all source occurrences and admits qualified names without accepting claims, attributes or member lists', () => {
     const audit = JSON.parse(readFileSync(new URL('../../docs/public/entity-name-annotation-v12-audit.json', import.meta.url), 'utf8')) as {
       sourceCorpusDigest: string; corpusDigest: string; modelCallsExecuted: number; goldReady: boolean;
