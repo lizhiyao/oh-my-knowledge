@@ -362,18 +362,52 @@ describe('shared knowledge application', () => {
       generation: 1, draft: edit, reason: '核对名称' });
     expect(corrected).toMatchObject({ history: { generation: 2 } }); expect(JSON.stringify(corrected)).not.toContain(source);
   });
-  it('allows explicitly reviewed uncertainty notes to change while preserving current entity ambiguity and old grounding', async () => {
-    const { app, snapshot, model } = setup(); const packet = modelWindow();
-    packet.entities[0].uncertainties = ['旧的身份待核对']; packet.proposals[0].identityUncertainties = ['补充的身份说明'];
+  it('explicitly corrects tested-build release scope while preserving raw evidence, old bindings and reviewed uncertainty', async () => {
+    const text = '已发布 beta 包 R；本次真实 beta 构建 T，未确认是否为 R；T 的事件 ID 返回 undefined。';
+    const { app, snapshot, model, root, ports } = setup(text); const packet = modelWindow();
+    // Authored incorrect response: admission cannot infer artifact identity from names.
+    packet.entities.forEach((entity, index) => {
+      entity.label = 'beta'; entity.referentKind = 'version';
+      entity.description = index ? '已发布且被用于本次测试的构建' : '来源中的发布包 R';
+      entity.qualifiers = ['已发布'];
+      entity.uncertainties = index ? ['精确构建未知'] : [];
+      packet.mentions[index].selection.quote = index ? '真实 beta 构建 T' : '已发布 beta 包 R';
+    });
+    const statement = packet.proposals[0].draft.content.statements[0];
+    statement.subject = { entityId: 'tool' }; delete statement.object;
+    statement.relation = '本次事件 ID 返回 undefined';
+    statement.context = { ...statement.context, scenario: '来源描述本次 T 测试', unknowns: ['发布状态及是否为 R 未确认'] };
+    packet.proposals[0].draft.title = '本次被测构建的 ID 行为';
+    packet.proposals[0].citations[0].selection.quote = text;
+    packet.proposals[0].identityUncertainties = ['保留的附加说明'];
     model.generate = async (_prompt, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
     const run = await app.generate(snapshot.snapshotId, model); const before = app.detail(run.committed[0].knowledgeId);
     const analysis = app.entities(run.runId); const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
-    edit.entities[0].uncertainties = ['当前仍有的身份限制'];
-    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '核对原文');
-    const draft = { title: before.revision.title, entities: before.revision.entities, content: before.revision.content, evidence: before.revision.evidence };
+    const runFile = join(root, 'runs', `${run.runId}.json`); const runBytes = readFileSync(runFile);
+    edit.entities[1].description = '来源中的本次被测构建 T'; edit.entities[1].qualifiers = ['本次测试'];
+    edit.entities[1].uncertainties = ['精确构建未知', '发布状态及是否为 R 未确认'];
+    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '不继承发布包的限定');
+    expect(app.detail(before.revision.knowledgeId).grounding).toEqual(before.grounding);
+    const draft = { title: before.revision.title, entities: before.revision.entities.map(entity => {
+      const current = corrected.revision.entities.find(value => value.entityId === entity.entityId)!;
+      return { entityId: current.entityId, label: current.label, description: current.description };
+    }), content: before.revision.content, evidence: before.revision.evidence };
     const reviewed = app.reviseUsingEntities(before.revision.knowledgeId, before.revision.revisionId, 1, run.runId, corrected.revision.revisionId, draft, '逐项核对后移除旧说明', []);
-    expect(reviewed.grounding.identityUncertainties).toEqual(['当前仍有的身份限制']);
+    expect(reviewed.grounding.identityUncertainties).toEqual(['精确构建未知', '发布状态及是否为 R 未确认']);
     expect(reviewed.history.grounding[0]).toEqual(before.grounding);
+    expect(reviewed.revision.content).toEqual(before.revision.content);
+    expect(reviewed.grounding.citations).toEqual(before.grounding.citations);
+    expect(reviewed.grounding.entityAnalysisRef?.revisionId).toBe(corrected.revision.revisionId);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      entities: new FileEntityAnalysisStore(join(root, 'entities')), runs: new FileExtractionRunStore(join(root, 'runs')),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    expect(reopened.detail(before.revision.knowledgeId, before.revision.revisionId).revision).toEqual(before.revision);
+    expect(reopened.entities(run.runId, analysis.revision.revisionId).revision).toEqual(analysis.revision);
+    expect(reopened.queryEntities({ query: 'beta' }).rows).toHaveLength(2);
+    expect(reopened.entityDetail(run.runId, analysis.revision.entities[1].entityId).entity)
+      .toMatchObject({ qualifiers: ['本次测试'], identityStatus: 'proposed', uncertainties: ['精确构建未知', '发布状态及是否为 R 未确认'] });
+    expect(readFileSync(runFile)).toEqual(runBytes);
+    expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
   });
   it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
     const { app, snapshot, model, generate } = setup(); const controller = new AbortController();
