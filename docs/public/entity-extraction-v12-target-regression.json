@@ -1,0 +1,312 @@
+{
+  "evidenceVersion": "omk-entity-target-public-summary/v1",
+  "conclusion": "needs_improvement",
+  "measurement": {
+    "measurementId": "sha256:f2efcb39a00eaf7d99277af8d96ed20fd96f7d4d1c5e16412beb4888ce77ef4c",
+    "identity": {
+      "reviewVersion": "omk-entity-v12-target-review/v1",
+      "annotationDigest": "sha256:8ee736caba34c0e594bc3c83454e6bc477970fd1ca02a878155cf789dee46674",
+      "inputDigests": [
+        {
+          "caseId": "real-protected-correction",
+          "digest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0"
+        },
+        {
+          "caseId": "synthetic-source-boundaries",
+          "digest": "sha256:9da427b035f95802d79130f88a77489e724f2018df399b3677bc999022a75814"
+        }
+      ],
+      "rules": [
+        {
+          "source": "docs/specs/entity-identity.md",
+          "file": "rules/docs__specs__entity-identity.md",
+          "digest": "sha256:7a14dba9af64b2db9d36b1a52756b5ec37f18579c621a1d455b94ac82d909e7a"
+        },
+        {
+          "source": "docs/zh/specs/entity-identity.md",
+          "file": "rules/docs__zh__specs__entity-identity.md",
+          "digest": "sha256:bacf24d318c4371a9e26eb9a19c9331aba93e6aa985db8ee54997a36660ecb10"
+        },
+        {
+          "source": "docs/specs/entity-extraction-evaluation.md",
+          "file": "rules/docs__specs__entity-extraction-evaluation.md",
+          "digest": "sha256:44d53f94aba5f855397869de4de755154d1925e64592bc9bad25d34f57580b4e"
+        },
+        {
+          "source": "docs/zh/specs/entity-extraction-evaluation.md",
+          "file": "rules/docs__zh__specs__entity-extraction-evaluation.md",
+          "digest": "sha256:1bc8822444eec0b9b35f9e367909f451093980c4ca87dbde118f5f119d7909ad"
+        }
+      ],
+      "runtimeDigest": "sha256:89ac074ba27dae1d72983e0f4544c93e5271170824d4a77f723741e840807fdf",
+      "dependencyDigest": "sha256:35027c64e0e501c0cea3286bd48bdd44d67e85140a1cdbe44a704550d07eab83",
+      "checkerDigest": "sha256:34784453ee79a27491878a8745c1267c7508626171c3ca74a2b4eb905ba2bed7",
+      "nodeVersion": "24.21.0",
+      "promptVersion": "knowledge-extraction-v12",
+      "promptDigest": "sha256:c7a4a4a3a1b5e5a07d7469e3a8ecf1a7af11f89c1e970f0653f22b207fa7b9fc",
+      "responseSchemaVersion": 4,
+      "guideVersion": "omk-entity-annotation/v10",
+      "checkVersion": "omk-entity-critical-checks/v4"
+    },
+    "sourceCommit": "8ef492fc550498ac56ea057ee419337ca2a56de0",
+    "preparedPlanDigest": "sha256:741c7a943d575bc069cf71e18960d79a909878264a957040fc95e7a5117b8aaa",
+    "authorReview": "completed",
+    "independentReview": "not_performed",
+    "goldReady": false,
+    "scope": "one_previously_viewed_real_development_window_and_one_authored_synthetic_development_window",
+    "plannedWindows": 2,
+    "plannedMessages": 5,
+    "plannedRealMessages": 4,
+    "plannedSyntheticMessages": 1,
+    "plannedObjectExpectations": 15,
+    "plannedTargetMentions": 8,
+    "plannedRequiredKnowledgeRoles": 1,
+    "repeats": 1,
+    "concurrency": 1,
+    "automaticRetries": 0,
+    "executor": "codex",
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "executor-default-not-explicitly-set",
+    "backendRevision": "not-reported"
+  },
+  "capture": {
+    "status": "stopped_on_self_review",
+    "startedAt": "2026-10-11T07:30:43.968Z",
+    "finishedAt": "2026-10-11T07:35:27.992625+00:00",
+    "attempted": 1,
+    "recorded": 1,
+    "modelCallsAuthorized": 2,
+    "executorInvocations": 1,
+    "modelCallsExecuted": 1,
+    "budgetClosed": true,
+    "unusedCalls": 1,
+    "remainingCallsAuthorizedForFurtherExecution": 0
+  },
+  "failures": {
+    "callFailures": 0,
+    "cancellations": 0,
+    "parseFailures": 0,
+    "structuralRejections": 0,
+    "localDriverFailures": 0
+  },
+  "totals": {
+    "entities": 18,
+    "mentions": 21,
+    "knowledgeCandidates": 2,
+    "statements": 6,
+    "citations": 5,
+    "recordedWindows": 1,
+    "unattemptedWindows": 1,
+    "objectExpectationsChecked": 9,
+    "objectExpectationsFound": 9,
+    "objectExpectationsConsistentOnSelfReview": 9,
+    "objectExpectationsUnattempted": 6,
+    "targetMentionsChecked": 2,
+    "targetMentionsMatched": 0,
+    "targetMentionsMissing": 2,
+    "targetMentionsUnattempted": 6,
+    "requiredKnowledgeRolesObservedOnSelfReview": 1,
+    "issuesOnSelfReview": 2,
+    "reportedUncachedInputTokens": 12136,
+    "reportedCacheReadTokens": 12288,
+    "reportedOutputTokens": 5758,
+    "callWallClockDurationMs": 135623.152458,
+    "usdCost": "unknown",
+    "reportedCostUSD": null
+  },
+  "cases": [
+    {
+      "caseId": "real-protected-correction",
+      "inputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0",
+      "outputDigest": "sha256:d588a88b6e4abcad44317bcad642929a94898baf5ad18c1b2fe6c6d98f07dc5c",
+      "runtimeDigest": "sha256:322457c4a6c6557ca9fc677e75ede12a255bbc7c47889a5fdd89ce94b19a5eeb",
+      "captureDigest": "sha256:facfd10ac0759615eb176557def97e202ff0d48e39ff46f22de2cc2c5714b002",
+      "checksDigest": "sha256:19d13e2a08ae7e2e398b171034c6a3d7ad44376757d021856fdb0433201c0d09",
+      "reviewDigest": "sha256:b5ea17a6571187ecbd9037341ed36010a74e1745fe2086e00a5718b973fdccd4",
+      "captureStatus": "output",
+      "counts": {
+        "entities": 18,
+        "mentions": 21,
+        "knowledgeCandidates": 2,
+        "statements": 6,
+        "citations": 5
+      },
+      "programSemanticReview": "pending",
+      "usage": {
+        "ok": true,
+        "stopReason": "end_turn",
+        "inputTokens": 12136,
+        "cacheReadTokens": 12288,
+        "cacheCreationTokens": 0,
+        "outputTokens": 5758,
+        "durationMs": 135621,
+        "numTurns": 1,
+        "fullNumTurns": 1,
+        "numSubAgents": 0,
+        "costReportedByExecutor": false,
+        "costUSD": null
+      },
+      "observedToolCalls": 0,
+      "timing": {
+        "callStartedAt": "2026-10-11T07:30:43.969Z",
+        "finishedAt": "2026-10-11T07:32:59.593Z",
+        "wallClockDurationMs": 135623.152458
+      },
+      "selfReview": {
+        "status": "completed",
+        "reviewKind": "author_self_review",
+        "independentHumanReview": "not_performed",
+        "goldReady": false,
+        "disposition": "stop",
+        "reviewedCounts": {
+          "entities": 18,
+          "mentions": 21,
+          "knowledgeCandidates": 2,
+          "statements": 6,
+          "citations": 5
+        },
+        "expectedObjects": {
+          "checked": 9,
+          "found": 9,
+          "consistentOnSelfReview": 9
+        },
+        "targetMentions": [
+          {
+            "checkKey": "table-session",
+            "entityKey": "session",
+            "entityId": "e7",
+            "status": "required_not_observed",
+            "matchedMentionIds": [],
+            "rationaleMatching": "not_evaluable"
+          },
+          {
+            "checkKey": "late-session",
+            "entityKey": "session",
+            "entityId": "e7",
+            "status": "required_not_observed",
+            "matchedMentionIds": [],
+            "rationaleMatching": "not_evaluable"
+          }
+        ],
+        "requiredKnowledgeRoles": [
+          {
+            "roleKey": "configuration-value-and-rationale",
+            "status": "observed_consistent_on_self_review",
+            "statementRefs": [
+              "p2/s6"
+            ]
+          }
+        ],
+        "observations": {
+          "identifierFragment": "not_observed_in_raw_output",
+          "persistentLibrary": "observed_component",
+          "adapterClass": "observed_component",
+          "versionLibraryAssociation": "observed_with_source",
+          "rationaleForTwoMissingTargets": "not_evaluable",
+          "fullFieldMention": "observed"
+        },
+        "issues": [
+          {
+            "issueKind": "required_target_mention_not_observed",
+            "checkKey": "table-session",
+            "entityId": "e7"
+          },
+          {
+            "issueKind": "required_target_mention_not_observed",
+            "checkKey": "late-session",
+            "entityId": "e7"
+          }
+        ]
+      }
+    }
+  ],
+  "unattempted": [
+    {
+      "caseId": "synthetic-source-boundaries",
+      "repeat": 1,
+      "reason": "Stopped after confirmed missing required target mentions in the first real-window self-review."
+    }
+  ],
+  "applicationReplay": {
+    "status": "not_performed_for_this_failed_batch",
+    "externalModelCalls": 0,
+    "reusedEvidence": "PR #1157 offline source-binding and persistence checks; unchanged Studio v8 correction/history workflow",
+    "noNewOutputStorageOrUIAcceptanceClaim": true
+  },
+  "historicalEvidence": {
+    "files": [
+      {
+        "file": "docs/public/entity-extraction-v6-real-pilot.json",
+        "digest": "sha256:23316378745c953e0175080d70843d44ef6ad14c81ffbd90176a2a157356928c"
+      },
+      {
+        "file": "docs/public/entity-extraction-v8-real-pilot.json",
+        "digest": "sha256:538497b7eb3de8f0e70f2c4705078ea58129d751808e88d368ad1d382c18cea7"
+      },
+      {
+        "file": "docs/public/entity-extraction-v10-diagnostic.json",
+        "digest": "sha256:33bcaacc7dada1f16ba11d6212561aee385e9fc58f71bb80548b41ed81eeff31"
+      },
+      {
+        "file": "docs/public/entity-extraction-v11-boundary-diagnostic.json",
+        "digest": "sha256:1dbf6d52db3a60d40e07b27dd48469347b4bfc6616dbe7ae2aaf619c9c1e1233"
+      },
+      {
+        "file": "docs/public/entity-name-annotation-v12-audit.json",
+        "digest": "sha256:82b1ea802e60156db5acaa3a7ca3cb98b945d42032ce64854b54259ecbab892c"
+      },
+      {
+        "file": "docs/public/entity-name-annotation-v12-replay.json",
+        "digest": "sha256:2d024018b992f4ec0812bc70034b6474885d12e18b304746ea55621b05f60421"
+      },
+      {
+        "file": "docs/public/entity-extraction-v12-followup-diagnostic.json",
+        "digest": "sha256:d50e431740733c37542ca18e935cb71caad649e5429854211af82fe9327ec007"
+      },
+      {
+        "file": "docs/public/entity-extraction-v11-real-regression.json",
+        "digest": "sha256:e078da6cc09ef61c9b67bed1526507bb2bba1d80b41b9796b62d34a14372f23e"
+      }
+    ],
+    "originalV8IssuesPreserved": true,
+    "syntheticV10Score": "10/13",
+    "syntheticV11Score": "2/3",
+    "syntheticV12FollowupScore": "6/6",
+    "scoresMustNotPool": true,
+    "priorRealMeasurementId": "sha256:fbe5143227e5f01858879e5d3dd639753b54e211530fc2c11498d509b8d92288",
+    "priorRealRawOutputsRemainPrivateAndUnchanged": true
+  },
+  "evidenceDigests": {
+    "plan.json": "sha256:741c7a943d575bc069cf71e18960d79a909878264a957040fc95e7a5117b8aaa",
+    "annotations.json": "sha256:8ee736caba34c0e594bc3c83454e6bc477970fd1ca02a878155cf789dee46674",
+    "measurement-identity.json": "sha256:f2efcb39a00eaf7d99277af8d96ed20fd96f7d4d1c5e16412beb4888ce77ef4c",
+    "prompt.txt": "sha256:c7a4a4a3a1b5e5a07d7469e3a8ecf1a7af11f89c1e970f0653f22b207fa7b9fc",
+    "review.html": "sha256:269ba566ae327a04f6a721e58a3c03ccfbdb4bf8b2c245544fe520401f92d8a4",
+    "preflight.json": "sha256:1d40b95b06bdd1959f2d15df918fcc1144bfda4210926a0f95c0ea282e25db2a",
+    "authorization.json": "sha256:2a744a279d708c5a2f28e4647c845d94db84cd73fc2f046743175ec2298e23d3",
+    "capture-minimal.mjs": "sha256:0ae4e55d59bf00363447a661973b23b907718ab6e2efcee2baa3699c282c6e4c",
+    "manifest.json": "sha256:4ffd0e7150dd07052a5be9bd55d11f15c23aaa709c43f5aface2d68966c101d5",
+    "manifest.before-self-review.json": "sha256:796f21be5d92e3239a79b6989bbf644a25b9e28a8c4440192b3794d40ca7ecca",
+    "execution-plan.json": "sha256:2ed3ac6681e9e3b61a51428cf12996bcf825d50da27234fdd2daec022c1bb354",
+    "unattempted.json": "sha256:5d1417e9e7d4bd8d2b5a718e69d8e6c111c77156a219e149ac01b5d39cb9083b"
+  },
+  "publication": {
+    "rawInputs": "local_only",
+    "rawOutputs": "local_only",
+    "annotations": "local_only",
+    "reviewReasons": "local_only",
+    "originalPaths": "not_published"
+  },
+  "limits": [
+    "首个真实窗口已看过 v11 输出并用于修复；合成对照由实现者编写且本批未尝试，不是盲测或代表性抽样。",
+    "实体存在、知识内容完整或引用可定位，不代替关键提及覆盖。两处缺失来自同一个概念，不作为两个独立样本的误差率。",
+    "没有同期 A/B 或第二轮，不能将与旧输出的差异归因于提示词，也不能证明稳定性、整体质量或跨 Agent 收益。",
+    "作者自审不是独立人工证据，goldReady=false；私有摘要绑定证据，但公开汇总不能独立复现全部语义判断。",
+    "真实窗口省略工具、系统与周边记录，原来源另有 24 条解析失败；来源说法不是独立实证。",
+    "未尝试的合成窗口不能证明正常 Markdown／中文相邻提及不受误伤。",
+    "本批新输出未作存储重放或 UI 验收，未变化的既有证据不冒充本次新输出验证。"
+  ],
+  "overallPrecision": null,
+  "overallRecall": null,
+  "overallF1": null
+}
