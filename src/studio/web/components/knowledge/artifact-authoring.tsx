@@ -29,6 +29,7 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   const router = useRouter();
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [carriers, setCarriers] = useState<CarrierRow[]>([]);
+  const [initialIds] = useState(ids);
   const [selected, setSelected] = useState(ids);
   const [mode, setMode] = useState<'new' | 'library' | 'local'>(existing ? 'library' : 'new');
   const [target, setTarget] = useState(existing?.artifactId ?? '');
@@ -40,18 +41,28 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [uncertain, setUncertain] = useState(false);
+  const [loadingBaseline, setLoadingBaseline] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
       fetch('/api/knowledge/candidates', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace, operation: 'list' }), signal: controller.signal }).then(async response => { if (!response.ok) throw new Error(); return await response.json() as KnowledgeCandidateRow[]; }),
       requestArtifact<CarrierRow[]>(workspace, 'list', {}, controller.signal),
-    ]).then(([knowledge, artifacts]) => { setRows(knowledge.filter(row => row.choice === 'retain')); setCarriers(artifacts); })
+    ]).then(([knowledge, artifacts]) => { setRows(knowledge.filter(row => row.choice === 'retain')); setCarriers(artifacts); setLoaded(true); })
       .catch(() => { if (!controller.signal.aborted) setError(t('未能读取知识或载体，请关闭后重新打开。', 'Could not load knowledge or artifacts. Close and reopen.')); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
   }, [workspace]);
+  useEffect(() => {
+    if (mode !== 'library' || !target) { setLoadingBaseline(false); return; }
+    const controller = new AbortController(); setLoadingBaseline(true);
+    void requestArtifact<CarrierDetail>(workspace, 'show', { id: target }, controller.signal)
+      .then(detail => { if (!controller.signal.aborted) { setSelected([...new Set([...initialIds, ...detail.knowledgeRefs.map(ref => ref.knowledgeId)])].filter(id => rows.some(row => row.knowledgeId === id))); setLoadingBaseline(false); } })
+      .catch(() => { if (!controller.signal.aborted) setError(t('未能读取已有知识选择，请关闭后重新打开。', 'Could not load the saved selection. Close and reopen.')); });
+    return () => controller.abort();
+  }, [workspace, mode, target, rows, initialIds]);
   const source: CarrierSource = mode === 'new' ? { sourceKind: 'new' } : mode === 'library' ? { sourceKind: 'library', artifactId: target } : { sourceKind: 'local', path };
-  const failure = (cause: unknown) => cause instanceof Error && cause.message === 'carrier_source_contains_destination' ? t('本地 skill 目录包含当前保存目录，不能复制到自身内部。请选择其它知识保存目录后再生成。', 'The local skill contains the save directory and cannot be copied into itself. Choose another knowledge directory before generating.') : cause instanceof Error && cause.message === 'carrier_invalid_skill' ? t('skill 需保留有效头部，name 应与下方保存目录名一致，并填写 description。请编辑后再保存。', 'Keep valid skill frontmatter: name must match the save directory below, with a nonempty description. Edit and save again.') : cause instanceof Error && cause.message === 'carrier_conflict'
+  const failure = (cause: unknown) => cause instanceof Error && cause.message === 'carrier_knowledge_region_conflict' ? t('旧载体的知识区经过编辑或无法可靠识别，未重建。请创建新载体，并核对需要保留的手工内容。', 'The old knowledge region was edited or cannot be identified safely. Create a new artifact and review manual content to keep.') : cause instanceof Error && cause.message === 'carrier_source_contains_destination' ? t('本地 skill 目录包含当前保存目录，不能复制到自身内部。请选择其它知识保存目录后再生成。', 'The local skill contains the save directory and cannot be copied into itself. Choose another knowledge directory before generating.') : cause instanceof Error && cause.message === 'carrier_invalid_skill' ? t('skill 需保留有效头部，name 应与下方保存目录名一致，并填写 description。请编辑后再保存。', 'Keep valid skill frontmatter: name must match the save directory below, with a nonempty description. Edit and save again.') : cause instanceof Error && cause.message === 'carrier_conflict'
     ? t('知识或载体已发生变化，请返回选择并重新生成预览。', 'Knowledge or artifact changed. Return to selection and generate a new preview.')
     : t('操作未完成。请检查选择、文件路径或内容大小。', 'Operation failed. Check your selections, file path or content size.');
   const finish = (detail: CarrierDetail) => { onSaved?.(detail); onClose(); router.push(workspaceHref(`${KNOWLEDGE_INDEX_PATH}?artifact=${encodeURIComponent(detail.artifactId)}`, workspace)); };
@@ -83,7 +94,7 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   return <Modal open width={900} className="carrier-authoring-modal" title={t('生成知识载体', 'Generate knowledge artifact')} onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
     {draft && !uncertain && <Button disabled={busy} onClick={() => { setDraft(null); setError(''); }}>{t('返回选择', 'Back to selection')}</Button>}
     <Button disabled={busy} onClick={onClose}>{t('取消', 'Cancel')}</Button>
-    {uncertain ? <Button loading={busy} onClick={() => void readSaved()}>{t('核对已保存版本', 'Check saved version')}</Button> : <Button type="primary" loading={busy} disabled={draft ? !content.trim() : !name.trim() || selected.length > 100 || (!selected.length && mode !== 'library') || (mode === 'library' && !target) || (mode === 'local' && !path.trim())} onClick={() => void (draft ? save() : preview())}>{draft ? t('保存载体', 'Save artifact') : t('生成并核对内容', 'Generate and review')}</Button>}
+    {uncertain ? <Button loading={busy} onClick={() => void readSaved()}>{t('核对已保存版本', 'Check saved version')}</Button> : <Button type="primary" loading={busy} disabled={!loaded || loadingBaseline || (draft ? !content.trim() : !name.trim() || selected.length > 100 || (!selected.length && mode !== 'library') || (mode === 'library' && !target) || (mode === 'local' && !path.trim()))} onClick={() => void (draft ? save() : preview())}>{draft ? t('保存载体', 'Save artifact') : t('生成并核对内容', 'Generate and review')}</Button>}
   </Space>}>
     {error && <Alert type="error" showIcon title={error}/>}
     <p>{t('根据已核对的知识组织内容，不额外调用模型。保存不代表内容已证实或效果已通过评测。', 'Organizes reviewed knowledge without another model call. Saving does not verify truth or evaluation performance.')}</p>
@@ -95,7 +106,8 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
       {mode === 'local' && <label>{t('本地文件路径', 'Local file path')}<Input aria-label={t('本地文件路径', 'Local file path')} value={path} onChange={event => setPath(event.target.value)} placeholder={t('SKILL.md 或 prompt 文件的完整路径', 'Full path to SKILL.md or a prompt file')}/></label>}
       <label>{t('载体名称', 'Artifact name')}<Input aria-label={t('载体名称', 'Artifact name')} maxLength={120} value={name} onChange={event => setName(event.target.value)}/></label>
       <label>{t('载体形式', 'Artifact form')}<Select aria-label={t('载体形式', 'Artifact form')} disabled={mode === 'library'} value={kind} onChange={setKind} options={[{ value: 'skill', label: 'skill（SKILL.md）' }, { value: 'prompt', label: 'prompt（Markdown）' }]}/></label>
-      <fieldset><legend>{t('选择已保留知识', 'Select retained knowledge')}</legend><p>{t(`已选择 ${selected.length} 条，单次最多 100 条。`, `${selected.length} selected; up to 100 per operation.`)}</p><div className="carrier-knowledge-selection">{rows.length ? rows.map(row => <Checkbox key={row.knowledgeId} disabled={busy || !selected.includes(row.knowledgeId) && selected.length >= 100} checked={selected.includes(row.knowledgeId)} onChange={event => setSelected(current => event.target.checked ? [...current, row.knowledgeId] : current.filter(id => id !== row.knowledgeId))}>{row.title}</Checkbox>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('尚无已保留知识。先核对候选并保留。', 'No retained knowledge. Review and retain candidates first.')}/>}</div></fieldset>
+      {mode === 'library' && <p>{t('按本次选择重建知识区：未选知识从新版本移除，已选知识使用当前已保留修订。旧版本、知识区外的手工内容及依赖资产保留。', 'Rebuild from this selection: omitted knowledge is removed from the new version; selected knowledge uses current retained revisions. Old versions, manual content outside the region and assets are preserved.')}</p>}
+      <fieldset><legend>{t('选择已保留知识', 'Select retained knowledge')}</legend><p>{t(`已选择 ${selected.length} 条，单次最多 100 条。`, `${selected.length} selected; up to 100 per operation.`)}</p><div className="carrier-knowledge-selection">{rows.length ? rows.map(row => <Checkbox key={row.knowledgeId} disabled={busy || loadingBaseline || !selected.includes(row.knowledgeId) && selected.length >= 100} checked={selected.includes(row.knowledgeId)} onChange={event => setSelected(current => event.target.checked ? [...current, row.knowledgeId] : current.filter(id => id !== row.knowledgeId))}>{row.title}</Checkbox>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('尚无已保留知识。先核对候选并保留。', 'No retained knowledge. Review and retain candidates first.')}/>}</div></fieldset>
     </div>}
   </Modal>;
 }

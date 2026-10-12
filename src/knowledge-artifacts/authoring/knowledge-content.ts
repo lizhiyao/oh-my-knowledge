@@ -51,12 +51,47 @@ export function renderCarrierKnowledge(items: CarrierKnowledge[], lang: 'zh' | '
   }).join('\n\n');
 }
 
-export function composeCarrierContent(name: string, directoryName: string, artifactKind: AuthoredArtifactKind, material: string, baseContent: string, lang: 'zh' | 'en', properties: Record<string, unknown>): string {
+const regionStart = '<!-- omk:knowledge:v1:start -->';
+const regionEnd = '<!-- omk:knowledge:v1:end -->';
+
+/** Replace only a managed region. Legacy suffixes must match every exact referenced revision. */
+function rebuildKnowledge(base: string, block: string, previousMaterials: string[][]): string {
+  const start = base.indexOf(regionStart), end = base.indexOf(regionEnd);
+  if (start !== -1 || end !== -1) {
+    if (start === -1 || end < start || base.indexOf(regionStart, start + 1) !== -1 || base.indexOf(regionEnd, end + 1) !== -1
+      || (start > 0 && base[start - 1] !== '\n') || !['', '\n', '\r'].includes(base[end + regionEnd.length] ?? '')) throw new Error('carrier_knowledge_region_conflict');
+    const actual = base.slice(start + regionStart.length, end);
+    const expected = (['从工作记录保留的知识', 'Knowledge retained from work records']).map((heading, language) => `\n## ${heading}\n\n${previousMaterials.map(values => values[language]).join('\n\n')}\n`);
+    if (!expected.includes(actual)) throw new Error('carrier_knowledge_region_conflict');
+    return base.slice(0, start) + block + base.slice(end + regionEnd.length);
+  }
+  if (!previousMaterials.length) return base + (block ? `${base.endsWith('\n') ? '' : '\n'}\n${block}\n` : '');
+  const heading = /\n## (?:从工作记录保留的知识|Knowledge retained from work records)\n\n/g;
+  const candidates = [...base.matchAll(heading)].slice(0, 1);
+  for (const candidate of candidates) {
+    let tail = base.slice(candidate.index!); const remaining = new Set(previousMaterials.map((_, index) => index));
+    while (tail.trim()) {
+      tail = tail.trimStart();
+      const section = tail.match(/^## (?:从工作记录保留的知识|Knowledge retained from work records)\n\n/);
+      if (section) { tail = tail.slice(section[0].length); continue; }
+      const index = [...remaining].find(index => previousMaterials[index].some(value => tail.startsWith(value) && (!tail.slice(value.length) || /^\s/.test(tail.slice(value.length)))));
+      if (index === undefined) break;
+      const value = previousMaterials[index].find(value => tail.startsWith(value))!;
+      tail = tail.slice(value.length); remaining.delete(index);
+    }
+    if (!tail.trim() && !remaining.size) return base.slice(0, candidate.index! + 1) + (block ? `${block}\n` : '');
+  }
+  throw new Error('carrier_knowledge_region_conflict');
+}
+
+export function composeCarrierContent(name: string, directoryName: string, artifactKind: AuthoredArtifactKind, material: string, baseContent: string, lang: 'zh' | 'en', properties: Record<string, unknown>, previousMaterials?: string[][]): string {
   const title = name.replace(/[\r\n]/g, ' ');
   const heading = lang === 'zh' ? '从工作记录保留的知识' : 'Knowledge retained from work records';
-  const base = baseContent || (artifactKind === 'skill'
+  const original = baseContent || (artifactKind === 'skill'
     ? `---\nname: ${JSON.stringify(directoryName)}\ndescription: ${JSON.stringify(lang === 'zh' ? `${title}：处理相关任务时参考已核对的工作经验，使用前核对适用条件与来源。` : `${title}: use reviewed work knowledge for related tasks after checking conditions and sources.`)}\n---\n\n# ${title}\n`
     : `# ${title}\n`);
+  const block = material ? `${regionStart}\n## ${heading}\n\n${material}\n${regionEnd}` : '';
+  const base = previousMaterials ? rebuildKnowledge(original, block, previousMaterials) : original + (block ? `${original.endsWith('\n') ? '' : '\n'}\n${block}\n` : '');
   const match = base.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   let parsed: unknown;
   try { parsed = match ? yaml.load(match[1]) : {}; } catch { throw new Error('carrier_invalid_metadata'); }
@@ -73,8 +108,7 @@ export function composeCarrierContent(name: string, directoryName: string, artif
   }
   const prepared = JSON.stringify(previous) === JSON.stringify(updated) ? base
     : `---\n${yaml.dump(updated, { noRefs: true, lineWidth: -1, forceQuotes: true, quotingType: '"' })}---\n${match ? base.slice(match[0].length) : `\n${base}`}`;
-  if (!material) return prepared;
-  return `${prepared}${prepared.endsWith('\n') ? '' : '\n'}\n## ${heading}\n\n${material}\n`;
+  return prepared;
 }
 
 /** Display names stay human-readable; actual skill directories obey the portable skill name contract. */
