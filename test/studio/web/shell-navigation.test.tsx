@@ -23,7 +23,7 @@ function render(active: Zone | false, lang: 'zh' | 'en' = 'zh', withNavigation =
 describe('壳层一级导航', () => {
   it('三区入口不带语言参数，来源页归属观测', () => {
     const en = render('observe', 'en');
-    for (const path of ['/observe', '/measure', '/knowledge/candidates']) {
+    for (const path of ['/observe', '/measure', '/knowledge/library']) {
       assert.ok(en.includes(`href="${path}"`), `${path} 缺导航链接`);
     }
     const primary = en.match(/<nav aria-label="Studio primary navigation">([\s\S]*?)<\/nav>/)![1];
@@ -37,9 +37,9 @@ describe('壳层一级导航', () => {
   it('只给当前区标 aria-current，换区后跟着移动', () => {
     assert.match(render('measure'), /<a[^>]*aria-current="page"[^>]*href="\/measure"/);
     assert.doesNotMatch(render('measure'), /aria-current="page"[^>]*href="\/observe"/);
-    assert.match(render('knowledge'), /<a[^>]*aria-current="page"[^>]*href="\/knowledge\/candidates"/);
+    assert.match(render('knowledge'), /<a[^>]*aria-current="page"[^>]*href="\/knowledge\/library"/);
     assert.match(render('agents'), /<a[^>]*aria-current="location"[^>]*href="\/observe"/);
-    assert.doesNotMatch(render('agents'), /aria-current="page"[^>]*href="\/knowledge\/candidates"/);
+    assert.doesNotMatch(render('agents'), /aria-current="page"[^>]*href="\/knowledge\/library"/);
     assert.doesNotMatch(render(false), /aria-current/, '不属于任何一区时不谎报当前位置');
   });
 
@@ -71,10 +71,10 @@ it('keeps an operation folder on internal links without forwarding a selected it
   expect(workspaceHref('https://example.com', '/private')).toBe('https://example.com');
 });
 
-it('renders every primary and knowledge section entry with the same folder, while Knowledge opens existing extractions', () => {
+it('renders every primary and knowledge section entry with the same folder, while Knowledge opens the entity knowledge library', () => {
   current.search = 'workspace=%2Fexplicit&id=selected&lang=en';
   const html = renderToString(createElement(StudioShell, { lang: 'zh', active: 'knowledge', children: createElement(KnowledgeSectionNav, { active: 'candidates', lang: 'zh' }) }));
-  for (const path of ['/observe', '/measure', '/knowledge/candidates', '/knowledge/entities', '/knowledge', '/observe/health']) {
+  for (const path of ['/observe', '/measure', '/knowledge/library', '/knowledge/candidates', '/knowledge/entities', '/knowledge', '/observe/health']) {
     expect(html).toContain(`href="${path}?workspace=%2Fexplicit"`);
   }
   expect(html).toContain('提炼的知识');

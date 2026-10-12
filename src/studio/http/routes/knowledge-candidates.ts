@@ -2,13 +2,14 @@ import type { ConversationCatalog, ConversationAutoExtraction } from '../../../o
 import { executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
 import { KnowledgeStorageStateError } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
+import { executeKnowledgeLibraryAction } from '../../application/knowledge/knowledge-library.js';
 import { JSON_HEADERS } from '../errors.js';
 import { readJsonObjectBody } from '../request-errors.js';
 import { createStudioRouter } from './router.js';
 import type { LiveStreamRegistry } from './contracts.js';
 
 export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction) {
-  return createStudioRouter(['candidates', 'auto-extraction'].map(resource => ({
+  return createStudioRouter(['candidates', 'auto-extraction', 'library'].map(resource => ({
     pattern: `/api/knowledge/${resource}`, method: 'POST', mutation: true,
     async handler({ request, response }) {
       const input = await readJsonObjectBody(request);
@@ -17,9 +18,10 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
       response.once('close', cancel); liveStreams.add(cancel);
       try {
         if (resource === 'auto-extraction' && !automation) throw new Error('Automation service unavailable.');
-        const result = resource === 'auto-extraction' && automation
-          ? await executeAutoExtractionAction(input, automation, controller.signal)
-          : await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
+        const result = resource === 'library' ? executeKnowledgeLibraryAction(input)
+          : resource === 'auto-extraction' && automation
+            ? await executeAutoExtractionAction(input, automation, controller.signal)
+            : await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
         if (!response.destroyed) { response.writeHead(200, JSON_HEADERS); response.end(JSON.stringify(result)); }
       } catch (error) {
         if (response.destroyed) return;

@@ -6,7 +6,7 @@ import { assessHealth, observedToolFailureRate } from '../../application/knowled
 import type { HealthAssessment } from '../../view-models/knowledge/health-assessment.js';
 import type { Insight } from '../../view-models/knowledge/insight.js';
 import type { SkillDoctorSnapshot, SkillIndexEntry, SkillIndexSummary } from '../../view-models/knowledge/skill-index.js';
-import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_ENTITIES_PATH, KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX } from '../page-paths.js';
+import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_ENTITIES_PATH, KNOWLEDGE_LIBRARY_PATH, KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX } from '../page-paths.js';
 
 export interface KnowledgeRow {
   skillName: string;
@@ -54,11 +54,8 @@ export function isKnowledgePath(path: string): boolean {
   return path === KNOWLEDGE_INDEX_PATH || path.startsWith(KNOWLEDGE_SKILL_PREFIX);
 }
 
-export function isKnowledgeCandidatesPath(path: string): boolean {
-  return path === KNOWLEDGE_CANDIDATES_PATH;
-}
-export function isKnowledgeEntitiesPath(path: string): boolean {
-  return path === KNOWLEDGE_ENTITIES_PATH;
+export function isKnowledgeContentPath(path: string): boolean {
+  return path === KNOWLEDGE_CANDIDATES_PATH || path === KNOWLEDGE_ENTITIES_PATH || path === KNOWLEDGE_LIBRARY_PATH;
 }
 
 export function loadKnowledgePage(

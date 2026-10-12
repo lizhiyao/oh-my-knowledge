@@ -61,7 +61,9 @@ omk studio
 
 打开命令返回的本地地址，从本机 Codex 对话进入任务轨迹；无需先 ingest，也不调用模型。进行中的任务支持实时跟随。Claude Code、OpenClaw 与 markdown 日志通过 `omk observe` 进入观测报告，见[观测指南](docs/zh/guides/observe-production.md)。
 
-需要沉淀经验时，在知识页面选择“从对话选择”，选定对话和轮次，核对消息与工作区后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。点击“生成知识载体”，即可核对并明确保存 skill 或 prompt。步骤见[提炼指南](docs/zh/guides/extract-knowledge.md)。
+需要沉淀经验时，在“知识 → 提炼的知识”选择“从对话选择”，选定对话和轮次，核对消息与工作区后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。点击“生成知识载体”，即可核对并明确保存 skill 或 prompt。步骤见[提炼指南](docs/zh/guides/extract-knowledge.md)。
+
+“知识”入口进入知识库：明确关联不同窗口的来源实体，阅读带条件和依据的知识，再选择保留内容生成载体。同名不自动归并；当前未提供图谱或跨 Agent 自动身份关联。详见[知识库动线](docs/zh/guides/extract-knowledge.md#围绕实体积累知识)。
 
 ### 或者，直接比较两版 skill
 
