@@ -139,6 +139,35 @@ describe('Studio candidate action boundary', () => {
     const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });
+  it('organizes exact entity revisions through the real library API and retains history without exposing source paths', async () => {
+    const selected = join(root, 'library-workspace'); const app = createLocalKnowledgeApplication(selected);
+    const source = app.capture({ path: join(root, 'library-source.jsonl'), records: [{ recordIndex: 2, raw: message('user', 'Alpha 使用 Beta') }] });
+    const run = await app.generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-call', generate: async (_system, input) => ({
+      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
+    const entity = app.entities(run.runId); const member = { analysisId: run.runId, entityId: entity.revision.entities[0].entityId,
+      entityRevisionId: entity.revision.revisionId, mentionIds: [entity.revision.mentions[0].mentionId], rationale: '按来源确认项目身份' };
+    const libraryPost = (body: object, origin?: string) => fetch(`${url}/api/knowledge/library`, { method: 'POST',
+      headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace: selected, ...body }) });
+    const command = { operation: 'save', objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+      draft: { label: 'Alpha', description: '维护的项目对象', referentKind: 'object', members: [member] }, reason: '建立入口', identityConfirmed: true };
+    expect((await libraryPost(command, 'https://untrusted.example')).status).toBe(403);
+    expect(existsSync(join(selected, 'library'))).toBe(false);
+    const response = await libraryPost(command); expect(response.status).toBe(200); const saved = await response.json();
+    expect((await libraryPost(command)).status).toBe(200);
+    const detail = await libraryPost({ operation: 'show', id: saved.objectId }); const text = await detail.text();
+    expect(text).not.toContain(root); expect(text).not.toContain('rawOutput');
+    expect(JSON.parse(text).counts).toEqual({ retained: 0, pending: 1, discarded: 0, needsReview: 0 });
+    expect((await (await libraryPost({ operation: 'owners', analysisId: member.analysisId, entityId: member.entityId })).json())[0].objectId).toBe(saved.objectId);
+    expect((await libraryPost({ ...command, objectId: randomUUID(), requestId: randomUUID() })).status).toBe(409);
+    for (const bad of [{ operation: 'show', id: '../private' }, { operation: 'list', unsafe: true }, { ...command, identityConfirmed: false }]) {
+      const failed = await libraryPost(bad); expect(failed.status).toBe(400); expect(await failed.text()).not.toContain(root);
+    }
+    const removed = await libraryPost({ ...command, requestId: randomUUID(), generation: saved.generation, headRevisionId: saved.writeHeadRevisionId,
+      draft: { ...command.draft, members: [] }, reason: '明确解除关联' }); expect(removed.status).toBe(200);
+    expect((await (await libraryPost({ operation: 'show', id: saved.objectId })).json()).knowledge).toEqual([]);
+    expect((await (await libraryPost({ operation: 'show', id: saved.objectId, revision: saved.writeHeadRevisionId })).json()).knowledge).toHaveLength(1);
+    expect(app.detail(run.committed[0].knowledgeId).history.revisions).toHaveLength(1);
+  });
   it('rejects unsupported storage and removed operations without altering files or exposing data', async () => {
     const selected = join(root, 'unsupported'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });
     const path = join(folder, `${randomUUID()}.json`);

@@ -126,6 +126,13 @@ describe('Next Studio production boundary', () => {
     const knowledgeBare = await (await fetch(`${urlA}/knowledge`)).text();
     assert.match(knowledgeBare, /studio-utilities-trigger/);
     assert.doesNotMatch(knowledgeBare, /class="studio-lang"/);
+    const libraryResponse = await fetch(`${urlA}/knowledge/library?${new URLSearchParams({ workspace: root })}`);
+    assert.equal(libraryResponse.status, 200);
+    const libraryHtml = await libraryResponse.text();
+    assert.match(libraryHtml, /<title>OMK · 知识库<\/title>/);
+    assert.match(libraryHtml, /从实体建立对象/);
+    assert.ok(libraryHtml.includes(`/knowledge/candidates?workspace=${encodeURIComponent(root)}`));
+    assert.equal((await fetch(`${urlA}/knowledge/library`, { method: 'POST' })).status, 405);
     // 所有完整 Studio 页面共用全局设置入口；英文渲染由本机设置驱动（OMK_LANG 等同设置文件）。
     const previousLang = process.env.OMK_LANG;
     let knowledgeEn = '';
@@ -148,7 +155,7 @@ describe('Next Studio production boundary', () => {
     };
     assert.equal(shellOf(measureEn), shellOf(knowledgeEn));
     assert.match(knowledgeEn, /studio-utilities-trigger/);
-    for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge/candidates"']) {
+    for (const href of ['href="/observe"', 'href="/measure"', 'href="/knowledge/library"']) {
       assert.ok(shellOf(measureEn).includes(href), `primary navigation links ${href}`);
     }
     assert.doesNotMatch(measureEn, /href="[^"]*[?&]lang=/, '英文页面链接同样不带语言参数');

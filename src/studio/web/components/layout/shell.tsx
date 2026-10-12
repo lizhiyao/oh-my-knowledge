@@ -5,7 +5,7 @@ import { workspaceHref } from './workspace-link';
 import { StudioUtilities } from './utilities';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConfigProvider } from 'antd';
-import { KNOWLEDGE_CANDIDATES_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
+import { KNOWLEDGE_LIBRARY_PATH, MEASURE_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { useStudioNavigation } from './navigation';
@@ -116,7 +116,7 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
         <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
           <Link href={href(OBSERVE_INDEX_PATH)} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
           <Link href={href(MEASURE_INDEX_PATH)} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
-          <Link href={href(KNOWLEDGE_CANDIDATES_PATH)} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
+          <Link href={href(KNOWLEDGE_LIBRARY_PATH)} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
         </nav>
         {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
         <StudioUtilities lang={lang}/>

@@ -64,6 +64,7 @@ test/knowledge/entities.test.ts
 test/knowledge/entity-identity.test.ts
 test/knowledge/quote-occurrence.test.ts
 test/knowledge/storage.test.ts
+test/knowledge/library.test.ts
 test/mcp/mcp-server.test.ts
 test/mcp/tool-language.test.ts
 test/observability/conversation-semantic-projection.test.ts
@@ -90,3 +91,4 @@ test/studio/web/fallback-language.test.tsx
 test/studio/web/inbox-react-safety.test.tsx
 test/studio/web/knowledge-candidate-decision.test.tsx
 test/studio/web/entity-analysis.test.tsx
+test/studio/web/knowledge-library.test.tsx

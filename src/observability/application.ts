@@ -39,6 +39,9 @@ export {
 } from './knowledge-extraction/local.js';
 export { KnowledgeStorageStateError } from './knowledge-extraction/adapters/storage-state.js';
 export { extractionRunSummary } from './knowledge-extraction/runs.js';
+export { createLocalKnowledgeLibrary } from './knowledge-extraction/library.js';
+export { LibrarySaveSchema } from './knowledge-extraction/library.js';
+export type { KnowledgeLibraryApplication } from './knowledge-extraction/library.js';
 export type { ExtractionRunSummary } from './knowledge-extraction/runs.js';
 export {
   confidenceOf,

@@ -61,7 +61,9 @@ omk studio
 
 Open the local URL returned by the command and select a local Codex conversation to inspect its task trajectory. No prior ingest or model call is needed; active tasks support live following. Claude Code, OpenClaw, and markdown logs enter observation reports through `omk observe`; see the [observation guide](docs/guides/observe-production.md).
 
-To preserve reusable knowledge, choose “Choose a conversation” on the knowledge page. Select a conversation and turn, inspect the messages and workspace, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. Choose “Generate knowledge artifact” to review and save a skill or prompt explicitly. See the [extraction guide](docs/guides/extract-knowledge.md).
+To preserve reusable knowledge, choose “Choose a conversation” under “Knowledge → Extracted knowledge”. Select a conversation and turn, inspect the messages and workspace, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. Choose “Generate knowledge artifact” to review and save a skill or prompt explicitly. See the [extraction guide](docs/guides/extract-knowledge.md).
+
+The “Knowledge” entry opens the knowledge library. Explicitly link source entities across windows, read claims with conditions and evidence, and select retained knowledge for artifacts. Names are not merged automatically; graph views and cross-agent automatic identity are not provided. See the [library workflow](docs/guides/extract-knowledge.md#accumulate-knowledge-around-entities).
 
 ### Or compare two skills directly
 

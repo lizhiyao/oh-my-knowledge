@@ -6,11 +6,13 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_ENTITIES_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { conversationPath } from '../conversation-link';
+import { workspaceHref } from '../layout/workspace-link';
 import { displayTime } from '../../../application/display/format';
 import { KnowledgeSectionNav } from './section-nav';
 import { EntityAnalysisDrawer } from './entity-analysis';
 import { EntityRelations, referentLabel } from './entity-relations';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
+import { LibraryEntityEntry } from './library-entry';
 
 type Target = { analysisId: string; entityId: string; revision?: string };
 function entityUrl(workspace: string, target: Target) {
@@ -125,6 +127,8 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
   const mentions = revision.mentions.filter(mention => mention.entityId === entity.entityId);
   const excerpts = detail.source.status === 'available' ? detail.source.excerpts : [];
   return <article className="entity-library-article"><h2>{entity.label}</h2>
+    <LibraryEntityEntry workspace={workspace} analysisId={history.analysisId} entityId={entity.entityId} entityRevisionId={revision.revisionId}
+      current={revision.revisionId === history.writeHeadRevisionId} lang={lang}/>
     <Tag>{entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应，待核对', 'Proposed assignment, needs review')}</Tag>
     <p>{entity.description}</p><p>{entity.qualifiers.join(' · ') || t('未给出进一步的对象限定。', 'No further entity qualifiers provided.')}</p>
     {entity.uncertainties.map((value, index) => <Alert key={index} type="warning" title={value}/>)}
@@ -136,7 +140,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
       options={history.revisions.map((value, index) => ({ value: value.revisionId, label: `${index + 1} · ${displayTime(value.revisedAt)} · ${value.revisionReason}` }))}/></label>
     {revision.revisionId !== history.writeHeadRevisionId && <Alert type="info" title={t('正在查看历史修订。', 'Viewing a historical revision.')}/>}
     <p className="candidate-help">{displayTime(revision.revisedAt)} · {revision.revisedBy.actorId} · {revision.revisionReason}</p>
-    {detail.origin && <p><Link href={conversationPath(detail.origin.threadId)}>{detail.origin.title || t('来源对话', 'Source conversation')}</Link></p>}
+    {detail.origin && <p><Link href={workspaceHref(conversationPath(detail.origin.threadId), workspace)}>{detail.origin.title || t('来源对话', 'Source conversation')}</Link></p>}
     <h3>{t('原文提及', 'Source mentions')}</h3>
     {detail.source.status === 'unavailable' && <Alert type="warning" title={t('原文快照不可用。以下仅为已保存的提及，无法重新核对或纠正。', 'Source snapshot unavailable. These are saved mentions; rechecking and corrections are unavailable.')}/>}
     {revision.limitations.map((value, index) => <p className="candidate-help" key={index}>{value}</p>)}
