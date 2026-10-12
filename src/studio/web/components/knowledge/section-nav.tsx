@@ -14,7 +14,7 @@ export function KnowledgeSectionNav({ active, lang }: { active: 'library' | 'can
   const href = useWorkspaceHref();
   const items = [
     { key: 'library' as const, href: KNOWLEDGE_LIBRARY_PATH, label: zh ? '知识库' : 'Knowledge library' },
-    { key: 'candidates' as const, href: KNOWLEDGE_CANDIDATES_PATH, label: zh ? '提炼的知识' : 'Extracted knowledge' },
+    { key: 'candidates' as const, href: KNOWLEDGE_CANDIDATES_PATH, label: zh ? '候选核对' : 'Candidate review' },
     { key: 'entities' as const, href: KNOWLEDGE_ENTITIES_PATH, label: zh ? '实体' : 'Entities' },
     { key: 'skills' as const, href: KNOWLEDGE_INDEX_PATH, label: zh ? '知识载体' : 'Knowledge artifacts' },
     { key: 'health' as const, href: HEALTH_INDEX_PATH, label: zh ? 'Skill 健康度' : 'Skill health' },

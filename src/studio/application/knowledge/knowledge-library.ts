@@ -3,6 +3,7 @@ import { createLocalKnowledgeLibrary, LibrarySaveSchema } from '../../../observa
 
 const common = { workspace: z.string().trim().min(1) };
 const requestSchema = z.discriminatedUnion('operation', [
+  z.strictObject({ ...common, operation: z.literal('knowledge') }),
   z.strictObject({ ...common, operation: z.literal('list'), query: z.string().trim().max(512).optional(),
     page: z.number().int().min(1).optional(), pageSize: z.number().int().min(1).max(100).optional() }),
   z.strictObject({ ...common, operation: z.literal('show'), id: z.string().uuid(), revision: z.string().uuid().optional() }),
@@ -12,6 +13,7 @@ const requestSchema = z.discriminatedUnion('operation', [
 export function executeKnowledgeLibraryAction(input: unknown) {
   const request = requestSchema.parse(input); const library = createLocalKnowledgeLibrary(request.workspace);
   switch (request.operation) {
+    case 'knowledge': return library.knowledgeCatalog();
     case 'list': return library.catalog({ query: request.query, page: request.page, pageSize: request.pageSize });
     case 'show': return library.detail(request.id, request.revision);
     case 'owners': return library.owners(request.analysisId, request.entityId);

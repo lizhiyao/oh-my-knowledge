@@ -77,7 +77,7 @@ it('renders every primary and knowledge section entry with the same folder, whil
   for (const path of ['/observe', '/measure', '/knowledge/library', '/knowledge/candidates', '/knowledge/entities', '/knowledge', '/observe/health']) {
     expect(html).toContain(`href="${path}?workspace=%2Fexplicit"`);
   }
-  expect(html).toContain('提炼的知识');
+  expect(html).toContain('候选核对');
   expect(html).not.toContain('id=selected');
   expect(html).not.toContain('lang=en');
 });

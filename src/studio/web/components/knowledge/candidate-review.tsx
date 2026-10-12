@@ -33,19 +33,19 @@ export function CandidateReviewSummary({ batch, lang, workspace, originHref, bus
   </section>;
 }
 
-export function CandidateDecisionActions({ lang, reason, busy, needsRefresh, onReason, onEdit, onDecision }: {
-  lang: Language; reason: string; busy: boolean; needsRefresh: boolean; onReason(value: string): void; onEdit(): void; onDecision(choice: 'retain' | 'discard'): void;
+export function CandidateDecisionActions({ lang, reason, busy, needsRefresh, choice, onChoice, onReason, onEdit, onDecision }: {
+  lang: Language; reason: string; busy: boolean; needsRefresh: boolean; choice: 'retain' | 'discard' | null; onChoice(choice: 'retain' | 'discard' | null): void; onReason(value: string): void; onEdit(): void; onDecision(choice: 'retain' | 'discard'): void;
 }) {
   const zh = lang === 'zh';
   const presets = zh ? ['后续处理同类任务时参考，使用前核对适用条件。', '与已有知识重复，暂不采用。', '当前依据不足，暂不采用。']
     : ['Useful for similar tasks; check conditions before use.', 'Duplicates existing knowledge; do not adopt it now.', 'Evidence is insufficient; do not adopt it now.'];
   return <footer className="candidate-actions">
-    <label className="candidate-reason">{zh ? '处理理由' : 'Decision reason'}<Input aria-label={zh ? '处理理由' : 'Decision reason'} disabled={busy || needsRefresh} value={reason}
+    {choice && <><label className="candidate-reason">{zh ? '处理理由' : 'Decision reason'}<Input aria-label={zh ? '处理理由' : 'Decision reason'} disabled={busy || needsRefresh} value={reason}
       placeholder={zh ? '填写理由，或选择下方快捷理由后修改' : 'Write a reason, or choose and edit a preset below'} onChange={event => onReason(event.target.value)}/></label>
     <Select className="candidate-reason-presets" aria-label={zh ? '快捷处理理由' : 'Reason presets'} disabled={busy || needsRefresh} value={null}
-      placeholder={zh ? '快捷理由（选择后仍需确认决定）' : 'Reason preset (confirm your decision afterwards)'} options={presets.map(value => ({ value, label: value }))} onChange={onReason}/>
-    <Space wrap><Button disabled={busy || needsRefresh} onClick={onEdit}>{zh ? '修订' : 'Edit'}</Button>
-      <Button type="primary" disabled={busy || needsRefresh || !reason.trim()} onClick={() => onDecision('retain')}>{zh ? '保留' : 'Retain'}</Button>
-      <Button disabled={busy || needsRefresh || !reason.trim()} onClick={() => onDecision('discard')}>{zh ? '舍弃' : 'Discard'}</Button></Space>
+      placeholder={zh ? '快捷理由（选择后仍需确认决定）' : 'Reason preset (confirm your decision afterwards)'} options={presets.map(value => ({ value, label: value }))} onChange={onReason}/></>}
+    <Space wrap>{choice ? <><Button disabled={busy || needsRefresh} onClick={() => onChoice(null)}>{zh ? '取消决定' : 'Cancel decision'}</Button>
+      <Button type="primary" disabled={busy || needsRefresh || !reason.trim()} onClick={() => onDecision(choice)}>{choice === 'retain' ? (zh ? '确认保留' : 'Confirm retain') : (zh ? '确认舍弃' : 'Confirm discard')}</Button></>
+      : <><Button disabled={busy || needsRefresh} onClick={onEdit}>{zh ? '修订' : 'Edit'}</Button><Button type="primary" disabled={busy || needsRefresh} onClick={() => onChoice('retain')}>{zh ? '保留' : 'Retain'}</Button><Button disabled={busy || needsRefresh} onClick={() => onChoice('discard')}>{zh ? '舍弃' : 'Discard'}</Button></>}</Space>
   </footer>;
 }

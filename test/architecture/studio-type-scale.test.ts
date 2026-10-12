@@ -145,15 +145,14 @@ describe('Studio 页级标题尺度', () => {
     expect(css, '遮罩在宽屏上也会显示：桌面态会被盖住').toContain('.studio-scrim{display:none}');
     // 只检查断点数值会让「规范说单栏、实际仍是两栏」静默通过。
     // 窄屏通过切换核对内容保留阅读高度，不能把原文挤成只有几像素的滚动窗。
-    const step1024 = blocksOf('(max-width:1024px)').join('\n');
-    const candidateGrid = step1024.match(/\.candidate-columns\{([^}]*)\}/)?.[1];
-    expect(candidateGrid, '1024 档缺少候选核对布局').toBeDefined();
-    expect(candidateGrid, '窄屏仍把列表和正文并排，正文会被压窄').toContain('grid-template-columns:minmax(0,1fr);');
-    expect(step1024, '窄屏缺少始终可达的视图切换').toMatch(/\.candidate-pane-switch\{display:flex/);
-    expect(step1024, '窄屏仍同时堆叠两块正文').toMatch(/\.candidate-content:not\(\.candidate-pane-active\),\.candidate-evidence:not\(\.candidate-pane-active\)\{display:none\}/);
-    const shortWindow = blocksOf('(max-width:1280px) and (max-height:700px)').join('\n');
-    expect(shortWindow, '矮窗口缺少核对视图切换').toMatch(/\.candidate-pane-switch\{display:flex/);
-    expect(shortWindow, '矮窗口继续上下堆叠正文，阅读区被操作区挤压').toContain('grid-template-columns:minmax(0,1fr);');
+    const narrowReader = css.match(/@container\(max-width:860px\)\{([\s\S]*?)\n@media/);
+    expect(narrowReader, '共享阅读区缺少按容器宽度退化的规则').not.toBeNull();
+    expect(narrowReader![1]).toContain('grid-template-columns:minmax(0,1fr)');
+    expect(narrowReader![1]).toContain('.knowledge-directory-open>.knowledge-reader{display:none}');
+    expect(narrowReader![1]).toContain('.knowledge-core .knowledge-directory-toggle{display:inline-flex}');
+    expect(css.match(/\.knowledge-reader-scroll\{[^}]*\}/)?.[0]).toContain('min-height:0');
+    expect(css.match(/\.knowledge-reader-footer\{[^}]*\}/)?.[0]).toContain('flex-shrink:0');
+
   });
 
   it('对话阅读正文取 16px 与 1.85 倍行高', () => {

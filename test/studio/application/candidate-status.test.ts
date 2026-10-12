@@ -37,7 +37,7 @@ describe('candidate status labels', () => {
 
 describe('extraction review batch', () => {
   const run: KnowledgeCandidateRun = { runId: 'one', status: 'completed', committed: ['a', 'b', 'c'].map(knowledgeId => ({ knowledgeId, revisionId: 'original' })), rejections: [] };
-  const row = (knowledgeId: string, choice: KnowledgeCandidateRow['choice']): KnowledgeCandidateRow => ({ knowledgeId, revisionId: 'latest', generation: 1, title: knowledgeId, reviewStatus: 'pending', choice });
+  const row = (knowledgeId: string, choice: KnowledgeCandidateRow['choice']): KnowledgeCandidateRow => ({ knowledgeId, revisionId: 'latest', generation: 1, title: knowledgeId, knowledgeKind: 'fact', reviewStatus: 'pending', choice });
   it('follows extraction order and wraps within that extraction, excluding unrelated candidates', () => {
     const rows = [row('unrelated', null), row('c', null), row('b', 'retain'), row('a', null)];
     assert.equal(candidateReviewRun([run], 'a'), run);

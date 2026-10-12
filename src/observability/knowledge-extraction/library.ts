@@ -43,6 +43,34 @@ export class KnowledgeLibraryApplication {
       .map(history => ({ objectId: history.objectId, label: history.revisions.at(-1)!.draft.label }));
   }
 
+  /** All knowledge remains visible even before it has a confirmed organizational home. */
+  knowledgeCatalog() {
+    const objects = this.store.list().map(history => {
+      const revision = history.revisions.at(-1)!;
+      return { objectId: history.objectId, label: revision.draft.label, members: revision.draft.members };
+    });
+    const byEntity = new Map<string, { objectId: string; label: string; entityRevisionId: string }[]>();
+    for (const object of objects) for (const member of object.members) {
+      const key = memberKey(member);
+      byEntity.set(key, [...(byEntity.get(key) ?? []), { objectId: object.objectId, label: object.label, entityRevisionId: member.entityRevisionId }]);
+    }
+    const rows = this.knowledge.list().map(row => {
+      const detail = this.knowledge.detail(row.knowledgeId);
+      const ref = detail.grounding.entityAnalysisRef;
+      const links = new Map<string, { objectId: string; label: string; associationStatus: 'matched' | 'needs_review' }>();
+      if (ref) for (const entity of detail.revision.entities) {
+        for (const object of byEntity.get(memberKey({ analysisId: ref.analysisId, entityId: entity.entityId })) ?? []) {
+          const previous = links.get(object.objectId);
+          links.set(object.objectId, { objectId: object.objectId, label: object.label,
+            associationStatus: previous?.associationStatus === 'needs_review' || object.entityRevisionId !== ref.revisionId ? 'needs_review' : 'matched' });
+        }
+      }
+      return { ...row, knowledgeKind: detail.revision.content.organization.knowledgeKind,
+        revisedAt: detail.revision.revisedAt, objects: [...links.values()] };
+    }).sort((a, b) => Date.parse(b.revisedAt) - Date.parse(a.revisedAt) || a.knowledgeId.localeCompare(b.knowledgeId));
+    return { rows, objects: objects.map(({ objectId, label }) => ({ objectId, label })) };
+  }
+
   private member(member: LibraryMember) {
     try {
       const detail = this.knowledge.entityDetail(member.analysisId, member.entityId, member.entityRevisionId);

@@ -99,7 +99,7 @@ describe('Studio 配色 token 单一来源', () => {
     // 历史上它们是浅紫、浅蓝、灰蓝三种值；分散会让读者把「选中」读成三种状态。
     const selectedRules = [
       /\.observe-session-link\.selected\{[^}]*\}/,
-      /\.candidate-list>button\.selected\{[^}]*\}/,
+      /\.knowledge-directory-row\.selected\{[^}]*\}/,
       /\.measure-sidebar-link\.selected\{[^}]*\}/,
     ];
     for (const pattern of selectedRules) {
@@ -107,7 +107,7 @@ describe('Studio 配色 token 单一来源', () => {
       expect(rule, `找不到选中规则 ${pattern}`).not.toBeNull();
       expect(rule![0]).toContain('var(--studio-selection-fill)');
     }
-    const candidate = css.match(/\.candidate-list>button\.selected\{[^}]*\}/);
+    const candidate = css.match(/\.knowledge-directory-row\.selected\{[^}]*\}/);
     expect(candidate![0], '选中指示条应统一到 2px 品牌紫').toContain('inset 2px 0 0 var(--studio-action)');
     // 「运行中」表达活动性而不是选中，收成独立 token，值保持原蓝。
     expect(css).toContain('--studio-running-indicator:#2563eb');
@@ -279,7 +279,7 @@ describe('Studio 配色 token 单一来源', () => {
     expect(css, 'studio.css 仍写死 #8893a5').not.toMatch(/:#8893a5/i);
     expect(css).toContain('--studio-ink-muted:#5f6b7f');
     // 候选决定状态也落在选中浅紫底上；旧 #657085 只有 4.38:1。
-    expect(css.match(/\.candidate-list span\{[^}]*\}/)?.[0]).toContain('color:var(--studio-ink-muted)');
+    expect(css.match(/\.knowledge-directory-row>span\{[^}]*\}/)?.[0]).toContain('color:var(--studio-ink-muted)');
   });
 
   it('状态色的浅底与边框被显式给出，不由暗基色派生', () => {
