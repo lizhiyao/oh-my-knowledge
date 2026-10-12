@@ -34,6 +34,51 @@ async function setup() {
 }
 
 describe('reviewed knowledge carrier authoring', () => {
+  it.each(['skill', 'prompt'] as const)('rebuilds %s from exact current selections, preserves manual content and freezes historical versions', async artifactKind => {
+    const s = await setup(); s.retain();
+    const firstDraft = s.preview({ artifactKind });
+    // The pre-marker format remains readable and migrates only from its exact generated suffix.
+    const legacy = firstDraft.content.replace('<!-- omk:knowledge:v1:start -->\n', '').replace('<!-- omk:knowledge:v1:end -->\n', '');
+    const first = s.save(firstDraft, legacy);
+    const stale = s.preview({ artifactKind, source: { sourceKind: 'library', artifactId: first.artifactId } });
+    const current = s.app.detail(s.entry.knowledgeId);
+    const { content, entities, evidence } = current.revision;
+    s.app.revise(s.entry.knowledgeId, current.revision.revisionId, current.history.generation, { title: '历史使用说法', content: { ...content, statements: content.statements.map(statement => ({ ...statement, relation: '曾使用（仅旧窗口）' })) }, entities, evidence }, '限定历史范围');
+    expect(() => s.save(stale)).toThrow('conflict');
+    expect(() => s.preview({ artifactKind, source: stale.source })).toThrow('conflict');
+    s.retain();
+    const update = s.preview({ artifactKind, source: stale.source });
+    expect(update.knowledgeRefs).toEqual(update.selectedRefs);
+    expect(update.knowledgeRefs).toHaveLength(1);
+    expect(update.content).not.toContain(current.revision.revisionId);
+    expect(update.content).not.toContain('### 项目 Alpha 使用工具 Beta');
+    expect(update.content).toContain('曾使用（仅旧窗口）');
+    const second = s.save(update, update.content + '\nManual suffix  \n');
+    const unchanged = s.preview({ artifactKind, source: stale.source });
+    expect(unchanged.content).toBe(second.content);
+    const empty = s.preview({ artifactKind, source: stale.source, ids: [] });
+    expect(empty.knowledgeRefs).toEqual([]);
+    expect(empty.content).not.toContain('曾使用（仅旧窗口）');
+    expect(empty.content).toContain('Manual suffix  \n');
+    const header = yaml.load(empty.content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    expect(artifactKind === 'skill' ? (header.metadata as Record<string, unknown>).omk_knowledge_revisions : header.knowledge_revisions).toEqual(artifactKind === 'skill' ? '[]' : []);
+    expect(s.save(empty).knowledgeRefs).toEqual([]);
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: legacy, contentHash: first.contentHash });
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 2 })).toMatchObject({ content: second.content, contentHash: second.contentHash });
+  });
+  it('refuses ambiguous legacy regions and malformed markers without losing edited content', async () => {
+    const s = await setup(); s.retain();
+    for (const transform of [
+      (value: string) => value.replace('<!-- omk:knowledge:v1:start -->\n', '').replace('<!-- omk:knowledge:v1:end -->\n', '') + '\nHandwritten legacy suffix',
+      (value: string) => value.replace('<!-- omk:knowledge:v1:end -->', ''),
+      (value: string) => value + '\n<!-- omk:knowledge:v1:start -->',
+      (value: string) => value.replace('### 项目 Alpha 使用工具 Beta', '### 人工修改的知识'),
+    ]) {
+      const draft = s.preview(); const edited = transform(draft.content); const saved = s.save(draft, edited);
+      expect(() => s.preview({ source: { sourceKind: 'library', artifactId: saved.artifactId } })).toThrow('carrier_knowledge_region_conflict');
+      expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ version: 1, content: edited });
+    }
+  });
   it('exports tag/property snapshots, rejects changed tags, and updates metadata without duplicating knowledge', async () => {
     const s = await setup(); s.retain();
     s.app.tag(s.entry.knowledgeId, 0, ['排障/证据判断', 'Taro']);
@@ -120,6 +165,9 @@ describe('reviewed knowledge carrier authoring', () => {
     const result = s.save(fresh);
     expect(readFileSync(join(local, 'SKILL.md'), 'utf8')).not.toContain('知识');
     expect(readFileSync(join(result.locator, '..', 'references', 'guide.md'), 'utf8')).toBe('Changed asset');
+    const updated = s.save(s.preview({ source: { sourceKind: 'library', artifactId: result.artifactId } }));
+    expect(updated.content).toContain('Original instructions\n');
+    expect(readFileSync(join(updated.locator, '..', 'references', 'guide.md'), 'utf8')).toBe('Changed asset');
     const stale = s.preview();
     const current = s.app.detail(s.entry.knowledgeId); s.app.maintain(s.entry.knowledgeId, current.revision.revisionId, 'discard', '暂不采用', current.history.generation);
     expect(() => s.save(stale)).toThrow('conflict');

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createLocalKnowledgeApplication } from '../../../observability/application.js';
 import { CarrierLibrary } from '../../../knowledge-artifacts/authoring/library.js';
 import { carrierMetadata, chooseCarrierDirectory, composeCarrierContent, renderCarrierKnowledge } from '../../../knowledge-artifacts/authoring/knowledge-content.js';
-import type { CarrierDraft, CarrierKnowledgeRef } from '../../view-models/knowledge/artifact-authoring.js';
+import type { CarrierDraft } from '../../view-models/knowledge/artifact-authoring.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
@@ -16,9 +16,6 @@ const schema = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('preview'), workspace: text, source, artifactKind: kind, name: text.max(120), ids: z.array(uuid).max(100) }),
   z.strictObject({ operation: z.literal('save'), workspace: text, artifactId: uuid, source, artifactKind: kind, name: text.max(120), directoryName: z.string().max(64).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), baselineRevisionId: uuid.nullable(), baselineHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), content: z.string().min(1).max(2 * 1024 * 1024).refine(value => !!value.trim()), selectedRefs: z.array(ref).max(100), tagSelections: z.array(z.strictObject({ knowledgeId: uuid, generation: z.number().int().nonnegative() })).max(1000) }),
 ]);
-function unionRefs(previous: CarrierKnowledgeRef[], selected: CarrierKnowledgeRef[]) {
-  return [...new Map([...previous, ...selected].map(item => [`${item.knowledgeId}/${item.revisionId}`, item])).values()];
-}
 
 /** Studio supplies explicit selections; artifact authoring owns rendering, versions and byte publication. */
 export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', signal?: AbortSignal) {
@@ -34,21 +31,25 @@ export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', sign
     if (!items.length && request.source.sourceKind !== 'library') throw new Error('carrier_selection_required');
     const selectedRefs = items.map(({ revision, history }) => ({ knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, generation: history.generation }));
     const previousRefs = baseline.detail?.knowledgeRefs ?? [];
-    const knowledgeRefs = unionRefs(previousRefs, selectedRefs);
-    const allItems = knowledgeRefs.map(ref => app.detail(ref.knowledgeId, ref.revisionId));
-    const tagSelections = [...new Map(allItems.map(item => [item.revision.knowledgeId, { knowledgeId: item.revision.knowledgeId, generation: item.tagging.generation }])).values()];
-    const fresh = items.filter(item => !previousRefs.some(ref => ref.knowledgeId === item.revision.knowledgeId && ref.revisionId === item.revision.revisionId));
-    const material = renderCarrierKnowledge(fresh.map(item => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.window.limitations : [`${lang === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) })), lang);
+    const knowledgeRefs = selectedRefs;
+    const tagSelections = items.map(item => ({ knowledgeId: item.revision.knowledgeId, generation: item.tagging.generation }));
+    const render = (item: ReturnType<typeof app.detail>, language: 'zh' | 'en') => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.window.limitations : [`${language === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) });
+    const material = renderCarrierKnowledge(items.map(item => render(item, lang)), lang);
+    const previousMaterials = baseline.detail ? previousRefs.map(ref => {
+      const item = app.detail(ref.knowledgeId, ref.revisionId);
+      return (['zh', 'en'] as const).map(language => renderCarrierKnowledge([render(item, language)], language));
+    }) : undefined;
     const artifactId = baseline.detail?.artifactId ?? randomUUID();
     const directoryName = baseline.detail?.directoryName ?? chooseCarrierDirectory(request.name, artifactId, request.artifactKind, baseline.content);
-    const draft: CarrierDraft = { artifactId, directoryName, artifactKind: request.artifactKind, name: request.name, source: request.source, baselineRevisionId: baseline.detail?.revisionId ?? null, baselineHash: baseline.hash, baseContent: baseline.content, content: composeCarrierContent(request.name, directoryName, request.artifactKind, material, baseline.content, lang, carrierMetadata(allItems.map(item => ({ ...item, sourceWarnings: [] })), request.artifactKind)), knowledgeRefs, selectedRefs, tagSelections };
+    const draft: CarrierDraft = { artifactId, directoryName, artifactKind: request.artifactKind, name: request.name, source: request.source, baselineRevisionId: baseline.detail?.revisionId ?? null, baselineHash: baseline.hash, baseContent: baseline.content, content: composeCarrierContent(request.name, directoryName, request.artifactKind, material, baseline.content, lang, carrierMetadata(items.map(item => ({ ...item, sourceWarnings: [] })), request.artifactKind), previousMaterials), knowledgeRefs, selectedRefs, tagSelections };
     return draft;
   }
   const validateSelection = () => { for (const ref of request.selectedRefs) {
     const current = app.detail(ref.knowledgeId);
     if (current.revision.revisionId !== ref.revisionId || current.history.generation !== ref.generation || current.maintenance?.choice !== 'retain') throw new Error('carrier_knowledge_conflict');
   } };
-  const refs = unionRefs(baseline.detail?.knowledgeRefs ?? [], request.selectedRefs);
+  const refs = request.selectedRefs;
+  if (new Set(refs.map(ref => ref.knowledgeId)).size !== refs.length) throw new Error('carrier_knowledge_conflict');
   if (new Set(request.tagSelections.map(ref => ref.knowledgeId)).size !== request.tagSelections.length
     || new Set(refs.map(ref => ref.knowledgeId)).size !== request.tagSelections.length
     || request.tagSelections.some(ref => !refs.some(item => item.knowledgeId === ref.knowledgeId))) throw new Error('carrier_tag_selection_invalid');

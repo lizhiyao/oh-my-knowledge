@@ -15,8 +15,8 @@ export function createArtifactAuthoringRoutes() {
         if (cause instanceof RequestBodyError) throw cause;
         if (response.destroyed) return;
         const message = cause instanceof Error ? cause.message : '';
-        const error = message === 'carrier_source_contains_destination' ? 'carrier_source_contains_destination' : message === 'carrier_invalid_skill' ? 'carrier_invalid_skill' : message.includes('conflict') ? 'carrier_conflict' : message.includes('capacity') ? 'carrier_capacity_exceeded' : 'carrier_request_failed';
-        response.writeHead(error === 'carrier_conflict' ? 409 : 400, JSON_HEADERS); response.end(JSON.stringify({ error }));
+        const error = message === 'carrier_knowledge_region_conflict' ? message : message === 'carrier_source_contains_destination' ? 'carrier_source_contains_destination' : message === 'carrier_invalid_skill' ? 'carrier_invalid_skill' : message.includes('conflict') ? 'carrier_conflict' : message.includes('capacity') ? 'carrier_capacity_exceeded' : 'carrier_request_failed';
+        response.writeHead(error.includes('conflict') ? 409 : 400, JSON_HEADERS); response.end(JSON.stringify({ error }));
       } finally { response.off('close', cancel); }
     },
   }]);
