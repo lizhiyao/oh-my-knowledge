@@ -50,6 +50,24 @@ describe('entity knowledge library', () => {
     expect(library().catalog({ query: '项目', pageSize: 1, page: 999 })).toMatchObject({ total: 2, page: 2 });
     expect(library().catalog({ query: '不存在' }).rows).toEqual([]);
   });
+  it('projects the whole workspace once, including unassociated knowledge and exact shared-object matches', async () => {
+    const shared = await window('shared'); const unassociated = await window('unassociated');
+    const alpha = library().save(initial(draft([shared.member()])));
+    const beta = library().save(initial(draft([shared.member('Beta')], '工具 Beta')));
+    const catalog = library().knowledgeCatalog();
+    expect(catalog.rows).toHaveLength(2);
+    expect(catalog.rows.find(row => row.knowledgeId === shared.knowledge.revision.knowledgeId)?.objects)
+      .toEqual(expect.arrayContaining([{ objectId: alpha.objectId, label: '项目 Alpha', associationStatus: 'matched' }, { objectId: beta.objectId, label: '工具 Beta', associationStatus: 'matched' }]));
+    expect(catalog.rows.find(row => row.knowledgeId === unassociated.knowledge.revision.knowledgeId)?.objects).toEqual([]);
+    expect(catalog.rows.every(row => row.knowledgeKind === 'fact')).toBe(true);
+    const before = app().detail(shared.knowledge.revision.knowledgeId);
+    const revised = app().revise(before.revision.knowledgeId, before.revision.revisionId, before.history.generation,
+      { title: '限定的新修订', content: before.revision.content, entities: before.revision.entities, evidence: before.revision.evidence }, '补充适用范围');
+    expect(library().knowledgeCatalog().rows.find(row => row.knowledgeId === revised.revision.knowledgeId))
+      .toMatchObject({ title: '限定的新修订', revisionId: revised.revision.revisionId, choice: null });
+    app().deleteSource(shared.source.snapshotId);
+    expect(library().knowledgeCatalog().rows).toHaveLength(2);
+  });
   it('does not join names automatically and rejects a competing owner, including across exact revision changes', async () => {
     const a = await window('a'); const b = await window('b');
     expect(library().catalog().objectCount).toBe(0);

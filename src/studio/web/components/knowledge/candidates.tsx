@@ -7,24 +7,15 @@ import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { ApplyEntitiesDialog } from './apply-entities';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
+import { KnowledgeReader } from './reader';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space } from 'antd';
 import { type Language } from '../layout/shell';
 import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
-import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
-
-export function CandidateStatementHeading({ statement, entities, lang }: {
-  statement: Pick<KnowledgeCandidateDetail['revision']['content']['statements'][number], 'subject' | 'object' | 'relation' | 'polarity'>;
-  entities: Pick<KnowledgeCandidateDetail['revision']['entities'][number], 'entityId' | 'label'>[]; lang: Language;
-}) {
-  return <h3>{statement.polarity === 'negative' && <Tag>{lang === 'zh' ? '否定陈述' : 'Negative claim'}</Tag>}
-    {entities.find(entity => entity.entityId === statement.subject.entityId)?.label} {statement.relation} {statement.object ? entities.find(entity => entity.entityId === statement.object!.entityId)?.label : ''}
-  </h3>;
-}
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean }) {
   const zh = lang === 'zh';
@@ -38,6 +29,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(!!initialWorkspace);
   const [query, setQuery] = useState('');
+  const [kind, setKind] = useState<'all' | 'fact' | 'case' | 'method'>('all');
   const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>(scope ? 'pending' : 'all');
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail | null>(null);
@@ -62,17 +54,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [reason, setReason] = useState('');
-  const [citation, setCitation] = useState(0);
+  const [decisionChoice, setDecisionChoice] = useState<'retain' | 'discard' | null>(null);
   const [tagsDraft, setTagsDraft] = useState<string[]>([]);
-  const [pane, setPane] = useState<'candidate' | 'evidence'>('candidate');
-  const candidateContent = useRef<HTMLElement | null>(null);
-  const evidenceHeading = useRef<HTMLHeadingElement | null>(null);
+  const [directory, setDirectory] = useState(false);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); }, [detail]);
-  useEffect(() => {
-    // 查看依据会在窄屏隐藏触发按钮，焦点跟随到可见原文；桌面仍保持并列核对。
-    if (pane === 'evidence' && candidateContent.current?.getClientRects().length === 0) evidenceHeading.current?.focus();
-  }, [pane]);
+  useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); setDecisionChoice(null); }, [detail]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
     const response = await fetch('/api/knowledge/candidates', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -110,14 +96,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const nextDetail = selectFirst && first
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: first.knowledgeId }) : undefined;
     setRows(nextRows); setRuns(nextRuns);
-    if (selectFirst) { setDetail(nextDetail ?? null); setCitation(0); setReason('');
+    if (selectFirst) { setDetail(nextDetail ?? null); setReason('');
       if (scope && first) setBatchRunId(candidateReviewRun(nextRuns, first.knowledgeId)?.runId ?? null);
     }
     return { rows: nextRows, runs: nextRuns };
   }
   async function open(id: string, revision?: string, root = workspace, activateBatch = false) {
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
-    setDetail(next); setCitation(0); setReason(''); setPane('candidate'); setShowBatchSummary(false); setNeedsRefresh(false);
+    setDetail(next); setReason(''); setShowBatchSummary(false); setNeedsRefresh(false);
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
     if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
@@ -127,7 +113,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
-      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
+      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); if (scope) setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
     });
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
@@ -139,7 +125,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     await refresh(); if (run.committed[0]) { await open(run.committed[0].knowledgeId); setBatchRunId(run.runId); setPreviousId(null); }
   }
   function leaveBatch() {
-    setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all'); setPane('candidate');
+    setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all');
     if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
   }
@@ -188,32 +174,19 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   function updateDraft(edit: (value: EditableDraft) => void) {
     const value: EditableDraft = JSON.parse(draft); edit(value); setDraft(JSON.stringify(value));
   }
-  const selections = detail ? [
-    ...detail.grounding.citations.map((item) => ({ selection: item.selection, label: t('陈述依据', 'Statement evidence') })),
-    ...detail.grounding.mentions.map((item) => ({ selection: item.selection, label: t('实体提及', 'Entity mention') })),
-  ] : [];
-  const selectedCitation = selections[citation];
-  type Time = KnowledgeCandidateDetail['revision']['content']['statements'][number]['context']['occurredDuring'];
-  function formatTime(time: Time): string {
-    if (time.timeKind === 'unknown') return `${t('未知', 'Unknown')}：${time.reason}`;
-    if (time.timeKind === 'not_applicable') return `${t('不适用', 'Not applicable')}：${time.reason}`;
-    if (time.timeKind === 'instant') return time.at;
-    const bound = (value: typeof time.start) => value.boundKind === 'known' ? value.at
-      : value.boundKind === 'unbounded' ? t('无界限', 'Unbounded') : `${t('未知', 'Unknown')}：${value.reason}`;
-    return `${bound(time.start)} → ${bound(time.end)}`;
-  }
-  const organization = detail?.revision.content.organization;
-  const evidenceSource = detail?.sources.find((entry) => entry.status === 'available'
-    && entry.window.excerpts.some((excerpt) => excerpt.evidenceRef === selectedCitation?.selection.evidenceRef));
-  const excerpt = evidenceSource?.status === 'available'
-    ? evidenceSource.window.excerpts.find((entry) => entry.evidenceRef === selectedCitation?.selection.evidenceRef) : undefined;
   const batch = projectCandidateBatch(runs.find(run => run.runId === batchRunId), rows, detail?.revision.knowledgeId);
   const summary = showBatchSummary && batch?.complete;
-  const visibleRows = batch ? batch.rows : rows.filter(row => candidateMatches(row, filter, query));
+  const visibleRows = batch ? batch.rows : rows.filter(row => candidateMatches(row, filter, query) && (kind === 'all' || row.knowledgeKind === kind));
+  useEffect(() => {
+    if (busy || error || needsRefresh || batch || !rows.length) return;
+    if (detail && visibleRows.some(row => row.knowledgeId === detail.revision.knowledgeId)) return;
+    if (visibleRows[0]) void work(() => open(visibleRows[0].knowledgeId));
+    else setDetail(null);
+  }, [busy, error, needsRefresh, batchRunId, query, filter, kind, rows, detail?.revision.knowledgeId]);
   const originHref = detail?.origin ? `${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}` : undefined;
-  return <section className="knowledge-candidates">
+  return <section className="knowledge-candidates knowledge-core">
     {!embedded && <KnowledgeSectionNav active="candidates" lang={lang}/>}
-    <header className="candidate-heading"><div><h1>{scope ? t('知识待办', 'Knowledge inbox') : t('提炼的知识', 'Extracted knowledge')}</h1></div>
+    <header className="candidate-heading"><div><h1>{scope ? t('知识待办', 'Knowledge inbox') : t('候选核对', 'Candidate review')}</h1></div>
       <Space wrap>{!embedded && <Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>}
         {!embedded && rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
@@ -230,65 +203,38 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
-    {rows.length > 0 && !batch && <div className="candidate-library-tools">
-      <Input allowClear aria-label={t('搜索标题或标签', 'Search titles or tags')} placeholder={t('搜索标题或标签；tag:排障 精确筛选标签', 'Search titles or tags; tag:debugging filters by tag')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); setPane('candidate'); }}/>
-      <Select aria-label={t('按处理状态筛选', 'Filter by decision')} value={filter} onChange={value => { setFilter(value); setDetail(null); setPane('candidate'); }} options={[
+    {rows.length > 0 && <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : t('知识目录', 'Knowledge directory')}</Button>}
+
+    {rows.length === 0 && scope ? <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
+      onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onEntities={analysisId => setEntityTarget({ analysisId })}/>
+      : <div className={`knowledge-workbench candidate-columns${directory ? ' knowledge-directory-open' : ''}`}>
+      <aside className="knowledge-directory candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
+    {rows.length > 0 && !batch && <div className="knowledge-directory-filters candidate-library-tools">
+      <Input allowClear aria-label={t('搜索标题或标签', 'Search titles or tags')} placeholder={t('搜索标题或标签；tag:排障 精确筛选标签', 'Search titles or tags; tag:debugging filters by tag')} value={query} onChange={event => { setQuery(event.target.value); setDetail(null); }}/>
+      <Select aria-label={t('按处理状态筛选', 'Filter by decision')} value={filter} onChange={value => { setFilter(value); setDetail(null); }} options={[
         { value: 'all', label: t(`全部 ${rows.length}`, `All ${rows.length}`) },
         { value: 'pending', label: t(`待处理 ${rows.filter(row => row.choice === null).length}`, `Undecided ${rows.filter(row => row.choice === null).length}`) },
         { value: 'retain', label: t(`已保留 ${rows.filter(row => row.choice === 'retain').length}`, `Retained ${rows.filter(row => row.choice === 'retain').length}`) },
         { value: 'discard', label: t(`已舍弃 ${rows.filter(row => row.choice === 'discard').length}`, `Discarded ${rows.filter(row => row.choice === 'discard').length}`) },
       ]}/>
+      <Select aria-label={t('知识类型', 'Knowledge type')} value={kind} onChange={value => { setKind(value); setDetail(null); }} options={[{ value: 'all', label: t('全部类型', 'All types') }, { value: 'fact', label: t('事实', 'Fact') }, { value: 'case', label: t('案例', 'Case') }, { value: 'method', label: t('方法', 'Method') }]}/>
     </div>}
-    {rows.length === 0 && scope ? <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onEntities={analysisId => setEntityTarget({ analysisId })}/>
-      : <div className={`candidate-columns${summary ? ' candidate-columns-summary' : ''}`}>
-      <aside className="candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
-        {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={detail?.revision.knowledgeId === row.knowledgeId ? 'selected' : ''} onClick={() => void work(() => open(row.knowledgeId, undefined, workspace, !batch))}>
+<div className="knowledge-directory-scroll">
+        {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={`knowledge-directory-row${detail?.revision.knowledgeId === row.knowledgeId ? ' selected' : ''}`} onClick={event => { if (directory) event.currentTarget.closest('.knowledge-core')?.querySelector<HTMLButtonElement>('.knowledge-directory-toggle')?.focus(); setDirectory(false); void work(() => open(row.knowledgeId)); }}>
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
-      </aside>
-      {!summary && <CandidatePaneSwitch lang={lang} pane={pane} onChange={setPane}/>}
-      <article ref={candidateContent} id="candidate-content" className={`candidate-content${pane === 'candidate' ? ' candidate-pane-active' : ''}`}>
-        {summary && batch ? <div className="candidate-scroll"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.committed.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div> : !detail ? <Empty description={t('选择候选，与原始记录逐条核对。', 'Select a candidate to compare with the original records.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/> : <>
-          <div className="candidate-scroll"><CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
-            <CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>
-            <details className="candidate-history"><summary>{t(`回看历史修订（第 ${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}／${detail.history.revisions.length} 版）`, `Revision history (${detail.history.revisions.findIndex(item => item.revisionId === detail.revision.revisionId) + 1}/${detail.history.revisions.length})`)}</summary><Select aria-label={t('历史修订', 'Revision history')} value={detail.revision.revisionId} disabled={busy} style={{ width: '100%' }} options={detail.history.revisions.map((revision, i) => ({ value: revision.revisionId, label: `${i + 1} · ${revision.title}` }))} onChange={(revision) => void work(() => open(detail.revision.knowledgeId, revision))}/></details>
-            <h3>{organization?.knowledgeKind === 'case' ? t('案例', 'Case') : organization?.knowledgeKind === 'method' ? t('方法', 'Method') : t('事实', 'Fact')}</h3>
-            {organization?.knowledgeKind === 'case' && <><p>{organization.situation}</p><p>{t('案例缺口', 'Case gaps')}：{organization.gaps.join('；') || t('未列出', 'None listed')}</p></>}
-            {organization?.knowledgeKind === 'method' && <p>{t('目的', 'Purpose')}：{organization.purpose}</p>}
-            {detail.revision.content.statements.map((statement) => <section key={statement.statementId} className="candidate-statement">
-              <CandidateStatementHeading statement={statement} entities={detail.revision.entities} lang={lang}/>
-              <details><summary>{t('陈述分类与时间', 'Claim classification and time')}</summary><Space wrap><Tag>{statement.polarity === 'negative' ? t('否定陈述', 'Negative claim') : t('肯定陈述', 'Positive claim')}</Tag>
-                <Tag>{({ descriptive: t('描述', 'Description'), normative: t('规范要求', 'Normative requirement'), capability: t('能力', 'Capability'), permission: t('许可', 'Permission') })[statement.modality]}</Tag>
-                {organization?.knowledgeKind === 'case' && organization.actionStatementIds.includes(statement.statementId) && <Tag>{t('行动', 'Action')}</Tag>}
-                {organization?.knowledgeKind === 'case' && organization.outcomeStatementIds.includes(statement.statementId) && <Tag>{t('结果', 'Outcome')}</Tag>}
-                {organization?.knowledgeKind === 'method' && organization.instructionStatementIds.includes(statement.statementId) && <Tag>{t('方法步骤', 'Instruction')}</Tag>}
-              </Space><p>{t('发生／适用时间', 'Occurrence / validity')}：{formatTime(statement.context.occurredDuring)} / {formatTime(statement.context.validDuring)}</p></details><p>{statement.context.scenario}</p>
-              <dl><dt>{t('条件', 'Conditions')}</dt><dd>{statement.context.conditions.join('；') || t('未记录附加条件，不代表普遍适用', 'No additional conditions recorded; not universally applicable')}</dd>
-                <dt>{t('例外', 'Exceptions')}</dt><dd>{statement.context.exceptions.join('；') || '—'}</dd>
-                <dt>{t('未知信息', 'Unknowns')}</dt><dd>{statement.context.unknowns.join('；') || '—'}</dd></dl>
-              <Space wrap>{detail.revision.evidence.filter((link) => link.statementIds.includes(statement.statementId)).map((link) => <div key={link.evidenceLinkId}><Button size="small" onClick={() => { setCitation(Math.max(0, detail.grounding.citations.findIndex((item) => item.evidenceLinkId === link.evidenceLinkId))); setPane('evidence'); }}>{t('查看依据', 'Inspect evidence')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[link.basis]}</Button><p>{({ supports: t('支持', 'Supports'), opposes: t('反对', 'Opposes'), background: t('背景', 'Background') })[link.relation]}：{link.interpretation}</p></div>)}</Space>
-            </section>)}
-            <h3>{t('未来如何复用', 'Potential future use')}</h3><p>{detail.grounding.reuseRationale}</p>
-            {detail.grounding.identityUncertainties.map((item, index) => <Alert key={index} type="warning" title={item}/>)}
-            {detail.grounding.entityAnalysisRef && <Space wrap><Button disabled={busy} onClick={() => setEntityTarget({ analysisId: detail.grounding.entityAnalysisRef!.analysisId, revision: detail.grounding.entityAnalysisRef!.revisionId })}>{t('核对绑定的实体修订', 'Inspect bound entity revision')}</Button>
-              <Button disabled={busy || needsRefresh || detail.revision.revisionId !== detail.history.writeHeadRevisionId} onClick={() => setApplyingEntities(true)}>{t('应用实体最新修订', 'Apply current entity revision')}</Button></Space>}
-            <details><summary>{t('实体提及与指代依据', 'Entity mentions and identity rationale')}</summary>{detail.grounding.mentions.map((mention, index) => <div key={mention.mentionId}><p><strong>{detail.revision.entities.find((entity) => entity.entityId === mention.entityId)?.label}</strong> ← {mention.selection.quote}：{mention.rationale} ({mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断', 'Inference')})</p><Button size="small" onClick={() => { setCitation(detail.grounding.citations.length + index); setPane('evidence'); }}>{t('核对原文提及', 'Inspect original mention')}</Button></div>)}</details>
-          </div>
-          {detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <div className="candidate-carrier-action"><Button type="primary" disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button></div>}
-          <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} onReason={setReason}
-            onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }}
-            onDecision={choice => void work(() => decide(choice))}/>
-        </>}
-      </article>
-      {!summary && <aside id="candidate-evidence" className={`candidate-evidence${pane === 'evidence' ? ' candidate-pane-active' : ''}`}><h2 ref={evidenceHeading} tabIndex={-1}>{t('原始依据', 'Source evidence')}</h2>
-        {detail && <Select style={{ width: '100%' }} aria-label={t('证据片段', 'Evidence excerpt')} value={citation} options={selections.map((item, index) => ({ value: index, label: `${item.label} · ${item.selection.quote.slice(0, 90)}` }))} onChange={setCitation}/>}
-        <div className="candidate-scroll">{excerpt && selectedCitation ? <><p>{t('记录', 'Record')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('时间未知', 'Time unknown')}</p>
-          <pre>{excerpt.text.slice(0, selectedCitation.selection.start)}<mark>{excerpt.text.slice(selectedCitation.selection.start, selectedCitation.selection.end)}</mark>{excerpt.text.slice(selectedCitation.selection.end)}</pre>
-          {evidenceSource?.status === 'available' && <><p>{evidenceSource.window.limitations.join(' ')}</p><details><summary>{t('原始记录及相邻上下文', 'Original record and adjacent context')}</summary>{evidenceSource.window.records.filter((record) => Math.abs(record.recordIndex - excerpt.recordIndex) <= 1).map((record) => <pre key={record.recordIndex}>{record.recordIndex}: {record.raw}</pre>)}</details></>}
-        </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={detail ? t('此来源不可用，不能核对完整证据。', 'This source is unavailable; full evidence cannot be checked.') : t('选择一条陈述查看依据。', 'Select a statement to inspect evidence.')}/>}
-          {detail?.sources.map((entry, index) => entry.status === 'unavailable' ? <Alert key={index} type="warning" title={`${t('来源不可用', 'Source unavailable')}: ${entry.reason}`}/> : <Button key={index} danger size="small" disabled={busy} onClick={() => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot: entry.window.snapshotId }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}
-        </div>
-      </aside>}
+      </div><footer className="knowledge-directory-footer" role="status">{t(`${visibleRows.length} 条结果`, `${visibleRows.length} results`)}</footer></aside>
+      {summary && batch ? <article className="knowledge-reader"><div className="knowledge-reader-scroll"><div className="knowledge-reading"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.committed.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div></div></article>
+        : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh}
+          onRevision={revision => void work(() => open(detail.revision.knowledgeId, revision))}
+          onRetry={() => void work(() => open(detail.revision.knowledgeId, detail.revision.revisionId))}
+          onEntities={() => { if (detail.grounding.entityAnalysisRef) setEntityTarget({ analysisId: detail.grounding.entityAnalysisRef.analysisId, revision: detail.grounding.entityAnalysisRef.revisionId }); }}
+          onApplyEntities={needsRefresh ? undefined : () => setApplyingEntities(true)}
+          onDeleteSource={snapshot => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}
+          tools={<CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>}
+          footer={<>{detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <Button disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button>}
+            <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} choice={decisionChoice} onChoice={setDecisionChoice} onReason={setReason}
+              onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }} onDecision={choice => void work(() => decide(choice))}/></>}/>
+          : <div className="knowledge-reader knowledge-reader-empty"><Empty description={t('没有匹配知识，请调整筛选。', 'No matching knowledge. Adjust the filters.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/></div>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
@@ -313,7 +259,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         api<KnowledgeCandidateDetail>('show', { workspace: root, id }, signal),
       ]);
       if (signal.aborted) return;
-      setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setCitation(0); setReason(''); setPane('candidate');
+      setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setReason('');
       setBatchRunId(candidateReviewRun(nextRuns, id)?.runId ?? null); setPreviousId(null); setShowBatchSummary(false); setNeedsRefresh(false);
       setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setSnapshot(null); setError(''); setNotice(''); setShowExtraction(false);
       const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
@@ -393,33 +339,12 @@ export function CandidateTags({ lang, tags, busy, changed, onChange, onSave }: {
   </div>;
 }
 
-export function CandidatePaneSwitch({ lang, pane, onChange }: { lang: Language; pane: 'candidate' | 'evidence'; onChange(value: 'candidate' | 'evidence'): void }) {
-  return <div className="candidate-pane-switch" role="group" aria-label={lang === 'zh' ? '核对视图' : 'Review view'}>
-    <Button aria-pressed={pane === 'candidate'} aria-controls="candidate-content" onClick={() => onChange('candidate')}>{lang === 'zh' ? '候选内容' : 'Candidate content'}</Button>
-    <Button aria-pressed={pane === 'evidence'} aria-controls="candidate-evidence" onClick={() => onChange('evidence')}>{lang === 'zh' ? '原始依据' : 'Source evidence'}</Button>
-  </div>;
-}
-
 /** 列表行只报用户做过的决定；恒定的复核维度在详情头说明一次，不逐行重复。 */
 export function CandidateRowStatus({ choice, lang }: { choice: CandidateChoice; lang: Language }) {
   return <span>{candidateDecisionLabel(choice, lang)}</span>;
 }
 
 /** 决定必须留下理由，理由就要看得见：标签只报维护决定，已做决定时回显理由、决定人与时间。 */
-export function CandidateDecisionHeader({ title, maintenance, lang }: {
-  title: string; maintenance: KnowledgeCandidateDetail['maintenance']; lang: Language;
-}) {
-  const zh = lang === 'zh';
-  const t = (cn: string, en: string) => zh ? cn : en;
-  return <>
-    <h2>{title}</h2><Tag>{candidateDecisionLabel(maintenance?.choice ?? null, lang)}</Tag>
-    {maintenance && <p className="candidate-help">{zh
-      ? `决定理由：「${maintenance.reason}」 · 决定人 ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`
-      : `Decision reason: "${maintenance.reason}" · by ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`}</p>}
-    <Typography.Paragraph type="secondary">{t('保留表示愿意维护，不等于内容已得到证实。', 'Retaining means choosing to maintain this content, not verifying its truth.')}</Typography.Paragraph>
-  </>;
-}
-
 export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory, onEntities }: {
   lang: Language; loading: boolean; busy: boolean;
   latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void; onEntities?(id: string): void;

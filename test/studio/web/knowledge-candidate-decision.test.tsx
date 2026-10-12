@@ -1,9 +1,10 @@
+import { CandidateStatementHeading, CandidateDecisionHeader } from '../../../src/studio/web/components/knowledge/reader.js';
 /**
  * 候选详情头与列表行读到的决定文案：用户做过什么决定、理由是否回显、复核维度有没有被冒充。
  *
  * 措辞口径由 test/studio/application/candidate-status.test.ts 锁；这里只断言页面真正渲染出的文字。
  */
-import { candidateMatches, CandidateStatementHeading, CandidateTags, CandidateDecisionHeader, CandidatePaneSwitch, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { candidateMatches, CandidateTags, CandidateRowStatus } from '../../../src/studio/web/components/knowledge/candidates.js';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from '../../../src/studio/web/components/knowledge/candidate-review.js';
 import type { KnowledgeReviewBatch, KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { createElement } from 'react';
@@ -101,24 +102,16 @@ describe('candidate decision display', () => {
     expect(html).toContain('回看上一条');
     expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
-  it('requires an editable reason and another explicit decision; reload blocks repeated writes', () => {
-    const render = (reason: string, needsRefresh = false) => renderToStaticMarkup(createElement(CandidateDecisionActions, { lang: 'zh', reason, needsRefresh, busy: false, onReason() {}, onEdit() {}, onDecision() {} }));
-    expect(render('')).toContain('快捷理由（选择后仍需确认决定）');
-    expect(render(' ').match(/<button[^>]*disabled=""/g)).toHaveLength(2);
-    expect(render('自己的理由')).toContain('value="自己的理由"');
-    expect(render('自己的理由')).not.toMatch(/<button[^>]*disabled=""/);
-    expect(render('已保存理由', true).match(/<button[^>]*disabled=""/g)).toHaveLength(3);
+  it('opens the reason only for an explicit decision, which remains blocked until a reason is supplied', () => {
+    const render = (reason: string, choice: 'retain' | 'discard' | null, needsRefresh = false) => renderToStaticMarkup(createElement(CandidateDecisionActions, { lang: 'zh', reason, choice, needsRefresh, busy: false, onChoice() {}, onReason() {}, onEdit() {}, onDecision() {} }));
+    expect(render('', null)).not.toContain('处理理由');
+    expect(render('', 'retain')).toContain('快捷理由（选择后仍需确认决定）');
+    expect(render(' ', 'retain').match(/<button[^>]*disabled=""/g)).toHaveLength(1);
+    expect(render('自己的理由', 'discard')).toContain('value="自己的理由"');
+    expect(render('自己的理由', 'discard')).toContain('确认舍弃');
+    expect(render('已保存理由', 'retain', true).match(/<button[^>]*disabled=""/g)).toHaveLength(2);
   });
-  it('identifies the selected review view and the panel each switch controls in both languages', () => {
-    for (const lang of ['zh', 'en'] as const) {
-      for (const pane of ['candidate', 'evidence'] as const) {
-        const html = renderToStaticMarkup(createElement(CandidatePaneSwitch, { lang, pane, onChange() {} }));
-        expect(html).toContain(lang === 'zh' ? '候选内容' : 'Candidate content');
-        expect(html).toContain(lang === 'zh' ? '原始依据' : 'Source evidence');
-        expect(html).toMatch(new RegExp(`aria-pressed="true" aria-controls="candidate-${pane === 'candidate' ? 'content' : 'evidence'}"`));
-      }
-    }
-  });
+
   it('reports the decision the user made instead of a constant pending review tag', () => {
     expect(header(retained)).toContain('已保留');
     expect(header(retained)).not.toContain('待复核');

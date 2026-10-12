@@ -39,6 +39,7 @@ export class KnowledgeApplication {
       return {
       knowledgeId: history.knowledgeId, revisionId: history.writeHeadRevisionId,
       generation: history.generation, title: history.revisions.at(-1)!.title,
+      knowledgeKind: history.revisions.at(-1)!.content.organization.knowledgeKind,
       reviewStatus: 'pending' as const,
       choice: history.maintenance.filter((entry) => entry.revisionId === history.writeHeadRevisionId).at(-1)?.choice ?? null,
       ...(tags.length ? { tags } : {}),
