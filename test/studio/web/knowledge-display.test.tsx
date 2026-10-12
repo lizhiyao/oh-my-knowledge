@@ -1,4 +1,6 @@
 import { CarrierContentReview } from '../../../src/studio/web/components/knowledge/artifact-authoring.js';
+import { CarrierKnowledgeReviewPanel, CarrierReviewStatus, CarrierSelectionReview } from '../../../src/studio/web/components/knowledge/carrier-knowledge-review.js';
+import type { CarrierKnowledgeReview } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -45,7 +47,7 @@ describe('知识载体默认入口', () => {
     const page = loadKnowledgePage(indexFor([entry('demo-skill')]), '/knowledge', 'zh');
     assert.ok(page && page.pageKind === 'index');
     const html = renderToString(createElement(KnowledgeView, { page, lang: 'zh' }));
-    expect(headerCells(html)).toEqual(['载体名称', '形式', '版本', '内容状态']);
+    expect(headerCells(html)).toEqual(['载体名称', '形式', '版本', '知识复核', '内容状态']);
     expect(html).toContain('从已保留知识生成');
     expect(html).toContain('体检与观测');
   });
@@ -89,6 +91,26 @@ describe('知识详情到观测区的跨区边', () => {
 
 // The authored content is editable plain text; it is never executed as HTML.
 describe('载体内容核对', () => {
+  it('renders read-time review signals, exact old/current links, selection changes and safe comparison content in both languages', () => {
+    const review: CarrierKnowledgeReview = { checkedAt: '2026-10-12T13:00:00Z', referenceCount: 1, needsReviewCount: 1, unavailableCount: 0, checks: [{ knowledgeId: 'knowledge-id', title: '<script>title</script>', incorporatedRevisionId: 'old-revision', currentRevisionId: 'new-revision', currentChoice: null, reasons: ['revision_changed', 'not_retained'], changedFields: ['statements'], incorporatedContent: '<script>old</script>', currentContent: 'New conditions' }] };
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToString(createElement(CarrierKnowledgeReviewPanel, { review, workspace: '/tmp/selected', lang }));
+      expect(html).toContain(lang === 'zh' ? '已有新修订' : 'New revision available');
+      expect(html).toContain(lang === 'zh' ? '当前修订未保留' : 'Current revision is not retained');
+      expect(html).toContain('id=knowledge-id&amp;revision=old-revision');
+      expect(html).toContain('id=knowledge-id&amp;revision=new-revision');
+      expect(html).toContain('&lt;script&gt;old&lt;/script&gt;');
+      expect(html).toContain('New conditions');
+      expect(html).not.toContain('<script>');
+      expect(html).toContain(lang === 'zh' ? '未覆盖未引用的新知识' : 'Unreferenced new knowledge');
+      const selection = renderToString(createElement(CarrierSelectionReview, { lang, changes: [{ knowledgeId: 'knowledge-id', title: '<script>title</script>', previousRevisionIds: ['old-revision'], selectedRevisionId: 'new-revision', changeKind: 'replaced' }] }));
+      expect(selection).toContain(lang === 'zh' ? '替换修订' : 'Revision replaced');
+      expect(selection).toContain('&lt;script&gt;title&lt;/script&gt;');
+      expect(selection).toContain('old-revision'); expect(selection).toContain('new-revision');
+      const status = renderToString(createElement(CarrierReviewStatus, { review, lang }));
+      expect(status).toContain(lang === 'zh' ? '1 条需复核' : '1 need review');
+    }
+  });
   it('shows the review action and escapes generated content in both languages', () => {
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToString(createElement(CarrierContentReview, { content: '<script>unsafe</script>\n条件：人工核对', original: 'Original instructions', lang, onChange() {} }));
