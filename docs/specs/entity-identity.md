@@ -1,6 +1,6 @@
 # Entity identity rules (design draft)
 
-Status: this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). P2 implements the approved contracts in section 8; P3 interfaces are complete. The [P4 annotation guide](./entity-extraction-evaluation.md) remains a draft pending independent review; P5 model acceptance is incomplete. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
+Status (2026-10-12): this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). The approved section 8 contracts and interfaces are delivered, and the issue is closed under the user-approved beta scope: the complete workflow and minimal v14 real regression have completed itemwise author review. The original P4/P5 independent review and overall quality gates remain incomplete; the [annotation guide](./entity-extraction-evaluation.md) retains these limits, without regrading historical failures or scores. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
 
 This draft follows the [knowledge definition](../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
 
