@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/observability/application.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
-import type { CarrierDetail, CarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
+import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 import yaml from 'js-yaml';
 
@@ -40,23 +40,35 @@ describe('reviewed knowledge carrier authoring', () => {
     // The pre-marker format remains readable and migrates only from its exact generated suffix.
     const legacy = firstDraft.content.replace('<!-- omk:knowledge:v1:start -->\n', '').replace('<!-- omk:knowledge:v1:end -->\n', '');
     const first = s.save(firstDraft, legacy);
+    const other = s.save(s.preview({ artifactKind }));
+    s.retain(); // A new maintenance generation alone does not change the incorporated revision.
+    expect(s.execute({ operation: 'show', id: first.artifactId })).toMatchObject({ knowledgeReview: { needsReviewCount: 0 } });
     const stale = s.preview({ artifactKind, source: { sourceKind: 'library', artifactId: first.artifactId } });
     const current = s.app.detail(s.entry.knowledgeId);
     const { content, entities, evidence } = current.revision;
     s.app.revise(s.entry.knowledgeId, current.revision.revisionId, current.history.generation, { title: '历史使用说法', content: { ...content, statements: content.statements.map(statement => ({ ...statement, relation: '曾使用（仅旧窗口）' })) }, entities, evidence }, '限定历史范围');
     expect(() => s.save(stale)).toThrow('conflict');
     expect(() => s.preview({ artifactKind, source: stale.source })).toThrow('conflict');
+    const pending = s.execute({ operation: 'show', id: first.artifactId }) as ReviewedCarrierDetail;
+    expect(pending.knowledgeReview).toMatchObject({ needsReviewCount: 1, checks: [{ reasons: ['revision_changed', 'not_retained'], changedFields: ['title', 'statements'] }] });
+    expect(pending.knowledgeReview.checks[0].incorporatedContent).toContain('### 项目 Alpha 使用工具 Beta');
+    expect(pending.knowledgeReview.checks[0].currentContent).toContain('曾使用（仅旧窗口）');
     s.retain();
     const update = s.preview({ artifactKind, source: stale.source });
+    expect((update as ReviewedCarrierDraft).selectionChanges).toMatchObject([{ changeKind: 'replaced', previousRevisionIds: [current.revision.revisionId] }]);
     expect(update.knowledgeRefs).toEqual(update.selectedRefs);
     expect(update.knowledgeRefs).toHaveLength(1);
     expect(update.content).not.toContain(current.revision.revisionId);
     expect(update.content).not.toContain('### 项目 Alpha 使用工具 Beta');
     expect(update.content).toContain('曾使用（仅旧窗口）');
     const second = s.save(update, update.content + '\nManual suffix  \n');
+    expect(s.execute({ operation: 'show', id: first.artifactId })).toMatchObject({ knowledgeReview: { needsReviewCount: 0 } });
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ knowledgeReview: { needsReviewCount: 1 }, content: legacy });
+    expect(s.execute({ operation: 'list' })).toEqual(expect.arrayContaining([expect.objectContaining({ artifactId: other.artifactId, knowledgeReview: expect.objectContaining({ needsReviewCount: 1 }) })]));
     const unchanged = s.preview({ artifactKind, source: stale.source });
     expect(unchanged.content).toBe(second.content);
     const empty = s.preview({ artifactKind, source: stale.source, ids: [] });
+    expect((empty as ReviewedCarrierDraft).selectionChanges[0].changeKind).toBe('removed');
     expect(empty.knowledgeRefs).toEqual([]);
     expect(empty.content).not.toContain('曾使用（仅旧窗口）');
     expect(empty.content).toContain('Manual suffix  \n');
@@ -65,6 +77,19 @@ describe('reviewed knowledge carrier authoring', () => {
     expect(s.save(empty).knowledgeRefs).toEqual([]);
     expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: legacy, contentHash: first.contentHash });
     expect(s.execute({ operation: 'show', id: first.artifactId, version: 2 })).toMatchObject({ content: second.content, contentHash: second.contentHash });
+  });
+  it('reports discarded and unreadable knowledge while preserving carrier content and manifest bytes', async () => {
+    const s = await setup(); s.retain(); const saved = s.save(s.preview());
+    const manifest = join(s.workspace, 'artifacts', saved.artifactId, 'v1', 'manifest.json'); const original = readFileSync(manifest, 'utf8');
+    const current = s.app.detail(s.entry.knowledgeId); s.app.maintain(s.entry.knowledgeId, current.revision.revisionId, 'discard', '当前不再使用', current.history.generation);
+    expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ knowledgeReview: { checks: [{ reasons: ['not_retained'], currentChoice: 'discard' }] } });
+    const item = join(s.workspace, 'items', readdirSync(join(s.workspace, 'items'))[0]); writeFileSync(item, '{broken');
+    const unreadable = s.execute({ operation: 'show', id: saved.artifactId }) as ReviewedCarrierDetail;
+    expect(unreadable.content).toBe(saved.content);
+    expect(unreadable.knowledgeReview).toMatchObject({ needsReviewCount: 1, unavailableCount: 1, checks: [{ reasons: ['incorporated_unavailable', 'current_unavailable'], currentContent: null }] });
+    expect(s.execute({ operation: 'list' })).toMatchObject([{ knowledgeReview: { needsReviewCount: 1, unavailableCount: 1 } }]);
+    expect(readFileSync(manifest, 'utf8')).toBe(original);
+    expect(JSON.stringify(unreadable.knowledgeReview)).not.toContain(s.root);
   });
   it('refuses ambiguous legacy regions and malformed markers without losing edited content', async () => {
     const s = await setup(); s.retain();
@@ -176,6 +201,7 @@ describe('reviewed knowledge carrier authoring', () => {
     const s = await setup(); s.retain(); s.app.deleteSource(s.snapshot.snapshotId);
     const draft = s.preview(); expect(draft.content).toContain('来源不可用');
     const saved = s.save(draft); writeFileSync(saved.locator, 'externally edited');
+    expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ drifted: true, knowledgeReview: { needsReviewCount: 1, checks: [{ reasons: ['source_unavailable'] }] } });
     expect(new CarrierLibrary(s.workspace).show(saved.artifactId).drifted).toBe(true);
     expect(() => s.preview({ source: { sourceKind: 'library', artifactId: saved.artifactId } })).toThrow('conflict');
     const redirected = join(s.root, 'redirected'); mkdirSync(redirected); symlinkSync(s.root, join(redirected, 'artifacts'));

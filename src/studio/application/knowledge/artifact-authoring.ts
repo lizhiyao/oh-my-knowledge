@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { createLocalKnowledgeApplication } from '../../../observability/application.js';
 import { CarrierLibrary } from '../../../knowledge-artifacts/authoring/library.js';
 import { carrierMetadata, chooseCarrierDirectory, composeCarrierContent, renderCarrierKnowledge } from '../../../knowledge-artifacts/authoring/knowledge-content.js';
-import type { CarrierDraft } from '../../view-models/knowledge/artifact-authoring.js';
+import { reviewCarrierKnowledge } from '../../../knowledge-artifacts/authoring/knowledge-review.js';
+import type { CarrierDetail, ReviewedCarrierDraft } from '../../view-models/knowledge/artifact-authoring.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
@@ -21,9 +22,17 @@ const schema = z.discriminatedUnion('operation', [
 export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', signal?: AbortSignal) {
   const request = schema.parse(input); signal?.throwIfAborted();
   const library = new CarrierLibrary(request.workspace);
-  if (request.operation === 'list') return library.list();
-  if (request.operation === 'show') return library.show(request.id, request.version);
   const app = createLocalKnowledgeApplication(request.workspace);
+  const render = (item: ReturnType<typeof app.detail>, language: 'zh' | 'en') => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.window.limitations : [`${language === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) });
+  const reviewed = (detail: CarrierDetail, includeContent = true) => ({ ...detail, knowledgeReview: reviewCarrierKnowledge(detail.knowledgeRefs, (id, revisionId) => {
+    const item = app.detail(id, revisionId);
+    return { ...render(item, lang), choice: item.maintenance?.choice ?? null, sourceAvailable: item.sources.every(source => source.status === 'available') };
+  }, lang, new Date().toISOString(), includeContent) });
+  if (request.operation === 'list') return library.list().map(row => {
+    const { referenceCount, needsReviewCount, unavailableCount } = reviewed(library.show(row.artifactId), false).knowledgeReview;
+    return { ...row, knowledgeReview: { referenceCount, needsReviewCount, unavailableCount } };
+  });
+  if (request.operation === 'show') return reviewed(library.show(request.id, request.version));
   const baseline = library.baseline(request.source, request.artifactKind);
   if (request.operation === 'preview') {
     const items = [...new Set(request.ids)].map(id => app.detail(id));
@@ -33,7 +42,6 @@ export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', sign
     const previousRefs = baseline.detail?.knowledgeRefs ?? [];
     const knowledgeRefs = selectedRefs;
     const tagSelections = items.map(item => ({ knowledgeId: item.revision.knowledgeId, generation: item.tagging.generation }));
-    const render = (item: ReturnType<typeof app.detail>, language: 'zh' | 'en') => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.window.limitations : [`${language === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) });
     const material = renderCarrierKnowledge(items.map(item => render(item, lang)), lang);
     const previousMaterials = baseline.detail ? previousRefs.map(ref => {
       const item = app.detail(ref.knowledgeId, ref.revisionId);
@@ -41,7 +49,11 @@ export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', sign
     }) : undefined;
     const artifactId = baseline.detail?.artifactId ?? randomUUID();
     const directoryName = baseline.detail?.directoryName ?? chooseCarrierDirectory(request.name, artifactId, request.artifactKind, baseline.content);
-    const draft: CarrierDraft = { artifactId, directoryName, artifactKind: request.artifactKind, name: request.name, source: request.source, baselineRevisionId: baseline.detail?.revisionId ?? null, baselineHash: baseline.hash, baseContent: baseline.content, content: composeCarrierContent(request.name, directoryName, request.artifactKind, material, baseline.content, lang, carrierMetadata(items.map(item => ({ ...item, sourceWarnings: [] })), request.artifactKind), previousMaterials), knowledgeRefs, selectedRefs, tagSelections };
+    const draft: ReviewedCarrierDraft = { artifactId, directoryName, artifactKind: request.artifactKind, name: request.name, source: request.source, baselineRevisionId: baseline.detail?.revisionId ?? null, baselineHash: baseline.hash, baseContent: baseline.content, content: composeCarrierContent(request.name, directoryName, request.artifactKind, material, baseline.content, lang, carrierMetadata(items.map(item => ({ ...item, sourceWarnings: [] })), request.artifactKind), previousMaterials), knowledgeRefs, selectedRefs, tagSelections, selectionChanges: [...new Set([...previousRefs.map(ref => ref.knowledgeId), ...selectedRefs.map(ref => ref.knowledgeId)])].map(knowledgeId => {
+      const previous = previousRefs.filter(ref => ref.knowledgeId === knowledgeId), selected = selectedRefs.find(ref => ref.knowledgeId === knowledgeId);
+      return { knowledgeId, title: items.find(item => item.revision.knowledgeId === knowledgeId)?.revision.title ?? app.detail(knowledgeId, previous.at(-1)!.revisionId).revision.title, previousRevisionIds: previous.map(ref => ref.revisionId), selectedRevisionId: selected?.revisionId ?? null,
+        changeKind: !selected ? 'removed' : !previous.length ? 'added' : previous.length === 1 && previous[0].revisionId === selected.revisionId ? 'kept' : 'replaced' };
+    }) };
     return draft;
   }
   const validateSelection = () => { for (const ref of request.selectedRefs) {
@@ -59,5 +71,5 @@ export function executeArtifactAuthoring(input: unknown, lang: 'zh' | 'en', sign
   };
   validateAll();
   if (!request.selectedRefs.length && request.source.sourceKind !== 'library') throw new Error('carrier_selection_required');
-  return library.save({ ...request, baseContent: baseline.content, knowledgeRefs: refs }, signal, validateAll);
+  return reviewed(library.save({ ...request, baseContent: baseline.content, knowledgeRefs: refs }, signal, validateAll));
 }
