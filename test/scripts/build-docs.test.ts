@@ -139,7 +139,7 @@ describe('scripts/build-docs codegen', () => {
     const tail = content.slice(endIdx + MARKER_END.length);
     assert.ok(tail.includes('## eval-samples 字段参考'), 'appendix must survive codegen');
     assert.ok(tail.includes('`sampleId`'), 'appendix table must survive');
-    assert.ok(tail.includes('docs/zh/reference/eval-sample-format.md'), 'appendix link must survive');
+    assert.ok(tail.includes('docs/zh/reference/evaluation/eval-sample-format.md'), 'appendix link must survive');
   });
 
   it('--check mode passes on current committed state', async () => {

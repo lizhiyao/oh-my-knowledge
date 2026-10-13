@@ -61,7 +61,7 @@ export interface Sample {
   assertions?: Assertion[];
   allowedTools?: string[];
   /** 该 sample 测试的能力维度,可多维。free-form string,suggested
-   *  values 见 docs/guides/sample-design.md。编写时自行保持标签一致。
+   *  values 见 docs/guides/evaluation/sample-design.md。编写时自行保持标签一致。
    *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
   capability?: string[];
   /** 难度分层,enum 防错。纯文档 / 诊断用。 */

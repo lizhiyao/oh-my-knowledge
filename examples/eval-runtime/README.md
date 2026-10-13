@@ -17,7 +17,7 @@ node examples/eval-runtime/run.mjs
 
 The command prints one JSON line: `runStatus: "completed"` means the run finished; `estimate: 0.3333333333333333` means the candidate exact-match rate is about 33.3 percentage points above the control; `verdict: "NOISE"` means these three samples do not establish improvement or justify release. The output also contains the report ID.
 
-To use it in a separate service, run `npm install oh-my-knowledge@next zod`, copy `run.mjs`, then replace `executor.execute()` with your service invocation and update its schemas, version, and actual capabilities. Follow the [integration guide](../../docs/guides/eval-runtime.md) for a first setup. Credentials, tenant authorization, queues, and storage remain owned by the host.
+To use it in a separate service, run `npm install oh-my-knowledge@next zod`, copy `run.mjs`, then replace `executor.execute()` with your service invocation and update its schemas, version, and actual capabilities. Follow the [integration guide](../../docs/guides/integration/eval-runtime.md) for a first setup. Credentials, tenant authorization, queues, and storage remain owned by the host.
 
 ## Evidence boundary
 
@@ -34,7 +34,7 @@ node examples/eval-runtime/retrieval-abstention.mjs
 
 The unmodified example excludes one pending sample and executes two reviewed samples. Correct abstention is `1`; false abstention and forbidden hits are `0`. In a separate project, copy `retrieval-abstention.mjs` and install an OMK version containing this capability plus Zod. Use the corresponding source checkout for features that have not yet shipped.
 
-To connect your system, replace `source`, adapt `executor.execute()`, then inspect each metric's `coverage`. Follow the [four-step guide](../../docs/guides/eval-runtime.md#retrieval-abstention) for data rules, return forms, capability declarations, and result interpretation.
+To connect your system, replace `source`, adapt `executor.execute()`, then inspect each metric's `coverage`. Follow the [four-step guide](../../docs/guides/integration/eval-runtime.md#retrieval-abstention) for data rules, return forms, capability declarations, and result interpretation.
 
 ## Result store and load trust boundary
 

@@ -10,6 +10,8 @@
 4. [Architecture](architecture.md): Domain responsibilities and dependency rationale.
 5. [Statistical rigor](statistical-rigor.md): Evidence, differences, and limits of conclusions.
 
+6. [Related tools and scope](comparison.md): Understand tool boundaries by task.
+
 ## Document responsibilities
 
 | Question | Entry |
@@ -17,7 +19,7 @@
 | What is it, and why this design? | This directory; define each concept once |
 | What behavior, boundaries, and acceptance must implementation satisfy? | [Domain specifications](../specs/index.md), marked current, partly delivered, or draft |
 | How does a user complete a task? | [Usage guides](../README.md) and guides/ |
-| Where can I look up a field, flag, or API? | reference/, such as the [sample format](../reference/eval-sample-format.md) |
+| Where can I look up a field, flag, or API? | reference/, such as the [sample format](../reference/evaluation/eval-sample-format.md) |
 | What did a particular trial or old proposal establish? | The corresponding specs domain's history/; original evidence does not establish current capabilities |
 
 A document may link to another responsibility's authoritative source without duplicating a contract that can drift independently. See the [contributing guide](../guides/contributing.md) for maintenance rules.

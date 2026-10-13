@@ -32,7 +32,7 @@ omk 的第一条有用闭环，应该像一张发布检查表：
 
 它同时是 **eval 的前置门禁**：`omk eval` 内部会跑静态 doctor rule，artifact 坏了就拒跑 —— 就像 CI 在跑测试前先跑 lint。检查通过不保证用例代表性或结论有效；检查失败时，先修复指出的结构、依赖或可测性问题。
 
-→ How-to：[doctor 体检](../guides/run-doctor-checks)
+→ How-to：[doctor 体检](../guides/evaluation/run-doctor-checks.md)
 
 ## eval —— 测量核心
 
@@ -41,7 +41,7 @@ omk 的第一条有用闭环，应该像一张发布检查表：
 omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严谨性](./statistical-rigor)、[评分公式](../specs/evaluation/scoring) 说明如何组合判定、覆盖、不确定性与原始证据，支持发布判断。
 
 → 概念：[工作原理](./architecture) · [评分公式](../specs/evaluation/scoring)
-→ How-to：[评测 agent](../guides/agent-eval) · [自动迭代 skill](../guides/auto-improve-skills)
+→ How-to：[评测 agent](../guides/evaluation/agent-eval.md) · [自动迭代 skill](../guides/evaluation/auto-improve-skills.md)
 
 ## observe —— 它在生产里站得住吗？
 
@@ -49,9 +49,9 @@ omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严
 
 `omk studio` 可直接浏览本机 Codex 对话与四泳道任务轨迹，无需先 ingest；进行中的任务支持实时跟随。查看日志不调用模型，也不把知识访问解释为结果原因。
 
-[知识提炼](../guides/extract-knowledge.md)从选定 Codex 日志片段生成待复核内容，保留来源、适用条件、修订与处理理由。生成会调用模型；保留内容不等于证实，也不会自动写入载体。[MCP 主动反馈](../guides/mcp-integration.md)则在用户确认后记录 observation，复核为真实问题后才能草拟用例。
+[知识提炼](../guides/knowledge/extract-knowledge.md)从选定 Codex 日志片段生成待复核内容，保留来源、适用条件、修订与处理理由。生成会调用模型；保留内容不等于证实，也不会自动写入载体。[MCP 主动反馈](../guides/integration/mcp-integration.md)则在用户确认后记录 observation，复核为真实问题后才能草拟用例。
 
-→ How-to：[观测生产 trace](../guides/observe-production)
+→ How-to：[观测生产 trace](../guides/observe/observe-production.md)
 
 ## 它们怎么串起来
 

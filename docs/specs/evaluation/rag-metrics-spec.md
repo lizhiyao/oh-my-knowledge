@@ -1,6 +1,6 @@
 # RAG metrics specification
 
-This page specifies inputs, judge instruments, and result boundaries for current `faithfulness`, `answer_relevancy`, and `context_recall`. `measurement/evaluators/llm-assertions.ts`, `instruments/prompts/judge-prompts.ts`, and `assertions/layers.ts` define the implementation. The [sample format](../../reference/eval-sample-format.md) owns public fields. See [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval).
+This page specifies inputs, judge instruments, and result boundaries for current `faithfulness`, `answer_relevancy`, and `context_recall`. `measurement/evaluators/llm-assertions.ts`, `instruments/prompts/judge-prompts.ts`, and `assertions/layers.ts` define the implementation. The [sample format](../../reference/evaluation/eval-sample-format.md) owns public fields. See [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval).
 
 ## How the three metrics relate {#how-the-three-relate}
 

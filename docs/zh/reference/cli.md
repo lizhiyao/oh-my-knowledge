@@ -199,7 +199,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset \
 
 `--repeat` 会创建一个预注册的 Evaluation Series，其独立 Run 数在执行前固定。应当在查看结果前确定数量，并报告所有 member Run。不能在 verdict 不理想后持续新建 Run，再遇到第一次有利结果时停止；这属于未校正的 optional stopping。`--retry` 另行计算，只在已封存的 retry policy 下处理运行失败的 sample attempt。
 
-Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [Sample design guide · sandbox fields](../guides/sample-design.md)。
+Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [Sample design guide · sandbox fields](../guides/evaluation/sample-design.md)。
 
 ## `omk observe`
 
@@ -425,4 +425,4 @@ omk studio --no-open
 
 启动本地知识工作台。首页直接索引本机 Codex 对话，进行中的对话优先展示；选择对话和任务后，可在四条泳道中查看任务轨迹，并在语义轨迹、知识访问、标准化事件与原始记录之间相互核对。进行中的任务支持实时跟随，旧的未闭合任务会显示为「未记录结束状态」。这条浏览路径不要求先运行 `omk observe ingest`。
 
-一级导航为「观测 → 评测 → 知识」，页面路径对应 `/observe`、`/measure`、`/knowledge`。观测展示对话与任务轨迹，评测展示 Core 测量结果，知识展示知识健康度与管理记录。访问 `/observe/inbox` 可查看观测审阅队列。旧页面地址不再提供服务。CI gate 使用 `omk eval` 的退出码，自动化应读取 Core report 产物。
+一级导航为「观测 → 评测 → 知识」，页面路径对应 `/observe`、`/measure`、`/knowledge`。观测展示对话与任务轨迹，评测展示 Core 测量结果，知识区提供知识库、候选核对和知识载体维护；体检与观测记录按需查看。访问 `/observe/inbox` 可查看观测审阅队列。旧页面地址不再提供服务。CI gate 使用 `omk eval` 的退出码，自动化应读取 Core report 产物。

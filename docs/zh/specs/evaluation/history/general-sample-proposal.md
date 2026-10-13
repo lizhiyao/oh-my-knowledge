@@ -1,6 +1,6 @@
 # 通用 sample 规范草案（#842）
 
-> 历史研究记录（#842／#863）。后续实施已采用 v3-only：不读取 v2、不提供迁移工具，不改写用户旧文件或报告。本文的迁移工具与兼容窗口建议已被该决定取代。当前可用契约和实际支持范围以[样本格式](../../../reference/eval-sample-format.md)为准。
+> 历史研究记录（#842／#863）。后续实施已采用 v3-only：不读取 v2、不提供迁移工具，不改写用户旧文件或报告。本文的迁移工具与兼容窗口建议已被该决定取代。当前可用契约和实际支持范围以[样本格式](../../../reference/evaluation/eval-sample-format.md)为准。
 
 当前生产链路验收：`yarn test test/eval-workflows/sample-v3-production.test.ts`。旧原型已由该验收替代，不在当前测试树重复保留。
 

@@ -155,11 +155,13 @@ describe('domain specifications and stable published routes', () => {
       const [domain, name, extra] = file.split('/');
       expect(domains.has(domain!)).toBe(true);
       expect(extra).toBeUndefined();
-      expect(index).toContain(`](${file})`);
+      expect(index).toContain(`](${domain}/index.md)`);
+      const domainIndex = readFileSync(`${root}/${domain}/index.md`, 'utf8');
+      expect(domainIndex).toMatch(new RegExp(`\\]\\((?:\\./)?${name!.replaceAll('.', '\\.')}(?:#[^)]+)?\\)`));
       const route = pageRoute(`${locale}specs/${file}`);
       expect(route).toBe(`${locale}${['effective-observation-review.md', 'studio-data-flow.md'].includes(name!) ? 'explanation' : 'specs'}/${name}`);
       routes.push(route);
-      expect(links.filter(link => link === `/${route.replace(/\.md$/, '')}`)).toHaveLength(1);
+      expect(links).toContain(`/${locale}specs/${domain}/`);
     }
     expect(new Set(routes).size).toBe(files.length);
     expect(links).toContain(`/${locale}specs/`);
@@ -171,7 +173,14 @@ describe('domain specifications and stable published routes', () => {
     expect(new Set(publishedPages).size).toBe(publishedPages.length);
     for (const locale of ['', 'zh/']) {
       for (const [source, route] of [
-        ['guides/sample-design', 'specs/sample-design-spec'],
+        ['guides/evaluation/sample-design', 'specs/sample-design-spec'],
+        ['guides/knowledge/extract-knowledge', 'guides/extract-knowledge'],
+        ['guides/integration/eval-runtime', 'guides/service-evaluation'],
+        ['reference/integration/eval-runtime-recipes', 'guides/eval-runtime'],
+        ['reference/integration/embedded-api', 'reference/embedded-api'],
+        ['reference/shared/glossary', 'reference/glossary'],
+        ['explanation/comparison', 'reference/comparison'],
+        ['specs/evaluation/history/eval-core-cutover', 'guides/eval-core-cutover'],
         ['specs/evaluation/history/general-sample-proposal', 'specs/general-sample-proposal'],
         ['specs/observe/effective-observation-review', 'explanation/effective-observation-review'],
         ['specs/studio/studio-data-flow', 'explanation/studio-data-flow'],
@@ -209,8 +218,8 @@ describe('domain specifications and stable published routes', () => {
       path: resolve('docs/zh/specs/terminology-spec.md'),
       realPath: resolve('docs/zh/specs/shared/terminology-spec.md'),
     };
-    expect(pageHref('../../guides/sample-design.md#三', env)).toBe('./sample-design-spec.md#三');
-    expect(pageHref('../../reference/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
+    expect(pageHref('../../guides/evaluation/sample-design.md#三', env)).toBe('./sample-design-spec.md#三');
+    expect(pageHref('../../reference/shared/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
     const reference = { path: resolve('docs/zh/reference/glossary.md') };
     expect(pageHref('../specs/evaluation/scoring.md#decision', reference)).toBe('../specs/scoring.md#decision');
     const index = { path: resolve('docs/specs/index.md') };

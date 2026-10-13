@@ -284,8 +284,8 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
     en: '{count} samples have empty input.text',
   },
   'cli.doctor.samples_contract.hint': {
-    zh: '用例集不能为空；文本用例的 input.text 必须非空。详见 docs/zh/guides/sample-design.md',
-    en: 'The sample set must be non-empty; text samples need non-empty input.text. See docs/guides/sample-design.md',
+    zh: '用例集不能为空；文本用例的 input.text 必须非空。详见 docs/zh/guides/evaluation/sample-design.md',
+    en: 'The sample set must be non-empty; text samples need non-empty input.text. See docs/guides/evaluation/sample-design.md',
   },
 };
 

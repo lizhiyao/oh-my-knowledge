@@ -680,4 +680,4 @@ omk studio --port 8080 --no-open
 | `evaluationContext` | 否 | `rubric`、`assertions`、评分 `reference`、结构化 `checks` |
 | `annotations` | 否 | 来源、难度、能力、覆盖锚点和诱错标记 |
 
-完整契约与能力边界见 [样本格式](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/reference/eval-sample-format.md)。
+完整契约与能力边界见 [样本格式](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/reference/evaluation/eval-sample-format.md)。

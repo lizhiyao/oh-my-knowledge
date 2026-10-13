@@ -16,7 +16,7 @@ Knowledge can include domain insights, tradeoffs, working methods, collaboration
 
 **Observe** preserves real work and sources for knowledge building. **Know** extracts, maintains, and reuses knowledge with evidence. **Measure** tests specific changes when needed: fix models and cases, control and record execution conditions, and compare knowledge artifacts such as prompts, RAG, skills, agents, or workflows. If you already have two artifact versions, start directly with evaluation; logs are not a prerequisite.
 
-Version 1.0 is still **in Beta iteration**; APIs and storage contracts may change. Read the [migration guide](docs/guides/v1-preview-migration.md) before upgrading an older installation.
+Version 1.0 is still **in Beta iteration**; APIs and storage contracts may change. Read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
 
 ![OMK: from controlled evaluation to real-world feedback](./docs/public/omk-knowledge-flow-en-animated.gif)
 
@@ -29,19 +29,19 @@ The diagram describes composable workflows: review knowledge, generate and save 
 | **CLI** | Run checks, evaluations, observation, and improvement workflows from a terminal, coding agent, or CI |
 | **Studio** | Browse task trajectories, review knowledge items, and inspect reports and source evidence in a local workbench |
 | **eval-runtime** | Embed execution, scoring, and version comparison in your Node.js service or platform, without going through the CLI or starting Studio |
-| **DSH plugin** | Use `/omk eval` and `/omk observe` inside DeepSeek Harness with the current profile’s model, credentials, tools, and sandbox; see [host plugin setup](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) |
+| **DSH plugin** | Use `/omk eval` and `/omk observe` inside DeepSeek Harness with the current profile’s model, credentials, tools, and sandbox; see [host plugin setup](docs/reference/integration/executors.md#deepseek-harness-prefer-the-host-plugin) |
 
 ## Start with your goal
 
 | Goal | Entry point | What you get |
 |---|---|---|
-| Find knowledge worth preserving from real tasks | [Studio and task trajectories](docs/guides/observe-production.md) | Source records for reviewing successful approaches, user corrections, and knowledge gaps, with conversation, execution, results, and knowledge lanes |
-| Preserve knowledge from work | [Extract knowledge from logs](docs/guides/extract-knowledge.md) | Candidate knowledge with sources and conditions; revise, retain, or discard it |
-| Record a confirmed knowledge problem | [MCP feedback](docs/guides/mcp-integration.md) | An observation for review; draft a case after confirming a real issue |
+| Find knowledge worth preserving from real tasks | [Studio and task trajectories](docs/guides/observe/observe-production.md) | Source records for reviewing successful approaches, user corrections, and knowledge gaps, with conversation, execution, results, and knowledge lanes |
+| Preserve knowledge from work | [Extract knowledge from logs](docs/guides/knowledge/extract-knowledge.md) | Candidate knowledge with sources and conditions; revise, retain, or discard it |
+| Record a confirmed knowledge problem | [MCP feedback](docs/guides/integration/mcp-integration.md) | An observation for review; draft a case after confirming a real issue |
 | Decide whether to adopt a change | [Evaluation quickstart](docs/quickstart-skill-eval.md) | A version decision, uncertainty, failed cases, and scoring evidence |
-| Verify that an agent completed a task | [Local task acceptance](docs/guides/local-tasks.md) | Modified files, independent checks, and diagnostics after failure, timeout, or cancellation |
-| Try improving a skill automatically | [Iterative improvement](docs/guides/auto-improve-skills.md) | Candidate versions screened through controlled comparisons |
-| Embed evaluation in a service or platform | [Node.js service](docs/guides/eval-runtime.md) · [Platform host](docs/guides/platform-host-integration.md) | Composable execution, scoring, and comparison interfaces |
+| Verify that an agent completed a task | [Local task acceptance](docs/guides/evaluation/local-tasks.md) | Modified files, independent checks, and diagnostics after failure, timeout, or cancellation |
+| Try improving a skill automatically | [Iterative improvement](docs/guides/evaluation/auto-improve-skills.md) | Candidate versions screened through controlled comparisons |
+| Embed evaluation in a service or platform | [Node.js service](docs/guides/integration/eval-runtime.md) · [Platform host](docs/guides/integration/platform-host-integration.md) | Composable execution, scoring, and comparison interfaces |
 
 ## Quick start
 
@@ -51,7 +51,7 @@ Installation requires Node.js >=22. Model calls also require an authenticated ru
 npm i -g oh-my-knowledge@next
 ```
 
-Local task acceptance requires `1.0.0-beta.13` or later. Check `omk --version` after installation, then follow the [local-task guide](docs/guides/local-tasks.md) to run a trusted example.
+Local task acceptance requires `1.0.0-beta.13` or later. Check `omk --version` after installation, then follow the [local-task guide](docs/guides/evaluation/local-tasks.md) to run a trusted example.
 
 ### Inspect an existing task
 
@@ -59,11 +59,11 @@ Local task acceptance requires `1.0.0-beta.13` or later. Check `omk --version` a
 omk studio
 ```
 
-Open the local URL returned by the command and select a local Codex conversation to inspect its task trajectory. No prior ingest or model call is needed; active tasks support live following. Claude Code, OpenClaw, and markdown logs enter observation reports through `omk observe`; see the [observation guide](docs/guides/observe-production.md).
+Open the local URL returned by the command and select a local Codex conversation to inspect its task trajectory. No prior ingest or model call is needed; active tasks support live following. Claude Code, OpenClaw, and markdown logs enter observation reports through `omk observe`; see the [observation guide](docs/guides/observe/observe-production.md).
 
-To preserve reusable knowledge, choose “Choose a conversation” under “Knowledge → Extracted knowledge”. Select a conversation and turn, inspect the messages and workspace, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. Choose “Generate knowledge artifact” to review and save a skill or prompt explicitly. See the [extraction guide](docs/guides/extract-knowledge.md).
+To preserve reusable knowledge, choose “Choose a conversation” under “Knowledge → Extracted knowledge”. Select a conversation and turn, inspect the messages and workspace, then generate candidates. Generation calls a model. Retaining a candidate means you intend to maintain it, not that it is verified; it does not automatically update AGENTS.md or skills. Choose “Generate knowledge artifact” to review and save a skill or prompt explicitly. See the [extraction guide](docs/guides/knowledge/extract-knowledge.md).
 
-The “Knowledge” entry opens the knowledge library. Explicitly link source entities across windows, read claims with conditions and evidence, and select retained knowledge for artifacts. Names are not merged automatically; graph views and cross-agent automatic identity are not provided. See the [library workflow](docs/guides/extract-knowledge.md#accumulate-knowledge-around-entities).
+The “Knowledge” entry opens the knowledge library. Explicitly link source entities across windows, read claims with conditions and evidence, and select retained knowledge for artifacts. Names are not merged automatically; graph views and cross-agent automatic identity are not provided. See the [library workflow](docs/guides/knowledge/extract-knowledge.md#accumulate-knowledge-around-entities).
 
 ### Or compare two skills directly
 
@@ -87,7 +87,7 @@ The [full walkthrough](docs/quickstart-skill-eval.md) covers runtime selection, 
 
 Local tasks run two knowledge variants from declared file snapshots, collect files, and check them with an independent verifier. Failures, timeouts, and cancellations also retain declared files and partial logs. This measures explicitly supplied knowledge content, not native skill discovery. Tasks and verifiers must be trusted; workspace copies are not security sandboxes.
 
-The [cart example with an npm dependency](examples/local-task/project/README.md) records one real Codex run: treatment changed the target source and passed six checks; the negative control, instructed not to edit, passed three. This establishes a working execution and acceptance path, not general knowledge effectiveness. Model settings, usage, and durations are recorded in the example. The [local-task guide](docs/guides/local-tasks.md) covers installation, configuration, and evidence access.
+The [cart example with an npm dependency](examples/local-task/project/README.md) records one real Codex run: treatment changed the target source and passed six checks; the negative control, instructed not to edit, passed three. This establishes a working execution and acceptance path, not general knowledge effectiveness. Model settings, usage, and durations are recorded in the example. The [local-task guide](docs/guides/evaluation/local-tasks.md) covers installation, configuration, and evidence access.
 
 ## Use inside agents and DSH
 
@@ -99,7 +99,7 @@ omk install omk-agent-skill
 
 Install the Skill, then ask your coding agent: “Use omk to compare these two skills; preview the plan first.” See the [quickstart](docs/quickstart-skill-eval.md#use-inside-an-agent) for installation targets and usage.
 
-The [MCP integration](docs/guides/mcp-integration.md) accepts user-authorized knowledge feedback. It records partial evidence submitted at its tool boundary; it does not automatically monitor complete conversations.
+The [MCP integration](docs/guides/integration/mcp-integration.md) accepts user-authorized knowledge feedback. It records partial evidence submitted at its tool boundary; it does not automatically monitor complete conversations.
 
 ### DeepSeek Harness plugin
 
@@ -118,7 +118,7 @@ Inside DSH, run:
 /omk observe <session-id>
 ```
 
-Evaluation reuses the host’s model, credentials, tools, and sandbox, creating an isolated session for each case. Observation reads snapshots of completed sessions and returns a Studio task-trajectory URL; it does not currently live-follow running DSH sessions. See [DSH integration](docs/reference/executors.md#deepseek-harness-prefer-the-host-plugin) for configuration requirements and current plugin limitations.
+Evaluation reuses the host’s model, credentials, tools, and sandbox, creating an isolated session for each case. Observation reads snapshots of completed sessions and returns a Studio task-trajectory URL; it does not currently live-follow running DSH sessions. See [DSH integration](docs/reference/integration/executors.md#deepseek-harness-prefer-the-host-plugin) for configuration requirements and current plugin limitations.
 
 ## Use the evidence
 
@@ -133,11 +133,11 @@ These paths compose; they are not a mandatory linear state machine. Passing an e
 
 Fixed configuration cannot guarantee identical external model services or rerun outcomes. Conclusions depend on the cases, scoring criteria, and execution environment. Observation signals are not causal conclusions, and generated cases are not an independent release-validation set. See [statistical rigor](docs/explanation/statistical-rigor.md) and the [three-stage workflow](docs/explanation/three-stage-workflow.md) for the method and limits.
 
-Project evaluation and observation evidence lives under `.omk/`; local tasks default to `.omk/eval`, with `--output` selecting another report and diagnostic directory. Machine-level state lives under `~/.oh-my-knowledge/`. Extracted knowledge items live in the explicitly selected knowledge workspace. The current version neither reads nor migrates the old storage layout. Back up before upgrading and follow the [migration guide](docs/guides/v1-preview-migration.md) to establish new evidence.
+Project evaluation and observation evidence lives under `.omk/`; local tasks default to `.omk/eval`, with `--output` selecting another report and diagnostic directory. Machine-level state lives under `~/.oh-my-knowledge/`. Extracted knowledge items live in the explicitly selected knowledge workspace. The current version neither reads nor migrates the old storage layout. Back up before upgrading and follow the [migration guide](docs/guides/maintenance/v1-preview-migration.md) to establish new evidence.
 
 ## Documentation
 
-[Documentation index](docs/README.md) · [Online docs](https://oh-my-knowledge.pages.dev) · [CLI reference](docs/reference/cli.md) · [Sample format](docs/reference/eval-sample-format.md) · [Executors](docs/reference/executors.md) · [How OMK understands knowledge](docs/explanation/knowledge.md)
+[Documentation index](docs/README.md) · [Online docs](https://oh-my-knowledge.pages.dev) · [CLI reference](docs/reference/cli.md) · [Sample format](docs/reference/evaluation/eval-sample-format.md) · [Executors](docs/reference/integration/executors.md) · [How OMK understands knowledge](docs/explanation/knowledge.md)
 
 ## Environment variables
 
@@ -155,8 +155,8 @@ Project evaluation and observation evidence lives under `.omk/`; local tasks def
 - At least one authenticated model runtime:
   - Codex: install and authenticate the Codex CLI (`npm i -g @openai/codex`); Codex tasks in the ChatGPT desktop app select it automatically
   - Claude: install and authenticate [Claude Code](https://claude.ai/code)
-  - API / other executors: configure them as described in [Executors](docs/reference/executors.md)
-- Advanced `claude-sdk` / `codex-sdk` executors are optional and are not downloaded by the base OMK install. Install the matching SDK in the same local project or global npm prefix only when you select one; see [Executor prerequisites](docs/reference/executors.md#prerequisites).
+  - API / other executors: configure them as described in [Executors](docs/reference/integration/executors.md)
+- Advanced `claude-sdk` / `codex-sdk` executors are optional and are not downloaded by the base OMK install. Install the matching SDK in the same local project or global npm prefix only when you select one; see [Executor prerequisites](docs/reference/integration/executors.md#prerequisites).
 
 ## Security notice
 

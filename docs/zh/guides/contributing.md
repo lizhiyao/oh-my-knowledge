@@ -328,9 +328,10 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 `docs/` 按读者分组 —— 新建文件前先选对目录：
 
 - `docs/guides/` —— 用户怎样完成任务，步骤、自检和示例；字段大全引用 reference，不在指南复制。
-- `docs/reference/` —— flag 表、用例格式、executor 矩阵、对比 ↔ 用户查阅的内容
-- `docs/explanation/` —— 架构、统计严谨性 ↔ omk 如何工作、为何这样设计
-- `docs/specs/` —— 供贡献者阅读的规范，按 `shared/`、`entities/`、`knowledge/`、`evaluation/`、`observe/` 和 `studio/` 分组；[规范索引](../specs/index.md)说明阅读顺序及契约、草案和历史提案边界。文档站已有规范 URL 保持稳定。
+- `docs/reference/` —— 字段、API、配置和完整接入片段，按 shared／evaluation／integration 分组；CLI 是跨领域查阅页。
+- `docs/explanation/` —— 概念、原理和取舍；不复制操作步骤或字段大全。
+- `docs/specs/` —— 按 shared／entities／knowledge／evaluation／observe／studio 规定当前行为与验收。每个领域有阅读入口；旧设计、案例和试验进入所属 history，当前规则不夹带整篇旧草案。
+- `docs/guides/` 按 knowledge／observe／evaluation／integration／maintenance 组织任务。先给出可执行的首条动线，再链接字段参考与实现规范。贡献流程作为跨领域全局入口保留本页。
 - `docs/quickstart-skill-eval.md` + `docs/README.md` 保持在顶层；`docs/zh/` 镜像同样的结构
 - `docs/README.md` + `docs/zh/README.md` 是按读者分组的索引 —— 新文件加入对应小节
 - **中英文对称是硬性要求。** 每个已发布页面都要有 `docs/` 下的英文版，以及 `docs/zh/` 下同一路径的中文版 —— VitePress 的语言切换依赖这份 1:1 镜像，否则严格的死链构建就会失败。新增文档时两半一起加。设计依据与决策记录优先写在相关已发布规范*内部*（例如作为附录），让用户看到完整推理；只有确实只面向维护者的笔记才放在 `docs/` 之外，这类笔记不受双语规则约束
