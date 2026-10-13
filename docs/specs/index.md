@@ -23,7 +23,7 @@ Status labels summarize the existing documents, not a new implementation accepta
 | Document | Role and status |
 |---|---|
 | [Terminology](shared/terminology-spec.md) | Current naming conventions and maintainer decision archive; implementation remains the authority for concrete names. |
-| [Storage layout](shared/storage-layout-spec.md) | Current project and machine storage contract. Its knowledge-workspace summary still describes v3; use the current extraction and library specs for those formats. |
+| [Storage layout](shared/storage-layout-spec.md) | Current project, machine, and explicit knowledge-workspace storage summary; extraction and library specs own detailed domain formats and recovery boundaries. |
 
 ## Entity identity and extraction · `entities/`
 

@@ -101,9 +101,11 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 
 ## 明确选择的知识工作区
 
-用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`runs/<run-id>.json` 使用 `knowledge-extraction-run` v3，保留原始输出、当前 v3 prompt 身份、已准备的意图与用量。`entities/<analysis-id>.json` 使用 `entity-analysis-history` v1，保存不可变修订、精确来源绑定与写入回执。来源、主题标签及载体版本沿用各自契约。
+用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4，保留原始 prompt 身份与摘要、原始输出、实体／知识写入意图及运行用量。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。
 
-当前写入通过 `.knowledge-write.lock` 串行化。只支持当前知识／运行／实体结构及 `knowledge-extraction-v3`，不提供旧格式读取、恢复或迁移。旧文件保持原样；需要重新提炼时选择空目录。当前运行仍保留幂等恢复能力。边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。这些文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
+当前写入通过 `.knowledge-write.lock` 串行化。文件 Schema 版本与 prompt 来源身份分开：Schema v4 运行保留原始 `knowledge-extraction-vN` 身份（正整数版本），新生成使用当前提取 prompt。读取或幂等恢复受支持的运行保留原始证据，不重新提取或升级结果，边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。
+
+旧实体历史 v1 和运行 Schema v3 被拒绝，不添加兼容 reader、恢复、迁移、自动改写或删除。旧知识 v2 正文仍可读，但所绑定的旧实体分析不可用。用户选择新的空知识目录，从原始日志重新提炼；新实体不会自动接管旧知识绑定。存储文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
 
 ## 为什么这样命名
 
