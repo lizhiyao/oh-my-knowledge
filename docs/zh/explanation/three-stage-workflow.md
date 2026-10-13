@@ -6,7 +6,7 @@ OMK 用 doctor、eval 和 observe 回答知识载体生命周期中的不同问�
 |---|---|---|---|
 | **doctor** | `omk doctor` | 这个 artifact 本身是否成型到能测的程度？ | lint + typecheck + 冒烟测试 |
 | **eval** | `omk eval` | 当前证据是否支持这次改动？ | CI 测试套件 |
-| **observe** | `omk observe` | 它在真实生产 trace 上站得住吗？ | 日志分析 |
+| **observe** | `omk observe` | 真实任务中出现了哪些表现、问题与经验信号？ | 日志分析 |
 
 <a id="knowledge-entities-and-carriers"></a>
 

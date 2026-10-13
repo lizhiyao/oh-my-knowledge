@@ -79,7 +79,7 @@ Start with the **verdict** and its reason codes, then inspect the difference Δ,
 | `UNDERPOWERED` | Meet the declared sample-size requirement. Twenty comparable units is only a default heuristic floor; use external pilot assumptions for `decision.power` or register `decision.minimumComparisonUnits` for formal measurement. |
 | `SOLO` | Add a control before making a cross-version decision. |
 
-Conclusions apply only to these cases, criteria, and conditions. AI-generated cases can favor existing happy paths; add real failures, counterexamples, and misuse scenarios. Retain the report, case provenance, and human-review conclusions. Cases used during iteration are not an independent release-validation set. See [statistical rigor](./explanation/statistical-rigor.md) and [sample design](./specs/evaluation/sample-design-spec.md).
+Conclusions apply only to these cases, criteria, and conditions. AI-generated cases can favor existing happy paths; add real failures, counterexamples, and misuse scenarios. Retain the report, case provenance, and human-review conclusions. Cases used during iteration are not an independent release-validation set. See [statistical rigor](./explanation/statistical-rigor.md) and [sample design](./guides/sample-design.md).
 
 ## Use inside an agent
 

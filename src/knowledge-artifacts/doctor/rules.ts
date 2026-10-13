@@ -11,7 +11,7 @@
  *   - skill_readable: 文件能读、内容非空且有最小长度
  *   - skill_metadata: front-matter(若有) YAML 合法、directory-skill 有 SKILL.md
  *   - dependencies: 引用的 tool / file / env / preflight 完整(复用 preflightDependencies)
- *   - samples_contract: 仅在传 samples 时跑,warn 级,校验 samples 非空 + 含 prompt
+ *   - samples_contract: 仅在传 samples 时跑,warn 级,校验 samples 非空 + 文本 input.text 非空
  *
  * fatal-fail 时 rule 引擎不中断后续 rule 执行(让用户一次看到全貌),
  * 但 DoctorReport.outcome 会置 'failed'。

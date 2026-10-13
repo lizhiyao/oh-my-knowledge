@@ -62,7 +62,7 @@ flowchart TD
 
 ## 源码依赖模型
 
-`knowledge/` 拥有可复用知识的内容契约和纯接纳校验，区别于 `knowledge-artifacts/` 的载体生命周期。CLI 与 Studio 共享这些规则；来源读取、提炼调用与持久化由外层应用流程和 adapter 负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。目前该领域正在实现，完整用户入口以实际验收为准。
+`knowledge/` 拥有可复用知识的内容契约和纯接纳校验，区别于 `knowledge-artifacts/` 的载体生命周期。CLI 与 Studio 共享这些规则；来源读取、提炼调用与持久化由外层应用流程和 adapter 负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。当前已实现候选提炼与核对、不可变修订、实体知识库组织和载体维护；实现范围与限制分别见[提炼规范](../specs/entities/entity-extraction.md)及[知识库规范](../specs/knowledge/knowledge-library.md)，不能由概念图推定自动关联或效果已获验证。
 
 `src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
 

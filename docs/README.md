@@ -17,7 +17,7 @@ The **DSH plugin** brings `/omk eval` and `/omk observe` into an existing DeepSe
 | Compare two skills from the CLI | [Quickstart](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [Executors](./reference/executors.md) · [Sample format](./reference/eval-sample-format.md) · [Artifact layout](./reference/artifact-layout.md) |
 | Integrate a Node.js service | [Service guide](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [Core API](./reference/embedded-api.md) |
 | Dispatch evaluations from a platform host | [Platform host guide](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
-| Inspect real tasks and knowledge gaps | [Observation and task trajectories](./guides/observe-production.md) | [Codex case](./guides/codex-observe-case.md) · [Effective review semantics](./explanation/effective-observation-review.md) |
+| Inspect real tasks and knowledge gaps | [Observation and task trajectories](./guides/observe-production.md) | [Codex case](./guides/codex-observe-case.md) · [Effective review semantics](./specs/observe/effective-observation-review.md) |
 
 ## Turn real tasks into reusable knowledge
 
@@ -37,17 +37,18 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 
 ## Understand results and limits
 
+- [Principles index](./explanation/index.md): Concepts, rationale, and specification responsibilities.
 - [Who OMK is for](./explanation/who-omk-is-for.md) · [How OMK understands knowledge](./explanation/knowledge.md)
 - [Three-stage workflow](./explanation/three-stage-workflow.md) · [Architecture](./explanation/architecture.md)
-- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/evaluation/scoring.md) · [Sample design](./specs/evaluation/sample-design-spec.md)
+- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/evaluation/scoring.md) · [Sample design](./guides/sample-design.md)
 - [Glossary](./reference/glossary.md) · [Tool comparison](./reference/comparison.md)
 
 ## Migration and design specs
 
-- [Specification index and reading order](./specs/index.md): contracts, drafts, and historical proposals grouped by shared, entities, knowledge, evaluation, and observe domains.
+- [Specification index and reading order](./specs/index.md): contracts, drafts, and historical proposals grouped by shared, entities, knowledge, evaluation, observe, and Studio domains.
 
 - [Contributing guide](./guides/contributing.md) — branch model, local gates, release process.
-- [General sample proposal (draft)](./specs/evaluation/general-sample-proposal.md)
+- [General sample proposal (historical)](./specs/evaluation/history/general-sample-proposal.md)
 
 - [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/shared/storage-layout-spec.md)
 - [Core design](./specs/evaluation/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/evaluation/cli-evaluation-input-compilation.md)

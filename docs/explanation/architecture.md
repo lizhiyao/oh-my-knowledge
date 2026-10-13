@@ -62,7 +62,7 @@ Each stage retains its own artifacts. Reusing existing artifacts through staged 
 
 ## Source dependency model
 
-`knowledge/` owns reusable knowledge content contracts and pure knowledge validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. This domain is under implementation; complete user entry points still require acceptance verification.
+`knowledge/` owns reusable knowledge content contracts and pure knowledge validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. Candidate extraction and review, immutable revisions, entity-library organization, and carrier maintenance are implemented. The [extraction](../specs/entities/entity-extraction.md) and [library](../specs/knowledge/knowledge-library.md) specifications own their scope and limits; a concept diagram establishes neither automatic linking nor verified benefits.
 
 Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
 

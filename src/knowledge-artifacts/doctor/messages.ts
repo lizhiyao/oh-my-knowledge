@@ -176,8 +176,8 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
     en: 'all dependencies present',
   },
   'cli.doctor.samples_contract.pass': {
-    zh: '用例 {count} 条,prompt 字段齐全',
-    en: '{count} samples, all with prompt',
+    zh: '用例 {count} 条，输入检查通过',
+    en: '{count} samples, input checks passed',
   },
   // ---------------- skill_readable ----------------
   'cli.doctor.skill_readable.fail.missing': {
@@ -280,12 +280,12 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
     en: 'samples list is empty',
   },
   'cli.doctor.samples_contract.warn.missing_prompt': {
-    zh: '{count} 条用例缺 prompt 字段',
-    en: '{count} samples missing prompt field',
+    zh: '{count} 条用例的 input.text 为空',
+    en: '{count} samples have empty input.text',
   },
   'cli.doctor.samples_contract.hint': {
-    zh: '用例必须至少包含 prompt 字段。详见 docs/zh/specs/evaluation/sample-design-spec.md',
-    en: 'samples must contain at least a prompt field. See docs/specs/evaluation/sample-design-spec.md',
+    zh: '用例集不能为空；文本用例的 input.text 必须非空。详见 docs/zh/guides/sample-design.md',
+    en: 'The sample set must be non-empty; text samples need non-empty input.text. See docs/guides/sample-design.md',
   },
 };
 

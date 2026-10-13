@@ -146,7 +146,7 @@ See the [scoring pipeline](../specs/evaluation/scoring) for the full derivation,
 | `cost_max` / `latency_max` | cost / latency caps |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
 | `tool_output_contains` / `tool_input_contains` / `tool_input_not_contains` | a tool's input/output must (or, for `_not_`, must not) contain the given content |
-| `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../specs/evaluation/sample-design-spec)) |
+| `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../guides/sample-design.md)) |
 | `turns_min` / `turns_max` | conversation-turn bounds |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
 | `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |

@@ -2,6 +2,8 @@
 
 > **Status**: Accepted by [#426](https://github.com/lizhiyao/oh-my-knowledge/pull/426). Tracks [#425](https://github.com/lizhiyao/oh-my-knowledge/issues/425) and is the architecture prerequisite for [#424](https://github.com/lizhiyao/oh-my-knowledge/issues/424). This RFC defines a new Evaluation Core domain and measurement contract. It is intentionally incompatible with the current `runEvaluation`, file-based Sample, and Report JSON schema. The old pipeline is evidence for algorithms and failure modes, not a compatibility target.
 
+> Reading boundary: this document preserves accepted architectural decisions and their migration context. “Current/old pipeline,” type sketches, and initial version numbers describe the state when their sections were written, not the current wire-schema catalog. The [Core API](../../reference/embedded-api.md) owns exact public contracts; [input compilation](./cli-evaluation-input-compilation.md), [Runtime Adapter](./evaluation-runtime-adapter.md), and [persistence](./evaluation-artifact-persistence.md) own product wiring.
+
 ## 1. Summary
 
 Evaluation Core vNext is a host-neutral, in-memory, re-scorable evaluation kernel. It separates an evaluation into four independently verifiable and recomputable stages:

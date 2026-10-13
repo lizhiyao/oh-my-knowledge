@@ -391,15 +391,19 @@ describe('samplesContractAlignedRule', () => {
     assert.equal(r.status, 'warn');
   });
 
-  it('warns when some samples are missing prompt', async () => {
+  it.each(['zh', 'en'] as const)('explains empty text input in %s without asking for the retired prompt field', async (lang) => {
     const r = await samplesContractAlignedRule.check(ctxWith(sampleSkill(), {
-      samples: [goodSample, { sample_id: 's2', input: { inputKind: 'text' as const, text: '' } }],
+      lang,
+      samples: [goodSample, { sample_id: 's2', input: { inputKind: 'text' as const, text: '  \n  ' } }],
     }));
     assert.equal(r.status, 'warn');
     assert.ok(r.message.includes('1'));
+    assert.match(r.message, /input\.text/);
+    assert.match(r.hint ?? '', /input\.text/);
+    assert.doesNotMatch(r.hint ?? '', /prompt/);
   });
 
-  it('passes when all samples have non-empty prompt', async () => {
+  it('passes when all text samples have non-empty input.text', async () => {
     const r = await samplesContractAlignedRule.check(ctxWith(sampleSkill(), {
       samples: [goodSample, { sample_id: 's2', input: { inputKind: 'text' as const, text: 'another' } }],
     }));

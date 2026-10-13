@@ -1,6 +1,6 @@
 # Knowledge construction domain model (design draft)
 
-Status: documentation walkthroughs for [CR feedback](#cr-case), [fact correction](#fact-correction), and [successful experience](#successful-experience) are complete; implementation boundaries remain unvalidated. This document establishes concepts and boundaries for discussion, not implemented capabilities. Fields, storage formats, commands, and migration plans are not finalized.
+Status: this document preserves domain design, case walkthroughs, and the first-release decisions in §9/§10. Candidate extraction, revisions, and library maintenance are delivered, but not every proposal here is implemented. The [extraction](../entities/entity-extraction.md), [library](./knowledge-library.md), and [storage](../shared/storage-layout-spec.md) specifications own current fields, serialized versions, commands, and recovery rules. Cases and type sketches retain their original identities.
 
 ## 1. Goal and scope
 
@@ -360,6 +360,8 @@ The next deliverable is a set of source-verifiable real cases and resulting mode
 The first product slice closes “real work log → candidate knowledge → inspect each source”. Use real tasks to check reuse value, missing conditions, and inferences mistaken for facts. Validation and review states support this loop; complete storage, entity indexes, and carrier-change associations follow demonstrated needs. General graph reasoning and automatic publication are not prerequisites.
 
 ## 9. Minimal contracts for the first implementation
+
+> This section records first-release design decisions and logical interfaces, not the current serialized schema. The `schemaVersion: 1` below belongs to the original sketch; current knowledge history uses v2 and cannot be read or written using that sketch. Extraction/storage specifications own version and recovery behavior; no old-version reader is promised.
 
 This section resolves section 7 decisions as acceptance criteria for supporting capabilities when implemented, without requiring all infrastructure before validating log-mining value. Section 3.1 continues to describe domain content; these read/write boundaries do not add storage metadata to statements. Start with a local-file adapter, without a new database dependency or migration of existing observations. This section does not specify CLI/MCP delivery or a public Schema; section 10 defines the initial product entry and admission boundaries.
 

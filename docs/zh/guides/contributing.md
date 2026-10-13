@@ -327,16 +327,19 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 
 `docs/` 按读者分组 —— 新建文件前先选对目录：
 
+- `docs/guides/` —— 用户怎样完成任务，步骤、自检和示例；字段大全引用 reference，不在指南复制。
 - `docs/reference/` —— flag 表、用例格式、executor 矩阵、对比 ↔ 用户查阅的内容
 - `docs/explanation/` —— 架构、统计严谨性 ↔ omk 如何工作、为何这样设计
-- `docs/specs/` —— 供贡献者阅读的规范，按 `shared/`、`entities/`、`knowledge/`、`evaluation/` 和 `observe/` 分组；[规范索引](../specs/index.md)说明阅读顺序及契约、草案和历史提案边界。文档站已有规范 URL 保持稳定。
+- `docs/specs/` —— 供贡献者阅读的规范，按 `shared/`、`entities/`、`knowledge/`、`evaluation/`、`observe/` 和 `studio/` 分组；[规范索引](../specs/index.md)说明阅读顺序及契约、草案和历史提案边界。文档站已有规范 URL 保持稳定。
 - `docs/quickstart-skill-eval.md` + `docs/README.md` 保持在顶层；`docs/zh/` 镜像同样的结构
 - `docs/README.md` + `docs/zh/README.md` 是按读者分组的索引 —— 新文件加入对应小节
 - **中英文对称是硬性要求。** 每个已发布页面都要有 `docs/` 下的英文版，以及 `docs/zh/` 下同一路径的中文版 —— VitePress 的语言切换依赖这份 1:1 镜像，否则严格的死链构建就会失败。新增文档时两半一起加。设计依据与决策记录优先写在相关已发布规范*内部*（例如作为附录），让用户看到完整推理；只有确实只面向维护者的笔记才放在 `docs/` 之外，这类笔记不受双语规则约束
 
+概念与原理放在 explanation；约束实现的行为、不变量及验收放在 specs 的所属领域，不能只按“实体”等主题名决定目录。混合文档按主要职责归类，引用另一层的权威来源。草案、部分交付和历史裁决必须标明状态；一次试验或已被替代提案进入对应领域 `history/`，保留原始身份与证据，不能作为当前能力承诺。移动来源时同步中英文、索引、侧栏及活跃引用，并用路由映射保留已有文档站 URL／锚点。
+
 ## 范围
 
-`oh-my-knowledge` 聚焦**离线知识载体评测**与 **skill 级生产可观测性**。它有意**不**覆盖：
+`oh-my-knowledge` 聚焦**真实协作中的知识沉淀与维护、知识载体的受控评测，以及任务观测与复核**。它有意**不**覆盖：
 
 - 通用 APM／请求级延迟与成本追踪（请使用 Langfuse／Datadog）
 - 流式评测／实时告警

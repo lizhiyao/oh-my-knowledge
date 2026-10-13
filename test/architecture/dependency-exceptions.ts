@@ -107,7 +107,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/studio-baseline.ts',
     expression: 'pathToFileURL(resolve(REPO_ROOT, path)).href',
-    sourceSha256: 'c46f743c64c55eede15075cc33eb0025f7e9ac1c8dc5cdbfc7073a95dce22b28',
+    sourceSha256: 'e07ca97b9d8660440ba32ff80ef50bfd9d811d20f2a241949845624795ebb27f',
     rationale: 'Loads only three fixed built modules for the isolated Studio benchmark; the sealed source fixes all callers and paths.',
   },
 ] as const;

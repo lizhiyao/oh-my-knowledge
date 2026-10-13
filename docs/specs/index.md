@@ -6,7 +6,7 @@ Specifications are organized by domain. Start with [How OMK understands knowledg
 
 1. Read the concept definitions, then **shared** terminology and storage boundaries.
 2. For knowledge construction, follow **entities → knowledge**: identify source objects, review candidates, organize retained knowledge, then maintain knowledge and carriers. Entity identity organizes access; it does not establish the truth of a knowledge claim.
-3. For a controlled comparison, follow **evaluation**: Core → input compilation → Runtime → persistence and Studio projection, then scoring and sample design.
+3. For a controlled comparison, follow **evaluation**: Core → input compilation → Runtime → persistence and Studio projection, then scoring; guides own sample authoring.
 4. Use **observe** to understand signals from real task records. These signals can inform the next comparison, but do not prove knowledge completeness or causal benefit.
 
 ## Status and authority
@@ -38,7 +38,7 @@ Status labels summarize the existing documents, not a new implementation accepta
 
 | Document | Role and status |
 |---|---|
-| [Knowledge domain model](knowledge/knowledge-domain-model.md) | Design draft and case walkthroughs; not the authority for settled fields, storage, commands, or a fully delivered product loop. |
+| [Knowledge domain model](knowledge/knowledge-domain-model.md) | Domain design, cases, and first-release decisions; extraction/library specs own current storage and implementation, not a whole-document delivery promise. |
 | [Entity knowledge library](knowledge/knowledge-library.md) | Current organization and maintenance contract: explicit workspace, confirmed source links, exact revisions, and carrier selection. |
 
 Read the domain model for responsibilities and consistency goals, then the library and extraction specs for implemented boundaries. Knowledge content, source identity, organization history, and carrier versions have separate owners; keeping an item is a maintenance decision, not a truth judgment.
@@ -47,23 +47,32 @@ Read the domain model for responsibilities and consistency goals, then the libra
 
 | Document | Role and status |
 |---|---|
-| [Evaluation Core vNext](evaluation/eval-core-vnext.md) | Accepted architecture RFC; current Core contracts with historical migration rationale. |
+| [Evaluation Core vNext](evaluation/eval-core-vnext.md) | Accepted architecture RFC and historical decisions; the Core API owns exact current wire contracts, not old type sketches. |
 | [CLI input compilation](evaluation/cli-evaluation-input-compilation.md) | Current parse, resolve, compile, and host assembly boundary. |
 | [Evaluation Runtime Adapter](evaluation/evaluation-runtime-adapter.md) | Current production binding, resource lease, execution, and host composition boundary. |
 | [Artifact persistence](evaluation/evaluation-artifact-persistence.md) | Current artifact persistence, catalog, and authenticated consumption boundary. |
 | [Studio projection](evaluation/evaluation-studio-projection.md) | Current Core catalog, view-model, rendering, and route boundary. |
 | [Scoring equivalence](evaluation/evaluation-scoring-equivalence.md) | Implemented scoring migration; historical rollout wording remains as rationale. |
 | [Scoring pipeline](evaluation/scoring.md) | Current evidence graph, scoring layers, and decision boundaries. |
-| [RAG metrics](evaluation/rag-metrics-spec.md) | RAG metric definitions and judge instruments; read alongside scoring equivalence. |
-| [Sample design](evaluation/sample-design-spec.md) | Current v3 envelope and measurement design guidance; [sample format](../reference/eval-sample-format.md) owns the complete schema and adapter contract. |
-| [General sample proposal](evaluation/general-sample-proposal.md) | Historical proposal; its compatibility window and migration-tool suggestions are superseded by the current v3-only contract. |
+| [RAG metrics](evaluation/rag-metrics-spec.md) | Current RAG instruments and thresholded Boolean observations; rubric repeats/ensemble do not automatically apply to RAG. |
+| [General sample proposal](evaluation/history/general-sample-proposal.md) | Historical proposal; its compatibility window and migration-tool suggestions are superseded by the current v3-only contract. |
 
 ## Observation signals · `observe/`
 
 | Document | Role and status |
 |---|---|
-| [Knowledge-gap signals](observe/knowledge-gap-signal-spec.md) | v0.1 design draft for gap signals and aggregation; [observation guide](../guides/observe-production.md) describes the current user workflow and its limits. |
+| [Knowledge-gap signals](observe/knowledge-gap-signal-spec.md) | Partly delivered algorithms and historical draft: observation uses four heuristic signals; the classifier is not automatically connected, and evaluation trends/threshold flags remain designs. |
+| [Effective observation review](observe/effective-observation-review.md) | Current inbox derived view, review priority, and evidence limits; does not overwrite original records. |
+
+## Studio hosts and reading · `studio/`
+
+| Document | Role and status |
+|---|---|
+| [Studio domain index](studio/index.md) | Read current contracts separately from historical measurements. |
+| [Studio data flow](studio/studio-data-flow.md) | Current preload/client-loaded knowledge pages, APIs, caching, and refresh boundaries. |
+
+Sample authoring and review belong to the [sample design guide](../guides/sample-design.md); field lookup belongs to the [sample format](../reference/eval-sample-format.md). The [principles index](../explanation/index.md) owns concepts and rationale; this directory does not duplicate concept definitions. Historical measurements belong in the relevant domain's `history/` and do not directly establish current performance.
 
 ## Paths and references
 
-English and Chinese source folders mirror each other under `docs/specs/` and `docs/zh/specs/`. Each spec has one source per language. Domain folders organize repository reading; the documentation site retains its existing `/specs/<name>` and `/zh/specs/<name>` URLs through route mappings, including anchors. Update live repository links to the new source paths. Paths inside frozen commits or evidence packages describe their original snapshot and stay unchanged.
+English and Chinese source folders mirror each other under `docs/specs/` and `docs/zh/specs/`. Each spec has one source per language. Domain folders organize repository reading; route mappings retain existing specification URLs, legacy explanation URLs of moved contracts, and the sample guide’s former URL, including anchors. Source classification and published addresses are maintained separately. Update live repository links to the new source paths. Paths inside frozen commits or evidence packages describe their original snapshot and stay unchanged.
