@@ -17,7 +17,7 @@ import { conversationLabel } from '../../../application/display/conversation-lab
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(rows: KnowledgeCandidateRow[]): void }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [authoringIds, setAuthoringIds] = useState<string[] | null>(null);
@@ -98,7 +98,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const first = scope ? nextRows.find(row => row.choice === null) ?? nextRows[0] : nextRows[0];
     const nextDetail = selectFirst && first
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: first.knowledgeId }) : undefined;
-    setRows(nextRows); setRuns(nextRuns); setFailedToLoad(false);
+    setRows(nextRows); setRuns(nextRuns); setFailedToLoad(false); onLoaded?.(nextRows);
     if (selectFirst) { setDetail(nextDetail ?? null); setReason('');
       if (scope && first) setBatchRunId(candidateReviewRun(nextRuns, first.knowledgeId)?.runId ?? null);
     }

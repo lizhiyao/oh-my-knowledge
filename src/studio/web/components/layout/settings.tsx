@@ -54,7 +54,14 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
     finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   return <>{trigger ? trigger(() => void load()) : <Button className="studio-settings-trigger" onClick={() => void load()}>{zh ? '设置' : 'Settings'}</Button>}
-    <Drawer title={zh ? '全局设置' : 'Global settings'} open={open} onClose={() => { controller.current?.abort(); setOpen(false); }} size={600} extra={<Button type="primary" loading={busy} disabled={!data || busy || failure === 'conflict' || !workspace.trim()} onClick={() => void save()}>{zh ? '保存设置' : 'Save settings'}</Button>}>
+    <Drawer title={zh ? '全局设置' : 'Global settings'} open={open} onClose={() => { controller.current?.abort(); setOpen(false); }} size={600} onKeyDown={event => {
+      if (event.key !== 'Tab') return;
+      // The drawer's focus list omits native summary controls; include them in the boundary cycle.
+      const items = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href],button,input,select,textarea,summary,[tabindex="0"]')].filter(item => item.tabIndex >= 0 && item.getClientRects().length && !item.matches(':disabled'));
+      const target = event.shiftKey && document.activeElement === items[0] ? items.at(-1)
+        : !event.shiftKey && document.activeElement === items.at(-1) ? items[0] : undefined;
+      if (target) { event.preventDefault(); target.focus(); }
+    }} extra={<Button type="primary" loading={busy} disabled={!data || busy || failure === 'conflict' || !workspace.trim()} onClick={() => void save()}>{zh ? '保存设置' : 'Save settings'}</Button>}>
       <div className="candidate-form studio-settings-form">
         <p>{zh ? 'CLI 与 Studio 共用这台电脑上的设置。先阅读对话也可以；需要提炼知识时再配置模型。保存不会调用模型、移动已有知识或改变历史运行。' : 'CLI and Studio share these local settings. You can read conversations first and configure a model when extracting knowledge. Saving calls no model, moves no knowledge and changes no past runs.'}</p>
         {busy && <p role="status">{zh ? '正在读取或保存设置…' : 'Reading or saving settings…'}</p>}

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { KnowledgeCandidateStart, KnowledgeCandidates, ScopedCandidateEmpty } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
+import { KnowledgeInboxSummary } from '../../../src/studio/web/components/knowledge/inbox.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [] };
@@ -59,6 +60,13 @@ describe('knowledge extraction onboarding', () => {
     expect(scoped({ failedToLoad: true, busy: true })).toMatch(/<button[^>]+disabled/);
     expect(scoped()).toContain('此来源范围没有候选');
     expect(scoped({ failedToLoad: true, lang: 'en' })).toContain('Reload candidates');
+    const summary = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeInboxSummary, { lang: 'zh', failedToLoad: false, ...overrides }));
+    expect(summary()).toContain('正在读取候选数量');
+    expect(summary()).not.toContain('共 0 条候选');
+    expect(summary({ total: 7, failedToLoad: true })).toContain('候选数量暂不可读');
+    expect(summary({ total: 7, failedToLoad: true })).not.toContain('共 7 条候选');
+    expect(summary({ total: 0 })).toContain('共 0 条候选');
+    expect(summary({ total: 3, lang: 'en' })).toContain('3 candidates grouped by source');
   });
 });
 
