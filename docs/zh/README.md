@@ -17,7 +17,7 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 | 命令行比较两版 skill | [快速上手](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [执行器](./reference/executors.md) · [用例格式](./reference/eval-sample-format.md) · [载体布局](./reference/artifact-layout.md) |
 | 在 Node.js 服务中接入 | [服务接入指南](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [底层 Core API](./reference/embedded-api.md) |
 | 由平台宿主下发评测任务 | [平台宿主集成指南](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
-| 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./explanation/effective-observation-review.md) |
+| 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./specs/observe/effective-observation-review.md) |
 
 ## 从真实任务沉淀知识
 
@@ -37,17 +37,18 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 
 ## 理解结果与边界
 
+- [原理索引](./explanation/index.md)：概念、理由与规范的职责边界。
 - [为谁做、解决什么](./explanation/who-omk-is-for.md) · [OMK 如何理解知识](./explanation/knowledge.md)
 - [三阶段工作流](./explanation/three-stage-workflow.md) · [架构](./explanation/architecture.md)
-- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/evaluation/scoring.md) · [用例设计](./specs/evaluation/sample-design-spec.md)
+- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/evaluation/scoring.md) · [用例设计](./guides/sample-design.md)
 - [术语表](./reference/glossary.md) · [工具对比](./reference/comparison.md)
 
 ## 迁移与设计规范
 
-- [规范索引与阅读顺序](./specs/index.md)：按共享、实体、知识、评测与观测领域查看契约、草案和历史提案。
+- [规范索引与阅读顺序](./specs/index.md)：按共享、实体、知识、评测、观测与 Studio 领域查看契约、草案和历史提案。
 
 - [贡献指南](./guides/contributing.md) —— 分支模型、本地门禁与发版流程。
-- [通用 sample 规范草案](./specs/evaluation/general-sample-proposal.md)
+- [通用 sample 提案（历史）](./specs/evaluation/history/general-sample-proposal.md)
 
 - [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/shared/storage-layout-spec.md)
 - [Core 设计](./specs/evaluation/eval-core-vnext.md) · [评分等价性](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/evaluation/cli-evaluation-input-compilation.md)

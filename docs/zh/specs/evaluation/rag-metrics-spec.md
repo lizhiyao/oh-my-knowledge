@@ -1,54 +1,39 @@
 # RAG metrics 规范
 
-omk 的三个 RAG 专用 assertion type(`faithfulness` / `answer_relevancy` / `context_recall`)的设计、prompt 形态、与主流方案的关系。配套示例:[examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval)。
+本页规定当前 `faithfulness`、`answer_relevancy` 和 `context_recall` 的输入、评委仪器及结果边界。实现由 `measurement/evaluators/llm-assertions.ts`、`instruments/prompts/judge-prompts.ts` 与 `assertions/layers.ts` 共同约束；公开字段见[样本格式](../../reference/eval-sample-format.md)。示例见 [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval)。
 
-## 三件事的关系
+## 三件事的关系 {#三件事的关系}
 
 | Metric | 回答的问题 | 输入需求 |
 |---|---|---|
-| `faithfulness` | 输出是否被 context 支持 (anti-hallucination) | output + context (evaluationContext.reference 或 assertion.reference) |
-| `answer_relevancy` | 输出是否切题回答了 prompt | output + prompt (sample.prompt) |
-| `context_recall` | gold context 中的关键信息是否在输出中被使用 | output + reference (assertion.reference 或 evaluationContext.reference fallback) |
+| `faithfulness` | 输出是否被声明的 context 支持 | output + assertion.reference，回退至 evaluationContext.reference |
+| `answer_relevancy` | 输出是否切题 | output + 文本输入 input.text，编译为 criterion.question |
+| `context_recall` | 声明的参考事实是否在输出中使用 | output + assertion.reference，回退至 evaluationContext.reference |
 
-三个一起用最有效——RAG 失败模式经常是"流畅地编造"(answer_relevancy 高 + faithfulness 低),靠任何单一 metric 看不出。
+这些指标检验声明的参考资料与输出的关系，不证明参考资料本身正确，也不单独判定检索器召回质量。按待验证问题选择指标；同时使用多个指标仍须明确各自输入和阈值。
 
-## 设计选择 — 为什么是单 LLM 调用而非 RAGAS 多步
+## 设计选择 — 为什么是单 LLM 调用而非 RAGAS 多步 {#设计选择-—-为什么是单-llm-调用而非-ragas-多步}
 
-[RAGAS](https://docs.ragas.io/) 的标准实现是 statement-decomposition:
+当前 evaluator 对每条 RAG 观测发起一次 1–5 分评委请求，不做原子陈述拆分或逐句评分。一次请求不等于固定成本或延迟，也不能提供逐条事实的诊断。
 
-1. 用 LLM 把输出拆成原子陈述
-2. 用 LLM 逐条判断每个陈述是否被 context 支持
-3. ratio = supported / total
+评委返回的原始分数在 evaluator 内与 `threshold` 比较，生成 Boolean metric observation（若有 negation，再反转判定）；原始分数、理由和阈值保留在 evidence。RAG assertion 被显式归入 `fact` layer，后续统计消费的是已声明的观测及分析结果，不能把原始 1–5 分直接说成 ratio 或连续 composite 分数。
 
-这个流程**更可解释**(能看到哪条陈述错了)、但 **LLM 调用次数随原子陈述条数线性增长**,且引入两轮 LLM 噪声。
+`--judge-repeat` 和 `--judge-models` 配置 rubric 评委，不会自动给这三类 RAG assertion 增加重复或 ensemble。需要重复校准或逐句诊断时，必须另行声明测量设计或实现 custom evaluator；不能靠这些 flag 推定 RAG 已获相同保证。
 
-omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致(`semantic_similarity` 同形态)。优势:
-
-- 单次调用,cost 与 latency 都可预测
-- 与 omk 已有的 length-debias / α / bootstrap 严谨性框架自然组合(单分数进 ratio 进 layer 进 composite 进 bootstrap CI)
-- 不引入第二轮 LLM 噪声
-
-劣势:
-
-- 粒度比 RAGAS 粗 — 看不到具体哪条陈述错了
-- judge 自身的 1-5 评分稳定性影响明显 — 建议配合 `--judge-repeat 3` 或 `--judge-models claude:opus,openai-api:gpt-4o` ensemble 校准
-
-需要 RAGAS 级粒度的场景：用 `custom` assertion 自己实现 statement-decomposition,或者跨层 wrapping omk 的 LLM judge 输出。
-
-## Prompt 形态 (1-5 评分锚)
+## Prompt 形态 (1-5 评分锚) {#prompt-形态-1-5-评分锚}
 
 三个 metric 的判分锚点由 `src/eval-workflows/instruments/prompts/judge-prompts.ts` 的 RAG 评委 prompt builder 定义：
 
-### faithfulness
+### faithfulness {#faithfulness}
 - 5 = 全部陈述都有 context 支持，无编造
 - 4 = 多数有支持，有 1-2 处不重要的编造
 - 3 = 一半有支持
 - 2 = 多数无支持
 - 1 = 完全编造或与 context 矛盾
 
-默认 threshold = 3 (>= 才 pass)。建议生产场景用 4。
+默认 threshold = 3 (>= 才 pass)。阈值应按目标场景显式声明；默认值不是生产验收标准。
 
-### answer_relevancy
+### answer_relevancy {#answer-relevancy}
 - 5 = 完整切题回答，无冗余无遗漏
 - 4 = 切题但有少量冗余或小遗漏
 - 3 = 部分切题，部分跑题或避而不答
@@ -57,7 +42,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 
 默认 threshold = 3。
 
-### context_recall
+### context_recall {#context-recall}
 - 5 = 全部关键事实被覆盖
 - 4 = 大部分覆盖，缺 1-2 条次要事实
 - 3 = 一半覆盖
@@ -66,9 +51,9 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 
 默认 threshold = 3。
 
-## Length-debias 自动继承
+## Length-debias 自动继承 {#length-debias-自动继承}
 
-三个 metric 的 judge prompt **自动包含与主 judge 同款的"长度不是质量信号"段落**，下面按原始字节原样引用（评委 prompt 是单一语言仪器，见[评分等价规范 §4](./evaluation-scoring-equivalence.md)）:
+三个 RAG prompt 恒含短版 `RAG_LENGTH_DEBIAS` 和 `RAG_PRESENTATION_NEUTRALITY`。以下按原始字节引用长度去偏段落；它与 rubric 全版是不同的冻结仪器，详见[评分等价规范](./evaluation-scoring-equivalence.md)。
 
 ```
 ## 重要：长度不是质量信号
@@ -76,22 +61,21 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 简洁正确的回答与冗长正确的回答应得相同分数。
 ```
 
-这意味着 length-debias 保护**自动覆盖** RAG metrics —— 不需要单独配置。
+`--no-debias-length` 只作用于 rubric，不能关闭 RAG 的这两段指令。包含指令表达评委标准，不证明现实偏置已被消除。
 
-## 与 RAGAS / DeepEval 的对比
+## 与 RAGAS / DeepEval 的对比 {#与-ragas-deepeval-的对比}
 
-| 维度 | omk RAG metrics | RAGAS | DeepEval |
-|---|---|---|---|
-| Faithfulness 实现 | 单调用 1-5 分 | statement decomp | LLM-based with statement extraction |
-| Answer Relevancy | 单调用 1-5 分 | embedding-based + LLM | LLM-based |
-| Context Recall | 单调用 1-5 分 | statement decomp | LLM-based |
-| Length-debias | ✓ (与主 judge 同框架) | ✗ | ✗ |
-| Bootstrap CI | ✓ (composite 层) | ✗ | ✗ |
-| Krippendorff α | ✓ (--gold-dir) | ✗ | ✗ |
+本规范只声明 OMK 已实现的行为，不对其他框架的当前版本作能力缺失或统计可靠性排名。跨工具比较必须记录版本、仪器、用例、阈值和统计单元；不同定义的同名指标不能直接横比。
 
-omk 的差异化在"严谨性叠加":粒度比 RAGAS 粗，但每个 1-5 分都自动落入 omk 的统计框架，有 bootstrap CI、有 α 锚点、有 length-debias。RAGAS 给你更细的诊断,omk 给你更可靠的统计结论。
+| 边界 | 当前 OMK 行为 |
+|---|---|
+| 原始评委量尺 | 1–5 分，保存在 evidence |
+| Metric observation | 阈值化后的 Boolean，不是原始分数 ratio |
+| Composite / comparison | 使用封存的分析图、policy 和证据，不自动校准 RAG 量尺 |
+| 重复评委 / ensemble | rubric 的配置不会自动应用到 RAG assertions |
+| 去偏指令 | RAG 短版恒开；效果仍需要实测 |
 
-## 用法示例
+## 用法示例 {#用法示例}
 
 ```yaml
 samples:
@@ -123,14 +107,16 @@ context_recall 也可以传独立的 gold key facts:
   reference: "key fact A; key fact B; key fact C"
 ```
 
-## 已知边界
+## 已知边界 {#已知边界}
 
-1. **judge 自身 1-5 评分有 ±1 分噪声** — 用 `--judge-repeat 3+` 抑制
-2. **跨厂商 judge 之间 absolute 分数可能差 0.5-1 分** — 同 report 内只用一个 judge model 比较
-3. **threshold 默认 3 偏宽松** — 生产场景建议用 4 或更高
+1. 原始分数和阈值尚无适用于所有任务的噪声或误差上界，不能声称固定 ±1 分或固定跨厂商偏差。
+2. 比较时固定评委身份、输入资料、阈值和封存设计；更换模型或仪器后重新检查可比性。
+3. 默认 threshold = 3，只是默认判定条件；验收标准需要用户按任务预先声明。
 
-## 参考文献
+## 参考文献 {#参考文献}
 
-- RAGAS: [Es et al. 2024 — RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)
-- LLM-as-Judge bias survey: [Zheng et al. 2023](https://arxiv.org/abs/2306.05685)
-- Length bias in LLM judges: [Wang et al. 2024 — AlpacaEval LC](https://arxiv.org/abs/2404.04475)
+研究背景保留原始出处，不作为当前第三方能力或 OMK 接入范围的证明：
+
+- [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)
+- [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685)
+- [AlpacaEval LC](https://arxiv.org/abs/2404.04475)

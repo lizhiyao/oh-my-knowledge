@@ -6,7 +6,7 @@
 
 1. 先读概念定义，再读 **shared** 的术语与存储边界。
 2. 知识建设按 **entities → knowledge** 阅读：识别来源对象、核对候选、组织已保留知识，再维护知识与载体。实体身份负责组织入口，不裁决知识主张的真假。
-3. 受控比较按 **evaluation** 阅读：Core → 输入编译 → Runtime → 持久化与 Studio 投影，再读评分与用例设计。
+3. 受控比较按 **evaluation** 阅读：Core → 输入编译 → Runtime → 持久化与 Studio 投影，再读评分；用例编写见 guides。
 4. **observe** 解释真实工作记录中的观测信号。信号可以帮助准备下一次比较，但不证明知识完整性或因果收益。
 
 ## 状态与权威边界
@@ -38,7 +38,7 @@
 
 | 文档 | 职责与状态 |
 |---|---|
-| [知识领域模型](knowledge/knowledge-domain-model.md) | 设计草案与案例推演，不作为字段、存储、命令已定稿或产品闭环已完整交付的依据。 |
+| [知识领域模型](knowledge/knowledge-domain-model.md) | 领域设计、案例推演与首版裁决；现行存储和实现以提取／知识库规范为准，不表示整稿已交付。 |
 | [实体知识库](knowledge/knowledge-library.md) | 现行组织与维护契约：显式工作区、人工确认来源关联、精确修订和载体选择。 |
 
 领域模型帮助理解职责与一致性目标，知识库及实体提取规范说明已实现边界。知识正文、来源身份、组织历史及载体版本各自负责不同记录；保留知识是维护决定，不是真实性裁决。
@@ -47,23 +47,32 @@
 
 | 文档 | 职责与状态 |
 |---|---|
-| [Evaluation Core vNext](evaluation/eval-core-vnext.md) | 已接受的架构 RFC，记录现行 Core 契约及历史迁移依据。 |
+| [Evaluation Core vNext](evaluation/eval-core-vnext.md) | 已采纳的架构 RFC 与历史决策；精确现行 wire 契约见 Core API，不以旧类型草图为准。 |
 | [CLI 输入编译](evaluation/cli-evaluation-input-compilation.md) | 现行 Parse、Resolve、Compile 与宿主装配边界。 |
 | [Evaluation Runtime Adapter](evaluation/evaluation-runtime-adapter.md) | 现行生产 binding、资源租约、执行与宿主组合边界。 |
 | [产物持久化](evaluation/evaluation-artifact-persistence.md) | 现行产物持久化、catalog 与认证消费边界。 |
 | [Studio 投影](evaluation/evaluation-studio-projection.md) | 现行 Core catalog、view-model、渲染与路由边界。 |
 | [评分等价性](evaluation/evaluation-scoring-equivalence.md) | 已实施的评分迁移，历史阶段措辞保留为设计依据。 |
 | [评分管道](evaluation/scoring.md) | 现行证据图、评分层次与 Decision 边界。 |
-| [RAG 指标](evaluation/rag-metrics-spec.md) | RAG 指标定义与评委仪器，结合评分等价性阅读。 |
-| [用例设计](evaluation/sample-design-spec.md) | 现行 v3 封套与测量设计指南；完整 Schema 及 adapter 契约以[用例格式](../reference/eval-sample-format.md)为准。 |
-| [通用用例提案](evaluation/general-sample-proposal.md) | 历史提案，兼容窗口与迁移工具建议已被当前只支持 v3 的契约替代。 |
+| [RAG 指标](evaluation/rag-metrics-spec.md) | 现行 RAG 仪器及阈值化 Boolean 观测；rubric 重复／ensemble 不自动接入 RAG。 |
+| [通用用例提案](evaluation/history/general-sample-proposal.md) | 历史提案，兼容窗口与迁移工具建议已被当前只支持 v3 的契约替代。 |
 
 ## 观测信号 · `observe/`
 
 | 文档 | 职责与状态 |
 |---|---|
-| [知识缺口信号](observe/knowledge-gap-signal-spec.md) | gap 信号与聚合的 v0.1 设计草案；当前用户动线和限制见[观测指南](../guides/observe-production.md)。 |
+| [知识缺口信号](observe/knowledge-gap-signal-spec.md) | 部分交付算法与历史草案；四类启发式信号已接入观测，分类器未自动接入，评测趋势／阈值 flag 等仍为设计。 |
+| [有效观测复核](observe/effective-observation-review.md) | 现行 inbox 派生视图、复核优先级与证据限制；不覆盖原始记录。 |
+
+## Studio 宿主与读取 · `studio/`
+
+| 文档 | 职责与状态 |
+|---|---|
+| [Studio 领域索引](studio/index.md) | 当前契约与历史测量记录分开阅读。 |
+| [Studio 数据流](studio/studio-data-flow.md) | 现行预加载／客户端知识页、API、缓存与刷新边界。 |
+
+用例编写和核对属于[用例设计指南](../guides/sample-design.md)；字段查阅属于[样本格式](../reference/eval-sample-format.md)。概念与理由见[原理索引](../explanation/index.md)，本目录不复制概念定义。历史测量记录归对应领域的 `history/`，不直接承诺当前性能。
 
 ## 路径与引用
 
-英文与中文来源目录在 `docs/specs/` 和 `docs/zh/specs/` 下逐项镜像，每篇规范每种语言只维护一份。领域目录用于仓库阅读；文档站通过路由映射保留已有 `/specs/<name>` 和 `/zh/specs/<name>` URL 及锚点。现行仓库链接改为新来源路径；冻结提交或证据包中的路径描述原始快照，保持不变。
+英文与中文来源目录在 `docs/specs/` 和 `docs/zh/specs/` 下逐项镜像，每篇规范每种语言只维护一份。领域目录用于仓库阅读；文档站通过路由映射保留已有规范、移入规范的原理页及用例指南的旧 URL 和锚点；来源归类与公开地址各自维护。现行仓库链接改为新来源路径；冻结提交或证据包中的路径描述原始快照，保持不变。

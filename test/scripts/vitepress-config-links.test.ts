@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
@@ -73,17 +73,19 @@ function localeMirrorPaths(links: string[]): { english: string[]; chinese: strin
   return { english, chinese };
 }
 
+function markdownPages(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap(entry => {
+    if (entry.name.startsWith('.') || entry.name === 'node_modules') return [];
+    const path = join(root, entry.name);
+    return entry.isDirectory() ? markdownPages(path) : entry.name.endsWith('.md') ? [path] : [];
+  });
+}
+
+const publishedPages = markdownPages(DOCS_ROOT).map(path => pageRoute(relative(DOCS_ROOT, path)));
+
 function resolvesToPublishedPage(link: string): boolean {
   const pathname = link.split(/[?#]/u, 1)[0]!.replace(/^\/+|\/+$/gu, '');
-  const base = join(DOCS_ROOT, pathname);
-  return [
-    `${base}.md`,
-    join(base, 'index.md'),
-  ].some((candidate) => existsSync(candidate)) || ['', 'zh/'].some(locale => {
-    const root = join(DOCS_ROOT, locale, 'specs');
-    return readdirSync(root, { recursive: true }).map(String).some(file =>
-      file.endsWith('.md') && pageRoute(`${locale}specs/${file}`) === `${pathname}.md`);
-  });
+  return publishedPages.includes(`${pathname}.md`) || publishedPages.includes(`${pathname}/index.md`);
 }
 
 describe('VitePress config internal links', () => {
@@ -144,7 +146,7 @@ describe('domain specifications and stable published routes', () => {
     const root = `docs/${locale}specs`;
     const files = readdirSync(root, { recursive: true }).map(String).filter(path =>
       path.endsWith('.md') && !path.endsWith('index.md') && !path.includes('/history/'));
-    const domains = new Set(['shared', 'entities', 'knowledge', 'evaluation', 'observe']);
+    const domains = new Set(['shared', 'entities', 'knowledge', 'evaluation', 'observe', 'studio']);
     const index = readFileSync(`${root}/index.md`, 'utf8');
     const localeConfig = config.locales![locale ? 'zh' : 'root']!;
     const links = sidebarLinks(localeConfig.themeConfig!.sidebar as SidebarItem[]);
@@ -155,7 +157,7 @@ describe('domain specifications and stable published routes', () => {
       expect(extra).toBeUndefined();
       expect(index).toContain(`](${file})`);
       const route = pageRoute(`${locale}specs/${file}`);
-      expect(route).toBe(`${locale}specs/${name}`);
+      expect(route).toBe(`${locale}${['effective-observation-review.md', 'studio-data-flow.md'].includes(name!) ? 'explanation' : 'specs'}/${name}`);
       routes.push(route);
       expect(links.filter(link => link === `/${route.replace(/\.md$/, '')}`)).toHaveLength(1);
     }
@@ -163,6 +165,25 @@ describe('domain specifications and stable published routes', () => {
     expect(links).toContain(`/${locale}specs/`);
     expect(index).toContain('](entities/index.md)');
     expect(links).toContain(`/${locale}specs/entities/`);
+  });
+
+  it('keeps a unique route for every source, including moved guides and historical records', () => {
+    expect(new Set(publishedPages).size).toBe(publishedPages.length);
+    for (const locale of ['', 'zh/']) {
+      for (const [source, route] of [
+        ['guides/sample-design', 'specs/sample-design-spec'],
+        ['specs/evaluation/history/general-sample-proposal', 'specs/general-sample-proposal'],
+        ['specs/observe/effective-observation-review', 'explanation/effective-observation-review'],
+        ['specs/studio/studio-data-flow', 'explanation/studio-data-flow'],
+        ['specs/studio/history/studio-performance-baseline', 'explanation/studio-performance-baseline'],
+      ]) {
+        for (const extension of ['', '.md', '.html']) {
+          expect(pageRoute(`${locale}${source}${extension}`)).toBe(`${locale}${route}${extension}`);
+        }
+        expect(resolvesToPublishedPage(`/${locale}${route}`)).toBe(true);
+      }
+      expect(pageRoute(`${locale}specs/studio/index.md`)).toBe(`${locale}specs/studio/index.md`);
+    }
   });
 
   it.each(['', 'zh/'])('keeps every %s entity report indexed as history with its original published URL', locale => {
@@ -188,7 +209,7 @@ describe('domain specifications and stable published routes', () => {
       path: resolve('docs/zh/specs/terminology-spec.md'),
       realPath: resolve('docs/zh/specs/shared/terminology-spec.md'),
     };
-    expect(pageHref('../evaluation/sample-design-spec.md#三', env)).toBe('./sample-design-spec.md#三');
+    expect(pageHref('../../guides/sample-design.md#三', env)).toBe('./sample-design-spec.md#三');
     expect(pageHref('../../reference/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
     const reference = { path: resolve('docs/zh/reference/glossary.md') };
     expect(pageHref('../specs/evaluation/scoring.md#decision', reference)).toBe('../specs/scoring.md#decision');

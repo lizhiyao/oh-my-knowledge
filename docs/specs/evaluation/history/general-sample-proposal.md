@@ -1,10 +1,10 @@
 # General sample proposal (#842)
 
-> Historical research record (#842 / #863). Implementation subsequently adopted v3-only: no v2 reader or migration tool, and no rewriting old user files or reports. That decision supersedes migration-tool and compatibility-window proposals below. See the [sample format](../../reference/eval-sample-format.md) for the current contract and verified support.
+> Historical research record (#842 / #863). Implementation subsequently adopted v3-only: no v2 reader or migration tool, and no rewriting old user files or reports. That decision supersedes migration-tool and compatibility-window proposals below. See the [sample format](../../../reference/eval-sample-format.md) for the current contract and verified support.
 
-Current production-path acceptance: `yarn vitest run test/eval-workflows/sample-v3-production.test.ts`. This replaces the historical prototype in the active test tree.
+Current production-path acceptance: `yarn test test/eval-workflows/sample-v3-production.test.ts`. This replaces the historical prototype in the active test tree.
 
-Status: design review draft with offline feasibility evidence; public-contract implementation is not approved. This document does not publish a new sample schema or change `omk.eval-sample-set/v2`, prompt bytes, scoring, or persisted identities. See [issue #842](https://github.com/lizhiyao/oh-my-knowledge/issues/842).
+Historical status at drafting: design review draft with offline feasibility evidence; public-contract implementation is not approved. This document does not publish a new sample schema or change `omk.eval-sample-set/v2`, prompt bytes, scoring, or persisted identities. See [issue #842](https://github.com/lizhiyao/oh-my-knowledge/issues/842).
 
 ## Research and direction
 

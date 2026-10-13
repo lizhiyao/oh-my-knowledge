@@ -146,7 +146,7 @@ custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构�
 | `cost_max` / `latency_max` | 成本/延迟限制 |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | Agent 工具调用断言 |
 | `tool_output_contains` / `tool_input_contains` / `tool_input_not_contains` | 工具输入/输出内容匹配（`_not_` 为「不得包含」） |
-| `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../specs/evaluation/sample-design-spec)） |
+| `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../guides/sample-design.md)） |
 | `turns_min` / `turns_max` | 多轮对话轮数限制 |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
 | `levenshtein_max` | 编辑距离 ≤ value（用于「输出跟参考几乎一致」场景） |

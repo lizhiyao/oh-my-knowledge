@@ -6,14 +6,16 @@
 
 Studio 有两个宿主，共享同一应用层：
 
-- **Next.js 宿主（`omk studio`、DSH 插件 `/omk observe`、CLI 评测预览）**：`next-server.ts` 拦截**全部 Studio 页面地址**——`/observe` 与 `/observe/conversations/*`、`/observe/inbox`、观测健康四页（`/observe/health`、`/observe/health/:reportId`、`/observe/health-diff`、`/observe/skill-trend/:skill`）、`/measure*`、`/knowledge` 与 `/knowledge/skills/*`、`/agents`，外加 `/_next/*` 静态资源——并**每请求恰好装载一次**页面模型：经 `http/pages/` 的装载器（`loadObservePage` / `loadInboxPage` / `loadHealthPage` / `loadKnowledgePage` / `loadMeasurePage` / `loadAgentsPage`）。这些装载器只服务本宿主：它们在 Next 开始流式响应前定下 400/404/503 契约，「有路由但记录不存在」因此一律是宿主的纯文本 404（#902 §三）。`/agents` 是刻意的例外：盘上缺 `omk agents` 报告或报告读不动都是页面能呈现的事实，因此它把「还没跑过命令」与「报告读不动」分开写给用户，而不是起一个 503。地址根本没有路由时不落进 Next，由 HTTP 适配器给纯文本 404；带壳的 `not-found` 文档只是 Next 客户端路由失配时的边界，段内的 `notFound()` 也担不起服务端契约，因为根 `loading.tsx` 会先刷出壳层，状态码因此停在 200。模型存入经 `Symbol.for` 桥接的 AsyncLocalStorage（CLI 模块图与 Next 产物解析到同一个 store），随后渲染。服务端组件经 `web/catalog.tsx` 读取快照；store 缺失是装配错误（`studio_context_missing` → 500），不是数据源失败（→ 503）。拦截集合跟随宿主的开关收缩：`observationInbox: false` 摘掉收件箱页面与 API，`studioPages: false` 摘掉整个观测／知识页面组，被摘掉的路径不再拦截，落回 HTTP 适配器得到 404。CLI 评测预览设置 `studioPages: false`：它只提供 `/measure`，并且同一个开关让壳层不渲染一级导航，而不是给出指向 404 的链接。
+- **Next.js 宿主（`omk studio`、DSH 插件 `/omk observe`、CLI 评测预览）**：`next-server.ts` 分两种方式接管页面。`/observe` 与对话／收件箱／健康页、`/measure*`、`/knowledge` 与 `/knowledge/skills/*`、`/agents` 由 `http/pages/` 预加载模型，在 Next 流式响应前处理 400／404／503，再通过 `Symbol.for` 桥接的 AsyncLocalStorage 向服务端组件提供请求快照。`/agents` 对缺失或不可读报告呈现页面状态。缺失 store 是装配错误（`studio_context_missing` → 500），区别于数据源不可用。
+- **客户端知识页**：`/knowledge/candidates`、`/knowledge/entities` 和 `/knowledge/library` 同样由 Next 接管，但不预加载知识模型；客户端通过 `/api/*` 查询候选、实体、知识库与载体并呈现加载／失败状态。不能把它们说成每请求一份 RSC 知识快照，也不能从页面 200 推定 API 读取成功。
+- **宿主开关与未匹配地址**：`observationInbox: false` 关闭收件箱页面和 API；`studioPages: false` 关闭观测／知识页面组。CLI 评测预览只提供 Measure 页面并隐藏一级导航；`/_next/*` 静态资源仍由 Next 服务。未匹配地址交还 HTTP handler，得到纯文本 404；Next 客户端 `not-found` 不替代宿主的预加载错误契约。
 - **独立 report-server 宿主**：`request-handler.ts` 每请求解析一次目录选择，经声明式路由表（`routes/router.ts`）分发到 JSON API、SSE、`/health` 与纯文本状态文档。它不渲染任何页面 HTML——最后两页只读报告迁到 Next 后，共享 HTML 渲染层已删除，因此即使 Next 宿主裁掉了页面组，这里也不会有页面地址被服务，那条路径直接 404。Next 宿主包裹的就是这个 handler，未被拦截的路径——包括评测 JSON 投影 `/api/reports`，以及 `GET /`（挂了观测路由组的宿主 302 到 `/observe`，其余给 404）——都由它服务。`studioPages: false` 同时抑制 observations 目录的创建副作用，因此只挂评测页的宿主不会在用户项目里落盘。
 
 ## 边界
 
-- **查询**（`application/`）：`buildSkillIndex` 是唯一带缓存的查询（有界 keyed LRU，容量 8；每请求按文件元数据重算指纹）。`listAnalyses` / `loadAnalysis` / `querySkillTrend` 刻意保持无缓存单次全扫。会话目录维护按线程的 rollout 索引文件缓存，按 size + mtime 校验新鲜度。
-- **投影**（`view-models/` 与页面装载器）：页面模型每请求从同一快照投影一次——HTML props 与 activity revision 来自同一个内存对象，页面不可能渲染出与自身内容不一致的 revision。
-- **序列化**：页面模型只经一次 RSC 边界传递；API 返回 JSON 且 `Cache-Control: no-store`。
+- **查询**（`application/`）：旧 Skill 报告查询中，`buildSkillIndex` 使用缓存（有界 keyed LRU，容量 8；键包含目录与展示语言，每请求按文件元数据重算指纹）。`listAnalyses` / `loadAnalysis` / `querySkillTrend` 刻意保持无缓存单次全扫。会话目录维护按线程的 rollout 索引文件缓存，按 size + mtime 校验新鲜度。
+- **投影**（`view-models/` 与页面装载器）：预加载页面模型从请求快照投影一次——HTML props 与 activity revision 来自同一个内存对象，页面不可能渲染出与自身内容不一致的 revision。
+- **序列化**：预加载模型经 RSC 边界传递；客户端知识页独立消费 API；API 返回 JSON 且 `Cache-Control: no-store`。
 - **缓存**：见上；不缓存任何渲染后的 HTML。
 
 ## 刷新模型
@@ -28,14 +30,14 @@ revision 闸门意味着只有用户可见的生命周期状态变化时才触�
 
 ## 核验结论（#836 §1.1）
 
-1. **每请求一份快照。** 两个宿主都每请求装载一次页面模型，revision 从同一对象派生；并发请求经 ALS 隔离（`next-context.test.ts` 覆盖）。
-2. **无重复刷新机制。** 每个页面只使用一条通道（轮询**或** SSE），不存在既轮询又流式的页面。
+1. **每请求一份快照。** Next 预加载页面每请求装载一次模型；独立宿主不加载 HTML 页面模型，revision 从同一对象派生；并发请求经 ALS 隔离（`next-context.test.ts` 覆盖）。
+2. **无重复刷新机制。** 这里讨论的对话生命周期轮询与任务轨迹 SSE 各有用途，不能将历史结论泛化为所有页面只能使用一种数据请求。
 3. **revision 覆盖。** 轨迹 revision 基于文件 stat，覆盖一切内容变化；列表/详情 revision 覆盖全部生命周期级可见变化（本批补齐标题改名）；增长信号按设计排除，见上。
 4. **竞态、取消与清理路径。** 客户端轮询在卸载时中止、`document.hidden` 时跳过、串行化并发请求；SSE 客户端 250ms 防抖刷新，`liveObservable: false` 与 `trajectory-error` 时关闭，并提供重试。服务端 `PollingSubscriptionHub` 每个任务键共享一条顺序轮询循环，终态、出错或最后一个订阅者退订时释放，定时器 unref，`close()` 随服务关闭执行。
 5. **失败语义。** 刷新失败保留已渲染数据并给出显式重试（`ActivityNotice`）；装配错误与源不可用分别产出 500/503，符合错误语义批次的契约。
 
 ## 已记录的取舍
 
-- 对话列表全量传输、客户端过滤分页（20 条/页）。在已测规模下可接受（见 [Studio 性能基线](/zh/explanation/studio-performance-baseline)）；出现远端托管场景时重估。
+- 对话列表全量传输、客户端过滤分页（20 条/页）。历史测量仅证明当时实现与数据规模（见[Studio 性能基线](history/studio-performance-baseline.md)），不能直接作为当前 Next 页面或远端托管的容量验收。
 - Measure 页面当前没有实时刷新；运行中的评测靠导航重新查看。这是记录在案的决策，不是疏漏。
 - 标题改名会触发 revision；增长信号不会。未来若某界面需要在列表/详情页显示实时计数，应显式加入 snapshot 状态，而不是隐式带入。

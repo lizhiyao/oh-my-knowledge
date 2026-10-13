@@ -6,7 +6,7 @@ OMK uses doctor, eval, and observe to answer different questions across an artif
 |---|---|---|---|
 | **doctor** | `omk doctor` | Is this artifact even well-formed enough to measure? | lint + typecheck + smoke test |
 | **eval** | `omk eval` | Does current evidence support this change? | the CI test suite |
-| **observe** | `omk observe` | Does it hold up on real production traces? | log analysis |
+| **observe** | `omk observe` | What performance, problem, and experience signals appear in real tasks? | log analysis |
 
 <a id="knowledge-entities-and-carriers"></a>
 

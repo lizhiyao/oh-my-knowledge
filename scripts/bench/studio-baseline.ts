@@ -2,7 +2,7 @@
 //
 // 在小 / 中 / 大三档代表性数据集上，经真实 createReportServer(port 0) 测量：
 // 冷 / 热查询耗时、目录扫描成本（含在冷响应内）、响应体积、并发下事件循环延迟。
-// 产物是纯 markdown 表格，供 docs/explanation/studio-performance-baseline.md 引用。
+// 产物是纯 markdown 表格，供 docs/specs/studio/history/studio-performance-baseline.md 引用。
 //
 // 运行：yarn studio:baseline（先 build，再执行 dist-scripts/bench/studio-baseline.js）。
 // 复现条件：同一台机器、同一 commit；数值只做同条件前后对比，不做跨机绝对值对比。

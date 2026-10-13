@@ -1,5 +1,7 @@
 # Studio performance baseline
 
+> Historical measurement record: the values and retired HTML routes below belong to the version measured on 2026-09-11. They are not acceptance evidence for current Next Studio performance. See [Studio data flow](../studio-data-flow.md) for current request and refresh boundaries.
+
 This page records the capacity baseline for the Studio HTTP surface (issue #836 §1.2): three representative dataset scales, cold/warm query latency, directory-scan cost, response sizes, and event-loop delay under concurrency — plus the optimization decisions that follow from the measurements.
 
 Measured on 2026-09-11 on a single machine, on the `codex/836-studio-runtime-arch` branch. Reproduce with:

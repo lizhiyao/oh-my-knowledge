@@ -117,13 +117,13 @@
 
 #### 6.1 Sample 元数据字段
 
-Sample schema 含一组可选元数据字段，纯文档 / 诊断用，**不参与 grading / judge / verdict**。详见 [docs/zh/specs/evaluation/sample-design-spec.md](../evaluation/sample-design-spec.md)。
+Sample schema 含一组可选元数据字段，在公开 v3 封套的 `annotations` 中声明，供审计使用，**不参与 grading / judge / verdict**。详见 [用例设计指南](../../guides/sample-design.md)。
 
-- **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
+- **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。作者自行保持标签一致；当前未实现自动归一。
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
 - **`construct?: string`** — 该 sample 测的 construct 类型。Suggested:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好)/ `'capability'`(测某具体能力)。Free-form string 允许自定义。
 - **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
-- **`covers?: { targetKind: string; ref: string }[]`** — 这条 sample 可选声明的 skill 结构锚点，Skill Map 用它展示已声明 / 未声明的定义节点。
+- **`covers?: { targetKind: string; ref: string }[]`** — 这条 sample 可选声明的 skill 结构锚点，作为作者注释保留，不证明实际执行覆盖。
 
 **construct 跟 capability 区别**(用户最常混淆的两个字段):
 - **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性，跑 skill-v1-vs-skill-v2 是测质量。
@@ -468,7 +468,7 @@ Claude runtime 有三条相关通道：SDK / CLI 的 skill 发现、子代理 `S
   - `[]` → **请求严格隔离**：omk 提供空的逐次运行 cwd，并应用当前执行器支持的全部隔离控制
   - `[name1, ...]`（非空）→ **在统一 execution-plan 边界拒绝**：原生 agent、API 与自定义执行器之间不存在可移植且可证明的白名单机制；严格隔离请用 `[]`，不隔离则省略
 - **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
-- **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照，跨报告对比 verdict / Δ 时校验
+- **隔离身份**：隔离声明由输入编译封入执行控制，结合 Runtime identity 和执行坐标验证复用；现行报告没有 `meta.skillIsolation` 字段，详见[输入编译规范](../evaluation/cli-evaluation-input-compilation.md)。
 
 ### 3. 默认值与优先级
 
@@ -494,13 +494,13 @@ baseline-kind 默认 `[]`（strict），其他 kind 默认 `undefined`（执行�
 
 **为什么 cwd 单独列出**：provider 特定的 flag 无法阻止 agent 用普通文件工具读取评测 workspace 下的 `skills/<name>/`。因此严格 baseline 在没有显式 cwd 时，每次执行都使用一个全新的空目录。**用户显式指定 baseline cwd 时，omk 不会替换它**，因为该目录属于用户有意纳入测量的 runtime context。
 
-注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径，需要再加层 sandbox 保护(out-of-scope)。
+注：isolated-cwd 不是 sandbox，baseline 仍可能读取任意绝对路径。空 cwd 和发现控制不能保证阻止 prompt 引导的读取；需要文件访问隔离的场景应另行提供 sandbox。
 
 ### 5. cache key 版本
 
-cache key 当前使用 `v9:` prefix，绑定模型、prompt、cwd、隔离声明、执行器、runtime 指纹、mocks、strict-mock 模式、effort、artifact 内容指纹，以及 `return_file` 引用的外部 mock fixture 内容。缓存结果保留完整 turns / toolCalls，并与冷执行一样经过 source-neutral 返回值校验和工具身份归一化；任一 construct-validity 输入变化都不会静默复用不兼容结果。
+Core 分阶段持有缓存，不再使用旧 executor 的 `v9:` 前缀。Execution key 的派生身份为 `omk.execution-cache-key/v2`，绑定 `executionCoordinateDigest` 和 `trialId`；Evaluation key 为 `omk.evaluation-cache-key/v2`，绑定 evaluation plan、evaluation id、evaluator Runtime、source trust 及 bindings。读回还验证 record、plan 与来源身份，摘要匹配不能替代信任校验。
 
-报告和 resume 可比性使用的样本 hash 还会纳入每个自定义 assertion 模块及其可静态解析的 ESM import 图。非字面量 dynamic import 会记录为未解析标记，无法读取或解析的模块也会写入显式标记，不会被当作“依赖未变化”。依赖展示路径会尽量相对评测用例 bundle 保存，因此相同 checkout 仅移动目录不会改变测量身份。
+隔离、输入和外部依赖如何进入封存身份，由[输入编译](../evaluation/cli-evaluation-input-compilation.md)与[Runtime Adapter](../evaluation/evaluation-runtime-adapter.md)规范规定；不从旧报告字段或缓存前缀推导现行可比性。
 
 ### 6. executor 兼容
 

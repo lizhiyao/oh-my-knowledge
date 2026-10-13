@@ -1,54 +1,39 @@
-# RAG metrics spec
+# RAG metrics specification
 
-Design, prompt shape, and relationship to mainstream approaches for omk's three RAG-specific assertion types (`faithfulness` / `answer_relevancy` / `context_recall`). See the companion example: [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval).
+This page specifies inputs, judge instruments, and result boundaries for current `faithfulness`, `answer_relevancy`, and `context_recall`. `measurement/evaluators/llm-assertions.ts`, `instruments/prompts/judge-prompts.ts`, and `assertions/layers.ts` define the implementation. The [sample format](../../reference/eval-sample-format.md) owns public fields. See [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval).
 
-## How the three relate
+## How the three metrics relate {#how-the-three-relate}
 
-| Metric | Question it answers | Input requirements |
+| Metric | Question | Required input |
 |---|---|---|
-| `faithfulness` | Is the output supported by the context (anti-hallucination)? | output + context (`evaluationContext.reference` or `assertion.reference`) |
-| `answer_relevancy` | Does the output actually answer the prompt? | output + prompt (`sample.prompt`) |
-| `context_recall` | Are the key facts from the gold context actually used in the output? | output + reference (`assertion.reference`, or `evaluationContext.reference` fallback) |
+| `faithfulness` | Is the output supported by the declared context? | output + assertion.reference, falling back to evaluationContext.reference |
+| `answer_relevancy` | Does the output answer the question? | output + text input input.text, compiled as criterion.question |
+| `context_recall` | Does the output use the declared reference facts? | output + assertion.reference, falling back to evaluationContext.reference |
 
-They are most useful together. RAG failures are often "fluently fabricated" (high `answer_relevancy` + low `faithfulness`), which no single metric can surface on its own.
+These metrics test the relationship between declared references and output. They prove neither the references' correctness nor retriever recall quality by themselves. Choose metrics for the question being tested; using several still requires explicit inputs and thresholds.
 
-## Design choice — why a single LLM call instead of RAGAS multi-step
+## Design choice — one LLM call instead of RAGAS multi-step {#design-choice-—-why-a-single-llm-call-instead-of-ragas-multi-step}
 
-The standard [RAGAS](https://docs.ragas.io/) implementation is statement-decomposition:
+The current evaluator makes one 1–5 judge request per RAG observation. It does not decompose or score atomic statements individually. One request guarantees neither fixed cost nor latency and provides no per-fact diagnosis.
 
-1. Use an LLM to break the output into atomic statements.
-2. Use an LLM to judge each statement against the context.
-3. ratio = supported / total
+The evaluator compares the raw score with `threshold` to produce a Boolean metric observation, then applies negation if declared. Evidence retains the raw score, reason, and threshold. RAG assertions explicitly belong to the `fact` layer. Later statistics consume declared observations and analysis results: the raw 1–5 score is not directly a ratio or continuous composite score.
 
-This flow is **more interpretable** (you can see which statement was wrong), but the number of LLM calls **grows linearly with the number of atomic statements**, and it introduces two rounds of LLM noise.
+`--judge-repeat` and `--judge-models` configure the rubric judge. They do not automatically add repeats or an ensemble to these RAG assertions. Repeated calibration or per-statement diagnosis requires a separate declared measurement design or custom evaluator; these flags do not establish equivalent RAG guarantees.
 
-omk's tradeoff: **a single 1-5 score judgment**, consistent with omk's other LLM-judge assertions (`semantic_similarity` has the same shape). Advantages:
-
-- A single call, with predictable cost and latency.
-- Composes naturally with omk's existing length-debias / α / bootstrap rigor framework (a single score flows into ratio, into the layer, into composite, into the bootstrap CI).
-- No second round of LLM noise.
-
-Drawbacks:
-
-- Coarser granularity than RAGAS — you can't see which specific statement was wrong.
-- The judge's own 1-5 scoring stability matters a lot — pair it with `--judge-repeat 3` or a `--judge-models claude:opus,openai-api:gpt-4o` ensemble to calibrate.
-
-For scenarios that need RAGAS-grade granularity: implement statement-decomposition yourself in a `custom` assertion, or wrap omk's LLM judge output across a layer.
-
-## Prompt shape (1-5 scoring anchors)
+## Prompt shape (1-5 scoring anchors) {#prompt-shape-1-5-scoring-anchors}
 
 The scoring anchors for the three metrics are implemented by the RAG prompt builders in `src/eval-workflows/instruments/prompts/judge-prompts.ts`:
 
-### faithfulness
+### faithfulness {#faithfulness}
 - 5 = every statement is supported by the context, no fabrication
 - 4 = most are supported, with 1-2 unimportant fabrications
 - 3 = half are supported
 - 2 = most are unsupported
 - 1 = entirely fabricated or contradicts the context
 
-Default threshold = 3 (>= passes). Use 4 for production scenarios.
+Default threshold = 3 (>= passes). Declare a threshold for the intended scenario; the default is not a production acceptance standard.
 
-### answer_relevancy
+### answer_relevancy {#answer-relevancy}
 - 5 = complete on-topic answer, no redundancy, no omissions
 - 4 = on-topic with minor redundancy or small omissions
 - 3 = partly on-topic, partly off-topic or evasive
@@ -57,7 +42,7 @@ Default threshold = 3 (>= passes). Use 4 for production scenarios.
 
 Default threshold = 3.
 
-### context_recall
+### context_recall {#context-recall}
 - 5 = all key facts covered
 - 4 = most covered, missing 1-2 minor facts
 - 3 = half covered
@@ -66,32 +51,31 @@ Default threshold = 3.
 
 Default threshold = 3.
 
-## Length-debias is inherited automatically
+## Length-debias is inherited automatically {#length-debias-is-inherited-automatically}
 
-The judge prompt for all three metrics **automatically includes the same "length is not a quality signal" paragraph as the main judge**. It is quoted below in its original Chinese bytes — judge prompts are a single-language instrument (see [scoring equivalence §4](./evaluation-scoring-equivalence.md)):
+All three RAG prompts always include the short `RAG_LENGTH_DEBIAS` and `RAG_PRESENTATION_NEUTRALITY` fragments. The length fragment below is quoted byte-for-byte. It is a different frozen instrument from the full rubric fragment; see [scoring equivalence](./evaluation-scoring-equivalence.md).
 
 ```
-## 重要:长度不是质量信号
-评分时聚焦内容实质,不要因输出更长就给更高分。
+## 重要：长度不是质量信号
+评分时聚焦内容实质，不要因输出更长就给更高分。
 简洁正确的回答与冗长正确的回答应得相同分数。
 ```
 
-This means the length-debias protection **automatically covers** RAG metrics — no separate configuration needed.
+`--no-debias-length` affects only the rubric judge and cannot disable either RAG fragment. Instructions declare judge standards; their presence does not prove real bias has been eliminated.
 
-## Comparison with RAGAS / DeepEval
+## Comparison with RAGAS / DeepEval {#comparison-with-ragas-deepeval}
 
-| Dimension | omk RAG metrics | RAGAS | DeepEval |
-|---|---|---|---|
-| Faithfulness implementation | single call, 1-5 score | statement decomp | LLM-based with statement extraction |
-| Answer Relevancy | single call, 1-5 score | embedding-based + LLM | LLM-based |
-| Context Recall | single call, 1-5 score | statement decomp | LLM-based |
-| Length-debias | ✓ (same framework as the main judge) | ✗ | ✗ |
-| Bootstrap CI | ✓ (composite layer) | ✗ | ✗ |
-| Krippendorff α | ✓ (--gold-dir) | ✗ | ✗ |
+This specification declares only implemented OMK behavior. It makes no current-version absence claims or statistical-reliability ranking of other frameworks. Cross-tool comparisons must record versions, instruments, samples, thresholds, and statistical units. Same-name metrics with different definitions cannot be compared directly.
 
-omk differentiates on "stacked rigor": granularity is coarser than RAGAS, but every 1-5 score drops automatically into omk's statistical framework, with a bootstrap CI, an α anchor, and length-debias. RAGAS gives you finer diagnostics; omk gives you more reliable statistical conclusions.
+| Boundary | Current OMK behavior |
+|---|---|
+| Raw judge scale | 1–5, retained in evidence |
+| Metric observation | Thresholded Boolean, not a raw-score ratio |
+| Composite / comparison | Sealed analysis graph, policy, and evidence; no automatic RAG scale calibration |
+| Judge repeats / ensemble | Rubric configuration does not automatically apply to RAG assertions |
+| Debiasing instructions | RAG short fragments always enabled; effects still need measurement |
 
-## Usage example
+## Usage example {#usage-example}
 
 ```yaml
 samples:
@@ -123,14 +107,16 @@ schemaVersion: omk.eval-sample-set/v3
   reference: "key fact A; key fact B; key fact C"
 ```
 
-## Known limitations
+## Known limitations {#known-limitations}
 
-1. **The judge's own 1-5 score carries ±1 point of noise** — suppress it with `--judge-repeat 3+`.
-2. **Absolute scores across vendors can differ by 0.5-1 point** — compare using only one judge model within a single report.
-3. **The default threshold of 3 is lenient** — use 4 or higher for production scenarios.
+1. Raw scores and thresholds have no established task-independent noise or error bound. No fixed ±1 score noise or fixed cross-provider difference is guaranteed.
+2. Fix judge identity, reference inputs, thresholds, and sealed design when comparing; reassess comparability after changing models or instruments.
+3. Default threshold = 3 is a default decision condition. Users must declare task-specific acceptance standards beforehand.
 
-## References
+## References {#references}
 
-- RAGAS: [Es et al. 2024 — RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)
-- LLM-as-Judge bias survey: [Zheng et al. 2023](https://arxiv.org/abs/2306.05685)
-- Length bias in LLM judges: [Wang et al. 2024 — AlpacaEval LC](https://arxiv.org/abs/2404.04475)
+Original research sources remain as background, not proof of current third-party capabilities or OMK integration scope:
+
+- [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)
+- [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685)
+- [AlpacaEval LC](https://arxiv.org/abs/2404.04475)

@@ -1,10 +1,15 @@
 import { dirname, relative, resolve } from 'node:path';
 
 // Source folders organize reading; published specification and report URLs stay stable.
-const domainPath = /(^|\/)specs\/(shared|entities|knowledge|evaluation|observe)\/(?!index(?:\.(?:md|html))?$)([^/]+)$/;
+const domainPath = /(^|\/)specs\/(shared|entities|knowledge|evaluation|observe|studio)\/(?!index(?:\.(?:md|html))?$)([^/]+)$/;
 
 export function pageRoute(path: string): string {
-  return path.replace(domainPath, '$1specs/$3')
+  return path
+    .replace(/(^|\/)guides\/sample-design(?=\.(?:md|html)$|$)/, '$1specs/sample-design-spec')
+    .replace(/(^|\/)specs\/observe\/(effective-observation-review(?:\.(?:md|html))?)$/, '$1explanation/$2')
+    .replace(/(^|\/)specs\/studio\/(?:history\/)?(studio-(?:data-flow|performance-baseline)(?:\.(?:md|html))?)$/, '$1explanation/$2')
+    .replace(/(^|\/)specs\/evaluation\/history\/([^/]+)$/, '$1specs/$2')
+    .replace(domainPath, '$1specs/$3')
     .replace(/(^|\/)specs\/entities\/history\/([^/]+)$/, '$1explanation/$2');
 }
 

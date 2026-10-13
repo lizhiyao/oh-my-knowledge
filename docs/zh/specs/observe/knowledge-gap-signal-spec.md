@@ -4,9 +4,12 @@
 > 作用：定义 omk 如何从 agent 评测过程中提取"知识缺口信号"，如何聚合成缺口率，如何追踪知识库的风险收敛趋势。
 > 受众：这是一篇**设计 / 规范**文档 —— 讲的是原理和确切算法。只想在报告里看 gap 信号的话，跑 `omk observe`（见 [CLI 参考](../../reference/cli)）；要查术语一句话定义见[术语表](../../reference/glossary)。
 
+> 现行边界（2026-10-13 核对）：本文含历史草案和部分已实现算法，不是整篇已交付承诺。`omk observe` 对有执行事件的真实任务记录提取四类启发式信号并聚合 `gapRate`／`weightedGapRate`；分母是实际纳入分析的记录，失败搜索并不证明知识不存在。§四／§五用于理解算法；样本用语保留起草语境。
+> 分类器代码可以显式调用，但当前生产路径不调用 `applyHedgingClassifier`，没有默认模型、自动开启或 `eval.yaml.hedgingClassifier` 配置。§六～§九的评测趋势、自动 nudge、`--max-gap-rate`／`--gap-rate-regression` 和主动探测都是未交付设计；这些 flag 不是当前 CLI。coverage 在这里指知识文件访问，不能替代当前 Core 的 evidence coverage。操作入口见[观测指南](../../guides/observe-production.md)。
+
 ## 一、立场与定位
 
-omk 不是"知识库完整性检查工具"。**没人能告诉你你的知识库是完整的**——完备性在数学上不可证明，在工程上也不可证明。任何声称能做这件事的工具都在误导用户。
+omk 不是“知识库完整性检查工具”。在开放任务范围下，当前用例或日志不能穷尽未来知识需求；本规范的启发式信号不能证明知识库完整。封闭、已列举范围的覆盖检查需要另行定义，不可用这里的 gap rate 代替。
 
 omk 是什么：**让知识库的风险敞口可量化、可追踪、可收敛的工具**。这是主动承认测量局限后的诚实设计。它的三个核心动作是：
 
@@ -113,7 +116,7 @@ agent 输出文本里出现确定性降级的措辞，例如：
 两阶段流水线（spec §四 v0.1 的 regex 阶段保持不变，下游加一层 classifier 过滤）：
 
 1. **召回阶段（regex）**：`extractHedgingSignals` 仍用模式匹配捞出所有"嫌疑句"，作为 candidate 送下游
-2. **判定阶段（LLM classifier）**：对每个 candidate 调用小模型，传入命中句子 + 用例上下文，让模型判断"这一句是知识层面的不确定，还是业务推理 / 假设 / 礼貌表达"
+2. **判定阶段（LLM classifier）**：对未缓存的 candidate 分批调用显式指定的模型（默认 batchSize = 10），传入命中句子 + 用例上下文，让模型判断"这一句是知识层面的不确定，还是业务推理 / 假设 / 礼貌表达"
 3. **过滤**：`isUncertainty=false` 的 candidate 直接丢弃；`isUncertainty=true` 的保留为 hedging signal，并把 verdict（confidence + reason）挂到 `signal.classifierVerdict` 供报告侧展示
 
 **Classifier 接口契约**（`src/observability/analysis/hedging-classifier.ts`）：
@@ -134,17 +137,17 @@ type HedgingVerdict = {
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
   executor: ExecutorFn,          // 使用共享 executor port
-  opts?: { maxCandidates?: number; model?: string },
-): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
+  opts: { model: string; maxCandidates?: number; batchSize?: number },
+): Promise<{ verdicts: HedgingVerdict[]; costUSD: number; truncated: boolean }>;
 ```
 
 **关键约束**：
 
-- **Cost 上限**：默认 `maxCandidates = 50` 条 / evaluation，超出截断 + warn（防止 outlier sample 把 cost 打爆）
-- **Cache**：in-memory `Map<sha256(sentence), HedgingVerdict>`，同句子在同一进程内不重复调用
+- **候选数量上限（不是金额预算）**：默认 `maxCandidates = 50` 条 / evaluation，超出截断 + warn（防止 outlier sample 把 cost 打爆）
+- **Cache**：in-memory `Map<sha256(sentence).slice(0, 16), HedgingVerdict>`，同句子在同一进程内不重复调用
 - **失败降级**：classifier 调用失败 / 解析失败 → 该 candidate 默认 `isUncertainty=true`（保守保留，宁可多统计软信号也不丢真信号）
 - **Weight 不变**：classifier 通过的 hedging signal 权重仍为 0.5（弱信号），confidence 信息只挂在 verdict 字段供观察，不直接进 weight 计算（避免引入第二个未校准维度）
-- **配置入口**：v0.2 走代码层 default（开启 + 默认 model），v0.3 接 `eval.yaml.hedgingClassifier: { enabled, model, maxCandidates }`
+- **配置入口**：仅显式代码调用，`model` 必传；`eval.yaml.hedgingClassifier` 是未接入的设计提议
 
 **判定提示模板**（classifier prompt 骨架）：
 
@@ -205,7 +208,7 @@ v0.1 不区分信号严重度，所有四类一律"有信号"；v0.2 引入加�
 | `failed_search` | **1.0**（强） | agent 工具层真的调了 Grep/Read 没命中，确定性 miss |
 | `repeated_failure` | **1.0**（强） | 同一类查询连续 ≥3 次失败，已不是偶然 |
 | `explicit_marker` | 0.5（弱） | 依赖 agent 按约定打【推断】等标记，可能漏标或假装 |
-| `hedging` | 0.5（弱） | regex 召回 + LLM 二次判定（v0.2,详见 §四.3）;classifier 失败降级时全部保留 |
+| `hedging` | 0.5（弱） | 生产路径采用 regex；显式调用分类器时才二次判定，失败或截断部分保守保留 |
 
 聚合产出 **`weightedGapRate`**（与 `gapRate` 并列，不替代）：
 
@@ -244,6 +247,8 @@ weightedGapRate = Σ sample_weight / sampleCount
 ---
 
 ## 六、跨评测趋势
+
+> 以下是未交付的历史设计目标，不是当前报告列或评测趋势能力。
 
 单次评测的 gap rate 是基线，真正的价值在于跨多次评测的趋势。
 
@@ -302,7 +307,7 @@ gap rate 不只是一个数字，要驱动可执行的 action。报告里至少�
 
 ### 4. CI 阈值（cross-evaluation）
 
-CI 模式（`omk eval`）支持两种守护模式：
+历史草案拟议两种持续集成守护模式；当前 `omk eval` 不支持下列 flag，也没有对应门禁：
 
 - `--max-gap-rate <number>`：**绝对阈值**。gap rate 超过 number 时 CI 失败。用于"我们设定的可接受上限"
 - `--gap-rate-regression <delta>`：**回归阈值**。gap rate 相对上次评测上升超过 delta 时 CI 失败。用于"防止知识库劣化"
@@ -329,7 +334,7 @@ CI 模式（`omk eval`）支持两种守护模式：
 
 ### 用例进化的判断规则
 
-omk 规范建议（不强制）：当同一 test set 的 gap rate **连续 3 次评测都 ≤ 10%**，工具在报告里自动追加一行提示：
+未交付的历史设计建议（不强制）：当同一 test set 的 gap rate **连续 3 次评测都 ≤ 10%**，工具在报告里自动追加一行提示：
 
 > ⚠ 当前测评集的 gap rate 已连续 3 次低于 10%。建议扩展测评集以探测新领域，否则 gap rate 的下降可能只反映了"用例驯化"而非"知识补齐"。
 

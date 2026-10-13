@@ -117,13 +117,13 @@ Rules:
 
 #### 6.1 Sample metadata fields
 
-The Sample schema has optional metadata fields, purely for documentation / diagnostics; they **do not participate in grading / judge / verdict**. See [docs/specs/evaluation/sample-design-spec.md](../evaluation/sample-design-spec.md).
+The Sample schema has optional metadata fields, under `annotations` in the public v3 envelope for author declarations and audit; they **do not participate in grading / judge / verdict**. See [sample design guide](../../guides/sample-design.md).
 
-- **`capability?: string[]`** — the capability dimension(s) this sample tests (can be multiple). Normalized case-insensitively, with dash / camelCase / underscore insensitivity.
+- **`capability?: string[]`** — the capability dimension(s) this sample tests (can be multiple). Keep author labels consistent; automatic normalization is not implemented.
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — difficulty bucket (strict enum).
 - **`construct?: string`** — the construct type this sample tests. Suggested: `'necessity'` (tests necessity, baseline-vs-skill) / `'quality'` (tests whether the skill is well-written) / `'capability'` (tests a specific capability). Free-form string allows custom values.
 - **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — data source.
-- **`covers?: { targetKind: string; ref: string }[]`** — optional declared skill-structure anchors this sample is intended to exercise, used by Skill Map to show declared / undeclared definition nodes.
+- **`covers?: { targetKind: string; ref: string }[]`** — optional declared skill-structure anchors this sample is intended to exercise, retained as author annotations, not proof of actual execution coverage.
 
 **construct vs. capability** (the two fields users most often confuse):
 - **construct** = **what class of thing** this sample tests (necessity / quality / capability). It's the experiment-design level — running baseline-vs-skill tests necessity, running skill-v1-vs-skill-v2 tests quality.
@@ -466,7 +466,7 @@ The strict baseline therefore combines a clean per-attempt cwd with executor-spe
   - `[]` → **strict isolation requested**: omk supplies an empty per-attempt cwd and applies every isolation control supported by the selected executor
   - `[name1, ...]` (non-empty) → **rejected at the shared execution-plan boundary**: a portable whitelist cannot be enforced across native agent, API, and custom executors; use `[]` for strict isolation or omit for none
 - **`--strict-baseline` flag** (default true): automatically sets `allowedSkills = []` for every `kind === 'baseline'` artifact; `--no-strict-baseline` turns it off (explicit opt-out).
-- **`meta.skillIsolation`** (new report-meta field): a variantName → allowedSkills snapshot, used to validate comparability when comparing verdict / Δ across reports.
+- **Isolation identity**: input compilation seals isolation declarations into execution controls; Runtime identity and execution coordinates govern reuse verification. Current reports have no `meta.skillIsolation` field; see [input compilation](../evaluation/cli-evaluation-input-compilation.md).
 
 ### 3. Defaults and priority
 
@@ -490,15 +490,15 @@ baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (exe
 | Claude CLI skill commands | yes | `--disable-slash-commands --disallowedTools Skill` |
 | Custom script executor | not enforceable | one-time warning; omk cannot prove what the user command loads |
 
-**Why the cwd channel is listed separately**: after blocking only the two SDK channels (`skills:[]` + `disallowedTools:['Skill']`), the baseline's `Skill` tool calls do drop to 0, but the baseline can still use plain `Glob` / `Read` to follow the `skills/<name>/` symlink under cwd and read `SKILL.md`, completely bypassing the SDK isolation. Root cause: omk defaults to `baseline.cwd === null` → the SDK falls back to `process.cwd()` = the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment. The fix is to switch the baseline's default cwd to `~/.oh-my-knowledge/state/isolated-cwd/` (an empty dir). **When the user explicitly sets a cwd for the baseline, this is left untouched** (explicit cwd = the user is responsible for keeping that dir clean).
+**Why the cwd channel is listed separately**: provider-specific flags cannot prevent ordinary file tools from reading `skills/<name>/` under an evaluation workspace. A strict baseline without an explicit cwd therefore gets a fresh empty directory for each execution. **An explicitly supplied baseline cwd is not replaced**, because the directory is intentional runtime context in the measurement.
 
-Note: isolated-cwd is not a sandbox — the baseline can still Read any absolute path. But the model won't proactively guess the user's private paths (no system-prompt hint). If the evaluation scenario prompts the baseline to read an absolute path, an additional sandbox layer is needed (out of scope).
+Note: isolated-cwd is not a sandbox. A baseline may still read absolute paths. An empty cwd and discovery controls do not prevent prompt-directed reads; scenarios needing file-access isolation require a separate sandbox.
 
 ### 5. Cache key version
 
-The cache key currently carries a `v9:` prefix. It binds model, prompts, cwd, isolation declaration, executor, runtime fingerprint, mocks, strict-mock mode, effort, artifact content hash, and the content of external mock fixtures referenced by `return_file`. Cached results also retain full turns / tool calls and pass the same source-neutral result validator and tool-identity normalization as cold executions. Switching any construct-validity input therefore cannot silently reuse an incompatible result.
+Core owns stage-specific caches rather than the old executor `v9:` prefix. The Execution key uses `omk.execution-cache-key/v2`, binding `executionCoordinateDigest` and `trialId`. The Evaluation key uses `omk.evaluation-cache-key/v2`, binding the evaluation plan, evaluation id, evaluator Runtime, source trust, and bindings. Readback also verifies records, plans, and source identity; a matching digest does not replace trust verification.
 
-The sample hash used by report and resume comparability also fingerprints each custom assertion module and its statically resolvable ESM import graph. Non-literal dynamic imports are recorded as unresolved markers, and unreadable or unparseable modules receive explicit markers instead of being treated as unchanged. Dependency display paths stay relative to the sample bundle when possible, so moving an identical checkout does not change the measurement identity.
+[Input compilation](../evaluation/cli-evaluation-input-compilation.md) and the [Runtime Adapter](../evaluation/evaluation-runtime-adapter.md) specify how isolation, inputs, and external dependencies enter sealed identity. Old report fields or cache prefixes do not establish current comparability.
 
 ### 6. Executor compatibility
 

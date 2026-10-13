@@ -51,7 +51,7 @@ export default defineConfig({
           { text: 'Quickstart', link: '/quickstart-skill-eval' },
           { text: 'Guides', link: '/README' },
           { text: 'Reference', link: '/reference/cli' },
-          { text: 'Explanation', link: '/explanation/knowledge' },
+          { text: 'Explanation', link: '/explanation/' },
           { text: 'Specs', link: '/specs/' },
         ],
         sidebar: [
@@ -78,6 +78,7 @@ export default defineConfig({
             items: [
               { text: 'Run doctor checks', link: '/guides/run-doctor-checks' },
               { text: 'Evaluate an agent', link: '/guides/agent-eval' },
+              { text: 'Sample design', link: '/specs/sample-design-spec' },
               { text: 'Auto-improve a skill', link: '/guides/auto-improve-skills' },
               { text: 'Observe & inspect task trajectories', link: '/guides/observe-production' },
               { text: 'Extract candidate knowledge', link: '/guides/extract-knowledge' },
@@ -89,12 +90,11 @@ export default defineConfig({
           {
             text: 'Understand how it works',
             items: [
+              { text: 'Principles and responsibilities', link: '/explanation/' },
               { text: 'How OMK understands knowledge', link: '/explanation/knowledge' },
               { text: 'Who omk is for', link: '/explanation/who-omk-is-for' },
               { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
-              { text: 'Studio performance baseline', link: '/explanation/studio-performance-baseline' },
-            { text: 'Studio data flow', link: '/explanation/studio-data-flow' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
             ],
           },
@@ -141,7 +141,6 @@ export default defineConfig({
                   { text: 'Scoring equivalence', link: '/specs/evaluation-scoring-equivalence' },
                   { text: 'Scoring pipeline', link: '/specs/scoring' },
                   { text: 'RAG metrics', link: '/specs/rag-metrics-spec' },
-                  { text: 'Sample design', link: '/specs/sample-design-spec' },
                   { text: 'General sample proposal (historical)', link: '/specs/general-sample-proposal' },
                 ],
               },
@@ -149,7 +148,17 @@ export default defineConfig({
                 text: 'Observation signals',
                 collapsed: true,
                 items: [
-                  { text: 'Knowledge-gap signals (draft)', link: '/specs/knowledge-gap-signal-spec' },
+                  { text: 'Knowledge-gap signals (partly delivered)', link: '/specs/knowledge-gap-signal-spec' },
+                  { text: 'Effective observation review', link: '/explanation/effective-observation-review' },
+                ],
+              },
+              {
+                text: 'Studio hosts and data flow',
+                collapsed: true,
+                items: [
+                  { text: 'Studio specifications and history', link: '/specs/studio/' },
+                  { text: 'Studio data flow', link: '/explanation/studio-data-flow' },
+                  { text: 'Studio performance baseline (historical)', link: '/explanation/studio-performance-baseline' },
                 ],
               },
             ],
@@ -171,7 +180,7 @@ export default defineConfig({
           { text: '快速上手', link: '/zh/quickstart-skill-eval' },
           { text: '使用指南', link: '/zh/README' },
           { text: '参考', link: '/zh/reference/cli' },
-          { text: '原理', link: '/zh/explanation/knowledge' },
+          { text: '原理', link: '/zh/explanation/' },
           { text: '规范', link: '/zh/specs/' },
         ],
         sidebar: [
@@ -198,6 +207,7 @@ export default defineConfig({
             items: [
               { text: 'doctor 体检', link: '/zh/guides/run-doctor-checks' },
               { text: '评测 agent', link: '/zh/guides/agent-eval' },
+              { text: '用例设计', link: '/zh/specs/sample-design-spec' },
               { text: '自动迭代 skill', link: '/zh/guides/auto-improve-skills' },
               { text: '观测与任务轨迹', link: '/zh/guides/observe-production' },
               { text: '从日志提炼候选知识', link: '/zh/guides/extract-knowledge' },
@@ -209,12 +219,11 @@ export default defineConfig({
           {
             text: '我想懂工作原理',
             items: [
+              { text: '原理索引与职责边界', link: '/zh/explanation/' },
               { text: 'OMK 如何理解知识', link: '/zh/explanation/knowledge' },
               { text: '为谁、解决什么', link: '/zh/explanation/who-omk-is-for' },
               { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },
-              { text: 'Studio 性能基线', link: '/zh/explanation/studio-performance-baseline' },
-            { text: 'Studio 数据流', link: '/zh/explanation/studio-data-flow' },
               { text: '统计严谨性', link: '/zh/explanation/statistical-rigor' },
             ],
           },
@@ -261,7 +270,6 @@ export default defineConfig({
                   { text: '评分等价性', link: '/zh/specs/evaluation-scoring-equivalence' },
                   { text: '评分管道', link: '/zh/specs/scoring' },
                   { text: 'RAG 指标', link: '/zh/specs/rag-metrics-spec' },
-                  { text: '用例设计', link: '/zh/specs/sample-design-spec' },
                   { text: '通用用例提案（历史）', link: '/zh/specs/general-sample-proposal' },
                 ],
               },
@@ -269,7 +277,17 @@ export default defineConfig({
                 text: '观测信号',
                 collapsed: true,
                 items: [
-                  { text: '知识缺口信号（草案）', link: '/zh/specs/knowledge-gap-signal-spec' },
+                  { text: '知识缺口信号（部分交付）', link: '/zh/specs/knowledge-gap-signal-spec' },
+                  { text: '有效观测复核', link: '/zh/explanation/effective-observation-review' },
+                ],
+              },
+              {
+                text: 'Studio 宿主与数据流',
+                collapsed: true,
+                items: [
+                  { text: 'Studio 规范与历史记录', link: '/zh/specs/studio/' },
+                  { text: 'Studio 数据流', link: '/zh/explanation/studio-data-flow' },
+                  { text: 'Studio 性能基线（历史）', link: '/zh/explanation/studio-performance-baseline' },
                 ],
               },
             ],

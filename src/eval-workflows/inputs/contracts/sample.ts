@@ -61,7 +61,7 @@ export interface Sample {
   assertions?: Assertion[];
   allowedTools?: string[];
   /** 该 sample 测试的能力维度,可多维。free-form string,suggested
-   *  values 见 docs/specs/evaluation/sample-design-spec.md。aggregate 时大小写不敏感。
+   *  values 见 docs/guides/sample-design.md。编写时自行保持标签一致。
    *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
   capability?: string[];
   /** 难度分层,enum 防错。纯文档 / 诊断用。 */
@@ -75,7 +75,7 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
-  /** 该 sample 可选声明的 skill 结构锚点。纯文档 / 图谱诊断用，不进入评分、评委或 verdict。 */
+  /** 该 sample 可选声明的 skill 结构锚点。作者声明 / 审计用，不进入评分、评委或 verdict。 */
   covers?: SampleCoverageTarget[];
   /** 诱错样本(tripwire)标记。true = 此 sample 故意设计成 LLM 应该 fail 的诱导陷阱
    *  (如:用户用错误前提诱导 / 跳步骤 / 用错参数类型),用于测 skill 是否能让 LLM

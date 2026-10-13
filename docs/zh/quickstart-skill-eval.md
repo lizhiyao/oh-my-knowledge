@@ -79,7 +79,7 @@ omk eval --control my-skill-v1 --treatment my-skill-v2
 | `UNDERPOWERED` | 补齐预先声明的样本量要求。20 个可比较单元只是默认启发式下限；正式测量应根据外部先导假设配置 `decision.power`，或登记 `decision.minimumComparisonUnits`。 |
 | `SOLO` | 添加对照组后再做跨版本判断。 |
 
-结论只适用于本次用例、准则和运行条件。AI 生成用例可能偏向已有的成功路径，应补充真实失败、反例与误用场景。保留报告、用例来源和人工复核结论；在迭代中使用过的用例不能直接充当独立发布验证集。方法见[统计严谨性](./explanation/statistical-rigor.md)和[用例设计](./specs/evaluation/sample-design-spec.md)。
+结论只适用于本次用例、准则和运行条件。AI 生成用例可能偏向已有的成功路径，应补充真实失败、反例与误用场景。保留报告、用例来源和人工复核结论；在迭代中使用过的用例不能直接充当独立发布验证集。方法见[统计严谨性](./explanation/statistical-rigor.md)和[用例设计](./guides/sample-design.md)。
 
 ## 在 Agent 中使用
 

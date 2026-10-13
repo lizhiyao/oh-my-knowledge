@@ -4,9 +4,12 @@
 > Purpose: define how omk extracts "knowledge-gap signals" from the agent evaluation process, how they aggregate into a gap rate, and how to track the convergence of a knowledge base's risk exposure.
 > Audience: this is a **design / specification** doc — the rationale and the exact algorithm. If you just want to read gap signals in a report, run `omk observe` (see the [CLI reference](../../reference/cli)); for one-line term definitions see the [glossary](../../reference/glossary).
 
+> Current boundary (checked 2026-10-13): this document contains a historical draft and partly implemented algorithms, not a whole-document delivery promise. `omk observe` extracts four heuristic signal types from real task records with execution events and aggregates `gapRate`/`weightedGapRate`; the denominator is records actually included in analysis. A failed search does not prove knowledge is absent. §4/§5 explain algorithms; sample terminology retains its drafting context.
+> The classifier can be called explicitly, but production does not call `applyHedgingClassifier`: there is no default model, automatic enablement, or `eval.yaml.hedgingClassifier` configuration. Evaluation trends, automatic nudges, `--max-gap-rate`/`--gap-rate-regression`, and active probing in §6–§9 are undelivered designs; these flags are not current CLI options. Coverage here means knowledge-file access and does not replace current Core evidence coverage. See the [observation guide](../../guides/observe-production.md) for the user entry point.
+
 ## 1. Stance and positioning
 
-omk is not a "knowledge-base completeness checker." **No one can tell you your knowledge base is complete** — completeness is unprovable mathematically, and unprovable in engineering practice. Any tool that claims to do this is misleading its users.
+omk is not a “knowledge-base completeness checker.” Under an open task scope, current samples or logs cannot exhaust future knowledge needs. These heuristic signals cannot prove completeness. Coverage checks for a closed, enumerated scope require a separate definition; gap rate is no substitute.
 
 What omk is: **a tool that makes a knowledge base's risk exposure quantifiable, trackable, and convergent**. This is the honest design that follows from actively acknowledging the limits of measurement. Its three core actions are:
 
@@ -113,7 +116,7 @@ Confidence-downgrading phrasing appears in the agent's output text — for examp
 A two-stage pipeline (the v0.1 regex stage from §4 stays unchanged; a classifier filter is added downstream):
 
 1. **Recall stage (regex)**: `extractHedgingSignals` still uses pattern matching to dredge up all "suspect sentences" as candidates to send downstream.
-2. **Judgment stage (LLM classifier)**: for each candidate, call a small model with the matched sentence + sample context, and let the model decide "is this sentence knowledge-level uncertainty, or business reasoning / hypothesis / polite phrasing."
+2. **Judgment stage (LLM classifier)**: batch uncached candidates to the explicitly supplied model (default batchSize = 10) with the matched sentence + sample context, and let the model decide "is this sentence knowledge-level uncertainty, or business reasoning / hypothesis / polite phrasing."
 3. **Filter**: candidates with `isUncertainty=false` are dropped; those with `isUncertainty=true` are kept as a hedging signal, with the verdict (confidence + reason) attached to `signal.classifierVerdict` for the report side to display.
 
 **Classifier interface contract** (`src/observability/analysis/hedging-classifier.ts`):
@@ -134,17 +137,17 @@ type HedgingVerdict = {
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
   executor: ExecutorFn,          // uses the shared executor port
-  opts?: { maxCandidates?: number; model?: string },
-): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
+  opts: { model: string; maxCandidates?: number; batchSize?: number },
+): Promise<{ verdicts: HedgingVerdict[]; costUSD: number; truncated: boolean }>;
 ```
 
 **Key constraints**:
 
-- **Cost cap**: default `maxCandidates = 50` per evaluation; beyond that, truncate + warn (so an outlier sample can't blow up cost).
-- **Cache**: in-memory `Map<sha256(sentence), HedgingVerdict>` — the same sentence is not called twice within one process.
+- **Candidate cap, not a monetary budget**: default `maxCandidates = 50` per evaluation; beyond that, truncate + warn (so an outlier sample can't blow up cost).
+- **Cache**: in-memory `Map<sha256(sentence).slice(0, 16), HedgingVerdict>` — the same sentence is not called twice within one process.
 - **Failure fallback**: a classifier call failure / parse failure → that candidate defaults to `isUncertainty=true` (conservatively kept; better to over-count soft signals than drop a real one).
 - **Weight unchanged**: a hedging signal that passes the classifier still has weight 0.5 (weak signal); the confidence information is only attached to the verdict field for observation, and does not enter the weight calculation directly (avoiding a second uncalibrated dimension).
-- **Configuration entry point**: v0.2 goes through a code-level default (enabled + a default model); v0.3 wires up `eval.yaml.hedgingClassifier: { enabled, model, maxCandidates }`.
+- **Configuration entry point**: explicit code calls only, with required `model`; `eval.yaml.hedgingClassifier` is an unconnected design proposal.
 
 **Judgment prompt template** (classifier prompt skeleton):
 
@@ -205,7 +208,7 @@ v0.1 does not distinguish signal severity — all four sources are uniformly "ha
 | `failed_search` | **1.0** (strong) | The agent really called Grep/Read at the tool level and missed — a deterministic miss. |
 | `repeated_failure` | **1.0** (strong) | The same class of query failed ≥3 times in a row — no longer accidental. |
 | `explicit_marker` | 0.5 (weak) | Relies on the agent marking 【推断】 etc. by convention; may be missed or faked. |
-| `hedging` | 0.5 (weak) | regex recall + LLM second-pass judgment (v0.2, see §4.3); when the classifier fails, all are kept. |
+| `hedging` | 0.5 (weak) | Production uses regex; only an explicit classifier call adds a second pass, with failures and truncated candidates conservatively retained. |
 
 Aggregation produces **`weightedGapRate`** (alongside `gapRate`, not replacing it):
 
@@ -244,6 +247,8 @@ This is conditional measurement, not an absolute verdict: low N does not mean th
 ---
 
 ## 6. Cross-evaluation trend
+
+> The following is an undelivered historical design goal, not current report columns or evaluation-trend capability.
 
 A single evaluation's gap rate is the baseline; the real value lies in the trend across multiple evaluations.
 
@@ -302,7 +307,7 @@ Count separately by gap-signal source (failed search / explicit marker / hedging
 
 ### 4. CI thresholds (cross-evaluation)
 
-CI mode (`omk eval`) supports two guard modes:
+The historical draft proposed two continuous-integration guard modes. Current `omk eval` supports neither the following flags nor their gates:
 
 - `--max-gap-rate <number>`: **absolute threshold**. CI fails when gap rate exceeds number. For "the acceptable upper bound we set."
 - `--gap-rate-regression <delta>`: **regression threshold**. CI fails when gap rate rises more than delta relative to the last evaluation. For "preventing knowledge-base degradation."
@@ -329,7 +334,7 @@ These two cases are **completely indistinguishable** from the gap rate number. T
 
 ### The decision rule for sample evolution
 
-The omk spec recommends (does not enforce): when the same test set's gap rate is **≤ 10% for 3 consecutive evaluations**, the tool automatically appends a line to the report:
+An undelivered historical design recommendation (not enforced): when the same test set's gap rate is **≤ 10% for 3 consecutive evaluations**, the tool automatically appends a line to the report:
 
 > ⚠ The current sample set's gap rate has been below 10% for 3 evaluations in a row. Consider expanding the sample set to probe new areas, otherwise the drop in gap rate may only reflect "sample domestication" rather than "knowledge filled in."
 
