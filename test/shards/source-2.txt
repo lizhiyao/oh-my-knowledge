@@ -76,6 +76,7 @@ test/scripts/docs-i18n-mirror-links.test.ts
 test/scripts/docs-i18n-mirror-structure.test.ts
 test/scripts/eval-core-terminology-guard.test.ts
 test/scripts/kind-semantics-guard.test.ts
+test/scripts/landing-clipboard.test.ts
 test/scripts/publish-workflow-security.test.ts
 test/scripts/studio-baseline.test.ts
 test/studio/application/core-run-catalog.test.ts

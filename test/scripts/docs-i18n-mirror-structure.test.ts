@@ -123,12 +123,14 @@ describe('落地页双语正文同构', () => {
     expect(textLineCount(english)).toEqual(textLineCount(chinese));
   });
 
-  it('舞台说明的中英文分支键集合相同', () => {
-    const script = readFileSync(join(THEME_ROOT, 'landing-init.js'), 'utf8');
-    const branches = /const caps = isZh \? \{([\s\S]*?)\} : \{([\s\S]*?)\};/u.exec(script);
-    expect(branches, 'caps 的双语分支形状变了，门禁要跟上').not.toBeNull();
-    const keys = (block: string) => [...block.matchAll(/^\s*(\w+):/gmu)].map(([, key]) => key).sort();
-    expect(keys(branches![2]!)).toEqual(keys(branches![1]!));
+  it('复制入口在两种语言中使用同一命令并有可访问名称', () => {
+    const commands = (html: string) => [...html.matchAll(/<button([^>]*data-copy-command="([^"]+)"[^>]*)>/gu)].map(([, attrs, command]) => {
+      expect(attrs).toMatch(/aria-label="[^"]+"/u);
+      expect(attrs).toContain('type="button"');
+      return command;
+    });
+    expect(commands(english)).toEqual(commands(chinese));
+    expect(commands(chinese).length).toBeGreaterThan(0);
   });
 });
 
