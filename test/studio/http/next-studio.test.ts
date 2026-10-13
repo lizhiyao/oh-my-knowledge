@@ -58,7 +58,7 @@ describe('Next Studio production boundary', () => {
     const detail = await fetch(`${urlA}/measure/next-real-run`);
     assert.equal(detail.status,200);
     const detailHtml=await detail.text();
-    for(const label of ['评测范围','分析结果','证据与定义']) assert.ok(detailHtml.includes(label));
+    for(const label of ['范围与版本','分析结果','逐用例证据','原始定义']) assert.ok(detailHtml.includes(label));
     // 标签标题按页面与对象给出：同开几个评测页时要分得清读的是哪一次运行。
     assert.match(htmlA, /<title>OMK · 评测记录<\/title>/);
     assert.match(detailHtml, /<title>OMK · 运行 · next-real-run<\/title>/);

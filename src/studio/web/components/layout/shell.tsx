@@ -66,28 +66,51 @@ function PanelIcon({ direction }: { direction: 'collapse' | 'expand' }) {
   </svg>;
 }
 
+function NavigationIcon({ area }: { area: 'observe' | 'measure' | 'knowledge' | 'menu' }) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {area === 'observe' ? <><path d="M3 5h18v14H3zM3 9h18M7 13h4M7 16h8"/></> : area === 'measure' ? <path d="M4 20V4M4 20h17M8 15V9M13 15V5M18 15v-4"/> : area === 'knowledge' ? <path d="M12 5v15M3 4h5c2 0 4 1 4 2 0-1 2-2 4-2h5v15h-5c-2 0-4 1-4 1s-2-1-4-1H3z"/> : <path d="M4 6h16M4 12h16M4 18h16"/>}
+  </svg>;
+}
+
 export function StudioShell({ lang, children, active, sidebar }: { lang: Language; children: ReactNode; active: 'observe' | 'measure' | 'knowledge' | 'agents' | false; sidebar?: ReactNode }) {
   const navigation = useStudioNavigation();
   const workspace = useSearchParams()?.get('workspace') ?? '';
   const href = (path: string) => workspaceHref(path, workspace);
   const zh = lang === 'zh';
   const [open, setOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const drawerToggle = useRef<HTMLButtonElement>(null);
+  const sidebarElement = useRef<HTMLElement>(null);
   useEffect(() => { setCollapsed(readCollapsed()); }, []);
   // 抽屉是覆盖在内容上的，读者要能不回到页头就把它收掉：Esc 与遮罩点击都关闭，
   // 关闭后焦点回到触发它的那个按钮，否则键盘读者会掉回页面顶部重新找。
   useEffect(() => {
     if (!open) return;
+    sidebarElement.current?.querySelector<HTMLElement>('a,button')?.focus();
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      drawerToggle.current?.focus();
+      const sidebar = sidebarElement.current;
+      // Settings/help portals manage their own focus and Escape; do not trap them in navigation.
+      if (!sidebar?.contains(event.target as Node)) return;
+      if (event.key === 'Escape') { setOpen(false); drawerToggle.current?.focus(); }
+      if (event.key === 'Tab') {
+        const items = [...sidebar.querySelectorAll<HTMLElement>('a,button,input,summary,[tabindex="0"]')].filter(item => item.getClientRects().length && !item.hasAttribute('disabled'));
+        if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1)?.focus(); }
+        else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0]?.focus(); }
+      }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => { window.removeEventListener('keydown', onKeyDown); };
   }, [open]);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width:861px)');
+    const closeOnDesktop = () => { setNarrow(!desktop.matches); if (desktop.matches) setOpen(false); };
+    closeOnDesktop();
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
   function toggleCollapsed() {
+    if (window.matchMedia('(max-width:860px)').matches) { setOpen(false); drawerToggle.current?.focus(); return; }
     setCollapsed(value => {
       const next = !value;
       try { window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* 偏好写不进就当次会话生效 */ }
@@ -104,25 +127,24 @@ export function StudioShell({ lang, children, active, sidebar }: { lang: Languag
   return <ConfigProvider locale={zh ? zhCN : enUS}>
     <div className={`studio-app${open ? ' sidebar-open' : ''}${collapsed ? ' sidebar-collapsed' : ''}`}>
       <header className="studio-mobile-bar">
-        <button ref={drawerToggle} type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}>☰</button>
+        <button ref={drawerToggle} type="button" className="studio-sidebar-toggle" aria-expanded={open} aria-controls="studio-sidebar" aria-label={zh ? '打开导航与列表' : 'Open navigation and lists'} onClick={() => setOpen(value => !value)}><NavigationIcon area="menu"/></button>
         <Link className="studio-brand" href={href(studioEntryPath(true))} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
       </header>
       {open ? <div className="studio-scrim" aria-hidden="true" onClick={() => { setOpen(false); drawerToggle.current?.focus(); }}/> : null}
-      <aside className="studio-sidebar" onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
+      <aside ref={sidebarElement} id="studio-sidebar" className="studio-sidebar" inert={narrow && !open} role={open ? 'dialog' : undefined} aria-modal={open || undefined} aria-label={zh ? '导航与工作区' : 'Navigation and workspace'} onClick={event => { if ((event.target as HTMLElement).closest('a')) setOpen(false); }}>
         <div className="studio-sidebar-head">
           <Link className="studio-brand" href={href(studioEntryPath(true))} aria-label="OMK Studio"><span className="studio-mark">omk</span><span>OMK Studio</span></Link>
-          <button type="button" className="studio-sidebar-collapse" aria-label={zh ? '收起侧栏' : 'Collapse sidebar'} title={zh ? '收起侧栏' : 'Collapse sidebar'} onClick={toggleCollapsed}><PanelIcon direction="collapse"/></button>
+          <button type="button" className="studio-sidebar-collapse" aria-label={open ? (zh ? '关闭导航与列表' : 'Close navigation and lists') : collapsed ? (zh ? '展开侧栏' : 'Expand sidebar') : (zh ? '收起侧栏' : 'Collapse sidebar')} onClick={toggleCollapsed}><PanelIcon direction={collapsed ? 'expand' : 'collapse'}/></button>
         </div>
         <nav aria-label={zh ? 'Studio 一级导航' : 'Studio primary navigation'}>
-          <Link href={href(OBSERVE_INDEX_PATH)} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}>{zh ? '观测' : 'Observe'}</Link>
-          <Link href={href(MEASURE_INDEX_PATH)} aria-current={active === 'measure' ? 'page' : undefined}>{zh ? '评测' : 'Measure'}</Link>
-          <Link href={href(KNOWLEDGE_LIBRARY_PATH)} aria-current={active === 'knowledge' ? 'page' : undefined}>{zh ? '知识' : 'Knowledge'}</Link>
+          <Link href={href(OBSERVE_INDEX_PATH)} aria-label={zh ? '观测' : 'Observe'} title={zh ? '观测' : 'Observe'} aria-current={active === 'agents' ? 'location' : active === 'observe' ? 'page' : undefined}><NavigationIcon area="observe"/><span>{zh ? '观测' : 'Observe'}</span></Link>
+          <Link href={href(MEASURE_INDEX_PATH)} aria-label={zh ? '评测' : 'Measure'} title={zh ? '评测' : 'Measure'} aria-current={active === 'measure' ? 'page' : undefined}><NavigationIcon area="measure"/><span>{zh ? '评测' : 'Measure'}</span></Link>
+          <Link href={href(KNOWLEDGE_LIBRARY_PATH)} aria-label={zh ? '知识' : 'Knowledge'} title={zh ? '知识' : 'Knowledge'} aria-current={active === 'knowledge' ? 'page' : undefined}><NavigationIcon area="knowledge"/><span>{zh ? '知识' : 'Knowledge'}</span></Link>
         </nav>
         {sidebar ? <div className="studio-sidebar-body">{sidebar}</div> : null}
         <StudioUtilities lang={lang}/>
       </aside>
-      <main className="studio-content">
-        {collapsed ? <button type="button" className="studio-sidebar-expand" aria-label={zh ? '展开侧栏' : 'Expand sidebar'} title={zh ? '展开侧栏' : 'Expand sidebar'} onClick={toggleCollapsed}><PanelIcon direction="expand"/></button> : null}
+      <main className="studio-content" inert={open}>
         {children}
       </main>
     </div>
