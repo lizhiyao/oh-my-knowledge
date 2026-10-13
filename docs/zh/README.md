@@ -53,15 +53,7 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 - [Core 设计](./specs/evaluation/eval-core-vnext.md) · [评分等价性](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/evaluation/cli-evaluation-input-compilation.md)
 - [实体知识库](./specs/knowledge/knowledge-library.md)：人工确认跨窗口来源关联，阅读和维护对象知识及组织历史。
 - [知识领域模型（草案）](./specs/knowledge/knowledge-domain-model.md) · [知识缺口信号](./specs/observe/knowledge-gap-signal-spec.md)
-- [实体提取](./specs/entities/entity-extraction.md) · [v3 质量结果与限制](./explanation/entity-extraction-quality.md) · [v4 两轮结果与限制](./explanation/entity-extraction-v4-repeat-quality.md)
-- [实体提取 v6：11 窗口诊断](./explanation/entity-extraction-v6-diagnostic.md)
-- [实体提取 v6：真实会话单轮诊断](./explanation/entity-extraction-v6-real-pilot.md)
-- [实体提取 v7：六场景复验](./explanation/entity-extraction-v7-diagnostic.md)
-- [实体提取 v8：五窗口粒度诊断](./explanation/entity-extraction-v8-diagnostic.md)
-- [实体提取 v8：已有输出动线验收](./explanation/entity-extraction-v8-workflow.md)
-- [实体提取 v8：三窗口真实会话诊断](./explanation/entity-extraction-v8-real-pilot.md)
-- [实体提取 v10：五场景知识保留诊断](./explanation/entity-extraction-v10-diagnostic.md)
-- [实体提取 v12：定向回归与提及遗漏](./explanation/entity-extraction-v12-target-regression.md)
+- [实体提取：证据与限制](./specs/entities/index.md)：当前契约、质量边界及分类历史报告。
 - [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [术语规范](./specs/shared/terminology-spec.md)
 
 - [验证本地任务结果](./guides/local-tasks.md)

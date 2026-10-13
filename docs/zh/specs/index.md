@@ -29,6 +29,7 @@
 
 | 文档 | 职责与状态 |
 |---|---|
+| [实体阅读索引与历史证据](entities/index.md) | 当前契约、质量限制及分类历史记录的入口；报告属于证据，不规定今天的行为。 |
 | [实体身份](entities/entity-identity.md) | 部分交付的设计：已批准的身份、存储及界面章节按 beta 范围交付；独立复核与整体质量门槛仍未完成。 |
 | [实体提取](entities/entity-extraction.md) | 现行提取、修订、来源与绑定契约，同时保留 beta 和质量限制。 |
 | [实体提取评测](entities/entity-extraction-evaluation.md) | 标注与验收协议及冻结证据边界；作者自审与离线回放不等于独立验收完成。 |

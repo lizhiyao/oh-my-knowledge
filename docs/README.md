@@ -53,15 +53,7 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Core design](./specs/evaluation/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/evaluation/cli-evaluation-input-compilation.md)
 - [Entity knowledge library](./specs/knowledge/knowledge-library.md): manually confirmed links across windows, object knowledge, and organization history.
 - [Knowledge domain model (draft)](./specs/knowledge/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/observe/knowledge-gap-signal-spec.md)
-- [Entity extraction](./specs/entities/entity-extraction.md) · [v3 quality results and limits](./explanation/entity-extraction-quality.md) · [v4 two-round results and limits](./explanation/entity-extraction-v4-repeat-quality.md)
-- [Entity extraction v6: 11-window diagnostic](./explanation/entity-extraction-v6-diagnostic.md)
-- [Entity extraction v6: single-round real-conversation diagnostic](./explanation/entity-extraction-v6-real-pilot.md)
-- [Entity extraction v7: six-case diagnostic](./explanation/entity-extraction-v7-diagnostic.md)
-- [Entity extraction v8: five-window granularity diagnostic](./explanation/entity-extraction-v8-diagnostic.md)
-- [Entity extraction v8: recorded-output workflow](./explanation/entity-extraction-v8-workflow.md)
-- [Entity extraction v8: three-window real-conversation diagnostic](./explanation/entity-extraction-v8-real-pilot.md)
-- [Entity extraction v10: five-case knowledge-retention diagnostic](./explanation/entity-extraction-v10-diagnostic.md)
-- [Entity extraction v12: targeted regression and missing mentions](./explanation/entity-extraction-v12-target-regression.md)
+- [Entity extraction: evidence and limits](./specs/entities/index.md): current contracts, quality boundaries, and categorized historical reports.
 - [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [Terminology](./specs/shared/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)
