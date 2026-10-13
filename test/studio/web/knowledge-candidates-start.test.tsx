@@ -4,13 +4,14 @@ import { ExtractedKnowledge } from '../../../src/studio/web/components/observe/e
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { KnowledgeCandidateStart, KnowledgeCandidates } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { KnowledgeCandidateStart, KnowledgeCandidates, ScopedCandidateEmpty } from '../../../src/studio/web/components/knowledge/candidates.js';
 import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
+import { KnowledgeInboxSummary } from '../../../src/studio/web/components/knowledge/inbox.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [] };
 const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeCandidateStart, {
-  lang: 'zh', loading: false, busy: false, onChoose() {}, onHistory() {}, ...overrides,
+  lang: 'zh', loading: false, busy: false, onChoose() {}, onHistory() {}, onRetry() {}, ...overrides,
 }));
 describe('knowledge extraction onboarding', () => {
   it('explains the next action and keeps workspace paths out of the empty main page', () => {
@@ -29,6 +30,8 @@ describe('knowledge extraction onboarding', () => {
     expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：提炼失败');
     expect(render({ latest, loading: true })).not.toContain('上次提炼完成');
     expect(render({ failedToLoad: true })).toContain('暂时无法读取已有记录');
+    expect(render({ failedToLoad: true })).toContain('重新读取候选');
+    expect(render({ failedToLoad: true })).toContain('读取失败不表示没有候选');
     expect(render()).toContain('还没有提炼记录');
     expect(render()).not.toContain('设置保存位置并开始');
   });
@@ -46,6 +49,24 @@ describe('knowledge extraction onboarding', () => {
     expect(html).toContain('Choose a conversation');
     expect(html).toContain('Last extraction completed with 0 candidates');
     expect(html).toContain('Preview the content before confirming a model request.');
+  });
+  it('does not report an empty source scope until loading succeeds, and offers a retry after failure', () => {
+    const scoped = (overrides = {}) => renderToStaticMarkup(createElement(ScopedCandidateEmpty, { lang: 'zh', loading: false, busy: false, failedToLoad: false, onRetry() {}, ...overrides }));
+    const initial = renderToStaticMarkup(createElement(KnowledgeCandidates, { lang: 'zh', initialWorkspace: '/private/example', scope: { threadId: 'thread' } }));
+    expect(initial).toContain('正在读取此来源范围的候选');
+    expect(initial).not.toContain('此来源范围没有候选');
+    expect(scoped({ failedToLoad: true })).toContain('重新读取候选');
+    expect(scoped({ failedToLoad: true })).not.toContain('此来源范围没有候选');
+    expect(scoped({ failedToLoad: true, busy: true })).toMatch(/<button[^>]+disabled/);
+    expect(scoped()).toContain('此来源范围没有候选');
+    expect(scoped({ failedToLoad: true, lang: 'en' })).toContain('Reload candidates');
+    const summary = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeInboxSummary, { lang: 'zh', failedToLoad: false, ...overrides }));
+    expect(summary()).toContain('正在读取候选数量');
+    expect(summary()).not.toContain('共 0 条候选');
+    expect(summary({ total: 7, failedToLoad: true })).toContain('候选数量暂不可读');
+    expect(summary({ total: 7, failedToLoad: true })).not.toContain('共 7 条候选');
+    expect(summary({ total: 0 })).toContain('共 0 条候选');
+    expect(summary({ total: 3, lang: 'en' })).toContain('3 candidates grouped by source');
   });
 });
 
