@@ -32,7 +32,7 @@ You can also start in Studio, inspect a real task, extract knowledge items from 
 
 It is also a **gate in front of eval**: `omk eval` runs the static doctor rules internally and refuses to run on a broken artifact, the same way CI runs lint before tests. Passing checks does not guarantee representative cases or a valid conclusion. Failed checks point to structure, dependency, or measurability problems to fix before comparing scores.
 
-→ How-to: [run doctor checks](../guides/run-doctor-checks)
+→ How-to: [run doctor checks](../guides/evaluation/run-doctor-checks.md)
 
 ## eval — the measurement core
 
@@ -41,7 +41,7 @@ It is also a **gate in front of eval**: `omk eval` runs the static doctor rules 
 This is where omk's measurement rigor lives. Everything in [architecture](./architecture), [statistical rigor](./statistical-rigor), and the [scoring pipeline](../specs/evaluation/scoring) explains how decisions, coverage, uncertainty, and source evidence together support a ship/no-ship decision.
 
 → Concepts: [how it works](./architecture) · [scoring pipeline](../specs/evaluation/scoring)
-→ How-to: [evaluate an agent](../guides/agent-eval) · [auto-improve a skill](../guides/auto-improve-skills)
+→ How-to: [evaluate an agent](../guides/evaluation/agent-eval.md) · [auto-improve a skill](../guides/evaluation/auto-improve-skills.md)
 
 ## observe — does it hold up in production?
 
@@ -49,9 +49,9 @@ This is where omk's measurement rigor lives. Everything in [architecture](./arch
 
 `omk studio` directly browses local Codex conversations and four-lane task trajectories without prior ingest; active tasks support live following. Reading logs makes no model calls and does not treat knowledge access as a cause of outcomes.
 
-[Knowledge extraction](../guides/extract-knowledge.md) generates content for review from selected Codex excerpts, preserving sources, conditions, revisions, and reasons. Generation calls a model; retaining content neither verifies it nor writes it into an artifact. [MCP feedback](../guides/mcp-integration.md) records observations with user confirmation; draft cases only after review confirms a real issue.
+[Knowledge extraction](../guides/knowledge/extract-knowledge.md) generates content for review from selected Codex excerpts, preserving sources, conditions, revisions, and reasons. Generation calls a model; retaining content neither verifies it nor writes it into an artifact. [MCP feedback](../guides/integration/mcp-integration.md) records observations with user confirmation; draft cases only after review confirms a real issue.
 
-→ How-to: [observe production traces](../guides/observe-production)
+→ How-to: [observe production traces](../guides/observe/observe-production.md)
 
 ## How they chain
 

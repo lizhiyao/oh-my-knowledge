@@ -35,7 +35,7 @@ When testing a knowledge artifact's effects on AI tasks, "Any good?" usually con
 
 **Change efficacy — is this change a real improvement, or noise?** A new knowledge version scores higher, but is that a genuine gain or random eval variation? omk answers with a verdict that carries uncertainty: Bootstrap confidence intervals, length de-biasing, and Krippendorff α when human gold is available, rather than two isolated scores.
 
-**Incremental value — is this knowledge worth maintaining for the target task?** A baseline-vs-skill comparison may measure *necessity* (the model lacked this knowledge) or *implementation quality* (the skill expresses it effectively). If the model already has the capability, a beautifully written skill may add no value. If the samples do not represent the target task, even a significant gain does not generalize. This is a construct-validity question. (See the [sample design guide](../guides/sample-design.md).)
+**Incremental value — is this knowledge worth maintaining for the target task?** A baseline-vs-skill comparison may measure *necessity* (the model lacked this knowledge) or *implementation quality* (the skill expresses it effectively). If the model already has the capability, a beautifully written skill may add no value. If the samples do not represent the target task, even a significant gain does not generalize. This is a construct-validity question. (See the [sample design guide](../guides/evaluation/sample-design.md).)
 
 These decisions can share measurement infrastructure, but they cannot be collapsed into one universal ruler. Authors shipping a revision primarily care about change efficacy; adopters deciding whether to bring in external knowledge care more about incremental value.
 

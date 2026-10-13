@@ -9,7 +9,7 @@ Entities organize the objects described by knowledge; identifying an entity does
 | What are entities, knowledge, and carriers? | [Concept definitions](../../explanation/knowledge.md) |
 | How are identity, granularity, and ambiguity handled? | [Entity identity](./entity-identity.md) |
 | What is implemented, and which formats are supported? | [Entity extraction](./entity-extraction.md) |
-| How do I review, correct, retain, and reuse knowledge? | [Knowledge guide](../../guides/extract-knowledge.md) · [Entity knowledge library](../knowledge/knowledge-library.md) |
+| How do I review, correct, retain, and reuse knowledge? | [Knowledge guide](../../guides/knowledge/extract-knowledge.md) · [Entity knowledge library](../knowledge/knowledge-library.md) |
 | How are annotations, checks, and quality acceptance defined? | [Extraction evaluation protocol](./entity-extraction-evaluation.md) |
 
 The current specification records the user-approved beta scope and one previously viewed development-window regression of prompt v14, with itemwise author review. Independent review and overall quality acceptance remain incomplete. Structural admission, recorded-output workflow acceptance, and retaining knowledge are separate from extraction accuracy, truth, stability, or reuse benefit; see the current specification and protocol for their exact limits.
@@ -55,8 +55,12 @@ Each batch retains its own inputs, prompt, corpus, annotation guide, checker, ru
 |---|---|
 | [Complete-name coverage audit](./history/entity-name-annotation-coverage.md) | Source-based corpus-v12 annotation revision; zero model calls and no new extraction-quality score. |
 
+See also [rule and prompt evolution](history/entity-extraction-evolution.md) for batch changes and frozen digests; it is not an additional quality trial.
+
 ## Sources and reproduction
 
-Each report links its original evidence bundle, frozen identity, review scope, and unavailable material. Keep those records when citing results; real source text and full outputs may remain local. The [knowledge guide](../../guides/extract-knowledge.md#reproduce-extraction-quality-checks) identifies the historical v3 tool boundary, while the current evaluation protocol owns today's checks.
+Each report links its original evidence bundle, frozen identity, review scope, and unavailable material. Keep those records when citing results; real source text and full outputs may remain local. The [knowledge guide](../../guides/knowledge/extract-knowledge.md#reproduce-extraction-quality-checks) identifies the historical v3 tool boundary, while the current evaluation protocol owns today's checks.
 
 English and Chinese reports mirror each other. Repository links use the organized source paths; the documentation site retains the original `/explanation/entity-…` report URLs and anchors. Moving a report does not change its measurement result. Relinking a live annotation guide changes its byte digest, so new review packages retain their own identities; frozen guides and public evidence are unchanged.
+
+- [Historical quality reproduction](history/extraction-quality-reproduction.md): Run only at the corresponding frozen versions.

@@ -14,196 +14,44 @@
 
 ## 二、标准术语
 
-### 1. Artifact
+本节只规定首选名称，不重新定义概念或复制 API 字段。概念见[知识原理](../../explanation/knowledge.md)，查阅见[术语表](../../reference/shared/glossary.md)。
 
-`artifact` 是 omk 对"被评测对象"的统一标准术语。
-
-它表示在实验中被拿来比较、注入、运行或观测的对象，可以是：
-
-- `baseline`
-- `skill`
-- `prompt`
-- `agent`
-- `workflow`
-- 未来的 `team` 或其他新型知识载体
-
-规则：
-
-- 对外文档优先使用 `artifact`
-- 对内核心类型、请求结构、任务结构优先使用 `artifact`
-- 界面中文文案把 `artifact` 写作「知识载体」；英文界面保留身份词 `artifact`（如 `Knowledge artifact`），不另造「知识对象」一类说法（见 §三.9）
-
-### 2. Artifact Kind
-
-`artifact kind` 是 artifact 的具体类别。
-
-当前支持：
-
-- `baseline`
-- `skill`
-- `prompt`
-- `agent`
-- `workflow`
-
-规则：
-
-- `baseline` 表示空 artifact，也就是不注入任何显式 artifact；对大多数使用者来说，可以直接理解为"什么都没有"
-- `skill`、`agent`、`workflow` 是 artifact 的子类，不是顶层总称
-- 新增载体时，优先扩展 `artifact kind`，不要另起一套平行抽象
-
-### 3. Variant
-
-`variant` 是一次实验中的一条对比臂的表达式，不是领域对象本身。
-
-例如：
-
-- `baseline`
-- `prd`
-- `/path/to/SKILL.md`（runtime context 的 cwd 单独声明，不编码进表达式）
-
-规则：
-
-- variant 表达式解析后得到 artifact 与 runtime context
-- 每个 variant 都必须绑定一个 experiment role（control 或 treatment），见第 4 节
-- CLI 层按 experiment role 声明 variant（`--control` / `--treatment`），不再使用扁平的 `--variants` 参数
-
-### 4. Experiment Role
-
-`experiment role` 是 variant 在当次实验中扮演的角色，采用统计学标准术语。
-
-枚举：
-
-- `control` — 对照组，提供基线测量
-- `treatment` — 实验组，对比 control 看变化
-
-规则：
-
-- role 是 variant 的 run-time 属性，不是 artifact 的固有属性；同一个 artifact 在不同 run 可以扮演不同 role
-- CLI 层通过 `--control <expr>` 和 `--treatment <v1,v2,...>` 两个独立参数声明
-- 报告中以 control/treatment 标签展示，不再从 `artifactKind === 'baseline'` 反推角色
-- `baseline` 是 artifact kind 术语，不是 experiment role 术语；参见第三节边界
-
-### 5. Runtime Context
-
-`runtime context` 是运行时上下文，当前最核心的是 `cwd`。
-
-它表示模型或 agent 在什么环境里运行，而不是"被评测对象"本身。
-
-在项目型 agent 场景下，`runtime context` 就直接包含这些会影响行为的环境因素：
-
-- 项目目录
-- `CLAUDE.md`
-- 本地 skills
-- 仓库文件
-- 工具可见范围
-
-规则：
-
-- `cwd` 归属于 runtime context，单独声明（CLI 的 `--control-cwd` / `--treatment-cwd`，或 eval.yaml 的结构化 `cwd:` 字段），不编码进 variant 表达式
-- 如果要表达"空 artifact + 指定 runtime context"，用自描述标签作 artifact、cwd 单独给，例如 `--treatment project-env --treatment-cwd /path/to/project`
-- 不要把项目目录、项目级 runtime context、显式 artifact 注入混成一个概念
-- 不要把 runtime context 与 Core 的两个用例级投影混淆：`executionContext` 是单条用例中仅供 Executor 使用的输入，`evaluationContext` 是仅供 Evaluator 使用的输入；二者都不描述宿主运行环境
-
-### 6. Sample / 用例
-
-`sample` 是评测的一条**用例**(test case)记录。
-
-规则:
-
-- **代码 / API / 文件名 / CLI flag 继续用 `sample`**:`Sample` 类型、`sample_id` 字段、`eval-samples.json` 文件名、`--samples` flag——这些是开源 API + 英文圈 LLM eval 通用术语，不动
-- **user-facing 中文文案默认用「用例」，不用「样本」**:CLI 输出、报告 UI、错误信息、文档正文、commit message 中文部分。包括"用例数"/"用例难度"/"用例不足"/"跨用例散度"等组合
-- **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例，不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
-- **例外：统计学术语场景保留「样本」**——Cohen's d / Hedges' g 的"**小样本修正**"、"**样本均值**"、"**样本方差**"、"**样本量**"、bootstrap "**重采样**" 等，这些是 stats 领域的固定提法(对应英文 small-sample correction / sample mean / sample variance / sample size / resampling),硬翻成「用例」反而让懂统计的读者多一拍。判定准则:**这个词指的是"对总体的一次随机抽样"统计概念**(那就是样本),还是**"开发者手挑的一条测试用例"**(那就是用例)。两者不混用、上下文清晰
-
-#### 6.1 Sample 元数据字段
-
-Sample schema 含一组可选元数据字段，在公开 v3 封套的 `annotations` 中声明，供审计使用，**不参与 grading / judge / verdict**。详见 [用例设计指南](../../guides/sample-design.md)。
-
-- **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。作者自行保持标签一致；当前未实现自动归一。
-- **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
-- **`construct?: string`** — 该 sample 测的 construct 类型。Suggested:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好)/ `'capability'`(测某具体能力)。Free-form string 允许自定义。
-- **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
-- **`covers?: { targetKind: string; ref: string }[]`** — 这条 sample 可选声明的 skill 结构锚点，作为作者注释保留，不证明实际执行覆盖。
-
-**construct 跟 capability 区别**(用户最常混淆的两个字段):
-- **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性，跑 skill-v1-vs-skill-v2 是测质量。
-- **capability** = 这个 sample 测**哪些具体能力**(api-selection / error-diagnosis / fallback)。是被测对象的能力维度。
-
-### 7. Task
-
-`task` 是一次具体执行单元：
-
-> 一个 sample × 一个 artifact × 一个 runtime context
-
-规则：
-
-- 任务层不直接代表实验结论
-- 任务是执行与评分的最小单位
-
-### 8. Trace
-
-`trace` 是一次执行过程中产生的过程数据，包括：
-
-- turns
-- tool calls
-- timing
-- token / cost / cache 等执行指标
-
-规则：
-
-- trace 属于运行结果
-- trace 用于解释 agent 行为差异，不用于命名被评测对象
-
-### 9. Evaluation Runtime vocabulary（评测运行时词表）
-
-内嵌 Runtime API 使用下列标准术语，不引入第二套词表：
-
-| 术语 | 规范性含义 |
+| 标识 | 中文表达 |
 |---|---|
-| `evaluation` | 从封存输入到 Report 的一次完整测量过程。 |
-| `executor` | 针对一条用例运行一个 artifact／variant 的宿主侧代码。它不是知识载体本身。 |
-| `evaluator` | 把执行事实转成指标观测的测量方法。 |
-| `metric` | 用于分析的具名取值契约与方向。 |
-| `judge` | 由 evaluator 使用的 LLM 评委调用；它不是所有 evaluator 的同义词。 |
-| `rubric` | 提供给 Rubric Judge 的评分标准与打分指令。 |
-| `dataset` | 具名且非空的用例集合。 |
-| `experiment` | 预先登记的试验、种子、重采样与决策设计。 |
-| `policy` | 执行、评测、证据、重试、预算与失败处理的运行限值。 |
-| `run` | 一次按封存评测设计执行的运行，由 `runId` 标识。 |
-| `comparison` | 分析所消费的对照组／实验组关系声明。 |
-| `verdict` | Decision 的结果，例如 `PROGRESS`／`NOISE`；它不是原始分数。 |
-| `evidence` | 支撑某一观测或结论的、已分类且可归属的事实。 |
-| `report` | 经认证的运行产物与 Decision 的物化投影。 |
+| `evaluation` | 评测 |
+| `artifact` | 知识载体 |
+| `variant` | 对比臂 |
+| `control` | 对照角色 |
+| `treatment` | 实验角色 |
+| `runtime context` | 运行条件 |
+| `dataset` | 用例集 |
+| `sample` | 用例 |
+| `executor` | 执行器 |
+| `evaluator` | 评分器 |
+| `metric` | 具名观测指标 |
+| `judge` | LLM 评委 |
+| `rubric` | 评分准则 |
+| `experiment` | 实验设计 |
+| `policy` | 测量策略 |
+| `run` | 一次运行 |
+| `comparison` | 比较声明 |
+| `verdict` | 判定标签 |
+| `evidence` | 证据 |
+| `report` | 报告视图 |
 
-因此规范的包入口是 `evaluate({ dataset, variants, evaluators, comparisons, experiment, analyses, decision, policy, runId })`。配对／独立语义的唯一 owner 是 Sampling Design；每个 Variant 拥有自己的执行绑定，每个 Comparison 只显式声明自己的 control、treatments 与 Metrics。避免出现 runner、suite、cases、candidate、scoring 这类公共别名，也不要把 `target` 当作 artifact 的同义词。Core 的 `Target` 是 variant 到执行要求的编译绑定，仍属更底层的契约。`eval-workflows` 可以依赖 Runtime 的基础叶子模块，但不得依赖面向用户的规范 façade 或包索引。
+`executionContext` 约束执行，`evaluationContext` 提供评估专用资料，`annotations` 保留作者注释；完整格式分别由样本格式和 Core API 拥有。用户可见中文优先写“用例”，统计学的样本均值、样本方差等固定术语仍使用“样本”。
 
-### 10. Knowledge（知识）
-
-**知识是能被未来任务复用的事实、案例或方法；每条知识应保留适用范围、来源证据和当前验证状态。**
-
-这是 OMK 面向知识挖掘的产品工作定义，不代表行业存在统一定义。它指导后续设计，不引入新的存储 Schema，也不表示现有 observation 已具备这些字段。
-
-| 形式 | 表达什么 | 例子 |
-|---|---|---|
-| 事实 | 对世界、环境或要求的有范围的主张 | 某工具在特定版本下的能力限制 |
-| 案例 | 包含上下文、行动与观测结果的经历 | 一次失败尝试，以及在该环境中成功的恢复过程 |
-| 方法 | 带适用条件与例外的可复用步骤或判断规则 | 并行开发需要保留当前工作现场时，创建独立 worktree |
-
-案例可以有复用价值，而不必足以支持一般规则。一次成功不能证明方法普遍有效。明确的偏好和要求应保留提出者与适用范围，不应被推断为普遍事实。
-
-每条候选知识应保留：
-
-- **适用范围**：限制复用的任务、环境、版本或其他条件，以及已知例外。
-- **来源证据**：支持主张的可追溯记录，保留足够上下文以区分观测事实与解释，并保留反证。
-- **验证状态**：区分证据复核与效果评测，明确尚未验证的部分。来源已复核，不等于把知识提供给 Agent 已被证明能改善表现。
-
-工作日志记录发生过什么。知识挖掘从证据中筛选可复用事实、保留有价值的案例并提出方法，同时覆盖成功经验、失败和对已有知识的修正。提炼出的解释在复核前属于候选；重复出现不自动构成独立佐证。
-
-知识内容与知识载体是两个层次。一份 skill、prompt 或项目规则文件可以包含多条知识，同一条知识也可以出现在多个载体中。这些知识形式不扩展 `ArtifactKind`，也不替代现有 artifact 身份。
-
-观测提供证据与候选。受控评测固定模型，检验载体改动在声明的任务范围内是否有帮助，不证明某条主张普遍为真。用于形成改动的案例不能再被表述为独立的泛化验证证据。知识接纳与版本发布仍遵循现有评测及治理契约。
-
-设计参考：[KCS 的知识条目结构与复用实践](https://library.serviceinnovation.org/KCS/Knowledge-Centered_Success_Practices_Guide/102-Output_the_KCS_Article)用于借鉴带上下文的捕获与持续复核；[LangChain 的记忆分类](https://docs.langchain.com/oss/python/concepts/memory)区分事实、经历与指令。上述定义和边界是 OMK 对这些实践的综合取舍。
+<a id="_1-artifact"></a>
+<a id="_2-artifact-kind"></a>
+<a id="_3-variant"></a>
+<a id="_4-experiment-role"></a>
+<a id="_5-runtime-context"></a>
+<a id="_6-sample-用例"></a>
+<a id="_6-1-sample-元数据字段"></a>
+<a id="_7-task"></a>
+<a id="_8-trace"></a>
+<a id="_9-evaluation-runtime-vocabulary-评测运行时词表"></a>
+<a id="_10-knowledge-知识"></a>
 
 ## 三、术语边界
 
@@ -253,15 +101,15 @@ Sample schema 含一组可选元数据字段，在公开 v3 封套的 `annotatio
 - 两个都是 `skill` kind 的 artifact（v1 vs v2）比较时，其中一个被显式声明为 `control`——此时 control role 和 baseline kind 没有任何关系
 - 报告与代码都应以 `experimentRole` 作为判定对照组的唯一来源，不从 `artifactKind === 'baseline'` 反推
 
-### 5. CI 在 omk 里只指 Confidence Interval
+### 5. 区分置信区间与持续集成 {#_5-ci-在-omk-里只指-confidence-interval}
 
-**omk 里 CI 永远只指置信区间(Confidence Interval)**,不指 Continuous Integration。这条避免与统计学外的 "CI" 含义混淆。
+测量结果中的 CI 表示置信区间（Confidence Interval）。仓库流程也使用持续集成 CI；必须按上下文区分，不能把仓库检查误读为统计区间。
 
 规则:
 
 - **持续集成场景的内部 helper 一律用 "gate"**：`omk eval` 的 gate 路径 / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
 - **置信区间场景一律用「CI」**：`Bootstrap CI` / `comparison CI` / `interval` Analysis result / `95% CI`
-- 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义，读者不需上下文判断
+- 混合上下文优先写“置信区间”或“持续集成／仓库门禁”；不顺手重命名既有公开字段和 Actions 名称
 
 ### 6. 稳定性 = 跨独立 Run，而不是跨用例散度
 

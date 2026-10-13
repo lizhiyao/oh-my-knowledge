@@ -4,14 +4,14 @@
 
 ## 安装与模型准备
 
-需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI、Claude Code 或 API 执行器。配置方法见[执行器](./reference/executors.md)。
+需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI、Claude Code 或 API 执行器。配置方法见[执行器](reference/integration/executors.md)。
 
 ```bash
 npm i -g oh-my-knowledge@next
 omk --version
 ```
 
-这里安装的是持续迭代的 1.0 Beta；从 0.54 升级请先看[迁移指南](./guides/v1-preview-migration.md)。
+这里安装的是持续迭代的 1.0 Beta；从 0.54 升级请先看[迁移指南](guides/maintenance/v1-preview-migration.md)。
 
 在 Codex 任务中，OMK 默认选择 Codex，读取本机配置的模型，并沿用该模型作为评委。普通终端可显式选择：
 
@@ -19,7 +19,7 @@ omk --version
 export OMK_EXECUTOR=codex
 ```
 
-模型选择、API 凭证与可选 SDK 的前置要求统一见[执行器文档](./reference/executors.md)。
+模型选择、API 凭证与可选 SDK 的前置要求统一见[执行器文档](reference/integration/executors.md)。
 
 ## 1. 跑通演示项目
 
@@ -51,7 +51,7 @@ skills/
 └── my-skill-v2.md
 ```
 
-需要附带参考资料时，可使用 `skills/my-skill-v2/SKILL.md` 目录布局，详见[知识载体布局](./reference/artifact-layout.md)。variant 名取文件名或目录名，例如 `my-skill-v2`。
+需要附带参考资料时，可使用 `skills/my-skill-v2/SKILL.md` 目录布局，详见[知识载体布局](reference/evaluation/artifact-layout.md)。variant 名取文件名或目录名，例如 `my-skill-v2`。
 
 ```bash
 omk sample skills/my-skill-v2.md
@@ -64,7 +64,7 @@ omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run
 omk eval --control my-skill-v1 --treatment my-skill-v2
 ```
 
-只有一版 skill 时，用 `baseline` 作为 control，比较“无 skill”和“有 skill”。用例的格式和自动发现规则见[评测用例格式](./reference/eval-sample-format.md)。
+只有一版 skill 时，用 `baseline` 作为 control，比较“无 skill”和“有 skill”。用例的格式和自动发现规则见[评测用例格式](reference/evaluation/eval-sample-format.md)。
 
 ## 3. 查看结果并决定下一步
 
@@ -79,7 +79,7 @@ omk eval --control my-skill-v1 --treatment my-skill-v2
 | `UNDERPOWERED` | 补齐预先声明的样本量要求。20 个可比较单元只是默认启发式下限；正式测量应根据外部先导假设配置 `decision.power`，或登记 `decision.minimumComparisonUnits`。 |
 | `SOLO` | 添加对照组后再做跨版本判断。 |
 
-结论只适用于本次用例、准则和运行条件。AI 生成用例可能偏向已有的成功路径，应补充真实失败、反例与误用场景。保留报告、用例来源和人工复核结论；在迭代中使用过的用例不能直接充当独立发布验证集。方法见[统计严谨性](./explanation/statistical-rigor.md)和[用例设计](./guides/sample-design.md)。
+结论只适用于本次用例、准则和运行条件。AI 生成用例可能偏向已有的成功路径，应补充真实失败、反例与误用场景。保留报告、用例来源和人工复核结论；在迭代中使用过的用例不能直接充当独立发布验证集。方法见[统计严谨性](./explanation/statistical-rigor.md)和[用例设计](guides/evaluation/sample-design.md)。
 
 ## 在 Agent 中使用
 
@@ -93,13 +93,13 @@ omk install omk-agent-skill
 
 ## 首跑遇到问题
 
-- **模型或认证失败：** 检查 runtime 登录状态、模型名与 API 地址，见[执行器](./reference/executors.md)。
+- **模型或认证失败：** 检查 runtime 登录状态、模型名与 API 地址，见[执行器](reference/integration/executors.md)。
 - **doctor 拦截：** 按诊断修复知识载体后重跑；需要理解跳过检查的影响时查 [CLI 参考](./reference/cli.md)。
 - **只想检查断言与报告：** `--no-judge` 跳过 LLM 评委，但目标执行仍可能调用模型，不能视为离线或免费运行。
 - **预览失败：** 先修复用例、路径或 URL 解析问题，不要通过直接执行绕过失败。
 
 ## 继续使用
 
-[自动改进 skill](./guides/auto-improve-skills.md) · [观测真实任务](./guides/observe-production.md) · [Node.js 服务接入](./guides/eval-runtime.md) · [完整文档索引](./README.md)
+[自动改进 skill](guides/evaluation/auto-improve-skills.md) · [观测真实任务](guides/observe/observe-production.md) · [Node.js 服务接入](reference/integration/eval-runtime-recipes.md) · [完整文档索引](./README.md)
 
 [评测流程图：从执行到判定](./explanation/architecture.md#单次评测流程)。

@@ -1,60 +1,35 @@
-# OMK 文档
+# OMK 文档：从任务开始 {#omk-文档}
 
-OMK 从人与 AI 的真实协作中建设知识：保留来源，帮助人积累理解和方法，让 AI 在后续任务中使用合适的知识。以用户为中心，跨会话、跨 Agent 管理和复用知识是持续建设的方向，尚未完整实现。
+OMK 帮助你从人与 AI 的真实协作中沉淀有来源的知识，维护知识与载体，再按需要验证改动。先选当前要完成的任务；字段和实现细节可以之后查。
 
-从当前任务选择入口。1.0 仍在 Beta 迭代；旧版本用户先看[迁移指南](./guides/v1-preview-migration.md)。[English index](../README.md)。
+<a id="选择使用方式"></a>
+<a id="选择入口"></a>
+<a id="从真实任务沉淀知识"></a>
+<a id="完成具体任务"></a>
 
-## 选择使用方式
+## 查看任务，沉淀并维护知识
 
-OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流；**Studio** 是浏览任务、复核知识和检查证据的本地工作台；**eval-runtime** 是可独立嵌入 Node.js 服务或平台的评测 API，不要求通过 CLI 或启动 Studio。
+1. [查看真实任务](guides/observe/index.md)：启动 Studio，阅读对话、执行与来源记录。
+2. [积累与维护知识](guides/knowledge/index.md)：提炼并核对候选，围绕对象持续积累，修订过时内容，核对和更新载体。
+3. [验证载体改动](guides/evaluation/index.md)：设计用例、检查载体、受控比较并阅读证据；第一次运行从[快速上手](quickstart-skill-eval.md)开始。
 
-**DSH 插件**把 `/omk eval` 与 `/omk observe` 带入现有 DeepSeek Harness profile，复用宿主环境，见[DSH 接入](./reference/executors.md#deepseek-harness-优先使用宿主插件)。Agent Skill 用于自然语言驱动 CLI 工作流，MCP 用于用户授权的主动反馈。
+知识的保留、载体的保存、实际使用和效果验证分别记录。上述路径按任务选用，无需为查看日志先跑评测。
 
-## 选择入口
+## 接入自己的应用
 
-| 目标 | 先读 | 按需查阅 |
-|---|---|---|
-| 命令行比较两版 skill | [快速上手](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [执行器](./reference/executors.md) · [用例格式](./reference/eval-sample-format.md) · [载体布局](./reference/artifact-layout.md) |
-| 在 Node.js 服务中接入 | [服务接入指南](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [底层 Core API](./reference/embedded-api.md) |
-| 由平台宿主下发评测任务 | [平台宿主集成指南](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
-| 查看真实任务与知识缺口 | [观测与任务轨迹](./guides/observe-production.md) | [Codex 案例](./guides/codex-observe-case.md) · [有效复核语义](./specs/observe/effective-observation-review.md) |
+[服务与 Agent 集成](guides/integration/index.md)从离线 Node 示例开始，再选择平台、MCP 或模型接入。配置大全和完整片段见[接入参考](reference/integration/index.md)。
 
-## 从真实任务沉淀知识
+<a id="理解结果与边界"></a>
+<a id="迁移与设计规范"></a>
 
-1. [在 Studio 查看任务轨迹](./guides/observe-production.md)：选择本机 Codex 对话，核对原始记录与知识访问，无需先 ingest。
-2. [从工作日志提炼知识](./guides/extract-knowledge.md)：选定来源片段，生成并复核知识内容，保留修订与处理理由。
-3. [通过 MCP 记录反馈](./guides/mcp-integration.md)：在用户确认后提交最小证据，复核真实问题，再草拟用例。
-4. [将载体改动交给评测](./quickstart-skill-eval.md)：人工整理正式用例与候选版本，依据受控比较决定后续动作。
+## 理解与查阅
 
-这些路径按需组合。知识内容的保留、载体的写入、评测通过与发布分别记录；候选不会自动生效。概念见[知识内容与知识载体](./explanation/knowledge.md)。
+| 需要什么 | 入口 |
+|---|---|
+| 知识、实体、观测与评测的概念 | [原理与概念](explanation/index.md) |
+| 样本、载体和评分字段 | [评测参考](reference/evaluation/index.md) |
+| CLI、术语与全局配置 | [通用参考](reference/shared/index.md) |
+| 接口、存储、实现与验收要求 | [领域规范](specs/index.md) |
+| 升级旧版本或参与贡献 | [升级与贡献](guides/maintenance/index.md) |
 
-## 完成具体任务
-
-- [在 Agent 中使用 OMK Skill](./quickstart-skill-eval.md#在-agent-中使用)
-- [doctor 体检](./guides/run-doctor-checks.md) · [自动改进 skill](./guides/auto-improve-skills.md)
-- [评测 agent 与项目上下文](./guides/agent-eval.md) · [使用非 Claude 模型](./guides/non-claude-models.md)
-- [组合 MCP 集成](./guides/mcp-integration.md) · [DeepSeek Harness 接入](./reference/executors.md#deepseek-harness-优先使用宿主插件)
-
-## 理解结果与边界
-
-- [原理索引](./explanation/index.md)：概念、理由与规范的职责边界。
-- [为谁做、解决什么](./explanation/who-omk-is-for.md) · [OMK 如何理解知识](./explanation/knowledge.md)
-- [三阶段工作流](./explanation/three-stage-workflow.md) · [架构](./explanation/architecture.md)
-- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/evaluation/scoring.md) · [用例设计](./guides/sample-design.md)
-- [术语表](./reference/glossary.md) · [工具对比](./reference/comparison.md)
-
-## 迁移与设计规范
-
-- [规范索引与阅读顺序](./specs/index.md)：按共享、实体、知识、评测、观测与 Studio 领域查看契约、草案和历史提案。
-
-- [贡献指南](./guides/contributing.md) —— 分支模型、本地门禁与发版流程。
-- [通用 sample 提案（历史）](./specs/evaluation/history/general-sample-proposal.md)
-
-- [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/shared/storage-layout-spec.md)
-- [Core 设计](./specs/evaluation/eval-core-vnext.md) · [评分等价性](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/evaluation/cli-evaluation-input-compilation.md)
-- [实体知识库](./specs/knowledge/knowledge-library.md)：人工确认跨窗口来源关联，阅读和维护对象知识及组织历史。
-- [知识领域模型（草案）](./specs/knowledge/knowledge-domain-model.md) · [知识缺口信号](./specs/observe/knowledge-gap-signal-spec.md)
-- [实体提取：证据与限制](./specs/entities/index.md)：当前契约、质量边界及分类历史报告。
-- [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [术语规范](./specs/shared/terminology-spec.md)
-
-- [验证本地任务结果](./guides/local-tasks.md)
+旧版用户先核对迁移边界。历史试验、旧 RFC 和案例从相应规范领域的历史入口读取；它们保留当时证据，不代表当前质量或能力承诺。[English](../README.md)。

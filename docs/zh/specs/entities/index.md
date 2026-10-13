@@ -9,7 +9,7 @@
 | 实体、知识和载体分别是什么？ | [概念定义](../../explanation/knowledge.md) |
 | 如何处理身份、粒度和歧义？ | [实体身份](./entity-identity.md) |
 | 已实现什么，支持哪些格式？ | [实体提取](./entity-extraction.md) |
-| 如何核对、纠正、保留和复用知识？ | [知识指南](../../guides/extract-knowledge.md) · [实体知识库](../knowledge/knowledge-library.md) |
+| 如何核对、纠正、保留和复用知识？ | [知识指南](../../guides/knowledge/extract-knowledge.md) · [实体知识库](../knowledge/knowledge-library.md) |
 | 标注、检查与质量验收如何定义？ | [实体提取评测协议](./entity-extraction-evaluation.md) |
 
 当前规范记录了用户确认的 beta 范围，以及 prompt v14 在一个已查看开发窗口上的回归和作者逐项自审。独立复核与整体质量验收仍未完成。结构接纳、已有输出的动线验收和保留知识，与提取准确率、真实性、稳定性及复用收益分别判断，精确限制以当前规范和协议为准。
@@ -55,8 +55,12 @@
 |---|---|
 | [完整名称覆盖审核](./history/entity-name-annotation-coverage.md) | 基于来源修订语料 v12 标注，模型调用为零，不形成新的提取质量分数。 |
 
+另见[规则与提示词演进记录](history/entity-extraction-evolution.md)：按批次核对设计变化和冻结摘要；它不是新增质量试验。
+
 ## 来源与复现
 
-各报告链接原始证据包、冻结身份、复核范围及不可公开材料。引用结果时保留这些记录；真实来源正文与完整输出可能只留本地。[知识指南](../../guides/extract-knowledge.md#复现提取质量检查)说明历史 v3 工具的边界，当前检查以实体提取评测协议为准。
+各报告链接原始证据包、冻结身份、复核范围及不可公开材料。引用结果时保留这些记录；真实来源正文与完整输出可能只留本地。[知识指南](../../guides/knowledge/extract-knowledge.md#复现提取质量检查)说明历史 v3 工具的边界，当前检查以实体提取评测协议为准。
 
 英文与中文报告逐项镜像。仓库引用采用整理后的来源路径，文档站保留原有 `/explanation/entity-…` 报告 URL 和锚点。移动报告不改变测量结果；现行标注指南修复引用会改变字节摘要，新复核包因此保留自己的测量身份，冻结指南与公开证据保持原样。
+
+- [历史质量复现步骤](history/extraction-quality-reproduction.md)：只在相应冻结版本运行。

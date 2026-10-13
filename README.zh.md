@@ -16,7 +16,7 @@ OMK 是面向 Agent 使用者和 AI 应用开发者的知识建设工具。从�
 
 **Observe** 为知识沉淀保留真实工作与来源，**Know** 提炼、维护并复用有依据的知识，**Measure** 在需要检验改动效果时，固定模型与用例，控制并记录运行条件，比较 prompt、RAG、skill、agent 或 workflow 等知识载体。已有两版载体时，可以直接开始评测；不必先收集日志。
 
-当前 1.0 仍处于 **Beta 迭代期**，接口与存储契约可能继续变化。从旧版本升级前，请先阅读[迁移指南](docs/zh/guides/v1-preview-migration.md)。
+当前 1.0 仍处于 **Beta 迭代期**，接口与存储契约可能继续变化。从旧版本升级前，请先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
 
 ![OMK：从受控评测到真实使用反馈](./docs/public/omk-knowledge-flow-animated.gif)
 
@@ -29,19 +29,19 @@ OMK 是面向 Agent 使用者和 AI 应用开发者的知识建设工具。从�
 | **CLI** | 在终端、coding agent 或 CI 中执行检查、评测、观测与迭代工作流 |
 | **Studio** | 在本地工作台浏览任务轨迹、复核知识内容，查看报告与原始证据 |
 | **eval-runtime** | 通过 Node.js API 将执行、评分与版本比较嵌入自己的服务或平台；无需通过 CLI 或启动 Studio |
-| **DSH 插件** | 在 DeepSeek Harness 内用 `/omk eval` 和 `/omk observe`，复用当前 profile 的模型、凭证、工具与 sandbox；见[宿主插件接入](docs/zh/reference/executors.md#deepseek-harness-优先使用宿主插件) |
+| **DSH 插件** | 在 DeepSeek Harness 内用 `/omk eval` 和 `/omk observe`，复用当前 profile 的模型、凭证、工具与 sandbox；见[宿主插件接入](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件) |
 
 ## 从你的目标开始
 
 | 想做什么 | 入口 | 得到什么 |
 |---|---|---|
-| 从真实任务发现值得沉淀的知识 | [Studio 与任务轨迹](docs/zh/guides/observe-production.md) | 核对成功经验、用户纠正与知识缺口的原始记录，以及对话、执行、结果、知识四条泳道 |
-| 把工作经验沉淀为知识 | [从日志提炼知识](docs/zh/guides/extract-knowledge.md) | 带来源和适用条件的候选知识，支持修订、保留和舍弃 |
-| 记录已确认的知识问题 | [MCP 主动反馈](docs/zh/guides/mcp-integration.md) | 待复核 observation；确认真实问题后再草拟用例 |
+| 从真实任务发现值得沉淀的知识 | [Studio 与任务轨迹](docs/zh/guides/observe/observe-production.md) | 核对成功经验、用户纠正与知识缺口的原始记录，以及对话、执行、结果、知识四条泳道 |
+| 把工作经验沉淀为知识 | [从日志提炼知识](docs/zh/guides/knowledge/extract-knowledge.md) | 带来源和适用条件的候选知识，支持修订、保留和舍弃 |
+| 记录已确认的知识问题 | [MCP 主动反馈](docs/zh/guides/integration/mcp-integration.md) | 待复核 observation；确认真实问题后再草拟用例 |
 | 判断一版改动是否值得采用 | [评测快速上手](docs/zh/quickstart-skill-eval.md) | 版本判定、不确定性、失败用例和评分依据 |
-| 验证 Agent 是否真正完成任务 | [本地任务验收](docs/zh/guides/local-tasks.md) | 修改文件、独立验收结果，以及失败／超时／取消后的现场证据 |
-| 自动尝试改进 skill | [迭代改进](docs/zh/guides/auto-improve-skills.md) | 经受控比较筛选的候选版本 |
-| 将评测接入服务或平台 | [Node.js 服务](docs/zh/guides/eval-runtime.md) · [平台宿主](docs/zh/guides/platform-host-integration.md) | 可组合的执行、评分与比较接口 |
+| 验证 Agent 是否真正完成任务 | [本地任务验收](docs/zh/guides/evaluation/local-tasks.md) | 修改文件、独立验收结果，以及失败／超时／取消后的现场证据 |
+| 自动尝试改进 skill | [迭代改进](docs/zh/guides/evaluation/auto-improve-skills.md) | 经受控比较筛选的候选版本 |
+| 将评测接入服务或平台 | [Node.js 服务](docs/zh/guides/integration/eval-runtime.md) · [平台宿主](docs/zh/guides/integration/platform-host-integration.md) | 可组合的执行、评分与比较接口 |
 
 ## 快速开始
 
@@ -51,7 +51,7 @@ OMK 是面向 Agent 使用者和 AI 应用开发者的知识建设工具。从�
 npm i -g oh-my-knowledge@next
 ```
 
-本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后用 `omk --version` 核对版本，再按[本地任务指南](docs/zh/guides/local-tasks.md)运行可信示例。
+本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后用 `omk --version` 核对版本，再按[本地任务指南](docs/zh/guides/evaluation/local-tasks.md)运行可信示例。
 
 ### 先看已有任务
 
@@ -59,11 +59,11 @@ npm i -g oh-my-knowledge@next
 omk studio
 ```
 
-打开命令返回的本地地址，从本机 Codex 对话进入任务轨迹；无需先 ingest，也不调用模型。进行中的任务支持实时跟随。Claude Code、OpenClaw 与 markdown 日志通过 `omk observe` 进入观测报告，见[观测指南](docs/zh/guides/observe-production.md)。
+打开命令返回的本地地址，从本机 Codex 对话进入任务轨迹；无需先 ingest，也不调用模型。进行中的任务支持实时跟随。Claude Code、OpenClaw 与 markdown 日志通过 `omk observe` 进入观测报告，见[观测指南](docs/zh/guides/observe/observe-production.md)。
 
-需要沉淀经验时，在“知识 → 提炼的知识”选择“从对话选择”，选定对话和轮次，核对消息与工作区后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。点击“生成知识载体”，即可核对并明确保存 skill 或 prompt。步骤见[提炼指南](docs/zh/guides/extract-knowledge.md)。
+需要沉淀经验时，在“知识 → 提炼的知识”选择“从对话选择”，选定对话和轮次，核对消息与工作区后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。点击“生成知识载体”，即可核对并明确保存 skill 或 prompt。步骤见[提炼指南](docs/zh/guides/knowledge/extract-knowledge.md)。
 
-“知识”入口进入知识库：明确关联不同窗口的来源实体，阅读带条件和依据的知识，再选择保留内容生成载体。同名不自动归并；当前未提供图谱或跨 Agent 自动身份关联。详见[知识库动线](docs/zh/guides/extract-knowledge.md#围绕实体积累知识)。
+“知识”入口进入知识库：明确关联不同窗口的来源实体，阅读带条件和依据的知识，再选择保留内容生成载体。同名不自动归并；当前未提供图谱或跨 Agent 自动身份关联。详见[知识库动线](docs/zh/guides/knowledge/extract-knowledge.md#围绕实体积累知识)。
 
 ### 或者，直接比较两版 skill
 
@@ -87,7 +87,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 本地任务从声明的文件快照执行两版知识，采集文件并交给独立验收程序检查；失败、超时或取消也保存声明文件和部分日志。它测量明确提供知识内容后的效果，不测宿主原生 skill 发现。任务与验收程序必须可信，工作区副本不是安全沙箱。
 
-[带 npm 依赖的购物车案例](examples/local-task/project/README.zh.md)记录了一次真实 Codex 运行：treatment 修改目标源码并通过六项检查，要求不编辑的负对照通过三项。该案例证明执行与验收链路可用，不证明知识版本的普遍收益；模型、用量和耗时见案例记录。[本地任务指南](docs/zh/guides/local-tasks.md)提供安装、配置与证据读取入口。
+[带 npm 依赖的购物车案例](examples/local-task/project/README.zh.md)记录了一次真实 Codex 运行：treatment 修改目标源码并通过六项检查，要求不编辑的负对照通过三项。该案例证明执行与验收链路可用，不证明知识版本的普遍收益；模型、用量和耗时见案例记录。[本地任务指南](docs/zh/guides/evaluation/local-tasks.md)提供安装、配置与证据读取入口。
 
 ## 在 Agent 与 DSH 中使用
 
@@ -99,7 +99,7 @@ omk install omk-agent-skill
 
 安装 Skill 后，可以对 coding agent 说：“用 omk 比较这两版 skill，先预览计划。”安装目标与使用方法见[快速上手](docs/zh/quickstart-skill-eval.md#在-agent-中使用)。
 
-[MCP 集成](docs/zh/guides/mcp-integration.md)提供用户授权的主动知识反馈入口。它仅记录提交到工具边界的部分证据，不自动监听完整对话。
+[MCP 集成](docs/zh/guides/integration/mcp-integration.md)提供用户授权的主动知识反馈入口。它仅记录提交到工具边界的部分证据，不自动监听完整对话。
 
 ### DeepSeek Harness 插件
 
@@ -118,7 +118,7 @@ dsh --profile web
 /omk observe <session-id>
 ```
 
-评测复用当前宿主的模型、凭证、工具和 sandbox，并为每条用例创建隔离 session。观测读取已结束 session 的快照并返回 Studio 任务轨迹地址；目前不实时跟随正在运行的 DSH session。配置要求与插件当前限制见[DSH 接入](docs/zh/reference/executors.md#deepseek-harness-优先使用宿主插件)。
+评测复用当前宿主的模型、凭证、工具和 sandbox，并为每条用例创建隔离 session。观测读取已结束 session 的快照并返回 Studio 任务轨迹地址；目前不实时跟随正在运行的 DSH session。配置要求与插件当前限制见[DSH 接入](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件)。
 
 ## 如何使用证据
 
@@ -133,11 +133,11 @@ dsh --profile web
 
 固定配置不能保证外部模型服务或重跑结果完全一致。结论受用例、评分准则和执行环境约束。观测信号不等于因果结论，生成的样本也不能直接充当独立发布验证集。原理与限制见[统计严谨性](docs/zh/explanation/statistical-rigor.md)和[三阶段工作流](docs/zh/explanation/three-stage-workflow.md)。
 
-项目评测与观测证据保存在 `.omk/`，本地任务默认写入 `.omk/eval`，也可通过 `--output` 指定报告与诊断目录。机器级状态位于 `~/.oh-my-knowledge/`；提炼的知识内容保存在显式选择的知识工作区。当前版本不读取或迁移旧存储布局；升级前备份，按[迁移指南](docs/zh/guides/v1-preview-migration.md)重新建立证据。
+项目评测与观测证据保存在 `.omk/`，本地任务默认写入 `.omk/eval`，也可通过 `--output` 指定报告与诊断目录。机器级状态位于 `~/.oh-my-knowledge/`；提炼的知识内容保存在显式选择的知识工作区。当前版本不读取或迁移旧存储布局；升级前备份，按[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)重新建立证据。
 
 ## 文档
 
-[完整文档与导航](docs/zh/README.md) · [在线文档](https://oh-my-knowledge.pages.dev/zh/) · [CLI 参考](docs/zh/reference/cli.md) · [用例格式](docs/zh/reference/eval-sample-format.md) · [执行器](docs/zh/reference/executors.md) · [OMK 如何理解知识](docs/zh/explanation/knowledge.md)
+[完整文档与导航](docs/zh/README.md) · [在线文档](https://oh-my-knowledge.pages.dev/zh/) · [CLI 参考](docs/zh/reference/cli.md) · [用例格式](docs/zh/reference/evaluation/eval-sample-format.md) · [执行器](docs/zh/reference/integration/executors.md) · [OMK 如何理解知识](docs/zh/explanation/knowledge.md)
 
 ## 环境变量
 
@@ -155,8 +155,8 @@ dsh --profile web
 - 至少一个已认证的模型 runtime：
   - Codex：安装并登录 Codex CLI（`npm i -g @openai/codex`）；ChatGPT desktop 的 Codex 任务会自动选择它
   - Claude：安装并登录 [Claude Code](https://claude.ai/code)
-  - API / 其它执行器：按[执行器文档](docs/zh/reference/executors.md)配置
-- 高级 `claude-sdk`／`codex-sdk` 执行器是可选能力，OMK 基础安装不再下载它们。仅在明确选择对应 SDK 时，才在 OMK 所在的本地项目或全局 npm prefix 安装；详见[执行器前置要求](docs/zh/reference/executors.md#前置要求)。
+  - API / 其它执行器：按[执行器文档](docs/zh/reference/integration/executors.md)配置
+- 高级 `claude-sdk`／`codex-sdk` 执行器是可选能力，OMK 基础安装不再下载它们。仅在明确选择对应 SDK 时，才在 OMK 所在的本地项目或全局 npm prefix 安装；详见[执行器前置要求](docs/zh/reference/integration/executors.md#前置要求)。
 
 ## 安全说明
 

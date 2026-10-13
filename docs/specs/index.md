@@ -1,78 +1,27 @@
-# Design specifications
+# Domain specifications {#design-specifications}
 
-Specifications are organized by domain. Start with [How OMK understands knowledge](../explanation/knowledge.md) for the definitions of entities, knowledge, context, and knowledge carriers; this index organizes their contracts and designs without redefining them. For a user workflow, read the [knowledge guide](../guides/extract-knowledge.md) or [evaluation quickstart](../quickstart-skill-eval.md).
+This directory specifies required behavior, invariants, data boundaries, and acceptance. Read [principles](../explanation/index.md) for concepts or start at [documentation](../README.md) for user tasks. Choose the affected domain; there is no need to read all of Core or historical RFCs first.
 
-## Reading order
+## Choose a domain
 
-1. Read the concept definitions, then **shared** terminology and storage boundaries.
-2. For knowledge construction, follow **entities → knowledge**: identify source objects, review candidates, organize retained knowledge, then maintain knowledge and carriers. Entity identity organizes access; it does not establish the truth of a knowledge claim.
-3. For a controlled comparison, follow **evaluation**: Core → input compilation → Runtime → persistence and Studio projection, then scoring; guides own sample authoring.
-4. Use **observe** to understand signals from real task records. These signals can inform the next comparison, but do not prove knowledge completeness or causal benefit.
-
-## Status and authority
-
-- **Current contract** describes the implemented boundary identified by the document. A historical RFC title or rollout checklist may remain; this does not make every historical proposal current.
-- **Partly delivered design** includes approved, implemented sections and unfinished quality or product goals. Follow the implementation specification and its explicit limits.
-- **Design draft** records a proposed model or algorithm; its presence here does not certify implementation or acceptance.
-- **Historical proposal** preserves a superseded discussion. Use the linked current reference for today's contract.
-
-Status labels summarize the existing documents, not a new implementation acceptance. Historical outputs, scores, frozen guides, and measurement identities remain unchanged. Relinking a live annotation guide changes its byte digest; a new review package records its own identity and cannot reuse an old one.
-
-## Shared boundaries · `shared/`
-
-| Document | Role and status |
+| Domain | What it specifies |
 |---|---|
-| [Terminology](shared/terminology-spec.md) | Current naming conventions and maintainer decision archive; implementation remains the authority for concrete names. |
-| [Storage layout](shared/storage-layout-spec.md) | Current project, machine, and explicit knowledge-workspace storage summary; extraction and library specs own detailed domain formats and recovery boundaries. |
+| <a id="shared-boundaries-·-shared"></a> [Shared naming and storage](shared/index.md) | Constrains cross-domain names, storage locations, and write boundaries. |
+| <a id="entity-identity-and-extraction-·-entities"></a> [Entity identity and extraction](entities/index.md) | Specifies source objects, original mentions, correction, and extraction-quality acceptance. |
+| <a id="knowledge-construction-and-maintenance-·-knowledge"></a> [Knowledge construction and maintenance](knowledge/index.md) | Specifies consistency of content revisions, organization links, and carrier maintenance. |
+| <a id="controlled-evaluation-·-evaluation"></a> [Controlled evaluation](evaluation/index.md) | Specifies the measurement kernel, product wiring, evidence, and conclusions. |
+| <a id="observation-signals-·-observe"></a> [Observation and review](observe/index.md) | Specifies signals and effective-review semantics derived from real records. |
+| <a id="studio-hosts-and-reading-·-studio"></a> [Studio hosts and data flow](studio/index.md) | Specifies page hosts, queries, caching, and refresh. |
 
-## Entity identity and extraction · `entities/`
+## Reading and maintenance boundaries
 
-| Document | Role and status |
-|---|---|
-| [Entity reading index and historical evidence](entities/index.md) | Entry to the current contracts, quality limits, and categorized historical records; reports are evidence, not specifications of today's behavior. |
-| [Entity identity](entities/entity-identity.md) | Partly delivered design: approved identity/storage/UI sections are delivered within the beta scope; independent review and overall quality gates remain incomplete. |
-| [Entity extraction](entities/entity-extraction.md) | Current extraction, revision, source, and binding contracts, with explicit beta and quality limits. |
-| [Entity extraction evaluation](entities/entity-extraction-evaluation.md) | Annotation and acceptance protocol with frozen evidence boundaries; author review and offline replay do not complete independent acceptance. |
+- Current specifications describe implemented rules; label undelivered capabilities separately rather than infer acceptance from a field or interface.
+- Independent quality review, truth, and benefits require their own evidence; functional completion is no substitute.
+- Historical designs, cases, and trials belong in the domain's history/ with their original versions and conclusions; current specifications link only necessary rationale.
+- explanation, guides, and reference own concepts, user steps, and complete fields respectively. Link across responsibilities instead of creating duplicates.
 
-## Knowledge construction and maintenance · `knowledge/`
+English and Chinese sources mirror each other. Folders organize repository reading while existing site URLs and anchors remain available. Reorganization does not turn history or frozen evidence into current capability promises.
 
-| Document | Role and status |
-|---|---|
-| [Knowledge domain model](knowledge/knowledge-domain-model.md) | Domain design, cases, and first-release decisions; extraction/library specs own current storage and implementation, not a whole-document delivery promise. |
-| [Entity knowledge library](knowledge/knowledge-library.md) | Current organization and maintenance contract: explicit workspace, confirmed source links, exact revisions, and carrier selection. |
-
-Read the domain model for responsibilities and consistency goals, then the library and extraction specs for implemented boundaries. Knowledge content, source identity, organization history, and carrier versions have separate owners; keeping an item is a maintenance decision, not a truth judgment.
-
-## Controlled evaluation · `evaluation/`
-
-| Document | Role and status |
-|---|---|
-| [Evaluation Core vNext](evaluation/eval-core-vnext.md) | Accepted architecture RFC and historical decisions; the Core API owns exact current wire contracts, not old type sketches. |
-| [CLI input compilation](evaluation/cli-evaluation-input-compilation.md) | Current parse, resolve, compile, and host assembly boundary. |
-| [Evaluation Runtime Adapter](evaluation/evaluation-runtime-adapter.md) | Current production binding, resource lease, execution, and host composition boundary. |
-| [Artifact persistence](evaluation/evaluation-artifact-persistence.md) | Current artifact persistence, catalog, and authenticated consumption boundary. |
-| [Studio projection](evaluation/evaluation-studio-projection.md) | Current Core catalog, view-model, rendering, and route boundary. |
-| [Scoring equivalence](evaluation/evaluation-scoring-equivalence.md) | Implemented scoring migration; historical rollout wording remains as rationale. |
-| [Scoring pipeline](evaluation/scoring.md) | Current evidence graph, scoring layers, and decision boundaries. |
-| [RAG metrics](evaluation/rag-metrics-spec.md) | Current RAG instruments and thresholded Boolean observations; rubric repeats/ensemble do not automatically apply to RAG. |
-| [General sample proposal](evaluation/history/general-sample-proposal.md) | Historical proposal; its compatibility window and migration-tool suggestions are superseded by the current v3-only contract. |
-
-## Observation signals · `observe/`
-
-| Document | Role and status |
-|---|---|
-| [Knowledge-gap signals](observe/knowledge-gap-signal-spec.md) | Partly delivered algorithms and historical draft: observation uses four heuristic signals; the classifier is not automatically connected, and evaluation trends/threshold flags remain designs. |
-| [Effective observation review](observe/effective-observation-review.md) | Current inbox derived view, review priority, and evidence limits; does not overwrite original records. |
-
-## Studio hosts and reading · `studio/`
-
-| Document | Role and status |
-|---|---|
-| [Studio domain index](studio/index.md) | Read current contracts separately from historical measurements. |
-| [Studio data flow](studio/studio-data-flow.md) | Current preload/client-loaded knowledge pages, APIs, caching, and refresh boundaries. |
-
-Sample authoring and review belong to the [sample design guide](../guides/sample-design.md); field lookup belongs to the [sample format](../reference/eval-sample-format.md). The [principles index](../explanation/index.md) owns concepts and rationale; this directory does not duplicate concept definitions. Historical measurements belong in the relevant domain's `history/` and do not directly establish current performance.
-
-## Paths and references
-
-English and Chinese source folders mirror each other under `docs/specs/` and `docs/zh/specs/`. Each spec has one source per language. Domain folders organize repository reading; route mappings retain existing specification URLs, legacy explanation URLs of moved contracts, and the sample guide’s former URL, including anchors. Source classification and published addresses are maintained separately. Update live repository links to the new source paths. Paths inside frozen commits or evidence packages describe their original snapshot and stay unchanged.
+<a id="reading-order"></a>
+<a id="status-and-authority"></a>
+<a id="paths-and-references"></a>

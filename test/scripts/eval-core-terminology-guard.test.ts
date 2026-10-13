@@ -23,8 +23,8 @@ const PROHIBITED_PUBLIC_TERMS = new Set([
 const PUBLIC_DOCS = [
   'docs/specs/evaluation/eval-core-vnext.md',
   'docs/zh/specs/evaluation/eval-core-vnext.md',
-  'docs/reference/eval-runtime-api.md',
-  'docs/zh/reference/eval-runtime-api.md',
+  'docs/reference/integration/eval-runtime-api.md',
+  'docs/zh/reference/integration/eval-runtime-api.md',
 ];
 
 function sourceFiles(directory: string): string[] {
@@ -207,8 +207,8 @@ describe('Evaluation Core terminology guard', () => {
     for (const file of [
       'docs/specs/shared/terminology-spec.md',
       'docs/zh/specs/shared/terminology-spec.md',
-      'docs/reference/eval-runtime-api.md',
-      'docs/zh/reference/eval-runtime-api.md',
+      'docs/reference/integration/eval-runtime-api.md',
+      'docs/zh/reference/integration/eval-runtime-api.md',
     ]) {
       const source = readFileSync(resolve(file), 'utf8');
       expect(source).toContain('runtime context');

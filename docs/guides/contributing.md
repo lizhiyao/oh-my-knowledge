@@ -329,9 +329,10 @@ The framework error mapping is declared in `oclif.exitCodes` in `package.json`. 
 `docs/` is organized by audience — pick the right bucket before creating a new file:
 
 - `docs/guides/` — user tasks, steps, self-checks, and examples; link to reference for complete fields instead of copying them.
-- `docs/reference/` — flag tables, sample format, executor matrix, comparison ↔ what users look up
-- `docs/explanation/` — architecture, statistical rigor ↔ how / why omk works
-- `docs/specs/` — contributor specifications grouped into `shared/`, `entities/`, `knowledge/`, `evaluation/`, `observe/`, and `studio/`; the [specification index](../specs/index.md) explains reading order and contract, draft, and historical-proposal boundaries. Existing documentation-site spec URLs remain stable.
+- `docs/reference/` — fields, APIs, configuration, and complete integration recipes, grouped by shared/evaluation/integration; CLI is cross-domain lookup.
+- `docs/explanation/` — concepts, principles, and trade-offs, without copied steps or field catalogs.
+- `docs/specs/` — current behavior and acceptance by shared/entities/knowledge/evaluation/observe/studio. Each domain has an entry; historical designs, cases, and trials belong in its history rather than within current rules.
+- `docs/guides/` groups tasks by knowledge/observe/evaluation/integration/maintenance. Give an executable first path, then link to reference and specifications. This contributing page remains a cross-domain entry.
 - `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
 - `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
 - **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Prefer putting design rationale and decision records *inside* the relevant published spec (e.g. as an appendix) so users see the full reasoning — keep notes outside `docs/` only when they are genuinely maintainer-only, where they stay exempt from the bilingual rule

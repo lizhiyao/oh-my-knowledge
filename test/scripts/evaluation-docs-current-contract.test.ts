@@ -18,12 +18,12 @@ const RELEASE_DECISION_DOCS = [
 
 const SCHEMA_CATALOG_DOCS = [
   {
-    path: 'docs/reference/embedded-api.md',
+    path: 'docs/reference/integration/embedded-api.md',
     counts: (total: number, v5: number, v4: number, v3: number, v2: number, v1: number) =>
       `The catalog contains ${total} root contract names; ${v5} current roots use v5, ${v4} use v4, ${v3} use v3, ${v2} use v2, and ${v1} use v1.`,
   },
   {
-    path: 'docs/zh/reference/embedded-api.md',
+    path: 'docs/zh/reference/integration/embedded-api.md',
     counts: (total: number, v5: number, v4: number, v3: number, v2: number, v1: number) =>
       `Catalog 共包含 ${total} 个根契约名称；当前有 ${v5} 个根契约使用 v5，${v4} 个使用 v4，${v3} 个使用 v3，${v2} 个使用 v2，${v1} 个使用 v1。`,
   },

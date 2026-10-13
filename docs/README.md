@@ -1,60 +1,35 @@
-# OMK Documentation
+# OMK documentation: start with a task {#omk-documentation}
 
-OMK builds knowledge from real collaboration between people and AI: preserve sources, help people build understanding and methods, and give AI suitable knowledge for later tasks. User-controlled management and reuse across conversations and agents is an ongoing product direction, not a fully implemented capability.
+OMK helps you build sourced knowledge from collaboration between people and AI, maintain knowledge and carriers, and verify changes when needed. Choose your current task first; look up fields and implementation details later.
 
-Choose an entry for your task. Version 1.0 is still in Beta iteration; existing users should read the [migration guide](./guides/v1-preview-migration.md) first. [简体中文 index](./zh/README.md).
+<a id="choose-an-interface"></a>
+<a id="choose-an-entry-point"></a>
+<a id="turn-real-tasks-into-reusable-knowledge"></a>
+<a id="complete-a-task"></a>
 
-## Choose an interface
+## Inspect tasks, accumulate knowledge, and maintain it
 
-OMK offers complementary interfaces: **CLI** workflows for terminals, agents, and CI; **Studio**, a local workbench for tasks, knowledge review, and evidence; and **eval-runtime**, an evaluation API you can embed independently in a Node.js service or platform, without the CLI or Studio.
+1. [Inspect real tasks](guides/observe/index.md): Start Studio and read conversations, execution, and source records.
+2. [Accumulate and maintain knowledge](guides/knowledge/index.md): Extract and review candidates, accumulate around objects, revise outdated content, and check/update carriers.
+3. [Verify carrier changes](guides/evaluation/index.md): Design samples, check carriers, compare under controlled conditions, and read evidence. Start a first run with the [quickstart](quickstart-skill-eval.md).
 
-The **DSH plugin** brings `/omk eval` and `/omk observe` into an existing DeepSeek Harness profile, reusing its host environment; see [DSH integration](./reference/executors.md#deepseek-harness-prefer-the-host-plugin). The Agent Skill guides CLI workflows in natural language; MCP accepts user-authorized feedback.
+Knowledge retention, carrier saving, actual use, and effect verification are separate records. Choose paths for your task; inspecting logs requires no prior evaluation.
 
-## Choose an entry point
+## Integrate an application
 
-| Goal | Start here | Reference when needed |
-|---|---|---|
-| Compare two skills from the CLI | [Quickstart](./quickstart-skill-eval.md) | [CLI](./reference/cli.md) · [Executors](./reference/executors.md) · [Sample format](./reference/eval-sample-format.md) · [Artifact layout](./reference/artifact-layout.md) |
-| Integrate a Node.js service | [Service guide](./guides/eval-runtime.md) | [Runtime API](./reference/eval-runtime-api.md) · [Core API](./reference/embedded-api.md) |
-| Dispatch evaluations from a platform host | [Platform host guide](./guides/platform-host-integration.md) | [Runtime API](./reference/eval-runtime-api.md) |
-| Inspect real tasks and knowledge gaps | [Observation and task trajectories](./guides/observe-production.md) | [Codex case](./guides/codex-observe-case.md) · [Effective review semantics](./specs/observe/effective-observation-review.md) |
+[Service and Agent integration](guides/integration/index.md) starts with an offline Node example before platform, MCP, or model integration. The [integration reference](reference/integration/index.md) owns complete configuration and recipes.
 
-## Turn real tasks into reusable knowledge
+<a id="understand-results-and-limits"></a>
+<a id="migration-and-design-specs"></a>
 
-1. [Inspect task trajectories in Studio](./guides/observe-production.md): select a local Codex conversation and check source records and knowledge access, without prior ingest.
-2. [Extract knowledge from work logs](./guides/extract-knowledge.md): select excerpts, generate and review knowledge items, and preserve revisions and reasons.
-3. [Record feedback through MCP](./guides/mcp-integration.md): submit minimal evidence with user confirmation, review real issues, then draft cases.
-4. [Evaluate an artifact change](./quickstart-skill-eval.md): manually prepare cases and candidate versions, then use controlled comparisons to decide the next action.
+## Understand and look up
 
-Compose these paths as needed. Retaining content, writing an artifact, passing evaluation, and publishing are separate records; candidates do not take effect automatically. See [knowledge items and artifacts](./explanation/knowledge.md).
+| Need | Entry |
+|---|---|
+| Concepts of knowledge, entities, observation, and evaluation | [Principles and concepts](explanation/index.md) |
+| Sample, carrier, and scoring fields | [Evaluation reference](reference/evaluation/index.md) |
+| CLI, terms, and global configuration | [Shared reference](reference/shared/index.md) |
+| Interface, storage, implementation, and acceptance requirements | [Domain specifications](specs/index.md) |
+| Older-version migration or contributing | [Upgrade and contribute](guides/maintenance/index.md) |
 
-## Complete a task
-
-- [Use the OMK Skill in an agent](./quickstart-skill-eval.md#use-inside-an-agent)
-- [Run doctor checks](./guides/run-doctor-checks.md) · [Auto-improve a skill](./guides/auto-improve-skills.md)
-- [Evaluate agents and project context](./guides/agent-eval.md) · [Use non-Claude models](./guides/non-claude-models.md)
-- [Compose an MCP integration](./guides/mcp-integration.md) · [DeepSeek Harness integration](./reference/executors.md#deepseek-harness-prefer-the-host-plugin)
-
-## Understand results and limits
-
-- [Principles index](./explanation/index.md): Concepts, rationale, and specification responsibilities.
-- [Who OMK is for](./explanation/who-omk-is-for.md) · [How OMK understands knowledge](./explanation/knowledge.md)
-- [Three-stage workflow](./explanation/three-stage-workflow.md) · [Architecture](./explanation/architecture.md)
-- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/evaluation/scoring.md) · [Sample design](./guides/sample-design.md)
-- [Glossary](./reference/glossary.md) · [Tool comparison](./reference/comparison.md)
-
-## Migration and design specs
-
-- [Specification index and reading order](./specs/index.md): contracts, drafts, and historical proposals grouped by shared, entities, knowledge, evaluation, observe, and Studio domains.
-
-- [Contributing guide](./guides/contributing.md) — branch model, local gates, release process.
-- [General sample proposal (historical)](./specs/evaluation/history/general-sample-proposal.md)
-
-- [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/shared/storage-layout-spec.md)
-- [Core design](./specs/evaluation/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/evaluation/cli-evaluation-input-compilation.md)
-- [Entity knowledge library](./specs/knowledge/knowledge-library.md): manually confirmed links across windows, object knowledge, and organization history.
-- [Knowledge domain model (draft)](./specs/knowledge/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/observe/knowledge-gap-signal-spec.md)
-- [Entity extraction: evidence and limits](./specs/entities/index.md): current contracts, quality boundaries, and categorized historical reports.
-- [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [Terminology](./specs/shared/terminology-spec.md)
-
-- [Verify local task outcomes](./guides/local-tasks.md)
+Older-version users should check migration boundaries first. Historical trials, RFCs, and cases are accessible through their specification domain's history entry. They preserve original evidence without current quality or capability promises. [中文](zh/README.md).

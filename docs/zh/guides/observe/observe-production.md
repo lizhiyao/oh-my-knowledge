@@ -1,0 +1,135 @@
+# 观测生产 trace
+
+`omk observe` 把**真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志**统一转换为 source-neutral Trace IR，再呈现知识在哪儿被使用、在哪儿撞上缺口、工具调用与失败有哪些事实。和 [`omk eval`](../../reference/cli.md)（受控离线实验）不同，observe 是只读的生产观测——**它不评分**，只暴露信号。
+
+它有两条工作流。每个 flag 见 [CLI 参考](../../reference/cli.md)。
+
+## 查看一次任务
+
+直接启动 `omk studio` 即可，不需要先运行 `observe ingest`。Studio 会读取本机 Codex 会话索引，按「项目 → 会话 → 对话内容」组织 Codex rollout：
+
+```bash
+omk studio
+```
+
+左侧分为「项目」和「独立对话」，支持搜索和仅查看进行中的对话。侧栏使用一个滚动区域，底部固定「设置与帮助」菜单。Skill 健康度从知识区进入。打开会话后按时间顺序连续阅读用户与助手的完整消息，默认定位到最新内容；向上滚动自动加载更早对话，也可点击「加载更早的对话」。读取历史时保持当前位置，新内容到来时提示「有新消息」，点击后回到最新位置。工具调用和原始依据按需进入「执行详情」，会话详情可直接发起知识提炼。
+
+项目归组复用本地 Git 仓库的 common directory 关系，因此同一仓库的子目录和 worktree 归到一起；无法确认仓库关系时按目录独立展示，没有工作目录且无项目归属的会话放入「独立对话」。不会仅凭目录同名或远端地址合并项目。浏览器记住上次打开的会话；点击「查看全部对话」可回到总览。归组与阅读不调用模型、不改写原始日志，工具报错次数不代表最终任务失败。
+
+当前首页直接索引本机 Codex 会话；Claude Code、OpenClaw 和 markdown trace 仍通过 `omk observe` 进入观测报告。
+
+任务边界优先使用来源明确提供的 `turnId`，其次使用 `turn_started` / `turn_completed` 等生命周期事件；只有来源没有原生 Turn 边界时，才退化为按用户消息切分。Skill 归因只解释选定任务与哪些知识载体有关，不参与划定任务范围。
+
+任务轨迹基于 source-neutral Trace IR 分为四条可观察泳道：
+
+- **对话**：用户要求、AI 回答与用户后续纠正；
+- **执行**：AI 发起的工具调用；
+- **结果**：工具返回及调用状态；
+- **知识**：进入任务的运行时上下文和知识证据。
+
+### 实时跟随进行中的任务
+
+Studio 会把近期仍有活动、且没有终态证据的最后一次任务标记为「进行中」，并优先展示。进入这类任务后，页面通过本地事件流增量刷新轨迹：
+
+- **跟随中**：新事件到达后保持详情面板状态，并把可视区域平滑推进到最新位置；
+- **查看更新**：你手动滚动到历史位置后，Studio 不抢回视口；有新事件时提供显式入口；
+- **任务已结束**：观察到完成、中断或终止事件后停止实时跟随；
+- **未记录结束状态**：旧日志没有终态证据且已超过活动窗口时，状态退化为未知，不再显示为进行中。
+
+实时刷新只重读本地日志并更新当前视图，不会向模型发送请求。`omk studio` 默认固定使用端口 `7799`；需要其他端口时显式传 `--port`。
+
+页面提供四层互相可追溯、但职责不同的信息：
+
+- **语义轨迹**：把 Trace IR 投影为四条泳道，帮助人理解任务经过。长任务超过展示上限时，投影会保持工具调用与结果成对，优先保留请求、最终回答、任务边界与失败，再按时间分布选择其余节点，避免简单截掉任务中段；
+- **知识访问**：按知识条目汇总它何时、以何种方式进入上下文。页面固定声明访问记录只说明知识曾被读取或注入，不代表它导致了结果；
+- **标准化事件**：按来源顺序查看 source-neutral Trace IR，核对适配器实际提取了什么；
+- **原始记录**：查看随报告有界归档的 JSONL 日志原文，核对规范化前的输入。旧报告、来源已丢失或超过归档上限时会明确提示不可用或不完整；`encrypted_content` 等不透明加密载荷只标记存在，不尝试解密，也不展示为模型思考。
+
+完整性提示里带有「查看原始记录」入口，点击后切到原始记录标签页自行核对。这一跳转只依赖 Trace IR 保存的来源位置，不要求 renderer 理解 Codex 私有日志格式。
+
+Codex 的会话元数据会规范化为 `session_context`，其中包括可观测的运行时版本、Memory / History 模式、上下文窗口标识、动态工具名称和基础指令；每轮工作目录、模型、审批与沙箱设置则记录为 `execution_context` 或 `settings`。这些字段属于任务输入条件，不代表模型已经使用或遵循了它们。
+
+必要时，页面还会提示 trace 截断、损坏记录、未识别事件和工具结果失配等完整性问题。未知协议记录会留在标准化事件和原始记录中供排查，而不是静默丢弃。
+
+任务轨迹只陈述 trace 中可核验的事实。Knowledge 进入上下文、被读取或由工具返回，不代表模型实际采用了它，也不能单独证明任务结果的原因。
+
+
+## A. skill 健康度报告（默认）
+
+将它指向受支持的 trace 目录或日志文件：
+
+```bash
+# ChatGPT desktop / Codex CLI
+omk observe ~/.codex/sessions --last 7d
+
+# Claude Code
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分析
+```
+
+你会拿到逐 skill 的健康度报告：知识使用、可能的 [gap 信号](../../specs/observe/knowledge-gap-signal-spec.md)（需回查上下文的失败搜索与不确定性线索）、工具调用与失败、token、耗时。回查信号的原始上下文；确认问题后再整理为下一轮正式用例，不能从搜索失败直接推定知识缺失。
+
+用 `--last 7d` / `--from … --to …` 圈时间窗，用 `--skills` 收窄到特定 skill。
+
+## B. inbox：reviewer 闭环
+
+当你想逐条 triage observation，用 inbox。下面步骤 1-3 纯本地、零 LLM；生成评测用例草稿是单独的可选 authoring 步骤，会调用生成模型。
+
+```bash
+# 1. 解析 trace，聚合 + 降噪信号，落盘到 .omk/observe/inbox/
+omk observe ingest ~/.codex/sessions
+omk observe ingest ~/.claude/projects/my-project
+
+# 2. 看 inbox（默认 top 20，按 severity / confidence / lastSeen 排序）
+omk observe inbox
+omk observe inbox --skill audit          # 按 skill 过滤
+omk observe inbox --by-skill             # 每个 skill 一行（rollup）
+omk observe inbox --explore 10           # 从 medium/low 抽长尾条目
+omk observe inbox --json                 # JSON 给自动化
+
+# 3. 看单条 observation 及其上下文消息
+omk observe show <inbox_id>
+```
+
+每条 observation 带它的可信度（`confidence` + `attributionConfidence`，并排显示，让你区分"强信号"和"摇摆的 skill 归因"）、一个稳定的 `severityReasonCode`、以及一个 `messageWindow`（触发前 3 条 / 触发 / 后 3 条，外加 agent 是否恢复），都锚回原始 JSONL。
+
+支持的 trace 格式：Codex rollout JSONL、Claude Code session JSONL、OpenClaw session JSONL、markdown 对话日志（`.log`）。Codex 记录会保留模型、父子任务分组、tool call、token 使用和 `sourceKind=codex`；skill 归因依据实际读取的 `skills/<name>/SKILL.md`。
+
+两条工作流都会持久化摄取摘要。源数据包含格式损坏记录、不是对象的合法 JSON 值，或当前 adapter 无法识别的事件时，CLI 与 Studio 会显示完整性提示。把「没有发现信号」解释成「没有问题」之前，应先复核这项提示。运行时守护会话属于有意过滤，会单独计数。
+
+## 在 DeepSeek Harness 中查看任务轨迹
+
+已安装 OMK bundle 且 profile 启用了 `sessionPersistence` 时，无需导出 DSH 日志：
+
+```text
+/omk observe
+/omk observe <session-id>
+```
+
+第一条命令列出最近已结束的 root session，并排除正在承载命令的当前 session。第二条命令通过 DSH 的 `listSnapshots()`／`inspect()` 只读读取 root 与子 agent 的逻辑事件流，取得一致快照后返回 Studio 任务轨迹链接。JSONL、zstd 或 SQLite backend 对用户透明。
+
+首版只观察离线快照，不实时跟随正在写入的 session。revision 持续变化、required 未知事件、seq 不连续、未闭合 turn／step 或缺失 tool result 时，OMK 会拒绝把它展示为完整轨迹。页面保留 DSH 的 cwd、provider／model、消息来源、工具结果、终态与子 agent lineage，只陈述可核验事实。
+
+
+## 把 observation 变成用例
+
+观测信号经人工核对后，可以成为正式评测用例的线索。`omk sample --from-traces` 能从这些信号草拟评测用例；生成草稿后仍需确认可复现性和期望证据。
+
+这个命令会通过你配置的 executor 和 model 调用 sample 生成器，因此 trace 派生证据会发送给该模型，也可能产生生成成本：
+
+```bash
+omk sample --from-traces
+```
+
+它会写 `.omk/observe/drafts/sample-drafts.json`。把这个文件当 review 队列：先看草稿，只保留可复现的用例，再合入正式 `eval-samples` 文件。
+
+## 相关
+
+- [复现 Codex 父子任务观测](codex-observe-case.md)——可执行的 Trace IR 与紧凑报告案例
+- [三阶段](../../explanation/three-stage-workflow.md) —— observe 在闭环里的位置
+- [知识缺口信号规范](../../specs/observe/knowledge-gap-signal-spec.md) —— gap 信号是什么、怎么打分
+- [CLI 参考：`omk observe`](../../reference/cli.md) —— 每个 flag 和子命令
+
+- [从日志提炼候选知识](../knowledge/extract-knowledge.md)

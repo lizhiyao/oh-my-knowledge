@@ -50,7 +50,7 @@ describe('first-run smoke path', () => {
 
       // Exercise the published snippet so its protocol cannot drift from the CLI again.
       const executor = join(project, 'offline-executor.mjs');
-      const executorGuide = readFileSync(join(PROJECT_ROOT, 'docs/zh/reference/executors.md'), 'utf8');
+      const executorGuide = readFileSync(join(PROJECT_ROOT, 'docs/zh/reference/integration/executors.md'), 'utf8');
       const customSection = executorGuide.split('## 自定义执行器')[1];
       const source = customSection?.match(/```js\n([\s\S]*?)```/)?.[1];
       assert.ok(source, 'custom executor guide contains a runnable JavaScript example');

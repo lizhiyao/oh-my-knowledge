@@ -1,6 +1,6 @@
 # RAG metrics 规范
 
-本页规定当前 `faithfulness`、`answer_relevancy` 和 `context_recall` 的输入、评委仪器及结果边界。实现由 `measurement/evaluators/llm-assertions.ts`、`instruments/prompts/judge-prompts.ts` 与 `assertions/layers.ts` 共同约束；公开字段见[样本格式](../../reference/eval-sample-format.md)。示例见 [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval)。
+本页规定当前 `faithfulness`、`answer_relevancy` 和 `context_recall` 的输入、评委仪器及结果边界。实现由 `measurement/evaluators/llm-assertions.ts`、`instruments/prompts/judge-prompts.ts` 与 `assertions/layers.ts` 共同约束；公开字段见[样本格式](../../reference/evaluation/eval-sample-format.md)。示例见 [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval)。
 
 ## 三件事的关系 {#三件事的关系}
 

@@ -14,196 +14,44 @@ Three goals:
 
 ## 2. Standard terms
 
-### 1. Artifact
+This section specifies preferred names rather than redefining concepts or API fields. See [knowledge principles](../../explanation/knowledge.md) and the [glossary](../../reference/shared/glossary.md).
 
-`artifact` is omk's standard term for "the thing being evaluated".
-
-It is the object that gets compared, injected, run, or observed in an experiment. It can be:
-
-- `baseline`
-- `skill`
-- `prompt`
-- `agent`
-- `workflow`
-- a future `team` or other new kind of knowledge carrier
-
-Rules:
-
-- Prefer `artifact` in user-facing docs.
-- Prefer `artifact` in core internal types, request structures, and task structures.
-- Chinese interface copy renders `artifact` as 「知识载体」; English interface copy keeps the identity word `artifact` (for example `Knowledge artifact`). Do not invent alternatives such as 「知识对象」 (see section 3.9).
-
-### 2. Artifact kind
-
-`artifact kind` is the concrete category of an artifact.
-
-Currently supported:
-
-- `baseline`
-- `skill`
-- `prompt`
-- `agent`
-- `workflow`
-
-Rules:
-
-- `baseline` is the empty artifact — no explicit artifact is injected. For most users it just means "nothing at all".
-- `skill`, `agent`, and `workflow` are subtypes of artifact, not the top-level umbrella term.
-- When adding a new carrier, extend `artifact kind` rather than spinning up a parallel abstraction.
-
-### 3. Variant
-
-A `variant` is the expression of one comparison arm in an experiment, not the domain object itself.
-
-For example:
-
-- `baseline`
-- `prd`
-- `/path/to/SKILL.md` (the runtime context cwd is declared separately, not encoded into the expression)
-
-Rules:
-
-- Resolving a variant expression yields an artifact plus a runtime context.
-- Every variant must be bound to an experiment role (control or treatment); see section 4.
-- The CLI declares variants by experiment role (`--control` / `--treatment`); the flat `--variants` parameter is no longer used.
-
-### 4. Experiment role
-
-`experiment role` is the role a variant plays in a given experiment, using standard statistical terminology.
-
-Enum:
-
-- `control` — the control group, providing the baseline measurement.
-- `treatment` — the treatment (experimental) group, compared against control to see what changes.
-
-Rules:
-
-- Role is a run-time property of a variant, not an intrinsic property of the artifact; the same artifact can play different roles across runs.
-- The CLI declares it via two separate parameters, `--control <expr>` and `--treatment <v1,v2,...>`.
-- Reports display control/treatment labels; the role is no longer inferred back from `artifactKind === 'baseline'`.
-- `baseline` is an artifact-kind term, not an experiment-role term; see the boundaries in section 3.
-
-### 5. Runtime context
-
-`runtime context` is the run-time environment; the most central piece today is `cwd`.
-
-It is the environment the model or agent runs in, as opposed to "the thing being evaluated" itself.
-
-In project-style agent scenarios, the `runtime context` directly includes the environmental factors that affect behavior:
-
-- the project directory
-- `CLAUDE.md`
-- local skills
-- repo files
-- the tool-visibility scope
-
-Rules:
-
-- `cwd` belongs to the runtime context and is declared separately (the CLI's `--control-cwd` / `--treatment-cwd`, or eval.yaml's structured `cwd:` field); it is not encoded into the variant expression.
-- To express "empty artifact + a specific runtime context", use a self-describing label as the artifact and supply the cwd separately, e.g. `--treatment project-env --treatment-cwd /path/to/project`.
-- Do not collapse the project directory, project-level runtime context, and explicit artifact injection into a single concept.
-- Do not confuse runtime context with the two sample-level Core projections: `executionContext` is input visible to the Executor for one sample, while `evaluationContext` is input visible only to the Evaluator. Neither field describes the host environment.
-
-### 6. Sample
-
-A `sample` is one **test-case** record in the evaluation.
-
-Rules:
-
-- **Code / API / file names / CLI flags keep `sample`**: the `Sample` type, the `sample_id` field, the `eval-samples.json` file name, the `--samples` flag — these are common terms across the open-source API and the English-speaking LLM-eval world, and stay as-is.
-- **User-facing Chinese copy defaults to「用例」, not「样本」**: CLI output, report UI, error messages, doc prose, and the Chinese part of commit messages. This includes compounds like「用例数」/「用例难度」/「用例不足」/「跨用例散度」.
-- **Rationale**: omk's `eval-samples` are test cases **hand-picked** by developers, not statistical samples **randomly drawn** from some distribution.「样本」implies "just run more and the sample size grows", which misleads users — what they actually need is more design, more cases.「用例」matches the engineering framing (test case) and the user's mental model when writing an evaluation ("I designed 5 cases").
-- **Exception: keep「样本」for statistical-terminology contexts** — Cohen's d / Hedges' g "**small-sample correction**", "**sample mean**", "**sample variance**", "**sample size**", bootstrap "**resampling**", etc. These are fixed phrasings in statistics (small-sample correction / sample mean / sample variance / sample size / resampling); forcing them into「用例」would just make a stats-literate reader pause. Decision rule: does the word denote "one random draw from a population" (the statistical concept — then it's 样本), or "one hand-picked test case from a developer" (then it's 用例)? The two don't mix, and context makes it clear.
-
-#### 6.1 Sample metadata fields
-
-The Sample schema has optional metadata fields, under `annotations` in the public v3 envelope for author declarations and audit; they **do not participate in grading / judge / verdict**. See [sample design guide](../../guides/sample-design.md).
-
-- **`capability?: string[]`** — the capability dimension(s) this sample tests (can be multiple). Keep author labels consistent; automatic normalization is not implemented.
-- **`difficulty?: 'easy' | 'medium' | 'hard'`** — difficulty bucket (strict enum).
-- **`construct?: string`** — the construct type this sample tests. Suggested: `'necessity'` (tests necessity, baseline-vs-skill) / `'quality'` (tests whether the skill is well-written) / `'capability'` (tests a specific capability). Free-form string allows custom values.
-- **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — data source.
-- **`covers?: { targetKind: string; ref: string }[]`** — optional declared skill-structure anchors this sample is intended to exercise, retained as author annotations, not proof of actual execution coverage.
-
-**construct vs. capability** (the two fields users most often confuse):
-- **construct** = **what class of thing** this sample tests (necessity / quality / capability). It's the experiment-design level — running baseline-vs-skill tests necessity, running skill-v1-vs-skill-v2 tests quality.
-- **capability** = **which specific capabilities** this sample tests (api-selection / error-diagnosis / fallback). It's the capability dimension of the object under test.
-
-### 7. Task
-
-A `task` is one concrete execution unit:
-
-> one sample × one artifact × one runtime context
-
-Rules:
-
-- The task layer does not directly represent an experiment conclusion.
-- A task is the smallest unit of execution and scoring.
-
-### 8. Trace
-
-A `trace` is the process data produced during one execution, including:
-
-- turns
-- tool calls
-- timing
-- execution metrics like token / cost / cache
-
-Rules:
-
-- A trace belongs to the run result.
-- A trace is used to explain differences in agent behavior, not to name the thing being evaluated.
-
-### 9. Evaluation Runtime vocabulary
-
-The embedded Runtime API uses the following standard terms without introducing a second vocabulary:
-
-| Term | Normative meaning |
+| Identifier | Expression |
 |---|---|
-| `evaluation` | One complete measurement process from sealed inputs through Report. |
-| `executor` | Host-owned code that runs one artifact／variant for one sample. It is not the artifact itself. |
-| `evaluator` | A measurement method that turns execution facts into metric observations. |
-| `metric` | The named value contract and direction used for analysis. |
-| `judge` | An LLM-backed invocation used by an evaluator; it is not a synonym for every evaluator. |
-| `rubric` | The criterion and scoring instructions supplied to a Rubric Judge. |
-| `dataset` | A named, non-empty collection of samples. |
-| `experiment` | The preregistered trials, seed, resampling, and decision design. |
-| `policy` | Operational limits for execution, evaluation, evidence, retry, budget, and failure handling. |
-| `run` | One execution of a sealed evaluation design, identified by `runId`. |
-| `comparison` | The declared control-versus-treatment relationship consumed by analysis. |
-| `verdict` | The Decision result, such as `PROGRESS` or `NOISE`; it is not a raw score. |
-| `evidence` | Classified, attributable facts supporting an observation or conclusion. |
-| `report` | The materialized projection of authenticated run artifacts and Decision. |
+| `evaluation` | evaluation |
+| `artifact` | knowledge carrier |
+| `variant` | comparison arm |
+| `control` | control role |
+| `treatment` | treatment role |
+| `runtime context` | runtime context |
+| `dataset` | dataset |
+| `sample` | test case |
+| `executor` | executor |
+| `evaluator` | evaluator |
+| `metric` | named metric |
+| `judge` | LLM judge |
+| `rubric` | rubric |
+| `experiment` | experiment design |
+| `policy` | measurement policy |
+| `run` | one run |
+| `comparison` | comparison declaration |
+| `verdict` | decision label |
+| `evidence` | evidence |
+| `report` | report view |
 
-The canonical package entry is therefore `evaluate({ dataset, variants, evaluators, comparisons, experiment, analyses, decision, policy, runId })`. Sampling Design is the only owner of paired／independent semantics; each Variant owns its execution binding, while each Comparison explicitly declares only its control, treatments, and Metrics. Avoid public aliases such as runner, suite, cases, candidate, scoring, or using `target` as a synonym for artifact. Core `Target` is a compiled binding of a variant to execution requirements and remains a lower-level contract. `eval-workflows` may depend on Runtime foundation leaf modules but must not depend on the canonical user façade or package index.
+`executionContext` constrains execution, `evaluationContext` supplies evaluator-only material, and `annotations` retains author declarations. Sample format and Core API own complete shapes. Chinese user copy prefers 用例; established statistical phrases such as sample mean and sample variance retain 样本.
 
-### 10. Knowledge
-
-**Knowledge is a fact, case, or method that can be reused in future tasks. Each knowledge item should retain its scope of applicability, source evidence, and current validation status.**
-
-This is OMK's working product definition for knowledge mining, not a claim of a universal industry definition. It guides future design; it does not introduce a storage schema or imply that existing observations already contain these fields.
-
-| Form | What it expresses | Example |
-|---|---|---|
-| Fact | A scoped claim about the world, an environment, or a requirement | A tool's capability limit under a particular version |
-| Case | An experience with context, actions, and an observed outcome | A failed attempt and the recovery that succeeded in that environment |
-| Method | A reusable procedure or decision rule with conditions and exceptions | When parallel development must preserve the current checkout, create a separate worktree |
-
-A case can be useful without supporting a general rule. A single successful outcome does not establish that a method works universally. Explicit preferences and requirements should retain who stated them and their intended scope; they are not inferred universal facts.
-
-For each candidate, retain:
-
-- **Applicability:** the task, environment, version, or other conditions that limit reuse, including known exceptions.
-- **Source evidence:** traceable records supporting the claim, with enough context to distinguish observed facts from interpretations and preserve counterevidence.
-- **Validation status:** distinguish evidence review from effectiveness evaluation, and state what remains unverified. Reviewing the source does not establish that providing the knowledge improves an agent's performance.
-
-A work log records what happened. Knowledge mining selects reusable facts, preserves useful cases, and proposes methods from that evidence; it covers successful experience, failures, and corrections to existing knowledge. Extracted interpretations remain candidates until reviewed. Repeated appearances are not automatically independent corroboration.
-
-Knowledge content and its carrier are distinct. A skill, prompt, or project instruction file can contain multiple knowledge items; a knowledge item can appear in multiple carriers. These forms do not extend `ArtifactKind` or replace the existing artifact identity.
-
-Observation supplies evidence and candidates. Controlled evaluation tests whether a carrier change helps on the declared tasks with the model held fixed; it does not prove a claim universally true. Cases used to author a change must not be presented as independent evidence of generalization. Adoption and release continue to follow existing evaluation and governance contracts.
-
-Design references: [KCS article structure and reuse](https://library.serviceinnovation.org/KCS/Knowledge-Centered_Success_Practices_Guide/102-Output_the_KCS_Article) informs contextual capture and ongoing review; [LangChain's memory taxonomy](https://docs.langchain.com/oss/python/concepts/memory) distinguishes facts, experiences, and instructions. The definition and boundaries above are OMK's synthesis of these practices.
+<a id="_1-artifact"></a>
+<a id="_2-artifact-kind"></a>
+<a id="_3-variant"></a>
+<a id="_4-experiment-role"></a>
+<a id="_5-runtime-context"></a>
+<a id="_6-sample"></a>
+<a id="_6-1-sample-metadata-fields"></a>
+<a id="_7-task"></a>
+<a id="_8-trace"></a>
+<a id="_9-evaluation-runtime-vocabulary"></a>
+<a id="_10-knowledge"></a>
 
 ## 3. Term boundaries
 
@@ -253,15 +101,15 @@ The two are orthogonal:
 - When comparing two `skill`-kind artifacts (v1 vs v2), one is explicitly declared `control` — here the control role has nothing to do with baseline kind.
 - Both reports and code should treat `experimentRole` as the single source of truth for identifying the control group, never inferring it back from `artifactKind === 'baseline'`.
 
-### 5. In omk, CI only ever means Confidence Interval
+### 5. Distinguish confidence intervals and continuous integration {#_5-in-omk-ci-only-ever-means-confidence-interval}
 
-**In omk, CI always means Confidence Interval**, never Continuous Integration. This rule avoids confusion with the non-statistical "CI".
+In measurement results, CI means Confidence Interval. Repository workflows also use continuous-integration CI. Distinguish by context instead of reading repository checks as statistical intervals.
 
 Rules:
 
 - **Continuous-integration internal helpers always use "gate"**: the `omk eval` gate path / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`.
 - **Confidence-interval contexts always use "CI"**: `Bootstrap CI` / `comparison CI` / `interval` Analysis result / "95% CI".
-- Docs / comments / commit messages mentioning "CI" need no clarification — there is a single meaning, so the reader doesn't need context to disambiguate.
+- Mixed contexts should spell out confidence interval or continuous integration/repository gates; do not incidentally rename public fields or Actions names.
 
 ### 6. Stability = across independent Runs, not cross-sample spread
 

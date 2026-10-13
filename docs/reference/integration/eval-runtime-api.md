@@ -1,0 +1,373 @@
+# eval-runtime API layers
+
+`package.json#exports` is the supported boundary. The API allowlist locks every value and type below. All entries are ESM-only.
+
+## `oh-my-knowledge`
+
+The recommended entry for all user-facing capabilities: the canonical Runtime façade (`evaluate`, `prepareEvaluation`, `evaluateSeries`, `prepareEvaluationSeries`, `executeEvaluation`, `scoreExecutedEvaluation`, `rescore`, `reanalyze`, `redecide`, `assessComparability`, `saveEvaluationResult`, `loadEvaluationResult`, `saveExecutedEvaluation`, `loadExecutedEvaluation`, `checkRuntime`, `checkExecutor`, `checkContentStore`), their stable errors, their public model types, the imperative builders that assemble Definitions, Policies, and Evaluators (such as `createExactMatchDefinition`, `createMeasurementPolicy`, and `createRubricJudgeKit`), Runtime assembly (`createEvaluationRuntime`), custom ports (adapters), staged runs (`runEvaluation`), and versioned wire schemas. Core engines are intentionally absent; import them from `oh-my-knowledge/eval-core`.
+
+The canonical API for application developers:
+
+| Export | Purpose |
+|---|---|
+| `evaluate` | Run one explicit solo, paired, or independent-group evaluation design, including multi-arm and multi-metric comparisons. |
+| `prepareEvaluation` | Seal and inspect the exact Definition, Policy, Plan, Runtime resolutions, digest, and work estimate before any Target or Evaluator call. |
+| `evaluateSeries` | Run a preregistered number of separate member evaluations under one fixed measurement design and summarize one numeric Analysis result across Runs. |
+| `prepareEvaluationSeries` | Seal every Series member, its membership, Series plan, and total work estimate before the first Target call. |
+| `executeEvaluation` | Run only the Execution stage of one sealed declaration and return the resulting `ExecutedEvaluation` handle; no Evaluator, Judge, Analysis, Decision, or Report is attempted. |
+| `scoreExecutedEvaluation` | Score one `ExecutedEvaluation` under a newly sealed declaration, reusing its authenticated Execution stage without another Target call. |
+| `rescore` | Reuse one authenticated Execution stage, then run Evaluation, Analysis, Decision, and Report under a newly sealed declaration. |
+| `reanalyze` | Reuse authenticated Execution and Evaluation stages, then run Analysis, Decision, and Report under a newly sealed declaration. |
+| `redecide` | Reuse authenticated Execution, Evaluation, and Analysis stages, then run a newly declared Decision and Report. |
+| `assessComparability` | Assess two authenticated canonical Run results at evaluation, analysis, or decision scope without rerunning either Target. |
+| `saveEvaluationResult` | Persist one authenticated canonical result through an injected host `ContentStore`; the versioned envelope is always classified as Gold. |
+| `loadEvaluationResult` | Resolve and re-admit a stored result against an exact `PreparedEvaluation`, using an independent host verifier before restoring provenance authority. |
+| `EVALUATION_RESULT_MEDIA_TYPE` | Versioned media type for the stored result envelope. |
+| `EvaluationResultStoreError` | Stable, redacted storage, resolution, verification, plan, or content failure. |
+| `saveExecutedEvaluation` | Persist one `ExecutedEvaluation` execution envelope through an injected host `ContentStore`; the versioned envelope is always classified as Gold. |
+| `loadExecutedEvaluation` | Resolve one stored execution envelope and re-admit it as an `ExecutedEvaluation` whose provenance authority comes only from an independent host verifier. |
+| `EXECUTED_EVALUATION_MEDIA_TYPE` | Versioned media type for the stored execution envelope. |
+| `ExecutedEvaluationStoreError` | Stable, redacted storage, resolution, verification, or content failure for one execution envelope. |
+| `checkRuntime` | Exercise exactly one injected Runtime component through its versioned behavioral probe. Supported kinds are Executor, Custom Evaluator, Judge, execution or evaluation cache, ContentStore／ContentResolver, and WorkspaceProvider. |
+| `checkContentStore` | Exercise a host ContentStore／ContentResolver pair for descriptor integrity and stability, idempotent writes, and round-trip value, classification, and media type; host exceptions are reduced to stable reason codes. |
+| `checkExecutor` | Exercise an Executor through success, failure, cancellation, cleanup, and measurement checks. |
+| `RUNTIME_CHECK_RESULT_SCHEMA_VERSION` | Version tag shared by all serializable `checkRuntime` result envelopes. |
+| `EvaluationConfigurationError` | Stable caller-configuration failure with a public code, field diagnostics in `issues`, and no rejected payload; when a boundary re-reports another failure, `cause` carries only its redacted origin. |
+| `EvaluationEventConsumptionError` | Stable, redacted observer／event-stream failure that retains the terminal `EvaluationResult` when available. |
+| `createCustomEvaluator` | Colocate metric definitions and parsers, infer callback types, and expand to a standard v2 Custom Evaluator. |
+| `debugEvaluator` | Run one real sample and return pre-validation binding snapshots plus the authoritative run result. |
+| `createExactMatchDefinition` | Build an exact-match paired Core Definition. |
+| `createPairedComparisonDefinition` | Build a one-metric paired Core Definition. |
+| `createMeasurementPolicy` | Materialize Core Policy defaults, including explicit EventWriter delivery mode. |
+| `createExactMatchEvaluator` | Create the built-in exact-match Evaluator port. |
+| `EXACT_MATCH_EVALUATOR_IMPLEMENTATION_ID` | Built-in exact-match implementation ID. |
+| `createExactMatchEvaluatorIdentity` | Inspect the exact-match Runtime identity. |
+| `createRubricJudgeKit` | Derive matched Rubric Definition, Metric, context, and registration fragments. |
+| `createRubricJudgeEvaluationContext` | Compose criterion context across Rubric kits. |
+| `createRubricJudgeRegistration` | Compose bindings across Rubric kits. |
+| `createRubricJudgeCriterion` | Build a low-level Rubric criterion. |
+| `createRubricJudgeInstrument` | Build a low-level frozen Rubric instrument. |
+| `createRubricJudgeRuntimeConfig` | Build a low-level Judge Runtime config. |
+| `createRubricJudgeEvaluatorDefinition` | Build a low-level Rubric Evaluator Definition. |
+| `createRubricJudgeMetricDefinition` | Build a low-level 1～5 Metric. |
+| `createRubricJudgeEvaluatorIdentity` | Derive a low-level Rubric Evaluator identity. |
+| `createRubricJudgeEvaluator` | Build a low-level Rubric Evaluator port. |
+| `createRubricJudgeEvaluatorRegistration` | Compose low-level Rubric bindings. |
+| `rubricJudgeInstrumentId` | Derive the built-in instrument ID. |
+| `createFormulaEvaluator` | Create a declarative formula evaluator from a calculator ID and field mappings; binding names must match the calculator's declared input set exactly, and unusable input yields a `missing`／`invalid` observation with a `reasonCode` rather than a fabricated score. |
+| `FORMULA_CALCULATOR_IDS` | Built-in formula calculator identifiers, each with its required bindings and scale: `ratio` (`numerator` ÷ `denominator`), `ranking` (1-based position of `target` within `candidates`), `duration` (`endMs` − `startMs`), `mean` (arithmetic mean of `values`), `percentage` (`value` × 100). |
+| `runEvaluation` | Run an already assembled Core Definition, Runtime, and Policy. |
+| `HostEvaluationEventConsumptionError` | Event-consumption failure for `runEvaluation`; retains the underlying `cause`. |
+| `createEvaluationRuntime` | Assemble Executor／Evaluator registrations and Core built-ins. |
+| `EvaluationRuntimeAssemblyError` | Stable registration or resolution failure. |
+| `createInvokeExecutorIdentity` | Declare an `omk.invoke/v1` Executor identity. |
+| `createSessionExecutorIdentity` | Declare an isolated `omk.session/v1` Executor identity. |
+| `createRuntimeIdentity` | Declare another host Runtime identity. |
+| `createJsonExecutorAdapter` | Adapt a typed JSON callback to a Core Executor. |
+| `createJsonSessionExecutorAdapter` | Adapt a typed, per-trial JSON session lifecycle to a Core Executor. |
+| `createSubprocessCommandExecutor` | Declare an Executor that runs every attempt in a child process over `omk.subprocess-command-exchange/v1`. |
+| `SUBPROCESS_COMMAND_EXCHANGE_SCHEMA_VERSION` | Exchange schema version stamped into every subprocess request and required in every response. |
+| `DEFAULT_SUBPROCESS_COMMAND_MAX_OUTPUT_BYTES` | Default per-attempt cap on child output bytes before the attempt fails closed. |
+| `runExecutorConformance` | Run the low-level Executor conformance probe. |
+| `assertExecutorConformance` | Throw when a conformance result failed. |
+| `RuntimeConformanceError` | Stable conformance assertion error. |
+| `createNodeEvaluationClock` | Supply the default Node.js Core clock. |
+| `INVOKE_JSON_INPUT_SCHEMA` | Default JSON input schema identity. |
+| `INVOKE_JSON_OUTPUT_SCHEMA` | Default JSON output schema identity. |
+| `INVOKE_JSON_TRACE_SCHEMA` | Default JSON trace schema identity. |
+| `SESSION_JSON_INPUT_SCHEMA` | Default session JSON input schema identity. |
+| `SESSION_JSON_OUTPUT_SCHEMA` | Default session JSON output schema identity. |
+| `SESSION_JSON_TRACE_SCHEMA` | Default session JSON trace schema identity. |
+| `createExecutorFnAdapter` | Bridge the legacy `ExecutorFn`. |
+| `createSameProcessExecutorAdapter` | Implement explicit in-process Executor lifecycle SPI. |
+| `createSameProcessEvaluatorAdapter` | Implement explicit in-process Evaluator lifecycle SPI. |
+| `RUBRIC_JUDGE_EVALUATOR_IMPLEMENTATION_ID` | Built-in Rubric Judge Evaluator implementation ID. |
+| `RUBRIC_JUDGE_BINDINGS` | Built-in Rubric Judge bindings. |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA_VERSION` | Rubric Judge instrument schema version. |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA_VERSION` | Rubric Judge context schema version. |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA_VERSION` | Rubric Judge evidence schema version. |
+| `RUBRIC_JUDGE_INSTRUMENT_SCHEMA` | Rubric Judge instrument schema. |
+| `RUBRIC_JUDGE_CONTEXT_SCHEMA` | Rubric Judge context schema. |
+| `RUBRIC_JUDGE_EVIDENCE_SCHEMA` | Rubric Judge evidence schema. |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_VERSION` | Source-neutral trace schema version. |
+| `SOURCE_NEUTRAL_TRACE_SCHEMA_DESCRIPTOR` | Source-neutral trace schema descriptor. |
+| `SOURCE_NEUTRAL_TRACE_WITHOUT_MOCKS_SCHEMA_DESCRIPTOR` | Source-neutral trace without mocks schema descriptor. |
+| `SourceNeutralTraceSchema` | Source-neutral trace schema. |
+| `SourceNeutralTraceWithoutMocksSchema` | Source-neutral trace without mocks schema. |
+| `SourceNeutralMockStatsSchema` | Source-neutral mock stats schema. |
+| `parseSourceNeutralTrace` | Parse a source-neutral trace. |
+| `attachSourceNeutralMockStats` | Attach source-neutral mock stats. |
+
+Content storage conformance uses `ContentStoreCheckInput`, `ContentStoreCheckResult`, and `ContentStoreConformanceCheck`.
+
+Unified checks use the discriminated `RuntimeCheckInput`, `RuntimeCheckKind`, and `RuntimeCheckResult` types. Component inputs and results are `ExecutorRuntimeCheckInput`, `ExecutorRuntimeCheckResult`, `EvaluatorRuntimeCheckInput`, `EvaluatorRuntimeCheckResult`, `JudgeRuntimeCheckInput`, `JudgeRuntimeCheckResult`, `CacheRuntimeCheckInput`, `CacheRuntimeCheckResult`, `ContentStoreRuntimeCheckInput`, `ContentStoreRuntimeCheckResult`, `WorkspaceProviderRuntimeCheckInput`, and `WorkspaceProviderRuntimeCheckResult`. Probe details use `EvaluatorConformanceProbeSources`, `EvaluatorConformanceProbeInput`, `EvaluatorConformanceCheck`, `EvaluatorConformanceResult`, `JudgeConformanceProbeCase`, `JudgeConformanceProbeInput`, `JudgeConformanceCheck`, `JudgeConformanceResult`, `CacheConformanceProbeInput`, `CacheConformanceCheck`, `CacheConformanceResult`, `WorkspaceProviderConformanceProbeInput`, `WorkspaceProviderConformanceCheck`, and `WorkspaceProviderConformanceResult`.
+
+Each `checkRuntime()` call checks one component, not a whole host composition. Its `schemaVersion`, qualified `runtimeKind`, versioned `checkStandardId`, and `evidenceLevel: 'behavioral-probe'` state exactly what was observed. A passing result does not attest Runtime identity, provider quality, security isolation, durability, or end-to-end construct validity. After checking individual components, run the intended composition with `evaluate()`.
+
+Cache probes perform writes and intentionally leave harmless entries, so they require a caller-owned unused `probeNamespace` and a disposable namespace. A timeout bounds the caller's wait but cannot cancel an arbitrary cache promise. ContentStore probes also write an idempotent public value. WorkspaceProvider probes open trial leases and observe request forwarding, retry reuse, distinct active roots, Target access, and `close()` calls across success, failure, and cancellation; they do not prove descriptor bytes, physical deletion, or sandbox containment. Judge probes perform up to four real calls and may cost money, so `allowExternalCalls: true` is mandatory. Every `publicProbeText` is transmitted to that provider inside a generated rubric prompt and must contain only harmless public data. The result reports the observed invocation count, declared cost-reporting mode, and measured provider costs without retaining prompts, outputs, provider exceptions, cache entries, content payloads, workspace roots, locators, or credentials.
+
+Evaluation-cache, Custom Evaluator, and Judge probes include concurrent canonical Core coordinates; their ports must remain correct when calls overlap. The current Core execution-cache read path is checked as it is actually invoked and makes no additional concurrency claim. Workspace `timeoutMs` bounds the check's wait for `close()`, but cannot stop an already-running provider promise, so providers must still implement bounded local cleanup. Cancellation checks require the Custom Evaluator or Judge call itself to reject after abort; a later successful settlement is not certified merely because Core reports the Run as cancelled.
+
+Mock interception types are `MockInterceptionDescriptor`, `MockInterceptionInput`, `MockInterceptionPlan`, `MockInterceptionProvider`, `MockInterceptionOpenRequest`, `MockInterceptionLease`, `MockInterceptionAccess`, `MockInterceptionRequest`, and `MockInterceptionDecision`.
+
+Builder types are `ExactMatchDefinitionBuilderInput`, `ExactMatchTarget`, `PairedComparisonDefinitionBuilderInput`, `EvaluationRuntimeTarget`, `MeasurementPolicyBuilderInput`, `MeasurementStagePolicyInput`, `MeasurementRetryPolicyInput`, `MeasurementRetryBackoffInput`, `MeasurementFailurePolicyInput`, `MeasurementEvidencePolicyInput`, `MeasurementEventDeliveryInput`, `MeasurementBudgetPolicyInput`, `MeasurementBudgetScopeInput`, `MeasurementAttemptBudgetScopeInput`, `MeasurementRunBudgetScopeInput`, `MeasurementCachePolicyInput`, `MeasurementProviderCostLimitInput`, `CreateExactMatchEvaluatorInput`, `CreateRubricJudgeKitInput`, `RubricJudgeKit`, `CreateRubricJudgeEvaluatorInput`, `RubricJudgeEvaluatorBinding`, and `RubricJudgeEvaluatorDefinitionBuilderInput`. Formula evaluator types are `FormulaCalculatorId`, `FormulaEvaluator`, `FormulaEvaluatorBinding`, and `FormulaEvaluatorConfig`.
+
+Runtime assembly types are `RunEvaluationInput`, `EvaluationEventObserver`, `CreateEvaluationRuntimeInput`, `EvaluationRuntimeSupportPorts`, and `RuntimePortRegistration`. Identity and JSON adapter types are `InvokeExecutorIdentityDeclaration`, `SessionExecutorIdentityDeclaration`, `RuntimeIdentityDeclaration`, `CreateJsonExecutorAdapterInput`, `CreateJsonSessionExecutorAdapterInput`, `JsonExecutorInvocation`, `JsonExecutorInvocationResult`, `JsonSessionExecutorContext`, `JsonSessionExecutorAttempt`, `JsonExecutorSession`, and `RuntimeValueParser`. Judge invocation types are `OmkLlmJudgeEffort`, `OmkLlmJudgeInvocationPort`, `OmkLlmJudgeInvocationRequest`, and `OmkLlmJudgeInvocationResult`. Conformance types are `ExecutorConformanceProbeInput`, `ExecutorConformanceResult`, and `RuntimeConformanceCheck`. Legacy and lifecycle SPI types are `CreateExecutorFnAdapterInput`, `ExecutorFn`, `ExecutorInput`, `ExecResult`, `ExecutorFnInputMapper`, `ExecutorFnResultMapper`, `CreateSameProcessExecutorAdapterInput`, `CreateSameProcessEvaluatorAdapterInput`, `SameProcessExecutorImplementation`, `SameProcessEvaluatorImplementation`, `SameProcessResourceLeaseAccess`, `SameProcessRunScope`, and `SameProcessOperationScope`. Subprocess command adapter types are `CreateSubprocessCommandExecutorInput`, `SubprocessCommandConfiguration`, and `SubprocessCommandValueParser`. Rubric wire types are `RubricJudgeInstrument`, `RubricJudgeRuntimeConfig`, `RubricJudgeConfig`, `RubricJudgeCriterion`, and `RubricJudgeTracePolicy`. Trace types are `SourceNeutralTrace` and `SourceNeutralMockStats`.
+
+Public model types are `Artifact`, `ArtifactKind`, `ArtifactSource`, `Variant`, `VariantExecution`, `RuntimeContext`, `AllowedToolsInput`, `AllowedToolsPlan`, `McpConfigDescriptor`, `McpConfigInput`, `McpConfigPlan`, `McpConfigProvider`, `McpConfigOpenRequest`, `McpConfigLease`, `McpConfigAccess`, `WorkspaceDescriptor`, `WorkspaceInput`, `WorkspacePlan`, `WorkspaceProvider`, `WorkspaceOpenRequest`, `WorkspaceLease`, `WorkspaceAccess`, `ContentDescriptor`, `ContentValue`, `ContentStoreRequest`, `ContentStore`, `ContentResolver`, `ExecutionCache`, `ExecutionCacheEntry`, `EvaluationCache`, `EvaluationCacheEntry`, `ExecutorIdentityVerifier`, `ExecutorIdentityVerificationRequest`, `ExecutorIdentityVerification`, `EvaluationInfrastructure`, `Dataset`, `Sample`, `EvaluationExecutor`, `Executor`, `InvokeExecutor`, `SessionExecutor`, `ExecutorSessionContext`, `ExecutorSessionAttempt`, `ExecutorSession`, `ExecutorCapabilities`, `ExecutorInvocation`, `ExecutorResult`, `Evaluator`, `ExactMatchEvaluator`, `RetrievalEvaluator`, `RetrievalMetricIds`, `AbstentionEvaluator`, `AbstentionMetricIds`, `ToolTrajectoryEvaluator`, `ToolTrajectoryMatchMode`, `RubricJudgeEvaluator`, `RubricJudgeDimension`, `RubricJudgeMember`, `RubricJudgeAggregation`, `CustomEvaluator`, `CustomEvaluatorInvocation`, `CustomEvaluatorResult`, `CustomMetricResult`, `CustomEvaluatorBinding`, `CustomEvaluatorContent`, `Metric`, `Judge`, `Rubric`, `Experiment`, `SamplingDesign`, `AnalysisRequest`, `CohortFilter`, `Comparison`, `ComparisonFamilyMember`, `CompositeMetricComponent`, `CompositeAggregation`, `Decision`, `FamilyDecisionCriterion`, `Policy`, `StagePolicy`, `RetryPolicy`, `RetryBackoff`, `FailurePolicy`, `CachePolicy`, `EvidencePolicy`, `BudgetPolicy`, `BudgetScope`, `RunBudgetScope`, `AttemptBudgetScope`, `ProviderCostLimit`, `EvaluateInput`, `EvaluationRunOptions`, `EvaluationResult`, `PreparedEvaluation`, `PreparedEvaluationPlan`, `RuntimeCapabilityResolution`, `EvaluationWorkEstimate`, `EventObserver`, `EvaluationEventWriter`, `Clock`, `AssessComparabilityInput`, `EvaluationComparabilitySubject`, and `EvaluationComparabilityAssessment`. Series uses `EvaluationSeriesInput`, `EvaluationSeriesStability`, `EvaluationSeriesRunOptions`, `PreparedEvaluationSeries`, `EvaluationSeriesWorkEstimate`, `EvaluationSeriesMemberResult`, `EvaluationSeriesResult`, `EvaluationSeriesStabilityResult`, and `RunStabilityValue`. Executor behavioral checks use `ExecutorCheckInput`, `ExecutorCheckResult`, and `RuntimeConformanceCheck`.
+
+The Executor conformance probe seals its own measurement design, so a declaration under test never has to satisfy an assumption the probe invented: a deterministic Executor, or one that controls its seed, is certified under the paired `shared-within-block` sampling design, while a stochastic Executor that declares `seedControl: 'unsupported'` is certified with `seedCoupling: 'uncontrolled'` — the same coupling the product host compiles for such a Target. The eleven `RuntimeConformanceCheck` ids and their evidence are identical either way — only `experiment.sampling.seedCoupling` differs — and callers of `runExecutorConformance` may still pin the design explicitly with `ExecutorConformanceProbeInput.seedCoupling`.
+
+`Policy` uses independent `execution` and `evaluation` `StagePolicy` values. Each stage seals its own concurrency, timeout, and optional `RetryPolicy`; retry error codes are host-defined stable identifiers, and `RetryBackoff` is an explicit `none`, `fixed`, or `exponential` union. `FailurePolicy` is also discriminated: only `failure-threshold` carries `maxFailures`. `BudgetPolicy` exposes run, stage, coordinate, and attempt scopes with auditable invocation, active-duration, wall-clock, and provider-cost limits. Provider-cost admission is deliberately fixed to bounded overshoot; `onUnreportedProviderCost` selects fail-closed or unverifiable handling. `CachePolicy` independently controls Execution `disabled`／`reuse`／`replay-only` and Evaluation `disabled`／`reuse`. `EvidencePolicy` independently selects `full`, `reference`, `digest`, or `none` through `output`, `trace`, and `evaluatorEvidence`, plus one classification ceiling. The façade only materializes these declarations into the Core Measurement Policy; all scheduling, timeout, retry, cancellation, budget accounting, cache validation, evidence capture, and failure-threshold behavior remains in Core.
+
+`EvaluateInput.infrastructure` accepts explicit host-owned `ContentStore` and `ContentResolver` ports. A reference capture writes through the one store shared by execution output, trace, and Evaluator evidence. If a downstream Evaluator consumes reference-captured output or trace, the resolver retrieves it. Core derives the canonical digest before storage, verifies the returned descriptor, and rechecks resolved value digest, classification, and media type before evaluation. The façade captures method bindings during prepare and rejects a missing required port, an input-removing capture mode, or an insufficient classification ceiling before the first Target call. Store implementations and credentials never enter the sealed Definition. The returned descriptor does enter the run artifact, so an optional `uri` must be a stable, opaque, credential-free locator rather than a physical path or signed URL. `digest` and `none` remain valid for output or trace that no Evaluator consumes.
+
+The same `EvaluationInfrastructure` may provide independent `ExecutionCache` and `EvaluationCache` ports. Execution `reuse` accepts only deterministic Executors and requires an independent `ExecutorIdentityVerifier` that binds the captured callable and all behavior-affecting dependencies to a stable attestation. Running `checkExecutor()` or trusting the Executor's self-reported fingerprint is not that verification. `replay-only` fails on a miss without calling the Target, while Evaluation `reuse` may be enabled independently. The façade validates required ports and verification during prepare; Core remains the sole owner of cache keys, entry validation, hit provenance, and write timing.
+
+`RuntimeContext` contains only reproducible host-defined JSON `values`. A Variant selects a logical workspace with a content-addressed `WorkspaceDescriptor`, or a `WorkspacePlan` containing one `default` plus `bySampleId` overrides; `null` explicitly disables the default for that sample. The Executor owns the corresponding `WorkspaceProvider`. Its stable `providerId`, `version`, and optional measurement-relevant `fingerprintFacets` participate in Runtime identity, while credentials, CAS locators, caches, and base directories remain inside the provider closure. Both canonical and advanced JSON adapters bind that provider identity into the final Executor fingerprint. `prepareEvaluation()` seals descriptors without opening a lease. At execution time the provider must verify the requested immutable descriptor and return a fresh `WorkspaceLease` with an absolute, trial-private `root`. The same `WorkspaceAccess` is reused across retry attempts for that trial, then the Runtime calls `close()` after success, failure, timeout, or cancellation. OMK itself never adds the physical root or provider-private state to a Definition, result, or error; an Executor must likewise avoid returning locators in its own output or trace. Invoke and session Executors receive only `{ descriptor, root }`; they cannot close another component's lease. Reusing a lease object across trials or an active physical root fails closed, and a root whose cleanup fails remains quarantined in that process. `open()` and `close()` must be bounded local resource work. A lease provides measurement isolation, not a security sandbox; containing untrusted code remains the host's responsibility.
+
+A Variant may also set `execution.allowedTools` to one exact list or an `AllowedToolsPlan` with `default` and `bySampleId`. OMK sorts the list for identity but never unions lists across samples. `[]` denies every tool; a `null` sample override explicitly restores the Executor runtime default. The Executor must declare `capabilities.toolPolicy: 'allow-list'` and strictly apply the `allowedTools` received by `execute()` or `openSession()`. Undefined means runtime default. OMK fails before execution if the capability is absent, but the capability is self-reported: do not declare it when the backend cannot enforce the exact list. Neither tool names nor workspace controls enter Gold or evaluation-only context. Skill discovery, installation, and name resolution remain host／Workflow responsibilities; Runtime seals only the final execution contract and does not add an `allowedSkills` policy. `checkExecutor()` currently rejects workspace- or tool-policy-enabled declarations because its generic probes cannot prove their isolation or enforcement; run a real Evaluation until dedicated conformance probes are available.
+
+For native MCP configuration, a Variant selects a secret `application/json` `McpConfigDescriptor` directly or through a `McpConfigPlan`; `null` disables the default for that sample. The Executor must pair `capabilities.mcp: 'native-config'` with an `McpConfigProvider`. Provider identity and the selected descriptor participate in Runtime and execution-coordinate identity, while credentials, locators, and config bytes stay inside the provider. The provider returns canonical JSON matching the declared digest and byte size. Runtime opens one fresh lease per Trial, reuses it only for retries of that Trial, exposes only `{ descriptor, config }` to the Executor, and closes the lease on every terminal path. OMK never serializes config content into its result or error, but Executors remain responsible for not echoing secrets in output or trace. `checkExecutor()` rejects MCP-enabled declarations until a dedicated isolation probe exists; use a real Evaluation. Discovery, defaults, and product-specific Workflow assembly are outside this Runtime port.
+
+For pre-tool-call mocking, a Variant selects a secret `MockInterceptionDescriptor` directly or through a `MockInterceptionPlan`; `null` disables the default for one sample. The descriptor must use `MOCK_INTERCEPTION_PLAN_MEDIA_TYPE` (`application/vnd.omk.mock-interception-plan+json`) and identify an aggregate plan whose bytes bind strictness, first-match rule order, and ordered payload descriptors. The Executor must pair `capabilities.mockInterception: 'pre-tool-call'` with a `MockInterceptionProvider`. Provider identity and the selected descriptor enter Runtime and coordinate identity, while plan bytes, rule bytes, payloads, and locators stay inside the provider. The provider verifies the descriptor before returning a fresh attempt-scoped lease. Invoke Executors receive `MockInterceptionAccess` on their invocation; Session Executors receive it on each `ExecutorSessionAttempt`, never on `openSession()`. Runtime validates the request and `mocked`／`pass-through`／`denied` decision, closes the lease only after the Target call settles, rejects reused leases, lifts output and trace classification to `secret`, and redacts provider failures. Retry attempts always receive fresh state. A strict miss must be denied before any real tool call. `checkExecutor()` rejects mock-enabled declarations until a real tool-call probe exists.
+
+```ts
+const executor: Executor<string, undefined, string> = {
+  executorId: 'acme.agent/v1',
+  version: '1.0.0',
+  schemas: { input: z.string(), output: z.string() },
+  workspaceProvider: {
+    providerId: 'acme.cas-workspace/v1',
+    version: '1.0.0',
+    async open({ descriptor, runId, trialId }) {
+      const root = await materializeFreshOverlay(descriptor, { runId, trialId });
+      return { root, close: () => removeOverlay(root) };
+    },
+  },
+  async execute({ input, workspace, signal }) {
+    return { output: await runAgent(input, { cwd: workspace?.root, signal }) };
+  },
+};
+
+const variant: Variant<string, undefined, string> = {
+  variantId: 'workspace-agent-v1',
+  artifact: { name: 'workspace-agent-v1', kind: 'agent', source: 'inline', content: '...' },
+  execution: { executor, workspace: workspaceDescriptor },
+};
+```
+
+`Sample.executionContext` is per-sample input visible to the Executor; `Sample.evaluationContext` is per-sample input visible only to the Evaluator. These sample projections do not describe the host environment.
+
+`EvaluationExecutor` is the union accepted by a Variant. `Executor` and its explicit alias `InvokeExecutor` run one stateless `omk.invoke/v1` callback; omitting `protocol` means invoke. `SessionExecutor` requires `protocol: 'session'` and opens one isolated, newly allocated `ExecutorSession` object for each Core trial; object reuse across trials or Runs is rejected. `ExecutorSessionContext` exposes the Target projection plus stable `runId` and `trialId`, but never Gold or evaluation-only context. Retries call the same session's `execute()` with a fresh `ExecutorSessionAttempt`, including `attemptId`, `attemptNumber`, and the Core `AbortSignal`. Coordinate-derived `attemptId` values may recur in a separate Run, so provider idempotency keys must also be namespaced by `runId` or an equivalent provider-session scope. Success, failure, timeout, and cancellation all end with exactly one `close()`. `openSession()` and `close()` must be bounded local lifecycle work; opening is resource acquisition rather than a measured provider attempt, so billable or model work belongs in `execute()`. A session is temporary and run-scoped; it is not a cross-Run conversation or memory store.
+
+`EvaluationResult` preserves every field of the Core `EvaluationRunResult` and adds the effective `runId`, `definition`, `policy`, and `analysisResults`. The last field is a read-only `analysisId` index over the exact Core Analysis records, not a second analysis implementation. Execution and evaluation evidence remain under `artifacts`, the decision remains under `artifacts.decision`, and the public report remains under `report`.
+
+`saveEvaluationResult()` accepts only an original authenticated result with a complete Execution／Evaluation／Analysis source chain, stores a versioned canonical JSON envelope through the caller's `ContentStore`, and returns a content-addressed `ContentDescriptor`. The envelope contains the sealed Definition and Dataset Gold through the result, so Runtime always writes it with `classification: 'gold'`; hosts must apply matching access controls. `loadEvaluationResult()` requires the caller to prepare the exact declaration again, keeps the requested descriptor immutable, verifies the outer value plus every reference-captured output, trace, and Evaluator evidence value through the injected `ContentResolver`, then asks an `EvaluationResultVerifier` to authenticate the exact envelope before Core re-admits every bundle and the report. The verifier is a host trust boundary: its `EvaluationResultVerification` must explicitly list independently authenticated provenance Bundle digests, cache receipt digests, and Decision policy-execution digests. Runtime passes only those facts to Core and never derives verified receipts from the stored Bundle's own claims; merely recomputing the public envelope checksum is insufficient. Store, resolver, and verifier implementations may use files or databases, but Runtime never discovers either and redacts rejected promises as well as malformed return values. A different plan, incomplete result, cloned source on save, missing referenced content, tampered content, or insufficient verification fails closed. The related types are `SaveEvaluationResultInput`, `LoadEvaluationResultInput`, `EvaluationResultVerifier`, `EvaluationResultVerificationRequest`, and `EvaluationResultVerification`.
+
+`executeEvaluation()` runs the Execution stage alone and returns a frozen `ExecutedEvaluation`: the authoritative `runId`, the two digests a later declaration must reproduce, the `ExecutionBundle`, and a `bundleOrigin` of `runtime` or `store`. It takes the same `EvaluateInput` and `EvaluationRunOptions` as `evaluate()`, so Events, durable writes, budgets, cancellation, and cleanup all belong to that one execution-only Run; a failed observer or event stream still reports the consumed work through `EvaluationEventConsumptionError.executed`. `scoreExecutedEvaluation()` seals a complete new declaration first, then runs Evaluation, Analysis, Decision, and Report with zero Target calls. Admission uses the same Core rule as `rescore()`: the retained stage must reproduce the handle's `executionPlanDigest` and `executionInputDigest` exactly, while Gold, Evaluator, Judge, Analysis, and Decision content may all change. A cloned, deserialized, or rebuilt handle has no in-process source authority and fails closed, as does any declaration whose execution stage differs; every such rejection is one `EvaluationConfigurationError` with code `EVAL_RUNTIME_REUSE_INVALID` and a redacted `cause`.
+
+`saveExecutedEvaluation()` persists only that execution envelope — the `ExecutionBundle` plus its two identity digests — as `EXECUTED_EVALUATION_MEDIA_TYPE` through the injected `ContentStore`, always with `classification: 'gold'` because Target evidence must never be handed back to a Target as context. `loadExecutedEvaluation()` keeps the requested `ContentDescriptor` immutable and hands back a deeply frozen `ExecutionBundle`, so an in-place edit cannot corrupt evidence this same envelope still points at; it verifies the outer digest and schema plus every reference-captured output and trace, then asks an independent `ExecutedEvaluationVerifier` for the `ExecutedEvaluationVerification` it can attest on an `ExecutedEvaluationVerificationRequest`; store, resolver, and verification failures are redacted `ExecutedEvaluationStoreError` values. Loading decides storage integrity and host trust only, never plan compatibility: an envelope is declaration-agnostic, so it stays usable by every later scoring declaration, and `scoreExecutedEvaluation()` performs the binding check above. Trust also cannot be upgraded by storage: an envelope whose provenance Bundle the verifier does not list keeps an indeterminate provenance status, so its Report may claim only `unknown` provenance and a declared Decision stays gated even though the scored execution facts are unchanged. The related types are `SaveExecutedEvaluationInput` and `LoadExecutedEvaluationInput`.
+
+`EvaluateInput` contains only the measurement declaration. `EvaluationRunOptions` contains run-scoped `runId`, cancellation, progress observation, durable `eventWriter` delivery, report annotations／summaries, event-buffer capacity, and clock. `onEvent` stays a bounded best-effort observer, while `eventWriter` receives measurement events one by one in order and requires a `policy.eventDelivery.writerMode` of `optional` or `required`; completeness is guaranteed only by `required`, because under `optional` + `ignore` a failed write silently stops durable delivery for that stage while the run still completes. Both misconfigurations fail closed before the first Target call: supplying a writer while delivery is `disabled`, and declaring `required` without an injected writer. Omitting `runId` generates one and returns it as `EvaluationResult.runId`. `prepareEvaluation(input)` captures all mutable declarations, materializes defaults, resolves Runtime capabilities, and seals the Core Plan without calling a Target or Evaluator. Its frozen `PreparedEvaluation` exposes the exact `definition`, `policy`, `plan`, complete-contract `planDigest`, `resolvedRuntimes`, and `estimatedWork`; `run(options)` executes that same sealed Plan without re-reading the input or recompiling. Planned coordinates exclude retries and early termination, while duration and provider cost remain explicitly uncertain until execution.
+
+`assessComparability()` consumes two exact authenticated `EvaluationResult` objects returned by canonical evaluation or by `loadEvaluationResult()`. A plain clone or deserialized document has no source authority and is rejected instead of being treated as verified. `comparisonScope` selects the deepest invariant contract to compare, while each `EvaluationComparabilitySubject` explicitly maps the intentionally changed Variant on the left and right. The returned `EvaluationComparabilityAssessment` is authored by Core and keeps `designStatus`, `evidenceQualificationStatus`, and overall `comparabilityStatus` separate. A mapped subject change is identity information, not a design mismatch; incomplete Runtime assurance remains conditional rather than being silently promoted.
+
+`evaluateSeries()` measures fixed-design repeatability. `repeatCount` preregisters the complete number of member Runs; the full Dataset, SamplingDesign, Evaluators, Analysis graph, policies, Runtime identities, and measurement seed are captured once and sealed into every member before execution. Each Run is one experimental unit. Target trials, retries, and Rubric Judge replicates are nested measurements and never increase Series `runCount`. Members execute sequentially with Execution and Evaluation cache disabled, cannot be replaced after failure or cancellation, and every missing slot remains visible in coverage. `stability.sourceAnalysisId` selects an existing scalar Analysis result, or an interval's point estimate through the explicit `interval-estimate` projection. The built-in returns mean, Bessel-corrected sample variance with denominator `n - 1`, standard deviation, minimum, maximum, and range; it deliberately emits no verdict or confidence interval. It completes only when every preregistered slot is eligible and comparable; otherwise the stability record is inconclusive rather than a complete-case estimate. These are descriptive repeatability statistics under one sealed design, not evidence of cross-environment reproducibility or independent-and-identically-distributed sampling. Seed-aware Executors therefore receive the same sealed trial seeds in every member; a design that intentionally varies Run-level seeds is a different experiment and is not represented by this first façade.
+
+`prepareEvaluationSeries()` performs the same capture and returns a single-use `PreparedEvaluationSeries` with the exact `definition`, Core `plan`, every member Plan, and `estimatedWork`, without calling a Target. `seriesInstanceId` names one intentional execution and must be unique when a caller intends a distinct Series. The default requires complete member evidence and accepts conditional comparability because ordinary callback identities are self-declared; callers may explicitly allow partial evidence or require compatible comparability. No result-dependent stopping, member replacement, cache reuse, or implicit Decision is provided. A caller cancellation stops future members and is forwarded to Core; the terminal result is `cancelled`, retains the planned member outcome list, and does not manufacture a completed Series Analysis or Report.
+
+`rescore()`, `reanalyze()`, and `redecide()` take a complete new `EvaluateInput`, an exact prior `EvaluationResult`, and optional `EvaluationRunOptions`. The new declaration is sealed before reuse. Core recursively verifies that the retained source capability matches every skipped stage: changed Target input cannot be hidden behind `rescore`, changed Gold or Evaluator cannot be hidden behind `reanalyze`, and changed Analysis cannot be hidden behind `redecide`. A clone, deserialized report, or Bundle JSON has no in-process source authority and is rejected. Reused upstream bundles retain their original identities and historical evidence; every executed suffix stage receives the new Run identity, emits the only new progress events, and consumes only the new Run's suffix budget. The façade does not reconstruct evidence, rerun skipped callbacks, or duplicate Core scoring, statistics, Decision, Report, budget, cache, or scheduler behavior.
+
+`SamplingDesign` supports a one-Variant `solo` quality profile, complete-block `paired` comparisons, and fixed-quota `independent` comparisons. It is the only owner of paired／independent semantics. A solo design may declare `clusterKey`; Core then treats whole clusters as the experimental and resampling unit. A `Comparison` declares one control, one or more treatments, and the Metrics to analyze; it contains no duplicate sampling discriminator. `evaluators` may contain multiple exact-match, retrieval, abstention, tool-trajectory, Rubric Judge, or custom evaluators, provided evaluator and metric IDs are unique.
+
+`RetrievalEvaluator` is the source-neutral binary-relevance top-k preset. It reads a unique ordered document-ID array from an explicit output or trace JSON Pointer and a non-empty set of unique relevant IDs from `Sample.expected`. Its four `RetrievalMetricIds` are bounded, higher-is-better sample Metrics: Recall@k uses all known relevant documents as its denominator, Precision@k always uses `k` (missing result slots are non-hits), Reciprocal Rank@k uses the first relevant rank, and nDCG@k uses binary gain with log2 discount. The ranking is truncated before measurement. Duplicate or malformed IDs and empty relevance sets produce invalid evidence; they are never deduplicated, clamped, or converted to `NaN`. A summary `mean` over the Reciprocal Rank Metric is MRR. Cutoff, pointers, Metric IDs, and algorithm identity are sealed into the Definition and Runtime fingerprint.
+
+`ToolTrajectoryEvaluator` deterministically compares `ToolCallInfo.tool` names from one complete `omk.source-neutral-trace/v2` against tool names projected only from `Sample.expected`. Its explicit `ToolTrajectoryMatchMode` is `exact-order`, `same-tools`, `contains-in-order`, or `contains-any-order`; the names describe the actual-to-expected relationship without ambiguous subset／superset orientation. Matching is case-sensitive and preserves repeated-call multiplicity. Every call status participates because this Metric measures the agent's call decisions, not whether tools succeeded. Empty actual trajectories are valid. Empty expected trajectories are valid only for exact modes, where they assert that no tool should be called; contains modes reject the vacuous condition. Invalid trace／Gold becomes invalid evidence, while an unresolved pointer remains Core `not-evaluated` evidence. The boolean observation never copies the sensitive trajectory.
+
+A `RubricJudgeEvaluator` is an explicit judge panel. `judges` contains one or more `RubricJudgeMember` values; `replicateCount` repeats only that member's measurement and never reruns the Target. One panel may expand to at most 1,000 member × replicate coordinates. `RubricJudgeAggregation` must select equal-member `mean` or a `weighted-mean` whose positive weights cover every member and sum to one. The only supported missing rule is `require-complete`: one unavailable planned member or replicate removes that Target × Sample × Trial panel reading from analysis rather than averaging the survivors. Raw member and replicate records remain in the Evaluation Bundle.
+
+A `CustomEvaluator` declares a nonempty `metrics: Metric[]`, explicit input `bindings`, serializable `parameters`, and measurement-relevant identity facets. `implementation.schemas.values` maps every declared metric ID to its parser. The callback receives only selected bindings and runs once per Sample × Variant × Trial attempt. It returns `{ resultKind: 'completed', results: CustomMetricResult[], usage? }`, where each declared metric appears exactly once with `metricId` and a `score`, `missing`, or `invalid` result. Ordering does not matter. A rejected value invalidates only that metric; explicit missing and invalid reasons, classified evidence, coverage, and summaries remain independent. Empty, omitted, duplicate, or unknown result IDs fail the invocation with `custom-evaluator-result-invalid`. A stable `{ resultKind: 'failed', errorCode, usage? }` fails the entire invocation. Usage belongs to the invocation and is counted once. Core owns concurrency, timeout, retry, budget, cancellation, evidence capture, and failure redaction; all invocation controls apply to the complete metric group. Callbacks must be stateless, parallel-safe, and cancellation-cooperative. Stateful integrations use `/advanced`; custom evaluators cannot claim ensemble coordinates.
+
+**Rubric Judge v2 migration — BREAKING-COMPARABILITY.** <a id="rubric-judge-v2-migration"></a>
+
+Replace the facade's `metricId` and `rubric` with `rubrics: [{ metricId, ...rubric }]`; single-dimension callers use a one-element array. `RubricJudgeDimension` combines `metricId`, `criterionId`, `prompt`, and `rubric`; both ID sets must be unique. This applies to `createCodexCliReferenceEvaluator` too. No legacy field form is accepted.
+
+Each member × replicate makes one provider call for all declared dimensions. The prompt requests `{"scores":[{"metricId":"quality","score":4,"reason":"evidence","reasoning":"optional"}]}`. IDs must cover all declared metrics exactly once, in any order. Missing, duplicate, unknown IDs or an invalid envelope invalidate all dimensions with a stable reason; a bad individual score/reason invalidates only that metric. Scores remain integers from 1 to 5, higher is better. Aggregation and `require-complete` operate independently per metric. Provider failures, retries, cancellation, concurrency, budgets and usage belong to the whole call, never to each returned score. Invalid readings remain measurement evidence rather than provider failures and do not trigger provider retries.
+
+Low-level migration: `CreateRubricJudgeKitInput.metricId` and `RubricJudgeEvaluatorDefinitionBuilderInput.metricId` become `metricIds`; `RubricJudgeKit.metricDefinition` becomes `metricDefinitions`; `criterionPointer` and binding `criterion` become `criteriaPointer` and `criteria`. `createRubricJudgeCriterion` now requires `metricId`. `kit.createEvaluationContext` receives an array of criteria; `createRubricJudgeEvaluationContext` entries use `criteria: [...]`. The context schema describes that nonempty array of versioned criteria.
+
+The evaluator runtime version is `2.0.0`; update any explicit version constraints. Evaluators may share a measurement coordinate only when their `applicableSampleIds` do not overlap. An omitted scope covers all samples, and overlapping coordinates are still rejected. Core wire schemas and observation identity derivation remain unchanged.
+
+Implementation, instrument, context and evidence identities are v2; the prompt template is `v6-multi-cot-toolargs-fmt[-len]`. Existing Core artifacts remain readable, but old instrument configurations are rejected for new runs. Re-run baseline and candidate with the same v2 declaration; unchanged 1–5 scales do not establish comparability. Product CLI sample files retain their existing rubric format and weights: compilation groups samples by their actual dimension sets, so missing dimensions are never fabricated. Joint scoring may correlate dimension errors; fewer calls do not guarantee equivalent scores or proportional latency savings.
+
+Numeric and boolean custom Metrics require an explicit `higher-is-better` or `lower-is-better` direction. Categorical, text, and ranking Metrics cannot declare a scale or direction. The canonical `progress/v2` Decision currently accepts only `higher-is-better`, because silently applying its positive-effect rule to a lower-is-better scale would reverse the verdict.
+
+`implementation.version`, schema `fingerprintFacets`, and implementation `fingerprintFacets` are mandatory identity declarations. OMK never fingerprints `Function#toString()`. Callers must change one of these facets whenever callback code, dependencies, schemas, or provider configuration changes measurement behavior. Binding and value schemas validate without coercion, defaults, or field removal. `CustomEvaluatorContent` carries an explicit classification for evidence or invalid values; undeclared source values are never passed to the callback.
+
+`createCustomEvaluator(input)` accepts `CreateCustomEvaluatorInput`: `metrics` is keyed by metric ID and each `CustomEvaluatorMetric` colocates the Metric fields with its `schema`. Omitted `missingPolicyId` defaults to `exclude/v1`; `schemas.values` is unnecessary. The callback returns `CustomEvaluatorScores`, with completed `results` keyed by metric ID and score/missing/invalid items. Score types are inferred from their parsers; invocation-level usage and failed results are unchanged. Construction validates declarations without invoking executors, parsers, or scoring callbacks. The expanded v2 declaration uses the same identity derivation and measurement/storage contracts. Builder error paths are relative to its input, with map keys for metrics.
+
+`createRubricEvaluator` accepts `CreateRubricEvaluatorInput`: the standard Rubric declaration without `evaluatorKind`, with `rubrics` replaced by a nonempty map from metric ID to `Rubric`. Each entry explicitly provides `criterionId`, `prompt`, and `rubric`; repeated `metricId` and unknown fields are rejected. `judges`, model identity, and `aggregation` keep their existing contract; the builder does not infer scoring criteria or aggregation choices. It returns a standard `RubricJudgeEvaluator` for `evaluate`, `prepareEvaluation`, or `debugEvaluator`. Direct array declarations remain supported.
+
+Construction reuses production declaration and Judge identity validation without calling a provider. Prompt bytes, identity, scoring/storage contracts, and provider call counts are unchanged; formal execution still captures declarations during preparation. Construction failures throw `EvaluationConfigurationError` with input-relative `issues` paths: dimensions use map keys, such as `['rubrics', 'accuracy', 'rubric']`, and members retain array indices. Invalid metric keys point only to `['rubrics']`; unknown fields point to their parent object. Rejected values and host exception text are omitted.
+
+`debugEvaluator(input, options?)` accepts `DebugEvaluatorInput`: a Custom or Rubric `evaluator`, one `sample`, one `variant`, and optional `seed`, `policy`, and `infrastructure`; the second argument is standard `EvaluationRunOptions`. `DebugEvaluatorResult` contains the authoritative `run: EvaluationResult`. Custom `bindingInputs` contains frozen pre-parser snapshots; Rubric `judgeInvocations` contains frozen records of actual provider calls. The other diagnostic array is empty.
+
+`DebugJudgeInvocation` carries `memberId`, zero-based `invocationIndex`, the actual `request` without its signal, and a `DebugJudgeResponse`. The index is start order within this debug call, not a replicate index or Core attempt number; use `run` for authoritative measurement identities under concurrent replicates and retries. A `completed` response retains raw `output`, `DebugRubricReading` entries decoded by the production parser, and valid usage facts. Readings are `observed` (value, reason, optional reasoning) or `invalid` (reasonCode). Other response statuses are `provider-failed`, `invalid-response`, `threw`, `cancelled`, and `pending`. Exceptions and provider-private failure reasons are omitted; only valid token/cost facts are retained. Per-call retry usage is diagnostic; use the aggregate in `run` without counting it again.
+
+Additional raw diagnostics may contain sensitive data. They stay in returned memory, never events or reports; normal run evidence still follows the existing evidence policy. Collection and abort listeners stop when the call returns, so late responses cannot alter the result. Unavailable sources, unstarted attempts, and scoring-cache hits produce no corresponding call record. The helper uses one trial of solo sampling, empty comparisons/analyses, no Decision, and default seed/datasetId `omk-debug-evaluator`. This is real execution under the supplied retry, timeout, cancellation, and budget policies. Prompt bytes, Runtime identity, and scoring semantics are unchanged; one debug sample is not a full quality assessment.
+
+`EvaluationConfigurationIssue` has a `path` containing string/number segments; `reasonCode` is `invalid-value`, `duplicate-id`, `metric-set-mismatch`, `parser-required`, or `unsupported-field`. `EvaluationConfigurationError.issues` diagnoses Custom and Rubric declarations, including Rubric dimensions, members, aggregation, and pointers. For example, a duplicate metric points to `['evaluators', 0, 'rubrics', 1, 'metricId']`. Unknown fields point only to their parent object so unknown key names are not disclosed. Other configuration failures may still have an empty array; runtime failures stay in Core records. Diagnostics never include rejected values or host exception text.
+
+**Custom Evaluator v2 migration.** <a id="custom-evaluator-v2-migration"></a>
+
+This replaces the single-metric API; no legacy form is accepted. Change `metric` to `metrics: [metric]`, replace `schemas.value` with `schemas.values: { [metric.metricId]: parser }`, and wrap a former score/missing/invalid result as `{ resultKind: 'completed', results: [{ metricId, ...result }] }`. Move its `usage` to the outer result. Invocation-level `failed` results retain their shape. `createFormulaEvaluator()` keeps its configuration API; its returned evaluator now uses the same multi-metric contract with one result.
+
+The facade identity is `omk.eval-runtime.custom-evaluator/v2`; `checkRuntime({ runtimeKind: 'evaluator', ... })` uses `omk.runtime-check.custom-evaluator/v2`. Conformance probes replace scalar `score.expectedValue`, `missing.expectedReasonCode`, and `invalid.expectedReasonCode` with `expectedValues` / `expectedReasonCodes` maps keyed by all declared metric IDs.
+
+Existing persisted Core records remain readable; no storage schema migration is required. The new facade fingerprint prevents old custom-evaluator cache entries from being reused. Regrouping independent calls changes evaluator identity and the measurement instrument, so rerun baseline and candidate under the same new declaration; unchanged metric names do not establish comparability. For 63 samples, one variant and one trial, grouping five metrics reduces planned evaluator calls from 315 to 63 before retries and cache hits. This is an invocation-count reduction, not a guaranteed fivefold wall-clock speedup.
+
+`independent` requires an explicit allocation for every Variant plus global and per-stratum minimum sample counts. The seed, optional `stratumKey`, weights, and minima are sealed before any Executor call. Core assigns each sample to exactly one Variant, reuses that assignment across repeated trials, and fails before execution if any minimum cannot be met. It analyzes each comparison with the unpaired percentile-bootstrap estimator; it never relabels independent data as paired.
+
+Analysis is always explicit and preregistered. Top-level `analyses[]` accepts named `summary`, `quality-interval`, `comparison-interval`, `comparison-family`, `composite-quality-interval`, and `composite-comparison-interval` requests. Summaries expose numeric `mean`, boolean `rate`, and numeric `quantile`; individual intervals use an explicit confidence level and resample count. A comparison family declares at least two globally named contrasts plus one family-wise confidence level. Its `bonferroni-percentile-bootstrap` method seals every member at marginal confidence `1 - (1 - family level) / family size`, then produces one Core-verified simultaneous-family table; the family level is a nominal target whose coverage depends on the marginal Bootstrap intervals having their stated coverage. It never fabricates p-values or selects family members after observing results. Each request may apply one sealed Dataset cohort filter. Rubric panels aggregate replicates within members, members by the declared rule, and repeated Target trials within a sample before bootstrap. Paired and independent members retain their respective resampling units. Metric direction is never used to silently flip a signed result. An analysis `decision` selects one interval. A `comparison-family` decision selects the outer family and supplies one raw-effect `FamilyDecisionCriterion` per member; its explicit `all` rule releases only when every simultaneous interval satisfies its inclusive bounds, blocks a proven violation, and otherwise stays not-decided. An empty analysis list intentionally retains typed evaluation evidence without fabricating statistics or a composite verdict.
+
+A composite request names its derived `[0, 1]` higher-is-better Metric with `compositeMetricId`, then declares at least two `CompositeMetricComponent` values and one explicit `CompositeAggregation`. Components must have unique source Metric IDs, positive weights that sum exactly to one, and the only v1 aggregation is `{ method: 'weighted-mean', missing: 'require-complete' }`. Boolean Metrics and bounded numeric Metrics with a monotonic direction are supported; the request cannot override their sealed scale or direction. Runtime materializes the derived Metric and, for a composite comparison, adds it to the selected Core Comparison. Core remains the sole owner of normalization, panel aggregation, unit-first composition, missing-component exclusion, resampling, coverage, and source-row lineage.
+
+```ts
+const analysis: AnalysisRequest = {
+  analysisId: 'overall-quality',
+  analysisKind: 'composite-quality-interval',
+  compositeMetricId: 'overall-quality',
+  variantId: 'prompt-v2',
+  components: [
+    { metricId: 'correct', weight: 0.6 },
+    { metricId: 'rubric-quality', weight: 0.4 },
+  ],
+  aggregation: { method: 'weighted-mean', missing: 'require-complete' },
+  confidence: { method: 'percentile-bootstrap', level: 0.95, resamples: 1_000 },
+};
+```
+
+The entry deliberately exposes no Definition builder, Runtime registry, Core Target, lifecycle adapter, or raw Rubric factory. `Artifact` is what is evaluated, `Variant` binds it to an Executor, config, and runtime context, and control／treatment roles exist only inside an explicit `Comparison`.
+
+## Built-in abstention and mixed retrieval evaluation
+
+Start with the [four-step guide](eval-runtime-recipes.md#retrieval-abstention) for runnable commands, data rules, service integration points, and expected output.
+
+`AbstentionEvaluator` is a built-in `evaluators[]` declaration, available through the package root and `/eval-runtime`. It compiles to the existing Core contracts and produces two boolean `AbstentionMetricIds`. There is no separate evaluation factory, dataset selector, or execution lifecycle.
+
+```ts
+const abstention: AbstentionEvaluator = {
+  evaluatorKind: 'abstention',
+  evaluatorId: 'abstention',
+  ranking: { source: 'output', pointer: '/solutionIds' },
+  shouldAbstainPointer: '/shouldAbstain',
+  metricIds: {
+    abstentionCorrect: 'correct-abstention',
+    falseAbstention: 'false-abstention',
+  },
+};
+// evaluate({ dataset, evaluators: [abstention], ...hostDesign })
+```
+
+`ranking` must select the **final** ordered recommendation ID list in output or trace, after any application threshold. A successful execution with a valid empty list is abstention. Null, missing output, blank/non-string/duplicate IDs, execution failure and timeout are not successful abstention. IDs are case-sensitive without trimming or deduplication. `shouldAbstainPointer` selects an explicit boolean in `Sample.expected`; null and non-booleans are invalid evidence, missing Gold paths are rejected before execution. The evaluator does not infer labels from empty relevance or interpret business review status. Gold bindings are not passed to the Target.
+
+| Metric | Applicable population and meaning | Direction |
+|---|---|---|
+| `abstentionCorrect` | Valid samples with `shouldAbstain: true`; true for an empty list, false for any nonempty list | Higher is better |
+| `falseAbstention` | Valid samples with `shouldAbstain: false`; true for an empty list, false for a nonempty list | Lower is better |
+
+Use summary `statistic: 'rate'` for these metrics. The opposite population is `missing` with reason `abstention-not-applicable`, excluded under `exclude/v1`. It is never given a fabricated zero or one. Missing output or trace bindings are reported by Core as unavailable before the evaluator runs; missing Gold paths fail preparation. Show the full Analysis coverage, including `included` (actual denominator), `missing`, `invalid`, `sourceUnavailable`, `evaluationFailed`, alongside Execution coverage. Zero applicable observations retain a non-completed Analysis state. Conditional correct-abstention rate is not end-to-end delivery rate: one successful empty response and nine timeouts can yield 100% among valid responses but only 10% successful delivery among all ten expected-abstention requests. Repeated trials still use the declared Core experimental unit and reduction, not an implicit per-attempt denominator.
+
+The versioned `omk.eval-runtime.abstention/v1` instrument seals pointers, metric IDs and the successful-empty-list protocol into Definition and Runtime identity. It does not change retrieval v1 formulas, scoring, prompts or Core schemas. Do not compare this metric directly with historical scores that count empty Gold as perfect recall; establish an explicit baseline for the new instrument. Natural-language refusals and safety-filter responses are outside this list protocol.
+
+The complete offline example is the single file `examples/eval-runtime/retrieval-abstention.mjs`, including its host-owned helper functions. After building the repository, run `node examples/eval-runtime/retrieval-abstention.mjs`. A separate service can copy this example file and install OMK; no credentials or business network are needed for the synthetic Executor.
+
+The example prepares and validates labels before execution, defaults to rejecting pending samples, and permits explicit exclusion with an audit of source revision, counts and reasons. Business `quality.reviewStatus` is interpreted only by that helper. The actual selected Dataset is sealed by Core. It combines built-in retrieval and abstention with an independent Custom Evaluator for forbidden-ID hits. All samples carry a relevance binding. An empty relevant set on negative samples retains the existing retrieval v1 `invalid` observation; retrieval analyses explicitly select the `answerable` cohort and exclude those negatives before aggregation. Abstention remains applicable to its own populations. The independent forbidden-hit example checks the first three final results, includes only valid samples with a nonempty forbidden list, and makes no claim that this list enumerates all wrong results. A correct retrieval and a forbidden hit can coexist.
+
+The example also scopes correct-abstention analysis to `unanswerable`, false-abstention analysis to `answerable`, and forbidden-hit analysis to `has-forbidden`. This keeps `coverage.planned`, unavailable evidence and the actual denominator within each applicable population, including when execution fails before an evaluator can read its labels. A failure in another population must not appear as this metric’s unavailable evidence.
+
+Dataset preparation and the forbidden-ID helper are example code, not additional OMK public APIs. Callers may replace them without changing the built-in abstention instrument. This release adds a composable scoring capability rather than prescribing a seven-metric suite.
+
+
+## Dispatch contract
+
+`EvaluateInput` is not wire-serializable and no input wire schema is published for it: `variants[].execution.executor` (`execute()` / `openSession()`), a custom evaluator's `implementation`, and a judge's `invoke()` are in-process callbacks. A platform host that dispatches evaluation work therefore splits the contract into three published carriers:
+
+| Dispatched content | Carrier | Mapping |
+|---|---|---|
+| Evaluation cases | `omk.eval-sample-set/v3` (schema file resolved via `oh-my-knowledge/eval-samples/schemas/v3/eval-sample-set.schema.json`) | `EvaluateInput.dataset.samples` |
+| Serializable measurement declarations | Published Core JSON Schemas under `oh-my-knowledge/eval-core/schemas/v1..v5/*`, resolved by file name with `resolveEvaluationCoreJsonSchema`; each file name maps to exactly one version directory, e.g. `evaluation-definition.schema.json` in `v5` and `measurement-policy.schema.json` in `v1` | `analyses`, `decision`, `policy`, `experiment`, `comparisons` |
+| Executor / evaluator / judge implementations | Registry id + version + config + config digest; never code | Resolved from the host registry, then injected into `variants` / `evaluators` |
+
+Versioning rules: the dispatched contract carries its own `schemaVersion`, and adding or removing a field bumps that version. Every published schema is strict, so an extra field or a missing required field fails during preparation instead of being coerced or silently dropped; omitted **optional** policy fields are materialized into their documented canonical defaults and sealed into the Plan, so the effective values are read back from `prepared.policy`. Changing a rubric, a metric definition, or a decision threshold changes measurement semantics: it must ship as a new contract version marked `BREAKING-COMPARABILITY`, with old and new results partitioned on dashboards. A sample set's `requires` is host-side dependency preflight input and never enters Core measurement digests. The host workflow, the registry pattern, and comparability governance are in [Integrate as a platform host](../../guides/integration/platform-host-integration.md).
+
+## Migration
+
+The `1.0.0-beta` canonical entry replaces the previous assembly-first surface. The general façade also replaces the earlier fixed `{ executor, control, treatment, evaluator }` input with `{ variants, evaluators, comparisons, analyses }`; Executor and config now live under each Variant's `execution`, Sampling Design alone selects paired or independent semantics, and every summary or interval is an explicit named `analyses[]` request. Remove `comparisonKind` and replace the redundant `analysis: { analyses: [...] }` wrapper with `analyses: [...]`; neither old shape is read or detected. Move `runId`, `signal`, `onEvent`, `clock`, `annotations`, `summaries`, and `eventBufferCapacity` from the declaration into the optional second `EvaluationRunOptions` argument; omitted `runId` is generated. A Decision optionally selects one interval or one explicitly bounded comparison family by `analysisId`. Rubric evaluation requires `judges + aggregation`; the singular `judge + model + effort` shape is not accepted. Policy fields are grouped under `execution`, `evaluation`, `failure`, `budget`, and `evidence`; the earlier flat concurrency, timeout, invocation, failure, and classification fields are not accepted. There is no 0.x compatibility reader, old overload, or legacy-shape detector. All user-facing capabilities now live at the package root: the canonical façade, Runtime assembly, builders, adapters, and wire schemas. `createEvaluationEngine` has one meaning and one home: import the full staged engine from `oh-my-knowledge/eval-core`; use `runEvaluation` from the package root when a preassembled Runtime, Definition, and Policy only need a standard complete run. New hosts should import `evaluate`, `prepareEvaluation`, or `checkExecutor` from the package root.
+
+Budget limits now live under explicit scopes: replace `budget.maxInvocations` with `budget.run.maxInvocations`. The old form is neither read nor detected.
+
+Use `oh-my-knowledge/eval-core` for custom analysis graphs, staged replay, transported custom comparability policies, or artifact admission that does not fit the canonical complete-result contract above. Deep implementation imports are unsupported.
+
+## Official Codex CLI integration
+
+Import `createCodexCliReferenceExecutor` and `createCodexCliReferenceEvaluator` from the package root to obtain a standard `Executor` and a `RubricJudgeEvaluator` accepted directly by `evaluate()`. Provider implementations remain in the outer host adapter layer. The generic Runtime does not depend on them, and the `eval-hosts` subpath remains retired.
+
+The inputs are `CreateCodexCliReferenceExecutorInput` and `CreateCodexCliReferenceEvaluatorInput`. Both accept `executablePath`, `model`, `modelConfigPath`, `effort`, `environment`, `contentIdentityFiles`, prompt/output byte limits and a version-probe timeout. `CodexCliEnvironmentEntry` classifies explicit environment values as behavior, credentials or locators; `CodexCliContentIdentityFile` declares implementation files beyond the launcher. Children inherit no `process.env`; the host supplies authentication and any PATH required by the launcher. Credential values are excluded from identity while output classification retains environment taint.
+
+When `model` is omitted, assembly reads only the default model. An explicit `modelConfigPath` wins; otherwise the explicit environment selects `CODEX_HOME/config.toml` or `HOME/.codex/config.toml`. Without those declarations, lookup uses the current process CODEX_HOME, then `.codex/config.toml` under the user home. The selected file supports top-level `model` and the profile selected by top-level `profile`, falling back to the top-level model when that profile omits it. Project/system configuration layers and vendor built-in defaults are not resolved. Missing files, invalid TOML or an unresolved model fail assembly without disclosing configuration contents or paths. An explicit `model` bypasses file reads entirely.
+
+The resolved name is pinned at assembly and included in the Runtime fingerprint. Later edits affect only newly created instances. Only the model name is read: provider, effort, MCP, tools and instructions are not inherited. Set `effort` explicitly. To guarantee the same pinned model for execution and scoring, create the evaluator first and pass its resolved model into the executor:
+
+```ts
+import {
+  createCodexCliReferenceExecutor,
+  createCodexCliReferenceEvaluator,
+} from 'oh-my-knowledge';
+
+const connection = {
+  executablePath: '/absolute/path/to/codex',
+  modelConfigPath: '/absolute/path/to/.codex/config.toml',
+  environment: {
+    PATH: {
+      value: '/absolute/path/to/node/bin:/usr/bin:/bin',
+      identity: { identityKind: 'behavior', value: '/absolute/path/to/node/bin:/usr/bin:/bin' },
+    },
+    CODEX_HOME: {
+      value: '/absolute/path/to/.codex',
+      identity: { identityKind: 'effect-locator' },
+    },
+  },
+} as const;
+const evaluator = await createCodexCliReferenceEvaluator({
+  ...connection,
+  judgeId: 'codex-judge',
+  evaluatorId: 'answer-quality',
+  rubrics: [{
+    metricId: 'quality-score',
+    criterionId: 'correctness',
+    prompt: 'Evaluate correctness against the rubric.',
+    rubric: '5 = fully correct; 1 = incorrect.',
+  }],
+});
+const executor = await createCodexCliReferenceExecutor({
+  ...connection,
+  executorId: 'codex-target',
+  model: evaluator.judges[0].model,
+});
+// evaluate(): variants[i].execution = { executor }; evaluators = [evaluator].
+// experiment.sampling = { samplingKind: 'paired', seedCoupling: 'uncontrolled' }.
+```
+
+The evaluator uses one judge with a require-complete mean aggregation and reuses existing rubric prompts, debias options, parsing, missing-value handling and evidence contracts. It defines no Codex-specific scoring rules. `judgeId` names the invocation implementation; `evaluatorId` and `metricId` name the evaluation declaration and metric. Scoring always uses a read-only sandbox and a versioned system-text prefix, not a native system role. Execution and scoring each use private temporary directories and ephemeral sessions, with cleanup after success, failure or cancellation; no conversation state is shared.
+
+The executor supports string knowledge content and a no-knowledge baseline. Directory Skills, workspace overlays, native MCP, mock interception, per-trial tool allow-lists and runtime context are unsupported and fail closed. `executionContext` is task data, not a materialized working directory. Codex is stochastic and offers no seed control: paired evaluation must explicitly select `seedCoupling: 'uncontrolled'`. Provider revisions behind a model alias may still change; pinning a name does not guarantee exact server-side replay.
+
+`CODEX_CLI_MIN_SUPPORTED_VERSION` is the fixture-verified protocol floor, not a compatibility promise for every later release. `DEFAULT_CODEX_CLI_REFERENCE_PROBE_TIMEOUT_MS` bounds assembly-time probing; Runtime policy owns execution timeouts, retries and budgets. `CODEX_CLI_REFERENCE_ADAPTER_VERSION` participates in the fingerprint and is now 1.1.0, so comparability with older adapter runs must be reassessed. Codex CLI USD cost remains unreported, never zero.
+
+## Local task host application
+
+The package root also exports `prepareLocalTask` and `LocalTaskOptions`. This Node host application composes snapshot materialization, a task executor, independent acceptance and canonical Runtime persistence. It does not add file or process effects to Core. See [local tasks](../../guides/evaluation/local-tasks.md) for the shared CLI/API workflow and evidence limits.
+
+The local-task host `run()`/`rescore()` also return `diagnosticsDirectory` and `diagnosticReferences` for that run’s private diagnostic indexes and content references. The execution output schema and canonical Runtime status semantics are unchanged; failure snapshots are diagnostic evidence, not successful rescore input.

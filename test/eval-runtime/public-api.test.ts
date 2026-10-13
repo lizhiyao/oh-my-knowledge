@@ -259,8 +259,8 @@ describe('published eval-runtime API allowlist', () => {
 
   it('documents every allowlisted export in both API references', () => {
     const references = [
-      readFileSync(resolve('docs/reference/eval-runtime-api.md'), 'utf8'),
-      readFileSync(resolve('docs/zh/reference/eval-runtime-api.md'), 'utf8'),
+      readFileSync(resolve('docs/reference/integration/eval-runtime-api.md'), 'utf8'),
+      readFileSync(resolve('docs/zh/reference/integration/eval-runtime-api.md'), 'utf8'),
     ];
     for (const contract of Object.values(PUBLIC_API)) {
       for (const exportName of [...contract.values, ...contract.types]) {

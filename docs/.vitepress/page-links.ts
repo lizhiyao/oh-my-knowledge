@@ -2,14 +2,22 @@ import { dirname, relative, resolve } from 'node:path';
 
 // Source folders organize reading; published specification and report URLs stay stable.
 const domainPath = /(^|\/)specs\/(shared|entities|knowledge|evaluation|observe|studio)\/(?!index(?:\.(?:md|html))?$)([^/]+)$/;
+const guidePath = /(^|\/)guides\/(knowledge|observe|evaluation|integration|maintenance)\/(?!index(?:\.(?:md|html))?$)([^/]+)$/;
+const referencePath = /(^|\/)reference\/(shared|evaluation|integration)\/(?!index(?:\.(?:md|html))?$)([^/]+)$/;
 
 export function pageRoute(path: string): string {
   return path
-    .replace(/(^|\/)guides\/sample-design(?=\.(?:md|html)$|$)/, '$1specs/sample-design-spec')
+    .replace(/(^|\/)guides\/(?:evaluation\/)?sample-design(?=\.(?:md|html)$|$)/, '$1specs/sample-design-spec')
+    .replace(/(^|\/)guides\/integration\/eval-runtime(?=\.(?:md|html)$|$)/, '$1guides/service-evaluation')
+    .replace(/(^|\/)reference\/integration\/eval-runtime-recipes(?=\.(?:md|html)$|$)/, '$1guides/eval-runtime')
+    .replace(/(^|\/)explanation\/comparison(?=\.(?:md|html)$|$)/, '$1reference/comparison')
+    .replace(/(^|\/)specs\/evaluation\/history\/eval-core-cutover(?=\.(?:md|html)$|$)/, '$1guides/eval-core-cutover')
     .replace(/(^|\/)specs\/observe\/(effective-observation-review(?:\.(?:md|html))?)$/, '$1explanation/$2')
     .replace(/(^|\/)specs\/studio\/(?:history\/)?(studio-(?:data-flow|performance-baseline)(?:\.(?:md|html))?)$/, '$1explanation/$2')
     .replace(/(^|\/)specs\/evaluation\/history\/([^/]+)$/, '$1specs/$2')
     .replace(domainPath, '$1specs/$3')
+    .replace(guidePath, '$1guides/$3')
+    .replace(referencePath, '$1reference/$3')
     .replace(/(^|\/)specs\/entities\/history\/([^/]+)$/, '$1explanation/$2');
 }
 
