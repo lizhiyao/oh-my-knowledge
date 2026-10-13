@@ -173,7 +173,7 @@ async function main() {
   const args = parseEntityReviewArguments(process.argv.slice(2));
   const output = qualityOutputRoot(repo, args.output);
   const corpusText = readFileSync(resolve(args.corpus), 'utf8'); const corpus = parseEntityReviewCorpus(corpusText);
-  const guides = ['docs/specs/entity-extraction-evaluation.md', 'docs/zh/specs/entity-extraction-evaluation.md']
+  const guides = ['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
     .map(path => readFileSync(resolve(repo, path), 'utf8'));
   const guideText = guides.join('\0');
   const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href);

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress';
+import { specHref, specRoute } from './spec-links.js';
 
 const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 
@@ -11,8 +12,16 @@ export default defineConfig({
   title: 'OMK',
   description: 'OMK — Observe. Measure. Know. Build knowledge from collaboration between people and AI.',
   cleanUrls: true,
+  rewrites: specRoute,
   markdown: {
     config(md) {
+      const link = md.renderer.rules.link_open!;
+      md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+        const token = tokens[index];
+        const href = token.attrGet('href');
+        if (href && env.path) token.attrSet('href', specHref(href, env));
+        return link(tokens, index, options, env, self);
+      };
       const fence = md.renderer.rules.fence!
       md.renderer.rules.fence = (tokens, index, options, env, self) => {
         const token = tokens[index]
@@ -43,7 +52,7 @@ export default defineConfig({
           { text: 'Guides', link: '/README' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/knowledge' },
-          { text: 'Specs', link: '/specs/terminology-spec' },
+          { text: 'Specs', link: '/specs/' },
         ],
         sidebar: [
           {
@@ -87,22 +96,61 @@ export default defineConfig({
               { text: 'Studio performance baseline', link: '/explanation/studio-performance-baseline' },
             { text: 'Studio data flow', link: '/explanation/studio-data-flow' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
-              { text: 'Scoring pipeline', link: '/specs/scoring' },
             ],
           },
           {
             text: 'Design specs',
             items: [
+              { text: 'Index and reading order', link: '/specs/' },
               { text: 'Contributing guide', link: '/guides/contributing' },
-              { text: 'Sample design spec', link: '/specs/sample-design-spec' },
-              { text: 'Knowledge gap signal spec', link: '/specs/knowledge-gap-signal-spec' },
-              { text: 'Entity extraction', link: '/specs/entity-extraction' },
-              { text: 'Entity knowledge library', link: '/specs/knowledge-library' },
-              { text: 'Entity extraction evaluation', link: '/specs/entity-extraction-evaluation' },
-              { text: 'RAG metrics spec', link: '/specs/rag-metrics-spec' },
-              { text: 'Scoring equivalence RFC', link: '/specs/evaluation-scoring-equivalence' },
-              { text: 'Terminology spec', link: '/specs/terminology-spec' },
-              { text: 'Storage layout spec', link: '/specs/storage-layout-spec' },
+              {
+                text: 'Shared boundaries',
+                collapsed: true,
+                items: [
+                  { text: 'Terminology', link: '/specs/terminology-spec' },
+                  { text: 'Storage layout', link: '/specs/storage-layout-spec' },
+                ],
+              },
+              {
+                text: 'Entity identity and extraction',
+                collapsed: true,
+                items: [
+                  { text: 'Entity identity', link: '/specs/entity-identity' },
+                  { text: 'Entity extraction', link: '/specs/entity-extraction' },
+                  { text: 'Extraction evaluation', link: '/specs/entity-extraction-evaluation' },
+                ],
+              },
+              {
+                text: 'Knowledge construction and maintenance',
+                collapsed: true,
+                items: [
+                  { text: 'Knowledge domain model (draft)', link: '/specs/knowledge-domain-model' },
+                  { text: 'Entity knowledge library', link: '/specs/knowledge-library' },
+                ],
+              },
+              {
+                text: 'Controlled evaluation',
+                collapsed: true,
+                items: [
+                  { text: 'Evaluation Core vNext', link: '/specs/eval-core-vnext' },
+                  { text: 'CLI input compilation', link: '/specs/cli-evaluation-input-compilation' },
+                  { text: 'Runtime Adapter', link: '/specs/evaluation-runtime-adapter' },
+                  { text: 'Artifact persistence', link: '/specs/evaluation-artifact-persistence' },
+                  { text: 'Studio projection', link: '/specs/evaluation-studio-projection' },
+                  { text: 'Scoring equivalence', link: '/specs/evaluation-scoring-equivalence' },
+                  { text: 'Scoring pipeline', link: '/specs/scoring' },
+                  { text: 'RAG metrics', link: '/specs/rag-metrics-spec' },
+                  { text: 'Sample design', link: '/specs/sample-design-spec' },
+                  { text: 'General sample proposal (historical)', link: '/specs/general-sample-proposal' },
+                ],
+              },
+              {
+                text: 'Observation signals',
+                collapsed: true,
+                items: [
+                  { text: 'Knowledge-gap signals (draft)', link: '/specs/knowledge-gap-signal-spec' },
+                ],
+              },
             ],
           },
         ],
@@ -123,7 +171,7 @@ export default defineConfig({
           { text: '使用指南', link: '/zh/README' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/knowledge' },
-          { text: '规范', link: '/zh/specs/terminology-spec' },
+          { text: '规范', link: '/zh/specs/' },
         ],
         sidebar: [
           {
@@ -167,22 +215,61 @@ export default defineConfig({
               { text: 'Studio 性能基线', link: '/zh/explanation/studio-performance-baseline' },
             { text: 'Studio 数据流', link: '/zh/explanation/studio-data-flow' },
               { text: '统计严谨性', link: '/zh/explanation/statistical-rigor' },
-              { text: '评分公式', link: '/zh/specs/scoring' },
             ],
           },
           {
-            text: '我想贡献 / 看设计 spec',
+            text: '设计规范',
             items: [
+              { text: '规范索引与阅读顺序', link: '/zh/specs/' },
               { text: '贡献指南', link: '/zh/guides/contributing' },
-              { text: '用例设计科学性指南', link: '/zh/specs/sample-design-spec' },
-              { text: '知识缺口信号规范', link: '/zh/specs/knowledge-gap-signal-spec' },
-              { text: '实体提取', link: '/zh/specs/entity-extraction' },
-              { text: '实体知识库', link: '/zh/specs/knowledge-library' },
-              { text: '实体提取质量验收', link: '/zh/specs/entity-extraction-evaluation' },
-              { text: 'RAG metrics 规范', link: '/zh/specs/rag-metrics-spec' },
-              { text: '评分等价迁移 RFC', link: '/zh/specs/evaluation-scoring-equivalence' },
-              { text: '术语规范', link: '/zh/specs/terminology-spec' },
-              { text: '存储布局规范', link: '/zh/specs/storage-layout-spec' },
+              {
+                text: '共享边界',
+                collapsed: true,
+                items: [
+                  { text: '术语规范', link: '/zh/specs/terminology-spec' },
+                  { text: '存储布局', link: '/zh/specs/storage-layout-spec' },
+                ],
+              },
+              {
+                text: '实体身份与提取',
+                collapsed: true,
+                items: [
+                  { text: '实体身份', link: '/zh/specs/entity-identity' },
+                  { text: '实体提取', link: '/zh/specs/entity-extraction' },
+                  { text: '实体提取评测', link: '/zh/specs/entity-extraction-evaluation' },
+                ],
+              },
+              {
+                text: '知识建设与维护',
+                collapsed: true,
+                items: [
+                  { text: '知识领域模型（草案）', link: '/zh/specs/knowledge-domain-model' },
+                  { text: '实体知识库', link: '/zh/specs/knowledge-library' },
+                ],
+              },
+              {
+                text: '受控评测',
+                collapsed: true,
+                items: [
+                  { text: 'Evaluation Core vNext', link: '/zh/specs/eval-core-vnext' },
+                  { text: 'CLI 输入编译', link: '/zh/specs/cli-evaluation-input-compilation' },
+                  { text: 'Runtime Adapter', link: '/zh/specs/evaluation-runtime-adapter' },
+                  { text: '产物持久化', link: '/zh/specs/evaluation-artifact-persistence' },
+                  { text: 'Studio 投影', link: '/zh/specs/evaluation-studio-projection' },
+                  { text: '评分等价性', link: '/zh/specs/evaluation-scoring-equivalence' },
+                  { text: '评分管道', link: '/zh/specs/scoring' },
+                  { text: 'RAG 指标', link: '/zh/specs/rag-metrics-spec' },
+                  { text: '用例设计', link: '/zh/specs/sample-design-spec' },
+                  { text: '通用用例提案（历史）', link: '/zh/specs/general-sample-proposal' },
+                ],
+              },
+              {
+                text: '观测信号',
+                collapsed: true,
+                items: [
+                  { text: '知识缺口信号（草案）', link: '/zh/specs/knowledge-gap-signal-spec' },
+                ],
+              },
             ],
           },
         ],

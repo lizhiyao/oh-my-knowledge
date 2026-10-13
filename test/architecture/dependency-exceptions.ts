@@ -29,13 +29,13 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
-    sourceSha256: '839c1db78c4c102557f4ce7258e440014be178c710a31a906c572e7ba429832f',
+    sourceSha256: 'a4835c161a296e670dadbc0f3f541226f0420854bb55e5cb1ece7b7bbd13221c',
     rationale: 'Offline v14 inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href",
-    sourceSha256: '839c1db78c4c102557f4ce7258e440014be178c710a31a906c572e7ba429832f',
+    sourceSha256: 'a4835c161a296e670dadbc0f3f541226f0420854bb55e5cb1ece7b7bbd13221c',
     rationale: 'Offline v14 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
@@ -101,7 +101,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/docs.ts',
     expression: 'registryModuleUrl',
-    sourceSha256: 'a6cfe4d9c56f611e5fec8afed4702f1317d51f2f0ef2cb7d8e2a1c170ffaaad8',
+    sourceSha256: '2919557f97657ed5ea4f6f4f4103f56c1f398aed39188ebf409ad74873ef7a55',
     rationale: 'Loads only the built input-compilation registry to derive CLI documentation; the sealed source fixes the file URL.',
   },
   {

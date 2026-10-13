@@ -24,7 +24,7 @@ omk observe knowledge list --workspace ./knowledge --json
 
 当前生成使用 `knowledge-extraction-v4`，一次调用返回独立实体分析和引用共同实体的知识候选，区分组件、实例、集合、计划与活动。模型提供逐字短语及可选的零起始出现序号；多处匹配须明确序号，宿主计算 UTF-16 位置，不修饰原文、不跨消息寻找替代依据。无法定位时拒绝对应提及或依据；不合法实体不能支撑候选。条件、反例、后续纠正及未验证环节的保留仍需逐条复核。
 
-v4 改变身份与引用契约、提示词及接纳语义，属于 `BREAKING-COMPARABILITY`：接纳数量变化不能直接解释为知识质量提升。当前支持知识历史 v2、实体历史 v2、提炼运行／模型响应 v4 与 `knowledge-extraction-v4`。旧实体及运行不读取、不恢复、不迁移，文件保持原样；旧知识 v2 正文仍可读，但所绑定旧实体分析不可用。选择空知识目录，从原始日志重新提炼；恢复新运行不重新调用模型。详见[当前存储契约](../specs/entity-extraction.md#_6-当前存储契约)。
+v4 改变身份与引用契约、提示词及接纳语义，属于 `BREAKING-COMPARABILITY`：接纳数量变化不能直接解释为知识质量提升。当前支持知识历史 v2、实体历史 v2、提炼运行／模型响应 v4 与 `knowledge-extraction-v4`。旧实体及运行不读取、不恢复、不迁移，文件保持原样；旧知识 v2 正文仍可读，但所绑定旧实体分析不可用。选择空知识目录，从原始日志重新提炼；恢复新运行不重新调用模型。详见[当前存储契约](../specs/entities/entity-extraction.md#_6-当前存储契约)。
 
 历史 v3 质量脚本须在报告注明的冻结基线 `ef63224837fc6bacb2085a1c21a38534bc5dc2e7` 上运行；当前版本即使传入旧提示词也在调用前拒绝。历史报告与语料不重算；新语料、检查身份及独立质量验收尚未冻结。
 
@@ -72,7 +72,7 @@ omk observe knowledge entities --workspace ./knowledge --query Atlas --identity-
 omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <knowledge-revision-id> --generation <read-knowledge-generation> --analysis <run-id> --entity-revision <chosen-entity-revision-id> --input ./draft.json --reason '明确陈述中的对象' --json
 ```
 
-此操作创建知识新修订并绑定精确的实体分析修订。默认保留原附加身份不确定性；可通过 `--identity-uncertainties '["核对后仍需保留的说明"]'` 明确更新，`'[]'` 清除原说明，当前实体分析中的不确定性仍自动保留。陈述中的条件与未知信息另在知识修订中核对。原实体分析、原知识及维护决定均可回看；新知识需重新决定保留或舍弃。仅限同一来源窗口，来源快照不可用时不能纠正或应用。独立实体结果允许零对象，也不要求同时存在知识候选。详见[实体提取设计与限制](../specs/entity-extraction.md)。
+此操作创建知识新修订并绑定精确的实体分析修订。默认保留原附加身份不确定性；可通过 `--identity-uncertainties '["核对后仍需保留的说明"]'` 明确更新，`'[]'` 清除原说明，当前实体分析中的不确定性仍自动保留。陈述中的条件与未知信息另在知识修订中核对。原实体分析、原知识及维护决定均可回看；新知识需重新决定保留或舍弃。仅限同一来源窗口，来源快照不可用时不能纠正或应用。独立实体结果允许零对象，也不要求同时存在知识候选。详见[实体提取设计与限制](../specs/entities/entity-extraction.md)。
 
 ## Studio
 
@@ -122,7 +122,7 @@ omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id>
 
 “来源实体与组织历史”可回看关联理由、操作者、时间和旧组织修订。历史页展示所选组织关联和知识当前状态，不能当作过去时点的完整快照。来源缺失可读保存的内容并解除关联；来源或知识集合不可读时有明确提示，不以零条表示不可读。
 
-从当前对象选择已保留且关联匹配的知识，点击“生成知识载体”，沿用下节的 skill／prompt 预览与保存流程。一个知识身份可从多个对象找到，组织层不复制正文。当前能力限于用户选择的一个工作区及手工确认关联，不提供跨 Agent 自动归并、图谱视图或真实性裁决。新增 `library/` 组织历史无需迁移现有数据；详见[实体知识库契约](../specs/knowledge-library.md)。
+从当前对象选择已保留且关联匹配的知识，点击“生成知识载体”，沿用下节的 skill／prompt 预览与保存流程。一个知识身份可从多个对象找到，组织层不复制正文。当前能力限于用户选择的一个工作区及手工确认关联，不提供跨 Agent 自动归并、图谱视图或真实性裁决。新增 `library/` 组织历史无需迁移现有数据；详见[实体知识库契约](../specs/knowledge/knowledge-library.md)。
 
 ## 生成并保存知识载体
 

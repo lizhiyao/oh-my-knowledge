@@ -4,7 +4,7 @@ Status: documentation walkthroughs for [CR feedback](#cr-case), [fact correction
 
 ## 1. Goal and scope
 
-Following the [terminology spec](./terminology-spec.md), knowledge is a fact, case, or method that can be reused in future tasks. Each item should retain its applicability, source evidence, and current validation status.
+Following the [terminology spec](../shared/terminology-spec.md), knowledge is a fact, case, or method that can be reused in future tasks. Each item should retain its applicability, source evidence, and current validation status.
 
 This design describes how work logs become reviewable, revisable knowledge and then measurable carrier changes. Success means any candidate can explain its claim, scope, evidence, review history, and which concrete changes have evaluation evidence.
 
@@ -12,7 +12,7 @@ It covers successful experience, gaps exposed by failures, and corrections to ex
 
 ### 1.1 Design authority and decision levels
 
-[How OMK understands knowledge](../explanation/knowledge.md) is the sole authority for conceptual definitions. This document translates them into responsibilities, structures, and consistency constraints. Resolve conflicts by correcting this design rather than letting fields redefine the concepts.
+[How OMK understands knowledge](../../explanation/knowledge.md) is the sole authority for conceptual definitions. This document translates them into responsibilities, structures, and consistency constraints. Resolve conflicts by correcting this design rather than letting fields redefine the concepts.
 
 | Level | Decisions here | Evolution |
 |---|---|---|
@@ -48,7 +48,7 @@ Relationships:
 
 ### 2.1 Entities, relations, and context
 
-The shared definition, statement structure, and role explanation live in [How OMK understands knowledge](../explanation/knowledge.md). This design applies them as follows:
+The shared definition, statement structure, and role explanation live in [How OMK understands knowledge](../../explanation/knowledge.md). This design applies them as follows:
 
 - `Entity` provides stable identity; `subject`/`object` reference entities and may reuse an identity across statements. Equal names do not establish identity.
 - Relations express connections, actions, or states without an object. An object is optional and does not mean the evaluated artifact.
@@ -1225,7 +1225,7 @@ const isolatedCheckMethod = successItem(
 
 Studio selects tasks and messages through the existing ConversationCatalog and shared Codex evidence projection; file import remains a supplementary entry. The server resolves source identities and checks the preview version before capturing selected messages. Model invocation still requires a separate confirmation, without adding unselected context. Snapshots and extraction runs optionally retain the conversation, task, title, and working directory. Candidates link back to the original task, while conversations show extraction history and maintenance choices from the selected knowledge folder. Deleting a source snapshot retains the extraction association; evidence availability is reported separately. Existing snapshots and runs without conversation metadata remain readable, without guessing their associations.
 
-See [configuration scope](../reference/settings.md) for shared global settings. Studio defaults to `$OMK_HOME/knowledge`. Explicit per-operation directories override global preferences; the browser no longer stores independent durable preferences.
+See [configuration scope](../../reference/settings.md) for shared global settings. Studio defaults to `$OMK_HOME/knowledge`. Explicit per-operation directories override global preferences; the browser no longer stores independent durable preferences.
 
 
 Studio starts extraction in place from conversation details, selecting the current conversation’s messages by default; turn details select only that turn. Optional message selection is collapsed and configuration inherits global preferences. Reading before confirmation stays local; confirmation captures the evidence and invokes the model. Progress and results remain on the current page, with candidate links for review. Conversation-wide origins omit turnId; existing turn origins remain readable. Incomplete or oversized sources are rejected rather than silently truncated.

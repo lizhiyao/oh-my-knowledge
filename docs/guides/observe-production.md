@@ -19,7 +19,7 @@ omk observe ~/.claude/projects/my-project --skills audit,polish
 omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware analysis
 ```
 
-You get a per-skill health report: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec) (where the agent wanted something and failed to find it), execution stability, tokens, and latency. The point is to find **real-world gaps your eval samples didn't cover** — those gaps become the next round of eval cases.
+You get a per-skill health report: knowledge usage, [gap signals](../specs/observe/knowledge-gap-signal-spec) (where the agent wanted something and failed to find it), execution stability, tokens, and latency. The point is to find **real-world gaps your eval samples didn't cover** — those gaps become the next round of eval cases.
 
 Scope the window with `--last 7d` / `--from … --to …`, and narrow to specific skills with `--skills`.
 
@@ -127,7 +127,7 @@ It writes `.omk/observe/drafts/sample-drafts.json`. Treat the file as a review q
 
 - [Reproduce Codex parent/subagent observation](./codex-observe-case) — executable Trace IR and compact-report case
 - [The three stages](../explanation/three-stage-workflow) — observe's place in the loop
-- [Knowledge-gap signal spec](../specs/knowledge-gap-signal-spec) — what a gap signal is and how it's scored
+- [Knowledge-gap signal spec](../specs/observe/knowledge-gap-signal-spec) — what a gap signal is and how it's scored
 - [CLI reference: `omk observe`](../reference/cli) — every flag and subcommand
 
 - [Extract candidate knowledge from logs](./extract-knowledge)

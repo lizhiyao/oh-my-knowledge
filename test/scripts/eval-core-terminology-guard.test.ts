@@ -21,8 +21,8 @@ const PROHIBITED_PUBLIC_TERMS = new Set([
 // The terminology spec names rejected aliases deliberately; guard executable examples here and
 // assert its required context boundary separately below.
 const PUBLIC_DOCS = [
-  'docs/specs/eval-core-vnext.md',
-  'docs/zh/specs/eval-core-vnext.md',
+  'docs/specs/evaluation/eval-core-vnext.md',
+  'docs/zh/specs/evaluation/eval-core-vnext.md',
   'docs/reference/eval-runtime-api.md',
   'docs/zh/reference/eval-runtime-api.md',
 ];
@@ -205,8 +205,8 @@ describe('Evaluation Core terminology guard', () => {
 
   it('keeps runtime and sample context boundaries explicit in both languages', () => {
     for (const file of [
-      'docs/specs/terminology-spec.md',
-      'docs/zh/specs/terminology-spec.md',
+      'docs/specs/shared/terminology-spec.md',
+      'docs/zh/specs/shared/terminology-spec.md',
       'docs/reference/eval-runtime-api.md',
       'docs/zh/reference/eval-runtime-api.md',
     ]) {

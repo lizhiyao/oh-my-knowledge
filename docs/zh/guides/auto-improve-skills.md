@@ -40,7 +40,7 @@ omk eval --control original-skill --treatment skills/my-skill.md --samples relea
 - 你有一套真实用例，想要一个值得 review 的强初稿改进——evolve 提议，你决定留不留这个 diff。
 - 你想**证明**一次迭代有用，而不是肉眼看。
 
-它**不能**替代好用例：evolve 只能针对你测量的东西改进。garbage 用例进，过拟合 skill 出。从一套你信得过的用例集开始（见 [用例设计](../specs/sample-design-spec)）。
+它**不能**替代好用例：evolve 只能针对你测量的东西改进。garbage 用例进，过拟合 skill 出。从一套你信得过的用例集开始（见 [用例设计](../specs/evaluation/sample-design-spec)）。
 
 ## 相关
 

@@ -21,7 +21,7 @@ The preview uses the domain-oriented storage v2 layout. It does not read, move, 
 - Reports created by 0.54 cannot be resumed, opened in the new Studio, compared with Gold, or used by `omk evolve`. Keep 0.54 installed separately if you need to inspect them.
 - Observation inbox containers still use schema v2, but their embedded `observe-experience` report must use schema v3. Experience v2 reports are no longer converted; inbox readers skip the containing file without modifying it. Re-ingest the original trace with `omk observe ingest <trace-dir>` to create a current report.
 
-Do not copy scores from an old report into the new layout. Re-run the evaluation so the sealed plan, lineage, Runtime identity, and decision evidence are produced together. See the [Evaluation Core cutover](./eval-core-cutover.md) and [storage layout v2](../specs/storage-layout-spec.md) for the full boundary.
+Do not copy scores from an old report into the new layout. Re-run the evaluation so the sealed plan, lineage, Runtime identity, and decision evidence are produced together. See the [Evaluation Core cutover](./eval-core-cutover.md) and [storage layout v2](../specs/shared/storage-layout-spec.md) for the full boundary.
 
 ## 2. Create a new eval-samples document
 

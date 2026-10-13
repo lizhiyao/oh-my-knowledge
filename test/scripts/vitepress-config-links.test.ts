@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
+import config from '../../docs/.vitepress/config.js';
+import { specHref, specRoute } from '../../docs/.vitepress/spec-links.js';
 
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const DOCS_ROOT = join(PROJECT_ROOT, 'docs');
@@ -77,7 +79,11 @@ function resolvesToPublishedPage(link: string): boolean {
   return [
     `${base}.md`,
     join(base, 'index.md'),
-  ].some((candidate) => existsSync(candidate));
+  ].some((candidate) => existsSync(candidate)) || ['', 'zh/'].some(locale => {
+    const root = join(DOCS_ROOT, locale, 'specs');
+    return readdirSync(root, { recursive: true }).map(String).some(file =>
+      file.endsWith('.md') && specRoute(`${locale}specs/${file}`) === `${pathname}.md`);
+  });
 }
 
 describe('VitePress config internal links', () => {
@@ -100,6 +106,7 @@ describe('VitePress config internal links', () => {
       line: 1,
     }]);
     expect(resolvesToPublishedPage('/guides/definitely-missing')).toBe(false);
+    expect(resolvesToPublishedPage('/specs/definitely-missing')).toBe(false);
 
     const dynamic = ts.createSourceFile(
       'dynamic.ts',
@@ -124,5 +131,55 @@ describe('VitePress config internal links', () => {
       .filter(({ link }) => !resolvesToPublishedPage(link))
       .map(({ link, line }) => `${relative(PROJECT_ROOT, CONFIG_PATH)}:${line} -> ${link}`);
     expect(violations, 'VitePress 导航存在无法解析到 Markdown 页面的站内链接').toEqual([]);
+  });
+});
+
+interface SidebarItem { link?: string; items?: SidebarItem[] }
+function sidebarLinks(items: SidebarItem[]): string[] {
+  return items.flatMap(item => [...(item.link ? [item.link] : []), ...sidebarLinks(item.items ?? [])]);
+}
+
+describe('domain specifications and stable published routes', () => {
+  it.each(['', 'zh/'])('makes every %s specification reachable through the index and sidebar without route collisions', locale => {
+    const root = `docs/${locale}specs`;
+    const files = readdirSync(root, { recursive: true }).map(String).filter(path => path.endsWith('.md') && path !== 'index.md');
+    const domains = new Set(['shared', 'entities', 'knowledge', 'evaluation', 'observe']);
+    const index = readFileSync(`${root}/index.md`, 'utf8');
+    const localeConfig = config.locales![locale ? 'zh' : 'root']!;
+    const links = sidebarLinks(localeConfig.themeConfig!.sidebar as SidebarItem[]);
+    const routes: string[] = [];
+    for (const file of files) {
+      const [domain, name, extra] = file.split('/');
+      expect(domains.has(domain!)).toBe(true);
+      expect(extra).toBeUndefined();
+      expect(index).toContain(`](${file})`);
+      const route = specRoute(`${locale}specs/${file}`);
+      expect(route).toBe(`${locale}specs/${name}`);
+      routes.push(route);
+      expect(links.filter(link => link === `/${route.replace(/\.md$/, '')}`)).toHaveLength(1);
+    }
+    expect(new Set(routes).size).toBe(files.length);
+    expect(links).toContain(`/${locale}specs/`);
+  });
+
+  it('rebases source links across domains and into reference pages while preserving anchors and locales', () => {
+    const env = {
+      path: resolve('docs/zh/specs/terminology-spec.md'),
+      realPath: resolve('docs/zh/specs/shared/terminology-spec.md'),
+    };
+    expect(specHref('../evaluation/sample-design-spec.md#三', env)).toBe('./sample-design-spec.md#三');
+    expect(specHref('../../reference/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
+    const reference = { path: resolve('docs/zh/reference/glossary.md') };
+    expect(specHref('../specs/evaluation/scoring.md#decision', reference)).toBe('../specs/scoring.md#decision');
+    const index = { path: resolve('docs/specs/index.md') };
+    expect(specHref('entities/entity-identity.md', index)).toBe('./entity-identity.md');
+    // Search rendering has a source path but no rewritten path or realPath.
+    expect(specHref('../evaluation/scoring.md', { path: env.realPath })).toBe('./scoring.md');
+    expect(specHref('/zh/specs/entities/entity-identity#身份', env)).toBe('/zh/specs/entity-identity#身份');
+    for (const href of ['#本页', 'https://example.com/specs/entities/page', '//example.com/page', 'mailto:a@example.com', '../../public/data.json', '/specs/entities/image.svg']) {
+      expect(specHref(href, env)).toBe(href);
+    }
+    expect(specRoute('explanation/knowledge.md')).toBe('explanation/knowledge.md');
+    expect(specRoute('specs/index.md')).toBe('specs/index.md');
   });
 });

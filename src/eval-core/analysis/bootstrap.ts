@@ -41,7 +41,7 @@ import {
  * explicit sampling strata. Profiles share the implementation and estimands, not
  * byte-identical intervals. Changing profiles requires a new measurement identity; the paired
  * reference vectors in test/eval-core/conformance/statistics.test.ts guard this
- * boundary. See docs/specs/evaluation-scoring-equivalence.md.
+ * boundary. See docs/specs/evaluation/evaluation-scoring-equivalence.md.
  */
 
 export interface BootstrapCI {

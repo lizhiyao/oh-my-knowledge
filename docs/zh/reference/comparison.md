@@ -4,7 +4,7 @@
 
 ## OMK 的定位与边界
 
-OMK 服务于知识建设：从真实工作记录中整理有来源和适用条件的候选知识，再通过受控比较验证具体载体改动。已有[知识提炼与复核](../guides/extract-knowledge)、[受控评测](../explanation/three-stage-workflow)和本地 Studio；知识修订到载体改动的完整关联与自动闭环仍有待实现部分，见[领域设计](../specs/knowledge-domain-model)。保留候选不代表其内容已证实。
+OMK 服务于知识建设：从真实工作记录中整理有来源和适用条件的候选知识，再通过受控比较验证具体载体改动。已有[知识提炼与复核](../guides/extract-knowledge)、[受控评测](../explanation/three-stage-workflow)和本地 Studio；知识修订到载体改动的完整关联与自动闭环仍有待实现部分，见[领域设计](../specs/knowledge/knowledge-domain-model)。保留候选不代表其内容已证实。
 
 OMK 的可检查特点包括明确的[测量契约](../explanation/statistical-rigor)、证据来源与版本身份、受证据条件约束的 Decision，以及本地 CLI／Node.js 接入／Studio。它们不证明行业独有，也不自动构成护城河。实际价值应以用户能否更省力地得到可解释的改动结论来验证。
 
@@ -56,7 +56,7 @@ OMK 的可检查特点包括明确的[测量契约](../explanation/statistical-r
 
 ## 如何判断 OMK 是否适合
 
-如果你维护 prompt、RAG、skill、agent 或 workflow，希望在明确模型和任务条件下比较知识载体改动，并追溯来源、版本、原始证据与 Decision，可以用 OMK 跑一个代表性案例。先阅读[评分契约](../specs/scoring)及所选执行器的边界，不将一次正向结果泛化为所有任务的改善。
+如果你维护 prompt、RAG、skill、agent 或 workflow，希望在明确模型和任务条件下比较知识载体改动，并追溯来源、版本、原始证据与 Decision，可以用 OMK 跑一个代表性案例。先阅读[评分契约](../specs/evaluation/scoring)及所选执行器的边界，不将一次正向结果泛化为所有任务的改善。
 
 [本地任务入口](../guides/local-tasks)已支持声明文件快照、两版知识内容、独立验收和失败现场保留。它测量明确提供内容后的效果，不测宿主原生 skill 安装或发现；工作区副本面向可信本地任务，不是恶意代码沙箱。产物重评分目前要求同一进程持有充分执行证据，不代表任意历史任务都可跨进程重放。
 

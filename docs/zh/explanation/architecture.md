@@ -278,7 +278,7 @@ Missing、invalid、failed、unavailable 与 not-started observation 都不是�
 
 成本、usage、duration、运行状态、证据状态、结论状态与 lineage 都是正交事实，不是额外评分维度。独立的 `--repeat` run 会组成 Evaluation Series；单次 run 不能推断跨 run 稳定性。
 
-详见[综合分](../specs/scoring.md)与[统计严谨性](statistical-rigor.md)。
+详见[综合分](../specs/evaluation/scoring.md)与[统计严谨性](statistical-rigor.md)。
 
 ## 观测链路：source-neutral Trace IR
 

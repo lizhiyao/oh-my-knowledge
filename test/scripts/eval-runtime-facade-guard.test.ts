@@ -188,7 +188,7 @@ describe('eval-runtime façade architecture guard', () => {
   });
 
   it('keeps the shared evaluation vocabulary and Chinese user terms explicit', () => {
-    const terminology = readFileSync(resolve('docs/specs/terminology-spec.md'), 'utf8');
+    const terminology = readFileSync(resolve('docs/specs/shared/terminology-spec.md'), 'utf8');
     const glossary = readFileSync(resolve('docs/zh/reference/glossary.md'), 'utf8');
     const guide = readFileSync(resolve('docs/zh/guides/eval-runtime.md'), 'utf8');
     const quickstart = readFileSync(resolve('docs/zh/quickstart-skill-eval.md'), 'utf8');

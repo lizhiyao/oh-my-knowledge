@@ -10,7 +10,7 @@
  * （SKILL.md），把它们也算违规只会逼出豁免名单。
  *
  * 唯一豁免是语言自称：`zh ? '英文' : '中文'` 这类切换控件按「每种语言用自己的文字自称」
- * 呈现（与 `中文`／`English` 选项标签同一口径，见 docs/specs/terminology-spec.md §4），
+ * 呈现（与 `中文`／`English` 选项标签同一口径，见 docs/specs/shared/terminology-spec.md §4），
  * 因此英文侧出现「中文」这两个字是设计而非漏翻。豁免按整对字面量精确匹配，不做模糊判断。
  */
 import { describe, expect, it } from 'vitest';

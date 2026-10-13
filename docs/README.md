@@ -39,19 +39,21 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 
 - [Who OMK is for](./explanation/who-omk-is-for.md) · [How OMK understands knowledge](./explanation/knowledge.md)
 - [Three-stage workflow](./explanation/three-stage-workflow.md) · [Architecture](./explanation/architecture.md)
-- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/scoring.md) · [Sample design](./specs/sample-design-spec.md)
+- [Statistical rigor](./explanation/statistical-rigor.md) · [Scoring formulas](./specs/evaluation/scoring.md) · [Sample design](./specs/evaluation/sample-design-spec.md)
 - [Glossary](./reference/glossary.md) · [Tool comparison](./reference/comparison.md)
 
 ## Migration and design specs
 
-- [Contributing guide](./guides/contributing.md) — branch model, local gates, release process.
-- [General sample proposal (draft)](./specs/general-sample-proposal.md)
+- [Specification index and reading order](./specs/index.md): contracts, drafts, and historical proposals grouped by shared, entities, knowledge, evaluation, and observe domains.
 
-- [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/storage-layout-spec.md)
-- [Core design](./specs/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/cli-evaluation-input-compilation.md)
-- [Entity knowledge library](./specs/knowledge-library.md): manually confirmed links across windows, object knowledge, and organization history.
-- [Knowledge domain model (draft)](./specs/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/knowledge-gap-signal-spec.md)
-- [Entity extraction](./specs/entity-extraction.md) · [v3 quality results and limits](./explanation/entity-extraction-quality.md) · [v4 two-round results and limits](./explanation/entity-extraction-v4-repeat-quality.md)
+- [Contributing guide](./guides/contributing.md) — branch model, local gates, release process.
+- [General sample proposal (draft)](./specs/evaluation/general-sample-proposal.md)
+
+- [1.0 Beta migration](./guides/v1-preview-migration.md) · [Core cutover](./guides/eval-core-cutover.md) · [Storage layout](./specs/shared/storage-layout-spec.md)
+- [Core design](./specs/evaluation/eval-core-vnext.md) · [Scoring equivalence](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI input compilation](./specs/evaluation/cli-evaluation-input-compilation.md)
+- [Entity knowledge library](./specs/knowledge/knowledge-library.md): manually confirmed links across windows, object knowledge, and organization history.
+- [Knowledge domain model (draft)](./specs/knowledge/knowledge-domain-model.md) · [Knowledge-gap signals](./specs/observe/knowledge-gap-signal-spec.md)
+- [Entity extraction](./specs/entities/entity-extraction.md) · [v3 quality results and limits](./explanation/entity-extraction-quality.md) · [v4 two-round results and limits](./explanation/entity-extraction-v4-repeat-quality.md)
 - [Entity extraction v6: 11-window diagnostic](./explanation/entity-extraction-v6-diagnostic.md)
 - [Entity extraction v6: single-round real-conversation diagnostic](./explanation/entity-extraction-v6-real-pilot.md)
 - [Entity extraction v7: six-case diagnostic](./explanation/entity-extraction-v7-diagnostic.md)
@@ -60,6 +62,6 @@ Compose these paths as needed. Retaining content, writing an artifact, passing e
 - [Entity extraction v8: three-window real-conversation diagnostic](./explanation/entity-extraction-v8-real-pilot.md)
 - [Entity extraction v10: five-case knowledge-retention diagnostic](./explanation/entity-extraction-v10-diagnostic.md)
 - [Entity extraction v12: targeted regression and missing mentions](./explanation/entity-extraction-v12-target-regression.md)
-- [RAG metrics](./specs/rag-metrics-spec.md) · [Terminology](./specs/terminology-spec.md)
+- [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [Terminology](./specs/shared/terminology-spec.md)
 
 - [Verify local task outcomes](./guides/local-tasks.md)

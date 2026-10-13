@@ -60,7 +60,7 @@ API adapter identity 升级到 1.3.0，输入 Schema 升级到 v2，支持的映
 
 custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构化输入封套和 `trial.executionContext`。所有执行器请求均不包含标准答案和评分上下文。
 
-结构化检查只适用于其所在样本。断言汇总现已封存该范围（断言表和参数 v2），混合样本集可以完成分析，不会要求每道题执行所有检查。这改变分析身份，旧比较应重新运行，详见[评分语义](../specs/evaluation-scoring-equivalence)。
+结构化检查只适用于其所在样本。断言汇总现已封存该范围（断言表和参数 v2），混合样本集可以完成分析，不会要求每道题执行所有检查。这改变分析身份，旧比较应重新运行，详见[评分语义](../specs/evaluation/evaluation-scoring-equivalence)。
 
 ### 跨执行器验收能证明什么
 
@@ -125,7 +125,7 @@ custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构�
 
 `composite = mean(存在的层)`。某层没有断言（或没配评委）时**从平均里剔除**，不当作 0 分；没有任何已观测层的 sample 不产生数值型综合分。
 
-完整推导、等权重 caveat、以及多层 verdict gate 与综合分的关系见[评分公式](../specs/scoring)。
+完整推导、等权重 caveat、以及多层 verdict gate 与综合分的关系见[评分公式](../specs/evaluation/scoring)。
 
 ## 断言类型
 
@@ -146,7 +146,7 @@ custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构�
 | `cost_max` / `latency_max` | 成本/延迟限制 |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | Agent 工具调用断言 |
 | `tool_output_contains` / `tool_input_contains` / `tool_input_not_contains` | 工具输入/输出内容匹配（`_not_` 为「不得包含」） |
-| `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../specs/sample-design-spec)） |
+| `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../specs/evaluation/sample-design-spec)） |
 | `turns_min` / `turns_max` | 多轮对话轮数限制 |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
 | `levenshtein_max` | 编辑距离 ≤ value（用于「输出跟参考几乎一致」场景） |

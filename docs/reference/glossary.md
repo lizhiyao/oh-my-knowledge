@@ -9,7 +9,7 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 
 > **Scope**: a reader's cheat sheet, not a design spec. omk maintainers follow this vocabulary when writing new docs.
 >
-> **Sibling docs**: [terminology spec](../specs/terminology-spec.md) (maintainer-internal decision record) / [statistical rigor](../explanation/statistical-rigor.md) / [composite-score construct validity](../specs/scoring.md)
+> **Sibling docs**: [terminology spec](../specs/shared/terminology-spec.md) (maintainer-internal decision record) / [statistical rigor](../explanation/statistical-rigor.md) / [composite-score construct validity](../specs/evaluation/scoring.md)
 
 ---
 
@@ -45,13 +45,13 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | rubric | The detailed criteria a judge follows when scoring (must recognize X / must include Y / at least N items / ...) | rubric field in sample config |
 | anchor | A method for calibrating the LLM judge against human standards | `--gold-dir` human anchors |
 | gate (layer gate) | A registered treatment-layer threshold evaluated from authenticated Composite-layer evidence | Core release Decision |
-| [verdict](../specs/scoring.md#decision-boundary) | One of six conclusions: PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | Core Report, CLI route, and Studio projection |
+| [verdict](../specs/evaluation/scoring.md#decision-boundary) | One of six conclusions: PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | Core Report, CLI route, and Studio projection |
 | sample (evaluation sample) | A single evaluation case | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | The sample config file (each entry has prompt / rubric / assertion / capability) | `omk eval --samples` |
 | baseline (reserved variant) | The empty-artifact variant; omk reserves this variant name, but it becomes the control only when selected for that experiment role | `--control baseline` |
 | treatment | The experiment role compared with control; it may contain any artifact kind | `--treatment <name>` |
 | control | The experiment role used as the reference side; it may contain a baseline or any other artifact kind | `--control <name>` |
-| [composite (score)](../specs/scoring.md) | Equal-weight mean of observed present fact / behavior / judge layers on a 1-5 scale; zero observed layers is missing | Core Composite table and Studio projection |
+| [composite (score)](../specs/evaluation/scoring.md) | Equal-weight mean of observed present fact / behavior / judge layers on a 1-5 scale; zero observed layers is missing | Core Composite table and Studio projection |
 | fact (layer) | Explicitly classified fact-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |
 | behavior (layer) | Explicitly classified behavior-criterion pass weight mapped to 1-5 | Assertion-layer Analysis |
 | judge (layer) | Ensemble consensus or dimension aggregate bound as the judge source | Composite Analysis |
@@ -85,4 +85,4 @@ omk's loop runs in three stages — **doctor** (preflight health) → **eval** (
 
 ## Writing conventions
 
-The terms above are the shared vocabulary for omk docs. Detailed naming *decisions* for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../specs/terminology-spec.md) (a maintainer archive). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules, documented in the Chinese glossary; they don't apply to English prose.
+The terms above are the shared vocabulary for omk docs. Detailed naming *decisions* for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../specs/shared/terminology-spec.md) (a maintainer archive). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules, documented in the Chinese glossary; they don't apply to English prose.

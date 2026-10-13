@@ -1,5 +1,5 @@
 /**
- * 界面用词门禁：钉住 `docs/zh/specs/terminology-spec.md` §三.8 与 §三.9 的口径。
+ * 界面用词门禁：钉住 `docs/zh/specs/shared/terminology-spec.md` §三.8 与 §三.9 的口径。
  *
  * 只扫 `src/studio/web` 下源码里的**中文字符串字面量**（走 TypeScript AST，注释天然不参与）：
  *  1. 不得出现「知识对象」——它分不清知识内容与知识载体两层，规范已登记为被拒别名。

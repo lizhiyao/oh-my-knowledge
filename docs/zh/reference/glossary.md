@@ -9,7 +9,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 > **定位**：读者速查表，不是设计规范。omk 维护者写新文档时遵循这份用语。
 >
-> **姊妹文档**：[术语规范 (terminology-spec.md)](../specs/terminology-spec.md)（维护者内部决策归档）/ [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md)
+> **姊妹文档**：[术语规范 (terminology-spec.md)](../specs/shared/terminology-spec.md)（维护者内部决策归档）/ [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/evaluation/scoring.md)
 
 ---
 
@@ -45,13 +45,13 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | rubric | 评分规则 | judge 打分时遵循的细则（应识别 X / 必须包含 Y / 至少 N 项 / ...） | sample 配置的 rubric 字段 |
 | anchor | 锚点 | 用人工标准校准 LLM judge 的方法 | `--gold-dir` 人工锚点 |
 | gate (layer gate) | 闸门 / 层门禁 | 根据经过认证的 Composite-layer evidence 检查已注册 treatment layer 阈值 | Core release Decision |
-| [verdict](../specs/scoring.md#decision-边界) | 判定 | PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六种结论 | Core Report、CLI 路由与 Studio projection |
+| [verdict](../specs/evaluation/scoring.md#decision-边界) | 判定 | PROGRESS / REGRESSION / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六种结论 | Core Report、CLI 路由与 Studio projection |
 | sample (evaluation sample) | 评测用例 | omk user-facing zh 统一用「用例」（英文 sample 保留） | eval-samples.json |
 | [eval-samples](./eval-sample-format.md) | 评测用例集 / 评测用例文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
 | baseline (reserved variant) | 空知识载体变体（保留字） | omk 保留该变体名；只有被选为 control 时才承担对照角色 | `--control baseline` |
 | treatment | 实验组 | 与对照组比较的实验角色；可以承载任意 artifact kind | `--treatment <name>` |
 | control | 对照组 | 作为参照侧的实验角色；可以承载 baseline，也可以承载其它 artifact kind | `--control <name>` |
-| [composite (score)](../specs/scoring.md) | 综合分 | observed 且 present 的 fact / behavior / judge layer 等权均值，1–5 制；零 observed layer 时为 missing | Core Composite table 与 Studio projection |
+| [composite (score)](../specs/evaluation/scoring.md) | 综合分 | observed 且 present 的 fact / behavior / judge layer 等权均值，1–5 制；零 observed layer 时为 missing | Core Composite table 与 Studio projection |
 | fact (layer) | 事实层 | 显式分类的 fact criterion 通过权重映射到 1–5 | Assertion-layer Analysis |
 | behavior (layer) | 行为层 | 显式分类的 behavior criterion 通过权重映射到 1–5 | Assertion-layer Analysis |
 | judge (layer) | LLM 评价层 | 作为 judge source 绑定的 ensemble consensus 或 dimension aggregate | Composite Analysis |
@@ -89,7 +89,7 @@ omk 文档（README.zh / docs/zh / SKILL.md / CLI zh 字符串 / PR description�
 
 - **业内通用术语英文保留**：bootstrap CI / Δ / Pearson / executor / fingerprint 等。强行中文化会显得文章在「翻译外文」。
 - **第一次出现时给中文括注**：例如「外验集（holdout set，即 skill 显式没写过的独立验证用例）」，第二次以后用中文。
-- **omk 内部命名按 [terminology-spec.md](../specs/terminology-spec.md)**：artifact / executor / variant / verdict 等。
+- **omk 内部命名按 [terminology-spec.md](../specs/shared/terminology-spec.md)**：artifact / executor / variant / verdict 等。
 - **特殊翻译规则**：
   - LLM judge → **评委**（不要译作「判官」）
   - sample → **用例**（不要用「样本」）

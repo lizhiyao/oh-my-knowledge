@@ -30,7 +30,7 @@ describe('CI change scope', () => {
     [['.agents/skills/omk/SKILL.md'], 'full'],
     [['examples/skill/SKILL.md'], 'full'],
     [['docs/reference/cli.md'], 'full'],
-    [['docs/zh/specs/cli-evaluation-input-compilation.md'], 'full'],
+    [['docs/zh/specs/evaluation/cli-evaluation-input-compilation.md'], 'full'],
     [['docs/.vitepress/config.ts'], 'full'],
     [['docs/.vitepress/README.md'], 'full'],
     [['docs/public/logo.svg'], 'full'],

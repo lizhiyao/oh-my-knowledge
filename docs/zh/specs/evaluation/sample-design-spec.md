@@ -1,6 +1,6 @@
 # omk 用例设计指南
 
-本页采用 v3 封套：元数据放在 `annotations`，评分声明放在 `evaluationContext`，运行控制放在 `executionContext`。完整字段和能力边界见[样本格式](../reference/eval-sample-format.md)。
+本页采用 v3 封套：元数据放在 `annotations`，评分声明放在 `evaluationContext`，运行控制放在 `executionContext`。完整字段和能力边界见[样本格式](../../reference/eval-sample-format.md)。
 
 > **面向 omk 用户**：怎么给 sample 声明测量学元数据、写沙箱字段、跑评测前自检。背后的学术对齐（HELM / IRT / Construct Validity / 污染防御等）与 schema 扩展决策见文末第六节附录——我们把设计依据完整摊开，不藏在内部档里。
 

@@ -1,6 +1,6 @@
 # Sample design guide
 
-This page uses v3: metadata belongs in `annotations`, grading declarations in `evaluationContext`, and runtime controls in `executionContext`. See the [sample format](../reference/eval-sample-format.md) for the complete contract and adapter boundaries.
+This page uses v3: metadata belongs in `annotations`, grading declarations in `evaluationContext`, and runtime controls in `executionContext`. See the [sample format](../../reference/eval-sample-format.md) for the complete contract and adapter boundaries.
 
 > **For omk users**: how to declare measurement metadata on a sample, write sandbox fields, and self-check before running an eval. The academic alignment behind it (HELM / IRT / Construct Validity / contamination defense, etc.) and the schema-extension decisions are laid out in the appendix (§6) — we put the full rationale on the table rather than tucking it away in an internal note.
 
