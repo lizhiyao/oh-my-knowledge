@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, it, vi } from 'vitest';
 import {
   agentStorageLayout,
   saveAgentCollectionReport,
@@ -21,6 +21,9 @@ import { AgentsView } from '../../../src/studio/web/components/agents/agents.js'
 import { sampleCollectionReport, sampleInventoryReport } from '../_agents-report-fixtures.js';
 
 const temporaryDirs: string[] = [];
+const current = vi.hoisted(() => ({ search: '' }));
+vi.mock('next/navigation', async importOriginal => ({ ...await importOriginal<typeof import('next/navigation')>(), useSearchParams: () => new URLSearchParams(current.search) }));
+afterEach(() => { current.search = ''; });
 let dir = '';
 
 function tempDir(prefix: string): string {
@@ -56,6 +59,9 @@ describe('本机 Agent 视图的双语呈现', () => {
     assert.match(zh, /有日志根被容量上限截断/);
     assert.match(zh, /25 \/ 100/);
     assert.match(zh, /修复登录态丢失/);
+    assert.ok(zh.indexOf('Codex 对话会从本机日志直接索引') < zh.indexOf('识别结果'), '首次阅读路径先于报告细节');
+    assert.match(zh, /缺少报告不代表没有可阅读的 Codex 对话/);
+    assert.match(zh, /刷新报告/);
   });
 
   it('未识别事件按三档分别呈现，行内与汇总同源', () => {
@@ -88,11 +94,14 @@ describe('本机 Agent 视图的双语呈现', () => {
     const legacyDir = tempDir('omk-agents-view-render-outdated-');
     saveAgentInventoryReport(sampleInventoryReport(), agentStorageLayout(legacyDir));
     const legacy = { ...sampleCollectionReport(), schemaVersion: 'agent-collection-v1' };
+    writeFileSync(agentStorageLayout(legacyDir).observeAgentsInventoryPath, JSON.stringify({ ...sampleInventoryReport(), schemaVersion: 'agent-inventory-v1' }));
     delete (legacy as Record<string, unknown>).unknownDispositionRulesVersion;
     writeFileSync(join(legacyDir, 'collection.json'), JSON.stringify(legacy));
 
     const zh = render('zh', legacyDir);
     assert.match(zh, /采集报告是 agent-collection-v1 口径/);
+    assert.match(zh, /识别报告是 agent-inventory-v1 口径/);
+    assert.match(render('en', legacyDir), /inventory report uses the agent-inventory-v1 scheme/);
     assert.match(render('en', legacyDir), /written in the agent-collection-v1 scheme/);
     assert.ok(!zh.includes('修复登录态丢失'), '旧口径的会话计数不再被当作本轮事实呈现');
   });
@@ -103,5 +112,11 @@ describe('本机 Agent 视图的双语呈现', () => {
       assert.match(html, /<a[^>]*href="\/knowledge\/candidates"/);
       assert.doesNotMatch(html, /href="[^"]*[?&]lang=/);
     }
+  });
+  it('接入与候选入口携带显式知识目录，不让恢复路径切换到全局目录', () => {
+    current.search = 'workspace=%2Fprivate%2Fknowledge+space';
+    const html = render('zh');
+    assert.match(html, /href="\/observe\?view=recent&amp;workspace=%2Fprivate%2Fknowledge\+space"/);
+    assert.match(html, /href="\/knowledge\/candidates\?workspace=%2Fprivate%2Fknowledge\+space"/);
   });
 });

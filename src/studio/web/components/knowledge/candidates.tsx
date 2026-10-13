@@ -27,7 +27,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
   const [showSettings, setShowSettings] = useState(false);
-  const [loading, setLoading] = useState(!!initialWorkspace);
+  const [loading, setLoading] = useState(true);
+  const [failedToLoad, setFailedToLoad] = useState(false);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | 'fact' | 'case' | 'method'>('all');
   const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>(scope ? 'pending' : 'all');
@@ -88,6 +89,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     } finally { controller.current = null; setBusy(false); setLoading(false); }
   }
   async function refresh(root = workspace, selectFirst = false) {
+    setLoading(true);
+    try {
     const { rows: nextRows, runs: nextRuns } = scope ? await api<KnowledgeCandidateQueue>('queue', { workspace: root, ...scope }) : await Promise.all([
       api<KnowledgeCandidateRow[]>('list', { workspace: root }),
       api<KnowledgeCandidateRun[]>('runs', { workspace: root }),
@@ -95,11 +98,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const first = scope ? nextRows.find(row => row.choice === null) ?? nextRows[0] : nextRows[0];
     const nextDetail = selectFirst && first
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: first.knowledgeId }) : undefined;
-    setRows(nextRows); setRuns(nextRuns);
+    setRows(nextRows); setRuns(nextRuns); setFailedToLoad(false);
     if (selectFirst) { setDetail(nextDetail ?? null); setReason('');
       if (scope && first) setBatchRunId(candidateReviewRun(nextRuns, first.knowledgeId)?.runId ?? null);
     }
     return { rows: nextRows, runs: nextRuns };
+    } catch (cause) { setFailedToLoad(true); throw cause; }
+    finally { setLoading(false); }
   }
   async function open(id: string, revision?: string, root = workspace, activateBatch = false) {
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
@@ -108,13 +113,19 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
-  useEffect(() => {
-    void work(async () => {
+  async function initializeWorkspace() {
+    setLoading(true);
+    try {
       const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
       if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); if (scope) setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
-    });
+    } catch (cause) { setFailedToLoad(true); throw cause; }
+    finally { setLoading(false); }
+  }
+  const retryCandidates = () => void work(async () => { if (defaultWorkspace) await refresh(workspace, true); else await initializeWorkspace(); });
+  useEffect(() => {
+    void work(initializeWorkspace);
     return () => controller.current?.abort();
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
   }, []);
@@ -205,8 +216,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
     {rows.length > 0 && <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : t('知识目录', 'Knowledge directory')}</Button>}
 
-    {rows.length === 0 && scope ? <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={!!error}
-      onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onEntities={analysisId => setEntityTarget({ analysisId })}/>
+    {rows.length === 0 && scope ? <ScopedCandidateEmpty lang={lang} loading={loading} busy={busy} failedToLoad={failedToLoad} onRetry={retryCandidates}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={failedToLoad}
+      onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onRetry={retryCandidates} onEntities={analysisId => setEntityTarget({ analysisId })}/>
       : <div className={`knowledge-workbench candidate-columns${directory ? ' knowledge-directory-open' : ''}`}>
       <aside className="knowledge-directory candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
     {rows.length > 0 && !batch && <div className="knowledge-directory-filters candidate-library-tools">
@@ -345,9 +356,18 @@ export function CandidateRowStatus({ choice, lang }: { choice: CandidateChoice; 
 }
 
 /** 决定必须留下理由，理由就要看得见：标签只报维护决定，已做决定时回显理由、决定人与时间。 */
-export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory, onEntities }: {
+export function ScopedCandidateEmpty({ lang, loading, busy, failedToLoad, onRetry }: {
+  lang: Language; loading: boolean; busy: boolean; failedToLoad: boolean; onRetry(): void;
+}) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  if (loading) return <p role="status">{t('正在读取此来源范围的候选…', 'Loading candidates in this source scope…')}</p>;
+  if (failedToLoad) return <div role="status"><p>{t('暂时无法读取此来源范围的候选。请检查保存位置，再重新读取；读取失败不表示没有候选。', 'Could not load candidates in this source scope. Check the save location and retry; a failed read does not mean there are no candidates.')}</p><Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button></div>;
+  return <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/>;
+}
+
+export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToLoad, onChoose, onHistory, onRetry, onEntities }: {
   lang: Language; loading: boolean; busy: boolean;
-  latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void; onEntities?(id: string): void;
+  latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void; onRetry?(): void; onEntities?(id: string): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const emptyResult = latest?.status === 'completed' && latest.committed.length === 0;
@@ -369,7 +389,7 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
       <h3>{t('什么记录适合提炼？', 'What makes a useful record?')}</h3>
       <ul><li>{t('项目的明确事实与约束', 'Explicit project facts and constraints')}</li><li>{t('你对助手做出的具体纠正', 'A specific correction you gave the assistant')}</li><li>{t('问题处理经过，以及成功或失败的结果', 'How a problem was handled and what happened')}</li></ul>
       <div className="candidate-last-run" role="status">
-        {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <p>{t('暂时无法读取已有记录。请检查保存位置。', 'Could not load existing records. Check the save location.')}</p> : latest ? <>
+        {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <><p>{t('暂时无法读取已有记录。请检查保存位置，再重新读取；读取失败不表示没有候选。', 'Could not load existing records. Check the save location and retry; a failed read does not mean there are no candidates.')}</p>{onRetry && <Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button>}</> : latest ? <>
           <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionRunStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionRunStatusLabel(latest.status, lang)}`)}</strong>
           <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
           {onEntities && <EntityAnalysisSummary run={latest} lang={lang} disabled={busy} onOpen={onEntities}/>}

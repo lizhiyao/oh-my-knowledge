@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { Alert, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Table, Tag, Typography } from 'antd';
+import { useWorkspaceHref } from '../layout/workspace-link';
 import type {
   AgentCollectionReport,
   AgentInventoryReport,
@@ -54,6 +55,7 @@ const COPY = {
     artifact: '归一化产物',
     inventoryMissing: '还没有识别过本机 Agent。在终端运行 omk agents list，结果会写入这台机器的 Agent 目录。',
     inventoryUnreadable: '识别报告读不动，页面不猜它原本写了什么。重新运行 omk agents list 会覆盖它。',
+    inventoryOutdated: (version: string) => `识别报告是 ${version} 口径。请重新运行 omk agents list，再刷新报告。`,
     collectionMissing: '还没有采集过日志。先运行 omk agents list，再运行 omk agents collect。',
     collectionUnreadable: '采集报告读不动，页面不拿上一次的产物充数。重新运行 omk agents collect。',
     collectionOutdated: (version: string) => `采集报告是 ${version} 口径，未识别事件的分桶计数无法沿用。运行 omk agents collect 会按当前口径重新采集并覆盖它。`,
@@ -107,6 +109,7 @@ const COPY = {
     artifact: 'Normalized artifact',
     inventoryMissing: 'No agent inventory yet. Run omk agents list in a terminal; it writes into this machine’s agent directory.',
     inventoryUnreadable: 'The inventory report cannot be read, and the page does not guess what it said. Re-run omk agents list to overwrite it.',
+    inventoryOutdated: (version: string) => `The inventory report uses the ${version} scheme. Re-run omk agents list, then refresh reports.`,
     collectionMissing: 'No logs collected yet. Run omk agents list first, then omk agents collect.',
     collectionUnreadable: 'The collection report cannot be read, and the page does not reuse older artifacts as a substitute. Re-run omk agents collect.',
     collectionOutdated: (version: string) => `The collection report is written in the ${version} scheme, whose unrecognized-event buckets cannot be carried over. Run omk agents collect to recollect under the current scheme, which rewrites it.`,
@@ -290,6 +293,8 @@ function SessionTable({ report, lang }: { report: AgentCollectionReport; lang: L
  */
 export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language }) {
   const c = COPY[lang];
+  const href = useWorkspaceHref();
+  const zh = lang === 'zh';
   const { inventory, collection, layout } = page.model;
   const inventoryReport = inventory.status === 'ready' ? inventory.report : undefined;
   const collectionReport = collection.status === 'ready' ? collection.report : undefined;
@@ -305,14 +310,19 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
   return (
     <div className="agents-page">
       <div className="agents-heading">
-        <Link href={`${OBSERVE_INDEX_PATH}?view=recent`}>{lang === 'zh' ? '返回对话' : 'Back to conversations'}</Link>
-        <h1>{c.title}</h1>
-        <p>{c.intro}</p>
+        <div><h1>{c.title}</h1><p>{c.intro}</p></div>
+        <Link href={href(`${OBSERVE_INDEX_PATH}?view=recent`)}>{zh ? '返回对话' : 'Back to conversations'}</Link>
       </div>
-
+      <div className="agents-scroll">
+      <section className="agents-connection" aria-labelledby="connection-guide">
+        <div><h2 id="connection-guide">{c.nextHeading}</h2><p>{zh ? 'Codex 对话会从本机日志直接索引，无需先采集。打开对话即可阅读，再从选定记录提炼知识。' : 'Codex conversations are indexed directly from local logs; collection is not required. Open a conversation to read it, then extract knowledge from selected records.'}</p><Link href={href(`${OBSERVE_INDEX_PATH}?view=recent`)}>{zh ? '查看本机对话' : 'Browse local conversations'}</Link></div>
+        <div><h3>{zh ? '识别与采集报告' : 'Detection and collection reports'}</h3><p>{c.commandHint}</p><p>{zh ? '在终端运行下方命令后刷新，核对本页的报告。缺少报告不代表没有可阅读的 Codex 对话。' : 'Run the commands below in a terminal, then refresh to inspect the reports. Missing reports do not mean Codex conversations are unavailable.'}</p><Button onClick={() => window.location.reload()}>{zh ? '刷新报告' : 'Refresh reports'}</Button></div>
+      </section>
+      <details className="agents-command-guide"><summary>{zh ? '终端接入与提炼命令' : 'Terminal commands for collection and extraction'}</summary><ul className="agents-next">{c.nextList.map(entry => <li key={entry.command}><Typography.Text code copyable={{ text: entry.command }}>{entry.command}</Typography.Text><span>{entry.text}</span></li>)}</ul><p>{zh ? '命令只在你执行后生效；本页刷新只读取报告，不扫描日志、不调用模型。' : 'Commands take effect only when you run them. Refreshing only reads reports; it does not scan logs or call models.'}</p></details>
       <h2>{c.detectedHeading}</h2>
       {inventory.status === 'missing' ? <Alert type="info" showIcon title={c.inventoryMissing} /> : null}
       {inventory.status === 'unreadable' ? <Alert type="error" showIcon title={c.inventoryUnreadable} description={<Typography.Text code>{layout.observeAgentsInventoryPath}</Typography.Text>} /> : null}
+      {inventory.status === 'outdated' ? <Alert type="warning" showIcon title={c.inventoryOutdated(inventory.foundVersion)} /> : null}
       {inventoryReport ? (
         <>
           <Typography.Paragraph type="secondary">
@@ -355,14 +365,8 @@ export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language })
         </>
       ) : null}
 
-      <h2 id="connection-guide">{c.nextHeading}</h2>
-      <Typography.Paragraph type="secondary">{c.commandHint}</Typography.Paragraph>
-      <ul className="agents-next">
-        {c.nextList.map((entry) => (
-          <li key={entry.command}><Typography.Text code>{entry.command}</Typography.Text> {entry.text}</li>
-        ))}
-      </ul>
-      <Link href={KNOWLEDGE_CANDIDATES_PATH}>{c.candidatesLink}</Link>
+      <Link href={href(KNOWLEDGE_CANDIDATES_PATH)}>{c.candidatesLink}</Link>
+      </div>
     </div>
   );
 }
