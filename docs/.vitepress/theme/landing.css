@@ -3,7 +3,7 @@
   .omk-landing{
     --blue:#2563EB; --blue-d:#1D4ED8; --blue-l:#EFF4FF;
     --teal:#0F766E; --teal-l:#ECFDF5; --teal-mid:#14B8A6;
-    --ink:#0F172A; --body:#475569; --muted:#94A3B8;
+    --ink:#0F172A; --body:#475569; --muted:#52627B;
     --line:#E2E8F0; --line-soft:#EEF2F7;
     --bg:#FFFFFF; --bg-alt:#F7F9FC;
     --red:#DC2626; --amber:#D97706;
@@ -28,7 +28,7 @@
   .dark .omk-landing{
     --blue:#5E8BF0; --blue-d:#A9C4FF; --blue-l:#17243C;
     --teal:#2DD4BF; --teal-l:#0E2A26; --teal-mid:#2DD4BF;
-    --ink:#EEF2F8; --body:#A6B2C6; --muted:#69788F;
+    --ink:#EEF2F8; --body:#A6B2C6; --muted:#98A6BC;
     --line:#27303F; --line-soft:#1D2532;
     --bg:#0B0E15; --bg-alt:#0E1320;
     --red:#F87171; --amber:#FBBF24;
@@ -51,7 +51,7 @@
   /* VitePress 专属修正(独立页不需要):
      - isolation:把 hero 负层(大 logo / 渐变)关进落地页自己的层叠上下文,不被祖先不透明背景盖住;
      - padding-top:VitePress 导航是 fixed 浮顶,落地页需自行下移一个导航高度,恢复头部间距。 */
-  .omk-landing{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased;isolation:isolate;padding-top:var(--vp-nav-height);width:100%;max-width:100vw;overflow-x:hidden}
+  .omk-landing{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased;isolation:isolate;width:100%;max-width:100vw;overflow-x:hidden}
   .omk-landing a{color:inherit;text-decoration:none}
   .omk-landing .wrap{width:100%;max-width:1120px;margin:0 auto;padding:0 24px}
 
@@ -119,8 +119,12 @@
     border:1px solid var(--line);box-shadow:0 1px 2px rgba(15,23,42,.04),0 6px 16px -10px rgba(15,23,42,.18)}
   .omk-landing .cmd > span:first-child{min-width:0}
   .omk-landing .cmd .pfx{color:var(--teal);font-weight:600}
-  .omk-landing .cmd .copy{margin-left:4px;color:var(--muted);cursor:pointer;font-size:13px;border-left:1px solid var(--line);padding-left:12px;transition:.15s}
+  .omk-landing .cmd .copy{margin-left:4px;color:var(--muted);cursor:pointer;font:inherit;font-size:13px;border:0;border-left:1px solid var(--line);padding:0 4px 0 12px;background:transparent;min-height:44px;min-width:44px;transition:color .15s}
   .omk-landing .cmd .copy:hover{color:var(--blue)}
+  .omk-landing .cmd .copy:disabled{cursor:wait}
+  .omk-landing :is(.copy,.lnk):focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:3px}
+  .omk-landing .copy-status{color:var(--body);font-size:14px;max-width:440px;margin-top:8px}
+  .omk-landing .copy-status:empty{display:none}
   .omk-landing .trust{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:34px;font-size:13px;color:var(--muted);align-items:center}
   .omk-landing .trust b{color:var(--body);font-weight:600}
   .omk-landing .trust .sep{width:4px;height:4px;border-radius:50%;background:var(--line)}
@@ -280,7 +284,7 @@
 
   .omk-landing .cap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
   .omk-landing .cap{border:1px solid var(--line);border-radius:var(--radius);padding:26px;background:var(--surface);box-shadow:var(--shadow);position:relative;overflow:hidden;
-    opacity:0;transform:translateY(22px);
+    opacity:1;transform:none;
     transition:opacity .6s cubic-bezier(.22,1,.36,1),transform .6s cubic-bezier(.22,1,.36,1),box-shadow .25s,border-color .25s}
   .omk-landing .cap.in{opacity:1;transform:none}
   .omk-landing .cap.in:hover{transform:translateY(-5px);box-shadow:var(--shadow-lg);border-color:var(--tint-blue-hover)}
