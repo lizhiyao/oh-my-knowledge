@@ -38,7 +38,8 @@ it('opens a reader with in-place extraction and retains project navigation', () 
   expect(html).toContain('Example project'); expect(html).not.toContain('<table');
   expect(html).not.toContain('ant-pagination');
   expect(html).not.toContain('最近轮次优先');
-  expect(html).not.toContain('href="/agents"');
+  expect(html).toContain('href="/agents"');
+  expect(html).toContain('返回对话列表');
   expect(sidebarOf(html)).toContain('aria-current="page"');
   const header = html.slice(html.indexOf('class="observe-reader-header"'), html.indexOf('class="observe-conversation-reader"'));
   expect(header.indexOf('<h1')).toBeLessThan(header.indexOf('Example project'));
@@ -106,7 +107,7 @@ it('长标题与长路径单行省略后，完整内容仍可通过提示取得'
   })]);
   expect(html).toContain(`<strong title="${longTitle}">`);
   expect(html).toContain('<p title="latest request text">最近请求：latest request text</p>');
-  expect(html).toContain('<small title="/very/long/working/directory">');
+  expect(html).toContain(`<small title="${name} · ${longModel}\n/very/long/working/directory">`);
   // 项目名的提示同时给出完整名称与完整目录：只给目录时，被省略掉的名称就没有别的读法。
   const summary = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'));
   expect(summary).toContain(`title="${name}\n/very/long/project/directory"`);

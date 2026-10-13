@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useWorkspaceHref } from '../layout/workspace-link';
 import { MEASURE_INDEX_PATH } from '../../../http/page-paths';
-import { Alert, Collapse, Descriptions, Empty, Input, Table, Tabs, Tag, Typography } from 'antd';
+import { Collapse, Descriptions, Empty, Input, Select, Table, Tabs, Tag, Typography } from 'antd';
 import type {
   CoreStudioAnalysisRecord,
   CoreStudioBudget,
@@ -57,7 +57,7 @@ const COPY = {
     exclusionCount: '排除数', outputSchema: '输出 Schema', assumptions: '假设检查', recordDigest: '记录摘要',
     policy: '策略', verdict: '判定', digest: '摘要', noDecision: '本次运行尚无判定。',
     lineage: '产物谱系', document: '文档', schema: 'Schema', identityDigest: '身份摘要', documentDigest: '文档摘要',
-    scopeTab: '评测范围', evidenceTab: '证据与定义',
+    scopeTab: '范围与版本', evidenceTab: '原始定义', casesTab: '逐用例证据', allStates: '全部状态',
     conclusion: '评测结论', conclusionDetails: '结论详情', limitations: '适用范围与限制', decisionDetails: '原始判定与策略',
     sidebarEmpty: '尚无评测记录。',
     none: '无', notAvailable: '—',
@@ -84,7 +84,7 @@ const COPY = {
     exclusionCount: 'Exclusions', outputSchema: 'Output schema', assumptions: 'Assumptions', recordDigest: 'Record digest',
     policy: 'Policy', verdict: 'Verdict', digest: 'Digest', noDecision: 'This run has no decision yet.',
     lineage: 'Artifact lineage', document: 'Document', schema: 'Schema', identityDigest: 'Identity digest', documentDigest: 'Document digest',
-    scopeTab: 'Evaluation scope', evidenceTab: 'Evidence and definitions',
+    scopeTab: 'Scope and versions', evidenceTab: 'Original definitions', casesTab: 'Per-case evidence', allStates: 'All statuses',
     conclusion: 'Evaluation conclusion', conclusionDetails: 'Conclusion details', limitations: 'Scope and limitations', decisionDetails: 'Recorded decision and policy',
     sidebarEmpty: 'No evaluations yet.',
     none: 'None', notAvailable: '—',
@@ -147,11 +147,12 @@ function Budget({ value, lang }: { value: CoreStudioBudget; lang: Language }) {
 export function RunList({ runs, lang }: { runs: CoreStudioRunCard[]; lang: Language }) {
   const href = useWorkspaceHref();
   const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
   const copy = COPY[lang];
-  const filtered = useMemo(() => runs.filter((run) => `${run.runId} ${run.reportId}`.toLowerCase().includes(query.toLowerCase())), [runs, query]);
+  const filtered = useMemo(() => runs.filter((run) => (status === 'all' || run.status.runStatus === status) && `${run.runId} ${run.reportId}`.toLowerCase().includes(query.toLowerCase())), [runs, query, status]);
   return <>
     <div className="measure-heading"><div><h1>{copy.listTitle}</h1><p>{copy.listDescription}</p></div></div>
-    <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
+    <div className="measure-toolbar"><Input allowClear aria-label={copy.listTitle} placeholder={copy.search} value={query} onChange={(event) => setQuery(event.target.value)}/><Select aria-label={copy.runStatus} value={status} onChange={setStatus} options={[{value:'all',label:copy.allStates},...[...new Set(runs.map(run=>run.status.runStatus))].map(value=>({value,label:lang==='zh'?VALUE_LABELS[value]??value:value}))]}/><Typography.Text type="secondary">{filtered.length} / {runs.length}</Typography.Text></div>
     <Table<CoreStudioRunCard> className="studio-table" sticky size="small" rowKey="runId" dataSource={filtered} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} scroll={{ x: 1460 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={runs.length === 0 ? <span>{copy.emptyBefore}<Code value={copy.emptyCommand}/>{copy.emptyAfter}</span> : copy.noMatch}/> }} columns={[
       { title: copy.runId, dataIndex: 'runId', width: 220, render: (id: string) => <Link href={href(runReportHref(id))} className="measure-id" title={id}>{id}</Link> },
       { title: copy.runStatus, width: 110, render: (_, run) => <Status value={run.status.runStatus} lang={lang}/> },
@@ -385,6 +386,8 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
   const copy = COPY[lang];
   const { run, stages } = detail;
   const conclusion = formatRunConclusion(detail, lang);
+  const [section, setSection] = useState('scope');
+  const sections = [{ value: 'scope', label: copy.scopeTab }, { value: 'analysis', label: copy.analysisResults }, { value: 'cases', label: copy.casesTab }, { value: 'evidence', label: copy.evidenceTab }];
   // Tabs／Collapse 默认只服务端渲染展开的那一块，证据必须整份在文档里，不靠点开才拉。
   const scopePanel = <div className="measure-tab">
     <Plan detail={detail} copy={copy}/>
@@ -395,27 +398,32 @@ export function RunDetail({ detail, lang }: { detail: CoreStudioRunDetail; lang:
     </div>
   </div>;
   return <>
-    <div className="measure-heading"><div><Link href={href(MEASURE_INDEX_PATH)}>{copy.back}</Link><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div></div>
-    <section className="measure-conclusion" aria-label={copy.conclusion}>
-      <Alert type={conclusion.tone === 'neutral' ? 'info' : conclusion.tone} showIcon title={<h2>{conclusion.title}</h2>} description={<div className="measure-conclusion-details" tabIndex={0} role="region" aria-label={copy.conclusionDetails}>
+    <div className="measure-heading"><div><h1 className="measure-id" title={run.runId}>{run.runId}</h1><p><time dateTime={run.createdAt}>{displayTime(run.createdAt)}</time></p></div><Link className="measure-back" href={href(MEASURE_INDEX_PATH)}>{copy.back}</Link></div>
+    <div className="measure-report-body">
+    <section className={`measure-conclusion tone-${conclusion.tone}`} aria-label={copy.conclusion}>
+      <Axes run={run} copy={copy} lang={lang}/>
+      <div className="measure-conclusion-title"><h2>{conclusion.title}</h2>{detail.decision?.verdict && <Code value={detail.decision.verdict}/>}</div>
+      <div className="measure-conclusion-details" tabIndex={0} role="region" aria-label={copy.conclusionDetails}>
         <p>{conclusion.summary}</p>
-        {detail.decision?.verdict && <p>{copy.verdict}{lang === 'zh' ? '：' : ': '}<Code value={detail.decision.verdict}/></p>}
-        <div aria-label={copy.limitations}><strong>{copy.limitations}</strong>{conclusion.limitations.map(limit => <p key={limit}>{limit}</p>)}</div>
-        {!!conclusion.reasons.length && <ul>{conclusion.reasons.map(({ code, label }, index) => <li key={`${code}-${index}`} title={code}>{label}</li>)}</ul>}
-      </div>}/>
+        <div className="measure-summary-limits" aria-label={copy.limitations}>{conclusion.limitations.map(limit => <p key={limit}>{limit}</p>)}</div>
+        {!!conclusion.reasons.length && <details className="measure-summary-reasons"><summary>{copy.reasons} · {conclusion.reasons.length}</summary><ul>{conclusion.reasons.map(({ code, label }, index) => <li key={`${code}-${index}`} title={code}>{label}</li>)}</ul></details>}
+      </div>
     </section>
-    <Axes run={run} copy={copy} lang={lang}/>
     {detail.carrierOrigin && <p><Link href={href(`/knowledge?artifact=${encodeURIComponent(detail.carrierOrigin.artifactId)}&version=${detail.carrierOrigin.version}`)}>{lang === 'zh' ? '回到待测载体' : 'Back to evaluated artifact'}：{detail.carrierOrigin.name} · v{detail.carrierOrigin.version}</Link></p>}
-    <Tabs className="studio-detail-tabs" items={[
+    <label className="measure-mobile-tabs"><span>{lang === 'zh' ? '报告内容' : 'Report section'}</span><select value={section} onChange={event => setSection(event.target.value)}>{sections.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+    <Tabs className="studio-detail-tabs" activeKey={section} onChange={setSection} items={[
       { key: 'scope', label: copy.scopeTab, forceRender: true, children: scopePanel },
       { key: 'analysis', label: copy.analysisResults, forceRender: true, children: <AnalysisRecords records={stages.analysis.records} copy={copy} lang={lang}/> },
+      { key: 'cases', label: copy.casesTab, forceRender: true, children: <div className="measure-tab"><Collapse defaultActiveKey={['evaluation']} items={[
+        { key: 'evaluation', label: copy.evaluationRecords, forceRender: true, children: <EvaluationRecords records={stages.evaluation.records} copy={copy} lang={lang}/> },
+        { key: 'execution', label: copy.executionRecords, forceRender: true, children: <ExecutionRecords records={stages.execution.records} copy={copy} lang={lang}/> },
+      ]}/></div> },
       { key: 'evidence', label: copy.evidenceTab, forceRender: true, children: <Collapse items={[
         { key: 'decision', label: copy.decisionDetails, forceRender: true, children: <DecisionPanel decision={detail.decision} copy={copy} lang={lang}/> },
         { key: 'identities', label: copy.identities, forceRender: true, children: <Identities detail={detail} copy={copy} lang={lang}/> },
-        { key: 'execution', label: copy.executionRecords, forceRender: true, children: <ExecutionRecords records={stages.execution.records} copy={copy} lang={lang}/> },
-        { key: 'evaluation', label: copy.evaluationRecords, forceRender: true, children: <EvaluationRecords records={stages.evaluation.records} copy={copy} lang={lang}/> },
         { key: 'lineage', label: copy.lineage, forceRender: true, children: <Lineage detail={detail} copy={copy}/> },
       ]}/> },
     ]}/>
+    </div>
   </>;
 }

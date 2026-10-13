@@ -64,7 +64,7 @@ describe('measure react detail keeps every projected fact in the served document
 
   it('puts the decision ahead of the evidence panels instead of an overall score', () => {
     const html = runDetail(detail(), 'en');
-    assert.ok(html.indexOf('The report has a policy decision') < html.indexOf('Run status'), 'conclusion precedes operational status');
+    assert.ok(html.indexOf('The report has a policy decision') < html.indexOf('Scope and versions'), 'conclusion precedes evidence tabs');
     assert.ok(html.includes('Recorded decision and policy') && html.includes('PROGRESS'), 'the recorded decision stays accessible');
     assert.ok(!html.includes('综合状态') && !html.includes('Overall'));
   });
@@ -79,9 +79,9 @@ describe('measure react detail keeps every projected fact in the served document
       const html = runDetail(view, lang);
       const conclusion = lang === 'zh' ? '证据不足，暂不能判断改动效果' : 'Insufficient evidence to assess the change';
       const limits = lang === 'zh' ? '不能直接外推其它任务的收益' : 'does not establish benefits on other tasks';
-      const states = html.indexOf('measure-state-axes');
+      const states = html.indexOf('ant-tabs-nav');
       for (const text of [conclusion, limits, 'UNDERPOWERED']) {
-        assert.ok(html.indexOf(text) >= 0 && html.indexOf(text) < states, `${text} must precede operational states`);
+        assert.ok(html.indexOf(text) >= 0 && html.indexOf(text) < states, `${text} must precede evidence tabs`);
       }
       assert.ok(html.includes('comparison-sample-size-below-minimum'), 'raw reason remains served');
       assert.ok(html.includes(`class="measure-conclusion-details" tabindex="0" role="region" aria-label="${lang === 'zh' ? '结论详情' : 'Conclusion details'}"`), 'bounded long conclusions have a named keyboard scroll entry');
@@ -95,22 +95,27 @@ describe('measure react detail keeps every projected fact in the served document
     const view = { ...base, decision: { ...base.decision!, verdict: malicious, reasonCodes: [malicious] } };
     for (const lang of ['zh', 'en'] as const) {
       const html = runDetail(view, lang);
-      const top = html.slice(html.indexOf('measure-conclusion'), html.indexOf('measure-state-axes'));
+      const top = html.slice(html.indexOf('measure-conclusion'), html.indexOf('ant-tabs-nav'));
       assert.ok(top.includes(reactText(malicious)), 'custom verdict and reason stay visible');
       assert.ok(!html.includes(malicious), 'all projected text is escaped');
     }
   });
 
   /**
-   * Tabs／Collapse 默认只渲染展开的一块；关掉 forceRender 时后两个 Tab 的内容会整体消失，
+   * Tabs／Collapse 默认只渲染展开的一块；关掉 forceRender 时未激活 Tab 的内容会整体消失，
    * 深证据就退化成只有点开后才有——这条断言锁住「证据随文档一次给全」。
    */
   it('serves inactive tab and collapse content in the same response', () => {
     const html = runDetail(detail(), 'en');
-    assert.equal(html.match(/class="ant-tabs-content/g)?.length, 3, 'every tab panel is in the document');
+    assert.equal(html.match(/class="ant-tabs-content/g)?.length, 4, 'every tab panel is in the document');
     assert.equal(html.match(/class="ant-collapse-item/g)?.length, 5, 'every evidence panel is in the document');
     assert.ok(html.includes('run-plan'), 'lineage sits in the last collapse panel');
-    assert.ok(html.includes('quality:observed=4.25'), 'observations sit in the last collapse panel');
+    assert.ok(html.includes('quality:observed=4.25'), 'per-case observations are served with the report');
+    for (const lang of ['zh', 'en'] as const) {
+      const document = runDetail(detail(), lang);
+      assert.ok(document.includes(lang === 'zh' ? '报告内容' : 'Report section'), 'narrow-screen section choice has a visible label');
+      for (const section of ['scope', 'analysis', 'cases', 'evidence']) assert.ok(document.includes(`<option value="${section}"`), `narrow-screen choice retains ${section}`);
+    }
   });
 
   it('keeps timestamps machine-readable and colors only the budget verdict', () => {

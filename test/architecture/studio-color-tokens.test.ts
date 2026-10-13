@@ -83,16 +83,16 @@ describe('Studio 配色 token 单一来源', () => {
     expect(theme, 'theme.tsx 仍出现 #5145cd').not.toMatch(/#5145cd/i);
   });
 
-  it('导航选中底与人类消息气泡底是两个角色，没有被一次替换合并', () => {
+  it('一级导航与记录选择分别使用外壳和阅读表面的强调', () => {
     expect(css).toContain('--studio-selection-fill:#f2eeff');
-    expect(css).toContain('--studio-message-human-fill:#eef0f6');
     const bubble = css.match(/\.observe-reading-message\.human\{[^}]*\}/);
     expect(bubble, '找不到人类消息气泡规则').not.toBeNull();
-    expect(bubble![0]).toContain('var(--studio-message-human-fill)');
+    expect(bubble![0]).toContain('background:none');
     expect(bubble![0], '气泡底被并进了选中底').not.toContain('--studio-selection-fill');
     const nav = css.match(/\.studio-sidebar nav a\[aria-current\]\{[^}]*\}/);
     expect(nav, '找不到一级导航当前项规则').not.toBeNull();
-    expect(nav![0]).toContain('var(--studio-selection-fill)');
+    expect(nav![0]).toContain('background:white');
+    expect(nav![0]).toContain('var(--studio-action-ink)');
   });
 
   it('四处选中态统一到同一底色与指示条，运行中行仍是独立角色', () => {
