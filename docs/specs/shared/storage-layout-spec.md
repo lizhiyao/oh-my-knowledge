@@ -103,7 +103,7 @@ The v2 project-runtime tree is the only supported `.omk` layout. OMK neither rea
 
 The user chooses this workspace through settings or `--workspace`; it is separate from the project-runtime tree above. `items/<identity-digest>.json` uses `knowledge-item-history` v2. `runs/<run-id>.json` uses `knowledge-extraction-run` v3 and preserves raw output, current v3 prompt identity, prepared intents, and runtime metadata. `entities/<analysis-id>.json` uses `entity-analysis-history` v1 with immutable revisions, exact source bindings, and write receipts. Sources, topic tags, and artifact versions retain their own contracts.
 
-Current writes serialize with `.knowledge-write.lock`. Only current knowledge/run/entity structures and `knowledge-extraction-v3` are supported, without legacy readers, recovery, or migration. Old files remain untouched; choose an empty directory to extract again. Current runs retain idempotent recovery. See [current entity storage contracts](entity-extraction.md#_6-current-storage-contracts). These files can contain private excerpts and must be managed as local user data; they are not repository source assets.
+Current writes serialize with `.knowledge-write.lock`. Only current knowledge/run/entity structures and `knowledge-extraction-v3` are supported, without legacy readers, recovery, or migration. Old files remain untouched; choose an empty directory to extract again. Current runs retain idempotent recovery. See [current entity storage contracts](../entities/entity-extraction.md#_6-current-storage-contracts). These files can contain private excerpts and must be managed as local user data; they are not repository source assets.
 
 ## Why these names
 
@@ -111,5 +111,5 @@ There is no top-level `runs`: it suggests disposable execution state, while eval
 
 ## Related
 
-- [who OMK is for](../explanation/who-omk-is-for.md)
-- [terminology spec](terminology-spec.md)
+- [who OMK is for](../../explanation/who-omk-is-for.md)
+- [terminology spec](./terminology-spec.md)

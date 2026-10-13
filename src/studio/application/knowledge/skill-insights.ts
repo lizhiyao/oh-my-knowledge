@@ -26,7 +26,7 @@ const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low
 
 /**
  * OMK 自己写的规则型 insight 文案。`Record<Lang, …>` 让少一种语言直接编译失败，
- * 比运行期查表强（口径见 docs/specs/terminology-spec.md §5.6）。
+ * 比运行期查表强（口径见 docs/specs/shared/terminology-spec.md §5.6）。
  *
  * 只覆盖 OMK 规则：由 Diagnosis 投影出来的 insight 承载的是已落盘证据文字，
  * 按「持久化证据优先于界面语言」原样呈现，这里不翻、渲染层也不改。

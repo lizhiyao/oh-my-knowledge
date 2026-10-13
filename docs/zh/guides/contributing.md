@@ -300,8 +300,8 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 | `.agents/skills/omk/references/commands.md` | 完整中文命令参考 |
 | `docs/reference/cli.md` | 英文 CLI flag 区段 |
 | `docs/zh/reference/cli.md` | 中文 CLI flag 区段 |
-| `docs/specs/cli-evaluation-input-compilation.md` | 英文输入 registry 表 |
-| `docs/zh/specs/cli-evaluation-input-compilation.md` | 中文输入 registry 表 |
+| `docs/specs/evaluation/cli-evaluation-input-compilation.md` | 英文输入 registry 表 |
+| `docs/zh/specs/evaluation/cli-evaluation-input-compilation.md` | 中文输入 registry 表 |
 
 运行 `yarn build:runtime && yarn build:docs` 同步生成区段，`build:docs:check` 和测试会拦截漂移。marker 外的解释文字仍由人工维护。
 
@@ -329,7 +329,7 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 
 - `docs/reference/` —— flag 表、用例格式、executor 矩阵、对比 ↔ 用户查阅的内容
 - `docs/explanation/` —— 架构、统计严谨性 ↔ omk 如何工作、为何这样设计
-- `docs/specs/` —— 供贡献者阅读的设计规范（用例设计、gap signal、RAG 指标、术语规范……）
+- `docs/specs/` —— 供贡献者阅读的规范，按 `shared/`、`entities/`、`knowledge/`、`evaluation/` 和 `observe/` 分组；[规范索引](../specs/index.md)说明阅读顺序及契约、草案和历史提案边界。文档站已有规范 URL 保持稳定。
 - `docs/quickstart-skill-eval.md` + `docs/README.md` 保持在顶层；`docs/zh/` 镜像同样的结构
 - `docs/README.md` + `docs/zh/README.md` 是按读者分组的索引 —— 新文件加入对应小节
 - **中英文对称是硬性要求。** 每个已发布页面都要有 `docs/` 下的英文版，以及 `docs/zh/` 下同一路径的中文版 —— VitePress 的语言切换依赖这份 1:1 镜像，否则严格的死链构建就会失败。新增文档时两半一起加。设计依据与决策记录优先写在相关已发布规范*内部*（例如作为附录），让用户看到完整推理；只有确实只面向维护者的笔记才放在 `docs/` 之外，这类笔记不受双语规则约束

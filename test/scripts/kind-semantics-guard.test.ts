@@ -13,7 +13,7 @@
  *   - 否则必须登记在 FROZEN_KIND_EXCEPTIONS —— 这些都是已经序列化进
  *     report / observe / doctor / diagnosis JSON 的判别字段,改名会破坏读取已有落盘文件,
  *     要走单独的数据 / schema 迁移(序列化向后兼容,非统计可比性;
- *     详见 docs/specs/terminology-spec.md §5.4);
+ *     详见 docs/specs/shared/terminology-spec.md §5.4);
  *   - 两者都不是 → 新代码引入了裸 `kind`,失败。改成限定名,或(确为新的持久化判别字段时)
  *     显式登记并在 PR 里说明理由。
  *

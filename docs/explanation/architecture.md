@@ -301,7 +301,7 @@ Missing, invalid, failed, unavailable, and not-started observations are not zero
 
 Cost, usage, duration, operational status, evidence status, conclusion status, and lineage are orthogonal facts rather than extra scoring dimensions. Independent `--repeat` runs form an Evaluation Series; cross-run stability is not inferred from one run.
 
-See [Composite scoring](../specs/scoring.md) and [Statistical rigor](statistical-rigor.md).
+See [Composite scoring](../specs/evaluation/scoring.md) and [Statistical rigor](statistical-rigor.md).
 
 ## Observation pipeline: source-neutral Trace IR
 

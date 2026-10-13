@@ -199,7 +199,7 @@ omk eval gold compare <run-id> --gold-dir gold-dataset \
 
 `--repeat` 会创建一个预注册的 Evaluation Series，其独立 Run 数在执行前固定。应当在查看结果前确定数量，并报告所有 member Run。不能在 verdict 不理想后持续新建 Run，再遇到第一次有利结果时停止；这属于未校正的 optional stopping。`--retry` 另行计算，只在已封存的 retry policy 下处理运行失败的 sample attempt。
 
-Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
+Studio 打开的是经过校验的 Core run，而不是第二套报告模型。Run detail 会分别投影运行、证据与结论状态，展示数值观测、Analysis result、Decision reason code、成本、coverage 与 provenance，并把每个视图追溯到不可变 Core 产物。Diagnostic 后处理只使用经过认证的 Core 失败、缺失证据、排除项与稳定 reason code。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/evaluation/sample-design-spec.md)。
 
 ## `omk observe`
 
@@ -238,7 +238,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 <!-- omk:cli:observe:flags:end -->
 
-把真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志统一转换为 source-neutral Trace IR，再生成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+把真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志统一转换为 source-neutral Trace IR，再生成 skill 健康度报告：知识使用、[gap 信号](../specs/observe/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
 ### B. observe inbox：reviewer 闭环
 

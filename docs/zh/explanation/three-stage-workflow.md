@@ -38,14 +38,14 @@ omk 的第一条有用闭环，应该像一张发布检查表：
 
 `eval` 是 omk 的心脏：一次**离线 A/B**，固定模型和用例，只改变 artifact 与封存的 runtime context，回答「新版本是否在噪声之外打赢了旧版本？」。它产出经过认证的 Execution／Evaluation／Analysis 证据、Bootstrap uncertainty、coverage 与 agreement 诊断，以及可用于 CI 路由的已注册 **Decision**（`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`）。
 
-omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严谨性](./statistical-rigor)、[评分公式](../specs/scoring) 说明如何组合判定、覆盖、不确定性与原始证据，支持发布判断。
+omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严谨性](./statistical-rigor)、[评分公式](../specs/evaluation/scoring) 说明如何组合判定、覆盖、不确定性与原始证据，支持发布判断。
 
-→ 概念：[工作原理](./architecture) · [评分公式](../specs/scoring)
+→ 概念：[工作原理](./architecture) · [评分公式](../specs/evaluation/scoring)
 → How-to：[评测 agent](../guides/agent-eval) · [自动迭代 skill](../guides/auto-improve-skills)
 
 ## observe —— 它在生产里站得住吗？
 
-`eval` 是固定用例集上的受控实验，`observe` 是另一端：它把**真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志**统一转换为 source-neutral Trace IR，再生成 skill 健康度报告——知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 使用和耗时。它是**观测，不是评分**：它告诉你知识库在真实使用里在哪儿撞上了未知，好让下一轮用例去覆盖这些点。
+`eval` 是固定用例集上的受控实验，`observe` 是另一端：它把**真实 Codex rollout、Claude Code / OpenClaw session 与 markdown 对话日志**统一转换为 source-neutral Trace IR，再生成 skill 健康度报告——知识使用、[gap 信号](../specs/observe/knowledge-gap-signal-spec)、执行稳定性、token 使用和耗时。它是**观测，不是评分**：它告诉你知识库在真实使用里在哪儿撞上了未知，好让下一轮用例去覆盖这些点。
 
 `omk studio` 可直接浏览本机 Codex 对话与四泳道任务轨迹，无需先 ingest；进行中的任务支持实时跟随。查看日志不调用模型，也不把知识访问解释为结果原因。
 

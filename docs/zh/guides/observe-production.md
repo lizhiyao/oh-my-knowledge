@@ -19,7 +19,7 @@ omk observe ~/.claude/projects/my-project --skills audit,polish
 omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分析
 ```
 
-你会拿到逐 skill 的健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)（agent 想要某个东西却没找到）、执行稳定性、token、耗时。重点是找出**你的 eval 用例没覆盖到的真实世界缺口**——这些缺口变成下一轮 eval 用例。
+你会拿到逐 skill 的健康度报告：知识使用、[gap 信号](../specs/observe/knowledge-gap-signal-spec)（agent 想要某个东西却没找到）、执行稳定性、token、耗时。重点是找出**你的 eval 用例没覆盖到的真实世界缺口**——这些缺口变成下一轮 eval 用例。
 
 用 `--last 7d` / `--from … --to …` 圈时间窗，用 `--skills` 收窄到特定 skill。
 
@@ -127,7 +127,7 @@ omk sample --from-traces
 
 - [复现 Codex 父子任务观测](./codex-observe-case)——可执行的 Trace IR 与紧凑报告案例
 - [三阶段](../explanation/three-stage-workflow) —— observe 在闭环里的位置
-- [知识缺口信号规范](../specs/knowledge-gap-signal-spec) —— gap 信号是什么、怎么打分
+- [知识缺口信号规范](../specs/observe/knowledge-gap-signal-spec) —— gap 信号是什么、怎么打分
 - [CLI 参考：`omk observe`](../reference/cli) —— 每个 flag 和子命令
 
 - [从日志提炼候选知识](./extract-knowledge)

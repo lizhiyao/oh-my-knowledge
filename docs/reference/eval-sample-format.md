@@ -60,7 +60,7 @@ API adapter identity advances to 1.3.0 and its input Schema to v2; the supported
 
 Custom executor's `omk.custom-executor-exchange/v1` request receives the complete structured input envelope and `trial.executionContext`. Expected answers and evaluation context are excluded from every executor request.
 
-Structured checks are scoped to their authored sample. Assertion aggregation now seals that scope (table and parameter v2), so a mixed sample set can complete analysis without requiring every check on every sample. This changes analysis identity; rerun old comparisons. See [scoring semantics](../specs/evaluation-scoring-equivalence).
+Structured checks are scoped to their authored sample. Assertion aggregation now seals that scope (table and parameter v2), so a mixed sample set can complete analysis without requiring every check on every sample. This changes analysis identity; rerun old comparisons. See [scoring semantics](../specs/evaluation/evaluation-scoring-equivalence).
 
 ### What cross-executor acceptance establishes
 
@@ -125,7 +125,7 @@ The composite is the **mean of the layered scores that are present** — there a
 
 `composite = mean(present layers)`. A layer with no assertions (or no judge configured) is **dropped from the mean**, not counted as zero. A sample with no observed layer has no numeric composite score.
 
-See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-weight caveat, and how the multi-layer verdict gate relates to the composite.
+See the [scoring pipeline](../specs/evaluation/scoring) for the full derivation, the equal-weight caveat, and how the multi-layer verdict gate relates to the composite.
 
 ## Assertion types
 
@@ -146,7 +146,7 @@ See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-
 | `cost_max` / `latency_max` | cost / latency caps |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
 | `tool_output_contains` / `tool_input_contains` / `tool_input_not_contains` | a tool's input/output must (or, for `_not_`, must not) contain the given content |
-| `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../specs/sample-design-spec)) |
+| `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../specs/evaluation/sample-design-spec)) |
 | `turns_min` / `turns_max` | conversation-turn bounds |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
 | `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |

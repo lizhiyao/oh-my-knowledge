@@ -1180,8 +1180,8 @@ statistical implementation, prompt, trust calculation, or comparability reason.
 
 ## Related documents
 
-- [Scoring pipeline](scoring.md)
-- [Scoring equivalence migration RFC](evaluation-scoring-equivalence.md)
-- [Statistical rigor](../explanation/statistical-rigor.md)
-- [Terminology spec](terminology-spec.md)
-- [RAG metrics spec](rag-metrics-spec.md)
+- [Scoring pipeline](./scoring.md)
+- [Scoring equivalence migration RFC](./evaluation-scoring-equivalence.md)
+- [Statistical rigor](../../explanation/statistical-rigor.md)
+- [Terminology spec](../shared/terminology-spec.md)
+- [RAG metrics spec](./rag-metrics-spec.md)

@@ -1,6 +1,6 @@
 # omk terminology spec
 
-> **Scope**: This is a naming-decisions archive for omk maintainers (why `artifact` instead of `evaluand`, why `--variants` was dropped from v0.16, the `qualityScore` → `judgeScore` migration path, etc.). It is not a getting-started doc — for everyday usage see the [README](../README.md). The source code is the canonical reference, since the key terms are all English anyway.
+> **Scope**: This is a naming-decisions archive for omk maintainers (why `artifact` instead of `evaluand`, why `--variants` was dropped from v0.16, the `qualityScore` → `judgeScore` migration path, etc.). It is not a getting-started doc — for everyday usage see the [README](../../README.md). The source code is the canonical reference, since the key terms are all English anyway.
 
 ## 1. Goals
 
@@ -117,7 +117,7 @@ Rules:
 
 #### 6.1 Sample metadata fields
 
-The Sample schema has optional metadata fields, purely for documentation / diagnostics; they **do not participate in grading / judge / verdict**. See [docs/specs/sample-design-spec.md](sample-design-spec.md).
+The Sample schema has optional metadata fields, purely for documentation / diagnostics; they **do not participate in grading / judge / verdict**. See [docs/specs/evaluation/sample-design-spec.md](../evaluation/sample-design-spec.md).
 
 - **`capability?: string[]`** — the capability dimension(s) this sample tests (can be multiple). Normalized case-insensitively, with dash / camelCase / underscore insensitivity.
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — difficulty bucket (strict enum).

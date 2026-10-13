@@ -38,14 +38,14 @@ It is also a **gate in front of eval**: `omk eval` runs the static doctor rules 
 
 `eval` is the heart of omk: an **offline A/B** that fixes the model and samples, varies only the artifact and its sealed runtime context, and asks "did the new version beat the old one, beyond noise?". It produces authenticated Execution／Evaluation／Analysis evidence, Bootstrap uncertainty, coverage and agreement diagnostics, and a registered **Decision** (`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`) that can route CI.
 
-This is where omk's measurement rigor lives. Everything in [architecture](./architecture), [statistical rigor](./statistical-rigor), and the [scoring pipeline](../specs/scoring) explains how decisions, coverage, uncertainty, and source evidence together support a ship/no-ship decision.
+This is where omk's measurement rigor lives. Everything in [architecture](./architecture), [statistical rigor](./statistical-rigor), and the [scoring pipeline](../specs/evaluation/scoring) explains how decisions, coverage, uncertainty, and source evidence together support a ship/no-ship decision.
 
-→ Concepts: [how it works](./architecture) · [scoring pipeline](../specs/scoring)
+→ Concepts: [how it works](./architecture) · [scoring pipeline](../specs/evaluation/scoring)
 → How-to: [evaluate an agent](../guides/agent-eval) · [auto-improve a skill](../guides/auto-improve-skills)
 
 ## observe — does it hold up in production?
 
-`eval` is a controlled lab experiment on a fixed sample set. `observe` is the opposite end: it normalizes **real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs** into source-neutral Trace IR and turns them into a skill-health report — knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, token use, and latency. It is **observation, not scoring**: it tells you where the knowledge base bumped into the unknown in real usage, so your next round of samples can target it.
+`eval` is a controlled lab experiment on a fixed sample set. `observe` is the opposite end: it normalizes **real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs** into source-neutral Trace IR and turns them into a skill-health report — knowledge usage, [gap signals](../specs/observe/knowledge-gap-signal-spec), execution stability, token use, and latency. It is **observation, not scoring**: it tells you where the knowledge base bumped into the unknown in real usage, so your next round of samples can target it.
 
 `omk studio` directly browses local Codex conversations and four-lane task trajectories without prior ingest; active tasks support live following. Reading logs makes no model calls and does not treat knowledge access as a cause of outcomes.
 

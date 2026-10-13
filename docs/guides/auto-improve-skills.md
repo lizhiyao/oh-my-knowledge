@@ -40,7 +40,7 @@ Do not feed failures from `release-validation.json` back into the same evolve se
 - You have a real sample set and want a strong first-draft improvement to review — evolve proposes, you keep the diff or not.
 - You want to **prove** an iteration helped rather than eyeballing it.
 
-It is **not** a substitute for good samples: evolve can only improve against what you measure. Garbage samples in, overfit skill out. Start from a sample set you trust (see [sample design](../specs/sample-design-spec)).
+It is **not** a substitute for good samples: evolve can only improve against what you measure. Garbage samples in, overfit skill out. Start from a sample set you trust (see [sample design](../specs/evaluation/sample-design-spec)).
 
 ## Related
 

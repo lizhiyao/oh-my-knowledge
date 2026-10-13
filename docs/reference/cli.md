@@ -199,7 +199,7 @@ For full descriptions: `omk eval --help`.
 
 `--repeat` creates one preregistered Evaluation Series with a fixed number of independent Runs. Set the count before looking at results and report every member Run. It is not safe to keep launching new Runs after an unfavorable verdict and stop at the first favorable one; that is unadjusted optional stopping. `--retry` is separate and applies only to operationally failed sample attempts under the sealed retry policy.
 
-Studio opens the validated Core run rather than a second report model. The run detail projects operational, evidence, and conclusion status separately; shows numeric observations, Analysis results, Decision reason codes, cost, coverage, and provenance; and links every view back to immutable Core artifacts. Diagnostic post-processing is limited to authenticated Core failures, missing evidence, exclusions, and stable reason codes. For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
+Studio opens the validated Core run rather than a second report model. The run detail projects operational, evidence, and conclusion status separately; shows numeric observations, Analysis results, Decision reason codes, cost, coverage, and provenance; and links every view back to immutable Core artifacts. Diagnostic post-processing is limited to authenticated Core failures, missing evidence, exclusions, and stable reason codes. For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/evaluation/sample-design-spec.md).
 
 ## `omk observe`
 
@@ -238,7 +238,7 @@ For full descriptions: `omk observe --help`.
 
 <!-- omk:cli:observe:flags:end -->
 
-Normalizes real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs into source-neutral Trace IR, then produces skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
+Normalizes real Codex rollouts, Claude Code and OpenClaw sessions, and markdown conversation logs into source-neutral Trace IR, then produces skill-health reports: knowledge usage, [gap signals](../specs/observe/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
 ### B. observe inbox: reviewer loop
 

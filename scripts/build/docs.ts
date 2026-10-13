@@ -8,7 +8,7 @@
 // - docs/reference/cli.md / docs/zh/reference/cli.md:per-command flags 模式,
 //   每个 H3 顶层命令独立 marker 对,内容只输出 flag list
 //   (cli.md 已经手写 bash 示例和 prose,不重复)。
-// - docs/(zh/)specs/cli-evaluation-input-compilation.md:从 #451 declarative
+// - docs/(zh/)specs/evaluation/cli-evaluation-input-compilation.md:从 #451 declarative
 //   registry 生成完整 input classification 表。
 //
 // 模式:
@@ -292,14 +292,14 @@ export function buildTargets(topLevelIds: readonly string[]): Target[] {
     },
     {
       mode: 'eval-input-registry',
-      file: 'docs/specs/cli-evaluation-input-compilation.md',
+      file: 'docs/specs/evaluation/cli-evaluation-input-compilation.md',
       lang: 'en',
       markerStart: '<!-- omk:eval-input-registry:start -->',
       markerEnd: '<!-- omk:eval-input-registry:end -->',
     },
     {
       mode: 'eval-input-registry',
-      file: 'docs/zh/specs/cli-evaluation-input-compilation.md',
+      file: 'docs/zh/specs/evaluation/cli-evaluation-input-compilation.md',
       lang: 'zh',
       markerStart: '<!-- omk:eval-input-registry:start -->',
       markerEnd: '<!-- omk:eval-input-registry:end -->',

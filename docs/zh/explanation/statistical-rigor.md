@@ -124,4 +124,4 @@ omk 会在执行前封存最小有意义的 treatment-minus-control 差异、来
 
 每个持久化 run 都包含精确的 Run Plan、Execution Bundle、Evaluation Bundle、Analysis Bundle 和 Evaluation Report，并由 digest 串成 lineage。Studio 只是这些产物上的可重建 projection，不是第二份测量真相。冻结 prompt、五层评分语义、Bootstrap 公式、Krippendorff alpha、缺失证据处理或 length-debias 语义发生变化时，必须经过显式 `BREAKING-COMPARABILITY` 评审。
 
-另见：[综合分](../specs/scoring.md)、[用例设计](../specs/sample-design-spec.md)与 [Evaluation Core 生产切换](../guides/eval-core-cutover.md)。
+另见：[综合分](../specs/evaluation/scoring.md)、[用例设计](../specs/evaluation/sample-design-spec.md)与 [Evaluation Core 生产切换](../guides/eval-core-cutover.md)。

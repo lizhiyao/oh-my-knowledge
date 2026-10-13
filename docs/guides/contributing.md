@@ -301,8 +301,8 @@ The command description / flags / args / examples and `CLI_EVALUATION_INPUT_REGI
 | `.agents/skills/omk/references/commands.md` | the full Chinese command reference |
 | `docs/reference/cli.md` | English CLI flag sections |
 | `docs/zh/reference/cli.md` | Chinese CLI flag sections |
-| `docs/specs/cli-evaluation-input-compilation.md` | English input registry table |
-| `docs/zh/specs/cli-evaluation-input-compilation.md` | Chinese input registry table |
+| `docs/specs/evaluation/cli-evaluation-input-compilation.md` | English input registry table |
+| `docs/zh/specs/evaluation/cli-evaluation-input-compilation.md` | Chinese input registry table |
 
 Run `yarn build:runtime && yarn build:docs` to sync the generated sections; `build:docs:check` and the tests block drift. Prose outside the markers stays hand-maintained.
 
@@ -330,7 +330,7 @@ The framework error mapping is declared in `oclif.exitCodes` in `package.json`. 
 
 - `docs/reference/` — flag tables, sample format, executor matrix, comparison ↔ what users look up
 - `docs/explanation/` — architecture, statistical rigor ↔ how / why omk works
-- `docs/specs/` — design specs read by contributors (sample design, gap signal, RAG metrics, terminology, ...)
+- `docs/specs/` — contributor specifications grouped into `shared/`, `entities/`, `knowledge/`, `evaluation/`, and `observe/`; the [specification index](../specs/index.md) explains reading order and contract, draft, and historical-proposal boundaries. Existing documentation-site spec URLs remain stable.
 - `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
 - `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
 - **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Prefer putting design rationale and decision records *inside* the relevant published spec (e.g. as an appendix) so users see the full reasoning — keep notes outside `docs/` only when they are genuinely maintainer-only, where they stay exempt from the bilingual rule

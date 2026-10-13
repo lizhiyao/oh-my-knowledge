@@ -16,7 +16,7 @@ const moduleDoc = /^src\/.+\/README\.md$/;
 const isRulesSurface = (path) => rules.has(path) || moduleDoc.test(path);
 const generated = new Set([
   'docs/reference/cli.md', 'docs/zh/reference/cli.md',
-  'docs/specs/cli-evaluation-input-compilation.md', 'docs/zh/specs/cli-evaluation-input-compilation.md',
+  'docs/specs/evaluation/cli-evaluation-input-compilation.md', 'docs/zh/specs/evaluation/cli-evaluation-input-compilation.md',
 ]);
 
 export function classifyPaths(paths) {

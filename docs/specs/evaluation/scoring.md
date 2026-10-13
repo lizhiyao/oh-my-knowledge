@@ -73,7 +73,7 @@ A composite score or positive point estimate cannot authorize release by itself.
 
 Its six conclusions are `PROGRESS`, `CAUTIOUS`, `REGRESSION`, `NOISE`, `UNDERPOWERED`, and `SOLO`. A normal release route requires a decided `PROGRESS` carrying `release-gates-passed`. When any applicable Judge Ensemble has dissent or cross-judge agreement cannot be estimated for control or treatment, a positive comparison becomes `CAUTIOUS`; deterministic evaluations without a Judge Ensemble are unaffected. A nonsignificant paired comparison uses complete pairs for the sample-size gate; an independent comparison uses its smaller observed arm. The sealed requirement is either an explicit minimum or a recomputable a priori paired-comparison plan; no observed run variance enters that plan. Missing intervals and Monte Carlo-indeterminate significance remain not-decided; multi-treatment results use the worst registered conclusion; cross-run stability belongs to an Evaluation Series rather than a single-run score. Historical release policies v1 through v6 and Bootstrap family v1 remain available as semantic implementations. The assignment-aware schema cutover versions their Runtime identities and intentionally does not accept pre-cutover Plans for exact replay.
 
-See [Statistical rigor](../explanation/statistical-rigor.md) for uncertainty, agreement, debiasing, and coverage gates.
+See [Statistical rigor](../../explanation/statistical-rigor.md) for uncertainty, agreement, debiasing, and coverage gates.
 
 ## Comparability invariant
 

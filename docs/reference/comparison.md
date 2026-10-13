@@ -4,7 +4,7 @@ Verification date: 2026-09-29. This page helps select tools for the same user ta
 
 ## OMK's purpose and boundaries
 
-OMK supports knowledge work: turn real work records into candidate knowledge with sources and applicability, then evaluate concrete artifact changes through controlled comparisons. Existing capabilities include [knowledge extraction and review](../guides/extract-knowledge), [controlled evaluation](../explanation/three-stage-workflow), and local Studio. Complete links from knowledge revisions to artifact changes and an automated end-to-end workflow remain partly unimplemented; see the [domain design](../specs/knowledge-domain-model). Retaining a candidate does not establish its truth.
+OMK supports knowledge work: turn real work records into candidate knowledge with sources and applicability, then evaluate concrete artifact changes through controlled comparisons. Existing capabilities include [knowledge extraction and review](../guides/extract-knowledge), [controlled evaluation](../explanation/three-stage-workflow), and local Studio. Complete links from knowledge revisions to artifact changes and an automated end-to-end workflow remain partly unimplemented; see the [domain design](../specs/knowledge/knowledge-domain-model). Retaining a candidate does not establish its truth.
 
 Inspectable OMK characteristics include explicit [measurement contracts](../explanation/statistical-rigor), evidence provenance and version identity, evidence-constrained Decision, and local CLI / Node.js access / Studio. These do not establish exclusivity or a moat. Practical value should be tested by whether users can reach an interpretable change decision with less effort.
 
@@ -56,7 +56,7 @@ This is a bounded comparison set, not industry-wide coverage. No conclusions are
 
 ## Assessing OMK for your task
 
-If you maintain a prompt, RAG system, skill, agent, or workflow and want to compare knowledge-artifact changes under explicit model and task conditions, tracing sources, versions, original evidence, and Decision, try a representative case with OMK. Read the [scoring contracts](../specs/scoring) and chosen executor's boundaries first; do not generalize a single positive result to all tasks.
+If you maintain a prompt, RAG system, skill, agent, or workflow and want to compare knowledge-artifact changes under explicit model and task conditions, tracing sources, versions, original evidence, and Decision, try a representative case with OMK. Read the [scoring contracts](../specs/evaluation/scoring) and chosen executor's boundaries first; do not generalize a single positive result to all tasks.
 
 The [local-task entry point](../guides/local-tasks) supports declared file snapshots, two knowledge-content variants, independent acceptance, and failure diagnostics. It measures explicitly supplied content, not native skill installation or discovery. Workspace copies serve trusted local tasks and are not hostile-code sandboxes. Artifact rescoring currently requires sufficient execution evidence retained in the same process, not arbitrary cross-process replay of historical tasks.
 

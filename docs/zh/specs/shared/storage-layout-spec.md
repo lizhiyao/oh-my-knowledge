@@ -103,7 +103,7 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 
 用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`runs/<run-id>.json` 使用 `knowledge-extraction-run` v3，保留原始输出、当前 v3 prompt 身份、已准备的意图与用量。`entities/<analysis-id>.json` 使用 `entity-analysis-history` v1，保存不可变修订、精确来源绑定与写入回执。来源、主题标签及载体版本沿用各自契约。
 
-当前写入通过 `.knowledge-write.lock` 串行化。只支持当前知识／运行／实体结构及 `knowledge-extraction-v3`，不提供旧格式读取、恢复或迁移。旧文件保持原样；需要重新提炼时选择空目录。当前运行仍保留幂等恢复能力。边界见[当前实体存储契约](entity-extraction.md#_6-当前存储契约)。这些文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
+当前写入通过 `.knowledge-write.lock` 串行化。只支持当前知识／运行／实体结构及 `knowledge-extraction-v3`，不提供旧格式读取、恢复或迁移。旧文件保持原样；需要重新提炼时选择空目录。当前运行仍保留幂等恢复能力。边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。这些文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
 
 ## 为什么这样命名
 
@@ -111,5 +111,5 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 
 ## 相关文档
 
-- [OMK 为谁而做](../explanation/who-omk-is-for.md)
-- [术语规范](terminology-spec.md)
+- [OMK 为谁而做](../../explanation/who-omk-is-for.md)
+- [术语规范](./terminology-spec.md)

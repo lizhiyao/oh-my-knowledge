@@ -39,19 +39,21 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 
 - [为谁做、解决什么](./explanation/who-omk-is-for.md) · [OMK 如何理解知识](./explanation/knowledge.md)
 - [三阶段工作流](./explanation/three-stage-workflow.md) · [架构](./explanation/architecture.md)
-- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/scoring.md) · [用例设计](./specs/sample-design-spec.md)
+- [统计严谨性](./explanation/statistical-rigor.md) · [评分公式](./specs/evaluation/scoring.md) · [用例设计](./specs/evaluation/sample-design-spec.md)
 - [术语表](./reference/glossary.md) · [工具对比](./reference/comparison.md)
 
 ## 迁移与设计规范
 
-- [贡献指南](./guides/contributing.md) —— 分支模型、本地门禁与发版流程。
-- [通用 sample 规范草案](./specs/general-sample-proposal.md)
+- [规范索引与阅读顺序](./specs/index.md)：按共享、实体、知识、评测与观测领域查看契约、草案和历史提案。
 
-- [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/storage-layout-spec.md)
-- [Core 设计](./specs/eval-core-vnext.md) · [评分等价性](./specs/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/cli-evaluation-input-compilation.md)
-- [实体知识库](./specs/knowledge-library.md)：人工确认跨窗口来源关联，阅读和维护对象知识及组织历史。
-- [知识领域模型（草案）](./specs/knowledge-domain-model.md) · [知识缺口信号](./specs/knowledge-gap-signal-spec.md)
-- [实体提取](./specs/entity-extraction.md) · [v3 质量结果与限制](./explanation/entity-extraction-quality.md) · [v4 两轮结果与限制](./explanation/entity-extraction-v4-repeat-quality.md)
+- [贡献指南](./guides/contributing.md) —— 分支模型、本地门禁与发版流程。
+- [通用 sample 规范草案](./specs/evaluation/general-sample-proposal.md)
+
+- [1.0 Beta 迁移](./guides/v1-preview-migration.md) · [Core 生产切换](./guides/eval-core-cutover.md) · [存储布局](./specs/shared/storage-layout-spec.md)
+- [Core 设计](./specs/evaluation/eval-core-vnext.md) · [评分等价性](./specs/evaluation/evaluation-scoring-equivalence.md) · [CLI 输入编译](./specs/evaluation/cli-evaluation-input-compilation.md)
+- [实体知识库](./specs/knowledge/knowledge-library.md)：人工确认跨窗口来源关联，阅读和维护对象知识及组织历史。
+- [知识领域模型（草案）](./specs/knowledge/knowledge-domain-model.md) · [知识缺口信号](./specs/observe/knowledge-gap-signal-spec.md)
+- [实体提取](./specs/entities/entity-extraction.md) · [v3 质量结果与限制](./explanation/entity-extraction-quality.md) · [v4 两轮结果与限制](./explanation/entity-extraction-v4-repeat-quality.md)
 - [实体提取 v6：11 窗口诊断](./explanation/entity-extraction-v6-diagnostic.md)
 - [实体提取 v6：真实会话单轮诊断](./explanation/entity-extraction-v6-real-pilot.md)
 - [实体提取 v7：六场景复验](./explanation/entity-extraction-v7-diagnostic.md)
@@ -60,6 +62,6 @@ OMK 提供互补的使用入口：**CLI** 用于终端、Agent 与 CI 工作流�
 - [实体提取 v8：三窗口真实会话诊断](./explanation/entity-extraction-v8-real-pilot.md)
 - [实体提取 v10：五场景知识保留诊断](./explanation/entity-extraction-v10-diagnostic.md)
 - [实体提取 v12：定向回归与提及遗漏](./explanation/entity-extraction-v12-target-regression.md)
-- [RAG metrics](./specs/rag-metrics-spec.md) · [术语规范](./specs/terminology-spec.md)
+- [RAG metrics](./specs/evaluation/rag-metrics-spec.md) · [术语规范](./specs/shared/terminology-spec.md)
 
 - [验证本地任务结果](./guides/local-tasks.md)
