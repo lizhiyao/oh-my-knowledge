@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress';
-import { specHref, specRoute } from './spec-links.js';
+import { pageHref, pageRoute } from './page-links.js';
 
 const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 
@@ -12,14 +12,14 @@ export default defineConfig({
   title: 'OMK',
   description: 'OMK — Observe. Measure. Know. Build knowledge from collaboration between people and AI.',
   cleanUrls: true,
-  rewrites: specRoute,
+  rewrites: pageRoute,
   markdown: {
     config(md) {
       const link = md.renderer.rules.link_open!;
       md.renderer.rules.link_open = (tokens, index, options, env, self) => {
         const token = tokens[index];
         const href = token.attrGet('href');
-        if (href && env.path) token.attrSet('href', specHref(href, env));
+        if (href && env.path) token.attrSet('href', pageHref(href, env));
         return link(tokens, index, options, env, self);
       };
       const fence = md.renderer.rules.fence!
@@ -115,6 +115,7 @@ export default defineConfig({
                 text: 'Entity identity and extraction',
                 collapsed: true,
                 items: [
+                  { text: 'Entity extraction: evidence and limits', link: '/specs/entities/' },
                   { text: 'Entity identity', link: '/specs/entity-identity' },
                   { text: 'Entity extraction', link: '/specs/entity-extraction' },
                   { text: 'Extraction evaluation', link: '/specs/entity-extraction-evaluation' },
@@ -234,6 +235,7 @@ export default defineConfig({
                 text: '实体身份与提取',
                 collapsed: true,
                 items: [
+                  { text: '实体提取：证据与限制', link: '/zh/specs/entities/' },
                   { text: '实体身份', link: '/zh/specs/entity-identity' },
                   { text: '实体提取', link: '/zh/specs/entity-extraction' },
                   { text: '实体提取评测', link: '/zh/specs/entity-extraction-evaluation' },

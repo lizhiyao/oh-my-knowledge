@@ -29,6 +29,7 @@ Status labels summarize the existing documents, not a new implementation accepta
 
 | Document | Role and status |
 |---|---|
+| [Entity reading index and historical evidence](entities/index.md) | Entry to the current contracts, quality limits, and categorized historical records; reports are evidence, not specifications of today's behavior. |
 | [Entity identity](entities/entity-identity.md) | Partly delivered design: approved identity/storage/UI sections are delivered within the beta scope; independent review and overall quality gates remain incomplete. |
 | [Entity extraction](entities/entity-extraction.md) | Current extraction, revision, source, and binding contracts, with explicit beta and quality limits. |
 | [Entity extraction evaluation](entities/entity-extraction-evaluation.md) | Annotation and acceptance protocol with frozen evidence boundaries; author review and offline replay do not complete independent acceptance. |

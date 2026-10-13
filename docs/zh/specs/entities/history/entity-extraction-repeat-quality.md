@@ -88,4 +88,4 @@
 
 语料由实现 Agent 编写，同一个 Agent 复核输出，仍缺少独立人工复核。11 条短消息的跨轮场景不代表真实长日志；两次调用不足以估计长期稳定性。真实用户日志分布、跨日志实体关联、跨 Agent 复用、陈述真实性和载体效果均未覆盖。
 
-后续应先明确实体粒度并针对上述失败做显式版本化修正，再用新授权、新运行保留修正前后证据；独立裁决与另获授权的真实日志样本仍有必要。[Issue #1124](https://github.com/lizhiyao/oh-my-knowledge/issues/1124)继续跟踪这些未完成事项。本轮没有修改提示词或扩大调用范围。复现命令见[提取质量指南](../guides/extract-knowledge.md#复现提取质量检查)；[历史 v2／v3 报告](./entity-extraction-quality.md)及其原始证据保留。
+后续应先明确实体粒度并针对上述失败做显式版本化修正，再用新授权、新运行保留修正前后证据；独立裁决与另获授权的真实日志样本仍有必要。[Issue #1124](https://github.com/lizhiyao/oh-my-knowledge/issues/1124)继续跟踪这些未完成事项。本轮没有修改提示词或扩大调用范围。复现命令见[提取质量指南](../../../guides/extract-knowledge.md#复现提取质量检查)；[历史 v2／v3 报告](./entity-extraction-quality.md)及其原始证据保留。

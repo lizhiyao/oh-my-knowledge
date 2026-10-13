@@ -3,7 +3,7 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
 import config from '../../docs/.vitepress/config.js';
-import { specHref, specRoute } from '../../docs/.vitepress/spec-links.js';
+import { pageHref, pageRoute } from '../../docs/.vitepress/page-links.js';
 
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const DOCS_ROOT = join(PROJECT_ROOT, 'docs');
@@ -82,7 +82,7 @@ function resolvesToPublishedPage(link: string): boolean {
   ].some((candidate) => existsSync(candidate)) || ['', 'zh/'].some(locale => {
     const root = join(DOCS_ROOT, locale, 'specs');
     return readdirSync(root, { recursive: true }).map(String).some(file =>
-      file.endsWith('.md') && specRoute(`${locale}specs/${file}`) === `${pathname}.md`);
+      file.endsWith('.md') && pageRoute(`${locale}specs/${file}`) === `${pathname}.md`);
   });
 }
 
@@ -142,7 +142,8 @@ function sidebarLinks(items: SidebarItem[]): string[] {
 describe('domain specifications and stable published routes', () => {
   it.each(['', 'zh/'])('makes every %s specification reachable through the index and sidebar without route collisions', locale => {
     const root = `docs/${locale}specs`;
-    const files = readdirSync(root, { recursive: true }).map(String).filter(path => path.endsWith('.md') && path !== 'index.md');
+    const files = readdirSync(root, { recursive: true }).map(String).filter(path =>
+      path.endsWith('.md') && !path.endsWith('index.md') && !path.includes('/history/'));
     const domains = new Set(['shared', 'entities', 'knowledge', 'evaluation', 'observe']);
     const index = readFileSync(`${root}/index.md`, 'utf8');
     const localeConfig = config.locales![locale ? 'zh' : 'root']!;
@@ -153,13 +154,33 @@ describe('domain specifications and stable published routes', () => {
       expect(domains.has(domain!)).toBe(true);
       expect(extra).toBeUndefined();
       expect(index).toContain(`](${file})`);
-      const route = specRoute(`${locale}specs/${file}`);
+      const route = pageRoute(`${locale}specs/${file}`);
       expect(route).toBe(`${locale}specs/${name}`);
       routes.push(route);
       expect(links.filter(link => link === `/${route.replace(/\.md$/, '')}`)).toHaveLength(1);
     }
     expect(new Set(routes).size).toBe(files.length);
     expect(links).toContain(`/${locale}specs/`);
+    expect(index).toContain('](entities/index.md)');
+    expect(links).toContain(`/${locale}specs/entities/`);
+  });
+
+  it.each(['', 'zh/'])('keeps every %s entity report indexed as history with its original published URL', locale => {
+    const root = `docs/${locale}specs/entities`;
+    const files = readdirSync(`${root}/history`).filter(path => path.endsWith('.md'));
+    const index = readFileSync(`${root}/index.md`, 'utf8');
+    const targets = [...index.matchAll(/\]\(([^\s)]+)\)/g)].map(match => resolve(root, match[1]!.split('#')[0]!));
+    expect(files.length).toBeGreaterThan(0);
+    const routes: string[] = [];
+    for (const file of files) {
+      expect(targets.filter(path => path === resolve(root, 'history', file))).toHaveLength(1);
+      const route = pageRoute(`${locale}specs/entities/history/${file}`);
+      expect(route).toBe(`${locale}explanation/${file}`);
+      expect(resolvesToPublishedPage(`/${route.replace(/\.md$/, '')}`)).toBe(true);
+      routes.push(route);
+    }
+    expect(new Set(routes).size).toBe(files.length);
+    expect(pageRoute(`${locale}specs/entities/index.md`)).toBe(`${locale}specs/entities/index.md`);
   });
 
   it('rebases source links across domains and into reference pages while preserving anchors and locales', () => {
@@ -167,19 +188,27 @@ describe('domain specifications and stable published routes', () => {
       path: resolve('docs/zh/specs/terminology-spec.md'),
       realPath: resolve('docs/zh/specs/shared/terminology-spec.md'),
     };
-    expect(specHref('../evaluation/sample-design-spec.md#三', env)).toBe('./sample-design-spec.md#三');
-    expect(specHref('../../reference/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
+    expect(pageHref('../evaluation/sample-design-spec.md#三', env)).toBe('./sample-design-spec.md#三');
+    expect(pageHref('../../reference/glossary.md?from=spec#术语', env)).toBe('../reference/glossary.md?from=spec#术语');
     const reference = { path: resolve('docs/zh/reference/glossary.md') };
-    expect(specHref('../specs/evaluation/scoring.md#decision', reference)).toBe('../specs/scoring.md#decision');
+    expect(pageHref('../specs/evaluation/scoring.md#decision', reference)).toBe('../specs/scoring.md#decision');
     const index = { path: resolve('docs/specs/index.md') };
-    expect(specHref('entities/entity-identity.md', index)).toBe('./entity-identity.md');
+    expect(pageHref('entities/entity-identity.md', index)).toBe('./entity-identity.md');
     // Search rendering has a source path but no rewritten path or realPath.
-    expect(specHref('../evaluation/scoring.md', { path: env.realPath })).toBe('./scoring.md');
-    expect(specHref('/zh/specs/entities/entity-identity#身份', env)).toBe('/zh/specs/entity-identity#身份');
+    expect(pageHref('../evaluation/scoring.md', { path: env.realPath })).toBe('./scoring.md');
+    expect(pageHref('/zh/specs/entities/entity-identity#身份', env)).toBe('/zh/specs/entity-identity#身份');
     for (const href of ['#本页', 'https://example.com/specs/entities/page', '//example.com/page', 'mailto:a@example.com', '../../public/data.json', '/specs/entities/image.svg']) {
-      expect(specHref(href, env)).toBe(href);
+      expect(pageHref(href, env)).toBe(href);
     }
-    expect(specRoute('explanation/knowledge.md')).toBe('explanation/knowledge.md');
-    expect(specRoute('specs/index.md')).toBe('specs/index.md');
+    expect(pageRoute('explanation/knowledge.md')).toBe('explanation/knowledge.md');
+    expect(pageRoute('specs/index.md')).toBe('specs/index.md');
+    const history = {
+      path: resolve('docs/zh/explanation/entity-extraction-quality.md'),
+      realPath: resolve('docs/zh/specs/entities/history/entity-extraction-quality.md'),
+    };
+    expect(pageHref('./entity-extraction-repeat-quality.md#结果', history)).toBe('./entity-extraction-repeat-quality.md#结果');
+    expect(pageHref('../entity-extraction.md', history)).toBe('../specs/entity-extraction.md');
+    expect(pageHref('../index.md', history)).toBe('../specs/entities/index.md');
+    expect(pageHref('/zh/specs/entities/index.md', env)).toBe('/zh/specs/entities/index.md');
   });
 });
