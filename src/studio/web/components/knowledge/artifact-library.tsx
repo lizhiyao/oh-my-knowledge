@@ -7,7 +7,7 @@ import type { Language } from '../layout/shell';
 import { CarrierKnowledgeReviewPanel, CarrierReviewStatus } from './carrier-knowledge-review';
 import type { ReviewedCarrierDetail, ReviewedCarrierRow } from '../../../view-models/knowledge/artifact-authoring';
 import { ArtifactAuthoringDialog, requestArtifact } from './artifact-authoring';
-import { resolveKnowledgeWorkspace } from './workspace';
+import { resolveKnowledgeDirectory } from './workspace';
 import { KNOWLEDGE_CANDIDATES_PATH, KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
 import { workspaceHref } from '../layout/workspace-link';
 import { displayTime } from '../../../application/display/format';
@@ -34,7 +34,7 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
     void (async () => {
       try {
         const url = new URL(window.location.href);
-        const { workspace: root } = await resolveKnowledgeWorkspace(url.searchParams.get('workspace') ?? '', controller.signal);
+        const root = await resolveKnowledgeDirectory(url.searchParams.get('workspace') ?? '', controller.signal);
         if (!root) throw new Error();
         const list = await requestArtifact<ReviewedCarrierRow[]>(root, 'list', {}, controller.signal);
         const id = url.searchParams.get('artifact'); const version = Number(url.searchParams.get('version'));
@@ -74,6 +74,7 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
   const detailTabs = detail ? [{ key: 'content', label: t('正文', 'Content') }, { key: 'sources', label: t(`知识引用（${detail.knowledgeRefs.length}）`, `Knowledge references (${detail.knowledgeRefs.length})`) },
     { key: 'review', label: t(`变化核对（${detail.knowledgeReview.needsReviewCount}）`, `Review changes (${detail.knowledgeReview.needsReviewCount})`) }, { key: 'original', label: t('原文', 'Original') }, { key: 'measurements', label: t('评测记录', 'Evaluations') }] : [];
   return <div className="carrier-library knowledge-core">
+    <p className="candidate-help knowledge-workspace" title={workspace}>{t('知识目录：', 'Knowledge directory: ')}{workspace || t('尚未读取', 'Not yet read')}</p>
     {error && <Alert type="error" showIcon title={error} action={<Button disabled={busy} onClick={() => workspace ? void refresh() : window.location.reload()}>{t('重新读取', 'Reload')}</Button>}/>}
     {target ? <>
       <div className="knowledge-context"><Button onClick={() => { request.current?.abort(); request.current = null; setBusy(false); setDetail(null); setTarget(undefined); const url = new URL(window.location.href); url.searchParams.delete('artifact'); url.searchParams.delete('version'); window.history.replaceState(null, '', url); }}>{t('返回载体列表', 'Back to artifacts')}</Button>
@@ -104,6 +105,6 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
       </div>
     </> : <Tabs className="studio-detail-tabs carrier-library-tabs" activeKey={tab} onChange={value => { setTab(value); const url = new URL(window.location.href); if (value === 'reports') url.searchParams.set('view', 'reports'); else url.searchParams.delete('view'); window.history.replaceState(null, '', url); }} items={[{ key: 'library', label: t('已保存载体', 'Saved artifacts'), children: list }, { key: 'reports', label: t('体检与观测', 'Doctor and observe'), children: reports }]}/>}
     {measuring && detail && <CarrierMeasurementDialog workspace={workspace} detail={detail} lang={lang} onClose={() => setMeasuring(false)} onStarted={() => { setMeasurementRefresh(value => value + 1); setDetailTab('measurements'); }}/>}
-    {editing && <ArtifactAuthoringDialog workspace={workspace} lang={lang} existing={detail ? current : undefined} onClose={() => setEditing(false)} onSaved={saved => { setTarget(saved.artifactId); setDetail(saved); setDetailTab('content'); setRows(previous => [{ ...saved }, ...previous.filter(row => row.artifactId !== saved.artifactId)]); const url = new URL(window.location.href); url.searchParams.set('artifact', saved.artifactId); url.searchParams.delete('version'); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url); }}/ >}
+    {editing && <ArtifactAuthoringDialog key={`${workspace}:${detail?.artifactId ?? 'new'}`} workspace={workspace} lang={lang} existing={detail ? current : undefined} onClose={() => setEditing(false)} onSaved={saved => { setTarget(saved.artifactId); setDetail(saved); setDetailTab('content'); setRows(previous => [{ ...saved }, ...previous.filter(row => row.artifactId !== saved.artifactId)]); const url = new URL(window.location.href); url.searchParams.set('artifact', saved.artifactId); url.searchParams.delete('version'); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url); }}/ >}
   </div>;
 }

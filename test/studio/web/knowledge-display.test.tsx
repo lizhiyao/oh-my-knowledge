@@ -119,6 +119,8 @@ describe('载体内容核对', () => {
       expect(html).toContain('&lt;script&gt;unsafe&lt;/script&gt;');
       expect(html).not.toContain('<script>unsafe');
       expect(html).toContain('条件：人工核对');
+      const locked = renderToString(createElement(CarrierContentReview, { content: '草稿仍在', original: '', lang, readOnly: true, onChange() {} }));
+      expect(locked).toContain('readOnly=""'); expect(locked).toContain('草稿仍在');
     }
   });
 });

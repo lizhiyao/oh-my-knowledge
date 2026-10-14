@@ -1,19 +1,21 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Checkbox, Input, Modal, Pagination, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
-import type { LibraryDraft, LibraryMember } from '../../../../knowledge/library/contracts';
+import { LibraryDraftSchema, type LibraryDraft, type LibraryMember } from '../../../../knowledge/library/contracts';
 import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/knowledge-library';
 import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './library-request';
+import { KnowledgeRequestError } from './request';
 import { EntityLibraryDetail } from './entities';
 
 export type LibrarySeed = { analysisId: string; entityId: string; revision?: string };
-export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved }: {
+export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, onClose, onSaved }: {
   workspace: string; lang: Language; detail?: KnowledgeLibraryDetail; seed?: LibrarySeed; onClose(): void; onSaved(id: string): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const [detail] = useState(initialDetail);
   const [objectId] = useState(() => detail?.history.objectId ?? crypto.randomUUID());
   const [draft, setDraft] = useState<LibraryDraft>(() => detail?.revision.draft ?? { label: '', description: '', referentKind: 'object', members: [] });
   const [query, setQuery] = useState(''); const [page, setPage] = useState(1); const [catalog, setCatalog] = useState<KnowledgeEntityCatalog>();
@@ -22,22 +24,27 @@ export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved 
   const [confirmed, setConfirmed] = useState(false); const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [pending, setPending] = useState<Parameters<typeof requestLibrary>[2] & { requestId: string }>();
   const [uncertain, setUncertain] = useState(false);
+  const [catalogError, setCatalogError] = useState(''); const [previewError, setPreviewError] = useState('');
+  const [catalogRetry, setCatalogRetry] = useState(0); const [previewRetry, setPreviewRetry] = useState(0); const [previewLoading, setPreviewLoading] = useState(false);
+  const writeController = useRef<AbortController | null>(null);
+  useEffect(() => () => { writeController.current?.abort(); writeController.current = null; }, [workspace, objectId]);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true);
+    const controller = new AbortController(); setLoading(true); setCatalog(undefined); setCatalogError('');
     void requestLibraryEntity<KnowledgeEntityCatalog>(workspace, 'entity-catalog', { query: query.trim() || undefined, page, pageSize: 10 }, controller.signal)
       .then(value => { if (!controller.signal.aborted) setCatalog(value); })
-      .catch(() => { if (!controller.signal.aborted) { setCatalog(undefined); setError(t('来源实体列表不可读，请核对工作区。', 'Source entities unavailable. Check the workspace.')); } })
+      .catch(() => { if (!controller.signal.aborted) { setCatalog(undefined); setCatalogError(t('来源实体列表不可读，请核对工作区。', 'Source entities unavailable. Check the workspace.')); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [workspace, query, page]);
+  }, [workspace, query, page, catalogRetry]);
   useEffect(() => {
     if (!target) return;
-    const controller = new AbortController(); setPreview(undefined); setMentionIds([]); setRationale(''); setError('');
+    const controller = new AbortController(); setPreview(undefined); setMentionIds([]); setRationale(''); setPreviewError(''); setPreviewLoading(true);
     void requestLibraryEntity<KnowledgeEntityLibraryDetail>(workspace, 'entity-detail', { analysisId: target.analysisId, entityId: target.entityId, revision: target.revision }, controller.signal)
       .then(value => { if (!controller.signal.aborted) { setPreview(value); setMentionIds(value.revision.mentions.filter(mention => mention.entityId === value.entity.entityId).map(mention => mention.mentionId)); } })
-      .catch(() => { if (!controller.signal.aborted) setError(t('来源实体不可读，可回到实体页检查历史。', 'Source entity unavailable. Inspect history on the entity page.')); });
+      .catch(() => { if (!controller.signal.aborted) setPreviewError(t('来源实体不可读，可回到实体页检查历史。', 'Source entity unavailable. Inspect history on the entity page.')); })
+      .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
     return () => controller.abort();
-  }, [workspace, target]);
+  }, [workspace, target, previewRetry]);
   const eligible = preview?.source.status === 'available' && preview.entity.identityStatus === 'proposed'
     && preview.revision.revisionId === preview.history.writeHeadRevisionId
     && (!draft.members.length && !detail || preview.entity.referentKind === draft.referentKind)
@@ -53,30 +60,40 @@ export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved 
     setTarget(undefined); setPreview(undefined);
   }
   async function save() {
+    if (writeController.current || uncertain) return;
+    const checked = LibraryDraftSchema.safeParse({ ...draft, label: draft.label.trim(), description: draft.description.trim() });
+    if (!checked.success || !reason.trim() || reason.trim().length > 4096) {
+      setError(t('组织草稿未通过校验。核对名称、简介、来源数量与依据；当前填写仍保留，尚未发送保存请求。', 'The organization draft is invalid. Review its name, description, source count and evidence. Your entries remain; no save request was sent.'));
+      return;
+    }
+    const active = new AbortController(); writeController.current = active;
     const command = { requestId: crypto.randomUUID(), objectId, generation: detail?.history.generation ?? 0,
-      headRevisionId: detail?.history.writeHeadRevisionId ?? null, draft: { ...draft, label: draft.label.trim(), description: draft.description.trim() },
+      headRevisionId: detail?.history.writeHeadRevisionId ?? null, draft: checked.data,
       reason: reason.trim(), identityConfirmed: true as const };
     setPending(command); setBusy(true); setError('');
-    try { await requestLibrary(workspace, 'save', command); onSaved(objectId); }
+    try { await requestLibrary(workspace, 'save', command, active.signal); if (!active.signal.aborted) onSaved(objectId); }
     catch (cause) {
-      if (cause instanceof Error && ['knowledge_conflict', 'knowledge_request_failed', 'knowledge_capacity_exceeded', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(cause.message)) {
+      if (active.signal.aborted) return;
+      if (cause instanceof KnowledgeRequestError && cause.definiteRejection && ['knowledge_conflict', 'knowledge_capacity_exceeded', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(cause.message)) {
         setError(cause.message === 'knowledge_conflict'
           ? t('对象或来源已变化，或此实体已有所属对象。关闭后重新核对组织与实体。', 'Object/source changed or this entity already has an owner. Close and review organization and entities.')
           : t('未能保存。核对来源、对象层次、身份歧义与工作区状态后再提交。', 'Save failed. Review source, referent level, ambiguity, and workspace state.'));
         setConfirmed(false);
       } else { setUncertain(true); setError(t('保存结果未知，请先核对已保存版本。', 'Save outcome unknown. Check the saved version first.')); }
-    } finally { setBusy(false); }
+    } finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
   }
   async function inspectSave() {
-    if (!pending) return;
+    if (!pending || writeController.current) return;
+    const active = new AbortController(); writeController.current = active;
     setBusy(true); setError('');
     try {
-      const saved = await requestLibrary<KnowledgeLibraryDetail>(workspace, 'show', { id: objectId });
+      const saved = await requestLibrary<KnowledgeLibraryDetail>(workspace, 'show', { id: objectId }, active.signal);
+      if (active.signal.aborted) return;
       const receipt = saved.history.receipts.find(value => value.requestId === pending.requestId);
       if (receipt) onSaved(objectId);
       else setError(t('未找到本次保存收据。请关闭后检查对象，再重新提交。', 'This save receipt was not found. Close, inspect the object, and submit again.'));
-    } catch { setError(t('仍无法核对保存状态，请稍后再检查。', 'Save status still unavailable. Check again later.')); }
-    finally { setBusy(false); }
+    } catch { if (!active.signal.aborted) setError(t('仍无法核对保存状态，请稍后再检查。', 'Save status still unavailable. Check again later.')); }
+    finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
   }
   return <Modal open width={1000} className="carrier-authoring-modal library-editor-modal" title={detail ? t('维护知识库对象', 'Maintain library object') : t('从实体建立知识库对象', 'Create a library object from entities')}
     onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
@@ -85,10 +102,10 @@ export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved 
         : <Button type="primary" loading={busy} disabled={!confirmed || !reason.trim() || !draft.label.trim() || !draft.description.trim() || !detail && !draft.members.length}
           onClick={() => void save()}>{t('保存组织修订', 'Save organization revision')}</Button>}
     </Space>}>
-    {error && <Alert type="error" title={error}/>}
+    {error && <Alert className="knowledge-operation-feedback" type="error" title={error}/>}
     <p>{t('只维护知识的组织关联，不改写原始实体或知识。仅名称相同不能确认同一对象。', 'Maintains organization links without rewriting entities or knowledge. Equal names do not confirm identity.')}</p>
-    <div className="library-editor-fields"><label>{t('对象名称', 'Object name')}<Input aria-label={t('对象名称', 'Object name')} disabled={busy || uncertain} value={draft.label} onChange={event => change({ ...draft, label: event.target.value })}/></label>
-      <label>{t('用户维护简介', 'User-maintained description')}<Input.TextArea aria-label={t('用户维护简介', 'User-maintained description')} disabled={busy || uncertain} value={draft.description} onChange={event => change({ ...draft, description: event.target.value })}/></label></div>
+    <div className="library-editor-fields"><label>{t('对象名称', 'Object name')}<Input aria-label={t('对象名称', 'Object name')} maxLength={256} readOnly={busy || uncertain} value={draft.label} onChange={event => change({ ...draft, label: event.target.value })}/></label>
+      <label>{t('用户维护简介', 'User-maintained description')}<Input.TextArea aria-label={t('用户维护简介', 'User-maintained description')} maxLength={4096} readOnly={busy || uncertain} value={draft.description} onChange={event => change({ ...draft, description: event.target.value })}/></label></div>
     <h3>{t('已选择的来源关联', 'Selected source links')}</h3>
     {draft.members.map(member => <section className="entity-mention" key={`${member.analysisId}:${member.entityId}`}>
       <Link href={libraryEntityUrl(workspace, member)}>{detail?.members.find(value => value.analysisId === member.analysisId && value.entityId === member.entityId)?.status === 'available'
@@ -100,6 +117,9 @@ export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved 
     {!uncertain && <><h3>{t('选择要关联的来源实体', 'Select a source entity')}</h3>
       <Input.Search allowClear aria-label={t('查找来源实体', 'Find source entities')} placeholder={t('搜索名称、原文或来源', 'Search names, mentions, or sources')} onSearch={value => { setQuery(value); setPage(1); }}/>
       {!!catalog?.unavailableAnalyses && <Alert type="warning" title={t('部分实体分析不可读，可读列表不代表全部来源。', 'Some analyses are unreadable; this list does not cover all sources.')}/>}
+      {catalogError && <Alert className="knowledge-operation-feedback" type="error" title={catalogError} action={<Button disabled={loading || busy} onClick={() => setCatalogRetry(value => value + 1)}>{t('重新读取来源实体', 'Reload source entities')}</Button>}/>}
+      {previewError && <Alert className="knowledge-operation-feedback" type="error" title={previewError} action={<Button disabled={previewLoading || busy} onClick={() => setPreviewRetry(value => value + 1)}>{t('重新读取所选实体', 'Reload selected entity')}</Button>}/>}
+      {previewLoading && <Spin/>}
       {loading ? <Spin/> : <div className="library-source-list">{catalog?.rows.map(row => <Button key={`${row.analysisId}:${row.entityId}`} disabled={busy} onClick={() => setTarget({ analysisId: row.analysisId, entityId: row.entityId })}>
         <span title={`${row.description} · ${row.qualifiers.join(' / ')}`}>{row.label} · {row.origin?.title || t('导入来源', 'Imported source')}</span></Button>)}</div>}
       {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
@@ -108,11 +128,11 @@ export function LibraryEditor({ workspace, lang, detail, seed, onClose, onSaved 
         {!eligible && <Alert type="warning" title={t('此选择不能直接关联：需当前修订、可读且匹配的原文、无未解决歧义，并与对象层次一致。可在实体页先纠正。', 'This selection cannot be linked: require a current revision, readable matching evidence, resolved identity, and matching level. Correct it on the entity page first.')}/>}
         <h4>{t('用于确认身份的原文提及', 'Source mentions supporting identity')}</h4>
         <Checkbox.Group value={mentionIds} onChange={values => { setMentionIds(values as string[]); setConfirmed(false); }} options={preview.revision.mentions.filter(mention => mention.entityId === preview.entity.entityId).map(mention => ({ value: mention.mentionId, label: `${mention.selection.quote} · ${mention.rationale}` }))}/>
-        <label>{t('此来源关联理由', 'Rationale for this source link')}<Input.TextArea aria-label={t('此来源关联理由', 'Rationale for this source link')} value={rationale} onChange={event => setRationale(event.target.value)}/></label>
+        <label>{t('此来源关联理由', 'Rationale for this source link')}<Input.TextArea aria-label={t('此来源关联理由', 'Rationale for this source link')} maxLength={4096} disabled={busy} value={rationale} onChange={event => setRationale(event.target.value)}/></label>
         <Button disabled={busy || !eligible || !rationale.trim()} onClick={add}>{t('确认此来源关联', 'Confirm this source link')}</Button>
       </div>}
     </>}
-    <div className="library-editor-fields"><label>{t('本次维护理由', 'Reason for this revision')}<Input.TextArea aria-label={t('本次维护理由', 'Reason for this revision')} disabled={busy || uncertain} value={reason} onChange={event => { setReason(event.target.value); setConfirmed(false); }}/></label>
+    <div className="library-editor-fields"><label>{t('本次维护理由', 'Reason for this revision')}<Input.TextArea aria-label={t('本次维护理由', 'Reason for this revision')} maxLength={4096} readOnly={busy || uncertain} value={reason} onChange={event => { setReason(event.target.value); setConfirmed(false); }}/></label>
       <Checkbox disabled={busy || uncertain} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>{t('已核对原文、限定和层次，确认所选来源谈论同一对象；解除关联不会删除知识。', 'I reviewed evidence, qualifiers, and levels and confirm the selected sources concern the same object; unlinking does not delete knowledge.')}</Checkbox></div>
   </Modal>;
 }

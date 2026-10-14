@@ -10,7 +10,7 @@ import { workspaceHref } from '../layout/workspace-link';
 import { filterLibraryKnowledge } from '../../../application/knowledge/library-view';
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
 import { KnowledgeSectionNav } from './section-nav';
-import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
+import { notifyKnowledgeChange, resolveKnowledgeDirectory } from './workspace';
 import { LibraryEditor, type LibrarySeed } from './library-editor';
 import { LibraryObjectDetail } from './library-detail';
 import { libraryUrl, requestLibrary, requestLibraryEntity } from './library-request';
@@ -30,6 +30,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const [query, setQuery] = useState(''); const [choice, setChoice] = useState<'all' | 'pending' | 'retain' | 'discard'>('all');
   const [kind, setKind] = useState<'all' | 'fact' | 'case' | 'method'>('all'); const [objects, setObjects] = useState<string[]>([]);
   const [directory, setDirectory] = useState(false); const [editing, setEditing] = useState(seed ? 'new' : '');
+  const [workspaceRetry, setWorkspaceRetry] = useState(0);
   const [refresh, setRefresh] = useState(0); const [loading, setLoading] = useState(true); const [reading, setReading] = useState(false);
   const [error, setError] = useState(''); const [readError, setReadError] = useState('');
   const [selected, setSelected] = useState<string[]>([]); const [authoring, setAuthoring] = useState<string[]>();
@@ -39,10 +40,11 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const currentId = visible.some(row => row.knowledgeId === active) ? active : visible[0]?.knowledgeId;
   useEffect(() => {
     const controller = new AbortController();
-    void resolveKnowledgeWorkspace(initialWorkspace, controller.signal).then(value => { if (!controller.signal.aborted) setWorkspace(value.workspace); })
+    setWorkspace(''); setCatalog(undefined); setDetail(undefined); setError(''); setLoading(true);
+    void resolveKnowledgeDirectory(initialWorkspace, controller.signal).then(value => { if (!controller.signal.aborted) setWorkspace(value); })
       .catch(() => { if (!controller.signal.aborted) { setError(t('知识工作区设置不可读，请重试。', 'Knowledge workspace settings unavailable. Retry.')); setLoading(false); } });
     return () => controller.abort();
-  }, [initialWorkspace]);
+  }, [initialWorkspace, workspaceRetry]);
   useEffect(() => { setObject(objectId ? { id: objectId, revision: revisionId } : undefined); setActive(knowledgeId); setKnowledgeRevision(undefined); setEditing(seed ? 'new' : ''); }, [objectId, revisionId, knowledgeId, seed?.analysisId, seed?.entityId, seed?.revision]);
   useEffect(() => {
     if (!workspace) return;
@@ -93,7 +95,8 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
       <Button disabled={!workspace || loading} onClick={() => setRefresh(value => value + 1)}>{t('刷新', 'Refresh')}</Button>
       <Button disabled={!workspace} onClick={() => setEditing('new')}>{t('从实体建立对象', 'Create from entities')}</Button>
       <Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{t('查看载体', 'View artifacts')}</Link></Space></header>
-    {error && <Alert type="error" title={error} action={<Button onClick={() => window.location.reload()}>{t('重试', 'Retry')}</Button>}/>}
+    <p className="candidate-help knowledge-workspace" title={workspace}>{t('知识目录：', 'Knowledge directory: ')}{workspace || t('尚未读取', 'Not yet read')}</p>
+    {error && <Alert type="error" title={error} action={<Button disabled={loading} onClick={() => workspace ? setRefresh(value => value + 1) : setWorkspaceRetry(value => value + 1)}>{t('重新读取', 'Reload')}</Button>}/>}
     <div className="knowledge-context">
       {object ? <><strong>{t('对象详情', 'Object detail')}</strong><Button onClick={() => { setObject(undefined); clearFilters(); window.history.replaceState(null, '', workspaceHref(KNOWLEDGE_LIBRARY_PATH, workspace)); }}>{t('返回全部知识', 'All knowledge')}</Button></>
         : <details ref={objectMenu} className="knowledge-object-filter" onKeyDown={event => { if (event.key === 'Escape' && objectMenu.current) { objectMenu.current.open = false; objectMenu.current.querySelector('summary')?.focus(); } }}>
@@ -132,7 +135,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
             : <div className="knowledge-reader knowledge-reader-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? t('修复读取问题后继续。', 'Resolve the reading error to continue.') : t('没有匹配知识，请调整筛选或提炼新知识。', 'No matching knowledge. Adjust filters or extract new knowledge.')}>
               <Button onClick={clearFilters}>{t('清除全部筛选', 'Clear all filters')}</Button><Link href={workspaceHref(KNOWLEDGE_CANDIDATES_PATH, workspace)}>{t('提炼新知识', 'Extract new knowledge')}</Link></Empty></div>}
     </div>
-    {!!editing && workspace && <LibraryEditor workspace={workspace} lang={lang} detail={editing === 'edit' ? objectDetail : undefined} seed={editing === 'new' ? seed : undefined} onClose={() => setEditing('')} onSaved={id => { setEditing(''); selectObject(id); notifyKnowledgeChange(workspace); }}/ >}
-    {authoring && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoring} onClose={() => setAuthoring(undefined)}/ >}
+    {!!editing && workspace && <LibraryEditor key={`${workspace}:${editing}:${editing === 'edit' ? object?.id : seed ? `${seed.analysisId}:${seed.entityId}:${seed.revision ?? ''}` : 'new'}`} workspace={workspace} lang={lang} detail={editing === 'edit' ? objectDetail : undefined} seed={editing === 'new' ? seed : undefined} onClose={() => setEditing('')} onSaved={id => { setEditing(''); selectObject(id); notifyKnowledgeChange(workspace); }}/ >}
+    {authoring && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoring} onClose={() => setAuthoring(undefined)}/ >}
   </section>;
 }

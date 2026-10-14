@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> {
   return pageTitle('knowledge', await requestStudioLang());
 }
-export default async function Page({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ view?: string; workspace?: string }> }) {
   const params = await searchParams;
   const lang = await requestStudioLang();
-  return <StudioShell lang={lang} active="knowledge"><KnowledgeView page={requestKnowledgePage()} lang={lang} initialTab={params.view === 'reports' ? 'reports' : 'library'}/></StudioShell>;
+  return <StudioShell lang={lang} active="knowledge"><KnowledgeView key={params.workspace ?? ''} page={requestKnowledgePage()} lang={lang} initialTab={params.view === 'reports' ? 'reports' : 'library'}/></StudioShell>;
 }

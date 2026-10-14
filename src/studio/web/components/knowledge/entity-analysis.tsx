@@ -5,6 +5,7 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entities/identity';
 import { displayTime } from '../../../application/display/format';
+import { requestKnowledge } from './request';
 import { EntityRelationFields, identityProblemLabel } from './entity-relations';
 
 type Draft = Pick<KnowledgeEntityAnalysisDetail['revision'], 'entities' | 'mentions'>;
@@ -39,10 +40,7 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
   const [busy, setBusy] = useState(true);
   const controller = useRef<AbortController | null>(null);
   async function api<T>(operation: string, fields: Record<string, unknown>, signal: AbortSignal): Promise<T> {
-    const response = await fetch('/api/knowledge/candidates', { method: 'POST', signal, headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ workspace, operation, analysisId, ...fields }) });
-    const value = await response.json(); if (!response.ok) throw new Error(value.error);
-    return value as T;
+    return requestKnowledge<T>('candidates', { workspace, operation, analysisId, ...fields }, signal);
   }
   async function request(action: (signal: AbortSignal) => Promise<void>) {
     if (controller.current) return;
@@ -60,7 +58,11 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
     const value = await api<KnowledgeEntityAnalysisDetail>('entities', revision ? { revision } : {}, signal);
     if (!signal.aborted) { accept(value); setNotice(''); }
   }); }
-  useEffect(() => { void load(initialRevision); return () => { controller.current?.abort(); controller.current = null; }; }, []);
+  useEffect(() => {
+    setDetail(undefined); setDraft({ entities: [], mentions: [] }); setReason(''); setNotice('');
+    void load(initialRevision);
+    return () => { controller.current?.abort(); controller.current = null; };
+  }, [workspace, analysisId, initialRevision]);
   const current = detail?.revision.revisionId === detail?.history.writeHeadRevisionId;
   const editable = !!detail && current && detail.source.status === 'available' && !busy;
   const changed = !!detail && JSON.stringify(draft) !== JSON.stringify({ entities: detail.revision.entities, mentions: detail.revision.mentions });
@@ -83,7 +85,7 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
             qualifiers: savedLines(entity.qualifiers), uncertainties: savedLines(entity.uncertainties) })) }, reason: reason.trim() }, signal);
         if (!signal.aborted) { accept(saved); setNotice(t('已保存实体新修订。需要在知识中明确应用此修订。', 'Saved a new entity revision. Apply it explicitly from a knowledge candidate.')); onSaved?.(); }
       })}>{t('保存实体新修订', 'Save new entity revision')}</Button></Space>}>
-    {error && <Alert type="error" showIcon title={error}/>} {notice && <Alert type="success" title={notice}/>}
+    {error && <Alert className="knowledge-operation-feedback" type="error" showIcon title={error}/>} {notice && <Alert type="success" title={notice}/>}
     {!detail ? busy ? <Spin/> : <Empty description={t('实体分析尚不可读。若运行未保存完成，请先恢复提炼运行。', 'Analysis is not readable yet. Resume an unfinished extraction first.')}/>
       : <><EntityAnalysisContext detail={detail} lang={lang}/>
         <label className="entity-history-label">{t('查看修订', 'Inspect revision')}<Select disabled={busy || changed} value={detail.revision.revisionId} style={{ width: '100%' }}
@@ -91,11 +93,11 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
             label: `${index + 1} · ${displayTime(revision.revisedAt)} · ${revision.revisionReason}` }))}/></label>
         {!current && <Alert type="info" title={t('正在查看历史修订。读取最新修订后可纠正。', 'Viewing a historical revision. Load the current revision to correct it.')}/>}
         {initialEntityId && !draft.entities.some(entity => entity.entityId === initialEntityId) && <Alert type="info" title={t('所选对象不在此修订中。请选择其他对象，或切换历史修订核对。', 'The selected entity is absent from this revision. Choose another entity or inspect history.')}/>}
-        <EntityAnalysisEditor detail={detail} draft={draft} initialEntityId={initialEntityId} editable={editable} lang={lang} onChange={setDraft}/>
+        <EntityAnalysisEditor key={`${detail.revision.revisionId}:${initialEntityId ?? ''}`} detail={detail} draft={draft} initialEntityId={initialEntityId} editable={editable} lang={lang} onChange={setDraft}/>
         {!!relationProblems.length && editable && <Alert type="warning" title={t('关联尚未完整，请纠正后再保存。', 'Correct incomplete links before saving.')} description={<ul>{relationProblems.map(({ entity, code }) =>
           <li key={`${entity.entityId}:${code}`}>{entity.label || t('未命名对象', 'Unnamed entity')}：{identityProblemLabel(code, lang)}</li>)}</ul>}/>}
         {!basicComplete && editable && <Alert type="info" title={t('请补齐名称、描述、原文提及和判断理由；歧义及不完整成员需有理由，候选须指向同层次的明确对象。', 'Complete names, descriptions, source mentions and link rationales. Ambiguity and incomplete membership need reasons; candidates must be proposed entities at the same level.')}/>}
-        <label className="entity-history-label">{t('纠正理由', 'Correction reason')}<Input.TextArea disabled={!editable} value={reason} rows={2}
+        <label className="entity-history-label">{t('纠正理由', 'Correction reason')}<Input.TextArea aria-label={t('纠正理由', 'Correction reason')} disabled={!editable} value={reason} rows={2}
           placeholder={t('说明哪些对象或对应关系需要纠正，以及原文依据。', 'Describe the correction and the original evidence.')} onChange={event => setReason(event.target.value)}/></label>
       </>}
   </Drawer>;

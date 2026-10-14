@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
@@ -61,12 +62,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const controller = useRef<AbortController | null>(null);
   useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); setDecisionChoice(null); }, [detail]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
-    const response = await fetch('/api/knowledge/candidates', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ workspace, operation, ...fields }), signal: signal ?? controller.current?.signal,
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? 'knowledge_request_failed');
+    const data = await requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal ?? controller.current?.signal);
     if (['maintain', 'revise', 'apply-entities', 'resume'].includes(operation)) notifyKnowledgeChange(workspace);
     return data as T;
   }
@@ -247,10 +243,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
               onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }} onDecision={choice => void work(() => decide(choice))}/></>}/>
           : <div className="knowledge-reader knowledge-reader-empty"><Empty description={t('没有匹配知识，请调整筛选。', 'No matching knowledge. Adjust the filters.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/></div>}
     </div>}
-    {authoringIds && <ArtifactAuthoringDialog workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
+    {authoringIds && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
       lang={lang} onClose={() => setEntityTarget(undefined)}/>}
-    {applyingEntities && detail && <ApplyEntitiesDialog key={detail.revision.revisionId} detail={detail} workspace={workspace} lang={lang} onClose={() => setApplyingEntities(false)} onSaved={saved => {
+    {applyingEntities && detail && <ApplyEntitiesDialog key={`${workspace}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} onClose={() => setApplyingEntities(false)} onSaved={saved => {
       setApplyingEntities(false); setDetail(saved); setReason(''); setNeedsRefresh(false);
       setNotice(t('已保存绑定实体新修订的知识。请重新核对并决定保留或舍弃。', 'Saved knowledge bound to the new entity revision. Review it and make a new retention decision.'));
       void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -197,6 +197,17 @@ describe('reviewed knowledge carrier authoring', () => {
     const stale = s.preview();
     const current = s.app.detail(s.entry.knowledgeId); s.app.maintain(s.entry.knowledgeId, current.revision.revisionId, 'discard', '暂不采用', current.history.generation);
     expect(() => s.save(stale)).toThrow('conflict');
+  });
+  it('rejects an oversized composed tree before publishing any version and removes staging', async () => {
+    const s = await setup(); s.retain(); const local = join(s.root, 'bounded-skill'); mkdirSync(local);
+    const original = '---\nname: bounded-skill\ndescription: source\n---\n\nOriginal instructions\n';
+    writeFileSync(join(local, 'SKILL.md'), original); const asset = join(local, 'asset.bin'); writeFileSync(asset, '');
+    truncateSync(asset, 64 * 1024 * 1024 - Buffer.byteLength(original));
+    const draft = s.preview({ source: { sourceKind: 'local', path: join(local, 'SKILL.md') } });
+    expect(() => s.save(draft)).toThrow('capacity');
+    expect(readdirSync(join(s.workspace, 'artifacts', draft.artifactId))).toEqual([]);
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(readFileSync(join(local, 'SKILL.md'), 'utf8')).toBe(original);
   });
   it('reports unavailable evidence, detects external drift and refuses symlink redirects', async () => {
     const s = await setup(); s.retain(); s.app.deleteSource(s.snapshot.snapshotId);

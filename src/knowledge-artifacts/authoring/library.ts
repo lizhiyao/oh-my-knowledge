@@ -90,6 +90,7 @@ export class CarrierLibrary {
           else if (draft.artifactKind === 'skill') mkdirSync(contentRoot);
           if (baseline.copyRoot && hashArtifactSource(contentRoot, true) !== baseline.hash) throw new Error('carrier_conflict');
           writeFileSync(join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.content);
+          boundedTree(contentRoot);
           const contentHash = hashArtifactSource(draft.artifactKind === 'skill' ? contentRoot : join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.artifactKind === 'skill');
           const manifest: CarrierVersion = { schemaVersion: 'omk-carrier-v1', artifactId: draft.artifactId, revisionId: randomUUID(), version, name: draft.name, directoryName: draft.directoryName, artifactKind: draft.artifactKind, savedAt: new Date().toISOString(), knowledgeRefs: draft.knowledgeRefs, contentHash, baseline: baseline.locator && baseline.hash ? { locator: baseline.locator, contentHash: baseline.hash, revisionId: baseline.detail?.revisionId ?? null } : null };
           writeFileSync(join(stage, 'manifest.json'), JSON.stringify(manifestSchema.parse(manifest), null, 2));
