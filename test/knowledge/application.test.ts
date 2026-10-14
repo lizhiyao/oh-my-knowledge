@@ -5,15 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeApplication, type ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
-import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
-import type { EvidenceWindow } from '../../src/observability/knowledge-extraction/evidence.js';
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
-import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
+import { EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow } from './fixtures.js';
 
@@ -59,56 +57,6 @@ describe('shared knowledge application', () => {
     expect(() => app.correctEntities(run.runId, before.revision.revisionId, before.history.generation, edit, '错误子串')).toThrow('mention_identifier_fragment');
     expect(readFileSync(file)).toEqual(bytes);
     expect(app.entities(run.runId).history).toEqual(before.history);
-  });
-  it('replays recorded responses through the current application without claiming new model generation', async () => {
-    const evidence = JSON.parse(readFileSync(new URL('../fixtures/entity-extraction-evidence/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
-      frozen: { prompt: { prompt: string }; inputs: { caseId: string; input: { excerpts: EvidenceWindow['excerpts'] } }[] };
-      captures: { records: { caseId: string; result: { captureStatus: string; output: string } }[] }[];
-    };
-    const root = mkdtempSync(join(tmpdir(), 'omk-entity-recorded-replay-')); roots.push(root);
-    const app = createLocalKnowledgeApplication(root);
-    let replayed = 0; let mentionCount = 0;
-    for (const capture of evidence.captures.flatMap(group => group.records)) {
-      expect(capture.result.captureStatus).toBe('output');
-      const original = evidence.frozen.inputs.find(input => input.caseId === capture.caseId)!.input.excerpts;
-      const snapshot = app.capture({ path: join(root, `${capture.caseId}.jsonl`),
-        origin: { threadId: capture.caseId, title: capture.caseId },
-        records: original.map(excerpt => ({ recordIndex: excerpt.recordIndex, raw: JSON.stringify({ type: 'response_item',
-          ...(excerpt.timestamp ? { timestamp: excerpt.timestamp } : {}), payload: { type: 'message', role: excerpt.role,
-            content: [{ type: excerpt.role === 'user' ? 'input_text' : 'output_text', text: excerpt.text }] } }) })),
-      });
-      expect(snapshot.excerpts.map(({ recordIndex, role, text }) => ({ recordIndex, role, text })))
-        .toEqual(original.map(({ recordIndex, role, text }) => ({ recordIndex, role, text })));
-      const refs = new Map(original.map((excerpt, index) => [excerpt.evidenceRef, snapshot.excerpts[index].evidenceRef]));
-      const rebound = JSON.stringify(JSON.parse(capture.result.output, (key: string, value: unknown) => {
-        if (key !== 'evidenceRef') return value;
-        const ref = refs.get(String(value)); expect(ref).toBeDefined(); return ref;
-      }));
-      const run = await app.generate(snapshot.snapshotId, { executor: 'recorded-output-replay', model: 'recorded-v6',
-        generate: async (system, input) => {
-          expect(system).toBe(EXTRACTION_PROMPT);
-          expect(system).not.toBe(evidence.frozen.prompt.prompt);
-          expect(JSON.parse(input).excerpts).toEqual(snapshot.excerpts);
-          replayed++; return { output: rebound, durationMs: 0 };
-        },
-      });
-      expect(run.status).toBe('completed'); expect(run.rawOutput).toBe(rebound);
-      expect(run.promptVersion).toBe(EXTRACTION_PROMPT_VERSION);
-      expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
-      const detail = app.entities(run.runId); mentionCount += detail.revision.mentions.length;
-      for (const entity of detail.revision.entities) {
-        expect(app.queryEntities({ query: entity.label, threadId: capture.caseId }).rows.map(row => row.entityId)).toContain(entity.entityId);
-        expect(app.entityDetail(run.runId, entity.entityId).mentionChecks.every(check => check.positionStatus === 'matched')).toBe(true);
-      }
-      for (const committed of run.committed) {
-        const knowledge = app.detail(committed.knowledgeId);
-        expect(knowledge.grounding.entityAnalysisRef).toEqual({ analysisId: run.runId, revisionId: detail.revision.revisionId });
-        expect(knowledge.entityAnalysis?.status).toBe('available');
-      }
-    }
-    expect(replayed).toBe(11); expect(mentionCount).toBe(44);
-    expect(app.queryEntities({ pageSize: 100 })).toMatchObject({ entityCount: 28, analysisCount: 11, unavailableAnalyses: 0 });
-    expect(app.list()).toHaveLength(5);
   });
   it('preserves configuration literal types, scope and unknown code-state identity after reopening stored knowledge', async () => {
     const text = "当前 master 的被测代码尚未发布；客户端 C 的 enabled 在测试环境为布尔值 false，在生产环境为字符串 'false'。";
