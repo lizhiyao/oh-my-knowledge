@@ -1,9 +1,12 @@
 import { readFileSync, lstatSync } from 'node:fs';
-import { Args, Flags } from '@oclif/core';
+import { Args, Errors, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
 import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
+import { z } from 'zod';
+import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCode, type KnowledgeOperation } from '../../../observability/knowledge-extraction/operations.js';
+import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-output.js';
 import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
@@ -31,9 +34,9 @@ export default class ObserveKnowledge extends BaseCommand {
     'entity-revision': Flags.string({ description: description('实体分析的明确修订身份；纠正或应用时必填。', 'Explicit entity analysis revision; required for corrections or applying entities.') }),
     'identity-uncertainties': Flags.string({ description: description('apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。', 'apply-entities: reviewed additional identity uncertainties as a JSON array; omitted preserves prior notes, [] clears them, and current entity ambiguity is always retained.') }),
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
-    reason: Flags.string({ description: description('保留、舍弃或修订的理由。', 'Reason for retaining, discarding, or editing.') }),
+    reason: Flags.string({ description: description('保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。', 'Reason for maintenance or editing; retention does not verify truth, and entity corrections do not automatically rewrite knowledge.') }),
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
-    executor: Flags.string({ description: description('生成执行器，沿用 OMK 的运行配置。', 'Generation executor, using OMK runtime configuration.') }),
+    executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID，用于重试同一次运行。', 'generate: stable UUID for retrying the same run.') }),
     json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要。', 'Print complete JSON instead of a readable summary.') }),
@@ -44,101 +47,95 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --analysis <run-id>',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --query Atlas --json',
+    '<%= config.bin %> observe knowledge show --workspace ./knowledge --id <knowledge-id> --json',
+    '<%= config.bin %> observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --reason "已核对来源与适用条件"',
+    '<%= config.bin %> observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation 1 --input ./entities.json --reason "纠正身份对应"',
+    '<%= config.bin %> observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"',
+    '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
   ];
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ObserveKnowledge);
+    const { args, flags } = await this.parse(ObserveKnowledge).catch(cause => {
+      // oclif option-value errors default to 1; OMK's parameter-failure contract is 2.
+      if (cause instanceof Errors.CLIError && ['ArgInvalidOptionError', 'FlagInvalidOptionError'].includes(cause.constructor.name)) this.error(cause.message, { exit: 2 });
+      throw cause;
+    });
+    const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     const need = (value: string | undefined, name: string): string => {
-      if (!value?.trim()) this.error(`--${name} ${this.lang === 'zh' ? '不能为空' : 'is required'}`, { exit: 2 });
+      if (!value?.trim()) this.error(`--${name} ${t('不能为空', 'is required')}`, { exit: 2 });
       return value!;
     };
-    const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
-    const app = createLocalKnowledgeApplication(settings.workspace);
     const generation = (): number => {
-      if (!flags.generation) this.error('--generation is required', { exit: 2 });
+      if (!flags.generation) this.error(`--generation ${t('不能为空；请先读取当前记录', 'is required; read the current record first')}`, { exit: 2 });
       return flags.generation!;
     };
-    const draft = (): unknown => {
-      const path = need(flags.input, 'input'); const stat = lstatSync(path);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) this.error('Invalid draft input file.');
-      return JSON.parse(readFileSync(path, 'utf8'));
+    const jsonInput = (raw: string, label: string): unknown => {
+      try { return JSON.parse(raw); }
+      catch { this.error(t(`${label} 不是有效 JSON。请核对输入后重试；原记录未改写。`, `${label} is not valid JSON. Check the input and retry; saved records were not changed.`), { exit: 2 }); }
     };
-    await this.runWithCancellation(async (signal) => {
-      let result: unknown;
-      switch (args.operation) {
-        case 'capture': result = app.capture({ path: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }, signal); break;
-        case 'generate': {
-          const runtime = { executor: settings.executor, model: need(settings.model, 'model') };
-          const snapshot = need(flags.snapshot, 'snapshot');
-          const source = app.source(snapshot);
-          if (source.status !== 'available') this.error(`Source unavailable: ${source.reason}`);
-          this.logToStderr(`${runtime.executor} / ${runtime.model} · ${snapshot} · ${this.lang === 'zh' ? '仅发送选定来源片段；费用以执行器实际报告为准。' : 'Only selected excerpts are sent; cost depends on executor reporting.'}`);
-          result = await app.generate(snapshot, configuredExtractionModel(runtime.executor, runtime.model), flags['run-id'], signal);
-          break;
+    const draft = (): unknown => {
+      const path = need(flags.input, 'input'); let raw: string;
+      try {
+        const stat = lstatSync(path);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw new Error();
+        raw = readFileSync(path, 'utf8');
+      } catch { this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.')); }
+      return jsonInput(raw!, '--input');
+    };
+    // Required arguments and draft syntax are checked before settings or storage access.
+    let operation: KnowledgeOperation;
+    switch (args.operation) {
+      case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
+      case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'] }; break;
+      case 'runs': case 'list': operation = { operation: args.operation }; break;
+      case 'resume': operation = { operation: 'resume', id: need(flags.id, 'id') }; break;
+      case 'show': operation = { operation: 'show', id: need(flags.id, 'id'), revision: flags.revision }; break;
+      case 'entities': {
+        if (flags.analysis) operation = { operation: 'entities', analysisId: flags.analysis, revision: flags['entity-revision'] };
+        else {
+          if (flags['entity-revision']) this.error(t('--entity-revision 必须与 --analysis 一起使用', '--entity-revision requires --analysis'), { exit: 2 });
+          operation = { operation: 'entity-catalog', query: flags.query?.trim() || undefined, identityStatus: flags['identity-status'] as 'all' | 'proposed' | 'unresolved' | undefined,
+            sourceStatus: flags['source-status'] as 'all' | 'available' | 'unavailable' | undefined, page: flags.page, pageSize: flags['page-size'] };
         }
-        case 'runs': result = app.runs(); break;
-        case 'resume': result = app.resume(need(flags.id, 'id'), signal); break;
-        case 'list': result = app.list(); break;
-        case 'show': result = app.detail(need(flags.id, 'id'), flags.revision); break;
-        case 'entities': {
-          if (flags.analysis) result = app.entities(flags.analysis, flags['entity-revision']);
-          else {
-            if (flags['entity-revision']) this.error('--entity-revision requires --analysis', { exit: 2 });
-            result = app.queryEntities({ query: flags.query, identityStatus: flags['identity-status'] as 'all' | 'proposed' | 'unresolved' | undefined,
-              sourceStatus: flags['source-status'] as 'all' | 'available' | 'unavailable' | undefined, page: flags.page, pageSize: flags['page-size'] });
-          }
-          break;
-        }
-        case 'correct-entities': result = app.correctEntities(need(flags.analysis, 'analysis'), need(flags['entity-revision'], 'entity-revision'),
-          generation(), draft(), need(flags.reason, 'reason')); break;
-        case 'apply-entities': result = app.reviseUsingEntities(need(flags.id, 'id'), need(flags.revision, 'revision'), generation(),
-          need(flags.analysis, 'analysis'), need(flags['entity-revision'], 'entity-revision'), draft(), need(flags.reason, 'reason'),
-          flags['identity-uncertainties'] === undefined ? undefined : JSON.parse(flags['identity-uncertainties'])); break;
-        case 'source': result = app.source(need(flags.snapshot, 'snapshot')); break;
-        case 'delete-source': app.deleteSource(need(flags.snapshot, 'snapshot')); result = { deleted: flags.snapshot }; break;
-        case 'retain': case 'discard': {
-          result = app.maintain(need(flags.id, 'id'), need(flags.revision, 'revision'), args.operation,
-            need(flags.reason, 'reason'), generation());
-          break;
-        }
-        case 'revise': {
-          result = app.revise(need(flags.id, 'id'), need(flags.revision, 'revision'), generation(), draft(), need(flags.reason, 'reason'));
-          break;
-        }
+        break;
       }
-      this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang));
+      case 'correct-entities': operation = { operation: 'correct-entities', analysisId: need(flags.analysis, 'analysis'), revision: need(flags['entity-revision'], 'entity-revision'),
+        generation: generation(), reason: need(flags.reason, 'reason'), draft: draft() }; break;
+      case 'apply-entities': operation = { operation: 'apply-entities', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
+        analysisId: need(flags.analysis, 'analysis'), entityRevision: need(flags['entity-revision'], 'entity-revision'), reason: need(flags.reason, 'reason'), draft: draft(),
+        identityUncertainties: flags['identity-uncertainties'] === undefined ? undefined : jsonInput(flags['identity-uncertainties'], '--identity-uncertainties') as string[] }; break;
+      case 'source': case 'delete-source': operation = { operation: args.operation, snapshot: need(flags.snapshot, 'snapshot') }; break;
+      case 'retain': case 'discard': operation = { operation: 'maintain', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), choice: args.operation,
+        reason: need(flags.reason, 'reason'), generation: generation() }; break;
+      case 'revise': operation = { operation: 'revise', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
+        reason: need(flags.reason, 'reason'), draft: draft() }; break;
+      default: this.error(t('未知知识操作。请运行 omk observe knowledge --help。', 'Unknown knowledge operation. Run omk observe knowledge --help.'), { exit: 2 });
+    }
+    const checked = KnowledgeOperationSchema.safeParse(operation!);
+    if (!checked.success) this.error(t('操作参数无效，请核对身份、页码及输入格式。', 'Invalid operation parameters; check identities, page bounds and input format.') + '\n' + checked.error.issues.map(issue => issue.path.join('.')).join(', '), { exit: 2 });
+    // Validation must not rewrite literal CLI paths, identities or reason bytes.
+    const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
+    const app = createLocalKnowledgeApplication(settings.workspace);
+    if (operation.operation === 'generate') operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') };
+    await this.runWithCancellation(async signal => {
+      if (operation.operation === 'generate') this.logToStderr(`${operation.executor} / ${operation.model} · ${operation.snapshot} · ${t('仅发送选定来源片段；费用以执行器实际报告为准。', 'Only selected excerpts are sent; cost depends on executor reporting.')}`);
+      let result: unknown;
+      try { result = await executeKnowledgeOperation(app, operation, signal, configuredExtractionModel); }
+      catch (cause) {
+        const code = knowledgeFailureCode(cause);
+        const reload = operation.operation === 'correct-entities' ? knowledgeCommand(settings.workspace, 'entities', { analysis: operation.analysisId })
+          : 'id' in operation && operation.operation !== 'resume' ? knowledgeCommand(settings.workspace, 'show', { id: operation.id })
+          : knowledgeCommand(settings.workspace, 'runs');
+        if (code === 'knowledge_conflict') this.error(`${code} · ${t('记录已变化。先重读最新修订与 generation，再核对草稿后重试；不要覆盖他人的修改。', 'The record changed. Reload its latest revision and generation, review your draft, then retry without overwriting another edit.')}\n${reload}`);
+        if (code === 'knowledge_workspace_busy') this.error(`${code} · ${t('工作区正在写入。等待当前操作结束后重试；不要删除仍在使用的锁。', 'The workspace is being written. Retry after the current operation finishes; do not remove a live lock.')}`);
+        if (code === 'knowledge_storage_unsupported') this.error(`${code} · ${t('所选工作区含不支持的记录。请核对目录；如需重新提炼，选择新的空目录，不改写旧记录。', 'This workspace contains unsupported records. Check the directory; use a new empty workspace to extract again, preserving old records.')}`);
+        if (signal.aborted) this.error(t('操作已中断。先读取提炼运行；resume 只恢复已保存结果，不再次调用模型。', 'Operation interrupted. Inspect extraction runs first; resume restores saved results without another model call.') + `\n${knowledgeCommand(settings.workspace, 'runs')}`);
+        if (cause instanceof z.ZodError) this.error(t('草稿内容未通过校验。核对以下字段后重试；原记录未改写。', 'Draft validation failed. Review the following fields and retry; saved records were not changed.') + '\n' + cause.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('\n'));
+        if (operation.operation === 'capture') this.error(t('来源归档未完成。核对 --source 的路径、读取权限、日志格式与记录范围后重试。', 'Source capture did not finish. Check --source path, read permissions, log format and record range before retrying.') + '\n' + (cause instanceof Error ? cause.message : String(cause)));
+        if (operation.operation === 'generate' || operation.operation === 'resume') this.error(t('提炼或恢复未完成。先核对已保存运行；有持久化结果时使用 resume，不要盲目启动新的模型调用。', 'Extraction or recovery did not finish. Inspect saved runs first; use resume when output was persisted instead of blindly starting another model call.') + '\n' + (cause instanceof Error ? cause.message : String(cause)) + `\n${knowledgeCommand(settings.workspace, 'runs', { json: true })}`);
+        throw cause;
+      }
+      this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
       if (result && typeof result === 'object' && 'status' in result && ['failed', 'cancelled'].includes(String(result.status))) this.exit(1);
     });
   }
-}
-
-function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en'): string {
-  if (Array.isArray(value)) return value.length ? value.map((entry) => formatKnowledgeResult(entry, lang)).join('\n\n') : (lang === 'zh' ? '暂无记录。' : 'No records.');
-  if (!value || typeof value !== 'object') return String(value);
-  const item = value as Record<string, unknown>;
-  if ('rows' in item && 'entityCount' in item) {
-    const catalog = item as ReturnType<ReturnType<typeof createLocalKnowledgeApplication>['queryEntities']>;
-    return [lang === 'zh' ? `${catalog.total} 个匹配对象 · 第 ${catalog.page} 页；身份对应仍需核对。` : `${catalog.total} matching entities · page ${catalog.page}; identity assignments need review.`,
-      ...(catalog.unavailableAnalyses ? [lang === 'zh' ? `${catalog.unavailableAnalyses} 份分析不可读，结果不完整。` : `${catalog.unavailableAnalyses} unreadable analyses; results are incomplete.`] : []),
-      ...(catalog.knowledgeStatus === 'unavailable' ? [lang === 'zh' ? '关联知识不可读，数量未知。' : 'Linked knowledge unavailable; counts unknown.'] : []),
-      ...catalog.rows.map(row => `${row.label} · ${row.identityStatus} · ${row.mentionCount} ${lang === 'zh' ? '处提及' : 'mentions'} · ${row.knowledgeCount ?? '—'} ${lang === 'zh' ? '条知识' : 'knowledge items'}\n${row.analysisId} / ${row.entityId} / ${row.revisionId}\n${row.qualifiers.join(' / ')} · ${row.sourceStatus}`)].join('\n\n');
-  }
-  if ('history' in item && (item.history as { storeKind?: string })?.storeKind === 'entity-analysis-history') {
-    const analysis = item as ReturnType<ReturnType<typeof createLocalKnowledgeApplication>['entities']>;
-    return [lang === 'zh' ? '实体分析，身份对应仍需核对。' : 'Entity analysis; identity assignments need review.',
-      `${analysis.history.analysisId} / ${analysis.revision.revisionId} · generation ${analysis.history.generation}`,
-      JSON.stringify({ entities: analysis.revision.entities, mentions: analysis.revision.mentions, limitations: analysis.revision.limitations,
-        revisionReason: analysis.revision.revisionReason, sourceStatus: analysis.source.status }, null, 2)].join('\n');
-  }
-  if ('revision' in item) {
-    const detail = item as ReturnType<ReturnType<typeof createLocalKnowledgeApplication>['detail']>;
-    return [
-      detail.revision.title, `${detail.revision.knowledgeId} / ${detail.revision.revisionId} · generation ${detail.history.generation}`,
-      lang === 'zh' ? '待复核；保留不等于已证实。' : 'Pending review; retained does not mean verified.',
-      JSON.stringify(detail.revision.content, null, 2),
-      JSON.stringify({ entities: detail.revision.entities, evidence: detail.revision.evidence, grounding: detail.grounding, sources: detail.sources }, null, 2),
-    ].join('\n');
-  }
-  if ('snapshotId' in item && 'excerpts' in item) return `${item.snapshotId}\n${lang === 'zh' ? '来源范围与限制' : 'Source scope and limitations'}: ${item.startRecord}–${item.endRecord}\n${JSON.stringify(item.limitations)}\n${item.sourcePath}`;
-  if ('title' in item) return `${item.title}\n${item.knowledgeId} / ${item.revisionId} · generation ${item.generation} · pending · ${item.choice ?? '—'}`;
-  return JSON.stringify(value, null, 2);
 }

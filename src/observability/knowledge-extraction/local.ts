@@ -6,6 +6,8 @@ import { TraceEvidenceStore } from './adapters/trace-evidence.js';
 import { FileKnowledgeStore } from './adapters/knowledge-store.js';
 import { FileExtractionRunStore } from './adapters/run-store.js';
 import { FileKnowledgeTags } from './adapters/knowledge-tags.js';
+import { FileLibraryStore } from './adapters/library-store.js';
+import { KnowledgeLibraryApplication } from './library.js';
 import { FileEntityAnalysisStore } from './adapters/entity-store.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
@@ -22,4 +24,10 @@ export function createLocalKnowledgeApplication(root: string): KnowledgeApplicat
     hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
     actor: { actorKind: 'human', actorId: 'local-user' },
   });
+}
+
+export function createLocalKnowledgeLibrary(root: string): KnowledgeLibraryApplication {
+  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
+  const workspace = resolve(root);
+  return new KnowledgeLibraryApplication(createLocalKnowledgeApplication(workspace), new FileLibraryStore(join(workspace, 'library'), workspace));
 }

@@ -1,6 +1,6 @@
 import type { ConversationCatalog, ConversationAutoExtraction } from '../../../observability/application.js';
 import { executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
-import { KnowledgeStorageStateError } from '../../../observability/application.js';
+import { knowledgeFailureCode } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { executeKnowledgeLibraryAction } from '../../application/knowledge/knowledge-library.js';
 import { JSON_HEADERS } from '../errors.js';
@@ -25,12 +25,7 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
         if (!response.destroyed) { response.writeHead(200, JSON_HEADERS); response.end(JSON.stringify(result)); }
       } catch (error) {
         if (response.destroyed) return;
-        const message = error instanceof Error ? error.message : '';
-        const code = error instanceof KnowledgeStorageStateError ? error.stateCode
-          : /conflict/i.test(message) ? 'knowledge_conflict'
-          : message === 'Knowledge tags invalid.' ? 'knowledge_tags_invalid'
-          : /capacity|exceeds/i.test(message) ? 'knowledge_capacity_exceeded'
-          : 'knowledge_request_failed';
+        const code = knowledgeFailureCode(error);
         response.writeHead(['knowledge_conflict', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(code) ? 409 : 400, JSON_HEADERS);
         response.end(JSON.stringify({ error: code }));
       } finally { response.off('close', cancel); liveStreams.delete(cancel); }

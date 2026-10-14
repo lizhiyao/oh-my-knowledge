@@ -13,7 +13,7 @@ afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync
 describe('observe knowledge command wiring', () => {
   it('captures one selected source, inspects it and deletes its snapshot through shared operations', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
-    const path = join(root, 'trace.jsonl');
+    const path = join(root, 'trace.jsonl ');
     const workspace = join(root, 'knowledge');
     writeFileSync(path, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '请记住项目规则' }] } }));
     const output = await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', path, '--json'], { cwd: root });
@@ -38,7 +38,21 @@ describe('observe knowledge command wiring', () => {
   });
   it('rejects missing operation-specific parameters before accessing storage', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
     await expect(runCommand(ObserveKnowledge, ['retain', '--workspace', root], { cwd: root })).rejects.toMatchObject({ code: 2 });
+  });
+  it('keeps text next steps in the selected workspace and leaves JSON as a single machine result', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-cli-loop-')); roots.push(root);
+    const workspace = join(root, 'chosen workspace'); const source = join(root, 'source.jsonl');
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+    const text = await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', source, '--lang', 'zh'], { cwd: root });
+    expect(text.stdout).toContain('下一步'); expect(text.stdout).toContain('observe knowledge source');
+    expect(text.stdout).toContain(`--workspace '${workspace}'`); expect(text.stdout).toContain('不会调用模型');
+    const empty = await runCommand(ObserveKnowledge, ['list', '--workspace', join(root, 'empty'), '--lang', 'en'], { cwd: root });
+    expect(empty.stdout).toContain('No knowledge'); expect(empty.stdout).toContain('observe knowledge capture');
+    expect(existsSync(join(root, 'empty'))).toBe(false);
+    const json = await runCommand(ObserveKnowledge, ['list', '--workspace', join(root, 'empty'), '--json'], { cwd: root });
+    expect(JSON.parse(json.stdout)).toEqual([]); expect(json.stdout).not.toContain('Next');
   });
   it('inspects and corrects an independent entity result, then explicitly binds a new knowledge revision', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-entities-cli-')); roots.push(root);
@@ -64,7 +78,7 @@ describe('observe knowledge command wiring', () => {
     expect(corrected.history.generation).toBe(2);
     const old = app.detail(run.committed[0].knowledgeId);
     expect(old.revision.entities[0].label).toBe('Alpha');
-    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 1 });
+    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('observe knowledge entities') });
     const draft = { title: old.revision.title, entities: corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description })),
       content: old.revision.content, evidence: old.revision.evidence };
     const draftPath = join(root, 'knowledge.json'); writeFileSync(draftPath, JSON.stringify(draft));
@@ -74,12 +88,17 @@ describe('observe knowledge command wiring', () => {
     expect(applied.revision.entities[0].label).toBe('项目 Alpha');
     expect(applied.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
     expect(applied.history.revisions[0]).toEqual(old.revision);
+    await runCommand(ObserveKnowledge, ['retain', ...base, '--id', old.revision.knowledgeId, '--revision', applied.revision.revisionId,
+      '--generation', '2', '--reason', '核对条件后保留'], { cwd: root });
+    const kept = await runCommand(ObserveKnowledge, ['show', ...base, '--id', old.revision.knowledgeId], { cwd: root });
+    expect(kept.stdout).toContain('维护决定：已保留'); expect(kept.stdout).toContain('效果尚未验证');
+    expect(kept.stdout).toContain('--generation 3');
     await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
   });
-  it('rejects removed migration operations and flags before touching the workspace', async () => {
+  it('rejects unknown operations, invalid filter values and flags before touching the workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-current-cli-')); roots.push(root);
-    for (const args of [['migrate'], ['list', '--dry-run'], ['list', '--backup-dir', '/outside'], ['list', '--preview-digest', 'digest']]) {
-      await expect(runCommand(ObserveKnowledge, [...args, '--workspace', join(root, 'knowledge')], { cwd: root })).rejects.toMatchObject({ code: args[0] === 'migrate' ? 1 : 2 });
+    for (const args of [['unknown'], ['entities', '--source-status', 'invalid'], ['list', '--unexpected'], ['capture', '--start-record', '-1']]) {
+      await expect(runCommand(ObserveKnowledge, [...args, '--workspace', join(root, 'knowledge')], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
     expect(existsSync(join(root, 'knowledge'))).toBe(false);
   });

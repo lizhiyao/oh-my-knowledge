@@ -516,7 +516,7 @@ omk observe knowledge <operation> [flags]
 - `--analysis` `option`:entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。
 - `--end-record` `option`:最后一条记录序号，包含。
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
-- `--executor` `option`:生成执行器，沿用 OMK 的运行配置。
+- `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--id` `option`:知识身份；resume 时为运行身份。
 - `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
@@ -528,7 +528,7 @@ omk observe knowledge <operation> [flags]
 - `--page` `option`:entities：检索页码，从 1 开始。
 - `--page-size` `option`:entities：每页对象数，默认 20，最多 100。
 - `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
-- `--reason` `option`:保留、舍弃或修订的理由。
+- `--reason` `option`:保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
@@ -557,6 +557,26 @@ omk observe knowledge entities --workspace ./knowledge --analysis <run-id>
 
 ```bash
 omk observe knowledge entities --workspace ./knowledge --query Atlas --json
+```
+
+```bash
+omk observe knowledge show --workspace ./knowledge --id <knowledge-id> --json
+```
+
+```bash
+omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --reason "已核对来源与适用条件"
+```
+
+```bash
+omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation 1 --input ./entities.json --reason "纠正身份对应"
+```
+
+```bash
+omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"
+```
+
+```bash
+omk observe knowledge resume --workspace ./knowledge --id <run-id>
 ```
 
 ## omk observe show
