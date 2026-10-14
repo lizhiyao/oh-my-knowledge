@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyCommand } from '../../docs/.vitepress/theme/landing-init.js';
+import { copyCommand, initLanding } from '../../docs/.vitepress/theme/landing-init.js';
 
 function browser(copy: () => boolean) {
   const remove = vi.fn();
@@ -44,5 +44,40 @@ describe('website command copy', () => {
     expect(await copyCommand('omk studio')).toBe(false);
     expect(remove).toHaveBeenCalledOnce();
     expect(focus).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe('website copy activation focus', () => {
+  it.each([false, true])('restores focus after permission failure without stealing a new focus: moved=%s', async moved => {
+    browser(() => false);
+    let reject!: (error: Error) => void;
+    vi.stubGlobal('navigator', { clipboard: { writeText: () => new Promise<void>((_, fail) => { reject = fail; }) } });
+    let activate!: () => Promise<void>;
+    const focus = vi.fn(() => { Object.defineProperty(document, 'activeElement', { configurable: true, value: button }); });
+    const status = { textContent: '' };
+    const button = {
+      textContent: 'Copy', dataset: { copyCommand: 'omk studio' },
+      set disabled(value: boolean) {
+        if (value && document.activeElement === button as unknown as HTMLElement) {
+          Object.defineProperty(document, 'activeElement', { configurable: true, value: document.body });
+        }
+      },
+      focus,
+      closest: () => ({ nextElementSibling: status }),
+      addEventListener: (_event: string, handler: () => Promise<void>) => { activate = handler; },
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(document, 'activeElement', { configurable: true, value: button });
+    const dispose = initLanding('en', { querySelectorAll: () => [button] } as unknown as HTMLElement);
+    const pending = activate();
+    const other = { focus: vi.fn() };
+    if (moved) Object.defineProperty(document, 'activeElement', { configurable: true, value: other });
+    reject(new Error('denied'));
+    await pending;
+    expect(status.textContent).toContain('Copy failed');
+    expect(focus).toHaveBeenCalledTimes(moved ? 0 : 1);
+    expect(document.activeElement).toBe(moved ? other : button);
+    dispose();
   });
 });

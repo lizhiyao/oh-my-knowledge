@@ -1,115 +1,40 @@
-<header class="hero">
-  <div class="wrap">
-    <span class="tag"><span class="dot"></span> <b>OMK</b> · 1.0 Beta iteration continues</span>
-    <h1>Observe. Measure.<br/><span class="em">Know.</span></h1>
-    <p class="sub"><b>Make knowledge useful for people and AI.</b><br/>Preserve knowledge with sources from real collaboration between people and AI. Help people build understanding, methods, and reasons for decisions, and give AI suitable knowledge for later tasks.</p>
-    <p class="sub">Our direction: help users manage, revise, and reuse their knowledge across conversations and agents.</p>
-    <div class="cta">
-      <div class="command"><span class="cmd"><span><span class="pfx">$</span> npm i -g oh-my-knowledge@next</span><button type="button" class="copy" data-copy-command="npm i -g oh-my-knowledge@next" aria-label="Copy installation command">Copy</button></span><p class="copy-status" role="status" aria-live="polite"></p></div>
-      <a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a><a class="lnk" href="/guides/eval-runtime">Node.js integration <span class="ar">→</span></a><a class="lnk" href="/guides/observe-production">Inspect task trajectories <span class="ar">→</span></a>
+<section class="hero" id="about">
+  <div class="wrap hero-layout">
+    <div class="hero-copy">
+      <h1>Turn experience from work<br/>into knowledge you can maintain.</h1>
+      <p class="sub">Extract candidates from real work, review sources and conditions, accumulate and revise knowledge, then update the skills or prompts that reference it. Make knowledge useful for people and AI.</p>
+      <div class="actions"><a class="primary" data-entry="knowledge" href="/guides/extract-knowledge">Start maintaining knowledge</a><a class="text-link" href="/guides/sdk-maintenance-case">See a real case first</a></div>
+      <div class="command"><span class="cmd"><code>npm i -g oh-my-knowledge@next</code><button type="button" class="copy" data-copy-command="npm i -g oh-my-knowledge@next" aria-label="Copy installation command">Copy</button></span><p class="copy-status" role="status" aria-live="polite"></p></div>
+      <p class="requirements">Node.js ≥22 · Maintenance requires Beta.14 or later (@next). Check omk --version after installing; latest is the stable channel. <a href="/guides/v1-preview-migration">Read the migration guide before upgrading</a></p>
+      <p class="brand-line">Observe. Measure. Know.</p>
     </div>
-    <p>1.0 Beta: <a class="lnk" href="/guides/local-tasks">local task acceptance requires Beta.13 or later</a>.</p>
-    <div class="trust"><span>Node ≥ 22</span><span class="sep"></span><span>MIT</span><span class="sep"></span><span>Fixed models and cases · controlled, recorded conditions</span></div>
-    <figure class="flow-hero">
-      <picture>
-        <source media="(prefers-reduced-motion: reduce) and (max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
-        <source media="(prefers-reduced-motion: reduce)" srcset="/omk-knowledge-flow-en.png" type="image/png" />
-        <source media="(max-width: 820px)" srcset="/omk-knowledge-flow-en-mobile.svg" type="image/svg+xml" />
-        <img src="/omk-knowledge-flow-en-animated.gif" alt="OMK workflow illustration: observation, knowledge review, manual artifact changes, and controlled evaluation; complete automatic linking is not yet implemented" />
-      </picture>
-      <figcaption>The diagram shows composable workflows. Review knowledge and prepare changes manually; complete linking and automation remain partly unimplemented.</figcaption>
+    <figure class="product-view">
+      <a href="/sdk-maintenance-review.png" aria-label="Open the full historical SDK artifact review screenshot"><img src="/sdk-maintenance-review.png" width="796" height="601" alt="Real Studio reader: historical SDK v4 references three knowledge items, two of which require review. Changes compare incorporated and current revisions." fetchpriority="high" decoding="async" /></a>
+      <figcaption>Real SDK case · Knowledge changed; the historical artifact keeps its references. Chinese UI; open the full image.</figcaption>
     </figure>
-
   </div>
-</header>
+</section>
 <section class="band" id="caps">
-  <div class="wrap">
-    <div class="sec-head"><h2>Start with your task</h2><p class="lead">Run workflows with the CLI, inspect evidence in Studio, embed eval-runtime in a service, or use the DSH plugin within your host environment.</p></div>
-    <div class="cap-grid">
-      <div class="cap o">
-        <div class="ic">01</div><h3>Find knowledge worth preserving</h3>
-        <p>Review local Codex conversations for evidence of successful approaches, user corrections, and knowledge gaps. Preserve requests, execution, and results; live following makes no model calls.</p><code class="cmd2">omk studio</code>
-        <p><a class="lnk" href="/guides/observe-production">Read the observation guide <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap d">
-        <div class="ic">02</div><h3>Preserve reviewable knowledge</h3>
-        <p>Extract facts, experience, and methods from selected Codex logs. Review sources, revise, retain, or discard; retention is not verification.</p>
-        <p><a class="lnk" href="/guides/extract-knowledge">Explore knowledge extraction <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap e">
-        <div class="ic">03</div><h3>Validate artifact changes</h3>
-        <p>Fix models and cases, record execution conditions, and compare artifact versions with decisions, intervals, and failure evidence.</p><code class="cmd2">omk eval --control v1 --treatment v2 --dry-run</code>
-        <p><a class="lnk" href="/quickstart-skill-eval">Preview your first comparison <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap o">
-        <div class="ic">04</div><h3>Record knowledge problems</h3>
-        <p>Save minimal feedback evidence with user confirmation. Draft cases after review confirms real issues; no automatic conversation monitoring.</p>
-        <p><a class="lnk" href="/guides/mcp-integration">Connect active feedback <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap d">
-        <div class="ic">05</div><h3>Improve skills iteratively</h3>
-        <p>Generate candidate versions, screen them through controlled A/B gates, and compare again before writing back. Release decisions still need independent validation.</p>
-        <p><a class="lnk" href="/guides/auto-improve-skills">Explore iteration and gates <span class="ar">→</span></a></p>
-      </div>
-      <div class="cap e">
-        <div class="ic">06</div><h3>Embed eval-runtime</h3>
-        <p>Compose execution, scoring, and comparison through a Node.js API in your own service or platform, without the CLI or Studio.</p>
-        <p><a class="lnk" href="/guides/eval-runtime">Read the integration guide <span class="ar">→</span></a></p>
-      </div>
-    </div>
+  <div class="wrap maintenance-layout">
+    <div class="section-intro"><h2>Start by reading. Keep maintaining.</h2><p>Inspect existing records, then decide what to retain. Every revision has a reason; every artifact version links back to evidence.</p><a class="text-link" href="/guides/extract-knowledge">Follow the workflow to your first step</a></div>
+    <ol class="maintenance-steps" id="workflow">
+      <li><h3>Read records and sources</h3><p>Start Studio and open an existing Codex conversation at the URL returned by the command. This makes no model call. If no records exist, start with source and collection guidance.</p><code>omk studio</code></li>
+      <li><h3>Review, accumulate, and revise</h3><p>Choose a conversation and turns, review the material to send, then extract candidates. This calls a model and requires an authenticated runtime. Review conditions and evidence; retain or discard with reasons and explicitly link sources to accumulate knowledge.</p></li>
+      <li><h3>Review references, then save a version</h3><p>Artifact generation makes no additional model call. When knowledge changes, compare old references with current revisions and retain decisions. Explicitly select and save a new version; old content and references remain readable.</p></li>
+    </ol>
   </div>
 </section>
-<section class="band alt" id="task-evidence">
-  <div class="wrap">
-    <div class="sec-head"><h2>Verify that the agent actually completed the task</h2><p class="lead">Execute from fixed file snapshots, collect changes, and check them independently. Failures, timeouts, and cancellations retain declared files and partial logs.</p></div>
-    <p>In the cart example with an npm dependency, a real Codex treatment changed only the target source and passed all six checks. The negative control, instructed not to edit, passed three. The example records model settings, usage, durations, and setup steps.</p>
-    <p>This is one execution-path verification, not evidence of general knowledge effectiveness. Tasks and verifiers must be trusted; workspace copies are not security sandboxes. Raw artifacts and logs may contain sensitive content.</p>
-    <p><a class="lnk" href="/guides/local-tasks">Read the task acceptance guide <span class="ar">→</span></a> · <a class="lnk" href="https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/local-task/project">Read the bilingual example and measured run <span class="ar">→</span></a></p>
+<section class="band case-band" id="task-evidence">
+  <div class="wrap case-layout">
+    <div class="case-copy"><h2>Revise old statements. Keep their history.</h2><p>In the existing sentry-miniapp SDK case, correction requirements were limited to their historical context, one item was discarded, and another gained the condition “source presence, not dynamic test success.”</p><dl class="version-facts"><div><dt>v4</dt><dd>Keeps three historical references and shows two review notices: a new revision or knowledge no longer retained.</dd></div><div><dt>v5</dt><dd>Explicitly selects two currently retained items: keep one, replace one, remove one. Historical v4 remains readable.</dd></div></dl><p>This is maintenance and reference evidence. It does not verify dynamic SDK effects, time saved, or cross-agent reuse benefits. No reference changes does not establish correctness.</p><a class="text-link" href="/guides/sdk-maintenance-case">Read the sources, changes, and review steps</a></div>
+    <figure class="current-view"><a href="/sdk-maintenance-current.png" aria-label="Open the full current SDK artifact screenshot"><img src="/sdk-maintenance-current.png" width="796" height="601" alt="Real Studio reader: current SDK v5 has two knowledge references and zero change notices, with historical versions available." loading="lazy" decoding="async" /></a><figcaption>Current v5 of the same case · Content, precise references, and historical versions remain distinct.</figcaption></figure>
   </div>
 </section>
-<section class="band" id="workflow">
-  <div class="wrap">
-    <div class="sec-head"><h2>Connect evidence to changes, with explicit boundaries</h2><p class="lead">Knowledge items are facts, experiences, or methods; artifacts are the prompts, documents, or skills carrying them. Extraction produces content for review; evaluation follows when you prepare an artifact change. Retaining knowledge, adopting changes, and releasing versions are separate decisions.</p></div>
-    <div class="cap-grid"><div class="cap in"><h3>Observe</h3><p>Discover knowledge from real collaboration and review sources and coverage.</p></div><div class="cap in"><h3>Measure</h3><p>Control and record conditions to test knowledge artifact changes.</p></div><div class="cap in"><h3>Know</h3><p>Extract and maintain knowledge with evidence for people and AI to reuse.</p></div></div>
-    <p><a class="lnk" href="/explanation/knowledge">Understand knowledge items and artifacts <span class="ar">→</span></a></p>
+<section class="band" id="start">
+  <div class="wrap"><h2>Have a specific task? Continue here.</h2><p class="section-description">Evaluation and service integration have independent entry points. Extraction is not a prerequisite.</p>
+    <div class="task-path" id="moat"><h3>Compare two knowledge artifacts</h3><div><p>Preview the plan, configure a runtime, then call the model. Fix models and cases, record conditions, and inspect decisions and failures. The three starter cases only check the workflow; UNDERPOWERED is expected.</p><a class="text-link" data-entry="evaluation" href="/quickstart-skill-eval">Preview your first comparison</a></div></div>
+    <div class="task-path"><h3>Embed in a Node.js service</h3><div><p>Start with the offline Q&A example: run two sets of fixed answers and inspect case evidence and comparison results. The first example requires no model or model account. Connect your own service afterward.</p><a class="text-link" data-entry="node" href="/guides/service-evaluation">Run the offline Node example</a></div></div>
+    <p class="support-links" id="agent"><a href="/quickstart-skill-eval#use-inside-an-agent">Agent Skill</a> · <a href="/guides/mcp-integration">MCP</a> · <a id="dsh" href="/reference/executors#deepseek-harness-prefer-the-host-plugin">DSH</a> · <a id="cmp" href="/reference/comparison">Tools and tasks</a></p>
   </div>
 </section>
-<section class="band alt" id="moat">
-  <div class="wrap">
-    <div class="sec-head"><h2>Assess the evidence</h2><p class="lead">Check the evidence and its scope before making a version decision.</p></div>
-    <div class="moat-list">
-      <div class="mrow2"><span class="no">01</span><div class="fail"><div class="t">How large is the difference?</div></div><div class="fix2"><div class="name">Inspect differences and intervals</div><div class="d">Look beyond a point estimate at sample size, comparison families, and uncertainty.</div></div></div>
-      <div class="mrow2"><span class="no">02</span><div class="fail"><div class="t">What supports the score?</div></div><div class="fix2"><div class="name">Inspect cases and scoring evidence</div><div class="d">Check criteria, coverage, and failures. Gold comparison can assess human/judge agreement.</div></div></div>
-      <div class="mrow2"><span class="no">03</span><div class="fail"><div class="t">Where does the conclusion apply?</div></div><div class="fix2"><div class="name">Keep measurement and observation distinct</div><div class="d">Conclusions depend on cases and conditions; external services and reruns can vary. Observation does not prove causality; generated cases need review.</div></div></div>
-    </div>
-    <p class="moat-foot"><a class="lnk" href="/explanation/statistical-rigor">Statistical methods and limits <span class="ar">→</span></a></p>
-    <p class="cmp-foot" id="cmp">Choosing a tool? <a class="lnk" href="/reference/comparison">Compare tools and their scope <span class="ar">→</span></a></p>
-  </div>
-</section>
-<section class="band" id="agent">
-  <div class="wrap">
-    <div class="agent">
-      <div class="term">
-        <div class="bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i></div>
-        <div class="body"><div><span class="cm">$ omk install omk-agent-skill</span></div><div style="margin-top:10px" class="wh">Use omk to compare these two skills; preview the plan first.</div></div>
-      </div>
-      <div class="copy"><h3>Let your agent run the workflow</h3><p>Install the OMK Skill, then describe your comparison in natural language. The quickstart covers installation targets, runtime setup, and execution.</p><a class="lnk" href="/quickstart-skill-eval">CLI evaluation <span class="ar">→</span></a></div>
-    </div>
-  </div>
-</section>
-<section class="band" id="dsh">
-  <div class="wrap">
-    <div class="sec-head"><h2>Use OMK directly inside DSH</h2><p class="lead">Install the host plugin to run /omk eval or /omk observe in your existing profile, reusing its model, credentials, tools, and sandbox. Evaluation cases use isolated sessions; observation reads snapshots of completed tasks.</p></div>
-    <p><a class="lnk" href="/reference/executors#deepseek-harness-prefer-the-host-plugin">DSH plugin setup and limitations <span class="ar">→</span></a></p>
-  </div>
-</section>
-<section class="band alt" id="start">
-  <div class="wrap">
-    <div class="final">
-      <h2>Run the demo, then use your own cases</h2><p class="lead" style="margin:14px auto 0">The demo provides two skills and three cases. UNDERPOWERED is expected with a small sample; a real evaluation calls the model.</p>
-      <div class="command"><span class="cmd"><span><span class="pfx">$</span> omk init demo</span><button type="button" class="copy" data-copy-command="omk init demo" aria-label="Copy demo initialization command">Copy</button></span><p class="copy-status" role="status" aria-live="polite"></p></div>
-      <p><a class="lnk" href="/quickstart-skill-eval">Continue the walkthrough <span class="ar">→</span></a> · <a class="lnk" href="/README">All documentation <span class="ar">→</span></a></p>
-      <p><a class="lnk" href="/guides/v1-preview-migration">Read the migration guide before upgrading <span class="ar">→</span></a></p>
-    </div>
-  </div>
-</section>
+<section class="scope-note"><div class="wrap"><h2>Review saving, use, and effects separately.</h2><p>Retaining a candidate is a maintenance decision, not verification, and does not automatically rewrite AGENTS.md or skills. Compare under controlled conditions when you need task-effect evidence. Complete automatic cross-agent management and reuse remain in development; observation does not establish causality.</p><a class="text-link" href="/README">Explore all documentation</a></div></section>

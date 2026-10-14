@@ -1,0 +1,86 @@
+{
+  "observedAt": "2026-10-14T01:14:37.767Z",
+  "runtimeCommit": "5fdd9c933d0365689b0c724b831cae2d11e2d739",
+  "scope": "Frozen SDK maintenance acceptance copy. Static source review and explicit human decisions; no new model call or dynamic SDK test.",
+  "sources": [
+    "https://github.com/lizhiyao/oh-my-knowledge/issues/1166",
+    "https://github.com/lizhiyao/oh-my-knowledge/issues/1168",
+    "https://github.com/lizhiyao/sentry-miniapp/commit/30ffb0030376e63a943f5d69beced539c7810171"
+  ],
+  "artifactId": "f2ecaba6-d4d3-49f5-b20b-07d58608d697",
+  "object": {
+    "label": "本项目 SDK core",
+    "historicalSourceMemberCounts": [
+      2,
+      1,
+      2,
+      3
+    ],
+    "associationReason": "接入后续 SDK 静态观察及版本范围"
+  },
+  "historical": {
+    "version": 4,
+    "refs": [
+      {
+        "knowledgeId": "9a6f296c-f255-4cee-846b-a2011e920f37",
+        "revisionId": "1009571e-3d03-4804-a869-9da85229aecc",
+        "generation": 4
+      },
+      {
+        "knowledgeId": "c162c27a-54ab-40c8-b180-1f24c40ffc84",
+        "revisionId": "6bce64dd-8b47-4f75-b3e3-c1202fb7ee31",
+        "generation": 9
+      },
+      {
+        "knowledgeId": "2793ec29-fc97-466b-979d-63cb8a51aeff",
+        "revisionId": "7113ba63-1ec8-4492-b543-11836d069c0d",
+        "generation": 2
+      }
+    ],
+    "review": 2
+  },
+  "current": {
+    "version": 5,
+    "refs": [
+      {
+        "knowledgeId": "9a6f296c-f255-4cee-846b-a2011e920f37",
+        "revisionId": "1009571e-3d03-4804-a869-9da85229aecc",
+        "generation": 4
+      },
+      {
+        "knowledgeId": "2793ec29-fc97-466b-979d-63cb8a51aeff",
+        "revisionId": "6f23942d-d00b-4988-9c61-9282ba30a834",
+        "generation": 4
+      }
+    ],
+    "review": 0
+  },
+  "selectedKnowledge": [
+    {
+      "knowledgeId": "9a6f296c-f255-4cee-846b-a2011e920f37",
+      "revisionId": "1009571e-3d03-4804-a869-9da85229aecc",
+      "title": "历史 protected 覆写审查与 Session 修正要求",
+      "sourceStatus": [
+        "available"
+      ]
+    },
+    {
+      "knowledgeId": "2793ec29-fc97-466b-979d-63cb8a51aeff",
+      "revisionId": "6f23942d-d00b-4988-9c61-9282ba30a834",
+      "title": "core 11.6.0 接缝快照（只证明源码，不证明动态通过）",
+      "sourceStatus": [
+        "available"
+      ]
+    }
+  ],
+  "discarded": {
+    "title": "历史公开接口缺口说法（原窗口版本未知）",
+    "choice": "discard"
+  },
+  "originalFilesPreserved": 27,
+  "limits": [
+    "Historical references are not overwritten.",
+    "No reference changes does not establish truth, task effects, time saved, or cross-agent reuse benefits.",
+    "Acceptance materials were already exposed; this is not a blinded comparison."
+  ]
+}

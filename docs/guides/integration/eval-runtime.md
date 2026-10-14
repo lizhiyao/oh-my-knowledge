@@ -1,3 +1,6 @@
+---
+description: Run an offline Node.js comparison, inspect case evidence, then integrate your own service.
+---
 # Compare two versions in code
 
 **eval-runtime is OMK's evaluation interface for Node.js programs.** Call `evaluate()` to run versions on your test cases, score their answers, and get a comparison result. You supply the code that calls your answering service, RAG system, or Agent.

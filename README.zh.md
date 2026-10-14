@@ -1,179 +1,54 @@
 # OMK
 
-[![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
-[![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
+[![Beta @next](https://img.shields.io/npm/v/oh-my-knowledge/next.svg?label=Beta)](https://www.npmjs.com/package/oh-my-knowledge?activeTab=versions)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Node.js Version](https://img.shields.io/node/v/oh-my-knowledge.svg)](https://nodejs.org)
 
 [English](./README.md) | **简体中文**
 
-**Observe. Measure. Know.** 让知识服务于人和 AI。
+**Observe. Measure. Know.** 把工作中的经验，沉淀为可持续维护的知识。
 
-OMK 是面向 Agent 使用者和 AI 应用开发者的知识建设工具。从人与 AI 的真实协作中发现、沉淀和维护有来源的知识，帮助人积累理解、方法和判断依据，并让 AI 在后续任务中使用合适的知识。
+OMK 面向 Agent 使用者和 AI 应用开发者。从真实工作记录中提炼候选，核对来源与适用条件，围绕对象持续积累和修订，再更新引用它们的 skill 或 prompt。需要判断改动效果时，可以独立开展受控版本比较。
 
-知识可以是领域认识、方案取舍、工作方法、协作经验，也可以是个人和项目的目标、偏好与约束。以用户为中心，让这些知识跨会话、跨 Agent 管理、修订和复用，是 OMK 持续建设的方向；完整的跨 Agent 管理与复用尚未实现。
+## 从本地工作记录开始
 
-**Observe** 为知识沉淀保留真实工作与来源，**Know** 提炼、维护并复用有依据的知识，**Measure** 在需要检验改动效果时，固定模型与用例，控制并记录运行条件，比较 prompt、RAG、skill、agent 或 workflow 等知识载体。已有两版载体时，可以直接开始评测；不必先收集日志。
-
-当前 1.0 仍处于 **Beta 迭代期**，接口与存储契约可能继续变化。从旧版本升级前，请先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
-
-![OMK：从受控评测到真实使用反馈](./docs/public/omk-knowledge-flow-animated.gif)
-
-图示描述可组合的工作路径：复核知识后可在 Studio 生成并保存 skill 或 prompt，再检查改动效果；完整关联与自动闭环仍有待实现部分。
-
-## 选择使用方式
-
-| 入口 | 适合什么场景 |
-|---|---|
-| **CLI** | 在终端、coding agent 或 CI 中执行检查、评测、观测与迭代工作流 |
-| **Studio** | 在本地工作台浏览任务轨迹、复核知识内容，查看报告与原始证据 |
-| **eval-runtime** | 通过 Node.js API 将执行、评分与版本比较嵌入自己的服务或平台；无需通过 CLI 或启动 Studio |
-| **DSH 插件** | 在 DeepSeek Harness 内用 `/omk eval` 和 `/omk observe`，复用当前 profile 的模型、凭证、工具与 sandbox；见[宿主插件接入](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件) |
-
-## 从你的目标开始
-
-| 想做什么 | 入口 | 得到什么 |
-|---|---|---|
-| 从真实任务发现值得沉淀的知识 | [Studio 与任务轨迹](docs/zh/guides/observe/observe-production.md) | 核对成功经验、用户纠正与知识缺口的原始记录，以及对话、执行、结果、知识四条泳道 |
-| 把工作经验沉淀为知识 | [从日志提炼知识](docs/zh/guides/knowledge/extract-knowledge.md) | 带来源和适用条件的候选知识，支持修订、保留和舍弃 |
-| 记录已确认的知识问题 | [MCP 主动反馈](docs/zh/guides/integration/mcp-integration.md) | 待复核 observation；确认真实问题后再草拟用例 |
-| 判断一版改动是否值得采用 | [评测快速上手](docs/zh/quickstart-skill-eval.md) | 版本判定、不确定性、失败用例和评分依据 |
-| 验证 Agent 是否真正完成任务 | [本地任务验收](docs/zh/guides/evaluation/local-tasks.md) | 修改文件、独立验收结果，以及失败／超时／取消后的现场证据 |
-| 自动尝试改进 skill | [迭代改进](docs/zh/guides/evaluation/auto-improve-skills.md) | 经受控比较筛选的候选版本 |
-| 将评测接入服务或平台 | [Node.js 服务](docs/zh/guides/integration/eval-runtime.md) · [平台宿主](docs/zh/guides/integration/platform-host-integration.md) | 可组合的执行、评分与比较接口 |
-
-## 快速开始
-
-安装需要 Node.js >=22。调用模型前还需配置已认证的 runtime，详见[系统要求](#系统要求)。
+需要 **Node.js ≥22**。本页的知识库、载体生成与变化核对需要 **1.0.0-beta.14 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.13 不包含这里的维护界面。旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
 
 ```bash
 npm i -g oh-my-knowledge@next
-```
-
-本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后用 `omk --version` 核对版本，再按[本地任务指南](docs/zh/guides/evaluation/local-tasks.md)运行可信示例。
-
-### 先看已有任务
-
-```bash
+omk --version
 omk studio
 ```
 
-打开命令返回的本地地址，从本机 Codex 对话进入任务轨迹；无需先 ingest，也不调用模型。进行中的任务支持实时跟随。Claude Code、OpenClaw 与 markdown 日志通过 `omk observe` 进入观测报告，见[观测指南](docs/zh/guides/observe/observe-production.md)。
+打开命令返回的本地地址，从已有 Codex 对话核对任务与原始记录。这一步不调用模型；没有对话时，Studio 提供来源与采集入口。其他日志来源按[观测指南](docs/zh/guides/observe/observe-production.md)接入。
 
-需要沉淀经验时，在“知识 → 提炼的知识”选择“从对话选择”，选定对话和轮次，核对消息与工作区后再生成。生成会调用模型；保留候选表示愿意维护，不等于已证实，也不会自动写入 AGENTS.md 或 skill。点击“生成知识载体”，即可核对并明确保存 skill 或 prompt。步骤见[提炼指南](docs/zh/guides/knowledge/extract-knowledge.md)。
+接下来，在“知识 → 候选核对”选择会话和轮次，核对发送范围后提炼候选。**提炼会调用模型**，需先准备[已认证的运行时](docs/zh/reference/integration/executors.md#前置要求)。在知识库关联来源、修订过时内容，再明确生成和保存载体；载体详情可核对知识变化和新旧引用。完整步骤见[知识维护动线](docs/zh/guides/knowledge/extract-knowledge.md)。
 
-“知识”入口进入知识库：明确关联不同窗口的来源实体，阅读带条件和依据的知识，再选择保留内容生成载体。同名不自动归并；当前未提供图谱或跨 Agent 自动身份关联。详见[知识库动线](docs/zh/guides/knowledge/extract-knowledge.md#围绕实体积累知识)。
+## 知识变化，载体也需要核对
 
-### 或者，直接比较两版 skill
+![Studio 中 SDK 历史载体的知识变化核对阅读区](./docs/public/sdk-maintenance-review.png)
 
-```bash
-omk init demo
-cd demo
-omk eval --control code-review-v1 --treatment code-review-v2 --dry-run
-```
+在已有 SDK 维护案例中，旧说法限定为历史场景，一条不再适用的知识被舍弃，另一条补充了静态观察的范围。v4 保留三条旧引用并提示两项变化；v5 明确选择两条当前保留知识，旧版本正文与引用继续保留。[查看案例、来源和核对步骤](docs/zh/guides/knowledge/sdk-maintenance-case.md)。
 
-检查计划和预估调用次数后，执行评测（会调用模型）：
+这证明维护与引用链路可核对，没有验证 SDK 动态效果、节省时间或跨 Agent 复用收益。保留知识、保存载体、实际使用和验证效果分别记录；完整跨 Agent 自动管理与复用仍在建设中。
 
-```bash
-omk eval --control code-review-v1 --treatment code-review-v2
-```
+## 按当前任务继续
 
-脚手架包含两版 skill 和三条用例。默认小样本用于检查流程，出现 `UNDERPOWERED` 符合预期。官方起步用例标记为 `llm-generated`；即使用 `omk init demo-full --samples 20` 创建完整起步集，也只是达到默认启发式证据下限，不等于完成功效规划或具备发布证据。实际使用前应人工复核并替换为真实领域用例。
+- **直接比较两版载体**：从[评测快速上手](docs/zh/quickstart-skill-eval.md)预览计划，配置运行时后再调用模型。固定模型与用例，记录运行条件，核对判定、不确定性和失败证据。
+- **嵌入自己的服务**：从[离线 Node 示例](docs/zh/guides/integration/eval-runtime.md)开始，完成第一轮可回查的比较，再按需选择模型与配置。
+- **在 Agent 或 DSH 中使用**：[安装官方 Skill](docs/zh/quickstart-skill-eval.md#在-agent-中使用)、[MCP 主动反馈](docs/zh/guides/integration/mcp-integration.md)和[DSH 宿主插件](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件)各有独立入口。
+- **验收 Agent 修改的文件**：使用[本地任务验收](docs/zh/guides/evaluation/local-tasks.md)的独立检查；用[迭代改进](docs/zh/guides/evaluation/auto-improve-skills.md)筛选候选版本。
 
-[完整教程](docs/zh/quickstart-skill-eval.md)介绍模型选择、换成自己的 skill 和结果解读；[示例画廊](examples/README.zh.md)提供更多可运行场景。
+入门用例只检查流程，`UNDERPOWERED` 符合预期。真实发布判断需要自己的领域用例和独立证据；观测信号不能证明因果，一次评测通过也不等于载体已经生效或版本已发布。
 
-### 验证文件是否真的改对了
+## 查阅与升级
 
-本地任务从声明的文件快照执行两版知识，采集文件并交给独立验收程序检查；失败、超时或取消也保存声明文件和部分日志。它测量明确提供知识内容后的效果，不测宿主原生 skill 发现。任务与验收程序必须可信，工作区副本不是安全沙箱。
+[文档入口](docs/zh/README.md) · [官网](https://oh-my-knowledge.pages.dev/zh/) · [CLI](docs/zh/reference/cli.md) · [运行时与执行器](docs/zh/reference/integration/executors.md) · [配置与环境变量](docs/zh/reference/shared/settings.md) · [示例](examples/README.zh.md)
 
-[带 npm 依赖的购物车案例](examples/local-task/project/README.zh.md)记录了一次真实 Codex 运行：treatment 修改目标源码并通过六项检查，要求不编辑的负对照通过三项。该案例证明执行与验收链路可用，不证明知识版本的普遍收益；模型、用量和耗时见案例记录。[本地任务指南](docs/zh/guides/evaluation/local-tasks.md)提供安装、配置与证据读取入口。
-
-## 在 Agent 与 DSH 中使用
-
-### Agent Skill 与 MCP
-
-```bash
-omk install omk-agent-skill
-```
-
-安装 Skill 后，可以对 coding agent 说：“用 omk 比较这两版 skill，先预览计划。”安装目标与使用方法见[快速上手](docs/zh/quickstart-skill-eval.md#在-agent-中使用)。
-
-[MCP 集成](docs/zh/guides/integration/mcp-integration.md)提供用户授权的主动知识反馈入口。它仅记录提交到工具边界的部分证据，不自动监听完整对话。
-
-### DeepSeek Harness 插件
-
-已有 DSH 环境时，把 OMK 加入现有 profile。以支持命令适配的 `web` profile 为例：
-
-```bash
-dsh plugin --profile web add oh-my-knowledge
-dsh --profile web
-```
-
-在 DSH 内执行：
-
-```text
-/omk eval eval.yaml
-/omk observe
-/omk observe <session-id>
-```
-
-评测复用当前宿主的模型、凭证、工具和 sandbox，并为每条用例创建隔离 session。观测读取已结束 session 的快照并返回 Studio 任务轨迹地址；目前不实时跟随正在运行的 DSH session。配置要求与插件当前限制见[DSH 接入](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件)。
-
-## 如何使用证据
-
-知识内容是一条可复核的事实、经验或方法；知识载体是承载内容的 prompt、文档、skill 等。候选知识是内容的待复核状态，候选版本是拟采用的载体版本，两者不能混为一谈。
-
-1. **观测与复核**：在 Studio 核对任务与来源；提炼知识或确认 observation，留下适用条件和处理理由。
-2. **形成可测改动**：在 Studio 将保留知识生成到 skill 或 prompt，核对后保存，也可编辑其它载体；把可复现的问题整理为正式用例；候选不会自动生效。
-3. **受控比较**：`doctor` 做前置检查，`eval` 比较 control 与 treatment，检查 Decision、覆盖、失败样本与成本。
-4. **采纳或继续改进**：复核评测证据，在自己的发布流程中决定是否采纳；`evolve` 通过 A/B 门禁筛选候选版本，写回前再次比较。
-
-这是可组合的工作路径，不是强制的单向状态机。一次评测通过也不等于知识已写入或版本已发布。
-
-固定配置不能保证外部模型服务或重跑结果完全一致。结论受用例、评分准则和执行环境约束。观测信号不等于因果结论，生成的样本也不能直接充当独立发布验证集。原理与限制见[统计严谨性](docs/zh/explanation/statistical-rigor.md)和[三阶段工作流](docs/zh/explanation/three-stage-workflow.md)。
-
-项目评测与观测证据保存在 `.omk/`，本地任务默认写入 `.omk/eval`，也可通过 `--output` 指定报告与诊断目录。机器级状态位于 `~/.oh-my-knowledge/`；提炼的知识内容保存在显式选择的知识工作区。当前版本不读取或迁移旧存储布局；升级前备份，按[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)重新建立证据。
-
-## 文档
-
-[完整文档与导航](docs/zh/README.md) · [在线文档](https://oh-my-knowledge.pages.dev/zh/) · [CLI 参考](docs/zh/reference/cli.md) · [用例格式](docs/zh/reference/evaluation/eval-sample-format.md) · [执行器](docs/zh/reference/integration/executors.md) · [OMK 如何理解知识](docs/zh/explanation/knowledge.md)
-
-## 环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex` / `codex-sdk` / `claude` |
-| `OMK_MODEL` | 默认被测模型；Codex 未设置时读取本机 `config.toml` |
-| `OMK_JUDGE_MODELS` | 默认评委列表，格式 `executor:model[,...]` |
-| `CCV_PROXY_URL` | 通过 cc-viewer 代理请求，实时可视化评测流量 |
-| `OMK_REPORT_PORT` | 报告服务端口（默认 7799） |
-
-## 系统要求
-
-- Node.js >= 22
-- 至少一个已认证的模型 runtime：
-  - Codex：安装并登录 Codex CLI（`npm i -g @openai/codex`）；ChatGPT desktop 的 Codex 任务会自动选择它
-  - Claude：安装并登录 [Claude Code](https://claude.ai/code)
-  - API / 其它执行器：按[执行器文档](docs/zh/reference/integration/executors.md)配置
-- 高级 `claude-sdk`／`codex-sdk` 执行器是可选能力，OMK 基础安装不再下载它们。仅在明确选择对应 SDK 时，才在 OMK 所在的本地项目或全局 npm prefix 安装；详见[执行器前置要求](docs/zh/reference/integration/executors.md#前置要求)。
+Beta 接口和存储契约仍可能变化。知识在显式选定的工作区维护；运行证据与机器偏好各有自己的存储范围。升级前备份，再按迁移指南建立新证据。
 
 ## 安全说明
 
-本工具设计用于**本地可信环境**（开发机、CI 流水线）。以下功能会执行本地代码，请确保输入来源可信：
+用于本地可信环境。任务、验收程序和自定义断言会执行本地代码，应先审查；工作区副本不是安全沙箱。调用模型前核对发送范围，原始记录与产物可能含敏感内容。本地报告服务没有身份认证，不应暴露到公网。
 
-| 功能 | 风险 | 适用场景 |
-|------|------|----------|
-| **自定义断言**（`custom`） | 动态加载并执行用户指定的 `.mjs` 文件 | 仅使用自己编写或审查过的断言文件 |
-| **本地任务与验收程序** | 执行器与独立验收会运行本地代码，原始产物／日志可能含敏感信息 | 仅运行已审查的任务，核对文件清单与输出目录；副本不提供安全沙箱 |
-| **eval-samples.json** | 断言配置可引用外部文件路径 | 不要使用来源不明的用例文件 |
-
-**建议：**
-
-- 不要将本地报告服务暴露到公网（无身份认证）
-- 不使用未经审查的第三方 eval-samples
-- 自定义断言有 30 秒超时，但无沙箱隔离
-
----
-
-发布日志见 [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases)。欢迎贡献 —— 见 [CONTRIBUTING](./CONTRIBUTING.md)。
+发布说明见 [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases)。贡献流程见 [CONTRIBUTING](./CONTRIBUTING.md)。

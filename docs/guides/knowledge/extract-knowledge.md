@@ -2,6 +2,8 @@
 
 Form candidates from selected work records, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow.
 
+The library, artifact authoring, and change review in this guide require **1.0.0-beta.14 or later**; Beta.13 does not include this maintenance UI. Install from `@next`, then check `omk --version` before following these steps. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
+
 ## Studio {#studio}
 
 ```bash

@@ -150,3 +150,47 @@ describe('docs/zh 跨语言悬链 gate', () => {
     }
   });
 });
+
+// A URL returning 200 is insufficient: first-use links must reach the intended task,
+// not an advanced reference with a similar slug. Resolve the production rewrites too.
+describe('官网与 README 的首次使用落点', () => {
+  const entries = [
+    { key: 'knowledge', source: 'guides/knowledge/extract-knowledge.md', titles: ['Accumulate, maintain, and use knowledge', '沉淀、维护和使用知识'], action: 'omk studio' },
+    { key: 'evaluation', source: 'quickstart-skill-eval.md', titles: ['omk quickstart: get to your first verdict', 'omk 快速上手：跑出第一份 verdict'], action: '--dry-run' },
+    { key: 'node', source: 'guides/integration/eval-runtime.md', titles: ['Compare two versions in code', '在代码里比较两个版本'], action: 'node examples/eval-runtime/run.mjs' },
+  ];
+  it.each(['en', 'zh'])('%s 的入口落到对应标题与可核对动作', async lang => {
+    const { pageRoute } = await import('../../docs/.vitepress/page-links.js');
+    const prefix = lang === 'zh' ? 'zh/' : '';
+    const root = lang === 'zh' ? ZH_ROOT : DOCS_ROOT;
+    const landing = readFileSync(join(DOCS_ROOT, '.vitepress/theme', lang === 'zh' ? 'landing-body.html' : 'landing-body.en.html'), 'utf8');
+    const readme = readFileSync(join(PROJECT_ROOT, lang === 'zh' ? 'README.zh.md' : 'README.md'), 'utf8');
+    for (const entry of entries) {
+      const href = new RegExp(`data-entry="${entry.key}" href="([^"]+)"`).exec(landing)?.[1];
+      assert.equal(href, '/' + pageRoute(prefix + entry.source).replace(/\.md$/, ''));
+      const destination = readFileSync(join(root, entry.source), 'utf8');
+      assert.ok(destination.split('\n').some(line => line.startsWith('# ' + entry.titles[lang === 'zh' ? 1 : 0]!)), `${entry.key}: wrong destination title`);
+      assert.ok(destination.includes(entry.action), `${entry.key}: missing first verifiable action`);
+      assert.ok(readme.includes(`docs/${prefix}${entry.source}`), `${entry.key}: README points elsewhere`);
+    }
+  });
+
+  it('官网与 README 的静态产品图均存在且声明真实尺寸', () => {
+    for (const name of ['landing-body.html', 'landing-body.en.html']) {
+      const html = readFileSync(join(DOCS_ROOT, '.vitepress/theme', name), 'utf8');
+      for (const [, attributes, src] of html.matchAll(/<img([^>]*src="([^"]+)"[^>]*)>/g)) {
+        assert.ok(!src!.endsWith('.gif'), 'Product evidence should be static by default');
+        const file = join(DOCS_ROOT, 'public', src!);
+        const png = readFileSync(file);
+        assert.equal(png.readUInt32BE(16), Number(/width="(\d+)"/.exec(attributes!)?.[1]));
+        assert.equal(png.readUInt32BE(20), Number(/height="(\d+)"/.exec(attributes!)?.[1]));
+        assert.ok(png.length < 250_000, 'Keep first-use evidence lightweight');
+      }
+    }
+    for (const name of ['README.md', 'README.zh.md']) {
+      const text = readFileSync(join(PROJECT_ROOT, name), 'utf8');
+      for (const [, src] of text.matchAll(/!\[[^\]]*\]\((\.\/[^)]+)\)/g)) assert.ok(existsSync(resolve(PROJECT_ROOT, src!)), `${name}: missing image ${src}`);
+      assert.ok(text.includes('npm/v/oh-my-knowledge/next.svg'), `${name}: badge must match the install channel`);
+    }
+  });
+});

@@ -1,6 +1,6 @@
 # Global settings and configuration scope
 
-Studio’s Settings button manages local user preferences in `$OMK_HOME/settings.json` (`~/.oh-my-knowledge/settings.json` by default). CLI and Studio share this file. Reading creates no directory; saving invokes no model, moves no data and changes no historical run.
+Studio’s settings entry at the bottom of the sidebar manages local user preferences in `$OMK_HOME/settings.json` (`~/.oh-my-knowledge/settings.json` by default). CLI and Studio share this file. Reading creates no directory; saving invokes no model, moves no data and changes no historical run.
 
 ## Persisted preferences
 
@@ -28,6 +28,18 @@ The knowledge page’s per-operation folder and model controls do not modify glo
 | Maintenance and internal infrastructure | `OMK_SKIP_UPDATE_CHECK`, `BROWSER`, cache/tree directories and retention limits, mock variables | Existing advanced environment controls, outside the ordinary settings form |
 
 Environment changes generally require restarting Studio. Reading settings does not verify credentials or model availability. Extraction still requires preview and confirmation.
+
+## Command-line environment overrides
+
+| Variable | Effect |
+| --- | --- |
+| `OMK_EXECUTOR` | Default executor preference, such as `codex`, `codex-sdk`, or `claude`; it neither installs nor authenticates a runtime. |
+| `OMK_MODEL` | Default evaluated model; when unset, Codex uses its own configuration. |
+| `OMK_JUDGE_MODELS` | Default judge list in `executor:model[,...]` format. |
+| `OMK_REPORT_PORT` | Local report listener port, default `7799`; use the actual URL returned at startup. |
+| `CCV_PROXY_URL` | Advanced runtime proxy entry: mapped to child-process `ANTHROPIC_BASE_URL`. Effect depends on the selected runtime; it is not a universal proxy guarantee for every executor. |
+
+See [runtime prerequisites](../integration/executors.md#prerequisites) for executors and optional SDKs. Reading existing work records requires no model call; supplying environment variables does not prove authentication or invocation succeeded.
 
 ## File and concurrency
 
