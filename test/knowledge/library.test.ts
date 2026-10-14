@@ -4,7 +4,7 @@ import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
-import { createLocalKnowledgeLibrary } from '../../src/observability/knowledge-extraction/library.js';
+import { createLocalKnowledgeLibrary } from '../../src/observability/knowledge-extraction/local.js';
 import type { LibraryDraft, LibraryMember } from '../../src/knowledge/library/contracts.js';
 import { modelWindow } from './fixtures.js';
 

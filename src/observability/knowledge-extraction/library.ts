@@ -1,13 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { type KnowledgeActor } from '../../knowledge/contracts.js';
 import { LibraryDraftSchema, memberKey, type LibraryDraft, type LibraryMember, type LibraryStore } from '../../knowledge/library/contracts.js';
 import { canonicalJson } from '../../knowledge/store.js';
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
-import { FileLibraryStore } from './adapters/library-store.js';
 import type { KnowledgeApplication } from './application.js';
-import { createLocalKnowledgeApplication } from './local.js';
 
 export const LibraryQuerySchema = z.strictObject({ query: z.string().trim().max(512).default(''),
   page: z.number().int().min(1).max(100_000).default(1), pageSize: z.number().int().min(1).max(100).default(20) });
@@ -170,10 +167,4 @@ export class KnowledgeLibraryApplication {
       if (!mention || validateEvidenceSelection(mention.selection, detail.source.window.excerpts).length) throw new Error('Library evidence mismatch.');
     }
   }
-}
-
-export function createLocalKnowledgeLibrary(root: string): KnowledgeLibraryApplication {
-  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
-  const workspace = resolve(root);
-  return new KnowledgeLibraryApplication(createLocalKnowledgeApplication(workspace), new FileLibraryStore(join(workspace, 'library'), workspace));
 }
