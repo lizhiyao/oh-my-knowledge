@@ -1,10 +1,10 @@
-# 评测评分等价 RFC
+# 评测评分等价规范
 
-> 状态：[#480](https://github.com/lizhiyao/oh-my-knowledge/issues/480) 的迁移契约已实现。下文的阶段性表述保留迁移依据；生产环境的 `omk eval` 现已执行这张 Core 评分图，并在原子化 `BREAKING-SCHEMA` 切换后仅持久化 Core 产物。
+> 状态：现行 Core 评分与决策契约。生产 `omk eval` 执行本文的四阶段评分图，只保存 Core 产物。
 
 ## 1. 决策
 
-现有评分与发布语义将被重新表达为一条具有四个显式边界的 Evaluation Core 流水线：
+现有评分与发布语义表达为一条具有四个显式边界的 Evaluation Core 流水线：
 
 ```text
 密封的样本评测上下文
@@ -185,46 +185,8 @@ Krippendorff alpha 使用区间距离 `delta^2=(c-k)^2`；名义或顺序变体�
 
 不影响 Metric 或决策的宿主诊断仍属于后处理。任何会改变结论的诊断都必须成为密封的 Analysis 输入或 DecisionPolicy 参数。
 
-## 10. 一致性证据
+## 10. 验证与测量边界
 
-第一个基线是锚定到提交 `38648427` 的 `test/fixtures/eval-core/scoring-equivalence-v1.json`。它冻结：
+冻结输入 `test/fixtures/eval-core/scoring-equivalence-v1.json` 保留原始 prompt 哈希与一致性向量。现行 Core 与生产边界覆盖位于 `test/eval-core/conformance/` 和 `test/eval-workflows/orchestration/`，包含结构化失败、覆盖、身份、血缘、取消及资源释放。已移除的迁移差分工具不属于当前入口。
 
-- 全部六个评分 prompt 哈希；
-- 确定性 assertion、嵌套同层和混合层 `assert-set` 行为、权重、层映射及舍入；
-- 固定响应的语义与 RAG 结果及用量；
-- 评委重复测量失败、样本标准差、集成成员证据及共识；
-- 旧随机流下的独立和配对 bootstrap 向量；
-- 区间 Krippendorff alpha、加权 kappa、Pearson 及 alpha bootstrap。
-
-后续迁移测试通过新 Core 路径消费相同 fixture，并比较观测、覆盖、证据、每测量单元表、区间结果、用量溯源和理由代码。精确身份和状态比较绝不使用数值容差。浮点容差只允许用于不比较产物相等性的公式性质测试。
-
-语义／RAG 一致性向量还冻结有意的失败语义变更：有效通过、有效阈值失败、有效取反、提供方失败、非 JSON、畸形 JSON、畸形分数、越界分数、缺失解释、超时、取消、预算截尾、未知用量／成本，以及增加基础设施失败不能降低已观测内容通过率这一不变量。旧自定义 assertion 向量覆盖有效通过／失败、取反、模块抛错与超时，以及无效结果对象。
-
-最终离线差分工具由 [#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) 交付，并在切换后随旧基准一起移除。它的不可变输入 fixture 仍位于 `test/fixtures/eval-core/scoring-equivalence-v1.json`。当前 Core 与生产边界覆盖位于 `test/eval-core/conformance/` 和 `test/eval-workflows/orchestration/`。差分工具准备并执行了一份真实密封计划，覆盖两个 Target 和四个配对样本，然后通过公开引擎 facade 遍历 `Execution -> Evaluation -> Analysis -> Decision`。计划包含仅输出和感知执行的确定性 assertion、全部四种语义／RAG 工具、两个各含两次测量重复的 rubric 集成成员，以及 assertion-layer、replicate、ensemble、dimension、composite、Bootstrap-family、Agreement 和 release-decision 节点。旧投影独立地从相同输出、固定提供方读数、Gold 评分、阈值和种子生成。
-
-该工具精确比较准则读数、结构化失败状态、覆盖、用量和提供方成本溯源、prompt ID 和冻结哈希、样本／试验／成员／重复测量／配对身份、层与 composite 行、Bootstrap 来源血缘、Gold 血缘、一致性统计量、发布结论和稳定理由代码。运行时生成的 schema 验证器和产物摘要检查保持启用；测试不会通过调用纯函数构造最终表。生产 CLI、Report 读取器／写入器、Studio、resume、batch、evolve 和持久化路径都不参与该运行。
-
-### 10.1 历史类型化差异例外清单
-
-差分工具只接受下列由 issue 负责的差异。每项都是带有显式 `accepted` 或 `blocking` 状态的类型化值；任何未列出的不一致都会使精确比较失败。
-
-| 负责 issue | 状态 | 有意差异 |
-|---|---|---|
-| [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) | accepted | 提供方或解析失败保持为失败／无效／缺失证据，而不是布尔内容失败。全链路失败探针会检查两个投影及下游覆盖。 |
-| [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) | accepted | `json_schema` 验证器会话彼此隔离，而不是共享旧进程全局状态。 |
-| [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) | accepted | 畸形、强制转换、越界、空理由和零哨兵 rubric 响应不是有效读数。 |
-| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | accepted | 异步 assertion 取反已密封，并且只在有效原始通过／失败读数后应用；无效和基础设施失败不能变成成功。 |
-
-该清单不是兼容模式。`accepted` 条目描述权威 Core 语义，一致性工具不再有阻碍正式切换的差分例外。生产依赖方向仍是 Core 契约／运行时向内，宿主 adapter 向外：Evaluation Core 不会导入旧 Report、CLI、提供方 SDK、环境、文件系统或 prompt 注册表文本。提供方调用和 prompt 构造仍是注入的宿主端口；只有密封身份和已捕获产物跨越边界。
-
-## 11. 交付切片
-
-1. 基线 RFC 与不可变旧 fixture。
-2. 仅输出的确定性 assertion Evaluator，在 #483 后跟进感知执行的 assertion 和自定义 assertion Evaluator。
-3. 使用固定响应重放的语义、RAG 和 rubric Evaluator。
-4. 重复测量、集成、维度、assertion-layer 和 composite Analysis 节点。
-5. 精确 bootstrap 与一致性 Analysis 标准。
-6. 六级发布 DecisionPolicy。
-7. 完整离线新旧差分一致性验证和依赖审计。
-
-每个实现切片都运行一份已准备的 Core 计划和真实 Runtime 生命周期，包括取消和仅一次释放。测试实现使用 `test.*` 命名空间。后续切换阶段把生产 `omk eval`、Studio、resume、batch、evolve、Gold 比较和产物图连接到这些契约，并删除旧 Report 读取器与写入器。
+评分、Schema 或统计标准改变必须显式版本化，保留对应冻结输入和原始结果；不混用不同测量身份。精确身份与状态比较不使用数值容差，公式性质测试的浮点容差不作为产物相等证据。

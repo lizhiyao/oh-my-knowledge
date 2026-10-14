@@ -1,6 +1,6 @@
-# Knowledge-gap signal contracts {#omk-knowledge-gap-signal-specification}
+# Knowledge-gap signal contracts
 
-This page specifies heuristic signals and aggregation used by production observation. See the [observation guide](../../guides/observe/observe-production.md) for user steps. Historical proposals at the end are not current capabilities.
+This page specifies heuristic signals and aggregation used by production observation. See the [observation guide](../../guides/observe/observe-production.md) for user steps.
 
 ## 1. Input and meaning {#current-scope}
 
@@ -36,34 +36,3 @@ The in-process cache keys by the first 16 characters of the sentence digest; it 
 Reports retain signal context, denominators, source scope, and limits. Humans review originals before revising knowledge or drafting formal evaluation samples. [Effective observation review](effective-observation-review.md) owns review priorities and annotation application without overwriting original evidence.
 
 Current `omk eval` has neither `--max-gap-rate` nor `--gap-rate-regression`. Automatic sample-expansion nudges, completeness judgments, active competency questions, and cross-evaluation gap gates are undelivered.
-
-## 6. Historical design {#current-history}
-
-[Original gap design](history/knowledge-gap-signal-spec-design.md) preserves motivation, formula discussions, proposed trends/gates, and active probing. It is not current configuration or CLI reference. A falling signal rate requires checking sources, task distribution, and rules; it cannot be attributed directly to knowledge improvement.
-
-<!-- Preserve old section links; the archive above owns historical content. -->
-<a id="_1-stance-and-positioning"></a>
-<a id="_2-why-gap-needs-to-be-its-own-metric"></a>
-<a id="_3-the-core-limit-what-it-can-and-cannot-show"></a>
-<a id="what-it-can-show-valid-claims"></a>
-<a id="what-it-cannot-show-claims-you-must-not-make"></a>
-<a id="in-one-sentence"></a>
-<a id="_4-the-four-sources-of-gap-signals"></a>
-<a id="_1-failed-search-strong-signal-·-auto-detectable"></a>
-<a id="_2-explicit-marker-weak-signal-·-text-matching"></a>
-<a id="_3-hedging-language-weak-signal-·-llm-assisted-second-pass-judgment"></a>
-<a id="_4-repeated-tool-failure-strong-signal-·-behavioral-pattern"></a>
-<a id="_5-the-gap-rate-aggregation-formula"></a>
-<a id="_6-cross-evaluation-trend"></a>
-<a id="_7-what-action-gap-rate-drives"></a>
-<a id="_1-mandatory-test-set-watermark"></a>
-<a id="_2-gap-inventory-per-evaluation"></a>
-<a id="_3-gap-classification-per-evaluation"></a>
-<a id="_4-ci-thresholds-cross-evaluation"></a>
-<a id="_8-sample-evolution-gap-rate-near-0-is-not-the-finish-line"></a>
-<a id="concrete-practices-for-sample-evolution-what-v0-1-can-do"></a>
-<a id="the-decision-rule-for-sample-evolution"></a>
-<a id="why-this-rule-has-to-be-in-the-spec"></a>
-<a id="_9-v0-2-outlook-active-probing-competency-questions"></a>
-<a id="_10-known-limits-and-future-work"></a>
-<a id="appendix-terminology-mapping"></a>

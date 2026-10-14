@@ -4,14 +4,14 @@ Use a demo to walk through “preview → evaluate → inspect evidence”, then
 
 ## Install and prepare a runtime
 
-You need Node.js >=22 and an authenticated runtime: Codex CLI, Claude Code, or an API executor. See [Executors](reference/integration/executors.md) for setup.
+You need Node.js >=22 and an authenticated runtime: Codex CLI, Claude Code, or an API executor. See [Executors](../../reference/integration/executors.md) for setup.
 
 ```bash
 npm i -g oh-my-knowledge@next
 omk --version
 ```
 
-This installs the actively evolving 1.0 Beta. Read the [migration guide](guides/maintenance/v1-preview-migration.md) before upgrading from 0.54.
+This installs the actively evolving 1.0 Beta. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading from 0.54.
 
 Inside a Codex task, OMK defaults to Codex, reads the locally configured model, and reuses it as the judge. In a regular terminal you can select it explicitly:
 
@@ -19,7 +19,7 @@ Inside a Codex task, OMK defaults to Codex, reads the locally configured model, 
 export OMK_EXECUTOR=codex
 ```
 
-Model selection, API credentials, and optional SDK prerequisites are documented in [Executors](reference/integration/executors.md).
+Model selection, API credentials, and optional SDK prerequisites are documented in [Executors](../../reference/integration/executors.md).
 
 ## 1. Run the demo
 
@@ -51,7 +51,7 @@ skills/
 └── my-skill-v2.md
 ```
 
-For accompanying references, use a directory such as `skills/my-skill-v2/SKILL.md`; see [artifact layout](reference/evaluation/artifact-layout.md). The variant name comes from the file or directory name, such as `my-skill-v2`.
+For accompanying references, use a directory such as `skills/my-skill-v2/SKILL.md`; see [artifact layout](../../reference/evaluation/artifact-layout.md). The variant name comes from the file or directory name, such as `my-skill-v2`.
 
 ```bash
 omk sample skills/my-skill-v2.md
@@ -64,7 +64,7 @@ omk eval --control my-skill-v1 --treatment my-skill-v2 --dry-run
 omk eval --control my-skill-v1 --treatment my-skill-v2
 ```
 
-With only one skill, use `baseline` as the control to compare “without skill” against “with skill”. See the [sample format](reference/evaluation/eval-sample-format.md) for the schema and discovery rules.
+With only one skill, use `baseline` as the control to compare “without skill” against “with skill”. See the [sample format](../../reference/evaluation/eval-sample-format.md) for the schema and discovery rules.
 
 ## 3. Read the result and choose the next step
 
@@ -79,7 +79,7 @@ Start with the **verdict** and its reason codes, then inspect the difference Δ,
 | `UNDERPOWERED` | Meet the declared sample-size requirement. Twenty comparable units is only a default heuristic floor; use external pilot assumptions for `decision.power` or register `decision.minimumComparisonUnits` for formal measurement. |
 | `SOLO` | Add a control before making a cross-version decision. |
 
-Conclusions apply only to these cases, criteria, and conditions. AI-generated cases can favor existing happy paths; add real failures, counterexamples, and misuse scenarios. Retain the report, case provenance, and human-review conclusions. Cases used during iteration are not an independent release-validation set. See [statistical rigor](./explanation/statistical-rigor.md) and [sample design](guides/evaluation/sample-design.md).
+Conclusions apply only to these cases, criteria, and conditions. AI-generated cases can favor existing happy paths; add real failures, counterexamples, and misuse scenarios. Retain the report, case provenance, and human-review conclusions. Cases used during iteration are not an independent release-validation set. See [statistical rigor](../../explanation/statistical-rigor.md) and [sample design](sample-design.md).
 
 ## Use inside an agent
 
@@ -93,13 +93,13 @@ Explicitly use the OMK Skill in your agent and describe your goal, for example: 
 
 ## Troubleshoot the first run
 
-- **Model or authentication failure:** check runtime login, model name, and API endpoint; see [Executors](reference/integration/executors.md).
-- **Doctor blocks the run:** fix the diagnosed artifact issues and retry. See the [CLI reference](./reference/cli.md) before deciding to skip the check.
+- **Model or authentication failure:** check runtime login, model name, and API endpoint; see [Executors](../../reference/integration/executors.md).
+- **Doctor blocks the run:** fix the diagnosed artifact issues and retry. See the [CLI reference](../../reference/cli.md) before deciding to skip the check.
 - **Check assertions and reports only:** `--no-judge` skips the LLM judge, but target execution may still call a model. It is not an offline or free-run switch.
 - **Preview fails:** resolve sample, path, or URL errors first; do not bypass them by starting a real run.
 
 ## Continue
 
-[Auto-improve a skill](guides/evaluation/auto-improve-skills.md) · [Observe real tasks](guides/observe/observe-production.md) · [Node.js integration](reference/integration/eval-runtime-recipes.md) · [Documentation index](./README.md)
+[Auto-improve a skill](auto-improve-skills.md) · [Observe real tasks](../observe/observe-production.md) · [Node.js integration](../../reference/integration/eval-runtime-recipes.md) · [Documentation index](../../README.md)
 
-[Evaluation flow: from execution to decision](./explanation/architecture.md#single-run-evaluation-flow).
+[Evaluation flow: from execution to decision](../../explanation/architecture.md#single-run-evaluation-flow).

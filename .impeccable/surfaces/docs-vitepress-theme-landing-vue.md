@@ -20,10 +20,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## 内容与资产职责
 官网说明机制、证据和任务选择 → 根 README 提供安装与首个动作 → docs/README.md 按任务引导到领域指南 → 技术参考拥有字段与高级配置。任务可从官网直达指南，第一次 Node 接入指向离线示例，不指向配置大全；这是 A11 的内容职责边界。
 SDK 截图只展示既有中文案例，英文页面明确说明界面语言；来源是 #1166／#1168 的独立验收材料在当前 Studio 的真实阅读区。sdk-maintenance-review.png 展示 v4 的变化核对，sdk-maintenance-current.png 展示 v5 正文；两张 PNG 均嵌入 origin metadata，sdk-maintenance-evidence.json 冻结观察时间、运行时版本、载体／知识修订身份与范围。未合成 UI，未新增模型调用；案例正文拥有来源、步骤与限制，截图不证明动态 SDK 或收益。
-静态图按真实尺寸声明，首图高优先级、后图延迟加载；正文默认可见。已删除无引用的旧流程图、旧 hero 图与退场样式，旧试验事实仍由历史文档拥有。
+静态图按真实尺寸声明，首图高优先级、后图延迟加载；正文默认可见。已删除无引用的旧流程图、旧 hero 图与退场样式，旧试验事实由固定 Git 原文与 Issue／PR 保留。
 
 ## 完成证据与未验证范围
 本轮验收覆盖中英文各 1280×900、1280×520、390×844、320×700，手机菜单、语言切换、本地 SDK 搜索、skip 入口，以及模拟复制成功／失败和异步完成不抢回焦点。明暗主题最小正文对比度分别为 5.83:1／7.87:1；减少动画与禁用 JS 下内容可读。仓库外 /private/tmp/omk-1185-review/ 保存 14 张截图及 browser.json／links.json，独立 finish reviewer 已打开全部截图，结论为 ship、No findings。物理机、VoiceOver、Lighthouse 与知识收益未验，收益验证仍由 #1115 拥有。
-文档收口核对了 Landing.vue、两版 HTML、landing.css、landing-init.ts、两版 README 与冻结证据；保留 VitePress 世界和仅覆盖 Studio 的 DESIGN.md。官网不套用 Studio 像素密度；既有 .impeccable/design.json 漂移未在本轮修复。
+文档收口核对了 Landing.vue、两版 HTML、landing.css、landing-init.ts、两版 README 与冻结证据；保留 VitePress 世界和仅覆盖 Studio 的 DESIGN.md。官网不套用 Studio 像素密度；当前 .impeccable/design.json 已依据 DESIGN.md 同步；登记仍只覆盖 Studio，不改变官网设计方向。
 
-发布边界：知识库、载体生成和变化核对需要 1.0.0-beta.14 或更新版本；安装 @next 后检查 omk --version。截图来自 main 源码验收，不能被理解为旧 Beta.13 的界面。用户已授权新的 next 发版；发行包安装与维护路径读回后才关闭发布承诺问题。
+发布边界：知识库、载体生成和变化核对需要 1.0.0-beta.14 或更新版本；安装 @next 后检查 omk --version。截图来自 main 源码验收，不能被理解为旧 Beta.13 的界面。beta.14 已发布，发行包安装与维护路径已读回；后续新版本发布仍按单独授权执行。

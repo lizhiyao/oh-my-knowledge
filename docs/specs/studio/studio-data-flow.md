@@ -38,6 +38,6 @@ Revision-gating means `router.refresh()` fires only when user-visible lifecycle 
 
 ## Recorded tradeoffs
 
-- Conversation list transfers the full list and filters/paginates client-side (20/page). Historical measurements establish only the then-tested implementation and scales (see [Studio performance baseline](history/studio-performance-baseline.md)); they do not establish current Next-page or remote-host capacity acceptance.
+- Conversation list transfers the full list and filters/paginates client-side (20/page); current Next-page and remote-host capacity still require verification on the corresponding machine and data scale.
 - Measure pages have no live refresh today; running evaluations are re-examined by navigation. Recorded as a decision, not an oversight.
 - Title rename bumps the revision; growth signals do not. If a future surface needs live counters on list/detail pages, add them to the snapshot state deliberately — not implicitly.

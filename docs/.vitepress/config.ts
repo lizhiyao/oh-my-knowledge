@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress';
 import { pageHref, pageRoute } from './page-links.js';
+import { writeRetiredDocumentNotices } from './retired-documents.js';
 
 const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 
@@ -12,6 +13,9 @@ export default defineConfig({
   description: 'OMK — Observe. Measure. Know. Build knowledge from collaboration between people and AI.',
   cleanUrls: true,
   rewrites: pageRoute,
+  buildEnd(site) {
+    writeRetiredDocumentNotices(site.outDir);
+  },
   markdown: {
     config(md) {
       const link = md.renderer.rules.link_open!;

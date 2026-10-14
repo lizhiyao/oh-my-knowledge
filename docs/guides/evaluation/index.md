@@ -12,4 +12,4 @@ Choose a page for your task; you do not need to read the whole documentation tre
 
 Return to the [documentation start page](../../README.md).
 
-For a first run, see the [evaluation quickstart](../../quickstart-skill-eval.md); see [statistical rigor](../../explanation/statistical-rigor.md) for interpretation.
+For a first run, see the [evaluation quickstart](quickstart-skill-eval.md); see [statistical rigor](../../explanation/statistical-rigor.md) for interpretation.

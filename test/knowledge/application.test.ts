@@ -60,8 +60,8 @@ describe('shared knowledge application', () => {
     expect(readFileSync(file)).toEqual(bytes);
     expect(app.entities(run.runId).history).toEqual(before.history);
   });
-  it('replays eleven recorded v6 responses through the current application without claiming new model generation', async () => {
-    const evidence = JSON.parse(readFileSync(new URL('../../docs/public/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
+  it('replays recorded responses through the current application without claiming new model generation', async () => {
+    const evidence = JSON.parse(readFileSync(new URL('../fixtures/entity-extraction-evidence/entity-extraction-v6-diagnostic.json', import.meta.url), 'utf8')) as {
       frozen: { prompt: { prompt: string }; inputs: { caseId: string; input: { excerpts: EvidenceWindow['excerpts'] } }[] };
       captures: { records: { caseId: string; result: { captureStatus: string; output: string } }[] }[];
     };

@@ -1,9 +1,11 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
 import config from '../../docs/.vitepress/config.js';
 import { pageHref, pageRoute } from '../../docs/.vitepress/page-links.js';
+import { retiredDocumentRoutes, writeRetiredDocumentNotices } from '../../docs/.vitepress/retired-documents.js';
 
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const DOCS_ROOT = join(PROJECT_ROOT, 'docs');
@@ -169,7 +171,7 @@ describe('domain specifications and stable published routes', () => {
     expect(links).toContain(`/${locale}specs/entities/`);
   });
 
-  it('keeps a unique route for every source, including moved guides and historical records', () => {
+  it('keeps a unique route for every source, including moved guides and references', () => {
     expect(new Set(publishedPages).size).toBe(publishedPages.length);
     for (const locale of ['', 'zh/']) {
       for (const [source, route] of [
@@ -179,12 +181,10 @@ describe('domain specifications and stable published routes', () => {
         ['reference/integration/eval-runtime-recipes', 'guides/eval-runtime'],
         ['reference/integration/embedded-api', 'reference/embedded-api'],
         ['reference/shared/glossary', 'reference/glossary'],
-        ['explanation/comparison', 'reference/comparison'],
-        ['specs/evaluation/history/eval-core-cutover', 'guides/eval-core-cutover'],
-        ['specs/evaluation/history/general-sample-proposal', 'specs/general-sample-proposal'],
+        ['reference/comparison', 'reference/comparison'],
+        ['guides/evaluation/quickstart-skill-eval', 'quickstart-skill-eval'],
         ['specs/observe/effective-observation-review', 'explanation/effective-observation-review'],
         ['specs/studio/studio-data-flow', 'explanation/studio-data-flow'],
-        ['specs/studio/history/studio-performance-baseline', 'explanation/studio-performance-baseline'],
       ]) {
         for (const extension of ['', '.md', '.html']) {
           expect(pageRoute(`${locale}${source}${extension}`)).toBe(`${locale}${route}${extension}`);
@@ -195,22 +195,47 @@ describe('domain specifications and stable published routes', () => {
     }
   });
 
-  it.each(['', 'zh/'])('keeps every %s entity report indexed as history with its original published URL', locale => {
-    const root = `docs/${locale}specs/entities`;
-    const files = readdirSync(`${root}/history`).filter(path => path.endsWith('.md'));
-    const index = readFileSync(`${root}/index.md`, 'utf8');
-    const targets = [...index.matchAll(/\]\(([^\s)]+)\)/g)].map(match => resolve(root, match[1]!.split('#')[0]!));
-    expect(files.length).toBeGreaterThan(0);
-    const routes: string[] = [];
-    for (const file of files) {
-      expect(targets.filter(path => path === resolve(root, 'history', file))).toHaveLength(1);
-      const route = pageRoute(`${locale}specs/entities/history/${file}`);
-      expect(route).toBe(`${locale}explanation/${file}`);
-      expect(resolvesToPublishedPage(`/${route.replace(/\.md$/, '')}`)).toBe(true);
-      routes.push(route);
+  it.each(['', 'zh/'])('keeps %s current docs free of historical catalogs and root-level tutorials', locale => {
+    const pages = markdownPages(join(DOCS_ROOT, locale)).map(path => relative(DOCS_ROOT, path));
+    expect(pages.filter(path => path.includes('/history/'))).toEqual([]);
+    const roots = readdirSync(join(DOCS_ROOT, locale)).filter(path => path.endsWith('.md')).sort();
+    expect(roots).toEqual(['README.md', 'index.md']);
+    const retired = retiredDocumentRoutes().filter(page => page.chinese === Boolean(locale));
+    expect(retired).toHaveLength(23);
+    for (const page of retired) {
+      expect(resolvesToPublishedPage('/' + page.route)).toBe(false);
+      expect(resolvesToPublishedPage(page.currentHref)).toBe(true);
+      expect(page.archiveUrl).toMatch(/^https:\/\/github\.com\/lizhiyao\/oh-my-knowledge\/blob\/[a-f0-9]{40}\/docs\//);
     }
-    expect(new Set(routes).size).toBe(files.length);
-    expect(pageRoute(`${locale}specs/entities/index.md`)).toBe(`${locale}specs/entities/index.md`);
+    expect(new Set(retired.map(page => page.route)).size).toBe(retired.length);
+  });
+
+  it('generates bilingual exit pages at historical URLs and rejects collisions before writing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-retired-docs-'));
+    try {
+      const pages = retiredDocumentRoutes();
+      const outDir = join(root, 'site');
+      writeRetiredDocumentNotices(outDir);
+      for (const page of pages) {
+        const html = readFileSync(join(outDir, page.route + '.html'), 'utf8');
+        expect(html).toContain('<meta name="robots" content="noindex">');
+        expect(html).toContain('href="' + page.archiveUrl + '"');
+        expect(html).toContain('href="' + page.currentHref + '"');
+        expect(html).toContain('archive.href+=location.hash');
+        expect(html).toContain(page.chinese ? 'lang="zh-Hans"' : 'lang="en"');
+        expect(html).toContain(page.chinese ? '这份历史记录已移出当前文档' : 'This historical record is outside the current documentation');
+      }
+      const collisionDir = join(root, 'collision');
+      const last = pages.at(-1)!;
+      const existing = join(collisionDir, last.route + '.html');
+      mkdirSync(join(existing, '..'), { recursive: true });
+      writeFileSync(existing, 'current page');
+      expect(() => writeRetiredDocumentNotices(collisionDir)).toThrow('collides with a current page');
+      expect(readFileSync(existing, 'utf8')).toBe('current page');
+      expect(existsSync(join(collisionDir, pages[0]!.route + '.html'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('rebases source links across domains and into reference pages while preserving anchors and locales', () => {
@@ -232,13 +257,12 @@ describe('domain specifications and stable published routes', () => {
     }
     expect(pageRoute('explanation/knowledge.md')).toBe('explanation/knowledge.md');
     expect(pageRoute('specs/index.md')).toBe('specs/index.md');
-    const history = {
-      path: resolve('docs/zh/explanation/entity-extraction-quality.md'),
-      realPath: resolve('docs/zh/specs/entities/history/entity-extraction-quality.md'),
+    const quickstart = {
+      path: resolve('docs/zh/quickstart-skill-eval.md'),
+      realPath: resolve('docs/zh/guides/evaluation/quickstart-skill-eval.md'),
     };
-    expect(pageHref('./entity-extraction-repeat-quality.md#结果', history)).toBe('./entity-extraction-repeat-quality.md#结果');
-    expect(pageHref('../entity-extraction.md', history)).toBe('../specs/entity-extraction.md');
-    expect(pageHref('../index.md', history)).toBe('../specs/entities/index.md');
+    expect(pageHref('../integration/non-claude-models.md#配置', quickstart)).toBe('./guides/non-claude-models.md#配置');
+    expect(pageHref('../../reference/comparison.md', quickstart)).toBe('./reference/comparison.md');
     expect(pageHref('/zh/specs/entities/index.md', env)).toBe('/zh/specs/entities/index.md');
   });
 });

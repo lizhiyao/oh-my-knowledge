@@ -323,20 +323,19 @@ oclif Help 会经过 EJS 渲染，不能把用户输入拼入 description／flag
 - 不做不必要的抽象；不为假想的未来需求写代码
 - 注释保持精简 —— 说明*为什么*，而不是*做了什么*
 
-## 文档目录结构
+## 文档结构
 
-`docs/` 按读者分组 —— 新建文件前先选对目录：
+`docs/` 按文档职责组织；先确定读者的任务，再选择目录：
 
-- `docs/guides/` —— 用户怎样完成任务，步骤、自检和示例；字段大全引用 reference，不在指南复制。
-- `docs/reference/` —— 字段、API、配置和完整接入片段，按 shared／evaluation／integration 分组；CLI 是跨领域查阅页。
-- `docs/explanation/` —— 概念、原理和取舍；不复制操作步骤或字段大全。
-- `docs/specs/` —— 按 shared／entities／knowledge／evaluation／observe／studio 规定当前行为与验收。每个领域有阅读入口；旧设计、案例和试验进入所属 history，当前规则不夹带整篇旧草案。
-- `docs/guides/` 按 knowledge／observe／evaluation／integration／maintenance 组织任务。先给出可执行的首条动线，再链接字段参考与实现规范。贡献流程作为跨领域全局入口保留本页。
-- `docs/quickstart-skill-eval.md` + `docs/README.md` 保持在顶层；`docs/zh/` 镜像同样的结构
-- `docs/README.md` + `docs/zh/README.md` 是按读者分组的索引 —— 新文件加入对应小节
-- **中英文对称是硬性要求。** 每个已发布页面都要有 `docs/` 下的英文版，以及 `docs/zh/` 下同一路径的中文版 —— VitePress 的语言切换依赖这份 1:1 镜像，否则严格的死链构建就会失败。新增文档时两半一起加。设计依据与决策记录优先写在相关已发布规范*内部*（例如作为附录），让用户看到完整推理；只有确实只面向维护者的笔记才放在 `docs/` 之外，这类笔记不受双语规则约束
+- `guides/`：用户步骤、自检与示例，按 knowledge／observe／evaluation／integration／maintenance 分组。评测快速上手归入 `guides/evaluation/quickstart-skill-eval.md`。
+- `reference/`：字段、API、配置和完整集成配方，按 shared／evaluation／integration 分组；CLI 与工具对照属于跨领域查阅。
+- `explanation/`：概念、原理与取舍，不复制步骤或字段表。
+- `specs/`：现行行为、不变量与验收，按 shared／entities／knowledge／evaluation／observe／studio 分组，每个领域有入口。
+- 根目录只放文档入口 `README.md` 与站点首页 `index.md`；本贡献指南保留为跨领域流程入口。
 
-概念与原理放在 explanation；约束实现的行为、不变量及验收放在 specs 的所属领域，不能只按“实体”等主题名决定目录。混合文档按主要职责归类，引用另一层的权威来源。草案、部分交付和历史裁决必须标明状态；一次试验或已被替代提案进入对应领域 `history/`，保留原始身份与证据，不能作为当前能力承诺。移动来源时同步中英文、索引、侧栏及活跃引用，并用路由映射保留已有文档站 URL／锚点。
+当前文档只保留最新有效信息和能力限制。已替代提案、旧设计、逐版本试验流水与完成的阶段计划不继续放在 `docs/`；讨论与交付记录由 Issue／PR 管理，必要原始证据引用固定 Git 版本。仍有效的升级影响放在维护指南，不能把历史失败改判为通过或改写原始结果。旧公开地址可保留简短退出提示，链接冻结原文和当前规范，不把旧正文纳入导航或站内搜索。
+
+**中英逐项镜像。** 英文 `docs/` 与中文 `docs/zh/` 的路径、节级、任务及限制对应；新增、删除、移动必须同步两版及索引、侧栏和活跃引用。源文件归位后保留现行页面的公开 URL；章节删除时清理旧锚点，活跃引用改指当前对应章节。概念、步骤、完整字段与契约各有唯一权威正文，混合主题按主要职责归类，跨层用链接。
 
 ## 范围
 

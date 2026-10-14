@@ -129,6 +129,6 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 首次使用请逐条记录来源忠实度、适用范围、未来复用价值，以及误提炼、遗漏和修订原因。自动测试不能替代这项判断。
 
 
-## 复现历史质量检查 {#复现提取质量检查}
+## 提取质量检查 {#复现提取质量检查}
 
-旧质量工具与冻结基线的复现步骤统一保存在[历史复现记录](../../specs/entities/history/extraction-quality-reproduction.md)。它们不适用于当前运行，不用新产物重算旧分数。
+使用[现行标注指南与离线工具](../../specs/entities/entity-extraction-evaluation.md)。生成复核包不调用模型，不证明整体质量通过；历史结果仅在对应冻结版本复现，不用现行产物重算。

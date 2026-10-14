@@ -1,6 +1,6 @@
 # 使用 OpenAI 兼容端点与本地模型
 
-先准备明确的 control、treatment 和 v3 用例，见[评测入门](../../quickstart-skill-eval.md)。执行器决定调用方式，模型名和端点由你实际可访问的服务决定；不把历史示例里的模型名当成当前可用清单。
+先准备明确的 control、treatment 和 v3 用例，见[评测入门](../evaluation/quickstart-skill-eval.md)。执行器决定调用方式，模型名和端点由你实际可访问的服务决定；不把历史示例里的模型名当成当前可用清单。
 
 ## OpenAI 兼容 HTTP 端点
 

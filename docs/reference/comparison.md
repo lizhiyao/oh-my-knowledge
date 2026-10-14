@@ -1,12 +1,12 @@
 # OMK vs alternatives
 
-Verification date: 2026-09-29. This page helps select tools for the same user task; it does not rank feature counts. Competitor entries rely on the first-party documentation or project READMEs linked below. We did not install and run competitors or audit all their implementations in this review. Documentation is not execution evidence, and unverified does not mean unsupported.
+Verification date: 2026-09-29. This page helps select tools for the same user task; it does not rank feature counts. Competitor entries rely on the first-party documentation or project READMEs linked below. We did not install and run competitors or audit all their implementations in this review. Documentation is not execution evidence, and unverified does not mean unsupported. OMK capability descriptions are updated against current contracts on 2026-10-14; competitor source dates remain separate.
 
 ## OMK's purpose and boundaries
 
-OMK supports knowledge work: turn real work records into candidate knowledge with sources and applicability, then evaluate concrete artifact changes through controlled comparisons. Existing capabilities include [knowledge extraction and review](../guides/knowledge/extract-knowledge.md), [controlled evaluation](three-stage-workflow.md), and local Studio. Complete links from knowledge revisions to artifact changes and an automated end-to-end workflow remain partly unimplemented; see the [domain design](../specs/knowledge/knowledge-domain-model.md). Retaining a candidate does not establish its truth.
+OMK supports knowledge work: turn real work records into candidate knowledge with sources and applicability, then evaluate concrete carrier changes through controlled comparisons. Current capabilities include [knowledge extraction and review](../guides/knowledge/extract-knowledge.md), the object knowledge library, exact knowledge-revision references in carrier versions, saving and change review, and [carrier evaluation associations](../specs/knowledge/knowledge-maintenance.md). Conversation auto-extraction requires explicit enablement and is bounded by the running service and authorization period. Automatic cross-agent identity unification, knowledge truth and practical reuse benefits remain unverified. Retaining a candidate does not establish its truth; see the [domain contracts](../specs/knowledge/knowledge-domain-model.md).
 
-Inspectable OMK characteristics include explicit [measurement contracts](statistical-rigor.md), evidence provenance and version identity, evidence-constrained Decision, and local CLI / Node.js access / Studio. These do not establish exclusivity or a moat. Practical value should be tested by whether users can reach an interpretable change decision with less effort.
+Inspectable OMK characteristics include explicit [measurement contracts](../explanation/statistical-rigor.md), evidence provenance and version identity, evidence-constrained Decision, and local CLI / Node.js access / Studio. These do not establish exclusivity or a moat. Practical value should be tested by whether users can reach an interpretable change decision with less effort.
 
 ## Comparison definitions
 
@@ -52,8 +52,6 @@ This is a bounded comparison set, not industry-wide coverage. No conclusions are
 
 **Content identity is not tamper resistance or compliance certification.** Digests can support correlation and integrity checks but cannot prevent replacing both content and digest. Traceable evidence does not establish compliance with NIST or other standards.
 
-**A corporate announcement is not verified transaction completion.** OpenAI published an [announcement of its intended acquisition of Promptfoo](https://openai.com/index/openai-to-acquire-promptfoo/) on 2026-03-09. This page verifies that announcement only; it neither asserts completion nor infers open-source capabilities or data location from ownership.
-
 ## Assessing OMK for your task
 
 If you maintain a prompt, RAG system, skill, agent, or workflow and want to compare knowledge-artifact changes under explicit model and task conditions, tracing sources, versions, original evidence, and Decision, try a representative case with OMK. Read the [scoring contracts](../specs/evaluation/scoring.md) and chosen executor's boundaries first; do not generalize a single positive result to all tasks.
@@ -77,5 +75,3 @@ Different tools can serve different stages, but interoperability requires explic
 ## Updates and corrections
 
 When revising a comparison, provide the specific product or component, version, capability definition, source link, verification date, and evidence category. Negative results also need test conditions and failure paths. Not finding documentation supports only an “unverified” status.
-
-This rewrite replaces the April 2026 checkmark matrix and withdraws unsubstantiated claims about missing capabilities, exclusivity, industry rankings, licensing, and compliance. The date records when the listed sources were read, not completion of an industry-wide audit or competitor execution verification.

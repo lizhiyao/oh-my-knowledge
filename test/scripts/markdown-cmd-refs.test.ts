@@ -1,16 +1,7 @@
 /**
- * 全仓 user-facing markdown 的 `omk <cmd>` 引用 grep gate。
- *
- * issue #109 立项时点名漂移过的剧情(`omk bench run` → `eval`、`improve` → `evolve`、
- * `omk export` 下线后仍被 README/SKILL.md 引用)就是「真实命令树重构后,docs 跟不上」
- * 的典型 sample。PR #120 给 SKILL.md frontmatter argument-hint 加了 vitest gate,
- * 但 SKILL.md body 36 处 cmd refs、quickstart-skill-eval.md 的 26 处、roadmap.md
- * 等仍裸跑没保护。
- *
- * 本测试 scan 全仓 user-facing markdown,把 `omk <cmd>` 第一 token 跟 oclif Config
- * 真值集合比对,任何 stale / typo / removed 命令都会被拦。真值来自
- * `getTopLevelIds(Config.load)`(scripts/build/docs.ts 已经收口为单一派生函数),
- * oclif Command 文件目录是唯一真值源。
+ * 扫描用户可见 Markdown 中的 `omk <cmd>`，拦截拼写错误与已移除的命令。
+ * 命令集合通过 getTopLevelIds(Config.load) 从 oclif Command 文件派生，
+ * 与文档生成器共用同一来源；不依赖固定引用数量。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';

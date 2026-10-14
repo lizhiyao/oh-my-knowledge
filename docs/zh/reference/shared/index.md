@@ -5,3 +5,5 @@
 - [CLI 命令](../cli.md)
 - [术语](glossary.md)
 - [全局设置](settings.md)
+
+- [工具对照与边界](../comparison.md)

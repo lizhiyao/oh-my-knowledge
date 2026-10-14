@@ -156,7 +156,7 @@ describe('docs/zh 跨语言悬链 gate', () => {
 describe('官网与 README 的首次使用落点', () => {
   const entries = [
     { key: 'knowledge', source: 'guides/knowledge/extract-knowledge.md', titles: ['Accumulate, maintain, and use knowledge', '沉淀、维护和使用知识'], action: 'omk studio' },
-    { key: 'evaluation', source: 'quickstart-skill-eval.md', titles: ['omk quickstart: get to your first verdict', 'omk 快速上手：跑出第一份 verdict'], action: '--dry-run' },
+    { key: 'evaluation', source: 'guides/evaluation/quickstart-skill-eval.md', titles: ['omk quickstart: get to your first verdict', 'omk 快速上手：跑出第一份 verdict'], action: '--dry-run' },
     { key: 'node', source: 'guides/integration/eval-runtime.md', titles: ['Compare two versions in code', '在代码里比较两个版本'], action: 'node examples/eval-runtime/run.mjs' },
   ];
   it.each(['en', 'zh'])('%s 的入口落到对应标题与可核对动作', async lang => {

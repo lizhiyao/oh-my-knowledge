@@ -171,7 +171,6 @@ This guide promises no IRT parameter estimation, automatic adversarial mining, S
 
 Earlier design discussions considered `source_ids`, `status`, `tags`, `owner`, and `risk_level`. They are not current v3 fields. Do not author draft fields into samples: the schema is strict. A proposed `deprecated` status cannot silently exclude samples or change Δ weights.
 
-Adding a field requires identifying its consumer, identity impact, and public contract version. Changes to scoring and reuse semantics need separate disclosure. The [general sample proposal](../../specs/evaluation/history/general-sample-proposal.md) preserves historical v3 design trade-offs; its compatibility-window and migration-tool suggestions were superseded by the v3-only decision.
 
 ### 6.4 Sources {#_6-4-sources}
 
@@ -184,3 +183,5 @@ Adding a field requires identifying its consumer, identity impact, and public co
 `eval-workflows/inputs/contracts` defines sample types, `inputs/schemas` owns validation and machine schemas, and `inputs/sample-mapping.ts` maps the public v3 envelope to internal DTOs. Internal DTOs are neither a second public protocol nor a v2 reader.
 
 `orchestration/measurement-design.ts` compiles Core declarations. `measurement/evaluators` and `eval-runtime/evaluators` own their respective evaluators; hosts assemble executors and scoring in `hosts/composition`. Core depends on neither sample authoring, filesystems, nor concrete executors.
+
+Before adding a field, identify its consumer, identity impact and public contract version. Disclose scoring and reuse-semantic changes separately.

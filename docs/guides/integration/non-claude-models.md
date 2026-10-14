@@ -1,6 +1,6 @@
 # Use an OpenAI-compatible endpoint or local model
 
-First prepare explicit control/treatment variants and v3 samples; see the [evaluation quickstart](../../quickstart-skill-eval.md). Executors choose invocation mechanics; model IDs and endpoints come from services you can actually access. Historical model examples are not a current availability catalog.
+First prepare explicit control/treatment variants and v3 samples; see the [evaluation quickstart](../evaluation/quickstart-skill-eval.md). Executors choose invocation mechanics; model IDs and endpoints come from services you can actually access. Historical model examples are not a current availability catalog.
 
 ## OpenAI-compatible HTTP endpoint
 

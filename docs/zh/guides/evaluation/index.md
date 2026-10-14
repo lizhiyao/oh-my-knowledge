@@ -12,4 +12,4 @@
 
 返回[文档首页](../../README.md)。
 
-第一次运行见[评测快速上手](../../quickstart-skill-eval.md)；结果解释见[统计严谨性](../../explanation/statistical-rigor.md)。
+第一次运行见[评测快速上手](quickstart-skill-eval.md)；结果解释见[统计严谨性](../../explanation/statistical-rigor.md)。
