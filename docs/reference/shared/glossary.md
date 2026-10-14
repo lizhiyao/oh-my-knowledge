@@ -9,7 +9,7 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 
 > **Scope**: a reader's cheat sheet, not a design spec. omk maintainers follow this vocabulary when writing new docs.
 >
-> **Sibling docs**: [terminology spec](../../specs/shared/terminology-spec.md) (maintainer-internal decision record) / [statistical rigor](../../explanation/statistical-rigor.md) / [composite-score construct validity](../../specs/evaluation/scoring.md)
+> **Sibling docs**: [terminology spec](../../specs/shared/terminology-spec.md) (current terminology contract) / [statistical rigor](../../explanation/statistical-rigor.md) / [composite-score construct validity](../../specs/evaluation/scoring.md)
 
 ---
 
@@ -85,4 +85,4 @@ omk's loop runs in three stages — **doctor** (preflight health) → **eval** (
 
 ## Writing conventions
 
-The terms above are the shared vocabulary for omk docs. Detailed naming *decisions* for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../../specs/shared/terminology-spec.md) (a maintainer archive). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules, documented in the Chinese glossary; they don't apply to English prose.
+The terms above are the shared vocabulary for omk docs. Detailed naming *decisions* for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../../specs/shared/terminology-spec.md) (a current terminology contract). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules, documented in the Chinese glossary; they don't apply to English prose.

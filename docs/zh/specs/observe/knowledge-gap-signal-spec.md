@@ -1,6 +1,6 @@
-# 知识缺口信号契约 {#omk-知识缺口信号形式化规范}
+# 知识缺口信号契约
 
-本文规定生产观测已使用的启发式信号和聚合边界。用户入口见[观测指南](../../guides/observe/observe-production.md)；历史提议见文末，不属于当前能力。
+本文规定生产观测已使用的启发式信号和聚合边界。用户入口见[观测指南](../../guides/observe/observe-production.md)。
 
 ## 1. 输入与意义 {#current-scope}
 
@@ -36,34 +36,3 @@
 报告保留信号上下文、分母、来源范围与限制；人核对原始记录后，才决定修订知识或草拟正式评测用例。有效复核优先级及注释应用由[观测复核规范](effective-observation-review.md)负责，不回写原始证据。
 
 当前 `omk eval` 不提供 `--max-gap-rate` 或 `--gap-rate-regression`。自动扩用例 nudge、知识完备性判断、主动 competency questions 与跨评测 gap 门禁均未交付。
-
-## 6. 历史设计 {#current-history}
-
-[原始缺口设计](history/knowledge-gap-signal-spec-design.md)保留起草背景、公式讨论、拟议趋势／门禁和主动探测，不作为当前配置或 CLI 参考。观察到信号下降也需要核对来源、任务分布与规则，不能直接归因于知识改善。
-
-<!-- 保留旧章节链接；历史内容在上述归档页。 -->
-<a id="一、立场与定位"></a>
-<a id="二、为什么需要-缺口-这个独立指标"></a>
-<a id="三、核心限制-能说明什么-不能说明什么"></a>
-<a id="能说明-有效论断"></a>
-<a id="不能说明-不能声张的结论"></a>
-<a id="一句话概括"></a>
-<a id="四、缺口信号的四种来源"></a>
-<a id="_1-失败搜索-强信号-·-自动可检测"></a>
-<a id="_2-显式标记-弱信号-·-文本匹配"></a>
-<a id="_3-降级措辞-弱信号-·-llm-辅助二次判定"></a>
-<a id="_4-工具连续失败-强信号-·-行为模式"></a>
-<a id="五、缺口率的聚合公式"></a>
-<a id="六、跨评测趋势"></a>
-<a id="七、缺口率驱动什么-action"></a>
-<a id="_1-强制水印-mandatory-test-set-watermark"></a>
-<a id="_2-缺口清单-per-evaluation"></a>
-<a id="_3-缺口分类-per-evaluation"></a>
-<a id="_4-ci-阈值-cross-evaluation"></a>
-<a id="八、用例进化-gap-rate-接近-0-不是终点"></a>
-<a id="用例进化的具体做法-v0-1-可做的"></a>
-<a id="用例进化的判断规则"></a>
-<a id="为什么这个规则必须在-spec-里"></a>
-<a id="九、v0-2-展望-主动探测-competency-questions"></a>
-<a id="十、已知限制和未来工作"></a>
-<a id="附录-术语对照"></a>

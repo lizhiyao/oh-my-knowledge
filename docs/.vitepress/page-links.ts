@@ -7,10 +7,10 @@ const referencePath = /(^|\/)reference\/(shared|evaluation|integration)\/(?!inde
 
 export function pageRoute(path: string): string {
   return path
+    .replace(/(^|\/)guides\/evaluation\/quickstart-skill-eval(?=\.(?:md|html)$|$)/, '$1quickstart-skill-eval')
     .replace(/(^|\/)guides\/(?:evaluation\/)?sample-design(?=\.(?:md|html)$|$)/, '$1specs/sample-design-spec')
     .replace(/(^|\/)guides\/integration\/eval-runtime(?=\.(?:md|html)$|$)/, '$1guides/service-evaluation')
     .replace(/(^|\/)reference\/integration\/eval-runtime-recipes(?=\.(?:md|html)$|$)/, '$1guides/eval-runtime')
-    .replace(/(^|\/)explanation\/comparison(?=\.(?:md|html)$|$)/, '$1reference/comparison')
     .replace(/(^|\/)specs\/evaluation\/history\/eval-core-cutover(?=\.(?:md|html)$|$)/, '$1guides/eval-core-cutover')
     .replace(/(^|\/)specs\/observe\/(effective-observation-review(?:\.(?:md|html))?)$/, '$1explanation/$2')
     .replace(/(^|\/)specs\/studio\/(?:history\/)?(studio-(?:data-flow|performance-baseline)(?:\.(?:md|html))?)$/, '$1explanation/$2')

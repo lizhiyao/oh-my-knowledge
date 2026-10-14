@@ -34,9 +34,9 @@ This verifies maintenance and reference behavior. It does not verify dynamic SDK
 
 ## Continue with your task
 
-- **Compare two artifacts directly**: preview the plan in the [evaluation quickstart](docs/quickstart-skill-eval.md), configure a runtime, then call the model. Fix models and cases, record execution conditions, and inspect decisions, uncertainty, and failed-case evidence.
+- **Compare two artifacts directly**: preview the plan in the [evaluation quickstart](docs/guides/evaluation/quickstart-skill-eval.md), configure a runtime, then call the model. Fix models and cases, record execution conditions, and inspect decisions, uncertainty, and failed-case evidence.
 - **Embed evaluation in a service**: begin with the [offline Node example](docs/guides/integration/eval-runtime.md), complete a traceable comparison, then choose models and configuration as needed.
-- **Use OMK inside agents or DSH**: [install the official Skill](docs/quickstart-skill-eval.md#use-inside-an-agent), [submit MCP feedback](docs/guides/integration/mcp-integration.md), or use the [DSH host plugin](docs/reference/integration/executors.md#deepseek-harness-prefer-the-host-plugin).
+- **Use OMK inside agents or DSH**: [install the official Skill](docs/guides/evaluation/quickstart-skill-eval.md#use-inside-an-agent), [submit MCP feedback](docs/guides/integration/mcp-integration.md), or use the [DSH host plugin](docs/reference/integration/executors.md#deepseek-harness-prefer-the-host-plugin).
 - **Verify an agent’s file changes**: use independent checks in [local task acceptance](docs/guides/evaluation/local-tasks.md), or screen candidate versions with [iterative improvement](docs/guides/evaluation/auto-improve-skills.md).
 
 Starter cases check the workflow; `UNDERPOWERED` is expected. Release decisions need your own domain cases and independent evidence. Observation signals do not establish causality; passing an evaluation does not mean an artifact took effect or a version was published.

@@ -129,6 +129,6 @@ The workspace contains source snapshots, revisions and raw generation output, wh
 For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
 
 
-## Reproduce historical quality checks {#reproduce-extraction-quality-checks}
+## Extraction quality checks {#reproduce-extraction-quality-checks}
 
-Historical tools and frozen-baseline steps are maintained in the [historical reproduction record](../../specs/entities/history/extraction-quality-reproduction.md). They do not apply to current runs; new artifacts do not rescore old results.
+Use the [current annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md). Generating a review package makes no model calls and does not establish overall quality acceptance. Historical results are reproduced only at their frozen revisions, without rescoring using current artifacts.

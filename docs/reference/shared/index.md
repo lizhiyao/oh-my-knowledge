@@ -5,3 +5,5 @@ Look up what you need; task steps start at the [documentation entry](../../READM
 - [CLI commands](../cli.md)
 - [Terms](glossary.md)
 - [Global settings](settings.md)
+
+- [Tool comparison and scope](../comparison.md)

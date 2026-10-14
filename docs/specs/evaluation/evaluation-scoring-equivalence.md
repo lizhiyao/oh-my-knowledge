@@ -1,10 +1,10 @@
-# Evaluation scoring equivalence RFC
+# Evaluation scoring equivalence specification
 
-> Status: implemented migration contract for [#480](https://github.com/lizhiyao/oh-my-knowledge/issues/480). The phased statements below preserve the migration rationale; production `omk eval` now executes this Core scoring graph and persists only Core artifacts after the atomic `BREAKING-SCHEMA` cutover.
+> Status: current Core scoring and decision contracts. Production `omk eval` executes this four-stage scoring graph and persists only Core artifacts.
 
 ## 1. Decision
 
-The current scoring and release semantics will be re-expressed as an Evaluation Core pipeline with four explicit boundaries:
+The current scoring and release semantics are expressed as an Evaluation Core pipeline with four explicit boundaries:
 
 ```text
 sealed sample evaluation context
@@ -90,7 +90,7 @@ Retry never creates a new measurement replicate. A failed judge replicate remain
 
 Per-unit derivations use versioned table envelopes. Each row binds target, sample, trial, metric or dimension identity, input observation IDs, value or structured missing reason, and the exact rounding stage. Downstream nodes consume these tables as Analysis results; they do not create new MetricObservations after Evaluation has completed.
 
-Planned nodes are:
+Current nodes are:
 
 1. `judge-replicate-mean`: mean and sample standard deviation over successful raw readings; zero successful readings is missing.
 2. `judge-ensemble-mean`: equal mean over successful member means; member rows and failures remain in the input lineage.
@@ -191,71 +191,8 @@ The contract is implemented by the host-owned `omk.release-decision/v7` policy, 
 
 Host diagnostics that do not affect a Metric or decision remain post-processing. Any diagnostic that changes a conclusion must become a sealed Analysis input or DecisionPolicy parameter.
 
-## 10. Conformance evidence
+## 10. Validation and measurement boundaries
 
-The first baseline is `test/fixtures/eval-core/scoring-equivalence-v1.json`, anchored to commit `38648427`. It freezes:
+Frozen input `test/fixtures/eval-core/scoring-equivalence-v1.json` retains original prompt hashes and equivalence vectors. Current Core and production boundaries are covered by `test/eval-core/conformance/` and `test/eval-workflows/orchestration/`, including structured failures, coverage, identity, lineage, cancellation and resource release. The removed migration differential tool is not a current entry point.
 
-- all six scoring prompt hashes;
-- deterministic assertions, nested same-layer and mixed-layer `assert-set` behavior, weighting, layer mapping, and rounding;
-- fixed-response semantic and RAG outcomes and usage;
-- judge replicate failures, sample standard deviation, ensemble member evidence, and consensus;
-- independent and paired bootstrap vectors under the legacy random stream;
-- interval Krippendorff alpha, weighted kappa, Pearson, and alpha bootstrap.
-
-Later migration tests consume the same fixture through the new Core path and compare observations, coverage, evidence, per-unit tables, interval results, usage provenance, and reason codes. Exact identity and status comparisons never use numeric tolerance. Floating-point tolerance is allowed only in formula property tests that are not artifact equality tests.
-
-The semantic/RAG conformance vectors additionally freeze the intentional failure-semantic break: valid pass, valid threshold fail, valid negation, provider failure, non-JSON, malformed JSON, malformed score, out-of-range score, missing explanation, timeout, cancellation, budget censoring, unknown usage/cost, and the invariant that adding an infrastructure failure cannot lower an observed content pass rate. Legacy custom assertion vectors cover valid pass/fail, negation, thrown and timed-out modules, and invalid result objects.
-
-The final offline differential harness was delivered by
-[#528](https://github.com/lizhiyao/oh-my-knowledge/issues/528) and removed with its legacy oracle
-after cutover. Its immutable input fixture remains at
-`test/fixtures/eval-core/scoring-equivalence-v1.json`. Current Core and production-boundary
-coverage lives under `test/eval-core/conformance/` and
-`test/eval-workflows/orchestration/`. The differential harness prepared and executed one
-real sealed plan across two Targets and four paired samples, then traversed
-`Execution -> Evaluation -> Analysis -> Decision` through the public engine facade. The plan
-contains output-only and execution-aware deterministic assertions, all four semantic/RAG
-instruments, two rubric ensemble members with two measurement replicates each, assertion-layer,
-replicate, ensemble, dimension, composite, Bootstrap-family, Agreement, and release-decision
-nodes. The legacy projection is generated independently from the same outputs, fixed provider
-readings, Gold ratings, thresholds, and seed.
-
-The harness compares exact criterion readings, structured failure states, coverage, usage and
-provider-cost provenance, prompt IDs and frozen hashes, sample/trial/member/replicate/pairing
-identities, layer and composite rows, Bootstrap source lineage, Gold lineage, agreement
-statistics, release conclusion, and stable reason codes. Runtime-produced schema validators and
-artifact digest checks remain active; the test does not construct final tables by calling their
-pure functions. No production CLI, Report reader/writer, Studio, resume, batch, evolve, or
-persistence path participates in the run.
-
-### 10.1 Historical typed differential exception inventory
-
-The differential harness admits only the following issue-owned differences. Each entry is a
-typed value with an explicit `accepted` or `blocking` status; an unlisted mismatch fails exact
-comparison.
-
-| Owning issue | Status | Deliberate difference |
-|---|---|---|
-| [#481](https://github.com/lizhiyao/oh-my-knowledge/issues/481) | accepted | Provider or parse failure remains failed/invalid/missing evidence instead of a Boolean content failure. The full-chain failure probe checks both projections and downstream coverage. |
-| [#484](https://github.com/lizhiyao/oh-my-knowledge/issues/484) | accepted | `json_schema` validator sessions are isolated instead of sharing legacy process-global state. |
-| [#492](https://github.com/lizhiyao/oh-my-knowledge/issues/492) | accepted | Malformed, coerced, out-of-range, empty-reason, and zero-sentinel rubric responses are not valid readings. |
-| [#489](https://github.com/lizhiyao/oh-my-knowledge/issues/489) | accepted | Async assertion negation is sealed and applies only after a valid raw pass/fail reading; invalidity and infrastructure failure cannot become success. |
-
-This inventory is not a compatibility mode. Accepted entries describe the authoritative Core
-semantics, and the harness has no remaining differential exception blocking formal cutover.
-The production dependency direction remains Core contracts/runtime inward and host
-adapters outward: Evaluation Core does not import the legacy Report, CLI, provider SDK,
-environment, filesystem, or prompt-registry text. Provider invocation and prompt construction
-remain injected host ports; only sealed identities and captured artifacts cross the boundary.
-
-## 11. Delivery slices
-
-1. Baseline RFC and immutable legacy fixture.
-2. Output-only deterministic assertion Evaluator, followed by execution-aware assertions after #483 and the custom assertion Evaluator.
-3. Semantic, RAG, and rubric Evaluators using fixed-response replay.
-4. Replicate, ensemble, dimension, assertion-layer, and composite Analysis nodes.
-5. Exact bootstrap and agreement Analysis standards.
-6. Six-tier release DecisionPolicy.
-7. Full offline old/new differential conformance and dependency audit.
-
-Every implementation slice exercised a prepared Core plan and real Runtime lifecycle, including cancellation and exactly-once disposal. Test implementations use the `test.*` namespace. The later cutover phase connected production `omk eval`, Studio, resume, batch, evolve, Gold comparison, and artifact graph to these contracts and deleted legacy Report readers and writers.
+Changes to scoring, Schema or statistical standards require explicit versioning, retaining frozen inputs and original results without mixing measurement identities. Exact identity and state comparisons use no numeric tolerance; formula-property floating-point tolerance is not artifact-equality evidence.

@@ -1,15 +1,6 @@
-# Runtime configuration and integration recipes {#compare-two-versions-in-code}
+# Runtime configuration and integration recipes
 
 Start with the tutorial [Compare two versions in code](../../guides/integration/eval-runtime.md). Use this reference to look up scoring, data, policy, persistence, and Agent integration. Your application supplies clients, storage, and credentials used by the snippets.
-
-<a id="what-happens-in-one-evaluation"></a>
-<a id="run-this-example"></a>
-<a id="where-to-start"></a>
-<a id="find-the-corresponding-parts-in-the-code"></a>
-<a id="what-to-change-for-your-own-service"></a>
-<a id="read-results"></a>
-<a id="read-the-results"></a>
-<a id="expand-other-capabilities-when-needed"></a>
 
 ## Scoring methods
 

@@ -1,8 +1,8 @@
-# Entity identity rules (Beta) {#entity-identity-rules-design-draft}
+# Entity identity rules (Beta)
 
-Status (2026-10-12): this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). The approved section 8 contracts and interfaces are delivered, and the issue is closed under the user-approved beta scope: the complete workflow and minimal v14 real regression have completed itemwise author review. The original P4/P5 independent review and overall quality gates remain incomplete; the [annotation guide](./entity-extraction-evaluation.md) retains these limits, without regrading historical failures or scores. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
+Status (2026-10-12): this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). The approved section 8 contracts and interfaces are delivered, and the issue is closed under the user-approved beta scope: the complete workflow and minimal v14 real regression have completed itemwise author review. independent review and overall quality gates remain incomplete; the [annotation guide](./entity-extraction-evaluation.md) retains these limits, without regrading historical failures or scores. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
 
-This draft follows the [knowledge definition](../../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
+This specification follows the [knowledge definition](../../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
 
 The linked knowledge principles own object meaning, entities, and statement roles. This page concentrates on source-supported granularity, coreference, ambiguity, and reference rules.
 
@@ -18,7 +18,7 @@ Entity extraction should help people and AI answer these questions, rather than 
 | Distinguish plans from results | Find requirements, actual execution, and observed results separately. | Treat an intention as completed execution. |
 | Inspect “it / they” | Return to the source and inspect reference rationale, collection members, or identity gaps. | Arbitrarily select an object or distribute a collective description incorrectly to individuals. |
 
-Identity remains bounded by one immutable source window and its analysis revisions. Workspace search may show same-named objects from multiple windows; that does not establish a shared identity. Managing knowledge across agents is a product direction; automatic identity resolution across agents is outside this draft.
+Identity remains bounded by one immutable source window and its analysis revisions. Workspace search may show same-named objects from multiple windows; that does not establish a shared identity. Managing knowledge across agents is a product direction; automatic identity resolution across agents is outside this specification.
 
 ## 2. Decision process and basic rules
 
@@ -50,7 +50,7 @@ Use how the source discusses the object: whether it provides the object's own de
 
 This rule determines the need for independent identities; it does not remove source text, conditions, or knowledge statements. Source-supported objects may remain without knowledge candidates. Preserve uncertainty when attribution is unclear, rather than hide ambiguity to reduce entity counts. A specific activity can have identity before execution; source-backed statements distinguish plans from occurrences.
 
-**This section records the follow-up design decision of 2026-10-11, not new answers for the current frozen acceptance.** The separate count/state-update expectations in the [v7 six-scenario diagnostic](./history/entity-extraction-v7-diagnostic.md) differ from this section. Original output, frozen corpus, checker, and strict result of 20/22 remain unchanged and are not rescored as passing. v8 aligns the prompt, annotation guide, and pre-adjudicated positive/negative examples with this decision and freezes a new measurement identity. Viewed windows serve only as development regressions; new validation windows must be determined before output. This decision changes no Schema, storage, or retrieval capability. The current entity extraction specification defines prompt implementation; passing extraction quality is not yet established.
+These rules do not establish model quality acceptance. Freeze new annotations before outputs; viewed output windows serve only as development regressions. Rule changes never rewrite original outputs, annotations or scores.
 
 ### 2.2 Configuration points and associated knowledge retention
 
@@ -76,7 +76,7 @@ These are synthetic examples, not new frozen annotation answers:
 
 Distinguish three outcomes: related generated knowledge missing a critical value is information loss; unselected optional configuration knowledge is not observed; an absent predeclared mandatory fact is a knowledge coverage gap. None automatically means entity omission. Freeze mandatory facts, equivalent expressions, and scope before output; programs do not complete facts through field-keyword rules.
 
-**This section is a subsequent design adjudication.** v10 aligns the prompt, corpus v10, guide v8, and checker v4; original v9 frozen identities remain, with the subsequent five-case diagnostic complete at the original 10/13 critical mentions, below the boundary threshold. The historical v8 configuration-value gap is not re-scored as passing, and these rules/examples do not establish model quality acceptance.
+Evaluate configuration knowledge completeness separately from entity existence; these synthetic examples do not establish model quality acceptance.
 
 ### 2.3 Mention boundaries: complete names and property ownership
 
@@ -95,7 +95,7 @@ Distinguish complete descriptions from property ownership semantically, without 
 
 New generation and correction reject `mention_identifier_fragment` when a mention cuts an ASCII letter/digit identifier, which may contain internal `_`/`$`. Standalone Markdown wrappers, adjacent Chinese text and punctuation are not rejected for that reason; whole identifiers remain admissible. This lexical check does not verify Chinese segmentation, same-name meanings, rationales or every language's identifier syntax. Position `matched` still means exact source text only. Existing revisions are not rechecked or rewritten; statement citations do not use this mention constraint.
 
-Evaluation only matches equivalent boundaries declared before outputs exactly. A longer quotation containing a short name supplies review cues, never automatic trimming, completion or keyword/regex-based meaning judgments. Prompt/corpus v11 and guide v9 implement this section. The two viewed output windows serve only as development regressions; offline replay demonstrates matching/admission, not changed model choices under the new prompt. Original v10 outputs, annotations and 10/13 remain, without retrospective passing scores.
+Evaluation exactly matches equivalent boundaries declared before outputs. A longer quotation containing a short name supplies review cues, never automatic trimming, completion or keyword/regex-based meaning judgments. Offline replay demonstrates matching/admission, not improved model choices.
 
 ## 3. Components, versions, and deployment instances
 
@@ -116,7 +116,7 @@ The phrase “production Quartz” alone does not determine granularity. Reuse t
 
 **Components and instances are not interchangeable subjects.** “Instance P failed” can help users find related experience through the component; it does not imply “all instances of this component failed.” Retrieving related knowledge and generalizing a claim to related objects are different actions.
 
-Component-instance and component-version links are semantics this draft requires retaining. P2 defines the versioned relation fields in section 8. Full relation operations and querying remain P3 work.
+Component-instance and component-version links use the versioned fields in section 8. Studio supports explicit correction, and catalog retrieval retains source and analysis-revision bindings; see the [extraction specification](./entity-extraction.md) for behavior.
 
 ### 3.1 Branch names and tested code states
 
@@ -132,7 +132,7 @@ Component-instance and component-version links are semantics this draft requires
 
 Branch and code state do not substitute for each other, and one source position cannot be duplicated into two mentions. `componentRef` still requires a continuing component and an association supported by the source; a branch name cannot create a component. A version identity does not establish reproducible build evidence, and a branch identity cannot turn a single result into a persistent property.
 
-Future frozen annotations may allow `object`/`version` where both models are source-supported, but still require itemwise state qualifications and knowledge attribution checks, rather than blanket name-based tolerance. The historical v8 window compares current tested code with a released version, so a version interpretation is reasonable; the old frozen object-only strict mismatch, raw output, and scores remain unchanged. This adjudication is implemented in the v10 prompt/guide and pre-annotated synthetic cases, with the subsequent five-case diagnostic observing expected code-state knowledge under self-review but retaining mention-boundary issues. Original 10/13 critical mentions remain; overall quality has not passed.
+Frozen annotations may allow `object`/`version` where both models are source-supported, while still requiring itemwise state qualifications and knowledge attribution checks rather than blanket name-based tolerance. Determine allowed expressions before output; new adjudication cannot raise old scores.
 
 ### 3.2 Release packages and the build under test
 
@@ -146,7 +146,7 @@ Future frozen annotations may allow `object`/`version` where both models are sou
 
 When release status or artifact correspondence is unknown, the known tested object may remain `proposed`; a missing SHA does not make it `unresolved`. Retain unknowns in entity `uncertainties` and affected statement `context.unknowns`, without inventing qualifications in `description`/`qualifiers`. A statement's “version unknown” cannot repair a subject entity incorrectly qualified as released; review the entity and knowledge references together.
 
-Prompt v14 implements this rule without response or storage changes. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements. The original v13 real regression's identity error and failed conclusion remain unchanged.
+Prompt v14 implements this rule without response or storage changes. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements.
 
 ## 4. Collections, unresolved identities, and mention positions
 
@@ -195,28 +195,21 @@ These requirements supplement the [revision and storage boundaries](./entity-ext
 
 ## 7. From rules to implementation and acceptance
 
-These examples are for design: **they are not independently adjudicated gold or evidence of improved extraction capability**. P1 completion means reviewable identity rules exist. Subsequent stages have these boundaries:
-
-| Stage | Deliverable and assessment |
-|---|---|
-| P2 Contracts and admission | Implement these semantics in necessary versioned contracts, extraction prompts, and program validation; address known failures including duplicate collection mentions, quote context, and case roles. |
-| P3 Storage and presentation | Reuse current storage, Studio, and CLI; verify correction, historical binding, retrieval, and failure paths under the new semantics. |
-| P4 Annotation and tooling | Independently review identity and mention rules; freeze permitted semantic representations, critical coverage, and false-merge/split criteria. Separate capture failures, structural rejections, and absent optional results. |
-| P5 Model acceptance | Run with new authorization for the data and calls; retain all results, usage, and limitations. Report synthetic regression separately from independently reviewed real records. |
+These examples specify rules; they are neither independently adjudicated gold nor evidence of improved extraction. Current contracts, storage and interfaces are delivered. Independent human annotation review, full synthetic regression and independently reviewed real-quality acceptance remain incomplete; the [evaluation guide](./entity-extraction-evaluation.md) owns their gates.
 
 Acceptance cannot compare entity counts alone. Check referential levels, required identity separations, coreference rationale, collection/unknown representations, knowledge subjects/objects and conditions, and revision bindings after correction. Annotate critical mentions and required identities before output; do not inspect only returned objects or let the model omit instances to avoid false merges.
 
 Allow synonymous labels and additional source-supported objects. Do not substitute an abstract component for an explicit instance, distribute collective results to individuals, or drop conditions affecting reuse. Cross-environment claims about a component can qualify when the source establishes no required separate instances and preserves all conditions. Independent review must apply these rules rather than count returned IDs.
 
-The [historical two-round report](./history/entity-extraction-repeat-quality.md) and frozen evidence remain unchanged. It failed the instance criteria frozen for that run; this draft does not revise gold, inflate historical scores, or recompute old results. New identity rules, annotations, and checks need a new measurement identity before reporting subsequent quality. Independent review and new model acceptance have not yet occurred.
+New identity rules, annotations and checks need a new measurement identity before subsequent quality can be reported, without revising gold or recomputing old results.
 
-## 8. P2 contracts and replacement plan (approved)
+## 8. Current identity contracts
 
-This replacement plan was approved on 2026-10-10. P2 implements identity contracts, prompt/admission, host mapping, write/recovery, and correction round trips. Full link operations in P3 and independent quality acceptance in P4/P5 remain pending.
+Current identity, link and quote contracts are implemented in prompts, admission, host identity mapping, storage/recovery, corrections and searchable presentation. Structural and workflow success do not replace independent quality acceptance.
 
 ### 8.1 Minimal identity structure
 
-Add three required fields to existing entities without creating another global registry:
+Existing entities have three required fields without creating another global registry:
 
 | Field | Semantics and validation |
 |---|---|
@@ -238,17 +231,17 @@ An invalid link makes its containing entity inadmissible. Dependent mentions, co
 
 ### 8.3 Versions and existing-data impact
 
-| Object | Previous → current | Impact |
+| Object | Current version | Impact |
 |---|---|---|
-| Entity history | `entity-analysis-history` v1 → v2 | Adds referential levels, component links, and membership. Reject old histories and count them as unavailable analyses in the catalog. |
-| Extraction run | `knowledge-extraction-run` v3 → v4 | Binds prepared intents, raw model output, and new prompt identity. Reject old runs; they cannot resume. |
-| Prompt/model output | `knowledge-extraction-v3` / output v3 → v4 | New identity and locator semantics with new hashes; old responses do not enter the new validator. |
-| Knowledge history | `knowledge-item-history` v2 → v2 | Content and grounding shape stay unchanged. Old knowledge content remains readable; bindings to old entity histories show the analysis as unavailable. |
+| Entity history | `entity-analysis-history` v2 | Stores referent levels, component links and members; old formats are unreadable and counted as unreadable analyses. |
+| Extraction run | `knowledge-extraction-run` v4 | Binds prepared intent, raw model output, prompt version and digest; old formats cannot resume. |
+| Prompt/model output | `knowledge-extraction-v14`/output v4 | Prompt identity is independent of file format; old responses do not enter the new admission path. |
+| Knowledge history | `knowledge-item-history` v2 | Old knowledge bodies remain readable, with explicit limits when bound entity history is unavailable. |
 
 Keep old files unchanged, without automatic rewriting, deletion, conversion, migration, or compatibility readers. Users select a new empty knowledge directory and re-extract original records. Only new-version runs can resume with their original idempotent identities. New same-named objects do not inherit old knowledge bindings. Historical quality reports, corpus, and evidence are not recomputed.
 
 ### 8.4 Delivery boundary
 
-This stage implements identity/link validation, model locators, prompts, host identity mapping, and write/recovery boundaries, while making existing correction entry points pass all new fields intact. P3 completes visible membership/component operations and retrieval experience; P2 does not call descriptive-text-only presentation complete.
+Current implementation covers identity/link validation, model quotes, prompts, host identity mapping, write/recovery, corrections, and membership/component presentation and retrieval. The [extraction specification](./entity-extraction.md) owns interactions and failure boundaries.
 
-Regression checks use no model calls and cover empty results, homonym isolation, collections/uncertainty, cascading rejection of invalid links, repeated quotes, case roles, idempotent recovery, and unsupported-version rejection. Independent annotation, real data, and new model calls remain P4/P5 work. Historical acceptance entry points must not silently pair new prompts with old entity criteria.
+Regressions without model calls cover empty results, homonym isolation, collections/unresolved identities, cascaded invalid-link rejection, duplicate quotes, case roles, idempotent recovery and unsupported-version rejection. Independent annotation review and new model quality acceptance remain incomplete; acceptance tools must not silently combine current prompts with old criteria from a different measurement identity.

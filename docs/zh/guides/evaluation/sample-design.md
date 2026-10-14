@@ -171,7 +171,6 @@ PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO 是已注册测�
 
 旧设计讨论过 `source_ids`、`status`、`tags`、`owner` 和 `risk_level`，它们不是当前 v3 字段。不要将草案字段写进用例；Schema 是严格的。也不能用草案 `deprecated` 状态静默排除样本或改变 Δ 权重。
 
-增加字段须明确消费方、身份影响和公开契约版本；评分与复用语义的变化须单独说明。历史 v3 设计取舍见[通用用例提案](../../specs/evaluation/history/general-sample-proposal.md)，其中兼容窗口和迁移工具提议已被 v3-only 决定取代。
 
 ### 6.4 参考 {#_6-4-参考}
 
@@ -184,3 +183,5 @@ PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO 是已注册测�
 `eval-workflows/inputs/contracts` 定义样本类型，`inputs/schemas` 负责校验和机器 Schema，`inputs/sample-mapping.ts` 映射公开 v3 封套与内部 DTO。内部 DTO 不是第二种公开协议，也不是 v2 reader。
 
 `orchestration/measurement-design.ts` 编译 Core 声明，`measurement/evaluators` 与 `eval-runtime/evaluators` 拥有相应评估实现，宿主在 `hosts/composition` 装配执行器与评分器。Core 不依赖样本编写、文件系统或具体执行器。
+
+新增字段前须明确消费者、身份影响与公共契约版本；评分与复用语义改变需单独说明。

@@ -8,17 +8,7 @@
 - [Evaluation Core 测量契约](eval-core-vnext.md)
 - [Evaluation Core 产物持久化](evaluation-artifact-persistence.md)
 - [Evaluation Runtime Adapter 规范](evaluation-runtime-adapter.md)
-- [评测评分等价 RFC](evaluation-scoring-equivalence.md)
+- [评测评分等价规范](evaluation-scoring-equivalence.md)
 - [Evaluation Core Studio 投影](evaluation-studio-projection.md)
 - [RAG metrics 规范](rag-metrics-spec.md)
-- [<!--](scoring.md)
-
-## 历史依据
-
-旧 RFC、逻辑草图与案例按其当时状态阅读，当前规范不依赖读者先通读这些记录。
-
-- [Evaluation Core 生产切换](history/eval-core-cutover.md)
-- [Evaluation Core vNext RFC](history/eval-core-vnext-design.md)
-- [通用 sample 规范草案（#842）](history/general-sample-proposal.md)
-
-返回[规范索引](../index.md)。
+- [评分规则](scoring.md)

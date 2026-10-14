@@ -326,18 +326,17 @@ The framework error mapping is declared in `oclif.exitCodes` in `package.json`. 
 
 ## Docs layout
 
-`docs/` is organized by audience — pick the right bucket before creating a new file:
+`docs/` is organized by document responsibility. Identify the reader's task before choosing a directory:
 
-- `docs/guides/` — user tasks, steps, self-checks, and examples; link to reference for complete fields instead of copying them.
-- `docs/reference/` — fields, APIs, configuration, and complete integration recipes, grouped by shared/evaluation/integration; CLI is cross-domain lookup.
-- `docs/explanation/` — concepts, principles, and trade-offs, without copied steps or field catalogs.
-- `docs/specs/` — current behavior and acceptance by shared/entities/knowledge/evaluation/observe/studio. Each domain has an entry; historical designs, cases, and trials belong in its history rather than within current rules.
-- `docs/guides/` groups tasks by knowledge/observe/evaluation/integration/maintenance. Give an executable first path, then link to reference and specifications. This contributing page remains a cross-domain entry.
-- `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
-- `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
-- **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Prefer putting design rationale and decision records *inside* the relevant published spec (e.g. as an appendix) so users see the full reasoning — keep notes outside `docs/` only when they are genuinely maintainer-only, where they stay exempt from the bilingual rule
+- `guides/`: user steps, self-checks and examples, grouped by knowledge/observe/evaluation/integration/maintenance. The evaluation quickstart belongs in `guides/evaluation/quickstart-skill-eval.md`.
+- `reference/`: fields, APIs, configuration and complete integration recipes, grouped by shared/evaluation/integration; CLI and tool comparison are cross-domain lookup.
+- `explanation/`: concepts, principles and trade-offs, without duplicated steps or field tables.
+- `specs/`: current behavior, invariants and acceptance, grouped by shared/entities/knowledge/evaluation/observe/studio, each with an entry.
+- The root contains only the documentation entry `README.md` and site home `index.md`; this contributing guide remains a cross-domain process entry.
 
-Concepts and rationale belong in explanation; behavior, invariants, and acceptance requirements belong in the owning specs domain. A topic such as “entities” alone does not decide the directory. Classify mixed documents by their main responsibility and link to the other layer’s authoritative source. Mark drafts, partial delivery, and historical decisions explicitly. Individual trials or superseded proposals go in the domain’s history/ with original identity and evidence, without current capability promises. Source moves must synchronize languages, indexes, sidebars, and active references while route mappings preserve existing site URLs and anchors.
+Current documentation retains only the latest valid information and capability limits. Superseded proposals, designs, per-version trial diaries and completed phase plans leave `docs/`. Issues/PRs own discussion and delivery records; necessary original evidence links to fixed Git revisions. Valid upgrade impacts belong in maintenance guides. Never regrade historical failures or rewrite original results. Old public addresses may retain a short exit notice linking frozen originals and current specifications, without including old prose in navigation or local search.
+
+**EN/ZH symmetry is required.** English `docs/` and Chinese `docs/zh/` mirror paths, section levels, tasks and limits. Additions, removals and moves update both halves, indexes, sidebars and active references. Preserve current page URLs after source moves. Remove obsolete section aliases when the referenced content is gone, and update active links to current sections. Concepts, steps, complete fields and contracts each have one authoritative body; classify mixed topics by their main responsibility and link across layers.
 
 ## Scope
 

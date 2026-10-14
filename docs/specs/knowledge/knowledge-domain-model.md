@@ -1,4 +1,4 @@
-# Knowledge construction and maintenance contracts {#knowledge-construction-domain-model-design-draft}
+# Knowledge construction and maintenance contracts
 
 This document specifies current ownership and consistency boundaries for content, source identity, organization, and carrier maintenance. [Knowledge principles](../../explanation/knowledge.md) alone own concept definitions; the [knowledge maintenance guide](../../guides/knowledge/extract-knowledge.md) owns user steps.
 
@@ -51,73 +51,6 @@ Saving, actual use, and controlled effect verification are separate records. The
 
 Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
 
-## 6. Acceptance and historical rationale {#current-evidence}
+## 6. Acceptance and limits {#current-evidence}
 
 Functional acceptance covers continued accumulation, knowledge revision, source/version rereading, organization links, and carrier reminders/update consistency. Usability does not establish overall extraction accuracy, truth, or task benefits; each has its own evidence.
-
-[Historical design and cases](history/knowledge-domain-model-design.md) retain the original sketches, first-release decisions, and three case walkthroughs. Their logical interfaces, draft schemas, and then-unresolved issues are not current write contracts.
-
-<!-- Preserve old section links; the archive above owns historical content. -->
-<a id="_1-goal-and-scope"></a>
-<a id="_1-1-design-authority-and-decision-levels"></a>
-<a id="_2-objects-and-responsibilities"></a>
-<a id="_2-1-entities-relations-and-context"></a>
-<a id="_2-2-aggregate-boundaries-and-dependency-direction"></a>
-<a id="_2-3-carrier-association-contract"></a>
-<a id="_3-knowledge-content-and-identity"></a>
-<a id="_3-1-draft-typescript-logical-structure"></a>
-<a id="_3-2-field-semantics-and-constraints"></a>
-<a id="content-organization-and-applicability"></a>
-<a id="entities-and-identity"></a>
-<a id="evidence-and-review"></a>
-<a id="revisions-and-complete-views"></a>
-<a id="_4-state-and-lifecycle"></a>
-<a id="_4-1-evidence-review"></a>
-<a id="_4-2-carrier-changes-and-effectiveness"></a>
-<a id="_4-3-formation-and-maintenance"></a>
-<a id="_5-integration-with-existing-contracts"></a>
-<a id="_6-invariants"></a>
-<a id="_7-real-case-walkthroughs-and-open-decisions"></a>
-<a id="_8-evolution-constraints-and-implementation-entry"></a>
-<a id="_9-minimal-contracts-for-the-first-implementation"></a>
-<a id="_9-1-source-resolution"></a>
-<a id="_9-2-review-projection-policy-v1"></a>
-<a id="_9-3-revision-storage-and-write-protocol"></a>
-<a id="_9-4-internal-interface-shapes"></a>
-<a id="_9-5-initial-acceptance-scope"></a>
-<a id="_10-architecture-decisions-for-knowledge-extraction-from-work-logs"></a>
-<a id="_10-1-domain-ownership-and-dependencies"></a>
-<a id="_10-2-separate-entity-mentions-from-entity-identity"></a>
-<a id="_10-3-evidence-windows-and-extraction-runs"></a>
-<a id="_10-4-admission-from-model-output-to-knowledge-revisions"></a>
-<a id="_10-5-human-handling-storage-and-source-retention"></a>
-<a id="_10-6-initial-scope-and-architecture-acceptance"></a>
-<a id="appendix-cr-feedback-walkthrough"></a>
-<a id="_1-sources-and-coverage"></a>
-<a id="e1-process-feedback"></a>
-<a id="e2-removal-request-and-its-referent"></a>
-<a id="e3-existing-repository-requirement"></a>
-<a id="evidence-resolution"></a>
-<a id="authoring-record"></a>
-<a id="_2-complete-items"></a>
-<a id="appendix-fact-correction-and-partial-review"></a>
-<a id="e4-previous-type-source"></a>
-<a id="e5-current-type-snapshot"></a>
-<a id="authoring-and-review-attribution"></a>
-<a id="appendix-successful-experience-and-method-extraction"></a>
-<a id="e6-invocation-and-result"></a>
-<a id="e7-procedure-source"></a>
-<a id="authoring-attribution"></a>
-<a id="studio-conversation-to-extraction-links"></a>
-
-Original case entries: [CR feedback](history/knowledge-domain-model-design.md#cr-case), [fact correction](history/knowledge-domain-model-design.md#fact-correction), and [successful experience](history/knowledge-domain-model-design.md#successful-experience).
-<a id="cr-case"></a>
-<a id="e1"></a>
-<a id="e2"></a>
-<a id="e3"></a>
-<a id="fact-correction"></a>
-<a id="e4"></a>
-<a id="e5"></a>
-<a id="successful-experience"></a>
-<a id="e6"></a>
-<a id="e7"></a>

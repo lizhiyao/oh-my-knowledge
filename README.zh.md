@@ -34,9 +34,9 @@ omk studio
 
 ## 按当前任务继续
 
-- **直接比较两版载体**：从[评测快速上手](docs/zh/quickstart-skill-eval.md)预览计划，配置运行时后再调用模型。固定模型与用例，记录运行条件，核对判定、不确定性和失败证据。
+- **直接比较两版载体**：从[评测快速上手](docs/zh/guides/evaluation/quickstart-skill-eval.md)预览计划，配置运行时后再调用模型。固定模型与用例，记录运行条件，核对判定、不确定性和失败证据。
 - **嵌入自己的服务**：从[离线 Node 示例](docs/zh/guides/integration/eval-runtime.md)开始，完成第一轮可回查的比较，再按需选择模型与配置。
-- **在 Agent 或 DSH 中使用**：[安装官方 Skill](docs/zh/quickstart-skill-eval.md#在-agent-中使用)、[MCP 主动反馈](docs/zh/guides/integration/mcp-integration.md)和[DSH 宿主插件](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件)各有独立入口。
+- **在 Agent 或 DSH 中使用**：[安装官方 Skill](docs/zh/guides/evaluation/quickstart-skill-eval.md#在-agent-中使用)、[MCP 主动反馈](docs/zh/guides/integration/mcp-integration.md)和[DSH 宿主插件](docs/zh/reference/integration/executors.md#deepseek-harness-优先使用宿主插件)各有独立入口。
 - **验收 Agent 修改的文件**：使用[本地任务验收](docs/zh/guides/evaluation/local-tasks.md)的独立检查；用[迭代改进](docs/zh/guides/evaluation/auto-improve-skills.md)筛选候选版本。
 
 入门用例只检查流程，`UNDERPOWERED` 符合预期。真实发布判断需要自己的领域用例和独立证据；观测信号不能证明因果，一次评测通过也不等于载体已经生效或版本已发布。
