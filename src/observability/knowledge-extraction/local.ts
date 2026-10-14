@@ -13,10 +13,10 @@ export function createLocalKnowledgeApplication(root: string): KnowledgeApplicat
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
   return new KnowledgeApplication({
-    evidence: new TraceEvidenceStore(join(workspace, 'sources')),
+    evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace),
     knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
     runs: new FileExtractionRunStore(join(workspace, 'runs'), workspace),
-    tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local'),
+    tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace),
     entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
     id: randomUUID, now: () => new Date().toISOString(),
     hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,

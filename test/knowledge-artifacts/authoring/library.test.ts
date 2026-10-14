@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, 
 import { tmpdir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/observability/application.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
+import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
 import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
@@ -253,4 +254,29 @@ describe('reviewed knowledge carrier authoring', () => {
     expect(() => new CarrierLibrary(s.workspace).save(oversized)).toThrow('capacity');
 
   });
+  it('keeps tag updates inside the same knowledge workspace write boundary', async () => {
+    const s = await setup(); s.retain();
+    const clock = vi.spyOn(Date, 'now'); let tick = 0;
+    clock.mockImplementation(() => tick += 6000);
+    try {
+      expect(() => withWorkspaceWrite(s.workspace, () => s.app.tag(s.entry.knowledgeId, 0, ['changed'])))
+        .toThrow('knowledge_workspace_busy');
+      expect(s.app.detail(s.entry.knowledgeId).tagging).toEqual({ generation: 0, tags: [] });
+    } finally { clock.mockRestore(); }
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(s.app.tag(s.entry.knowledgeId, 0, ['after-release'])).toEqual({ generation: 1, tags: ['after-release'] });
+  });
+  it('holds the workspace boundary through carrier validation and publication and releases it on failure', async () => {
+    const s = await setup(); s.retain(); const first = s.save(s.preview());
+    const draft = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId } });
+    expect(() => new CarrierLibrary(s.workspace).save(draft, undefined, () => {
+      expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('busy');
+      throw new Error('stop-publication');
+    })).toThrow('stop-publication');
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(readdirSync(join(s.workspace, 'artifacts', first.artifactId))).toEqual(['v1']);
+    expect(new CarrierLibrary(s.workspace).show(first.artifactId).content).toBe(first.content);
+    expect(s.save(draft).version).toBe(2);
+  });
+
 });

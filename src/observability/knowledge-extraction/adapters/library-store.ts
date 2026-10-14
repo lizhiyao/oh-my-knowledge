@@ -5,7 +5,7 @@ import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type L
 import { applyLibraryWrite, validateLibraryHistory } from '../../../knowledge/library/history.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { checkStorageDirectory, withWorkspaceWrite } from './storage-state.js';
+import { checkStorageDirectory, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 /** All object writes share the workspace lock so one entity cannot acquire competing owners. */

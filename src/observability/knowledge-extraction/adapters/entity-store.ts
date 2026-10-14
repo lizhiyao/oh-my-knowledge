@@ -6,8 +6,7 @@ import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../.
 import { EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../../../knowledge/entities/contracts.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { withFileLock } from '../../../shared/file-lock.js';
-import { checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from '../../../evidence/storage/knowledge-workspace.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 export class FileEntityAnalysisStore implements EntityAnalysisStore {
@@ -43,9 +42,7 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
     const command = EntityAnalysisWriteSchema.parse(input); const actor = KnowledgeActorSchema.parse(actorInput);
     const digest = `sha256:${createHash('sha256').update(canonicalJson({ actor, command })).digest('hex')}`;
     this.checkRoot(); const path = this.path(command.analysisId);
-    return withWorkspaceWrite(this.workspaceRoot, () => {
-      recoverStorageLock(`${path}.lock`);
-      return withFileLock(`${path}.lock`, () => {
+    return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const existing = existsSync(path) ? this.read(command.analysisId) : undefined;
       const next = applyEntityAnalysisWrite(existing, command, actor, digest);
       if (next !== existing) {
@@ -54,7 +51,6 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
         writeJsonFileAtomic(path, next);
       }
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;
-      }, { recoverStale: false });
     });
   }
 }

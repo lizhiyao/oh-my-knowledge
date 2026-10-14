@@ -9,7 +9,7 @@ import type { EvidenceWindow } from './evidence.js';
 import type { ExtractionModel } from './application.js';
 import { createLocalKnowledgeApplication } from './local.js';
 import { configuredExtractionModel } from './adapters/executor.js';
-import { checkStorageDirectory, withWorkspaceWrite } from './adapters/storage-state.js';
+import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { conversationExtractionSource } from './conversation-source.js';
 
 const text = z.string().min(1).max(4096);

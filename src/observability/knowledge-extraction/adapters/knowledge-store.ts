@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { withFileLock } from '../../../shared/file-lock.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../../../knowledge/contracts.js';
 import { applyKnowledgeWrite, validateKnowledgeHistory } from '../../../knowledge/history.js';
 import {
   canonicalJson, KnowledgeEnvelopeSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../../../knowledge/store.js';
-import { assertCurrentStorage, checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from '../../../evidence/storage/knowledge-workspace.js';
+import { assertCurrentStorage } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const digest = (value: unknown): string => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
@@ -54,16 +54,13 @@ export class FileKnowledgeStore implements KnowledgeStore {
     if (!command.requestId.trim() || !Number.isSafeInteger(command.expectedGeneration) || command.expectedGeneration < 0) throw new Error('Invalid write request.');
     const path = this.path(command.knowledgeId);
     checkStorageDirectory(this.root);
-    return withWorkspaceWrite(this.workspaceRoot, () => {
-      recoverStorageLock(`${path}.lock`);
-      return withFileLock(`${path}.lock`, () => {
+    return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const existing = existsSync(path) ? this.read(command.knowledgeId) : undefined;
       const next = applyKnowledgeWrite(existing, command, actor, this.namespace, commandDigest);
       if (next === existing) return next.receipts.find((item) => item.requestId === command.requestId)!;
       if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('capacity_exceeded');
       writeJsonFileAtomic(path, next);
       return next.receipts.at(-1)!;
-      }, { recoverStale: false });
     });
   }
 }
