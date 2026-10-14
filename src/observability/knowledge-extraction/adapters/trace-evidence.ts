@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { withFileLock } from '../../../shared/file-lock.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from '../../../evidence/storage/knowledge-workspace.js';
 import { detectJsonlTraceSource, forEachNonEmptyUtf8Line, type CcRecord } from '../../trace/source.js';
 import type { TraceEvent } from '../../trace/trace-ir.js';
 import {
@@ -25,7 +25,7 @@ function eventText(event: TraceEvent): string | undefined {
 /** 归档用户显式选中的记录；格式归因复用 Trace 层的同源判定。 */
 export class TraceEvidenceStore implements EvidenceStore {
   private readonly root: string;
-  constructor(root: string) {
+  constructor(root: string, private readonly workspaceRoot = root) {
     if (!root.trim()) throw new Error('Explicit evidence root required.');
     this.root = resolve(root);
   }
@@ -34,23 +34,26 @@ export class TraceEvidenceStore implements EvidenceStore {
     return join(this.root, `${snapshotId}.json`);
   }
   capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow {
+    checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     const window = projectTraceEvidence(selection, signal);
     const stored = EvidenceWindowSchema.parse(window);
     const serialized = JSON.stringify(stored, null, 2);
     if (Buffer.byteLength(serialized) > MAX_BYTES) throw new Error('Projected source exceeds capacity; choose a smaller range.');
-    withFileLock(join(this.root, '.write.lock'), () => {
+    withWorkspaceFileWrite(this.workspaceRoot, join(this.root, '.write'), () => {
+      checkStorageDirectory(this.root);
       const total = readdirSync(this.root).filter((name) => name.endsWith('.json'))
         .reduce((sum, name) => sum + lstatSync(join(this.root, name)).size, 0);
       if (total + Buffer.byteLength(serialized) + 256 > MAX_TOTAL_BYTES) throw new Error('Evidence storage capacity exceeded; delete unneeded snapshots.');
       signal?.throwIfAborted();
       createJsonFileAtomic(this.path(stored.snapshotId), { ...stored, windowDigest: hash(serialized) });
-    }, { recoverStale: false });
+    });
     return stored;
   }
   read(snapshotId: string, expectedVersion?: string): SourceResolution {
     const path = this.path(snapshotId);
-    if (!existsSync(path)) return { status: 'unavailable', reason: 'missing', detail: 'Source snapshot is missing.' };
     try {
+      checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
+      if (!existsSync(path)) return { status: 'unavailable', reason: 'missing', detail: 'Source snapshot is missing.' };
       const stat = lstatSync(path);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES + 256) throw new Error('Invalid source file.');
       const value = JSON.parse(readFileSync(path, 'utf8'));
@@ -66,11 +69,13 @@ export class TraceEvidenceStore implements EvidenceStore {
     }
   }
   delete(snapshotId: string): void {
+    checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     const path = this.path(snapshotId);
-    withFileLock(join(this.root, '.write.lock'), () => {
+    withWorkspaceFileWrite(this.workspaceRoot, join(this.root, '.write'), () => {
+      checkStorageDirectory(this.root);
       if (!existsSync(path)) throw new Error('Source snapshot is missing.');
       writeJsonFileAtomic(path, { snapshotId, deleted: true });
-    }, { recoverStale: false });
+    });
   }
 }
 

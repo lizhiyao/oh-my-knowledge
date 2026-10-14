@@ -64,7 +64,11 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
     return () => controller.abort();
   }, [workspace, mode, target, rows, initialIds]);
   const source: CarrierSource = mode === 'new' ? { sourceKind: 'new' } : mode === 'library' ? { sourceKind: 'library', artifactId: target } : { sourceKind: 'local', path };
-  const failure = (cause: unknown) => cause instanceof Error && cause.message === 'carrier_knowledge_region_conflict' ? t('旧载体的知识区经过编辑或无法可靠识别，未重建。请创建新载体，并核对需要保留的手工内容。', 'The old knowledge region was edited or cannot be identified safely. Create a new artifact and review manual content to keep.') : cause instanceof Error && cause.message === 'carrier_source_contains_destination' ? t('本地 skill 目录包含当前保存目录，不能复制到自身内部。请选择其它知识保存目录后再生成。', 'The local skill contains the save directory and cannot be copied into itself. Choose another knowledge directory before generating.') : cause instanceof Error && cause.message === 'carrier_invalid_skill' ? t('skill 需保留有效头部，name 应与下方保存目录名一致，并填写 description。请编辑后再保存。', 'Keep valid skill frontmatter: name must match the save directory below, with a nonempty description. Edit and save again.') : cause instanceof Error && cause.message === 'carrier_conflict'
+  const failure = (cause: unknown) => cause instanceof Error && cause.message === 'knowledge_workspace_busy'
+    ? t('知识工作区正在写入，当前草稿未保存。请稍后重试。', 'The knowledge workspace is busy. This draft was not saved; retry shortly.')
+    : cause instanceof Error && cause.message === 'knowledge_storage_unsupported'
+    ? t('所选工作区含不支持的记录格式。请核对知识目录，当前草稿仍在这里。', 'The selected workspace contains an unsupported record format. Check the knowledge directory; your draft remains here.')
+    : cause instanceof Error && cause.message === 'carrier_knowledge_region_conflict' ? t('旧载体的知识区经过编辑或无法可靠识别，未重建。请创建新载体，并核对需要保留的手工内容。', 'The old knowledge region was edited or cannot be identified safely. Create a new artifact and review manual content to keep.') : cause instanceof Error && cause.message === 'carrier_source_contains_destination' ? t('本地 skill 目录包含当前保存目录，不能复制到自身内部。请选择其它知识保存目录后再生成。', 'The local skill contains the save directory and cannot be copied into itself. Choose another knowledge directory before generating.') : cause instanceof Error && cause.message === 'carrier_invalid_skill' ? t('skill 需保留有效头部，name 应与下方保存目录名一致，并填写 description。请编辑后再保存。', 'Keep valid skill frontmatter: name must match the save directory below, with a nonempty description. Edit and save again.') : cause instanceof Error && cause.message === 'carrier_conflict'
     ? t('知识或载体已发生变化，请返回选择并重新生成预览。', 'Knowledge or artifact changed. Return to selection and generate a new preview.')
     : t('操作未完成。请检查选择、文件路径或内容大小。', 'Operation failed. Check your selections, file path or content size.');
   const finish = (detail: ReviewedCarrierDetail) => { onSaved?.(detail); onClose(); router.push(workspaceHref(`${KNOWLEDGE_INDEX_PATH}?artifact=${encodeURIComponent(detail.artifactId)}`, workspace)); };
@@ -79,7 +83,7 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
     setBusy(true); setError('');
     try { finish(await requestArtifact<ReviewedCarrierDetail>(workspace, 'save', { artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections })); }
     catch (cause) {
-      if (cause instanceof Error && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination'].includes(cause.message)) setError(failure(cause));
+      if (cause instanceof Error && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'knowledge_workspace_busy', 'knowledge_storage_unsupported'].includes(cause.message)) setError(failure(cause));
       else { setUncertain(true); setError(t('保存结果未能读取，请先核对已保存版本。', 'Save result could not be read. Check the saved version first.')); }
     } finally { setBusy(false); }
   }

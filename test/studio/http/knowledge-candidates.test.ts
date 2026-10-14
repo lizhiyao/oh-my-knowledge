@@ -1,11 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
+import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
+import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 
 describe('Studio candidate action boundary', () => {
@@ -167,6 +169,34 @@ describe('Studio candidate action boundary', () => {
     expect((await (await libraryPost({ operation: 'show', id: saved.objectId })).json()).knowledge).toEqual([]);
     expect((await (await libraryPost({ operation: 'show', id: saved.objectId, revision: saved.writeHeadRevisionId })).json()).knowledge).toHaveLength(1);
     expect(app.detail(run.committed[0].knowledgeId).history.revisions).toHaveLength(1);
+  });
+  it('reports workspace contention consistently for source, tag and carrier writes, then recovers after release', async () => {
+    const selected = join(root, 'busy-workspace'); const app = createLocalKnowledgeApplication(selected);
+    const fixture = join(root, 'busy-source.jsonl'); writeFileSync(fixture, message('user', 'Alpha 使用 Beta'));
+    const snapshot = app.capture({ path: fixture });
+    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => ({
+      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
+    const current = app.detail(run.committed[0].knowledgeId);
+    app.maintain(current.revision.knowledgeId, current.revision.revisionId, 'retain', '已核对', current.history.generation);
+    const draft = executeArtifactAuthoring({ operation: 'preview', workspace: selected, source: { sourceKind: 'new' }, artifactKind: 'prompt', name: '当前知识', ids: [current.revision.knowledgeId] }, 'zh');
+    const lock = join(selected, WORKSPACE_LOCK_FILE); const owner = JSON.stringify({ owner: randomUUID(), pid: process.pid, hostname: (await import('node:os')).hostname(), acquiredAt: new Date().toISOString() });
+    writeFileSync(lock, owner); const clock = vi.spyOn(Date, 'now'); let tick = 0; clock.mockImplementation(() => tick += 6000);
+    try {
+      for (const fields of [{ operation: 'capture', source: fixture }, { operation: 'delete-source', snapshot: snapshot.snapshotId },
+        { operation: 'tag', id: current.revision.knowledgeId, generation: 0, tags: ['tag'] }]) {
+        const response = await post({ workspace: selected, ...fields }); expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({ error: 'knowledge_workspace_busy' });
+      }
+      const fields = draft as import('../../../src/studio/view-models/knowledge/artifact-authoring.js').ReviewedCarrierDraft;
+      const response = await fetch(`${url}/api/knowledge/artifacts`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation: 'save', workspace: selected, artifactId: fields.artifactId, source: fields.source, artifactKind: fields.artifactKind, name: fields.name,
+          directoryName: fields.directoryName, baselineRevisionId: fields.baselineRevisionId, baselineHash: fields.baselineHash, content: fields.content, selectedRefs: fields.selectedRefs, tagSelections: fields.tagSelections }) });
+      expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: 'knowledge_workspace_busy' });
+      expect(readFileSync(lock, 'utf8')).toBe(owner); expect(app.source(snapshot.snapshotId).status).toBe('available');
+      expect(app.detail(current.revision.knowledgeId).tagging).toEqual({ generation: 0, tags: [] });
+      expect(existsSync(join(selected, 'artifacts'))).toBe(false);
+    } finally { clock.mockRestore(); unlinkSync(lock); }
+    expect((await post({ workspace: selected, operation: 'tag', id: current.revision.knowledgeId, generation: 0, tags: ['tag'] })).status).toBe(200);
   });
   it('rejects unsupported storage and removed operations without altering files or exposing data', async () => {
     const selected = join(root, 'unsupported'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });

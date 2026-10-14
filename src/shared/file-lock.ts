@@ -22,6 +22,14 @@ export interface FileLockOptions {
   label?: string;
 }
 
+/** Hosts classify contention without matching path-bearing error strings. */
+export class FileLockTimeoutError extends Error {
+  constructor(label: string) {
+    super(`timed out waiting for file lock: ${label}`);
+    this.name = 'FileLockTimeoutError';
+  }
+}
+
 interface FileLockOwner {
   owner: string;
   pid: number;
@@ -83,7 +91,7 @@ export function withFileLock<T>(
         continue;
       }
       if (Date.now() >= deadline) {
-        throw new Error(`timed out waiting for file lock: ${label}`);
+        throw new FileLockTimeoutError(label);
       }
       Atomics.wait(LOCK_SLEEP, 0, 0, retryMs);
     }

@@ -2,6 +2,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
+import { recoverStorageLock, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { validateCarrierSkill } from './knowledge-content.js';
 import { distributableCopyFilter, hashArtifactSource } from '../sources/content-hash.js';
@@ -23,11 +24,13 @@ function boundedTree(root: string) {
 /** Version publication is one directory rename; a cancelled or failed save never replaces a previous version. */
 export class CarrierLibrary {
   private readonly root: string;
+  private readonly workspace: string;
   constructor(workspace: string) {
     if (!workspace.trim()) throw new Error('carrier_workspace_required');
     const selected = resolve(workspace);
     // Canonicalize an existing explicitly selected workspace; reject redirects inside the owned library.
-    this.root = join(existsSync(selected) ? realpathSync(selected) : selected, 'artifacts');
+    this.workspace = existsSync(selected) ? realpathSync(selected) : selected;
+    this.root = join(this.workspace, 'artifacts');
   }
   private folder(id: string, create = false) { uuid.parse(id); if (create) { directory(this.root, true); directory(join(this.root, id), true); } else { directory(this.root); directory(join(this.root, id)); } return join(this.root, id); }
   private versions(id: string) { const folder = this.folder(id); return readdirSync(folder).filter(name => /^v[1-9]\d*$/.test(name)).map(name => Number(name.slice(1))).sort((a, b) => b - a); }
@@ -69,31 +72,34 @@ export class CarrierLibrary {
     if (!draft.content.trim() || Buffer.byteLength(draft.content) > 2 * 1024 * 1024) throw new Error('carrier_capacity_exceeded');
     manifestSchema.shape.directoryName.parse(draft.directoryName);
     if (draft.artifactKind === 'skill') validateCarrierSkill(draft.content, draft.directoryName);
-    const folder = this.folder(draft.artifactId, true);
-    return withFileLock(join(folder, 'write.lock'), () => {
-      signal?.throwIfAborted();
-      for (const name of readdirSync(folder)) if (/^\.staging-[a-zA-Z0-9]+$/.test(name)) rmSync(join(folder, name), { recursive: true, force: true });
-      const baseline = this.baseline(draft.source, draft.artifactKind);
-      if ((baseline.detail?.revisionId ?? null) !== draft.baselineRevisionId || baseline.hash !== draft.baselineHash || (draft.source.sourceKind !== 'library' && this.versions(draft.artifactId).length)) throw new Error('carrier_conflict');
-      if (draft.source.sourceKind === 'library' && (draft.source.artifactId !== draft.artifactId || baseline.detail?.directoryName !== draft.directoryName)) throw new Error('carrier_identity_mismatch');
-      const version = (baseline.detail?.version ?? 0) + 1;
-      const stage = mkdtempSync(join(folder, '.staging-'));
-      try {
-        mkdirSync(join(stage, 'content'));
-        const contentRoot = join(stage, 'content', ...(draft.artifactKind === 'skill' ? [draft.directoryName] : []));
-        if (baseline.copyRoot) cpSync(baseline.copyRoot, contentRoot, { recursive: true, filter: distributableCopyFilter(baseline.copyRoot) });
-        else if (draft.artifactKind === 'skill') mkdirSync(contentRoot);
-        if (baseline.copyRoot && hashArtifactSource(contentRoot, true) !== baseline.hash) throw new Error('carrier_conflict');
-        writeFileSync(join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.content);
-        const contentHash = hashArtifactSource(draft.artifactKind === 'skill' ? contentRoot : join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.artifactKind === 'skill');
-        const manifest: CarrierVersion = { schemaVersion: 'omk-carrier-v1', artifactId: draft.artifactId, revisionId: randomUUID(), version, name: draft.name, directoryName: draft.directoryName, artifactKind: draft.artifactKind, savedAt: new Date().toISOString(), knowledgeRefs: draft.knowledgeRefs, contentHash, baseline: baseline.locator && baseline.hash ? { locator: baseline.locator, contentHash: baseline.hash, revisionId: baseline.detail?.revisionId ?? null } : null };
-        writeFileSync(join(stage, 'manifest.json'), JSON.stringify(manifestSchema.parse(manifest), null, 2));
-        // Verify the complete baseline again after copying dependent assets.
-        const finalBaseline = this.baseline(draft.source, draft.artifactKind);
-        if (finalBaseline.hash !== draft.baselineHash || (finalBaseline.detail?.revisionId ?? null) !== draft.baselineRevisionId) throw new Error('carrier_conflict');
-        beforePublish?.(); signal?.throwIfAborted(); renameSync(stage, join(folder, `v${version}`));
-      } finally { rmSync(stage, { recursive: true, force: true }); }
-      return this.show(draft.artifactId);
+    return withWorkspaceWrite(this.workspace, () => {
+      const folder = this.folder(draft.artifactId, true);
+      const lock = join(folder, 'write.lock'); recoverStorageLock(lock);
+      return withFileLock(lock, () => {
+        signal?.throwIfAborted();
+        for (const name of readdirSync(folder)) if (/^\.staging-[a-zA-Z0-9]+$/.test(name)) rmSync(join(folder, name), { recursive: true, force: true });
+        const baseline = this.baseline(draft.source, draft.artifactKind);
+        if ((baseline.detail?.revisionId ?? null) !== draft.baselineRevisionId || baseline.hash !== draft.baselineHash || (draft.source.sourceKind !== 'library' && this.versions(draft.artifactId).length)) throw new Error('carrier_conflict');
+        if (draft.source.sourceKind === 'library' && (draft.source.artifactId !== draft.artifactId || baseline.detail?.directoryName !== draft.directoryName)) throw new Error('carrier_identity_mismatch');
+        const version = (baseline.detail?.version ?? 0) + 1;
+        const stage = mkdtempSync(join(folder, '.staging-'));
+        try {
+          mkdirSync(join(stage, 'content'));
+          const contentRoot = join(stage, 'content', ...(draft.artifactKind === 'skill' ? [draft.directoryName] : []));
+          if (baseline.copyRoot) cpSync(baseline.copyRoot, contentRoot, { recursive: true, filter: distributableCopyFilter(baseline.copyRoot) });
+          else if (draft.artifactKind === 'skill') mkdirSync(contentRoot);
+          if (baseline.copyRoot && hashArtifactSource(contentRoot, true) !== baseline.hash) throw new Error('carrier_conflict');
+          writeFileSync(join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.content);
+          const contentHash = hashArtifactSource(draft.artifactKind === 'skill' ? contentRoot : join(contentRoot, filename(draft.artifactKind, draft.directoryName)), draft.artifactKind === 'skill');
+          const manifest: CarrierVersion = { schemaVersion: 'omk-carrier-v1', artifactId: draft.artifactId, revisionId: randomUUID(), version, name: draft.name, directoryName: draft.directoryName, artifactKind: draft.artifactKind, savedAt: new Date().toISOString(), knowledgeRefs: draft.knowledgeRefs, contentHash, baseline: baseline.locator && baseline.hash ? { locator: baseline.locator, contentHash: baseline.hash, revisionId: baseline.detail?.revisionId ?? null } : null };
+          writeFileSync(join(stage, 'manifest.json'), JSON.stringify(manifestSchema.parse(manifest), null, 2));
+          // Verify the complete baseline again after copying dependent assets.
+          const finalBaseline = this.baseline(draft.source, draft.artifactKind);
+          if (finalBaseline.hash !== draft.baselineHash || (finalBaseline.detail?.revisionId ?? null) !== draft.baselineRevisionId) throw new Error('carrier_conflict');
+          beforePublish?.(); signal?.throwIfAborted(); renameSync(stage, join(folder, `v${version}`));
+        } finally { rmSync(stage, { recursive: true, force: true }); }
+        return this.show(draft.artifactId);
+      }, { recoverStale: false, label: 'knowledge carrier' });
     });
   }
 }

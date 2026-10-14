@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -126,4 +126,17 @@ describe('selected Codex evidence snapshots', () => {
     expect(store.read(captured.snapshotId)).toMatchObject({ status: 'unavailable', reason: 'invalid_source' });
     expect(readdirSync(evidenceRoot)).toHaveLength(1);
   });
+  it('rejects redirected source directories without reading, creating or deleting external evidence', () => {
+    const root = temp(); const source = join(root, 'source.jsonl'); const directory = join(root, 'evidence');
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '选择的知识来源' }] } }));
+    const store = new TraceEvidenceStore(directory); const snapshot = store.capture({ path: source });
+    const external = join(root, 'external'); renameSync(directory, external); symlinkSync(external, directory);
+    const file = join(external, `${snapshot.snapshotId}.json`); const before = readFileSync(file, 'utf8');
+    expect(store.read(snapshot.snapshotId)).toMatchObject({ status: 'unavailable', reason: 'invalid_source' });
+    expect(() => store.capture({ path: source })).toThrow('Invalid knowledge storage directory');
+    expect(() => store.delete(snapshot.snapshotId)).toThrow('Invalid knowledge storage directory');
+    expect(readdirSync(external)).toEqual([`${snapshot.snapshotId}.json`]);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
 });

@@ -6,7 +6,7 @@ import { KnowledgeActorSchema, type KnowledgeActor } from '../../../knowledge/co
 import { KnowledgeTagsSchema, type KnowledgeTagState, type KnowledgeTagStore } from '../../../knowledge/tags.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { withFileLock } from '../../../shared/file-lock.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from '../../../evidence/storage/knowledge-workspace.js';
 
 const envelope = z.strictObject({
   schemaVersion: z.literal('omk-knowledge-tags/v1'), namespace: z.string().min(1), knowledgeId: z.string().min(1).max(256),
@@ -16,13 +16,14 @@ const envelope = z.strictObject({
 /** Additive organization records; existing knowledge/source/run documents are never rewritten. */
 export class FileKnowledgeTags implements KnowledgeTagStore {
   private readonly root: string;
-  constructor(root: string, private readonly namespace: string) {
+  constructor(root: string, private readonly namespace: string, private readonly workspaceRoot = root) {
     if (!root.trim() || !namespace.trim()) throw new Error('Explicit tag root and namespace required.');
     this.root = resolve(root);
   }
   private path(id: string) { return join(this.root, `${createHash('sha256').update(canonicalJson([this.namespace, id])).digest('hex')}.json`); }
   private load(id: string) {
     if (existsSync(this.root)) { const stat = lstatSync(this.root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid tag directory.'); }
+    checkStorageDirectory(this.workspaceRoot);
     const path = this.path(id);
     if (!existsSync(path)) return undefined;
     const stat = lstatSync(path);
@@ -39,7 +40,7 @@ export class FileKnowledgeTags implements KnowledgeTagStore {
     const tags = parsed.data; const updatedBy = KnowledgeActorSchema.parse(actor);
     // Validate the organization directory before lock acquisition can create files in it.
     this.load(id);
-    return withFileLock(`${this.path(id)}.lock`, () => {
+    return withWorkspaceFileWrite(this.workspaceRoot, this.path(id), () => {
       const previous = this.load(id);
       if ((previous?.revisions.length ?? 0) !== generation) throw new Error('Knowledge tag conflict.');
       if (JSON.stringify(previous?.revisions.at(-1)?.tags ?? []) === JSON.stringify(tags)) return { generation, tags };

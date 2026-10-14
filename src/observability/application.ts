@@ -37,7 +37,7 @@ export {
 export {
   createLocalKnowledgeApplication,
 } from './knowledge-extraction/local.js';
-export { KnowledgeStorageStateError } from './knowledge-extraction/adapters/storage-state.js';
+export { KnowledgeStorageStateError } from '../evidence/storage/knowledge-workspace.js';
 export { extractionRunSummary } from './knowledge-extraction/runs.js';
 export { createLocalKnowledgeLibrary } from './knowledge-extraction/library.js';
 export { LibrarySaveSchema } from './knowledge-extraction/library.js';

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
-import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/observability/knowledge-extraction/adapters/storage-state.js';
+import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import type { EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
@@ -65,6 +65,7 @@ describe('current knowledge storage', () => {
     const workspace = root(); const directory = join(workspace, 'entities');
     const store = new FileEntityAnalysisStore(directory, workspace);
     expect(store.list()).toEqual({ histories: [], unavailable: 0 }); expect(existsSync(directory)).toBe(false);
+    expect(() => withWorkspaceWrite('', () => 'invalid')).toThrow('Explicit knowledge storage directory required');
     mkdirSync(directory); const file = join(directory, `${randomUUID()}.json`); writeFileSync(file, '{}');
     expect(store.list()).toEqual({ histories: [], unavailable: 1 }); expect(readFileSync(file, 'utf8')).toBe('{}');
     truncateSync(file, 65 * 1024 * 1024);

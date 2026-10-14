@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withFileLock } from '../../src/shared/file-lock.js';
+import { FileLockTimeoutError, withFileLock } from '../../src/shared/file-lock.js';
 
 describe('cross-process file lock', () => {
   it('preserves an abandoned or malformed lock in conservative mode', () => {
@@ -20,7 +20,7 @@ describe('cross-process file lock', () => {
       utimesSync(path, new Date(0), new Date(0));
       assert.throws(() => withFileLock(path, () => assert.fail('must not acquire'), {
         recoverStale: false, timeoutMs: 20, staleMs: 1, retryMs: 1,
-      }), /timed out waiting/);
+      }), FileLockTimeoutError);
       assert.equal(existsSync(path), true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

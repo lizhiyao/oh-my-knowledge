@@ -1,9 +1,9 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../../shared/atomic-json.js';
-import { withFileLock } from '../../../shared/file-lock.js';
 import { ExtractionRunSchema, type ExtractionRun, type ExtractionRunStore } from '../runs.js';
-import { assertCurrentStorage, checkStorageDirectory, recoverStorageLock, withWorkspaceWrite } from './storage-state.js';
+import { checkStorageDirectory, withWorkspaceFileWrite, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
+import { assertCurrentStorage } from './storage-state.js';
 
 export class FileExtractionRunStore implements ExtractionRunStore {
   private readonly root: string;
@@ -42,14 +42,11 @@ export class FileExtractionRunStore implements ExtractionRunStore {
   save(run: ExtractionRun, expectedGeneration: number): void {
     const path = this.path(run.runId);
     checkStorageDirectory(this.root);
-    withWorkspaceWrite(this.workspaceRoot, () => {
-      recoverStorageLock(`${path}.lock`);
-      return withFileLock(`${path}.lock`, () => {
+    withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const current = this.read(run.runId);
       if (current.generation !== expectedGeneration || run.generation !== expectedGeneration + 1
         || run.requestDigest !== current.requestDigest) throw new Error('Extraction run conflict.');
       writeJsonFileAtomic(path, this.check(run));
-      }, { recoverStale: false });
     });
   }
 }
