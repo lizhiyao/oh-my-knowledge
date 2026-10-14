@@ -6,6 +6,7 @@ import { Alert, Button, Checkbox, Empty, Input, Modal, Select, Space, Spin } fro
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeConversation, KnowledgeConversationDetail, KnowledgeConversationPreview } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
+import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
@@ -49,10 +50,7 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
   const [reviewing, setReviewing] = useState(false);
   const controller = useRef<AbortController | null>(null);
   async function api<T>(operation: string, fields: Record<string, unknown>, signal: AbortSignal): Promise<T> {
-    const response = await fetch('/api/knowledge/candidates', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation, ...fields }) });
-    const value = await response.json();
-    if (!response.ok) throw new Error(value.error);
-    return value as T;
+    return requestKnowledge<T>('candidates', { operation, ...fields }, signal);
   }
   function explain(cause: unknown) {
     return cause instanceof Error && cause.message === 'knowledge_conflict'

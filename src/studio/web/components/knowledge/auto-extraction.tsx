@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, InputNumber, Modal, Select, Space } from 'antd';
 import type { Language } from '../layout/shell';
 import type { AutoExtractionPreview, AutoExtractionState } from '../../../view-models/knowledge/knowledge-candidates';
+import { requestKnowledge } from './request';
 import { resolveKnowledgeWorkspace } from './workspace';
 
 /** Opening a preview does not grant permission or call a model. */
@@ -16,9 +17,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
   const controller = useRef<AbortController | null>(null);
   const polling = useRef(false);
   async function api<T>(operation: string, fields: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
-    const response = await fetch('/api/knowledge/auto-extraction', { method: 'POST', signal,
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation, ...fields }) });
-    const value = await response.json(); if (!response.ok) throw new Error(value.error); return value as T;
+    return requestKnowledge<T>('auto-extraction', { operation, ...fields }, signal);
   }
   useEffect(() => {
     const active = new AbortController();

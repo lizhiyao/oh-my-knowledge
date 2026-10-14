@@ -2,7 +2,7 @@
 
 Form candidates from selected work records, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow.
 
-The library, artifact authoring, and change review in this guide require **1.0.0-beta.14 or later**; Beta.13 does not include this maintenance UI. Install from `@next`, then check `omk --version` before following these steps. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
+The core library, artifact authoring, and change review flow requires **1.0.0-beta.14 or later**. This guide describes current main. This round's CLI guidance, read retries, and save recovery fixes are not in the published Beta.14; use a subsequent `@next` release or build current source. Check `omk --version` after installation. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
 
 ## Studio {#studio}
 
@@ -21,6 +21,8 @@ Use the returned address and check the current knowledge location first. Changin
 7. **Verify a change**: Choose verification from carrier details, declare samples, control, and model, and confirm the preview before starting. Read execution and evidence status before conclusions; saving or use alone does not establish effects.
 
 Candidate pages switch between content and source evidence; entity/library lists support narrow-screen switching. Failure, zero candidates, cancellation, and missing sources have explicit states. Extraction records and knowledge todos reopen saved content.
+
+Library, entity, and artifact pages show the selected knowledge directory; reading an explicit directory does not require model settings. Retry failed reads in place while preserving organization entries. Entity application conflicts retain roles and reasons; reload knowledge before explicitly applying again. Generic server failures or unreadable acknowledgements do not prove no write occurred. Choose “Check saved version”: organization checks the request receipt, while artifacts check content and exact references, avoiding duplicate saves. Pending content stays read-only and copyable; saving and checking make no extra model calls.
 
 ### Automatic conversation extraction and project todos
 

@@ -9,5 +9,5 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function Page({ searchParams }: { searchParams: Promise<{ workspace?: string; id?: string; revision?: string }> }) {
   const params = await searchParams;
   const lang = await requestStudioLang();
-  return <StudioShell lang={lang} active="knowledge"><KnowledgeCandidates lang={lang} initialWorkspace={params.workspace ?? ''} initialId={params.id} initialRevision={params.revision}/></StudioShell>;
+  return <StudioShell lang={lang} active="knowledge"><KnowledgeCandidates key={params.workspace ?? ''} lang={lang} initialWorkspace={params.workspace ?? ''} initialId={params.id} initialRevision={params.revision}/></StudioShell>;
 }

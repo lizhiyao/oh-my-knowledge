@@ -4,6 +4,7 @@ import { Alert, Button, Drawer } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 import { KnowledgeCandidates } from './candidates';
+import { requestKnowledge } from './request';
 import { resolveKnowledgeWorkspace } from './workspace';
 
 export function KnowledgeInboxSummary({ lang, total, failedToLoad }: { lang: Language; total?: number; failedToLoad: boolean }) {
@@ -35,10 +36,7 @@ export function KnowledgeInbox({ lang, threadId, projectId, refreshKey = 0, revi
     void resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal).then(async settings => {
       if (active.signal.aborted) return;
       const root = review?.workspace ?? settings.workspace; setWorkspace(root);
-      const response = await fetch('/api/knowledge/candidates', { method: 'POST', signal: active.signal,
-        headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'queue', workspace: root, ...(threadId ? { threadId } : { projectId }) }) });
-      if (!response.ok) throw new Error('unavailable');
-      const value = await response.json() as KnowledgeCandidateQueue;
+      const value = await requestKnowledge<KnowledgeCandidateQueue>('candidates', { operation: 'queue', workspace: root, ...(threadId ? { threadId } : { projectId }) }, active.signal);
       if (!active.signal.aborted) { setPending(value.rows.filter(row => row.choice === null).length); setTotal(value.rows.length); setError(false); }
     }).catch(() => { if (!active.signal.aborted) { setError(true); setTotal(undefined); setPending(undefined); } });
     return () => active.abort();

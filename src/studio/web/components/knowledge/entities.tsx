@@ -11,7 +11,8 @@ import { displayTime } from '../../../application/display/format';
 import { KnowledgeSectionNav } from './section-nav';
 import { EntityAnalysisDrawer } from './entity-analysis';
 import { EntityRelations, referentLabel } from './entity-relations';
-import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
+import { notifyKnowledgeChange, resolveKnowledgeDirectory } from './workspace';
+import { requestKnowledge } from './request';
 import { LibraryEntityEntry } from './library-entry';
 
 type Target = { analysisId: string; entityId: string; revision?: string };
@@ -21,9 +22,7 @@ function entityUrl(workspace: string, target: Target) {
   return `${KNOWLEDGE_ENTITIES_PATH}?${params}`;
 }
 async function request<T>(workspace: string, operation: string, fields: object, signal: AbortSignal): Promise<T> {
-  const response = await fetch('/api/knowledge/candidates', { method: 'POST', signal, headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ workspace, operation, ...fields }) });
-  const data = await response.json(); if (!response.ok) throw new Error(data.error); return data;
+  return requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal);
 }
 export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysisId, initialEntityId, initialRevision, threadId }: {
   lang: Language; initialWorkspace?: string; initialAnalysisId?: string; initialEntityId?: string; initialRevision?: string; threadId?: string;
@@ -37,20 +36,22 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
     ? { analysisId: initialAnalysisId, entityId: initialEntityId, revision: initialRevision } : undefined);
   const [query, setQuery] = useState(''); const [identityStatus, setIdentityStatus] = useState<'all' | 'proposed' | 'unresolved'>('all');
   const [sourceStatus, setSourceStatus] = useState<'all' | 'available' | 'unavailable'>('all'); const [page, setPage] = useState(1);
+  const [workspaceRetry, setWorkspaceRetry] = useState(0);
   const [refresh, setRefresh] = useState(0); const [pane, setPane] = useState<'list' | 'detail'>(target ? 'detail' : 'list');
   useEffect(() => {
     const next = initialAnalysisId && initialEntityId ? { analysisId: initialAnalysisId, entityId: initialEntityId, revision: initialRevision } : undefined;
-    setTarget(next); setPane(next ? 'detail' : 'list'); setPage(1);
+    setTarget(next); setPane(next ? 'detail' : 'list'); setPage(1); setEditing(false);
   }, [initialAnalysisId, initialEntityId, initialRevision, threadId]);
   useEffect(() => {
     const controller = new AbortController();
-    void resolveKnowledgeWorkspace(initialWorkspace, controller.signal).then(value => setWorkspace(value.workspace))
+    setWorkspace(''); setCatalog(undefined); setDetail(undefined); setDetailError(''); setError(''); setLoading(true); setEditing(false);
+    void resolveKnowledgeDirectory(initialWorkspace, controller.signal).then(value => { if (!controller.signal.aborted) setWorkspace(value); })
       .catch(() => { if (!controller.signal.aborted) { setError(t('未能读取知识工作区设置。', 'Could not read knowledge workspace settings.')); setLoading(false); } });
     return () => controller.abort();
-  }, [initialWorkspace]);
+  }, [initialWorkspace, workspaceRetry]);
   useEffect(() => {
     if (!workspace) return;
-    const controller = new AbortController(); setLoading(true); setError('');
+    const controller = new AbortController(); setLoading(true); setCatalog(undefined); setError('');
     void request<KnowledgeEntityCatalog>(workspace, 'entity-catalog', { ...(query.trim() ? { query: query.trim() } : {}), identityStatus, sourceStatus, page,
       ...(initialAnalysisId ? { analysisId: initialAnalysisId } : {}), ...(threadId ? { threadId } : {}) }, controller.signal)
       .then(value => { if (!controller.signal.aborted) { setCatalog(value); setPage(value.page); } })
@@ -79,7 +80,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
   return <section className="entity-library">
     <KnowledgeSectionNav active="entities" lang={lang}/>
     <div className="entity-library-heading"><div><h1>{t('实体', 'Entities')}</h1><p>{t('找到知识谈论的对象，核对原文、身份歧义与知识关联。', 'Find the entities knowledge concerns; inspect source, ambiguity, and linked knowledge.')}</p></div>
-      <Button onClick={() => setRefresh(value => value + 1)} disabled={loading}>{t('刷新', 'Refresh')}</Button></div>
+      <Button onClick={() => workspace ? setRefresh(value => value + 1) : setWorkspaceRetry(value => value + 1)} disabled={loading}>{t('刷新', 'Refresh')}</Button></div>
     <p className="candidate-help">{t('身份仅在各自来源窗口内对应；名称相同的结果保持分开。提出对应仍需核对。', 'Identities belong to their source windows. Same-name results stay separate; proposed assignments still need review.')}</p>
     {(initialAnalysisId || threadId) && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace })}`}>{t('查看工作区全部实体', 'View all workspace entities')}</Link>}
     <div className="entity-library-tools"><Input.Search allowClear aria-label={t('搜索实体', 'Search entities')} placeholder={t('名称、原文提及、限定条件或来源', 'Name, source mention, qualifiers, or conversation')} onSearch={value => { setQuery(value); setPage(1); }}/>
@@ -87,7 +88,8 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
         { value: 'all', label: t('全部身份', 'All identities') }, { value: 'proposed', label: t('提出对应', 'Proposed') }, { value: 'unresolved', label: t('身份有歧义', 'Unresolved') }]}/>
       <Select aria-label={t('来源筛选', 'Source filter')} value={sourceStatus} onChange={value => { setSourceStatus(value); setPage(1); }} options={[
         { value: 'all', label: t('全部来源', 'All sources') }, { value: 'available', label: t('原文可用', 'Source available') }, { value: 'unavailable', label: t('原文不可用', 'Source unavailable') }]}/></div>
-    {error && <Alert type="error" showIcon title={error}/>}
+    <p className="candidate-help knowledge-workspace" title={workspace}>{t('知识目录：', 'Knowledge directory: ')}{workspace || t('尚未读取', 'Not yet read')}</p>
+    {error && <Alert type="error" showIcon title={error} action={<Button disabled={loading} onClick={() => workspace ? setRefresh(value => value + 1) : setWorkspaceRetry(value => value + 1)}>{t('重新读取', 'Reload')}</Button>}/>}
     {!!catalog?.unavailableAnalyses && <Alert type="warning" title={t(`${catalog.unavailableAnalyses} 份实体分析不可读，未纳入结果；可读结果不代表整个工作区。`, `${catalog.unavailableAnalyses} unreadable analyses excluded; readable results do not cover the whole workspace.`)}/>}
     {catalog?.knowledgeStatus === 'unavailable' && <Alert type="warning" title={t('关联知识不可读，数量未知。', 'Linked knowledge unavailable; counts are unknown.')}/>}
     <Space className="entity-library-pane-switch"><Button onClick={() => setPane('list')}>{t('实体列表', 'Entity list')}</Button><Button disabled={!target} onClick={() => setPane('detail')}>{t('实体详情', 'Entity details')}</Button></Space>
@@ -99,7 +101,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
           <span className="entity-library-row-meta" title={[...row.qualifiers, row.origin?.title ?? ''].join(' · ')}>{referentLabel(row.referentKind, lang)} · {row.qualifiers.join(' / ') || row.description}</span>
           <span className="entity-library-row-meta">{row.origin?.title || t('导入来源', 'Imported source')} · {row.mentionCount} {t('处提及', 'mentions')} · {row.knowledgeCount ?? '—'} {t('条知识', 'knowledge items')}{row.sourceStatus === 'unavailable' ? ` · ${t('原文不可用', 'Source unavailable')}` : ''}</span>
         </button>)}
-          {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={OBSERVE_INDEX_PATH}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
+          {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={workspaceHref(OBSERVE_INDEX_PATH, workspace || initialWorkspace)}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
         {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
       </div>
       <div className={`entity-library-detail ${pane === 'detail' ? 'entity-pane-active' : ''}`}>
@@ -111,7 +113,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
             : <Empty description={t('选择一个实体，查看原文与关联知识。', 'Choose an entity to inspect its source and linked knowledge.')}/>}</div>
       </div>
     </div>
-    {editing && target && <EntityAnalysisDrawer workspace={workspace} analysisId={target.analysisId} initialRevision={target.revision} initialEntityId={target.entityId} lang={lang}
+    {editing && target && <EntityAnalysisDrawer key={`${workspace}:${target.analysisId}:${target.revision ?? ''}:${target.entityId}`} workspace={workspace} analysisId={target.analysisId} initialRevision={target.revision} initialEntityId={target.entityId} lang={lang}
       onClose={() => setEditing(false)} onSaved={() => {
         const value = { analysisId: target.analysisId, entityId: target.entityId };
         setTarget(value); window.history.replaceState(null, '', entityUrl(workspace, value)); notifyKnowledgeChange(workspace);

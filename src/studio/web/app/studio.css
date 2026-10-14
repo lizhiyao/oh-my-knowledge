@@ -520,3 +520,13 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .agents-command-guide summary:hover,.studio-settings-advanced summary:hover{color:var(--studio-action)}.agents-command-guide summary:focus-visible,.studio-settings-advanced summary:focus-visible{outline:2px solid var(--studio-action);outline-offset:3px}
 @media(max-height:700px){.agents-connection{padding:var(--studio-space-4) var(--studio-space-6);gap:var(--studio-space-5)}}
 @media(max-width:860px){.agents-heading{flex-wrap:wrap}.agents-connection{grid-template-columns:minmax(0,1fr);gap:var(--studio-space-5);padding:var(--studio-space-5)}.agents-command-guide{padding:var(--studio-space-4) var(--studio-space-5)}.studio-settings-effective dl>div{grid-template-columns:minmax(0,1fr);gap:var(--studio-space-2)}}
+
+/* Keep the selected knowledge directory visible without widening the workbench. */
+.knowledge-workspace{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+.knowledge-operation-feedback{position:sticky;top:0;z-index:2;flex-shrink:0}
+@media(max-width:860px){
+  .entity-analysis-drawer .ant-drawer-header-title{flex:1 1 100%;min-width:0}
+  .entity-analysis-drawer .ant-drawer-extra{width:100%;margin-inline-start:0}
+  .entity-analysis-drawer .ant-drawer-extra .ant-space{display:flex;flex-wrap:wrap}
+  .entity-library>.knowledge-workspace{font-size:12px}
+}
