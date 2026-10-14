@@ -1,6 +1,6 @@
 # Migrate from 0.54 to the 1.0 preview
 
-This guide covers migration from `0.54` to the 1.0 Beta on npm’s `next` tag. Beta iteration continues; these are the current migration boundaries, not an API freeze or an RC release plan.
+This guide covers upgrading from `0.54` or an earlier 1.0 Beta to the current preview on npm’s `next` tag. Beta iteration continues; these are the current migration boundaries, not an API freeze or an RC release plan.
 
 ```bash
 npm install --global oh-my-knowledge@next
@@ -8,6 +8,19 @@ omk --version
 ```
 
 Use a disposable project or back up both the project `.omk/` directory and `~/.oh-my-knowledge/` before trying the preview. To return to the stable channel, run `npm install --global oh-my-knowledge@latest`.
+
+## Upgrade from Beta.13 to Beta.14
+
+The library, artifact authoring, ongoing revision, and change review require **1.0.0-beta.14 or later**. The website's SDK screenshots come from a main-source acceptance run, not Beta.13. Check `omk --version` after installing, then follow the [knowledge maintenance workflow](../knowledge/extract-knowledge.md); local reading makes no model call.
+
+This release includes `BREAKING-CLI`, `BREAKING-SCHEMA`, and `BREAKING-COMPARABILITY` changes merged after Beta.13:
+
+1. **Back up** the explicitly selected knowledge directory, project `.omk/`, and machine `~/.oh-my-knowledge/`. The knowledge directory may be elsewhere; backing up only global state is insufficient.
+2. **Remove retired commands and fields**: `list`, `promote`, `rollback`, `eval --no-evidence`, and `observe --feedback` / `--no-feedback`. Existing managed records are preserved but not read; see the final section of this guide.
+3. **Do not treat old extraction output as the current structure**: current entity history is v2 and extraction runs are v4. Old entity history v1, run v3, and other old formats are not read, resumed, or migrated. Old knowledge v2 content remains readable, but its old entity-analysis binding is unavailable. Choose a new empty knowledge directory, extract again from original logs, and review manually. Extraction calls a model; review transmission scope and runtime first. Original files remain, and new entities do not take over old knowledge bindings automatically. See the [entity extraction contracts](../../specs/entities/entity-extraction.md).
+4. **Give new measurements a new identity**: current extraction uses `knowledge-extraction-v14`. Prompt bytes, admission semantics, and run identities changed; historical reports and scores are not recomputed, and incompatible old and new results cannot form one comparison. Reproduce historical results with their frozen baseline. Existing quality reports do not establish overall quality for the new version.
+
+The maintenance path supports sources, precise revisions, and retained history. It does not automatically prove dynamic SDK effects, time saved, or cross-agent reuse benefits.
 
 **Gold limitation:** `omk eval gold init` still creates a generic scaffold; align real sample IDs manually. Gold comparison reports human/judge agreement and post-hoc reliability without changing an existing run’s release decision. See the CLI migration selectors below.
 

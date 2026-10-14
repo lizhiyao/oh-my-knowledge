@@ -6,8 +6,7 @@ const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 // 落地页样式(landing.css)由 theme/Landing.vue 直接 import,经 Vite 的 CSS 管线在首次绘制前
 // 进入 <head>(dev / 生产一致、无 FOUC)。规则均以 .omk-landing 限定,不污染文档页。
 
-// 站点壳。内容源直接用既有 docs/（en 在根、zh 在 /zh/，正好对齐 VitePress i18n
-// 约定）。第一刀只加首页 + 导航 / 侧栏 / 本地搜索，不重写任何文档正文。
+// 文档源按领域组织；pageRoute 保留既有公开地址，页面按语言提供 metadata。
 export default defineConfig({
   title: 'OMK',
   description: 'OMK — Observe. Measure. Know. Build knowledge from collaboration between people and AI.',
@@ -48,7 +47,8 @@ export default defineConfig({
       lang: 'en',
       themeConfig: {
         nav: [
-          { text: 'Quickstart', link: '/quickstart-skill-eval' },
+          { text: 'Maintain knowledge', link: '/guides/extract-knowledge' },
+          { text: 'Evaluate', link: '/quickstart-skill-eval' },
           { text: 'Guides', link: '/README' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/' },
@@ -70,6 +70,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               { text: "Knowledge maintenance workflow", link: "/guides/extract-knowledge" },
+              { text: "SDK maintenance case", link: "/guides/sdk-maintenance-case" },
               { text: "Knowledge principles", link: "/explanation/knowledge" },
               { text: "Knowledge specifications", link: "/specs/knowledge/" },
             ],
@@ -150,7 +151,7 @@ export default defineConfig({
           },
         ],
         footer: {
-          message: 'Learn more · <a href="/quickstart-skill-eval">Quickstart</a> · <a href="/reference/cli">CLI reference</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
+          message: 'Learn more · <a href="/guides/extract-knowledge">Maintain knowledge</a> · <a href="/reference/cli">CLI reference</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
           copyright: 'MIT Licensed · © OMK',
         },
       },
@@ -159,10 +160,12 @@ export default defineConfig({
     zh: {
       label: '简体中文',
       lang: 'zh-Hans',
+      description: '从真实工作记录沉淀有来源的知识，持续积累、修订并核对载体；按需受控评测具体改动。',
       link: '/zh/',
       themeConfig: {
         nav: [
-          { text: '快速上手', link: '/zh/quickstart-skill-eval' },
+          { text: '维护知识', link: '/zh/guides/extract-knowledge' },
+          { text: '直接评测', link: '/zh/quickstart-skill-eval' },
           { text: '使用指南', link: '/zh/README' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/' },
@@ -184,6 +187,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               { text: "知识维护完整动线", link: "/zh/guides/extract-knowledge" },
+              { text: "SDK 维护案例", link: "/zh/guides/sdk-maintenance-case" },
               { text: "知识原理", link: "/zh/explanation/knowledge" },
               { text: "知识领域规范", link: "/zh/specs/knowledge/" },
             ],
@@ -268,7 +272,7 @@ export default defineConfig({
         lastUpdatedText: '最后更新',
         returnToTopLabel: '回到顶部',
         footer: {
-          message: '了解更多 · <a href="/zh/quickstart-skill-eval">快速上手</a> · <a href="/zh/reference/cli">CLI 参考</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
+          message: '了解更多 · <a href="/zh/guides/extract-knowledge">维护知识</a> · <a href="/zh/reference/cli">CLI 参考</a> · <a href="https://github.com/lizhiyao/oh-my-knowledge">GitHub</a> · <a href="https://www.npmjs.com/package/oh-my-knowledge">npm</a>',
           copyright: 'MIT Licensed · © OMK',
         },
       },

@@ -34,10 +34,14 @@ export function initLanding(lang: 'zh' | 'en', root: HTMLElement): () => void {
     const command = button.dataset.copyCommand!;
     const status = button.closest('.cmd')?.nextElementSibling as HTMLElement | null;
     const listener = async () => {
+      const hadFocus = document.activeElement === button;
       button.disabled = true;
       const copied = await copyCommand(command);
       if (disposed) return;
       button.disabled = false;
+      // Disabling the focused button moves focus to body. Restore it after copying,
+      // but respect a user who moved to another control while the promise was pending.
+      if (hadFocus && document.activeElement === document.body) button.focus();
       button.textContent = copied ? (zh ? '已复制' : 'Copied') : label;
       if (status) status.textContent = copied
         ? (zh ? '命令已复制。' : 'Command copied.')

@@ -1,6 +1,6 @@
 # 从 0.54 迁移到 1.0 预览版
 
-本文面向从 `0.54` 迁移到 1.0 Beta 的用户。Beta 使用 npm 的 `next` 标签，仍会继续迭代；本文说明当前迁移边界，不代表接口冻结或 RC 发布计划。
+本文面向从 `0.54` 或较早的 1.0 Beta 升级到当前预览版的用户。Beta 使用 npm 的 `next` 标签，仍会继续迭代；本文说明当前迁移边界，不代表接口冻结或 RC 发布计划。
 
 ```bash
 npm install --global oh-my-knowledge@next
@@ -8,6 +8,19 @@ omk --version
 ```
 
 请先在一次性项目中试用，或备份项目 `.omk/` 与 `~/.oh-my-knowledge/` 后再安装预览版。需要回到稳定渠道时，运行 `npm install --global oh-my-knowledge@latest`。
+
+## 从 Beta.13 升级到 Beta.14
+
+知识库、载体生成、持续修订与变化核对需要 **1.0.0-beta.14 或更新版本**。官网 SDK 截图来自 main 源码验收，不是 Beta.13 的界面。安装后用 `omk --version` 核对版本，再按[知识维护动线](../knowledge/extract-knowledge.md)开始；本地阅读不调用模型。
+
+本次发行包含 Beta.13 之后已合并的 `BREAKING-CLI`、`BREAKING-SCHEMA` 与 `BREAKING-COMPARABILITY` 改动：
+
+1. **先备份**显式选定的知识目录、项目 `.omk/` 与机器 `~/.oh-my-knowledge/`。知识目录可能在这两个位置之外，不能只备份全局目录。
+2. **删除退场命令／字段**：`list`、`promote`、`rollback`、`eval --no-evidence`、`observe --feedback`／`--no-feedback`；现有受管记录不改写，但新版本不读取。具体边界见本文末节。
+3. **不要把旧提炼产物当成当前结构**：当前实体历史为 v2、提炼运行为 v4；旧实体历史 v1、运行 v3 等旧格式不读取、不恢复、不迁移。旧知识 v2 正文仍可读，但所绑定的旧实体分析会显示不可用。选择新的空知识目录，从原始日志重新提炼并人工核对；这会调用模型，需先确认发送范围与运行时。原始文件保留，新实体不会自动接管旧知识绑定。完整边界见[实体提炼契约](../../specs/entities/entity-extraction.md)。
+4. **新测量另建身份**：当前提炼提示词为 `knowledge-extraction-v14`；提示词字节、接纳语义与运行身份发生过变化，历史报告与分数不重算，不能把不兼容的新旧结果合并成同一比较。复现旧结果须使用冻结基线；现有质量报告不等于新版本整体质量已获验证。
+
+新维护链路支持来源、精确修订和历史保留，不自动证明 SDK 动态效果、节省时间或跨 Agent 复用收益。
 
 **Gold 限制：** `omk eval gold init` 仍生成通用脚手架，真实 sample ID 需要人工对齐。Gold compare 提供人工标注与评委的一致性及事后可靠性评估，不改变已有 run 的发布判定。具体选择器见下方 CLI 迁移说明。
 
@@ -36,7 +49,7 @@ omk eval --dry-run --samples eval-samples.yaml \
   --control code-review-v1 --treatment code-review-v2
 ```
 
-完整 v2 协议见[评测用例格式](../../reference/evaluation/eval-sample-format.md)及随包发布的 JSON Schema。
+完整 v3 协议见[评测用例格式](../../reference/evaluation/eval-sample-format.md)及随包发布的 JSON Schema。
 
 ## 三、重新检查外部 URL 输入
 
