@@ -2,7 +2,7 @@
 
 This page specifies inputs, judge instruments, and result boundaries for current `faithfulness`, `answer_relevancy`, and `context_recall`. `measurement/evaluators/llm-assertions.ts`, `instruments/prompts/judge-prompts.ts`, and `assertions/layers.ts` define the implementation. The [sample format](../../reference/evaluation/eval-sample-format.md) owns public fields. See [examples/rag-eval/](https://github.com/lizhiyao/oh-my-knowledge/tree/main/examples/rag-eval).
 
-## How the three metrics relate {#how-the-three-relate}
+## How the three metrics relate
 
 | Metric | Question | Required input |
 |---|---|---|
@@ -12,7 +12,7 @@ This page specifies inputs, judge instruments, and result boundaries for current
 
 These metrics test the relationship between declared references and output. They prove neither the references' correctness nor retriever recall quality by themselves. Choose metrics for the question being tested; using several still requires explicit inputs and thresholds.
 
-## Design choice — one LLM call instead of RAGAS multi-step {#design-choice-—-why-a-single-llm-call-instead-of-ragas-multi-step}
+## Design choice — one LLM call instead of RAGAS multi-step
 
 The current evaluator makes one 1–5 judge request per RAG observation. It does not decompose or score atomic statements individually. One request guarantees neither fixed cost nor latency and provides no per-fact diagnosis.
 

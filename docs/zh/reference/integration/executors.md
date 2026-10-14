@@ -63,7 +63,7 @@ export OMK_EXECUTOR=codex
 
 **Codex construct-validity 说明：**
 
-- **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。Core artifact 会封存 executor 与 evaluator Runtime identity，包括宿主能取得的本机 binary 或 SDK 证据。除非在 `eval.yaml` 显式提供 `judgeModels[].deploymentRevision`，远端评委部署会保持 `opaque/unknown`；即使提供，也只是 `self-reported/declared`。Runtime identity 不同时，结果要视为 runtime 对比，而不只是 prompt/template 行为。详见[统计严谨性](../../explanation/statistical-rigor.md#三评委去偏与-prompt-identity)。
+- **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。Core artifact 会封存 executor 与 evaluator Runtime identity，包括宿主能取得的本机 binary 或 SDK 证据。除非在 `eval.yaml` 显式提供 `judgeModels[].deploymentRevision`，远端评委部署会保持 `opaque/unknown`；即使提供，也只是 `self-reported/declared`。Runtime identity 不同时，结果要视为 runtime 对比，而不只是 prompt/template 行为。详见[统计严谨性](../../explanation/statistical-rigor.md#三、评委去偏与-prompt-identity)。
 - **配置与会话隔离**：omk 只在启动前解析 Codex 配置里的模型（顶层 `profile` 选中时取该 profile 的模型），然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
 - **SDK execpolicy 限制**：当前 `@openai/codex-sdk` API 没有暴露 CLI 的 `--ignore-rules`。显式工作目录中的项目 execpolicy 仍可能影响 `codex-sdk`。需要隔离项目规则时优先使用 `codex`；否则必须固定执行器和 runtime context 后再比较结果。
 

@@ -1,4 +1,4 @@
-# Accumulate, maintain, and use knowledge {#extract-candidate-knowledge-from-work-logs}
+# Accumulate, maintain, and use knowledge
 
 Form candidates from selected work records, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow.
 
@@ -22,11 +22,11 @@ Use the returned address and check the current knowledge location first. Changin
 
 Candidate pages switch between content and source evidence; entity/library lists support narrow-screen switching. Failure, zero candidates, cancellation, and missing sources have explicit states. Extraction records and knowledge todos reopen saved content.
 
-### Automatic conversation extraction and project todos {#conversation-auto-extraction-and-project-inbox}
+### Automatic conversation extraction and project todos
 
 Automatic extraction is optional. Preview the selected conversation's messages, location, model, and call allowance before authorizing transmission. Authorization is limited to that conversation, 24 hours, and the current service lifecycle. Call counts are not monetary budgets. Failure/interruption stops it, and restarting does not resume it automatically. Todos gather candidates for review without deciding retention or rewriting carriers.
 
-## Select and generate a source {#capture-and-generate}
+## Select and generate a source
 
 CLI and Studio share a knowledge workspace. Declare source scope first: capture archives locally, while generate calls the selected model. Replace paths, identities, and models below with real values.
 
@@ -129,6 +129,6 @@ The workspace contains source snapshots, revisions and raw generation output, wh
 For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
 
 
-## Extraction quality checks {#reproduce-extraction-quality-checks}
+## Extraction quality checks
 
 Use the [current annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md). Generating a review package makes no model calls and does not establish overall quality acceptance. Historical results are reproduced only at their frozen revisions, without rescoring using current artifacts.

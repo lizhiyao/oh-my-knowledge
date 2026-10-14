@@ -132,15 +132,11 @@ samples:
 
 **与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。`tripwire` 是审计元数据，不影响评分或已注册 Decision。当前 Core diagnostic projection 只报告经过认证的失败、缺失证据、排除项和稳定 reason code，不推断 `tripwire_intentional` 建议。
 
-## 三、当前报告的阅读边界 {#三、用例设计相关分析功能}
+## 三、当前报告的阅读边界
 
-### Coverage 的当前含义 {#coverage-块-studio-报告页呈现}
+### Coverage 的当前含义
 
 当前 Studio 评测页投影经过认证的 Core 产物。报告中的 evidence coverage 表达测量证据是否满足声明；它不等于作者填写的 `capability` 或 `covers` 的分布，也不等于知识库完备性。本文不承诺 Sample design coverage 面板或 Skill Map 样本覆盖着色。
-
-### 已退役的分析字段 {#两个-issue-kind}
-
-`report.analysis.sampleQuality`、`rubric_clarity_low` 和 `capability_thin` 属于旧报告实现，当前契约和 Studio 不提供这些字段或诊断。工具应按[当前报告投影](../../specs/evaluation/evaluation-studio-projection.md)消费产物，不从这篇指南推导旧 JSON 字段。
 
 ## 四、自检清单：我的 sample 设计够科学吗？ {#四、自检清单-我的-sample-设计够科学吗}
 
@@ -157,20 +153,19 @@ samples:
 
 PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO 是已注册测量设计下的结论，算法不按 `construct` 标签自动切换。`necessity` 只是作者假设：PROGRESS 可以支持该实验条件下的差异，不能直接证明“skill 必需”。`quality` 也不能把一组样本的改善扩大成整体知识质量提升。
 
-## 六、附录：设计依据与扩展边界 {#六、附录-设计依据-学术对齐与-schema-决策}
+## 六、附录：设计依据与扩展边界
 
-### 6.1 当前元数据的取舍 {#_6-1-行业共识-8-条-omk-v1-映射}
+### 6.1 当前元数据的取舍
 
 将输入、执行控制、评分期望与作者注释分开，有助于复核“实际测到的是什么”。标签方便描述意图，但自动归一、难度校准、污染检测、覆盖矩阵和构造效度验证都需要独立实现与验收，不能由字段存在推定已交付。
 
-### 6.2 尚未承诺的分析能力 {#_6-2-已确认但-v1-不做-follow-up}
+### 6.2 尚未承诺的分析能力
 
 本指南不承诺 IRT 参数估计、自动挖掘对抗样本、Sample design health score、能力覆盖阈值或自动污染判定。研究方向需要真实需求和单独测量设计；不以固定的小样本数量或任意比例作通用科学保证。
 
-### 6.3 字段扩展边界 {#_6-3-v2-schema-扩展候选与拒绝清单}
+### 6.3 字段扩展边界
 
-旧设计讨论过 `source_ids`、`status`、`tags`、`owner` 和 `risk_level`，它们不是当前 v3 字段。不要将草案字段写进用例；Schema 是严格的。也不能用草案 `deprecated` 状态静默排除样本或改变 Δ 权重。
-
+当前 v3 Schema 是严格的，只能编写已支持字段；新增元数据必须显式变更契约，不能静默排除样本或改变 Δ 权重。
 
 ### 6.4 参考 {#_6-4-参考}
 

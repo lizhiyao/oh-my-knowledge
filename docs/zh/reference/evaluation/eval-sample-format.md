@@ -91,7 +91,7 @@ custom-executor 的 `omk.custom-executor-exchange/v1` 请求收到完整结构�
 
 ## 元数据与沙箱字段
 
-`annotations.covers` 通过 `targetKind` 和 `ref` 声明结构锚点，不能证明节点实际执行。`tripwire` 标记故意诱错样本，不反转评分。`executionContext.mocks` 要求执行器支持工具拦截，`mocksStrict` 默认拒绝未匹配调用，`mock_hit` 必须引用已有 mock。`executionContext.cwd` 提供工作区 fixture，资源沿用宿主隔离机制。详见[执行器](../integration/executors.md#sample-mock-compatibility)。
+`annotations.covers` 通过 `targetKind` 和 `ref` 声明结构锚点，不能证明节点实际执行。`tripwire` 标记故意诱错样本，不反转评分。`executionContext.mocks` 要求执行器支持工具拦截，`mocksStrict` 默认拒绝未匹配调用，`mock_hit` 必须引用已有 mock。`executionContext.cwd` 提供工作区 fixture，资源沿用宿主隔离机制。详见[执行器](../integration/executors.md#sample-mock-兼容性)。
 
 旧 v2 的 `prompt: Q` 加 `context: C`，需要显式编写完整输入，例如 `input.text: "Q\n\n```\nC\n```"`。如果 C 只是评分参考，应放入 `evaluationContext.reference`。二者是不同实验，不能互相推断，也不自动改写用户数据。
 

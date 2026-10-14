@@ -1,6 +1,6 @@
 # omk 术语规范
 
-> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../../README.md) 即可。中英双版并存(`docs/specs/` 英文 / `docs/zh/specs/` 中文),术语本身全是英文，源码为命名的事实来源。
+> **范围**：面向 OMK 维护者的现行命名与隔离规则。日常用法见 [README](../../README.md)，具体名称以公开契约与源码为准。
 
 ## 一、目标
 
@@ -101,7 +101,7 @@
 - 两个都是 `skill` kind 的 artifact（v1 vs v2）比较时，其中一个被显式声明为 `control`——此时 control role 和 baseline kind 没有任何关系
 - 报告与代码都应以 `experimentRole` 作为判定对照组的唯一来源，不从 `artifactKind === 'baseline'` 反推
 
-### 5. 区分置信区间与持续集成 {#_5-ci-在-omk-里只指-confidence-interval}
+### 5. 区分置信区间与持续集成
 
 测量结果中的 CI 表示置信区间（Confidence Interval）。仓库流程也使用持续集成 CI；必须按上下文区分，不能把仓库检查误读为统计区间。
 
@@ -201,25 +201,15 @@ Core Composite Analysis 最多绑定 `fact`、`behavior` 与 `judge` 三个具�
 
 ### 1. 类型与字段
 
-新代码优先使用：
+现行命名按所属契约确定：
 
-- `Artifact`
-- `ArtifactKind`
-- `artifacts`
-- `task.artifact`
-- `artifactHashes`
-- `VariantConfig.experimentRole`（新增字段，枚举 `'control' | 'treatment'`）
+- 知识载体使用 `Artifact`、`ArtifactKind`，集合使用 `artifacts`。
+- CLI 配置通过 `variants[].role` 指定实验角色；编译后的目标使用 `experimentRole`，值为 `control` 或 `treatment`。
+- 字段与类型以对应参考及公开 Schema 为准。
 
-### 2. 去兼容策略
+### 2. 替换与兼容边界
 
-omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历史兼容层。
-
-规则：
-
-- 新实现直接收敛到 artifact 术语
-- 旧命名如果会造成长期歧义，应直接删除，而不是继续挂兼容别名
-- 破坏性调整优先在现在完成，不向后滚雪球
-- v0.16 起 `--variants` 直接移除（不打 deprecation warning），用户迁移到 `--control` / `--treatment`
+新实现直接使用当前术语，不为无明确需求的旧命名保留别名。涉及已发布公共契约或存量数据时，先明确版本与迁移影响，并按项目规则处理；不能依据用户规模推定可以破坏公共契约。旧版本的实际升级步骤由[维护指南](../../guides/maintenance/v1-preview-migration.md)统一维护。
 
 ### 3. 命名原则
 
@@ -277,29 +267,7 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 - 读路径上要区分「OMK 自己写的」与「已被记录下来的」。Studio 知识页的待优化项里，OMK 自己的规则文案按请求语言呈现；更早落盘的证据——doctor 规则自己的 message、Diagnosis 的标题／摘要／建议——按记录时的语言原样显示。在渲染层重翻已存证据，等于改写视图背后的记录。
 - 语言按请求决定时，它同时属于缓存身份：缓存里存着展示文案的投影，不能把第一个请求者的语言发给之后所有人。
 
-## 六、术语映射
-
-| 旧术语 | 新标准术语 | 说明 |
-|---|---|---|
-| admission (stage reuse) | plan-bound conformance verification | `verifyExecutedStageAgainstPlan`；fail-closed，不是资格检查 |
-| admission (knowledge drafts) | knowledge validation | `src/knowledge/validation.ts`、`KnowledgeValidationProblem` |
-| resume-admission | resume-disposition | 持久化续跑信任判定；摘要标签保持冻结 |
-| evaluand | artifact | 被评测对象的统一总称 |
-| EvaluandSpec | Artifact | 核心对象类型 |
-| EvaluandKind | ArtifactKind | 对象类别 |
-| evaluands | artifacts | 请求中的对象列表 |
-| task.evaluand | task.artifact | 单个任务绑定的对象 |
-| evaluandHashes | Target artifact descriptor | Target config 中封存的完整 SHA-256 内容身份 |
-| skillHashes | Target artifact descriptor | Core lineage 中统一的 artifact identity |
-| skill 作为总称 | artifact | skill 退回为具体子类 |
-| agent 作为总称 | artifact / agent runtime | 视语义选择 |
-| `--variants` CLI 参数 | `--control` / `--treatment` | 按 experiment role 声明 variant，废除扁平列表 |
-| 从 `artifactKind === 'baseline'` 推断对照组 | 显式读 `experimentRole === 'control'` | 对照组由用户声明，不从 artifact kind 反推 |
-| `LayeredScores.qualityScore` | Composite `judge` layer entry | 已删除的结果行字段由显式绑定的 Analysis source 替代 |
-| `VariantSummary.avgQualityScore` | 来自 Composite Analysis 的 Studio projection | 展示数据从经过认证的 Core 产物重建 |
-| `VarianceLayerKey: 'quality'` | Evaluation Series run-mean composite variance | Series 不复用旧 layer key |
-
-## 七、Skill Isolation(v0.22 新增)
+## 六、Skill Isolation
 
 ### 1. 问题背景
 
@@ -311,7 +279,7 @@ Claude runtime 有三条相关通道：SDK / CLI 的 skill 发现、子代理 `S
 
 ### 2. 术语
 
-- **`allowedSkills`**(per-variant 字段，新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
+- **`allowedSkills`**（逐 variant 配置与编译后的执行控制）：
   - `undefined` → 使用执行器默认 runtime context，不请求隔离
   - `[]` → **请求严格隔离**：omk 提供空的逐次运行 cwd，并应用当前执行器支持的全部隔离控制
   - `[name1, ...]`（非空）→ **在统一 execution-plan 边界拒绝**：原生 agent、API 与自定义执行器之间不存在可移植且可证明的白名单机制；严格隔离请用 `[]`，不隔离则省略
@@ -346,9 +314,9 @@ baseline-kind 默认 `[]`（strict），其他 kind 默认 `undefined`（执行�
 
 ### 5. cache key 版本
 
-Core 分阶段持有缓存，不再使用旧 executor 的 `v9:` 前缀。Execution key 的派生身份为 `omk.execution-cache-key/v2`，绑定 `executionCoordinateDigest` 和 `trialId`；Evaluation key 为 `omk.evaluation-cache-key/v2`，绑定 evaluation plan、evaluation id、evaluator Runtime、source trust 及 bindings。读回还验证 record、plan 与来源身份，摘要匹配不能替代信任校验。
+Core 分阶段持有缓存。Execution key 的派生身份为 `omk.execution-cache-key/v2`，绑定 `executionCoordinateDigest` 和 `trialId`；Evaluation key 为 `omk.evaluation-cache-key/v2`，绑定 evaluation plan、evaluation id、evaluator Runtime、source trust 及 bindings。读回还验证 record、plan 与来源身份，摘要匹配不能替代信任校验。
 
-隔离、输入和外部依赖如何进入封存身份，由[输入编译](../evaluation/cli-evaluation-input-compilation.md)与[Runtime Adapter](../evaluation/evaluation-runtime-adapter.md)规范规定；不从旧报告字段或缓存前缀推导现行可比性。
+隔离、输入和外部依赖如何进入封存身份，由[输入编译](../evaluation/cli-evaluation-input-compilation.md)与[Runtime Adapter](../evaluation/evaluation-runtime-adapter.md)规范规定；缓存身份本身不能建立测量可比性。
 
 ### 6. executor 兼容
 
@@ -363,7 +331,7 @@ Core 分阶段持有缓存，不再使用旧 executor 的 `v9:` 前缀。Executi
 
 非空 skill 白名单 `[name]` 会在执行器分发前被拒绝，programmatic caller 即使绕过 eval.yaml 校验也一样。严格隔离使用 `[]`，执行器默认上下文则省略。自定义 script 即使收到 `[]` 也无法证明严格隔离，因此 omk 会告警并记录隔离声明用于审计，不会静默声称已经兑现。
 
-## 八、落地判断标准
+## 七、落地判断标准
 
 后续新增功能、文档或接口时，如果遇到命名选择，按下面顺序判断：
 

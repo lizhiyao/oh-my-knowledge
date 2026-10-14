@@ -1,6 +1,6 @@
 # Evaluation Core 产物持久化
 
-> 状态：[#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) 与 [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547) 的宿主持久化、复用和下游投影契约已实现。正式 `omk eval`、Studio、Gold、resume、batch 与 evolve 现已消费这些 Core 产物。旧报告仍不可读，传输来的 JSON 也不会被伪装成可信 Core capability。
+> 现行宿主持久化、复用与下游投影契约。正式 `omk eval`、Studio、Gold、resume、batch 与 evolve 消费这些 Core 产物；传输来的 JSON 不会成为可信 Core capability。
 
 ## 一、边界
 

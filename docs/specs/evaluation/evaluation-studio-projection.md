@@ -1,6 +1,6 @@
 # Evaluation Core Studio projection
 
-> Status: implemented. The catalog/view-model boundary from [#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535) and renderer/route adapter from [#537](https://github.com/lizhiyao/oh-my-knowledge/issues/537) are now the production Evaluation view. It reads authenticated Core runs only.
+> Current production Evaluation view: the catalog/view-model and renderer/route boundaries read authenticated Core runs only.
 
 ## 1. Authority boundary
 
