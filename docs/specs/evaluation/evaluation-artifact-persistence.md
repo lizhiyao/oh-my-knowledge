@@ -1,6 +1,6 @@
 # Evaluation Core artifact persistence
 
-> Status: implemented host persistence, reuse, and downstream projection contract for [#531](https://github.com/lizhiyao/oh-my-knowledge/issues/531) and [#547](https://github.com/lizhiyao/oh-my-knowledge/issues/547). Production `omk eval`, Studio, Gold, resume, batch, and evolve now consume these Core artifacts. Legacy reports remain unreadable, and transported JSON never becomes a trusted Core capability.
+> Current host persistence, reuse, and downstream projection contracts. Production `omk eval`, Studio, Gold, resume, batch, and evolve consume these Core artifacts. Transported JSON never becomes a trusted Core capability.
 
 ## 1. Boundary
 

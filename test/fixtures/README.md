@@ -4,7 +4,7 @@
 
 ## 通用约定
 
-- **样本断言合规**：所有 `*.eval-samples.json` 的 `contains` / `not_contains` / `contains_any` 值都是单个 ASCII token（长度 2–40、无内部空白），语义判断交给 `rubric` 或 `regex`（`regex` 不受 token 规则约束）。这些 fixture 必须通过 `loadSamples` 的严格校验。新增样本请沿用此约定。
+- **样本断言合规**：所有 `eval-samples.json` 的 `contains` / `not_contains` / `contains_any` 值都是单个 ASCII token（长度 2–40、无内部空白），语义判断交给 `rubric` 或 `regex`（`regex` 不受 token 规则约束）。这些 fixture 必须通过 `loadSamples` 的严格校验。新增样本请沿用此约定。
 - 这些 fixture 故意保持**最小**：样本数、变体数、断言形态都按消费它的测试需要来定，不是示例展示。要更丰富的真实示例去看 `examples/`。
 
 ## code-review/
@@ -13,7 +13,7 @@
 
 消费方与 load-bearing 值：
 - `test/cli/{doctor,doctor-eval-embed,judge-models-validation,oclif-eval,removed-options}.test.ts` 与 `test/knowledge-artifacts/{doctor,sources}/*`：用它当可解析的 skill-dir（`v1` / `v2`）与样本文件（`eval-samples.json`，5 条样本）。
-- `test/eval-workflows/inputs/yaml-parser.test.ts`：只校验 JSON 结构（数组、非空、有 `sample_id`），不 pin 计数/断言值。
+- `test/eval-workflows/inputs/yaml-parser.test.ts`：按现行 `omk.eval-sample-set/v3` 封套读取 `samples` 与 `sampleId`，验证 Schema 和规范化输入。
 
 ## custom-executor/
 
@@ -36,7 +36,11 @@ OMK MCP 主动知识反馈的行为契约 fixture。它覆盖显式保存、`$om
 批量评测 fixture（`omk eval --batch`）。`skills/` 下的 `summarizer/`、`translator/`、`classifier/` 均采用目录 skill，并将私有用例放在 `.omk/eval-samples.json`，锁定 batch 的 canonical 发现路径。
 
 load-bearing 值：
-- `test/runner.test.ts`：`discoverVariants` 断言能发现 `classifier`；batch dry-run 按 `sampleCount × 2` 算 `taskCount`。
-- `test/cli.test.ts` 的 batch 测试：断言「批量评测结论：未通过」+ `UNDERPOWERED:`（依赖每个 skill 的小样本量）。三个 skill 都得在、各自样本量小，别删。
+- `test/eval-workflows/inputs/batch-discovery.test.ts`：锁定三个目录 skill 的发现顺序及 `.omk/eval-samples.json` 位置，排除已退出的扁平 sidecar。
+- `test/knowledge-artifacts/sources/artifact-resolution.test.ts`：核对 classifier 的路径解析、artifact 类型与工作目录。
 - `classifier` 保留 2 条样本以覆盖 batch 的 `UNDERPOWERED` 分支；其余 skill 只保留 1 条。这些夹具验证 batch 发现、任务规划和聚合门禁，不验证领域用例多样性；增加样本会按「skill × 样本 × 2 variants」放大子进程数量。
 - `src/knowledge-artifacts/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。
+
+## 实体离线复核
+
+`entity-extraction-review-v12.json` 是现行公开合成语料，供 `test/scripts/entity-extraction-review.test.ts` 和离线复核命令使用；关键提及、分组、允许边界与测量版本属于冻结契约，不随文档清理改写。`entity-source-coverage-v1.json` 单独验证关键来源定位，不并入该语料的分母。已退役的质量采集工具与原始试验账本不常驻当前检出，追溯使用 Git 历史。

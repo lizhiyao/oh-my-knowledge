@@ -1,6 +1,6 @@
 # Evaluation Core Studio 投影
 
-> 状态：已实现。[#535](https://github.com/lizhiyao/oh-my-knowledge/issues/535) 的只读 catalog／view model 边界与 [#537](https://github.com/lizhiyao/oh-my-knowledge/issues/537) 的 renderer／route adapter 已成为生产 Evaluation 视图，只读取通过认证的 Core run。
+> 现行生产 Evaluation 视图：catalog／view model 与 renderer／route 边界只读取通过认证的 Core run。
 
 ## 一、权威边界
 

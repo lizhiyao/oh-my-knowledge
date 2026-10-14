@@ -15,7 +15,7 @@ Each round: evaluate the current skill, ask a diagnostic LLM what's failing, rew
 
 Every retained round must keep the same sample hashes, model, executor, judge configuration, runtime fingerprint, execution strategy, and skill-isolation state. If any of these drift, Evaluation Core refuses to treat the comparison as a knowledge-only improvement. Measurement artifacts remain immutable Core runs; end-to-end evolve cost is reported separately by the authoring loop.
 
-## Candidate acceptance and write-back gates {#why-it-won-t-just-improve-the-score-to-nonsense}
+## Candidate acceptance and write-back gates
 
 The following defaults guard against the classic failure modes of auto-iteration:
 

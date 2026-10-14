@@ -1,13 +1,23 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { qualityOutputRoot } from './knowledge-extraction-quality.js';
 import { ENTITY_CHECK_VERSION, ENTITY_GUIDE_VERSION, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCorpus } from './entity-review-corpus.js';
 import { reviewCapturedOutput, type EntityReviewAdmission } from './entity-review-checks.js';
 
 export const reviewDigest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
+export function reviewOutputRoot(root: string, requested: string): string {
+  if (!isAbsolute(requested)) throw new Error('Use an absolute output directory outside the repository.');
+  const output = resolve(requested);
+  const parent = existsSync(output) ? realpathSync(output) : resolve(realpathSync(dirname(output)), output.split(sep).at(-1)!);
+  const location = relative(realpathSync(root), parent);
+  if (!location || (!location.startsWith(`..${sep}`) && location !== '..' && !isAbsolute(location))) {
+    throw new Error('Review output must stay outside the repository.');
+  }
+  return parent;
+}
+
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const isoTime = z.iso.datetime({ offset: true });
 const text = z.string().trim().min(1);
@@ -171,7 +181,7 @@ function builtDigest(root: string) {
 async function main() {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
   const args = parseEntityReviewArguments(process.argv.slice(2));
-  const output = qualityOutputRoot(repo, args.output);
+  const output = reviewOutputRoot(repo, args.output);
   const corpusText = readFileSync(resolve(args.corpus), 'utf8'); const corpus = parseEntityReviewCorpus(corpusText);
   const guides = ['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
     .map(path => readFileSync(resolve(repo, path), 'utf8'));
@@ -181,7 +191,7 @@ async function main() {
   const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href);
   const identity = { corpusVersion: corpus.corpusVersion, checkVersion: ENTITY_CHECK_VERSION, guideVersion: ENTITY_GUIDE_VERSION,
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),
-    checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js', 'knowledge-extraction-quality.js']
+    checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
       .map(path => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), path), 'utf8')).join('\0')),
     runtimeDigest: builtDigest(resolve(repo, 'dist')),
     dependencyDigest: reviewDigest(['package.json', 'yarn.lock'].map(path => readFileSync(resolve(repo, path), 'utf8')).join('\0')),

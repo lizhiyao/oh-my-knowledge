@@ -15,7 +15,7 @@ omk evolve skills/my-skill.md --rounds 10 --target 4.5
 
 所有保留轮次必须维持相同的用例指纹、模型、执行器、评委配置、运行时指纹、执行策略和 skill 隔离状态；任一项漂移，Evaluation Core 都会拒绝把比较认定为「只改变知识载体」的改进。测量产物始终是不可变的 Core run，端到端 evolve 成本由 authoring loop 另行汇总。
 
-## 候选接纳与写回门禁 {#它为什么不会把分数-刷-成胡来}
+## 候选接纳与写回门禁
 
 以下默认机制挡住自动迭代的经典翻车模式：
 

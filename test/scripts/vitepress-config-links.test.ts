@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
+import { createMarkdownRenderer, disposeMdItInstance } from 'vitepress';
 import config from '../../docs/.vitepress/config.js';
 import { pageHref, pageRoute } from '../../docs/.vitepress/page-links.js';
-import { retiredDocumentRoutes, writeRetiredDocumentNotices } from '../../docs/.vitepress/retired-documents.js';
 
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const DOCS_ROOT = join(PROJECT_ROOT, 'docs');
@@ -200,42 +199,38 @@ describe('domain specifications and stable published routes', () => {
     expect(pages.filter(path => path.includes('/history/'))).toEqual([]);
     const roots = readdirSync(join(DOCS_ROOT, locale)).filter(path => path.endsWith('.md')).sort();
     expect(roots).toEqual(['README.md', 'index.md']);
-    const retired = retiredDocumentRoutes().filter(page => page.chinese === Boolean(locale));
-    expect(retired).toHaveLength(23);
-    for (const page of retired) {
-      expect(resolvesToPublishedPage('/' + page.route)).toBe(false);
-      expect(resolvesToPublishedPage(page.currentHref)).toBe(true);
-      expect(page.archiveUrl).toMatch(/^https:\/\/github\.com\/lizhiyao\/oh-my-knowledge\/blob\/[a-f0-9]{40}\/docs\//);
-    }
-    expect(new Set(retired.map(page => page.route)).size).toBe(retired.length);
   });
 
-  it('generates bilingual exit pages at historical URLs and rejects collisions before writing', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-retired-docs-'));
+  it('resolves internal section links to current Markdown anchors after published-route rewrites', async () => {
+    const md = await createMarkdownRenderer(DOCS_ROOT, { highlight: () => '' });
+    const pages = new Map<string, { file: string; html: string; ids: Set<string> }>();
     try {
-      const pages = retiredDocumentRoutes();
-      const outDir = join(root, 'site');
-      writeRetiredDocumentNotices(outDir);
-      for (const page of pages) {
-        const html = readFileSync(join(outDir, page.route + '.html'), 'utf8');
-        expect(html).toContain('<meta name="robots" content="noindex">');
-        expect(html).toContain('href="' + page.archiveUrl + '"');
-        expect(html).toContain('href="' + page.currentHref + '"');
-        expect(html).toContain('archive.href+=location.hash');
-        expect(html).toContain(page.chinese ? 'lang="zh-Hans"' : 'lang="en"');
-        expect(html).toContain(page.chinese ? '这份历史记录已移出当前文档' : 'This historical record is outside the current documentation');
+      for (const file of markdownPages(DOCS_ROOT)) {
+        const route = pageRoute(relative(DOCS_ROOT, file)).replace(/\.md$/, '');
+        const text = readFileSync(file, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '');
+        const html = md.render(text, { path: resolve(DOCS_ROOT, route + '.md'), realPath: file,
+          relativePath: relative(DOCS_ROOT, file) });
+        pages.set(route, { file, html, ids: new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]!)) });
       }
-      const collisionDir = join(root, 'collision');
-      const last = pages.at(-1)!;
-      const existing = join(collisionDir, last.route + '.html');
-      mkdirSync(join(existing, '..'), { recursive: true });
-      writeFileSync(existing, 'current page');
-      expect(() => writeRetiredDocumentNotices(collisionDir)).toThrow('collides with a current page');
-      expect(readFileSync(existing, 'utf8')).toBe('current page');
-      expect(existsSync(join(collisionDir, pages[0]!.route + '.html'))).toBe(false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+      const violations: string[] = [];
+      for (const [route, page] of pages) {
+        for (const match of page.html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
+          const href = match[1]!.replaceAll('&amp;', '&');
+          if (/^(?:[a-z][\w+.-]*:|\/\/)/i.test(href)) continue;
+          const rebased = pageHref(href, { path: resolve(DOCS_ROOT, route + '.md'), realPath: page.file });
+          const url = new URL(rebased, 'https://docs.invalid/' + route);
+          if (!url.hash) continue;
+          const key = decodeURIComponent(url.pathname).replace(/^\//, '').replace(/\.(?:md|html)$/, '').replace(/\/$/, '');
+          const target = pages.get(key) ?? pages.get(key + '/index');
+          // Assets and repository files are outside the published-page anchor contract.
+          if (!target) continue;
+          if (!target.ids.has(decodeURIComponent(url.hash.slice(1)))) {
+            violations.push(relative(DOCS_ROOT, page.file) + ' -> ' + rebased);
+          }
+        }
+      }
+      expect(violations, '章节链接必须落到当前内容，不能依赖旧的空锚点').toEqual([]);
+    } finally { disposeMdItInstance(); }
   });
 
   it('rebases source links across domains and into reference pages while preserving anchors and locales', () => {

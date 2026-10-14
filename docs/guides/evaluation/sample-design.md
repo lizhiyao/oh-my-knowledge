@@ -132,15 +132,11 @@ samples:
 
 **Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. `tripwire` is audit metadata and does not affect scoring or the registered Decision. The current Core diagnostic projection reports only authenticated failures, missing evidence, exclusions, and stable reason codes; it does not infer a `tripwire_intentional` recommendation.
 
-## 3. Current report reading boundaries {#_3-sample-design-analysis-features}
+## 3. Current report reading boundaries
 
-### What coverage currently means {#coverage-block-rendered-on-the-studio-report-page}
+### What coverage currently means
 
 The current Studio evaluation page projects authenticated Core artifacts. Report evidence coverage expresses whether measurement evidence satisfies declarations. It is neither the distribution of author-written `capability` or `covers` nor knowledge-base completeness. This guide promises no Sample design coverage panel or sample-coverage coloring in Skill Map.
-
-### Retired analysis fields {#two-issue-kinds}
-
-`report.analysis.sampleQuality`, `rubric_clarity_low`, and `capability_thin` belong to the old report implementation. Current contracts and Studio provide neither those fields nor those diagnostics. Tools should consume the [current report projection](../../specs/evaluation/evaluation-studio-projection.md), rather than derive old JSON fields from this guide.
 
 ## 4. Self-check checklist: is my sample design rigorous enough? {#_4-self-check-checklist-is-my-sample-design-rigorous-enough}
 
@@ -157,20 +153,19 @@ The current Studio evaluation page projects authenticated Core artifacts. Report
 
 PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO are conclusions under the registered measurement design. Algorithms do not switch automatically based on `construct`. `necessity` is an author hypothesis: PROGRESS can support a difference under those experimental conditions, but cannot directly prove that a skill is necessary. Nor can `quality` turn improvement on selected samples into overall knowledge quality.
 
-## 6. Appendix — design rationale and extension boundaries {#_6-appendix-—-design-rationale-academic-alignment-schema-decisions}
+## 6. Appendix — design rationale and extension boundaries
 
-### 6.1 Current metadata trade-offs {#_6-1-industry-consensus-checklist-omk-v1-coverage}
+### 6.1 Current metadata trade-offs
 
 Separating input, execution controls, evaluation expectations, and author annotations helps reviewers identify what was actually measured. Labels describe intent. Automatic normalization, difficulty calibration, contamination detection, coverage matrices, and construct validation each need their own implementation and acceptance; fields alone do not establish delivery.
 
-### 6.2 Uncommitted analysis capabilities {#_6-2-acknowledged-but-not-in-v1-follow-ups}
+### 6.2 Uncommitted analysis capabilities
 
 This guide promises no IRT parameter estimation, automatic adversarial mining, Sample design health score, capability-coverage threshold, or automatic contamination assessment. Research directions require actual demand and a separate measurement design; arbitrary small-sample counts or percentages provide no universal scientific guarantee.
 
-### 6.3 Field extension boundaries {#_6-3-v2-schema-extension-candidates-rejection-list}
+### 6.3 Field extension boundaries
 
-Earlier design discussions considered `source_ids`, `status`, `tags`, `owner`, and `risk_level`. They are not current v3 fields. Do not author draft fields into samples: the schema is strict. A proposed `deprecated` status cannot silently exclude samples or change Δ weights.
-
+The current v3 Schema is strict. Author only supported fields; new metadata requires an explicit contract change and must not silently exclude samples or change Δ weights.
 
 ### 6.4 Sources {#_6-4-sources}
 

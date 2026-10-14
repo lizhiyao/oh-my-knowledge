@@ -1,6 +1,6 @@
 # omk terminology spec
 
-> **Scope**: This is a naming-decisions archive for omk maintainers (why `artifact` instead of `evaluand`, why `--variants` was dropped from v0.16, the `qualityScore` → `judgeScore` migration path, etc.). It is not a getting-started doc — for everyday usage see the [README](../../README.md). The source code is the canonical reference, since the key terms are all English anyway.
+> **Scope**: Current naming and isolation rules for OMK maintainers. For everyday usage see the [README](../../README.md); the public contracts and source code define exact names.
 
 ## 1. Goals
 
@@ -101,7 +101,7 @@ The two are orthogonal:
 - When comparing two `skill`-kind artifacts (v1 vs v2), one is explicitly declared `control` — here the control role has nothing to do with baseline kind.
 - Both reports and code should treat `experimentRole` as the single source of truth for identifying the control group, never inferring it back from `artifactKind === 'baseline'`.
 
-### 5. Distinguish confidence intervals and continuous integration {#_5-in-omk-ci-only-ever-means-confidence-interval}
+### 5. Distinguish confidence intervals and continuous integration
 
 In measurement results, CI means Confidence Interval. Repository workflows also use continuous-integration CI. Distinguish by context instead of reading repository checks as statistical intervals.
 
@@ -199,25 +199,15 @@ Reports and acceptance docs should answer, in priority order:
 
 ### 1. Types and fields
 
-New code prefers:
+Use the names defined by each current contract:
 
-- `Artifact`
-- `ArtifactKind`
-- `artifacts`
-- `task.artifact`
-- `artifactHashes`
-- `VariantConfig.experimentRole` (added field, enum `'control' | 'treatment'`)
+- Knowledge carriers use `Artifact` and `ArtifactKind`; collections use `artifacts`.
+- CLI configuration declares the experiment role through `variants[].role`; compiled targets use `experimentRole`, with `control` or `treatment` values.
+- The corresponding reference and public Schema own exact types and fields.
 
-### 2. De-compatibility strategy
+### 2. Replacement and compatibility boundaries
 
-omk is still in its 0-1 phase with a very small user base, so it does not proactively keep historical compatibility layers.
-
-Rules:
-
-- New implementations converge directly on the artifact terminology.
-- If old naming would cause long-term ambiguity, delete it outright rather than keeping a compatibility alias.
-- Make breaking adjustments now rather than snowballing backward-compatibility.
-- From v0.16, `--variants` was removed outright (no deprecation warning); users migrate to `--control` / `--treatment`.
+New implementations use current terminology without aliases for old names that have no explicit requirement. Published public contracts and existing data require explicit version and migration impacts under project rules; user-base size is no justification for breaking a contract. The [maintenance guide](../../guides/maintenance/v1-preview-migration.md) owns actual older-version upgrade steps.
 
 ### 3. Naming principles
 
@@ -275,29 +265,7 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 - On a read path, separate what OMK authored from what was recorded. Studio's knowledge findings render OMK's own rule text in the request language, while evidence persisted earlier — a doctor rule's own message, a Diagnosis title, summary or recommendation — is shown in the language it was recorded in. Re-translating stored evidence at render time would rewrite the record behind the view.
 - Where that language is chosen per request, it also belongs in the cache identity: a cached projection holding display text must not serve the first requester's language to everyone else.
 
-## 6. Term mapping
-
-| Old term | New standard term | Note |
-|---|---|---|
-| admission (stage reuse) | plan-bound conformance verification | `verifyExecutedStageAgainstPlan`; fail-closed, not eligibility |
-| admission (knowledge drafts) | knowledge validation | `src/knowledge/validation.ts`, `KnowledgeValidationProblem` |
-| resume-admission | resume-disposition | persisted resume trust decision; digest tag stays frozen |
-| evaluand | artifact | unified umbrella for the thing being evaluated |
-| EvaluandSpec | Artifact | core object type |
-| EvaluandKind | ArtifactKind | object category |
-| evaluands | artifacts | object list in the request |
-| task.evaluand | task.artifact | the object a single task binds to |
-| evaluandHashes | Target artifact descriptor | full SHA-256 content identity sealed in Target config |
-| skillHashes | Target artifact descriptor | unified artifact identity in Core lineage |
-| skill as the umbrella | artifact | skill falls back to a concrete subtype |
-| agent as the umbrella | artifact / agent runtime | choose by semantics |
-| `--variants` CLI parameter | `--control` / `--treatment` | declare variants by experiment role; the flat list is gone |
-| inferring the control group from `artifactKind === 'baseline'` | read `experimentRole === 'control'` explicitly | the control group is user-declared, not inferred from artifact kind |
-| `LayeredScores.qualityScore` | Composite `judge` layer entry | the deleted result-row field is replaced by an explicitly bound Analysis source |
-| `VariantSummary.avgQualityScore` | Studio projection from Composite Analysis | display data is rebuilt from authenticated Core artifacts |
-| `VarianceLayerKey: 'quality'` | Evaluation Series run-mean composite variance | Series does not reuse a legacy layer key |
-
-## 7. Skill isolation (added in v0.22)
+## 6. Skill isolation
 
 ### 1. Problem background
 
@@ -309,7 +277,7 @@ The strict baseline therefore combines a clean per-attempt cwd with executor-spe
 
 ### 2. Terminology
 
-- **`allowedSkills`** (per-variant field, added to `Artifact` / `VariantConfig` / `EvalConfigVariant`):
+- **`allowedSkills`** (per-variant configuration and compiled execution control):
   - `undefined` → executor-default runtime discovery; no isolation is requested
   - `[]` → **strict isolation requested**: omk supplies an empty per-attempt cwd and applies every isolation control supported by the selected executor
   - `[name1, ...]` (non-empty) → **rejected at the shared execution-plan boundary**: a portable whitelist cannot be enforced across native agent, API, and custom executors; use `[]` for strict isolation or omit for none
@@ -344,9 +312,9 @@ Note: isolated-cwd is not a sandbox. A baseline may still read absolute paths. A
 
 ### 5. Cache key version
 
-Core owns stage-specific caches rather than the old executor `v9:` prefix. The Execution key uses `omk.execution-cache-key/v2`, binding `executionCoordinateDigest` and `trialId`. The Evaluation key uses `omk.evaluation-cache-key/v2`, binding the evaluation plan, evaluation id, evaluator Runtime, source trust, and bindings. Readback also verifies records, plans, and source identity; a matching digest does not replace trust verification.
+Core owns stage-specific caches. The Execution key uses `omk.execution-cache-key/v2`, binding `executionCoordinateDigest` and `trialId`. The Evaluation key uses `omk.evaluation-cache-key/v2`, binding the evaluation plan, evaluation id, evaluator Runtime, source trust, and bindings. Readback also verifies records, plans, and source identity; a matching digest does not replace trust verification.
 
-[Input compilation](../evaluation/cli-evaluation-input-compilation.md) and the [Runtime Adapter](../evaluation/evaluation-runtime-adapter.md) specify how isolation, inputs, and external dependencies enter sealed identity. Old report fields or cache prefixes do not establish current comparability.
+[Input compilation](../evaluation/cli-evaluation-input-compilation.md) and the [Runtime Adapter](../evaluation/evaluation-runtime-adapter.md) specify how isolation, inputs, and external dependencies enter sealed identity. Cache identity alone does not establish measurement comparability.
 
 ### 6. Executor compatibility
 
@@ -361,7 +329,7 @@ Core owns stage-specific caches rather than the old executor `v9:` prefix. The E
 
 A non-empty skill whitelist `[name]` is rejected before executor dispatch, including programmatic callers that bypass eval.yaml validation. Use `[]` for strict isolation or omit the field for executor-default context. A custom script cannot prove strict isolation even with `[]`, so omk warns and records the isolation declaration for audit rather than silently claiming it was enforced.
 
-## 8. Decision criteria
+## 7. Decision criteria
 
 When adding features, docs, or interfaces later and facing a naming choice, decide in this order:
 

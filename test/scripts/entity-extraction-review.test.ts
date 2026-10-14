@@ -1,9 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
-import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
+import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus, reviewOutputRoot } from '../../scripts/bench/entity-extraction-review.js';
+import { runCli, PROJECT_ROOT } from '../helpers/cli-process.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
 const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url), 'utf8');
@@ -606,6 +609,39 @@ describe('entity extraction review with author evidence', () => {
     expect(entityReviewHtml(corpus, measurementId, { annotationReview: 'pending', authorReview: 'completed', hasCaptures: false }))
       .toContain('作者自审：completed；独立人工标注复核：pending');
     expect(parseEntityReviewArguments(['--corpus', '/c', '--output', '/out', '--self-review', '/s'])).toMatchObject({ selfReview: '/s' });
+  });
+
+  it('rejects repository output through symlinks and permits a new external directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-review-boundary-'));
+    try {
+      const repo = join(root, 'repo'); mkdirSync(repo);
+      symlinkSync(repo, join(root, 'link'), 'dir');
+      for (const requested of ['relative', repo, join(repo, 'run'), join(root, 'link', 'run'), join(root, 'link')]) {
+        expect(() => reviewOutputRoot(repo, requested)).toThrow();
+      }
+      expect(reviewOutputRoot(repo, join(root, 'run'))).toBe(join(realpathSync(root), 'run'));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('builds an offline review package bound to the current tools without invoking a model', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-review-package-'));
+    try {
+      const output = join(root, 'review');
+      await runCli(['--corpus', resolve('test/fixtures/entity-extraction-review-v12.json'), '--output', output], {
+        entry: join(PROJECT_ROOT, 'dist-scripts/bench/entity-extraction-review.js'), cwd: PROJECT_ROOT,
+      });
+      const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
+      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v14', checkVersion: ENTITY_CHECK_VERSION,
+        conclusion: 'not_evaluated', goldReady: false, modelCallsByThisCommand: 0,
+        splitCounts: { development: 58, validation: 2 } });
+      const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
+        .map(file => readFileSync(join(PROJECT_ROOT, 'dist-scripts/bench', file), 'utf8')).join('\0');
+      expect(manifest.checkerDigest).toBe(reviewDigest(currentTools));
+      expect(readFileSync(join(output, 'corpus.json'), 'utf8')).toBe(corpusText);
+      const inputs = JSON.parse(readFileSync(join(output, 'inputs.json'), 'utf8'));
+      expect(inputs).toHaveLength(corpus.cases.length);
+      expect(JSON.stringify(inputs)).not.toContain('semanticChecks');
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it('exposes only an explicit offline input/output interface', () => {
