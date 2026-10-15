@@ -7,15 +7,6 @@ export function jsonl(records: unknown[]): string {
   return records.map((r) => JSON.stringify(r)).join('\n');
 }
 
-export function businessActionTag(name: string, text: string): string {
-  const tag = ['ai', 'ma-cmd'].join('');
-  return `<${tag} name="${name}">${text}</${tag}>`;
-}
-
-export function businessChannel(): string {
-  return ['ai', 'ma'].join('');
-}
-
 /** Raw source records keep intentional omissions; do not normalize evidence in fixtures. */
 export function asstRec(uuid: string, content: unknown[], opts: { sessionId?: string; timestamp?: string; cwd?: string } = {}): object {
   return {

@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadTraceSessions, loadTraceCorpus, segmentTraceBySkill } from '../../../src/observability/trace/index.js';
-import { jsonl, businessActionTag, businessChannel, writeSession, traceFixture } from '../../helpers/trace-fixtures.js';
+import { jsonl, writeSession, traceFixture } from '../../helpers/trace-fixtures.js';
+
+function businessActionTag(name: string, text: string): string {
+  const tag = ['ai', 'ma-cmd'].join('');
+  return `<${tag} name="${name}">${text}</${tag}>`;
+}
+
+function businessChannel(): string {
+  return ['ai', 'ma'].join('');
+}
 
 const fixture = traceFixture();
 
