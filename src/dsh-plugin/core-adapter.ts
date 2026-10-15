@@ -43,6 +43,7 @@ import type {
 } from './host-executor.js';
 import type { DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
+import { DEFAULT_CLEANUP_TIMEOUT_MS, settleWithin } from './cleanup.js';
 
 export {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -70,6 +71,8 @@ export interface DshHostCoreConfiguration {
   readonly provider?: string;
   readonly maxInputBytes?: number;
   readonly maxEventBytes?: number;
+  /** Maximum time to wait for cancellation or disposal; defaults to 5 seconds. */
+  readonly cleanupTimeoutMs?: number;
 }
 
 export interface CreateDshHostCoreExecutorAdapterInput {
@@ -101,6 +104,7 @@ interface CapturedHost {
   readonly effectiveToolSchemas: readonly CapturedToolSchema[];
   readonly maxInputBytes: number;
   readonly maxEventBytes: number;
+  readonly cleanupTimeoutMs: number;
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
@@ -327,6 +331,10 @@ function captureHost(
       configuration.maxEventBytes ?? DEFAULT_DSH_HOST_CORE_MAX_EVENT_BYTES,
       'maxEventBytes',
     ),
+    cleanupTimeoutMs: positiveSafeInteger(
+      configuration.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS,
+      'cleanupTimeoutMs',
+    ),
   });
 }
 
@@ -369,6 +377,7 @@ function resolveIdentity(
     value: {
       maxEventBytes: host.maxEventBytes,
       maxInputBytes: host.maxInputBytes,
+      cleanupTimeoutMs: host.cleanupTimeoutMs,
     },
   }, {
     facetId: 'dsh.host-coverage',
@@ -422,7 +431,7 @@ function resolveIdentity(
         dshVersion: evidence.binary?.version ?? null,
         omkVersion: evidence.sdk?.version ?? null,
       },
-      limits: { maxEventBytes: host.maxEventBytes, maxInputBytes: host.maxInputBytes },
+      limits: { maxEventBytes: host.maxEventBytes, maxInputBytes: host.maxInputBytes, cleanupTimeoutMs: host.cleanupTimeoutMs },
       provider: host.provider,
       presetDigest: host.activeAgentPreset === undefined
         ? null
@@ -544,13 +553,19 @@ function lastRootAssistantText(result: DshHostRunResult): string {
 async function waitForIdleOrCancellation(
   agent: DshAgentLike,
   signal: AbortSignal,
+  cleanupTimeoutMs: number,
 ): Promise<'idle' | 'cancelled'> {
   let removeAbortListener: (() => void) | undefined;
   const idle = agent.whenIdle();
-  if (signal.aborted) {
+  const cancel = async (): Promise<'cancelled'> => {
     try { agent.cancel({ kind: 'hook', reason: 'OMK Core attempt was cancelled' }); } catch { /* settle below */ }
-    await idle;
+    if (!await settleWithin(idle, cleanupTimeoutMs)) {
+      process.stderr.write('[dsh-host] Core 评测取消超出清理宽限期，已停止等待。\n');
+    }
     return 'cancelled';
+  };
+  if (signal.aborted) {
+    return cancel();
   }
   let outcome: 'idle' | 'cancelled';
   try {
@@ -567,9 +582,7 @@ async function waitForIdleOrCancellation(
     removeAbortListener?.();
   }
   if (outcome === 'idle') return outcome;
-  try { agent.cancel({ kind: 'hook', reason: 'OMK Core attempt was cancelled' }); } catch { /* settle below */ }
-  await idle;
-  return outcome;
+  return cancel();
 }
 
 function executionFailure(error: unknown, signal: AbortSignal): ExecutionPortFailure {
@@ -623,15 +636,9 @@ async function executeDshHost(
   let eventLimitExceeded = false;
   let eventProtocolUnsupported = false;
   const expectedSequenceBySession = new Map<string, number>();
-  let cancellationRequested = false;
+  const rejectedEvents = new AbortController();
   const requestCancellation = (): void => {
-    if (cancellationRequested || handle === undefined) return;
-    cancellationRequested = true;
-    try {
-      handle.agent.cancel({ kind: 'hook', reason: 'OMK Core rejected the host event stream' });
-    } catch {
-      // The adapter still awaits host settlement and reports the bounded failure.
-    }
+    rejectedEvents.abort();
   };
   let disposeCreated: () => void = () => undefined;
   let disposeEvents: () => void = () => undefined;
@@ -802,12 +809,12 @@ async function executeDshHost(
       || eventProtocolUnsupported
     ) {
       requestCancellation();
-    } else if (attempt.signal.aborted) {
-      try { handle.agent.cancel({ kind: 'hook', reason: 'OMK Core attempt was cancelled' }); } catch { /* settle below */ }
-    } else {
+    } else if (!attempt.signal.aborted) {
       handle.agent.followup(createPromptMessage(trialState.prompt));
     }
-    const outcome = await waitForIdleOrCancellation(handle.agent, attempt.signal);
+    const outcome = await waitForIdleOrCancellation(
+      handle.agent, AbortSignal.any([attempt.signal, rejectedEvents.signal]), host.cleanupTimeoutMs,
+    );
     if (eventCaptureInvalid) {
       fail(
         'OMK_DSH_HOST_PROTOCOL_INVALID',
@@ -892,7 +899,13 @@ async function executeDshHost(
   try { disposeEvents(); } catch { disposalFailed = true; }
   try { disposeCreated(); } catch { disposalFailed = true; }
   if (handle !== undefined) {
-    try { await handle.dispose(); } catch { disposalFailed = true; }
+    const currentHandle = handle;
+    try {
+      if (!await settleWithin(Promise.resolve().then(() => currentHandle.dispose()), host.cleanupTimeoutMs)) {
+        process.stderr.write('[dsh-host] Core 评测 session 关闭超出清理宽限期，已停止等待。\n');
+        disposalFailed = true;
+      }
+    } catch { disposalFailed = true; }
   }
   if (disposalFailed) {
     fail(

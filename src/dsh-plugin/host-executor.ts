@@ -4,6 +4,7 @@ import type { ExecutorFn, ExecutorInput } from '../executors/contracts/ports.js'
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { createDshHostRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import { DEFAULT_TIMEOUT_MS } from '../executors/core/limits.js';
+import { DEFAULT_CLEANUP_TIMEOUT_MS, settleWithin } from './cleanup.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -105,8 +106,6 @@ export interface DshHostExecutorOptions {
   cleanupTimeoutMs?: number;
 }
 
-const DEFAULT_CLEANUP_TIMEOUT_MS = 5_000;
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -164,20 +163,6 @@ function createPromptMessage(prompt: string): UnknownRecord {
     content: [Object.freeze({ type: 'text', text: prompt })],
     source: Object.freeze({ kind: 'user' }),
   });
-}
-
-async function settleWithin(promise: Promise<void>, timeoutMs: number): Promise<boolean> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise.then(() => true),
-      new Promise<false>((resolve) => {
-        timer = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
 }
 
 async function waitForIdle(

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, it } from 'vitest';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterEach, describe, it, vi } from 'vitest';
 import { apply } from '../../src/dsh-plugin/index.js';
 import {
   createDshConversationCatalog,
@@ -567,14 +569,24 @@ describe('DSH persistence observation', () => {
 });
 
 describe('DSH /omk observe command', () => {
-  const cleanups: Array<() => void> = [];
+  const cleanups: Array<() => void | Promise<void>> = [];
 
-  afterEach(() => {
-    while (cleanups.length > 0) cleanups.pop()?.();
+  afterEach(async () => {
+    while (cleanups.length > 0) await cleanups.pop()?.();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('lists sessions, imports one, and returns a live Studio trajectory URL', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-dsh-observe-'));
+    const reservation = createServer();
+    await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve));
+    const port = (reservation.address() as AddressInfo).port;
+    await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()));
+    vi.stubEnv('OMK_REPORT_PORT', String(port));
+    const nextHost = await import('../../src/studio/http/next-server.js');
+    const createStudio = vi.spyOn(nextHost, 'createNextStudioServer');
+    const studio: { baseUrl?: string } = {};
     const persistence = persistenceWithGroup();
     let handler: ((invocation: Record<string, unknown>) => Promise<{ kind: string; text?: string }>) | undefined;
     const dispose = apply({
@@ -588,8 +600,9 @@ describe('DSH /omk observe command', () => {
         return name === 'sessionPersistence' ? persistence : undefined;
       },
     } as never);
-    cleanups.push(() => {
+    cleanups.push(async () => {
       dispose();
+      if (studio.baseUrl) await vi.waitFor(async () => { await assert.rejects(fetch(`${studio.baseUrl}/health`)); });
       rmSync(dir, { recursive: true, force: true });
     });
     assert.ok(handler);
@@ -603,12 +616,20 @@ describe('DSH /omk observe command', () => {
     const listed = await handler({ ...invocation, rawInput: 'observe' });
     assert.equal(listed.kind, 'success');
     assert.match(listed.text ?? '', /root-session/);
-    const observed = await handler({ ...invocation, rawInput: 'observe root-session' });
+    const [observed, concurrent] = await Promise.all([
+      handler({ ...invocation, rawInput: 'observe root-session' }),
+      handler({ ...invocation, rawInput: 'observe root-session' }),
+    ]);
     assert.equal(observed.kind, 'success', observed.text);
+    assert.equal(concurrent.kind, 'success', concurrent.text);
+    assert.equal(createStudio.mock.calls.length, 1, '并发 observe 只创建一个 Studio 服务');
     const reportsDir = join(dir, '.omk', 'observe', 'inbox', 'reports');
     assert.equal(readdirSync(reportsDir).some((file) => file.endsWith('.report.json')), true);
     const url = /任务轨迹：(http:\/\/[^\s]+)/u.exec(observed.text ?? '')?.[1];
     assert.ok(url);
+    studio.baseUrl = new URL(url).origin;
+    assert.equal(new URL(url).port, String(port), '沿用 OMK_REPORT_PORT 的固定端口');
+    assert.ok(concurrent.text?.includes(url));
     const response = await fetch(url);
     assert.equal(response.status, 200);
     assert.match(await response.text(), /检查任务轨迹/);
