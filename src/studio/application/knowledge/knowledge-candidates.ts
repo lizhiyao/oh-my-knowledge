@@ -1,3 +1,4 @@
+import { createExecutor } from '../../../executors/index.js';
 import {
   type ConversationCatalog,
   createLocalKnowledgeApplication,
@@ -68,7 +69,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
     return create(request.workspace).capture({ path: window.sourcePath, origin: window.origin, records: window.records.filter(record => selected.has(record.recordIndex)) }, signal);
   }
   const app = create(request.workspace);
-  const execute = <C extends KnowledgeOperation>(command: C) => executeKnowledgeOperation(app, command, signal, configuredExtractionModel);
+  const execute = <C extends KnowledgeOperation>(command: C) => executeKnowledgeOperation(app, command, signal, (executor, model) => configuredExtractionModel(executor, model, createExecutor));
   switch (request.operation) {
     case 'queue': {
       if (request.threadId && request.projectId) throw new Error('Select one knowledge scope.');

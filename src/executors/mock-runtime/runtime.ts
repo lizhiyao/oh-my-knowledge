@@ -20,7 +20,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Mock, MockReturn } from '../contracts/mock.js';
 import { incrementRecordCount, setOwnRecordValue } from '../../shared/record-count.js';
-import { toolIdentityMatches } from '../core/tool-identity.js';
+import { toolIdentityMatches } from '../contracts/tool-identity.js';
 
 // ─── Match logic ────────────────────────────────────────────────────────────
 

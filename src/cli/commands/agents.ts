@@ -1,3 +1,4 @@
+import { createExecutor } from '../../executors/index.js';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
@@ -222,7 +223,7 @@ export default class AgentsCommand extends BaseCommand {
       }
       const run = await app.generate(
         captured.snapshotId,
-        configuredExtractionModel(settings.executor, settings.model),
+        configuredExtractionModel(settings.executor, settings.model, createExecutor),
         undefined,
         signal,
       );

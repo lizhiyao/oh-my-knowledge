@@ -7,7 +7,7 @@ import {
   optionalTokenCount,
   splitInclusiveInputTokens,
   tokenCount,
-} from '../../../../executors/core/token-usage.js';
+} from '../../../../executors/contracts/token-usage.js';
 import type {
   CodexConversionState,
   CodexFamilyOutcome,

@@ -1,7 +1,7 @@
 /** Codex 工具事件的共同形状：调用／结果的字段组装与 MCP 身份投影只写一遍。 */
 
 import type { TraceEvent, TraceToolRef, TraceToolStatus } from '../../trace-ir.js';
-import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
+import { normalizeToolIdentity } from '../../../../executors/contracts/tool-identity.js';
 import type { McpCallEnd } from './record-indexes.js';
 
 /** 一条记录里可用来做跨视图身份判定的原生 id。 */

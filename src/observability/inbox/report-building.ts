@@ -28,7 +28,7 @@ import {
   type SkillSegment,
 } from '../trace/index.js';
 import { isSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
-import { isToolCallFailure, isToolCallSuccess } from '../../executors/tool-call-status.js';
+import { isToolCallFailure, isToolCallSuccess } from '../../executors/contracts/tool-call-status.js';
 import {
   incrementRecordCount,
   ownRecordValue,

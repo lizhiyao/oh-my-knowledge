@@ -4,7 +4,7 @@
  */
 
 import type { TraceEvent, TraceToolStatus } from '../../trace-ir.js';
-import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
+import { normalizeToolIdentity } from '../../../../executors/contracts/tool-identity.js';
 import type {
   CodexConversionState,
   CodexRecordIndexes,

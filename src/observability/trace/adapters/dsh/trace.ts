@@ -34,8 +34,8 @@ import {
   traceTimestampBounds,
   unknownTraceEvent,
 } from '../../trace-ir.js';
-import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
-import { nonNegativeMetric, tokenCount } from '../../../../executors/core/token-usage.js';
+import { normalizeToolIdentity } from '../../../../executors/contracts/tool-identity.js';
+import { nonNegativeMetric, tokenCount } from '../../../../executors/contracts/token-usage.js';
 
 type Record_ = Record<string, unknown>;
 

@@ -1,5 +1,5 @@
 import type { TraceToolStatus } from '../../trace-ir.js';
-import { isToolResultFailureText } from '../../../../executors/tool-call-status.js';
+import { isToolResultFailureText } from '../../../../executors/contracts/tool-call-status.js';
 
 export interface CodexToolOutcome {
   status: TraceToolStatus;

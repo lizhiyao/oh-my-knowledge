@@ -1,3 +1,4 @@
+import { createExecutor } from '../../executors/index.js';
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
 import { createSettingsRoutes } from './routes/settings.js';
@@ -6,6 +7,7 @@ import {
   createCodexConversationCatalog,
   ObservationReviewStateValidationError,
   ConversationAutoExtraction,
+  configuredExtractionModel,
 } from '../../observability/application.js';
 
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
@@ -46,7 +48,7 @@ export function createStudioRequestHandler({
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
-  const automation = new ConversationAutoExtraction(catalog);
+  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => configuredExtractionModel(executor, model, createExecutor) });
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);

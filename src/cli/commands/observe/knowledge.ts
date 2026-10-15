@@ -1,3 +1,4 @@
+import { createExecutor } from '../../../executors/index.js';
 import { readFileSync, lstatSync } from 'node:fs';
 import { Args, Errors, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -119,7 +120,7 @@ export default class ObserveKnowledge extends BaseCommand {
     await this.runWithCancellation(async signal => {
       if (operation.operation === 'generate') this.logToStderr(`${operation.executor} / ${operation.model} · ${operation.snapshot} · ${t('仅发送选定来源片段；费用以执行器实际报告为准。', 'Only selected excerpts are sent; cost depends on executor reporting.')}`);
       let result: unknown;
-      try { result = await executeKnowledgeOperation(app, operation, signal, configuredExtractionModel); }
+      try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => configuredExtractionModel(executor, model, createExecutor)); }
       catch (cause) {
         const code = knowledgeFailureCode(cause);
         const reload = operation.operation === 'correct-entities' ? knowledgeCommand(settings.workspace, 'entities', { analysis: operation.analysisId })

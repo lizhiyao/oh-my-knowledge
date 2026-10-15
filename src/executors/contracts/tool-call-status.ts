@@ -1,5 +1,5 @@
-import { ToolCallStatusSchema } from './contracts/tool-call-status-schema.js';
-import type { ToolCallInfo, ToolCallStatus } from './contracts/trace.js';
+import { ToolCallStatusSchema } from './tool-call-status-schema.js';
+import type { ToolCallInfo, ToolCallStatus } from './trace.js';
 
 type ToolCallOutcomeInput = Partial<Pick<ToolCallInfo, 'status' | 'success'>>;
 

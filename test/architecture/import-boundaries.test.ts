@@ -7,7 +7,7 @@
  *   - Studio 直接 import observability 内部（统一经过应用／展示入口与类型契约）
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
- * 规则形态:每条规则声明 from / to / 可选 whitelist + 注解。匹配 src-relative
+ * 规则形态:每条规则声明 from / to / 稳定契约入口 + 注解。匹配 src-relative
  * 路径前缀。静态 import 与 dynamic import('xxx') 都覆盖。
  */
 
@@ -30,14 +30,10 @@ const RUNTIME_ADAPTERS_DIR = join(
 interface ForbiddenRule {
   /** 源 layer 前缀(src-relative,以 `/` 结尾的目录或具体文件路径前缀)。 */
   from: string;
-  /** 目标 layer 前缀,同上。匹配后即视为违例,除非命中 whitelist。 */
+  /** 目标 layer 前缀；仅允许显式声明的稳定入口。 */
   to: string;
   /** 说明这条规则存在的原因(挂掉时给 reviewer 看)。 */
   reason: string;
-  /** 例外白名单。元素格式:`<importer-src-relative>::<resolved-target-src-relative>`。
-   *  importer 必须 from 前缀,target 必须 to 前缀,但这一对组合不计为违例。
-   *  专用于「P2 待修但 P1.3 不阻塞」的 known-debt。 */
-  whitelist?: string[];
   /** 该领域允许消费的稳定入口；不按调用文件逐条豁免私有实现。 */
   allowedTargets?: readonly string[];
 }
@@ -45,48 +41,8 @@ interface ForbiddenRule {
 const RULES: ForbiddenRule[] = [
   {
     from: 'observability/', to: 'executors/',
-    reason: 'Observability 只依赖 executors 的稳定契约层（executors/contracts/），不得伸进执行器内部实现；whitelist 逐条登记 #978 第 19 项量出的存量债务，只减不增（下方防腐测试会挂掉不再被引用的条目）。',
+    reason: 'Observability 只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',
     allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
-    whitelist: [
-      // 工具失败语义判定（值级导入）：统一由 executors/tool-call-status 拥有，
-      // 观测投影暂直接消费，待收口为契约层 re-export，见 #978 第 19 项。
-      'observability/experience/report-assembly.ts::executors/tool-call-status.ts',
-      'observability/trace/adapters/claude/record-events.ts::executors/tool-call-status.ts',
-      'observability/trace/adapters/openclaw/record-events.ts::executors/tool-call-status.ts',
-      'observability/trace/adapters/codex/tool-status.ts::executors/tool-call-status.ts',
-      'observability/trace/adapters/qoder/trace.ts::executors/tool-call-status.ts',
-      'observability/trace/tool-search.ts::executors/tool-call-status.ts',
-      'observability/inbox/report-building.ts::executors/tool-call-status.ts',
-      'observability/analysis/gap-analyzer.ts::executors/tool-call-status.ts',
-      'observability/analysis/coverage-analyzer.ts::executors/tool-call-status.ts',
-      // token 计数聚合（值级导入）：trace 规范化与 skill-health 暂共用 executors/core/token-usage，
-      // 待收口为契约层能力，见 #978 第 19 项。
-      'observability/experience/report-derivations.ts::executors/core/token-usage.ts',
-      'observability/trace/segmentation.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/jsonl-records.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/claude/record-events.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/openclaw/record-events.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/codex/turn-events.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/qoder/trace.ts::executors/core/token-usage.ts',
-      'observability/trace/adapters/dsh/trace.ts::executors/core/token-usage.ts',
-      'observability/skill-health/analyzer.ts::executors/core/token-usage.ts',
-      // 工具身份规范化（值级导入）：各 trace 适配器暂共用 executors/core/tool-identity，
-      // 待收口为契约层能力，见 #978 第 19 项。
-      'observability/trace/adapters/claude/record-events.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/openclaw/record-events.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/codex/pending-tool-events.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/codex/tool-events.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/codex/tool-event-factory.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/qoder/trace.ts::executors/core/tool-identity.ts',
-      'observability/trace/adapters/dsh/trace.ts::executors/core/tool-identity.ts',
-      // TraceSourceKind 运行时判定（值级导入）：inbox 存储侧暂直接消费 executors/core/trace-source-kind，
-      // 契约层只有类型与 schema，见 #978 第 19 项。
-      'observability/inbox/report-store.ts::executors/core/trace-source-kind.ts',
-      // 运行时值级跨域调用（非类型）：这两个 LLM 抽取适配器经 executors 桶入口 createExecutor
-      // 真实创建执行器，是运行时依赖，收口方案需先定观测侧执行注入口，见 #978 第 19 项。
-      'observability/soft-standards/llm-extractor.ts::executors/index.ts',
-      'observability/knowledge-extraction/adapters/executor.ts::executors/index.ts',
-    ],
   },
   {
     from: 'observability/trace/adapters/', to: 'observability/trace/source.ts',
@@ -382,8 +338,7 @@ interface Violation {
 
 function violatesRule(importer: string, target: string, rule: ForbiddenRule): boolean {
   return importer.startsWith(rule.from) && target.startsWith(rule.to)
-    && !rule.allowedTargets?.includes(target)
-    && !rule.whitelist?.includes(`${importer}::${target}`);
+    && !rule.allowedTargets?.includes(target);
 }
 
 function collectViolations(): Violation[] {
@@ -688,7 +643,7 @@ describe('架构边界守门', () => {
         ...lines,
         '',
         '修复路径：把共享契约归属到明确领域的 contracts，或抽 facade（运行时）；',
-        '若是 P2 known-debt 暂未修,在本测试文件 RULES.whitelist 显式登记并加 TODO。',
+        '修复跨域依赖的归属或注入边界，不增加逐调用方的豁免。',
       ].join('\n');
       throw new Error(msg);
     }
@@ -721,7 +676,7 @@ describe('架构边界守门', () => {
 
   it('工具结果失败语义由 Executor 状态模块拥有', () => {
     const executorStatus = readFileSync(
-      join(SRC_DIR, 'executors', 'tool-call-status.ts'),
+      join(SRC_DIR, 'executors', 'contracts', 'tool-call-status.ts'),
       'utf-8',
     );
     const observationSignals = readFileSync(
@@ -1237,31 +1192,6 @@ describe('架构边界守门', () => {
     expect(facade).not.toContain('function buildReviewerReport(');
     expect(facade).not.toContain('function reviewerFindingsForSession(');
     expect(reviewerReport).not.toContain("from '../experience.js'");
-  });
-
-  it('whitelist 不能腐烂:每条 whitelist 都对应一条真实存在的 import', () => {
-    const files = listTsFiles(SRC_DIR);
-    const realEdges = new Set<string>();
-    for (const file of files) {
-      const importerRel = toSrcRelative(file);
-      const content = readFileSync(file, 'utf-8');
-      for (const spec of extractSpecifiers(content)) {
-        const resolvedAbs = resolveSpecifier(file, spec);
-        if (!resolvedAbs) continue;
-        const targetRel = toSrcRelative(resolvedAbs);
-        realEdges.add(`${importerRel}::${targetRel}`);
-      }
-    }
-    const dead: string[] = [];
-    for (const rule of RULES) {
-      for (const entry of rule.whitelist ?? []) {
-        if (!realEdges.has(entry)) dead.push(`${rule.from} → ${rule.to}: ${entry}`);
-      }
-    }
-    if (dead.length > 0) {
-      throw new Error(`whitelist 中有 ${dead.length} 条不再对应真实 import,请清理:\n${dead.join('\n')}`);
-    }
-    expect(dead).toEqual([]);
   });
 
   it('Evaluation Core 只依赖内部模块、Zod 和确定性哈希', () => {

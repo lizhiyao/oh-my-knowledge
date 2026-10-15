@@ -21,7 +21,7 @@ import type { ToolCallInfo, TurnInfo } from '../../executors/contracts/trace.js'
 import type { AnalysisEntry, AnalysisVariantResult, GapReport, GapSignalRef } from './contracts.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 import { isFailedSearchToolCall, toolCallQuery } from '../trace/tool-search.js';
-import { toolCallStatus } from '../../executors/tool-call-status.js';
+import { toolCallStatus } from '../../executors/contracts/tool-call-status.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;

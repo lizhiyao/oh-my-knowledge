@@ -1,3 +1,4 @@
+import { createExecutor } from '../../../executors/index.js';
 import { buildLlmEnhancedRuntimeEvidence, hasLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/runtime-evidence.js';
 import { sanitizeCell } from '../../lib/cell-format.js';
 import { resolve } from 'node:path';
@@ -55,6 +56,7 @@ export async function runObserveInbox(
         runtimeEvidence,
         model: runtime.model,
         executorName: runtime.executor,
+        executor: (input) => createExecutor(runtime.executor)(input),
         refresh: flags.refresh,
       }));
     }

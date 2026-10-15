@@ -1,6 +1,6 @@
 import {
   isToolResultFailureText,
-} from '../../executors/tool-call-status.js';
+} from '../../executors/contracts/tool-call-status.js';
 import {
   incrementRecordCount,
   ownRecordValue,
