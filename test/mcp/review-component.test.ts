@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import { observationReviewComponentHtml } from '../../src/mcp/review-component.js';
 
 type EventHandler = (event?: unknown) => unknown;
@@ -125,6 +125,7 @@ function createBridgeHarness(language = 'en') {
   const document = new FakeDocument();
   const requests: BridgeRequest[] = [];
   let messageHandler: EventHandler | undefined;
+  let pageHideHandler: EventHandler | undefined;
   const parent = {
     postMessage(message: BridgeRequest): void {
       requests.push(message);
@@ -135,6 +136,7 @@ function createBridgeHarness(language = 'en') {
     openai: undefined,
     addEventListener(type: string, handler: EventHandler): void {
       if (type === 'message') messageHandler = handler;
+      if (type === 'pagehide') pageHideHandler = handler;
     },
   };
   const script = extractComponentScript();
@@ -142,6 +144,8 @@ function createBridgeHarness(language = 'en') {
     document,
     navigator: { language },
     window,
+    setTimeout,
+    clearTimeout,
   });
 
   function send(data: Record<string, unknown>): void {
@@ -152,6 +156,7 @@ function createBridgeHarness(language = 'en') {
   return {
     document,
     requests,
+    leave(): void { pageHideHandler?.(); },
     notify(structuredContent: Record<string, unknown>): void {
       send({
         method: 'ui/notifications/tool-result',
@@ -206,6 +211,37 @@ function componentState(options: {
 }
 
 describe('OMK observation review component bridge', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('releases busy state after a lost reply or page exit, ignores late replies and clears completed timers', async () => {
+    vi.useFakeTimers();
+    const harness = createBridgeHarness();
+    harness.notify(componentState({ verdict: 'real_issue' }));
+    const button = harness.document.getElementById('draft-button');
+    const lost = button.dispatch('click');
+    const first = harness.requests[0];
+    assert.equal(button.disabled, true);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await lost;
+    assert.equal(button.disabled, false);
+    assert.match(harness.document.getElementById('draft-status').textContent, /timed out.*unconfirmed/);
+    harness.respond(first.id, { structuredContent: { status: 'draft' } });
+    assert.match(harness.document.getElementById('draft-status').textContent, /timed out/);
+
+    const abandoned = button.dispatch('click');
+    harness.leave();
+    await abandoned;
+    assert.equal(button.disabled, false);
+    assert.equal(vi.getTimerCount(), 0);
+    assert.match(harness.document.getElementById('draft-status').textContent, /page was left/);
+
+    const completed = button.dispatch('click');
+    harness.respond(harness.requests.at(-1)!.id, { structuredContent: { status: 'draft' } });
+    await completed;
+    assert.equal(vi.getTimerCount(), 0);
+    assert.equal(harness.document.getElementById('draft-status').textContent, 'Sample saved as a draft; the formal eval set is unchanged.');
+  });
+
   it('renders the Chinese interface without mixed-language labels', () => {
     const harness = createBridgeHarness('zh-CN');
     harness.notify(componentState({ artifactVersion: 'unknown' }));
