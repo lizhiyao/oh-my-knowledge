@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { digestCanonicalJson } from '../../../../../src/eval-core/contracts/index.js';
 import { parseStatelessApiSampleInput } from '../../../../../src/eval-workflows/hosts/adapters/shared/sample-input.js';
 import { createOpenAIApiCoreSchemaValidators } from '../../../../../src/eval-workflows/hosts/adapters/openai/protocol.js';
-import { createAnthropicApiCoreSchemaValidators } from '../../../../../src/eval-workflows/hosts/adapters/anthropic/protocol.js';
 
 const history = (roles: string[]) => ({ inputKind: 'messages', interactionMode: 'history',
   messages: roles.map((role, index) => ({ messageId: String(index), role, content: '  exact bytes\n' })) });
@@ -20,7 +19,7 @@ describe('stateless API authored input capability', () => {
     expect(parseStatelessApiSampleInput({ applicationValue: 2 })).toBeUndefined();
     expect(() => parseStatelessApiSampleInput({ inputKind: 'unknown' })).toThrow(/Invalid authored input/);
   });
-  it.each([createOpenAIApiCoreSchemaValidators, createAnthropicApiCoreSchemaValidators])('publishes the validating v2 input capability', (validators) => {
+  it.each([createOpenAIApiCoreSchemaValidators])('publishes the validating v2 input capability', (validators) => {
     const validator = validators().find((entry) => entry.schema.schemaVersion.includes('-input/'))!;
     expect(validator.schema.schemaVersion).toMatch(/\/v2$/);
     const schemaDocument = { $id: 'urn:test:input', type: 'object', properties: { count: { type: 'integer' } }, required: ['count'], additionalProperties: false };

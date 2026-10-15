@@ -6,10 +6,6 @@ export interface OptionalExecutorDependency {
 }
 
 const OPTIONAL_EXECUTOR_DEPENDENCIES: Partial<Record<ExecutableExecutorName, OptionalExecutorDependency>> = {
-  'claude-sdk': {
-    packageName: '@anthropic-ai/claude-agent-sdk',
-    installSpec: '@anthropic-ai/claude-agent-sdk@^0.3.143',
-  },
   'codex-sdk': {
     packageName: '@openai/codex-sdk',
     installSpec: '@openai/codex-sdk@^0.149.0',

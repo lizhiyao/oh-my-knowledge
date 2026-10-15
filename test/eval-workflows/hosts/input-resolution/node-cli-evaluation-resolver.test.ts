@@ -73,9 +73,9 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
       treatment: 'skills/treatment.md',
       samples: 'samples.json',
       'skill-dir': 'skills',
-      executor: 'claude',
-      model: 'claude-test',
-      'judge-models': 'anthropic-api:judge-test',
+      executor: 'codex',
+      model: 'test-model',
+      'judge-models': 'openai-api:judge-test',
       'no-serve': true,
       'output-dir': '.omk/eval',
       ...additionalFlags,
@@ -83,8 +83,8 @@ function request(root: string, additionalFlags: Readonly<Record<string, unknown>
     defaults: {
       samplesLocator: 'samples.json',
       skillDirectoryLocator: 'skills',
-      targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
-      judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
+      targetRuntime: { executorId: 'codex', model: 'test-model', effort: 'low' },
+      judgeMembers: [{ executorId: 'openai-api', model: 'judge-test' }],
       presentation: {
         projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
         globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
@@ -624,9 +624,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
       explicitCliFlags: {},
       evalConfig: {
         samples: 'samples.json',
-        executor: 'claude',
-        model: 'claude-test',
-        judgeModels: [{ executor: 'anthropic-api', model: 'judge-test' }],
+        executor: 'codex',
+        model: 'test-model',
+        judgeModels: [{ executor: 'openai-api', model: 'judge-test' }],
         variants: [{
           name: 'control', role: 'control', artifact: 'skills/control.md',
         }, {
@@ -636,8 +636,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
       defaults: {
         samplesLocator: 'samples.json',
         skillDirectoryLocator: 'skills',
-        targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
-        judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
+        targetRuntime: { executorId: 'codex', model: 'test-model', effort: 'low' },
+        judgeMembers: [{ executorId: 'openai-api', model: 'judge-test' }],
         presentation: {
           projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
           globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),
@@ -665,9 +665,9 @@ describe('resolveNodeCliEvaluationRequest', () => {
       explicitCliFlags: {},
       evalConfig: {
         samples: 'samples.json',
-        executor: 'claude',
-        model: 'claude-test',
-        judgeModels: [{ executor: 'anthropic-api', model: 'judge-test' }],
+        executor: 'codex',
+        model: 'test-model',
+        judgeModels: [{ executor: 'openai-api', model: 'judge-test' }],
         variants: [{
           name: 'control', role: 'control', artifact: 'skills/control.md',
         }, {
@@ -679,8 +679,8 @@ describe('resolveNodeCliEvaluationRequest', () => {
       defaults: {
         samplesLocator: 'samples.json',
         skillDirectoryLocator: 'skills',
-        targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
-        judgeMembers: [{ executorId: 'anthropic-api', model: 'judge-test' }],
+        targetRuntime: { executorId: 'codex', model: 'test-model', effort: 'low' },
+        judgeMembers: [{ executorId: 'openai-api', model: 'judge-test' }],
         presentation: {
           projectOutputDirectoryLocator: join(root, '.omk', 'eval'),
           globalOutputDirectoryLocator: join(root, '.omk-global', 'eval'),

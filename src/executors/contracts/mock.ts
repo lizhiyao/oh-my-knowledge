@@ -1,8 +1,7 @@
 /** Mock 命中规则(所有字段 AND,字段未填即不限制)。 */
 interface MockMatchBase {
   /** 精确匹配 file_path(用于 Read / Edit / Write,支持 ~ 自动展开)。
-   *  注意:claude-cli / claude-sdk 的 PreToolUse hook 拿到的 file_path 是 LLM 调
-   *  Read/Edit/Write 时实际传入的字符串。LLM 经常把相对路径写成 cwd 绝对路径
+   *  工具调用的 file_path 是模型实际传入的字符串。LLM 经常把相对路径写成 cwd 绝对路径
    *  (尤其当 sample.environment.notes 里给了 cwd 提示),mock 用 `file_path` 精确
    *  匹配会 miss。**新 sample 推荐用 `file_path_endswith` 做后缀匹配**,匹配更稳。 */
   file_path?: string;

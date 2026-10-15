@@ -85,6 +85,5 @@ describe('codex model hint', () => {
     assert.ok(hint.includes('模型名看起来不可用'), hint);
     assert.ok(hint.includes('--executor codex --model gpt-5.5'), hint);
     assert.ok(hint.includes('codex exec -m gpt-5.5 "hi"'), hint);
-    assert.ok(hint.includes('--executor claude --model sonnet'), hint);
   });
 });

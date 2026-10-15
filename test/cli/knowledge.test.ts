@@ -29,7 +29,7 @@ describe('observe knowledge command wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-settings-cli-')); roots.push(root);
     vi.stubEnv('OMK_HOME', root);
     const workspace = join(root, 'chosen');
-    new UserSettingsStore(root).save({ schemaVersion: 1, knowledge: { workspace } }, 'missing');
+    new UserSettingsStore(root).save({ schemaVersion: 2, knowledge: { workspace } }, 'missing');
     const source = join(root, 'source.jsonl');
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'fixture' }] } }));
     const captured = JSON.parse((await runCommand(ObserveKnowledge, ['capture', '--source', source, '--json'], { cwd: root })).stdout);

@@ -10,22 +10,22 @@ it('reads defaults without writing, persists atomically, and detects stale saves
   const store = setup();
   expect(store.resolve({}, {})).toEqual({ workspace: join(store.root, 'knowledge'), executor: 'codex', model: '', language: 'zh' });
   expect(existsSync(store.path)).toBe(false);
-  const input = { schemaVersion: 1, language: 'en', knowledge: { workspace: join(store.root, 'chosen'), executor: 'codex', model: 'saved-model' } };
+  const input = { schemaVersion: 2, language: 'en', knowledge: { workspace: join(store.root, 'chosen'), executor: 'codex', model: 'saved-model' } };
   const saved = store.save(input, 'missing');
   expect(new UserSettingsStore(store.root).read()).toEqual(saved);
   expect(() => store.save(input, 'missing')).toThrow('conflict');
   expect(store.resolve({ model: 'explicit', language: 'zh' }, { OMK_MODEL: 'environment' })).toMatchObject({ model: 'explicit', language: 'zh' });
   expect(store.resolve({}, { OMK_MODEL: 'environment' })).toMatchObject({ model: 'environment', language: 'en' });
   expect(store.resolve({}, {})).toMatchObject({ model: 'saved-model' });
-  expect(store.resolve({ executor: 'anthropic-api' }, {}).model).toBe('');
+  expect(store.resolve({ executor: 'openai-api' }, {}).model).toBe('');
 });
 it('rejects secrets, relative paths, unknown schema versions and corrupt files without overwriting', () => {
   const store = setup();
-  for (const input of [{ schemaVersion: 2 }, { schemaVersion: 1, apiKey: 'secret' }, { schemaVersion: 1, knowledge: { workspace: './relative' } }]) {
+  for (const input of [{ schemaVersion: 3 }, { schemaVersion: 2, apiKey: 'secret' }, { schemaVersion: 2, knowledge: { workspace: './relative' } }]) {
     expect(() => store.save(input, 'missing')).toThrow();
   }
   expect(existsSync(store.path)).toBe(false);
   writeFileSync(store.path, 'invalid');
   expect(() => store.read()).toThrow();
-  expect(() => store.save({ schemaVersion: 1 }, 'missing')).toThrow();
+  expect(() => store.save({ schemaVersion: 2 }, 'missing')).toThrow();
 });

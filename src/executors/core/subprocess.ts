@@ -3,7 +3,7 @@ import { MAX_BUFFER } from './limits.js';
 
 // ===========================================================================
 // SIGINT propagation：统一让 spawn 出来的 child 在 parent 收到 SIGINT 时被 kill，
-// 避免 host CLI（codex / claude code）Ctrl+C 后内层子进程成为 orphan。
+// 避免 host CLI（codex）Ctrl+C 后内层子进程成为 orphan。
 // ===========================================================================
 //
 // 设计要点：
@@ -115,8 +115,8 @@ export interface SpawnHelperOptions {
  * spawn child + 注册到全局 SIGINT registry。返回 { child, done } 让 caller 自己
  * 操作 stdin（写入 / 关闭），通过 done 等结果。
  *
- * 适用：claude / codex / script CLI 子进程。HTTP executor（*-api）用 fetch +
- * AbortSignal.timeout，自带 abort，不走这个。claude-sdk in-process 也不走。
+ * 适用：codex / script CLI 子进程。HTTP executor（*-api）用 fetch +
+ * AbortSignal.timeout，自带 abort，不走这个。
  */
 export function spawnWithSigintPropagation(
   command: string,

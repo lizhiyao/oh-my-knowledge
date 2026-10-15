@@ -39,22 +39,10 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
     rationale: 'Offline v14 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
-    importer: 'executors/anthropic/claude/sdk.ts',
-    expression: 'CLAUDE_AGENT_SDK_PACKAGE',
-    sourceSha256: 'c4d92bdfa7385281fba50233c15f365ba3a6020eab5a4609b829577c70214b4a',
-    rationale: 'Loads the fixed optional Claude SDK package; the source hash seals its binding.',
-  },
-  {
     importer: 'executors/openai/codex/sdk.ts',
     expression: 'CODEX_SDK_PACKAGE',
     sourceSha256: 'd38e53693dda6414841f2d62d6f393c9e40d98608a420a35aff23839533f9921',
     rationale: 'Loads the fixed optional Codex SDK package; the source hash seals its binding.',
-  },
-  {
-    importer: 'eval-workflows/hosts/adapters/claude/sdk-runtime.ts',
-    expression: 'sdkModuleUrl.href',
-    sourceSha256: '2080fb6a80757e18a01f53818937be83f898f29c590bed189c925af4676aa51d',
-    rationale: 'Loads the resolved optional Claude SDK entrypoint with a per-runtime file URL.',
   },
   {
     importer: 'eval-workflows/hosts/adapters/codex/sdk-runtime.ts',

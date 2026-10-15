@@ -32,7 +32,6 @@ test/eval-runtime/rubric-kit-equivalence.test.ts
 test/eval-runtime/runtime-conformance.test.ts
 test/eval-runtime/workspace.test.ts
 test/eval-workflows/gold/dataset.test.ts
-test/eval-workflows/hosts/adapters/anthropic/api.test.ts
 test/eval-workflows/hosts/adapters/codex/sdk.test.ts
 test/eval-workflows/hosts/composition/assembly.test.ts
 test/eval-workflows/hosts/evaluators/executor-judge-invocation.test.ts
@@ -53,7 +52,6 @@ test/evidence/graph/doctor-graph.test.ts
 test/evidence/storage/directories.test.ts
 test/evidence/storage/discovery-index.test.ts
 test/examples/codex-observe-router.test.ts
-test/executors/anthropic-api.test.ts
 test/executors/codex-trace.test.ts
 test/executors/runtime-fingerprint.test.ts
 test/executors/sigint-propagation.test.ts

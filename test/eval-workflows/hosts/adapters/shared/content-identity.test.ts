@@ -33,8 +33,8 @@ describe('共享内容身份', () => {
 
     const files = await collectIdentityFilesInDirectory({
       root,
-      facetNamespace: 'claude-sdk',
-      label: 'Claude SDK runtime package',
+      facetNamespace: 'codex-sdk',
+      label: 'Codex SDK runtime package',
     });
 
     expect(files.map((file) => file.path)).toEqual([
@@ -43,9 +43,9 @@ describe('共享内容身份', () => {
       join(root, 'nested', 'c.txt'),
     ]);
     expect(files.map((file) => file.facetId)).toEqual([
-      `claude-sdk.file.${digestOf('a.txt')}`,
-      `claude-sdk.file.${digestOf('b.txt')}`,
-      `claude-sdk.file.${digestOf('nested/c.txt')}`,
+      `codex-sdk.file.${digestOf('a.txt')}`,
+      `codex-sdk.file.${digestOf('b.txt')}`,
+      `codex-sdk.file.${digestOf('nested/c.txt')}`,
     ]);
   });
 
@@ -63,15 +63,15 @@ describe('共享内容身份', () => {
   it('目录读不到或含非常规条目时按 label 抛错，不静默少算身份', async () => {
     await expect(collectIdentityFilesInDirectory({
       root: join(root, 'missing'),
-      facetNamespace: 'claude-native',
-      label: 'Claude SDK runtime package',
-    })).rejects.toThrow('Claude SDK runtime package is unavailable.');
+      facetNamespace: 'codex-native',
+      label: 'Codex SDK runtime package',
+    })).rejects.toThrow('Codex SDK runtime package is unavailable.');
 
     await symlink(join(root, 'target'), join(root, 'link'));
     await expect(collectIdentityFilesInDirectory({
       root,
-      facetNamespace: 'claude-native',
-      label: 'Claude SDK runtime package',
-    })).rejects.toThrow('Claude SDK runtime package contains an unsupported entry.');
+      facetNamespace: 'codex-native',
+      label: 'Codex SDK runtime package',
+    })).rejects.toThrow('Codex SDK runtime package contains an unsupported entry.');
   });
 });

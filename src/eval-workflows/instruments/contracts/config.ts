@@ -1,6 +1,6 @@
 /** Single judge configuration: provider selection plus optional deployment identity. */
 export interface JudgeConfig {
-  /** Executor name (claude / codex / anthropic-api / openai-api / shell command). */
+  /** Executor name (codex / codex-sdk / openai-api / custom executable path). */
   executor: string;
   /** Model identifier or mutable alias passed to the executor. */
   model: string;

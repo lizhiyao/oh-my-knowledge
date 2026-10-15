@@ -35,10 +35,8 @@ const INIT_OMK_GITIGNORE: Record<Lang, string> = {
 `,
 };
 
-// 模板带 Claude Code SKILL.md 兼容 frontmatter(name + description),让用户
-// 可以把 init 出来的 SKILL.md 直接 deploy 到 ~/.claude/skills/ 给 Claude Code 用,
-// 一份文件双向 dogfood(omk 评测 + Claude 部署)。omk 当前不 strip frontmatter,
-// 它会跟着 leak 进 system prompt — 在 model 行为层面是无害噪声,跨 executor 一致。
+// 模板保留标准 SKILL.md frontmatter，供 agent skill 目录直接使用。
+
 const INIT_SKILL_V1: Record<Lang, string> = {
   zh: `---
 name: code-review-v1

@@ -19,11 +19,6 @@ const DIAGNOSTIC_HINTS = new Map<string, CliMessageKey>([
   ['OMK_CODEX_CLI_STDIN_UNAVAILABLE', 'cli.run.codex_cli_start_hint'],
   ['OMK_CODEX_CLI_EXIT_NONZERO', 'cli.run.codex_cli_failure_hint'],
   ['OMK_CODEX_CLI_TURN_FAILED', 'cli.run.codex_cli_failure_hint'],
-  ['OMK_CLAUDE_CLI_SPAWN_FAILED', 'cli.run.claude_cli_start_hint'],
-  ['OMK_CLAUDE_CLI_STDIN_UNAVAILABLE', 'cli.run.claude_cli_start_hint'],
-  ['OMK_CLAUDE_CLI_EXIT_NONZERO', 'cli.run.claude_cli_failure_hint'],
-  ['OMK_CLAUDE_CLI_TURN_FAILED', 'cli.run.claude_cli_failure_hint'],
-  ['OMK_CLAUDE_CLI_EXECUTION_FAILED', 'cli.run.claude_cli_failure_hint'],
 ]);
 
 export function formatEvaluationInputFailure(error: unknown, lang: CliLang): string {

@@ -46,7 +46,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
     if (!data || busy || failure === 'conflict') return;
     const active = new AbortController(); controller.current = active; setBusy(true); setError(''); setFailure(null);
     try {
-      const response = await fetch('/api/settings', { method: 'POST', signal: active.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revision: data.revision, settings: { schemaVersion: 1, ...languageField(language), knowledge: { workspace: workspace.trim(), executor, ...(model.trim() ? { model: model.trim() } : {}) } } }) });
+      const response = await fetch('/api/settings', { method: 'POST', signal: active.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ revision: data.revision, settings: { schemaVersion: 2, ...languageField(language), knowledge: { workspace: workspace.trim(), executor, ...(model.trim() ? { model: model.trim() } : {}) } } }) });
       if (!response.ok) throw new Error(response.status === 409 ? 'conflict' : 'save');
       // 语言由设置决定、不进地址：保存后重载当前页即可生效，地址与其余查询参数原样保留。
       window.location.reload();
@@ -71,7 +71,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
         <h2>{zh ? '知识保存与提炼' : 'Knowledge storage and extraction'}</h2>
         <label>{zh ? '知识保存目录' : 'Knowledge folder'}<Input disabled={busy || !data} value={workspace} onChange={event => setWorkspace(event.target.value)}/></label>
         <p className="candidate-help">{zh ? '填写完整目录路径。默认位置：' : 'Use an absolute directory. Default: '}{data?.defaults.workspace}</p>
-        <label>{zh ? '知识提炼调用方式' : 'Knowledge extraction provider'}<Select aria-label={zh ? '知识提炼调用方式' : 'Knowledge extraction provider'} style={{ width: '100%' }} disabled={busy || !data} value={executor} onChange={value => { setExecutor(value); setModel(''); }} options={['codex','openai-api','anthropic-api'].map(value => ({ value, label: value }))}/></label>
+        <label>{zh ? '知识提炼调用方式' : 'Knowledge extraction provider'}<Select aria-label={zh ? '知识提炼调用方式' : 'Knowledge extraction provider'} style={{ width: '100%' }} disabled={busy || !data} value={executor} onChange={value => { setExecutor(value); setModel(''); }} options={['codex','openai-api'].map(value => ({ value, label: value }))}/></label>
         <label>{zh ? '知识提炼默认模型' : 'Default extraction model'}<Input disabled={busy || !data} value={model} onChange={event => setModel(event.target.value)} placeholder={zh ? '未设置时，每次提炼需明确选择模型' : 'Choose a model per extraction when unset'}/></label>
         <p className="candidate-help">{zh ? '这里只设置知识提炼模型；评测的执行模型和评委在评测入口单独核对。切换调用方式会清空此处的模型。' : 'Applies only to extraction. Confirm task models and judges in the evaluation flow. Changing the provider clears this model.'}</p>
         <h2>{zh ? '界面与 CLI' : 'Studio and CLI'}</h2>
@@ -85,7 +85,7 @@ export function StudioSettingsButton({ lang, trigger }: { lang: Language; trigge
         <details className="studio-settings-advanced"><summary>{zh ? '配置边界与设置文件' : 'Configuration scope and settings file'}</summary><ul>
           <li>{zh ? '带 workspace 的页面继续使用显式选定目录；改默认位置不迁移或切换该页面的数据。' : 'A page with an explicit workspace keeps that folder. Changing the default does not migrate data or switch that page’s workspace.'}</li>
           <li>{zh ? '启动环境：OMK_HOME、Studio 地址／端口、外部 Codex 配置。修改环境后需重启服务。' : 'Startup environment: OMK_HOME, Studio host/port, external Codex configuration. Restart after changing the environment.'}</li>
-          <li>{zh ? '凭证与服务地址：OPENAI_API_KEY、ANTHROPIC_API_KEY、对应 BASE_URL，由环境管理，这里不读取或保存密钥。' : 'Credentials and endpoints: OPENAI_API_KEY, ANTHROPIC_API_KEY and corresponding BASE_URL variables. Keys are not read or saved here.'}</li>
+          <li>{zh ? '凭证与服务地址：OPENAI_API_KEY、OPENAI_BASE_URL，由环境管理，这里不读取或保存密钥。' : 'Credentials and endpoints: OPENAI_API_KEY and OPENAI_BASE_URL. Keys are not read or saved here.'}</li>
           <li>{zh ? '项目／运行：评测配置、评委、样本、并发、预算、报告目录与日志选区，仍在对应入口配置。' : 'Project/run: evaluation config, judges, samples, concurrency, budgets, report directories and log selections remain in their respective flows.'}</li>
         </ul><p>{zh ? '优先级：单次显式指定 → 启动环境覆盖 → 全局设置 → 系统 locale → 内置默认 zh。' : 'Priority: explicit request → environment → saved settings → system locale → built-in default zh.'}</p><p className="candidate-help">{data?.path}</p></details>
       </div>

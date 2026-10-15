@@ -4,7 +4,7 @@ Use a demo to walk through “preview → evaluate → inspect evidence”, then
 
 ## Install and prepare a runtime
 
-You need Node.js >=22 and an authenticated runtime: Codex CLI, Claude Code, or an API executor. See [Executors](../../reference/integration/executors.md) for setup.
+You need Node.js >=22 and an authenticated runtime: Codex CLI or an API executor. See [Executors](../../reference/integration/executors.md) for setup.
 
 ```bash
 npm i -g oh-my-knowledge@next
@@ -87,9 +87,9 @@ Conclusions apply only to these cases, criteria, and conditions. AI-generated ca
 omk install omk-agent-skill
 ```
 
-The default installs into detected supported targets: Codex/AGENTS for `~/.codex` or `~/.agents`, and Claude Code for `~/.claude`. `--to all` forces all currently known targets; `--dest` selects a custom skill root.
+The default installs into detected supported targets: Codex/AGENTS for `~/.codex` or `~/.agents`. `--to all` forces all currently known targets; `--dest` selects a custom skill root.
 
-Explicitly use the OMK Skill in your agent and describe your goal, for example: “Use omk to compare skills/my-skill-v1 and skills/my-skill-v2; preview the plan first.” Claude Code can use its installed `/omk` entry; other hosts can ask the agent to execute the `omk` CLI. Review generated cases before running the real evaluation.
+Explicitly use the OMK Skill in your agent and describe your goal, for example: “Use omk to compare skills/my-skill-v1 and skills/my-skill-v2; preview the plan first.” Ask the agent to execute the `omk` CLI. Review generated cases before running the real evaluation.
 
 ## Troubleshoot the first run
 

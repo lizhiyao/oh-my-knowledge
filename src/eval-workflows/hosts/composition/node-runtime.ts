@@ -14,15 +14,6 @@ import type {
 } from '../evaluators/llm-judge-invocation.js';
 import { createExecutorJudgeInvocationPort } from '../evaluators/executor-judge-invocation.js';
 import {
-  createAnthropicApiCoreSchemaValidators,
-} from '../adapters/anthropic/protocol.js';
-import {
-  createClaudeCliCoreSchemaValidators,
-} from '../adapters/claude/cli-protocol.js';
-import {
-  createClaudeSdkCoreSchemaValidators,
-} from '../adapters/claude/sdk-protocol.js';
-import {
   createCodexCliCoreSchemaValidators,
 } from '../adapters/codex/cli-protocol.js';
 import {
@@ -48,7 +39,7 @@ export interface NodeEvaluationEnvironment {
   readonly environment: NodeJS.ProcessEnv;
   readonly classifiedEnvironment: Readonly<Record<string, ClassifiedEnvironmentEntry>>;
   resolveExecutable(command: string): Promise<string>;
-  requiredCredential(key: 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY'): string;
+  requiredCredential(key: 'OPENAI_API_KEY'): string;
 }
 
 export interface CreateNodeProductionCompositionInput {
@@ -103,31 +94,10 @@ async function executorConfiguration(
         sdk: { environment: capturedEnvironment },
         preflightDeclarations,
       });
-    case 'claude':
-      return Object.freeze({
-        adapterKind: 'claude-cli',
-        command: {
-          executablePath: await capabilities.resolveExecutable('claude'),
-          environment: capturedEnvironment,
-        },
-        preflightDeclarations,
-      });
-    case 'claude-sdk':
-      return Object.freeze({
-        adapterKind: 'claude-sdk',
-        sdk: { environment: capturedEnvironment },
-        preflightDeclarations,
-      });
     case 'openai-api':
       return Object.freeze({
         adapterKind: 'openai-api',
         api: { apiKey: capabilities.requiredCredential('OPENAI_API_KEY') },
-        preflightDeclarations,
-      });
-    case 'anthropic-api':
-      return Object.freeze({
-        adapterKind: 'anthropic-api',
-        api: { apiKey: capabilities.requiredCredential('ANTHROPIC_API_KEY') },
         preflightDeclarations,
       });
     default: {
@@ -167,10 +137,7 @@ function productionSchemaValidators(): ReadonlyMap<string, CoreSchemaValidator> 
   const validators = [
     ...createCodexCliCoreSchemaValidators(),
     ...createCodexSdkCoreSchemaValidators(),
-    ...createClaudeCliCoreSchemaValidators(),
-    ...createClaudeSdkCoreSchemaValidators(),
     ...createOpenAIApiCoreSchemaValidators(),
-    ...createAnthropicApiCoreSchemaValidators(),
     ...createCustomExecutorCoreSchemaValidators(),
   ];
   return new Map(validators.map((validator) => [schemaIdentityKey(validator.schema), validator]));

@@ -5,7 +5,7 @@ import type { ExecutorFn } from '../../../executors/contracts/ports.js';
 import type { ExtractionModel } from '../application.js';
 
 export function validateExtractionModelSelection(executor: string, model: string): void {
-  if (!['codex', 'openai-api', 'anthropic-api'].includes(executor)) {
+  if (!['codex', 'openai-api'].includes(executor)) {
     throw new Error(`Executor ${executor} has no knowledge-generation adapter.`);
   }
   if (!model.trim()) throw new Error('An explicitly configured model is required.');

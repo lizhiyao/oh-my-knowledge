@@ -1,7 +1,7 @@
-import { compareStrings } from '../../../../eval-core/primitives/ordering.js';
-import { readonlyMapSnapshot } from '../shared/readonly-map-snapshot.js';
-import { openNodeTrialWorkspace } from '../shared/trial-workspace.js';
-import { lstat, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { readonlyMapSnapshot } from '../eval-workflows/hosts/adapters/shared/readonly-map-snapshot.js';
+import { openNodeTrialWorkspace } from '../eval-workflows/hosts/adapters/shared/trial-workspace.js';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -15,23 +15,22 @@ import {
   resolveEffectiveExecutionControl,
   type EvaluationDefinition,
   type JsonValue,
-} from '../../../../eval-core/contracts/index.js';
+} from '../eval-core/contracts/index.js';
 import {
   ExecutionPortFailure,
   type ExecutionContent,
   type ExecutorTrialContext,
-} from '../../../../eval-core/execution/index.js';
-import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../../eval-runtime/mock-interception.js';
-import type { CliMockHandle } from '../../../../executors/mock-runtime/runtime.js';
-import type { Mock, MockMatch, MockReturn } from '../../../../executors/contracts/mock.js';
-import type { RuntimeBindingOf } from '../../types.js';
+} from '../eval-core/execution/index.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../eval-runtime/mock-interception.js';
+import type { Mock, MockMatch, MockReturn } from '../executors/contracts/mock.js';
+import type { RuntimeBindingOf } from '../eval-workflows/hosts/types.js';
 import type {
   OmkBindingResourceLease,
   OmkLeasedHostResource,
-} from '../../resource-leases/types.js';
+} from '../eval-workflows/hosts/resource-leases/types.js';
 import {
   releaseTrialSlot,
-} from '../shared/trial-lifecycle.js';
+} from '../eval-workflows/hosts/adapters/shared/trial-lifecycle.js';
 
 const DescriptorSchema = z.object({
   resourceId: z.string().min(1),
@@ -41,7 +40,7 @@ const DescriptorSchema = z.object({
   size: z.number().int().nonnegative(),
 }).strict();
 
-const ClaudeMockMatchSchema = z.object({
+const DshMockMatchSchema = z.object({
   file_path: z.string().optional(),
   file_path_endswith: z.string().optional(),
   url: z.string().optional(),
@@ -51,12 +50,12 @@ const ClaudeMockMatchSchema = z.object({
   input_contains: z.string().optional(),
 }).strict();
 
-const ClaudeMockRulesSchema = z.object({
+const DshMockRulesSchema = z.object({
   tool: z.string().min(1),
-  match: ClaudeMockMatchSchema.optional(),
+  match: DshMockMatchSchema.optional(),
 }).strict();
 
-const ClaudeMockPlanSchema = z.object({
+const DshMockPlanSchema = z.object({
   schemaVersion: z.literal('omk.mock-interception-plan/v1'),
   strict: z.boolean(),
   rules: z.array(z.object({
@@ -66,13 +65,13 @@ const ClaudeMockPlanSchema = z.object({
   }).strict()).min(1),
 }).strict();
 
-const ClaudeAllowedToolSchema = z.string().min(1).refine((value) => (
+const DshAllowedToolSchema = z.string().min(1).refine((value) => (
   !/[\u0000-\u001f\u007f]/.test(value)
   && !value.startsWith('-')
   && !value.includes(',')
 ));
 
-const ClaudeTargetConfigSchema = z.object({
+const DshTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: DescriptorSchema,
     mcpConfig: DescriptorSchema.optional(),
@@ -95,15 +94,15 @@ const ClaudeTargetConfigSchema = z.object({
   }).strict(),
 }).strict();
 
-export type ClaudeCliTargetConfig = z.infer<typeof ClaudeTargetConfigSchema>;
+export type DshTargetConfig = z.infer<typeof DshTargetConfigSchema>;
 
-export interface CapturedClaudeCliTarget {
+export interface CapturedDshTarget {
   readonly target: EvaluationDefinition['targets'][number];
   readonly binding: RuntimeBindingOf<'executor'>;
-  readonly config: ClaudeCliTargetConfig;
+  readonly config: DshTargetConfig;
 }
 
-export interface ClaudeCliRunState {
+export interface DshRunState {
   readonly privateWorkingDirectory: string;
   readonly workspaceDirectoriesByResourceId: ReadonlyMap<string, string>;
   readonly executionControls: EvaluationDefinition['targets'][number]['executionControls'];
@@ -112,14 +111,14 @@ export interface ClaudeCliRunState {
   readonly supportingFiles?: readonly { readonly path: string; readonly content: string }[];
   readonly mcpConfigFile?: string;
   readonly mcpServers?: Readonly<Record<string, unknown>>;
-  readonly mockControlsByResourceId: ReadonlyMap<string, ClaudeTrialMockControls>;
+  readonly mockControlsByResourceId: ReadonlyMap<string, DshTrialMockControls>;
   readonly classification: ExecutionContent['classification'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
   requestDispose(): Promise<void>;
 }
 
-export interface ClaudeCliTrialState {
+export interface DshTrialState {
   closeWorkspace(): Promise<void>;
   readonly prompt: string;
   readonly workingDirectory: string;
@@ -129,36 +128,19 @@ export interface ClaudeCliTrialState {
   readonly classification: ExecutionContent['classification'];
 }
 
-export interface ClaudeTrialMockControls {
+export interface DshTrialMockControls {
   readonly mocks: readonly Mock[];
   readonly strict: boolean;
   readonly classification: ExecutionContent['classification'];
   readonly mcpServerNames: readonly string[];
 }
 
-export interface ClaudeResourceProjectionProfile {
-  readonly adapterLabel: 'Claude CLI' | 'Claude SDK' | 'DSH Host';
-  readonly errorPrefix: 'OMK_CLAUDE_CLI' | 'OMK_CLAUDE_SDK' | 'OMK_DSH_HOST';
-  readonly mcpMockMode: 'synthetic-server' | 'hook-existing-tool';
-  readonly promptSchemaVersion:
-    | 'omk.claude-cli-prompt/v1'
-    | 'omk.claude-sdk-prompt/v1'
-    | 'omk.dsh-host-prompt/v1';
+export interface DshResourceProjectionProfile {
+  readonly adapterLabel: 'DSH Host';
+  readonly errorPrefix: 'OMK_DSH_HOST';
+  readonly mcpMockMode: 'hook-existing-tool';
+  readonly promptSchemaVersion: 'omk.dsh-host-prompt/v1';
 }
-
-export const CLAUDE_CLI_RESOURCE_PROFILE = Object.freeze({
-  adapterLabel: 'Claude CLI',
-  errorPrefix: 'OMK_CLAUDE_CLI',
-  mcpMockMode: 'synthetic-server',
-  promptSchemaVersion: 'omk.claude-cli-prompt/v1',
-}) satisfies ClaudeResourceProjectionProfile;
-
-export const CLAUDE_SDK_RESOURCE_PROFILE = Object.freeze({
-  adapterLabel: 'Claude SDK',
-  errorPrefix: 'OMK_CLAUDE_SDK',
-  mcpMockMode: 'hook-existing-tool',
-  promptSchemaVersion: 'omk.claude-sdk-prompt/v1',
-}) satisfies ClaudeResourceProjectionProfile;
 
 type KnowledgeArtifact =
   | { readonly artifactKind: 'file'; readonly instructions: string }
@@ -170,7 +152,7 @@ type KnowledgeArtifact =
     };
 
 function fail(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   codeSuffix: string,
   message: string,
 ): never {
@@ -196,23 +178,23 @@ function mockPlanDescriptors(
     const descriptor = DescriptorSchema.parse(control.descriptor);
     if (descriptor.classification !== 'secret'
         || descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE) {
-      throw new TypeError('Claude mock plan descriptor is invalid.');
+      throw new TypeError('Dsh mock plan descriptor is invalid.');
     }
     const existing = byResourceId.get(descriptor.resourceId);
     if (existing !== undefined
         && canonicalizeJson(existing) !== canonicalizeJson(descriptor)) {
-      throw new TypeError('Claude mock plan resourceId maps to conflicting descriptors.');
+      throw new TypeError('Dsh mock plan resourceId maps to conflicting descriptors.');
     }
     byResourceId.set(descriptor.resourceId, descriptor);
   }
   return Object.freeze([...byResourceId.values()]);
 }
 
-export function captureClaudeCliTarget(
+export function captureDshTarget(
   targetInput: EvaluationDefinition['targets'][number],
   bindingInput: RuntimeBindingOf<'executor'>,
-  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
-): CapturedClaudeCliTarget {
+  profile: DshResourceProjectionProfile,
+): CapturedDshTarget {
   const target = structuredClone(targetInput);
   const binding = structuredClone(bindingInput);
   if (
@@ -227,7 +209,7 @@ export function captureClaudeCliTarget(
   if (target.protocolId !== 'omk.invoke/v1') {
     throw new TypeError(`${profile.adapterLabel} Core adapter supports only omk.invoke/v1.`);
   }
-  const config = ClaudeTargetConfigSchema.parse(target.config);
+  const config = DshTargetConfigSchema.parse(target.config);
   const workspaceControls = [
     target.executionControls.defaults.workspace,
     ...target.executionControls.sampleOverrides.flatMap((override) => (
@@ -332,7 +314,7 @@ export function captureClaudeCliTarget(
     throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain duplicates.`);
   }
   if (toolAllowLists.some((tools) => tools.some((tool) => (
-    !ClaudeAllowedToolSchema.safeParse(tool).success
+    !DshAllowedToolSchema.safeParse(tool).success
   )))) {
     throw new TypeError(`${profile.adapterLabel} built-in tool allow-list contains an invalid tool name.`);
   }
@@ -356,7 +338,7 @@ function sameDescriptor(
 }
 
 async function readTextFile(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   path: string,
   codeSuffix: string,
   subject: string,
@@ -375,7 +357,7 @@ async function readTextFile(
 }
 
 async function directoryFiles(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   current: string,
 ): Promise<readonly string[]> {
   const { readdir } = await import('node:fs/promises');
@@ -398,7 +380,7 @@ async function directoryFiles(
 }
 
 async function projectArtifact(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   resource: OmkLeasedHostResource,
 ): Promise<KnowledgeArtifact | undefined> {
   if (resource.leaseMode !== 'immutable-snapshot' || resource.resourceKind !== 'artifact') {
@@ -463,7 +445,7 @@ function higherClassification(
 }
 
 async function validateMcpConfig(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   resource: OmkLeasedHostResource,
   expected: z.infer<typeof DescriptorSchema>,
 ): Promise<{
@@ -515,7 +497,7 @@ function mockMcpServerName(tool: string): string | undefined {
     : rest.slice(0, separator);
 }
 
-function mockReturn(profile: ClaudeResourceProjectionProfile, value: unknown): MockReturn {
+function mockReturn(profile: DshResourceProjectionProfile, value: unknown): MockReturn {
   if (typeof value === 'string') return value;
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return value as MockReturn;
@@ -524,7 +506,7 @@ function mockReturn(profile: ClaudeResourceProjectionProfile, value: unknown): M
 }
 
 async function readMockPayload(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   resource: OmkLeasedHostResource,
 ): Promise<MockReturn> {
   if (
@@ -550,10 +532,10 @@ async function readMockPayload(
 }
 
 async function readMockRule(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   resource: OmkLeasedHostResource,
   expected: z.infer<typeof DescriptorSchema>,
-): Promise<z.infer<typeof ClaudeMockRulesSchema>> {
+): Promise<z.infer<typeof DshMockRulesSchema>> {
   if (
     resource.resourceKind !== 'mock-rule'
     || resource.leaseMode !== 'immutable-snapshot'
@@ -569,7 +551,7 @@ async function readMockRule(
     'mock rule',
   );
   try {
-    const rules = ClaudeMockRulesSchema.parse(JSON.parse(text) as unknown);
+    const rules = DshMockRulesSchema.parse(JSON.parse(text) as unknown);
     if (rules.tool.startsWith('mcp__') && mockMcpServerName(rules.tool) === undefined) {
       fail(profile, 'MOCK_CONFIG_INVALID', 'MCP mock tool must identify one server and tool.');
     }
@@ -581,10 +563,10 @@ async function readMockRule(
 }
 
 async function readMockPlan(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   resource: OmkLeasedHostResource,
   expected: z.infer<typeof DescriptorSchema>,
-): Promise<z.infer<typeof ClaudeMockPlanSchema>> {
+): Promise<z.infer<typeof DshMockPlanSchema>> {
   if (
     resource.resourceKind !== 'mock-plan'
     || resource.leaseMode !== 'immutable-snapshot'
@@ -600,7 +582,7 @@ async function readMockPlan(
     'mock plan',
   );
   try {
-    const plan = ClaudeMockPlanSchema.parse(JSON.parse(text) as unknown);
+    const plan = DshMockPlanSchema.parse(JSON.parse(text) as unknown);
     if (new Set(plan.rules.map((rule) => rule.mockId)).size !== plan.rules.length
         || plan.rules.some((rule) => (
           rule.rule.classification !== 'secret'
@@ -614,11 +596,11 @@ async function readMockPlan(
 }
 
 async function projectMocks(
-  profile: ClaudeResourceProjectionProfile,
+  profile: DshResourceProjectionProfile,
   lease: OmkBindingResourceLease,
   target: EvaluationDefinition['targets'][number],
 ): Promise<{
-  byResourceId: ReadonlyMap<string, ClaudeTrialMockControls>;
+  byResourceId: ReadonlyMap<string, DshTrialMockControls>;
   mcpServerNames: readonly string[];
 }> {
   const planDescriptors = mockPlanDescriptors(target);
@@ -642,7 +624,7 @@ async function projectMocks(
     }
     expectedHelpers.set(descriptor.resourceId, { resourceKind, descriptor });
   };
-  const byResourceId = new Map<string, ClaudeTrialMockControls>();
+  const byResourceId = new Map<string, DshTrialMockControls>();
   const mcpServerNames = new Set<string>();
   for (const planDescriptor of planDescriptors) {
     const planResource = lease.resourcesByResourceId.get(planDescriptor.resourceId)
@@ -707,21 +689,12 @@ async function projectMocks(
   };
 }
 
-async function pathAbsent(path: string): Promise<boolean> {
-  try {
-    await lstat(path);
-    return false;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT';
-  }
-}
-
-export async function captureClaudeCliRunState(
+export async function captureDshRunState(
   lease: OmkBindingResourceLease,
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
   maxInputBytes: number,
-  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
-): Promise<ClaudeCliRunState> {
+  profile: DshResourceProjectionProfile,
+): Promise<DshRunState> {
   if (lease.consumerKind !== 'executor' || lease.bindingId !== target.binding.bindingId) {
     fail(profile, 'RESOURCE_FORBIDDEN', 'received a resource lease for another consumer.');
   }
@@ -773,14 +746,10 @@ export async function captureClaudeCliRunState(
         mcpDescriptor,
       );
   const mockProjection = await projectMocks(profile, lease, target.target);
-  if (profile.mcpMockMode === 'synthetic-server') {
-    if (mcpConfig !== undefined && mockProjection.mcpServerNames.some((serverName) => (
-      mcpConfig.serverNames.includes(serverName)
-    ))) fail(profile, 'MCP_CONFIG_INVALID', 'MCP config and mock controls define the same server name.');
-  } else if (mockProjection.mcpServerNames.some((serverName) => (
+  if (mockProjection.mcpServerNames.some((serverName) => (
     mcpConfig === undefined || !mcpConfig.serverNames.includes(serverName)
   ))) {
-    fail(profile, 'MCP_CONFIG_INVALID', 'SDK MCP mocks require the matching sealed MCP server config.');
+    fail(profile, 'MCP_CONFIG_INVALID', 'MCP mocks require the matching sealed MCP server config.');
   }
   let privateWorkingDirectory: string | undefined;
   try {
@@ -802,7 +771,7 @@ export async function captureClaudeCliRunState(
       ) fail(profile, 'WORKSPACE_INVALID', 'workspace lease does not match the sealed Target.');
       workspaceDirectoriesByResourceId.set(workspaceDescriptor.resourceId, workspace.baseSnapshotPath);
     }
-    privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-claude-run-'));
+    privateWorkingDirectory = await mkdtemp(join(tmpdir(), 'omk-dsh-run-'));
     let systemPromptBytes = 0;
     if (requiresInstructions && projectedArtifact !== undefined) {
       systemPromptBytes = Buffer.byteLength(projectedArtifact.instructions);
@@ -877,12 +846,12 @@ export async function captureClaudeCliRunState(
   }
 }
 
-export async function openClaudeCliTrial(
+export async function openDshTrial(
   trial: Readonly<ExecutorTrialContext>,
-  runState: ClaudeCliRunState,
+  runState: DshRunState,
   maxInputBytes: number,
-  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
-): Promise<ClaudeCliTrialState> {
+  profile: DshResourceProjectionProfile,
+): Promise<DshTrialState> {
   if (canonicalizeJson(trial.executionControl) !== canonicalizeJson(
     resolveEffectiveExecutionControl(runState.executionControls, trial.sampleId),
   )) {
@@ -949,24 +918,14 @@ export async function openClaudeCliTrial(
   });
 }
 
-export async function disposeClaudeCliTrial(
-  runState: ClaudeCliRunState,
-  trialState: ClaudeCliTrialState,
-  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
+export async function disposeDshTrial(
+  runState: DshRunState,
+  trialState: DshTrialState,
+  profile: DshResourceProjectionProfile,
 ): Promise<void> {
   try {
     await releaseTrialSlot({ runState: runState, close: () => trialState.closeWorkspace() });
   } catch {
     fail(profile, 'TRIAL_DISPOSE_FAILED', 'trial state could not be released.');
-  }
-}
-
-export async function disposeClaudeCliMockHandle(
-  handle: CliMockHandle,
-  profile: ClaudeResourceProjectionProfile = CLAUDE_CLI_RESOURCE_PROFILE,
-): Promise<void> {
-  handle.cleanup();
-  if (!(await pathAbsent(handle.rootDir))) {
-    fail(profile, 'ATTEMPT_DISPOSE_FAILED', 'mock materialization could not be disposed.');
   }
 }

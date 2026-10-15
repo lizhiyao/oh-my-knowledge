@@ -120,7 +120,7 @@ samples:
   - **the `tool` field**: tool name (e.g. `"Bash"` / `"Read"` / `"Grep"`). The special value `"*"` wildcards any tool name, paired with `input_contains` for intent-level mocking.
   - **all entries under `match` are AND-ed**:
     - `file_path: string` — strict equality (`~` expanded). **Use only when you can predict the full path** (e.g. `~/.config/x.json`).
-    - `file_path_endswith: string` — suffix match: `actual === suffix`, or `actual` ends with `suffix` right after a path separator (`/` or `\`). **The recommended default** (claude-cli internally normalizes relative paths to cwd-absolute paths, so strict equality always misses).
+    - `file_path_endswith: string` — suffix match: `actual === suffix`, or `actual` ends with `suffix` right after a path separator (`/` or `\`). **The recommended default** (tool calls may use absolute paths even when the sample uses relative paths).
     - `url: string` / `url_glob: string` — for WebFetch / WebSearch, pick one.
     - `command_glob: string` — for Bash, `*` wildcards across newlines (so the LLM's multi-line commands still hit).
     - `input: object` — generic deep-equal subset match (any tool_input field).
@@ -128,7 +128,7 @@ samples:
   - **return source**: every mock declares exactly one of `return`, `return_file`, or `return_seq`. `return` accepts a string or `{stdout, stderr, exit}`; `return_file` loads an external fixture; `return_seq[]` is a state machine whose Nth hit returns the Nth value and remains at the final value after the sequence is exhausted.
 - **assertion-side mock_hit / tool_input_contains**: used together with mocks. `mock_hit: "Bash:2"` means "the 2nd Bash mock must be hit at least once", proving the LLM reached that step. `tool_input_contains: "Bash:logstore_query"` checks that the Bash command string contains `logstore_query`.
   - Every `mock_hit` must reference a declared per-tool mock ordinal. The loader rejects missing or out-of-range references before execution.
-  - Mock support is an executor capability, not a trace capability. `claude` / `claude-sdk` install interception hooks; `codex`, `codex-sdk`, and direct API executors currently do not. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
+  - Mock support is an executor capability, not a trace capability. `codex`, `codex-sdk`, and direct API executors do not install interception hooks; use a custom executor that implements the mock protocol. Unsupported executors auto-generate mockless samples and reject existing mocked samples before evaluation.
 
 **Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. `tripwire` is audit metadata and does not affect scoring or the registered Decision. The current Core diagnostic projection reports only authenticated failures, missing evidence, exclusions, and stable reason codes; it does not infer a `tripwire_intentional` recommendation.
 

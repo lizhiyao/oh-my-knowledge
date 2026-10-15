@@ -567,7 +567,7 @@ describe('compileCliEvaluationInput', () => {
     ));
     expect(judgeBinding).toMatchObject({
       qualification: {
-        executorId: 'anthropic-api',
+        executorId: 'openai-api',
         model: 'judge-a',
         promptVariant: 'rubric-length-debias-on/v1',
         resourceIntegrity: 'digest-before-use',

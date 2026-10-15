@@ -199,7 +199,7 @@ export function ConversationExtractionConfirmation({ preview, turnId, selected, 
     </details>
     <div className="conversation-extract-destination"><span>{t('模型', 'Model')}</span><strong>{executor} / {model || t('尚未设置', 'Not set')}</strong><span>{t('保存到', 'Save to')}</span><span title={workspace}>{workspace}</span></div>
     <details className="conversation-extract-options" open={adjust} onToggle={event => onAdjust(event.currentTarget.open)}><summary>{t('调整本次配置', 'Adjust for this extraction')}</summary><div className="candidate-form">
-      <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} onChange={onExecutor} options={['codex', 'openai-api', 'anthropic-api'].map(value => ({ value, label: value }))}/></label>
+      <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} onChange={onExecutor} options={['codex', 'openai-api'].map(value => ({ value, label: value }))}/></label>
       <label>{t('模型', 'Model')}<Input value={model} onChange={event => onModel(event.target.value)}/></label>
       <label>{t('保存目录', 'Folder')}<Input value={workspace} onChange={event => onWorkspace(event.target.value)}/></label>
     </div></details>

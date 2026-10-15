@@ -31,7 +31,7 @@ omk doctor skills/ --repeat 3 --concurrency 1  # serial (lower peak concurrency)
 omk doctor skills/ --static-only
 ```
 
-Runs the same static lint rules included in default doctor with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `claude` / `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
+Runs the same static lint rules included in default doctor with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
 
 ## As a CI gate
 

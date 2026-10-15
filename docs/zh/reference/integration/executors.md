@@ -12,16 +12,21 @@
 
 | 执行器 | 适用场景 | 说明 |
 |--------|----------|------|
-| `claude` | Claude Code 环境下的 skill 评测 | 通过 `claude -p` 调用 Claude CLI |
-| `claude-sdk` | agent 评测（工具 / 轮次 trace）、结构化输出 | 通过 Claude Agent SDK 调用，抽取 turns / toolCalls trace，无 stdout 解析、避免 buffer 截断 |
 | `codex` | Codex / ChatGPT desktop 编程任务（CLI） | 通过 `codex exec --json` 调用，需本地装好登录的 codex（`@openai/codex`）；best-effort tool trace，**costUSD 不报**（codex 自身不输出 USD，需外部账单核算） |
 | `codex-sdk` | Codex agent 评测（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
-| `anthropic-api` | CI / 没装 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
-| `openai-api` | CI / 没装 CLI；或接非 Claude 模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
+| `openai-api` | CI / 没装 CLI；或接 OpenAI 兼容模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
 
-API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
+`openai-api` 通过 `OPENAI_BASE_URL` 自定义 Base URL。
 
 原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义执行器协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
+
+## 移除 Anthropic：BREAKING-RUNTIME／BREAKING-STORAGE／BREAKING-PROMPT
+
+移除内置 `claude`、`claude-sdk`、`anthropic-api` 执行器及可选 Claude Agent SDK 依赖。显式旧执行器 ID 会报错，不会替换服务商或模型。所有宿主的默认执行器统一为 `codex`。开始新比较前，检查 `executor`、评委条目、`OMK_EXECUTOR` 与模型选择。历史 trace 仍可只读解析；已有执行证据不改写，也不会被当成 Codex 证据。
+
+`omk install` 只面向 Codex/AGENTS 或显式 `--dest`，不再安装到 Claude Code。移除 `CCV_PROXY_URL` 与 Claude hook 变量 `OMK_MOCK_SETTINGS_FILE`。自定义模型调用脚本自行消费 manifest 或可选 fake MCP 配置。样本生成 prompt 版本升级为 `omk.sample-generation/v2`，不自动重生成已有样本文件。
+
+用户设置升级为 `schemaVersion: 2`，Studio 载体测量记录使用 `omk-carrier-measurement-v2`；只读取当前版本。迁移前备份 v1 文件：保留目录和语言，改选 `codex` 或 `openai-api`，明确选择对应模型，再将 `schemaVersion` 设为 2。旧载体测量元数据保留在磁盘但不再加载；保留 canonical run 报告，重新预览测量。详见[设置](../shared/settings.md)。更换执行器或重新生成样本会改变测量条件，应建立新基线。
 
 ## Sample mock 兼容性
 
@@ -29,10 +34,9 @@ API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_
 
 | 执行器 | `Sample.mocks` 支持 |
 |--------|---------------------|
-| `claude` / `claude-sdk` | 支持，通过原生 hooks 拦截 |
 | `codex` / `codex-sdk` | 不支持；当前 CLI 和 SDK 能输出 trace，但没有工具拦截 hook |
-| `anthropic-api` / `openai-api` | 不支持 |
-| 自定义执行器 | 通过 `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE` 委托；命令必须安装或消费 omk 提供的 hook |
+| `openai-api` | 不支持 |
+| 自定义执行器 | 旧模型调用脚本接收 `OMK_MOCKS_FILE`／可选 `OMK_MOCK_MCP_CONFIG_FILE`，自行实现拦截和统计；Core 目标适配器消费封存的资源描述 |
 
 目标执行器不支持拦截时，`omk sample` 会自动生成无 mock 用例，并移除依赖模拟调用的正向证据（`mock_hit`、`tools_called`、`tools_count_min`、`tool_input_contains`、`tool_output_contains`）。模型若仍输出 `environment`，其中的事实会迁移到明确标注「未物化」的 `context`，不会被丢弃或冒充 fixture。`omk eval` 会在任何模型调用前拒绝已有的 mocks 用例；`--dry-run` 和 `--skip-doctor` 也不能绕过，避免把评测环境不兼容误算成模型失败。
 
@@ -40,13 +44,11 @@ API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_
 
 ## 默认 runtime 怎么选
 
-CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yaml` → `OMK_*` 环境偏好 → 自动检测。
+CLI、`eval.yaml` 和环境变量的优先级是：显式 CLI flag → `eval.yaml` → `OMK_*` 环境偏好 → `codex`。
 
 - ChatGPT desktop 的 Codex 任务内自动选择 `codex`。
-- 普通终端只有 Codex CLI 可用时选择 `codex`。
-- 普通终端同时装有 Claude 和 Codex 时保留 `claude` 默认，避免升级后无提示切换历史测量 runtime。
 - 显式选择 Codex 而没有传 `--model` 时，从 `$CODEX_HOME/config.toml` 或 `~/.codex/config.toml` 解析模型：顶层 `profile` 指向某个 profile 时取该 profile 的 `model`（该 profile 未声明模型时沿用顶层 `model`），否则取顶层 `model`。
-- 默认评委跟随所选执行器：Claude 使用 `claude:haiku`；Codex 使用与被测任务相同的模型，不会回落到 Claude。
+- 默认评委沿用所选执行器和被测模型；显式 `judgeModels`／`OMK_JUDGE_MODELS` 优先。
 - `eval`、`doctor`、`sample`、`evolve` 和 `observe inbox --llm-enhanced-review` 共用这套解析逻辑。
 
 要在普通终端固定使用 Codex，把下面的偏好加入 shell 配置，例如 `~/.zshrc`：
@@ -59,9 +61,11 @@ export OMK_EXECUTOR=codex
 
 不设置两个可选变量时，模型读取 Codex 配置，评委沿用被测模型。
 
-**怎么选：** 在 Codex 环境直接用 `codex`，它的测量隔离最完整；只有明确需要 SDK 事件流时再用 `codex-sdk`。Claude Code 环境用 `claude`；要工具调用 / 轮次断言或结构化输出可换 `claude-sdk`。CI 上没 CLI 用 `*-api`；其它厂商把 `openai-api` 指向它的 base URL 或自己写执行器。接非 Claude 模型见[使用非 Claude 模型](../../guides/integration/non-claude-models.md)。
+**怎么选：** 在 Codex 环境直接用 `codex`，它的测量隔离最完整；只有明确需要 SDK 事件流时再用 `codex-sdk`。CI 上没 CLI 用 `openai-api`；其它厂商把 `openai-api` 指向它的 base URL 或自己写执行器。兼容端点配置见[使用 OpenAI 兼容模型](../../guides/integration/non-claude-models.md)。
 
 **Codex construct-validity 说明：**
+
+Core Codex 适配器目前只声明 `runtime-default` skill 发现。严格 `baseline` 要求禁用发现，因此会在执行前被拒绝，不会静默降为“只清空注入 prompt”。Codex 比较使用两个显式 artifact 版本；裸模型 baseline 使用 `openai-api`。用户、管理员及内置 skills 可能位于 `cwd` 之外，仅清空工作目录不能证明完整 skill 隔离。参见[官方发现位置与逐 skill 控制](https://learn.chatgpt.com/docs/build-skills)。
 
 - **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。Core artifact 会封存 executor 与 evaluator Runtime identity，包括宿主能取得的本机 binary 或 SDK 证据。除非在 `eval.yaml` 显式提供 `judgeModels[].deploymentRevision`，远端评委部署会保持 `opaque/unknown`；即使提供，也只是 `self-reported/declared`。Runtime identity 不同时，结果要视为 runtime 对比，而不只是 prompt/template 行为。详见[统计严谨性](../../explanation/statistical-rigor.md#三、评委去偏与-prompt-identity)。
 - **配置与会话隔离**：omk 只在启动前解析 Codex 配置里的模型（顶层 `profile` 选中时取该 profile 的模型），然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
@@ -179,18 +183,15 @@ Codex 的 `Reconnecting...` 是传输重连通知；只有后续出现合法的�
 
 ## 前置要求
 
-OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。默认的 `claude`／`codex` CLI 执行器、API 执行器、自定义执行器和 DSH 宿主插件都不需要它们。只有明确选择 `*-sdk` 执行器时，才在 OMK 所在的同一作用域安装对应 SDK。
+OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。`codex` CLI 执行器、API 执行器、自定义执行器和 DSH 宿主插件都不需要它们。只有明确选择 `*-sdk` 执行器时，才在 OMK 所在的同一作用域安装对应 SDK。
 
-- **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
-- **claude-sdk**：本地安装可选 Agent SDK：`npm i @anthropic-ai/claude-agent-sdk@^0.3.143`；如果 OMK 是全局安装，则在同一全局 npm prefix 执行 `npm i -g @anthropic-ai/claude-agent-sdk@^0.3.143`，随后完成 Claude 认证
 - **codex**：安装 Codex CLI（`npm i -g @openai/codex`）并认证
 - **codex-sdk**：本地安装兼容的可选 SDK：`npm i @openai/codex-sdk@^0.149.0`；如果 OMK 是全局安装，则执行 `npm i -g @openai/codex-sdk@^0.149.0`（自带 `@openai/codex` binary）
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
-- **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 
 ## 相关
 
 - [Artifact 与 variant 布局](../evaluation/artifact-layout.md) —— variant 如何解析为 artifact + runtime context
 - [评测 agent](../../guides/evaluation/agent-eval.md) —— source-neutral agent 评测与显式项目上下文
-- [使用非 Claude 模型](../../guides/integration/non-claude-models.md) —— GLM / 通义 / DeepSeek / Moonshot / Ollama
+- [使用 OpenAI 兼容模型](../../guides/integration/non-claude-models.md) —— GLM / 通义 / DeepSeek / Moonshot / Ollama

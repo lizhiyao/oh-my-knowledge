@@ -12,7 +12,8 @@ import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { Assertion } from '../inputs/contracts/assertion.js';
 import type { ObservationInboxItem } from '../../observability/contracts/inbox.js';
 
-const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
+const SYSTEM_PROMPT = `版本：omk.sample-generation/v2
+你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 
 样本结构决策（必须先做）：先扫一遍 skill 内容判断它属于哪一类，按对应配比和数量生成。
 - **工作流型** — skill 含"典型工作流"/"端到端"/明确多步流程章节，或描述"用户做一件事要按顺序调多个工具"的领域（端上自动化 / CI 部署 / API 编排 / 多步业务查询等）。
@@ -279,7 +280,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
       "return_seq": [<r1>, <r2>]   // optional 状态机:同 mock 多次命中按序返回
     }
   **file_path 匹配的关键陷阱**:
-    - claude-cli / claude-sdk 的 PreToolUse hook 拿到的 file_path 是 LLM 原话 — LLM 经常把
+    - 工具调用的 file_path 是 LLM 实际传入的字符串 — LLM 经常把
       相对路径写成绝对(尤其当 environment.notes 给了 cwd 提示),mock 用 file_path 严格相等
       会 miss 整条 sample。**默认用 file_path_endswith 后缀匹配**(actual 等于 suffix
       或在路径分隔符后以 suffix 结尾即命中),无论 LLM 传相对、绝对、~ 起头都能命中。

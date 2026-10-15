@@ -7,7 +7,7 @@ Studio 侧栏底部的“设置与帮助”管理这台电脑上的用户偏好�
 | 配置 | 内置默认 | 作用范围 |
 | --- | --- | --- |
 | 知识保存目录 | `$OMK_HOME/knowledge` | Studio 提炼与 `omk observe knowledge`；显式 `workspace`／`--workspace` 可覆盖 |
-| 知识提炼调用方式 | `codex` | 知识提炼；支持 `codex`、`openai-api`、`anthropic-api` |
+| 知识提炼调用方式 | `codex` | 知识提炼；支持 `codex`、`openai-api` |
 | 知识提炼默认模型 | 未设置 | 未设置时必须在提炼前选择；切换调用方式不沿用其他调用方式的模型 |
 | 默认语言 | 自动：系统 locale，兜底 `zh` | Studio 与 CLI；`lang`／`--lang` 可覆盖 |
 
@@ -20,7 +20,7 @@ Studio 侧栏底部的“设置与帮助”管理这台电脑上的用户偏好�
 | 范围 | 配置 | 管理方式 |
 | --- | --- | --- |
 | 启动和数据根 | `OMK_HOME`、Studio `--host`／`--port`、`OMK_REPORT_HOST`／`OMK_REPORT_PORT` | 环境或启动参数；不在运行中切换服务根目录或监听地址 |
-| API 凭证和地址 | `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`OPENAI_BASE_URL`、`ANTHROPIC_BASE_URL` | 环境；设置文件不接受密钥，不显示密钥内容 |
+| API 凭证和地址 | `OPENAI_API_KEY`、`OPENAI_BASE_URL` | 环境；设置文件不接受密钥，不显示密钥内容 |
 | 外部运行时 | `CODEX_HOME`、Codex 自身配置、PATH、代理配置 | 对应运行时或启动环境；全局设置不修改第三方配置 |
 | 通用执行／评测默认 | `OMK_EXECUTOR`、`OMK_MODEL`、`OMK_JUDGE_MODELS` | 现有 CLI 环境覆盖；评测不读取知识提炼的默认模型 |
 | 项目和单次评测 | 评测配置、评委、样本、断言、并发、预算、报告和观测目录 | 对应项目文件或命令参数；不提升为用户偏好，避免改变可比性 |
@@ -33,14 +33,15 @@ Studio 侧栏底部的“设置与帮助”管理这台电脑上的用户偏好�
 
 | 变量 | 作用 |
 | --- | --- |
-| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex`、`codex-sdk` 或 `claude`；不会替你安装或认证运行时。 |
+| `OMK_EXECUTOR` | 默认执行器偏好，例如 `codex`、`codex-sdk` 或 `openai-api`；不会替你安装或认证运行时。 |
 | `OMK_MODEL` | 默认被测模型；未设置时，Codex 按自身配置选择。 |
 | `OMK_JUDGE_MODELS` | 默认评委列表，使用 `executor:model[,...]` 格式。 |
 | `OMK_REPORT_PORT` | 本地报告服务监听端口，默认 `7799`；以启动命令返回的实际地址为准。 |
-| `CCV_PROXY_URL` | 高级运行时代理入口：启动子进程时映射为 `ANTHROPIC_BASE_URL`。是否生效由所选运行时决定，不是所有执行器的通用代理保证。 |
 
 执行器与可选 SDK 的安装条件见[运行时前置要求](../integration/executors.md#前置要求)。仅查看已有工作记录无需调用模型；环境变量的填写也不代表认证或调用已成功。
 
 ## 文件与并发
 
-配置使用 `schemaVersion: 1`，只允许已知字段。损坏文件、未知版本、相对目录和凭证字段会被拒绝；不会静默覆盖。多窗口保存携带读取版本，发生冲突时需要重新读取。显式选择的模型调用方式、模型和来源仍记录在提炼运行中。
+配置使用 `schemaVersion: 2`，只允许已知字段。损坏文件、未知版本、相对目录和凭证字段会被拒绝；不会静默覆盖。多窗口保存携带读取版本，发生冲突时需要重新读取。显式选择的模型调用方式、模型和来源仍记录在提炼运行中。
+
+升级 v1 设置前先备份文件，显式选择 `codex` 或 `openai-api` 及其模型，再把 `schemaVersion` 设为 2。旧版本会被拒绝，不会自动覆盖。详见[执行器移除与迁移](../integration/executors.md)。

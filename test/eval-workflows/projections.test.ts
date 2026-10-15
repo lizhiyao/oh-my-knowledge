@@ -329,7 +329,7 @@ describe('Evaluation Core downstream projections', () => {
   it('warns when the gold annotator matches the sealed evaluator model identity', async () => {
     const source = await storedScenario('rag', (definition) => {
       definition.evaluators[0].config = {
-        runtime: { executorId: 'anthropic-api', model: 'judge-a' },
+        runtime: { executorId: 'openai-api', model: 'judge-a' },
       };
     });
     const record = source.evaluation.records.find((entry) => (
@@ -344,7 +344,7 @@ describe('Evaluation Core downstream projections', () => {
       source,
       gold: {
         metadata: {
-          annotator: 'ANTHROPIC-API:JUDGE-A',
+          annotator: 'OPENAI-API:JUDGE-A',
           annotatedAt: '2026-08-30',
           version: '1',
           scale: { min: 0, max: 1 },

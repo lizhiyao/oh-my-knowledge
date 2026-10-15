@@ -4,9 +4,7 @@ import type { CodexEvent } from './protocol.js';
 import { normalizeToolIdentity } from '../../contracts/tool-identity.js';
 
 // Codex CLI(codex 0.125)`exec --json` 与 SDK ThreadEvent 共用的 omk trace 抽取器。
-// 跟 Claude message trace 不同源:
-//   Claude SDK 是 message[block] 嵌套结构,有 tool_use / tool_result 配对;
-//   Codex 是事件流(turn.started → turn.completed,夹杂 item.* 事件),每个
+// Codex 是事件流(turn.started → turn.completed,夹杂 item.* 事件),每个
 //   item.completed 事件直接生成完整 ToolCallInfo,**不需要 use/result 配对**。
 //
 // schema(基于 codex 0.125 实测,fixture 测试锁住假设;漂移时 fixture 先红):

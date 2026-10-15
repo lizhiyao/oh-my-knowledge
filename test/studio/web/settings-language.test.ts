@@ -22,7 +22,7 @@ describe('languageField()', () => {
   });
 
   it('有效值与保存值分开呈现，缺席模型不冒充已配置且外部文本转义', () => {
-    const data: StudioSettings = { path: '/local/settings.json', revision: 'missing', settings: { schemaVersion: 1, knowledge: { workspace: '/saved', executor: 'codex', model: 'saved-model' } },
+    const data: StudioSettings = { path: '/local/settings.json', revision: 'missing', settings: { schemaVersion: 2, knowledge: { workspace: '/saved', executor: 'codex', model: 'saved-model' } },
       effective: { workspace: '/effective/<script>', executor: 'openai-api', model: '', language: 'en' }, defaults: { workspace: '/default', executor: 'codex', model: '' }, overrides: ['OMK_EXECUTOR'] };
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToString(createElement(EffectiveSettings, { data, lang }));

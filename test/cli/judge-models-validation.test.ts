@@ -37,7 +37,7 @@ const CASES: Array<{ name: string; command: CommandClass; argv: string[] }> = [
 describe('--judge-models validation: CLI exits 2 with friendly error', () => {
   it.each(CASES)('omk $name --judge-models <duplicate> exits 2 with friendly error', async ({ command, argv }) => {
     await assert.rejects(
-      () => runCommand(command, [...argv, '--judge-models', 'claude:haiku,claude:haiku']),
+      () => runCommand(command, [...argv, '--judge-models', 'codex:judge-small,codex:judge-small']),
       (err: unknown) => {
         const e = err as CommandRunError;
         assert.equal(e.code, 2, `expected exit 2, got ${e.code}; stderr: ${e.stderr.slice(0, 300)}`);
@@ -46,7 +46,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
           `stderr should start with "error:", got: ${e.stderr.slice(0, 200)}`,
         );
         assert.ok(
-          e.stderr.includes('duplicate') && e.stderr.includes('claude:haiku'),
+          e.stderr.includes('duplicate') && e.stderr.includes('codex:judge-small'),
           `stderr should mention duplicate entry: ${e.stderr.slice(0, 200)}`,
         );
         // 关键不变量:不能 leak Error stack trace。
@@ -65,7 +65,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
       () => runCommand(EvolveCommand, [
         V1_SKILL,
         '--rounds', '1',
-        '--judge-models', 'claude:haiku,claude:sonnet',
+        '--judge-models', 'codex:judge-small,codex:test-model',
       ]),
       (err: unknown) => {
         const e = err as CommandRunError;
@@ -85,7 +85,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':haiku']),
+      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':judge-small']),
       (err: unknown) => {
         const e = err as CommandRunError;
         assert.equal(e.code, 2);

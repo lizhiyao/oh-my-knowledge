@@ -120,7 +120,7 @@ samples:
   - **`tool` 字段**：工具名（如 `"Bash"` / `"Read"` / `"Grep"`）。特殊值 `"*"`：通配任何工具名，配合 `input_contains` 做 intent-level mock。
   - **`match` 字段所有项 AND**：
     - `file_path: string` —— 严格相等（展开 `~`）。**仅在能预测完整路径时用**（如 `~/.config/x.json`）。
-    - `file_path_endswith: string` —— 后缀匹配：actual === suffix 或在路径分隔符（`/` 或 `\`）后以 suffix 结尾。**默认推荐**（claude-cli 内部把相对路径 normalize 成 cwd 绝对路径，严格相等永远 miss）。
+    - `file_path_endswith: string` —— 后缀匹配：actual === suffix 或在路径分隔符（`/` 或 `\`）后以 suffix 结尾。**默认推荐**（工具调用可能使用绝对路径，严格相等可能无法匹配样本里的相对路径）。
     - `url: string` / `url_glob: string` —— WebFetch / WebSearch 用，二选一。
     - `command_glob: string` —— Bash 用，`*` 通配跨换行（LLM 多行命令也命中）。
     - `input: object` —— 通用 deep-equal 子集匹配（可写任意 tool_input 字段）。
@@ -128,7 +128,7 @@ samples:
   - **返回源**：每条 mock 必须且只能声明 `return`、`return_file`、`return_seq` 之一。`return` 接受 string 或 `{stdout, stderr, exit}`；`return_file` 加载外置 fixture；`return_seq[]` 是按命中次数取值的状态机，序列耗尽后保持最后一个值。
 - **断言侧的 mock_hit / tool_input_contains**：配合 mocks 使用。`mock_hit: "Bash:2"` 表示「第 2 条 Bash mock 必须被命中至少一次」，证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
   - 每条 `mock_hit` 必须指向该工具已经声明的 mock 序号。引用不存在或越界时，loader 会在执行前拒绝用例。
-  - mock 支持是执行器能力，不是 trace 能力。`claude` / `claude-sdk` 会安装拦截 hooks；`codex`、`codex-sdk` 和 API 直调执行器目前不支持。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
+  - mock 支持是执行器能力，不是 trace 能力。`codex`、`codex-sdk` 和 API 直调执行器不安装拦截 hooks；需要 mock 时使用实现该协议的自定义执行器。选择不支持的执行器时，生成阶段自动切换为无 mock 用例，评测阶段则在运行前拒绝已有 mocks 用例。
 
 **与 grading / judge 的关系**：沙箱字段（mocks / environment / tripwire / mocksStrict）**不进 judge prompt**，judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。`tripwire` 是审计元数据，不影响评分或已注册 Decision。当前 Core diagnostic projection 只报告经过认证的失败、缺失证据、排除项和稳定 reason code，不推断 `tripwire_intentional` 建议。
 

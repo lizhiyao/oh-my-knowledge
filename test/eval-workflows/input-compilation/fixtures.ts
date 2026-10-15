@@ -287,7 +287,7 @@ export function validResolvedCliInput(): ResolvedCliEvaluationInput {
         },
         {
           ensembleMemberId: 'judge-a',
-          executorId: 'anthropic-api',
+          executorId: 'openai-api',
           model: 'judge-a',
         },
       ],

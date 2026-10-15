@@ -8,16 +8,16 @@ import { parseJudgeModelsArg } from '../../../src/eval-workflows/inputs/judge-mo
  */
 describe('parseJudgeModelsArg', () => {
   it('单条 executor:model 解析为 1-entry 数组', () => {
-    assert.deepEqual(parseJudgeModelsArg('claude:haiku'), [
-      { executor: 'claude', model: 'haiku' },
+    assert.deepEqual(parseJudgeModelsArg('codex:judge-small'), [
+      { executor: 'codex', model: 'judge-small' },
     ]);
   });
 
   it('多条逗号分隔为 ensemble 数组,保留输入顺序', () => {
     assert.deepEqual(
-      parseJudgeModelsArg('claude:opus,openai:gpt-4o'),
+      parseJudgeModelsArg('codex:judge-large,openai:gpt-4o'),
       [
-        { executor: 'claude', model: 'opus' },
+        { executor: 'codex', model: 'judge-large' },
         { executor: 'openai', model: 'gpt-4o' },
       ],
     );
@@ -25,17 +25,17 @@ describe('parseJudgeModelsArg', () => {
 
   it('reject 重复 executor:model (ensemble 聚合按 judge id 去重)', () => {
     assert.throws(
-      () => parseJudgeModelsArg('claude:haiku,claude:haiku'),
-      /duplicate entry "claude:haiku"/,
+      () => parseJudgeModelsArg('codex:judge-small,codex:judge-small'),
+      /duplicate entry "codex:judge-small"/,
     );
   });
 
   it('reject 缺 executor 部分', () => {
-    assert.throws(() => parseJudgeModelsArg(':haiku'), /must be 'executor:model'/);
+    assert.throws(() => parseJudgeModelsArg(':judge-small'), /must be 'executor:model'/);
   });
 
   it('reject 缺 model 部分', () => {
-    assert.throws(() => parseJudgeModelsArg('claude:'), /must be 'executor:model'/);
+    assert.throws(() => parseJudgeModelsArg('codex:'), /must be 'executor:model'/);
   });
 
   it('reject 空串', () => {

@@ -158,8 +158,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -180,8 +180,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -218,8 +218,8 @@ describe('runDoctor', () => {
       await runDoctor({
         target: dir,
         cwd: dir,
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
         rules: [passingRule],
@@ -235,8 +235,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [failingRule],
@@ -249,8 +249,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [warningRule],
@@ -266,8 +266,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [warnSeverityFailingRule],
@@ -283,8 +283,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [crashingRule],
@@ -301,8 +301,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [failingRule, passingRule],
@@ -320,8 +320,8 @@ describe('runDoctor', () => {
       const report = await runDoctor({
         target: tmp,
         cwd: '/tmp',
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
         rules: [passingRule],
@@ -337,8 +337,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -365,8 +365,8 @@ describe('runDoctor', () => {
       const report = await runDoctor({
         target: EXAMPLE_SKILLS_DIR,
         cwd: '/tmp',
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
         rules: [passingRule],
@@ -390,8 +390,8 @@ describe('runDoctor', () => {
       target: '/tmp/some/non-existent/path',  // 故意指错, 应被忽略
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -417,8 +417,8 @@ describe('runDoctor', () => {
       const report = await runDoctor({
         target: EXAMPLE_SKILLS_DIR,
         cwd: '/tmp',
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
   
@@ -443,8 +443,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
 
@@ -462,8 +462,8 @@ describe('runDoctor', () => {
       artifacts: [],
       target: EXAMPLE_SKILLS_DIR,  // 故意误导, 应被忽略
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
     });
@@ -475,8 +475,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -496,8 +496,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [customRule],
@@ -520,8 +520,8 @@ describe('runDoctor', () => {
     const report = await runDoctor({
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
 
@@ -550,8 +550,8 @@ describe('runDoctor', () => {
         artifacts: [inlineArtifact],
         cwd: tmpOtherCwd,        // 文件不在这里
         dependencyCwd: tmpDepDir, // 文件在这里 — 应被 rule 用作 base
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
   
@@ -565,8 +565,8 @@ describe('runDoctor', () => {
       const reportFail = await runDoctor({
         artifacts: [inlineArtifact],
         cwd: tmpOtherCwd,
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
   
@@ -598,8 +598,8 @@ describe('runDoctor', () => {
         artifacts: [artifactWithCwd],
         cwd: '/tmp',
         dependencyCwd: tmpOptsDepCwd, // 没 fixture, 应被 artifact.cwd 覆盖
-        executorName: 'claude',
-        model: 'sonnet',
+        executorName: 'codex',
+        model: 'test-model',
         timeoutMs: 8000,
         lang: 'zh',
   
@@ -619,8 +619,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -633,8 +633,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule],
@@ -646,8 +646,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [warningRule],
@@ -659,8 +659,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [failingRule, warningRule],
@@ -672,8 +672,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule, warningRule, skippedRule],
@@ -705,8 +705,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [passingRule, warningRule],
@@ -744,8 +744,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [composer],
@@ -787,8 +787,8 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     const report = await runDoctor({
       artifacts: [inlineArtifact],
       cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
+      executorName: 'codex',
+      model: 'test-model',
       timeoutMs: 8000,
       lang: 'zh',
       rules: [crashing],

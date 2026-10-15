@@ -26,7 +26,7 @@ function unsupportedMocksMessage(executorName: string): string {
     + `继续运行会让 mock_hit 在结构上必然失败并产生伪证据。`
     + '受影响用例：<programmatic-input>。'
     + '请用「omk sample --no-mock」重新生成、删除 mocks/mock_hit，'
-    + '或改用 claude/claude-sdk 评测。';
+    + '或使用实现 mock 协议的自定义执行器评测。';
 }
 
 export function assertExecutorInputCapabilities(

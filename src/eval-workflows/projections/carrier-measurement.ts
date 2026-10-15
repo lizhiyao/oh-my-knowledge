@@ -4,7 +4,7 @@ import type { CoreCliRunOutcome } from './contracts.js';
 export type CarrierControl = { sourceKind: 'version'; artifactId: string; version: number } | { sourceKind: 'local'; path: string };
 export interface CarrierMeasurementInput {
   workspace: string; artifactId: string; version: number; control: CarrierControl;
-  samples: string; executor: 'codex' | 'claude' | 'openai-api' | 'anthropic-api'; model: string;
+  samples: string; executor: 'codex' | 'openai-api'; model: string;
   judge: boolean; judgeModel: string;
 }
 export interface CarrierMeasurementPlan {

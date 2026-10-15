@@ -1,6 +1,6 @@
 import type { ExecResult } from '../contracts/result.js';
 import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
-import { materializeForCliConfigDir } from '../mock-runtime/runtime.js';
+import { materializeForScript } from '../mock-runtime/runtime.js';
 import {
   executorResultValidationError,
   normalizeExecResultToolIdentities,
@@ -134,22 +134,16 @@ export function createScriptExecutor(command: string): ExecutorFn {
     const input = JSON.stringify({ model, system: system || '', prompt });
     const start = Date.now();
 
-    // mock 注入:复用 claude-cli 的物化逻辑(临时目录 + on-disk hook + mocks.json),把
-    // settings / mcp-config / mocks 文件路径通过 env 暴露给脚本。脚本若包的是 Claude Code
-    // 兼容 CLI,自行把 OMK_MOCK_SETTINGS_FILE 透传成 `--settings`(或把其中的 hook 打包成
-    // `--plugin-dir` 插件)即可复用 omk 的 PreToolUse mock hook;不支持的脚本忽略这些 env
-    // 即可(向后兼容)。env 是局部对象、不改 process.env,并发多 eval 各 spawn 独立快照、
-    // 互不串台;临时目录由 mkdtemp 唯一命名,finally 里 cleanup 删除。
+    // 每次调用独立物化 manifest 与可选 MCP 配置，退出后清理。
     const mockHandle = mocks && mocks.length > 0
-      ? materializeForCliConfigDir(mocks, mocksBaseDir, !!mocksStrict)
+      ? materializeForScript(mocks, mocksBaseDir, !!mocksStrict)
       : null;
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (mockHandle) {
       Object.assign(env, mockHandle.env);                       // OMK_MOCKS_FILE
-      env.OMK_MOCK_SETTINGS_FILE = mockHandle.settingsFile;
       if (mockHandle.mcpConfigFile) env.OMK_MOCK_MCP_CONFIG_FILE = mockHandle.mcpConfigFile;
     }
-    // 与 claude-cli / claude-sdk 对齐:每条返回路径(成功/解析失败/超时/中断/错误)都回填
+    // 每条返回路径(成功/解析失败/超时/中断/错误)都回填
     // mockStats,出错样本也能看到 mock 命中统计。readStats 内部已对缺文件/坏 JSON 兜底,
     // 这里再包一层 try/catch 防御(不让取统计反而把成功结果带崩)。必须在 finally cleanup
     // 删临时目录之前读 —— return 表达式先求值,再走 finally,顺序正确。

@@ -17,18 +17,13 @@ export type RunMessageKey =
   | 'cli.run.next.evidence'
 
   | 'cli.run.batch_verdict_header'
-  | 'cli.run.codex_fallback_hint'
   | 'cli.run.codex_auth_hint'
   | 'cli.run.codex_cli_upgrade_hint'
   | 'cli.run.codex_cli_start_hint'
   | 'cli.run.codex_cli_failure_hint'
-  | 'cli.run.claude_cli_start_hint'
-  | 'cli.run.claude_cli_failure_hint'
   | 'cli.run.codex_model_hint'
   | 'cli.run.openai_api_auth_hint'
-  | 'cli.run.openai_api_model_hint'
-  | 'cli.run.anthropic_api_auth_hint'
-  | 'cli.run.anthropic_api_model_hint';
+  | 'cli.run.openai_api_model_hint';
 
 export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.codex_cli_upgrade_hint': {
@@ -42,14 +37,6 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.codex_cli_failure_hint': {
     zh: 'Codex CLI 调用失败。请查看失败调用的诊断，检查登录状态、模型访问权限与网络；当前错误不能确定是否需要升级。复测时保持相同模型与用例。',
     en: 'Codex CLI failed. Inspect the failed call diagnostics and check authentication, model access, and connectivity; this error does not establish that an upgrade is needed. Keep the same model and cases when rerunning.',
-  },
-  'cli.run.claude_cli_start_hint': {
-    zh: 'Claude Code CLI 未能启动或接收输入。请在运行 OMK 的同一环境检查 claude --version、可执行文件路径与执行权限。',
-    en: 'Claude Code CLI could not start or receive input. Check claude --version, the executable path, and execution permissions in the same environment as OMK.',
-  },
-  'cli.run.claude_cli_failure_hint': {
-    zh: 'Claude Code CLI 调用失败。请查看失败调用的诊断，检查登录状态、模型访问权限与网络；当前错误不能确定是否需要升级。复测时保持相同模型与用例。',
-    en: 'Claude Code CLI failed. Inspect the failed call diagnostics and check authentication, model access, and connectivity; this error does not establish that an upgrade is needed. Keep the same model and cases when rerunning.',
   },
   "cli.run.custom_executor_path": { zh: "无法读取自定义执行器。请将 --executor 指向存在且可执行的单个文件；不接受 \"node script.mjs\" 这类带参数的命令。脚本请添加 shebang 并设置执行权限，或用可执行包装脚本调用服务。路径相对于项目目录解析。", en: "Cannot read the custom executor. Point --executor to one existing executable file, not a command with arguments such as \"node script.mjs\". Add a shebang and execution permission, or use an executable wrapper. Relative paths resolve from the project directory." },
   "cli.run.summary.verdict": { zh: "评测结论：{verdict}", en: "Evaluation verdict: {verdict}" },
@@ -70,17 +57,13 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     zh: '批量评测结论：{status}（{passed}/{total} 通过）',
     en: 'Batch verdict: {status} ({passed}/{total} passed)',
   },
-  'cli.run.codex_fallback_hint': {
-    zh: '\n提示：当前失败的是 Claude 系列执行器。先确认 Claude Code 已登录；如果你在 Codex 环境里，也可以把模型运行参数改为：{flags}。{codexModelHint}codex 执行器目前不会报告 costUSD。',
-    en: '\nHint: the failing runtime is Claude-based. First confirm Claude Code is authenticated; in a Codex environment, you can also switch the model runtime flags to: {flags}. {codexModelHint} The codex executor does not report costUSD yet.',
-  },
   'cli.run.codex_auth_hint': {
-    zh: '\n提示：当前失败的是 Codex 系列执行器。先确认 Codex CLI / SDK 已安装并完成登录；如果你有 Claude Code 可用，可以改走 Claude：{claudeFlags}；如果要继续走 OpenAI API，可以改为：{openaiFlags}，并设置 OPENAI_API_KEY。openai-api 会按 API 响应记录 token / cost。',
-    en: '\nHint: the failing runtime is Codex-based. First confirm the Codex CLI / SDK is installed and authenticated; if Claude Code is available, switch to Claude: {claudeFlags}; to stay on the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY. openai-api records token / cost from API responses.',
+    zh: '\n提示：当前失败的是 Codex 系列执行器。先确认 Codex CLI / SDK 已安装并完成登录；如果要继续走 OpenAI API，可以改为：{openaiFlags}，并设置 OPENAI_API_KEY。openai-api 会按 API 响应记录 token / cost。',
+    en: '\nHint: the failing runtime is Codex-based. First confirm the Codex CLI / SDK is installed and authenticated; to stay on the OpenAI API path, switch to: {openaiFlags}, and set OPENAI_API_KEY. openai-api records token / cost from API responses.',
   },
   'cli.run.codex_model_hint': {
-    zh: '\n提示：当前失败的是 Codex 系列执行器，但模型名看起来不可用。可以先按本机 Codex 配置重试：{codexFlags}（{codexModelHint}）；也可以先运行 `{codexExec}` 验证模型是否可用。若只是想先跑通，可以改走 Claude：{claudeFlags}；或继续走 OpenAI API：{openaiFlags}，并设置 OPENAI_API_KEY。',
-    en: '\nHint: the failing runtime is Codex-based, but the model name appears unavailable. Retry with the local Codex config model: {codexFlags} ({codexModelHint}); you can also run `{codexExec}` to verify the model. To just get a first run through, switch to Claude: {claudeFlags}; or stay on the OpenAI API path: {openaiFlags}, and set OPENAI_API_KEY.',
+    zh: '\n提示：当前失败的是 Codex 系列执行器，但模型名看起来不可用。可以先按本机 Codex 配置重试：{codexFlags}（{codexModelHint}）；也可以先运行 `{codexExec}` 验证模型是否可用。也可以改用 OpenAI API：{openaiFlags}，并设置 OPENAI_API_KEY。',
+    en: '\nHint: the failing runtime is Codex-based, but the model name appears unavailable. Retry with the local Codex config model: {codexFlags} ({codexModelHint}); you can also run `{codexExec}` to verify the model. You can also use OpenAI API: {openaiFlags}, and set OPENAI_API_KEY.',
   },
   'cli.run.openai_api_auth_hint': {
     zh: '\n提示：当前失败的是 OpenAI API 执行器。请检查 OPENAI_API_KEY / OPENAI_BASE_URL 是否可用，并确认模型名对当前端点可用。',
@@ -89,13 +72,5 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
   'cli.run.openai_api_model_hint': {
     zh: '\n提示：当前失败的是 OpenAI API 执行器，但模型名看起来对当前端点不可用。请检查 --model / --judge-models、OPENAI_BASE_URL 与账号权限是否匹配。',
     en: '\nHint: the failing runtime is the OpenAI API executor, but the model name appears unavailable on the current endpoint. Check --model / --judge-models, OPENAI_BASE_URL, and account access.',
-  },
-  'cli.run.anthropic_api_auth_hint': {
-    zh: '\n提示：当前失败的是 Anthropic API 执行器。请检查 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL 是否可用，并确认模型名对当前端点可用。',
-    en: '\nHint: the failing runtime is the Anthropic API executor. Check ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL and confirm the model is available on that endpoint.',
-  },
-  'cli.run.anthropic_api_model_hint': {
-    zh: '\n提示：当前失败的是 Anthropic API 执行器，但模型名看起来对当前端点不可用。请检查 --model / --judge-models、ANTHROPIC_BASE_URL 与账号权限是否匹配。',
-    en: '\nHint: the failing runtime is the Anthropic API executor, but the model name appears unavailable on the current endpoint. Check --model / --judge-models, ANTHROPIC_BASE_URL, and account access.',
   },
 };

@@ -1,3 +1,4 @@
+import { isRemovedBuiltinExecutor } from '../../../executors/core/registry.js';
 import { compareStrings } from '../../../eval-core/primitives/ordering.js';
 import { parseStatelessApiSampleInput } from '../adapters/shared/sample-input.js';
 import { isAbsolute, resolve } from 'node:path';
@@ -38,6 +39,18 @@ export async function resolveNodeCliEvaluationRequest(
     fieldPath: 'resolver.options',
     message: 'projectRoot 与 materializationRoot 必须是绝对路径。',
   });
+  const selectedRuntimes = [
+    { executorId: request.values.targetRuntime.executorId, fieldPath: 'targetRuntime.executorId' },
+    ...request.values.judges.members.map((judge, index) => ({
+      executorId: judge.executorId, fieldPath: `judges.members.${index}.executorId`,
+    })),
+  ];
+  for (const runtime of selectedRuntimes) {
+    if (isRemovedBuiltinExecutor(runtime.executorId)) fail({
+      code: 'CLI_INPUT_INVALID', fieldPath: runtime.fieldPath,
+      message: `内置执行器「${runtime.executorId}」已移除。请选择 codex、codex-sdk、openai-api 或自定义执行器文件路径。`,
+    });
+  }
   const hostExecutorImplementationIds = new Set(
     options.hostExecutorImplementationIds ?? [],
   );
@@ -91,7 +104,7 @@ export async function resolveNodeCliEvaluationRequest(
         }
       } else if (sample.input.inputKind !== 'text') {
         return fail({ code: 'CLI_INPUT_INVALID', fieldPath: `samples.${sample.sample_id}.input`,
-          message: 'This executor supports only text samples. Use openai-api or anthropic-api for JSON/plain message history, or custom-executor for application-specific input.' });
+          message: 'This executor supports only text samples. Use openai-api for JSON/plain message history, or custom-executor for application-specific input.' });
       }
     }
   }

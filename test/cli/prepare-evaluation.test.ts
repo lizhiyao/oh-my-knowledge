@@ -18,7 +18,7 @@ function fixture() {
   writeFileSync(join(skill, '.omk', 'eval-samples.json'), '{}');
   return {
     root, skill,
-    options: { projectRoot: root, env: { PATH: '', OMK_EXECUTOR: 'claude', OMK_MODEL: 'sonnet', OMK_HOME: join(root, 'home') } },
+    options: { projectRoot: root, env: { PATH: '', OMK_EXECUTOR: 'codex', OMK_MODEL: 'test-model', OMK_HOME: join(root, 'home') } },
     flags: { control: 'baseline', treatment: 'answer' },
   };
 }
@@ -34,7 +34,7 @@ describe('prepareCliEvaluation', () => {
   it('loads YAML once and leaves flags above YAML above captured environment in the request', () => {
     const input = fixture();
     writeFileSync(join(input.root, 'eval.yaml'), `samples: ./yaml-samples.json
-executor: claude
+executor: codex
 model: yaml-model
 effort: medium
 judgeModels:
@@ -52,7 +52,7 @@ variants:
       ...input.options, env: { ...input.options.env, OMK_JUDGE_MODELS: 'invalid-unused-preference' },
     });
     expect(prepared.request.values.locators.samples).toBe('./explicit.json');
-    expect(prepared.request.values.targetRuntime).toMatchObject({ executorId: 'claude', model: 'cli-model', effort: 'medium' });
+    expect(prepared.request.values.targetRuntime).toMatchObject({ executorId: 'codex', model: 'cli-model', effort: 'medium' });
     expect(prepared.request.values.judges.members).toEqual([{ executorId: 'openai-api', model: 'yaml-judge' }]);
     expect(prepared.parseInput.evalConfig?.samples).toBe(join(input.root, 'yaml-samples.json'));
     const yaml = prepareCliEvaluation({ config: 'eval.yaml' }, input.options);
@@ -64,7 +64,7 @@ variants:
     const env = { ...input.options.env, OMK_JUDGE_MODELS: 'invalid-unused-preference' };
     const prepared = prepareCliEvaluation({ ...input.flags, 'no-judge': true }, { ...input.options, env });
     env.OMK_MODEL = 'later-model';
-    expect(prepared.environment.environment.OMK_MODEL).toBe('sonnet');
+    expect(prepared.environment.environment.OMK_MODEL).toBe('test-model');
     expect(prepared.request.values.judges).toMatchObject({ enabled: false, members: [] });
   });
 });

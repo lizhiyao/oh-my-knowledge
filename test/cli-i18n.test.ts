@@ -90,7 +90,7 @@ describe('getCliLang()', () => {
   });
 
   it('已保存设置优先于系统 locale', () => {
-    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 1, language: 'zh' }));
+    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 2, language: 'zh' }));
     assert.equal(getCliLang(undefined, { LANG: 'en_US.UTF-8' }), 'zh');
   });
 
@@ -105,7 +105,7 @@ describe('getCliLang()', () => {
     assert.deepEqual(resolveCliLang(undefined, NO_SIGNAL), { lang: 'zh', configured: false });
     assert.deepEqual(resolveCliLang('en', NO_SIGNAL), { lang: 'en', configured: true });
     assert.deepEqual(resolveCliLang(undefined, { OMK_LANG: 'en' }), { lang: 'en', configured: true });
-    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 1, language: 'en' }));
+    writeFileSync(join(machineRoot, 'settings.json'), JSON.stringify({ schemaVersion: 2, language: 'en' }));
     assert.deepEqual(resolveCliLang(undefined, NO_SIGNAL), { lang: 'en', configured: true });
   });
 });

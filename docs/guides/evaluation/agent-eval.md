@@ -2,11 +2,10 @@
 
 **When do you need this guide?** A plain skill eval (`omk eval --control baseline --treatment my-skill`) injects one `SKILL.md` and measures it in isolation. But a real agent's behavior also depends on its **runtime context** — the project directory it runs in, project instructions such as `AGENTS.md` or `CLAUDE.md`, locally discovered skills, and repository state. When the thing you actually want to measure is "how does this agent behave inside this project", a plain skill eval cannot see all of that. This guide covers evaluating under an intentional project context.
 
-Codex and Claude executors both emit the same source-neutral turns / toolCalls contract, so agent assertions do not depend on one provider. Executor choice is part of the construct:
+Codex executors emit the same source-neutral turns / toolCalls contract, so agent assertions do not depend on one provider. Executor choice is part of the construct:
 
 - use `codex` for the strongest artifact-isolation measurement; it ignores user config and project rules
 - use `codex-sdk` when the **Codex project context itself** is intentional measured input
-- use `claude-sdk` when the **Claude Code project context itself** is intentional measured input
 
 Keep the executor, model, and working directory fixed across variants. Reports persist their runtime fingerprints and execution strategy so incompatible runs are not presented as artifact-only comparisons.
 
@@ -26,7 +25,7 @@ For a Codex project-context experiment:
 omk eval --executor codex-sdk
 ```
 
-For a strict isolated artifact experiment, use `--executor codex`. For a Claude Code project-context experiment, substitute `claude-sdk`.
+For a strict isolated artifact experiment, use `--executor codex`.
 
 ## Agent-related assertions
 

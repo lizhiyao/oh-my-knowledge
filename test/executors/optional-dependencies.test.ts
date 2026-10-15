@@ -18,23 +18,10 @@ describe('optional executor dependencies', () => {
   });
 
   it('accepts an SDK installed in the same package scope', () => {
-    assert.doesNotThrow(() => assertOptionalExecutorDependency('claude-sdk', (packageName) => {
-      assert.equal(packageName, '@anthropic-ai/claude-agent-sdk');
+    assert.doesNotThrow(() => assertOptionalExecutorDependency('codex-sdk', (packageName) => {
+      assert.equal(packageName, '@openai/codex-sdk');
       return true;
     }));
-  });
-
-  it('gives local and global install commands for a missing Claude SDK', () => {
-    assert.throws(
-      () => assertOptionalExecutorDependency('claude-sdk', () => false),
-      (error: unknown) => {
-        const message = (error as Error).message;
-        assert.match(message, /当前 OMK 安装作用域中未找到/);
-        assert.match(message, /npm install @anthropic-ai\/claude-agent-sdk@\^0\.3\.143/);
-        assert.match(message, /npm install -g @anthropic-ai\/claude-agent-sdk@\^0\.3\.143/);
-        return true;
-      },
-    );
   });
 
   it('uses the compatible Codex SDK patch range in the install command', () => {
@@ -51,7 +38,7 @@ describe('optional executor dependencies', () => {
       peerDependencies?: Record<string, string>;
       peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     };
-    for (const executorName of ['claude-sdk', 'codex-sdk'] as const) {
+    for (const executorName of ['codex-sdk'] as const) {
       const dependency = getOptionalExecutorDependency(executorName)!;
       const peerRange = packageJson.peerDependencies?.[dependency.packageName];
       assert.equal(dependency.installSpec, `${dependency.packageName}@${peerRange}`);

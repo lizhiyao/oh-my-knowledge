@@ -124,11 +124,11 @@ omk eval [flags]
 - `--control-cwd` `option`:对照组（control）的 runtime context 目录
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
-- `--executor` `option`:执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
+- `--executor` `option`:执行器：codex / codex-sdk / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。默认用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
 - `--global` `boolean`:报告写全局 ~/.oh-my-knowledge/eval，而非项目 .omk/eval
 - `--gold-dir` `option`:gold dataset 目录
 - `--holdout-ratio` `option`:留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
-- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。
+- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 codex:<model> 或 openai-api:<model>（≥ 2 个 = ensemble）。默认沿用所选执行器与被测模型。
 - `--judge-repeat` `option`:每个维度由评委评价 N 次
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--layered-stats` `boolean`:输出分层统计
@@ -377,7 +377,7 @@ omk install <input> [flags]
 - `--git-url` `option`:远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
 - `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
+- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / all。
 
 **示例:**
 

@@ -43,8 +43,8 @@ describe('loadEvalConfig', () => {
     try {
       const path = writeYaml(dir, 'eval.yaml', `
 samples: ./samples.json
-executor: claude-sdk
-model: sonnet
+executor: codex-sdk
+model: test-model
 variants:
   - name: v1
     role: control
@@ -60,8 +60,8 @@ variants:
 
       const config = loadEvalConfig(path);
 
-      assert.equal(config.executor, 'claude-sdk');
-      assert.equal(config.model, 'sonnet');
+      assert.equal(config.executor, 'codex-sdk');
+      assert.equal(config.model, 'test-model');
       assert.equal(config.variants.length, 3);
       assert.equal(config.variants[0].name, 'v1');
       assert.equal(config.variants[0].role, 'control');
@@ -140,15 +140,15 @@ variants:
     try {
       const path = writeYaml(dir, 'eval.json', JSON.stringify({
         samples: './samples.json',
-        executor: 'claude-sdk',
-        model: 'sonnet',
+        executor: 'codex-sdk',
+        model: 'test-model',
         variants: [
           { name: 'v1', role: 'control', artifact: 'baseline' },
           { name: 'v2', role: 'treatment', artifact: './v2.md', cwd: './project' },
         ],
       }, null, 2));
       const config = loadEvalConfig(path);
-      assert.equal(config.executor, 'claude-sdk');
+      assert.equal(config.executor, 'codex-sdk');
       assert.equal(config.variants.length, 2);
       assert.equal(config.variants[0].artifact, 'baseline');
       assert.equal(config.variants[1].artifact, join(dir, 'v2.md'));
@@ -398,8 +398,8 @@ lengthDebias: false
 strictBaseline: false
 noJudge: true
 judgeModels:
-  - executor: claude
-    model: opus
+  - executor: codex
+    model: judge-large
   - executor: openai-api
     model: gpt-4o
     deploymentRevision: gpt-4o-2024-11-20
@@ -414,7 +414,7 @@ judgeModels:
       assert.equal(cfg.strictBaseline, false);
       assert.equal(cfg.noJudge, true);
       assert.deepEqual(cfg.judgeModels, [
-        { executor: 'claude', model: 'opus' },
+        { executor: 'codex', model: 'judge-large' },
         {
           executor: 'openai-api',
           model: 'gpt-4o',
@@ -483,12 +483,12 @@ judgeModels:
     },
     {
       name: 'judgeModels non-array',
-      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`,
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: "codex:judge-large"`,
       error: /judgeModels must be an array/,
     },
     {
       name: 'judgeModels entry missing model',
-      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`,
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: codex`,
       error: /judgeModels\[0\]\.model must be a non-empty string/,
     },
     {
@@ -503,17 +503,17 @@ judgeModels:
     },
     {
       name: 'judgeModels duplicate entry',
-      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`,
-      error: /duplicate entry "claude:haiku"/,
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: codex\n    model: judge-small\n  - executor: codex\n    model: judge-small`,
+      error: /duplicate entry "codex:judge-small"/,
     },
     {
       name: 'legacy judgeModel field',
-      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`,
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModel: judge-small`,
       error: /judgeModel.*were removed in v0\.25/,
     },
     {
       name: 'legacy judgeExecutor field',
-      yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`,
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: codex`,
       error: /judgeExecutor.*were removed in v0\.25/,
     },
     {
@@ -530,9 +530,9 @@ judgeModels:
   it('judgeModels 单条 = single judge (合法, 不进 ensemble)', () => {
     const dir = makeTmpDir();
     try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku`);
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: codex\n    model: judge-small`);
       const cfg = loadEvalConfig(path);
-      assert.deepEqual(cfg.judgeModels, [{ executor: 'claude', model: 'haiku' }]);
+      assert.deepEqual(cfg.judgeModels, [{ executor: 'codex', model: 'judge-small' }]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

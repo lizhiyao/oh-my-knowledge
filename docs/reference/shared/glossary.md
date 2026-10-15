@@ -39,8 +39,8 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | Term | One-line definition | Where it shows up in omk |
 |---|---|---|
 | [artifact](../evaluation/artifact-layout.md) | The unified abstraction for omk's "thing under evaluation": skill / prompt / agent / workflow / baseline | determined by experiment role (`--control` / `--treatment` / baseline), not a standalone flag |
-| [executor](../integration/executors.md) | How the model is run: claude / codex / openai-api | `--executor` parameter; execution-environment fingerprint |
-| ensemble (judge) | Multiple LLMs act as judges and score independently, then combine | `--judge-models claude:opus,claude:sonnet` |
+| [executor](../integration/executors.md) | How the model is run: codex / codex-sdk / openai-api | `--executor` parameter; execution-environment fingerprint |
+| ensemble (judge) | Multiple LLMs act as judges and score independently, then combine | `--judge-models codex:model-a,codex:model-b` |
 | judge | An LLM scoring against a rubric | judge model parameter; evidence table |
 | rubric | The detailed criteria a judge follows when scoring (must recognize X / must include Y / at least N items / ...) | rubric field in sample config |
 | anchor | A method for calibrating the LLM judge against human standards | `--gold-dir` human anchors |

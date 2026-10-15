@@ -8,8 +8,6 @@ import {
 } from './application.js';
 
 const CREDENTIAL_ENVIRONMENT = new Set([
-  'ANTHROPIC_API_KEY',
-  'CLAUDE_CODE_OAUTH_TOKEN',
   'OPENAI_API_KEY',
 ]);
 
@@ -100,7 +98,7 @@ async function resolveExecutable(
 
 function requiredCredential(
   environment: NodeJS.ProcessEnv,
-  key: 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY',
+  key: 'OPENAI_API_KEY',
 ): string {
   const value = environment[key]?.trim();
   if (value !== undefined && value !== '') return value;
@@ -116,6 +114,6 @@ export function captureNodeCliEvaluationEnvironment(environment: NodeJS.ProcessE
     environment: captured,
     classifiedEnvironment: classifyNodeCliEnvironment(captured),
     resolveExecutable: (command: string) => resolveExecutable(command, captured),
-    requiredCredential: (key: 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY') => requiredCredential(captured, key),
+    requiredCredential: (key: 'OPENAI_API_KEY') => requiredCredential(captured, key),
   });
 }

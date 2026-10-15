@@ -31,7 +31,7 @@ omk doctor skills/ --repeat 3 --concurrency 1  # 串行（降低瞬时并发）
 omk doctor skills/ --static-only
 ```
 
-只跑默认 doctor 里同一套静态 lint 规则，**零 LLM 调用、且不加载 `samples.json`**：skill 可读性、frontmatter 合法性、以及 skill 正文里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `claude` / `codex`、或本地断网调试时用。（samples 契约检查需要 `samples.json`，不在此模式内 —— 留给 `omk eval` 的评测前置门禁。）
+只跑默认 doctor 里同一套静态 lint 规则，**零 LLM 调用、且不加载 `samples.json`**：skill 可读性、frontmatter 合法性、以及 skill 正文里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `codex`、或本地断网调试时用。（samples 契约检查需要 `samples.json`，不在此模式内 —— 留给 `omk eval` 的评测前置门禁。）
 
 ## 当 CI 门禁
 

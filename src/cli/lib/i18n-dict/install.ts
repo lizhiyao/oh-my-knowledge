@@ -38,16 +38,16 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'install accepts the built-in id omk-agent-skill, a local skill path (e.g. ./skills/review or ./review.md), or git:<ref>:<name> (a skill at a ref of the current repo). Unrecognized input: {input}',
   },
   'cli.install.unknown_target': {
-    zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
-    en: 'Unknown install target: {target}. Use auto, codex, claude, all; or pass --dest <dir> for a custom skill root.',
+    zh: '未知安装目标：{target}。可用值：auto, codex, all；或用 --dest <dir> 指定 skill 根目录。',
+    en: 'Unknown install target: {target}. Use auto, codex, all; or pass --dest <dir> for a custom skill root.',
   },
   'cli.install.invalid_target_combo': {
-    zh: '安装目标组合不合法：{target}。auto 和 all 必须单独使用；如需多个明确目标，请写 codex,claude。',
-    en: 'Invalid install target combination: {target}. auto and all must be used alone; use codex,claude for multiple explicit targets.',
+    zh: '安装目标组合不合法：{target}。auto 和 all 必须单独使用。',
+    en: 'Invalid install target combination: {target}. auto and all must be used alone.',
   },
   'cli.install.no_detected_targets': {
-    zh: '未检测到本机支持的 agent skill 目录。请用 --to codex / --to claude / --to all 明确目标，或用 --dest <dir> 指定 skill 根目录。',
-    en: 'No supported local agent skill directory was detected. Pass --to codex / --to claude / --to all, or pass --dest <dir> for a custom skill root.',
+    zh: '未检测到本机支持的 agent skill 目录。请用 --to codex / --to all 明确目标，或用 --dest <dir> 指定 skill 根目录。',
+    en: 'No supported local agent skill directory was detected. Pass --to codex / --to all, or pass --dest <dir> for a custom skill root.',
   },
   'cli.install.target_exists': {
     zh: '目标已存在：{path}。如要覆盖，请加 --force。',

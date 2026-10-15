@@ -18,8 +18,8 @@ const artifact: Artifact = {
 function ctx(overrides: Partial<DoctorContext> = {}): DoctorContext {
   return {
     artifact,
-    executorName: 'claude',
-    model: 'sonnet',
+    executorName: 'codex',
+    model: 'test-model',
     cwd: '/tmp',
     lang: 'zh',
     timeoutMs: 5000,

@@ -18,7 +18,7 @@ it('shares persisted settings with the local host and rejects stale or untrusted
   const initial = await (await fetch(`${url}/api/settings`)).json();
   expect(initial.revision).toBe('missing');
   expect(existsSync(join(root, 'settings.json'))).toBe(false);
-  const input = { revision: initial.revision, settings: { schemaVersion: 1, language: 'en', knowledge: { workspace: join(root, 'chosen'), executor: 'codex', model: 'test-model' } } };
+  const input = { revision: initial.revision, settings: { schemaVersion: 2, language: 'en', knowledge: { workspace: join(root, 'chosen'), executor: 'codex', model: 'test-model' } } };
   expect((await post(input, 'https://untrusted.example')).status).toBe(403);
   expect(existsSync(join(root, 'settings.json'))).toBe(false);
   expect((await post(input)).status).toBe(200);

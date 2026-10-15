@@ -1,6 +1,6 @@
 'use strict';
 
-// build-time asset copy: src/ 下的非 .ts 资产(mock-hook.cjs / runtime prompt md)
+// build-time asset copy: src/ 下的非 .ts 资产(runtime prompt md)
 // 以及仓库内置 agent skill。
 // tsc 不会自动复制非 .ts 文件。把每个 asset 复制到 dist/ 下对应路径,
 // 让运行时 sibling-relative 解析(dirname(import.meta.url) + sibling 文件)
@@ -10,7 +10,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ASSETS = [
-  ['src/executors/mock-runtime/mock-hook.cjs', 'dist/executors/mock-runtime/mock-hook.cjs'],
   ['src/observability/prompts/llm-enhanced-review.prompt.md', 'dist/observability/prompts/llm-enhanced-review.prompt.md'],
   ['src/dsh-plugin/cordis.patch.yml', 'dist/dsh-plugin/cordis.patch.yml'],
 ];

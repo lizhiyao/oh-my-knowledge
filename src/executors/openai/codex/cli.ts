@@ -23,11 +23,7 @@ export {
   sumCodexElapsed,
 } from './protocol.js';
 
-// codex CLI(0.125)隔离能力对比 claude-cli:
-//   Claude:三条 channel(SDK skills auto-discovery / subagent Skill 工具 /
-//          cwd 文件系统),`--disable-slash-commands` + `--disallowedTools Skill`
-//          堵前两条,cwd 切空目录堵第三条
-//   Codex:CLI / SDK 的项目指令、skills 与可能的子线程都以 cwd 工作区为
+// Codex:CLI / SDK 的项目指令、skills 与可能的子线程都以 cwd 工作区为
 //          发现边界；`-C/--cd` 是可验证的隔离控制面。因此把 cwd 切到
 //          隔离空目录，统一阻断 AGENTS.md / .agents/skills/ 自动加载。
 //

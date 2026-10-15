@@ -130,7 +130,7 @@ export async function assertIdentityFilesUnchanged(
 /**
  * 递归收集目录下的常规文件，facetId 由相对路径摘要派生；根目录下的 node_modules 整棵跳过。
  *
- * claude 与 codex 的 SDK 运行时曾经各存一份逐字相同的实现，只有报错文案里的宿主名不同，
+ * SDK 运行时的内容身份使用统一的包文件枚举逻辑，
  * 因此文案由 label 统一派生。
  */
 export async function collectIdentityFilesInDirectory(input: {
