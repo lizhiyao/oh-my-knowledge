@@ -4,7 +4,7 @@ import type { ExecutorFn, ExecutorInput } from '../executors/contracts/ports.js'
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
 import { createDshHostRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import { DEFAULT_TIMEOUT_MS } from '../executors/core/limits.js';
-import { DEFAULT_CLEANUP_TIMEOUT_MS, settleWithin } from './cleanup.js';
+import { captureCleanupTimeout, settleWithin } from './cleanup.js';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -223,6 +223,7 @@ export function createDshHostExecutor(
   ctx: DshHostContextLike,
   options: DshHostExecutorOptions = {},
 ): ExecutorFn {
+  const cleanupTimeoutMs = captureCleanupTimeout(options.cleanupTimeoutMs);
   const provider = options.provider ?? options.parentAgent?.options.provider;
   const activeAgentPreset = options.parentAgent
     ? ctx.agentPresets.composedPreset(options.parentAgent.ctx)
@@ -306,7 +307,6 @@ export function createDshHostExecutor(
       signal?.throwIfAborted();
       handle.agent.followup(createPromptMessage(input.prompt));
       const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const cleanupTimeoutMs = options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
       const { outcome, cleanupTimedOut } = await waitForIdle(
         handle.agent,
         timeoutMs,
@@ -348,7 +348,7 @@ export function createDshHostExecutor(
         });
         const disposed = await settleWithin(
           disposal,
-          options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS,
+          cleanupTimeoutMs,
         );
         if (!disposed) {
           process.stderr.write('[dsh-host] 评测 session 关闭超出清理宽限期，已停止等待。\n');

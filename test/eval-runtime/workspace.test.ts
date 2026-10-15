@@ -268,16 +268,18 @@ describe('eval-runtime workspace lease', () => {
     let originalOpenings = 0;
     let replacementOpenings = 0;
     const mutableDescriptor = { ...workspaceA };
-    const mutableProvider = provider(async ({ descriptor, trialId }) => {
-      originalOpenings += 1;
-      expect(descriptor.digest).toBe(workspaceA.digest);
-      return { root: `/virtual/captured-${trialId}`, close() {} };
-    }) as {
-      providerId: string;
-      version: string;
-      fingerprintFacets: { materializer: string };
-      open: WorkspaceProvider['open'];
-    };
+    class StatefulProvider implements WorkspaceProvider {
+      providerId = 'test.workspace-provider/v1';
+      version = '1.0.0';
+      fingerprintFacets = { materializer: 'test' };
+      #root = '/virtual/captured';
+      async open({ descriptor, trialId }: Readonly<WorkspaceOpenRequest>) {
+        originalOpenings += 1;
+        expect(descriptor.digest).toBe(workspaceA.digest);
+        return { root: `${this.#root}-${trialId}`, close() {} };
+      }
+    }
+    const mutableProvider = new StatefulProvider();
     const prepared = await prepareEvaluation(evaluationInput(
       executor(mutableProvider),
       mutableDescriptor,

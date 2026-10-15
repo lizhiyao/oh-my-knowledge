@@ -203,10 +203,19 @@ describe('eval-runtime sample-scoped MCP config', () => {
     const closed: string[] = [];
     const accesses: Array<{ trial: number; attempt: number; config: JsonValue | undefined }> = [];
     let sequence = 0;
+    let closeReads = 0;
     const declaration = executor(provider(async (request) => {
       requests.push(structuredClone(request));
       const leaseId = `lease-${sequence += 1}`;
-      return { config: configA, close: () => { closed.push(leaseId); } };
+      let reads = 0;
+      return {
+        config: configA,
+        get close() {
+          closeReads += 1;
+          if (++reads > 1) throw new Error('private-close-getter-read-twice');
+          return () => { closed.push(leaseId); };
+        },
+      };
     }), async ({ trialIndex, attemptNumber, input, mcpConfig }) => {
       accesses.push({ trial: trialIndex, attempt: attemptNumber, config: mcpConfig?.config });
       return attemptNumber === 1 ? { errorCode: 'temporary-mcp-failure' } : { output: input };
@@ -223,6 +232,7 @@ describe('eval-runtime sample-scoped MCP config', () => {
       .toBe(true);
     expect(closed).toHaveLength(2);
     expect(new Set(closed).size).toBe(2);
+    expect(closeReads).toBe(2);
     expect(JSON.stringify(result)).not.toContain('secret-a');
   });
 
@@ -311,11 +321,18 @@ describe('eval-runtime sample-scoped MCP config', () => {
   it('does not lose an abort triggered synchronously inside provider open', async () => {
     const controller = new AbortController();
     const workspaceClose = vi.fn();
+    const closeReads = vi.fn();
     const execute = vi.fn<Executor<string, undefined, string>['execute']>();
     const declaration: Executor<string, undefined, string> = {
       ...executor(provider(async () => {
         controller.abort(new Error('synchronous-provider-abort'));
-        return new Promise(() => undefined);
+        return {
+          config: configA,
+          get close(): () => void {
+            closeReads();
+            throw new Error('private-late-close-getter');
+          },
+        };
       }), execute),
       workspaceProvider: {
         providerId: 'test.sync-abort-workspace/v1',
@@ -334,6 +351,8 @@ describe('eval-runtime sample-scoped MCP config', () => {
     expect(result.status).toBe('cancelled');
     expect(workspaceClose).toHaveBeenCalledTimes(1);
     expect(execute).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(closeReads).toHaveBeenCalledTimes(1));
+    expect(JSON.stringify(result)).not.toContain('private-late-close-getter');
   });
 
   it('closes a lease that settles immediately before cancellation without invoking the Target', async () => {
@@ -432,6 +451,20 @@ describe('eval-runtime sample-scoped MCP config', () => {
     expect(result.status).toBe('failed');
     expect(close).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result)).not.toContain('secret-b');
+
+    const closeReads = vi.fn();
+    const execute = vi.fn<Executor<string, undefined, string>['execute']>();
+    const invalidClose = await evaluate(evaluationInput(executor(provider(async () => ({
+      config: configA,
+      get close(): () => void {
+        closeReads();
+        throw new Error('private-invalid-close-getter');
+      },
+    })), execute)));
+    expect(invalidClose.status).toBe('failed');
+    expect(closeReads).toHaveBeenCalledTimes(2);
+    expect(execute).not.toHaveBeenCalled();
+    expect(JSON.stringify(invalidClose)).not.toContain('private-invalid-close-getter');
   });
 
   it('closes config after a Session failure and keeps it available for the full session', async () => {

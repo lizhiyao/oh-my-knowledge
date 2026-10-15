@@ -391,11 +391,16 @@ describe('DSH host executor', () => {
   });
 
   it('returns after a bounded cleanup grace when cancellation and disposal never settle', async () => {
+    assert.throws(() => createDshHostExecutor(new FakeDshHost(), {
+      cleanupTimeoutMs: 2 ** 31,
+    }), /cleanupTimeoutMs/);
     const host = new FakeDshHost({ cancelSettles: false, disposeSettles: false });
-    const executor = createDshHostExecutor(host, {
+    const options = {
       parentAgent,
       cleanupTimeoutMs: 5,
-    });
+    };
+    const executor = createDshHostExecutor(host, options);
+    options.cleanupTimeoutMs = 5_000;
     const startedAt = Date.now();
     const result = await executor({
       model: 'measured-model',

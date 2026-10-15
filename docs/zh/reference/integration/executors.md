@@ -94,7 +94,7 @@ dsh --profile web
 
 当前 PoC 通过 DSH 的人类命令注册表提供 `/omk`，因此要求 profile 组合 `ctx.commands` 及其命令适配器；内置 `web` profile 满足这一条件，headless／ACP／JSON-RPC surface 暂不消费该命令。`Sample.mocks` 仍不支持。runtime 指纹包含 DSH 宿主版本、OMK 适配器版本、provider、agent preset、有效工具 schema 和清理超时。由于 DSH 尚未提供覆盖全部插件与策略的规范组合摘要，该指纹会明确标记为仅部分可审计，严格可比性检查将给出警告，而不会声称运行时完全一致。
 
-取消后，Core 等待宿主 idle 最多 5 秒，随后等待 session 关闭最多再用 5 秒。嵌入适配器时可通过 `DshHostCoreConfiguration.cleanupTimeoutMs` 配置，该值纳入 runtime 指纹。宿主卡住时会输出诊断并保留取消或基础设施失败，不能算作成功执行；停止等待不代表宿主已经终止。适配器实现版本为 `2.0.1`；存量证据保留，但 runtime identity 与早期适配器不同。Studio 使用默认固定端口 7799 或 `OMK_REPORT_PORT`；并发 observe 共用一次启动，插件关闭时释放该服务。
+取消后，Core 等待宿主 idle 最多 5 秒，随后等待 session 关闭最多再用 5 秒。嵌入适配器时可通过 `DshHostCoreConfiguration.cleanupTimeoutMs` 配置 1～2147483647 毫秒的整数，该值纳入 runtime 指纹。宿主卡住时会输出诊断并保留取消或基础设施失败，不能算作成功执行；停止等待不代表宿主已经终止。适配器实现版本为 `2.0.2`；存量证据保留，但 runtime identity 与早期适配器不同。Studio 使用默认固定端口 7799 或 `OMK_REPORT_PORT`；并发 observe 共用一次启动，插件关闭时释放该服务。
 
 `/omk observe` 还要求 profile 提供 `ctx.sessionPersistence`。它列出最近已结束的 root session，并排除发起命令的当前 session；`/omk observe <session-id>` 通过 `listSnapshots()`／`inspect()` 只读取得逻辑事件流，比较读取前后的 revision，稳定后转换为 `sourceKind: dsh` 的 Trace IR，并返回实际监听地址下的 Studio 任务轨迹链接。JSONL、zstd 与 SQLite 的物理格式均由 DSH backend 负责，OMK 不解析这些文件。持续写入、required 未知事件、序号断裂、未闭合 turn／step 或缺失 tool result 都会拒绝“完整轨迹”结论。首版是离线快照，不实时跟随正在运行的 session。
 
