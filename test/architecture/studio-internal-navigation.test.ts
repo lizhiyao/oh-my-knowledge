@@ -20,15 +20,15 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { typeScriptSources as listSourceFiles, parseTypeScript } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
-const SKIPPED_DIRS = new Set(['.next', 'node_modules', 'dist', 'coverage']);
 
 interface Violation {
   readonly file: string;
@@ -42,21 +42,6 @@ interface Audit {
   readonly violations: Violation[];
 }
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if (entry.endsWith('.tsx') || (entry.endsWith('.ts') && !entry.endsWith('.d.ts'))) out.push(path);
-  }
-  return out;
-}
 
 /** `next/link` 默认导入在本文件里的名字；没有这个 import 时返回 undefined。 */
 function linkComponentName(source: ts.SourceFile): string | undefined {
@@ -76,7 +61,7 @@ function audit(files: string[], display: (path: string) => string): Audit {
   const violations: Violation[] = [];
   let linkCount = 0;
   for (const file of files) {
-    const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const source = parseTypeScript(file);
     const link = linkComponentName(source);
     const report = (node: ts.Node, reason: string): void => {
       violations.push({ file: display(file), line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, reason });
@@ -187,4 +172,15 @@ describe('Studio 站内跳转的机制守门', () => {
       'unresolved.tsx:6 ⇒ <Link> 持有 href：href 只允许出现在 next/link 上',
     ]);
   });
+  it('共享扫描只收源码，排除产物与声明，并拒绝不可读目录', () => {
+    const root = join(fixtureRoot, 'scan');
+    mkdirSync(join(root, 'nested'), { recursive: true }); mkdirSync(join(root, '.next'), { recursive: true });
+    writeFileSync(join(root, 'a.ts'), 'export const value = 1;');
+    writeFileSync(join(root, 'nested', 'b.tsx'), 'export const view = <div/>;');
+    writeFileSync(join(root, 'ignored.d.ts'), 'declare const value: number;');
+    writeFileSync(join(root, '.next', 'generated.ts'), 'export {};');
+    expect(listSourceFiles(root).map(path => relative(root, path))).toEqual(['a.ts', join('nested', 'b.tsx')]);
+    expect(() => listSourceFiles(join(root, 'missing'))).toThrow();
+  });
+
 });

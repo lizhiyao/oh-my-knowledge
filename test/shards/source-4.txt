@@ -64,7 +64,16 @@ test/observability/knowledge-debugger.test.ts
 test/observability/skill-health/skill-chain.test.ts
 test/observability/task-window.test.ts
 test/observability/trace/streamed-records.test.ts
-test/observability/trace/trace-adapter.test.ts
+test/observability/trace/trace-loading.test.ts
+test/observability/trace/trace-codex.test.ts
+test/observability/trace/trace-claude.test.ts
+test/observability/trace/trace-openclaw.test.ts
+test/observability/trace/trace-markdown.test.ts
+test/observability/trace/trace-asset-paths.test.ts
+test/observability/trace/trace-format-detection.test.ts
+test/observability/trace/trace-ir.test.ts
+test/observability/trace/trace-segmentation.test.ts
+test/observability/trace/trace-analysis.test.ts
 test/observability/trace/dsh-adapter.test.ts
 test/observability/trace/unknown-disposition.test.ts
 test/observability/trace/zstd-frames.test.ts

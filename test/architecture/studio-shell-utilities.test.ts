@@ -15,32 +15,17 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { typeScriptSources as listSourceFiles, parseTypeScript } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
 const LAYOUT_DIR = join('src', 'studio', 'web', 'components', 'layout');
-const SKIPPED_DIRS = new Set(['.next', 'node_modules', 'dist', 'coverage']);
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if (entry.endsWith('.tsx') || (entry.endsWith('.ts') && !entry.endsWith('.d.ts'))) out.push(path);
-  }
-  return out;
-}
 
 function displayRepoPath(path: string): string {
   return relative(REPO_ROOT, path).split(sep).join('/');
@@ -48,7 +33,7 @@ function displayRepoPath(path: string): string {
 
 /** 本文件里按名导入 `StudioUtilities` 的 import 声明所在行。 */
 function utilitiesImportLines(path: string): number[] {
-  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const source = parseTypeScript(path);
   const lines: number[] = [];
   for (const statement of source.statements) {
     if (ts.isImportDeclaration(statement) && statement.getText(source).includes('StudioUtilities')) {
