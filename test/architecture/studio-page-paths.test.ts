@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { typeScriptSources, parseTypeScript } from '../helpers/source-files.js';
+import { sourceFiles, parseSourceFile } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
@@ -44,7 +44,7 @@ interface Literal {
 function pageLiterals(files: string[], display: (path: string) => string): Literal[] {
   const found: Literal[] = [];
   for (const file of files) {
-    const source = parseTypeScript(file);
+    const source = parseSourceFile(file);
     const visit = (node: ts.Node): void => {
       const text = ts.isStringLiteralLike(node) ? node.text : ts.isTemplateExpression(node) ? node.head.text : undefined;
       if (text !== undefined && PAGE_ADDRESS.test(text)) {
@@ -59,14 +59,14 @@ function pageLiterals(files: string[], display: (path: string) => string): Liter
 
 /** 路由目录 → 地址：`web/app/observe/health/[analysisId]/page.tsx` ⇒ `/observe/health/[analysisId]`。 */
 function routeAddresses(): string[] {
-  return typeScriptSources(APP_DIR)
+  return sourceFiles(APP_DIR)
     .filter((file) => file.endsWith(`${sep}page.tsx`))
     .map((file) => `/${relative(APP_DIR, dirname(file)).split(sep).join('/')}`)
     .sort();
 }
 
 function ownerConstants(): Record<string, string> {
-  const source = parseTypeScript(OWNER_FILE);
+  const source = parseSourceFile(OWNER_FILE);
   const constants: Record<string, string> = {};
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
@@ -89,7 +89,7 @@ function displayRepoPath(path: string): string {
 }
 
 function importedModules(path: string): string[] {
-  return parseTypeScript(path).statements.filter(ts.isImportDeclaration).map((statement) => statement.moduleSpecifier.getText().slice(1, -1));
+  return parseSourceFile(path).statements.filter(ts.isImportDeclaration).map((statement) => statement.moduleSpecifier.getText().slice(1, -1));
 }
 
 /**
@@ -140,7 +140,7 @@ afterAll(() => {
 
 describe('Studio 页面地址的单一 owner 守门', () => {
   it('页面地址字面量只出现在 page-paths.ts', () => {
-    const files = typeScriptSources(STUDIO_DIR).filter((file) => file !== OWNER_FILE);
+    const files = sourceFiles(STUDIO_DIR).filter((file) => file !== OWNER_FILE);
     // 扫描退化会让门禁变成假绿：Studio 源码必须真的被扫到。
     expect(files.length).toBeGreaterThan(50);
     expect(pageLiterals([OWNER_FILE], displayRepoPath).length, 'owner 文件里已经读不到地址常量，扫描口径失效').toBeGreaterThan(0);
@@ -194,7 +194,7 @@ describe('Studio 页面地址的单一 owner 守门', () => {
    */
   it('页面地址不携带语言参数', () => {
     const hits: string[] = [];
-    for (const file of typeScriptSources(STUDIO_DIR)) {
+    for (const file of sourceFiles(STUDIO_DIR)) {
       const text = readFileSync(file, 'utf8');
       const lines = text.split('\n');
       lines.forEach((line, index) => {

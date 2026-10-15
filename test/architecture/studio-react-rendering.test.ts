@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { typeScriptSources, parseTypeScript } from '../helpers/source-files.js';
+import { sourceFiles, parseSourceFile } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
@@ -41,10 +41,10 @@ function rawEscapes(source: ts.SourceFile): string[] {
 
 describe('Studio React 渲染层守门', () => {
   it('真实源码不使用绕开 React 转义的 HTML 或动态代码入口', () => {
-    const files = typeScriptSources(WEB_DIR);
+    const files = sourceFiles(WEB_DIR);
     expect(files.length).toBeGreaterThan(0);
     expect(files.some(file => file.endsWith('components/observe/inbox/inbox.tsx'))).toBe(true);
-    const violations = files.flatMap(file => rawEscapes(parseTypeScript(file))
+    const violations = files.flatMap(file => rawEscapes(parseSourceFile(file))
       .map(hit => `${relative(REPO_ROOT, file)}::${hit}`));
     expect(violations).toEqual([]);
   });

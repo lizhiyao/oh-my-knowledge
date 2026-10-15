@@ -28,18 +28,18 @@
  *    否则解析器一退化，上面的口径会悄悄变成永真断言。
  */
 
+import { sourceFiles as listSourceFiles, parseSourceFile, sourceModuleReferences, resolveSourceModule as resolveLocalModule } from '../helpers/source-files.js';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { builtinModules } from 'node:module';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
-const SKIPPED_DIRS = new Set(['.next', 'node_modules']);
-const SCRIPT_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'mjs', 'cjs'] as const;
 /** 静态资源由 bundler 自己处理，不是 TS 模块，不参与闭包。 */
 const ASSET_PATTERN = /\.(?:css|scss|sass|less|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|eot|md)$/;
 const NODE_BUILTIN_NAMES = new Set(builtinModules);
@@ -61,22 +61,6 @@ interface ClosureReport extends ClosureFindings {
   readonly entries: string[];
 }
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir).sort()) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if ((entry.endsWith('.ts') || entry.endsWith('.tsx')) && !entry.endsWith('.d.ts')) {
-      out.push(path);
-    }
-  }
-  return out;
-}
-
-function scriptKind(path: string): ts.ScriptKind {
-  return path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-}
-
 /** 指令必须落在语句前的 directive prologue 里，写在函数体内不算声明。 */
 function isClientEntry(source: ts.SourceFile): boolean {
   for (const statement of source.statements) {
@@ -88,68 +72,11 @@ function isClientEntry(source: ts.SourceFile): boolean {
   return false;
 }
 
-function isTypeOnlyImport(node: ts.ImportDeclaration): boolean {
-  const clause = node.importClause;
-  if (clause?.isTypeOnly) return true;
-  if (!clause || clause.name || !clause.namedBindings || ts.isNamespaceImport(clause.namedBindings)) {
-    return false;
-  }
-  // `import {} from 'x'` 没有绑定，按运行时边处理：它仍是副作用 import。
-  return clause.namedBindings.elements.length > 0
-    && clause.namedBindings.elements.every((element) => element.isTypeOnly);
-}
-
-function isTypeOnlyExport(node: ts.ExportDeclaration): boolean {
-  if (node.isTypeOnly) return true;
-  return node.exportClause !== undefined
-    && ts.isNamedExports(node.exportClause)
-    && node.exportClause.elements.length > 0
-    && node.exportClause.elements.every((element) => element.isTypeOnly);
-}
-
-function isModuleLoaderCall(node: ts.Node): node is ts.CallExpression {
-  if (!ts.isCallExpression(node) || node.arguments.length === 0) return false;
-  return node.expression.kind === ts.SyntaxKind.ImportKeyword
-    || (ts.isIdentifier(node.expression) && node.expression.text === 'require');
-}
-
 function collectRuntimeEdges(source: ts.SourceFile): RuntimeEdge[] {
-  const edges: RuntimeEdge[] = [];
-  // import() 与 require() 的实参可能是变量：能取到字面量就展开，取不到就记成无法证明。
-  const pushLoaderCall = (node: ts.CallExpression): void => {
-    const argument = node.arguments[0];
-    if (ts.isStringLiteralLike(argument)) edges.push({ specifier: argument.text });
-    else edges.push({ specifier: '', opaqueExpression: argument.getText(source) });
-  };
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node)) {
-      if (ts.isStringLiteralLike(node.moduleSpecifier) && !isTypeOnlyImport(node)) {
-        edges.push({ specifier: node.moduleSpecifier.text });
-      }
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-      if (ts.isStringLiteralLike(node.moduleSpecifier) && !isTypeOnlyExport(node)) {
-        edges.push({ specifier: node.moduleSpecifier.text });
-      }
-    } else if (isModuleLoaderCall(node)) {
-      pushLoaderCall(node);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return edges;
-}
-
-/** 与 `next.config.mjs` 的 `extensionAlias` 同口径：`.js` 说明符解析回 TS 源。 */
-function resolveLocalModule(importer: string, specifier: string): string | null {
-  const target = resolve(dirname(importer), specifier);
-  const candidates = specifier.endsWith('.js')
-    ? [target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.tsx'), target]
-    : [
-        target,
-        ...SCRIPT_EXTENSIONS.map((extension) => `${target}.${extension}`),
-        ...SCRIPT_EXTENSIONS.map((extension) => join(target, `index.${extension}`)),
-      ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  return sourceModuleReferences(source).filter(reference => !reference.typeOnly)
+    .map(({ specifier }) => ts.isStringLiteralLike(specifier)
+      ? { specifier: specifier.text }
+      : { specifier: '', opaqueExpression: specifier.getText(source) });
 }
 
 function isNodeBuiltin(specifier: string): boolean {
@@ -204,17 +131,11 @@ function inspect(rootDir: string): ClosureReport {
   const parse = (path: string): ts.SourceFile => {
     const cached = cache.get(path);
     if (cached) return cached;
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, 'utf8'),
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKind(path),
-    );
+    const source = parseSourceFile(path);
     cache.set(path, source);
     return source;
   };
-  const files = listSourceFiles(rootDir);
+  const files = listSourceFiles(rootDir, { skippedDirectories: new Set(['.next', 'node_modules']) });
   const entries = files.filter((file) => isClientEntry(parse(file)));
   return { ...analyzeRuntimeClosure(entries, parse), entries };
 }
@@ -236,6 +157,8 @@ function leakLines(report: ClosureReport, show: (path: string) => string = displ
  * 「File ignored」警告并挂掉 `--max-warnings 0`。
  */
 const CONTROL_TREE: Record<string, string> = {
+  'named-directories/coverage/client.tsx': "'use client'; import 'node:fs';",
+  'named-directories/dist/client.tsx': "'use client'; import 'node:fs';",
   // 负向控制：node-touching 真的 import 了 `node:fs`，但一进一出两条边都只传类型，
   // TS 会擦掉它们；`./studio.css` 覆盖静态资源说明符跳过的分支。
   'clean/entry.tsx': `'use client';
@@ -301,6 +224,14 @@ afterAll(() => {
 });
 
 describe('客户端运行时依赖闭包守门', () => {
+  it('不按普通源码目录名称跳过客户端入口', () => {
+    const report = inspect(join(controlRoot, 'named-directories'));
+    expect(report.entries.map(controlPath)).toEqual([
+      'named-directories/coverage/client.tsx', 'named-directories/dist/client.tsx',
+    ]);
+    expect(report.nodeLeaks).toHaveLength(2);
+  });
+
   it('Studio 页面的客户端闭包不触达 Node 内建模块', () => {
     const report = inspect(WEB_DIR);
     // 扫描为空或解析退化都会把门禁变成假绿：入口必须真实在场，每条边必须算得动。

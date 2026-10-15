@@ -32,7 +32,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { parseTypeScript as parse } from '../helpers/source-files.js';
+import { parseSourceFile as parse } from '../helpers/source-files.js';
 import { OBSERVE_INBOX_TABS, TAB_PARAM, TRAJECTORY_TABS } from '../../src/studio/http/page-params.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
