@@ -5,7 +5,7 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { isIP, type AddressInfo } from 'node:net';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { ObservationCaptureStore } from './capture-store.js';
 import { createObservationMcpServer } from './mcp-server.js';
@@ -288,6 +288,16 @@ function isLoopbackHost(host: string): boolean {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, '');
   if (normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') {
     return true;
+  }
+  if (isIP(normalized) === 6) {
+    try {
+      const canonical = new URL(`http://[${normalized}]`).hostname.slice(1, -1);
+      // URL canonicalization covers dotted and expanded IPv4-mapped IPv6 forms.
+      return canonical === '::1' || /^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(canonical);
+    } catch {
+      // net.isIP accepts scoped addresses that URL rejects; they are not loopback authorities.
+      return false;
+    }
   }
   const parts = normalized.split('.');
   return parts.length === 4

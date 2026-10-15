@@ -51,6 +51,8 @@ MCP `tools/list` 还会按 resolver 返回的 scope 裁剪：用户没有的能�
 
 组件遵循开放 MCP Apps bridge：通过 `ui/notifications/tool-result` 接收结构化工具结果，通过 `tools/call` 发起复核和草稿操作。组件不在浏览器存储中保存权威 review 或 draft 状态；每次变更仍由服务端重新鉴权并持久化，组件根据写工具返回的权威结果更新。卡片会先展示 `coverageStatus: partial` 和未观测事件，再提供人工结论操作。
 
+Bridge 请求在 30 秒后超时，恢复禁用按钮并忽略迟到回复；离开页面时清理待处理请求和定时器。超时或离页不会取消服务端写入，也不代表已知其结果：重试前先检查 observation 状态。工具调用状态和就绪消息使用已配置的 MCP 展示语言。
+
 典型模型调用顺序是先 `get_observation`，再 `review_observation`。模型只能根据 `get_observation` 返回的授权证据提出候选 prompt 和 rubric，用户可在生成草稿前编辑。标准 resource 与 bridge 契约见 OpenAI 的 [MCP Apps UI 指南](https://developers.openai.com/plugins/build/chatgpt-ui)。
 
 ## 四种触发路径

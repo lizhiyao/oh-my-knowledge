@@ -19,7 +19,7 @@ import type { Lang } from '../../src/shared/language.js';
 const HAN = /[一-鿿]/u;
 
 async function advertised(lang: Lang): Promise<{
-  tools: { name: string; title?: string; description?: string }[];
+  tools: { name: string; title?: string; description?: string; invocation?: unknown[] }[];
   resources: { title?: string; description?: string }[];
 }> {
   const dir = testDirectory('omk-mcp-lang-');
@@ -32,6 +32,9 @@ async function advertised(lang: Lang): Promise<{
       name: tool.name,
       title: tool.title,
       description: tool.description,
+      invocation: tool.name === 'review_observation' ? [
+        tool._meta?.['openai/toolInvocation/invoking'], tool._meta?.['openai/toolInvocation/invoked'],
+      ] : undefined,
     }));
     const resources = (await client.listResources()).resources.map((resource) => ({
       title: resource.title,
@@ -58,6 +61,10 @@ describe('MCP 展示元数据按语言一致', () => {
           `${label}: ${tool.name} mixes languages — title "${tool.title}" vs description "${tool.description}"`);
         if (label === 'zh') assert.ok(titleIsHan, `zh: ${tool.name} title lost its Chinese copy`);
         else assert.ok(!titleIsHan, `en: ${tool.name} still carries Chinese copy`);
+        for (const copy of tool.invocation ?? []) {
+          assert.ok(typeof copy === 'string' && copy.length > 0);
+          assert.equal(HAN.test(copy), label === 'zh');
+        }
       }
     }
     assert.equal(zh.tools.length, en.tools.length);

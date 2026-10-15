@@ -1,7 +1,8 @@
 import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
-import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage } from 'node:http';
+import { Agent, createServer, request as httpRequest, type ClientRequest, type IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
 
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -11,6 +12,7 @@ import { FileObservationCaptureStore } from '../../src/mcp/capture-store.js';
 import { FileObservationFeedbackStore } from '../../src/mcp/feedback-store.js';
 import {
   startObservationMcpHttpServer,
+  createObservationMcpHttpHandler,
 } from '../../src/mcp/http.js';
 import {
   OBSERVATION_CAPTURE_SCOPE,
@@ -69,6 +71,25 @@ const resolver: PrincipalResolver<IncomingMessage> = {
 };
 
 describe('OMK observation Streamable HTTP server', () => {
+  it('accepts mapped loopback on a dual-stack listener while refusing mapped non-loopback authorities', async () => {
+    const server = createServer(createObservationMcpHttpHandler({
+      captureStore: new FileObservationCaptureStore({ observationsDir: testDirectory('omk-mcp-dual-stack-') }),
+    }));
+    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '::', resolve); });
+    const { port } = server.address() as AddressInfo;
+    const url = new URL(`http://127.0.0.1:${port}/mcp`);
+    try {
+      for (const authority of [`[::ffff:127.0.0.1]:${port}`, `[0:0:0:0:0:ffff:7f00:1]:${port}`]) {
+        assert.equal(await postRaw(url, { host: authority, method: 'GET' }), 405,
+          'mapped local client passes authentication and reaches the method check');
+      }
+      assert.equal(await postRaw(url, { host: `[::ffff:128.0.0.1]:${port}`, method: 'GET' }), 403);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
   it('contains malformed request targets and continues serving subsequent requests', async () => {
     let writes = 0;
     const started = await startObservationMcpHttpServer({ captureStore: {
@@ -239,13 +260,15 @@ describe('OMK observation Streamable HTTP server', () => {
 
   it('rejects anonymous non-loopback binding and oversized request bodies', async () => {
     const dir = testDirectory('omk-http-mcp-limits-');
-    await assert.rejects(
-      () => startObservationMcpHttpServer({
-        host: '0.0.0.0',
-        captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
-      }),
-      /principalResolver/,
-    );
+    for (const host of ['0.0.0.0', 'fe80::1%en0']) {
+      await assert.rejects(
+        () => startObservationMcpHttpServer({
+          host,
+          captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
+        }),
+        /principalResolver/,
+      );
+    }
     const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
       requestBodyLimitBytes: 64,
@@ -275,10 +298,10 @@ describe('OMK observation Streamable HTTP server', () => {
   });
 });
 
-function postRaw(url: URL, options: { host?: string; target?: string; chunks?: string[] } = {}): Promise<number> {
+function postRaw(url: URL, options: { host?: string; target?: string; chunks?: string[]; method?: string } = {}): Promise<number> {
   return new Promise((resolve, reject) => {
     const request = httpRequest(url, {
-      method: 'POST',
+      method: options.method ?? 'POST',
       path: options.target ?? url.pathname,
       headers: {
         'Content-Type': 'application/json',

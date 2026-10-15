@@ -12,7 +12,13 @@ export interface McpDisplayCopy {
   description: string;
 }
 
-const COPY: Record<string, Record<Lang, McpDisplayCopy>> = {
+interface ReviewInvocationCopy {
+  invoking: string;
+  invoked: string;
+  readyMessage: string;
+}
+
+const COPY: Record<string, Record<Lang, McpDisplayCopy & Partial<ReviewInvocationCopy>>> = {
   save_observation: {
     zh: {
       title: '保存 OMK 知识反馈',
@@ -84,6 +90,9 @@ const COPY: Record<string, Record<Lang, McpDisplayCopy>> = {
   review_observation: {
     zh: {
       title: 'OMK 知识反馈',
+      invoking: '正在准备知识反馈复核…',
+      invoked: '知识反馈复核已就绪。',
+      readyMessage: '已准备知识反馈 {observationId} 的复核卡片；覆盖范围为部分。',
       description: [
         '展示某条反馈对应的内嵌复核组件。',
         '先调用 get_observation，只依据其中经授权的证据提出回归题干，',
@@ -92,6 +101,9 @@ const COPY: Record<string, Record<Lang, McpDisplayCopy>> = {
     },
     en: {
       title: 'OMK knowledge feedback',
+      invoking: 'Preparing knowledge feedback review…',
+      invoked: 'Knowledge feedback review is ready.',
+      readyMessage: 'Review card ready for knowledge feedback {observationId}; coverage is partial.',
       description: [
         'Show the inline review component for an observation.',
         'First call get_observation, propose a regression prompt only from its authorized evidence,',
@@ -124,5 +136,14 @@ export function resolveMcpDisplayLang(options: McpDisplayLanguage): Lang {
 export function mcpDisplayCopy(name: string, lang: Lang): McpDisplayCopy {
   const entry = COPY[name];
   if (!entry) throw new Error(`mcp: no display copy registered for ${name}`);
-  return entry[lang];
+  const { title, description } = entry[lang];
+  return { title, description };
+}
+
+export function mcpReviewInvocationCopy(lang: Lang): ReviewInvocationCopy {
+  const { invoking, invoked, readyMessage } = COPY.review_observation[lang];
+  if (invoking === undefined || invoked === undefined || readyMessage === undefined) {
+    throw new Error('mcp: missing observation review invocation copy');
+  }
+  return { invoking, invoked, readyMessage };
 }

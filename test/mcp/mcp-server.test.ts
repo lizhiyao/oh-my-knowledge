@@ -173,7 +173,7 @@ describe('OMK observation MCP server', () => {
       confirmedByUser: true,
       captureSourceKind: 'mcp',
     });
-    const server = createObservationMcpServer({ principal, captureStore: store });
+    const server = createObservationMcpServer({ principal, captureStore: store, lang: 'en' });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -186,6 +186,9 @@ describe('OMK observation MCP server', () => {
         name: 'review_observation',
         arguments: { observationId: captured.observationId },
       });
+      assert.ok(Array.isArray(rendered.content));
+      assert.ok(rendered.content.some((item) => item.type === 'text'
+        && typeof item.text === 'string' && item.text.includes('coverage is partial.')));
       assert.deepEqual(
         (rendered.structuredContent as { actions: Record<string, boolean> }).actions,
         { canReview: false, canDraft: false },

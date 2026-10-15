@@ -51,6 +51,8 @@ The four data tools remain useful in any MCP client without custom UI. `review_o
 
 The component follows the open MCP Apps bridge: it receives structured tool results through `ui/notifications/tool-result` and invokes review and draft operations through `tools/call`. It does not keep authoritative review or draft state in browser storage. Every mutation is re-authorized and persisted by the server, and the component updates from the authoritative write result. The card always displays `coverageStatus: partial` and lists the unavailable event kinds before offering a human verdict.
 
+Bridge requests time out after 30 seconds, release disabled buttons, and ignore late replies. Leaving the page clears pending requests and timers. A timeout or page exit does not cancel a server write or establish its outcome: check the observation state before retrying. Tool invocation status and the ready message follow the configured MCP display language.
+
 A typical model flow is `get_observation` followed by `review_observation`. The model may include a proposed prompt and rubric based only on the authorized evidence returned by `get_observation`; the user can edit them before creating a draft. See OpenAI's [MCP Apps UI guide](https://developers.openai.com/plugins/build/chatgpt-ui) for the standard resource and bridge contract.
 
 ## Four trigger paths

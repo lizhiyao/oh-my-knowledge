@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { mcpDisplayCopy, resolveMcpDisplayLang, type McpDisplayLanguage } from './tool-copy.js';
+import { mcpDisplayCopy, mcpReviewInvocationCopy, resolveMcpDisplayLang, type McpDisplayLanguage } from './tool-copy.js';
 import { z } from 'zod';
 import type {
   ObservationDetail,
@@ -76,6 +76,7 @@ export function registerObservationReviewComponent(
   options: ObservationReviewComponentOptions,
 ): void {
   const lang = resolveMcpDisplayLang(options);
+  const invocationCopy = mcpReviewInvocationCopy(lang);
   server.registerResource('omk-observation-review', OBSERVATION_REVIEW_RESOURCE_URI, {
     ...mcpDisplayCopy('omk-observation-review', lang),
     mimeType: MCP_APP_HTML_MIME_TYPE,
@@ -109,8 +110,8 @@ export function registerObservationReviewComponent(
     },
     _meta: {
       ui: { resourceUri: OBSERVATION_REVIEW_RESOURCE_URI },
-      'openai/toolInvocation/invoking': '正在准备知识反馈复核…',
-      'openai/toolInvocation/invoked': '知识反馈复核已就绪。',
+      'openai/toolInvocation/invoking': invocationCopy.invoking,
+      'openai/toolInvocation/invoked': invocationCopy.invoked,
     },
   }, async ({ observationId, candidatePrompt, candidateRubric }) => {
     const detail = await options.feedbackStore.get(options.principal, observationId);
@@ -128,7 +129,7 @@ export function registerObservationReviewComponent(
     return {
       content: [{
         type: 'text' as const,
-        text: `已准备知识反馈 ${detail.observationId} 的复核卡片；覆盖范围为部分。`,
+        text: invocationCopy.readyMessage.replace('{observationId}', detail.observationId),
       }],
       structuredContent,
     };
@@ -532,6 +533,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
   <script>
     (() => {
       const pendingRequests = new Map();
+      const REQUEST_TIMEOUT_MS = 30_000;
       let nextRequestId = 1;
       let state;
       let busy = false;
@@ -583,7 +585,9 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         emptyEvidence: "没有可展示的授权证据。",
         invalidReviewResponse: "复核服务未返回权威状态。",
         invalidDraftResponse: "草稿服务未返回有效结果。",
-        unknownError: "未知错误"
+        unknownError: "未知错误",
+        requestTimeout: "请求超时，结果尚未确认；请先检查状态，再决定是否重试。",
+        requestCancelled: "复核页面已离开，请求结果尚未确认。"
       } : {
         loading: "Preparing observation review…",
         coverageTitle: "Coverage: partial",
@@ -629,7 +633,9 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         emptyEvidence: "No authorized evidence is available.",
         invalidReviewResponse: "The review service did not return authoritative state.",
         invalidDraftResponse: "The draft service did not return a valid result.",
-        unknownError: "Unknown error"
+        unknownError: "Unknown error",
+        requestTimeout: "Request timed out; the result is unconfirmed. Check its status before retrying.",
+        requestCancelled: "The review page was left; the request result is unconfirmed."
       };
 
       document.documentElement.lang = zh ? "zh-CN" : "en";
@@ -637,9 +643,29 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
 
       function request(method, params) {
         const id = nextRequestId++;
-        window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
-        return new Promise((resolve, reject) => pendingRequests.set(id, { resolve, reject }));
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            pendingRequests.delete(id);
+            reject(new Error(copy.requestTimeout));
+          }, REQUEST_TIMEOUT_MS);
+          pendingRequests.set(id, { resolve, reject, timer });
+          try {
+            window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+          } catch (error) {
+            clearTimeout(timer);
+            pendingRequests.delete(id);
+            reject(error);
+          }
+        });
       }
+
+      window.addEventListener("pagehide", () => {
+        for (const pending of pendingRequests.values()) {
+          clearTimeout(pending.timer);
+          pending.reject(new Error(copy.requestCancelled));
+        }
+        pendingRequests.clear();
+      });
 
       function errorText(error) {
         return error && typeof error.message === "string" ? error.message : copy.unknownError;
@@ -846,6 +872,7 @@ export const observationReviewComponentHtml = String.raw`<!doctype html>
         if (!message || message.jsonrpc !== "2.0") return;
         if (message.id !== undefined && pendingRequests.has(message.id)) {
           const pending = pendingRequests.get(message.id);
+          clearTimeout(pending.timer);
           pendingRequests.delete(message.id);
           if (message.error) pending.reject(message.error);
           else if (message.result && message.result.isError) {
