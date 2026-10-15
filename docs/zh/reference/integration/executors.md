@@ -28,7 +28,7 @@
 
 移除内置 `claude`、`claude-sdk`、`anthropic-api` 执行器及可选 Claude Agent SDK 依赖。显式旧执行器 ID 会报错，不会替换服务商或模型。所有宿主的默认执行器统一为 `codex`。开始新比较前，检查 `executor`、评委条目、`OMK_EXECUTOR` 与模型选择。历史 trace 仍可只读解析；已有执行证据不改写，也不会被当成 Codex 证据。
 
-`omk install` 只面向 Codex/AGENTS 或显式 `--dest`，不再安装到 Claude Code。移除 `CCV_PROXY_URL` 与 Claude hook 变量 `OMK_MOCK_SETTINGS_FILE`。自定义模型调用脚本自行消费 manifest 或可选 fake MCP 配置。样本生成 prompt 版本升级为 `omk.sample-generation/v2`，不自动重生成已有样本文件。
+`omk install` 只面向 Codex/AGENTS 或显式 `--dest`，不再安装到 Claude Code。移除 `CCV_PROXY_URL` 与 Claude hook 变量 `OMK_MOCK_SETTINGS_FILE`。自定义模型调用脚本自行消费 manifest 或可选 fake MCP 配置。样本生成 prompt 版本为 `omk.sample-generation/v3`，生成的 mocks 强制 strict，不自动重生成已有样本文件。
 
 用户设置升级为 `schemaVersion: 2`，Studio 载体测量记录使用 `omk-carrier-measurement-v2`；只读取当前版本。迁移前备份 v1 文件：保留目录和语言，改选 `codex` 或 `openai-api`，明确选择对应模型，再将 `schemaVersion` 设为 2。旧载体测量元数据保留在磁盘但不再加载；保留 canonical run 报告，重新预览测量。详见[设置](../shared/settings.md)。更换执行器或重新生成样本会改变测量条件，应建立新基线。
 
@@ -182,6 +182,8 @@ omk eval --control code-review-v1 --treatment code-review-v2 \
 上述协议用于 `omk eval` 的目标执行。`doctor`／`sample`／`evolve` 的模型调用接口及自定义 LLM 评委仍使用旧的 `{ model, system, prompt }` 适配接口；不要把仅实现本节协议的脚本直接用作那些模型调用。需要评委时通过 `--judge-models` 单独配置受支持的执行器。
 
 ## 运行失败时如何排查
+
+DSH 观测通过 `Object.is` 比较不透明的 persistence revision token。宿主须提供在未变化快照之间保持稳定的不可变 token（例如字符串）。新建的对象 token 不会被假设为结构相等；三轮读取仍不稳定时明确失败。OMK 无法从相似的序列化对象推断后端快照稳定性。
 
 先看执行／评分覆盖和具体原因代码，再检查模型输出。`OMK_CODEX_CLI_UPGRADE_REQUIRED` 表示当前 CLI 不支持所选模型：检查 `codex --version` 并升级，再用同一模型和用例重跑。不要通过换模型来证明原来的知识对比已恢复。
 

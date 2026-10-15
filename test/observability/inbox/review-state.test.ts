@@ -38,6 +38,16 @@ describe('observe inbox - review state', () => {
     const cancellation = new AbortController();
     const chain = buildObservationSkillChain('missing-fixture', dir);
     const options = { observationsDir: dir, skillChain: chain, model: 'fixture', executorName: 'fixture' };
+    const oversized = '界'.repeat(400_000);
+    for (const extra of [
+      { skillChain: { ...chain, definition: { ...chain.definition, content: oversized } } },
+      { runtimeEvidence: { goalSlices: [], userMessages: [oversized], assistantMessages: [], artifactCandidates: [], toolCalls: [], findings: [] } },
+    ]) {
+      await assert.rejects(extractSkillSoftStandards({ ...options, ...extra,
+        executor: async () => assert.fail('oversized input must not invoke the model'),
+      }), /review input exceeds/);
+      assert.deepEqual(loadSkillDerivedStandards(dir), {});
+    }
     for (const result of [interruptedExecResult(0), { ...interruptedExecResult(0), ok: true, output: '   ' }]) {
       await assert.rejects(extractSkillSoftStandards({ ...options, executor: async () => result }), /extraction failed/);
       assert.deepEqual(loadSkillDerivedStandards(dir), {});

@@ -73,6 +73,8 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project   # KB-aware 分
 
 用 `--last 7d` / `--from … --to …` 圈时间窗，用 `--skills` 收窄到特定 skill。
 
+可选的 LLM 增强复盘将 UTF-8 system 文本与 JSON prompt 合计限制为 1 MiB。Skill-chain 加载也会在解析前拒绝大于 1 MiB 的 `SKILL.md`，文件增长时仍使用有界读取。超限会明确失败，不调用模型、不写新复盘缓存；收窄证据窗口或 skill 定义后再重试。已有展示片段规则和未超限 prompt 字节不变，新增限制不会静默缩短证据。
+
 ## B. inbox：reviewer 闭环
 
 当你想逐条 triage observation，用 inbox。下面步骤 1-3 纯本地、零 LLM；生成评测用例草稿是单独的可选 authoring 步骤，会调用生成模型。
