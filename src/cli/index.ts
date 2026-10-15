@@ -6,9 +6,7 @@ import { CliExit } from './lib/cli-exit.js';
 // CLI 入口:lang / 版本提醒等共享前置逻辑跑完,把控制权交给 oclif dispatcher。
 // 所有命令统一走 src/cli/commands/* 下的 oclif Command。
 
-// --help / --version / -h / -v 走短路径,不应当被网络 I/O 拖慢。oclif 走完
-// --help 路径自然 resolve 不调 process.exit,unawaited fetch 会把 event
-// loop 拖住 ~1s(worst case AbortSignal.timeout 3s)。短路径整体 skip checkUpdate。
+// --help / --version / -h / -v 不展示更新通知、不写通知缓存，也不启动后台刷新。
 const SHORT_PATH_FLAGS = ['--help', '-h', '--version', '-v'];
 function isShortPath(argv: readonly string[]): boolean {
   return argv.some((a) => SHORT_PATH_FLAGS.includes(a));

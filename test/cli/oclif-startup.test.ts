@@ -1,31 +1,28 @@
 /**
- * --help / --version 短路径不被 checkUpdate fetch 拖慢的回归测试。
- * 用一个保证不可达的 `npm_config_registry`(127.0.0.1:1)模拟最坏情况,
- * 确认 short-circuit 把 update fetch 跳掉,event loop 不被 unawaited fetch 拖住。
+ * Real-process startup checks: short paths neither announce updates nor mutate their cache.
+ * Fresh two-channel caches and a non-short-path control keep the assertion independent of startup speed.
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
 import InitCommand from '../../src/cli/commands/init.js';
 import { runCommand, type CommandRunError } from '../helpers/run-command.js';
 import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
+import { defaultCachePath } from '../../src/cli/lib/update-check.js';
 
-/**
- * 用一个保证不可达的 registry 模拟最坏情况。短路径不该触发 update check:
- * - 用 timeout 兜住真正被网络拖住的回归（worker fetch 超时约 3s）。
- * - 用临时 HOME 断言没有写 update-check cache，这是确定性信号，避免用 800ms
- *   这类 wall-clock 阈值跟本机负载赛跑。
- */
-const SHORT_PATH_TIMEOUT_MS = 2500;
+// A hang guard, not a startup performance threshold for shared CI runners.
+const SHORT_PATH_TIMEOUT_MS = 10_000;
+const NEWER_VERSION = '9999.0.0';
 
 function hostileEnv(home: string): NodeJS.ProcessEnv {
   return {
     PATH: process.env.PATH,
     HOME: home,
+    OMK_HOME: home,
     USERPROFILE: home,
     USER: process.env.USER,
     TMPDIR: process.env.TMPDIR,
@@ -34,25 +31,40 @@ function hostileEnv(home: string): NodeJS.ProcessEnv {
   };
 }
 
-async function runShortPath(args: string[]): Promise<string> {
+async function withUpdateCache<T>(operation: (home: string, paths: string[], original: string) => Promise<T>): Promise<T> {
   const home = mkdtempSync(join(tmpdir(), 'omk-startup-short-'));
   try {
-    const { stdout } = await runCli(args, {
-      env: hostileEnv(home),
-      timeout: SHORT_PATH_TIMEOUT_MS,
-    });
-    assert.equal(
-      existsSync(join(home, '.oh-my-knowledge', 'state', 'cache', 'update-check.json')),
-      false,
-      `${args.join(' ')} should skip checkUpdate and not write update-check cache`,
-    );
-    return stdout;
+    const original = JSON.stringify({ latestVersion: NEWER_VERSION, lastCheckedAt: new Date().toISOString() });
+    const paths = [defaultCachePath(home, 'latest'), defaultCachePath(home, 'next')];
+    mkdirSync(join(home, 'state', 'cache'), { recursive: true });
+    for (const path of paths) writeFileSync(path, original);
+    return await operation(home, paths, original);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 }
 
+async function runShortPath(args: string[]): Promise<string> {
+  return withUpdateCache(async (home, paths, original) => {
+    const { stdout, stderr } = await runCli(args, { env: hostileEnv(home), timeout: SHORT_PATH_TIMEOUT_MS });
+    for (const path of paths) assert.equal(readFileSync(path, 'utf8'), original, `${args.join(' ')} must not mutate either update channel`);
+    assert.equal(stderr.includes(NEWER_VERSION), false, 'short paths must not announce updates');
+    return stdout;
+  });
+}
+
 describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', () => {
+  it('control: a normal command announces the cached update and records its notification', async () => {
+    await withUpdateCache(async (home, paths, original) => {
+      const { stderr } = await runCliFailing(['eval', 'gold'], 1, {
+        env: hostileEnv(home), timeout: SHORT_PATH_TIMEOUT_MS,
+      });
+      assert.ok(stderr.includes(NEWER_VERSION), 'the fixture must leave update checks enabled');
+      const changed = paths.filter(path => readFileSync(path, 'utf8') !== original);
+      assert.equal(changed.length, 1, 'only the active channel is notified');
+      assert.equal(JSON.parse(readFileSync(changed[0], 'utf8')).lastNotifiedVersion, NEWER_VERSION);
+    });
+  });
   it('doctor --help 不触发 checkUpdate（子命令 --help 同样走短路径）', async () => {
     const stdout = await runShortPath(['doctor', '--help']);
     assert.ok(stdout.includes('\nUSAGE\n'), 'doctor help should reach the dispatcher help path');
