@@ -88,11 +88,12 @@ describe('classifyHedgingCandidates', () => {
     assert.deepEqual(m.models, [TEST_MODEL]);
   });
 
-  it('cache hit: same sentence does not re-call executor', async () => {
+  it('cache shares identical inputs and isolates context and model changes', async () => {
     const response = JSON.stringify([
       { id: 1, isUncertainty: true, confidence: 0.85, reason: 'unsure' },
     ]);
-    const m = makeExecutor([execOk(response)]);
+    const different = JSON.stringify([{ id: 1, isUncertainty: false, confidence: 0.95, reason: 'context differs' }]);
+    const m = makeExecutor([execOk(response), execOk(different), execOk(response)]);
     const sentence = '需要查证';
 
     const r1 = await classifyHedgingCandidates([cand('s1', sentence)], m.exec, { model: TEST_MODEL });
@@ -101,6 +102,11 @@ describe('classifyHedgingCandidates', () => {
     assert.equal(m.calls, 1);
     assert.deepEqual(r1.verdicts[0], r2.verdicts[0]);
     assert.equal(r2.costUSD, 0);
+    const context = await classifyHedgingCandidates([cand('s3', sentence, '礼貌提议，需要查证就告诉我')], m.exec, { model: TEST_MODEL });
+    const model = await classifyHedgingCandidates([cand('s4', sentence)], m.exec, { model: 'another-model' });
+    assert.equal(context.verdicts[0].isUncertainty, false);
+    assert.equal(model.verdicts[0].isUncertainty, true);
+    assert.equal(m.calls, 3);
   });
 
   it('truncation: candidates > maxCandidates flagged truncated and tail falls back', async () => {

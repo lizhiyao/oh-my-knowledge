@@ -15,6 +15,7 @@ Studio 有两个宿主，共享同一应用层：
 
 - **请求主机**：监听器在 Next 或 API 分发前校验唯一且格式合法的 `Host`。允许回环主机与显式配置的监听主机名；通配网络绑定同时允许字面 IP 地址，保留局域网访问。其它 DNS 名即使 Origin 与 Host 一致也返回 `403 studio_host_not_trusted`，阻断 DNS rebinding。显式对外暴露仍须使用可信网络；此校验不提供认证。
 - **查询**（`application/`）：Skill 报告查询中，`buildSkillIndex` 使用缓存（有界 keyed LRU，容量 8；键包含目录与展示语言，每请求按文件元数据重算指纹）。`listAnalyses` / `loadAnalysis` / `querySkillTrend` 刻意保持无缓存单次全扫。会话目录维护按线程的 rollout 索引文件缓存，按 size + mtime 校验新鲜度。
+- **观测证据**：问题模式在调用、会话与 skill 聚合间保留完整去重证据身份和物理会话身份，诊断预览最多显示五条引用和五个近期会话。skill 定义查找使用容量为八组搜索根的 LRU，按已搜索目录重新校验，新增或删除 skill 无需重启即可生效。后台会话索引有两分钟进程截止时间（嵌入方可配置 `indexProcessTimeoutMs`），会终止卡住的进程并释放待处理条目供重试。失败或空输出的软标准提取不落盘、不缓存；历史派生报告保持原样，需从原始 trace 重建，才能应用修正后的结论与计数。
 - **投影**（`view-models/` 与页面装载器）：预加载页面模型从请求快照投影一次——HTML props 与 activity revision 来自同一个内存对象，页面不可能渲染出与自身内容不一致的 revision。
 - **序列化**：预加载模型经 RSC 边界传递；客户端知识页独立消费 API；API 返回 JSON 且 `Cache-Control: no-store`。
 - **缓存**：见上；不缓存任何渲染后的 HTML。

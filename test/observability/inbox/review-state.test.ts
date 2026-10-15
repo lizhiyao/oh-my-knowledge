@@ -32,11 +32,16 @@ import { buildObservationSkillChain } from '../../../src/observability/skill-hea
 import { interruptedExecResult } from '../../../src/executors/core/runtime.js';
 
 describe('observe inbox - review state', () => {
-  it('增强复盘取消后不写入派生记录', async () => {
+  it('增强复盘失败、空输出和取消都不缓存，后续可重试', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-review-abort-'));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     const cancellation = new AbortController();
     const chain = buildObservationSkillChain('missing-fixture', dir);
+    const options = { observationsDir: dir, skillChain: chain, model: 'fixture', executorName: 'fixture' };
+    for (const result of [interruptedExecResult(0), { ...interruptedExecResult(0), ok: true, output: '   ' }]) {
+      await assert.rejects(extractSkillSoftStandards({ ...options, executor: async () => result }), /extraction failed/);
+      assert.deepEqual(loadSkillDerivedStandards(dir), {});
+    }
     await assert.rejects(() => extractSkillSoftStandards({
       observationsDir: dir,
       skillChain: chain,
@@ -50,6 +55,12 @@ describe('observe inbox - review state', () => {
       },
     }), { name: 'AbortError' });
     assert.deepEqual(loadSkillDerivedStandards(dir), {});
+    const recovered = await extractSkillSoftStandards({ ...options, executor: async () => ({
+      ...interruptedExecResult(0), ok: true, stopReason: 'end_turn',
+      output: JSON.stringify({ extractedStandards: { hardrules: [{ title: 'Retry rule', body: 'Read original evidence.', confidence: 'medium', evidence: [] }], workflows: [] } }),
+    }) });
+    assert.ok(recovered.standards.some(standard => standard.title === 'Retry rule'));
+    assert.ok(existsSync(skillDerivedStandardsPath(dir, chain.skillName)));
   });
 
   it('persists local reviewer state for D1 workflow', () => {

@@ -43,8 +43,8 @@ export function clearHedgingCache(): void {
   verdictCache.clear();
 }
 
-function hashSentence(sentence: string): string {
-  return createHash('sha256').update(sentence).digest('hex').slice(0, 16);
+function hashCandidate(candidate: HedgingCandidate, model: string): string {
+  return createHash('sha256').update(JSON.stringify([model, candidate.sentence, candidate.context])).digest('hex');
 }
 
 function buildBatchPrompt(batch: HedgingCandidate[]): string {
@@ -132,7 +132,7 @@ export async function classifyHedgingCandidates(
   // 先查 cache
   const uncached: { idx: number; cand: HedgingCandidate }[] = [];
   for (let i = 0; i < work.length; i++) {
-    const key = hashSentence(work[i].sentence);
+    const key = hashCandidate(work[i], model);
     const hit = verdictCache.get(key);
     if (hit) {
       verdicts[i] = hit;
@@ -174,7 +174,7 @@ export async function classifyHedgingCandidates(
     }
     slice.forEach((s, i) => {
       verdicts[s.idx] = parsed[i];
-      verdictCache.set(hashSentence(s.cand.sentence), parsed[i]);
+      verdictCache.set(hashCandidate(s.cand, model), parsed[i]);
     });
   }
 

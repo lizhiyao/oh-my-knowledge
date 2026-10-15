@@ -38,7 +38,7 @@ export interface SkillDeclarationCheck {
 }
 
 export function loadFrontmatterSkillType(skillName: string, cwd?: string): ExperienceRuntimeSkillType | undefined {
-  const path = findSkillMdPath(skillName, cwd ?? '');
+  const path = findSkillMdPath(skillName, cwd ?? process.cwd());
   if (!path) return undefined;
   try {
     const parsed = parseSkillFrontmatter(readFileSync(path, 'utf8'));

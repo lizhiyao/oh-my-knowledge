@@ -101,10 +101,12 @@ export function messageRefsFromEvents(events: TraceEvent[]): ObservationMessageR
 
 export function inferResolutionAfter(messages: ObservationMessageRef[], signalType: ObservationSignalType): ObservationMessageWindow['resolutionAfter'] {
   if (signalType !== 'failed_search' && signalType !== 'repeated_failure') return 'unknown';
-  const later = messages.map((message) => message.snippet).join('\n');
-  if (/No matches found|does not exist|not found|permission denied|exceeds maximum allowed tokens/i.test(later) && !/tool_result [^\s]+ (?!No matches found)/i.test(later)) {
-    return 'unresolved';
+  const failure = /No matches found|does not exist|not found|permission denied|exceeds maximum allowed tokens|(?:^|\n)\s*(?:error\s*[:：]|failed\b)|\b(?:command|execution|request|operation)\s+failed\b|\b[1-9]\d*\s+failed\b|timed out|EACCES|ENOENT|(?:失败|错误|超时)[：:]/i;
+  let resolution: ObservationMessageWindow['resolutionAfter'] = 'unknown';
+  for (const message of messages) {
+    const output = /^tool_result\s+\S+\s+([\s\S]*)$/i.exec(message.snippet)?.[1];
+    if (failure.test(output ?? message.snippet)) resolution = 'unresolved';
+    else if (output && output.trim().length >= 10) resolution = 'resolved';
   }
-  if (/tool_result [^\s]+ (?!No matches found).{10,}/i.test(later)) return 'resolved';
-  return 'unknown';
+  return resolution;
 }

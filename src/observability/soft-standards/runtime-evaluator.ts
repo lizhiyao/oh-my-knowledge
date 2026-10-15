@@ -341,8 +341,8 @@ function aggregateRuntimeNodeStatuses(statuses: RuntimeNodeVerdict[]): RuntimeNo
     violated: 5,
     degraded: 4,
     unknown: 3,
-    passed: 2,
-    missed: 1,
+    missed: 2,
+    passed: 1,
   };
   return statuses.slice().sort((a, b) => priority[b] - priority[a])[0] ?? 'unknown';
 }

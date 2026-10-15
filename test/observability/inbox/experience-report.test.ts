@@ -14,8 +14,32 @@ import {
   observationReviewStateKey,
 } from '../../../src/observability/inbox/review-state.js';
 import { claudeTrace } from '../../helpers/claude-trace.js';
+import { buildExperienceProblemPatterns, mergeExperienceProblemPatterns } from '../../../src/observability/inbox/problem-patterns.js';
+import { buildSessionStory } from '../../../src/observability/experience/session-story.js';
+import { buildObserveDiagnostics } from '../../../src/diagnosis/observe-mapper.js';
 
 describe('observe inbox - experience report', () => {
+  it('preserves distinct counts through invocation, session and repeated pattern merges', () => {
+    const patterns = Array.from({ length: 8 }, (_, session) => buildExperienceProblemPatterns({
+      skillName: 'audit', sessionId: `session-${session}`,
+      timeline: Array.from({ length: session === 0 ? 3 : 1 }, (_, index) => ({
+        id: `e-${session}-${index}`, kind: 'tool_result', sourceTrace: `trace-${session}`,
+        sessionId: `session-${session}`, isError: true, toolName: 'Read', snippet: 'permission denied',
+      })),
+    })).flat();
+    const merged = mergeExperienceProblemPatterns(patterns);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].count, 10);
+    assert.equal(merged[0].sessionCount, 8);
+    assert.equal(merged[0].recentSessionIds.length, 8);
+    const diagnosis = buildObserveDiagnostics({ generatedAt: '2026-05-01T00:00:00.000Z', problemPatterns: merged.map(pattern => ({ ...pattern, skillName: 'audit' })) }).bySkill.audit[0];
+    assert.equal(diagnosis.occurrenceCount, 10);
+    assert.equal(diagnosis.occurrences[0].evidenceRefs.length, 5);
+    assert.equal((diagnosis.occurrences[0].payload?.recentSessionIds as string[]).length, 5);
+    const persisted = JSON.parse(JSON.stringify(merged));
+    assert.deepEqual(JSON.parse(JSON.stringify(mergeExperienceProblemPatterns([...patterns, ...merged, ...persisted]))), persisted);
+  });
+
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
     const dir = testDirectory('omk-inbox-overflow-');
     for (const [index, sessionId] of ['overflow-a', 'overflow-b'].entries()) {
@@ -573,6 +597,9 @@ expected_tools:
     assert.ok(applySession);
     const story = applySession.sessionStory;
     assert.ok(story);
+    const reversedStory = buildSessionStory(applySession, [...report.experience!.invocations].reverse());
+    assert.ok(reversedStory.goalSlices.length > 1);
+    assert.deepEqual(reversedStory.goalSlices.map(slice => slice.order), reversedStory.goalSlices.map((_, index) => index + 1));
     assert.equal(story.branchCount, 1);
     assert.equal(story.subagentDispatches.length, 1);
     assert.equal(story.progressUpdateCount, 1);

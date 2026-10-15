@@ -240,7 +240,7 @@ function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: 
     group.push(invocation);
     byId.set(invocation.goalSliceId, group);
   }
-  return Array.from(byId.entries()).map(([id, group], index) => {
+  return Array.from(byId.entries()).map(([id, group]) => {
     const timeline = uniqueTimelineEvents(group.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
     const userEvents = timeline.filter((event) => event.kind === 'user_message');
     const timestampedInvocations = group.filter(invocationTimestampObserved);
@@ -256,7 +256,6 @@ function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: 
       : group.length > 1 ? 'skill_segment_boundary' : 'default_session_slice';
     return {
       id,
-      order: index + 1,
       skillNames: unique(group.map((invocation) => invocation.skillName)).sort(),
       startTimestamp,
       endTimestamp,
@@ -269,7 +268,7 @@ function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: 
     const bObserved = b.startTimestamp !== UNOBSERVED_TRACE_TIMESTAMP;
     return Number(bObserved) - Number(aObserved)
       || a.startTimestamp.localeCompare(b.startTimestamp);
-  });
+  }).map((slice, index) => ({ ...slice, order: index + 1 }));
 }
 
 function sessionStorySubagentDispatches(session: ExperienceSessionSummary): ExperienceSessionStorySubagentDispatch[] {
