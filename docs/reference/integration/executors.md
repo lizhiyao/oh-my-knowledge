@@ -30,6 +30,8 @@ User settings advance to `schemaVersion: 2`; Studio carrier measurements use `om
 
 ## Sample mock compatibility
 
+The optional fake MCP server for custom scripts is version `0.0.2`. It applies every declared match condition, including exact and suffix file paths with `~` expansion, and shares `return_seq` positions across its processes for one invocation. Its hit keys use the declared mock tool and ordinal (`Tool:N`, including `*:N`). Shared counters are locked and published atomically; invalid state or a lock held for 5 seconds returns an MCP error instead of resetting the sequence. A crashed lock holder requires a fresh invocation. Existing evidence is preserved; rerun affected mock measurements to establish a new baseline.
+
 `Sample.mocks` requires the executor to intercept a tool call before the underlying tool runs. Tool traces alone are not enough: an executor that can report `Read` after execution cannot safely replace that call with a fixture.
 
 | Executor | `Sample.mocks` support |

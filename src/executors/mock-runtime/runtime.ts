@@ -114,6 +114,9 @@ function fakeMcpServerSource(): string {
   return `#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { randomUUID } = require('crypto');
+const { performance } = require('perf_hooks');
 const readline = require('readline');
 const serverName = process.argv[2];
 const mocksFile = process.env.OMK_MOCKS_FILE;
@@ -122,10 +125,13 @@ const rl = readline.createInterface({ input: process.stdin });
 function send(obj) { process.stdout.write(JSON.stringify(obj) + '\\n'); }
 function recordCount(record, key) {
   const value = Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('invalid mock counter');
+  return value;
 }
 function incrementRecordCount(record, key, amount = 1) {
   const next = recordCount(record, key) + amount;
+  if (!Number.isSafeInteger(next)) throw new Error('mock counter exceeded its range');
   Object.defineProperty(record, key, {
     value: next,
     enumerable: true,
@@ -215,12 +221,25 @@ function isMockHit(mock, toolName, toolInput) {
   const m = mock.match;
   if (!m) return true;
   const ti = toolInput || {};
+  if (m.file_path !== undefined && (typeof ti.file_path !== 'string' || expandHome(ti.file_path) !== expandHome(m.file_path))) return false;
+  if (m.file_path_endswith !== undefined && (typeof ti.file_path !== 'string' || !matchesFilePathSuffix(ti.file_path, m.file_path_endswith))) return false;
   if (m.input !== undefined && !matchesInputSubset(m.input, toolInput)) return false;
   if (m.input_contains !== undefined && !anyStringContains(toolInput, String(m.input_contains).toLowerCase())) return false;
   if (m.command_glob !== undefined && (typeof ti.command !== 'string' || !globMatch(m.command_glob, ti.command))) return false;
   if (m.url !== undefined && ti.url !== m.url) return false;
   if (m.url_glob !== undefined && (typeof ti.url !== 'string' || !globMatch(m.url_glob, ti.url))) return false;
   return true;
+}
+function expandHome(value) {
+  return value === '~' ? os.homedir() : value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+}
+function matchesFilePathSuffix(actual, suffix) {
+  const value = expandHome(actual);
+  const expected = expandHome(suffix);
+  if (value === expected) return true;
+  if (!value.endsWith(expected)) return false;
+  const separator = value.charCodeAt(value.length - expected.length - 1);
+  return separator === 47 || separator === 92;
 }
 function stringifyReturn(r) { return typeof r === 'string' ? r : JSON.stringify(r); }
 function resolveMockReturn(mock, hitCount, baseDir) {
@@ -289,27 +308,48 @@ function listTools() {
     inputSchema: schemaForTool(name, mocks),
   }));
 }
-function recordHit(mockKey) {
-  if (!mocksFile) return;
+const lockSleep = new Int32Array(new SharedArrayBuffer(4));
+// This state lives only for one invocation. Never recover a possibly live holder;
+// a crashed holder fails later calls within 5s, and invocation cleanup removes it.
+function recordCall(mockKey) {
+  if (!mocksFile) throw new Error('mock manifest is unavailable');
   const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
-  let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
-  try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
-  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) stats = {};
-  if (!stats.perMock || typeof stats.perMock !== 'object' || Array.isArray(stats.perMock)) stats.perMock = {};
-  incrementRecordCount(stats.perMock, mockKey);
-  stats.hits_total = recordCount(stats, 'hits_total') + 1;
-  fs.writeFileSync(statsFile, JSON.stringify(stats));
+  const lockDir = statsFile + '.lock';
+  const deadline = performance.now() + 5000;
+  for (;;) {
+    try { fs.mkdirSync(lockDir); break; } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (performance.now() >= deadline) throw new Error('shared mock state is locked');
+      Atomics.wait(lockSleep, 0, 0, 10);
+    }
+  }
+  const temporary = statsFile + '.' + randomUUID() + '.tmp';
+  try {
+    const stats = fs.existsSync(statsFile)
+      ? JSON.parse(fs.readFileSync(statsFile, 'utf8'))
+      : { perMock: {}, hits_total: 0, misses_total: 0 };
+    if (!stats || typeof stats !== 'object' || Array.isArray(stats)
+        || !stats.perMock || typeof stats.perMock !== 'object' || Array.isArray(stats.perMock)) {
+      throw new Error('shared mock state is invalid');
+    }
+    const previous = mockKey === undefined ? 0 : recordCount(stats.perMock, mockKey);
+    if (mockKey === undefined) {
+      incrementRecordCount(stats, 'misses_total');
+    } else {
+      incrementRecordCount(stats.perMock, mockKey);
+      incrementRecordCount(stats, 'hits_total');
+    }
+    fs.writeFileSync(temporary, JSON.stringify(stats), { flag: 'wx', mode: 0o600 });
+    fs.renameSync(temporary, statsFile);
+    return previous;
+  } finally {
+    try {
+      try { fs.unlinkSync(temporary); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    } finally {
+      fs.rmdirSync(lockDir);
+    }
+  }
 }
-function recordMiss() {
-  if (!mocksFile) return;
-  const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
-  let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
-  try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
-  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) stats = {};
-  stats.misses_total = recordCount(stats, 'misses_total') + 1;
-  fs.writeFileSync(statsFile, JSON.stringify(stats));
-}
-const hitCounters = new Map();
 function callTool(name, args) {
   const cfg = loadConfig();
   const fullName = 'mcp__' + serverName + '__' + name;
@@ -321,15 +361,12 @@ function callTool(name, args) {
     const m = mocks[i];
     ord.set(m.tool, (ord.get(m.tool) || 0) + 1);
     if (isMockHit(m, fullName, args || {})) {
-      const key = fullName + ':' + ord.get(m.tool);
-      recordHit(key);
-      const c = hitCounters.get(i) || 0;
-      const result = resolveMockReturn(m, c, baseDir);
-      hitCounters.set(i, c + 1);
-      return result;
+      const key = m.tool + ':' + ord.get(m.tool);
+      const count = recordCall(key);
+      return resolveMockReturn(m, count, baseDir);
     }
   }
-  recordMiss();
+  recordCall();
   if (cfg.strict) return '[omk-mock-strict] unmocked ' + fullName + ' call blocked';
   return '';
 }
@@ -339,13 +376,17 @@ rl.on('line', (line) => {
   try { msg = JSON.parse(line); } catch { return; }
   const id = msg.id;
   if (msg.method === 'initialize') {
-    send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'omk-fake-' + serverName, version: '0.0.1' } } });
+    send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'omk-fake-' + serverName, version: '0.0.2' } } });
   } else if (msg.method === 'notifications/initialized') {
   } else if (msg.method === 'tools/list') {
     send({ jsonrpc: '2.0', id, result: { tools: listTools() } });
   } else if (msg.method === 'tools/call') {
-    const result = callTool(msg.params && msg.params.name, msg.params && msg.params.arguments);
-    send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: result }] } });
+    try {
+      const result = callTool(msg.params && msg.params.name, msg.params && msg.params.arguments);
+      send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: result }] } });
+    } catch {
+      send({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Mock execution failed; shared state or fixture is unavailable.' } });
+    }
   } else if (id !== undefined) {
     send({ jsonrpc: '2.0', id, result: {} });
   }
