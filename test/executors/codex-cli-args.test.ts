@@ -15,65 +15,21 @@ import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 // 改用 -c approval_policy="never" config override 后,锁住别再退回去。
 
 describe('buildCodexArgs flag schema', () => {
-  it('preserves the complete auxiliary invocation without enabling Trial policy', () => {
+  it('preserves auxiliary isolation, explicit effort, cwd and a dash-leading prompt without enabling Trial policy', () => {
     const prompt = '---\nname: skill\n---\n正文';
-    assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt }), [
+    assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt, effort: 'high' }), [
       'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
       '--skip-git-repo-check', '--sandbox', 'read-only',
-      '-c', 'approval_policy="never"', '--model', 'm', '-C', '/tmp/a b', '--', prompt,
+      '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="high"',
+      '--model', 'm', '-C', '/tmp/a b', '--', prompt,
     ]);
-    assert.deepEqual(buildCodexArgs({ model: '', cwd: '', prompt: '' }), [
-      'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
-      '--skip-git-repo-check', '--sandbox', 'read-only',
-      '-c', 'approval_policy="never"', '--', '',
-    ]);
-  });
-
-  it('drops --ask-for-approval, passes approval_policy via -c, keeps isolation flags', () => {
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt: 'hi' });
-    assert.equal(args.includes('--ask-for-approval'), false);
-    const cIndex = args.indexOf('-c');
-    assert.notEqual(cIndex, -1, '-c flag missing');
-    assert.equal(args[cIndex + 1], 'approval_policy="never"');
-    assert.ok(args.includes('--json'));
-    assert.ok(args.includes('--ephemeral'));
-    assert.ok(args.includes('--ignore-user-config'));
-    assert.ok(args.includes('--ignore-rules'));
-    assert.ok(args.includes('--skip-git-repo-check'));
-    const sIdx = args.indexOf('--sandbox');
-    assert.notEqual(sIdx, -1);
-    assert.equal(args[sIdx + 1], 'read-only');
-  });
-
-  it('appends -C cwd when provided', () => {
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: '/tmp/iso', prompt: 'hi' });
-    const cwdIdx = args.indexOf('-C');
-    assert.notEqual(cwdIdx, -1);
-    assert.equal(args[cwdIdx + 1], '/tmp/iso');
-  });
-
-  it('omits -C when cwd null/undefined', () => {
-    assert.equal(buildCodexArgs({ model: 'm', cwd: null, prompt: 'hi' }).includes('-C'), false);
-    assert.equal(buildCodexArgs({ model: 'm', cwd: undefined, prompt: 'hi' }).includes('-C'), false);
-  });
-
-  it('puts prompt as last positional arg, preceded by -- end-of-options', () => {
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: '/tmp', prompt: 'the-prompt' });
-    assert.equal(args[args.length - 1], 'the-prompt');
-    assert.equal(args[args.length - 2], '--');
-  });
-
-  // bug:system prompt(skill 内容)被 prepend 后,prompt 常以 YAML frontmatter `---` 开头。
-  // 不加 `--` 终止符时,codex(clap)把它当未知 flag → exit 2(unexpected argument)、整个
-  // skill eval 全失败。锁住:任何以 `-`/`---` 开头的 prompt 前都必须有 `--`,且 `--` 之后
-  // 只有 prompt 这一个 positional(否则 frontmatter 会污染 flag 解析)。
-  it('guards dash-leading prompt with -- so frontmatter is not parsed as a flag', () => {
-    const prompt = '---\nname: skill\n---\n\n正文';
-    const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: null, prompt });
-    const dashIdx = args.indexOf('--');
-    assert.notEqual(dashIdx, -1, 'missing -- end-of-options separator');
-    // `--` 之后必须恰好只有 prompt 一个 token
-    assert.deepEqual(args.slice(dashIdx + 1), [prompt]);
+    for (const cwd of [null, undefined, '']) {
+      assert.deepEqual(buildCodexArgs({ model: '', cwd, prompt: '' }), [
+        'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+        '--skip-git-repo-check', '--sandbox', 'read-only',
+        '-c', 'approval_policy="never"', '--', '',
+      ]);
+    }
   });
 });
 

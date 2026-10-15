@@ -16,7 +16,11 @@
 | `codex-sdk` | Codex agent 评测（SDK） | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流；**costUSD 不报** |
 | `openai-api` | CI / 没装 CLI；或接 OpenAI 兼容模型 | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
 
-`openai-api` 通过 `OPENAI_BASE_URL` 自定义 Base URL。
+`openai-api` 通过 `OPENAI_BASE_URL` 自定义 Base URL。Core 评测使用 `/v1/responses`；辅助模型调用与 rubric 评委使用 `/v1/chat/completions`。Base URL 可以停在服务根或 `/v1`，可带尾部斜杠。查询参数、fragment 与内嵌凭证会被拒绝。参见[端点要求](../../guides/integration/non-claude-models.md)。
+
+辅助执行器在创建时捕获环境。API 诊断先遮蔽已知凭证值与 Bearer／Basic 凭证，再缩短错误摘要；API 响应上限为 4 MiB，也约束流式响应。这些处理不改写成功输出或原始 trace，也不能识别服务商文本中的所有秘密。
+
+**BREAKING-RUNTIME / BREAKING-COMPARABILITY：**评委 provider identity 升级为 `omk.judge-provider-runtime/v2`。Node 评委调用使用捕获的调用环境；API 评委身份还封存端点摘要、Chat Completions 协议和响应上限。已有报告仍可读取，但跨越此 runtime 边界合并测量前应建立新基线。Prompt 字节与评分公式不变。
 
 原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义执行器协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
 
@@ -68,6 +72,8 @@ export OMK_EXECUTOR=codex
 **Codex construct-validity 说明：**
 
 Core Codex 适配器目前只声明 `runtime-default` skill 发现。严格 `baseline` 要求禁用发现，因此会在执行前被拒绝，不会静默降为“只清空注入 prompt”。Codex 比较使用两个显式 artifact 版本；裸模型 baseline 使用 `openai-api`。用户、管理员及内置 skills 可能位于 `cwd` 之外，仅清空工作目录不能证明完整 skill 隔离。参见[官方发现位置与逐 skill 控制](https://learn.chatgpt.com/docs/build-skills)。
+
+辅助 Codex CLI／SDK 调用同样拒绝显式 `allowedSkills`，包括 `[]`。知识生成通过私有工作目录排除项目上下文，skill 发现仍采用 runtime 默认行为。推理 effort 会传入 CLI 配置或 SDK 的 `modelReasoningEffort`；所选模型须支持请求的档位。
 
 - **runtime 打指纹**：`codex` 用 `PATH` 上的 `codex` binary，`codex-sdk` 用 `@openai/codex-sdk` 解析到的自带 binary。Core artifact 会封存 executor 与 evaluator Runtime identity，包括宿主能取得的本机 binary 或 SDK 证据。除非在 `eval.yaml` 显式提供 `judgeModels[].deploymentRevision`，远端评委部署会保持 `opaque/unknown`；即使提供，也只是 `self-reported/declared`。Runtime identity 不同时，结果要视为 runtime 对比，而不只是 prompt/template 行为。详见[统计严谨性](../../explanation/statistical-rigor.md#三、评委去偏与-prompt-identity)。
 - **配置与会话隔离**：omk 只在启动前解析 Codex 配置里的模型（顶层 `profile` 选中时取该 profile 的模型），然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。

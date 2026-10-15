@@ -46,7 +46,7 @@ async function fixture() {
 function prepare(f: Awaited<ReturnType<typeof fixture>>, executor: string, suffix = executor) {
   return prepareCliEvaluation({ samples: f.path, executor, model: 'offline-fixture', control: 'baseline', treatment: f.treatment,
     'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': join(f.root, suffix, 'reports'),
-  }, { projectRoot: f.root, lang: 'en', env: { ...process.env, OPENAI_API_KEY: 'offline-placeholder', OPENAI_BASE_URL: 'https://api.openai.com/v1' } });
+  }, { projectRoot: f.root, lang: 'en', env: { ...process.env, OPENAI_API_KEY: 'offline-placeholder', OPENAI_BASE_URL: 'https://fixture-api.example/api/v1/' } });
 }
 
 describe('one authored sample set across production executors', () => {
@@ -75,7 +75,6 @@ console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'co
       const requests: Record<string, unknown>[] = [];
       // Only HTTP transport is simulated; the custom executor runs as a real isolated subprocess.
       const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-        expect(String(url)).toBe('https://api.openai.com/v1/responses');
         const raw = String(init?.body); expect(raw).not.toContain('GOLD_SENTINEL');
         expect(raw).not.toContain('expectedPointer');
         const body = JSON.parse(raw); requests.push(body);
@@ -102,6 +101,8 @@ console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'co
       const result = await runCoreEvaluationCommand({ prepared: prepare(f, executor === 'custom-executor' ? custom : executor, executor) });
       if (executor === 'custom-executor') expect(fetch).not.toHaveBeenCalled();
       else {
+        expect([...new Set(fetch.mock.calls.map(([url]) => String(url)))])
+          .toEqual(['https://fixture-api.example/api/v1/responses']);
         expect(requests).toHaveLength(8);
         expect(requests.filter((request) => JSON.stringify(request).includes('NATIVE_SUPPORT_RESOURCE'))).toHaveLength(4);
       }

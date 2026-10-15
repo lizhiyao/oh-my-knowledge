@@ -22,7 +22,8 @@ export function configuredExtractionModel(executor: string, model: string, creat
       try {
         const execute = create(executor);
         const result = await execute({ model, system, prompt: input,
-          ...(cwd ? { cwd, allowedSkills: [] } : {}),
+          // Isolate project context without claiming global Codex skill discovery is disabled.
+          ...(cwd ? { cwd } : {}),
           timeoutMs: 300_000, abortSignal: signal });
         // Preserve a completed response if cancellation arrived just afterwards.
         // The application saves output/usage before honoring that late cancellation.

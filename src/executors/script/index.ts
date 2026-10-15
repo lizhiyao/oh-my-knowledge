@@ -117,7 +117,8 @@ function validateScriptProtocolResult(
   return normalizeExecResultToolIdentities(result);
 }
 
-export function createScriptExecutor(command: string): ExecutorFn {
+export function createScriptExecutor(command: string, environment: NodeJS.ProcessEnv = process.env): ExecutorFn {
+  const capturedEnvironment = { ...environment };
   const baseCwd = process.cwd();
   const resolved = resolveScriptCommand(command, baseCwd);
   const cmd = resolved.command;
@@ -128,7 +129,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
       scriptIsolationWarned = true;
       process.stderr.write(
         `[omk] script executor 不参与 skill isolation:allowedSkills=${JSON.stringify(allowedSkills)} 在自定义 executor "${command}" 下无效。\n`
-        + '  如需 baseline 真正隔离，请用 --executor codex。\n',
+        + '  严格 baseline 须使用可禁用 skill 发现的 Core 运行时（如 openai-api）。\n',
       );
     }
     const input = JSON.stringify({ model, system: system || '', prompt });
@@ -138,7 +139,7 @@ export function createScriptExecutor(command: string): ExecutorFn {
     const mockHandle = mocks && mocks.length > 0
       ? materializeForScript(mocks, mocksBaseDir, !!mocksStrict)
       : null;
-    const env: NodeJS.ProcessEnv = { ...process.env };
+    const env: NodeJS.ProcessEnv = { ...capturedEnvironment };
     if (mockHandle) {
       Object.assign(env, mockHandle.env);                       // OMK_MOCKS_FILE
       if (mockHandle.mcpConfigFile) env.OMK_MOCK_MCP_CONFIG_FILE = mockHandle.mcpConfigFile;

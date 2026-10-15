@@ -2,8 +2,9 @@ import type { ExecResult } from '../contracts/result.js';
 import type { ExecutorInput } from '../contracts/ports.js';
 import { optionalTokenCount, splitInclusiveInputTokens } from '../contracts/token-usage.js';
 import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
-import { readJsonResponse, responseBodyPreview } from '../core/http.js';
+import { readJsonResponse, responseBodyPreview, resolveOpenAiEndpoint } from '../core/http.js';
 import { asErrorLike, errorMessage } from '../core/runtime.js';
+import { createExecutorDiagnosticRedactor } from '../core/diagnostics.js';
 
 interface OpenAiResponse {
   usage?: {
@@ -18,18 +19,19 @@ interface OpenAiResponse {
   error?: { message?: string };
 }
 
-export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal }: ExecutorInput): Promise<ExecResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+  const apiKey = environment.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY environment variable is not set');
+  const redact = createExecutorDiagnosticRedactor(environment);
 
-  const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com';
+  const baseUrl = environment.OPENAI_BASE_URL;
   const messages: Array<{ role: string; content: string }> = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: prompt });
 
   const start = Date.now();
   try {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    const res = await fetch(resolveOpenAiEndpoint(baseUrl, 'chat/completions'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model: model || 'gpt-4o', messages }),
@@ -41,8 +43,10 @@ export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEF
     const durationMs = Date.now() - start;
 
     if (!res.ok) {
-      const bodyPreview = responseBodyPreview(rawBody);
-      return { ok: false, error: data?.error?.message || `API error ${res.status}${bodyPreview ? `: ${bodyPreview}` : ''}`, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason: 'error', numTurns: 0 };
+      // Redact before shortening: truncating a credential first would leak its prefix.
+      const bodyPreview = responseBodyPreview(redact(rawBody));
+      const providerMessage = typeof data?.error?.message === 'string' ? redact(data.error.message) : undefined;
+      return { ok: false, error: providerMessage || `API error ${res.status}${bodyPreview ? `: ${bodyPreview}` : ''}`, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason: 'error', numTurns: 0 };
     }
     if (!data) {
       return { ok: false, error: 'OpenAI API returned an empty or non-JSON response', durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason: 'error', numTurns: 0 };
@@ -87,7 +91,7 @@ export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEF
     const choice = data.choices?.[0];
     const content = choice?.message?.content;
     if (typeof content !== 'string' || content.trim().length === 0) {
-      const refusal = choice?.message?.refusal?.trim();
+      const refusal = typeof choice?.message?.refusal === 'string' ? redact(choice.message.refusal.trim()) : undefined;
       return {
         ok: false,
         error: refusal
@@ -114,13 +118,13 @@ export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEF
       inputTokens, outputTokens,
       cacheReadTokens, cacheCreationTokens: 0,
       costUSD: 0, costReportedByExecutor: false,
-      stopReason: choice?.finish_reason || 'unknown', numTurns: 1,
+      stopReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason || 'unknown' : 'unknown', numTurns: 1,
     };
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = asErrorLike(err);
     const stopReason = details.name === 'TimeoutError' ? 'timeout' : 'error';
-    const error = details.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : errorMessage(err);
+    const error = details.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : redact(errorMessage(err));
     return { ok: false, error, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, output: null, stopReason, numTurns: 0 };
   }
 }

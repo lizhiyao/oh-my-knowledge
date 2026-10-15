@@ -23,30 +23,12 @@ export {
   sumCodexElapsed,
 } from './protocol.js';
 
-// Codex:CLI / SDK 的项目指令、skills 与可能的子线程都以 cwd 工作区为
-//          发现边界；`-C/--cd` 是可验证的隔离控制面。因此把 cwd 切到
-//          隔离空目录，统一阻断 AGENTS.md / .agents/skills/ 自动加载。
-//
-//   undefined         → 不传 -C(原行为,看 cwd 里有什么 codex 自己决定)
-//   []                → 必须提供 cwd 非空(否则 throw),caller 应传一个
-//                       isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)
-//   [...] (length>0)  → throw,非空白名单已移除(无法真正隔离)
-export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null | undefined, executorName = 'codex-cli'): void {
+// An empty cwd cannot disable user, admin or bundled skills outside that workspace.
+// Auxiliary calls may use runtime defaults; explicit isolation must fail closed.
+export function assertCodexSkillDiscovery(allowedSkills: string[] | undefined, executorName = 'codex-cli'): void {
   if (allowedSkills === undefined) return;
-  if (allowedSkills.length > 0) {
-    throw new Error(
-      `skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})不再支持:非空白名单无法真正隔离。\n`
-      + `  仅支持 [](强制 cwd 隔离,需提供 cwd 非空,全封死)或 undefined(不隔离)。`,
-    );
-  }
-  // allowedSkills === [] 时必须有 cwd；工作区隔离是 Codex 的控制面。
-  if (!cwd) {
-    throw new Error(
-      `${executorName} executor allowedSkills=[] 需要提供 cwd 非空（工作区隔离）。\n`
-      + '  主线程与可能的子线程都会继承工作区上下文；必须用隔离 cwd 阻断 AGENTS.md / .agents/skills/ 自动加载。\n'
-      + '  caller 应传一个 isolated 空目录(如 ~/.oh-my-knowledge/state/isolated-cwd/)。',
-    );
-  }
+  throw new Error(`${executorName} 不支持显式 allowedSkills 隔离；空工作目录不能禁用全局或内置 skills。`
+    + '请省略该字段使用运行时默认上下文；严格 baseline 请使用可禁用发现的运行时（如 openai-api）。');
 }
 
 // codex 的 verbose 降级提示是 binary 能力快照(无 --system-prompt flag / 不报 cost),
@@ -98,13 +80,14 @@ export function parseCodexJsonl(stdout: string): CodexJsonlParseResult {
 }
 
 /** Invocation policy for non-Trial callers such as generation and judge calls. */
-export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | null; prompt: string }): string[] {
+export function buildCodexArgs({ model, cwd, prompt, effort }: Pick<ExecutorInput, 'model' | 'cwd' | 'prompt' | 'effort'>): string[] {
   return buildCodexExecArguments({
     ...(model ? { model } : {}),
     ...(cwd ? { workingDirectory: cwd } : {}),
     prompt,
     sandbox: 'read-only',
     strictConfig: false,
+    ...(effort === undefined ? {} : { effort }),
   });
 }
 
@@ -122,8 +105,8 @@ function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: s
   return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
 }
 
-export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal }: ExecutorInput): Promise<ExecResult> {
-  isolateCodexCwd(allowedSkills, cwd);
+export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+  assertCodexSkillDiscovery(allowedSkills);
 
   // codex CLI 没有 --system-prompt flag。降级:把 system 拼到 prompt 头部,
   // verbose 输出降级提示。reproducibility 略受影响,但语义大致等价。
@@ -137,8 +120,8 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     hasWarnedCost = true;
   }
 
-  const args = buildCodexArgs({ model, cwd, prompt: finalPrompt });
-  const env = buildExecEnv(skillDir);
+  const args = buildCodexArgs({ model, cwd, prompt: finalPrompt, effort });
+  const env = buildExecEnv(skillDir, environment);
 
   const start = Date.now();
   try {

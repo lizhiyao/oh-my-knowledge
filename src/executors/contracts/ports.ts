@@ -11,9 +11,9 @@ export interface ExecutorInput {
   timeoutMs?: number;
   verbose?: boolean;
   // Skill 隔离声明(per-task)。来源:Artifact.allowedSkills。
-  //   undefined → executor 不传 SDK skills option(默认全发现)
-  //   []        → SDK skills:[] + disallowedTools:['Skill'](main session + subagent 双堵)
-  //   [...]     → reject(非空白名单不再支持:无法真正隔离,executor throw)
+  //   undefined → 运行时默认发现策略。
+  //   []        → 请求禁用发现，须由宿主证明支持；Codex CLI／SDK 无此能力，提前拒绝。
+  //   [...]     → 非空白名单不再支持；自定义执行器的策略由宿主负责。
   allowedSkills?: string[];
   /** 评测时拦截的工具调用 + mock 返回值。来源:Sample.mocks。
    *  - script(自定义脚本):物化 manifest 与可选 MCP 配置,通过 env(OMK_MOCK_MCP_CONFIG_FILE / OMK_MOCKS_FILE)暴露给脚本;脚本负责消费该协议

@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   assertExecutorInputCapabilities,
@@ -24,6 +24,25 @@ const okExecutor: ExecutorFn = async () => ({
 });
 
 describe('executor sample-mock capabilities', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('redacts captured credentials and authorization diagnostics without changing raw evidence', async () => {
+    const credential = 'fixture-private-api-credential';
+    vi.stubEnv('OPENAI_API_KEY', credential);
+    const original = { ...await okExecutor({ model: 'fixture', prompt: '' }), ok: false,
+      error: `provider diagnostic: ${credential}; Authorization: Bearer opaque-private-token`, output: credential };
+    const wrapped = enforceExecutorCapabilities('openai-api', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'different-credential-after-await');
+      return original;
+    });
+    const result = await wrapped({ model: 'fixture', prompt: '' });
+    assert.equal(result.output, credential);
+    assert.match(original.error, new RegExp(credential));
+    assert.doesNotMatch(result.error ?? '', /fixture-private-api-credential|opaque-private-token/);
+    assert.match(result.error ?? '', /provider diagnostic: \[REDACTED\]; Authorization: Bearer \[REDACTED\]/);
+    assert.equal(result.ok, false);
+  });
+
   it('declares built-in support explicitly and delegates custom scripts', () => {
     assert.equal(getExecutorCapabilities('codex').sampleMocks, 'unsupported');
     assert.equal(getExecutorCapabilities('codex-sdk').sampleMocks, 'unsupported');

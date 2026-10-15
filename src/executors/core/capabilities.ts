@@ -1,4 +1,5 @@
 import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
+import { createExecutorDiagnosticRedactor } from './diagnostics.js';
 import {
   getExecutorDescriptor,
   type ExecutorCapabilities,
@@ -44,9 +45,12 @@ export function assertExecutorInputCapabilities(
 export function enforceExecutorCapabilities(
   executorName: string,
   executor: ExecutorFn,
+  environment: NodeJS.ProcessEnv = process.env,
 ): ExecutorFn {
   return async (input) => {
+    const redact = createExecutorDiagnosticRedactor(environment);
     assertExecutorInputCapabilities(executorName, input);
-    return executor(input);
+    const result = await executor(input);
+    return typeof result.error === 'string' ? { ...result, error: redact(result.error) } : result;
   };
 }

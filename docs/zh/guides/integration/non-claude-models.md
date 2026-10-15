@@ -4,7 +4,9 @@
 
 ## OpenAI 兼容 HTTP 端点
 
-当前 `openai-api` 将 `/v1/chat/completions` 追加到 `OPENAI_BASE_URL`，用 Bearer API key 发送文本消息。因此 Base URL 必须停在这段路径之前；不要重复填写 `/v1` 或尾部 `/`。只有请求形态匹配的服务才能使用，非标准路由需要自己的适配器。
+`openai-api` 使用相同的 `OPENAI_BASE_URL` 与 Bearer API key 调用两种协议：Core 被测目标使用 `/v1/responses`，辅助调用（`doctor`、样本生成和 rubric 评委）使用 `/v1/chat/completions`。同时用于目标和评委的服务须支持两种协议，协议之间不会自动回退。
+
+Base URL 填服务根或其 `/v1` 前缀；尾部斜杠会规范化，网关路径前缀会保留。不要填具体操作路径、查询参数、fragment 或内嵌凭证。Core 要求 HTTPS，loopback 端点除外。其它协议需要自定义适配器。
 
 ```bash
 export OPENAI_API_KEY="<your-api-key>"
