@@ -509,13 +509,17 @@ describe('Evaluation Core Execution runtime', () => {
   });
 
   it('retries only within one trial identity and disposes one trial session', async () => {
-    const plan = await makePlan((definition) => {
+    const plan = await makePlan((definition, policy) => {
       definition.targets = [definition.targets[0]];
       definition.comparisons = [];
+      policy.eventDelivery.writerMode = 'optional';
     });
+    const clock = new FakeClock();
+    const events: EvaluationEvent[] = [];
     let calls = 0;
     const { ports, state } = portsFor(plan, () => {
       calls += 1;
+      clock.now += calls * 5;
       if (calls === 1) {
         throw new ExecutionPortFailure({
           code: 'timeout',
@@ -526,7 +530,7 @@ describe('Evaluation Core Execution runtime', () => {
       return {
         output: { value: { answer: 'ok' }, classification: 'public' },
       };
-    });
+    }, { clock, eventWriter: { async write(event) { events.push(structuredClone(event)); } } });
     const bundle = await executeRunPlan(plan, ports, {
       runId: 'run-retry',
       bundleId: 'bundle-retry',
@@ -537,8 +541,30 @@ describe('Evaluation Core Execution runtime', () => {
     expect(record.attempts).toHaveLength(2);
     expect(new Set(record.attempts.map((attempt) => attempt.attemptId)).size).toBe(2);
     expect(record.trialId).toBe(state.trialContexts[0].trialId);
-    expect(state.trialOpens).toBe(1);
-    expect(state.trialDisposals).toBe(1);
+    expect(record.attempts.map(attempt => attempt.timing.durationMs)).toEqual([5, 10]);
+    expect(bundle.budgetSummary.entries.map(entry => ({
+      attemptId: entry.attemptId,
+      durationMs: entry.activeDurationMs,
+      outcomeKind: entry.outcomeKind,
+    }))).toEqual(record.attempts.map((attempt, index) => ({
+      attemptId: attempt.attemptId,
+      durationMs: attempt.timing.durationMs,
+      outcomeKind: index === 0 ? 'attempt-timeout' : 'completed',
+    })));
+    const attemptEvents = events.filter(event => event.subject.subjectKind === 'attempt');
+    expect(attemptEvents.map(event => [event.eventKind, event.subject.subjectId])).toEqual([
+      ['execution.attempt.started', record.attempts[0].attemptId],
+      ['execution.attempt.completed', record.attempts[0].attemptId],
+      ['execution.attempt.started', record.attempts[1].attemptId],
+      ['execution.attempt.completed', record.attempts[1].attemptId],
+    ]);
+    expect(attemptEvents.filter(event => event.eventKind === 'execution.attempt.completed')
+      .map(event => event.data)).toMatchObject([
+      { attemptStatus: 'failed', errorCode: 'timeout' },
+      { attemptStatus: 'completed' },
+    ]);
+    expect(events.filter(event => event.eventKind === 'execution.retry.scheduled')).toHaveLength(1);
+    expect(state).toMatchObject({ runOpens: 1, runDisposals: 1, trialOpens: 1, trialDisposals: 1, active: 0 });
   });
 
   it('retains exact per-attempt usage when retry costs cannot be aggregated', async () => {
@@ -641,51 +667,67 @@ describe('Evaluation Core Execution runtime', () => {
     expect(state).toMatchObject({ trialOpens: 1, attempts: 2, trialDisposals: 1 });
   });
 
-  it('records timeout once even when an Executor returns success after observing abort', async () => {
-    const events: EvaluationEvent[] = [];
-    const plan = await makePlan((definition, policy) => {
-      definition.targets = [definition.targets[0]];
-      definition.comparisons = [];
-      policy.execution.timeoutMs = 25;
-      policy.retry.maxAttempts = 1;
-      policy.eventDelivery.writerMode = 'optional';
-    });
-    const { ports, state } = portsFor(plan, async (_trial, attempt) => {
-      await new Promise<void>((resolve) => {
-        attempt.signal.addEventListener('abort', () => resolve(), { once: true });
+  it.each(['timeout', 'cancellation', 'both'] as const)(
+    'records %s once when an Executor returns success after abort, retaining usage and cleaning resources', async (trigger) => {
+      const events: EvaluationEvent[] = [];
+      const controller = new AbortController();
+      const timeout = trigger !== 'cancellation';
+      const errorCode = timeout ? 'timeout' : 'cancelled';
+      const plan = await makePlan((definition, policy) => {
+        definition.targets = [definition.targets[0]];
+        definition.comparisons = [];
+        if (timeout) policy.execution.timeoutMs = 25;
+        policy.retry.maxAttempts = 1;
+        policy.eventDelivery.writerMode = 'optional';
       });
-      return {
-        output: { value: { late: true }, classification: 'public' },
-        usage: { inputTokens: 1 },
-      };
-    }, {
-      eventWriter: {
-        async write(event) {
-          events.push(structuredClone(event));
+      const { ports, state } = portsFor(plan, async (_trial, attempt) => {
+        if (timeout) {
+          await new Promise<void>((resolve) => {
+            attempt.signal.addEventListener('abort', () => {
+              if (trigger === 'both') controller.abort();
+              resolve();
+            }, { once: true });
+          });
+        } else controller.abort();
+        return {
+          output: { value: { late: true }, classification: 'public' },
+          usage: { inputTokens: 1 },
+        };
+      }, {
+        eventWriter: {
+          async write(event) {
+            events.push(structuredClone(event));
+          },
         },
-      },
-    });
-    const bundle = await executeRunPlan(plan, ports, {
-      runId: 'run-timeout',
-      bundleId: 'bundle-timeout',
-    });
+      });
+      const bundle = await executeRunPlan(plan, ports, {
+        runId: 'run-timeout',
+        bundleId: 'bundle-timeout',
+        signal: controller.signal,
+      });
 
-    const record = bundle.records[0];
-    expect(record.executionStatus).toBe('failed');
-    if (record.executionStatus !== 'failed') throw new Error('expected failed record');
-    expect(record.error.code).toBe('timeout');
-    expect(record.attempts).toHaveLength(1);
-    expect(record.attempts[0]).toMatchObject({
-      attemptStatus: 'failed',
-      error: { code: 'timeout' },
-    });
-    expect('output' in record).toBe(false);
-    expect(record.usage?.inputTokens).toBe(1);
-    expect(state.attempts).toBe(1);
-    expect(events.filter((event) => (
-      event.eventKind === 'execution.attempt.completed'
-    ))).toHaveLength(1);
-  });
+      const record = bundle.records[0];
+      expect(record.executionStatus).toBe(timeout ? 'failed' : 'cancelled');
+      if (record.executionStatus !== 'failed' && record.executionStatus !== 'cancelled') throw new Error('expected aborted record');
+      expect(record.error?.code).toBe(errorCode);
+      expect(record.attempts).toHaveLength(1);
+      expect(record.attempts[0]).toMatchObject({
+        attemptStatus: timeout ? 'failed' : 'cancelled',
+        error: { code: errorCode },
+      });
+      expect('output' in record).toBe(false);
+      expect(record.usage?.inputTokens).toBe(1);
+      expect(bundle.budgetSummary.entries).toEqual([expect.objectContaining({
+        attemptId: record.attempts[0].attemptId,
+        invocationCount: 1,
+        outcomeKind: timeout ? 'attempt-timeout' : 'cancelled',
+      })]);
+      expect(state).toMatchObject({ attempts: 1, runOpens: 1, runDisposals: 1, trialOpens: 1, trialDisposals: 1, active: 0 });
+      expect(events.filter((event) => (
+        event.eventKind === 'execution.attempt.completed'
+      ))).toHaveLength(1);
+    },
+  );
 
   it('censors the next whole paired block before opening an Executor when budget is insufficient', async () => {
     const plan = await makePlan((definition, policy) => {
@@ -1618,34 +1660,56 @@ describe('Evaluation Core Execution runtime', () => {
     },
   );
 
-  it('records one consumed attempt when an invoked Executor returns invalid usage', async () => {
-    const plan = await makePlan((definition, policy) => {
-      definition.targets = [definition.targets[0]];
-      definition.comparisons = [];
-      policy.budget.stages.execution.maxInvocations = 1;
-    });
-    const { ports, state } = portsFor(plan, () => ({
-      output: { value: { answer: 'invalid usage' }, classification: 'public' },
-      usage: { inputTokens: -1 },
-    }));
-    const bundle = await executeRunPlan(plan, ports, {
-      runId: 'run-invalid-executor-result',
-      bundleId: 'bundle-invalid-executor-result',
-    });
+  it.each(['success-usage', 'failure-usage', 'non-json-result'] as const)(
+    'records and charges one failed attempt for %s, without caching invalid results', async (invalid) => {
+      const plan = await makePlan((definition, policy) => {
+        definition.targets = [definition.targets[0]];
+        definition.comparisons = [];
+        policy.budget.stages.execution.maxInvocations = 1;
+        policy.cache.executionMode = 'transparent-deterministic';
+      });
+      const cache = new MemoryCache();
+      const clock = new FakeClock();
+      const { ports, state } = portsFor(plan, () => {
+        clock.now += 7;
+        if (invalid === 'failure-usage') throw new ExecutionPortFailure({
+          code: 'timeout', stage: 'infrastructure', message: 'invalid failure usage',
+        }, { inputTokens: -1 });
+        return invalid === 'non-json-result'
+          ? { output: { value: NaN, classification: 'public' } }
+          : { output: { value: 'invalid usage', classification: 'public' }, usage: { inputTokens: -1 } };
+      }, { cache, clock });
+      const bundle = await executeRunPlan(plan, ports, {
+        runId: 'run-invalid-executor-result',
+        bundleId: 'bundle-invalid-executor-result',
+      });
 
-    expect(bundle.executionBundleStatus).toBe('failed');
-    expect(bundle.terminationReasonCode).toBe('executor-result-invalid');
-    expect(bundle.coverage).toMatchObject({ started: 1, failed: 1, notStarted: 0 });
-    expect(state.attempts).toBe(1);
-    expect(bundle.records[0]).toMatchObject({
-      executionStatus: 'failed',
-      attempts: [{
-        attemptNumber: 1,
-        attemptStatus: 'failed',
-        error: { code: 'executor-result-invalid' },
-      }],
-    });
-  });
+      expect(bundle.executionBundleStatus).toBe('failed');
+      expect(bundle.terminationReasonCode).toBe('executor-result-invalid');
+      expect(bundle.coverage).toMatchObject({ started: 1, failed: 1, notStarted: 0 });
+      const record = bundle.records[0];
+      if (record.executionStatus !== 'failed') throw new Error('expected invalid result failure');
+      expect(state).toMatchObject({ attempts: 1, runOpens: 1, runDisposals: 1, trialOpens: 1, trialDisposals: 1, active: 0 });
+      expect(cache.puts).toBe(0);
+      expect(bundle.budgetSummary.entries).toEqual([expect.objectContaining({
+        attemptId: record.attempts[0].attemptId,
+        invocationCount: 1,
+        activeDurationMs: 7,
+        outcomeKind: 'failed',
+        providerCostStatus: 'unreported',
+      })]);
+      expect(bundle.records[0]).not.toHaveProperty('output');
+      expect(bundle.records[0]).not.toHaveProperty('usage');
+      expect(bundle.records[0]).toMatchObject({
+        executionStatus: 'failed',
+        attempts: [{
+          attemptNumber: 1,
+          attemptStatus: 'failed',
+          error: { code: 'executor-result-invalid' },
+        }],
+      });
+    },
+  );
 
   it('reports disposer failure after exactly-once trial and run teardown', async () => {
     const cache = new MemoryCache();
