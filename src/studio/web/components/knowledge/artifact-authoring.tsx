@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Alert, Button, Checkbox, Empty, Input, Modal, Select, Space, Spin, Tabs } from 'antd';
 import type { Language } from '../layout/shell';
 import { KnowledgeRequestError, requestKnowledge } from './request';
+import { useKnowledgeSave } from './save-session';
 import { CarrierKnowledgeReviewPanel, CarrierSelectionReview } from './carrier-knowledge-review';
 import type { AuthoredArtifactKind, ReviewedCarrierDetail, ReviewedCarrierDraft, CarrierRow, CarrierSource, CarrierKnowledgeReview } from '../../../view-models/knowledge/artifact-authoring';
 import type { KnowledgeCandidateRow } from '../../../view-models/knowledge/knowledge-candidates';
@@ -37,9 +38,12 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   const [name, setName] = useState(existing?.name ?? '');
   const [draft, setDraft] = useState<ReviewedCarrierDraft | null>(null);
   const [content, setContent] = useState('');
-  const [busy, setBusy] = useState(true);
-  const [error, setError] = useState('');
-  const [uncertain, setUncertain] = useState(false);
+  const [reading, setBusy] = useState(true);
+  const { session, state, busy: writing, uncertain } = useKnowledgeSave<{ draft: ReviewedCarrierDraft; content: string }>(workspace);
+  const busy = reading || writing;
+  const [previewError, setPreviewError] = useState('');
+  function setError(message: string) { setPreviewError(message); if (!message) session.clearError(); }
+  const error = state.error || previewError;
   const [loadingBaseline, setLoadingBaseline] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadRetry, setLoadRetry] = useState(0); const [baselineRetry, setBaselineRetry] = useState(0);
@@ -83,26 +87,26 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
       ? t('本地文件头部需要有效的 YAML 属性；prompt 的 tags 应为字符串列表，skill 的 metadata 应为映射。请核对文件后再生成。', 'Use valid YAML properties in the source: prompt tags must be a string list and skill metadata a mapping. Review the file before generating.') : failure(cause)); } finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
   }
   async function save() {
-    if (!draft || uncertain || stalePreview || writeController.current) return;
-    const active = new AbortController(); writeController.current = active; setBusy(true); setError('');
-    try { const saved = await requestArtifact<ReviewedCarrierDetail>(workspace, 'save', { artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections }, active.signal); if (!active.signal.aborted) finish(saved); }
-    catch (cause) {
-      if (active.signal.aborted) return;
+    if (!draft || uncertain || stalePreview || busy) return;
+    setError('');
+    const saved = await session.save({ draft, content }, (command, signal) => requestArtifact<ReviewedCarrierDetail>(workspace, 'save', {
+      artifactId: command.draft.artifactId, source: command.draft.source, artifactKind: command.draft.artifactKind,
+      name: command.draft.name, directoryName: command.draft.directoryName, baselineRevisionId: command.draft.baselineRevisionId,
+      baselineHash: command.draft.baselineHash, content: command.content, selectedRefs: command.draft.selectedRefs, tagSelections: command.draft.tagSelections,
+    }, signal), cause => {
       if (cause instanceof Error && cause.message === 'carrier_conflict') setStalePreview(true);
-      if (cause instanceof KnowledgeRequestError && cause.definiteRejection && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'knowledge_workspace_busy', 'knowledge_storage_unsupported'].includes(cause.message)) setError(failure(cause));
-      else { setUncertain(true); setError(t('保存结果未能读取，请先核对已保存版本。', 'Save result could not be read. Check the saved version first.')); }
-    } finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
+      if (cause instanceof KnowledgeRequestError && cause.definiteRejection && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'knowledge_workspace_busy', 'knowledge_storage_unsupported'].includes(cause.message)) return failure(cause);
+    }, t('保存结果未能读取，请先核对已保存版本。', 'Save result could not be read. Check the saved version first.'));
+    if (saved?.current()) finish(saved.value);
   }
   async function readSaved() {
-    if (!draft || writeController.current) return;
-    const active = new AbortController(); writeController.current = active; setBusy(true);
-    try {
-      const saved = await requestArtifact<ReviewedCarrierDetail>(workspace, 'show', { id: draft.artifactId }, active.signal);
-      if (active.signal.aborted) return;
-      if (!saved.drifted && saved.content === content && draft.selectedRefs.every(ref => saved.knowledgeRefs.some(item => item.knowledgeId === ref.knowledgeId && item.revisionId === ref.revisionId && item.generation === ref.generation)) && (saved.baseline?.contentHash === draft.baselineHash && saved.baseline.revisionId === draft.baselineRevisionId || draft.baselineHash === null && saved.version === 1)) finish(saved);
-      else setError(t('未能确认本次内容已保存。关闭后查看载体，再重新生成预览。', 'Could not confirm this save. Close, inspect the artifact, then generate a new preview.'));
-    } catch { if (!active.signal.aborted) setError(t('未能确认保存结果。请稍后再次核对。', 'Could not confirm the save. Check again later.')); }
-    finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
+    const saved = await session.inspect((command, signal) => requestArtifact<ReviewedCarrierDetail>(workspace, 'show', { id: command.draft.artifactId }, signal),
+      (value, command) => !value.drifted && value.content === command.content
+        && command.draft.selectedRefs.every(ref => value.knowledgeRefs.some(item => item.knowledgeId === ref.knowledgeId && item.revisionId === ref.revisionId && item.generation === ref.generation))
+        && (value.baseline?.contentHash === command.draft.baselineHash && value.baseline.revisionId === command.draft.baselineRevisionId || command.draft.baselineHash === null && value.version === 1),
+      t('未能确认本次内容已保存。关闭后查看载体，再重新生成预览。', 'Could not confirm this save. Close, inspect the artifact, then generate a new preview.'),
+      t('未能确认保存结果。请稍后再次核对。', 'Could not confirm the save. Check again later.'));
+    if (saved?.current()) finish(saved.value);
   }
   return <Modal open width={900} className="carrier-authoring-modal" title={t('生成知识载体', 'Generate knowledge artifact')} onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
     {draft && !uncertain && <Button disabled={busy} onClick={() => { setDraft(null); setError(''); setStalePreview(false); }}>{t('返回选择', 'Back to selection')}</Button>}
