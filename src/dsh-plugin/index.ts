@@ -153,6 +153,8 @@ interface DshObserveState {
   readonly catalog: ReturnType<typeof createDshConversationCatalog>;
   server?: DshStudioServer;
   serverUrl?: string;
+  starting?: Promise<string>;
+  disposed?: boolean;
 }
 
 function persistenceFor(ctx: DshPluginContextLike): DshSessionPersistenceLike {
@@ -167,13 +169,27 @@ async function studioUrl(
   invocation: DshCommandInvocationLike,
   state: DshObserveState,
 ): Promise<string> {
+  if (state.disposed) throw new Error('OMK DSH 插件已关闭。');
   if (state.serverUrl) return state.serverUrl;
+  if (state.starting) return state.starting;
+  state.starting = startStudio(invocation, state);
+  try {
+    return await state.starting;
+  } finally {
+    state.starting = undefined;
+  }
+}
+
+async function startStudio(
+  invocation: DshCommandInvocationLike,
+  state: DshObserveState,
+): Promise<string> {
   const cwd = invocation.agent.session.header.cwd ?? process.cwd();
   const layout = projectLayout(cwd);
   const { createNextStudioServer } = await import('../studio/http/next-server.js');
   const { createStudioDirectorySources } = await import('../studio/application/directory-sources.js');
-  state.server = createNextStudioServer({
-    port: 0,
+  if (state.disposed) throw new Error('OMK DSH 插件已关闭。');
+  const server = createNextStudioServer({
     // DSH 是固定 per-project 布局宿主：三档候选都指向同一份项目目录，跨项目发现保持关闭。
     ...createStudioDirectorySources(
       {
@@ -193,8 +209,17 @@ async function studioUrl(
     // DSH 宿主无收件箱页面入口（输出落盘路径），裁剪收件箱页面与 API（#839 批次 0）。
     observationInbox: false,
   });
-  state.serverUrl = await state.server.start();
-  return state.serverUrl;
+  state.server = server;
+  try {
+    const url = await server.start();
+    if (state.disposed) throw new Error('OMK DSH 插件已关闭。');
+    state.serverUrl = url;
+    return url;
+  } catch (error) {
+    await server.stop().catch(() => undefined);
+    state.server = undefined;
+    throw error;
+  }
 }
 
 async function executeObserveCommand(
@@ -302,6 +327,7 @@ export function apply(ctx: DshPluginContextLike): () => void {
     },
   });
   return () => {
+    observeState.disposed = true;
     disposeCommand();
     void observeState.server?.stop().catch(() => undefined);
   };

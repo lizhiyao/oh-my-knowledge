@@ -6,6 +6,7 @@ import { runDshCoreEvaluation } from '../../src/dsh-plugin/core-command.js';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   digestCanonicalJson,
@@ -62,6 +63,8 @@ interface HostBehavior {
   readonly createWaitsForAbort?: boolean;
   readonly hang?: boolean;
   readonly disposeFails?: boolean;
+  readonly cancelSettles?: boolean;
+  readonly disposeSettles?: boolean;
   readonly idleFails?: boolean;
   readonly mutateAssistantEvent?: boolean;
   readonly oversizedEvent?: boolean;
@@ -235,7 +238,7 @@ class FakeCoreDshHost implements DshHostContextLike {
         cancel: () => {
           this.cancelled += 1;
           emit('turn/end', { reason: { kind: 'aborted' } });
-          settle?.();
+          if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
       scope.agent = agent;
@@ -260,6 +263,7 @@ class FakeCoreDshHost implements DshHostContextLike {
         dispose: async () => {
           this.disposed += 1;
           if (this.behavior.disposeFails) throw new Error('sensitive dispose failure');
+          if (this.behavior.disposeSettles === false) await new Promise<void>(() => undefined);
         },
       };
     },
@@ -418,7 +422,7 @@ async function fixture(options: Readonly<{
 async function createAdapter(
   value: Fixture,
   host: FakeCoreDshHost,
-  patch: Readonly<{ maxEventBytes?: number }> = {},
+  patch: Readonly<{ maxEventBytes?: number; cleanupTimeoutMs?: number }> = {},
 ): Promise<ExecutionExecutor> {
   return createDshHostCoreExecutorAdapter({
     target: value.target,
@@ -586,16 +590,18 @@ describe('DSH host-only Core Executor adapter', () => {
 
   it('bounds event capture, cancels the host, and disposes the attempt', async () => {
     const value = await fixture();
-    const host = new FakeCoreDshHost({ oversizedEvent: true });
-
-    await expect(execute(
-      await createAdapter(value, host, { maxEventBytes: 2_048 }),
-      value.target.config as JsonValue,
-    )).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_DSH_HOST_OUTPUT_LIMIT_EXCEEDED' },
-    });
-    expect(host.cancelled).toBe(1);
-    expect(host.disposed).toBe(1);
+    for (const cancelSettles of [true, false]) {
+      const host = new FakeCoreDshHost({ oversizedEvent: true, hang: true, cancelSettles });
+      await expect(execute(
+        await createAdapter(value, host, { maxEventBytes: 2_048, cleanupTimeoutMs: 10 }),
+        value.target.config as JsonValue,
+      )).rejects.toMatchObject({
+        evaluationError: { code: 'OMK_DSH_HOST_OUTPUT_LIMIT_EXCEEDED' },
+      });
+      expect(host.cancelled).toBe(1);
+      expect(host.disposed).toBe(1);
+      expect(host.activeListenerCount()).toBe(0);
+    }
   });
 
   it('enforces a host tool allow-list before dispatch', async () => {
@@ -628,21 +634,25 @@ describe('DSH host-only Core Executor adapter', () => {
 
   it('forwards cancellation and waits for host idle before disposal', async () => {
     const value = await fixture();
-    const host = new FakeCoreDshHost({ hang: true });
-    const controller = new AbortController();
-    const promise = execute(
-      await createAdapter(value, host),
-      value.target.config as JsonValue,
-      controller.signal,
-    );
-    await expect.poll(() => host.prompts.length).toBe(1);
-    controller.abort();
+    for (const cancelSettles of [true, false]) {
+      const host = new FakeCoreDshHost({ hang: true, cancelSettles });
+      const controller = new AbortController();
+      const promise = execute(
+        await createAdapter(value, host, { cleanupTimeoutMs: 10 }),
+        value.target.config as JsonValue,
+        controller.signal,
+      );
+      await expect.poll(() => host.prompts.length).toBe(1);
+      controller.abort();
 
-    await expect(promise).rejects.toMatchObject({
-      evaluationError: { code: 'OMK_DSH_HOST_CANCELLED' },
-    });
-    expect(host.cancelled).toBe(1);
-    expect(host.disposed).toBe(1);
+      await expect(promise).rejects.toMatchObject({
+        evaluationError: { code: 'OMK_DSH_HOST_CANCELLED' },
+      });
+      expect(host.cancelled).toBe(1);
+      expect(host.disposed).toBe(1);
+      expect(host.activeListenerCount()).toBe(0);
+      expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    }
   });
 
   it('forwards cancellation while the host is still creating the agent', async () => {
@@ -742,7 +752,6 @@ describe('DSH host-only Core Executor adapter', () => {
     const value = await fixture();
     const host = new FakeCoreDshHost({ idleFails: true });
     const controller = new AbortController();
-    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
 
     await expect(execute(
       await createAdapter(value, host),
@@ -754,7 +763,7 @@ describe('DSH host-only Core Executor adapter', () => {
         message: 'DSH Host session failed.',
       },
     });
-    expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
     expect(host.disposed).toBe(1);
   });
 
@@ -773,17 +782,20 @@ describe('DSH host-only Core Executor adapter', () => {
     expect(unknown.cancelled).toBe(1);
     expect(unknown.disposed).toBe(1);
 
-    const disposal = new FakeCoreDshHost({ disposeFails: true });
-    await expect(execute(
-      await createAdapter(value, disposal),
-      value.target.config as JsonValue,
-    )).rejects.toMatchObject({
-      evaluationError: {
-        code: 'OMK_DSH_HOST_ATTEMPT_DISPOSE_FAILED',
-        message: 'DSH Host measurement session could not be disposed.',
-      },
-      usage: { inputTokens: 12 },
-    });
+    for (const behavior of [{ disposeFails: true }, { disposeSettles: false }]) {
+      const disposal = new FakeCoreDshHost(behavior);
+      await expect(execute(
+        await createAdapter(value, disposal, { cleanupTimeoutMs: 10 }),
+        value.target.config as JsonValue,
+      )).rejects.toMatchObject({
+        evaluationError: {
+          code: 'OMK_DSH_HOST_ATTEMPT_DISPOSE_FAILED',
+          message: 'DSH Host measurement session could not be disposed.',
+        },
+        usage: { inputTokens: 12 },
+      });
+      expect(disposal.activeListenerCount()).toBe(0);
+    }
   });
 
   it('rejects unsupported or split-brain controls before host side effects', async () => {
@@ -908,7 +920,7 @@ describe('DSH product evaluation application', () => {
 
   it.each([1, 2])('cancels %i run(s) at the product entry and releases active sessions', async (repeat) => {
     const { root, config } = await productFixture(repeat);
-    const host = new FakeCoreDshHost({ hang: true });
+    const host = new FakeCoreDshHost({ hang: true, cancelSettles: repeat !== 1 });
     const controller = new AbortController();
     const pending = runDshCoreEvaluation({ host, parentAgent, signal: controller.signal, projectRoot: root, config });
     const settled = pending.then((result) => ({ result }), (error: unknown) => ({ error }));
