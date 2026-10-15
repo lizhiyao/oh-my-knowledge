@@ -224,7 +224,7 @@ export function spawnWithSigintPropagation(
     });
     child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
       cleanup();
-      const killedSig: NodeJS.Signals | null = killedBySignalReason
+      const killedSig: NodeJS.Signals | null = bufferOverflowStream ? null : killedBySignalReason
         || (signal && !killedByTimeout ? signal : null);
       const result: SpawnHelperResult = {
         // Decode once so a read boundary cannot alter the original UTF-8 output.

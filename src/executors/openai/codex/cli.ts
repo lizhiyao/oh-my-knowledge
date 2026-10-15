@@ -160,8 +160,8 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = err as SpawnHelperError;
-    if (details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
-    if (details.killedBySignal) return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
+    if (details.failureKind !== 'buffer-limit' && details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
+    if (details.failureKind !== 'buffer-limit' && details.killedBySignal) return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
 
     // 失败路径仍保留已完成的事件、用量与 trace，但不能反转为成功。
     const parsed = parseCodexJsonl(details.stdout || '');
@@ -170,7 +170,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       wallClockDurationMs: durationMs,
       source: 'codex --json',
       malformedLineCount: parsed.malformedLineCount,
-      forcedError: details.stderr?.trim() || errorMessage(err),
+      forcedError: details.failureKind === 'buffer-limit' ? details.message : details.stderr?.trim() || errorMessage(err),
     });
   }
 }

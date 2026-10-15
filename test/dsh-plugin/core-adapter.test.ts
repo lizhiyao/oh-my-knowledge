@@ -799,6 +799,8 @@ describe('DSH host-only Core Executor adapter', () => {
   });
 
   it('rejects unsupported or split-brain controls before host side effects', async () => {
+    const cleanup = await fixture();
+    await expect(createAdapter(cleanup, new FakeCoreDshHost(), { cleanupTimeoutMs: 2 ** 31 })).rejects.toThrow(/cleanupTimeoutMs/);
     const effort = await fixture({ runtimePatch: { effort: 'high' } });
     const effortHost = new FakeCoreDshHost();
     await expect(createAdapter(effort, effortHost)).rejects.toThrow(/cannot map/);

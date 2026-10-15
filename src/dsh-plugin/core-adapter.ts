@@ -43,7 +43,7 @@ import type {
 } from './host-executor.js';
 import type { DshHostRunResult } from './protocol.js';
 import { supportsDshTraceEventType } from './trace-adapter.js';
-import { DEFAULT_CLEANUP_TIMEOUT_MS, settleWithin } from './cleanup.js';
+import { captureCleanupTimeout, settleWithin } from './cleanup.js';
 
 export {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -330,10 +330,7 @@ function captureHost(
       configuration.maxEventBytes ?? DEFAULT_DSH_HOST_CORE_MAX_EVENT_BYTES,
       'maxEventBytes',
     ),
-    cleanupTimeoutMs: positiveSafeInteger(
-      configuration.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS,
-      'cleanupTimeoutMs',
-    ),
+    cleanupTimeoutMs: captureCleanupTimeout(configuration.cleanupTimeoutMs),
   });
 }
 

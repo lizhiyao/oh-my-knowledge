@@ -300,12 +300,12 @@ export function createScriptExecutor(command: string): ExecutorFn {
       const durationMs = Date.now() - start;
       const ms = captureMockStats();
       const details = err as SpawnHelperError;
-      if (details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), ...(ms && { mockStats: ms }) };
-      if (details.killedBySignal) return { ...interruptedExecResult(durationMs), ...(ms && { mockStats: ms }) };
+      if (details.failureKind !== 'buffer-limit' && details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), ...(ms && { mockStats: ms }) };
+      if (details.failureKind !== 'buffer-limit' && details.killedBySignal) return { ...interruptedExecResult(durationMs), ...(ms && { mockStats: ms }) };
       const stderr = (details.stderr || '').trim();
       return {
         ok: false,
-        error: stderr || details.message || `executor exited with code ${details.code ?? '?'}`,
+        error: details.failureKind === 'buffer-limit' ? details.message : stderr || details.message || `executor exited with code ${details.code ?? '?'}`,
         durationMs, durationApiMs: 0,
         inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
         tokenUsageReportedByExecutor: false,

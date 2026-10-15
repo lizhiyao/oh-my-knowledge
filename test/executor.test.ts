@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecutor } from '../src/executors/index.js';
 import type { Mock } from '../src/executors/contracts/mock.js';
+import { MAX_BUFFER } from '../src/executors/core/limits.js';
 
 describe('createExecutor', () => {
 
@@ -161,6 +162,34 @@ describe('createExecutor', () => {
     });
     assert.equal(metricsResult.ok, false);
     assert.match(metricsResult.error || '', /"inputTokens" must be a non-negative safe integer/);
+  });
+
+  it('reports stdout and stderr overflow as errors from both CLI executors', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-executor-overflow-'));
+    const bin = join(root, 'node_modules', '.bin');
+    const fixture = join(bin, 'codex');
+    try {
+      await mkdir(bin, { recursive: true });
+      for (const stream of ['stdout', 'stderr'] as const) {
+        await writeFile(fixture, [
+          `#!${process.execPath}`,
+          'process.stderr.write("provider diagnostic\\n");',
+          `process.${stream}.write("x".repeat(${MAX_BUFFER + 65_536}));`,
+          'setInterval(() => {}, 1000);',
+        ].join('\n'));
+        await chmod(fixture, 0o755);
+        for (const name of ['codex', `node "${fixture}"`]) {
+          const result = await createExecutor(name)({
+            model: 'fixture', system: '', prompt: 'ignored', skillDir: root, timeoutMs: 10_000,
+          });
+          assert.equal(result.ok, false, name);
+          assert.equal(result.stopReason, 'error', name);
+          assert.match(result.error ?? '', new RegExp(`${stream} maxBuffer`));
+        }
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('accepts source-neutral Trace IR from the custom executor protocol', async () => {

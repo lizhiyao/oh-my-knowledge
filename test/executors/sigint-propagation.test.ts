@@ -231,20 +231,24 @@ describe('spawnWithSigintPropagation', () => {
     // 写 200KB 到 stdout/stderr,maxBuffer 设 10KB
     const out = spawnWithSigintPropagation(
       'node',
-      ['-e', 'process.stdout.write("x".repeat(200000))'],
+      ['-e', 'process.stdout.write("x".repeat(200000)); setInterval(() => {}, 1000)'],
       { maxBuffer: 10 * 1024 },
     );
     await assert.rejects(out.done, (err: SpawnHelperError) => {
       assert.match(err.message, /stdout maxBuffer/);
+      assert.equal(err.failureKind, 'buffer-limit');
+      assert.equal(err.killedBySignal, null);
       return true;
     });
     const err = spawnWithSigintPropagation(
       'node',
-      ['-e', 'process.stderr.write("x".repeat(200000))'],
+      ['-e', 'process.stderr.write("x".repeat(200000)); setInterval(() => {}, 1000)'],
       { maxBuffer: 10 * 1024 },
     );
     await assert.rejects(err.done, (e: SpawnHelperError) => {
       assert.match(e.message, /stderr maxBuffer/);
+      assert.equal(e.failureKind, 'buffer-limit');
+      assert.equal(e.killedBySignal, null);
       return true;
     });
   });

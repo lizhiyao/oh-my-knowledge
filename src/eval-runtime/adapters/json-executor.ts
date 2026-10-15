@@ -331,11 +331,13 @@ async function openWorkspace(
 
 async function closeLateMcpConfigLease(lease: unknown): Promise<void> {
   if (lease === null || typeof lease !== 'object'
-      || OPENED_MCP_CONFIG_LEASES.has(lease)
-      || typeof (lease as Partial<McpConfigLease>).close !== 'function') return;
+      || OPENED_MCP_CONFIG_LEASES.has(lease)) return;
+  let close: unknown;
+  try { close = Reflect.get(lease, 'close'); } catch { return; }
   OPENED_MCP_CONFIG_LEASES.add(lease);
+  if (typeof close !== 'function') return;
   try {
-    await Reflect.apply((lease as McpConfigLease).close, lease, []);
+    await Reflect.apply(close, lease, []);
   } catch {
     // Cancellation is already authoritative; late cleanup failure must not leak provider details.
   }
@@ -368,14 +370,31 @@ async function openMcpConfig(
       signal: trial.signal,
     })),
   });
-  if (lease === null || typeof lease !== 'object'
-      || !Object.prototype.hasOwnProperty.call(lease, 'config')
-      || typeof lease.close !== 'function') {
+  if (lease === null || typeof lease !== 'object') {
     return rejectInvalidLease({
-    lease,
-    message: 'MCP config provider returned an invalid lease.',
-    tracker: OPENED_MCP_CONFIG_LEASES,
-  });
+      lease,
+      message: 'MCP config provider returned an invalid lease.',
+      tracker: OPENED_MCP_CONFIG_LEASES,
+    });
+  }
+  let close: unknown;
+  try {
+    close = Reflect.get(lease, 'close');
+  } catch {
+    return rejectInvalidLease({
+      lease,
+      message: 'MCP config provider returned an invalid lease.',
+      tracker: OPENED_MCP_CONFIG_LEASES,
+      close: null,
+    });
+  }
+  if (!Object.prototype.hasOwnProperty.call(lease, 'config') || typeof close !== 'function') {
+    return rejectInvalidLease({
+      lease,
+      message: 'MCP config provider returned an invalid lease.',
+      tracker: OPENED_MCP_CONFIG_LEASES,
+      close: close ?? null,
+    });
   }
   if (OPENED_MCP_CONFIG_LEASES.has(lease)) {
     throw new TypeError('MCP config provider reused one lease object across trials or runs.');
@@ -386,13 +405,12 @@ async function openMcpConfig(
     config = validateMcpConfigValue(control.descriptor, lease.config);
   } catch {
     try {
-      await Reflect.apply(lease.close, lease, []);
+      await Reflect.apply(close, lease, []);
     } catch {
       // The public failure remains a single redacted resource-open error.
     }
     throw new TypeError('MCP config provider returned invalid content.');
   }
-  const close = lease.close;
   return Object.freeze({
     access: Object.freeze({ descriptor: control.descriptor, config }),
     async close() {

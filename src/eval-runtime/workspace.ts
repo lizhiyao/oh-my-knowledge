@@ -88,7 +88,7 @@ export function captureWorkspaceProvider(value: unknown): CapturedWorkspaceProvi
     version: provider.version,
     ...(fingerprintFacets === undefined ? {} : { fingerprintFacets }),
     open: (request: Readonly<WorkspaceOpenRequest>) => (
-      Reflect.apply(open, capturedProvider, [request]) as Promise<WorkspaceLease>
+      Reflect.apply(open, provider, [request]) as Promise<WorkspaceLease>
     ),
   };
   return Object.freeze(capturedProvider);
