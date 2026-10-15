@@ -9,7 +9,7 @@
 
 import { afterEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
@@ -147,6 +147,13 @@ describe('omk agents 与本机登记表扩展', () => {
       [unknownEventCount, duplicateViewCount, unmappedEvidenceCount],
       '沿用旧条目时分桶计数必须原样保留',
     );
+    const workspace = join(sandbox.home, 'knowledge');
+    const invalid = await runCliFailing([
+      'agents', 'extract', '--session', report.sessions[0].runId,
+      '--dir', sandbox.outDir, '--knowledge', workspace,
+    ], 2, { env: { ...sandbox.env, OMK_MODEL: '' }, cwd: sandbox.home });
+    assert.match(invalid.stderr, /--model/);
+    assert.equal(existsSync(workspace), false, '缺少模型时不能先创建工作区或归档来源');
   });
 
   it('extract 遇到已被取代的采集报告时停在「重新采集」，不走到执行器', async () => {

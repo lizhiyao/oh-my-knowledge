@@ -129,10 +129,16 @@ function validateInstallTargets(params: {
   lang: 'zh' | 'en';
   source?: string;
 }): void {
-  if (params.dryRun || params.force) return;
+  if (params.dryRun) return;
   for (const targetPath of params.targetPaths) {
-    if (params.source && classifyPaths(params.source, targetPath) === 'same') continue;
-    if (existsSync(targetPath)) {
+    if (params.source) {
+      const relation = classifyPaths(params.source, targetPath);
+      if (relation === 'same') continue;
+      if (relation === 'overlap') {
+        throw new Error(tCli('cli.install.target_overlaps_source', params.lang, { source: params.source, target: targetPath }));
+      }
+    }
+    if (!params.force && existsSync(targetPath)) {
       throw new Error(tCli('cli.install.target_exists', params.lang, { path: targetPath }));
     }
   }
@@ -390,6 +396,7 @@ export default class Install extends BaseCommand {
       force: flags.force,
       dryRun: flags['dry-run'],
       lang,
+      source: sourceDir,
     });
     for (const target of targets) {
       installOmkAgentSkill({ sourceDir, target, force: flags.force, dryRun: flags['dry-run'], lang });

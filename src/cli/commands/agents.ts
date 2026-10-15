@@ -206,6 +206,11 @@ export default class AgentsCommand extends BaseCommand {
         executor: flags.executor,
         model: flags.model,
       });
+      if (!settings.model) {
+        this.error(lang === 'zh'
+          ? '缺少生成模型，请用 --model 指定。'
+          : 'No generation model; pass --model.', { exit: 2 });
+      }
       const { createLocalKnowledgeApplication } = await import('../../observability/knowledge-extraction/local.js');
       const { configuredExtractionModel } = await import('../../observability/knowledge-extraction/adapters/executor.js');
       const app = createLocalKnowledgeApplication(settings.workspace);
@@ -216,11 +221,6 @@ export default class AgentsCommand extends BaseCommand {
         path: session.sourcePath,
         ...(session.title ? { origin: { threadId: session.runId, title: session.title } } : {}),
       }, signal);
-      if (!settings.model) {
-        this.error(lang === 'zh'
-          ? '缺少生成模型，请用 --model 指定。'
-          : 'No generation model; pass --model.', { exit: 2 });
-      }
       const run = await app.generate(
         captured.snapshotId,
         configuredExtractionModel(settings.executor, settings.model, createExecutor),

@@ -1,4 +1,4 @@
-import { Command } from '@oclif/core';
+import { Command, Errors, type Interfaces } from '@oclif/core';
 import { CliExit } from '../lib/cli-exit.js';
 import { resolveLangDecision } from './i18n.js';
 import type { Lang } from '../../shared/language.js';
@@ -8,6 +8,14 @@ import type { LanguageDecision } from '../../shared/language-preference.js';
 // stable for one CLI invocation, so language resolution is cached per command.
 export abstract class BaseCommand extends Command {
   #decision?: LanguageDecision;
+
+  protected async catch(error: Interfaces.CommandError): Promise<void> {
+    // oclif does not expose an exitCodes option for enum-value errors.
+    if (error instanceof Errors.CLIError && ['ArgInvalidOptionError', 'FlagInvalidOptionError'].includes(error.constructor.name)) {
+      error.oclif.exit = 2;
+    }
+    await super.catch(error);
+  }
 
   private get langDecision(): LanguageDecision {
     this.#decision ??= resolveLangDecision(process.argv);

@@ -409,23 +409,22 @@ describe('oclif install', () => {
     }
   });
 
-  it('源嵌套在目标内:拒绝执行、绝不删源(P1 数据丢失防护)', async () => {
+  it('多目标安装预检重叠路径，--force 也不能部分安装或删源', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-overlap-'));
     try {
-      // skill 在 <dir>/skills/review/review,目标 dest=<dir>/skills → target=<dir>/skills/review(源的祖先)
-      const skillRoot = join(dir, 'skills', 'review', 'review');
+      const skillRoot = join(dir, '.claude', 'skills', 'review', 'review');
       await mkdir(join(skillRoot, 'references'), { recursive: true });
       await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\ndescription: d\n---\n# review\n');
-      await writeFile(join(dir, 'skills', 'review', 'keep.txt'), 'precious');
-      try {
-        await runInstallCommand(['skills/review/review', '--dest', 'skills', '--force'], { cwd: dir, env: cliEnv() });
-        assert.fail('expected non-zero exit');
-      } catch (err) {
-        const e = err as CommandRunError;
-        assert.notEqual(e.code, 0);
+      await writeFile(join(dir, '.claude', 'skills', 'review', 'keep.txt'), 'precious');
+      for (const extra of [[], ['--force']]) {
+        await assert.rejects(
+          runInstallCommand([skillRoot, '--to', 'codex,claude', ...extra], { cwd: dir, env: cliEnv({ HOME: dir }) }),
+          (error: CommandRunError) => error.code === 1 && /重叠|overlap/.test(error.stderr + error.stdout),
+        );
+        assert.equal(existsSync(join(dir, '.agents')), false, '不能先写入排在前面的 Codex 目标');
       }
       assert.ok(existsSync(join(skillRoot, 'SKILL.md')), '源 skill 绝不能被删');
-      assert.equal(await readFile(join(dir, 'skills', 'review', 'keep.txt'), 'utf8'), 'precious', '兄弟文件不能被波及');
+      assert.equal(await readFile(join(dir, '.claude', 'skills', 'review', 'keep.txt'), 'utf8'), 'precious', '兄弟文件不能被波及');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
