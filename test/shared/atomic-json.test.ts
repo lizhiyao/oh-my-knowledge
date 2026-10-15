@@ -75,4 +75,8 @@ it('publishes complete JSON and refuses a concurrent file without leaving stagin
   expect(() => createJsonFileAtomic(path, { replacement: true })).toThrow();
   expect(readFileSync(path, 'utf8')).toBe('concurrent content');
   expect(readdirSync(root)).toEqual(['document.json']);
+  fault.beforePublish = () => { throw Object.assign(new Error('hard links unsupported'), { code: 'ENOTSUP' }); };
+  expect(() => createJsonFileAtomic(path, { replacement: true })).toThrow(/hard links unsupported/);
+  expect(readFileSync(path, 'utf8')).toBe('concurrent content');
+  expect(readdirSync(root)).toEqual(['document.json']);
 });

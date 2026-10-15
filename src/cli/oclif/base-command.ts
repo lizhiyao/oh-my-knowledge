@@ -46,13 +46,21 @@ export abstract class BaseCommand extends Command {
 
   protected async runWithCancellation(fn: (signal: AbortSignal) => Promise<void>): Promise<void> {
     const cancellation = new AbortController();
+    let forceExit: NodeJS.Timeout | undefined;
     const cancel = () => cancellation.abort();
-    process.on('SIGINT', cancel);
+    const interrupt = () => {
+      if (cancellation.signal.aborted) {
+        // Leave the subprocess coordinator's 500 ms SIGKILL grace time intact.
+        forceExit ??= setTimeout(() => process.exit(130), 750);
+      } else cancel();
+    };
+    process.on('SIGINT', interrupt);
     process.on('SIGTERM', cancel);
     try {
       await this.runWithCliExit(() => fn(cancellation.signal));
     } finally {
-      process.off('SIGINT', cancel);
+      if (forceExit !== undefined) clearTimeout(forceExit);
+      process.off('SIGINT', interrupt);
       process.off('SIGTERM', cancel);
     }
   }

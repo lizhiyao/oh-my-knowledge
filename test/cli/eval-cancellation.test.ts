@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 
@@ -77,6 +78,40 @@ for await (const line of createInterface({ input: process.stdin })) {
     if (executorPid !== undefined) {
       try { process.kill(executorPid, 'SIGKILL'); } catch { /* Already reaped. */ }
     }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('exits 130 after a second SIGINT when an asynchronous operation ignores cancellation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'omk-force-interrupt-'));
+  const fixture = join(root, 'uncooperative.mjs');
+  const marker = join(root, 'state');
+  await writeFile(fixture, `
+import { writeFileSync } from 'node:fs';
+import { BaseCommand } from ${JSON.stringify(pathToFileURL(resolve('dist/cli/oclif/base-command.js')).href)};
+const runner = Object.create(BaseCommand.prototype);
+await runner.runWithCancellation(async (signal) => {
+  signal.addEventListener('abort', () => writeFileSync(${JSON.stringify(marker)}, 'aborted'));
+  writeFileSync(${JSON.stringify(marker)}, 'ready');
+  await new Promise(() => setInterval(() => {}, 1000));
+});
+`);
+  const child = spawn(process.execPath, [fixture], { stdio: 'ignore' });
+  const closed = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({ code, signal }));
+  });
+  try {
+    await expect.poll(() => readFile(marker, 'utf8').catch(() => ''), { timeout: 15_000 }).toBe('ready');
+    child.kill('SIGINT');
+    await expect.poll(() => readFile(marker, 'utf8'), { timeout: 15_000 }).toBe('aborted');
+    expect(child.exitCode).toBeNull();
+    child.kill('SIGINT');
+    await expect(Promise.race([closed, delay(5_000).then(() => { throw new Error('second SIGINT did not terminate'); })]))
+      .resolves.toEqual({ code: 130, signal: null });
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    await closed;
     await rm(root, { recursive: true, force: true });
   }
 });
