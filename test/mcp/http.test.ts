@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync } from 'node:fs';
-import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -68,6 +68,111 @@ const resolver: PrincipalResolver<IncomingMessage> = {
 };
 
 describe('OMK observation Streamable HTTP server', () => {
+  it('contains malformed request targets and continues serving subsequent requests', async () => {
+    let writes = 0;
+    const started = await startObservationMcpHttpServer({ captureStore: {
+      async create() { writes += 1; throw new Error('must not write'); },
+    } });
+    try {
+      for (const target of ['//[', 'http://[::1', 'http://localhost:99999/mcp']) {
+        assert.equal(await postRaw(started.url, { target }), 400);
+      }
+      assert.equal((await fetch(started.url)).status, 405);
+      assert.equal(writes, 0);
+    } finally { await started.close(); }
+  });
+
+  it.each([
+    { failure: 'deadline', status: 408 },
+    { failure: 'route', status: 404 },
+    { failure: 'authentication', status: 401 },
+    { failure: 'scope', status: 403 },
+  ])('closes an incomplete request rejected by $failure', async ({ failure, status }) => {
+    const started = await startObservationMcpHttpServer({
+      captureStore: { async create() { throw new Error('must not write'); } },
+      requestBodyTimeoutMs: 20,
+      ...(['authentication', 'scope'].includes(failure) ? { principalResolver: { async resolve() {
+        if (failure === 'authentication') throw new ObservationPrincipalError('unauthenticated', 'Missing credential.');
+        return TOKEN_PRINCIPALS['token-no-scope'];
+      } } } : {}),
+    });
+    const agent = new Agent({ keepAlive: true });
+    let request: ClientRequest | undefined;
+    let closed: Promise<void> | undefined;
+    try {
+      const response = await new Promise<IncomingMessage>((resolve, reject) => {
+        request = httpRequest(started.url, {
+          method: 'POST', agent, headers: { 'Content-Type': 'application/json' },
+          ...(failure === 'route' ? { path: '/missing' } : {}),
+        }, resolve);
+        request.once('error', reject);
+        closed = new Promise<void>((resolveClose, rejectClose) => {
+          request!.once('close', resolveClose);
+          request!.once('error', rejectClose);
+        });
+        // Attach a handler immediately, including when an earlier assertion fails.
+        void closed.catch(() => undefined);
+        request.setTimeout(1000, () => request?.destroy(new Error('Server did not close the incomplete request')));
+        request.write('{');
+      });
+      response.resume();
+      assert.equal(response.statusCode, status);
+      assert.equal(response.headers.connection, 'close');
+      await closed;
+    } finally {
+      request?.destroy(); agent.destroy(); await started.close();
+    }
+  });
+
+  it('releases rejected chunked bodies and still admits the next SDK request', async () => {
+    let writes = 0;
+    const started = await startObservationMcpHttpServer({
+      captureStore: { async create() { writes += 1; throw new Error('must not write'); } },
+      requestBodyLimitBytes: 256,
+      maxConcurrentRequests: 1,
+    });
+    const client = createClient(started.url, 'token-a');
+    try {
+      assert.equal(await postRaw(started.url, { chunks: ['{'] }), 400);
+      // Character count fits, UTF-8 byte count does not; no Content-Length shortcut.
+      assert.equal(await postRaw(started.url, { chunks: ['{"text":"', '中'.repeat(100), '"}'] }), 413);
+      await client.connect();
+      assert.ok((await client.client.listTools()).tools.length > 0);
+      assert.equal(writes, 0);
+    } finally { await client.client.close(); await started.close(); }
+  });
+
+  it('releases the reader and request slot when a client disconnects mid-body', async () => {
+    let received!: () => void;
+    let serverClosed!: () => void;
+    const reading = new Promise<void>(resolve => { received = resolve; });
+    const disconnected = new Promise<void>(resolve => { serverClosed = resolve; });
+    let observing = false;
+    const started = await startObservationMcpHttpServer({
+      captureStore: { async create() { throw new Error('must not write'); } },
+      maxConcurrentRequests: 1,
+      principalResolver: { async resolve(request) {
+        if (!observing) {
+          observing = true;
+          // Let the handler attach its reader without consuming or changing the stream mode.
+          setImmediate(received);
+          request.once('close', serverClosed);
+        }
+        return TOKEN_PRINCIPALS['token-a'];
+      } },
+    });
+    const request = httpRequest(started.url, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    request.on('error', () => undefined);
+    const client = createClient(started.url, 'token-a');
+    try {
+      request.write('{');
+      await reading;
+      request.destroy();
+      await disconnected;
+      await client.connect();
+      assert.ok((await client.client.listTools()).tools.length > 0);
+    } finally { request.destroy(); await client.client.close(); await started.close(); }
+  });
   it('uses one tool contract and isolates idempotency by server-resolved principal', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-'));
     const started = await startObservationMcpHttpServer({
@@ -154,7 +259,7 @@ describe('OMK observation Streamable HTTP server', () => {
         body: '{}',
       });
       assert.equal(crossOrigin.status, 403);
-      assert.equal(await postWithHost(started.url, 'untrusted.example'), 403);
+      assert.equal(await postRaw(started.url, { host: 'untrusted.example' }), 403);
 
       const response = await fetch(started.url, {
         method: 'POST',
@@ -169,20 +274,25 @@ describe('OMK observation Streamable HTTP server', () => {
   });
 });
 
-function postWithHost(url: URL, host: string): Promise<number> {
+function postRaw(url: URL, options: { host?: string; target?: string; chunks?: string[] } = {}): Promise<number> {
   return new Promise((resolve, reject) => {
     const request = httpRequest(url, {
       method: 'POST',
+      path: options.target ?? url.pathname,
       headers: {
         'Content-Type': 'application/json',
-        Host: host,
+        Host: options.host ?? url.host,
       },
     }, (response) => {
       response.resume();
       response.once('end', () => resolve(response.statusCode ?? 0));
     });
     request.once('error', reject);
-    request.end('{}');
+    request.setTimeout(1000, () => request.destroy(new Error('Request target escaped the HTTP error boundary')));
+    if (options.chunks) {
+      for (const chunk of options.chunks) request.write(chunk);
+      request.end();
+    } else request.end('{}');
   });
 }
 
