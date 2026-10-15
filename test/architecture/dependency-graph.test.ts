@@ -1,13 +1,18 @@
+import { MODULE_SOURCE_EXTENSIONS, sourceFiles, sourceScriptKind as scriptKind, parseSourceFile, sourceModuleReferences, resolveSourceModule as resolveLocalModule } from '../helpers/source-files.js';
 import { REGISTERED_RUNTIME_CYCLES, REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS, MUTUAL_BOUNDARY_VALIDATORS } from './dependency-exceptions.js';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { extname, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const SRC_DIR = resolve('src');
 const SCRIPTS_DIR = resolve('scripts');
 const SOURCE_ROOTS = [SRC_DIR, SCRIPTS_DIR];
+const SOURCE_SCAN_OPTIONS = {
+  extensions: MODULE_SOURCE_EXTENSIONS,
+  skippedDirectories: new Set(['.next', 'node_modules']),
+};
 const COMPOSITION_ROOT_PREFIXES = [
   'scripts/',
   'cli/',
@@ -51,31 +56,9 @@ interface DependencyGraph {
   nonLiteralDynamicImports: NonLiteralDynamicImport[];
 }
 
-const SOURCE_FILE_PATTERN = /\.(?:[cm]?ts|tsx|[cm]?js|jsx)$/;
-const DECLARATION_FILE_PATTERN = /\.d\.(?:[cm]?ts|tsx)$/;
-
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    // Next 产物和安装依赖不是仓库源码，不能把其 loader 登记成产品例外。
-    if (entry === '.next' || entry === 'node_modules') continue;
-    const path = join(dir, entry);
-    const stat = statSync(path);
-    if (stat.isDirectory()) listSourceFiles(path, out);
-    else if (SOURCE_FILE_PATTERN.test(entry) && !DECLARATION_FILE_PATTERN.test(entry)) out.push(path);
-  }
-  return out;
-}
-
 function sourceRelative(path: string): string {
   const root = path.startsWith(`${SRC_DIR}${sep}`) ? SRC_DIR : resolve('.');
   return relative(root, path).split(sep).join('/');
-}
-
-function scriptKind(path: string): ts.ScriptKind {
-  if (path.endsWith('.tsx')) return ts.ScriptKind.TSX;
-  if (path.endsWith('.jsx')) return ts.ScriptKind.JSX;
-  if (/\.(?:[cm]?js)$/.test(path)) return ts.ScriptKind.JS;
-  return ts.ScriptKind.TS;
 }
 
 function moduleDomain(path: string): string {
@@ -104,65 +87,6 @@ function moduleDomain(path: string): string {
   return topLevel;
 }
 
-function resolveLocalModule(importer: string, specifier: string): string | null {
-  if (!specifier.startsWith('.')) return null;
-  const unresolved = normalize(resolve(dirname(importer), specifier));
-  const candidates = specifier.endsWith('.mjs')
-    ? [unresolved.replace(/\.mjs$/, '.mts'), unresolved]
-    : specifier.endsWith('.cjs')
-      ? [unresolved.replace(/\.cjs$/, '.cts'), unresolved]
-      : specifier.endsWith('.js')
-        ? [
-            unresolved.replace(/\.js$/, '.ts'),
-            unresolved.replace(/\.js$/, '.tsx'),
-            unresolved.replace(/\.js$/, '.mts'),
-            unresolved,
-          ]
-        : [
-            unresolved,
-            ...['ts', 'tsx', 'mts', 'cts', 'js', 'mjs', 'cjs'].map(
-              (extension) => `${unresolved}.${extension}`,
-            ),
-            ...['ts', 'tsx', 'mts', 'cts', 'js', 'mjs', 'cjs'].map(
-              (extension) => join(unresolved, `index.${extension}`),
-            ),
-          ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-function importIsTypeOnly(node: ts.ImportDeclaration): boolean {
-  const clause = node.importClause;
-  if (clause?.isTypeOnly) return true;
-  if (!clause || clause.name || !clause.namedBindings || ts.isNamespaceImport(clause.namedBindings)) {
-    return false;
-  }
-  return clause.namedBindings.elements.length > 0
-    && clause.namedBindings.elements.every((element) => element.isTypeOnly);
-}
-
-function exportIsTypeOnly(node: ts.ExportDeclaration): boolean {
-  if (node.isTypeOnly) return true;
-  return node.exportClause !== undefined
-    && ts.isNamedExports(node.exportClause)
-    && node.exportClause.elements.length > 0
-    && node.exportClause.elements.every((element) => element.isTypeOnly);
-}
-
-function runtimeImportSpecifiers(source: ts.SourceFile): ts.Expression[] {
-  const specifiers: ts.Expression[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node)
-      && (node.expression.kind === ts.SyntaxKind.ImportKeyword
-        || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
-      && node.arguments.length >= 1
-    ) specifiers.push(node.arguments[0]);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return specifiers;
-}
-
 function collectDependencyGraph(): DependencyGraph {
   const edges: ModuleEdge[] = [];
   const nonLiteralDynamicImports: NonLiteralDynamicImport[] = [];
@@ -183,38 +107,16 @@ function collectDependencyGraph(): DependencyGraph {
     });
   };
 
-  for (const file of SOURCE_ROOTS.flatMap((root) => listSourceFiles(root))) {
+  for (const file of SOURCE_ROOTS.flatMap((root) => sourceFiles(root, SOURCE_SCAN_OPTIONS))) {
     const sourceText = readFileSync(file, 'utf8');
     const canonicalSource = sourceText.replaceAll('\r\n', '\n');
     const sourceSha256 = createHash('sha256').update(canonicalSource).digest('hex');
-    const source = ts.createSourceFile(
-      file,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKind(file),
-    );
-    for (const statement of source.statements) {
-      if (ts.isImportDeclaration(statement) && ts.isStringLiteralLike(statement.moduleSpecifier)) {
-        add(file, statement.moduleSpecifier.text, importIsTypeOnly(statement));
-      } else if (
-        ts.isExportDeclaration(statement)
-        && statement.moduleSpecifier
-        && ts.isStringLiteralLike(statement.moduleSpecifier)
-      ) {
-        add(file, statement.moduleSpecifier.text, exportIsTypeOnly(statement));
-      }
-    }
-    for (const specifier of runtimeImportSpecifiers(source)) {
-      if (ts.isStringLiteralLike(specifier)) {
-        add(file, specifier.text, false);
-      } else {
-        nonLiteralDynamicImports.push({
-          importer: sourceRelative(file),
-          expression: specifier.getText(source),
-          sourceSha256,
-        });
-      }
+    const source = parseSourceFile(file, sourceText);
+    for (const { specifier, typeOnly } of sourceModuleReferences(source)) {
+      if (ts.isStringLiteralLike(specifier)) add(file, specifier.text, typeOnly);
+      else nonLiteralDynamicImports.push({
+        importer: sourceRelative(file), expression: specifier.getText(source), sourceSha256,
+      });
     }
   }
   return { edges, nonLiteralDynamicImports };
@@ -340,7 +242,7 @@ describe('src 与 scripts 依赖图', () => {
     expect(edges.some((edge) => edge.importer === 'index.ts')).toBe(true);
     expect(nonLiteralDynamicImports.map((item) => item.importer)).toContain('scripts/build/docs.ts');
     expect(nonLiteralDynamicImports.map((item) => item.importer)).toContain('scripts/bench/studio-baseline.ts');
-    expect(SOURCE_ROOTS.flatMap((root) => listSourceFiles(root))
+    expect(SOURCE_ROOTS.flatMap((root) => sourceFiles(root, SOURCE_SCAN_OPTIONS))
       .some((path) => path.includes(`${sep}.next${sep}`))).toBe(false);
     const target = resolveLocalModule(resolve('scripts/build/fixture.cjs'), '../../src/cli/index.js');
     expect(target).toBe(resolve('src/cli/index.ts'));
@@ -450,7 +352,7 @@ describe('src 与 scripts 依赖图', () => {
     const expected = REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS.map((registered) =>
       dynamicImportKey(registered)).sort();
     expect(nonLiteralDynamicImports.map(dynamicImportKey).sort()).toEqual(expected);
-    expect(listSourceFiles(SRC_DIR).map(sourceRelative)).toContain(
+    expect(sourceFiles(SRC_DIR, SOURCE_SCAN_OPTIONS).map(sourceRelative)).toContain(
       'executors/mock-runtime/mock-hook.cjs',
     );
 
@@ -471,7 +373,7 @@ describe('src 与 scripts 依赖图', () => {
       ['fixture.cjs', ts.ScriptKind.JS],
     ];
     for (const [file, expectedScriptKind] of fixtures) {
-      expect(SOURCE_FILE_PATTERN.test(file), file).toBe(true);
+      expect(MODULE_SOURCE_EXTENSIONS, file).toContain(extname(file));
       expect(scriptKind(file), file).toBe(expectedScriptKind);
       const source = ts.createSourceFile(
         file,
@@ -480,7 +382,7 @@ describe('src 与 scripts 依赖图', () => {
         true,
         scriptKind(file),
       );
-      expect(runtimeImportSpecifiers(source).map((specifier) =>
+      expect(sourceModuleReferences(source).map(({ specifier }) =>
         specifier.getText(source)), file).toEqual(['process.env.SDK_TARGET', "'../../src/cli/index.js'"]);
     }
   });

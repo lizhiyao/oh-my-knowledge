@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { typeScriptSources as listSourceFiles, parseTypeScript } from '../helpers/source-files.js';
+import { sourceFiles as listSourceFiles, parseSourceFile } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
@@ -33,7 +33,7 @@ function displayRepoPath(path: string): string {
 
 /** 本文件里按名导入 `StudioUtilities` 的 import 声明所在行。 */
 function utilitiesImportLines(path: string): number[] {
-  const source = parseTypeScript(path);
+  const source = parseSourceFile(path);
   const lines: number[] = [];
   for (const statement of source.statements) {
     if (ts.isImportDeclaration(statement) && statement.getText(source).includes('StudioUtilities')) {

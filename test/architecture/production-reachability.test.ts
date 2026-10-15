@@ -1,6 +1,8 @@
+import ts from 'typescript';
+import { sourceFiles, parseSourceFile, sourceModuleReferences, resolveSourceModule } from '../helpers/source-files.js';
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, dirname, resolve, sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SRC_DIR = join(REPO_ROOT, 'src');
@@ -9,41 +11,13 @@ const PACKAGE_JSON = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'u
   bin?: Record<string, string>;
 };
 
-/** Next.js 生成的类型文件住在 src/studio/web/.next 下，不是源码模块。 */
-const isGenerated = (file: string): boolean => file.split(sep).includes('.next');
-
-function listSourceModules(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const fp = join(dir, entry);
-    const st = statSync(fp);
-    if (st.isDirectory()) {
-      if (isGenerated(fp)) continue;
-      listSourceModules(fp, out);
-    } else if (/\.tsx?$/.test(entry) && !entry.endsWith('.d.ts') && !isGenerated(fp)) {
-      out.push(fp);
-    }
-  }
-  return out;
-}
-
-function resolveSpecifier(fromFile: string, spec: string): string | null {
-  if (!spec.startsWith('.')) return null;
-  const base = resolve(dirname(fromFile), spec);
-  const candidates = spec.endsWith('.js')
-    ? [base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'), base]
-    : [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')];
-  return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile()) ?? null;
-}
-
 /** 静态与动态 import、require 的字面量目标。 */
 function importedModules(file: string): string[] {
-  const text = readFileSync(file, 'utf-8');
-  const targets = new Set<string>();
-  for (const match of text.matchAll(/(?:\bfrom|\bimport|require)\s*\(?\s*'([^']+)'/g)) {
-    const target = resolveSpecifier(file, match[1]);
-    if (target) targets.add(target);
-  }
-  return [...targets];
+  return [...new Set(sourceModuleReferences(parseSourceFile(file)).flatMap(({ specifier }) => {
+    if (!ts.isStringLiteralLike(specifier)) return [];
+    const target = resolveSourceModule(file, specifier.text);
+    return target ? [target] : [];
+  }))];
 }
 
 const toRepoRelative = (file: string): string => relative(REPO_ROOT, file).split(sep).join('/');
@@ -122,7 +96,7 @@ function productionRoots(modules: string[]): { roots: Set<string>; dangling: str
 }
 
 function unreachableModules(): { unreachable: string[]; dangling: string[]; rootCount: number } {
-  const modules = listSourceModules(SRC_DIR);
+  const modules = sourceFiles(SRC_DIR, { skippedDirectories: new Set(['.next', 'node_modules']) });
   const { roots, dangling } = productionRoots(modules);
   const seen = new Set<string>();
   const queue = [...roots];

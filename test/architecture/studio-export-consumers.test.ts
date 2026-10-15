@@ -1,3 +1,4 @@
+import { sourceFiles, parseSourceFile as parseSource, resolveSourceModule } from '../helpers/source-files.js';
 /**
  * 架构边界守门：`src/studio/**` 的具名导出必须有仓库内按名导入的消费者。
  *
@@ -25,9 +26,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
@@ -36,7 +37,6 @@ const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
 const NEXT_APP_DIR = join(STUDIO_DIR, 'web', 'app');
 /** 可能按名导入 Studio 导出的目录。 */
 const CONSUMER_DIRS = ['src', 'test', 'scripts', 'examples'];
-const SKIPPED_DIRS = new Set(['.next', 'node_modules', 'dist', 'coverage']);
 /** Next 按文件约定读取的导出名，与 route segment config / metadata API 同名。 */
 const NEXT_CONVENTION_EXPORTS = new Set([
   'dynamic', 'revalidate', 'revalidatePath', 'revalidateTag', 'runtime', 'fetchCache',
@@ -63,51 +63,16 @@ interface AuditOptions {
   readonly display?: (path: string) => string;
 }
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return out; // CONSUMER_DIRS 里的目录可以缺席（examples 不一定有 TS）。
-  }
-  for (const entry of entries) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if (SCRIPT_EXTENSIONS.some((extension) => entry.endsWith(`.${extension}`)) && !entry.endsWith('.d.ts')) {
-      out.push(path);
-    }
-  }
-  return out;
-}
-
-function scriptKind(path: string): ts.ScriptKind {
-  return path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-}
-
-function parseSource(path: string): ts.SourceFile {
-  return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, scriptKind(path));
-}
-
-function existsAsFile(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
+function listSourceFiles(dir: string): string[] {
+  try { return sourceFiles(dir, { extensions: SCRIPT_EXTENSIONS.map(extension => '.' + extension) }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
   }
 }
 
-/** 与 `next.config.mjs` 的 `extensionAlias` 同口径：`.js` 说明符解析回 TS 源。 */
 function resolveLocalModule(importer: string, specifier: string): string | undefined {
-  const target = resolve(dirname(importer), specifier);
-  const candidates = specifier.endsWith('.js')
-    ? [target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.tsx'), target]
-    : [
-        target,
-        ...SCRIPT_EXTENSIONS.map((extension) => `${target}.${extension}`),
-        ...SCRIPT_EXTENSIONS.map((extension) => join(target, `index.${extension}`)),
-      ];
-  return candidates.find((candidate) => existsAsFile(candidate));
+  return resolveSourceModule(importer, specifier, { extensions: SCRIPT_EXTENSIONS.map(extension => '.' + extension) }) ?? undefined;
 }
 
 function hasExportModifier(node: ts.Node): boolean {

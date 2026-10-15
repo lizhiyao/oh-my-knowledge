@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
 import ts from 'typescript';
-import { typeScriptSources, parseTypeScript } from '../../helpers/source-files.js';
+import { sourceFiles, parseSourceFile } from '../../helpers/source-files.js';
 
 const ROOT = resolve('src/studio');
 const HAN = /[\u4e00-\u9fff]/u;
@@ -38,7 +38,7 @@ function englishBranchLeaksChinese(whenTrue: ts.Node, whenFalse: ts.Node): boole
 function collectViolations(files: string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    const source = parseTypeScript(file);
+    const source = parseSourceFile(file);
     const visit = (node: ts.Node): void => {
       if (ts.isConditionalExpression(node) && isLanguageConditional(node, source)
         && englishBranchLeaksChinese(node.whenTrue, node.whenFalse)) {
@@ -55,7 +55,7 @@ function collectViolations(files: string[]): string[] {
 function conditionalCount(files: string[]): number {
   let total = 0;
   for (const file of files) {
-    const source = parseTypeScript(file);
+    const source = parseSourceFile(file);
     const visit = (node: ts.Node): void => {
       if (ts.isConditionalExpression(node) && isLanguageConditional(node, source)) total += 1;
       ts.forEachChild(node, visit);
@@ -82,7 +82,7 @@ function snippetLeaksChinese(body: string): boolean {
 }
 
 describe('Studio 英文分支不残留中文', () => {
-  const files = typeScriptSources(ROOT);
+  const files = sourceFiles(ROOT);
 
   it('真实源码里零泄漏', () => {
     expect(collectViolations(files)).toEqual([]);

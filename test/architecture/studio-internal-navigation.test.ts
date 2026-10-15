@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { typeScriptSources as listSourceFiles, parseTypeScript } from '../helpers/source-files.js';
+import { sourceFiles as listSourceFiles, parseSourceFile } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
@@ -61,7 +61,7 @@ function audit(files: string[], display: (path: string) => string): Audit {
   const violations: Violation[] = [];
   let linkCount = 0;
   for (const file of files) {
-    const source = parseTypeScript(file);
+    const source = parseSourceFile(file);
     const link = linkComponentName(source);
     const report = (node: ts.Node, reason: string): void => {
       violations.push({ file: display(file), line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, reason });

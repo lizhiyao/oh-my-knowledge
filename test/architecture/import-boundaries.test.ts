@@ -11,9 +11,11 @@
  * 路径前缀。静态 import 与 dynamic import('xxx') 都覆盖。
  */
 
+import { sourceFiles, resolveSourceModule as resolveSpecifier, parseSourceFile, sourceModuleReferences } from '../helpers/source-files.js';
+
 import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, normalize, sep, dirname } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import ts from 'typescript';
 
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -111,7 +113,6 @@ const RULES: ForbiddenRule[] = [
       reason: '声明捕获与编译不得依赖运行、结果复用或已认证运行状态。',
     }))
   )),
-
 
   {
     from: 'knowledge-artifacts/sources/',
@@ -281,47 +282,13 @@ const RULES: ForbiddenRule[] = [
   },
 ];
 
-function listTsFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const fp = join(dir, entry);
-    const st = statSync(fp);
-    if (st.isDirectory()) {
-      listTsFiles(fp, out);
-    } else if (st.isFile() && (entry.endsWith('.ts') || entry.endsWith('.tsx')) && !entry.endsWith('.d.ts')) {
-      out.push(fp);
-    }
-  }
-  return out;
+function listTsFiles(directory: string): string[] {
+  return sourceFiles(directory, { skippedDirectories: new Set(['.next', 'node_modules']) });
 }
 
-function extractSpecifiers(content: string): string[] {
-  const specs = new Set<string>();
-  const source = ts.createSourceFile('boundary.tsx', content, ts.ScriptTarget.Latest, true);
-  const visit = (node: ts.Node): void => {
-    let specifier: ts.Expression | undefined;
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-      specifier = node.moduleSpecifier;
-    } else if (ts.isCallExpression(node)
-      && (node.expression.kind === ts.SyntaxKind.ImportKeyword
-        || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
-      specifier = node.arguments[0];
-    }
-    if (specifier && ts.isStringLiteralLike(specifier)) specs.add(specifier.text);
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return [...specs];
-}
-
-function resolveSpecifier(importerAbs: string, spec: string): string | null {
-  if (!spec.startsWith('.')) return null;
-  const target = normalize(join(dirname(importerAbs), spec));
-  // Node ESM 用 .js，Next 页面还使用无扩展名路径；两者必须命中同一规则。
-  const candidates = spec.endsWith('.js')
-    ? [target.replace(/\.js$/, '.ts'), target.replace(/\.js$/, '.tsx'), target]
-    : [target, `${target}.ts`, `${target}.tsx`, join(target, 'index.ts')];
-  return (candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile())
-    ?? target).replace(/\\/g, '/');
+function extractSpecifiers(content: string, fileName = 'boundary.ts'): string[] {
+  return [...new Set(sourceModuleReferences(parseSourceFile(fileName, content))
+    .flatMap(({ specifier }) => ts.isStringLiteralLike(specifier) ? [specifier.text] : []))];
 }
 
 function toSrcRelative(absPath: string): string {
@@ -347,7 +314,7 @@ function collectViolations(): Violation[] {
   for (const file of files) {
     const importerRel = toSrcRelative(file);
     const content = readFileSync(file, 'utf-8');
-    const specs = extractSpecifiers(content);
+    const specs = extractSpecifiers(content, file);
     for (const spec of specs) {
       const resolvedAbs = resolveSpecifier(file, spec);
       if (!resolvedAbs) continue;
@@ -519,7 +486,7 @@ function collectSharedLeafViolations(): string[] {
   const violations: string[] = [];
   for (const file of listTsFiles(sharedDir)) {
     const importer = toSrcRelative(file);
-    for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+    for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'), file)) {
       const target = resolveSpecifier(file, specifier);
       if (target === null) continue;
       const targetRelative = toSrcRelative(target);
@@ -567,6 +534,14 @@ function exportedNames(content: string): string[] {
 }
 
 describe('架构边界守门', () => {
+  it.each([
+    ['.ts', 'const identity = <T>(value: T) => value;'],
+    ['.tsx', 'const identity = <T,>(value: T) => value; const view = <div />;'],
+  ])('按实际 %s 语法发现泛型声明之后的模块加载', (extension, declaration) => {
+    expect(extractSpecifiers(`${declaration} void import('./after.js');`, `fixture${extension}`))
+      .toEqual(['./after.js']);
+  });
+
   it('观测边界覆盖无扩展名、再导出和模块加载，忽略注释与字符串', () => {
     const specifiers = extractSpecifiers(`
       // import { ignored } from './comment';
@@ -593,7 +568,7 @@ describe('架构边界守门', () => {
   it('knowledge 纯逻辑只依赖自身与 Schema 校验库', () => {
     const violations: string[] = [];
     for (const file of listTsFiles(join(SRC_DIR, 'knowledge'))) {
-      for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+      for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'), file)) {
         const target = resolveSpecifier(file, specifier);
         if (specifier === 'zod' || (target && toSrcRelative(target).startsWith('knowledge/'))) continue;
         violations.push(`${toSrcRelative(file)} → ${specifier}`);
@@ -613,7 +588,7 @@ describe('架构边界守门', () => {
     const violations: string[] = [];
     for (const provider of providers) {
       for (const file of listTsFiles(join(RUNTIME_ADAPTERS_DIR, provider))) {
-        for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'))) {
+        for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'), file)) {
           const target = resolveSpecifier(file, specifier);
           if (target === null) continue;
           const targetRelative = relative(RUNTIME_ADAPTERS_DIR, target).split(sep).join('/');
