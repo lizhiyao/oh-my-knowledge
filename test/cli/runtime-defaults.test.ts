@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, describe, it, vi } from 'vitest';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import { runCommand } from '../helpers/run-command.js';
 import { prepareCliEvaluation } from '../../src/cli/lib/prepare-evaluation.js';
 import {
   defaultJudgeModel,
+  commandExistsOnPath,
   resolveCliExecutor,
   resolveCliModel,
   resolveRuntimeSelection,
@@ -56,12 +57,35 @@ describe('Codex-first CLI runtime defaults', () => {
   });
 
   it('selects codex when it is the only installed agent CLI', () => {
-    const env = { PATH: '/test/bin', CODEX_HOME: codexEnv().CODEX_HOME };
-    const executor = resolveCliExecutor(undefined, {
-      env,
-      commandExists: (command) => command === 'codex',
-    });
+    const bin = mkdtempSync(join(tmpdir(), 'omk-runtime-path-'));
+    tempDirs.push(bin);
+    writeFileSync(join(bin, process.platform === 'win32' ? 'codex.EXE' : 'codex'), '#!/bin/sh\n', { mode: 0o755 });
+    const env = { PATH: bin, CODEX_HOME: codexEnv().CODEX_HOME };
+    const executor = resolveCliExecutor(undefined, { env });
     assert.equal(executor, 'codex');
+  });
+
+  it.skipIf(process.platform === 'win32')('checks executable files, valid links and subsequent PATH entries on POSIX', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-runtime-path-types-'));
+    tempDirs.push(root);
+    const command = join(root, 'codex');
+    const env = { PATH: root };
+    mkdirSync(command);
+    assert.equal(commandExistsOnPath('codex', env), false, '可遍历目录不是可执行命令');
+    assert.equal(resolveCliExecutor(undefined, { env }), 'claude');
+    const next = join(root, 'bin'); mkdirSync(next);
+    writeFileSync(join(next, 'codex'), '#!/bin/sh\n', { mode: 0o755 });
+    assert.equal(commandExistsOnPath('codex', { PATH: [root, next].join(delimiter) }), true);
+    rmSync(command, { recursive: true });
+    writeFileSync(command, '#!/bin/sh\n', { mode: 0o644 });
+    assert.equal(commandExistsOnPath('codex', env), false);
+    chmodSync(command, 0o755);
+    assert.equal(commandExistsOnPath('codex', env), true);
+    symlinkSync('codex', join(root, 'claude'));
+    assert.equal(commandExistsOnPath('claude', env), true);
+    rmSync(command);
+    assert.equal(commandExistsOnPath('codex', env), false);
+    assert.equal(commandExistsOnPath('claude', env), false, '悬空链接不是可执行命令');
   });
 
   it('keeps the legacy claude default when both CLIs exist outside a Codex host', () => {

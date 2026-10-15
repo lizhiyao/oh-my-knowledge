@@ -1,5 +1,5 @@
 import { Errors } from '@oclif/core';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
 import { executorFamily } from '../../executors/core/registry.js';
@@ -32,8 +32,9 @@ export function commandExistsOnPath(command: string, env: NodeJS.ProcessEnv = pr
     : [''];
   return pathEntries.some((entry) => extensions.some((extension) => {
     try {
-      accessSync(join(entry, `${command}${extension}`), constants.X_OK);
-      return true;
+      const candidate = join(entry, `${command}${extension}`);
+      accessSync(candidate, constants.X_OK);
+      return statSync(candidate).isFile();
     } catch {
       return false;
     }
