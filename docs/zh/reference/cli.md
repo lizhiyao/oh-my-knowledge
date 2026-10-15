@@ -291,14 +291,16 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
 **Flags:**
 
 ```text
-  --dir <value>        清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
-  --executor <value>   extract：生成执行器，沿用 OMK 运行配置。
-  --json               输出完整 JSON；默认输出可读摘要。
-  --knowledge <value>  extract：知识工作区，默认全局知识目录。
-  --lang <value>       输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --limit <value>      collect 单轮处理的会话文件上限。
-  --model <value>      extract：生成模型，沿用已配置模型。
-  --session <value>    extract：采集报告里的 runId。
+  --dir <value>           清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
+  --end-record <value>    extract：最后一条记录序号，包含。
+  --executor <value>      extract：生成执行器，沿用 OMK 运行配置。
+  --json                  输出完整 JSON；默认输出可读摘要。
+  --knowledge <value>     extract：知识工作区，默认全局知识目录。
+  --lang <value>          输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+  --limit <value>         collect 单轮处理的会话文件上限。
+  --model <value>         extract：生成模型，沿用已配置模型。
+  --session <value>       extract：采集报告里的 runId。
+  --start-record <value>  extract：从零开始的非空记录序号，包含。
 ```
 
 完整描述见 `omk agents --help`。

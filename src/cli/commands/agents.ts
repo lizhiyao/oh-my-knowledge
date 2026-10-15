@@ -55,6 +55,8 @@ export default class AgentsCommand extends BaseCommand {
     session: Flags.string({
       description: description('extract：采集报告里的 runId。', 'extract: a runId from the collection report.'),
     }),
+    'start-record': Flags.integer({ min: 0, description: description('extract：从零开始的非空记录序号，包含。', 'extract: zero-based nonempty record index, inclusive.') }),
+    'end-record': Flags.integer({ min: 0, description: description('extract：最后一条记录序号，包含。', 'extract: last record index, inclusive.') }),
     knowledge: Flags.string({
       description: description('extract：知识工作区，默认全局知识目录。', 'extract: knowledge workspace; defaults to the global knowledge dir.'),
     }),
@@ -74,11 +76,19 @@ export default class AgentsCommand extends BaseCommand {
     '<%= config.bin %> agents list',
     '<%= config.bin %> agents collect --limit 50',
     '<%= config.bin %> agents extract --session <runId> --executor codex --model <model>',
+    '<%= config.bin %> agents extract --session <runId> --start-record 10 --end-record 30 --executor codex --model <model>',
   ];
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AgentsCommand);
     const lang = this.lang;
+    if (flags['start-record'] !== undefined || flags['end-record'] !== undefined) {
+      if (args.operation !== 'extract') this.error(lang === 'zh' ? '记录范围参数仅用于 extract。' : 'Record range flags are only valid for extract.', { exit: 2 });
+      if (!Number.isSafeInteger(flags['start-record'] ?? 0) || !Number.isSafeInteger(flags['end-record'] ?? 0)
+        || (flags['end-record'] !== undefined && flags['end-record'] < (flags['start-record'] ?? 0))) {
+        this.error(lang === 'zh' ? '记录范围无效；--end-record 不能小于 --start-record。' : 'Invalid record range; --end-record must not precede --start-record.', { exit: 2 });
+      }
+    }
     const {
       agentStorageLayout: layoutOf,
       AgentCollectionReportOutdatedError,
@@ -219,6 +229,7 @@ export default class AgentsCommand extends BaseCommand {
         : `${session.agentId} / ${session.sourceKind} · Only selected excerpts are sent; cost depends on executor reporting.`);
       const captured = app.capture({
         path: session.sourcePath,
+        startRecord: flags['start-record'], endRecord: flags['end-record'],
         ...(session.title ? { origin: { threadId: session.runId, title: session.title } } : {}),
       }, signal);
       const run = await app.generate(
@@ -229,8 +240,11 @@ export default class AgentsCommand extends BaseCommand {
       );
       if (flags.json) {
         this.log(JSON.stringify({ session, snapshot: captured, run }, null, 2));
+        if (run.status !== 'completed') this.exit(1);
         return;
       }
+      if (run.status !== 'completed') this.error((lang === 'zh' ? `提炼未完成（${run.status}，${run.runId}）。先核对已保存结果：` : `Extraction incomplete (${run.status}, ${run.runId}). Inspect saved results first:`)
+        + `\nomk observe knowledge runs --workspace ${shellQuoteArg(settings.workspace)} --json`);
       this.log(lang === 'zh'
         ? `提炼完成：${run.committed.length} 条候选知识（来源格式 ${captured.sourceKind}，快照 ${captured.snapshotId}）`
         : `Extracted ${run.committed.length} candidate(s) from ${captured.sourceKind} (snapshot ${captured.snapshotId}).`);

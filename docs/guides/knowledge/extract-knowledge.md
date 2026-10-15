@@ -44,6 +44,8 @@ omk observe knowledge list --workspace ./knowledge --json
 
 Use `--start-record`/`--end-record` to bound non-empty records (zero-based and inclusive); inspect the snapshot scope and limits first. See [extraction contracts](../../specs/entities/entity-extraction.md) for supported executors and current formats. Generation sends selected excerpts, whose private content still needs review.
 
+Before generation, the complete UTF-8 request, including fixed rules and selected excerpts, is limited to 1 MiB. This is not a token, model-context, or spending budget. Oversized requests make no model call, create no extraction run, and consume no automatic extraction calls; source text is never truncated. Capture a smaller range, or select fewer messages from one turn in Studio. `omk agents extract` also accepts `--start-record`/`--end-record` without changing the collection report.
+
 Default text summaries show the selected knowledge workspace and next commands carrying the same `--workspace`; without a configured model, `generate` still requires `--model`. `--json` preserves the complete machine result without mixing guidance into JSON stdout. Required parameters and JSON syntax are checked before settings or storage access: parameter failures exit `2`, business failures exit `1`, and success exits `0`. Revision conflicts include a reload command. Retry a busy workspace after its current write ends without removing live locks. Maintenance choices remain separate from effectiveness verification.
 
 ## Inspect and maintain {#inspect-and-maintain}

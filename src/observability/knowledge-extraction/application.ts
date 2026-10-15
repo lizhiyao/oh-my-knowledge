@@ -15,6 +15,7 @@ import { checkWindowExtractionResponse } from './window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
+import { assertExtractionInputCapacity, extractionModelInput } from './model-input.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
@@ -126,7 +127,7 @@ export class KnowledgeApplication {
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const window = source.window;
     // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
-    const input = JSON.stringify({ excerpts: window.excerpts, limitations: window.limitations });
+    const input = extractionModelInput(window);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
     let run: ExtractionRun = {
@@ -138,12 +139,21 @@ export class KnowledgeApplication {
       actor: this.ports.actor, startedAt: this.ports.now(), status: 'generating', intents: [], rejections: [], committed: [],
       entityRejections: [],
     };
+    const reuse = (previous: ExtractionRun) => {
+      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      return previous.status === 'prepared' ? this.resume(runId, signal) : previous;
+    };
+    // Current-format receipts may predate this capacity policy. Reuse them without a fresh call.
+    let previous: ExtractionRun | undefined;
+    try { previous = this.ports.runs.read(runId); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    if (previous) return reuse(previous);
+    assertExtractionInputCapacity(input);
     // Exclusive reservation precedes any model call. A retry never starts another generation.
     try { this.ports.runs.create(run); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      const previous = this.ports.runs.read(runId);
-      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
-      return previous.status === 'prepared' ? this.resume(runId, signal) : previous;
+      return reuse(this.ports.runs.read(runId));
     }
     try {
       const result = await model.generate(EXTRACTION_PROMPT, input, signal);

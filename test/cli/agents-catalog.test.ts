@@ -7,12 +7,18 @@
  * 不读用户真实的 `~/.oh-my-knowledge/agents.json`。
  */
 
-import { afterEach, describe, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
+import { runCommand } from '../helpers/run-command.js';
+import AgentsCommand from '../../src/cli/commands/agents.js';
+import * as executors from '../../src/executors/index.js';
+import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
+import { modelWindow } from '../knowledge/fixtures.js';
+import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
 import {
   AGENT_CATALOG_VERSION,
@@ -24,6 +30,7 @@ import {
 const tempRoots: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const root of tempRoots.splice(0, tempRoots.length)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -84,6 +91,50 @@ const SIBLING = {
 };
 
 describe('omk agents 与本机登记表扩展', () => {
+  it('extract rejects oversized input locally, then extracts and reopens an explicit inclusive record range', async () => {
+    const sandbox = createSandbox(catalogJson([SIBLING]));
+    const path = join(sandbox.home, '.sibling-host', 'projects', '-repo-a', 'session-a.jsonl');
+    const message = (text: string, uuid: string) => ({ type: 'user', uuid, sessionId: 'session-a',
+      message: { role: 'user', content: text } });
+    writeFileSync(path, [message('中'.repeat(400_000), 'u1'), message('Alpha 使用 Beta', 'u2')].map(value => JSON.stringify(value)).join('\n'));
+    const execute = vi.fn<ExecutorFn>(async input => ({
+      ok: true, output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input.prompt).excerpts[0].evidenceRef),
+      durationMs: 1, durationApiMs: 1, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
+      costUSD: 0, stopReason: 'end_turn', numTurns: 1,
+    }));
+    const create = vi.spyOn(executors, 'createExecutor').mockReturnValue(execute);
+    const options = { env: sandbox.env, cwd: sandbox.home };
+    // Catalog location is captured at module load; the existing process boundary owns HOME discovery.
+    const collected = await runCli(['agents', 'collect', '--dir', sandbox.outDir, '--json'], options);
+    const report = JSON.parse(collected.stdout) as AgentCollectionReport;
+    assert.ok(report.sessions.length, JSON.stringify(report));
+    const workspace = join(sandbox.home, 'knowledge');
+    const args = ['extract', '--session', report.sessions[0].runId, '--dir', sandbox.outDir, '--knowledge', workspace, '--executor', 'codex', '--model', 'fixture', '--json'];
+    await expect(runCommand(AgentsCommand, [...args, '--start-record', '2', '--end-record', '1'], options)).rejects.toMatchObject({ code: 2 });
+    expect(existsSync(workspace)).toBe(false);
+    await expect(runCommand(AgentsCommand, args, options)).rejects.toMatchObject({ code: 1, message: expect.stringContaining('--start-record/--end-record') });
+    expect(create).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+    const output = await runCommand(AgentsCommand, [...args, '--start-record', '1', '--end-record', '1'], options);
+    const result = JSON.parse(output.stdout);
+    expect(result.snapshot).toMatchObject({ startRecord: 1, endRecord: 1, records: [{ recordIndex: 1 }] });
+    expect(result.run).toMatchObject({ status: 'completed', committed: [expect.anything()] });
+    expect(result.snapshot.limitations).toContain('Explicit record range; surrounding context may be missing.');
+    expect(execute).toHaveBeenCalledTimes(1);
+    const app = createLocalKnowledgeApplication(workspace);
+    expect(app.runs().find(run => run.runId === result.run.runId)?.rawOutput).toBe(result.run.rawOutput);
+    expect(app.detail(result.run.committed[0].knowledgeId).sources[0]).toMatchObject({ status: 'available', window: { startRecord: 1, endRecord: 1 } });
+    execute.mockImplementation(async () => ({ ok: false, output: null, error: 'fixture failure',
+      durationMs: 1, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+      costUSD: 0, stopReason: 'error', numTurns: 0 }));
+    const selectedArgs = [...args, '--start-record', '1', '--end-record', '1'];
+    await expect(runCommand(AgentsCommand, selectedArgs, options)).rejects.toMatchObject({ code: 1,
+      stdout: expect.stringContaining('"status": "failed"') });
+    try { await runCommand(AgentsCommand, selectedArgs.filter(arg => arg !== '--json'), options); assert.fail('Failed extraction must exit 1'); }
+    catch (error) {
+      expect(error).toMatchObject({ code: 1, message: expect.stringContaining(`--workspace ${workspace} --json`) });
+      expect((error as { stdout: string }).stdout).not.toContain('提炼完成');
+    }
+  });
   it('list 把扩展条目当成本机登记表的一部分，并按同一身份与日志根计数', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));
 

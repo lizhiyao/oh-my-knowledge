@@ -12,7 +12,8 @@ import { FileExtractionRunStore } from '../../src/observability/knowledge-extrac
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
-import { EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
+import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
+import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/model-input.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow } from './fixtures.js';
 
@@ -43,6 +44,32 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
+  it('bounds the full UTF-8 model input before reservation, preserves source bytes and permits a smaller capture', async () => {
+    const { app, snapshot, model, generate, source, runs, ports } = setup('中'.repeat(400_000));
+    const original = readFileSync(source);
+    const input = JSON.stringify({ excerpts: snapshot.excerpts, limitations: snapshot.limitations });
+    expect(input.length + EXTRACTION_PROMPT.length).toBeLessThan(EXTRACTION_INPUT_MAX_BYTES);
+    expect(Buffer.byteLength(input) + Buffer.byteLength(EXTRACTION_PROMPT)).toBeGreaterThan(EXTRACTION_INPUT_MAX_BYTES);
+    await expect(app.generate(snapshot.snapshotId, model)).rejects.toThrow(/--start-record\/--end-record.*one turn/);
+    expect(generate).not.toHaveBeenCalled(); expect(runs.list()).toEqual([]); expect(app.list()).toEqual([]);
+    expect(readFileSync(source)).toEqual(original);
+    const previous = { runKind: 'knowledge-extraction-run' as const, schemaVersion: 4 as const,
+      runId: randomUUID(), generation: 1, snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion,
+      executor: model.executor, model: model.model, promptHash: ports.hash(EXTRACTION_PROMPT), inputDigest: ports.hash(input),
+      promptVersion: EXTRACTION_PROMPT_VERSION, actor: ports.actor, startedAt: ports.now(), status: 'generating' as const,
+      intents: [], rejections: [], entityRejections: [], committed: [],
+      requestDigest: ports.hash({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion,
+        executor: model.executor, model: model.model, promptHash: ports.hash(EXTRACTION_PROMPT), inputDigest: ports.hash(input), actor: ports.actor }) };
+    runs.create(previous);
+    expect(await app.generate(snapshot.snapshotId, model, previous.runId)).toEqual(previous);
+    await expect(app.generate(snapshot.snapshotId, { ...model, model: 'changed' }, previous.runId)).rejects.toThrow('identity conflict');
+    expect(generate).not.toHaveBeenCalled(); expect(runs.read(previous.runId)).toEqual(previous);
+    writeFileSync(source, `${original.toString()}\n${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } })}`);
+    const smaller = app.capture({ path: source, startRecord: 1, endRecord: 1 });
+    model.generate = async () => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', smaller.excerpts[0].evidenceRef), durationMs: 1 });
+    expect(await app.generate(smaller.snapshotId, model)).toMatchObject({ status: 'completed', committed: [expect.anything()] });
+    expect(app.source(snapshot.snapshotId)).toEqual({ status: 'available', window: snapshot });
+  });
   it('rejects identifier fragments in new corrections without changing stored history or moving the old mention', async () => {
     const text = '_prefixAlphaSuffix；Alpha 使用 Beta';
     const { app, snapshot, model, root } = setup(text);

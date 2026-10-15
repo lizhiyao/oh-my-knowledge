@@ -78,6 +78,23 @@ describe('authorized conversation auto extraction', () => {
     expect(JSON.stringify(f.service.status(f.workspace, 'thread'))).not.toContain('credential');
     await f.enable(); await f.tick(); expect(calls).toBe(1);
   });
+  it('rejects oversized input without reserving calls and can be explicitly enabled again after narrowing', async () => {
+    const f = fixture();
+    const load = f.catalog.loadTaskMessageRecords!.bind(f.catalog);
+    f.catalog.loadTaskMessageRecords = async (thread, turn) => {
+      const source = (await load(thread, turn))!;
+      return { ...source, records: source.records.map(record => ({ ...record, raw: record.raw.replace('Alpha 使用 Beta', '中'.repeat(140_000)) })) };
+    };
+    await f.enable(1); await f.tick();
+    expect(f.inputs).toHaveLength(0);
+    expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'capacity', callsUsed: 0, attemptedVersions: [] });
+    expect(readdirSync(join(f.workspace, 'auto-extraction')).some(name => name.startsWith('attempt-'))).toBe(false);
+    expect(createLocalKnowledgeApplication(f.workspace).runs()).toEqual([]);
+    f.catalog.loadTaskMessageRecords = load;
+    await f.enable(1); await f.tick();
+    expect(f.inputs).toHaveLength(1);
+    expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 1 });
+  });
   it('aborts in-flight generation on stop and preserves the reservation without a retry', async () => {
     const f = fixture(); let aborted = false; let entered!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
