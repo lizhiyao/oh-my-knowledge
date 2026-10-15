@@ -149,7 +149,8 @@ type DeepReadonlyValue<T> = T extends readonly (infer Item)[]
 export type EvaluationRuntimeIdentity = DeepReadonlyValue<RuntimeIdentity>;
 
 export interface EvaluationBundleVerificationContext {
-  /** Independently verified by a trusted cache boundary, never derived from the Bundle claim. */
+  /** Trusted cache boundary attests both the native source and exact replay Record digests.
+   * Never derive these attestations from an untrusted Bundle's own claims. */
   readonly verifiedCacheRecordDigests?: ReadonlySet<Sha256Digest>;
   /** Independently attested by the producing Runtime or a host trust verifier. */
   readonly verifiedProvenanceBundleDigests?: ReadonlySet<Sha256Digest>;

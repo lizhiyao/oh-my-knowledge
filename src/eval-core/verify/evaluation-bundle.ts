@@ -848,7 +848,8 @@ function assertRecordAgainstPlan(
     && record.cache.sourceRecordDigest !== undefined
     && verification?.verifiedCacheRecordDigests?.has(
       record.cache.sourceRecordDigest as Sha256Digest,
-    ) === true;
+    ) === true
+    && verification.verifiedCacheRecordDigests.has(digestCanonicalJson(record));
   if (!cacheHit) {
     return {
       minimumInvocations: record.attempts.length,

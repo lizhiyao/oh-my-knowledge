@@ -978,6 +978,29 @@ describe('Evaluation Core Evaluation runtime', () => {
       maximumEvaluatorInvocations: 3,
     });
     expect(verification.planVerification.unverifiedCacheRecordDigests).toHaveLength(2);
+
+    // A receipt must attest the actual replay projection as well as its native source.
+    // Rebinding to this Execution source changes sourceRecordDigest, so reconstructing
+    // the original native record from the replay would not be a sound content check.
+    const receipts = new Set(transported.records.flatMap((record) => {
+      if (record.evaluationStatus !== 'completed') throw new Error('expected completed cache record');
+      return [record.cache.sourceRecordDigest as Sha256Digest, digestCanonicalJson(record)];
+    }));
+    expect(verifyEvaluationBundle(transported, plan, source, {
+      verifiedCacheRecordDigests: receipts,
+    }).planVerification.cacheReceiptStatus).toBe('verified');
+    const tampered = resealEvaluationBundle(transported, (draft) => {
+      const record = draft.records[0]!;
+      if (record.evaluationStatus !== 'completed') throw new Error('expected completed cache record');
+      const observation = record.observations[0]!;
+      if (observation.observationStatus !== 'observed' || observation.valueType !== 'boolean') {
+        throw new Error('expected boolean cache observation');
+      }
+      observation.value = !observation.value;
+    });
+    expect(verifyEvaluationBundle(tampered, plan, source, {
+      verifiedCacheRecordDigests: receipts,
+    }).planVerification.cacheReceiptStatus).toBe('indeterminate');
   });
 
   it('rejects missing evaluator bindings synchronously', async () => {

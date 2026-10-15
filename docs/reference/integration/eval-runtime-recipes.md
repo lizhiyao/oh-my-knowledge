@@ -840,6 +840,8 @@ const rescored = await rescore({ ...input, dataset: correctedGoldDataset }, rest
 
 The `verifier` is the host's independent trust boundary and must do more than recompute a digest: it authenticates the Runtime that produced the result, the provenance bundles, the cache receipts, and the policy executions, and binds the attestation to the exact stored envelope digest. All five fields are required, and incomplete authority fails closed. Every case below fails closed before any Target call: an invalid reference or content metadata, a content digest that disagrees with the descriptor, a stored plan that disagrees with the sealed plan of `prepared`, a failing resolver or verifier call, evidence content referenced by the result that cannot be resolved, and Core admission rejection. An object from `structuredClone()` or JSON deserialization always fails closed—only the result returned by `loadEvaluationResult()` is eligible for reuse.
 
+**Cache verification boundary:** for each Evaluation transparent hit, `verifiedCacheRecordDigests` must independently attest both the native cached record digest and the exact replay record digest after binding it to the current Execution source. A native digest alone cannot authenticate changed observations. The producing Core Runtime captures both; a host verifier must authenticate the cache and replay projection before returning these digests, never copy claims from an untrusted envelope. Native-only historical attestations now yield `indeterminate` cache receipts and budget proof. Existing artifact schemas, stored bytes, and scoring formulas are unchanged.
+
 </details>
 
 <a id="independent-groups"></a>

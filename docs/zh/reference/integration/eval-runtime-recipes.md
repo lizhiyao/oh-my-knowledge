@@ -836,6 +836,8 @@ const rescored = await rescore({ ...input, dataset: correctedGoldDataset }, rest
 
 `verifier` 是宿主的独立信任边界，不能只复算摘要：它必须认证产生这份 result 的 Runtime、provenance bundle、cache receipt 与 policy execution，并把 attestation 绑定到确切的 stored envelope digest；五个字段缺一不可，authority 不完整同样失败关闭。下列情况都在调用任何 Target 前失败关闭：reference 或内容元数据无效、内容摘要与 descriptor 不匹配、stored plan 与 `prepared` 的 sealed plan 不一致、resolver 或 verifier 调用失败、result 引用的 evidence content 无法解析，以及 Core admission 拒绝。`structuredClone()` 或 JSON 反序列化得到的对象始终失败关闭——只有 `loadEvaluationResult()` 返回的 result 才具备复用资格。
 
+**缓存验证边界：**每条 Evaluation transparent-hit 的 `verifiedCacheRecordDigests` 都须独立认证原始缓存记录摘要，以及绑定当前 Execution source 后的确切 replay 记录摘要。仅有原始摘要不能认证被改动的观测值。生产 Core Runtime 会捕获两者；宿主 verifier 必须先认证缓存及 replay 投影，不能复制不可信 envelope 的自述摘要。历史 native-only attestation 现在会得到 `indeterminate` 的缓存收据及预算证明。Artifact Schema、已有存储字节与评分公式不变。
+
 </details>
 
 <a id="independent-groups"></a>
