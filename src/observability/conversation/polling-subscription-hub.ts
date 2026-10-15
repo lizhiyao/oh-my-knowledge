@@ -20,7 +20,7 @@ export interface PollingSubscriptionOptions {
 
 interface SubscriptionEntry<T> {
   active: boolean;
-  observers: Set<PollingSnapshotObserver<T>>;
+  observers: Set<{ observer: PollingSnapshotObserver<T>; unsubscribe(): void }>;
   loader: PollingSnapshotLoader<T>;
   latest?: PollingSnapshot<T>;
   timer?: ReturnType<typeof setTimeout>;
@@ -44,7 +44,11 @@ export class PollingSubscriptionHub<T> {
     observer: PollingSnapshotObserver<T>,
     options: PollingSubscriptionOptions = {},
   ): Promise<() => void> {
+    if (options.signal?.aborted) throw subscriptionAbortError();
     let entry = this.entries.get(key);
+    // A final callback can subscribe again before its old entry has finished disposal.
+    if (entry?.latest?.terminal) entry = undefined;
+    const initial = entry === undefined;
     if (!entry) {
       let resolveReady!: () => void;
       let rejectReady!: (cause: unknown) => void;
@@ -61,11 +65,7 @@ export class PollingSubscriptionHub<T> {
         rejectReady,
       };
       this.entries.set(key, entry);
-      void this.poll(key, entry, true);
     }
-
-    entry.observers.add(observer);
-    if (entry.latest) notifyNext(observer, entry.latest);
 
     let subscribed = true;
     let rejectAborted: ((cause: unknown) => void) | undefined;
@@ -78,20 +78,28 @@ export class PollingSubscriptionHub<T> {
       if (!subscribed) return;
       subscribed = false;
       options.signal?.removeEventListener('abort', abort);
-      entry?.observers.delete(observer);
+      entry?.observers.delete(subscription);
       if (entry && entry.observers.size === 0) this.dispose(key, entry);
     };
     const abort = (): void => {
       unsubscribe();
       rejectAborted?.(subscriptionAbortError());
     };
+    const subscription = { observer, unsubscribe };
+    entry.observers.add(subscription);
     if (options.signal) {
       options.signal.addEventListener('abort', abort, { once: true });
       if (options.signal.aborted) abort();
     }
 
+    if (entry.latest) {
+      notifyNext(observer, entry.latest);
+    }
+    if (initial) void this.poll(key, entry, true);
+
     try {
       await (aborted ? Promise.race([entry.ready, aborted]) : entry.ready);
+      if (options.signal?.aborted) throw subscriptionAbortError();
     } catch (cause) {
       unsubscribe();
       throw cause;
@@ -114,13 +122,17 @@ export class PollingSubscriptionHub<T> {
       if (!entry.active) return;
       const changed = snapshot.revision !== entry.latest?.revision;
       entry.latest = snapshot;
-      if (changed) {
-        for (const observer of entry.observers) notifyNext(observer, snapshot);
-      }
       if (initial) entry.resolveReady();
+      if (changed) {
+        for (const subscription of [...entry.observers]) {
+          if (entry.observers.has(subscription)) notifyNext(subscription.observer, snapshot);
+        }
+      }
+      if (!entry.active) return;
       if (snapshot.terminal) {
-        for (const observer of entry.observers) notifyComplete(observer);
+        const subscriptions = [...entry.observers];
         this.dispose(key, entry);
+        for (const { observer } of subscriptions) notifyComplete(observer);
         return;
       }
       entry.timer = setTimeout(() => {
@@ -131,8 +143,9 @@ export class PollingSubscriptionHub<T> {
     } catch (cause) {
       if (!entry.active) return;
       if (initial) entry.rejectReady(cause);
-      else for (const observer of entry.observers) notifyError(observer, cause);
+      const subscriptions = [...entry.observers];
       this.dispose(key, entry);
+      if (!initial) for (const { observer } of subscriptions) notifyError(observer, cause);
     }
   }
 
@@ -142,7 +155,7 @@ export class PollingSubscriptionHub<T> {
     entry.rejectReady(subscriptionAbortError());
     if (entry.timer) clearTimeout(entry.timer);
     entry.timer = undefined;
-    entry.observers.clear();
+    for (const { unsubscribe } of [...entry.observers]) unsubscribe();
     if (this.entries.get(key) === entry) this.entries.delete(key);
   }
 }
