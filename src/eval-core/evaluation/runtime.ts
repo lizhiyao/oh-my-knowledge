@@ -3,6 +3,7 @@ import { compareStrings } from '../primitives/ordering.js';
 import { minimumTrust } from '../primitives/provenance.js';
 import {
   derivePlannedEvaluationCoordinates,
+  digestCanonicalJson,
   type EvaluationBundle,
   type EvaluationBundleSource,
   type EvaluationError,
@@ -235,6 +236,7 @@ async function runEvaluation(
         if (result.cacheEntry !== undefined) pendingCache.push(result.cacheEntry);
         if (result.verifiedCacheRecordDigest !== undefined) {
           verifiedCacheRecordDigests.add(result.verifiedCacheRecordDigest);
+          if (record !== undefined) verifiedCacheRecordDigests.add(digestCanonicalJson(record));
         }
         if (record !== undefined && record.evaluationStatus === 'failed') batchFailures += 1;
         // Progress is a projection: a dead EventWriter must never drop a settled record here,
