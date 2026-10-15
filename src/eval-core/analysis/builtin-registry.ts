@@ -308,7 +308,7 @@ register(
   executeHierarchicalClusterBootstrap,
 );
 register(
-  'bootstrap.composite-mean-percentile/v1',
+  'bootstrap.composite-mean-percentile/v2',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
     valueTypes: ['numeric', 'boolean'],
@@ -328,7 +328,7 @@ register(
   executeCompositeMeanBootstrap,
 );
 register(
-  'bootstrap.composite-cluster-percentile/v1',
+  'bootstrap.composite-cluster-percentile/v2',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
     valueTypes: ['numeric', 'boolean'],
@@ -348,7 +348,7 @@ register(
   executeCompositeClusterBootstrap,
 );
 register(
-  'bootstrap.composite-paired-difference-percentile/v1',
+  'bootstrap.composite-paired-difference-percentile/v2',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
     valueTypes: ['numeric', 'boolean'],
@@ -369,7 +369,7 @@ register(
   executeCompositePairedBootstrap,
 );
 register(
-  'bootstrap.composite-unpaired-difference-percentile/v1',
+  'bootstrap.composite-unpaired-difference-percentile/v2',
   nodeCapabilities({
     analysisNodeKind: 'estimator',
     valueTypes: ['numeric', 'boolean'],

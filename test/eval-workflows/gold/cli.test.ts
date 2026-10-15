@@ -22,6 +22,15 @@ describe('gold dataset authoring', () => {
       /`omk eval gold compare` 将人工标注与 Core run 观测进行比较。/,
     );
     assert.deepEqual(validateGoldDataset(directory), { ok: true, issues: [], sampleCount: 2 });
+    writeFileSync(join(directory, 'annotations.yaml'), JSON.stringify({
+      annotations: [{ sample_id: 'out-of-scale', score: 6 }],
+    }));
+    for (const lang of ['en', 'zh'] as const) {
+      const invalid = validateGoldDataset(directory, lang);
+      assert.equal(invalid.ok, false);
+      assert.equal(invalid.sampleCount, 1);
+      assert.match(invalid.issues.join('\n'), /score.*metadata\.scale.*\[1, 5\]/);
+    }
   });
 
   it('refuses to overwrite authored YAML', () => {

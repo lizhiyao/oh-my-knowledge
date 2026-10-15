@@ -13,6 +13,7 @@ import {
   type UsageRecord,
 } from '../contracts/index.js';
 import { snapshotJson } from '../compiler/immutability.js';
+import { compareStrings } from '../primitives/ordering.js';
 import type {
   SealedRunPlan,} from '../compiler/index.js';
 
@@ -531,7 +532,7 @@ class RunBudgetAuthority implements RunBudgetController {
               : {
                 reportedProviderCosts: [...totals.providerCosts.entries()]
                   .map(([currency, amount]) => ({ amount, currency }))
-                  .sort((left, right) => left.currency.localeCompare(right.currency)),
+                  .sort((left, right) => compareStrings(left.currency, right.currency)),
               }),
             unreportedProviderCostInvocations: totals.unreportedProviderCostInvocations,
           },
@@ -554,8 +555,9 @@ class RunBudgetAuthority implements RunBudgetController {
           },
         };
       })
-      .sort((left, right) => `${left.scopeKind}:${left.scopeId}`
-        .localeCompare(`${right.scopeKind}:${right.scopeId}`));
+      .sort((left, right) => compareStrings(
+        `${left.scopeKind}:${left.scopeId}`, `${right.scopeKind}:${right.scopeId}`,
+      ));
     const outstandingProviderCosts = new Map<string, number>();
     for (const reservation of this.#reservations.values()) {
       const bound = reservation.providerCostUpperBound;
@@ -590,7 +592,7 @@ class RunBudgetAuthority implements RunBudgetController {
           : {
             outstandingProviderCosts: [...outstandingProviderCosts.entries()]
               .map(([currency, amount]) => ({ amount, currency }))
-              .sort((left, right) => left.currency.localeCompare(right.currency)),
+              .sort((left, right) => compareStrings(left.currency, right.currency)),
           }),
       },
       wallClock: {

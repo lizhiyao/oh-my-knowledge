@@ -26,6 +26,7 @@ import {
 import { } from './analysis-support.js';
 
 export const COMPOSITE_ANALYSIS_IMPLEMENTATION_ID = 'omk.composite-table/v2' as const;
+export const COMPOSITE_SCORE_METRIC_ID = 'composite-score' as const;
 
 const ALGORITHM_VERSION = 'omk.composite-aggregation/v2' as const;
 

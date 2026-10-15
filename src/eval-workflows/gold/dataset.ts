@@ -106,6 +106,7 @@ export function loadGoldDataset(dir: string): LoadResult {
 
   let metadata: GoldMetadata | undefined;
   const annotations: GoldAnnotation[] = [];
+  const annotationLocations = new Map<string, { path: string; index: number }>();
   const sourcePaths: string[] = [];
   const seenIds = new Set<string>();
 
@@ -166,6 +167,7 @@ export function loadGoldDataset(dir: string): LoadResult {
         }
         seenIds.add(anno.sample_id);
         annotations.push(anno);
+        annotationLocations.set(anno.sample_id, { path: fpath, index: i });
       }
     }
   }
@@ -183,6 +185,15 @@ export function loadGoldDataset(dir: string): LoadResult {
 
   if (!metadata || annotations.length === 0) {
     return { issues };
+  }
+  const scale = metadata.scale ?? { min: 1, max: 5 };
+  for (const annotation of annotations) {
+    if (annotation.score >= scale.min && annotation.score <= scale.max) continue;
+    issues.push({
+      ...annotationLocations.get(annotation.sample_id)!,
+      message: `score must be within metadata.scale [${scale.min}, ${scale.max}]`,
+      messageZh: `score 必须位于 metadata.scale 的范围 [${scale.min}, ${scale.max}] 内`,
+    });
   }
 
   return {
@@ -207,7 +218,9 @@ function validateMetadata(raw: unknown, path: string): ValidationIssue | null {
   }
   if (m.scale !== undefined) {
     const s = m.scale as Record<string, unknown>;
-    if (typeof s !== 'object' || typeof s.min !== 'number' || typeof s.max !== 'number' || (s.max as number) <= (s.min as number)) {
+    if (typeof s !== 'object' || s === null || Array.isArray(s)
+        || typeof s.min !== 'number' || !Number.isFinite(s.min)
+        || typeof s.max !== 'number' || !Number.isFinite(s.max) || s.max <= s.min) {
       return {
         path,
         message: 'metadata.scale must be { min: number, max: number } with max > min',

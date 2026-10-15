@@ -7,8 +7,8 @@
  * persisted Bundle verification. It is intentionally not exported by contracts/index.
  */
 const COMPOSITE_COMPARISON_IMPLEMENTATION_IDS = new Set([
-  'bootstrap.composite-paired-difference-percentile/v1',
-  'bootstrap.composite-unpaired-difference-percentile/v1',
+  'bootstrap.composite-paired-difference-percentile/v2',
+  'bootstrap.composite-unpaired-difference-percentile/v2',
 ]);
 
 export function analysisComparisonAppliesToMetricInput(

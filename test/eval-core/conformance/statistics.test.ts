@@ -75,12 +75,12 @@ async function interval(input: {
   implementationId: 'bootstrap.mean-percentile/v1'
     | 'bootstrap.paired-difference-percentile/v1'
     | 'bootstrap.unpaired-difference-percentile/v1'
-    | 'bootstrap.composite-mean-percentile/v1';
+    | 'bootstrap.composite-mean-percentile/v2';
   rows: AnalysisMetricRow[];
   secondaryRows?: AnalysisMetricRow[];
   simulation: number;
 }): Promise<{ lower: number; upper: number; estimate: number; unitCount: number }> {
-  const composite = input.implementationId === 'bootstrap.composite-mean-percentile/v1';
+  const composite = input.implementationId === 'bootstrap.composite-mean-percentile/v2';
   const comparison = input.implementationId.includes('difference');
   const paired = input.implementationId === 'bootstrap.paired-difference-percentile/v1';
   const implementation = ANALYSIS_NODES.get(input.implementationId);
@@ -256,7 +256,7 @@ describe('Evaluation Core deterministic statistical conformance', () => {
   it('pins unit-first composite covariance with a known reference vector', async () => {
     const first = [0, 1, 0, 1];
     const composite = await interval({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       simulation: 0,
       rows: first.map((value, index) => metricRow({
         metricId: 'score-a',

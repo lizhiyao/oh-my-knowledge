@@ -12,6 +12,7 @@ import {
   resolveEffectiveExecutionControl,
   type AnalysisNodeDefinition,
   type EvaluationDefinition,
+  type JsonValue,
   type MeasurementPolicy,
   type MetricDefinition,
 } from '../contracts/index.js';
@@ -77,6 +78,26 @@ function validateDesignPointers(definition: EvaluationDefinition): void {
         );
       }
     }
+  }
+  const { pairingKey } = definition.experiment.sampling;
+  const { stratumKey } = definition.experiment.assignment;
+  if (pairingKey === undefined || stratumKey === undefined) return;
+  const strataByPairingBlock = new Map<string, string>();
+  for (const sample of executionSamples) {
+    const pairing = resolveJsonPointer(sample, pairingKey);
+    const stratum = resolveJsonPointer(sample, stratumKey);
+    if (!pairing.resolved || !stratum.resolved) continue;
+    const pairingId = canonicalizeJson(pairing.value as JsonValue);
+    const stratumId = canonicalizeJson(stratum.value as JsonValue);
+    const previousStratum = strataByPairingBlock.get(pairingId);
+    if (previousStratum !== undefined && previousStratum !== stratumId) {
+      throw definitionError(
+        'EVAL_DEFINITION_POLICY_INVALID',
+        '一个 pairing block 不能跨越多个 stratum。',
+        { location: 'experiment.sampling.pairingKey', sampleId: sample.sampleId },
+      );
+    }
+    strataByPairingBlock.set(pairingId, stratumId);
   }
 }
 
@@ -715,10 +736,10 @@ function validateSimultaneousIntervalFamilies(
 }
 
 const COMPOSITE_ANALYSIS_IMPLEMENTATION_IDS = new Set([
-  'bootstrap.composite-mean-percentile/v1',
-  'bootstrap.composite-cluster-percentile/v1',
-  'bootstrap.composite-paired-difference-percentile/v1',
-  'bootstrap.composite-unpaired-difference-percentile/v1',
+  'bootstrap.composite-mean-percentile/v2',
+  'bootstrap.composite-cluster-percentile/v2',
+  'bootstrap.composite-paired-difference-percentile/v2',
+  'bootstrap.composite-unpaired-difference-percentile/v2',
 ]);
 
 export function isCompositeAnalysisImplementationId(implementationId: string): boolean {

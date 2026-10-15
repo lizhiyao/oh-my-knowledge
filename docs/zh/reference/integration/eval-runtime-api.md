@@ -231,7 +231,9 @@ Facade identity 升为 `omk.eval-runtime.custom-evaluator/v2`；`checkRuntime({ 
 
 Analysis 必须显式声明并在执行前预注册。顶层 `analyses[]` 接受具名的 `summary`、`quality-interval`、`comparison-interval`、`comparison-family`、`composite-quality-interval` 与 `composite-comparison-interval`：summary 支持 numeric `mean`、boolean `rate` 和 numeric `quantile`；单项区间显式声明置信水平与重采样次数。Comparison family 至少声明两个全局具名 contrast 和一个整族置信水平。其 `bonferroni-percentile-bootstrap` 方法会在执行前把每项边际置信水平封存为 `1 - (1 - family level) / family size`，再产生一份由 Core 独立验证的 simultaneous-family table；该 family level 是标称目标，实际覆盖依赖边际 Bootstrap 区间达到其标称覆盖率。它不会伪造 p-value，也不会在看到结果后筛选 family member。每项请求可以应用一份封存的 Dataset cohort filter。Rubric panel 会先在成员内平均 replicate，再按声明聚合成员，最后在 sample 内归约重复 Target trial；paired 与 independent member 分别保持自身重采样单位。Metric direction 不会被用于静默翻转结果符号。Analysis `decision` 选择一个 interval；`comparison-family` decision 则选择外层 family，并为每个 member 提供一项原始 effect 单位的 `FamilyDecisionCriterion`。显式 `all` 规则只有在全部 simultaneous interval 满足 inclusive boundary 时才发布，已证明违反任一 criterion 时阻断，其余情况保持 not-decided。空 analysis 列表只保留类型化 evaluation evidence，不会虚构统计量或 composite verdict。
 
-Composite request 使用 `compositeMetricId` 命名派生的 `[0, 1]` higher-is-better Metric，并显式声明至少两个 `CompositeMetricComponent` 与一份 `CompositeAggregation`。Component 的 source Metric ID 必须唯一，权重必须为正且严格求和为一；v1 唯一支持的聚合方式是 `{ method: 'weighted-mean', missing: 'require-complete' }`。它只接受 boolean Metric，以及声明了单调 direction 和完整边界的 numeric Metric；调用点不能覆盖 source Metric 已封存的 scale 或 direction。Runtime 会物化 derived Metric，并在 composite comparison 中把它加入选定的 Core Comparison；归一化、panel 聚合、实验单位内合成、缺失 component 排除、重采样、coverage 与 source-row lineage 仍只由 Core 负责。
+Composite request 使用 `compositeMetricId` 命名派生的 `[0, 1]` higher-is-better Metric，并显式声明至少两个 `CompositeMetricComponent` 与一份 `CompositeAggregation`。Component 的 source Metric ID 必须唯一，权重必须为正，按 Metric ID canonical 顺序求和后与一的偏差不超过 `1e-12`；v2 唯一支持的聚合方式是 `{ method: 'weighted-mean', missing: 'require-complete' }`。它只接受 boolean Metric，以及声明了单调 direction 和完整边界的 numeric Metric；调用点不能覆盖 source Metric 已封存的 scale 或 direction。Runtime 会物化 derived Metric，并在 composite comparison 中把它加入选定的 Core Comparison；归一化、panel 聚合、实验单位内合成、缺失 component 排除、重采样、coverage 与 source-row lineage 仍只由 Core 负责。
+
+当前 Composite 目录解析 `bootstrap.composite-mean-percentile/v2`、`bootstrap.composite-cluster-percentile/v2`、`bootstrap.composite-paired-difference-percentile/v2` 与 `bootstrap.composite-unpaired-difference-percentile/v2`，参数身份为 `omk.parameters.composite-bootstrap/v2`。直接编写 Core Definition 时需更新这些 ID；façade request 自动编译到 v2。可接受的舍入漂移会钳制到 `[0, 1]`，保留声明的原始权重。Numeric component 边界容差为 `1e-12 × max(1, |min|, |max|)`，boolean 与最终 composite utility 的容差为 `1e-12`。当前目录拒绝 v1 ID。保留旧证据，并重跑 v2 基线后再比较。Pairing block 必须位于同一 assignment stratum，跨 stratum 的分组在执行前编译失败。
 
 ```ts
 const analysis: AnalysisRequest = {
@@ -254,7 +256,7 @@ const analysis: AnalysisRequest = {
 
 首次接入请先看[四步使用指南](eval-runtime-recipes.md#retrieval-abstention)，包含运行命令、数据规则、服务接入点和预期输出。
 
-`AbstentionEvaluator` 是内置的 `evaluators[]` 声明，可通过包根与 `/eval-runtime` 使用。它编译为既有 Core 契约，产生两个布尔型 `AbstentionMetricIds`，不引入单独的评测工厂、数据集选择器或执行生命周期。
+`AbstentionEvaluator` 是内置的 `evaluators[]` 声明，可通过 `oh-my-knowledge` 包根使用。它编译为既有 Core 契约，产生两个布尔型 `AbstentionMetricIds`，不引入单独的评测工厂、数据集选择器或执行生命周期。
 
 ```ts
 const abstention: AbstentionEvaluator = {

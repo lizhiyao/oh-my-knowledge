@@ -366,7 +366,13 @@ it('groups product Rubric calls by actual sample dimension sets and retains per-
   expect(groups).toHaveLength(2);
   expect(groups.find((g) => g.metricIds.length === 2)?.applicableSampleIds).toEqual(['a', 'b']);
   expect(groups.find((g) => g.metricIds.length === 1)?.applicableSampleIds).toEqual(['c']);
-  expect(design.metrics).toHaveLength(2);
+  expect(design.metrics).toHaveLength(3);
+  expect(design.metrics.find((entry) => entry.metricId === 'composite-score')).toMatchObject({
+    valueType: 'numeric', scope: 'sample', scale: { min: 1, max: 5 },
+    direction: 'higher-is-better', unit: 'score',
+  });
+  expect(design.decisionPolicy?.comparisonFamily?.every((entry) => entry.metricId === 'composite-score')).toBe(true);
+  expect(design.evaluatorTemplates.some((entry) => entry.metricIds.includes('composite-score'))).toBe(false);
   for (const item of design.dataset.samples) {
     const context = item.evaluationContext as { rubricJudgeJoint: Array<{ metricId: string }> };
     const group = groups.find((g) => g.applicableSampleIds?.includes(item.sampleId));

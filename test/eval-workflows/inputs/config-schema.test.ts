@@ -109,11 +109,22 @@ describe('EvalConfig single schema boundaries', () => {
     assert.equal(request.values.targetRuntime.effort, EVAL_CONFIG_DEFAULTS.effort);
   });
 
-  it('preserves the distinct CLI and YAML decision input ranges', () => {
-    const request = parseFlags({ threshold: '6', 'trivial-diff': '5' });
-    assert.equal(request.values.measurement.decision.threshold, 6);
-    assert.equal(request.values.measurement.decision.trivialDifference, 5);
-    assert.throws(() => withConfig({ decision: { threshold: 6 } }, () => {}), /threshold/);
-    assert.throws(() => withConfig({ decision: { trivialDifference: 5 } }, () => {}), /trivialDifference/);
+  it('validates the same decision ranges before CLI or YAML evaluation work', () => {
+    for (const threshold of [1, 5]) {
+      assert.equal(parseFlags({ threshold: String(threshold) }).values.measurement.decision.threshold, threshold);
+      withConfig({ decision: { threshold } }, (config) => assert.equal(config.decision!.threshold, threshold));
+    }
+    for (const trivialDifference of [0, 4]) {
+      assert.equal(parseFlags({ 'trivial-diff': String(trivialDifference) }).values.measurement.decision.trivialDifference, trivialDifference);
+      withConfig({ decision: { trivialDifference } }, (config) => assert.equal(config.decision!.trivialDifference, trivialDifference));
+    }
+    for (const threshold of [0, 6]) {
+      assert.throws(() => parseFlags({ threshold: String(threshold) }), /threshold/);
+      assert.throws(() => withConfig({ decision: { threshold } }, () => {}), /threshold/);
+    }
+    for (const trivialDifference of [-1, 5]) {
+      assert.throws(() => parseFlags({ 'trivial-diff': String(trivialDifference) }), /trivial-diff/);
+      assert.throws(() => withConfig({ decision: { trivialDifference } }, () => {}), /trivialDifference/);
+    }
   });
 });
