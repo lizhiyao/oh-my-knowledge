@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Checkbox, Input, Modal, Pagination, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
@@ -8,6 +8,7 @@ import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/know
 import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './library-request';
 import { KnowledgeRequestError } from './request';
+import { useKnowledgeSave } from './save-session';
 import { EntityLibraryDetail } from './entities';
 
 export type LibrarySeed = { analysisId: string; entityId: string; revision?: string };
@@ -21,13 +22,11 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
   const [query, setQuery] = useState(''); const [page, setPage] = useState(1); const [catalog, setCatalog] = useState<KnowledgeEntityCatalog>();
   const [preview, setPreview] = useState<KnowledgeEntityLibraryDetail>(); const [target, setTarget] = useState<LibrarySeed | undefined>(seed);
   const [mentionIds, setMentionIds] = useState<string[]>([]); const [rationale, setRationale] = useState(''); const [reason, setReason] = useState('');
-  const [confirmed, setConfirmed] = useState(false); const [loading, setLoading] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  const [pending, setPending] = useState<Parameters<typeof requestLibrary>[2] & { requestId: string }>();
-  const [uncertain, setUncertain] = useState(false);
+  const [confirmed, setConfirmed] = useState(false); const [loading, setLoading] = useState(false); const [validationError, setValidationError] = useState('');
+  const { session, state, busy, uncertain } = useKnowledgeSave<Parameters<typeof requestLibrary>[2] & { requestId: string; objectId: string }>(workspace);
+  const error = validationError || state.error;
   const [catalogError, setCatalogError] = useState(''); const [previewError, setPreviewError] = useState('');
   const [catalogRetry, setCatalogRetry] = useState(0); const [previewRetry, setPreviewRetry] = useState(0); const [previewLoading, setPreviewLoading] = useState(false);
-  const writeController = useRef<AbortController | null>(null);
-  useEffect(() => () => { writeController.current?.abort(); writeController.current = null; }, [workspace, objectId]);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setCatalog(undefined); setCatalogError('');
     void requestLibraryEntity<KnowledgeEntityCatalog>(workspace, 'entity-catalog', { query: query.trim() || undefined, page, pageSize: 10 }, controller.signal)
@@ -60,40 +59,32 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
     setTarget(undefined); setPreview(undefined);
   }
   async function save() {
-    if (writeController.current || uncertain) return;
+    if (busy || uncertain) return;
     const checked = LibraryDraftSchema.safeParse({ ...draft, label: draft.label.trim(), description: draft.description.trim() });
     if (!checked.success || !reason.trim() || reason.trim().length > 4096) {
-      setError(t('组织草稿未通过校验。核对名称、简介、来源数量与依据；当前填写仍保留，尚未发送保存请求。', 'The organization draft is invalid. Review its name, description, source count and evidence. Your entries remain; no save request was sent.'));
+      setValidationError(t('组织草稿未通过校验。核对名称、简介、来源数量与依据；当前填写仍保留，尚未发送保存请求。', 'The organization draft is invalid. Review its name, description, source count and evidence. Your entries remain; no save request was sent.'));
       return;
     }
-    const active = new AbortController(); writeController.current = active;
+    setValidationError('');
     const command = { requestId: crypto.randomUUID(), objectId, generation: detail?.history.generation ?? 0,
       headRevisionId: detail?.history.writeHeadRevisionId ?? null, draft: checked.data,
       reason: reason.trim(), identityConfirmed: true as const };
-    setPending(command); setBusy(true); setError('');
-    try { await requestLibrary(workspace, 'save', command, active.signal); if (!active.signal.aborted) onSaved(objectId); }
-    catch (cause) {
-      if (active.signal.aborted) return;
-      if (cause instanceof KnowledgeRequestError && cause.definiteRejection && ['knowledge_conflict', 'knowledge_capacity_exceeded', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(cause.message)) {
-        setError(cause.message === 'knowledge_conflict'
-          ? t('对象或来源已变化，或此实体已有所属对象。关闭后重新核对组织与实体。', 'Object/source changed or this entity already has an owner. Close and review organization and entities.')
-          : t('未能保存。核对来源、对象层次、身份歧义与工作区状态后再提交。', 'Save failed. Review source, referent level, ambiguity, and workspace state.'));
-        setConfirmed(false);
-      } else { setUncertain(true); setError(t('保存结果未知，请先核对已保存版本。', 'Save outcome unknown. Check the saved version first.')); }
-    } finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
+    const saved = await session.save(command, (value, signal) => requestLibrary(workspace, 'save', value, signal), cause => {
+      if (!(cause instanceof KnowledgeRequestError) || !cause.definiteRejection
+        || !['knowledge_conflict', 'knowledge_capacity_exceeded', 'knowledge_storage_unsupported', 'knowledge_workspace_busy'].includes(cause.message)) return;
+      setConfirmed(false);
+      return cause.message === 'knowledge_conflict'
+        ? t('对象或来源已变化，或此实体已有所属对象。关闭后重新核对组织与实体。', 'Object/source changed or this entity already has an owner. Close and review organization and entities.')
+        : t('未能保存。核对来源、对象层次、身份歧义与工作区状态后再提交。', 'Save failed. Review source, referent level, ambiguity, and workspace state.');
+    }, t('保存结果未知，请先核对已保存版本。', 'Save outcome unknown. Check the saved version first.'));
+    if (saved?.current()) onSaved(objectId);
   }
   async function inspectSave() {
-    if (!pending || writeController.current) return;
-    const active = new AbortController(); writeController.current = active;
-    setBusy(true); setError('');
-    try {
-      const saved = await requestLibrary<KnowledgeLibraryDetail>(workspace, 'show', { id: objectId }, active.signal);
-      if (active.signal.aborted) return;
-      const receipt = saved.history.receipts.find(value => value.requestId === pending.requestId);
-      if (receipt) onSaved(objectId);
-      else setError(t('未找到本次保存收据。请关闭后检查对象，再重新提交。', 'This save receipt was not found. Close, inspect the object, and submit again.'));
-    } catch { if (!active.signal.aborted) setError(t('仍无法核对保存状态，请稍后再检查。', 'Save status still unavailable. Check again later.')); }
-    finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
+    const saved = await session.inspect((command, signal) => requestLibrary<KnowledgeLibraryDetail>(workspace, 'show', { id: command.objectId }, signal),
+      (value, command) => value.history.receipts.some(receipt => receipt.requestId === command.requestId),
+      t('未找到本次保存收据。请关闭后检查对象，再重新提交。', 'This save receipt was not found. Close, inspect the object, and submit again.'),
+      t('仍无法核对保存状态，请稍后再检查。', 'Save status still unavailable. Check again later.'));
+    if (saved?.current()) onSaved(objectId);
   }
   return <Modal open width={1000} className="carrier-authoring-modal library-editor-modal" title={detail ? t('维护知识库对象', 'Maintain library object') : t('从实体建立知识库对象', 'Create a library object from entities')}
     onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
