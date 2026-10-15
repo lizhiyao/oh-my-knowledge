@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getEventListeners } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +17,7 @@ import { createWorkflowSampleSetDocument } from '../../src/eval-workflows/inputs
 type UnknownRecord = Record<string, unknown>;
 
 class FakeDshHost implements DshHostContextLike {
+  get listenerCount() { return this.eventListeners.size + this.createdListeners.size; }
   readonly created: Array<{
     sessionId: string;
     cwd: string;
@@ -190,7 +192,131 @@ const parentAgent = {
 } satisfies DshAgentLike;
 
 describe('DSH host executor', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+  it.each(['call', 'host', 'host-with-call'] as const)('does not create a session after %s cancellation', async (scope) => {
+    const host = new FakeDshHost();
+    const call = new AbortController();
+    const parent = new AbortController();
+    if (scope === 'call') call.abort(); else parent.abort();
+    const result = await createDshHostExecutor(host, { parentAgent, signal: parent.signal })({
+      model: 'measured-model', prompt: 'must not send',
+      ...(scope !== 'host' ? { abortSignal: call.signal } : {}),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.stopReason, 'aborted');
+    assert.equal(host.created.length, 0);
+    assert.equal(host.listenerCount, 0);
+  });
+
+  it('forwards creation cancellation and disposes a late session without sending a prompt', async () => {
+    const host = new FakeDshHost();
+    const controller = new AbortController();
+    const create = host.agents.create;
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; });
+    const followup = vi.fn();
+    let signal: AbortSignal | undefined;
+    vi.spyOn(host.agents, 'create').mockImplementation(async options => {
+      signal = options.signal;
+      await ready;
+      const handle = await create(options);
+      return { ...handle, agent: { ...handle.agent, followup } };
+    });
+    const pending = createDshHostExecutor(host, { parentAgent })({
+      model: 'measured-model', prompt: 'must not send', abortSignal: controller.signal,
+    });
+    controller.abort(); release();
+    const result = await pending;
+    assert.equal(signal, controller.signal);
+    assert.equal(result.stopReason, 'aborted');
+    assert.equal(followup.mock.calls.length, 0);
+    assert.equal(host.disposed, 1);
+    assert.equal(host.listenerCount, 0);
+  });
+
+  it.each(['initial', 'cancellation'] as const)('cleans timers and signal listeners when idle rejects during %s', async (stage) => {
+    vi.useFakeTimers();
+    const host = new FakeDshHost();
+    const controller = new AbortController();
+    const create = host.agents.create;
+    let calls = 0;
+    vi.spyOn(host.agents, 'create').mockImplementation(async options => {
+      const handle = await create(options);
+      return { ...handle, agent: { ...handle.agent, whenIdle: () => {
+        if (++calls === 1 && stage === 'cancellation') return new Promise<void>(() => undefined);
+        return Promise.reject(new Error('host idle failed'));
+      } } };
+    });
+    const pending = createDshHostExecutor(host, { parentAgent })({
+      model: 'measured-model', prompt: '__hang__', abortSignal: controller.signal,
+    });
+    if (stage === 'cancellation') { await vi.advanceTimersByTimeAsync(0); controller.abort(); }
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+    assert.equal(vi.getTimerCount(), 0);
+    assert.equal(host.disposed, 1);
+    assert.equal(host.listenerCount, 0);
+  });
+
+  it('cleans a partial event subscription when registration throws', async () => {
+    const host = new FakeDshHost();
+    const subscribe = host.on.bind(host);
+    vi.spyOn(host, 'on').mockImplementation((event, listener) => {
+      if (event === 'session/event') throw new Error('subscription failed');
+      return subscribe(event, listener);
+    });
+    const result = await createDshHostExecutor(host, { parentAgent })({ model: 'measured-model', prompt: 'unused' });
+    assert.equal(result.ok, false);
+    assert.equal(host.listenerCount, 0);
+    assert.equal(host.created.length, 0);
+  });
+
+  it('still disposes the session when one subscription cleanup throws', async () => {
+    const host = new FakeDshHost();
+    const subscribe = host.on.bind(host);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(host, 'on').mockImplementation((event, listener) => {
+      const remove = subscribe(event, listener);
+      return () => { remove(); if (event === 'session/event') throw new Error('unsubscribe failed'); };
+    });
+    const result = await createDshHostExecutor(host, { parentAgent })({ model: 'measured-model', prompt: 'evaluate' });
+    assert.equal(result.ok, true);
+    assert.equal(host.listenerCount, 0);
+    assert.equal(host.disposed, 1);
+    assert.ok(stderr.mock.calls.some(([message]) => String(message).includes('unsubscribe failed')));
+  });
+
+  it('does not admit success when idle and cancellation settle together', async () => {
+    const host = new FakeDshHost();
+    const controller = new AbortController();
+    const create = host.agents.create;
+    vi.spyOn(host.agents, 'create').mockImplementation(async options => {
+      const handle = await create(options);
+      return { ...handle, agent: { ...handle.agent, whenIdle: async () => { controller.abort(); } } };
+    });
+    const result = await createDshHostExecutor(host, { parentAgent })({
+      model: 'measured-model', prompt: 'evaluate', abortSignal: controller.signal,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.stopReason, 'aborted');
+    assert.equal(host.disposed, 1);
+    assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+  });
+
+  it('reports synchronous disposal failure without overriding the measurement result', async () => {
+    const host = new FakeDshHost();
+    const create = host.agents.create;
+    const dispose = vi.fn(() => { throw new Error('synchronous dispose failed'); });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(host.agents, 'create').mockImplementation(async options => ({ ...await create(options), dispose }));
+    const result = await createDshHostExecutor(host, { parentAgent })({ model: 'measured-model', prompt: 'evaluate' });
+    assert.equal(result.ok, true);
+    assert.equal(dispose.mock.calls.length, 1);
+    assert.equal(host.listenerCount, 0);
+    assert.ok(stderr.mock.calls.some(([message]) => String(message).includes('synchronous dispose failed')));
+  });
 
   it('runs a fresh measurement session inside the existing DSH host', async () => {
     const host = new FakeDshHost();
