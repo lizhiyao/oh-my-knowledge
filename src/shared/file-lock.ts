@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   mkdirSync,
@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 const LOCK_SLEEP = new Int32Array(new SharedArrayBuffer(4));
 
@@ -47,7 +47,17 @@ export function withFileLock<T>(
   operation: () => T,
   options: FileLockOptions = {},
 ): T {
-  const timeoutMs = options.timeoutMs ?? 5_000;
+  return withFileLockUntil(lockPath, operation, { ...options, label: options.label ?? lockPath },
+    Date.now() + (options.timeoutMs ?? 5_000), 0);
+}
+
+function withFileLockUntil<T>(
+  lockPath: string,
+  operation: () => T,
+  options: FileLockOptions,
+  deadline: number,
+  recoveryDepth: number,
+): T {
   const staleMs = options.staleMs ?? 30_000;
   const retryMs = options.retryMs ?? 10;
   const label = options.label ?? lockPath;
@@ -59,7 +69,6 @@ export function withFileLock<T>(
   };
 
   mkdirSync(dirname(lockPath), { recursive: true });
-  const deadline = Date.now() + timeoutMs;
   let descriptor: number | undefined;
 
   while (descriptor === undefined) {
@@ -80,14 +89,8 @@ export function withFileLock<T>(
       }
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'EEXIST') throw error;
-      if (options.recoverStale !== false && isRecoverableStaleLock(lockPath, staleMs)) {
-        try {
-          unlinkSync(lockPath);
-        } catch (unlinkError) {
-          if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') {
-            throw unlinkError;
-          }
-        }
+      if (options.recoverStale !== false
+        && recoverStaleLock(lockPath, staleMs, options, deadline, recoveryDepth)) {
         continue;
       }
       if (Date.now() >= deadline) {
@@ -105,17 +108,41 @@ export function withFileLock<T>(
   }
 }
 
-function isRecoverableStaleLock(lockPath: string, staleMs: number): boolean {
-  let ageMs: number;
+function recoverStaleLock(
+  lockPath: string,
+  staleMs: number,
+  options: FileLockOptions,
+  deadline: number,
+  depth: number,
+): boolean {
   try {
-    ageMs = Date.now() - statSync(lockPath).mtimeMs;
+    const stat = statSync(lockPath);
+    if (Date.now() - stat.mtimeMs <= staleMs) return false;
+    const bytes = readFileSync(lockPath);
+    if (!isRecoverableOwner(parseLockOwner(bytes.toString('utf8')))) return false;
+    if (depth >= 16) throw new FileLockTimeoutError(options.label ?? lockPath);
+
+    // All recoverers of the same old file serialize, then recheck its identity.
+    // A mere check/unlink sequence could remove a newly acquired live lock.
+    // Parent aliases and different hosts must derive the same guard name; device IDs are host-local.
+    const key = createHash('sha256').update(basename(lockPath)).update('\0').update(bytes).digest('hex');
+    const guard = join(dirname(lockPath), `.omk-recovery-${key}.lock`);
+    return withFileLockUntil(guard, () => {
+      const current = statSync(lockPath);
+      const currentBytes = readFileSync(lockPath);
+      if (current.ino !== stat.ino || current.dev !== stat.dev
+        || Date.now() - current.mtimeMs <= staleMs || !currentBytes.equals(bytes)
+        || !isRecoverableOwner(parseLockOwner(currentBytes.toString('utf8')))) return false;
+      unlinkSync(lockPath);
+      return true;
+    }, options, deadline, depth + 1);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
     throw error;
   }
-  if (ageMs <= staleMs) return false;
+}
 
-  const owner = readLockOwner(lockPath);
+function isRecoverableOwner(owner: FileLockOwner | null): boolean {
   if (!owner) return true;
   // A remote PID cannot be checked safely. On shared filesystems, deleting a
   // stale-looking lock owned by another host could break an active writer.
@@ -125,7 +152,15 @@ function isRecoverableStaleLock(lockPath: string, staleMs: number): boolean {
 
 function readLockOwner(lockPath: string): FileLockOwner | null {
   try {
-    const value: unknown = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    return parseLockOwner(readFileSync(lockPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function parseLockOwner(raw: string): FileLockOwner | null {
+  try {
+    const value: unknown = JSON.parse(raw);
     if (
       !value
       || typeof value !== 'object'

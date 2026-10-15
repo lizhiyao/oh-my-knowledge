@@ -3,15 +3,83 @@ import assert from 'node:assert/strict';
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
+  readdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
+import ts from 'typescript';
 import { FileLockTimeoutError, withFileLock } from '../../src/shared/file-lock.js';
 
 describe('cross-process file lock', () => {
+  it.each([
+    { ownerKind: 'dead', pauseAt: 'read' },
+    { ownerKind: 'malformed', pauseAt: 'read' },
+    { ownerKind: 'empty', pauseAt: 'read' },
+    { ownerKind: 'dead', pauseAt: 'unlink' },
+  ])('serializes $ownerKind lock recovery paused at $pauseAt', async ({ ownerKind, pauseAt }) => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-recovery-'));
+    const path = join(dir, 'state.lock');
+    const shared = new SharedArrayBuffer(8);
+    const state = new Int32Array(shared);
+    const source = readFileSync(new URL('../../src/shared/file-lock.ts', import.meta.url), 'utf8');
+    const compiled = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const moduleUrl = `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`;
+    const start = (role: string) => new Worker(new URL('./fixtures/file-lock-recovery.mjs', import.meta.url), {
+      workerData: { role, path: role === 'stale-reader' ? `${dir}/./state.lock` : path, shared, moduleUrl, pauseAt },
+    });
+    const message = (worker: Worker) => new Promise<unknown>((resolve, reject) => {
+      const onMessage = (value: unknown) => { cleanup(); resolve(value); };
+      const onError = (error: Error) => { cleanup(); reject(error); };
+      const onExit = (code: number) => { cleanup(); reject(new Error(`Worker exited before its reply: ${code}`)); };
+      const cleanup = () => {
+        worker.off('message', onMessage); worker.off('error', onError); worker.off('exit', onExit);
+      };
+      worker.once('message', onMessage); worker.once('error', onError); worker.once('exit', onExit);
+    });
+    let first: Worker | undefined;
+    let second: Worker | undefined;
+    try {
+      writeFileSync(path, ownerKind === 'dead' ? JSON.stringify({
+        owner: 'dead-owner', pid: 2_147_483_647, hostname: hostname(), acquiredAt: '2026-01-01T00:00:00.000Z',
+      }) : ownerKind === 'empty' ? '' : '{incomplete owner');
+      utimesSync(path, new Date(0), new Date(0));
+      first = start('stale-reader');
+      assert.equal(await message(first), 'paused-recovery');
+      second = start('new-writer');
+      if (pauseAt === 'unlink') {
+        // The first recoverer is inside its final check/unlink transaction.
+        // Another spelling of the same path must wait on that recovery guard.
+        assert.equal(await message(second), 'FileLockTimeoutError');
+        const acquired = message(first);
+        Atomics.store(state, 0, 1); Atomics.notify(state, 0);
+        assert.equal(await acquired, 'entered');
+        assert.deepEqual(readdirSync(dir), []);
+        return;
+      }
+      assert.equal(await message(second), 'new-writer-holds-lock');
+      const currentOwner = readFileSync(path, 'utf8');
+      const blocked = message(first);
+      Atomics.store(state, 0, 1); Atomics.notify(state, 0);
+      assert.equal(await blocked, 'FileLockTimeoutError');
+      assert.equal(readFileSync(path, 'utf8'), currentOwner, '活 writer 的锁必须原样保留');
+      const released = message(second);
+      Atomics.store(state, 1, 1); Atomics.notify(state, 1);
+      assert.equal(await released, 'entered');
+      assert.deepEqual(readdirSync(dir), [], '恢复辅助锁也必须释放');
+    } finally {
+      Atomics.store(state, 0, 1); Atomics.notify(state, 0);
+      Atomics.store(state, 1, 1); Atomics.notify(state, 1);
+      await Promise.all([first?.terminate(), second?.terminate()]);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it('preserves an abandoned or malformed lock in conservative mode', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-conservative-'));
     const path = join(dir, 'state.lock');
