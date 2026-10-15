@@ -1,5 +1,5 @@
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { isIP, type AddressInfo } from 'node:net';
 import type { ReportServer, ReportServerOptions } from './contracts.js';
 import type { StudioAppHost } from './app-host.js';
 import { getErrorMessage, STUDIO_INTERNAL_ERROR, TEXT_HEADERS } from './errors.js';
@@ -7,6 +7,24 @@ import { createStudioRequestHandler } from './request-handler.js';
 
 const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
+
+function trustedHost(request: IncomingMessage, listenHost: string): boolean {
+  const authority = request.headers.host;
+  if (!authority || !/^(?:\[[\da-f:.]+\]|[\da-z._-]+)(?::\d+)?$/i.test(authority)) return false;
+  // Node keeps only the first Host value; reject ambiguous authorities as well.
+  if (request.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === 'host').length !== 1) return false;
+  try {
+    const hostname = new URL(`http://${authority}`).hostname;
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(hostname)) return true;
+    const wildcard = listenHost === '0.0.0.0' || listenHost === '::';
+    // Explicit network exposure still accepts literal LAN IPs, never arbitrary DNS names.
+    if (wildcard) return isIP(hostname.replace(/^\[|\]$/g, '')) !== 0;
+    const configured = new URL(`http://${listenHost.includes(':') ? `[${listenHost}]` : listenHost}`).hostname;
+    return hostname === configured;
+  } catch {
+    return false;
+  }
+}
 
 // Returns Error to throw, or null when caller should fall through to the
 // EADDRINUSE / omk-takeover flow. Splits occupancy from permission and
@@ -72,6 +90,11 @@ export function createReportServer(options: ReportServerOptions = {}, appHost?: 
     const urlHost = (value: string): string => value.includes(':') ? `[${value}]` : value;
     const boot = (candidatePort: number): Promise<Server> => new Promise((resolve, reject) => {
       const candidate = createServer(async (request, response) => {
+        if (!trustedHost(request, host)) {
+          response.writeHead(403, { ...TEXT_HEADERS, Connection: 'close' });
+          response.end('studio_host_not_trusted');
+          return;
+        }
         try {
           if (await appHost?.handle(request, response)) return;
           await requestHandler.handle(request, response);

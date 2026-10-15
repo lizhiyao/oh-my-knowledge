@@ -13,6 +13,7 @@ Studio has two hosts that share the same application layer:
 
 ## Boundaries
 
+- **Request authority**: the listener validates a single well-formed `Host` before Next or API dispatch. It accepts loopback hosts and an explicitly configured listen hostname; wildcard network bindings also accept literal IP addresses for LAN access. Other DNS names receive `403 studio_host_not_trusted`, even when Origin and Host agree, to block DNS rebinding. Explicit network exposure still requires a trusted network; this check does not add authentication.
 - **Query** (`application/`): Among Skill-report queries, `buildSkillIndex` uses caching (bounded keyed LRU, capacity 8; directory and presentation language in the key; fingerprint recomputed per request from file metadata). `listAnalyses` / `loadAnalysis` / `querySkillTrend` are deliberately uncached single-pass scans. The conversation catalog keeps a per-thread rollout index file cache validated by size + mtime.
 - **Projection** (`view-models/` + page loaders): a preloaded page model is projected from its request snapshot — the same in-memory object feeds both the HTML props and the activity revision, so a page can never render a revision that disagrees with its content.
 - **Serialization**: preloaded models cross the RSC boundary; client-loaded knowledge pages consume APIs separately; APIs answer JSON with `Cache-Control: no-store`.

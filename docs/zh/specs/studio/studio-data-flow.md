@@ -13,6 +13,7 @@ Studio 有两个宿主，共享同一应用层：
 
 ## 边界
 
+- **请求主机**：监听器在 Next 或 API 分发前校验唯一且格式合法的 `Host`。允许回环主机与显式配置的监听主机名；通配网络绑定同时允许字面 IP 地址，保留局域网访问。其它 DNS 名即使 Origin 与 Host 一致也返回 `403 studio_host_not_trusted`，阻断 DNS rebinding。显式对外暴露仍须使用可信网络；此校验不提供认证。
 - **查询**（`application/`）：Skill 报告查询中，`buildSkillIndex` 使用缓存（有界 keyed LRU，容量 8；键包含目录与展示语言，每请求按文件元数据重算指纹）。`listAnalyses` / `loadAnalysis` / `querySkillTrend` 刻意保持无缓存单次全扫。会话目录维护按线程的 rollout 索引文件缓存，按 size + mtime 校验新鲜度。
 - **投影**（`view-models/` 与页面装载器）：预加载页面模型从请求快照投影一次——HTML props 与 activity revision 来自同一个内存对象，页面不可能渲染出与自身内容不一致的 revision。
 - **序列化**：预加载模型经 RSC 边界传递；客户端知识页独立消费 API；API 返回 JSON 且 `Cache-Control: no-store`。
