@@ -7,6 +7,11 @@ import { createStudioRequestHandler } from './request-handler.js';
 
 const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
+const SECURITY_HEADERS = Object.freeze({
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "base-uri 'none'; object-src 'none'",
+});
 
 function trustedHost(request: IncomingMessage, listenHost: string): boolean {
   const authority = request.headers.host;
@@ -90,6 +95,7 @@ export function createReportServer(options: ReportServerOptions = {}, appHost?: 
     const urlHost = (value: string): string => value.includes(':') ? `[${value}]` : value;
     const boot = (candidatePort: number): Promise<Server> => new Promise((resolve, reject) => {
       const candidate = createServer(async (request, response) => {
+        for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.setHeader(name, value);
         if (!trustedHost(request, host)) {
           response.writeHead(403, { ...TEXT_HEADERS, Connection: 'close' });
           response.end('studio_host_not_trusted');

@@ -44,6 +44,9 @@ describe('Observe Next production routes', () => {
       const response=await fetch(url+path);assert.equal(response.status,200);
       // 会话页展示的是随时在变的任务状态，浏览器不得用陈旧缓存恢复它。
       assert.match(response.headers.get('cache-control')??'',/no-store/);
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+      assert.equal(response.headers.get('content-security-policy'), "base-uri 'none'; object-src 'none'");
       const html=await response.text();assert.match(html,/safe conversation/);assert.doesNotMatch(html,/<script>alert/);
       // 标签标题按页面与对象给出：对话详情带上 threadId，列表只给页面名。
       assert.ok(html.includes(path === '/observe' ? '<title>OMK · 对话列表</title>' : '<title>OMK · 对话详情 · thread</title>'), `title of ${path}`);
