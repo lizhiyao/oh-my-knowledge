@@ -40,7 +40,7 @@ function assertJsonContentType(request: IncomingMessage): void {
     ? contentType.split(';', 1)[0].trim().toLowerCase()
     : '';
   if (mediaType === 'application/json' || mediaType.endsWith('+json')) return;
-  request.resume();
+  request.pause();
   throw new RequestBodyError('content-type must be application/json', 415, 'unsupported_media_type');
 }
 
@@ -51,34 +51,49 @@ export function readJsonObjectBody(
   assertJsonContentType(request);
   return new Promise((resolve, reject) => {
     let size = 0;
-    let tooLarge = false;
+    let settled = false;
     const chunks: Buffer[] = [];
-    request.on('data', (chunk: Buffer) => {
-      size += chunk.length;
+    const finish = (error?: Error, value: Record<string, unknown> = {}): void => {
+      if (settled) return;
+      settled = true;
+      request.pause();
+      request.off('data', onData);
+      request.off('end', onEnd);
+      request.off('error', onError);
+      request.off('close', onClose);
+      chunks.length = 0;
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const onData = (chunk: Buffer | string): void => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.length;
       if (size > maxBytes) {
-        tooLarge = true;
-        chunks.length = 0;
+        finish(new RequestBodyError('request body too large', 413, 'request_body_too_large'));
         return;
       }
-      if (!tooLarge) chunks.push(chunk);
-    });
-    request.on('end', () => {
-      if (tooLarge) {
-        reject(new RequestBodyError('request body too large', 413, 'request_body_too_large'));
-        return;
-      }
+      chunks.push(buffer);
+    };
+    const onEnd = (): void => {
       try {
         const raw = Buffer.concat(chunks).toString('utf-8').trim();
         const parsed = raw ? JSON.parse(raw) as unknown : {};
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          reject(new RequestBodyError('json body must be an object', 400, 'json_body_not_object'));
+          finish(new RequestBodyError('json body must be an object', 400, 'json_body_not_object'));
           return;
         }
-        resolve(parsed as Record<string, unknown>);
+        finish(undefined, parsed as Record<string, unknown>);
       } catch {
-        reject(new RequestBodyError('invalid json body', 400, 'invalid_json_body'));
+        finish(new RequestBodyError('invalid json body', 400, 'invalid_json_body'));
       }
-    });
-    request.on('error', reject);
+    };
+    const onError = (): void => finish(new RequestBodyError('request body interrupted', 400, 'invalid_json_body'));
+    const onClose = (): void => { if (!settled) onError(); };
+    request.on('data', onData);
+    request.once('end', onEnd);
+    request.once('error', onError);
+    request.once('close', onClose);
+    if (request.readableEnded) onEnd();
+    else if (request.destroyed) onError();
   });
 }

@@ -10,6 +10,7 @@ interface HttpResponse {
   status: number;
   headers: http.IncomingHttpHeaders;
   body: string;
+  requestEnded: boolean;
 }
 
 function request(
@@ -18,6 +19,7 @@ function request(
     method?: string;
     headers?: Record<string, string>;
     body?: string;
+    endBody?: boolean;
   } = {},
 ): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
@@ -35,11 +37,13 @@ function request(
         status: res.statusCode ?? 0,
         headers: res.headers,
         body,
+        requestEnded: req.writableEnded,
       }));
     });
     req.on('error', reject);
+    if (options.endBody === false) req.setTimeout(2000, () => req.destroy(new Error('Oversized body was not rejected before client EOF.')));
     if (options.body !== undefined) req.write(options.body);
-    req.end();
+    if (options.endBody !== false) req.end();
   });
 }
 
@@ -134,8 +138,14 @@ describe('Studio observation routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: `{"padding":"${'x'.repeat(1024 * 1024)}"}`,
+      endBody: false,
     });
     assert.equal(tooLarge.status, 413);
+    assert.equal(tooLarge.requestEnded, false);
+    assert.equal(tooLarge.headers.connection, 'close');
+    assert.equal(tooLarge.headers['x-content-type-options'], 'nosniff');
+    assert.equal(tooLarge.headers['referrer-policy'], 'no-referrer');
+    assert.equal(tooLarge.headers['content-security-policy'], "base-uri 'none'; object-src 'none'");
     assert.deepEqual(JSON.parse(tooLarge.body), { error: 'request_body_too_large' });
 
     const saved = await request(endpoint, {

@@ -48,6 +48,11 @@ export function writeJsonError(
   code: StudioApiErrorCode,
   extraHeaders: Readonly<Record<string, string>> = {},
 ): void {
-  response.writeHead(status, { ...JSON_HEADERS, ...extraHeaders });
+  if (response.destroyed || response.writableEnded) return;
+  const incompleteBody = response.req !== undefined && !response.req.complete;
+  if (incompleteBody) response.shouldKeepAlive = false;
+  response.writeHead(status, {
+    ...JSON_HEADERS, ...extraHeaders, ...(incompleteBody ? { Connection: 'close' } : {}),
+  });
   response.end(JSON.stringify({ error: code }));
 }
