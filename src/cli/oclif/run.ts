@@ -21,7 +21,8 @@ export async function runOclifPath(): Promise<void> {
       if ('suggestions' in error && Array.isArray(error.suggestions)) {
         for (const suggestion of error.suggestions) console.error(suggestion);
       }
-      if (error.cause) console.error(error.cause);
+      if (error.cause) console.error(process.env.OMK_DEBUG === '1' ? error.cause
+        : error.cause instanceof Error ? error.cause.message : String(error.cause));
       if ('showHelp' in error && error.showHelp) {
         const help = new LangAwareHelp(config, { sendToStderr: true, sections: ['flags', 'usage', 'arguments'] });
         await help.showHelp(process.argv.slice(2));

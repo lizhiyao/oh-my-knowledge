@@ -25,7 +25,9 @@ async function main(): Promise<void> {
 
 main().catch(async (err: unknown) => {
   const code = err instanceof CliExit ? err.code : 1;
-  if (!(err instanceof CliExit)) console.error(err);
+  if (!(err instanceof CliExit)) {
+    console.error(process.env.OMK_DEBUG === '1' ? err : `error: ${err instanceof Error ? err.message : String(err)}`);
+  }
   // Await both channels after the dispatcher has emitted its final diagnostics.
   await Promise.all([process.stdout, process.stderr].map((stream) => new Promise<void>((resolve, reject) => {
     stream.write('', (error) => error ? reject(error) : resolve());

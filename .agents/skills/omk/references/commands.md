@@ -424,12 +424,12 @@ omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/re
 **用法:**
 
 ```bash
-omk observe [sessionsDir] [flags]
+omk observe <sessionsDir> [flags]
 ```
 
 **参数:**
 
-- `sessionsDir`(可选):sessions 目录路径（如 ~/.codex/sessions 或 ~/.claude/projects/<project>）
+- `sessionsDir`(必填):sessions 目录路径（如 ~/.codex/sessions 或 ~/.claude/projects/<project>）
 
 **Flags:**
 

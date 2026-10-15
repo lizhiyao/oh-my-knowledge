@@ -1,6 +1,6 @@
 import { createExecutor } from '../../../executors/index.js';
 import { readFileSync, lstatSync } from 'node:fs';
-import { Args, Errors, Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
@@ -55,11 +55,7 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
   ];
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(ObserveKnowledge).catch(cause => {
-      // oclif option-value errors default to 1; OMK's parameter-failure contract is 2.
-      if (cause instanceof Errors.CLIError && ['ArgInvalidOptionError', 'FlagInvalidOptionError'].includes(cause.constructor.name)) this.error(cause.message, { exit: 2 });
-      throw cause;
-    });
+    const { args, flags } = await this.parse(ObserveKnowledge);
     const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     const need = (value: string | undefined, name: string): string => {
       if (!value?.trim()) this.error(`--${name} ${t('不能为空', 'is required')}`, { exit: 2 });

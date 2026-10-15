@@ -34,7 +34,7 @@ export default class Observe extends BaseCommand {
         zh: 'sessions 目录路径（如 ~/.codex/sessions 或 ~/.claude/projects/<project>）',
         en: 'Sessions dir path (e.g. ~/.codex/sessions or ~/.claude/projects/<project>)',
       }),
-      required: false,
+      required: true,
     }),
   };
 
@@ -77,10 +77,6 @@ export default class Observe extends BaseCommand {
     const lang = this.lang;
     await this.runWithCliExit(async () => {
       const dir = args.sessionsDir;
-      if (!dir) {
-        console.error(tCli('cli.help.observe', lang).trim());
-        throw new CliExit(1);
-      }
       const { from, to } = resolveObservationWindow(flags, lang);
       const tracePath = resolve(dir);
 
