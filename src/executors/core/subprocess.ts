@@ -11,9 +11,8 @@ import { MAX_BUFFER } from './limits.js';
 // - 模块级 Set<ChildProcess> registry，child 退出 / 出错时立即 delete
 // - SIGTERM 先发（child 一般会做 telemetry flush），500ms grace，然后 SIGKILL fallback
 // - handler 用具名 function + process.removeListener(self)，不动 host 自己的 listener；
-//   然后 process.kill(pid, 'SIGINT') re-raise 让 default action / host listener 接管
-// - shuttingDown flag：第一次 SIGINT 进 handler 后置 true，第二次按 Ctrl+C 走 default action
-//   立即退出（软关 → 硬关两段式）
+//   host listener 已收到原始信号；只有没有 host listener 时才 re-raise 触发 default action
+// - shuttingDown flag：同一轮只广播一次；宿主自行处理重复中断，无宿主时保留默认退出
 // - 同时支持 timeout 跟 abortSignal 两条 kill 路径，跟 SIGINT 共用 grace 逻辑
 
 const activeChildren = new Set<ChildProcess>();
@@ -36,10 +35,11 @@ function broadcastShutdown(): void {
       try { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); } catch { /* */ }
     }, SIGTERM_GRACE_MS).unref();
   }
-  // 卸载自己，re-raise SIGINT 让 host listener / default action（exit code 130）接管
+  // Host listeners already receive this signal; relaying it would turn a single
+  // interrupt into a second user interrupt and prematurely force host cleanup.
   process.removeListener('SIGINT', sigintHandler);
   sigintListenerInstalled = false;
-  process.kill(process.pid, 'SIGINT');
+  if (process.listenerCount('SIGINT') === 0) process.kill(process.pid, 'SIGINT');
   // A host may intentionally intercept the re-raised signal. In that case the
   // process remains usable and a later child/SDK registration must reinstall
   // a functional coordinator instead of inheriting a permanently latched flag.

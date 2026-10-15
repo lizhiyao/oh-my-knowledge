@@ -97,6 +97,10 @@ Project and machine durable data use the same domains. Machine-specific material
 
 ## Compatibility boundary
 
+File locks recover only an old owner proven to have exited on the local host. Empty or malformed owner metadata can belong to a live process paused immediately after exclusive creation; OMK preserves it and reports contention. Remove an unknown-owner orphan manually only after establishing that no writer remains.
+
+Exclusive JSON publication requires same-directory hard-link support; replacement requires atomic rename. Filesystems without these capabilities (including some removable or network filesystems) fail explicitly and remove staging files. OMK does not fall back to publishing partial bytes. This capability boundary has not been tested on physical exFAT or NAS devices.
+
 The v2 project-runtime tree is the only supported `.omk` layout. OMK neither reads old `.omk` roots nor provides a migration command for that tree, and never moves or deletes its old data automatically. Existing old `.omk` data remains untouched but invisible to v2 readers; users may back it up or remove it explicitly. Evaluation Core bundles use manifest v2 and `report.json` only. The explicitly selected knowledge workspace below has its own current versioned contracts.
 
 ## Explicit knowledge workspace

@@ -16,12 +16,7 @@ import ts from 'typescript';
 import { FileLockTimeoutError, withFileLock } from '../../src/shared/file-lock.js';
 
 describe('cross-process file lock', () => {
-  it.each([
-    { ownerKind: 'dead', pauseAt: 'read' },
-    { ownerKind: 'malformed', pauseAt: 'read' },
-    { ownerKind: 'empty', pauseAt: 'read' },
-    { ownerKind: 'dead', pauseAt: 'unlink' },
-  ])('serializes $ownerKind lock recovery paused at $pauseAt', async ({ ownerKind, pauseAt }) => {
+  it.each(['read', 'unlink'])('serializes dead lock recovery paused at %s', async (pauseAt) => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-recovery-'));
     const path = join(dir, 'state.lock');
     const shared = new SharedArrayBuffer(8);
@@ -46,9 +41,9 @@ describe('cross-process file lock', () => {
     let first: Worker | undefined;
     let second: Worker | undefined;
     try {
-      writeFileSync(path, ownerKind === 'dead' ? JSON.stringify({
+      writeFileSync(path, JSON.stringify({
         owner: 'dead-owner', pid: 2_147_483_647, hostname: hostname(), acquiredAt: '2026-01-01T00:00:00.000Z',
-      }) : ownerKind === 'empty' ? '' : '{incomplete owner');
+      }));
       utimesSync(path, new Date(0), new Date(0));
       first = start('stale-reader');
       assert.equal(await message(first), 'paused-recovery');
@@ -80,16 +75,18 @@ describe('cross-process file lock', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  it('preserves an abandoned or malformed lock in conservative mode', () => {
+  it('preserves unknown owners even when stale recovery is enabled', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-file-lock-conservative-'));
     const path = join(dir, 'state.lock');
     try {
-      writeFileSync(path, '{incomplete owner');
-      utimesSync(path, new Date(0), new Date(0));
-      assert.throws(() => withFileLock(path, () => assert.fail('must not acquire'), {
-        recoverStale: false, timeoutMs: 20, staleMs: 1, retryMs: 1,
-      }), FileLockTimeoutError);
-      assert.equal(existsSync(path), true);
+      for (const bytes of ['', '{incomplete owner']) for (const recoverStale of [undefined, false]) {
+        writeFileSync(path, bytes);
+        utimesSync(path, new Date(0), new Date(0));
+        assert.throws(() => withFileLock(path, () => assert.fail('must not acquire'), {
+          recoverStale, timeoutMs: 20, staleMs: 1, retryMs: 1,
+        }), FileLockTimeoutError);
+        assert.equal(readFileSync(path, 'utf8'), bytes);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -137,25 +137,32 @@ describe('spawnWithSigintPropagation', () => {
     assert.ok(after - before <= 1, `listener leaked: before=${before}, after=${after}`);
   });
 
-  it('SDK subscriber 与 child 共用唯一 coordinator，重发 SIGINT 前先统一 abort', async () => {
-    const existing = new Set(process.listeners('SIGINT'));
-    let abortCount = 0;
-    const unregisterA = registerSigintSubscriber(() => { abortCount += 1; });
-    const unregisterB = registerSigintSubscriber(() => { abortCount += 1; });
-    const installed = process.listeners('SIGINT').filter((listener) => !existing.has(listener));
-    assert.equal(installed.length, 1);
+  it('SDK subscriber 与 child 共用 coordinator，仅无 host listener 时重发 SIGINT', async () => {
+    for (const hasHost of [false, true]) {
+      let hostSignals = 0;
+      const host = () => { hostSignals += 1; };
+      if (hasHost) process.on('SIGINT', host);
+      const existing = new Set(process.listeners('SIGINT'));
+      let abortCount = 0;
+      const unregisterA = registerSigintSubscriber(() => { abortCount += 1; });
+      const unregisterB = registerSigintSubscriber(() => { abortCount += 1; });
+      const installed = process.listeners('SIGINT').filter((listener) => !existing.has(listener));
+      assert.equal(installed.length, 1);
 
-    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
-    try {
-      installed[0]('SIGINT');
-      assert.equal(abortCount, 2);
-      assert.equal(kill.mock.calls.some(([pid, signal]) => pid === process.pid && signal === 'SIGINT'), true);
-      assert.equal(process.listeners('SIGINT').includes(installed[0]), false);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    } finally {
-      unregisterA();
-      unregisterB();
-      kill.mockRestore();
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+      try {
+        process.emit('SIGINT');
+        assert.equal(abortCount, 2);
+        assert.equal(kill.mock.calls.some(([pid, signal]) => pid === process.pid && signal === 'SIGINT'), existing.size === 0);
+        assert.equal(hostSignals, hasHost ? 1 : 0);
+        assert.equal(process.listeners('SIGINT').includes(installed[0]), false);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      } finally {
+        unregisterA();
+        unregisterB();
+        kill.mockRestore();
+        process.off('SIGINT', host);
+      }
     }
   });
 

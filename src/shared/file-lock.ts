@@ -143,7 +143,9 @@ function recoverStaleLock(
 }
 
 function isRecoverableOwner(owner: FileLockOwner | null): boolean {
-  if (!owner) return true;
+  // The live holder may be paused between exclusive open and writing metadata.
+  // Age alone cannot establish that an empty or malformed lock is abandoned.
+  if (!owner) return false;
   // A remote PID cannot be checked safely. On shared filesystems, deleting a
   // stale-looking lock owned by another host could break an active writer.
   if (owner.hostname !== hostname()) return false;

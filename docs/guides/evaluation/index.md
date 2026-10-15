@@ -13,3 +13,5 @@ Choose a page for your task; you do not need to read the whole documentation tre
 Return to the [documentation start page](../../README.md).
 
 For a first run, see the [evaluation quickstart](quickstart-skill-eval.md); see [statistical rigor](../../explanation/statistical-rigor.md) for interpretation.
+
+For long-running `eval`, `sample`, `evolve`, and `doctor` calls, the first Ctrl+C requests cancellation and cleanup. A second SIGINT schedules forced exit with code 130 after 750 ms, allowing the subprocess termination grace period first. This fallback requires a responsive Node event loop and can leave incomplete evidence; forced termination is not a completed measurement.
