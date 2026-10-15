@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, vi } from 'vitest';
+import { describe, it, beforeEach, afterEach, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   spawnWithSigintPropagation,
@@ -22,6 +22,75 @@ describe('spawnWithSigintPropagation', () => {
   beforeEach(() => {
     __resetSigintRegistryForTest();
   });
+  afterEach(() => __resetSigintRegistryForTest());
+
+  it.each(['stdout', 'stderr'] as const)('preserves UTF-8 split across %s reads', async (stream) => {
+    const text = '实体提取🙂与知识沉淀𠮷';
+    const { child, done } = spawnWithSigintPropagation(process.execPath, ['-e', `
+      const bytes = Buffer.from(${JSON.stringify(text)});
+      let offset = 0;
+      function next() {
+        if (offset === bytes.length) { process.stdin.destroy(); return; }
+        process.${stream}.write(bytes.subarray(offset, ++offset));
+      }
+      process.stdin.on('data', next);
+      next();
+    `], { timeoutMs: 3000 });
+    // The acknowledgement forces a separate read for each byte, without timing assumptions.
+    child[stream]?.on('data', () => child.stdin?.write('.'));
+    child.stdin?.on('error', () => undefined);
+    const result = await done;
+    assert.equal(result[stream], text);
+  });
+
+  it.each(['success', 'nonzero', 'timeout', 'abort'] as const)(
+    'settles %s after the child exits while a descendant holds its pipes', async (outcome) => {
+      const controller = new AbortController();
+      const { child, done } = spawnWithSigintPropagation(process.execPath, ['-e', `
+        const { spawn } = require('node:child_process');
+        const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], {
+          stdio: ['ignore', 1, 2],
+        });
+        descendant.unref();
+        process.stdout.write(String(descendant.pid) + '\\n');
+        ${outcome === 'success' ? '' : outcome === 'nonzero' ? 'process.exitCode = 2;' : 'setInterval(() => {}, 1000);'}
+      `], { abortSignal: controller.signal, ...(outcome === 'timeout' ? { timeoutMs: 200 } : {}) });
+      const settled = done.then(value => ({ value }), (error: SpawnHelperError) => ({ error }));
+      let descendantPid: number | undefined;
+      let guard: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await new Promise<void>((resolve) => child.stdout?.once('data', (data: Buffer) => {
+          descendantPid = Number(data.toString().trim());
+          resolve();
+        }));
+        if (outcome === 'abort') controller.abort();
+        const result = await Promise.race([
+          settled,
+          new Promise<never>((_resolve, reject) => {
+            guard = setTimeout(() => reject(new Error('Exited child kept its caller waiting for inherited pipes')), 2000);
+          }),
+        ]);
+        if (outcome === 'success') {
+          assert.ok('value' in result);
+          assert.equal(result.value.code, 0);
+          assert.equal(result.value.stdout, `${descendantPid}\n`);
+        } else {
+          assert.ok('error' in result);
+          assert.equal(result.error.failureKind, outcome === 'nonzero' ? 'nonzero-exit' : outcome);
+          assert.equal(result.error.stdout, `${descendantPid}\n`);
+        }
+        assert.equal(child.stdout?.destroyed, true);
+        assert.equal(child.stderr?.destroyed, true);
+      } finally {
+        if (guard) clearTimeout(guard);
+        child.kill('SIGKILL');
+        if (descendantPid) {
+          try { process.kill(descendantPid, 'SIGKILL'); } catch { /* already exited */ }
+        }
+        await settled;
+      }
+    },
+  );
 
   it('正常退出 0:resolve with stdout', async () => {
     const { done } = spawnWithSigintPropagation('node', ['-e', 'console.log("hello")']);
@@ -92,12 +161,14 @@ describe('spawnWithSigintPropagation', () => {
 
   it('child 自然退出:registry 立即清空,grace timer 不误升级 SIGKILL', async () => {
     const { child, done } = spawnWithSigintPropagation('node', ['-e', 'process.exit(0)']);
+    const kill = vi.spyOn(child, 'kill');
     await done;
-    // 退出后 child.killed 应为 false(因为是自己退出,不是被 kill)
-    // 关键 invariant:done 已经 settle,后续没有 timer 会再触发 child.kill
-    // 用 setTimeout 等 SIGTERM_GRACE_MS+50 验证没有事件抛出
-    await new Promise((res) => setTimeout(res, 600));
-    assert.ok(child.killed === false || child.exitCode !== null, 'child 应该自然退出');
+    try {
+      await new Promise((res) => setTimeout(res, 600));
+      assert.equal(kill.mock.calls.length, 0, '正常退出后不得触发延迟 kill');
+    } finally {
+      kill.mockRestore();
+    }
   });
 
   it('abortSignal:abort() 触发 SIGTERM,killedBySignal=SIGTERM', async () => {
@@ -235,8 +306,7 @@ describe('spawnWithSigintPropagation', () => {
     }
   });
 
-  // UltraReview Item 7:bufferOverflow 路径要走 graceTimer,不能裸 SIGTERM。
-  // child trap SIGTERM 不退出时,旧实现会让 child 永不被 SIGKILL,变成 zombie。
+  // Buffer overflow must still terminate a child that ignores SIGTERM.
   it('bufferOverflow + child trap SIGTERM:500ms 内被 SIGKILL 兜底', async () => {
     // child 先疯狂写 stdout 触发 bufferOverflow,然后 trap SIGTERM 不退
     const { done } = spawnWithSigintPropagation(
