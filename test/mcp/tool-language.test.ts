@@ -1,3 +1,4 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 /**
  * MCP 展示元数据的语言一致性。
  *
@@ -6,9 +7,9 @@
  * `resources/list` 判：同一语言内两者不得混排，且两版都要完整非空。
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+
+
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, it } from 'vitest';
@@ -21,7 +22,7 @@ async function advertised(lang: Lang): Promise<{
   tools: { name: string; title?: string; description?: string }[];
   resources: { title?: string; description?: string }[];
 }> {
-  const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-lang-'));
+  const dir = testDirectory('omk-mcp-lang-');
   const server = createObservationMcpServer({ observationsDir: dir, lang });
   const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -74,7 +75,7 @@ describe('MCP 展示元数据按语言一致', () => {
   });
 
   it('缺省按环境推断，不写死中文', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-lang-env-'));
+    const dir = testDirectory('omk-mcp-lang-env-');
     const server = createObservationMcpServer({ observationsDir: dir, env: { LANG: 'en_US.UTF-8' } });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

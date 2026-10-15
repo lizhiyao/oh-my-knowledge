@@ -1,6 +1,7 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+
 import { dirname, join } from 'node:path';
 import { describe, it } from 'vitest';
 import {
@@ -10,7 +11,7 @@ import {
 } from '../../src/observability/inbox/index.js';
 describe('observe inbox v2 layout', () => {
   it('recognizes a canonical v2 inbox independently of process.cwd()', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-observe-layout-'));
+    const root = testDirectory('omk-observe-layout-');
     const inbox = join(root, '.omk', 'observe', 'inbox');
     const traceDir = join(root, 'empty-traces');
     mkdirSync(traceDir);
@@ -21,7 +22,7 @@ describe('observe inbox v2 layout', () => {
   });
 
   it('stores source-record sidecars in the sibling archive domain', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-observe-layout-'));
+    const root = testDirectory('omk-observe-layout-');
     const inbox = join(root, '.omk', 'observe', 'inbox');
     const trace = join(root, 'rollout.jsonl');
     writeFileSync(trace, [

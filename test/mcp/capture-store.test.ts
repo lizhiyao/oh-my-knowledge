@@ -1,6 +1,7 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import { FileObservationCaptureStore } from '../../src/mcp/capture-store.js';
@@ -17,7 +18,7 @@ const CAPTURE = {
 
 describe('file observation capture store', () => {
   it('partitions idempotency by tenant and principal without persisting raw identities', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-capture-store-'));
+    const dir = testDirectory('omk-capture-store-');
     const store = new FileObservationCaptureStore({ observationsDir: dir });
     const principalA = {
       tenantId: 'tenant-secret-a',
@@ -50,7 +51,7 @@ describe('file observation capture store', () => {
   });
 
   it('keeps read, review, and sample drafts inside the same principal partition', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-store-'));
+    const dir = testDirectory('omk-feedback-store-');
     const store = new FileObservationFeedbackStore({
       observationsDir: dir,
       now: () => new Date('2026-08-25T01:02:03.000Z'),

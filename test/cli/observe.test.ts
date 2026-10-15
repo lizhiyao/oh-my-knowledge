@@ -1,8 +1,9 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
 import { reportFileName } from '../../src/evidence/storage/file-names.js';
 
@@ -14,7 +15,7 @@ function writeInboxReport(dir: string, report: unknown): void {
 
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
+    const dir = testDirectory('omk-observe-cli-');
     writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,
@@ -79,7 +80,7 @@ describe('observe CLI', () => {
   });
 
   it('prints the observe → sample draft command for recyclable signals', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
+    const dir = testDirectory('omk-observe-cli-');
     const hostile = 'audit\x1b[2J\x1b]0;fake\x07\r\u202e';
     writeInboxReport(dir, {
       kind: 'observe-inbox',
@@ -158,7 +159,7 @@ describe('observe CLI', () => {
   });
 
   it('prints a skill-scoped sample draft command when inbox is filtered by skill', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-observe-cli-'));
+    const dir = testDirectory('omk-observe-cli-');
     writeInboxReport(dir, {
       kind: 'observe-inbox',
       schemaVersion: 2,

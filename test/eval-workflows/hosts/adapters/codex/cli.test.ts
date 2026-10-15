@@ -1,3 +1,4 @@
+import { executeFixtureAttempt } from '../../../../helpers/executor-attempt.js';
 import { CODEX_WORKSPACE_WRITE_SANDBOX_ID } from '../../../../../src/eval-workflows/hosts/adapters/codex/protocol-core.js';
 import {
   executeRunPlan,
@@ -267,39 +268,10 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
-  executionControl: ExecutorTrialContext['executionControl'] = {
-    workspace: { workspaceMode: 'not-required' },
-    tools: { toolPolicyKind: 'runtime-default' },
-    mcp: { mcpMode: 'not-required' },
-    mockInterception: { mockInterceptionMode: 'not-required' },
-  },
+  executionControl?: ExecutorTrialContext['executionControl'],
 ): Promise<ExecutorAttemptResult> {
-  const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
-  const trial = await run.openTrial({
-    signal: new AbortController().signal,
-    sampleId: 'sample-a',
-    targetId: 'target-a',
-    executionCoordinateDigest: digest({ coordinate: 'a' }),
-    executionControl,
-    protocolId: 'omk.invoke/v1',
-    input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
-    executionContext: { locale: 'zh-CN' },
-    targetConfig,
-    trialIndex: 0,
-    trialId: digest({ trial: 'a' }),
-    schedulingBlockId: digest({ block: 'a' }),
-    samplingUnitIds: {},
-  });
-  try {
-    return await trial.execute({
-      attemptId: digest({ attempt: 'a' }),
-      attemptNumber: 1,
-      signal,
-    });
-  } finally {
-    await trial.dispose();
-    await run.dispose();
-  }
+  return executeFixtureAttempt(port, targetConfig, signal,
+    { question: 'Q', expected: 'must-not-be-inferred-as-gold' }, executionControl);
 }
 
 describe('Codex CLI Core Executor adapter', () => {

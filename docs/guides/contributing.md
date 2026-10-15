@@ -213,6 +213,15 @@ if tests mutate repository-owned content. Use that entry point for targeted
 runs too. The default is capped at two workers because CLI and package tests
 spawn additional processes; a higher worker count can cause SIGKILL under memory
 pressure. Explicit Vitest flags remain available for controlled experiments.
+Each `yarn test` run creates a private OS temporary root and passes it only to the
+runner child through `TMPDIR` / `TMP` / `TEMP`. The wrapper removes that root after
+the runner succeeds, fails, or terminates by signal; the default test `OMK_HOME`
+also lives inside it. Use `testDirectory` from `test/helpers/temp-directory.ts`
+for fixture directories that should be released when the current test finishes,
+including assertion failures. Test cases still own closing servers, subprocesses,
+file handles, and subscriptions. Explicit CI diagnostic directories remain owned
+by the caller.
+
 `ci:quick` requires existing `.test.ts` / `.test.tsx` files under `test/`;
 no arguments, directories, missing files, or Vitest flags exit with code 2 before
 checks run. It does not infer affected tests or build artifacts. Every failed

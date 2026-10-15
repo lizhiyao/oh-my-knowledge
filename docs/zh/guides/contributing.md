@@ -211,6 +211,12 @@ yarn ci
 失败。定向运行也使用这个入口。默认最多两个 worker，因为 CLI 与打包测试会
 派生额外进程；worker 数更高时，内存压力下可能出现 SIGKILL。
 做受控实验时仍可显式传入 Vitest 参数。
+每次 `yarn test` 都创建独占的操作系统临时根，仅通过 `TMPDIR`／`TMP`／`TEMP`
+传给测试子进程。子进程成功、失败或被信号终止后，包装器清理该根；默认的测试
+`OMK_HOME` 也位于其中。夹具目录使用 `test/helpers/temp-directory.ts` 的
+`testDirectory`，在当前用例结束时释放，断言失败也会清理。用例仍负责关闭服务、
+子进程、文件句柄与订阅。显式指定的 CI 诊断目录继续由调用方管理。
+
 `ci:quick` 要求 `test/` 下存在对应的 `.test.ts` / `.test.tsx` 文件；
 无参数、传目录、文件不存在或传 Vitest 参数，
 都会在检查开始前就以退出码 2 结束。

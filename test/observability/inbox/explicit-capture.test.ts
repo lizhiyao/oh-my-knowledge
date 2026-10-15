@@ -1,6 +1,7 @@
+import { testDirectory } from '../../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import {
@@ -18,7 +19,7 @@ import { baseItem } from './_helpers.js';
 
 describe('explicit observation capture', () => {
   it('persists an append-only record and projects it into the inbox', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-'));
+    const dir = testDirectory('omk-explicit-capture-');
     const result = captureExplicitObservation({
       captureSourceKind: 'mcp',
       skillName: 'docs-skill',
@@ -60,7 +61,7 @@ describe('explicit observation capture', () => {
   });
 
   it('is idempotent and rejects identity reuse with another payload', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-idempotency-'));
+    const dir = testDirectory('omk-explicit-capture-idempotency-');
     const input = {
       captureSourceKind: 'mcp',
       skillName: 'demo-skill',
@@ -85,7 +86,7 @@ describe('explicit observation capture', () => {
   });
 
   it('requires explicit user confirmation', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-confirmation-'));
+    const dir = testDirectory('omk-explicit-capture-confirmation-');
     assert.throws(
       () => captureExplicitObservation({
         captureSourceKind: 'mcp',
@@ -98,7 +99,7 @@ describe('explicit observation capture', () => {
   });
 
   it('keeps trace reports unchanged and ignores malformed or pre-contract capture records', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-explicit-capture-projection-'));
+    const dir = testDirectory('omk-explicit-capture-projection-');
     saveObservationInboxReport({
       kind: 'observe-inbox',
       schemaVersion: 2,

@@ -1,6 +1,7 @@
+import { testDirectory } from '../../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import {
@@ -14,7 +15,7 @@ import {
 
 describe('measurement report bundle', () => {
   it('writes an authoritative report and manifest into one self-contained directory', () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-bundle-'));
+    const rootDir = testDirectory('omk-measurement-bundle-');
     const result = writeMeasurementReportBundle({
       rootDir,
       measurementDomain: 'doctor',
@@ -39,7 +40,7 @@ describe('measurement report bundle', () => {
   });
 
   it('lists only complete self-contained v2 bundles from the requested domain', () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-list-'));
+    const rootDir = testDirectory('omk-measurement-list-');
     const current = writeMeasurementReportBundle({
       rootDir,
       measurementDomain: 'observe-health',
@@ -74,7 +75,7 @@ describe('measurement report bundle', () => {
   });
 
   it('rejects unsafe record ids', () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-unsafe-'));
+    const rootDir = testDirectory('omk-measurement-unsafe-');
     assert.throws(() => writeMeasurementReportBundle({
       rootDir,
       measurementDomain: 'doctor',
@@ -90,7 +91,7 @@ describe('measurement report bundle', () => {
       ['空 reportId', { reportId: '' }],
       ['非 RFC3339 createdAt', { createdAt: '2026-09-02' }],
     ] as const) {
-      const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-identity-'));
+      const rootDir = testDirectory('omk-measurement-identity-');
       assert.throws(() => writeMeasurementReportBundle({
         rootDir,
         measurementDomain: 'doctor',
@@ -106,7 +107,7 @@ describe('measurement report bundle', () => {
   });
 
   it('拒绝穿越式与空派生产物文件名', () => {
-    const rootDir = mkdtempSync(join(tmpdir(), 'omk-measurement-derived-'));
+    const rootDir = testDirectory('omk-measurement-derived-');
     for (const fileName of ['graph.json/../../escape', '/abs/graph.json', '', 'a\\b.json']) {
       assert.throws(
         () => listMeasurementDerivedPaths(rootDir, 'doctor', fileName),
