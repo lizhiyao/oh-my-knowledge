@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { renderToString } from 'react-dom/server';
-import { describe, it } from 'vitest';
+import { afterEach, describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import type { ObservationReviewState } from '../../../src/observability/contracts/review.js';
+import { buildObservationInboxViewModel } from '../../../src/observability/inbox/view-model.js';
+import { InboxView } from '../../../src/studio/web/components/observe/inbox/inbox';
 import { ExperienceReviewSection } from '../../../src/studio/web/components/observe/inbox/experience-review';
 
 /**
@@ -26,14 +31,14 @@ function sessions() {
 }
 
 describe('经验复盘卡片渲染契约', () => {
-  it('给出回到对话任务的深链，两种语言都显式带上 lang', () => {
+  it('两种语言都深链回对话任务，语言不进入地址', () => {
     const href = `/observe/conversations/${encodeURIComponent(sessions()[0].threadId)}`;
 
     const zh = renderToString(
       <ExperienceReviewSection sessions={sessions()} reviewState={emptyReviewState} lang="zh" />,
     );
     // reviewer 看到结论却回不到证据，等于这条复盘没有出口。
-    // 中文同样要带上：裸地址的语言由本机全局设置决定，省略参数会让下一次跳转被改写成英文偏好。
+    // 语言由本机设置决定，链接只承载证据地址。
     assert.ok(zh.includes(`href="${href}"`), `复盘卡片必须深链到 ${href}`);
     assert.ok(zh.includes('查看对话任务'));
     assert.ok(zh.includes('建议优先复盘'));
@@ -58,4 +63,32 @@ describe('经验复盘卡片渲染契约', () => {
     assert.ok(html.includes('标注未生效：hard_rule'));
     assert.ok(html.includes('已存指标未改变'));
   });
+});
+
+const directories: string[] = [];
+afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+
+it.each(['experience', 'timeline'] as const)('收件箱 %s 面板实际渲染有效复核投影，原始报告不覆盖已复核事实', tab => {
+  const directory = mkdtempSync(join(tmpdir(), 'omk-inbox-effective-render-'));
+  directories.push(directory);
+  const report = buildObservationInboxReport(fixtureTrace).experience!;
+  const session = report.sessions[0];
+  const effectiveSession = {
+    ...session,
+    skillName: 'reviewed-skill-marker',
+    sessionStory: { ...session.sessionStory!, summary: '已复核摘要 marker' },
+    timelinePreview: [{ ...session.timelinePreview[0], label: '已复核事件 marker' }],
+  };
+  const rawSession = { ...session, skillName: 'raw-skill-marker' };
+  const model = {
+    ...buildObservationInboxViewModel(directory),
+    experienceReports: [{ ...report, sessions: [rawSession] }],
+    effectiveExperienceReports: [{ ...report, sessions: [effectiveSession] }],
+  };
+  for (const lang of ['zh', 'en'] as const) {
+    const html = renderToString(<InboxView model={model} lang={lang} initialTab={tab}/>);
+    assert.ok(html.includes('reviewed-skill-marker'), '有效投影必须到达实际面板');
+    assert.ok(!html.includes('raw-skill-marker'), '原始报告不能覆盖复核后的显示事实');
+    assert.ok(html.includes(tab === 'experience' ? '已复核摘要 marker' : '已复核事件 marker'));
+  }
 });

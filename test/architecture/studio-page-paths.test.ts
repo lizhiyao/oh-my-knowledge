@@ -11,7 +11,7 @@
  * 口径边界（刻意不扩）：
  *  - 判据是 AST 里的字符串／模板字面量，不是全文搜索：注释、README、`src/studio/README.md` 里
  *    的 `/observe/health/:id` 都是文档，改名时它们该跟着改但不该让门禁变红。
- *  - 只认三个页面根 `/observe`、`/measure`、`/knowledge`。`/api/**` 是机器可读资源地址，
+ *  - 只认四个页面根 `/observe`、`/measure`、`/knowledge`、`/agents`。`/api/**` 是机器可读资源地址，
  *    由各自 route 模块拥有，不是页面地址，不在本门禁机制里。
  *  - `/` 根入口与 `conversation-link.ts` 里的 `/tasks/` 子段不判：前者是宿主入口而非页面地址，
  *    后者是深链 owner 内部的段拼接，两者都不存在第二类 owner。
@@ -20,17 +20,17 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { typeScriptSources, parseTypeScript } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const STUDIO_DIR = join(REPO_ROOT, 'src', 'studio');
 const OWNER_FILE = join(STUDIO_DIR, 'http', 'page-paths.ts');
 const APP_DIR = join(STUDIO_DIR, 'web', 'app');
-const SKIPPED_DIRS = new Set(['.next', 'node_modules', 'dist', 'coverage']);
 /** 页面根之外的地址（`/api/**`、`/`）由各自的机制拥有，不在本门禁里。 */
 const PAGE_ROOTS = ['observe', 'measure', 'knowledge', 'agents'] as const;
 const PAGE_ADDRESS = new RegExp(`^/(?:${PAGE_ROOTS.join('|')})(?:/.*)?$`);
@@ -41,31 +41,10 @@ interface Literal {
   readonly text: string;
 }
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir).sort();
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if ((entry.endsWith('.ts') || entry.endsWith('.tsx')) && !entry.endsWith('.d.ts')) out.push(path);
-  }
-  return out;
-}
-
-function parse(path: string): ts.SourceFile {
-  const kind = path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, kind);
-}
-
 function pageLiterals(files: string[], display: (path: string) => string): Literal[] {
   const found: Literal[] = [];
   for (const file of files) {
-    const source = parse(file);
+    const source = parseTypeScript(file);
     const visit = (node: ts.Node): void => {
       const text = ts.isStringLiteralLike(node) ? node.text : ts.isTemplateExpression(node) ? node.head.text : undefined;
       if (text !== undefined && PAGE_ADDRESS.test(text)) {
@@ -80,14 +59,14 @@ function pageLiterals(files: string[], display: (path: string) => string): Liter
 
 /** 路由目录 → 地址：`web/app/observe/health/[analysisId]/page.tsx` ⇒ `/observe/health/[analysisId]`。 */
 function routeAddresses(): string[] {
-  return listSourceFiles(APP_DIR)
+  return typeScriptSources(APP_DIR)
     .filter((file) => file.endsWith(`${sep}page.tsx`))
     .map((file) => `/${relative(APP_DIR, dirname(file)).split(sep).join('/')}`)
     .sort();
 }
 
 function ownerConstants(): Record<string, string> {
-  const source = parse(OWNER_FILE);
+  const source = parseTypeScript(OWNER_FILE);
   const constants: Record<string, string> = {};
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
@@ -110,7 +89,7 @@ function displayRepoPath(path: string): string {
 }
 
 function importedModules(path: string): string[] {
-  return parse(path).statements.filter(ts.isImportDeclaration).map((statement) => statement.moduleSpecifier.getText().slice(1, -1));
+  return parseTypeScript(path).statements.filter(ts.isImportDeclaration).map((statement) => statement.moduleSpecifier.getText().slice(1, -1));
 }
 
 /**
@@ -161,7 +140,7 @@ afterAll(() => {
 
 describe('Studio 页面地址的单一 owner 守门', () => {
   it('页面地址字面量只出现在 page-paths.ts', () => {
-    const files = listSourceFiles(STUDIO_DIR).filter((file) => file !== OWNER_FILE);
+    const files = typeScriptSources(STUDIO_DIR).filter((file) => file !== OWNER_FILE);
     // 扫描退化会让门禁变成假绿：Studio 源码必须真的被扫到。
     expect(files.length).toBeGreaterThan(50);
     expect(pageLiterals([OWNER_FILE], displayRepoPath).length, 'owner 文件里已经读不到地址常量，扫描口径失效').toBeGreaterThan(0);
@@ -215,7 +194,7 @@ describe('Studio 页面地址的单一 owner 守门', () => {
    */
   it('页面地址不携带语言参数', () => {
     const hits: string[] = [];
-    for (const file of listSourceFiles(STUDIO_DIR)) {
+    for (const file of typeScriptSources(STUDIO_DIR)) {
       const text = readFileSync(file, 'utf8');
       const lines = text.split('\n');
       lines.forEach((line, index) => {

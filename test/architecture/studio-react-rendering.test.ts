@@ -1,72 +1,75 @@
-/**
- * 架构边界守门：Studio React 渲染层的两条不变量。
- *
- * 1. 不得引入原始 HTML 逃生口。收件箱从 HTML 字符串拼接迁到 React（#839）后，
- *    手工 e()/jsString 转义随之消失，转义安全只剩「JSX 文本节点默认转义」这一条屏障。
- * 2. 必须渲染复核派生后的有效投影。直接渲染原始 `experienceReports` 会丢掉已提交的
- *    复核结论与指标标注，页面看起来正常但口径错了。
- *
- * 两条都覆盖 src/studio/web 全部页面（不只收件箱），后续新增页面自动纳入。
- */
-
+/** Studio 的原始 HTML／动态代码入口属于静态边界；实际复核投影由渲染测试验证。 */
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
+import { typeScriptSources, parseTypeScript } from '../helpers/source-files.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
-const SKIPPED_DIRS = new Set(['.next', 'node_modules']);
 
-/** 这些 API 让字符串直接进入 DOM 结构或代码求值，JSX 转义对它们无效。 */
-const RAW_HTML_ESCAPES = [
-  'dangerouslySetInnerHTML',
-  '.innerHTML',
-  'insertAdjacentHTML',
-  '.outerHTML',
-  'document.write',
-  'new Function(',
-  'eval(',
-] as const;
+function memberName(node: ts.Node): string | undefined {
+  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) return node.argumentExpression.text;
+  return undefined;
+}
 
-function listSourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir).sort()) {
-    if (SKIPPED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) listSourceFiles(path, out);
-    else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) out.push(path);
-  }
-  return out;
+function rawEscapes(source: ts.SourceFile): string[] {
+  const hits: string[] = [];
+  const visit = (node: ts.Node): void => {
+    const member = memberName(node);
+    const property = ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node);
+    const unsafeProperty = property && (member === 'innerHTML' || member === 'outerHTML');
+    const unsafeAttribute = (ts.isJsxAttribute(node) || ts.isPropertyAssignment(node))
+      && node.name.getText(source).replace(/['"]/g, '') === 'dangerouslySetInnerHTML';
+    let unsafeCall = false;
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const name = memberName(node.expression);
+      unsafeCall = name === 'eval' || name === 'Function' || name === 'insertAdjacentHTML';
+      if (name === 'write' && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))) {
+        unsafeCall = memberName(node.expression.expression) === 'document';
+      }
+    }
+    if (unsafeProperty || unsafeAttribute || unsafeCall) hits.push(node.getText(source));
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return hits;
 }
 
 describe('Studio React 渲染层守门', () => {
-  it('src/studio/web 不使用 raw HTML 注入 API', () => {
-    const files = listSourceFiles(WEB_DIR);
-    // 扫描为空会让这条断言变成假绿：React 页面必须真实在场。
+  it('真实源码不使用绕开 React 转义的 HTML 或动态代码入口', () => {
+    const files = typeScriptSources(WEB_DIR);
     expect(files.length).toBeGreaterThan(0);
-    expect(files.some((file) => file.endsWith('components/observe/inbox/inbox.tsx'))).toBe(true);
-
-    const violations = files.flatMap((file) => {
-      const source = readFileSync(file, 'utf-8');
-      return RAW_HTML_ESCAPES
-        .filter((escape) => source.includes(escape))
-        .map((escape) => `${relative(REPO_ROOT, file)}::${escape}`);
-    });
-
+    expect(files.some(file => file.endsWith('components/observe/inbox/inbox.tsx'))).toBe(true);
+    const violations = files.flatMap(file => rawEscapes(parseTypeScript(file))
+      .map(hit => `${relative(REPO_ROOT, file)}::${hit}`));
     expect(violations).toEqual([]);
   });
 
-  it('src/studio/web 渲染有效复核投影而不是原始 experienceReports', () => {
-    const files = listSourceFiles(WEB_DIR);
-    const inboxPage = files.find((file) => file.endsWith('components/observe/inbox/inbox.tsx'));
-    expect(inboxPage, '收件箱页面必须在场，否则这条守门是假绿').toBeTruthy();
-    // effectiveExperienceReports 里的 E 是大写，不会命中这个子串。
-    expect(readFileSync(inboxPage!, 'utf-8').includes('effectiveExperienceReports')).toBe(true);
+  it.each([
+    'element.innerHTML = value',
+    "element['outerHTML'] = value",
+    'element.insertAdjacentHTML ("beforeend", value)',
+    'document.write (value)',
+    "window.document['write'](value)",
+    'new Function (value)',
+    'globalThis.Function(value)',
+    'eval (value)',
+    '<div dangerouslySetInnerHTML={{ __html: value }} />',
+    'const props = { dangerouslySetInnerHTML: { __html: value } }; <div {...props} />',
+  ])('控制组：拦截实际代码 %s', code => {
+    const source = ts.createSourceFile('probe.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(rawEscapes(source).length).toBeGreaterThan(0);
+  });
 
-    const violations = files
-      .filter((file) => readFileSync(file, 'utf-8').includes('experienceReports'))
-      .map((file) => relative(REPO_ROOT, file));
-
-    expect(violations).toEqual([]);
+  it('控制组：说明文字和普通 JSX 不冒充代码执行或 HTML 注入', () => {
+    const source = ts.createSourceFile('probe.tsx', `
+      // 不得用 element.innerHTML 或 eval(value)
+      const warning = 'dangerouslySetInnerHTML / document.write / new Function(';
+      <div title={warning}>{value}</div>;
+    `, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(rawEscapes(source)).toEqual([]);
   });
 });

@@ -49,7 +49,7 @@ function viewModelWith(skillName: string): ObservationInboxViewModel {
  * 观测收件箱 React 版的转义安全（#839 收口，替代 inbox-event-safety.test.ts）。
  * HTML 版靠 e()/jsString 手工转义字符串拼接，并用 node:vm 证明注入串以数据实参到达；
  * React 版没有属性内联脚本这条路径，剩下的不变量是「轨迹派生文本只作为文本节点渲染」，
- * 由本文件锁定渲染结果、由 test/architecture/studio-react-raw-html.test.ts 锁定不得重新引入逃生口。
+ * 由本文件锁定渲染结果、由 test/architecture/studio-react-rendering.test.ts 锁定不得重新引入逃生口。
  */
 describe('inbox react rendering keeps event data as data', () => {
   for (const attack of ATTACKS) {

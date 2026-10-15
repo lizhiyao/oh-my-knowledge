@@ -1,8 +1,7 @@
 /**
  * Studio 双语完整性门禁：走语言分支的英文侧不得留下未翻的中文。
  *
- * Studio 没有 i18n 框架，文案是组件里的 `zh ? '中文' : 'English'`（实测 417 处语言分支，
- * 其中 350 处两侧都是字面量）。这类写法最容易出的事故不是「没接上语言」，而是**只写了
+ * Studio 没有 i18n 框架，文案是组件里的 `zh ? '中文' : 'English'`。这类写法最容易出的事故不是「没接上语言」，而是**只写了
  * 中文那一侧**：英文分支留成中文或空着，页面切了语言却还是中文，CI 与编译器都不判。
  *
  * 判据只取零假阳性的那一条：英文分支含汉字即违规。刻意不判「中文分支必须含汉字」——
@@ -14,25 +13,13 @@
  * 因此英文侧出现「中文」这两个字是设计而非漏翻。豁免按整对字面量精确匹配，不做模糊判断。
  */
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import ts from 'typescript';
+import { typeScriptSources, parseTypeScript } from '../../helpers/source-files.js';
 
 const ROOT = resolve('src/studio');
 const HAN = /[\u4e00-\u9fff]/u;
 const SELF_REFERENTIAL_LANGUAGE_NAMES = new Set(['中文', '英文', '简体中文']);
-
-function sourceFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry !== '.next') sourceFiles(full, out);
-    } else if (/\.tsx?$/.test(entry) && !entry.endsWith('.d.ts')) {
-      out.push(full);
-    }
-  }
-  return out;
-}
 
 function isLanguageConditional(node: ts.ConditionalExpression, source: ts.SourceFile): boolean {
   return /\blang\b|===\s*['"]zh['"]|^\s*zh\s*$/u.test(node.condition.getText(source));
@@ -51,10 +38,7 @@ function englishBranchLeaksChinese(whenTrue: ts.Node, whenFalse: ts.Node): boole
 function collectViolations(files: string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    const source = ts.createSourceFile(
-      file, readFileSync(file, 'utf8'), ts.ScriptTarget.ESNext, true,
-      file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
+    const source = parseTypeScript(file);
     const visit = (node: ts.Node): void => {
       if (ts.isConditionalExpression(node) && isLanguageConditional(node, source)
         && englishBranchLeaksChinese(node.whenTrue, node.whenFalse)) {
@@ -71,10 +55,7 @@ function collectViolations(files: string[]): string[] {
 function conditionalCount(files: string[]): number {
   let total = 0;
   for (const file of files) {
-    const source = ts.createSourceFile(
-      file, readFileSync(file, 'utf8'), ts.ScriptTarget.ESNext, true,
-      file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-    );
+    const source = parseTypeScript(file);
     const visit = (node: ts.Node): void => {
       if (ts.isConditionalExpression(node) && isLanguageConditional(node, source)) total += 1;
       ts.forEachChild(node, visit);
@@ -101,7 +82,7 @@ function snippetLeaksChinese(body: string): boolean {
 }
 
 describe('Studio 英文分支不残留中文', () => {
-  const files = sourceFiles(ROOT);
+  const files = typeScriptSources(ROOT);
 
   it('真实源码里零泄漏', () => {
     expect(collectViolations(files)).toEqual([]);
