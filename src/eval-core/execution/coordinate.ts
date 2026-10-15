@@ -333,6 +333,62 @@ function attemptError(
   };
 }
 
+type NormalizedAttempt =
+  | {
+    outcomeKind: 'completed';
+    attempt: Extract<ExecutionAttempt, { attemptStatus: 'completed' }>;
+    result: ExecutorAttemptResult;
+  }
+  | {
+    outcomeKind: 'failed';
+    attempt: Exclude<ExecutionAttempt, { attemptStatus: 'completed' }> & { error: EvaluationError };
+  };
+
+/** Validate before settling; invalid results remain owned by the in-flight failure path. */
+function normalizeAttempt(
+  outcome: Awaited<ReturnType<typeof executeWithTimeout>>,
+  runSignal: AbortSignal,
+  inFlight: InFlightAttempt,
+  completedAt: string,
+  completedMonotonic: number,
+): NormalizedAttempt {
+  const identity = {
+    attemptId: inFlight.attemptId,
+    attemptNumber: inFlight.attemptNumber,
+  };
+  const timing = {
+    startedAt: inFlight.startedAt,
+    completedAt,
+    durationMs: durationMs(inFlight.startedMonotonic, completedMonotonic),
+  };
+  if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
+    snapshotJson(outcome.result);
+    const usage = validatedUsage(outcome.result.usage);
+    return {
+      outcomeKind: 'completed',
+      result: outcome.result,
+      attempt: {
+        ...identity,
+        attemptStatus: 'completed',
+        timing,
+        ...(usage !== undefined ? { usage } : {}),
+      },
+    };
+  }
+  const failure = attemptError(outcome, runSignal);
+  const usage = validatedUsage(failure.usage);
+  return {
+    outcomeKind: 'failed',
+    attempt: {
+      ...identity,
+      attemptStatus: failure.status,
+      timing,
+      error: failure.error,
+      ...(usage !== undefined ? { usage } : {}),
+    },
+  };
+}
+
 function trialContext(
   plan: SealedRunPlan,
   binding: TargetRuntimeBinding,
@@ -498,47 +554,43 @@ export async function executeCoordinate(
         );
       const completedAt = ports.clock.timestamp();
       const completedMonotonic = ports.clock.monotonicNow();
-      if (outcome.result !== undefined && !outcome.timedOut && !runSignal.aborted) {
-        snapshotJson(outcome.result);
-        const attemptUsage = validatedUsage(outcome.result.usage);
-        const budgetError = budget.settle(
-          reservationId,
-          durationMs(startedMonotonic, completedMonotonic),
-          attemptUsage,
-          'completed',
+      const normalized = normalizeAttempt(
+        outcome, runSignal, inFlightAttempt, completedAt, completedMonotonic,
+      );
+      const { attempt } = normalized;
+      const budgetError = budget.settle(
+        reservationId,
+        durationMs(startedMonotonic, completedMonotonic),
+        attempt.usage,
+        normalized.outcomeKind === 'completed'
+          ? 'completed'
+          : normalized.attempt.error.code === 'timeout'
+            ? 'attempt-timeout'
+            : normalized.attempt.attemptStatus === 'cancelled' ? 'cancelled' : 'failed',
+      );
+      reservationId = undefined;
+      if (budgetError !== undefined) {
+        cacheEligible = false;
+        const summary = budget.snapshot();
+        setStop(
+          summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
+          budgetError.code,
+          summary.summaryStatus === 'failed' ? budgetError : undefined,
         );
-        reservationId = undefined;
-        if (budgetError !== undefined) {
-          cacheEligible = false;
-          const summary = budget.snapshot();
-          setStop(
-            summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
-            budgetError.code,
-            summary.summaryStatus === 'failed' ? budgetError : undefined,
-          );
-        }
-        attempts.push({
-          attemptId,
-          attemptNumber,
-          attemptStatus: 'completed',
-          timing: {
-            startedAt,
-            completedAt,
-            durationMs: durationMs(startedMonotonic, completedMonotonic),
-          },
-          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
-        });
-        inFlightAttempt = undefined;
-        terminalStatus = 'completed';
+      }
+      attempts.push(attempt);
+      inFlightAttempt = undefined;
+      terminalStatus = attempt.attemptStatus;
+      if (normalized.outcomeKind === 'completed') {
         try {
           output = await captureContent(
-            outcome.result.output,
+            normalized.result.output,
             plan.measurementPolicy.evidence.output,
             plan.measurementPolicy.evidence.maximumClassification,
             ports,
           );
           trace = await captureContent(
-            outcome.result.trace,
+            normalized.result.trace,
             plan.measurementPolicy.evidence.trace,
             plan.measurementPolicy.evidence.maximumClassification,
             ports,
@@ -559,61 +611,15 @@ export async function executeCoordinate(
         break;
       }
 
-      const failure = attemptError(outcome, runSignal);
-      const attemptUsage = validatedUsage(failure.usage);
-      const budgetError = budget.settle(
-        reservationId,
-        durationMs(startedMonotonic, completedMonotonic),
-        attemptUsage,
-        failure.error.code === 'timeout'
-          ? 'attempt-timeout'
-          : failure.status === 'cancelled' ? 'cancelled' : 'failed',
-      );
-      reservationId = undefined;
-      if (budgetError !== undefined) {
-        cacheEligible = false;
-        const summary = budget.snapshot();
-        setStop(
-          summary.summaryStatus === 'failed' ? 'failed' : 'budget-exhausted',
-          budgetError.code,
-          summary.summaryStatus === 'failed' ? budgetError : undefined,
-        );
-      }
+      const failure = normalized.attempt;
       terminalError = failure.error;
-      terminalStatus = failure.status;
-      attempts.push(failure.status === 'cancelled'
-        ? {
-          attemptId,
-          attemptNumber,
-          attemptStatus: 'cancelled',
-          timing: {
-            startedAt,
-            completedAt,
-            durationMs: durationMs(startedMonotonic, completedMonotonic),
-          },
-          error: failure.error,
-          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
-        }
-        : {
-          attemptId,
-          attemptNumber,
-          attemptStatus: 'failed',
-          timing: {
-            startedAt,
-            completedAt,
-            durationMs: durationMs(startedMonotonic, completedMonotonic),
-          },
-          error: failure.error,
-          ...(attemptUsage !== undefined ? { usage: attemptUsage } : {}),
-        });
-      inFlightAttempt = undefined;
       await events.emit('execution.attempt.completed', 'attempt', attemptId, {
         trialId: coordinate.coordinate.trialId,
         attemptNumber,
-        attemptStatus: failure.status,
+        attemptStatus: failure.attemptStatus,
         errorCode: failure.error.code,
       });
-      if (failure.status === 'cancelled'
+      if (failure.attemptStatus === 'cancelled'
           || !retryPolicy.retryableErrorCodes.includes(failure.error.code)
           || attemptNumber === retryPolicy.maxAttempts) break;
       const delay = retryPolicy.backoff.backoffKind === 'none'
