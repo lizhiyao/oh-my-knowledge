@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request } from 'node:http';
 import { afterEach, describe, it, vi } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 
@@ -29,6 +30,49 @@ async function waitUntilUnavailable(url: string): Promise<void> {
 }
 
 describe('Studio server lifecycle', () => {
+  it('rejects rebinding before pages or API handlers while preserving loopback and explicit LAN access', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-host-'));
+    temporaryDirectories.push(observationsDir);
+    for (const host of ['127.0.0.1', '0.0.0.0']) {
+      let pageCalls = 0;
+      const server = createReportServer({ port: 0, host, observationsDir }, {
+        async prepare() {},
+        async handle(req, res) {
+          if (req.url !== '/observe') return false;
+          pageCalls += 1;
+          res.end('page');
+          return true;
+        },
+        async close() {},
+      });
+      runningServers.push(server);
+      const url = await server.start();
+      const send = (path: string, authority: string | string[], method = 'GET') => new Promise<number>((resolve, reject) => {
+        const req = request(`${url}${path}`, {
+          method, headers: [
+            ...(Array.isArray(authority) ? authority : [authority]).flatMap(value => ['Host', value]),
+            'Origin', 'http://evil.example', 'Sec-Fetch-Site', 'same-origin',
+          ],
+        }, res => { res.resume(); res.on('end', () => resolve(res.statusCode!)); });
+        req.on('error', reject);
+        req.end();
+      });
+      for (const authority of ['evil.example', 'localhost.evil.example', 'evil.example@localhost', ['localhost', 'evil.example']]) {
+        for (const [path, method] of [['/observe', 'GET'], ['/health', 'GET'], ['/api/shutdown', 'POST']]) {
+          assert.equal(await send(path, authority, method), 403);
+        }
+      }
+      assert.equal(pageCalls, 0, 'Host 校验必须先于 Next 页面宿主');
+      for (const authority of ['localhost', '127.0.0.1:80', '[::1]:7799']) {
+        assert.equal(await send('/health', authority), 200);
+      }
+      assert.equal(await send('/health', '192.0.2.10:7799'), host === '0.0.0.0' ? 200 : 403);
+      assert.equal(await send('/observe', 'localhost'), 200);
+      assert.equal(pageCalls, 1);
+      await server.stop();
+    }
+  });
+
   it('cleans up a failed presentation preparation before retrying', async () => {
     const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-presentation-'));
     temporaryDirectories.push(observationsDir);
