@@ -358,6 +358,10 @@ The CLI completion summary reports the whole evolve process cost: rewrites, opti
 
 `--snapshot-only` leaves the source unchanged and keeps the winning version under `evolve/` for you to review and apply manually.
 
+The default `agent` mode uses prompt `omk.evolve-agent/v2`: the model returns `omk.skill-edits/v1` JSON (`{"summary":"…","edits":[{"oldText":"…","newText":"…"}]}`), and OMK applies unique text matches to a candidate in memory. Custom executors that previously edited files directly must return this response instead. Invalid or unchanged candidates consume no additional evaluation calls. The `rewrite` mode still returns the full skill text and keeps its existing prompt.
+
+The baseline snapshot preserves source bytes exactly, including leading and trailing whitespace; measurements that formerly trimmed this whitespace need a new baseline. Directory candidates inherit assets from the accepted snapshot. Before final evaluation and writeback, OMK checks that the original carrier, including its assets, is unchanged. Only a passing final Core decision permits atomic source publication; a detected concurrent change leaves the source untouched and candidates under `evolve/`. Publication preserves permissions and symlink targets, using same-filesystem temporary files under the carrier-excluded `.omk/` directory.
+
 ## `omk sample`
 
 ```bash

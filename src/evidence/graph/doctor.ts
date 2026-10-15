@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalArtifactFileStem } from '../storage/file-names.js';
 import { measurementDerivedDir } from '../storage/report-bundle.js';
 import { hashArtifactSource } from '../../knowledge-artifacts/sources/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { writeTextFileAtomic } from '../storage/atomic-text.js';
 import {
   extractMarkdownStepWorkflows,
   extractSkillHardRules,
@@ -716,7 +717,7 @@ export function persistDoctorGraphSidecars(options: PersistDoctorGraphOptions): 
   const graphPath = join(dir, 'graph.json');
   const evidenceCardPath = join(dir, 'card.md');
   writeJsonFileAtomic(graphPath, graph);
-  writeFileSync(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang), 'utf8');
+  writeTextFileAtomic(evidenceCardPath, renderDoctorEvidenceCard(graph, options.skill, options.lang));
   return { graphPath, evidenceCardPath };
 }
 

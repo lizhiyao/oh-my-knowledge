@@ -273,7 +273,7 @@ export default class Doctor extends BaseCommand {
 
       if (flags.fix) {
         const existing = report;
-        if (existing.outcome !== 'failed') {
+        if (!existing.skills.some((skill) => skill.results.some((result) => result.status === 'fail'))) {
           process.stderr.write(lang === 'zh' ? '✅ 没有需要修复的问题\n' : '✅ Nothing to fix\n');
           throw new CliExit(0);
         }

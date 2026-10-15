@@ -55,7 +55,11 @@ omk doctor skills/ --json > doctor.json
 omk doctor skills/v1.md --fix
 ```
 
-跑一个 LLM agent，读 doctor findings 并改 skill 来解决它们。提交前先 review diff。
+逐条选择修复方向，确认后才修改文件。OMK 将所选文件备份到 `.omk/backups/doctor-fix/`，并打印备份位置。同一物理文件的问题合并为一次编辑请求；每次只传入该文件的内容及已选问题。输入关闭不视为同意修复。
+
+模型返回 `omk.skill-edits/v1` JSON，由 OMK 校验并应用，无须授予模型写文件权限。每个非空 `oldText` 必须在前序编辑应用后的文本中恰好匹配一次；响应不合法时，该文件不变。某个文件失败会让命令失败，即使此前其他文件已修复；原始备份仍保留。编辑完成不代表重新体检一定通过，提交前先 review diff。
+
+自定义执行器须遵循带版本的 `omk.doctor-fix-plan/v2` 与 `omk.doctor-fix/v2` prompt。原先直接编辑文件的集成须改为返回 `{"summary":"…","edits":[{"oldText":"…","newText":"…"}]}`。OMK 原子发布完整文本，保留原有权限及符号链接目标；准备编辑期间源文本发生变化时拒绝覆盖。临时文件放在同一文件系统、载体排除的 `.omk/` 目录，不进入载体摘要或快照。
 
 ## 自定义维度
 

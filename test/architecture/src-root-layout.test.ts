@@ -46,6 +46,7 @@ const EXPECTED_SHARED_FILES = [
   'keyed-mutex.ts',
   'language-preference.ts',
   'language.ts',
+  'llm-json.ts',
   'record-count.ts',
   'shell-quote.ts',
   'time.ts',
