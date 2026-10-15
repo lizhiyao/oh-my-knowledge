@@ -21,6 +21,8 @@ const sigintSubscribers = new Set<() => void>();
 let sigintListenerInstalled = false;
 let shuttingDown = false;
 const SIGTERM_GRACE_MS = 500;
+// Descendants can keep inherited stdio open after the registered child has exited.
+const EXIT_DRAIN_MS = 500;
 
 function broadcastShutdown(): void {
   if (shuttingDown) return;
@@ -132,8 +134,8 @@ export function spawnWithSigintPropagation(
 
   activeChildren.add(child);
 
-  let stdout = '';
-  let stderr = '';
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
   let stdoutBytes = 0;
   let stderrBytes = 0;
   let bufferOverflowStream: 'stdout' | 'stderr' | null = null;
@@ -141,6 +143,7 @@ export function spawnWithSigintPropagation(
   let killedBySignalReason: NodeJS.Signals | null = null;
   let graceTimer: NodeJS.Timeout | null = null;
   let timeoutTimer: NodeJS.Timeout | null = null;
+  let drainTimer: NodeJS.Timeout | null = null;
 
   function killWithGrace(reason: 'timeout' | 'abort' | 'buffer'): void {
     // 优先级：abort 跟 timeout 互不覆盖（谁先设谁赢）；buffer 不重写已有 reason
@@ -178,7 +181,7 @@ export function spawnWithSigintPropagation(
       killWithGrace('buffer');
       return;
     }
-    stdout += chunk.toString();
+    stdoutChunks.push(chunk);
   });
   child.stderr?.on('data', (chunk: Buffer) => {
     if (bufferOverflowStream) return;
@@ -188,13 +191,25 @@ export function spawnWithSigintPropagation(
       killWithGrace('buffer');
       return;
     }
-    stderr += chunk.toString();
+    stderrChunks.push(chunk);
+  });
+
+  child.once('exit', () => {
+    // The deadline limits execution, not pipe draining after execution has finished.
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    drainTimer = setTimeout(() => {
+      child.stdin?.destroy();
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    }, EXIT_DRAIN_MS);
+    drainTimer.unref();
   });
 
   function cleanup(): void {
     activeChildren.delete(child);
     if (timeoutTimer) clearTimeout(timeoutTimer);
     if (graceTimer) clearTimeout(graceTimer);
+    if (drainTimer) clearTimeout(drainTimer);
     if (abortListener && abortSignal) abortSignal.removeEventListener('abort', abortListener);
   }
 
@@ -203,8 +218,8 @@ export function spawnWithSigintPropagation(
       cleanup();
       const e = err as SpawnHelperError;
       e.failureKind = 'spawn';
-      e.stdout = stdout;
-      e.stderr = stderr;
+      e.stdout = Buffer.concat(stdoutChunks).toString('utf8');
+      e.stderr = Buffer.concat(stderrChunks).toString('utf8');
       reject(e);
     });
     child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
@@ -212,7 +227,10 @@ export function spawnWithSigintPropagation(
       const killedSig: NodeJS.Signals | null = killedBySignalReason
         || (signal && !killedByTimeout ? signal : null);
       const result: SpawnHelperResult = {
-        stdout, stderr, code, signal,
+        // Decode once so a read boundary cannot alter the original UTF-8 output.
+        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
+        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        code, signal,
         killedByTimeout,
         killedBySignal: killedSig,
       };
