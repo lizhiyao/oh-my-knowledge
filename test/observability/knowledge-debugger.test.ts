@@ -1,6 +1,7 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
+
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
 import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
@@ -71,7 +72,7 @@ describe('Knowledge Debugger task trajectory', () => {
   });
 
   it('preserves explicitly recorded models for task-level and event-level presentation', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-model-'));
+    const dir = testDirectory('omk-debugger-model-');
     const file = join(dir, 'session.jsonl');
     const records = [
       { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'modeled-task', session_id: 'modeled-task', cwd: '/repo', originator: 'Codex Desktop', model_provider: 'openai' } },
@@ -98,7 +99,7 @@ describe('Knowledge Debugger task trajectory', () => {
   });
 
   it('keeps the task trajectory inside the attributed task window', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-task-window-'));
+    const dir = testDirectory('omk-debugger-task-window-');
     const file = join(dir, 'session.jsonl');
     const records = [
       { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'task-window', session_id: 'task-window', cwd: '/repo', originator: 'Codex Desktop' } },
@@ -145,7 +146,7 @@ describe('Knowledge Debugger task trajectory', () => {
   });
 
   it('does not carry the previous Codex turn completion into the attributed task', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-debugger-turn-boundary-'));
+    const dir = testDirectory('omk-debugger-turn-boundary-');
     const file = join(dir, 'session.jsonl');
     const records = [
       { timestamp: '2026-08-03T00:00:00.000Z', type: 'session_meta', payload: { id: 'turn-boundary', session_id: 'turn-boundary', cwd: '/repo', originator: 'Codex Desktop', model_provider: 'openai' } },

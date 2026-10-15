@@ -1,3 +1,4 @@
+import { executeFixtureAttempt as execute } from '../../../../helpers/executor-attempt.js';
 import {
   executeRunPlan,
 } from '../../../../helpers/core-runs.js';
@@ -14,11 +15,7 @@ import {
   type Sha256Digest,
 } from '../../../../../src/eval-core/contracts/index.js';
 import { prepareEvaluationPlan } from '../../../../../src/eval-core/compiler/index.js';
-import {
-  InMemoryRuntimeEventSequencer,
-  type ExecutionExecutor,
-  type ExecutorAttemptResult,
-} from '../../../../../src/eval-core/execution/index.js';
+import { InMemoryRuntimeEventSequencer, type ExecutionExecutor } from '../../../../../src/eval-core/execution/index.js';
 import {
   createAnthropicApiCoreSchemaValidators,
 } from '../../../../../src/eval-workflows/hosts/adapters/anthropic/protocol.js';
@@ -246,45 +243,7 @@ async function createAdapter(
   });
 }
 
-async function execute(
-  port: ExecutionExecutor,
-  targetConfig: JsonValue,
-  signal: AbortSignal = new AbortController().signal,
-  input: JsonValue = { question: 'Q' },
-): Promise<ExecutorAttemptResult> {
-  const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
-  let trial: Awaited<ReturnType<typeof run.openTrial>> | undefined;
-  try {
-    trial = await run.openTrial({
-    signal: new AbortController().signal,
-    sampleId: 'sample-a',
-    targetId: 'target-a',
-    executionCoordinateDigest: digest({ coordinate: 'a' }),
-    executionControl: {
-      workspace: { workspaceMode: 'not-required' },
-      tools: { toolPolicyKind: 'runtime-default' },
-      mcp: { mcpMode: 'not-required' },
-      mockInterception: { mockInterceptionMode: 'not-required' },
-    },
-    protocolId: 'omk.invoke/v1',
-    input,
-    executionContext: { locale: 'zh-CN' },
-    targetConfig,
-    trialIndex: 0,
-    trialId: digest({ trial: 'a' }),
-    schedulingBlockId: digest({ block: 'a' }),
-    samplingUnitIds: {},
-  });
-    return await trial.execute({
-      attemptId: digest({ attempt: 'a' }),
-      attemptNumber: 1,
-      signal,
-    });
-  } finally {
-    await trial?.dispose();
-    await run.dispose();
-  }
-}
+
 
 describe('Anthropic API Core Executor adapter', () => {
   it('sends native role history, keeping context separate and omitting authored IDs', async () => {

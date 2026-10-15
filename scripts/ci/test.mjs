@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -75,11 +76,19 @@ const before = workspaceSnapshot();
 const reporters = process.env.CI_DIAGNOSTICS_DIR
   ? ['--reporter=default', `--reporter=${join(PROJECT_ROOT, 'scripts', 'ci', 'progress-reporter.mjs')}`]
   : [];
-const result = spawnSync(process.execPath, [VITEST, 'run', ...reporters, ...process.argv.slice(2)], {
-  cwd: PROJECT_ROOT,
-  env: process.env,
-  stdio: 'inherit',
-});
+// One run owns every default temporary path, including fixture leaks and isolated OMK_HOME.
+// Only the child inherits these overrides; never remove the caller's temporary directory.
+const temporaryRoot = mkdtempSync(join(tmpdir(), 'omk-test-run-'));
+let result;
+try {
+  result = spawnSync(process.execPath, [VITEST, 'run', ...reporters, ...process.argv.slice(2)], {
+    cwd: PROJECT_ROOT,
+    env: { ...process.env, TMPDIR: temporaryRoot, TMP: temporaryRoot, TEMP: temporaryRoot },
+    stdio: 'inherit',
+  });
+} finally {
+  rmSync(temporaryRoot, { recursive: true, force: true });
+}
 const after = workspaceSnapshot();
 const mutations = changedPaths(before, after);
 

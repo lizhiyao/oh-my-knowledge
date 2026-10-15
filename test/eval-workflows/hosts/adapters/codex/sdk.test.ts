@@ -1,14 +1,11 @@
+import { executeFixtureAttempt } from '../../../../helpers/executor-attempt.js';
+import { testDirectory } from '../../../../helpers/temp-directory.js';
 import { CODEX_WORKSPACE_WRITE_SANDBOX_ID } from '../../../../../src/eval-workflows/hosts/adapters/codex/protocol-core.js';
 import {
   executeRunPlan,
 } from '../../../../helpers/core-runs.js';
-import {
-  mkdir,
-  mkdtemp,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -95,7 +92,7 @@ async function adapterFixture(options: Readonly<{
   allowedTools?: readonly string[];
   leasedArtifactResourceId?: string;
 }> = {}): Promise<AdapterFixture> {
-  const root = await mkdtemp(join(tmpdir(), 'omk-codex-sdk-core-test-'));
+  const root = testDirectory('omk-codex-sdk-core-test-');
   const artifact = '# Knowledge\nUse the SDK fixture rule.';
   const artifactPath = join(root, 'artifact.md');
   await writeFile(artifactPath, artifact);
@@ -354,39 +351,10 @@ async function execute(
   port: ExecutionExecutor,
   targetConfig: JsonValue,
   signal: AbortSignal = new AbortController().signal,
-  executionControl: ExecutorTrialContext['executionControl'] = {
-    workspace: { workspaceMode: 'not-required' },
-    tools: { toolPolicyKind: 'runtime-default' },
-    mcp: { mcpMode: 'not-required' },
-    mockInterception: { mockInterceptionMode: 'not-required' },
-  },
+  executionControl?: ExecutorTrialContext['executionControl'],
 ): Promise<ExecutorAttemptResult> {
-  const run = await port.openRun({ runId: 'run-a', executionPlanDigest: digest({ plan: 'a' }) });
-  const trial = await run.openTrial({
-    signal: new AbortController().signal,
-    sampleId: 'sample-a',
-    targetId: 'target-a',
-    executionCoordinateDigest: digest({ coordinate: 'a' }),
-    executionControl,
-    protocolId: 'omk.invoke/v1',
-    input: { question: 'Q', expected: 'must-not-be-inferred-as-gold' },
-    executionContext: { locale: 'zh-CN' },
-    targetConfig,
-    trialIndex: 0,
-    trialId: digest({ trial: 'a' }),
-    schedulingBlockId: digest({ block: 'a' }),
-    samplingUnitIds: {},
-  });
-  try {
-    return await trial.execute({
-      attemptId: digest({ attempt: 'a' }),
-      attemptNumber: 1,
-      signal,
-    });
-  } finally {
-    await trial.dispose();
-    await run.dispose();
-  }
+  return executeFixtureAttempt(port, targetConfig, signal,
+    { question: 'Q', expected: 'must-not-be-inferred-as-gold' }, executionControl);
 }
 
 describe('Codex SDK Core Executor adapter', () => {
@@ -691,6 +659,24 @@ describe('Codex SDK Core Executor adapter', () => {
     await expect(createAdapter(fixture, { CODEX_HOME: '/mutable/profile' })).rejects.toThrow(
       /must not override adapter-owned CODEX_HOME/,
     );
+  });
+
+  it('releases its native run when sealed trial opening rejects', async () => {
+    const fixture = await adapterFixture();
+    const port = await createAdapter(fixture);
+    let disposed = 0;
+    const observed: ExecutionExecutor = {
+      ...port,
+      async openRun(context) {
+        const run = await port.openRun(context);
+        return { ...run, async dispose() { disposed += 1; await run.dispose(); } };
+      },
+    };
+    await expect(execute(observed, {})).rejects.toMatchObject({
+      evaluationError: { code: 'OMK_CODEX_SDK_TRIAL_MISMATCH' },
+    });
+    expect(disposed).toBe(1);
+    expect(fixture.observations.threadOptions).toHaveLength(0);
   });
 
   it('fails unsupported behavior and inconsistent leases before an SDK thread starts', async () => {

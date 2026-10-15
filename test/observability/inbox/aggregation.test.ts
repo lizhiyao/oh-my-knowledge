@@ -1,8 +1,9 @@
+import { testDirectory } from '../../helpers/temp-directory.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+
 import {
   aggregateInboxItems,
   buildObservationInboxReport,
@@ -36,7 +37,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('records raw session time ranges for Claude and OpenClaw traces', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-observe-session-range-'));
+    const dir = testDirectory('omk-observe-session-range-');
     const claudeFile = join(dir, 'claude-session.jsonl');
     const openClawFile = join(dir, 'openclaw-session.jsonl');
     writeFileSync(claudeFile, claudeTrace('claude-session-a', {
@@ -97,7 +98,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('keeps missing source timestamps explicit through inbox and experience aggregation', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-no-timestamps-'));
+    const dir = testDirectory('omk-inbox-no-timestamps-');
     const trace = join(dir, 'session.jsonl');
     // 刻意手搓：缺省 timestamp 是被测变体，builder 的默认时间戳会吞掉它。
     const records = [
@@ -184,7 +185,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('queries only the latest saved report by default', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const oldReport = {
       kind: 'observe-inbox' as const,
       schemaVersion: 2 as const,
@@ -240,7 +241,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('rejects malformed inbox shells while inferring legacy sourceKind', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-shell-'));
+    const dir = testDirectory('omk-inbox-shell-');
     const report = {
       kind: 'observe-inbox' as const,
       schemaVersion: 2 as const,
@@ -303,7 +304,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('does not overwrite inbox reports generated in the same millisecond', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-same-ms-'));
+    const dir = testDirectory('omk-inbox-same-ms-');
     const report = {
       kind: 'observe-inbox' as const,
       schemaVersion: 2 as const,
@@ -325,7 +326,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('ignores a valid inbox document stored under a legacy bare JSON name', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-legacy-name-'));
+    const dir = testDirectory('omk-inbox-legacy-name-');
     const report = {
       kind: 'observe-inbox' as const,
       schemaVersion: 2 as const,
@@ -347,7 +348,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('refuses to persist a report that cannot be read back', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-invalid-write-'));
+    const dir = testDirectory('omk-inbox-invalid-write-');
     const report = {
       kind: 'observe-inbox' as const,
       schemaVersion: 2 as const,
@@ -369,7 +370,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('rejects inbox reports whose references or aggregates contradict experience', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-consistency-'));
+    const dir = testDirectory('omk-inbox-consistency-');
     const trace = join(dir, 'session.jsonl');
     writeFileSync(trace, claudeTrace('s1')
       .userCommand('audit', 'Find revenue schema')
@@ -408,7 +409,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('keeps streaming report aggregation equivalent to direct aggregation', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1')
       .userCommand('audit', 'Find revenue schema', { extra: { entrypoint: 'cli' } })
@@ -429,7 +430,7 @@ describe('observe inbox - aggregation', () => {
   });
 
   it('persists compact experience evidence and hydrates it on load', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-wire-'));
+    const dir = testDirectory('omk-inbox-wire-');
     const trace = join(dir, 'session.jsonl');
     writeFileSync(trace, claudeTrace('s1')
       .userCommand('audit', 'Inspect the implementation.')

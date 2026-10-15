@@ -1,8 +1,9 @@
+import { testDirectory } from '../../helpers/temp-directory.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import {
   aggregateExperienceChecklistItemStatus,
@@ -207,7 +208,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('keeps runtime wrapper prompts and progress updates out of experience review signals', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('apply-cc', '功能咨询：示例组件有什么功能')
@@ -240,7 +241,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('counts completed assistant task with worker context as delivery, not progress', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-aiprd-delivery-'));
+    const dir = testDirectory('omk-inbox-aiprd-delivery-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('aiprd-task-runner', '生成系分文档')
@@ -280,7 +281,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('does not count delivery words from tool_result or skill context as assistant delivery', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-delivery-kind-'));
+    const dir = testDirectory('omk-inbox-delivery-kind-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('audit', '检查示例配置')
@@ -309,7 +310,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('excludes assistant heartbeat protocol replies from final assistant delivery context', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-assistant-heartbeat-'));
+    const dir = testDirectory('omk-inbox-assistant-heartbeat-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z', cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -325,7 +326,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('does not count retry JSON fields or SKILL.md text as repeated execution', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-retry-noise-'));
+    const dir = testDirectory('omk-inbox-retry-noise-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1')
       .userCommand('yuque', '读取示例文档')
@@ -353,7 +354,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('keeps cron prompts as user messages while excluding interaction metrics', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('daily-report', '[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。要求：只生成前一天数据。执行完成后不需要发送消息。')
@@ -371,7 +372,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('excludes runtime protocol prompts from user message counts', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-runtime-protocol-'));
+    const dir = testDirectory('omk-inbox-runtime-protocol-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('apply-cc', '请咨询这个方案')
@@ -391,7 +392,7 @@ describe('observe inbox - signal detection', () => {
   });
 
   it('excludes synthetic user artifacts and goal shifts from follow-up metrics', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-10T00:00:00.000Z' })
       .userCommand('prd-create', '请生成 PRD')

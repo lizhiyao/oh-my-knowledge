@@ -1,8 +1,9 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage } from 'node:http';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { describe, it } from 'vitest';
@@ -174,7 +175,7 @@ describe('OMK observation Streamable HTTP server', () => {
     } finally { request.destroy(); await client.client.close(); await started.close(); }
   });
   it('uses one tool contract and isolates idempotency by server-resolved principal', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-'));
+    const dir = testDirectory('omk-http-mcp-');
     const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationFeedbackStore({ observationsDir: dir }),
       principalResolver: resolver,
@@ -206,7 +207,7 @@ describe('OMK observation Streamable HTTP server', () => {
   });
 
   it('fails closed for unauthenticated, missing-scope, and wrong-tenant requests', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-auth-'));
+    const dir = testDirectory('omk-http-mcp-auth-');
     const started = await startObservationMcpHttpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
       principalResolver: resolver,
@@ -237,7 +238,7 @@ describe('OMK observation Streamable HTTP server', () => {
   });
 
   it('rejects anonymous non-loopback binding and oversized request bodies', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-http-mcp-limits-'));
+    const dir = testDirectory('omk-http-mcp-limits-');
     await assert.rejects(
       () => startObservationMcpHttpServer({
         host: '0.0.0.0',

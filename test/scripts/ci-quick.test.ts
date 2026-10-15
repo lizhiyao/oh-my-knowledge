@@ -30,8 +30,18 @@ function fixture() {
   `);
   chmodSync(join(root, 'yarn.mjs'), 0o755);
   writeFileSync(join(root, 'node_modules/vitest/vitest.mjs'), `
-    import { writeFileSync } from 'node:fs';
+    import { mkdtempSync, writeFileSync } from 'node:fs';
+    import { tmpdir } from 'node:os';
+    import { join } from 'node:path';
+    if (process.env.QUICK_TMP_RECEIPT) {
+      const temporaryRoot = tmpdir();
+      const directory = mkdtempSync(join(temporaryRoot, 'intentional-leak-'));
+      writeFileSync(join(directory, 'payload.json'), '{}');
+      writeFileSync(process.env.QUICK_TMP_RECEIPT, JSON.stringify({ temporaryRoot, directory }));
+    }
     if (process.env.QUICK_MUTATE === '1') writeFileSync('owned.txt', 'changed');
+    if (process.env.QUICK_TEST_SIGNAL === '1') process.kill(process.pid, 'SIGTERM');
+    if (process.env.QUICK_TEST_EXIT) process.exit(Number(process.env.QUICK_TEST_EXIT));
   `);
   const git = spawnSync('git', ['init', '-q'], { cwd: root, encoding: 'utf8', timeout: 5000 });
   assert.equal(git.status, 0, git.stderr);
@@ -91,4 +101,33 @@ describe('ci:quick', () => {
     assert.match(result.stderr, /Tests modified repository-owned content/);
     assert.match(result.stderr, /owned.txt/);
   });
+  it.each([
+    { outcome: 'success', env: {}, status: 0 },
+    { outcome: 'failed test', env: { QUICK_TEST_EXIT: '7' }, status: 1 },
+    { outcome: 'interrupted runner', env: { QUICK_TEST_SIGNAL: '1' }, status: 1 },
+    { outcome: 'workspace violation', env: { QUICK_MUTATE: '1' }, status: 1 },
+  ])('cleans its private temporary root after $outcome', ({ env, status }) => {
+    const f = fixture();
+    const receipt = `${f.root}-temporary-receipt.json`;
+    roots.push(receipt);
+    const sentinel = join(f.root, 'sentinel.txt');
+    writeFileSync(sentinel, 'outside the test-run temporary root');
+    const parentTemporaryRoot = process.env.TMPDIR;
+    let proof: { temporaryRoot: string; directory: string } | undefined;
+    try {
+      const result = f.run(['test/a.test.ts'], { ...env, QUICK_TMP_RECEIPT: receipt });
+      assert.equal(result.status, status, result.stderr);
+      proof = JSON.parse(readFileSync(receipt, 'utf8'));
+      assert.ok(proof);
+      assert.equal(existsSync(proof.directory), false, 'unmanaged test files must be removed');
+      assert.notEqual(proof.temporaryRoot, tmpdir(), 'the child must own a distinct temporary root');
+      assert.equal(existsSync(proof.temporaryRoot), false);
+      assert.equal(readFileSync(sentinel, 'utf8'), 'outside the test-run temporary root');
+      assert.equal(process.env.TMPDIR, parentTemporaryRoot);
+    } finally {
+      // On the old wrapper this negative control intentionally leaks one directory, never its parent.
+      if (proof) rmSync(proof.directory, { recursive: true, force: true });
+    }
+  });
+
 });

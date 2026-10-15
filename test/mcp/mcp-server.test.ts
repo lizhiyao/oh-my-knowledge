@@ -1,7 +1,8 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+
+
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, it } from 'vitest';
@@ -20,7 +21,7 @@ import { queryObservationInbox } from '../../src/observability/inbox/index.js';
 
 describe('OMK observation MCP server', () => {
   it('advertises a focused, accurately annotated capture tool', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-list-'));
+    const dir = testDirectory('omk-mcp-list-');
     const server = createObservationMcpServer({ observationsDir: dir });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -83,7 +84,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('captures authorized feedback and returns explicit partial coverage', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-call-'));
+    const dir = testDirectory('omk-mcp-call-');
     const server = createObservationMcpServer({
       observationsDir: dir,
       now: () => new Date('2026-08-24T02:03:04.000Z'),
@@ -118,7 +119,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('advertises only the tools allowed by the resolved principal scopes', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-scopes-'));
+    const dir = testDirectory('omk-mcp-scopes-');
     const server = createObservationMcpServer({
       principal: {
         tenantId: 'tenant',
@@ -141,7 +142,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('keeps capture-only store adapters backward compatible', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-capture-only-'));
+    const dir = testDirectory('omk-mcp-capture-only-');
     const server = createObservationMcpServer({
       captureStore: new FileObservationCaptureStore({ observationsDir: dir }),
     });
@@ -159,7 +160,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('renders a read-only component without advertising review or draft actions', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-read-only-'));
+    const dir = testDirectory('omk-mcp-read-only-');
     const principal = {
       tenantId: 'tenant',
       principalId: 'reader',
@@ -196,7 +197,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('rejects calls without explicit confirmation', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-reject-'));
+    const dir = testDirectory('omk-mcp-reject-');
     const server = createObservationMcpServer({ observationsDir: dir });
     const client = new Client({ name: 'omk-test-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -219,7 +220,7 @@ describe('OMK observation MCP server', () => {
   });
 
   it('reads, reviews, and drafts without promoting unconfirmed feedback', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-mcp-feedback-'));
+    const dir = testDirectory('omk-mcp-feedback-');
     const server = createObservationMcpServer({
       observationsDir: dir,
       now: () => new Date('2026-08-24T02:03:04.000Z'),

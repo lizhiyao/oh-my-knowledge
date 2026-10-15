@@ -1,8 +1,9 @@
+import { testDirectory } from '../../helpers/temp-directory.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+
 import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
 import {
   compactObservationExperienceReport,
@@ -16,7 +17,7 @@ import { claudeTrace } from '../../helpers/claude-trace.js';
 
 describe('observe inbox - experience report', () => {
   it('fails closed instead of throwing when persisted aggregates overflow', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-overflow-'));
+    const dir = testDirectory('omk-inbox-overflow-');
     for (const [index, sessionId] of ['overflow-a', 'overflow-b'].entries()) {
       const records = claudeTrace(sessionId, { startAt: `2026-05-0${index + 1}T00:00:00.000Z` })
         .userCommand('audit', 'Inspect it.')
@@ -44,7 +45,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('links a late tool result back to the originating invocation timeline', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-late-result-'));
+    const dir = testDirectory('omk-inbox-late-result-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s-late')
       .userCommand('audit', 'Inspect it.')
@@ -88,7 +89,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('keeps cancelled tool results out of failure evidence', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-cancelled-result-'));
+    const dir = testDirectory('omk-inbox-cancelled-result-');
     const file = join(dir, 'session.jsonl');
     const records = [
       {
@@ -151,7 +152,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('does not reinterpret an explicit unknown tool status from output text', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-unknown-result-'));
+    const dir = testDirectory('omk-inbox-unknown-result-');
     const file = join(dir, 'session.jsonl');
     const records = [
       {
@@ -210,7 +211,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('builds evidence-only experience report for 2.0 skill review', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     // u3 的 uuid 被下方 reviewState 断言引用，显式保留；其余 uuid 交给 builder。
     const records = claudeTrace('s1')
@@ -390,7 +391,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('counts tool_result JSON error payloads as tool failures', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-tool-error-json-'));
+    const dir = testDirectory('omk-inbox-tool-error-json-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -407,7 +408,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('does not override an explicit successful tool status from error-like payload text', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-explicit-tool-success-'));
+    const dir = testDirectory('omk-inbox-explicit-tool-success-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -423,7 +424,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('emits session_interrupted finding for assistant turn failures', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-interrupted-'));
+    const dir = testDirectory('omk-inbox-session-interrupted-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -440,7 +441,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('emits session_interrupted finding for ended then started session switches', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-switch-'));
+    const dir = testDirectory('omk-inbox-session-switch-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -457,7 +458,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('keeps user feedback unknown until positive feedback is observed', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-feedback-unknown-'));
+    const dir = testDirectory('omk-inbox-feedback-unknown-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { cwd: dir })
       .userCommand('audit', '检查示例配置')
@@ -473,7 +474,7 @@ describe('observe inbox - experience report', () => {
   });
 
   it('does not mark execution flow ok when expected tools are declared but not used', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-expected-tools-'));
+    const dir = testDirectory('omk-inbox-expected-tools-');
     const skillDir = join(dir, '.claude', 'skills', 'yuque');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), `---
@@ -499,7 +500,7 @@ expected_tools:
   });
 
   it('keeps skill timeline open through skill context until the next skill starts', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const dir = testDirectory('omk-inbox-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1')
       .userText('画一个给老板汇报的时序图。步骤简单一点', {
@@ -549,7 +550,7 @@ expected_tools:
   });
 
   it('builds session story for router skill plus subagent executor', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-story-'));
+    const dir = testDirectory('omk-story-');
     const sessionDir = join(dir, 'sessionA');
     const subagentsDir = join(sessionDir, 'subagents');
     mkdirSync(subagentsDir, { recursive: true });
@@ -609,7 +610,7 @@ expected_tools:
   });
 
   it('attributes observations to the originating trace when main and subagent invoke the same skill', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-observation-trace-attribution-'));
+    const dir = testDirectory('omk-observation-trace-attribution-');
     const sessionDir = join(dir, 'sessionA');
     const subagentsDir = join(sessionDir, 'subagents');
     mkdirSync(subagentsDir, { recursive: true });
@@ -639,7 +640,7 @@ expected_tools:
   });
 
   it('attributes feedback by target object instead of the current skill window', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-object-'));
+    const dir = testDirectory('omk-feedback-object-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('damai-daily', '生成日报。')
@@ -667,7 +668,7 @@ expected_tools:
   });
 
   it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-promise-'));
+    const dir = testDirectory('omk-feedback-promise-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('apply-cc', '让子 Claude 分析项目。')
@@ -699,7 +700,7 @@ expected_tools:
   });
 
   it('does not classify neutral how-to questions with should as user correction', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-howto-'));
+    const dir = testDirectory('omk-feedback-howto-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('apply-cc', '帮我看一下服务器上的文件。')
@@ -718,7 +719,7 @@ expected_tools:
   });
 
   it('backs downstream feedback up to router skills without hiding executor ownership', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-router-downstream-'));
+    const dir = testDirectory('omk-router-downstream-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('aiprd-task-runner', '功能咨询：新版确认页是什么逻辑，有开关控制吗')
@@ -770,7 +771,7 @@ expected_tools:
   });
 
   it('cuts previous skill segment before next user command in the same trace', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-segment-switch-'));
+    const dir = testDirectory('omk-segment-switch-');
     const file = join(dir, 'session.jsonl');
     const records = claudeTrace('s1', { startAt: '2026-05-11T02:00:00.000Z' })
       .userCommand('apply-cc', '帮我咨询 PRD 方案。')

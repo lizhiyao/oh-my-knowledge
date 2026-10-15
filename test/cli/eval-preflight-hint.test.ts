@@ -1,7 +1,8 @@
+import { testDirectory } from '../helpers/temp-directory.js';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
+
 import { join } from 'node:path';
 import { formatConnectivityFailureHint } from '../../src/cli/commands/eval/index.js';
 
@@ -34,7 +35,7 @@ describe('eval connectivity failure hint', () => {
   });
 
   it('fills Codex fallback flags from local Codex config when available', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-eval-hint-'));
+    const dir = testDirectory('omk-codex-eval-hint-');
     await writeFile(join(dir, 'config.toml'), 'model = "gpt-5.5"\n');
 
     const hint = formatConnectivityFailureHint(
@@ -216,7 +217,7 @@ describe('eval connectivity failure hint', () => {
   });
 
   it('suggests local Codex model checks for preflight model failures', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-codex-model-eval-hint-'));
+    const dir = testDirectory('omk-codex-model-eval-hint-');
     await writeFile(join(dir, 'config.toml'), 'model = "gpt-5.5"\n');
 
     const hint = formatConnectivityFailureHint(
