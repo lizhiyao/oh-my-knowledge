@@ -9,11 +9,11 @@ import { resolveLanguagePreference } from '../../shared/language-preference.js';
 
 const text = z.string().trim().min(1).max(4096);
 export const UserSettingsSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   language: z.enum(['zh', 'en']).optional(),
   knowledge: z.strictObject({
     workspace: text.refine(isAbsolute, 'Use an absolute directory.').optional(),
-    executor: z.enum(['codex', 'openai-api', 'anthropic-api']).optional(),
+    executor: z.enum(['codex', 'openai-api']).optional(),
     model: text.optional(),
   }).optional(),
 });
@@ -26,7 +26,7 @@ export class UserSettingsStore {
   readonly path: string;
   constructor(readonly root = process.env.OMK_HOME || globalLayout().root) { this.path = join(root, 'settings.json'); }
   read(): { settings: UserSettings; revision: string } {
-    if (!existsSync(this.path)) return { settings: { schemaVersion: 1 }, revision: 'missing' };
+    if (!existsSync(this.path)) return { settings: { schemaVersion: 2 }, revision: 'missing' };
     const stat = lstatSync(this.path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65536) throw new Error('Invalid settings file.');
     const raw = readFileSync(this.path, 'utf8');

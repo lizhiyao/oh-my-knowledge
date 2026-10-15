@@ -23,17 +23,8 @@ function configurations(): ReadonlyMap<string, ProductionExecutorAdapterConfigur
       preflightDeclarations: [],
     }],
     ['codex-sdk', { adapterKind: 'codex-sdk', sdk: {}, preflightDeclarations: [] }],
-    ['claude', {
-      adapterKind: 'claude-cli', command: { executablePath: '/not-probed/claude' },
-      preflightDeclarations: [],
-    }],
-    ['claude-sdk', { adapterKind: 'claude-sdk', sdk: {}, preflightDeclarations: [] }],
     ['openai-api', {
       adapterKind: 'openai-api', api: { apiKey: 'not-read-before-use' },
-      preflightDeclarations: [],
-    }],
-    ['anthropic-api', {
-      adapterKind: 'anthropic-api', api: { apiKey: 'not-read-before-use' },
       preflightDeclarations: [],
     }],
     ['custom-tool', {
@@ -62,8 +53,7 @@ describe('production Runtime registry', () => {
     });
 
     expect([...factories.executorsByImplementationId.keys()]).toEqual([
-      'codex', 'codex-sdk', 'claude', 'claude-sdk',
-      'openai-api', 'anthropic-api', 'custom-tool',
+      'codex', 'codex-sdk', 'openai-api', 'custom-tool',
     ]);
     expect(factories.evaluatorsByImplementationId.has('omk.assertions.output/v1')).toBe(false);
     expect(factories.evaluatorsByImplementationId.has('omk.assertions.execution/v1')).toBe(false);

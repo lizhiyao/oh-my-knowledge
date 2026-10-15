@@ -25,9 +25,9 @@ describe('oclif sample', () => {
       const samples = [{ sample_id: 'one', input: { inputKind: 'text' as const, text: 'Review' } }];
       generateSamples.mockReset();
       generateSamples.mockResolvedValue({ samples, costUSD: 0 });
-      await runCommand(SampleCommand, [root, '--executor', 'claude', '--model', 'fixture', '--count', '1', '--focus', 'errors', '--no-mock'], { cwd: root });
+      await runCommand(SampleCommand, [root, '--executor', 'codex', '--model', 'fixture', '--count', '1', '--focus', 'errors', '--no-mock'], { cwd: root });
       expect(generateSamples).toHaveBeenCalledWith(expect.objectContaining({
-        skillContent: '# Example', model: 'fixture', executorName: 'claude', count: 1, focus: 'errors', noMock: true,
+        skillContent: '# Example', model: 'fixture', executorName: 'codex', count: 1, focus: 'errors', noMock: true,
       }));
       expect(JSON.parse(readFileSync(join(root, '.omk', 'eval-samples.json'), 'utf8')).samples).toEqual(createWorkflowSampleSetDocument(samples).samples);
     } finally {
@@ -44,7 +44,7 @@ describe('oclif sample', () => {
       const file = join(root, '.omk', 'eval-samples.json');
       writeFileSync(file, '{broken');
       generateSamples.mockClear();
-      await assert.rejects(() => runCommand(SampleCommand, [root, '--append', '--executor', 'claude', '--model', 'fixture'], { cwd: root }));
+      await assert.rejects(() => runCommand(SampleCommand, [root, '--append', '--executor', 'codex', '--model', 'fixture'], { cwd: root }));
       expect(generateSamples).not.toHaveBeenCalled();
       assert.equal(readFileSync(file, 'utf8'), '{broken');
     } finally {
@@ -126,7 +126,7 @@ describe('oclif sample', () => {
 
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
     try {
-      await runCommand(SampleCommand, ['--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
+      await runCommand(SampleCommand, ['--batch', '--model', 'fixture-model', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as CommandRunError;

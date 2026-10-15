@@ -115,7 +115,7 @@ dimensions:
 `));
     const artifact: Artifact = { name: 's', kind: 'skill', source: 'file-path', content: 'c' };
     const ctx: DoctorContext = {
-      artifact, executorName: 'claude', model: 'sonnet', cwd: '/tmp', lang: 'zh', timeoutMs: 3000,
+      artifact, executorName: 'codex', model: 'test-model', cwd: '/tmp', lang: 'zh', timeoutMs: 3000,
     };
     // 未放行:私网地址在请求组装前被拒,message 提示 allowPrivateHost。
     const refused = await registeredDoctorRule('private-default').check(ctx);

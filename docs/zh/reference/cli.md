@@ -48,7 +48,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
   --git-url <value>               远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
   --kind <skill|prompt|agent|workflow>用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / claude / all。
+  --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / all。
 ```
 
 完整描述见 `omk install --help`。
@@ -57,7 +57,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
 
 ## `omk doctor`
 
@@ -125,7 +125,7 @@ endpoint 地址校验：只接受 `http` / `https` 协议；指向私网/本机�
 
 采样与共识：默认 `omk doctor` 把审计 `--repeat 2` 遍并行跑，finding 取并集，再用一次额外的 LLM 聚类把同根因（措辞不同）的 finding 归并，每条标注 `k/n` 支持度（n 遍里有 k 遍报了它）。这样重复体检会收敛，而不是每次暴露不同的子集。`--repeat 1` 单次快检；调大做更深、更稳的审计。`--concurrency` 节流并发（默认 = `--repeat`）。
 
-静态检测（`--static-only`）：只跑默认 doctor 里同一套静态 lint 规则，零 LLM 调用、**且不加载 `samples.json`** —— skill 可读性、frontmatter 合法性、以及 **skill 正文** 里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `claude` / `codex` 或断网调试时用。samples 契约检查被有意排除（它需要 `samples.json`），留给 `omk eval` 的评测前置门禁 —— 在那里依赖检查还会用上用例声明的 `requires` 做增强。
+静态检测（`--static-only`）：只跑默认 doctor 里同一套静态 lint 规则，零 LLM 调用、**且不加载 `samples.json`** —— skill 可读性、frontmatter 合法性、以及 **skill 正文** 里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `codex` 或断网调试时用。samples 契约检查被有意排除（它需要 `samples.json`），留给 `omk eval` 的评测前置门禁 —— 在那里依赖检查还会用上用例声明的 `requires` 做增强。
 
 ## `omk eval`
 
@@ -159,11 +159,11 @@ omk eval gold compare <run-id> --gold-dir gold-dataset \
   --control-cwd <value>           对照组（control）的 runtime context 目录
   --dry-run                       只 plan 不实跑
   --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
-  --executor <value>              执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
+  --executor <value>              执行器：codex / codex-sdk / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。默认用 codex；也可用 OMK_EXECUTOR 设置环境偏好。
   --global                        报告写全局 ~/.oh-my-knowledge/eval，而非项目 .omk/eval
   --gold-dir <value>              gold dataset 目录
   --holdout-ratio <value>         留出比例 0-1（如 0.3）；切出 holdout 子集，对比 train/holdout 综合分检测过拟合
-  --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。
+  --judge-models <value>          评委配置，格式 executor:model[,...]，例 codex:<model> 或 openai-api:<model>（≥ 2 个 = ensemble）。默认沿用所选执行器与被测模型。
   --judge-repeat <value>          每个维度由评委评价 N 次
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
   --layered-stats                 输出分层统计

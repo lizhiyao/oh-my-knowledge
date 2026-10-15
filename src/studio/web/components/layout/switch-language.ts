@@ -11,7 +11,7 @@ export async function saveStudioLanguage(target: Language, fetchImpl: typeof fet
     if (!current.ok) return false;
     const data = await current.json() as StudioSettings;
     const response = await fetchImpl('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ revision: data.revision, settings: { ...data.settings, schemaVersion: 1, language: target } }) });
+      body: JSON.stringify({ revision: data.revision, settings: { ...data.settings, schemaVersion: 2, language: target } }) });
     return response.ok;
   } catch { return false; }
 }

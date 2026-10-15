@@ -406,7 +406,7 @@ async function composerCheckAll(
       featurePoints: merged.featurePoints,
       durationMs: agg.durationMs,
       durationApiMs: agg.durationApiMs,
-      // turns:claude-cli 在内部跑的 LLM 轮次(每轮 = 1 次 messages.create),多采样累加。
+      // turns:执行器报告的 LLM 轮次，多采样累加。
       // numTurns:assistant turn 数 / fullNumTurns:含 tool turn 的总数
       llmTurns: { numTurns: agg.numTurns, fullNumTurns: agg.fullNumTurns },
       tokens: {

@@ -50,20 +50,20 @@ describe('saveStudioLanguage', () => {
 
   it('先读 revision 再写回：只改 language，其余设置字段原样保留', async () => {
     const { calls, fetchImpl } = fakeFetch([
-      { ok: true, json: { revision: 'rev-1', settings: { schemaVersion: 1, language: 'zh', knowledge: { workspace: '/k', executor: 'codex' } } } },
+      { ok: true, json: { revision: 'rev-1', settings: { schemaVersion: 2, language: 'zh', knowledge: { workspace: '/k', executor: 'codex' } } } },
       { ok: true, json: {} },
     ]);
     assert.equal(await saveStudioLanguage('en', fetchImpl), true);
     assert.equal(calls.length, 2);
     assert.deepEqual(JSON.parse(String(calls[1].init?.body)), {
       revision: 'rev-1',
-      settings: { schemaVersion: 1, language: 'en', knowledge: { workspace: '/k', executor: 'codex' } },
+      settings: { schemaVersion: 2, language: 'en', knowledge: { workspace: '/k', executor: 'codex' } },
     });
   });
 
   it('读取失败、保存被拒或保存冲突都返回 false，不冒充已切换', async () => {
     assert.equal(await saveStudioLanguage('en', fakeFetch([{ ok: false }]).fetchImpl), false);
-    assert.equal(await saveStudioLanguage('en', fakeFetch([{ ok: true, json: { revision: 'r', settings: { schemaVersion: 1 } } }, { ok: false }]).fetchImpl), false);
+    assert.equal(await saveStudioLanguage('en', fakeFetch([{ ok: true, json: { revision: 'r', settings: { schemaVersion: 2 } } }, { ok: false }]).fetchImpl), false);
     const throwing = (async () => { throw new Error('offline'); }) as typeof fetch;
     assert.equal(await saveStudioLanguage('zh', throwing), false);
   });

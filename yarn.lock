@@ -6942,11 +6942,8 @@ __metadata:
     vitest: "npm:5.0.3"
     zod: "npm:^4.4.3"
   peerDependencies:
-    "@anthropic-ai/claude-agent-sdk": ^0.3.143
     "@openai/codex-sdk": ^0.149.0
   peerDependenciesMeta:
-    "@anthropic-ai/claude-agent-sdk":
-      optional: true
     "@openai/codex-sdk":
       optional: true
   bin:

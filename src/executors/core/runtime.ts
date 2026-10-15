@@ -19,10 +19,7 @@ export function errorMessage(err: unknown, fallback: string = 'unknown error'): 
 }
 
 export function buildExecEnv(skillDir?: string | null): NodeJS.ProcessEnv {
-  const proxyUrl = process.env.CCV_PROXY_URL || undefined;
-  const env: NodeJS.ProcessEnv = proxyUrl
-    ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
-    : { ...process.env };
+  const env: NodeJS.ProcessEnv = { ...process.env };
 
   if (skillDir) {
     const nodeBin = join(skillDir, 'node_modules', '.bin');

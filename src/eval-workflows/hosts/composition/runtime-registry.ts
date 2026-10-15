@@ -10,18 +10,6 @@ import {
 } from '../../../eval-core/contracts/index.js';
 import { createNodeCoreContentStore } from '../../artifact-store/node-content-store.js';
 import {
-  createAnthropicApiExecutorAdapter,
-  type AnthropicApiCoreConfiguration,
-} from '../adapters/anthropic/api.js';
-import {
-  createClaudeCliExecutorAdapter,
-  type ClaudeCliCoreConfiguration,
-} from '../adapters/claude/cli.js';
-import {
-  createClaudeSdkExecutorAdapter,
-  type ClaudeSdkCoreConfiguration,
-} from '../adapters/claude/sdk.js';
-import {
   createCodexCliExecutorAdapter,
   type CodexCliCoreConfiguration,
 } from '../adapters/codex/cli.js';
@@ -63,10 +51,7 @@ type ProductionExecutorPreflightConfiguration = {
 export type ProductionExecutorAdapterConfiguration = ProductionExecutorPreflightConfiguration & (
   | { readonly adapterKind: 'codex-cli'; readonly command: CodexCliCoreConfiguration }
   | { readonly adapterKind: 'codex-sdk'; readonly sdk?: CodexSdkCoreConfiguration }
-  | { readonly adapterKind: 'claude-cli'; readonly command: ClaudeCliCoreConfiguration }
-  | { readonly adapterKind: 'claude-sdk'; readonly sdk?: ClaudeSdkCoreConfiguration }
   | { readonly adapterKind: 'openai-api'; readonly api: OpenAIApiCoreConfiguration }
-  | { readonly adapterKind: 'anthropic-api'; readonly api: AnthropicApiCoreConfiguration }
   | {
       readonly adapterKind: 'custom-executor';
       readonly runtime: CustomExecutorRuntimeDescription;
@@ -123,7 +108,6 @@ function snapshotConfiguration(
   const preflightDeclarations = preflightSnapshot(configuration.preflightDeclarations);
   switch (configuration.adapterKind) {
     case 'codex-cli':
-    case 'claude-cli':
       return Object.freeze({
         adapterKind: configuration.adapterKind,
         preflightDeclarations,
@@ -138,7 +122,6 @@ function snapshotConfiguration(
         }),
       }) as ProductionExecutorAdapterConfiguration;
     case 'codex-sdk':
-    case 'claude-sdk':
       return Object.freeze({
         adapterKind: configuration.adapterKind,
         preflightDeclarations,
@@ -152,7 +135,6 @@ function snapshotConfiguration(
         }),
       }) as ProductionExecutorAdapterConfiguration;
     case 'openai-api':
-    case 'anthropic-api':
       return Object.freeze({
         adapterKind: configuration.adapterKind,
         preflightDeclarations,
@@ -213,17 +195,8 @@ function executorFactory(
       case 'codex-sdk':
         port = await createCodexSdkExecutorAdapter({ ...common, sdk: configuration.sdk });
         break;
-      case 'claude-cli':
-        port = await createClaudeCliExecutorAdapter({ ...common, command: configuration.command });
-        break;
-      case 'claude-sdk':
-        port = await createClaudeSdkExecutorAdapter({ ...common, sdk: configuration.sdk });
-        break;
       case 'openai-api':
         port = await createOpenAIApiExecutorAdapter({ ...common, api: configuration.api });
-        break;
-      case 'anthropic-api':
-        port = await createAnthropicApiExecutorAdapter({ ...common, api: configuration.api });
         break;
       case 'custom-executor':
         if (configuration.runtime.implementationId !== implementationId) fail({

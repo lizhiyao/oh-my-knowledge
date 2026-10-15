@@ -584,7 +584,7 @@ describe('架构边界守门', () => {
       .sort();
     expect(rootSourceFiles).toEqual([]);
 
-    const providers = new Set(['anthropic', 'claude', 'codex', 'custom', 'openai']);
+    const providers = new Set(['codex', 'custom', 'openai']);
     const violations: string[] = [];
     for (const provider of providers) {
       for (const file of listTsFiles(join(RUNTIME_ADAPTERS_DIR, provider))) {

@@ -2,11 +2,10 @@
 
 **什么时候需要这篇？** 普通的 skill 评测（`omk eval --control baseline --treatment my-skill`）注入一份 `SKILL.md`、把它孤立起来测。但真实 agent 的行为还取决于它的 **runtime context**：运行所在的项目目录、`AGENTS.md` 或 `CLAUDE.md` 等项目指令、本地发现的 skills、仓库状态。当你真正想测的是「这个 agent 在这个项目里表现如何」，普通 skill 评测看不到全部上下文。这篇讲的是如何把项目上下文明确定义为被测输入。
 
-Codex 与 Claude 执行器都会输出相同的 source-neutral turns / toolCalls 契约，因此 agent 断言不再绑定某个 provider。执行器本身是 construct 的一部分：
+Codex 执行器输出相同的 source-neutral turns / toolCalls 契约，因此 agent 断言不再绑定某个 provider。执行器本身是 construct 的一部分：
 
 - 需要最强 artifact 隔离时用 `codex`；它会忽略用户配置和项目规则
 - 明确要测量 **Codex 项目上下文**时用 `codex-sdk`
-- 明确要测量 **Claude Code 项目上下文**时用 `claude-sdk`
 
 不同 variant 之间必须固定执行器、模型和工作目录。报告会持久化 runtime 指纹与执行策略，避免把不兼容运行误写成只比较 artifact。
 
@@ -26,7 +25,7 @@ Codex 项目上下文实验使用：
 omk eval --executor codex-sdk
 ```
 
-严格隔离 artifact 时使用 `--executor codex`。测量 Claude Code 项目上下文时，将执行器替换为 `claude-sdk`。
+严格隔离 artifact 时使用 `--executor codex`。
 
 ## 支持的 agent 相关断言
 

@@ -4,7 +4,7 @@
 
 ## 安装与模型准备
 
-需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI、Claude Code 或 API 执行器。配置方法见[执行器](../../reference/integration/executors.md)。
+需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI 或 API 执行器。配置方法见[执行器](../../reference/integration/executors.md)。
 
 ```bash
 npm i -g oh-my-knowledge@next
@@ -87,9 +87,9 @@ omk eval --control my-skill-v1 --treatment my-skill-v2
 omk install omk-agent-skill
 ```
 
-默认安装到检测到的受支持目标：`~/.codex` 或 `~/.agents` 对应 Codex/AGENTS，`~/.claude` 对应 Claude Code。`--to all` 强制安装到当前已知的全部目标，`--dest` 指定自定义 skill 根目录。
+默认安装到检测到的受支持目标：`~/.codex` 或 `~/.agents` 对应 Codex/AGENTS。`--to all` 强制安装到当前已知的全部目标，`--dest` 指定自定义 skill 根目录。
 
-在 Agent 中显式使用 OMK Skill，并描述目标，例如：“用 omk 比较 skills/my-skill-v1 与 skills/my-skill-v2，先预览计划。”Claude Code 可使用已安装的 `/omk` 入口；其他宿主可让 Agent 执行 `omk` CLI。生成用例后仍需复核，再执行真实评测。
+在 Agent 中显式使用 OMK Skill，并描述目标，例如：“用 omk 比较 skills/my-skill-v1 与 skills/my-skill-v2，先预览计划。”让 Agent 执行 `omk` CLI。生成用例后仍需复核，再执行真实评测。
 
 ## 首跑遇到问题
 

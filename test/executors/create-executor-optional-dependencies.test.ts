@@ -14,11 +14,9 @@ describe('createExecutor optional dependency wiring', () => {
     dependencyGuard.mockReset();
   });
 
-  it('creates both SDK executors when their optional dependencies are available', () => {
-    assert.equal(typeof createExecutor('claude-sdk'), 'function');
+  it('creates the Codex SDK executor when their optional dependencies are available', () => {
     assert.equal(typeof createExecutor('codex-sdk'), 'function');
     assert.deepEqual(dependencyGuard.mock.calls, [
-      ['claude-sdk'],
       ['codex-sdk'],
     ]);
   });

@@ -12,15 +12,15 @@ const fail = (code: string, kind: 'infrastructure', message: string): never => {
 };
 
 const sealedBinding = {
-  protocolId: 'claude-cli/v1',
+  protocolId: 'codex-cli/v1',
   targetId: 'target-1',
-  sealedTargetConfig: { model: 'sonnet', tools: ['Read'] },
+  sealedTargetConfig: { model: 'test-model', tools: ['Read'] },
 };
 
 const boundTrial = {
-  protocolId: 'claude-cli/v1',
+  protocolId: 'codex-cli/v1',
   targetId: 'target-1',
-  targetConfig: { model: 'sonnet', tools: ['Read'] },
+  targetConfig: { model: 'test-model', tools: ['Read'] },
 };
 
 function counter() {
@@ -43,25 +43,25 @@ describe('宿主 Trial 生命周期共享判据', () => {
     expect(() => assertTrialMatchesSealedBinding({
       trial: boundTrial,
       binding: sealedBinding,
-      mismatchCode: 'OMK_CLAUDE_CLI_TRIAL_MISMATCH',
-      hostLabel: 'Claude CLI',
+      mismatchCode: 'OMK_CODEX_CLI_TRIAL_MISMATCH',
+      hostLabel: 'Codex CLI',
       fail,
     })).not.toThrow();
 
     const mismatched = [
-      { ...boundTrial, protocolId: 'codex-cli/v1' },
+      { ...boundTrial, protocolId: 'other-protocol/v1' },
       { ...boundTrial, targetId: 'target-2' },
-      { ...boundTrial, targetConfig: { model: 'sonnet', tools: ['Write'] } },
-      { ...boundTrial, targetConfig: { model: 'sonnet', tools: ['Read', 'Write'] } },
+      { ...boundTrial, targetConfig: { model: 'test-model', tools: ['Write'] } },
+      { ...boundTrial, targetConfig: { model: 'test-model', tools: ['Read', 'Write'] } },
     ];
     for (const trial of mismatched) {
       expect(() => assertTrialMatchesSealedBinding({
         trial,
         binding: sealedBinding,
-        mismatchCode: 'OMK_CLAUDE_CLI_TRIAL_MISMATCH',
-        hostLabel: 'Claude CLI',
+        mismatchCode: 'OMK_CODEX_CLI_TRIAL_MISMATCH',
+        hostLabel: 'Codex CLI',
         fail,
-      })).toThrow('OMK_CLAUDE_CLI_TRIAL_MISMATCH|infrastructure|Claude CLI trial does not match the sealed Target binding.');
+      })).toThrow('OMK_CODEX_CLI_TRIAL_MISMATCH|infrastructure|Codex CLI trial does not match the sealed Target binding.');
     }
   });
 
@@ -80,13 +80,13 @@ describe('宿主 Trial 生命周期共享判据', () => {
         return (error as Error).message;
       }
     };
-    expect(check(boundTrial, { ...sealedBinding, sealedTargetConfig: { tools: ['Read'], model: 'sonnet' } }))
+    expect(check(boundTrial, { ...sealedBinding, sealedTargetConfig: { tools: ['Read'], model: 'test-model' } }))
       .toBeUndefined();
     expect(check({ ...boundTrial, targetConfig: undefined }, { ...sealedBinding, sealedTargetConfig: undefined }))
       .toBeUndefined();
     expect(check({ ...boundTrial, targetConfig: null }, { ...sealedBinding, sealedTargetConfig: undefined }))
       .toBeUndefined();
-    expect(check({ ...boundTrial, targetConfig: { model: 'sonnet' } }, sealedBinding))
+    expect(check({ ...boundTrial, targetConfig: { model: 'test-model' } }, sealedBinding))
       .toContain('OMK_TEST_TRIAL_MISMATCH');
   });
 

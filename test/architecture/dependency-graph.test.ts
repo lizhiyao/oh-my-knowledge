@@ -352,9 +352,6 @@ describe('src 与 scripts 依赖图', () => {
     const expected = REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS.map((registered) =>
       dynamicImportKey(registered)).sort();
     expect(nonLiteralDynamicImports.map(dynamicImportKey).sort()).toEqual(expected);
-    expect(sourceFiles(SRC_DIR, SOURCE_SCAN_OPTIONS).map(sourceRelative)).toContain(
-      'executors/mock-runtime/mock-hook.cjs',
-    );
 
     const registered = REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS[0];
     expect(dynamicImportKey({ ...registered, sourceSha256: '0'.repeat(64) }))

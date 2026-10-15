@@ -57,10 +57,7 @@ function executionMockDescriptor(
 const PRODUCTION_EXECUTOR_INPUT_POLICIES = new Map<string, 'text' | 'stateless-api'>([
   ['codex', 'text'],
   ['codex-sdk', 'text'],
-  ['claude', 'text'],
-  ['claude-sdk', 'text'],
   ['openai-api', 'stateless-api'],
-  ['anthropic-api', 'stateless-api'],
 ]);
 
 interface ResolvedTargetRuntime {

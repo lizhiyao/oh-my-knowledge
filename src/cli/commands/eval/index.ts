@@ -26,10 +26,8 @@ import { DEFAULT_EVALUATION_TIMEOUT_MS } from '../../../eval-workflows/evaluatio
 // `omk eval gold ...` 由 src/cli/commands/eval/gold/{init,validate,compare}.ts
 // 处理,oclif 文件目录路由自动接管,不进 eval.ts。
 
-const CLAUDE_EXECUTORS = executorNamesForFamily('claude');
 const CODEX_EXECUTORS = executorNamesForFamily('codex');
 const OPENAI_API_EXECUTORS = executorNamesForFamily('openai-api');
-const ANTHROPIC_API_EXECUTORS = executorNamesForFamily('anthropic-api');
 
 interface ConnectivityFailureContext {
   executorName: string;
@@ -138,40 +136,27 @@ export function formatConnectivityFailureHint(
     const matches = matchingPreflightRuntimes(config, failedTarget);
     if (matches.length === 0) return '';
 
-    if (hasExecutor(matches, CLAUDE_EXECUTORS)) {
-      const codexModel = codexModelFlagValue(env);
-      return tCli('cli.run.codex_fallback_hint', lang, {
-        flags: fallbackFlags(matches, 'codex', codexModel, codexModel, shouldSwitchJudgeWithTask(config, CLAUDE_EXECUTORS)),
-        codexModelHint: codexModelHint(lang, env),
-      });
-    }
     if (hasExecutor(matches, CODEX_EXECUTORS)) {
       if (looksLikeModelUnavailableFailure(message)) {
         const codexModel = codexModelFlagValue(env);
         return tCli('cli.run.codex_model_hint', lang, {
           codexFlags: fallbackFlags(matches, 'codex', codexModel, codexModel, shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
           codexExec: `codex exec -m ${codexModel} "hi"`,
-          claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
           openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
           codexModelHint: codexModelHint(lang, env),
         });
       }
       return tCli('cli.run.codex_auth_hint', lang, {
-        claudeFlags: fallbackFlags(matches, 'claude', 'sonnet', 'haiku', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
         openaiFlags: fallbackFlags(matches, 'openai-api', '<openai-model>', '<openai-model>', shouldSwitchJudgeWithTask(config, CODEX_EXECUTORS)),
       });
     }
     if (hasExecutor(matches, OPENAI_API_EXECUTORS)) {
       return tCli(looksLikeModelUnavailableFailure(message) ? 'cli.run.openai_api_model_hint' : 'cli.run.openai_api_auth_hint', lang);
     }
-    if (hasExecutor(matches, ANTHROPIC_API_EXECUTORS)) {
-      return tCli(looksLikeModelUnavailableFailure(message) ? 'cli.run.anthropic_api_model_hint' : 'cli.run.anthropic_api_auth_hint', lang);
-    }
     return '';
   }
 
   if (message.includes('OPENAI_API_KEY') && configHasExecutor(config, OPENAI_API_EXECUTORS)) return tCli('cli.run.openai_api_auth_hint', lang);
-  if (message.includes('ANTHROPIC_API_KEY') && configHasExecutor(config, ANTHROPIC_API_EXECUTORS)) return tCli('cli.run.anthropic_api_auth_hint', lang);
   return '';
 }
 
@@ -301,14 +286,14 @@ export default class Eval extends BaseCommand {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器：claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。Codex 任务内自动用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
-        en: 'Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom executable file path (not a command string with arguments). Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.',
+        zh: '执行器：codex / codex-sdk / openai-api / 自定义可执行文件路径（不接受带参数的命令字符串）。默认用 codex；也可用 OMK_EXECUTOR 设置环境偏好。',
+        en: 'Executor: codex / codex-sdk / openai-api / custom executable file path (not a command string with arguments). Defaults to codex; OMK_EXECUTOR sets an environment preference.',
       }),
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 codex:<model>（≥ 2 个 = ensemble）。默认跟随所选执行器；Claude 使用 haiku，其他执行器沿用被测模型。',
-        en: 'Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Claude uses haiku, other executors reuse the evaluated model.',
+        zh: '评委配置，格式 executor:model[,...]，例 codex:<model> 或 openai-api:<model>（≥ 2 个 = ensemble）。默认沿用所选执行器与被测模型。',
+        en: 'Judge config: executor:model[,...], e.g. codex:<model> or openai-api:<model> (≥ 2 = ensemble). Defaults to the selected executor and evaluated model.',
       }),
     }),
     'output-dir': Flags.string({

@@ -48,7 +48,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
   --git-url <value>               Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
   --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-  --to <value>                    Install target: auto (default, detected local targets) / codex / claude / all.
+  --to <value>                    Install target: auto (default, detected local targets) / codex / all.
 ```
 
 For full descriptions: `omk install --help`.
@@ -57,7 +57,7 @@ For full descriptions: `omk install --help`.
 
 Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
 
-The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ## `omk doctor`
 
@@ -125,7 +125,7 @@ Endpoint URL validation: only `http` / `https` schemes are accepted, and endpoin
 
 Sampling & consensus: by default `omk doctor` runs the audit `--repeat 2` times in parallel, takes the union of findings, and merges same-root-cause findings (across differing wording) via one extra LLM clustering pass, tagging each finding with `k/n` support (how many of the n passes reported it). This makes repeated runs converge instead of surfacing a different subset each time. Set `--repeat 1` for a single quick pass; raise it for a deeper, more stable audit. `--concurrency` throttles the parallelism (default = `--repeat`).
 
-Static-only checks (`--static-only`): runs only the same static lint rules included in default doctor with zero LLM calls and **without loading `samples.json`** — skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the **skill body** exist. Useful for CI nodes without `claude` / `codex`, or offline debugging. The samples-contract check is intentionally excluded (it needs `samples.json`); it stays as `omk eval`'s pre-evaluation gate, alongside the same dependency check enriched there with the samples' declared `requires`.
+Static-only checks (`--static-only`): runs only the same static lint rules included in default doctor with zero LLM calls and **without loading `samples.json`** — skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the **skill body** exist. Useful for CI nodes without `codex`, or offline debugging. The samples-contract check is intentionally excluded (it needs `samples.json`); it stays as `omk eval`'s pre-evaluation gate, alongside the same dependency check enriched there with the samples' declared `requires`.
 
 ## `omk eval`
 
@@ -159,11 +159,11 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --control-cwd <value>           Runtime context dir for control
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
-  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / anthropic-api / openai-api / custom executable file path (not a command string with arguments). Defaults to codex inside Codex tasks; OMK_EXECUTOR sets an environment preference.
+  --executor <value>              Executor: codex / codex-sdk / openai-api / custom executable file path (not a command string with arguments). Defaults to codex; OMK_EXECUTOR sets an environment preference.
   --global                        Write report to global ~/.oh-my-knowledge/eval instead of project .omk/eval
   --gold-dir <value>              Gold dataset dir
   --holdout-ratio <value>         Holdout fraction 0-1 (e.g. 0.3); splits a holdout subset, compares train/holdout composite to flag overfitting
-  --judge-models <value>          Judge config: executor:model[,...], e.g. claude:haiku or codex:<model> (≥ 2 = ensemble). Defaults to the selected executor; Claude uses haiku, other executors reuse the evaluated model.
+  --judge-models <value>          Judge config: executor:model[,...], e.g. codex:<model> or openai-api:<model> (≥ 2 = ensemble). Defaults to the selected executor and evaluated model.
   --judge-repeat <value>          Judge each dim N times
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --layered-stats                 Emit layered stats

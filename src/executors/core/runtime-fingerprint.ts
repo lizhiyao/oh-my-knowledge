@@ -146,17 +146,6 @@ function readPackage(packageName: string, from?: string): ExecutorRuntimePackage
   }
 }
 
-function readPackageField<T = unknown>(packageName: string, field: string, from?: string): T | undefined {
-  const packageJson = resolvePackageJson(packageName, from);
-  if (!packageJson) return undefined;
-  try {
-    const pkg = JSON.parse(readFileSync(packageJson, 'utf-8')) as Record<string, unknown>;
-    return pkg[field] as T | undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function readCommand(command: string, args: string[], env: NodeJS.ProcessEnv, timeout = 3000): { output?: string; error?: string } {
   try {
     const output = execFileSync(command, args, {
@@ -432,21 +421,6 @@ export function getExecutorRuntimeFingerprint(
         descriptor.runtimeCapabilities,
         { binary: readPathBinary(descriptor.fingerprint.command, env) },
       );
-      break;
-    }
-    case 'claude-sdk': {
-      const sdkPackageJson = resolvePackageJson('@anthropic-ai/claude-agent-sdk');
-      const sdk = readPackage('@anthropic-ai/claude-agent-sdk', sdkPackageJson ?? undefined);
-      const claudeCodeVersion = readPackageField<string>('@anthropic-ai/claude-agent-sdk', 'claudeCodeVersion', sdkPackageJson ?? undefined);
-      fp = runtime(descriptor.name, model, descriptor.runtimeKind, descriptor.runtimeCapabilities, {
-        sdk,
-        binary: {
-          name: 'claude-code',
-          source: 'bundled',
-          ...(claudeCodeVersion ? { version: claudeCodeVersion } : {}),
-          package: sdk,
-        },
-      });
       break;
     }
     case 'codex-sdk': {

@@ -33,8 +33,6 @@ test/eval-runtime/evaluation/validation.test.ts
 test/eval-runtime/public-api-source.test.ts
 test/eval-runtime/rubric-judge.test.ts
 test/eval-runtime/tool-policy.test.ts
-test/eval-workflows/hosts/adapters/claude/cli.test.ts
-test/eval-workflows/hosts/adapters/claude/sdk.test.ts
 test/eval-workflows/hosts/adapters/custom/executor.test.ts
 test/eval-workflows/hosts/adapters/openai/api.test.ts
 test/eval-workflows/hosts/evolution-evaluation.test.ts

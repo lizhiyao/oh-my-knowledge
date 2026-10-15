@@ -324,8 +324,6 @@ Core 分阶段持有缓存。Execution key 的派生身份为 `omk.execution-cac
 |---|---|---|---|
 | `codex` | 执行器默认 cwd | 隔离 cwd + 忽略用户配置 / rules | **统一 planner 抛错** |
 | `codex-sdk` | 项目 cwd；隔离 `CODEX_HOME` | 隔离 cwd + 隔离 `CODEX_HOME` | **统一 planner 抛错** |
-| `claude-sdk` | 默认全发现 | skills:[] + disallowedTools:[Skill] | **throw** |
-| `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw** |
 | API 执行器 | 不隐式发现本地 skill | 无额外效果 | **统一 planner 抛错** |
 | 自定义 script | 由命令决定 | stderr 告警，无法保证隔离 | **统一 planner 抛错** |
 

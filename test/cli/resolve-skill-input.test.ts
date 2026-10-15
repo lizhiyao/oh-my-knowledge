@@ -70,7 +70,7 @@ describe('resolveSkillInput isDirectorySkill', () => {
       writeFileSync(projectSamples, '{broken');
       writeFileSync(local, '{broken');
       const evalSource = (samples?: string) => prepareCliEvaluation({
-        control: 'baseline', treatment: skillRoot, executor: 'claude', model: 'fixture',
+        control: 'baseline', treatment: skillRoot, executor: 'codex', model: 'fixture',
         ...(samples === undefined ? {} : { samples }),
       }, { projectRoot: proj, env: {}, lang: 'en' }).request.values.locators.samples;
       const evolveSource = (samples?: string) => resolveSkillInput(skillRoot, 'en', { projectFallback: true, samples }).samplesPath;

@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, it, vi } from 'vitest';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import { runCommand } from '../helpers/run-command.js';
 import { prepareCliEvaluation } from '../../src/cli/lib/prepare-evaluation.js';
 import {
-  defaultJudgeModel,
-  commandExistsOnPath,
-  resolveCliExecutor,
   resolveCliModel,
   resolveRuntimeSelection,
 } from '../../src/cli/lib/runtime-defaults.js';
@@ -37,13 +34,13 @@ afterEach(() => {
 describe('Codex-first CLI runtime defaults', () => {
   it('keeps an explicit executor and model authoritative', () => {
     const runtime = resolveRuntimeSelection(
-      { executor: 'claude-sdk', model: 'opus' },
+      { executor: 'openai-api', model: 'explicit-model' },
       { env: codexEnv() },
     );
     assert.deepEqual(runtime, {
-      executor: 'claude-sdk',
-      model: 'opus',
-      judgeModel: 'haiku',
+      executor: 'openai-api',
+      model: 'explicit-model',
+      judgeModel: 'explicit-model',
     });
   });
 
@@ -54,46 +51,6 @@ describe('Codex-first CLI runtime defaults', () => {
       model: 'gpt-codex-configured',
       judgeModel: 'gpt-codex-configured',
     });
-  });
-
-  it('selects codex when it is the only installed agent CLI', () => {
-    const bin = mkdtempSync(join(tmpdir(), 'omk-runtime-path-'));
-    tempDirs.push(bin);
-    writeFileSync(join(bin, process.platform === 'win32' ? 'codex.EXE' : 'codex'), '#!/bin/sh\n', { mode: 0o755 });
-    const env = { PATH: bin, CODEX_HOME: codexEnv().CODEX_HOME };
-    const executor = resolveCliExecutor(undefined, { env });
-    assert.equal(executor, 'codex');
-  });
-
-  it.skipIf(process.platform === 'win32')('checks executable files, valid links and subsequent PATH entries on POSIX', () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-runtime-path-types-'));
-    tempDirs.push(root);
-    const command = join(root, 'codex');
-    const env = { PATH: root };
-    mkdirSync(command);
-    assert.equal(commandExistsOnPath('codex', env), false, '可遍历目录不是可执行命令');
-    assert.equal(resolveCliExecutor(undefined, { env }), 'claude');
-    const next = join(root, 'bin'); mkdirSync(next);
-    writeFileSync(join(next, 'codex'), '#!/bin/sh\n', { mode: 0o755 });
-    assert.equal(commandExistsOnPath('codex', { PATH: [root, next].join(delimiter) }), true);
-    rmSync(command, { recursive: true });
-    writeFileSync(command, '#!/bin/sh\n', { mode: 0o644 });
-    assert.equal(commandExistsOnPath('codex', env), false);
-    chmodSync(command, 0o755);
-    assert.equal(commandExistsOnPath('codex', env), true);
-    symlinkSync('codex', join(root, 'claude'));
-    assert.equal(commandExistsOnPath('claude', env), true);
-    rmSync(command);
-    assert.equal(commandExistsOnPath('codex', env), false);
-    assert.equal(commandExistsOnPath('claude', env), false, '悬空链接不是可执行命令');
-  });
-
-  it('keeps the legacy claude default when both CLIs exist outside a Codex host', () => {
-    const executor = resolveCliExecutor(undefined, {
-      env: { PATH: '/test/bin' },
-      commandExists: () => true,
-    });
-    assert.equal(executor, 'claude');
   });
 
   it('supports OMK_EXECUTOR and OMK_MODEL as environment preferences', () => {
@@ -111,7 +68,7 @@ describe('Codex-first CLI runtime defaults', () => {
     });
   });
 
-  it('does not pass a Claude model alias to Codex when no model is configured', () => {
+  it('requires a configured model for Codex', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-codex-no-model-'));
     tempDirs.push(root);
     const env = { PATH: '/test/bin', CODEX_HOME: root };
@@ -122,13 +79,7 @@ describe('Codex-first CLI runtime defaults', () => {
     );
   });
 
-  it.each(['codex', 'codex-sdk', 'openai-api', 'anthropic-api', '/custom/executor'])('uses the selected task model for %s judges', (executor) => {
-    assert.equal(defaultJudgeModel(executor, 'explicit-task'), 'explicit-task');
-    assert.equal(defaultJudgeModel('claude', 'sonnet'), 'haiku');
-    assert.equal(defaultJudgeModel('claude-sdk', 'opus'), 'haiku');
-  });
-
-  it.each(['openai-api', 'anthropic-api', '/custom/executor'])('requires an explicit model for %s and preserves overrides', (executor) => {
+  it.each(['openai-api', '/custom/executor'])('requires an explicit model for %s and preserves overrides', (executor) => {
     assert.throws(() => resolveRuntimeSelection({ executor }, { env: {}, lang: 'en' }),
       (error: unknown) => error instanceof Error && 'oclif' in error
         && (error.oclif as { exit: number }).exit === 2);
@@ -146,7 +97,6 @@ describe('Codex-first CLI runtime defaults', () => {
       samples: 'eval-samples.json',
     }, {
       env,
-      commandExists: (command) => command === 'codex',
     });
     assert.equal(request.values.targetRuntime.executorId, 'codex');
     assert.equal(request.values.targetRuntime.model, 'gpt-eval');
@@ -171,7 +121,7 @@ describe('Codex-first CLI runtime defaults', () => {
 
 
 describe('API runtime model wiring', () => {
-  it.each(['openai-api', 'anthropic-api'])('%s preserves the model and jointly scores sparse Rubric dimensions through the CLI', async (executor) => {
+  it.each(['openai-api'])('%s preserves the model and jointly scores sparse Rubric dimensions through the CLI', async (executor) => {
     const root = mkdtempSync(join(tmpdir(), 'omk-api-model-wiring-'));
     tempDirs.push(root);
     const samples = join(root, 'eval-samples.json');
@@ -199,17 +149,13 @@ describe('API runtime model wiring', () => {
       const text = metricIds.length === 0 ? 'Paris.' : JSON.stringify({
         scores: metricIds.map((metricId) => ({ metricId, score: 5, reason: 'Correct and clear.' })),
       });
-      return new Response(JSON.stringify(executor === 'openai-api' && String(_url).endsWith('/chat/completions') ? {
+      return new Response(JSON.stringify(String(_url).endsWith('/chat/completions') ? {
         id: 'chat_fixture', model: request.model, choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      } : executor === 'openai-api' ? {
+      } : {
         id: 'resp_fixture', object: 'response', model: request.model, status: 'completed',
         output: [{ id: 'msg_fixture', type: 'message', status: 'completed', role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] }],
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-      } : {
-        id: 'msg_fixture', type: 'message', role: 'assistant', model: request.model,
-        content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 1 },
       }), { headers: { 'content-type': 'application/json' } });
     });
     const result = await runCommand(EvalCommand, [
@@ -218,7 +164,7 @@ describe('API runtime model wiring', () => {
       '--no-serve', '--no-diagnostic', '--bootstrap-samples', '100', '--report-only',
     ], { cwd: root, env: {
       HOME: root, USERPROFILE: root, OMK_HOME: join(root, 'machine'),
-      OPENAI_API_KEY: 'fixture-key', ANTHROPIC_API_KEY: 'fixture-key',
+      OPENAI_API_KEY: 'fixture-key',
       OMK_JUDGE_MODELS: '', OMK_MODEL: '',
     } }).catch((error: { stderr: string }) => { throw new Error(error.stderr); });
     const output = JSON.parse(result.stdout) as { runId: string; status: { runStatus: string; evidenceStatus: string } };

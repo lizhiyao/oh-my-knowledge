@@ -39,8 +39,8 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | 英文 | 中文 | 一句话定义 | 在 omk 哪用到 |
 |---|---|---|---|
 | [artifact](../evaluation/artifact-layout.md) | 知识载体 | omk 的「被评测对象」统一抽象：skill / prompt / agent / workflow / baseline | 由实验角色决定（`--control` / `--treatment` / baseline），非单独 flag |
-| [executor](../integration/executors.md) | 执行器 | 跑模型的方式：claude / codex / openai-api | `--executor` 参数；执行环境指纹 |
-| ensemble (judge) | 集成评委 / 多评委 | 多个 LLM 同时当评委独立打分，组合结果 | `--judge-models claude:opus,claude:sonnet` |
+| [executor](../integration/executors.md) | 执行器 | 跑模型的方式：codex / codex-sdk / openai-api | `--executor` 参数；执行环境指纹 |
+| ensemble (judge) | 集成评委 / 多评委 | 多个 LLM 同时当评委独立打分，组合结果 | `--judge-models codex:model-a,codex:model-b` |
 | judge | 评委 | LLM 当评委按 rubric 打分（zh 译作「评委」，**不要**译作「判官」） | judge model 参数；evidence 表 |
 | rubric | 评分规则 | judge 打分时遵循的细则（应识别 X / 必须包含 Y / 至少 N 项 / ...） | sample 配置的 rubric 字段 |
 | anchor | 锚点 | 用人工标准校准 LLM judge 的方法 | `--gold-dir` 人工锚点 |

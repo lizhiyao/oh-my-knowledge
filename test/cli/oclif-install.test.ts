@@ -68,13 +68,11 @@ describe('oclif install', () => {
     try {
       const home = join(dir, 'home');
       await mkdir(join(home, '.codex'), { recursive: true });
-      await mkdir(join(home, '.claude'), { recursive: true });
       const { stdout } = await runInstallCommand(['omk-agent-skill'], {
         env: cliEnv({ HOME: home }),
       });
-      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
+      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
       assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
-      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -102,22 +100,6 @@ describe('oclif install', () => {
     }
   });
 
-  it('supports explicit multiple targets', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-install-explicit-multi-'));
-    try {
-      const home = join(dir, 'home');
-      await mkdir(home, { recursive: true });
-      const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'codex,claude'], {
-        env: cliEnv({ HOME: home }),
-      });
-      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
-      assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
-      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
   it('supports --to all without detected targets', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-all-'));
     try {
@@ -126,16 +108,15 @@ describe('oclif install', () => {
       const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'all'], {
         env: cliEnv({ HOME: home }),
       });
-      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
+      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
       assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
-      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
   it('supports explicit single targets', async () => {
-    for (const target of ['codex', 'claude'] as const) {
+    for (const target of ['codex'] as const) {
       const dir = await mkdtemp(join(tmpdir(), `omk-install-${target}-`));
       try {
         const home = join(dir, 'home');
@@ -144,9 +125,7 @@ describe('oclif install', () => {
           env: cliEnv({ HOME: home }),
         });
         assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
-        const installed = target === 'codex'
-          ? join(home, '.agents', 'skills', 'omk', 'SKILL.md')
-          : join(home, '.claude', 'skills', 'omk', 'SKILL.md');
+        const installed = join(home, '.agents', 'skills', 'omk', 'SKILL.md');
         assert.ok(existsSync(installed), `${target} target not installed`);
       } finally {
         await rm(dir, { recursive: true, force: true });
@@ -166,7 +145,7 @@ describe('oclif install', () => {
   });
 
   it('rejects mixed auto/all target combinations', async () => {
-    for (const to of ['auto,codex', 'all,claude']) {
+    for (const to of ['auto,codex', 'all,codex']) {
       try {
         await runInstallCommand(['omk-agent-skill', '--to', to]);
         assert.fail(`expected non-zero exit for --to ${to}`);
@@ -197,7 +176,6 @@ describe('oclif install', () => {
         assert.ok(out.includes('--to codex') && out.includes('--dest'), `missing explicit target guidance:\n${out}`);
       }
       assert.ok(!existsSync(join(home, '.agents')), 'auto must not create AGENTS root without detection');
-      assert.ok(!existsSync(join(home, '.claude')), 'auto must not create Claude root without detection');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -216,32 +194,6 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
       }
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('preflights existing targets before multi-target install', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-install-preflight-'));
-    try {
-      const home = join(dir, 'home');
-      const claudeSkill = join(home, '.claude', 'skills', 'omk');
-      await mkdir(claudeSkill, { recursive: true });
-      await writeFile(join(claudeSkill, 'SKILL.md'), 'existing claude install');
-
-      try {
-        await runInstallCommand(['omk-agent-skill', '--to', 'codex,claude'], {
-          env: cliEnv({ HOME: home }),
-        });
-        assert.fail('expected non-zero exit');
-      } catch (err) {
-        const e = err as CommandRunError;
-        assert.notEqual(e.code, 0);
-        assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
-      }
-
-      assert.ok(!existsSync(join(home, '.agents')), 'preflight failure must not partially install Codex target');
-      assert.equal(await readFile(join(claudeSkill, 'SKILL.md'), 'utf8'), 'existing claude install');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -404,27 +356,6 @@ describe('oclif install', () => {
       await runInstallCommand(['skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
       assert.ok(existsSync(join(dest, 'review', 'references', 'evolve', 'guide.md')), '嵌套 evolve 资产应被分发');
       assert.ok(!existsSync(join(dest, 'review', 'evolve')), '源根 evolve 不应被分发');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('多目标安装预检重叠路径，--force 也不能部分安装或删源', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-install-overlap-'));
-    try {
-      const skillRoot = join(dir, '.claude', 'skills', 'review', 'review');
-      await mkdir(join(skillRoot, 'references'), { recursive: true });
-      await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\ndescription: d\n---\n# review\n');
-      await writeFile(join(dir, '.claude', 'skills', 'review', 'keep.txt'), 'precious');
-      for (const extra of [[], ['--force']]) {
-        await assert.rejects(
-          runInstallCommand([skillRoot, '--to', 'codex,claude', ...extra], { cwd: dir, env: cliEnv({ HOME: dir }) }),
-          (error: CommandRunError) => error.code === 1 && /重叠|overlap/.test(error.stderr + error.stdout),
-        );
-        assert.equal(existsSync(join(dir, '.agents')), false, '不能先写入排在前面的 Codex 目标');
-      }
-      assert.ok(existsSync(join(skillRoot, 'SKILL.md')), '源 skill 绝不能被删');
-      assert.equal(await readFile(join(dir, '.claude', 'skills', 'review', 'keep.txt'), 'utf8'), 'precious', '兄弟文件不能被波及');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

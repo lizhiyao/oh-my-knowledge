@@ -36,7 +36,7 @@ const equivalentConfig: EvalConfig = {
   noDiagnostic: true,
   skipDoctor: true,
   judgeModels: [
-    { executor: 'anthropic-api', model: 'judge-a' },
+    { executor: 'openai-api', model: 'judge-a' },
     {
       executor: 'openai-api',
       model: 'judge-b',
@@ -114,8 +114,8 @@ describe('parseCliEvaluationRequest', () => {
   it('parses only the winning judge source and bypasses all judges when disabled', () => {
     const environmentDefaults = { ...defaults, judgeModels: 'invalid-environment-preference' };
     const yaml = { ...equivalentConfig, judgeModels: [{ executor: 'openai-api', model: 'yaml-judge' }] };
-    const cli = parseCliEvaluationRequest({ explicitCliFlags: { 'judge-models': 'anthropic-api:cli-judge' }, evalConfig: yaml, defaults: environmentDefaults });
-    expect(cli.values.judges.members).toEqual([{ executorId: 'anthropic-api', model: 'cli-judge' }]);
+    const cli = parseCliEvaluationRequest({ explicitCliFlags: { 'judge-models': 'openai-api:cli-judge' }, evalConfig: yaml, defaults: environmentDefaults });
+    expect(cli.values.judges.members).toEqual([{ executorId: 'openai-api', model: 'cli-judge' }]);
     const config = parseCliEvaluationRequest({ explicitCliFlags: {}, evalConfig: yaml, defaults: environmentDefaults });
     expect(config.values.judges.members).toEqual([{ executorId: 'openai-api', model: 'yaml-judge' }]);
     const disabled = parseCliEvaluationRequest({ explicitCliFlags: { 'no-judge': true, 'judge-models': 'invalid-cli' }, evalConfig: yaml, defaults: environmentDefaults });
@@ -162,7 +162,7 @@ describe('parseCliEvaluationRequest', () => {
         effort: 'high',
         'no-diagnostic': true,
         'skip-doctor': true,
-        'judge-models': 'anthropic-api:judge-a,openai-api:judge-b',
+        'judge-models': 'openai-api:judge-a,openai-api:judge-b',
         concurrency: '2',
         timeout: '90',
         'mcp-config': 'mcp.json',

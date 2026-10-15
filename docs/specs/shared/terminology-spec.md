@@ -322,8 +322,6 @@ Core owns stage-specific caches. The Execution key uses `omk.execution-cache-key
 |---|---|---|---|
 | `codex` | executor-default cwd | isolated cwd + ignored user config / rules | **throw at shared planner** |
 | `codex-sdk` | project cwd; isolated `CODEX_HOME` | isolated cwd + isolated `CODEX_HOME` | **throw at shared planner** |
-| `claude-sdk` | full discovery (default) | skills:[] + disallowedTools:[Skill] | **throw** |
-| `claude-cli` | default | `--disable-slash-commands --disallowedTools Skill` | **throw** |
 | API executors | no implicit local skill discovery | no additional effect | **throw at shared planner** |
 | custom script | command-defined | stderr warning; cannot guarantee isolation | **throw at shared planner** |
 

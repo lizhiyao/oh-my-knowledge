@@ -46,11 +46,11 @@ async function fixture() {
 function prepare(f: Awaited<ReturnType<typeof fixture>>, executor: string, suffix = executor) {
   return prepareCliEvaluation({ samples: f.path, executor, model: 'offline-fixture', control: 'baseline', treatment: f.treatment,
     'no-judge': true, 'skip-doctor': true, 'skip-connectivity': true, 'no-serve': true, 'output-dir': join(f.root, suffix, 'reports'),
-  }, { projectRoot: f.root, lang: 'en', env: { ...process.env, OPENAI_API_KEY: 'offline-placeholder', ANTHROPIC_API_KEY: 'offline-placeholder', OPENAI_BASE_URL: 'https://api.openai.com/v1', ANTHROPIC_BASE_URL: 'https://api.anthropic.com' } });
+  }, { projectRoot: f.root, lang: 'en', env: { ...process.env, OPENAI_API_KEY: 'offline-placeholder', OPENAI_BASE_URL: 'https://api.openai.com/v1' } });
 }
 
 describe('one authored sample set across production executors', () => {
-  it('preserves input and grading across both APIs and a custom executor without conflating runtime identities', async () => {
+  it('preserves input and grading across OpenAI API and a custom executor without conflating runtime identities', async () => {
     const f = await fixture();
     const original = await readFile(f.path, 'utf8');
     const artifacts: StoredCoreRunArtifacts[] = [];
@@ -71,15 +71,15 @@ assert(artifact);readFileSync(artifact.snapshotPath+(artifact.snapshotKind==='di
 console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'completed',output:{value:answer,classification:'public'}}));
 `);
     await chmod(custom, 0o700);
-    for (const executor of ['openai-api', 'anthropic-api', 'custom-executor']) {
+    for (const executor of ['openai-api', 'custom-executor']) {
       const requests: Record<string, unknown>[] = [];
       // Only HTTP transport is simulated; the custom executor runs as a real isolated subprocess.
       const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-        expect(String(url)).toBe(executor === 'openai-api' ? 'https://api.openai.com/v1/responses' : 'https://api.anthropic.com/v1/messages');
+        expect(String(url)).toBe('https://api.openai.com/v1/responses');
         const raw = String(init?.body); expect(raw).not.toContain('GOLD_SENTINEL');
         expect(raw).not.toContain('expectedPointer');
         const body = JSON.parse(raw); requests.push(body);
-        const input = executor === 'openai-api' ? body.input : body.messages;
+        const input = body.input;
         const prompt = typeof input === 'string' ? input
           : input.length === 1 && typeof input[0].content === 'string' ? input[0].content : undefined;
         let answer: string;
@@ -96,9 +96,7 @@ console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'co
           const text = typeof first === 'string' ? first : first.at(-1).text;
           answer = text.slice('Remember '.length);
         }
-        const response = executor === 'openai-api'
-          ? { object: 'response', model: 'offline-fixture', status: 'completed', output: [{ id: 'msg-1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: answer }] }] }
-          : { type: 'message', model: 'offline-fixture', role: 'assistant', stop_reason: 'end_turn', stop_sequence: null, content: [{ type: 'text', text: answer }] };
+        const response = { object: 'response', model: 'offline-fixture', status: 'completed', output: [{ id: 'msg-1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: answer }] }] };
         return new Response(JSON.stringify(response), { headers: { 'content-type': 'application/json' } });
       });
       const result = await runCoreEvaluationCommand({ prepared: prepare(f, executor === 'custom-executor' ? custom : executor, executor) });
@@ -130,10 +128,10 @@ console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'co
       expect(current.evaluation.records.map(r => r.runtime)).toEqual(artifacts[0]!.evaluation.records.map(r => r.runtime));
       expect(current.plan.digests.executionPlanDigest).not.toBe(artifacts[0]!.plan.digests.executionPlanDigest);
     }
-    expect(new Set(artifacts.map(a => a.execution.records[0]!.runtime.implementationId)).size).toBe(3);
+    expect(new Set(artifacts.map(a => a.execution.records[0]!.runtime.implementationId)).size).toBe(artifacts.length);
   });
 
-  it.each(['openai-api', 'anthropic-api'])('rejects a valid tool history before %s transport', async (executor) => {
+  it.each(['openai-api'])('rejects a valid tool history before %s transport', async (executor) => {
     const f = await fixture();
     const input: SampleInput = { inputKind: 'messages', interactionMode: 'history', messages: [
       { messageId: 'u', role: 'user', content: 'Read the code.' },
@@ -149,7 +147,7 @@ console.log(JSON.stringify({schemaVersion:request.schemaVersion,resultStatus:'co
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.each(['codex', 'codex-sdk', 'claude', 'claude-sdk'])('compiles the same text sample and rejects JSON/history before executing %s', async (executor) => {
+  it.each(['codex', 'codex-sdk'])('compiles the same text sample and rejects JSON/history before executing %s', async (executor) => {
     const f = await fixture();
     for (const sample of f.samples) {
       await writeFile(f.path, JSON.stringify({ schemaVersion: 'omk.eval-sample-set/v3', samples: [sample] }));

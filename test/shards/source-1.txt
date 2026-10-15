@@ -94,16 +94,12 @@ test/evidence/storage/file-names.test.ts
 test/evidence/storage/home-isolation.test.ts
 test/evidence/storage/layout.test.ts
 test/executors/capabilities.test.ts
-test/executors/claude-cli-isolation.test.ts
-test/executors/claude-protocol.test.ts
-test/executors/claude-sdk-isolation.test.ts
 test/executors/codex-cli-isolation.test.ts
 test/executors/codex-protocol.test.ts
 test/executors/core/token-usage.test.ts
 test/executors/core/tool-identity.test.ts
 test/executors/create-executor-optional-dependencies.test.ts
 test/executors/dsh-protocol.test.ts
-test/executors/mock-runtime/packaging.test.ts
 test/executors/openai-api.test.ts
 test/executors/optional-dependencies.test.ts
 test/executors/registry.test.ts

@@ -15,7 +15,7 @@ import { replaceDeployedArtifact } from '../../knowledge-artifacts/sources/deplo
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
 const INSTALLABLE_KINDS: ArtifactKind[] = ['skill', 'prompt', 'agent', 'workflow'];
 
-type AgentTarget = 'codex' | 'claude';
+type AgentTarget = 'codex';
 
 interface InstallTarget {
   label: string;
@@ -28,18 +28,13 @@ interface AgentTargetSpec {
   detectDirs: (home: string) => string[];
 }
 
-const TARGET_ORDER: AgentTarget[] = ['codex', 'claude'];
+const TARGET_ORDER: AgentTarget[] = ['codex'];
 
 const TARGET_SPECS: Record<AgentTarget, AgentTargetSpec> = {
   codex: {
     label: 'Codex/AGENTS',
     skillsDir: (home) => join(home, '.agents', 'skills'),
     detectDirs: (home) => [join(home, '.agents'), join(home, '.codex')],
-  },
-  claude: {
-    label: 'Claude Code',
-    skillsDir: (home) => join(home, '.claude', 'skills'),
-    detectDirs: (home) => [join(home, '.claude')],
   },
 };
 
@@ -78,7 +73,7 @@ function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
   }
   const out: AgentTarget[] = [];
   for (const part of parts) {
-    if (part !== 'codex' && part !== 'claude') {
+    if (part !== 'codex') {
       throw new Errors.CLIError(tCli('cli.install.unknown_target', lang, { target: part }), { exit: 2 });
     }
     out.push(part);
@@ -320,8 +315,8 @@ export default class Install extends BaseCommand {
     }),
     to: Flags.string({
       description: bilingual({
-        zh: '安装目标：auto（默认，本机已检测目标） / codex / claude / all。',
-        en: 'Install target: auto (default, detected local targets) / codex / claude / all.',
+        zh: '安装目标：auto（默认，本机已检测目标） / codex / all。',
+        en: 'Install target: auto (default, detected local targets) / codex / all.',
       }),
       default: 'auto',
     }),

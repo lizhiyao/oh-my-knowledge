@@ -29,7 +29,7 @@ export interface Artifact {
   // 不是 artifact 文件的固有属性;同一 artifact 在不同 run 可以扮演不同角色
   experimentRole?: ExperimentRole;
   // Skill auto-discovery 隔离声明(per-variant)。
-  //   undefined → 默认 SDK 行为(全发现 ~/.claude/skills/)
+  //   undefined → 宿主默认行为(按工作区发现 skills)
   //   []        → 完全禁用 skill 发现 + Skill 工具 disable(main session + subagent 同堵)
   //   [...]     → 拒绝(非空白名单不再支持:子代理 Skill 工具 + cwd 文件系统通道封不住)
   // baseline-kind 默认 [],由 --strict-baseline (default true) 注入;显式 eval.yaml 优先。

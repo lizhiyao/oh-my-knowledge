@@ -38,13 +38,13 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
     assert.ok(!existsSync(join(tmpDir, 'skills', 'v2.md')), 'no flat v2.md');
   });
 
-  it('SKILL.md ships with Claude Code-compatible frontmatter so the file is deployable as-is', () => {
+  it('SKILL.md ships with standard frontmatter so the file is deployable as-is', () => {
     const v1Content = readFileSync(join(tmpDir, 'skills', 'code-review-v1', 'SKILL.md'), 'utf-8');
     const v2Content = readFileSync(join(tmpDir, 'skills', 'code-review-v2', 'SKILL.md'), 'utf-8');
 
     // Frontmatter must be present so a user can drop the file straight into
-    // ~/.claude/skills/ for Claude Code without hand-editing. Both `name` and
-    // `description` are required by the Claude Code SKILL.md spec.
+    // an agent skill directory without hand-editing. Both `name` and
+    // `description` identify the skill.
     assert.ok(v1Content.startsWith('---'), 'v1 has frontmatter delimiter');
     assert.ok(v2Content.startsWith('---'), 'v2 has frontmatter delimiter');
 
@@ -80,10 +80,6 @@ describe('omk init produces directory-skill SKILL.md layout', () => {
     assert.match(initOutput, /omk sample <skill-path>/);
 
     // Evaluation path: omk injects SKILL.md as system prompt uniformly across executors.
-    // The note must NOT claim Claude executor goes through native skill auto-discovery,
-    // because that's the runtime mechanism (~/.claude/skills/), not omk's eval path.
     assert.match(initOutput, /system prompt|system 注入/);
-    assert.doesNotMatch(initOutput, /Claude executor 走 native skill/);
-    assert.doesNotMatch(initOutput, /~\/\.claude\/skills\/code-review-v1/);
   });
 });

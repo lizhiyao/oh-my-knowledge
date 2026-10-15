@@ -259,9 +259,9 @@ describe('buildSamplesPrompt', () => {
   });
 
   it('disables mocks automatically for unsupported executors', () => {
-    assert.equal(sampleGenerationUsesMocks('claude'), true);
+    assert.equal(sampleGenerationUsesMocks('./custom-executor.mjs'), true);
     assert.equal(sampleGenerationUsesMocks('codex'), false);
-    assert.equal(sampleGenerationUsesMocks('claude', true), false);
+    assert.equal(sampleGenerationUsesMocks('./custom-executor.mjs', true), false);
   });
 });
 

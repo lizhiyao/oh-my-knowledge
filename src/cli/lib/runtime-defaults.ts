@@ -1,16 +1,9 @@
 import { Errors } from '@oclif/core';
-import { accessSync, constants, statSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
 import { getCodexModelSuggestion } from './codex-model-hint.js';
-import { executorFamily } from '../../executors/core/registry.js';
-
-// Claude 的模型 alias 只属于 CLI runtime 选择策略，不是执行器共享默认值。
-export const DEFAULT_CLAUDE_MODEL = 'sonnet';
-export const DEFAULT_CLAUDE_JUDGE_MODEL = 'haiku';
+import { executorFamily, isRemovedBuiltinExecutor } from '../../executors/core/registry.js';
 
 export interface RuntimeResolutionOptions {
   env?: NodeJS.ProcessEnv;
-  commandExists?: (command: string, env: NodeJS.ProcessEnv) => boolean;
   lang?: 'zh' | 'en';
 }
 
@@ -25,30 +18,6 @@ function nonEmpty(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-export function commandExistsOnPath(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  const pathEntries = (env.PATH ?? '').split(delimiter).filter(Boolean);
-  const extensions = process.platform === 'win32'
-    ? (env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')
-    : [''];
-  return pathEntries.some((entry) => extensions.some((extension) => {
-    try {
-      const candidate = join(entry, `${command}${extension}`);
-      accessSync(candidate, constants.X_OK);
-      return statSync(candidate).isFile();
-    } catch {
-      return false;
-    }
-  }));
-}
-
-export function isCodexHost(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean(
-    nonEmpty(env.CODEX_THREAD_ID)
-    || nonEmpty(env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE)
-    || nonEmpty(env.CODEX_CI),
-  );
-}
-
 export function isCodexExecutor(executor: string): boolean {
   return executorFamily(executor) === 'codex';
 }
@@ -58,17 +27,13 @@ export function resolveCliExecutor(
   options: RuntimeResolutionOptions = {},
 ): string {
   const env = options.env ?? process.env;
-  const explicit = nonEmpty(explicitExecutor);
-  if (explicit) return explicit;
-
-  const envExecutor = nonEmpty(env.OMK_EXECUTOR);
-  if (envExecutor) return envExecutor;
-
-  if (isCodexHost(env)) return 'codex';
-
-  const commandExists = options.commandExists ?? commandExistsOnPath;
-  if (commandExists('codex', env) && !commandExists('claude', env)) return 'codex';
-  return 'claude';
+  const executor = nonEmpty(explicitExecutor) ?? nonEmpty(env.OMK_EXECUTOR) ?? 'codex';
+  if (isRemovedBuiltinExecutor(executor)) {
+    throw new Errors.CLIError(options.lang === 'en'
+      ? `Built-in executor ${executor} has been removed. Select codex, codex-sdk, openai-api or an executable adapter path.`
+      : `内置执行器「${executor}」已移除。请选择 codex、codex-sdk、openai-api 或自定义执行器文件路径。`, { exit: 2 });
+  }
+  return executor;
 }
 
 export function resolveCliModel(
@@ -83,7 +48,6 @@ export function resolveCliModel(
   const envModel = nonEmpty(env.OMK_MODEL);
   if (envModel) return envModel;
 
-  if (executorFamily(executor) === 'claude') return DEFAULT_CLAUDE_MODEL;
   if (!isCodexExecutor(executor)) {
     throw new Errors.CLIError(options.lang === 'en'
       ? `Executor ${executor} needs an explicit model. Pass --model <model> or set OMK_MODEL.`
@@ -99,10 +63,6 @@ export function resolveCliModel(
     : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure model and profile in ${suggestion.configPath}.`, { exit: 2 });
 }
 
-export function defaultJudgeModel(executor: string, taskModel: string): string {
-  return executorFamily(executor) === 'claude' ? DEFAULT_CLAUDE_JUDGE_MODEL : taskModel;
-}
-
 export function resolveRuntimeSelection(
   input: { executor?: string; model?: string },
   options: RuntimeResolutionOptions = {},
@@ -112,7 +72,7 @@ export function resolveRuntimeSelection(
   return {
     executor,
     model,
-    judgeModel: defaultJudgeModel(executor, model),
+    judgeModel: model,
   };
 }
 

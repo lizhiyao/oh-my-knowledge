@@ -54,11 +54,11 @@ it('does not expose a partial resource to another resolver and removes staging f
       explicitCliFlags: {
         control: 'skills/control.md', treatment: 'skills/treatment.md',
         samples: 'samples.json', 'skill-dir': 'skills',
-        executor: 'claude', model: 'claude-test', 'no-judge': true,
+        executor: 'codex', model: 'test-model', 'no-judge': true,
       },
       defaults: {
         samplesLocator: 'samples.json', skillDirectoryLocator: 'skills',
-        targetRuntime: { executorId: 'claude', model: 'claude-test', effort: 'low' },
+        targetRuntime: { executorId: 'codex', model: 'test-model', effort: 'low' },
         judgeMembers: [],
         presentation: {
           projectOutputDirectoryLocator: join(root, 'reports'),

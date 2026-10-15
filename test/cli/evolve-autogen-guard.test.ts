@@ -17,9 +17,9 @@ vi.mock('../../src/eval-workflows/sample-generation/generator.js', () => ({ gene
  */
 function mkFlags(over: Partial<EvolveFlags>): EvolveFlags {
   return {
-    lang: 'zh', rounds: '5', samples: 'eval-samples.json', model: 'sonnet',
-    'judge-models': 'claude:haiku', 'improve-model': 'sonnet', concurrency: '1',
-    timeout: '120', executor: 'claude', 'skip-doctor': false,
+    lang: 'zh', rounds: '5', samples: 'eval-samples.json', model: 'test-model',
+    'judge-models': 'codex:judge-model', 'improve-model': 'test-model', concurrency: '1',
+    timeout: '120', executor: 'codex', 'skip-doctor': false,
     'improve-mode': 'agent', 'edit-budget': '0.2', 'no-edit-budget': false,
     'no-reject-memory': false, 'snapshot-only': false,
     ...over,

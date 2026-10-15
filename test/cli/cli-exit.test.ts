@@ -15,12 +15,12 @@ describe('CliExit dispatch', () => {
         lang: 'zh',
         rounds: '5',
         samples: 'eval-samples.json',
-        model: 'sonnet',
-        'judge-models': 'claude:haiku',
-        'improve-model': 'sonnet',
+        model: 'test-model',
+        'judge-models': 'codex:judge-model',
+        'improve-model': 'test-model',
         concurrency: '1',
         timeout: '120',
-        executor: 'claude',
+        executor: 'codex',
         'skip-doctor': false,
         'improve-mode': 'agent',
         'edit-budget': '0.2',
@@ -39,7 +39,7 @@ describe('CliExit dispatch', () => {
   it('parseJudgeModelsArgOrExit 收到非法 --judge-models 时 throw CliExit(2)', () => {
     let caught: unknown = null;
     try {
-      parseJudgeModelsArgOrExit('claude');  // 缺 ':',应触发 parse 错误
+      parseJudgeModelsArgOrExit('codex');  // 缺 ':',应触发 parse 错误
     } catch (e) {
       caught = e;
     }

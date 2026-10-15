@@ -1,16 +1,13 @@
 import type { ExecutorRuntimeCapabilities, ExecutorRuntimeKind } from '../contracts/runtime.js';
 
-export type ExecutorVendor = 'anthropic' | 'openai' | 'unknown';
+export type ExecutorVendor = 'openai' | 'unknown';
 
 export type ExecutorFamily =
-  | 'claude'
   | 'codex'
   | 'dsh'
-  | 'anthropic-api'
   | 'openai-api';
 
 export type SampleMockSupport =
-  | 'native-hooks'
   | 'delegated-script'
   | 'unsupported';
 
@@ -19,8 +16,7 @@ export interface ExecutorCapabilities {
 }
 
 export type ExecutorFingerprintSpec =
-  | { readonly strategy: 'path-cli'; readonly command: 'claude' | 'codex' }
-  | { readonly strategy: 'claude-sdk' }
+  | { readonly strategy: 'path-cli'; readonly command: 'codex' }
   | { readonly strategy: 'codex-sdk' }
   | { readonly strategy: 'api' }
   | { readonly strategy: 'dsh-host' };
@@ -37,36 +33,6 @@ interface ExecutorDescriptorShape {
 }
 
 const EXECUTOR_DESCRIPTORS = [
-  {
-    name: 'claude',
-    execution: 'builtin',
-    family: 'claude',
-    vendor: 'anthropic',
-    sampleMocks: 'native-hooks',
-    runtimeKind: 'agent-cli',
-    runtimeCapabilities: {
-      systemPrompt: 'native',
-      costUSD: 'reported',
-      trace: 'native',
-      skillIsolation: 'full-no-partial',
-    },
-    fingerprint: { strategy: 'path-cli', command: 'claude' },
-  },
-  {
-    name: 'claude-sdk',
-    execution: 'builtin',
-    family: 'claude',
-    vendor: 'anthropic',
-    sampleMocks: 'native-hooks',
-    runtimeKind: 'agent-sdk',
-    runtimeCapabilities: {
-      systemPrompt: 'native',
-      costUSD: 'reported',
-      trace: 'native',
-      skillIsolation: 'full',
-    },
-    fingerprint: { strategy: 'claude-sdk' },
-  },
   {
     name: 'codex',
     execution: 'builtin',
@@ -111,21 +77,6 @@ const EXECUTOR_DESCRIPTORS = [
       skillIsolation: 'full-no-partial',
     },
     fingerprint: { strategy: 'dsh-host' },
-  },
-  {
-    name: 'anthropic-api',
-    execution: 'builtin',
-    family: 'anthropic-api',
-    vendor: 'anthropic',
-    sampleMocks: 'unsupported',
-    runtimeKind: 'api',
-    runtimeCapabilities: {
-      systemPrompt: 'native',
-      costUSD: 'not-reported',
-      trace: 'none',
-      skillIsolation: 'none',
-    },
-    fingerprint: { strategy: 'api' },
   },
   {
     name: 'openai-api',
@@ -177,4 +128,8 @@ export function executorNamesForFamily(family: ExecutorFamily): ReadonlySet<stri
       .filter((descriptor) => descriptor.family === family)
       .map((descriptor) => descriptor.name),
   );
+}
+
+export function isRemovedBuiltinExecutor(name: string): boolean {
+  return ['gemini', 'claude', 'claude-sdk', 'anthropic-api'].includes(name);
 }

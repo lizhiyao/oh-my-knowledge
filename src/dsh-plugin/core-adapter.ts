@@ -19,15 +19,15 @@ import {
 } from '../eval-core/execution/index.js';
 import { createDshHostRuntimeFingerprint } from '../executors/core/runtime-fingerprint.js';
 import {
-  captureClaudeCliRunState,
-  captureClaudeCliTarget,
-  disposeClaudeCliTrial,
-  openClaudeCliTrial,
-  type CapturedClaudeCliTarget,
-  type ClaudeCliRunState,
-  type ClaudeCliTrialState,
-  type ClaudeResourceProjectionProfile,
-} from '../eval-workflows/hosts/adapters/claude/resources.js';
+  captureDshRunState,
+  captureDshTarget,
+  disposeDshTrial,
+  openDshTrial,
+  type CapturedDshTarget,
+  type DshRunState,
+  type DshTrialState,
+  type DshResourceProjectionProfile,
+} from './resources.js';
 import { createSameProcessExecutorAdapter } from '../eval-runtime/adapters/same-process.js';
 import type { OmkBindingResourceLeaseAccess } from '../eval-workflows/hosts/resource-leases/types.js';
 import type { RuntimeBindingOf } from '../eval-workflows/hosts/types.js';
@@ -60,9 +60,8 @@ export const DEFAULT_DSH_HOST_CORE_MAX_EVENT_BYTES = 10 * 1024 * 1024;
 const RESOURCE_PROFILE = Object.freeze({
   adapterLabel: 'DSH Host',
   errorPrefix: 'OMK_DSH_HOST',
-  mcpMockMode: 'hook-existing-tool',
   promptSchemaVersion: 'omk.dsh-host-prompt/v1',
-}) satisfies ClaudeResourceProjectionProfile;
+}) satisfies DshResourceProjectionProfile;
 
 export interface DshHostCoreConfiguration {
   /** Interactive host session whose effective provider and preset are inherited. */
@@ -219,7 +218,7 @@ function toolSchemas(
 
 function effectiveToolSchemas(
   schemas: readonly CapturedToolSchema[],
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
 ): readonly CapturedToolSchema[] {
   const disableSkills = target.config.behavior.allowedSkills !== undefined;
   const available = new Set(schemas.map(({ name }) => name));
@@ -248,7 +247,7 @@ function effectiveToolSchemas(
 
 function captureHost(
   input: Readonly<CreateDshHostCoreExecutorAdapterInput>,
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
 ): CapturedHost {
   if (typeof input.host?.agents?.create !== 'function'
       || typeof input.host.on !== 'function'
@@ -339,7 +338,7 @@ function captureHost(
 }
 
 function hostRuntimeEvidence(
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
   host: CapturedHost,
 ) {
   return createDshHostRuntimeFingerprint(target.binding.qualification.model, {
@@ -350,7 +349,7 @@ function hostRuntimeEvidence(
 }
 
 function resolveIdentity(
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
   host: CapturedHost,
 ): RuntimeIdentity {
   const capabilities = dshHostCoreExecutorCapabilities();
@@ -445,7 +444,7 @@ function resolveIdentity(
   }));
 }
 
-function currentToolPolicy(host: CapturedHost, target: CapturedClaudeCliTarget): {
+function currentToolPolicy(host: CapturedHost, target: CapturedDshTarget): {
   readonly effective: readonly CapturedToolSchema[];
   readonly denied: readonly string[];
 } {
@@ -480,7 +479,7 @@ function currentToolPolicy(host: CapturedHost, target: CapturedClaudeCliTarget):
 
 function assertHostCompositionUnchanged(
   host: CapturedHost,
-  target: CapturedClaudeCliTarget,
+  target: CapturedDshTarget,
   signal: AbortSignal,
 ): readonly string[] {
   if (signal.aborted) {
@@ -603,9 +602,9 @@ function executionFailure(error: unknown, signal: AbortSignal): ExecutionPortFai
 
 async function executeDshHost(
   host: CapturedHost,
-  target: CapturedClaudeCliTarget,
-  runState: ClaudeCliRunState,
-  trialState: ClaudeCliTrialState,
+  target: CapturedDshTarget,
+  runState: DshRunState,
+  trialState: DshTrialState,
   attempt: Readonly<ExecutorAttemptContext>,
   operationIsolationKey: string,
 ): Promise<ExecutorAttemptResult> {
@@ -927,7 +926,7 @@ export async function createDshHostCoreExecutorAdapter(
     throw new TypeError('DSH Host Core adapter requires a non-empty sessionIsolationKey.');
   }
   validateDshTargetSubset(input.target);
-  const target = captureClaudeCliTarget(input.target, input.binding, RESOURCE_PROFILE);
+  const target = captureDshTarget(input.target, input.binding, RESOURCE_PROFILE);
   const host = captureHost(input, target);
   const identity = resolveIdentity(target, host);
   const resourceLeases = Object.freeze({
@@ -939,7 +938,7 @@ export async function createDshHostCoreExecutorAdapter(
     resourceLeases,
     implementation: {
       openRun({ resources }) {
-        return captureClaudeCliRunState(resources, target, host.maxInputBytes, RESOURCE_PROFILE);
+        return captureDshRunState(resources, target, host.maxInputBytes, RESOURCE_PROFILE);
       },
       async openTrial({ runState, trial }) {
         assertTrialMatchesSealedBinding({
@@ -955,7 +954,7 @@ export async function createDshHostCoreExecutorAdapter(
         });
         return withTrialSlot({
           runState,
-          open: () => openClaudeCliTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE),
+          open: () => openDshTrial(trial, runState, host.maxInputBytes, RESOURCE_PROFILE),
         });
       },
       execute({ runState, trialState, attempt, scope }) {
@@ -969,7 +968,7 @@ export async function createDshHostCoreExecutorAdapter(
         );
       },
       disposeTrial({ runState, trialState }) {
-        return disposeClaudeCliTrial(runState, trialState, RESOURCE_PROFILE);
+        return disposeDshTrial(runState, trialState, RESOURCE_PROFILE);
       },
       disposeRun({ runState }) {
         return runState.requestDispose();

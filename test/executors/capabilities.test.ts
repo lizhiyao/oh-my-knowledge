@@ -25,8 +25,6 @@ const okExecutor: ExecutorFn = async () => ({
 
 describe('executor sample-mock capabilities', () => {
   it('declares built-in support explicitly and delegates custom scripts', () => {
-    assert.equal(getExecutorCapabilities('claude').sampleMocks, 'native-hooks');
-    assert.equal(getExecutorCapabilities('claude-sdk').sampleMocks, 'native-hooks');
     assert.equal(getExecutorCapabilities('codex').sampleMocks, 'unsupported');
     assert.equal(getExecutorCapabilities('codex-sdk').sampleMocks, 'unsupported');
     assert.equal(getExecutorCapabilities('dsh-host').sampleMocks, 'unsupported');
@@ -43,7 +41,7 @@ describe('executor sample-mock capabilities', () => {
       prompt: 'read a file',
       mocks: [{ tool: 'Read', return: 'fixture' }],
     };
-    for (const executor of ['codex', 'codex-sdk', 'dsh-host', 'openai-api', 'anthropic-api']) {
+    for (const executor of ['codex', 'codex-sdk', 'dsh-host', 'openai-api']) {
       assert.throws(
         () => assertExecutorInputCapabilities(executor, input),
         /不支持 Sample\.mocks.*伪证据.*<programmatic-input>/,
@@ -51,7 +49,7 @@ describe('executor sample-mock capabilities', () => {
       assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, { ...input, mocks: [] }));
       assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, { model: 'test', prompt: 'test' }));
     }
-    for (const executor of ['claude', 'claude-sdk', './custom-executor.sh']) {
+    for (const executor of ['./custom-executor.sh']) {
       assert.doesNotThrow(() => assertExecutorInputCapabilities(executor, input));
     }
   });
@@ -70,7 +68,7 @@ describe('executor sample-mock capabilities', () => {
 
   it('lets a supported executor receive mocks unchanged', async () => {
     let receivedMocks = 0;
-    const wrapped = enforceExecutorCapabilities('claude', async (input) => {
+    const wrapped = enforceExecutorCapabilities('./custom-executor.sh', async (input) => {
       receivedMocks = input.mocks?.length ?? 0;
       return okExecutor(input);
     });
@@ -81,7 +79,6 @@ describe('executor sample-mock capabilities', () => {
       mocks: [{ tool: 'Read', return: 'fixture' }],
     });
     assert.equal(receivedMocks, 1);
-    assert.equal(executorSupportsSampleMocks('claude'), true);
     assert.equal(executorSupportsSampleMocks('codex'), false);
   });
 });

@@ -12,16 +12,21 @@ An **executor** runs a sample against the system under test, using the selected 
 
 | Executor | When to use | Description |
 |---|---|---|
-| `claude` | skill evals in Claude Code environments | invokes `claude -p` via Claude CLI |
-| `claude-sdk` | agent eval (tool / turn traces), structured output | uses Claude Agent SDK — extracts turns / toolCalls traces, no stdout parsing, avoids buffer truncation |
 | `codex` | Codex / ChatGPT desktop coding tasks (CLI) | invokes `codex exec --json` (`@openai/codex` npm); best-effort tool trace; **costUSD not reported** (codex CLI does not emit USD; check usage externally) |
 | `codex-sdk` | Codex agent eval (SDK) | uses `@openai/codex-sdk` with its bundled `@openai/codex` binary and streamed SDK events; **costUSD not reported** |
-| `anthropic-api` | CI / no CLI installed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |
-| `openai-api` | CI / no CLI; or route a non-Claude model | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
+| `openai-api` | CI / no CLI; or route an OpenAI-compatible model | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
 
-API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
+`openai-api` supports a custom base URL through `OPENAI_BASE_URL`.
 
 The former built-in `gemini` executor has been removed because it did not expose the trace, isolation, mock, or cost evidence required for a trustworthy built-in integration. Existing `executor: gemini` configurations now fail explicitly instead of silently falling back to the custom-executor protocol. To keep using Gemini CLI, wrap it in a [custom executor](#custom-executor) that translates OMK's JSON stdin/stdout contract.
+
+## Anthropic removal: BREAKING-RUNTIME / BREAKING-STORAGE / BREAKING-PROMPT
+
+The built-in `claude`, `claude-sdk`, and `anthropic-api` executors and the optional Claude Agent SDK dependency are removed. Explicit old executor IDs fail; no provider or model is substituted. The default executor is now `codex` in every host. Update `executor`, judge entries, `OMK_EXECUTOR`, and model choices before starting a new comparison. Historical trace parsing remains read-only and available; existing execution evidence is not rewritten or treated as Codex evidence.
+
+`omk install` targets Codex/AGENTS or an explicit `--dest`; it no longer installs into Claude Code. `CCV_PROXY_URL` and the Claude hook variable `OMK_MOCK_SETTINGS_FILE` are removed. Custom model-call scripts must consume their manifest or optional fake MCP config themselves. The sample-generation prompt is now `omk.sample-generation/v2`; existing authored sample files are not regenerated.
+
+User settings advance to `schemaVersion: 2`; Studio carrier measurements use `omk-carrier-measurement-v2`. Only current versions are read. Back up v1 files before migrating settings: retain the directory and language, select `codex` or `openai-api`, choose that executor's model explicitly, then set `schemaVersion` to 2. Old carrier measurement metadata remains on disk but is not loaded; keep the canonical run reports and create a new measurement preview. See [settings](../shared/settings.md). Changing executor or generated samples changes measurement conditions; establish a fresh baseline.
 
 ## Sample mock compatibility
 
@@ -29,10 +34,9 @@ The former built-in `gemini` executor has been removed because it did not expose
 
 | Executor | `Sample.mocks` support |
 |---|---|
-| `claude` / `claude-sdk` | supported through native hooks |
 | `codex` / `codex-sdk` | unsupported; the current CLI and SDK expose traces but no tool-interception hook |
-| `anthropic-api` / `openai-api` | unsupported |
-| custom executor | delegated through `OMK_MOCKS_FILE` / `OMK_MOCK_SETTINGS_FILE`; the command must install or consume the supplied hook |
+| `openai-api` | unsupported |
+| custom executor | legacy model-call scripts receive `OMK_MOCKS_FILE` / optional `OMK_MOCK_MCP_CONFIG_FILE`; scripts own interception and stats. Core target adapters consume sealed resource descriptors |
 
 When the selected executor does not support interception, `omk sample` automatically generates mockless samples and removes positive evidence that would require a simulated call (`mock_hit`, `tools_called`, `tools_count_min`, `tool_input_contains`, and `tool_output_contains`). If a model still emits `environment`, its facts are moved into explicitly non-materialized `context` rather than discarded or presented as fixtures. `omk eval`, including `--dry-run` and `--skip-doctor`, rejects existing samples with mocks before any model call instead of silently turning harness incompatibility into a model failure.
 
@@ -40,13 +44,10 @@ When the selected executor does not support interception, `omk sample` automatic
 
 ## How the default runtime is selected
 
-Precedence is: explicit CLI flag → `eval.yaml` → `OMK_*` environment preference → automatic detection.
+Precedence is: explicit CLI flag → `eval.yaml` → `OMK_*` environment preference → `codex`.
 
-- Inside a Codex task in the ChatGPT desktop app, omk selects `codex`.
-- In a regular terminal where only the Codex CLI is available, omk selects `codex`.
-- When both Claude and Codex are installed outside a Codex task, omk keeps the legacy `claude` default to avoid silently switching the measurement runtime after an upgrade.
 - When Codex is selected without `--model`, omk resolves the model from `$CODEX_HOME/config.toml` or `~/.codex/config.toml`: the `model` of the profile named by top-level `profile` (falling back to the top-level `model` when that profile omits it), otherwise the top-level `model`.
-- The default judge follows the selected executor: Claude uses `claude:haiku`; Codex uses the same model as the evaluated task and never falls back to Claude.
+- The default judge uses the selected executor and evaluated model. Explicit `judgeModels` / `OMK_JUDGE_MODELS` remain authoritative.
 - The same resolver covers `eval`, `doctor`, `sample`, `evolve`, and `observe inbox --llm-enhanced-review`.
 
 To pin Codex in regular terminals, add this to your shell profile (for example `~/.zshrc`):
@@ -59,9 +60,11 @@ export OMK_EXECUTOR=codex
 
 Without the optional variables, the model comes from Codex config and the judge reuses the task model.
 
-**Choosing:** use `codex` directly in Codex environments; it has the strongest measurement isolation. Use `codex-sdk` only when you specifically need SDK event streams. Use `claude` in Claude Code environments, or `claude-sdk` for tool-call / turn assertions and structured output. On CI with no CLI, use an `*-api` executor. For any other vendor, point `openai-api` at its base URL or write a custom executor. Routing a non-Claude model is covered in [use non-Claude models](../../guides/integration/non-claude-models.md).
+**Choosing:** use `codex` directly in Codex environments; it has the strongest measurement isolation. Use `codex-sdk` only when you specifically need SDK event streams. On CI with no CLI, use `openai-api`. For any other vendor, point `openai-api` at its base URL or write a custom executor. Compatible endpoint setup is covered in [OpenAI-compatible models](../../guides/integration/non-claude-models.md).
 
 **Codex construct-validity notes:**
+
+Core Codex adapters currently declare only `runtime-default` skill discovery. A strict `baseline` requests disabled discovery and is rejected before execution; it is not silently weakened to an empty injected prompt. Use two explicit artifact versions for a Codex comparison, or select `openai-api` for the bare-model baseline. User, admin and bundled skills can exist outside `cwd`; an empty working directory alone does not establish complete skill isolation. See [official skill discovery and per-skill controls](https://learn.chatgpt.com/docs/build-skills).
 
 - **Runtime fingerprinting**: `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Core artifacts seal executor and evaluator Runtime identities, including the local binary or SDK evidence available to the host. A remote judge deployment remains `opaque/unknown` unless `eval.yaml` explicitly supplies `judgeModels[].deploymentRevision`; a supplied revision is only `self-reported/declared`. If Runtime identities differ, read the result as a runtime comparison, not just prompt/template behavior. See [Statistical rigor](../../explanation/statistical-rigor.md#_3-judge-debiasing-and-prompt-identity).
 - **Config and session isolation**: before launch, omk resolves only the model from the local Codex config (the profile model when top-level `profile` selects one) and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.
@@ -179,18 +182,15 @@ Codex `Reconnecting...` events are transport notices. A call succeeds only after
 
 ## Prerequisites
 
-The base OMK install omits the optional Agent SDK packages and their large platform binaries. The default `claude` / `codex` CLI executors, API executors, custom executors, and the DSH host plugin do not need them. Install an SDK in the same scope as OMK only when you explicitly select its `*-sdk` executor.
+The base OMK install omits the optional Agent SDK packages and their large platform binaries. The `codex` CLI executor, API executors, custom executors, and the DSH host plugin do not need them. Install an SDK in the same scope as OMK only when you explicitly select its `*-sdk` executor.
 
-- **claude**: install [Claude Code](https://claude.ai/code) and authenticate
-- **claude-sdk**: install the optional Agent SDK locally with `npm i @anthropic-ai/claude-agent-sdk@^0.3.143`, or globally beside a global OMK install with `npm i -g @anthropic-ai/claude-agent-sdk@^0.3.143`; then authenticate Claude
 - **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
 - **codex-sdk**: install the compatible optional SDK locally with `npm i @openai/codex-sdk@^0.149.0`, or globally beside a global OMK install with `npm i -g @openai/codex-sdk@^0.149.0` (it bundles the `@openai/codex` binary)
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
-- **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
 - **openai-api**: set the `OPENAI_API_KEY` env var
 
 ## Related
 
 - [Artifact & variant layout](../evaluation/artifact-layout.md) — how `variant` resolves to an artifact + runtime context
 - [Evaluate an agent](../../guides/evaluation/agent-eval.md) — source-neutral agent evaluation and intentional project context
-- [Use non-Claude models](../../guides/integration/non-claude-models.md) — GLM / Qwen / DeepSeek / Moonshot / Ollama
+- [OpenAI-compatible models](../../guides/integration/non-claude-models.md) — GLM / Qwen / DeepSeek / Moonshot / Ollama
