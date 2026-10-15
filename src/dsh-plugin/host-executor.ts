@@ -168,14 +168,16 @@ function createPromptMessage(prompt: string): UnknownRecord {
 
 async function settleWithin(promise: Promise<void>, timeoutMs: number): Promise<boolean> {
   let timer: NodeJS.Timeout | undefined;
-  const settled = await Promise.race([
-    promise.then(() => true),
-    new Promise<false>((resolve) => {
-      timer = setTimeout(() => resolve(false), timeoutMs);
-    }),
-  ]);
-  if (timer !== undefined) clearTimeout(timer);
-  return settled;
+  try {
+    return await Promise.race([
+      promise.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 async function waitForIdle(
@@ -191,19 +193,25 @@ async function waitForIdle(
   }
   let timer: NodeJS.Timeout | undefined;
   let removeAbortListener: (() => void) | undefined;
-  const outcome = await Promise.race([
-    agent.whenIdle().then(() => 'idle' as const),
-    new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), timeoutMs);
-    }),
-    ...(signal === undefined ? [] : [new Promise<'aborted'>((resolve) => {
-      const onAbort = (): void => resolve('aborted');
-      signal.addEventListener('abort', onAbort, { once: true });
-      removeAbortListener = () => signal.removeEventListener('abort', onAbort);
-    })]),
-  ]);
-  if (timer !== undefined) clearTimeout(timer);
-  removeAbortListener?.();
+  let outcome: 'idle' | 'timeout' | 'aborted';
+  try {
+    outcome = await Promise.race([
+      agent.whenIdle().then(() => 'idle' as const),
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      }),
+      ...(signal === undefined ? [] : [new Promise<'aborted'>((resolve) => {
+        const onAbort = (): void => resolve('aborted');
+        signal.addEventListener('abort', onAbort, { once: true });
+        removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+        if (signal.aborted) onAbort();
+      })]),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    removeAbortListener?.();
+  }
+  if (signal?.aborted) outcome = 'aborted';
   if (outcome === 'idle') return { outcome, cleanupTimedOut: false };
   agent.cancel({
     kind: 'hook',
@@ -252,24 +260,30 @@ export function createDshHostExecutor(
     const rootSessionId = `omk-${randomUUID()}`;
     const descendants = new Set<string>();
     const orderedEvents: DshHostRunResult['events'] = [];
-    const disposeCreated = ctx.on('session/created', (session) => {
-      const parent = session.header.parentSession;
-      if (parent !== rootSessionId && (parent === undefined || !descendants.has(parent))) return;
-      descendants.add(String(session.id));
-    });
-    const disposeEvents = ctx.on('session/event', (session, event) => {
-      const sessionId = String(session.id);
-      if (sessionId === rootSessionId) {
-        orderedEvents.push({ sessionId, event, traceRole: 'main' });
-        return;
-      }
-      if (descendants.has(sessionId)) {
-        orderedEvents.push({ sessionId, event, traceRole: 'subagent' });
-      }
-    });
-
+    let disposeCreated: (() => void) | undefined;
+    let disposeEvents: (() => void) | undefined;
+    const signal = input.abortSignal && options.signal
+      ? AbortSignal.any([input.abortSignal, options.signal])
+      : input.abortSignal ?? options.signal;
     try {
       assertSupportedIsolation(input);
+      signal?.throwIfAborted();
+      disposeCreated = ctx.on('session/created', (session) => {
+        const parent = session.header.parentSession;
+        if (parent !== rootSessionId && (parent === undefined || !descendants.has(parent))) return;
+        descendants.add(String(session.id));
+      });
+      disposeEvents = ctx.on('session/event', (session, event) => {
+        const sessionId = String(session.id);
+        if (sessionId === rootSessionId) {
+          orderedEvents.push({ sessionId, event, traceRole: 'main' });
+          return;
+        }
+        if (descendants.has(sessionId)) {
+          orderedEvents.push({ sessionId, event, traceRole: 'subagent' });
+        }
+      });
+
       const cwd = input.cwd ?? process.cwd();
       handle = await ctx.agents.create({
         sessionId: rootSessionId,
@@ -278,6 +292,7 @@ export function createDshHostExecutor(
           ...(options.parentAgent ? { parentSession: String(options.parentAgent.id) } : {}),
           ...(activeAgentPreset ? { agentPreset: activeAgentPreset } : {}),
         },
+        ...(signal ? { signal } : {}),
         agentOptions: {
           ...(provider ? { provider } : {}),
           model: input.model,
@@ -303,13 +318,14 @@ export function createDshHostExecutor(
         },
       });
 
+      signal?.throwIfAborted();
       handle.agent.followup(createPromptMessage(input.prompt));
       const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const cleanupTimeoutMs = options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
       const { outcome, cleanupTimedOut } = await waitForIdle(
         handle.agent,
         timeoutMs,
-        input.abortSignal ?? options.signal,
+        signal,
         cleanupTimeoutMs,
       );
       const wallClockDurationMs = Date.now() - startedAt;
@@ -330,12 +346,19 @@ export function createDshHostExecutor(
           : `dsh-host execution aborted by its DSH command${cleanupTimedOut ? `; cancellation did not settle within ${cleanupTimeoutMs}ms` : ''}`,
       };
     } catch (error) {
-      return failureResult(startedAt, error);
+      const failure = failureResult(startedAt, error);
+      return signal?.aborted ? {
+        ...failure, stopReason: 'aborted', error: 'dsh-host execution aborted by its DSH command',
+      } : failure;
     } finally {
-      disposeEvents();
-      disposeCreated();
+      for (const dispose of [disposeEvents, disposeCreated]) {
+        try { dispose?.(); } catch (error) {
+          process.stderr.write(`[dsh-host] 评测事件订阅关闭失败：${errorMessage(error)}\n`);
+        }
+      }
       if (handle !== undefined) {
-        const disposal = handle.dispose().catch((error: unknown) => {
+        const currentHandle = handle;
+        const disposal = Promise.resolve().then(() => currentHandle.dispose()).catch((error: unknown) => {
           process.stderr.write(`[dsh-host] 评测 session 关闭失败：${errorMessage(error)}\n`);
         });
         const disposed = await settleWithin(
