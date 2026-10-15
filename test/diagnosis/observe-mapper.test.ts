@@ -54,9 +54,10 @@ describe('buildObserveDiagnostics', () => {
           bucket: 'workflow_mismatch',
           patternKey: 'workflow-mismatch:demo',
           signalTypes: ['user_correction'],
-          count: 3,
+          count: 10,
           sessionCount: 2,
           recentSessionIds: ['s1', 's2'],
+          evidenceRefs: Array.from({ length: 10 }, (_, index) => ({ id: `pattern-${index}`, kind: 'message', sessionId: `s${index % 2 + 1}`, messageIndex: index })),
         },
       ],
       reviewerFindings: [
@@ -124,12 +125,13 @@ describe('buildObserveDiagnostics', () => {
     assert.ok(confirmed);
     assert.equal(confirmed.lifecycle, 'resolved');
 
-    // problemPattern 投影后 occurrenceCount 应该用 pattern.count(3),不是默认 1。
+    // problemPattern 的 occurrenceCount 使用完整计数，不受预览截断影响。
     // 这是给 Studio 排序和 affectedCount 的关键:3 个 session 反复出现的 pattern 不能跟
     // 单点 advisory 一样按 1 算。
     const pattern = diagnoses.find((item) => item.signal === 'user_correction');
     assert.ok(pattern);
-    assert.equal(pattern.occurrenceCount, 3, 'problem pattern occurrenceCount 应该等于 pattern.count');
+    assert.equal(pattern.occurrenceCount, 10, 'problem pattern occurrenceCount 应该等于 pattern.count');
+    assert.equal(pattern.occurrences[0].evidenceRefs.length, 5);
   });
 
   it('builds studio projection without changing UI renderers', () => {

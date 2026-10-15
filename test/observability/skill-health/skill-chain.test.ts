@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { __resetSkillIndexCacheForTests, buildObservationSkillChain, findSkillMdPath } from '../../../src/observability/skill-health/skill-chain.js';
 import type { ObservationExperienceReport } from '../../../src/observability/experience.js';
+import { loadExpectedToolsForSkill, loadFrontmatterSkillType, loadSkillDeclarationCheck } from '../../../src/observability/skill-health/experience-frontmatter.js';
 
 describe('observation skill chain runtime checks', () => {
   it('checks observable hardRules and workflow nodes without LLM', () => {
@@ -13,6 +14,8 @@ describe('observation skill chain runtime checks', () => {
       const skillDir = join(dir, 'skills', 'audit');
       mkdirSync(skillDir, { recursive: true });
       writeFileSync(join(skillDir, 'SKILL.md'), `---
+skillType: executor
+expected_tools: [Read]
 hardRules:
   - id: read-domain
     rule: 必须读取领域知识文件
@@ -56,6 +59,13 @@ workflows:
       assert.equal(chain.runtime.evidencePack?.schemaVersion, 1);
       assert.equal(chain.runtime.evidencePack?.nodeEvidence.find((node) => node.nodeId === 'main.sync')?.deterministicStatus, 'passed');
       assert.ok((chain.runtime.evidencePack?.runtimeEvidence.toolCalls.length ?? 0) > 0);
+      const previous = process.cwd();
+      try {
+        process.chdir(dir);
+        assert.equal(loadFrontmatterSkillType('audit'), 'executor');
+        assert.equal(loadSkillDeclarationCheck('audit').hardRules.count, 2);
+        assert.deepEqual(loadExpectedToolsForSkill('audit'), ['Read']);
+      } finally { process.chdir(previous); }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -325,6 +335,13 @@ describe('findSkillMdPath reverse walk', () => {
       __resetSkillIndexCacheForTests();
       const found = findSkillMdPath('bar', dir);
       assert.equal(found, join(dir, '.claude', 'skills', 'bar', 'SKILL.md'));
+      const late = join(dir, '.claude', 'skills', 'late-skill');
+      mkdirSync(late);
+      assert.equal(findSkillMdPath('late-skill', dir), undefined);
+      writeFileSync(join(late, 'SKILL.md'), '# late');
+      assert.equal(findSkillMdPath('late-skill', dir), join(late, 'SKILL.md'));
+      rmSync(join(late, 'SKILL.md'));
+      assert.equal(findSkillMdPath('late-skill', dir), undefined);
     } finally {
       __resetSkillIndexCacheForTests();
       rmSync(dir, { recursive: true, force: true });

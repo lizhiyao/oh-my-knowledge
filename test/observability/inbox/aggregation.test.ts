@@ -2,11 +2,12 @@ import { testDirectory } from '../../helpers/temp-directory.js';
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import {
   aggregateInboxItems,
   buildObservationInboxReport,
+  findObservationInboxItem,
   loadLatestObservationInboxReports,
   loadObservationInboxReports,
   normalizeObservationKeyInput,
@@ -207,7 +208,7 @@ describe('observe inbox - aggregation', () => {
         itemCount: 1,
         skillInvocationCounts: { old_skill: 1 },
       },
-      items: [baseItem({ id: 'old', skillName: 'old_skill', lastSeen: '2026-05-01T00:00:00.000Z' })],
+      items: [baseItem({ id: 'shared', skillName: 'old_skill', lastSeen: '2026-05-01T00:00:00.000Z' })],
     };
     const latestReport = {
       kind: 'observe-inbox' as const,
@@ -230,14 +231,17 @@ describe('observe inbox - aggregation', () => {
         itemCount: 1,
         skillInvocationCounts: { latest_skill: 1 },
       },
-      items: [baseItem({ id: 'latest', skillName: 'latest_skill', lastSeen: '2026-05-02T00:00:00.000Z' })],
+      items: [baseItem({ id: 'shared', skillName: 'latest_skill', lastSeen: '2026-05-02T00:00:00.000Z' })],
     };
 
-    saveObservationInboxReport(oldReport, dir);
-    saveObservationInboxReport(latestReport, dir);
+    const oldPath = saveObservationInboxReport(oldReport, dir);
+    const latestPath = saveObservationInboxReport(latestReport, dir);
+    renameSync(oldPath, join(dirname(oldPath), 'zzzz.report.json'));
+    renameSync(latestPath, join(dirname(latestPath), 'aaaa.report.json'));
 
     assert.equal(loadLatestObservationInboxReports(dir)[0].meta.tracePath, '/tmp/latest');
     assert.deepEqual(queryObservationInbox(dir).map((item) => item.skillName), ['latest_skill']);
+    assert.equal(findObservationInboxItem('shared', dir)?.skillName, 'latest_skill');
   });
 
   it('rejects malformed inbox shells while inferring legacy sourceKind', () => {

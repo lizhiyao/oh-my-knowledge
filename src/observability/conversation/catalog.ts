@@ -42,6 +42,7 @@ import {
 } from './polling-subscription-hub.js';
 
 const BACKGROUND_INDEX_THRESHOLD_BYTES = 32 * 1024 * 1024;
+const DEFAULT_INDEX_PROCESS_TIMEOUT_MS = 120_000;
 const MAX_SOURCE_RECORD_ARCHIVE_BYTES = 16 * 1024 * 1024;
 const DEFAULT_LIVE_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 
@@ -91,6 +92,7 @@ export interface CodexConversationCatalogOptions {
   /** Tests can keep synthetic fixtures in-process. */
   useBackgroundProcess?: boolean;
   backgroundProcessThresholdBytes?: number;
+  indexProcessTimeoutMs?: number;
   livePollIntervalMs?: number;
   /** An unclosed final task is only live while its rollout is still recent. */
   liveActivityWindowMs?: number;
@@ -125,6 +127,7 @@ class CodexConversationCatalog implements ConversationCatalog {
   private readonly cacheDir: string;
   private readonly useBackgroundProcess: boolean;
   private readonly backgroundProcessThresholdBytes: number;
+  private readonly indexProcessTimeoutMs: number;
   private readonly liveActivityWindowMs: number;
   private readonly now: () => number;
   private readonly indexPromises = new Map<string, Promise<CodexRolloutIndex>>();
@@ -137,6 +140,10 @@ class CodexConversationCatalog implements ConversationCatalog {
     this.useBackgroundProcess = options.useBackgroundProcess ?? true;
     this.backgroundProcessThresholdBytes = options.backgroundProcessThresholdBytes
       ?? BACKGROUND_INDEX_THRESHOLD_BYTES;
+    this.indexProcessTimeoutMs = options.indexProcessTimeoutMs ?? DEFAULT_INDEX_PROCESS_TIMEOUT_MS;
+    if (!Number.isSafeInteger(this.indexProcessTimeoutMs) || this.indexProcessTimeoutMs <= 0 || this.indexProcessTimeoutMs > 2_147_483_647) {
+      throw new RangeError('indexProcessTimeoutMs must be an integer between 1 and 2147483647.');
+    }
     this.liveActivityWindowMs = options.liveActivityWindowMs ?? DEFAULT_LIVE_ACTIVITY_WINDOW_MS;
     this.now = options.now ?? Date.now;
     this.liveTrajectories = new PollingSubscriptionHub(options.livePollIntervalMs);
@@ -478,20 +485,30 @@ class CodexConversationCatalog implements ConversationCatalog {
       const child = spawn(process.execPath, [processPath, row.rolloutPath, row.id, cachePath], {
         stdio: ['ignore', 'ignore', 'pipe'],
       });
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        let cause: unknown;
+        try { child.kill('SIGKILL'); } catch (error) { cause = error; }
+        child.stderr.destroy();
+        reject(new Error(`Codex 对话索引进程超时（${this.indexProcessTimeoutMs}ms）：${row.rolloutPath}`, { cause }));
+      }, this.indexProcessTimeoutMs);
       child.stderr.setEncoding('utf8');
       child.stderr.on('data', (chunk: string) => {
-        if (stderr.length < 16_384) stderr += chunk;
+        stderr = (stderr + chunk).slice(0, 16_384);
       });
       child.once('error', (cause) => {
         if (settled) return;
         settled = true;
-        reject(cause);
+        clearTimeout(timer);
+        reject(new Error(`Codex 对话索引进程无法启动：${row.rolloutPath}`, { cause }));
       });
-      child.once('exit', (code) => {
+      child.once('close', (code, signal) => {
+        clearTimeout(timer);
         if (settled) return;
         settled = true;
         if (code !== 0) {
-          reject(new Error(stderr.trim() || `Codex 对话索引进程异常退出：${code ?? 'unknown'}`));
+          reject(new Error(`Codex 对话索引进程异常退出（${code ?? signal ?? 'unknown'}）：${row.rolloutPath}${stderr.trim() ? `\n${stderr.trim()}` : ''}`));
           return;
         }
         const cachedIndex = this.readCachedIndex(row);

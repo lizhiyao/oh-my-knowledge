@@ -3,7 +3,10 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, it } from 'vitest';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, it, onTestFinished, vi } from 'vitest';
 import {
   buildCodexRolloutIndex,
   extendCodexRolloutIndex,
@@ -15,6 +18,11 @@ import {
 } from '../../src/observability/trace/adapters/codex/conversation-index.js';
 import { createCodexConversationCatalog } from '../../src/observability/conversation/catalog.js';
 
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
+
 const roots: string[] = [];
 
 afterEach(() => {
@@ -22,6 +30,41 @@ afterEach(() => {
 });
 
 describe('Codex conversation catalog', () => {
+  it('kills stalled index processes, clears in-flight work and can index on retry', async () => {
+    const root = temporaryRoot();
+    const codexHome = join(root, 'codex');
+    const source = join(root, 'rollout.jsonl');
+    const stalled = join(root, 'stalled.mjs');
+    writeFileSync(source, rollout('thread'));
+    writeFileSync(stalled, 'setInterval(() => {}, 1000);');
+    createStateDatabase(codexHome, [thread('thread', source, 'user', 'cli', 'conversation', Date.now())], []);
+    const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    const children: ReturnType<typeof spawn>[] = [];
+    const spawnFixture = ((command: string, args: string[]) => {
+      const entry = children.length < 2 ? stalled : fileURLToPath(new URL('../../dist/observability/conversation/index-process.js', import.meta.url));
+      const child = actual.spawn(command, [entry, ...args.slice(1)], { stdio: ['ignore', 'ignore', 'pipe'] });
+      children.push(child);
+      return child;
+    }) as typeof spawn;
+    vi.mocked(spawn).mockImplementationOnce(spawnFixture).mockImplementationOnce(spawnFixture).mockImplementationOnce(spawnFixture);
+    onTestFinished(async () => {
+      vi.mocked(spawn).mockReset();
+      for (const child of children) {
+        if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await once(child, 'close'); }
+      }
+    });
+    const catalog = createCodexConversationCatalog({ codexHome, cacheDir: join(root, 'cache'), backgroundProcessThresholdBytes: 0, indexProcessTimeoutMs: 1_000 });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(catalog.getConversation('thread'), error => error instanceof Error && error.message.includes('索引进程超时') && error.message.includes(source));
+      const child = children[attempt];
+      if (child.signalCode === null) await once(child, 'close');
+      assert.equal(child.signalCode, 'SIGKILL');
+    }
+    const recovered = await catalog.getConversation('thread');
+    assert.ok((recovered?.turnCount ?? 0) > 0);
+    assert.equal(children.length, 3);
+  });
+
   it('indexes a recent uncached conversation so an open task reaches the overview', async () => {
     const root = temporaryRoot();
     const codexHome = join(root, '.codex');

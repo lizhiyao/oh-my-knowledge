@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, readdirSync, type Dirent } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   extractMarkdownStepWorkflows,
   validateSkillHardRules,
@@ -472,7 +472,18 @@ const SKILL_SEARCH_SKIP_NAMES = new Set([
 const SKILL_SEARCH_HIDDEN_ALLOWED = new Set([
   '.openclaw', '.claude', '.codex', '.agents',
 ]);
-const skillIndexCache = new Map<string, Map<string, string>>();
+interface SkillIndexCacheEntry {
+  index: Map<string, string>;
+  directories: Map<string, string>;
+}
+const skillIndexCache = new Map<string, SkillIndexCacheEntry>();
+
+function directoryVersion(path: string): string {
+  try {
+    const stat = statSync(path);
+    return `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
+  } catch { return 'unavailable'; }
+}
 
 function skillSearchHomedirRoots(): string[] {
   return [
@@ -483,22 +494,26 @@ function skillSearchHomedirRoots(): string[] {
   ];
 }
 
-function walkForSkillsIndex(dir: string, index: Map<string, string>, depthLeft: number): void {
+function walkForSkillsIndex(dir: string, index: Map<string, string>, depthLeft: number, directories: Map<string, string>): void {
   if (depthLeft <= 0) return;
+  directories.set(dir, directoryVersion(dir));
   let entries: Dirent[];
   try { entries = readdirSync(dir, { withFileTypes: true }); }
   catch { return; }
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name !== 'skills') continue;
     const skillsDir = join(dir, entry.name);
+    directories.set(skillsDir, directoryVersion(skillsDir));
     let skillEntries: Dirent[];
     try { skillEntries = readdirSync(skillsDir, { withFileTypes: true }); }
     catch { continue; }
     for (const skill of skillEntries) {
       if (!skill.isDirectory()) continue;
       if (!/^[A-Za-z0-9_.-]+$/.test(skill.name)) continue;
+      const skillDir = join(skillsDir, skill.name);
+      directories.set(skillDir, directoryVersion(skillDir));
       if (index.has(skill.name)) continue;
-      const candidate = join(skillsDir, skill.name, 'SKILL.md');
+      const candidate = join(skillDir, 'SKILL.md');
       if (existsSync(candidate)) index.set(skill.name, candidate);
     }
   }
@@ -506,19 +521,27 @@ function walkForSkillsIndex(dir: string, index: Map<string, string>, depthLeft: 
     if (!entry.isDirectory() || entry.name === 'skills') continue;
     if (SKILL_SEARCH_SKIP_NAMES.has(entry.name)) continue;
     if (entry.name.startsWith('.') && !SKILL_SEARCH_HIDDEN_ALLOWED.has(entry.name)) continue;
-    walkForSkillsIndex(join(dir, entry.name), index, depthLeft - 1);
+    walkForSkillsIndex(join(dir, entry.name), index, depthLeft - 1, directories);
   }
 }
 
 function buildSkillIndex(cwd: string): Map<string, string> {
-  const cacheKey = cwd;
+  const roots = [resolve(cwd), ...skillSearchHomedirRoots()];
+  const cacheKey = JSON.stringify(roots);
   const cached = skillIndexCache.get(cacheKey);
-  if (cached) return cached;
-  const index = new Map<string, string>();
-  for (const root of [cwd, ...skillSearchHomedirRoots()]) {
-    walkForSkillsIndex(root, index, SKILL_SEARCH_MAX_DEPTH);
+  if (cached && [...cached.directories].every(([path, version]) => directoryVersion(path) === version)) {
+    skillIndexCache.delete(cacheKey);
+    skillIndexCache.set(cacheKey, cached);
+    return cached.index;
   }
-  skillIndexCache.set(cacheKey, index);
+  const index = new Map<string, string>();
+  const directories = new Map<string, string>();
+  for (const root of roots) {
+    walkForSkillsIndex(root, index, SKILL_SEARCH_MAX_DEPTH, directories);
+  }
+  skillIndexCache.delete(cacheKey);
+  skillIndexCache.set(cacheKey, { index, directories });
+  while (skillIndexCache.size > 8) skillIndexCache.delete(skillIndexCache.keys().next().value!);
   return index;
 }
 

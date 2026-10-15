@@ -8,8 +8,26 @@ import {
   signalSourceMeta,
 } from '../../../src/observability/inbox/signal-semantics.js';
 import { baseItem } from './_helpers.js';
+import { inferResolutionAfter } from '../../../src/observability/inbox/report-primitives.js';
 
 describe('signal semantics (host-independent)', () => {
+  it('does not call another failure resolved and respects later tool outcomes', () => {
+    const failure = 'tool_result c1 Error: permission denied';
+    const success = 'tool_result c2 found the requested schema and columns';
+    for (const [snippets, expected] of [
+      [[failure], 'unresolved'],
+      [[failure, 'tool_result c2 command failed: timeout'], 'unresolved'],
+      [['tool_result c1 Error: network disconnected'], 'unresolved'],
+      [[failure, success], 'resolved'],
+      [[success, failure], 'unresolved'],
+      [['tool_result c1 Tests: 10 passed, 0 failed; no error reported'], 'resolved'],
+      [['tool_result c1 Found the error handling reference'], 'resolved'],
+      [['assistant says the task is finished'], 'unknown'],
+    ] as const) {
+      assert.equal(inferResolutionAfter(snippets.map((snippet, messageIndex) => ({ role: 'other', snippet, messageIndex })), 'repeated_failure'), expected);
+    }
+  });
+
   it('maps all severities to bilingual labels, decisions and tones', () => {
     assert.deepEqual(signalSeverityMeta('high', 'zh'), {
       label: '高风险/需关注',

@@ -193,9 +193,9 @@ function problemPatternToDiagnosis(generatedAt: string, pattern: ExperienceProbl
     lifecycle: 'detected',
     sourceKind: 'problem_pattern',
     sourceId: pattern.patternKey,
-    evidenceRefs: pattern.evidenceRefs ?? [],
+    evidenceRefs: (pattern.evidenceRefs ?? []).slice(0, 5),
     timestamp: pattern.lastSeen,
-    payload: { ...pattern },
+    payload: { ...pattern, recentSessionIds: pattern.recentSessionIds?.slice(0, 5) },
     // pattern.count = 总发生次数(可能跨多 session),用作 affectedCount 更贴近用户感知的「影响范围」,
     // 比 sessionCount 更稳(单 session 内重复 10 次也算 10 次发生)。
     occurrenceCount: pattern.count,

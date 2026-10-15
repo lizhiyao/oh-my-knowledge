@@ -669,8 +669,8 @@ export function queryObservationInbox(dir?: string): ObservationInboxItem[] {
 }
 
 export function findObservationInboxItem(id: string, dir?: string): ObservationInboxItem | null {
-  const reports = loadObservationInboxReports(dir);
-  for (const item of [...reports].reverse().flatMap((report) => report.items)) {
+  const reports = loadObservationInboxReports(dir).sort((a, b) => b.meta.generatedAt.localeCompare(a.meta.generatedAt));
+  for (const item of reports.flatMap((report) => report.items)) {
     if (item.id === id) return item;
   }
   return aggregateInboxItems([

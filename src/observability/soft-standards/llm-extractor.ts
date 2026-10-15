@@ -79,7 +79,10 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     lean: true,
   });
   options.signal?.throwIfAborted();
-  const parsedReview = parseLlmEnhancedReviewOutput(result.output || '');
+  if (!result.ok || !result.output?.trim()) {
+    throw new Error('Soft-standard extraction failed or returned no output. Retry the extraction.');
+  }
+  const parsedReview = parseLlmEnhancedReviewOutput(result.output);
   const runtimeEvidencePack = options.runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack;
   const enhancedReview = withRequiredStandardOwnerSuggestions(
     attachRuntimeNodeResults(parsedReview, runtimeEvidencePack),

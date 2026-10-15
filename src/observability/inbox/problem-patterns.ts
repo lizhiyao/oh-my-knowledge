@@ -112,13 +112,15 @@ export function mergeExperienceProblemPatterns(patterns: ExperienceProblemPatter
     const key = `${pattern.bucket}\u0000${pattern.patternKey}`;
     const existing = byKey.get(key);
     if (!existing) {
+      const evidenceRefs = uniqueEvidenceRefs(pattern.evidenceRefs);
+      const sessions = unique(pattern.recentSessionIds);
       byKey.set(key, {
         ...pattern,
-        recentSessionIds: unique(pattern.recentSessionIds).slice(0, 5),
+        recentSessionIds: sessions,
         signalTypes: unique(pattern.signalTypes),
-        evidenceRefs: uniqueEvidenceRefs(pattern.evidenceRefs).slice(0, 5),
-        sessionCount: unique(pattern.recentSessionIds).length,
-        count: uniqueEvidenceRefs(pattern.evidenceRefs).length || pattern.count,
+        evidenceRefs,
+        sessionCount: sessions.length,
+        count: evidenceRefs.length || pattern.count,
       });
       continue;
     }
@@ -126,9 +128,10 @@ export function mergeExperienceProblemPatterns(patterns: ExperienceProblemPatter
     const sessions = unique([...existing.recentSessionIds, ...pattern.recentSessionIds]);
     existing.count = evidenceRefs.length;
     existing.sessionCount = sessions.length;
-    existing.recentSessionIds = sessions.slice(0, 5);
+    existing.recentSessionIds = sessions;
     existing.signalTypes = unique([...existing.signalTypes, ...pattern.signalTypes]);
-    existing.evidenceRefs = evidenceRefs.slice(0, 5);
+    // Preserve the full identity set through invocation -> session -> skill merges.
+    existing.evidenceRefs = evidenceRefs;
     existing.lastSeen = maxTimestamp(existing.lastSeen, pattern.lastSeen);
   }
   return Array.from(byKey.values()).sort((a, b) => {

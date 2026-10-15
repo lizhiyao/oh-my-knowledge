@@ -488,6 +488,11 @@ describe('runtime standard trigger evaluator', () => {
       ref({ id: 'fail', sourceType: 'tool_result', toolName: 'Bash', snippet: 'zsh: command not found' }),
     ]));
     assert.equal(results.find((item) => item.nodeId === 'stage')?.status, 'violated');
+    const childMissing = node({ nodeId: 'child_missing', expectedSignals: [signal('tool_name', 'Write', 'equals')] });
+    const partial = evaluateRuntimeStandardNodes([
+      childOk, childMissing, { ...stage, childNodeIds: ['child_ok', 'child_missing'] },
+    ], pack([ref({ id: 'read', sourceType: 'tool_call', toolName: 'Read', snippet: 'Read source.md' })]));
+    assert.equal(partial.find(item => item.nodeId === 'stage')?.status, 'missed');
   });
 });
 
