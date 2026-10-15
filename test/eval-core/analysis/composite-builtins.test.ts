@@ -202,7 +202,7 @@ function interval(result: AnalysisNodeExecutionResult): {
 describe('Evaluation Core composite estimators', () => {
   it('seals canonical explicit components and rejects ambiguous weights', () => {
     const implementation = createBuiltinAnalysisNodes().get(
-      'bootstrap.composite-mean-percentile/v1',
+      'bootstrap.composite-mean-percentile/v2',
     );
     expect(implementation?.identity.capabilities).toMatchObject({
       inputCardinalities: {
@@ -213,6 +213,8 @@ describe('Evaluation Core composite estimators', () => {
     const capabilities = implementation?.identity.capabilities as {
       parameterSchema: SchemaIdentity;
     };
+    expect(capabilities.parameterSchema.schemaVersion).toBe('omk.parameters.composite-bootstrap/v2');
+    expect(createBuiltinAnalysisNodes().has('bootstrap.composite-mean-percentile/v1')).toBe(false);
     const validator = createBuiltinAnalysisSchemaValidators().get(
       schemaIdentityKey(capabilities.parameterSchema),
     );
@@ -249,16 +251,23 @@ describe('Evaluation Core composite estimators', () => {
       ...valid,
       components: [
         { metricId: 'correct', weight: 0.5 },
-        { metricId: 'latency', weight: 0.5000000000005 },
+        { metricId: 'latency', weight: 0.500000000002 },
       ],
     })).toThrow();
     expect(() => validator?.parse({
       ...valid,
       components: [
         { metricId: 'correct', weight: 0.5 },
-        { metricId: 'latency', weight: 0.4999999999995 },
+        { metricId: 'latency', weight: 0.499999999998 },
       ],
     })).toThrow();
+    for (const weight of [0.4999999999995, 0.5000000000005]) {
+      expect(validator?.parse({ ...valid, components: [
+        { metricId: 'correct', weight: 0.5 }, { metricId: 'latency', weight },
+      ] })).toMatchObject({ components: [
+        { metricId: 'correct', weight: 0.5 }, { metricId: 'latency', weight },
+      ] });
+    }
   });
 
   it('maps sealed boolean and bounded numeric directions to unit utility', async () => {
@@ -269,7 +278,7 @@ describe('Evaluation Core composite estimators', () => {
       metricId: 'latency', valueType: 'numeric', direction: 'lower-is-better', min: 0, max: 100,
     });
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: correct,
@@ -288,6 +297,18 @@ describe('Evaluation Core composite estimators', () => {
       }],
     }));
     expect(interval(result)).toMatchObject({ estimate: 0.5, unitCount: 2 });
+    const rounded = await execute(context({
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
+      resamplingUnit: 'sample',
+      components: [{
+        metric: correct, weight: 0.5,
+        rows: ['s1', 's2'].map((sampleId) => row({ metric: correct, sampleId, value: true })),
+      }, {
+        metric: latency, weight: 0.5000000000005,
+        rows: ['s1', 's2'].map((sampleId) => row({ metric: latency, sampleId, value: 0 })),
+      }],
+    }));
+    expect(interval(rounded)).toMatchObject({ estimate: 1, lower: 1, upper: 1 });
   });
 
   it('combines within units before resampling and preserves cross-Metric covariance', async () => {
@@ -299,7 +320,7 @@ describe('Evaluation Core composite estimators', () => {
     });
     const values = [0, 1, 0, 1];
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: a,
@@ -324,7 +345,7 @@ describe('Evaluation Core composite estimators', () => {
       metricId: 'b', valueType: 'numeric', direction: 'higher-is-better', min: 0, max: 1,
     });
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: a,
@@ -359,7 +380,7 @@ describe('Evaluation Core composite estimators', () => {
       metricId: 'b', valueType: 'numeric', direction: 'higher-is-better', min: 0, max: 1,
     });
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: a, weight: 0.5, rows: [row({ metric: a, sampleId: 's1', value: 2 })],
@@ -395,7 +416,7 @@ describe('Evaluation Core composite estimators', () => {
       metricId: 'b', valueType: 'numeric', direction: 'higher-is-better', min: 0, max: 1,
     });
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: a, weight: 0.5, rows: [row({ metric: a, sampleId: 's1', value: 1 })],
@@ -446,7 +467,7 @@ describe('Evaluation Core composite estimators', () => {
       }),
     ];
     const result = await execute(context({
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       resamplingUnit: 'sample',
       components: [{
         metric: rubric,
@@ -464,6 +485,23 @@ describe('Evaluation Core composite estimators', () => {
     }));
     expect(interval(result)).toMatchObject({ estimate: 0.5, unitCount: 2 });
     expect(result.includedRowIds).toHaveLength(6);
+    const roundedPanel = structuredClone(panel) as { members: Array<{ weight: number }> } & JsonValue;
+    roundedPanel.members[1].weight = 0.7500000000005;
+    const maximumRows = (source: MetricContract, value: number | boolean) => (
+      ['s1', 's2'].flatMap((sampleId) => ['a', 'b'].map((judge) => row({
+        metric: source, sampleId, value, evaluatorId: `judge-${judge}-0`,
+        instrumentId: 'rubric-v1', ensembleMemberId: `judge-${judge}`,
+        replicateGroupId: 'rubric-panel', replicateIndex: 0,
+      })))
+    );
+    const rounded = await execute(context({
+      implementationId: 'bootstrap.composite-mean-percentile/v2', resamplingUnit: 'sample',
+      components: [
+        { metric: rubric, weight: 0.5, rows: maximumRows(rubric, 4), measurementAggregation: roundedPanel },
+        { metric: correct, weight: 0.5, rows: maximumRows(correct, true), measurementAggregation: roundedPanel },
+      ],
+    }));
+    expect(interval(rounded)).toMatchObject({ estimate: 1, lower: 1, upper: 1 });
   });
 
   it('supports cluster, paired, and independent composite estimands', async () => {
@@ -486,7 +524,7 @@ describe('Evaluation Core composite estimators', () => {
     }));
 
     const clustered = await execute(context({
-      implementationId: 'bootstrap.composite-cluster-percentile/v1',
+      implementationId: 'bootstrap.composite-cluster-percentile/v2',
       resamplingUnit: 'cluster',
       components: components([
         { sampleId: 's1', value: 0, clusterId: 'c1' },
@@ -498,7 +536,7 @@ describe('Evaluation Core composite estimators', () => {
     expect(interval(clustered)).toMatchObject({ estimate: 0.5, unitCount: 2 });
 
     const paired = await execute(context({
-      implementationId: 'bootstrap.composite-paired-difference-percentile/v1',
+      implementationId: 'bootstrap.composite-paired-difference-percentile/v2',
       resamplingUnit: 'paired-block',
       comparison: { controlTargetId: 'control', treatmentTargetId: 'treatment' },
       components: components([
@@ -511,7 +549,7 @@ describe('Evaluation Core composite estimators', () => {
     expect(interval(paired)).toMatchObject({ estimate: 1, unitCount: 2 });
 
     const independent = await execute(context({
-      implementationId: 'bootstrap.composite-unpaired-difference-percentile/v1',
+      implementationId: 'bootstrap.composite-unpaired-difference-percentile/v2',
       resamplingUnit: 'sample',
       comparison: { controlTargetId: 'control', treatmentTargetId: 'treatment' },
       components: components([

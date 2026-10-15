@@ -48,13 +48,13 @@ export const EVAL_CONFIG_NUMBER_SCHEMAS = {
   targetPower: numberWhere('must be in (0.5, 1)', (value) => value > 0.5 && value < 1),
 } as const;
 
-// These CLI decoding ranges intentionally differ from the YAML config surface.
+// CLI-only units and retry counts; decision ranges share the YAML contract.
 export const EVAL_CLI_NUMBER_SCHEMAS = {
   timeoutSeconds: positiveNumber,
   retry: numberWhere('must be a non-negative integer',
     (value) => Number.isInteger(value) && value >= 0),
-  threshold: z.number(),
-  trivialDifference: numberWhere('must be non-negative', (value) => value >= 0),
+  threshold: EVAL_CONFIG_NUMBER_SCHEMAS.threshold,
+  trivialDifference: EVAL_CONFIG_NUMBER_SCHEMAS.trivialDifference,
 } as const;
 
 function nonEmptyString(message = 'must be a non-empty string') {

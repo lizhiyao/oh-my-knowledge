@@ -53,15 +53,27 @@ function definition(componentOrder: 'canonical' | 'reversed' = 'canonical'): Eva
     direction: 'higher-is-better',
     missingPolicyId: 'exclude/v1',
   });
+  result.metrics.push({
+    metricId: 'stability', valueType: 'boolean', scope: 'sample',
+    direction: 'higher-is-better', missingPolicyId: 'exclude/v1',
+  });
+  result.evaluators.push({
+    ...structuredClone(result.evaluators[0]),
+    evaluatorId: 'stability', metricIds: ['stability'],
+    measurement: {
+      instrumentId: 'stability-v1', ensembleMemberId: 'stability-local',
+      replicateGroupId: 'stability-primary', replicateIndex: 0,
+    },
+  });
   const components = [{ metricId: 'correct', weight: 0.7 }, {
-    metricId: 'latency-ms', weight: 0.3,
-  }];
+    metricId: 'latency-ms', weight: 0.2,
+  }, { metricId: 'stability', weight: 0.1 }];
   const ordered = componentOrder === 'canonical' ? components : [...components].reverse();
-  result.experiment.sampling.estimatorId = 'bootstrap.composite-mean-percentile/v1';
+  result.experiment.sampling.estimatorId = 'bootstrap.composite-mean-percentile/v2';
   result.analysisGraph.nodes = [{
     analysisNodeKind: 'estimator',
     nodeId: 'overall-quality',
-    implementationId: 'bootstrap.composite-mean-percentile/v1',
+    implementationId: 'bootstrap.composite-mean-percentile/v2',
     inputs: ordered.map((component) => ({
       inputKind: 'metric-observations' as const,
       referenceId: component.metricId,
@@ -95,9 +107,9 @@ describe('Composite Analysis compiler semantics', () => {
     expect(reversed.digests.analysisPlanDigest).toBe(canonical.digests.analysisPlanDigest);
     expect(reversed.digests.runContractDigest).toBe(canonical.digests.runContractDigest);
     expect(canonical.definition.analysisGraph.nodes[0].inputs.map((input) => input.referenceId))
-      .toEqual(['correct', 'latency-ms']);
+      .toEqual(['correct', 'latency-ms', 'stability']);
     expect(canonical.definition.analysisGraph.nodes[0].parameters).toMatchObject({
-      components: [{ metricId: 'correct' }, { metricId: 'latency-ms' }],
+      components: [{ metricId: 'correct' }, { metricId: 'latency-ms' }, { metricId: 'stability' }],
     });
   });
 

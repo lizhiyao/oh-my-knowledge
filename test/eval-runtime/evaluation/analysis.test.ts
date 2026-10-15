@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, prepareEvaluation, type CustomEvaluator } from "../../../src/eval-runtime/index.js";
+import { evaluate, prepareEvaluation, type CustomEvaluator, type CompositeMetricComponent } from "../../../src/eval-runtime/index.js";
 import { EvaluationDefinitionSchema } from "../../../src/eval-core/contracts/index.js";
 import { controlSpec, executor, fixedClock, numericCustomEvaluator, pairedInput, stableFacadeId, treatmentSpec, variant } from '../fixtures/evaluation.js';
 
@@ -175,7 +175,7 @@ it('materializes one sealed composite Metric for quality and paired comparison a
         nodes: [{
           analysisNodeKind: 'estimator',
           nodeId: stableFacadeId('node', { analysisId: 'candidate-overall-quality' }),
-          implementationId: 'bootstrap.composite-mean-percentile/v1',
+          implementationId: 'bootstrap.composite-mean-percentile/v2',
           inputs: compositeParameters.components.map((component) => ({
             inputKind: 'metric-observations',
             referenceId: component.metricId,
@@ -186,7 +186,7 @@ it('materializes one sealed composite Metric for quality and paired comparison a
         }, {
           analysisNodeKind: 'estimator',
           nodeId: stableFacadeId('node', { analysisId: 'overall-quality-difference' }),
-          implementationId: 'bootstrap.composite-paired-difference-percentile/v1',
+          implementationId: 'bootstrap.composite-paired-difference-percentile/v2',
           inputs: [
             ...compositeParameters.components.map((component) => ({
               inputKind: 'metric-observations' as const,
@@ -250,10 +250,10 @@ it('materializes one sealed composite Metric for quality and paired comparison a
       implementationId: node.implementationId,
       outputResultId: node.outputResultId,
     }))).toEqual(expect.arrayContaining([{
-      implementationId: 'bootstrap.composite-mean-percentile/v1',
+      implementationId: 'bootstrap.composite-mean-percentile/v2',
       outputResultId: 'candidate-overall-quality',
     }, {
-      implementationId: 'bootstrap.composite-paired-difference-percentile/v1',
+      implementationId: 'bootstrap.composite-paired-difference-percentile/v2',
       outputResultId: 'overall-quality-difference',
     }]));
 
@@ -282,7 +282,7 @@ it('materializes one sealed composite Metric for quality and paired comparison a
     });
   });
 
-it('rejects unbounded source Metrics and inexact composite weights before execution', async () => {
+it('validates Composite source scales, weight tolerance and component order before execution', async () => {
     let targetInvocations = 0;
     const input = pairedInput(executor(async ({ input: sample, config }) => {
       targetInvocations += 1;
@@ -328,11 +328,35 @@ it('rejects unbounded source Metrics and inexact composite weights before execut
         ...analysis,
         components: [
           { metricId: 'correct', weight: 0.5 },
-          { metricId: 'unbounded-length-score', weight: 0.5000000000005 },
+          { metricId: 'unbounded-length-score', weight: 0.500000000002 },
         ],
       }],
       decision: undefined,
     })).rejects.toMatchObject({ code: 'EVAL_RUNTIME_INPUT_INVALID' });
+    const stable: CustomEvaluator<{ actual: string }> = {
+      ...numericCustomEvaluator('stability', () => ({
+        resultKind: 'completed',
+        results: [{ metricId: 'stability-score', resultKind: 'score', value: 1 }],
+      })),
+      metrics: [{
+        metricId: 'stability-score', valueType: 'numeric', scale: { min: 0, max: 1 },
+        direction: 'higher-is-better', missingPolicyId: 'exclude/v1',
+      }],
+    };
+    type ComponentList = [CompositeMetricComponent, CompositeMetricComponent, ...CompositeMetricComponent[]];
+    const componentSets: ComponentList[] = [
+      [{ metricId: 'correct', weight: 0.5 }, { metricId: 'unbounded-length-score', weight: 0.5000000000005 }],
+      [{ metricId: 'correct', weight: 0.7 }, { metricId: 'stability-score', weight: 0.2 }, { metricId: 'unbounded-length-score', weight: 0.1 }],
+    ];
+    for (const components of componentSets) {
+      const prepare = (ordered: ComponentList) => prepareEvaluation({
+        ...input, evaluators: [...input.evaluators, bounded, stable],
+        analyses: [{ ...analysis, components: ordered }], decision: undefined,
+      });
+      const canonical = await prepare(components);
+      const reversed = await prepare([...components].reverse() as ComponentList);
+      expect(canonical.planDigest).toBe(reversed.planDigest);
+    }
     expect(targetInvocations).toBe(0);
   });
 

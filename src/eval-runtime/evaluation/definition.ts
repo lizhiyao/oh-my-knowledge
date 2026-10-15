@@ -249,11 +249,11 @@ export function createGeneralDefinition(input: Readonly<{
         || componentIds.length < 2
         || new Set(componentIds).size !== componentIds.length
         || componentIds.includes(request.compositeMetricId)
-        || totalWeight !== 1
+        || Math.abs(totalWeight - 1) > 1e-12
         || !sourcesSupported) {
       return configurationFailure(
         'EVAL_RUNTIME_INPUT_INVALID',
-        'Composite analysis 要求唯一的 derived Metric、至少两个受支持 source Metric，以及严格求和为一的正权重。',
+        'Composite analysis 要求唯一的 derived Metric、至少两个受支持 source Metric，以及求和与一偏差不超过 1e-12 的正权重。',
       );
     }
     const contract = canonicalizeJson({
@@ -505,8 +505,8 @@ export function createGeneralDefinition(input: Readonly<{
           ...common,
           targetFilter: { includeTargetIds: [request.variantId] },
           implementationId: isClustered
-            ? 'bootstrap.composite-cluster-percentile/v1'
-            : 'bootstrap.composite-mean-percentile/v1',
+            ? 'bootstrap.composite-cluster-percentile/v2'
+            : 'bootstrap.composite-mean-percentile/v2',
         });
         analysisBindings.push({
           analysisId: request.analysisId,
@@ -531,8 +531,8 @@ export function createGeneralDefinition(input: Readonly<{
       analysisNodes.push({
         ...common,
         implementationId: sampling.samplingKind === 'independent'
-          ? 'bootstrap.composite-unpaired-difference-percentile/v1'
-          : 'bootstrap.composite-paired-difference-percentile/v1',
+          ? 'bootstrap.composite-unpaired-difference-percentile/v2'
+          : 'bootstrap.composite-paired-difference-percentile/v2',
         inputs: [...common.inputs, {
           inputKind: 'comparison',
           referenceId: request.comparisonId,

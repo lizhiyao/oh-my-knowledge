@@ -2,6 +2,7 @@
  * 内建分析节点的参数与结果 schema：zod 定义、JSON Schema 身份，以及五个 BUILTIN_*_SCHEMA 标识。
  */
 import { z } from 'zod';
+import { compareStrings } from '../primitives/ordering.js';
 import {
   canonicalizeJson,
   bonferroniMarginalConfidenceLevel,
@@ -11,6 +12,7 @@ import {
 } from '../contracts/index.js';
 
 export const FiniteNumberSchema = z.number().finite();
+export const WEIGHT_SUM_TOLERANCE = 1e-12;
 
 export const ProbabilitySchema = FiniteNumberSchema.min(0).max(1);
 
@@ -88,7 +90,7 @@ export const MeasurementAggregationSchema = z.discriminatedUnion('method', [
   }
   if (aggregation.method === 'weighted-mean') {
     const total = aggregation.members.reduce((sum, member) => sum + member.weight, 0);
-    if (Math.abs(total - 1) > 1e-12) {
+    if (Math.abs(total - 1) > WEIGHT_SUM_TOLERANCE) {
       context.addIssue({ code: 'custom', path: ['members'], message: 'Member weights must sum to one' });
     }
   }
@@ -140,8 +142,10 @@ export const CompositeBootstrapParametersSchema = z.object({
       message: 'Composite Metric cannot also be a source component',
     });
   }
-  const total = parameters.components.reduce((sum, component) => sum + component.weight, 0);
-  if (total !== 1) {
+  const total = [...parameters.components]
+    .sort((left, right) => compareStrings(left.metricId, right.metricId))
+    .reduce((sum, component) => sum + component.weight, 0);
+  if (Math.abs(total - 1) > WEIGHT_SUM_TOLERANCE) {
     context.addIssue({
       code: 'custom',
       path: ['components'],
@@ -368,11 +372,12 @@ export const HIERARCHICAL_QUANTILE_PARAMETERS_SCHEMA = schemaIdentity(
 );
 
 export const COMPOSITE_BOOTSTRAP_PARAMETERS_SCHEMA = schemaIdentity(
-  'omk.parameters.composite-bootstrap/v1',
-  'urn:omk:parameters:composite-bootstrap:v1',
+  'omk.parameters.composite-bootstrap/v2',
+  'urn:omk:parameters:composite-bootstrap:v2',
   jsonSchema(CompositeBootstrapParametersSchema, [
     'components contain at least two unique Metric IDs in lexicographic order',
-    'component weights are positive and sum to one',
+    'component weights are positive and their canonical-order sum differs from one by at most 1e-12',
+    'aggregated component utilities and the weighted composite tolerate relative rounding of at most 1e-12 and clamp to the sealed unit interval',
     'the composite Metric is not a source component',
     'each target/sample/trial contributes only when every component coordinate is observed',
     'component utilities are combined before repeated-measure and resampling aggregation',

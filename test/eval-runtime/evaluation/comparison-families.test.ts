@@ -581,7 +581,7 @@ it('seals one stable Variant assignment per sample for independent comparisons',
     });
     expect(result.definition.analysisGraph.nodes.find(
       (node) => node.outputResultId === 'independent-overall-difference',
-    )?.implementationId).toBe('bootstrap.composite-unpaired-difference-percentile/v1');
+    )?.implementationId).toBe('bootstrap.composite-unpaired-difference-percentile/v2');
     expect(result.analysisResults['independent-overall-difference']).toMatchObject({
       analysisStatus: 'completed',
       value: { unitCount: 6 },

@@ -153,10 +153,10 @@ async function fixture(scenario: CompositeScenario = 'quality'): Promise<{
     missingPolicyId: 'exclude/v1',
   });
   const implementationId = scenario === 'paired-difference'
-    ? 'bootstrap.composite-paired-difference-percentile/v1'
+    ? 'bootstrap.composite-paired-difference-percentile/v2'
     : scenario === 'unpaired-difference'
-      ? 'bootstrap.composite-unpaired-difference-percentile/v1'
-      : 'bootstrap.composite-mean-percentile/v1';
+      ? 'bootstrap.composite-unpaired-difference-percentile/v2'
+      : 'bootstrap.composite-mean-percentile/v2';
   if (scenario === 'paired-difference') {
     definition.experiment.sampling = {
       experimentalUnit: 'sample',

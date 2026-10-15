@@ -27,6 +27,7 @@ import {
 } from './builtin-primitives.js';
 import {
   CompositeBootstrapParametersSchema,
+  WEIGHT_SUM_TOLERANCE,
 } from './builtin-schemas.js';
 
 export type CompositeBootstrapParameters = z.infer<typeof CompositeBootstrapParametersSchema>;
@@ -124,21 +125,24 @@ function compositeUtility(
   const metric = input.metric;
   let normalized: number;
   if (metric.valueType === 'boolean') {
-    if (value < 0 || value > 1) {
+    if (!Number.isFinite(value) || value < -WEIGHT_SUM_TOLERANCE
+        || value > 1 + WEIGHT_SUM_TOLERANCE) {
       throw new TypeError('Aggregated boolean Metric value must remain in [0, 1].');
     }
     normalized = value;
   } else if (metric.valueType === 'numeric') {
     const min = metric.scale?.min;
     const max = metric.scale?.max;
+    const tolerance = WEIGHT_SUM_TOLERANCE * Math.max(1, Math.abs(min ?? 0), Math.abs(max ?? 0));
     if (typeof min !== 'number' || typeof max !== 'number' || min >= max
-        || value < min || value > max) {
+        || !Number.isFinite(value) || value < min - tolerance || value > max + tolerance) {
       throw new TypeError('Aggregated numeric Metric value differs from its sealed scale.');
     }
     normalized = (value - min) / (max - min);
   } else {
     throw new TypeError('Composite utility supports only boolean and numeric Metrics.');
   }
+  normalized = Math.min(1, Math.max(0, normalized));
   return metric.direction === 'lower-is-better' ? 1 - normalized : normalized;
 }
 
@@ -235,7 +239,8 @@ export function buildCompositeUnits(context: AnalysisNodeExecutionContext): Comp
         complete[index].value,
       )
     ), 0);
-    if (value < 0 || value > 1) {
+    if (!Number.isFinite(value) || value < -WEIGHT_SUM_TOLERANCE
+        || value > 1 + WEIGHT_SUM_TOLERANCE) {
       throw new TypeError('Composite utility must remain within its sealed [0, 1] range.');
     }
     completeCompositeTrials.push({
@@ -243,7 +248,7 @@ export function buildCompositeUnits(context: AnalysisNodeExecutionContext): Comp
       sampleId,
       trialIndex,
       trialId,
-      value,
+      value: Math.min(1, Math.max(0, value)),
       rowIds: complete.flatMap((trial) => trial.rowIds),
       ...(clusterId === undefined ? {} : { clusterId }),
       ...(stratumId === undefined ? {} : { stratumId }),

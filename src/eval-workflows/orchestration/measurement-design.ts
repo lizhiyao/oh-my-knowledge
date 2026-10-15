@@ -36,7 +36,12 @@ import {
 } from '../measurement/analysis/bootstrap-family-node-v2.js';
 import {
   COMPOSITE_ANALYSIS_IMPLEMENTATION_ID,
+  COMPOSITE_SCORE_METRIC_ID,
 } from '../measurement/analysis/composite-node-contract.js';
+import {
+  COMPOSITE_SCORE_MIN,
+  COMPOSITE_SCORE_MAX,
+} from '../measurement/analysis/composite-table.js';
 import {
   DIMENSION_ANALYSIS_IMPLEMENTATION_ID,
 } from '../measurement/analysis/dimension-node.js';
@@ -599,6 +604,10 @@ export function buildProductionMeasurementDesign(
   const targetIds = request.values.variants.map((variant) => variant.targetId).sort();
   let decisionPolicy: DecisionPolicyDefinition | undefined;
   if (request.values.measurement.bootstrap.enabled) {
+    metrics.push({
+      ...metric(COMPOSITE_SCORE_METRIC_ID, 'numeric'),
+      scale: { min: COMPOSITE_SCORE_MIN, max: COMPOSITE_SCORE_MAX }, unit: 'score',
+    });
     nodes.push({
       analysisNodeKind: 'estimator',
       nodeId: 'bootstrap-family',
@@ -640,7 +649,7 @@ export function buildProductionMeasurementDesign(
       comparisonFamily: treatments.map((target) => ({
         comparisonId: `control-vs-${target.targetId}`,
         treatmentTargetId: target.targetId,
-        metricId: metrics[0]!.metricId,
+        metricId: COMPOSITE_SCORE_METRIC_ID,
         analysisResultId: 'bootstrap-family',
       })),
       comparisonFamilyResultId: 'bootstrap-family',

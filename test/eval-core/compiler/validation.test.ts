@@ -621,6 +621,23 @@ describe('Compiler definition validation', () => {
     );
   });
 
+  it('rejects pairing blocks that cross strata before preparing execution', async () => {
+    const definition = validDefinition();
+    definition.dataset.samples = ['a', 'b'].map((stratum, index) => ({
+      ...structuredClone(definition.dataset.samples[0]),
+      sampleId: `paired-${index}`, input: { pair: 'shared', stratum },
+    }));
+    definition.experiment.assignment.stratumKey = '/input/stratum';
+    definition.experiment.sampling.resamplingUnit = 'paired-block';
+    definition.experiment.sampling.pairingKey = '/input/pair';
+    const runtime = testRuntime({ samplingResamplingUnits: ['paired-block'] });
+    await expect(prepareEvaluationPlan(definition, validPolicy(), runtime))
+      .rejects.toThrow(/pairing block.*stratum/);
+
+    definition.dataset.samples[1].input = { pair: 'separate', stratum: 'b' };
+    await expect(prepareEvaluationPlan(definition, validPolicy(), runtime)).resolves.toBeDefined();
+  });
+
   it('treats overlapping paired comparisons as one atomic scheduling group', async () => {
     const definition = validDefinition();
     definition.targets.push({

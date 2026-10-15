@@ -313,6 +313,14 @@ describe('Evaluation Core downstream projections', () => {
       expectProjectionError('CORE_GOLD_SCALE_INCOMPATIBLE'),
     );
     assert.throws(
+      () => compareGoldToCoreRun({
+        ...base,
+        gold: { ...base.gold, annotations: [{ sample_id: 'sample-1', score: 2 }] },
+        selector: { ...base.selector, trialIndex: 0 },
+      }),
+      expectProjectionError('CORE_GOLD_ANNOTATION_INVALID'),
+    );
+    assert.throws(
       () => compareGoldToCoreRun({ ...base, minimumAlpha: 1.1 }),
       expectProjectionError('CORE_GOLD_POLICY_INVALID'),
     );
