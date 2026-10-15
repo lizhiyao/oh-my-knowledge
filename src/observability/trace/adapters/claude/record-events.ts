@@ -9,9 +9,9 @@ import {
   normalizeTraceTimestamp,
   unknownTraceEvent,
 } from '../../trace-ir.js';
-import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
-import { nonNegativeMetric, tokenCount } from '../../../../executors/core/token-usage.js';
-import { isToolResultFailureText } from '../../../../executors/tool-call-status.js';
+import { normalizeToolIdentity } from '../../../../executors/contracts/tool-identity.js';
+import { nonNegativeMetric, tokenCount } from '../../../../executors/contracts/token-usage.js';
+import { isToolResultFailureText } from '../../../../executors/contracts/tool-call-status.js';
 import {
   isClaudeBuiltinCommand,
   stripCommandEnvelopeText,

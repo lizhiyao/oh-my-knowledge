@@ -238,7 +238,7 @@ export interface ExtractSkillSoftStandardsOptions {
   executorName: string;
   refresh?: boolean;
   now?: string;
-  executor?: ExecutorFn;
+  executor: ExecutorFn;
 }
 
 export interface ResolveSkillStandardsOptions {

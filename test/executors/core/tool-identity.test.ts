@@ -3,7 +3,7 @@ import { describe, it } from 'vitest';
 import {
   normalizeToolIdentity,
   toolIdentityMatches,
-} from '../../../src/executors/core/tool-identity.js';
+} from '../../../src/executors/contracts/tool-identity.js';
 
 describe('source-neutral tool identity', () => {
   it('maps provider-specific shell and file events to canonical built-ins', () => {
@@ -55,6 +55,14 @@ describe('source-neutral tool identity', () => {
       },
     );
   });
+
+  it.each(['mcp__github__enterprise__fetch_file', 'mcp__codex_apps__github__enterprise__fetch_file'])(
+    'preserves a multi-part provider namespace for %s', (sourceName) => {
+      const identity = normalizeToolIdentity({ sourceName });
+      assert.equal(identity.provider, 'github.enterprise');
+      assert.equal(identity.name, 'github.enterprise.fetch_file');
+    },
+  );
 
   it('uses authoritative Codex MCP end-event identity without double-prefixing', () => {
     assert.equal(

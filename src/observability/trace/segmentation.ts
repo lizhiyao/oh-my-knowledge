@@ -9,7 +9,7 @@ import {
   truncateToolCallsForPersistence,
   truncateTurnsForPersistence,
 } from './projection.js';
-import { sumTokenCounts, tokenCount } from '../../executors/core/token-usage.js';
+import { sumTokenCounts, tokenCount } from '../../executors/contracts/token-usage.js';
 import type {
   TraceEvent,
   TraceMessageEvent,

@@ -1,4 +1,3 @@
-import { createExecutor } from '../../executors/index.js';
 import { readPromptDocument } from '../prompts/document.js';
 import { projectObservationsDir } from '../inbox/paths.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
@@ -70,7 +69,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const needsHardRules = !skillChain.healthCheck.hardRules.declared;
   const needsWorkflows = !skillChain.healthCheck.workflows.declared;
   const prompt = buildSoftStandardPrompt(skillChain, { needsHardRules, needsWorkflows }, options.runtimeEvidence);
-  const executor = options.executor ?? createExecutor(executorName);
+  const executor = options.executor;
   const result = await executor({
     model,
     system: promptDocument.body,

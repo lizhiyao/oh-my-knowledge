@@ -1,7 +1,7 @@
 /** Claude / OpenClaw 等 JSONL 适配器共享的记录级判定与映射基元；逐行为 source.ts 内联实现等价搬移。 */
 
 import type { TraceLifecycleEvent, TraceMessageOrigin } from '../trace-ir.js';
-import { nonNegativeMetric } from '../../../executors/core/token-usage.js';
+import { nonNegativeMetric } from '../../../executors/contracts/token-usage.js';
 import {
   isRuntimeProtocolPromptText,
   isSyntheticUserMessageText,

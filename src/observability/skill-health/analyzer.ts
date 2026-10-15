@@ -25,7 +25,7 @@ import {
 } from '../trace/index.js';
 import { createTraceSessionIndex } from '../trace/session-index.js';
 import { setOwnRecordValue, sumRecordCounts } from '../../shared/record-count.js';
-import { checkedSumTokenCounts } from '../../executors/core/token-usage.js';
+import { checkedSumTokenCounts } from '../../executors/contracts/token-usage.js';
 
 export interface SkillHealth {
   skillName: string;

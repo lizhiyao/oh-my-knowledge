@@ -360,7 +360,7 @@ describe('shared knowledge application', () => {
   });
   it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
     const { app, snapshot, model, generate } = setup(); const controller = new AbortController();
-    const runtime = configuredExtractionModel('codex', 'fixture', async input => {
+    const runtime = configuredExtractionModel('codex', 'fixture', () => async input => {
       const result = await model.generate(input.system ?? '', input.prompt); controller.abort();
       return { ...result, ok: true, durationApiMs: 5, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, costReportedByExecutor: false, stopReason: 'end_turn', numTurns: 1 };

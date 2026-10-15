@@ -1,7 +1,7 @@
-import { TraceSourceKindSchema } from '../contracts/trace-source-schema.js';
-import type { TraceSourceKind } from '../contracts/trace-source.js';
+import { TraceSourceKindSchema } from './trace-source-schema.js';
+import type { TraceSourceKind } from './trace-source.js';
 
-export type { TraceSourceKind } from '../contracts/trace-source.js';
+export type { TraceSourceKind } from './trace-source.js';
 
 
 

@@ -1,7 +1,7 @@
 /** 工具族：调用／结果两侧的记录，含跨视图归属、出现序游标与 Codex 专有的工具身份归一。 */
 
 import type { TraceEvent, TraceToolRef } from '../../trace-ir.js';
-import { normalizeToolIdentity } from '../../../../executors/core/tool-identity.js';
+import { normalizeToolIdentity } from '../../../../executors/contracts/tool-identity.js';
 import type {
   CodexConversionState,
   CodexFamilyOutcome,

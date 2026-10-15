@@ -7,7 +7,7 @@ import {
   splitInclusiveInputTokens,
   sumTokenCounts,
   tokenCount,
-} from '../../../src/executors/core/token-usage.js';
+} from '../../../src/executors/contracts/token-usage.js';
 
 describe('source-neutral token usage normalization', () => {
   it('keeps inclusive input buckets mutually exclusive', () => {

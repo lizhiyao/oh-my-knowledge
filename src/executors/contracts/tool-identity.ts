@@ -1,5 +1,5 @@
 
-import type { NormalizedToolIdentity } from '../contracts/trace.js';
+import type { NormalizedToolIdentity } from './trace.js';
 
 export interface ToolIdentityInput {
   sourceName: string;

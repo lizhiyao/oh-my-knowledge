@@ -3,7 +3,7 @@ import {
   checkedSumTokenCounts,
   nonNegativeMetric,
   optionalTokenCount,
-} from '../../core/token-usage.js';
+} from '../../contracts/token-usage.js';
 import { extractClaudeTrace, isClaudeResultMessage } from './trace.js';
 
 interface ClaudeTokenUsage {

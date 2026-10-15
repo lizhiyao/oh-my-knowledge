@@ -8,7 +8,7 @@ import type { ConversationCatalog } from '../conversation/catalog.js';
 import type { EvidenceWindow } from './evidence.js';
 import type { ExtractionModel } from './application.js';
 import { createLocalKnowledgeApplication } from './local.js';
-import { configuredExtractionModel } from './adapters/executor.js';
+import { validateExtractionModelSelection } from './adapters/executor.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { conversationExtractionSource } from './conversation-source.js';
 
@@ -39,8 +39,8 @@ export class ConversationAutoExtraction {
   private closed = false;
   private readonly timer?: ReturnType<typeof setInterval>;
   constructor(private readonly catalog: ConversationCatalog, private readonly options: {
-    now?: () => number; stableMs?: number; intervalMs?: number; model?: (executor: string, model: string) => ExtractionModel;
-  } = {}) {
+    now?: () => number; stableMs?: number; intervalMs?: number; model: (executor: string, model: string) => ExtractionModel;
+  }) {
     if (options.intervalMs !== 0) {
       this.timer = setInterval(() => { void this.tick(); }, options.intervalMs ?? 5000);
       this.timer.unref();
@@ -107,7 +107,7 @@ export class ConversationAutoExtraction {
     const plan = await this.plan(threadId, signal);
     if (plan.preview.token !== consent.token) throw new Error('Source conflict. Preview again.');
     // Validate executor/model before saving permission, without invoking it.
-    configuredExtractionModel(consent.executor, consent.model);
+    validateExtractionModelSelection(consent.executor, consent.model);
     signal?.throwIfAborted();
     const { workspace, key } = this.location(root, threadId);
     if (this.roots.size >= 32 && !this.roots.has(key)) throw new Error('Automation capacity exceeded.');
@@ -190,7 +190,7 @@ export class ConversationAutoExtraction {
           deadline = setTimeout(() => controller.abort(), Math.max(0, Date.parse(reserved.expiresAt) - this.now())); deadline.unref();
           const app = createLocalKnowledgeApplication(root);
           const snapshot = app.capture({ path: window.sourcePath, records: window.records, origin: window.origin }, controller.signal);
-          const model = (this.options.model ?? configuredExtractionModel)(reserved.executor, reserved.model);
+          const model = this.options.model(reserved.executor, reserved.model);
           const run = await app.generate(snapshot.snapshotId, model, reserved.lastRunId!, controller.signal);
           withWorkspaceWrite(root, () => {
             const current = this.read(root, threadId);

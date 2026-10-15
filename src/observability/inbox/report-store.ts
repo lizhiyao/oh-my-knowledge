@@ -15,7 +15,7 @@ import type {
   ObservationSignalType,
 } from '../contracts/inbox.js';
 import { normalizeTraceTimestamp } from '../trace/trace-ir.js';
-import { isTraceSourceKind } from '../../executors/core/trace-source-kind.js';
+import { isTraceSourceKind } from '../../executors/contracts/trace-source-kind.js';
 import {
   sumRecordCounts,
 } from '../../shared/record-count.js';

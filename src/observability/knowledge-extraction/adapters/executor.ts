@@ -1,22 +1,26 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createExecutor } from '../../../executors/index.js';
 import type { ExecutorFn } from '../../../executors/contracts/ports.js';
 import type { ExtractionModel } from '../application.js';
 
-export function configuredExtractionModel(executor: string, model: string, implementation?: ExecutorFn): ExtractionModel {
+export function validateExtractionModelSelection(executor: string, model: string): void {
   if (!['codex', 'openai-api', 'anthropic-api'].includes(executor)) {
     throw new Error(`Executor ${executor} has no knowledge-generation adapter.`);
   }
   if (!model.trim()) throw new Error('An explicitly configured model is required.');
+}
+
+/** The host owns executor selection; invocation stays lazy until generation. */
+export function configuredExtractionModel(executor: string, model: string, create: (name: string) => ExecutorFn): ExtractionModel {
+  validateExtractionModelSelection(executor, model);
   return {
     executor, model,
     async generate(system, input, signal) {
       signal?.throwIfAborted();
       const cwd = executor === 'codex' ? mkdtempSync(join(tmpdir(), 'omk-knowledge-text-')) : undefined;
       try {
-        const execute = implementation ?? createExecutor(executor);
+        const execute = create(executor);
         const result = await execute({ model, system, prompt: input,
           ...(cwd ? { cwd, allowedSkills: [] } : {}),
           timeoutMs: 300_000, abortSignal: signal });

@@ -4,7 +4,7 @@ import {
   isToolCallFailure,
   isToolResultFailureText,
   toolCallStatus,
-} from '../../src/executors/tool-call-status.js';
+} from '../../src/executors/contracts/tool-call-status.js';
 
 describe('toolCallStatus', () => {
   it('keeps a missing legacy outcome unknown instead of fabricating a failure', () => {
