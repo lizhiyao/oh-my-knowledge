@@ -253,6 +253,7 @@ lint 缓存依据这棵树的文件签名决定要做什么，
 - `yarn test` 跑完整的 vitest 套件
 - `yarn test:profile` 把完整套件跑一遍并列出最慢的测试文件。用它定位优化目标；它不是性能基线，也不是 CI 门禁。传 `--top <n>` 控制列表长度。
 - `yarn typecheck` 跑两个 tsc 程序：根程序（Node16、不开 `--jsx`）收 `src`／`test`／`scripts` 下的 `.ts`；`tsconfig.studio-web.json` extends `src/studio/web/tsconfig.json`，收整个 Studio web 子树和 `test/studio/web` 的用例，`.ts` 与 `.tsx` 同权。归属由 `test/architecture/test-gate-coverage.test.ts` 守住，新增文件不必再靠文件名试探谁在检查它。
+- Studio 交互测试按文件使用 `// @vitest-environment jsdom`，通过 React Testing Library 挂载真实组件，以可见文字、可访问名称和用户操作断言状态与请求。只替换 HTTP 返回、宿主导航及 DOM 环境缺失的布局能力，不 mock 被测组件或保存／读取状态。卸载时清理组件、请求与全局替身。它们随 `yarn test` 和固定分片持续运行；布局、真实浏览器和安装验收仍按对应风险单独验证，SSR 和 DOM 交互都不替代它们。
 - 为你改动的行为补测试；缺陷修复强烈建议附带回归测试
 - CI 在 PR 和 `main` push 上对完整 event diff 做分类。`scripts/ci/scope.mjs` 列出的根规则文件与模块维护文档（`src/<area>/README.md`）使用治理测试和空白字符检查。普通的 `docs/**/*.md` 与根 README 改动额外运行运行时／文档契约检查和文档构建，不运行 Studio 或完整测试矩阵。
 - 源码、依赖、CI／构建／站点配置、skills、prompts、生成文档以及未知路径运行完整门禁：quality、四个 Node 24 分片，以及 `macos-latest` 上的 macOS 风险边界子集。Node 22 分片继续留给非 PR 事件（`main` push、发布、手动 dispatch）和打了 `dependencies` 标签的 PR，因为 issue #932 测得约 40 次运行里 Node 22/24 的测试结果没有差异。历史缺失、diff 为空或分类出错时选择完整门禁。改名同时计入新旧路径；混合改动使用最强的门禁。

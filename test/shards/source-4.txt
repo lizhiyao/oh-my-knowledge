@@ -93,3 +93,4 @@ test/studio/web/knowledge-doctor-tab.test.tsx
 test/studio/web/observe-reader-states.test.tsx
 test/studio/web/observe-swimlane-lane.test.tsx
 test/studio/web/shell-language-switch.test.tsx
+test/studio/web/knowledge-editors.test.tsx

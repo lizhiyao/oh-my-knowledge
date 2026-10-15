@@ -5,13 +5,14 @@ import { Alert, Button, Checkbox, Input, Modal, Pagination, Space, Spin } from '
 import type { Language } from '../layout/shell';
 import { LibraryDraftSchema, type LibraryDraft, type LibraryMember } from '../../../../knowledge/library/contracts';
 import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/knowledge-library';
-import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
+import type { KnowledgeEntityCatalog } from '../../../view-models/knowledge/knowledge-candidates';
 import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './library-request';
 import { KnowledgeRequestError } from './request';
 import { useKnowledgeSave } from './save-session';
+import { useLibrarySource, type LibrarySeed } from './library-source';
 import { EntityLibraryDetail } from './entities';
 
-export type LibrarySeed = { analysisId: string; entityId: string; revision?: string };
+type CatalogState = { phase: 'loading' | 'failed' } | { phase: 'ready'; value: KnowledgeEntityCatalog };
 export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, onClose, onSaved }: {
   workspace: string; lang: Language; detail?: KnowledgeLibraryDetail; seed?: LibrarySeed; onClose(): void; onSaved(id: string): void;
 }) {
@@ -19,31 +20,28 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
   const [detail] = useState(initialDetail);
   const [objectId] = useState(() => detail?.history.objectId ?? crypto.randomUUID());
   const [draft, setDraft] = useState<LibraryDraft>(() => detail?.revision.draft ?? { label: '', description: '', referentKind: 'object', members: [] });
-  const [query, setQuery] = useState(''); const [page, setPage] = useState(1); const [catalog, setCatalog] = useState<KnowledgeEntityCatalog>();
-  const [preview, setPreview] = useState<KnowledgeEntityLibraryDetail>(); const [target, setTarget] = useState<LibrarySeed | undefined>(seed);
-  const [mentionIds, setMentionIds] = useState<string[]>([]); const [rationale, setRationale] = useState(''); const [reason, setReason] = useState('');
-  const [confirmed, setConfirmed] = useState(false); const [loading, setLoading] = useState(false); const [validationError, setValidationError] = useState('');
+  const [query, setQuery] = useState(''); const [page, setPage] = useState(1); const [catalogState, setCatalogState] = useState<CatalogState>({ phase: 'loading' });
+  const catalog = catalogState.phase === 'ready' ? catalogState.value : undefined;
+  const loading = catalogState.phase === 'loading';
+  const source = useLibrarySource(workspace, seed);
+  const preview = source.state.phase === 'ready' ? source.state.detail : undefined;
+  const mentionIds = source.state.phase === 'ready' ? source.state.mentionIds : [];
+  const rationale = source.state.phase === 'ready' ? source.state.rationale : '';
+  const previewLoading = source.state.phase === 'loading';
+  const [reason, setReason] = useState('');
+  const [confirmed, setConfirmed] = useState(false); const [validationError, setValidationError] = useState('');
   const { session, state, busy, uncertain } = useKnowledgeSave<Parameters<typeof requestLibrary>[2] & { requestId: string; objectId: string }>(workspace);
   const error = validationError || state.error;
-  const [catalogError, setCatalogError] = useState(''); const [previewError, setPreviewError] = useState('');
-  const [catalogRetry, setCatalogRetry] = useState(0); const [previewRetry, setPreviewRetry] = useState(0); const [previewLoading, setPreviewLoading] = useState(false);
+  const catalogError = catalogState.phase === 'failed' ? t('来源实体列表不可读，请核对工作区。', 'Source entities unavailable. Check the workspace.') : '';
+  const previewError = source.state.phase === 'failed' ? t('来源实体不可读，可回到实体页检查历史。', 'Source entity unavailable. Inspect history on the entity page.') : '';
+  const [catalogRetry, setCatalogRetry] = useState(0);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setCatalog(undefined); setCatalogError('');
+    const controller = new AbortController(); setCatalogState({ phase: 'loading' });
     void requestLibraryEntity<KnowledgeEntityCatalog>(workspace, 'entity-catalog', { query: query.trim() || undefined, page, pageSize: 10 }, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setCatalog(value); })
-      .catch(() => { if (!controller.signal.aborted) { setCatalog(undefined); setCatalogError(t('来源实体列表不可读，请核对工作区。', 'Source entities unavailable. Check the workspace.')); } })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .then(value => { if (!controller.signal.aborted) setCatalogState({ phase: 'ready', value }); })
+      .catch(() => { if (!controller.signal.aborted) setCatalogState({ phase: 'failed' }); });
     return () => controller.abort();
   }, [workspace, query, page, catalogRetry]);
-  useEffect(() => {
-    if (!target) return;
-    const controller = new AbortController(); setPreview(undefined); setMentionIds([]); setRationale(''); setPreviewError(''); setPreviewLoading(true);
-    void requestLibraryEntity<KnowledgeEntityLibraryDetail>(workspace, 'entity-detail', { analysisId: target.analysisId, entityId: target.entityId, revision: target.revision }, controller.signal)
-      .then(value => { if (!controller.signal.aborted) { setPreview(value); setMentionIds(value.revision.mentions.filter(mention => mention.entityId === value.entity.entityId).map(mention => mention.mentionId)); } })
-      .catch(() => { if (!controller.signal.aborted) setPreviewError(t('来源实体不可读，可回到实体页检查历史。', 'Source entity unavailable. Inspect history on the entity page.')); })
-      .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
-    return () => controller.abort();
-  }, [workspace, target, previewRetry]);
   const eligible = preview?.source.status === 'available' && preview.entity.identityStatus === 'proposed'
     && preview.revision.revisionId === preview.history.writeHeadRevisionId
     && (!draft.members.length && !detail || preview.entity.referentKind === draft.referentKind)
@@ -56,7 +54,7 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
     change({ ...draft, label: draft.label || preview.entity.label, description: draft.description || preview.entity.description,
       referentKind: detail || draft.members.length ? draft.referentKind : preview.entity.referentKind,
       members: [...draft.members.filter(value => value.analysisId !== member.analysisId || value.entityId !== member.entityId), member] });
-    setTarget(undefined); setPreview(undefined);
+    source.clear();
   }
   async function save() {
     if (busy || uncertain) return;
@@ -87,7 +85,7 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
     if (saved?.current()) onSaved(objectId);
   }
   return <Modal open width={1000} className="carrier-authoring-modal library-editor-modal" title={detail ? t('维护知识库对象', 'Maintain library object') : t('从实体建立知识库对象', 'Create a library object from entities')}
-    onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
+    onCancel={() => { if (!busy) onClose(); }} closable={!busy} mask={{ closable: false }} keyboard={!busy} footer={<Space wrap>
       <Button disabled={busy} onClick={onClose}>{t('关闭', 'Close')}</Button>
       {uncertain ? <Button loading={busy} onClick={() => void inspectSave()}>{t('核对已保存版本', 'Check saved version')}</Button>
         : <Button type="primary" loading={busy} disabled={!confirmed || !reason.trim() || !draft.label.trim() || !draft.description.trim() || !detail && !draft.members.length}
@@ -102,24 +100,24 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
       <Link href={libraryEntityUrl(workspace, member)}>{detail?.members.find(value => value.analysisId === member.analysisId && value.entityId === member.entityId)?.status === 'available'
         ? (detail.members.find(value => value.analysisId === member.analysisId && value.entityId === member.entityId) as Extract<KnowledgeLibraryDetail['members'][number], { status: 'available' }>).entity.label
         : catalog?.rows.find(value => value.analysisId === member.analysisId && value.entityId === member.entityId)?.label ?? t('查看已选来源实体', 'Inspect selected entity')}</Link>
-      <p>{member.rationale}</p><Space wrap><Button disabled={busy || uncertain} onClick={() => setTarget({ analysisId: member.analysisId, entityId: member.entityId })}>{t('重新核对此来源', 'Review this source again')}</Button>
+      <p>{member.rationale}</p><Space wrap><Button disabled={busy || uncertain} onClick={() => source.select({ analysisId: member.analysisId, entityId: member.entityId })}>{t('重新核对此来源', 'Review this source again')}</Button>
         <Button disabled={busy || uncertain} onClick={() => change({ ...draft, members: draft.members.filter(value => value !== member) })}>{t('解除此关联', 'Unlink this source')}</Button></Space>
     </section>)}
     {!uncertain && <><h3>{t('选择要关联的来源实体', 'Select a source entity')}</h3>
       <Input.Search allowClear aria-label={t('查找来源实体', 'Find source entities')} placeholder={t('搜索名称、原文或来源', 'Search names, mentions, or sources')} onSearch={value => { setQuery(value); setPage(1); }}/>
       {!!catalog?.unavailableAnalyses && <Alert type="warning" title={t('部分实体分析不可读，可读列表不代表全部来源。', 'Some analyses are unreadable; this list does not cover all sources.')}/>}
       {catalogError && <Alert className="knowledge-operation-feedback" type="error" title={catalogError} action={<Button disabled={loading || busy} onClick={() => setCatalogRetry(value => value + 1)}>{t('重新读取来源实体', 'Reload source entities')}</Button>}/>}
-      {previewError && <Alert className="knowledge-operation-feedback" type="error" title={previewError} action={<Button disabled={previewLoading || busy} onClick={() => setPreviewRetry(value => value + 1)}>{t('重新读取所选实体', 'Reload selected entity')}</Button>}/>}
+      {previewError && <Alert className="knowledge-operation-feedback" type="error" title={previewError} action={<Button disabled={previewLoading || busy} onClick={() => source.retry()}>{t('重新读取所选实体', 'Reload selected entity')}</Button>}/>}
       {previewLoading && <Spin/>}
-      {loading ? <Spin/> : <div className="library-source-list">{catalog?.rows.map(row => <Button key={`${row.analysisId}:${row.entityId}`} disabled={busy} onClick={() => setTarget({ analysisId: row.analysisId, entityId: row.entityId })}>
+      {loading ? <Spin/> : <div className="library-source-list">{catalog?.rows.map(row => <Button key={`${row.analysisId}:${row.entityId}`} disabled={busy} onClick={() => source.select({ analysisId: row.analysisId, entityId: row.entityId })}>
         <span title={`${row.description} · ${row.qualifiers.join(' / ')}`}>{row.label} · {row.origin?.title || t('导入来源', 'Imported source')}</span></Button>)}</div>}
       {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
       {preview && <div className="library-source-preview">
-        <EntityLibraryDetail detail={preview} workspace={workspace} lang={lang} onRevision={revision => setTarget({ analysisId: preview.history.analysisId, entityId: preview.entity.entityId, revision })}/>
+        <EntityLibraryDetail detail={preview} workspace={workspace} lang={lang} onRevision={revision => source.select({ analysisId: preview.history.analysisId, entityId: preview.entity.entityId, revision })}/>
         {!eligible && <Alert type="warning" title={t('此选择不能直接关联：需当前修订、可读且匹配的原文、无未解决歧义，并与对象层次一致。可在实体页先纠正。', 'This selection cannot be linked: require a current revision, readable matching evidence, resolved identity, and matching level. Correct it on the entity page first.')}/>}
         <h4>{t('用于确认身份的原文提及', 'Source mentions supporting identity')}</h4>
-        <Checkbox.Group value={mentionIds} onChange={values => { setMentionIds(values as string[]); setConfirmed(false); }} options={preview.revision.mentions.filter(mention => mention.entityId === preview.entity.entityId).map(mention => ({ value: mention.mentionId, label: `${mention.selection.quote} · ${mention.rationale}` }))}/>
-        <label>{t('此来源关联理由', 'Rationale for this source link')}<Input.TextArea aria-label={t('此来源关联理由', 'Rationale for this source link')} maxLength={4096} disabled={busy} value={rationale} onChange={event => setRationale(event.target.value)}/></label>
+        <Checkbox.Group value={mentionIds} onChange={values => { source.setMentionIds(values as string[]); setConfirmed(false); }} options={preview.revision.mentions.filter(mention => mention.entityId === preview.entity.entityId).map(mention => ({ value: mention.mentionId, label: `${mention.selection.quote} · ${mention.rationale}` }))}/>
+        <label>{t('此来源关联理由', 'Rationale for this source link')}<Input.TextArea aria-label={t('此来源关联理由', 'Rationale for this source link')} maxLength={4096} disabled={busy} value={rationale} onChange={event => source.setRationale(event.target.value)}/></label>
         <Button disabled={busy || !eligible || !rationale.trim()} onClick={add}>{t('确认此来源关联', 'Confirm this source link')}</Button>
       </div>}
     </>}

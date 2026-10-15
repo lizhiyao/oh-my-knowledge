@@ -11,6 +11,12 @@ import type { KnowledgeCandidateRow } from '../../../view-models/knowledge/knowl
 import { KNOWLEDGE_INDEX_PATH } from '../../../http/page-paths';
 import { workspaceHref } from '../layout/workspace-link';
 
+type CatalogState = { phase: 'loading' | 'failed' } | { phase: 'ready'; rows: KnowledgeCandidateRow[]; carriers: CarrierRow[] };
+type BaselineState = { phase: 'idle' | 'loading' | 'failed' } | { phase: 'ready'; review: CarrierKnowledgeReview };
+type PreviewState = { phase: 'selection' | 'preparing' } | { phase: 'reviewing' | 'stale'; draft: ReviewedCarrierDraft; content: string };
+const EMPTY_KNOWLEDGE: KnowledgeCandidateRow[] = [];
+const EMPTY_CARRIERS: CarrierRow[] = [];
+
 export async function requestArtifact<T>(workspace: string, operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
   return requestKnowledge<T>('artifacts', { workspace, operation, ...fields }, signal);
 }
@@ -27,8 +33,10 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const router = useRouter();
-  const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
-  const [carriers, setCarriers] = useState<CarrierRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogState>({ phase: 'loading' });
+  const rows = catalog.phase === 'ready' ? catalog.rows : EMPTY_KNOWLEDGE;
+  const carriers = catalog.phase === 'ready' ? catalog.carriers : EMPTY_CARRIERS;
+  const loaded = catalog.phase === 'ready';
   const [initialIds] = useState(ids);
   const [selected, setSelected] = useState(ids);
   const [mode, setMode] = useState<'new' | 'library' | 'local'>(existing ? 'library' : 'new');
@@ -36,38 +44,40 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   const [path, setPath] = useState('');
   const [kind, setKind] = useState<AuthoredArtifactKind>(existing?.artifactKind ?? 'skill');
   const [name, setName] = useState(existing?.name ?? '');
-  const [draft, setDraft] = useState<ReviewedCarrierDraft | null>(null);
-  const [content, setContent] = useState('');
-  const [reading, setBusy] = useState(true);
+  const [preparation, setPreparation] = useState<PreviewState>({ phase: 'selection' });
+  const draft = preparation.phase === 'reviewing' || preparation.phase === 'stale' ? preparation.draft : null;
+  const content = preparation.phase === 'reviewing' || preparation.phase === 'stale' ? preparation.content : '';
+  const stalePreview = preparation.phase === 'stale';
+  function setContent(content: string) { setPreparation(current => current.phase === 'reviewing' || current.phase === 'stale' ? { ...current, content } : current); }
   const { session, state, busy: writing, uncertain } = useKnowledgeSave<{ draft: ReviewedCarrierDraft; content: string }>(workspace);
-  const busy = reading || writing;
+  const busy = catalog.phase === 'loading' || preparation.phase === 'preparing' || writing;
   const [previewError, setPreviewError] = useState('');
   function setError(message: string) { setPreviewError(message); if (!message) session.clearError(); }
   const error = state.error || previewError;
-  const [loadingBaseline, setLoadingBaseline] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [baseline, setBaseline] = useState<BaselineState>({ phase: 'idle' });
+  const loadingBaseline = baseline.phase === 'loading';
+  const baselineLoaded = baseline.phase === 'ready';
+  const baselineReview = baseline.phase === 'ready' ? baseline.review : null;
   const [loadRetry, setLoadRetry] = useState(0); const [baselineRetry, setBaselineRetry] = useState(0);
-  const [loadError, setLoadError] = useState(''); const [baselineError, setBaselineError] = useState(''); const [baselineLoaded, setBaselineLoaded] = useState(false);
-  const [stalePreview, setStalePreview] = useState(false); const writeController = useRef<AbortController | null>(null);
+  const loadError = catalog.phase === 'failed' ? t('未能读取知识或载体，请重新读取。不能据此判断没有可用知识。', 'Could not load knowledge or artifacts. Reload; this does not mean no knowledge is available.') : '';
+  const baselineError = baseline.phase === 'failed' ? t('未能读取已有知识选择，请重新读取后再生成。', 'Could not load the saved selection. Reload before generating.') : '';
+  const writeController = useRef<AbortController | null>(null);
   useEffect(() => () => { writeController.current?.abort(); writeController.current = null; }, [workspace]);
-  const [baselineReview, setBaselineReview] = useState<CarrierKnowledgeReview | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setBusy(true); setLoaded(false); setRows([]); setCarriers([]); setLoadError('');
+    const controller = new AbortController(); setCatalog({ phase: 'loading' });
     void Promise.all([
       requestKnowledge<KnowledgeCandidateRow[]>('candidates', { workspace, operation: 'list' }, controller.signal),
       requestArtifact<CarrierRow[]>(workspace, 'list', {}, controller.signal),
-    ]).then(([knowledge, artifacts]) => { if (controller.signal.aborted) return; setRows(knowledge.filter(row => row.choice === 'retain')); setCarriers(artifacts); setLoaded(true); })
-      .catch(() => { if (!controller.signal.aborted) setLoadError(t('未能读取知识或载体，请重新读取。不能据此判断没有可用知识。', 'Could not load knowledge or artifacts. Reload; this does not mean no knowledge is available.')); })
-      .finally(() => { if (!controller.signal.aborted) setBusy(false); });
+    ]).then(([knowledge, artifacts]) => { if (controller.signal.aborted) return; setCatalog({ phase: 'ready', rows: knowledge.filter(row => row.choice === 'retain'), carriers: artifacts }); })
+      .catch(() => { if (!controller.signal.aborted) setCatalog({ phase: 'failed' }); });
     return () => controller.abort();
   }, [workspace, loadRetry]);
   useEffect(() => {
-    if (mode !== 'library' || !target || !loaded) { setLoadingBaseline(false); setBaselineLoaded(false); setBaselineReview(null); return; }
-    const controller = new AbortController(); setLoadingBaseline(true); setBaselineLoaded(false); setBaselineReview(null); setBaselineError('');
+    if (mode !== 'library' || !target || !loaded) { setBaseline({ phase: 'idle' }); return; }
+    const controller = new AbortController(); setBaseline({ phase: 'loading' });
     void requestArtifact<ReviewedCarrierDetail>(workspace, 'show', { id: target }, controller.signal)
-      .then(detail => { if (!controller.signal.aborted) { setBaselineReview(detail.knowledgeReview); setSelected([...new Set([...initialIds, ...detail.knowledgeRefs.map(ref => ref.knowledgeId)])].filter(id => rows.some(row => row.knowledgeId === id))); setBaselineLoaded(true); } })
-      .catch(() => { if (!controller.signal.aborted) setBaselineError(t('未能读取已有知识选择，请重新读取后再生成。', 'Could not load the saved selection. Reload before generating.')); })
-      .finally(() => { if (!controller.signal.aborted) setLoadingBaseline(false); });
+      .then(detail => { if (!controller.signal.aborted) { setSelected([...new Set([...initialIds, ...detail.knowledgeRefs.map(ref => ref.knowledgeId)])].filter(id => rows.some(row => row.knowledgeId === id))); setBaseline({ phase: 'ready', review: detail.knowledgeReview }); } })
+      .catch(() => { if (!controller.signal.aborted) setBaseline({ phase: 'failed' }); });
     return () => controller.abort();
   }, [workspace, mode, target, rows, initialIds, loaded, baselineRetry]);
   const source: CarrierSource = mode === 'new' ? { sourceKind: 'new' } : mode === 'library' ? { sourceKind: 'library', artifactId: target } : { sourceKind: 'local', path };
@@ -81,10 +91,23 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   const finish = (detail: ReviewedCarrierDetail) => { onSaved?.(detail); onClose(); router.push(workspaceHref(`${KNOWLEDGE_INDEX_PATH}?artifact=${encodeURIComponent(detail.artifactId)}`, workspace)); };
   async function preview() {
     if (writeController.current) return;
-    const active = new AbortController(); writeController.current = active; setBusy(true); setError('');
-    try { const next = await requestArtifact<ReviewedCarrierDraft>(workspace, 'preview', { source, artifactKind: kind, name, ids: selected }, active.signal); if (!active.signal.aborted) { setDraft(next); setContent(next.content); setStalePreview(false); } }
-    catch (cause) { if (!active.signal.aborted) setError(cause instanceof Error && cause.message === 'carrier_invalid_metadata'
-      ? t('本地文件头部需要有效的 YAML 属性；prompt 的 tags 应为字符串列表，skill 的 metadata 应为映射。请核对文件后再生成。', 'Use valid YAML properties in the source: prompt tags must be a string list and skill metadata a mapping. Review the file before generating.') : failure(cause)); } finally { if (writeController.current === active) { writeController.current = null; if (!active.signal.aborted) setBusy(false); } }
+    const active = new AbortController();
+    writeController.current = active;
+    setPreparation({ phase: 'preparing' });
+    setError('');
+    try {
+      const next = await requestArtifact<ReviewedCarrierDraft>(workspace, 'preview', { source, artifactKind: kind, name, ids: selected }, active.signal);
+      if (!active.signal.aborted) setPreparation({ phase: 'reviewing', draft: next, content: next.content });
+    } catch (cause) {
+      if (!active.signal.aborted) setError(cause instanceof Error && cause.message === 'carrier_invalid_metadata'
+        ? t('本地文件头部需要有效的 YAML 属性；prompt 的 tags 应为字符串列表，skill 的 metadata 应为映射。请核对文件后再生成。', 'Use valid YAML properties in the source: prompt tags must be a string list and skill metadata a mapping. Review the file before generating.')
+        : failure(cause));
+    } finally {
+      if (writeController.current === active) {
+        writeController.current = null;
+        if (!active.signal.aborted) setPreparation(current => current.phase === 'preparing' ? { phase: 'selection' } : current);
+      }
+    }
   }
   async function save() {
     if (!draft || uncertain || stalePreview || busy) return;
@@ -94,7 +117,7 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
       name: command.draft.name, directoryName: command.draft.directoryName, baselineRevisionId: command.draft.baselineRevisionId,
       baselineHash: command.draft.baselineHash, content: command.content, selectedRefs: command.draft.selectedRefs, tagSelections: command.draft.tagSelections,
     }, signal), cause => {
-      if (cause instanceof Error && cause.message === 'carrier_conflict') setStalePreview(true);
+      if (cause instanceof Error && cause.message === 'carrier_conflict') setPreparation(current => current.phase === 'reviewing' || current.phase === 'stale' ? { ...current, phase: 'stale' } : current);
       if (cause instanceof KnowledgeRequestError && cause.definiteRejection && ['carrier_conflict', 'carrier_capacity_exceeded', 'request_body_too_large', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'knowledge_workspace_busy', 'knowledge_storage_unsupported'].includes(cause.message)) return failure(cause);
     }, t('保存结果未能读取，请先核对已保存版本。', 'Save result could not be read. Check the saved version first.'));
     if (saved?.current()) finish(saved.value);
@@ -102,14 +125,15 @@ export function ArtifactAuthoringDialog({ workspace, lang, ids = [], existing, o
   async function readSaved() {
     const saved = await session.inspect((command, signal) => requestArtifact<ReviewedCarrierDetail>(workspace, 'show', { id: command.draft.artifactId }, signal),
       (value, command) => !value.drifted && value.content === command.content
+        && value.knowledgeRefs.length === command.draft.selectedRefs.length
         && command.draft.selectedRefs.every(ref => value.knowledgeRefs.some(item => item.knowledgeId === ref.knowledgeId && item.revisionId === ref.revisionId && item.generation === ref.generation))
         && (value.baseline?.contentHash === command.draft.baselineHash && value.baseline.revisionId === command.draft.baselineRevisionId || command.draft.baselineHash === null && value.version === 1),
       t('未能确认本次内容已保存。关闭后查看载体，再重新生成预览。', 'Could not confirm this save. Close, inspect the artifact, then generate a new preview.'),
       t('未能确认保存结果。请稍后再次核对。', 'Could not confirm the save. Check again later.'));
     if (saved?.current()) finish(saved.value);
   }
-  return <Modal open width={900} className="carrier-authoring-modal" title={t('生成知识载体', 'Generate knowledge artifact')} onCancel={() => { if (!busy) onClose(); }} closable={!busy} maskClosable={false} keyboard={!busy} footer={<Space wrap>
-    {draft && !uncertain && <Button disabled={busy} onClick={() => { setDraft(null); setError(''); setStalePreview(false); }}>{t('返回选择', 'Back to selection')}</Button>}
+  return <Modal open width={900} className="carrier-authoring-modal" title={t('生成知识载体', 'Generate knowledge artifact')} onCancel={() => { if (!busy) onClose(); }} closable={!busy} mask={{ closable: false }} keyboard={!busy} footer={<Space wrap>
+    {draft && !uncertain && <Button disabled={busy} onClick={() => { setPreparation({ phase: 'selection' }); setError(''); }}>{t('返回选择', 'Back to selection')}</Button>}
     <Button disabled={busy} onClick={onClose}>{t('取消', 'Cancel')}</Button>
     {uncertain ? <Button loading={busy} onClick={() => void readSaved()}>{t('核对已保存版本', 'Check saved version')}</Button> : <Button type="primary" loading={busy} disabled={!loaded || loadingBaseline || stalePreview || mode === 'library' && !baselineLoaded || (draft ? !content.trim() : !name.trim() || selected.length > 100 || (!selected.length && mode !== 'library') || (mode === 'library' && !target) || (mode === 'local' && !path.trim()))} onClick={() => void (draft ? save() : preview())}>{draft ? t('保存载体', 'Save artifact') : t('生成并核对内容', 'Generate and review')}</Button>}
   </Space>}>

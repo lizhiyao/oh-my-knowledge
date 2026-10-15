@@ -9,7 +9,8 @@ const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB_DIR = join(REPO_ROOT, 'src', 'studio', 'web');
 
 function memberName(node: ts.Node): string | undefined {
-  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) return node.text;
+  if (ts.isComputedPropertyName(node) && ts.isStringLiteralLike(node.expression)) return node.expression.text;
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
   if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) return node.argumentExpression.text;
   return undefined;
@@ -21,8 +22,8 @@ function rawEscapes(source: ts.SourceFile): string[] {
     const member = memberName(node);
     const property = ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node);
     const unsafeProperty = property && (member === 'innerHTML' || member === 'outerHTML');
-    const unsafeAttribute = (ts.isJsxAttribute(node) || ts.isPropertyAssignment(node))
-      && node.name.getText(source).replace(/['"]/g, '') === 'dangerouslySetInnerHTML';
+    const unsafeAttribute = (ts.isJsxAttribute(node) || ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node))
+      && memberName(node.name) === 'dangerouslySetInnerHTML';
     let unsafeCall = false;
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
       const name = memberName(node.expression);
@@ -59,6 +60,8 @@ describe('Studio React 渲染层守门', () => {
     'eval (value)',
     '<div dangerouslySetInnerHTML={{ __html: value }} />',
     'const props = { dangerouslySetInnerHTML: { __html: value } }; <div {...props} />',
+    "const props = { ['dangerouslySetInnerHTML']: { __html: value } }; <div {...props} />",
+    'const dangerouslySetInnerHTML = { __html: value }; const props = { dangerouslySetInnerHTML }; <div {...props} />',
   ])('控制组：拦截实际代码 %s', code => {
     const source = ts.createSourceFile('probe.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     expect(rawEscapes(source).length).toBeGreaterThan(0);
