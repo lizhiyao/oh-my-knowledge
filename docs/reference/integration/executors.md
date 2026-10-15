@@ -28,7 +28,7 @@ The former built-in `gemini` executor has been removed because it did not expose
 
 The built-in `claude`, `claude-sdk`, and `anthropic-api` executors and the optional Claude Agent SDK dependency are removed. Explicit old executor IDs fail; no provider or model is substituted. The default executor is now `codex` in every host. Update `executor`, judge entries, `OMK_EXECUTOR`, and model choices before starting a new comparison. Historical trace parsing remains read-only and available; existing execution evidence is not rewritten or treated as Codex evidence.
 
-`omk install` targets Codex/AGENTS or an explicit `--dest`; it no longer installs into Claude Code. `CCV_PROXY_URL` and the Claude hook variable `OMK_MOCK_SETTINGS_FILE` are removed. Custom model-call scripts must consume their manifest or optional fake MCP config themselves. The sample-generation prompt is now `omk.sample-generation/v2`; existing authored sample files are not regenerated.
+`omk install` targets Codex/AGENTS or an explicit `--dest`; it no longer installs into Claude Code. `CCV_PROXY_URL` and the Claude hook variable `OMK_MOCK_SETTINGS_FILE` are removed. Custom model-call scripts must consume their manifest or optional fake MCP config themselves. The sample-generation prompt is now `omk.sample-generation/v3`, with generated mocks forced strict; existing authored sample files are not regenerated.
 
 User settings advance to `schemaVersion: 2`; Studio carrier measurements use `omk-carrier-measurement-v2`. Only current versions are read. Back up v1 files before migrating settings: retain the directory and language, select `codex` or `openai-api`, choose that executor's model explicitly, then set `schemaVersion` to 2. Old carrier measurement metadata remains on disk but is not loaded; keep the canonical run reports and create a new measurement preview. See [settings](../shared/settings.md). Changing executor or generated samples changes measurement conditions; establish a fresh baseline.
 
@@ -181,6 +181,8 @@ Report invocation failure with a stable error code:
 This protocol applies to targets executed by `omk eval`. Model calls from `doctor`, `sample`, and `evolve`, and custom LLM judges still use the old `{ model, system, prompt }` adapter interface. Do not use a script implementing only this section's protocol for those model calls. Configure a supported judge separately through `--judge-models` when needed.
 
 ## Diagnose a failed run
+
+DSH observation compares opaque persistence revision tokens with `Object.is`. A host must return immutable tokens stable across unchanged snapshots (for example, strings). Fresh object tokens are not assumed structurally equal: three unstable reads fail explicitly. OMK cannot infer backend snapshot stability from similar serialized objects.
 
 Start with execution/scoring coverage and specific reason codes before interpreting model output. `OMK_CODEX_CLI_UPGRADE_REQUIRED` means the CLI cannot run the selected model: check `codex --version`, upgrade, and rerun the same model and cases. Changing the model does not verify that the original knowledge comparison recovered.
 

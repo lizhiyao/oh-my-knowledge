@@ -499,25 +499,17 @@ describe('sanitizeGeneratedSamples', () => {
     assert.ok(stripped.some((s) => s.includes('--force')), 'should warn about bare needle');
   });
 
-  it('auto-sets mocksStrict=true when mocks exist but mocksStrict missing', () => {
-    const samples: Sample[] = [{
-      sample_id: 's1',
-      input: { inputKind: 'text' as const, text: 'p' },
-      mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
-    }];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].mocksStrict, true, 'mocksStrict should default to true when mocks present');
-  });
-
-  it('preserves explicit mocksStrict=false (escape hatch)', () => {
-    const samples: Sample[] = [{
-      sample_id: 's1',
-      input: { inputKind: 'text' as const, text: 'p' },
-      mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
-      mocksStrict: false,
-    }];
-    sanitizeGeneratedSamples(samples);
-    assert.equal(samples[0].mocksStrict, false, 'explicit false must be preserved');
+  it('forces generated mocks to be strict regardless of omitted or explicit model policy', () => {
+    for (const mocksStrict of [undefined, false, true]) {
+      const samples: Sample[] = [{
+        sample_id: 's1',
+        input: { inputKind: 'text' as const, text: 'p' },
+        mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
+        mocksStrict,
+      }];
+      sanitizeGeneratedSamples(samples);
+      assert.equal(samples[0].mocksStrict, true, 'generated policy must remain strict');
+    }
   });
 
   it('does not set mocksStrict when sample has no mocks', () => {

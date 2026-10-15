@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, readSync, readdirSync, statSync, type Dirent } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -34,6 +34,26 @@ export type {
 };
 
 const MAX_SKILL_DEFINITION_CHARS = 12000;
+const MAX_SKILL_DEFINITION_BYTES = 1024 * 1024;
+
+function readSkillDefinition(path: string): string {
+  const descriptor = openSync(path, 'r');
+  const limitError = () => new Error(`Skill definition exceeds ${MAX_SKILL_DEFINITION_BYTES} bytes.`);
+  try {
+    if (fstatSync(descriptor).size > MAX_SKILL_DEFINITION_BYTES) throw limitError();
+    const bytes = Buffer.allocUnsafe(MAX_SKILL_DEFINITION_BYTES + 1);
+    let size = 0;
+    while (size < bytes.length) {
+      const count = readSync(descriptor, bytes, size, bytes.length - size, null);
+      if (count === 0) break;
+      size += count;
+    }
+    if (size > MAX_SKILL_DEFINITION_BYTES) throw limitError();
+    return bytes.toString('utf8', 0, size);
+  } finally {
+    closeSync(descriptor);
+  }
+}
 
 export function buildObservationSkillChains(skillNames: string[], cwd = process.cwd(), experienceReports: ObservationExperienceReport[] = []): Record<string, ObservationSkillChain> {
   const uniqueSkillNames = Array.from(new Set(skillNames.filter(Boolean))).sort();
@@ -43,7 +63,7 @@ export function buildObservationSkillChains(skillNames: string[], cwd = process.
 export function buildObservationSkillChain(skillName: string, cwd = process.cwd(), experienceReports: ObservationExperienceReport[] = []): ObservationSkillChain {
   const path = findSkillMdPath(skillName, cwd);
   if (!path) return emptySkillChain(skillName, experienceReports);
-  const content = readFileSync(path, 'utf-8');
+  const content = readSkillDefinition(path);
   const hardRules = validateSkillHardRules(content);
   const workflows = validateSkillWorkflows(content);
   const markdownWorkflows = workflows.workflows.length > 0 ? [] : extractMarkdownStepWorkflows(content);

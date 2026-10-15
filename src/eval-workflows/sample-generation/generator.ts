@@ -12,7 +12,7 @@ import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { Assertion } from '../inputs/contracts/assertion.js';
 import type { ObservationInboxItem } from '../../observability/contracts/inbox.js';
 
-const SYSTEM_PROMPT = `版本：omk.sample-generation/v2
+const SYSTEM_PROMPT = `版本：omk.sample-generation/v3
 你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 
 样本结构决策（必须先做）：先扫一遍 skill 内容判断它属于哪一类，按对应配比和数量生成。
@@ -480,7 +480,7 @@ export async function generateSamples({
 
   // 生成场景比单次 eval 调用更重(LLM 要思考结构 + 输出大段 JSON),
   // 默认 120s 对长 skill + count >= 8 经常不够,这里用 5 分钟兜底。
-  // lean=true 关掉 agent 工具循环 / skill 发现 — 生成只需要纯文本,不需要 Bash / Read 等工具。
+  // 生成只消费文本结果；lean 是调用偏好，不代表宿主已禁用全部 skill 发现。
   // 重试机制:LLM 偶尔输出 JSON 内含未转义引号 / 截断 / 多余文字。最多 2 次额外尝试,
   // 第二次起在 prompt 末尾追加上一次的错误反馈,引导模型自纠。
   const MAX_ATTEMPTS = 3;
@@ -1164,11 +1164,9 @@ export function sanitizeGeneratedSamples(
       }
     }
 
-    // mocksStrict 兜底:有 mocks 时强制 true。
-    // SYSTEM_PROMPT 已要求 LLM 必填,但偶尔 LLM 漏填 — 在 generator boundary 修掉,
-    // 避免运行时 mock 未命中透传到真 shell(报 mcporter not found 等噪声错误)。
-    // LLM 显式给 false 时尊重(罕见,但保留 escape hatch — 比如混合 mock + 真 fs 的特殊场景)。
-    if (s.mocks && s.mocks.length > 0 && s.mocksStrict === undefined) {
+    // Generated model output cannot authorize unmatched calls into the real runtime.
+    // Explicit non-strict policies remain available to human-authored sample files.
+    if (s.mocks && s.mocks.length > 0) {
       s.mocksStrict = true;
     }
   }

@@ -8,6 +8,17 @@ import type { ObservationExperienceReport } from '../../../src/observability/exp
 import { loadExpectedToolsForSkill, loadFrontmatterSkillType, loadSkillDeclarationCheck } from '../../../src/observability/skill-health/experience-frontmatter.js';
 
 describe('observation skill chain runtime checks', () => {
+  it('rejects an oversized skill before parsing and accepts a corrected definition', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-chain-size-'));
+    const skill = join(dir, 'skills', 'size-fixture', 'SKILL.md');
+    try {
+      mkdirSync(join(dir, 'skills', 'size-fixture'), { recursive: true });
+      writeFileSync(skill, Buffer.alloc(1024 * 1024 + 1, 'x'));
+      assert.throws(() => buildObservationSkillChain('size-fixture', dir), /Skill definition exceeds/);
+      writeFileSync(skill, '# Corrected definition');
+      assert.equal(buildObservationSkillChain('size-fixture', dir).definition.content, '# Corrected definition');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it('checks observable hardRules and workflow nodes without LLM', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-chain-'));
     try {

@@ -110,7 +110,7 @@ samples:
 
 **字段语义**：
 
-- **mocksStrict**（boolean，默认 `true`）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。production resolver 对生成和手写用例采用同一个 fail-closed 默认值；只有用例明确允许未命中调用进入真实 runtime 时才设为 `false`。
+- **mocksStrict**（boolean，默认 `true`）：未命中任何 mock 的工具调用直接 `deny`（LLM 看到失败结果）。production resolver 对生成和手写用例采用同一个 fail-closed 默认值。生成边界在有 mocks 时始终设为 `true`，即使模型输出 `false`；模型输出无权授权未命中的真实调用。只有人工编写的用例才可显式设为 `false`，允许预期的真实 runtime 透传。**BREAKING-PROMPT / BREAKING-COMPARABILITY：**生成使用 `omk.sample-generation/v3`，不自动重生成已有文件；新生成集须人工复核并建立新的比较基线。
 - **tripwire**（boolean，默认 false）：声明这是一条诱错用例，prompt 有意加入违反 rubric 或 skill 的诱导。Evaluation Core 会把该声明作为 Sample annotation 保留供审计；它不会把 failed observation 变成 success，也不会改写已注册 Decision。
 - **environment**（object，可选）：仅作 prompt 上下文的题设环境声明。LLM 可以据此跳过可用性探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流，但 omk 不会创建文件、导出环境变量或修改 `PATH`。它不是 fixture 机制。doctor 仍可审计声明的物理路径（可用 `--skip-doctor` 跳过）。
   - `cli_available: string[]` —— 假定已在 PATH 上

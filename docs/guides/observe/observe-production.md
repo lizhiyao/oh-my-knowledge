@@ -73,6 +73,8 @@ The per-skill report shows knowledge usage, potential [gap signals](../../specs/
 
 Scope the window with `--last 7d` / `--from … --to …`, and narrow to specific skills with `--skills`.
 
+Optional LLM enhanced review limits the UTF-8 system text plus JSON prompt to 1 MiB. Skill-chain loading also rejects `SKILL.md` files larger than 1 MiB before parsing, using a bounded read even if the file grows. Oversized inputs fail explicitly without a model call or a new review cache entry; narrow the evidence window or skill definition before retrying. Existing display excerpts and prompt bytes below the limits are unchanged; the new limits do not silently shorten evidence.
+
 ## B. Inbox: the reviewer loop
 
 When you want to triage observations one by one, use the inbox. Steps 1-3 below are local-only and LLM-free; drafting regression samples is a separate optional authoring step that calls a generation model.

@@ -10,6 +10,7 @@ import {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
+  MAX_SOFT_STANDARD_PROMPT_BYTES,
 } from './constants.js';
 import {
   hashText,
@@ -48,10 +49,8 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const executorName = options.executorName;
   const generatedAt = options.now || new Date().toISOString();
   const path = skillDerivedStandardsPath(observationsDir ?? projectObservationsDir(), skillChain.skillName);
-  const sourceHash = skillChain.definition.content ? hashText(skillChain.definition.content) : undefined;
-  const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
-  const existing = loadSkillDerivedStandards(observationsDir)[skillChain.skillName];
   const promptDocument = readPromptTemplate();
+  const existing = loadSkillDerivedStandards(observationsDir)[skillChain.skillName];
   const hasReviewedStandards = existing?.standards.some((item) =>
     item.status === 'author_confirmed' || item.status === 'rejected' || item.status === 'stale'
   ) ?? false;
@@ -64,11 +63,16 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     writeJsonFileAtomic(path, stale);
     return stale;
   }
-  if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
-
   const needsHardRules = !skillChain.healthCheck.hardRules.declared;
   const needsWorkflows = !skillChain.healthCheck.workflows.declared;
   const prompt = buildSoftStandardPrompt(skillChain, { needsHardRules, needsWorkflows }, options.runtimeEvidence);
+  if (Buffer.byteLength(promptDocument.body, 'utf8') + Buffer.byteLength(prompt, 'utf8') > MAX_SOFT_STANDARD_PROMPT_BYTES) {
+    throw new Error(`Soft-standard review input exceeds ${MAX_SOFT_STANDARD_PROMPT_BYTES} bytes. Narrow the evidence window and retry.`);
+  }
+  const sourceHash = skillChain.definition.content ? hashText(skillChain.definition.content) : undefined;
+  const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
+  if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
+
   const executor = options.executor;
   const result = await executor({
     model,
