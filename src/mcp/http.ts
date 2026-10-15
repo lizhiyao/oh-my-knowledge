@@ -90,7 +90,14 @@ export function createObservationMcpHttpHandler(
         return;
       }
     }
-    if (new URL(request.url ?? '/', 'http://localhost').pathname !== path) {
+    let pathname: string;
+    try {
+      pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+    } catch {
+      handleHttpError(response, new ObservationHttpTransportError('transport_failed', 'Invalid request target.'));
+      return;
+    }
+    if (pathname !== path) {
       sendJsonRpcError(response, 404, -32004, 'Not found.');
       return;
     }
@@ -173,30 +180,48 @@ async function readJsonBody(
   }
   let total = 0;
   const chunks: Buffer[] = [];
-  let timeout: NodeJS.Timeout | undefined;
-  try {
-    await Promise.race([
-      (async () => {
-        for await (const chunk of request) {
-          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          total += buffer.length;
-          if (total > bodyLimit) {
-            request.resume();
-            throw new ObservationHttpTransportError('body_too_large', 'Request body too large.');
-          }
-          chunks.push(buffer);
-        }
-      })(),
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          request.resume();
-          reject(new ObservationHttpTransportError('request_timeout', 'Request timed out.'));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: ObservationHttpTransportError): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      request.off('data', onData);
+      request.off('end', onEnd);
+      request.off('error', onError);
+      request.off('close', onClose);
+      if (error) {
+        request.resume();
+        reject(error);
+      } else resolve();
+    };
+    const onData = (chunk: Buffer | string): void => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buffer.length;
+      if (total > bodyLimit) {
+        finish(new ObservationHttpTransportError('body_too_large', 'Request body too large.'));
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onEnd = (): void => finish();
+    const onError = (cause: Error): void => finish(new ObservationHttpTransportError(
+      'transport_failed', 'Request body could not be read.', { cause },
+    ));
+    const onClose = (): void => finish(new ObservationHttpTransportError(
+      'transport_failed', 'Request body was interrupted.',
+    ));
+    // Own the reader rather than racing an iterator that keeps consuming after timeout.
+    const timeout = setTimeout(() => finish(new ObservationHttpTransportError(
+      'request_timeout', 'Request timed out.',
+    )), timeoutMs);
+    request.on('data', onData);
+    request.once('end', onEnd);
+    request.once('error', onError);
+    request.once('close', onClose);
+    if (request.readableEnded) onEnd();
+    else if (request.destroyed) onClose();
+  });
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch (error) {
@@ -207,6 +232,7 @@ async function readJsonBody(
 }
 
 function handleHttpError(response: ServerResponse, error: unknown): void {
+  if (response.destroyed) return;
   if (response.headersSent) {
     if (!response.writableEnded) response.end();
     return;
@@ -235,7 +261,8 @@ function sendJsonRpcError(
   code: number,
   message: string,
 ): void {
-  response.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  // Every rejection may still have an unfinished body, including auth and route failures.
+  response.writeHead(statusCode, { 'Content-Type': 'application/json', Connection: 'close' });
   response.end(JSON.stringify({
     jsonrpc: '2.0',
     error: { code, message },
