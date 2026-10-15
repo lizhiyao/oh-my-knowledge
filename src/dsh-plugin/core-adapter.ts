@@ -60,7 +60,6 @@ export const DEFAULT_DSH_HOST_CORE_MAX_EVENT_BYTES = 10 * 1024 * 1024;
 const RESOURCE_PROFILE = Object.freeze({
   adapterLabel: 'DSH Host',
   errorPrefix: 'OMK_DSH_HOST',
-  mcpMockMode: 'hook-existing-tool',
   promptSchemaVersion: 'omk.dsh-host-prompt/v1',
 }) satisfies DshResourceProjectionProfile;
 

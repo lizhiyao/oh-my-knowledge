@@ -126,7 +126,7 @@ describe('oclif sample', () => {
 
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
     try {
-      await runCommand(SampleCommand, ['--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
+      await runCommand(SampleCommand, ['--batch', '--model', 'fixture-model', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as CommandRunError;

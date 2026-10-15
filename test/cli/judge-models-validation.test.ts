@@ -25,12 +25,12 @@ const CASES: Array<{ name: string; command: CommandClass; argv: string[] }> = [
   {
     name: 'eval',
     command: EvalCommand,
-    argv: ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run'],
+    argv: ['--model', 'fixture-model', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run'],
   },
   {
     name: 'evolve',
     command: EvolveCommand,
-    argv: [V1_SKILL, '--rounds', '1'],
+    argv: [V1_SKILL, '--model', 'fixture-model', '--rounds', '1'],
   },
 ];
 
@@ -64,6 +64,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     await assert.rejects(
       () => runCommand(EvolveCommand, [
         V1_SKILL,
+        '--model', 'fixture-model',
         '--rounds', '1',
         '--judge-models', 'codex:judge-small,codex:test-model',
       ]),
@@ -85,7 +86,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':judge-small']),
+      () => runCommand(EvalCommand, ['--model', 'fixture-model', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', ':judge-small']),
       (err: unknown) => {
         const e = err as CommandRunError;
         assert.equal(e.code, 2);
@@ -98,7 +99,7 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
 
   it('omk eval --judge-models "" (empty) exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => runCommand(EvalCommand, ['--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', '']),
+      () => runCommand(EvalCommand, ['--model', 'fixture-model', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', SKILLS_DIR, '--dry-run', '--judge-models', '']),
       (err: unknown) => {
         const e = err as CommandRunError;
         assert.equal(e.code, 2);

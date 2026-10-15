@@ -1,5 +1,4 @@
 import { compareStrings } from '../eval-core/primitives/ordering.js';
-import { readonlyMapSnapshot } from '../eval-workflows/hosts/adapters/shared/readonly-map-snapshot.js';
 import { openNodeTrialWorkspace } from '../eval-workflows/hosts/adapters/shared/trial-workspace.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
@@ -7,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { z } from 'zod';
 import {
-  IdentifierSchema,
   JsonValueSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
@@ -21,8 +19,6 @@ import {
   type ExecutionContent,
   type ExecutorTrialContext,
 } from '../eval-core/execution/index.js';
-import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../eval-runtime/mock-interception.js';
-import type { Mock, MockMatch, MockReturn } from '../executors/contracts/mock.js';
 import type { RuntimeBindingOf } from '../eval-workflows/hosts/types.js';
 import type {
   OmkBindingResourceLease,
@@ -40,31 +36,6 @@ const DescriptorSchema = z.object({
   size: z.number().int().nonnegative(),
 }).strict();
 
-const DshMockMatchSchema = z.object({
-  file_path: z.string().optional(),
-  file_path_endswith: z.string().optional(),
-  url: z.string().optional(),
-  url_glob: z.string().optional(),
-  command_glob: z.string().optional(),
-  input: z.record(z.string(), z.unknown()).optional(),
-  input_contains: z.string().optional(),
-}).strict();
-
-const DshMockRulesSchema = z.object({
-  tool: z.string().min(1),
-  match: DshMockMatchSchema.optional(),
-}).strict();
-
-const DshMockPlanSchema = z.object({
-  schemaVersion: z.literal('omk.mock-interception-plan/v1'),
-  strict: z.boolean(),
-  rules: z.array(z.object({
-    mockId: IdentifierSchema,
-    rule: DescriptorSchema,
-    payloads: z.array(DescriptorSchema),
-  }).strict()).min(1),
-}).strict();
-
 const DshAllowedToolSchema = z.string().min(1).refine((value) => (
   !/[\u0000-\u001f\u007f]/.test(value)
   && !value.startsWith('-')
@@ -74,7 +45,6 @@ const DshAllowedToolSchema = z.string().min(1).refine((value) => (
 const DshTargetConfigSchema = z.object({
   behavior: z.object({
     artifact: DescriptorSchema,
-    mcpConfig: DescriptorSchema.optional(),
     allowedSkills: z.array(z.string().min(1)).optional(),
     sandbox: z.object({
       sandboxId: z.string().min(1),
@@ -109,9 +79,6 @@ export interface DshRunState {
   readonly systemInstructions?: string;
   readonly systemPromptBytes: number;
   readonly supportingFiles?: readonly { readonly path: string; readonly content: string }[];
-  readonly mcpConfigFile?: string;
-  readonly mcpServers?: Readonly<Record<string, unknown>>;
-  readonly mockControlsByResourceId: ReadonlyMap<string, DshTrialMockControls>;
   readonly classification: ExecutionContent['classification'];
   acquireTrial(): void;
   releaseTrial(): Promise<void>;
@@ -123,22 +90,12 @@ export interface DshTrialState {
   readonly prompt: string;
   readonly workingDirectory: string;
   readonly allowedTools?: readonly string[];
-  readonly mocks?: readonly Mock[];
-  readonly mocksStrict: boolean;
   readonly classification: ExecutionContent['classification'];
-}
-
-export interface DshTrialMockControls {
-  readonly mocks: readonly Mock[];
-  readonly strict: boolean;
-  readonly classification: ExecutionContent['classification'];
-  readonly mcpServerNames: readonly string[];
 }
 
 export interface DshResourceProjectionProfile {
   readonly adapterLabel: 'DSH Host';
   readonly errorPrefix: 'OMK_DSH_HOST';
-  readonly mcpMockMode: 'hook-existing-tool';
   readonly promptSchemaVersion: 'omk.dsh-host-prompt/v1';
 }
 
@@ -161,33 +118,6 @@ function fail(
     stage: 'infrastructure',
     message: `${profile.adapterLabel} ${message}`,
   });
-}
-
-function mockPlanDescriptors(
-  target: EvaluationDefinition['targets'][number],
-): readonly z.infer<typeof DescriptorSchema>[] {
-  const byResourceId = new Map<string, z.infer<typeof DescriptorSchema>>();
-  const controls = [
-    target.executionControls.defaults.mockInterception,
-    ...target.executionControls.sampleOverrides.flatMap((override) => (
-      override.mockInterception === undefined ? [] : [override.mockInterception]
-    )),
-  ];
-  for (const control of controls) {
-    if (control.mockInterceptionMode !== 'pre-tool-call') continue;
-    const descriptor = DescriptorSchema.parse(control.descriptor);
-    if (descriptor.classification !== 'secret'
-        || descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE) {
-      throw new TypeError('Dsh mock plan descriptor is invalid.');
-    }
-    const existing = byResourceId.get(descriptor.resourceId);
-    if (existing !== undefined
-        && canonicalizeJson(existing) !== canonicalizeJson(descriptor)) {
-      throw new TypeError('Dsh mock plan resourceId maps to conflicting descriptors.');
-    }
-    byResourceId.set(descriptor.resourceId, descriptor);
-  }
-  return Object.freeze([...byResourceId.values()]);
 }
 
 export function captureDshTarget(
@@ -222,26 +152,23 @@ export function captureDshTarget(
       override.tools === undefined ? [] : [override.tools]
     )),
   ];
-  const mockPlans = mockPlanDescriptors(target);
   const configuredDescriptors = [
     config.behavior.artifact,
     ...workspaceControls.flatMap((workspace) => (
       workspace.workspaceMode === 'copy-on-write-overlay' ? [workspace.descriptor] : []
     )),
-    ...(config.behavior.mcpConfig === undefined ? [] : [config.behavior.mcpConfig]),
-    ...mockPlans,
   ];
   if (configuredDescriptors.some((descriptor) => descriptor.classification === 'gold')) {
     throw new TypeError(`${profile.adapterLabel} Executor Target must not reference Gold resources.`);
   }
   const expectedRequirements = new Map<string, {
     resourceId: string;
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-plan';
+    resourceRole: 'artifact' | 'workspace';
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay';
   }>();
   const addRequirement = (
     resourceId: string,
-    resourceRole: 'artifact' | 'workspace' | 'mcp-config' | 'mock-plan',
+    resourceRole: 'artifact' | 'workspace',
     leaseMode: 'immutable-snapshot' | 'copy-on-write-overlay',
   ): void => {
     const next = { resourceId, resourceRole, leaseMode } as const;
@@ -261,21 +188,8 @@ export function captureDshTarget(
       );
     }
   }
-  if (config.behavior.mcpConfig !== undefined) {
-    addRequirement(config.behavior.mcpConfig.resourceId, 'mcp-config', 'immutable-snapshot');
-  }
-  for (const mockPlan of mockPlans) {
-    addRequirement(mockPlan.resourceId, 'mock-plan', 'immutable-snapshot');
-  }
-  const helperRequirements = binding.resourceLeaseRequirements.filter((requirement) => (
-    requirement.resourceRole === 'mock-rule' || requirement.resourceRole === 'mock-payload'
-  ));
-  if (mockPlans.length === 0 && helperRequirements.length > 0) {
-    throw new TypeError(`${profile.adapterLabel} received mock helper resources without a plan.`);
-  }
   const expectedRequirementList = [
     ...expectedRequirements.values(),
-    ...helperRequirements,
   ].sort((left, right) => (
     compareStrings(left.resourceId, right.resourceId)
   ));
@@ -298,18 +212,9 @@ export function captureDshTarget(
   if (config.behavior.config !== undefined) {
     throw new TypeError(`${profile.adapterLabel} Core adapter does not accept opaque provider config.`);
   }
-  if (config.behavior.mcpConfig !== undefined
-      && config.behavior.mcpConfig.classification !== 'secret') {
-    throw new TypeError(`${profile.adapterLabel} MCP config must use secret classification.`);
-  }
   const toolAllowLists = toolControls.flatMap((control) => (
     control.toolPolicyKind === 'allow-list' ? [control.allowedTools] : []
   ));
-  if (config.behavior.mcpConfig !== undefined && toolAllowLists.length > 0) {
-    throw new TypeError(
-      `${profile.adapterLabel} cannot enforce one complete tool allow-list across built-in and dynamic MCP tools.`,
-    );
-  }
   if (toolAllowLists.some((tools) => new Set(tools).size !== tools.length)) {
     throw new TypeError(`${profile.adapterLabel} built-in tool allow-list must not contain duplicates.`);
   }
@@ -436,259 +341,6 @@ function maxClassification(
   ), 'public');
 }
 
-function higherClassification(
-  left: ExecutionContent['classification'],
-  right: ExecutionContent['classification'],
-): ExecutionContent['classification'] {
-  const rank = { public: 0, sensitive: 1, secret: 2, gold: 3 } as const;
-  return rank[right] > rank[left] ? right : left;
-}
-
-async function validateMcpConfig(
-  profile: DshResourceProjectionProfile,
-  resource: OmkLeasedHostResource,
-  expected: z.infer<typeof DescriptorSchema>,
-): Promise<{
-  readonly path: string;
-  readonly serverNames: readonly string[];
-  readonly servers: Readonly<Record<string, unknown>>;
-}> {
-  if (
-    resource.resourceKind !== 'mcp-config'
-    || resource.leaseMode !== 'immutable-snapshot'
-    || resource.snapshotKind !== 'file'
-    || !sameDescriptor(resource, expected)
-  ) fail(profile, 'MCP_CONFIG_INVALID', 'MCP config lease does not match the sealed Target.');
-  const text = await readTextFile(
-    profile,
-    resource.snapshotPath,
-    'MCP_CONFIG_INVALID',
-    'MCP config',
-  );
-  try {
-    const value: unknown = JSON.parse(text);
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error();
-    if (
-      profile.mcpMockMode === 'hook-existing-tool'
-      && Object.keys(value).some((key) => key !== 'mcpServers')
-    ) throw new Error();
-    const rawServers = (value as Record<string, unknown>).mcpServers;
-    if (rawServers !== undefined
-        && (rawServers === null || typeof rawServers !== 'object' || Array.isArray(rawServers))) {
-      throw new Error();
-    }
-    const servers = structuredClone((rawServers ?? {}) as Record<string, unknown>);
-    return {
-      path: resource.snapshotPath,
-      serverNames: Object.freeze(Object.keys(servers).sort()),
-      servers: Object.freeze(servers),
-    };
-  } catch {
-    fail(profile, 'MCP_CONFIG_INVALID', 'MCP config is not a JSON object.');
-  }
-}
-
-function mockMcpServerName(tool: string): string | undefined {
-  if (!tool.startsWith('mcp__')) return undefined;
-  const rest = tool.slice('mcp__'.length);
-  const separator = rest.lastIndexOf('__');
-  return separator <= 0 || separator === rest.length - 2
-    ? undefined
-    : rest.slice(0, separator);
-}
-
-function mockReturn(profile: DshResourceProjectionProfile, value: unknown): MockReturn {
-  if (typeof value === 'string') return value;
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-    return value as MockReturn;
-  }
-  fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload must be a string or JSON object.');
-}
-
-async function readMockPayload(
-  profile: DshResourceProjectionProfile,
-  resource: OmkLeasedHostResource,
-): Promise<MockReturn> {
-  if (
-    resource.resourceKind !== 'mock-payload'
-    || resource.leaseMode !== 'immutable-snapshot'
-    || resource.snapshotKind !== 'file'
-  ) fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload must be an immutable file snapshot.');
-  const text = await readTextFile(
-    profile,
-    resource.snapshotPath,
-    'MOCK_PAYLOAD_INVALID',
-    'mock payload',
-  );
-  if (resource.descriptor.mediaType === 'application/json') {
-    try {
-      return mockReturn(profile, JSON.parse(text) as unknown);
-    } catch (error) {
-      if (error instanceof ExecutionPortFailure) throw error;
-      fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload contains invalid JSON.');
-    }
-  }
-  return text;
-}
-
-async function readMockRule(
-  profile: DshResourceProjectionProfile,
-  resource: OmkLeasedHostResource,
-  expected: z.infer<typeof DescriptorSchema>,
-): Promise<z.infer<typeof DshMockRulesSchema>> {
-  if (
-    resource.resourceKind !== 'mock-rule'
-    || resource.leaseMode !== 'immutable-snapshot'
-    || resource.snapshotKind !== 'file'
-    || resource.descriptor.classification !== 'secret'
-    || resource.descriptor.mediaType !== 'application/json'
-    || !sameDescriptor(resource, expected)
-  ) fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule lease does not match the sealed Target.');
-  const text = await readTextFile(
-    profile,
-    resource.snapshotPath,
-    'MOCK_CONFIG_INVALID',
-    'mock rule',
-  );
-  try {
-    const rules = DshMockRulesSchema.parse(JSON.parse(text) as unknown);
-    if (rules.tool.startsWith('mcp__') && mockMcpServerName(rules.tool) === undefined) {
-      fail(profile, 'MOCK_CONFIG_INVALID', 'MCP mock tool must identify one server and tool.');
-    }
-    return rules;
-  } catch (error) {
-    if (error instanceof ExecutionPortFailure) throw error;
-    fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule is not a valid hook contract.');
-  }
-}
-
-async function readMockPlan(
-  profile: DshResourceProjectionProfile,
-  resource: OmkLeasedHostResource,
-  expected: z.infer<typeof DescriptorSchema>,
-): Promise<z.infer<typeof DshMockPlanSchema>> {
-  if (
-    resource.resourceKind !== 'mock-plan'
-    || resource.leaseMode !== 'immutable-snapshot'
-    || resource.snapshotKind !== 'file'
-    || resource.descriptor.classification !== 'secret'
-    || resource.descriptor.mediaType !== MOCK_INTERCEPTION_PLAN_MEDIA_TYPE
-    || !sameDescriptor(resource, expected)
-  ) fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan lease does not match the sealed control.');
-  const text = await readTextFile(
-    profile,
-    resource.snapshotPath,
-    'MOCK_CONFIG_INVALID',
-    'mock plan',
-  );
-  try {
-    const plan = DshMockPlanSchema.parse(JSON.parse(text) as unknown);
-    if (new Set(plan.rules.map((rule) => rule.mockId)).size !== plan.rules.length
-        || plan.rules.some((rule) => (
-          rule.rule.classification !== 'secret'
-          || rule.rule.mediaType !== 'application/json'
-          || rule.payloads.some((payload) => payload.classification !== 'secret')
-        ))) throw new Error();
-    return plan;
-  } catch {
-    fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan is not a valid interception contract.');
-  }
-}
-
-async function projectMocks(
-  profile: DshResourceProjectionProfile,
-  lease: OmkBindingResourceLease,
-  target: EvaluationDefinition['targets'][number],
-): Promise<{
-  byResourceId: ReadonlyMap<string, DshTrialMockControls>;
-  mcpServerNames: readonly string[];
-}> {
-  const planDescriptors = mockPlanDescriptors(target);
-  if (planDescriptors.length === 0) return {
-    byResourceId: readonlyMapSnapshot(new Map()),
-    mcpServerNames: [],
-  };
-  const expectedHelpers = new Map<string, Readonly<{
-    resourceKind: 'mock-rule' | 'mock-payload';
-    descriptor: z.infer<typeof DescriptorSchema>;
-  }>>();
-  const registerHelper = (
-    resourceKind: 'mock-rule' | 'mock-payload',
-    descriptor: z.infer<typeof DescriptorSchema>,
-  ): void => {
-    const existing = expectedHelpers.get(descriptor.resourceId);
-    if (existing !== undefined
-        && (existing.resourceKind !== resourceKind
-          || canonicalizeJson(existing.descriptor) !== canonicalizeJson(descriptor))) {
-      fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan contains conflicting resource descriptors.');
-    }
-    expectedHelpers.set(descriptor.resourceId, { resourceKind, descriptor });
-  };
-  const byResourceId = new Map<string, DshTrialMockControls>();
-  const mcpServerNames = new Set<string>();
-  for (const planDescriptor of planDescriptors) {
-    const planResource = lease.resourcesByResourceId.get(planDescriptor.resourceId)
-      ?? fail(profile, 'MOCK_CONFIG_INVALID', 'mock plan resource is missing.');
-    const plan = await readMockPlan(profile, planResource, planDescriptor);
-    const mocks: Mock[] = [];
-    const planMcpServerNames = new Set<string>();
-    let classification: ExecutionContent['classification'] = planDescriptor.classification;
-    for (const entry of plan.rules) {
-      registerHelper('mock-rule', entry.rule);
-      const ruleResource = lease.resourcesByResourceId.get(entry.rule.resourceId);
-      if (ruleResource === undefined) {
-        fail(profile, 'MOCK_CONFIG_INVALID', 'mock rule resource is missing.');
-      }
-      const rules = await readMockRule(profile, ruleResource, entry.rule);
-      const returns: MockReturn[] = [];
-      const mcpServerName = mockMcpServerName(rules.tool);
-      if (mcpServerName !== undefined) {
-        mcpServerNames.add(mcpServerName);
-        planMcpServerNames.add(mcpServerName);
-      }
-      classification = higherClassification(classification, entry.rule.classification);
-      for (const descriptor of entry.payloads) {
-        registerHelper('mock-payload', descriptor);
-        const resource = lease.resourcesByResourceId.get(descriptor.resourceId);
-        if (resource === undefined || !sameDescriptor(resource, descriptor)) {
-          fail(profile, 'MOCK_PAYLOAD_INVALID', 'mock payload lease does not match the sealed plan.');
-        }
-        returns.push(await readMockPayload(profile, resource));
-        classification = higherClassification(classification, descriptor.classification);
-      }
-      mocks.push({
-        tool: rules.tool,
-        ...(rules.match === undefined ? {} : { match: rules.match as MockMatch }),
-        ...(returns.length === 0
-          ? { return: '' }
-          : returns.length === 1
-            ? { return: returns[0] }
-            : { return_seq: returns }),
-      });
-    }
-    byResourceId.set(planDescriptor.resourceId, Object.freeze({
-      mocks: Object.freeze(mocks),
-      strict: plan.strict,
-      classification,
-      mcpServerNames: Object.freeze([...planMcpServerNames].sort()),
-    }));
-  }
-  const actualHelpers = [...lease.resourcesByResourceId.values()].filter((resource) => (
-    resource.resourceKind === 'mock-rule' || resource.resourceKind === 'mock-payload'
-  ));
-  if (actualHelpers.length !== expectedHelpers.size
-      || actualHelpers.some((resource) => {
-        const expected = expectedHelpers.get(resource.resourceId);
-        return expected === undefined
-          || expected.resourceKind !== resource.resourceKind
-          || !sameDescriptor(resource, expected.descriptor);
-      })) fail(profile, 'MOCK_CONFIG_INVALID', 'mock helper leases do not match the sealed plans.');
-  return {
-    byResourceId: readonlyMapSnapshot(byResourceId),
-    mcpServerNames: Object.freeze([...mcpServerNames].sort()),
-  };
-}
-
 export async function captureDshRunState(
   lease: OmkBindingResourceLease,
   target: CapturedDshTarget,
@@ -735,21 +387,6 @@ export async function captureDshRunState(
   }
   if (!requiresInstructions && projectedArtifact !== undefined) {
     fail(profile, 'ARTIFACT_INVALID', 'Target forbids system instructions but has a non-empty artifact.');
-  }
-  const mcpDescriptor = target.config.behavior.mcpConfig;
-  const mcpConfig = mcpDescriptor === undefined
-    ? undefined
-    : await validateMcpConfig(
-        profile,
-        lease.resourcesByResourceId.get(mcpDescriptor.resourceId)
-          ?? fail(profile, 'MCP_CONFIG_INVALID', 'MCP config resource is missing.'),
-        mcpDescriptor,
-      );
-  const mockProjection = await projectMocks(profile, lease, target.target);
-  if (mockProjection.mcpServerNames.some((serverName) => (
-    mcpConfig === undefined || !mcpConfig.serverNames.includes(serverName)
-  ))) {
-    fail(profile, 'MCP_CONFIG_INVALID', 'MCP mocks require the matching sealed MCP server config.');
   }
   let privateWorkingDirectory: string | undefined;
   try {
@@ -807,14 +444,7 @@ export async function captureDshRunState(
           ? {}
           : { supportingFiles: projectedArtifact.files }
       ),
-      ...(mcpConfig === undefined ? {} : { mcpConfigFile: mcpConfig.path }),
-      ...(mcpConfig === undefined ? {} : { mcpServers: mcpConfig.servers }),
-      mockControlsByResourceId: mockProjection.byResourceId,
-      classification: maxClassification(resources.filter((resource) => (
-        resource.resourceKind !== 'mock-plan'
-          && resource.resourceKind !== 'mock-rule'
-          && resource.resourceKind !== 'mock-payload'
-      ))),
+      classification: maxClassification(resources),
       acquireTrial() {
         if (disposeRequested) fail(profile, 'RUN_DISPOSED', 'run is disposing.');
         activeTrials += 1;
@@ -866,19 +496,6 @@ export async function openDshTrial(
   const allowedTools = toolControl.toolPolicyKind === 'runtime-default'
     ? undefined
     : [...toolControl.allowedTools];
-  const mockInterception = trial.executionControl.mockInterception;
-  const mockControls = mockInterception.mockInterceptionMode === 'not-required'
-    ? undefined
-    : runState.mockControlsByResourceId.get(mockInterception.descriptor.resourceId)
-      ?? fail(profile, 'MOCK_CONFIG_INVALID', 'Trial mock plan is absent from the sealed lease.');
-  if (toolControl.toolPolicyKind === 'allow-list'
-      && (mockControls?.mcpServerNames.length ?? 0) > 0) {
-    fail(
-      profile,
-      'MOCK_CONFIG_INVALID',
-      'built-in tool allow-list cannot be combined with MCP tool mocks for the same Trial.',
-    );
-  }
   const envelope = {
     schemaVersion: profile.promptSchemaVersion,
     ...(runState.supportingFiles === undefined
@@ -909,12 +526,7 @@ export async function openDshTrial(
     workingDirectory: trialWorkspace.workingDirectory,
     closeWorkspace: trialWorkspace.close,
     ...(allowedTools === undefined ? {} : { allowedTools: Object.freeze(allowedTools) }),
-    ...(mockControls === undefined ? {} : { mocks: mockControls.mocks }),
-    mocksStrict: mockControls?.strict ?? false,
-    classification: higherClassification(
-      runState.classification,
-      mockControls?.classification ?? 'public',
-    ),
+    classification: runState.classification,
   });
 }
 

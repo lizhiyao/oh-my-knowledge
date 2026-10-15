@@ -83,7 +83,7 @@ describe('omk doctor command', () => {
 
   it('--gate exits 1 on non-existent target', async () => {
     await assert.rejects(
-      () => runDoctorCommand(['/tmp/__nonexistent_doctor_target__', '--gate']),
+      () => runDoctorCommand(['/tmp/__nonexistent_doctor_target__', '--model', 'fixture-model', '--gate']),
       (err: unknown) => {
         const e = err as CommandRunError;
         assert.equal(e.code, 1);

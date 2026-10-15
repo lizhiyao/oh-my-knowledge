@@ -107,7 +107,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test'], { env });
+      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test', '--model', 'fixture-model'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as CommandRunError;
@@ -120,7 +120,7 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
   it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
     const env = { ...process.env, OMK_LANG: 'en' };
     try {
-      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test', '--lang', 'zh'], { env });
+      await runCommand(DoctorCommand, ['/tmp/no-such-skill-omk-env-test', '--model', 'fixture-model', '--lang', 'zh'], { env });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as CommandRunError;
