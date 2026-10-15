@@ -11,7 +11,8 @@ import { filterLibraryKnowledge } from '../../../application/knowledge/library-v
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
 import { KnowledgeSectionNav } from './section-nav';
 import { notifyKnowledgeChange, resolveKnowledgeDirectory } from './workspace';
-import { LibraryEditor, type LibrarySeed } from './library-editor';
+import { LibraryEditor } from './library-editor';
+import type { LibrarySeed } from './library-source';
 import { LibraryObjectDetail } from './library-detail';
 import { libraryUrl, requestLibrary, requestLibraryEntity } from './library-request';
 import { KnowledgeReader } from './reader';
