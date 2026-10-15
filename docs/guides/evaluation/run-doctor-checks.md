@@ -55,7 +55,11 @@ Emits the full `DoctorReport` as JSON for CI or external tooling to consume.
 omk doctor skills/v1.md --fix
 ```
 
-Runs an LLM agent that reads the doctor findings and edits the skill to address them. Review the diff before committing.
+Choose a proposed direction for each finding, then confirm before files are changed. OMK backs up selected files under `.omk/backups/doctor-fix/` and prints the backup location. Findings for the same physical file are grouped into one edit request; each request contains only that file's content and selected findings. Closed input does not confirm a repair.
+
+The model returns `omk.skill-edits/v1` JSON; OMK validates and applies it rather than granting the model write access. Each nonempty `oldText` must match exactly once after earlier edits, and an invalid response changes nothing in that file. A failed file makes the command fail even if earlier files were repaired; their backups remain available. A completed edit does not establish that a new health audit would pass. Review the diff before committing.
+
+Custom executors must follow the versioned `omk.doctor-fix-plan/v2` and `omk.doctor-fix/v2` prompts. Replace integrations that directly edited files with responses shaped as `{"summary":"…","edits":[{"oldText":"…","newText":"…"}]}`. OMK publishes complete text atomically, preserves existing permissions and symlink targets, and refuses writeback if the source text changed while preparing the edit. Temporary files live in the carrier-excluded `.omk/` directory on the same filesystem; they do not enter carrier hashes or snapshots.
 
 ## Custom dimensions
 

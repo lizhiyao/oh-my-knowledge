@@ -57,6 +57,7 @@ test/helpers/claude-trace.test.ts
 test/helpers/cli-process.test.ts
 test/helpers/run-command.test.ts
 test/knowledge-artifacts/authoring/core-evolver-snapshot.test.ts
+test/knowledge-artifacts/doctor/fixer.test.ts
 test/knowledge-artifacts/doctor/index.test.ts
 test/knowledge-artifacts/doctor/rules.test.ts
 test/mcp/capture-store.test.ts

@@ -8,9 +8,10 @@
 // Outcome is controlled via OMK_DOCTOR_FIXTURE_OUTCOME env:
 //   'pass' (default) → all dims 健康, overall 良好
 //   'fail'           → all dims 不健康 + 错误 finding, overall 严重缺陷
+//   'advisory'       → only the nonfatal instruction dimension fails
 //
 // Test harness sets the env per-case to drive pass/fail paths without
-// touching real Claude/Codex sessions.
+// touching real model sessions.
 
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
@@ -29,7 +30,7 @@ const DIM_IDS = [
 ];
 
 const checklist = DIM_IDS.map((dim_id) => {
-  if (outcome === 'fail') {
+  if (outcome === 'fail' || (outcome === 'advisory' && dim_id === 'instr-precision')) {
     return {
       dim_id,
       level: '不健康',

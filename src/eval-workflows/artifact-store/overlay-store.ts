@@ -110,13 +110,20 @@ export function createOverlayCoreRunArtifactStore(
     const fallbackEntries = (await Promise.all(fallbacks.map(async (store) => ({
       store,
       card: await store.inspect(request.runId),
-    })))).filter((entry) => entry.card !== undefined);
+    })))).filter((entry): entry is LocatedCard => entry.card !== undefined);
     if (fallbackEntries.length > 0) {
-      throw new CoreRunArtifactOverlayError({
-        code: 'CORE_RUN_ARTIFACT_OVERLAY_SHADOW_CONFLICT',
-        runId: request.runId,
-        message: 'Core run id already exists in a read-only fallback store layer.',
-      });
+      const primaryCard = await primary.inspect(request.runId);
+      if (primaryCard === undefined) {
+        throw new CoreRunArtifactOverlayError({
+          code: 'CORE_RUN_ARTIFACT_OVERLAY_SHADOW_CONFLICT',
+          runId: request.runId,
+          message: 'Core run id already exists in a read-only fallback store layer.',
+        });
+      }
+      assertNoConflict(request.runId, [
+        { store: primary, card: primaryCard },
+        ...fallbackEntries,
+      ]);
     }
     const stored = await primary.save(request);
     const concurrentFallback = (await locatedCards(request.runId)).filter(
@@ -135,11 +142,6 @@ export function createOverlayCoreRunArtifactStore(
         { store: primary, card: primaryCard },
         ...concurrentFallback,
       ]);
-      throw new CoreRunArtifactOverlayError({
-        code: 'CORE_RUN_ARTIFACT_OVERLAY_SHADOW_CONFLICT',
-        runId: request.runId,
-        message: 'Core run id was concurrently published in a fallback store layer.',
-      });
     }
     return stored;
   }

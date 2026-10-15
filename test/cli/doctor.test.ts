@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
 import { runCommand, type CommandRunError } from '../helpers/run-command.js';
+import * as doctorFixer from '../../src/knowledge-artifacts/doctor/fixer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
@@ -36,6 +37,20 @@ async function runDoctorCommand(
 }
 
 describe('omk doctor command', () => {
+  it('--fix reaches repair for failed advisory dimensions even when the overall gate does not fail', async () => {
+    const repair = vi.spyOn(doctorFixer, 'runDoctorFix').mockResolvedValue(false);
+    try {
+      await runDoctorCommand([
+        EXAMPLE_SKILL, '--fix', '--repeat', '1', '--executor', DOCTOR_FIXTURE, '--model', 'fixture-model',
+      ], { env: { ...process.env, OMK_DOCTOR_FIXTURE_OUTCOME: 'advisory' } });
+      assert.equal(repair.mock.calls.length, 1);
+      assert.notEqual(repair.mock.calls[0][0].report.outcome, 'failed');
+      assert.ok(repair.mock.calls[0][0].report.skills[0].results.some((result) => result.status === 'fail'));
+    } finally {
+      repair.mockRestore();
+    }
+  });
+
   it('--json on example skill outputs valid DoctorReport with kind=doctor', async () => {
     const { stdout } = await runDoctorCommand([
       EXAMPLE_SKILL,

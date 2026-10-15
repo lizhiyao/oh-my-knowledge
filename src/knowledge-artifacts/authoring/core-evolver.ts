@@ -13,10 +13,12 @@ import type { StoredCoreRunArtifacts } from '../../eval-workflows/artifact-store
 import { parseCompositeTableValue } from '../../eval-workflows/measurement/analysis/composite-table.js';
 import { createExecutor } from '../../executors/index.js';
 import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
-import { distributableCopyFilter } from '../sources/content-hash.js';
+import { distributableCopyFilter, hashArtifactSource } from '../sources/content-hash.js';
+import { writeTextFileAtomic } from '../../evidence/storage/atomic-text.js';
+import { applySkillTextEdits, SKILL_EDIT_SYSTEM_PROMPT } from './text-edits.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请依据真实评测弱项对 skill 做最小、可审查的修改。保留有效内容，不重排无关结构，不添加泛化空话。直接输出改进后的完整 skill，不要添加代码围栏或解释。`;
-const IMPROVE_AGENT_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请使用 Edit 工具对指定 skill 文件做最小、可审查的修改，只处理真实评测暴露的问题，不重写无关内容。`;
+const IMPROVE_AGENT_SYSTEM_PROMPT = `${SKILL_EDIT_SYSTEM_PROMPT}\n用途：omk.evolve-agent/v2，只处理真实评测暴露的问题。`;
 
 export interface CoreEvolverOptions {
   signal?: AbortSignal;
@@ -127,7 +129,14 @@ function targetMeasurement(
   stored: StoredCoreRunArtifacts,
   targetKind: 'control' | 'treatment',
 ): Measurement {
-  const target = stored.plan.execution.targets.find((entry) => entry.targetKind === targetKind);
+  const comparisons = stored.plan.definition.comparisons;
+  if (comparisons.length !== 1 || comparisons[0].treatmentTargetIds.length !== 1) {
+    throw new Error('Core evolve 需要恰好一个 control 与一个 treatment 的封存比较。');
+  }
+  const comparison = comparisons[0];
+  const targetId = targetKind === 'control'
+    ? comparison.controlTargetId : comparison.treatmentTargetIds[0];
+  const target = stored.plan.execution.targets.find((entry) => entry.targetId === targetId);
   if (target === undefined) throw new Error(`Core evolve 缺少 ${targetKind} Target。`);
   const compositeRecord = stored.analysis.records.find((record) => (
     record.analysisStatus === 'completed'
@@ -193,16 +202,22 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     : basename(sourcePath, '.md');
   const evolveDirectory = join(skillDirectory, 'evolve');
   mkdirSync(evolveDirectory, { recursive: true });
-  const snapshot = (round: number, content: string) => materializeCoreEvolveSnapshot({
-    skillDirectory,
+  const sourceRoot = options.isDirectorySkill ? skillDirectory : sourcePath;
+  const sourceHash = hashArtifactSource(sourceRoot, options.isDirectorySkill);
+  const snapshot = (round: number, content: string, directory = skillDirectory) => materializeCoreEvolveSnapshot({
+    skillDirectory: directory,
     evolveDirectory,
     skillName,
     round,
     content,
     isDirectorySkill: options.isDirectorySkill,
   });
-  let currentContent = readFileSync(sourcePath, 'utf8').trim();
+  const sourceContent = readFileSync(sourcePath, 'utf8');
+  let currentContent = sourceContent;
   const baselinePath = snapshot(0, currentContent).root;
+  if (hashArtifactSource(baselinePath, options.isDirectorySkill) !== sourceHash) {
+    throw new Error('Core evolve 源载体在基线捕获期间发生变化，请重新运行。');
+  }
   const allVersions = [baselinePath];
   const baseline = targetMeasurement(
     await options.evaluatePair('baseline', baselinePath),
@@ -234,7 +249,6 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
 
   for (let round = 1; round <= options.rounds; round += 1) {
     options.signal?.throwIfAborted();
-    let candidatePath: string;
     const prompt = buildImprovementPrompt(
       currentContent,
       bestScore,
@@ -243,29 +257,15 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     );
     const executor = createExecutor(options.executorName);
     let candidateContent: string;
-    const improvement = options.improveMode === 'agent'
-      ? await (async () => {
-          const candidate = snapshot(round, currentContent);
-          candidatePath = candidate.root;
-          const result = await executor({
-            model: options.improveModel,
-            system: IMPROVE_AGENT_SYSTEM_PROMPT,
-            prompt: `${prompt}\n\n请使用 Edit 工具修改文件 ${candidate.contentPath}。`,
-            cwd: skillDirectory,
-            timeoutMs: options.timeoutMs,
-          abortSignal: options.signal,
-          });
-          candidateContent = readFileSync(candidate.contentPath, 'utf8');
-          return result;
-        })()
-      : await executor({
-          model: options.improveModel,
-          system: IMPROVE_SYSTEM_PROMPT,
-          prompt,
-          timeoutMs: options.timeoutMs,
-          abortSignal: options.signal,
-          lean: true,
-        });
+    const improvement = await executor({
+      model: options.improveModel,
+      system: options.improveMode === 'agent' ? IMPROVE_AGENT_SYSTEM_PROMPT : IMPROVE_SYSTEM_PROMPT,
+      prompt,
+      timeoutMs: options.timeoutMs,
+      abortSignal: options.signal,
+      effort: options.effort,
+      ...(options.improveMode === 'rewrite' ? { lean: true } : {}),
+    });
     options.signal?.throwIfAborted();
     totalCostUSD += improvement.costUSD;
     if (improvement.costReportedByExecutor === false) costReported = false;
@@ -276,12 +276,32 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
       if (consecutiveRejects >= 2) break;
       continue;
     }
-    if (options.improveMode === 'rewrite') {
-      candidateContent = parseImprovedSkill(improvement.output ?? '');
-      candidatePath = snapshot(round, candidateContent).root;
+    try {
+      candidateContent = options.improveMode === 'agent'
+        ? applySkillTextEdits(currentContent, improvement.output ?? '').content
+        : parseImprovedSkill(improvement.output ?? '');
+    } catch (error) {
+      if (options.improveMode === 'rewrite') throw error;
+      consecutiveRejects += 1;
+      trajectory.push({ round, score: bestScore, delta: 0, accepted: false, costUSD: improvement.costUSD });
+      options.onRoundProgress?.({
+        round, totalRounds: options.rounds, phase: 'error',
+        error: '改进响应不是可唯一定位的合法编辑，候选已拒绝。',
+      });
+      if (consecutiveRejects >= 2) break;
+      continue;
     }
-    allVersions.push(candidatePath!);
-    const edit = computeEditDelta(currentContent, candidateContent!);
+    if (candidateContent === currentContent) {
+      consecutiveRejects += 1;
+      trajectory.push({ round, score: bestScore, delta: 0, accepted: false,
+        costUSD: improvement.costUSD, editRatio: 0, rejectedPreEval: true });
+      if (consecutiveRejects >= 2) break;
+      continue;
+    }
+    const candidatePath = snapshot(round, candidateContent,
+      options.isDirectorySkill ? currentPath : skillDirectory).root;
+    allVersions.push(candidatePath);
+    const edit = computeEditDelta(currentContent, candidateContent);
     if (options.editBudget > 0 && edit.ratio > options.editBudget && edit.changedLines > 4) {
       consecutiveRejects += 1;
       if (options.rejectMemory) rejectedEdits.push(edit.summary);
@@ -297,7 +317,7 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
       if (consecutiveRejects >= 2) break;
       continue;
     }
-    const artifacts = await options.evaluatePair(currentPath, candidatePath!);
+    const artifacts = await options.evaluatePair(currentPath, candidatePath);
     const candidate = targetMeasurement(artifacts, 'treatment');
     const refreshedCurrent = targetMeasurement(artifacts, 'control');
     totalCostUSD += candidate.costUSD;
@@ -308,8 +328,8 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     const accepted = coreAccepted(artifacts);
     const delta = Number((candidate.score - refreshedCurrent.score).toFixed(4));
     if (accepted) {
-      currentContent = candidateContent!;
-      currentPath = candidatePath!;
+      currentContent = candidateContent;
+      currentPath = candidatePath;
       currentMeasurement = candidate;
       bestScore = candidate.score;
       bestRound = round;
@@ -345,6 +365,12 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
   let evidence: StoredCoreRunArtifacts | undefined;
   let finalScore = bestScore;
   if (bestRound > 0 && options.writeBackToSource) {
+    const assertSourceUnchanged = (): void => {
+      if (hashArtifactSource(sourceRoot, options.isDirectorySkill) !== sourceHash) {
+        throw new Error('Core evolve 源载体已被修改，拒绝覆盖；候选快照保留在 evolve 目录。');
+      }
+    };
+    assertSourceUnchanged();
     // Final admission compares the untouched original source with the selected snapshot. The source
     // is written only after that authenticated Core decision passes, so a failed final run cannot
     // leave a half-committed evolve result on disk.
@@ -357,7 +383,8 @@ export async function evolveSkillCore(options: Readonly<CoreEvolverOptions>): Pr
     totalCostUSD += finalMeasurement.costUSD;
     if (!finalMeasurement.costReported) costReported = false;
     options.signal?.throwIfAborted();
-    writeFileSync(sourcePath, currentContent);
+    assertSourceUnchanged();
+    writeTextFileAtomic(sourcePath, currentContent, { expectedPreviousText: sourceContent });
   }
   return {
     startScore: baseline.score,

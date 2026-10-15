@@ -1,11 +1,15 @@
 import { confirm, select, input } from '@inquirer/prompts';
 import { createInterface, type Interface } from 'node:readline';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, copyFileSync, readFileSync, realpathSync } from 'node:fs';
+import { z } from 'zod';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
 import { projectLayout } from '../../evidence/storage/layout.js';
+import { extractJsonObject } from '../../shared/llm-json.js';
+import { writeTextFileAtomic } from '../../evidence/storage/atomic-text.js';
+import { applySkillTextEdits, SKILL_EDIT_SYSTEM_PROMPT } from '../authoring/text-edits.js';
 
 interface FixIssue {
   id: string;
@@ -76,33 +80,27 @@ function suggestionFromDetail(result: DoctorRuleResult): string {
   return '';
 }
 
-function extractJsonObject(text: string): unknown {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
-  try { return JSON.parse(trimmed); } catch { /* fall through */ }
-  const start = trimmed.indexOf('{');
-  if (start < 0) throw new Error('LLM response did not contain JSON');
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (escape) { escape = false; continue; }
-    if (ch === '\\' && inString) { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    else if (ch === '}') {
-      depth--;
-      if (depth === 0) return JSON.parse(trimmed.slice(start, i + 1));
-    }
-  }
-  throw new Error('LLM response JSON was incomplete');
-}
+const FixPlanSchema = z.object({
+  issues: z.array(z.object({
+    issueId: z.string().min(1), title: z.string(), summary: z.string(),
+    options: z.array(z.object({
+      id: z.string().min(1).refine((id) => id !== 'skip' && id !== '__custom__'),
+      label: z.string(), description: z.string(), recommended: z.boolean().optional(),
+      risk: z.enum(['low', 'medium', 'high']).optional(),
+    }).strict()).min(1),
+  }).strict()).min(1),
+}).strict();
 
-function asFixPlan(value: unknown): FixPlan {
-  const obj = value as FixPlan;
-  if (!obj || !Array.isArray(obj.issues)) throw new Error('invalid fix plan JSON: missing issues[]');
-  return obj;
+function asFixPlan(value: unknown, issues: readonly FixIssue[]): FixPlan {
+  const plan = FixPlanSchema.parse(value);
+  const expected = new Set(issues.map((issue) => issue.id));
+  const ids = plan.issues.map((issue) => issue.issueId);
+  if (ids.length !== expected.size || new Set(ids).size !== ids.length
+      || ids.some((id) => !expected.has(id))
+      || plan.issues.some((issue) => new Set(issue.options.map((option) => option.id)).size !== issue.options.length)) {
+    throw new Error('Fix plan must cover each requested issue exactly once with unique options.');
+  }
+  return plan;
 }
 
 function spinner(msg: string): void {
@@ -129,12 +127,12 @@ async function callJsonLLM(opts: {
   return extractJsonObject(raw);
 }
 
-async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, _effort?: string, signal?: AbortSignal): Promise<FixPlan> {
-  const system = '你是 omk doctor 修复向导。根据 doctor 结果生成用户可选择的修复方案。只输出合法 JSON，不要 markdown，不要注释，不要尾逗号。';
+async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, effort?: string, signal?: AbortSignal): Promise<FixPlan> {
+  const system = '版本：omk.doctor-fix-plan/v2\n你是 omk doctor 修复向导。根据 doctor 结果生成用户可选择的修复方案。每个给定 issueId 恰好出现一次，option id 必须唯一且不能是 skip 或 __custom__。只输出合法 JSON，不要 markdown，不要注释，不要尾逗号。';
   const prompt = `根据以下 doctor 问题与建议，生成交互式修复选项。要求：\n- 每个 issue 生成 2-3 个 option。\n- 标出 recommended。\n- risk 只能是 low/medium/high。\n- 不要生成具体补丁，只生成方案选项。\n- 输出必须是合法 JSON，第一个字符是 {，最后一个字符是 }。\n\n输出 JSON schema：\n{"issues":[{"issueId":"i1","title":"...","summary":"...","options":[{"id":"a","label":"...","description":"...","recommended":true,"risk":"medium"}]}]}\n\nDoctor issues:\n${JSON.stringify(issues, null, 2)}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return asFixPlan(await callJsonLLM({ signal, executorName, model, timeoutMs, system, prompt, loading: attempt === 0 ? '正在根据 doctor 建议生成修复方案...' : `方案生成格式异常，重试中（${attempt + 1}/3）...` }));
+      return asFixPlan(await callJsonLLM({ signal, executorName, model, timeoutMs, effort, system, prompt, loading: attempt === 0 ? '正在根据 doctor 建议生成修复方案...' : `方案生成格式异常，重试中（${attempt + 1}/3）...` }), issues);
     } catch (err) {
       signal?.throwIfAborted();
       if (attempt === 2) throw err;
@@ -143,63 +141,61 @@ async function buildFixPlan(issues: FixIssue[], executorName: string, model: str
   throw new Error('unreachable');
 }
 
-async function applyFixWithAgent(issues: FixIssue[], choices: Record<string, string>, plan: FixPlan, executorName: string, model: string, timeoutMs: number, effort?: string, signal?: AbortSignal): Promise<boolean> {
+async function applyFixByFile(issues: FixIssue[], choices: Record<string, string>, plan: FixPlan, executorName: string, model: string, timeoutMs: number, effort?: string, signal?: AbortSignal): Promise<boolean> {
   signal?.throwIfAborted();
   const chosenIssues = issues.filter((i) => choices[i.id] && choices[i.id] !== 'skip');
   if (chosenIssues.length === 0) return false;
-
-  const skillPath = resolve(chosenIssues[0].skillPath);
-  const cwd = dirname(skillPath);
-
-  const instructions = chosenIssues.map((issue) => {
-    const choice = choices[issue.id];
-    const planIssue = plan.issues.find((p) => p.issueId === issue.id);
-    const option = planIssue?.options.find((o) => o.id === choice);
-    const direction = option ? option.description : choice;
-    if (choice === '__custom__') {
-      return `## ${issue.id}: ${issue.message}\n用户指定的修复方向: ${direction}`;
+  const groups = new Map<string, FixIssue[]>();
+  const failures = new Set<string>();
+  for (const issue of chosenIssues) {
+    try {
+      const path = realpathSync(resolve(issue.skillPath));
+      const group = groups.get(path) ?? [];
+      group.push(issue);
+      groups.set(path, group);
+    } catch {
+      failures.add(resolve(issue.skillPath));
     }
-    return `## ${issue.id}: ${issue.message}\n修复方向: ${direction}\nDoctor 建议: ${issue.hint}`;
-  }).join('\n\n');
-
-  const system = `你是 omk doctor 修复 agent。你的唯一任务是用 Edit 工具对 skill 文件做最小化修改。
-
-硬规则：
-- 只用 Read 和 Edit 工具，不要用 Write 重写整个文件
-- 每次 Edit 只改一处，可以多次 Edit
-- 不要重新组织文档结构、不要调整格式、不要修改与问题无关的段落
-- 不要删除核心约束
-- 不要写真实 token、账号、工号；需要时用占位符
-- 改完后用一句话说明改了什么，不要输出文件全文`;
-
-  const prompt = `修改文件: ${skillPath}
-
-修复任务:
-${instructions}`;
-
-  spinner('正在修复 skill 文件...');
+  }
   const executor = createExecutor(executorName);
-  const result = await executor({
-    model,
-    system,
-    prompt,
-    cwd,
-    skillDir: cwd,
-    timeoutMs,
-    abortSignal: signal,
-    effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined,
-  });
-
-  signal?.throwIfAborted();
-  if (!result.ok) {
-    process.stderr.write(`修复失败: ${result.error ?? 'unknown'}\n`);
-    return false;
+  let changed = 0;
+  for (const [skillPath, fileIssues] of groups) {
+    signal?.throwIfAborted();
+    try {
+      const original = readFileSync(skillPath, 'utf8');
+      const instructions = fileIssues.map((issue) => {
+        const choice = choices[issue.id];
+        const option = plan.issues.find((item) => item.issueId === issue.id)
+          ?.options.find((item) => item.id === choice);
+        return { id: issue.id, ruleId: issue.ruleId, message: issue.message, hint: issue.hint,
+          direction: option?.description ?? choice };
+      });
+      spinner(`正在生成最小编辑：${skillPath}`);
+      const cwd = dirname(skillPath);
+      const result = await executor({
+        model, system: `${SKILL_EDIT_SYSTEM_PROMPT}\n用途：omk.doctor-fix/v2，只处理用户选择的问题。`,
+        prompt: JSON.stringify({ file: skillPath, currentContent: original, issues: instructions }),
+        cwd, skillDir: cwd, timeoutMs, abortSignal: signal,
+        effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined,
+      });
+      signal?.throwIfAborted();
+      if (!result.ok) throw new Error(result.error || 'Skill edit generation failed.');
+      const edit = applySkillTextEdits(original, result.output ?? '');
+      signal?.throwIfAborted();
+      if (edit.content === original) continue;
+      writeTextFileAtomic(skillPath, edit.content, { expectedPreviousText: original });
+      changed += 1;
+      process.stderr.write(`修复完成（${skillPath}，${edit.editCount} 处）：${edit.summary}\n`);
+    } catch (error) {
+      signal?.throwIfAborted();
+      failures.add(skillPath);
+      process.stderr.write(`修复失败（${skillPath}）：${error instanceof Error ? error.message : 'unknown'}\n`);
+    }
   }
-
-  if (result.output) {
-    process.stderr.write(`\n修复完成:\n${result.output}\n`);
+  if (failures.size > 0) {
+    throw new Error(`Doctor 修复未全部完成：已修改 ${changed} 个文件，失败 ${failures.size} 个文件；原始备份已保留。`);
   }
-  return true;
+  return changed > 0;
 }
 
 function renderPlan(plan: FixPlan): void {
@@ -283,13 +279,14 @@ function backupSkillFiles(issues: FixIssue[], projectRoot: string): void {
   const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
   const paths = [...new Set(issues.map((i) => resolve(i.skillPath)))];
   const layout = projectLayout(projectRoot);
-  const backupDir = join(layout.doctorFixBackupsDir, stamp);
+  const backupDir = join(layout.doctorFixBackupsDir, `${stamp}-${randomUUID()}`);
   for (const abs of paths) {
     if (!existsSync(abs)) continue;
     const target = join(backupDir, backupRelativePath(projectRoot, abs));
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(abs, target);
   }
+  process.stderr.write(`备份目录：${backupDir}\n`);
 }
 
 export interface FixOptions {
@@ -313,6 +310,7 @@ export async function runDoctorFix(opts: FixOptions): Promise<boolean> {
     answers ??= reader[Symbol.asyncIterator]();
     const answer = await answers.next();
     opts.signal?.throwIfAborted();
+    if (answer.done) throw new Error('输入已结束，未获得 doctor 修复确认。');
     return (answer.value ?? '').trim();
   };
   try {
@@ -350,7 +348,7 @@ async function runDoctorFixWithAnswers(opts: FixOptions, ask: (question: string)
     shouldApply = await confirm({ message: `确认修复 ${chosenIssues.length} 个问题？`, default: true }, { signal: opts.signal });
   } else {
     const answer = await ask(`\n确认修复 ${chosenIssues.length} 个问题？[Y/n] `);
-    shouldApply = !/^n(o)?$/i.test(answer);
+    shouldApply = /^(?:y|yes)?$/i.test(answer);
   }
   if (!shouldApply) {
     process.stderr.write('已取消，未修改文件。\n');
@@ -359,7 +357,7 @@ async function runDoctorFixWithAnswers(opts: FixOptions, ask: (question: string)
 
   opts.signal?.throwIfAborted();
   backupSkillFiles(chosenIssues, opts.report.cwd);
-  const changed = await applyFixWithAgent(issues, choices, plan, opts.executorName, opts.model, opts.timeoutMs, opts.effort, opts.signal);
+  const changed = await applyFixByFile(issues, choices, plan, opts.executorName, opts.model, opts.timeoutMs, opts.effort, opts.signal);
 
   if (changed && opts.verify) {
     const shouldVerify = process.stdin.isTTY

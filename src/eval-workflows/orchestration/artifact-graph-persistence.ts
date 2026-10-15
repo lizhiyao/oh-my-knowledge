@@ -1,8 +1,9 @@
 import { join } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { coreRunArtifactDirectoryName, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { projectCoreArtifactGraph } from '../projections/artifact-graph.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { writeTextFileAtomic } from '../../evidence/storage/atomic-text.js';
 
 export interface PersistedCoreArtifactSidecars {
   readonly graphPath: string;
@@ -78,6 +79,6 @@ export async function persistCoreArtifactSidecars(input: Readonly<{
     generatedAt: input.source.manifest.createdAt,
   });
   writeJsonFileAtomic(graphPath, graph);
-  await writeFile(evidenceCardPath, renderCoreEvidenceCard(input.source), 'utf8');
+  writeTextFileAtomic(evidenceCardPath, renderCoreEvidenceCard(input.source));
   return Object.freeze({ graphPath, evidenceCardPath });
 }

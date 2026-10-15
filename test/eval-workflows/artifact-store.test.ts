@@ -315,22 +315,27 @@ describe('Node Core run artifact store', () => {
 });
 
 describe('Core run artifact store overlay', () => {
-  it('uses primary precedence when layers contain the exact same artifact set', async () => {
+  it('preserves primary precedence and idempotence when an identical fallback appears during publication', async () => {
     const primaryRoot = await temporaryDirectory();
     const fallbackRoot = await temporaryDirectory();
     const primary = createNodeCoreRunArtifactStore(primaryRoot);
     const fallback = createNodeCoreRunArtifactStore(fallbackRoot);
     const runId = 'overlay-identical';
     const result = await runConformanceScenario('function', { runId });
-    await fallback.save({
-      ...saveRequest(result, runId),
-      createdAt: '2026-08-31T11:00:00.000Z',
-    });
-    const primaryArtifacts = await primary.save({
+    const overlay = createOverlayCoreRunArtifactStore({
+      ...primary,
+      async save(request) {
+        const stored = await primary.save(request);
+        await fallback.save({ ...request, createdAt: '2026-08-31T11:00:00.000Z' });
+        return stored;
+      },
+    }, [fallback]);
+    const request = {
       ...saveRequest(result, runId),
       createdAt: '2026-08-31T13:00:00.000Z',
-    });
-    const overlay = createOverlayCoreRunArtifactStore(primary, [fallback]);
+    };
+    const primaryArtifacts = await overlay.save(request);
+    assert.deepEqual(await overlay.save(request), primaryArtifacts);
 
     assert.deepEqual(await overlay.get(runId), primaryArtifacts);
     assert.deepEqual(
