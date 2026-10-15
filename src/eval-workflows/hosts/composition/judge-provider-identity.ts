@@ -54,6 +54,7 @@ export function createJudgeProviderRuntimeIdentity(input: Readonly<{
   model: string;
   deploymentRevision?: string;
   executorRuntime: ExecutorRuntimeFingerprint;
+  invocationContext?: JsonValue;
 }>): RuntimeIdentity {
   if (input.deploymentRevision !== undefined && input.deploymentRevision.trim() === '') {
     throw new TypeError('Judge provider deployment revision must be a non-empty string.');
@@ -78,11 +79,12 @@ export function createJudgeProviderRuntimeIdentity(input: Readonly<{
   return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
     implementationId: input.executorId,
     fingerprint: digestCanonicalJson({
-      derivation: 'omk.judge-provider-runtime/v1',
+      derivation: 'omk.judge-provider-runtime/v2',
       executorId: input.executorId,
       model: input.model,
       deployment,
       executorRuntime,
+      ...(input.invocationContext === undefined ? {} : { invocationContext: input.invocationContext }),
     }),
     fingerprintBasis: input.deploymentRevision === undefined ? 'opaque' : 'self-reported',
     assuranceLevel,
@@ -101,7 +103,9 @@ export function createJudgeProviderRuntimeIdentity(input: Readonly<{
       }, {
         facetId: 'provider.deployment',
         value: deployment,
-      }],
+      }, ...(input.invocationContext === undefined ? [] : [{
+        facetId: 'provider.invocation', value: input.invocationContext,
+      }])],
     },
   })) as RuntimeIdentity;
 }

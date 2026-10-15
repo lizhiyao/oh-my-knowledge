@@ -2,10 +2,12 @@ import { createNodeHostPreflightDeclarations } from './node-preflight.js';
 import { isAbsolute } from 'node:path';
 import {
   schemaIdentityKey,
+  digestCanonicalJson,
   type CoreSchemaValidator,
   type RuntimeIdentity,
 } from '../../../eval-core/contracts/index.js';
 import { createExecutor } from '../../../executors/index.js';
+import { MAX_API_RESPONSE_BYTES, resolveOpenAiEndpoint } from '../../../executors/core/http.js';
 import type { ExecutorFn } from '../../../executors/contracts/ports.js';
 import { resolveExecutorRuntimeFingerprint } from '../../../executors/core/runtime-fingerprint.js';
 import type { CliEvaluationCompileResult } from '../../input-compilation/index.js';
@@ -97,7 +99,10 @@ async function executorConfiguration(
     case 'openai-api':
       return Object.freeze({
         adapterKind: 'openai-api',
-        api: { apiKey: capabilities.requiredCredential('OPENAI_API_KEY') },
+        api: {
+          apiKey: capabilities.requiredCredential('OPENAI_API_KEY'),
+          endpoint: resolveOpenAiEndpoint(capabilities.environment.OPENAI_BASE_URL, 'responses'),
+        },
         preflightDeclarations,
       });
     default: {
@@ -160,12 +165,18 @@ function judgeIdentity(
       { env: environment },
       executor,
     ),
+    ...(executorId !== 'openai-api' ? {} : { invocationContext: {
+      protocolId: 'openai.chat-completions/v1',
+      endpointDigest: digestCanonicalJson(resolveOpenAiEndpoint(environment.OPENAI_BASE_URL, 'chat/completions')),
+      maxResponseBytes: MAX_API_RESPONSE_BYTES,
+    } }),
   });
 }
 
-function judgeResolver(environment: NodeJS.ProcessEnv): (
+function judgeResolver(capabilities: NodeEvaluationEnvironment): (
   context: Parameters<NonNullable<Parameters<typeof createProductionRuntimeFactoryRegistry>[0]['resolveJudgeInvocation']>>[0],
 ) => Promise<OmkLlmJudgeInvocationBinding> {
+  const environment = Object.freeze({ ...capabilities.environment });
   const executors = new Map<string, ExecutorFn>();
   return async (context) => {
     const qualification = context.binding.qualification;
@@ -178,7 +189,9 @@ function judgeResolver(environment: NodeJS.ProcessEnv): (
     const executorId = qualification.executorId;
     let executor = executors.get(executorId);
     if (executor === undefined) {
-      executor = createExecutor(executorId);
+      executor = createExecutor(executorId, { env: executorId === 'openai-api'
+        ? { ...environment, OPENAI_API_KEY: capabilities.requiredCredential('OPENAI_API_KEY') }
+        : environment });
       executors.set(executorId, executor);
     }
     return Object.freeze({
@@ -214,7 +227,6 @@ export async function createNodeProductionComposition(
   if (!isAbsolute(input.resourceLeaseRoot)) {
     throw new TypeError('resourceLeaseRoot 必须是绝对路径。');
   }
-  const environment = input.capabilities.environment;
   const implementationIds = [...new Set(input.compiled.runtimeBinding.bindings.flatMap((binding) => (
     binding.runtimeKind === 'executor' ? [binding.implementationId] : []
   )))].sort();
@@ -232,6 +244,6 @@ export async function createNodeProductionComposition(
     resourceLeaseRoot: input.resourceLeaseRoot,
     schemaValidators: productionSchemaValidators(),
     executorConfigurations: new Map(configurations),
-    resolveJudgeInvocation: judgeResolver(environment),
+    resolveJudgeInvocation: judgeResolver(input.capabilities),
   });
 }

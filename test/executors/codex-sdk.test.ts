@@ -8,23 +8,24 @@ import {
   __resetCodexSdkStateForTest,
   buildCodexSdkClientOptions,
   buildCodexSdkThreadOptions,
-  codexSdkExecutor,
   getIsolatedCodexHome,
 } from '../../src/executors/openai/codex/sdk.js';
 
 describe('codex-sdk executor parity contract', () => {
   it('maps the SDK-exposed eval-critical thread options to codex-cli equivalents', () => {
-    const opts = buildCodexSdkThreadOptions({ model: 'gpt-5-codex', cwd: '/tmp/iso' });
+    const opts = buildCodexSdkThreadOptions({ model: 'gpt-5-codex', cwd: '/tmp/iso', effort: 'high' });
     assert.equal(opts.model, 'gpt-5-codex');
     assert.equal(opts.workingDirectory, '/tmp/iso');
     assert.equal(opts.sandboxMode, 'read-only');
     assert.equal(opts.skipGitRepoCheck, true);
     assert.equal(opts.approvalPolicy, 'never');
+    assert.equal(opts.modelReasoningEffort, 'high');
   });
 
   it('omits workingDirectory when cwd is unset, matching codex CLI no -C behavior', () => {
     const opts = buildCodexSdkThreadOptions({ model: 'gpt-5-codex', cwd: null });
     assert.equal('workingDirectory' in opts, false);
+    assert.equal('modelReasoningEffort' in opts, false);
   });
 
   it('uses the SDK bundled binary by leaving codexPathOverride unset', () => {
@@ -33,29 +34,6 @@ describe('codex-sdk executor parity contract', () => {
     assert.deepEqual(opts.env, { PATH: '/bin' });
   });
 
-  it('non-empty allowedSkills still throws (skill whitelist removed)', async () => {
-    await assert.rejects(
-      () => codexSdkExecutor({
-        model: 'gpt-5-codex',
-        prompt: 'hello',
-        cwd: '/tmp/iso',
-        allowedSkills: ['one'],
-      }),
-      /skill 白名单.*不再支持|无法真正隔离/,
-    );
-  });
-
-  it('strict isolation [] without cwd still throws before invoking SDK', async () => {
-    await assert.rejects(
-      () => codexSdkExecutor({
-        model: 'gpt-5-codex',
-        prompt: 'hello',
-        cwd: undefined,
-        allowedSkills: [],
-      }),
-      /channel 3 cwd 隔离|cwd 非空/,
-    );
-  });
 });
 
 // codex-cli passes `--ephemeral` + `--ignore-user-config` to keep eval runs

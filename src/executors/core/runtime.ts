@@ -18,8 +18,8 @@ export function errorMessage(err: unknown, fallback: string = 'unknown error'): 
   return details.message || fallback;
 }
 
-export function buildExecEnv(skillDir?: string | null): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+export function buildExecEnv(skillDir?: string | null, environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...environment };
 
   if (skillDir) {
     const nodeBin = join(skillDir, 'node_modules', '.bin');

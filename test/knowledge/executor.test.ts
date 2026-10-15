@@ -14,7 +14,7 @@ describe('knowledge generation executor boundary', () => {
       return async (input) => {
         directory = input.cwd!;
         expect(readdirSync(directory)).toEqual([]);
-        expect(input.allowedSkills).toEqual([]);
+        expect(input.allowedSkills).toBeUndefined();
         expect(input.prompt).toBe('selected text');
         if (outcome === 'failure') throw new Error('fixture failure');
         if (outcome === 'cancel') controller.abort();

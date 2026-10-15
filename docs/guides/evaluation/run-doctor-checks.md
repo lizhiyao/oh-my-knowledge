@@ -33,6 +33,8 @@ omk doctor skills/ --static-only
 
 Runs the same static lint rules included in default doctor with **zero LLM calls and without loading `samples.json`**: skill readability, frontmatter validity, and whether scripts / CLIs / files / env vars referenced in the skill body exist. For CI nodes without `codex`, or local offline debugging. (The samples-contract check needs `samples.json` and is not part of this — it stays as `omk eval`'s pre-evaluation gate.)
 
+Review and trust the skill before running doctor: frontmatter `preflight` and `requires.preflight` commands run in the resolved dependency working directory with the host environment and a 10-second timeout per command, including with `--static-only` and during evaluation preflight. Zero model calls does not imply a command sandbox.
+
 ## As a CI gate
 
 ```bash

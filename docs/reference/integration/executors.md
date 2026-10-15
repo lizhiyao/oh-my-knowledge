@@ -16,7 +16,11 @@ An **executor** runs a sample against the system under test, using the selected 
 | `codex-sdk` | Codex agent eval (SDK) | uses `@openai/codex-sdk` with its bundled `@openai/codex` binary and streamed SDK events; **costUSD not reported** |
 | `openai-api` | CI / no CLI; or route an OpenAI-compatible model | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
 
-`openai-api` supports a custom base URL through `OPENAI_BASE_URL`.
+`openai-api` supports a custom base URL through `OPENAI_BASE_URL`. Core evaluations use `/v1/responses`; auxiliary model calls and rubric judges use `/v1/chat/completions`. A base URL may end at the service root or `/v1`, with an optional trailing slash. Query strings, fragments, and embedded credentials are rejected. See [endpoint requirements](../../guides/integration/non-claude-models.md).
+
+Auxiliary executors capture their environment when created. API diagnostics redact known credential values and Bearer/Basic credentials before shortening error previews; API responses are limited to 4 MiB, including streamed bodies. These limits do not redact successful output or raw traces, and do not identify every possible secret in provider text.
+
+**BREAKING-RUNTIME / BREAKING-COMPARABILITY:** judge provider identity now uses `omk.judge-provider-runtime/v2`. Node judge calls use the captured invocation environment; API judge identity also seals the endpoint digest, Chat Completions protocol, and response limit. Existing reports remain readable, but establish a new baseline before combining measurements across this runtime boundary. Prompt bytes and scoring formulas are unchanged.
 
 The former built-in `gemini` executor has been removed because it did not expose the trace, isolation, mock, or cost evidence required for a trustworthy built-in integration. Existing `executor: gemini` configurations now fail explicitly instead of silently falling back to the custom-executor protocol. To keep using Gemini CLI, wrap it in a [custom executor](#custom-executor) that translates OMK's JSON stdin/stdout contract.
 
@@ -67,6 +71,8 @@ Without the optional variables, the model comes from Codex config and the judge 
 **Codex construct-validity notes:**
 
 Core Codex adapters currently declare only `runtime-default` skill discovery. A strict `baseline` requests disabled discovery and is rejected before execution; it is not silently weakened to an empty injected prompt. Use two explicit artifact versions for a Codex comparison, or select `openai-api` for the bare-model baseline. User, admin and bundled skills can exist outside `cwd`; an empty working directory alone does not establish complete skill isolation. See [official skill discovery and per-skill controls](https://learn.chatgpt.com/docs/build-skills).
+
+Auxiliary Codex CLI/SDK calls likewise reject explicit `allowedSkills`, including `[]`. Knowledge generation uses a private working directory to exclude project context, while retaining runtime-default skill discovery. Reasoning effort is forwarded to the CLI configuration or SDK `modelReasoningEffort`; the selected model must support the requested level.
 
 - **Runtime fingerprinting**: `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Core artifacts seal executor and evaluator Runtime identities, including the local binary or SDK evidence available to the host. A remote judge deployment remains `opaque/unknown` unless `eval.yaml` explicitly supplies `judgeModels[].deploymentRevision`; a supplied revision is only `self-reported/declared`. If Runtime identities differ, read the result as a runtime comparison, not just prompt/template behavior. See [Statistical rigor](../../explanation/statistical-rigor.md#_3-judge-debiasing-and-prompt-identity).
 - **Config and session isolation**: before launch, omk resolves only the model from the local Codex config (the profile model when top-level `profile` selects one) and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.

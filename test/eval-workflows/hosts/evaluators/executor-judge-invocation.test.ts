@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExecResult } from '../../../../src/executors/contracts/result.js';
 import type { ExecutorFn } from '../../../../src/executors/contracts/ports.js';
 import type { ExecutorRuntimeFingerprint } from '../../../../src/executors/contracts/runtime.js';
+import { digestCanonicalJson } from '../../../../src/eval-core/contracts/index.js';
+import { MAX_API_RESPONSE_BYTES } from '../../../../src/executors/core/http.js';
 import * as executors from '../../../../src/executors/index.js';
 import * as fingerprints from '../../../../src/executors/core/runtime-fingerprint.js';
 import * as application from '../../../../src/eval-workflows/hosts/application.js';
@@ -150,14 +152,15 @@ function context(executorId: string): Parameters<OmkLlmJudgeInvocationResolver>[
 }
 
 describe('host judge invocation wiring', () => {
-  it('lets Node select the executor and fingerprint while sharing the invocation port', async () => {
+  it.each(['codex', 'openai-api'])('binds Node %s invocation and identity to the captured environment', async (executorId) => {
     const stop = new Error('composition captured');
     const compose = vi.spyOn(registered, 'createRegisteredEvaluationComposition').mockImplementation(() => { throw stop; });
     const executor = vi.fn<ExecutorFn>().mockResolvedValue(result());
     const create = vi.spyOn(executors, 'createExecutor').mockReturnValue(executor);
-    const fingerprint = vi.spyOn(fingerprints, 'resolveExecutorRuntimeFingerprint').mockReturnValue(runtime('codex'));
+    const fingerprint = vi.spyOn(fingerprints, 'resolveExecutorRuntimeFingerprint').mockReturnValue(runtime(executorId));
     const shared = vi.spyOn(adapter, 'createExecutorJudgeInvocationPort');
-    const environment = {};
+    const environment = { OPENAI_BASE_URL: 'https://private-provider.example/api/v1/' };
+    const requiredCredential = vi.fn(() => 'private-credential');
     await expect(createNodeProductionComposition({
       // Intercept the assembly seam before preparation or filesystem side effects.
       compiled: { runtimeBinding: { bindings: [] } } as unknown as CliEvaluationCompileResult,
@@ -166,13 +169,27 @@ describe('host judge invocation wiring', () => {
       capabilities: {
         environment, classifiedEnvironment: {},
         async resolveExecutable() { throw new Error('unused target executor'); },
-        requiredCredential() { throw new Error('unused credential'); },
+        requiredCredential,
       },
     })).rejects.toBe(stop);
     const resolve = compose.mock.calls[0]![0].resolveJudgeInvocation!;
-    const binding = await resolve(context('codex'));
-    expect(create).toHaveBeenCalledWith('codex');
-    expect(fingerprint).toHaveBeenCalledWith('codex', 'judge-model', { env: environment }, executor);
+    const captured = { ...environment };
+    environment.OPENAI_BASE_URL = 'https://changed.example';
+    const binding = await resolve(context(executorId));
+    expect(create).toHaveBeenCalledWith(executorId, { env: executorId === 'openai-api'
+      ? { ...captured, OPENAI_API_KEY: 'private-credential' } : captured });
+    expect(fingerprint).toHaveBeenCalledWith(executorId, 'judge-model', { env: captured }, executor);
+    if (executorId === 'openai-api') {
+      expect(requiredCredential).toHaveBeenCalledExactlyOnceWith('OPENAI_API_KEY');
+      expect(binding.port.identity.implementationManifest).toMatchObject({ facets: expect.arrayContaining([{
+        facetId: 'provider.invocation', value: {
+          protocolId: 'openai.chat-completions/v1',
+          endpointDigest: digestCanonicalJson('https://private-provider.example/api/v1/chat/completions'),
+          maxResponseBytes: MAX_API_RESPONSE_BYTES,
+        },
+      }]) });
+    } else expect(requiredCredential).not.toHaveBeenCalled();
+    expect(JSON.stringify(binding.port.identity)).not.toMatch(/private-provider|private-credential/);
     expect(shared).toHaveBeenCalledWith(executor, binding.port.identity);
     expect(binding.port).toBe(shared.mock.results[0]!.value);
     expect(binding.preflightDeclarations).toEqual(expect.arrayContaining([

@@ -33,6 +33,8 @@ omk doctor skills/ --static-only
 
 只跑默认 doctor 里同一套静态 lint 规则，**零 LLM 调用、且不加载 `samples.json`**：skill 可读性、frontmatter 合法性、以及 skill 正文里引用的脚本 / CLI / 文件 / env 是否存在。CI 节点没装 `codex`、或本地断网调试时用。（samples 契约检查需要 `samples.json`，不在此模式内 —— 留给 `omk eval` 的评测前置门禁。）
 
+运行 doctor 前应审阅并信任 skill：frontmatter 的 `preflight` 与 `requires.preflight` 命令会在解析后的依赖工作目录中，使用宿主环境执行，每条命令超时 10 秒；`--static-only` 与评测预检也会执行。零模型调用不代表命令在沙箱中运行。
+
 ## 当 CI 门禁
 
 ```bash

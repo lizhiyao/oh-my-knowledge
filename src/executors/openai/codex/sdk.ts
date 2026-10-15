@@ -18,7 +18,7 @@ import {
   timeoutExecResult,
 } from '../../core/runtime.js';
 import { registerSigintSubscriber } from '../../core/subprocess.js';
-import { isolateCodexCwd } from './cli.js';
+import { assertCodexSkillDiscovery } from './cli.js';
 
 interface CodexSdkThread {
   runStreamed(input: string, options?: { signal?: AbortSignal }): Promise<{
@@ -73,9 +73,9 @@ async function getCodexCtor(): Promise<CodexSdkModule['Codex']> {
 // The SDK still does not expose codex CLI's `--ignore-rules`. Project
 // execpolicy is therefore part of codex-sdk's runtime context; use codex-cli
 // when that final isolation boundary matters.
-export async function getIsolatedCodexHome(): Promise<string> {
+export async function getIsolatedCodexHome(environment: NodeJS.ProcessEnv = process.env): Promise<string> {
   const tmpHome = await mkdtemp(join(tmpdir(), 'omk-codex-sdk-'));
-  const realHome = process.env.CODEX_HOME || join(homedir(), '.codex');
+  const realHome = environment.CODEX_HOME || join(environment.HOME || environment.USERPROFILE || homedir(), '.codex');
   const realAuth = join(realHome, 'auth.json');
   if (existsSync(realAuth)) {
     try {
@@ -94,12 +94,13 @@ export function __resetCodexSdkStateForTest(): void {
   hasWarnedCost = false;
 }
 
-export function buildCodexSdkThreadOptions({ model, cwd }: { model: string; cwd?: string | null }): {
+export function buildCodexSdkThreadOptions({ model, cwd, effort }: Pick<ExecutorInput, 'model' | 'cwd' | 'effort'>): {
   model?: string;
   sandboxMode: 'read-only';
   workingDirectory?: string;
   skipGitRepoCheck: true;
   approvalPolicy: 'never';
+  modelReasoningEffort?: ExecutorInput['effort'];
 } {
   return {
     ...(model && { model }),
@@ -107,6 +108,7 @@ export function buildCodexSdkThreadOptions({ model, cwd }: { model: string; cwd?
     ...(cwd && { workingDirectory: cwd }),
     skipGitRepoCheck: true,
     approvalPolicy: 'never',
+    ...(effort === undefined ? {} : { modelReasoningEffort: effort }),
   };
 }
 
@@ -127,8 +129,8 @@ function normalizeSdkEvent(event: unknown): CodexEvent {
   return normalizeCodexProtocolEvent(event) ?? {};
 }
 
-export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal }: ExecutorInput): Promise<ExecResult> {
-  isolateCodexCwd(allowedSkills, cwd, 'codex-sdk');
+export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+  assertCodexSkillDiscovery(allowedSkills, 'codex-sdk');
 
   const finalPrompt = system ? `${system}\n\n---\n\n${prompt}` : prompt;
   if (system && verbose && !hasWarnedSystem) {
@@ -140,7 +142,7 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
     hasWarnedCost = true;
   }
 
-  const env = buildExecEnv(skillDir);
+  const env = buildExecEnv(skillDir, environment);
 
   const start = Date.now();
   const abortController = new AbortController();
@@ -170,10 +172,10 @@ export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, t
   let isolatedCodexHome: string | undefined;
 
   try {
-    isolatedCodexHome = await getIsolatedCodexHome();
+    isolatedCodexHome = await getIsolatedCodexHome(environment);
     env.CODEX_HOME = isolatedCodexHome;
     const codex = await createCodexSdkClient(env);
-    const thread = codex.startThread(buildCodexSdkThreadOptions({ model, cwd }));
+    const thread = codex.startThread(buildCodexSdkThreadOptions({ model, cwd, effort }));
     const streamed = await thread.runStreamed(finalPrompt, { signal: abortController.signal });
 
     for await (const event of streamed.events) {

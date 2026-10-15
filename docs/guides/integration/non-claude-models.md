@@ -4,7 +4,9 @@ First prepare explicit control/treatment variants and v3 samples; see the [evalu
 
 ## OpenAI-compatible HTTP endpoint
 
-Current `openai-api` appends `/v1/chat/completions` to `OPENAI_BASE_URL` and sends text messages using a Bearer API key. The Base URL must stop before that path; do not add `/v1` twice or a trailing `/`. Only services matching this request shape work directly; non-standard routes require your adapter.
+`openai-api` uses the same `OPENAI_BASE_URL` and Bearer API key for two protocols: Core measured targets call `/v1/responses`, while auxiliary calls (`doctor`, sample generation, and rubric judges) call `/v1/chat/completions`. A service used for both target and judge must support both protocols. There is no fallback between them.
+
+Set the base URL to the service root or its `/v1` prefix; an optional trailing slash is normalized. Gateway path prefixes are preserved. Do not include an operation path, query string, fragment, or embedded credentials. Core requires HTTPS except for loopback endpoints. Services using other protocols need a custom adapter.
 
 ```bash
 export OPENAI_API_KEY="<your-api-key>"

@@ -1,4 +1,4 @@
-import type { ExecutorFn } from './contracts/ports.js';
+import type { ExecutorFn, ExecutorInput } from './contracts/ports.js';
 import { openAiApiExecutor } from './openai/api.js';
 import { codexCliExecutor } from './openai/codex/cli.js';
 import { codexSdkExecutor } from './openai/codex/sdk.js';
@@ -24,7 +24,7 @@ export {
   getExecutorCapabilities,
 } from './core/capabilities.js';
 
-export function createExecutor(name: string): ExecutorFn {
+export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv } = {}): ExecutorFn {
   if (name.trim().length === 0) {
     throw new Error('executor name or script command is required');
   }
@@ -38,8 +38,9 @@ export function createExecutor(name: string): ExecutorFn {
     throw new Error('dsh-host 仅供 DeepSeek Harness 宿主插件内部使用；请在 DSH 中运行 /omk eval。');
   }
   if (descriptor) assertOptionalExecutorDependency(descriptor.name);
+  const environment = Object.freeze({ ...(options.env ?? process.env) });
   const executor = descriptor
-    ? EXECUTOR_FACTORIES[descriptor.name]
-    : createScriptExecutor(name);
-  return enforceExecutorCapabilities(name, executor);
+    ? (input: ExecutorInput) => EXECUTOR_FACTORIES[descriptor.name](input, environment)
+    : createScriptExecutor(name, environment);
+  return enforceExecutorCapabilities(name, executor, environment);
 }
