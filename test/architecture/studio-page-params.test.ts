@@ -27,11 +27,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { parseTypeScript as parse } from '../helpers/source-files.js';
 import { OBSERVE_INBOX_TABS, TAB_PARAM, TRAJECTORY_TABS } from '../../src/studio/http/page-params.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -56,10 +57,6 @@ const TAB_SURFACES = [
   },
 ] as const;
 
-function parse(path: string): ts.SourceFile {
-  const kind = path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  return ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, kind);
-}
 
 function stringValue(node: ts.Expression | undefined): string | undefined {
   return node && ts.isStringLiteralLike(node) ? node.text : undefined;
