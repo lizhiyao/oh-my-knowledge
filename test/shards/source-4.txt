@@ -20,7 +20,16 @@ test/eval-core/execution/runtime.test.ts
 test/eval-runtime/abstention-evaluator.test.ts
 test/eval-runtime/cache.test.ts
 test/eval-runtime/content-store-conformance.test.ts
-test/eval-runtime/evaluate.test.ts
+test/eval-runtime/evaluation/analysis.test.ts
+test/eval-runtime/evaluation/comparison-families.test.ts
+test/eval-runtime/evaluation/custom-evaluators.test.ts
+test/eval-runtime/evaluation/events.test.ts
+test/eval-runtime/evaluation/execution.test.ts
+test/eval-runtime/evaluation/policies.test.ts
+test/eval-runtime/evaluation/prepare.test.ts
+test/eval-runtime/evaluation/reuse.test.ts
+test/eval-runtime/evaluation/rubric-panels.test.ts
+test/eval-runtime/evaluation/validation.test.ts
 test/eval-runtime/public-api-source.test.ts
 test/eval-runtime/rubric-judge.test.ts
 test/eval-runtime/tool-policy.test.ts
