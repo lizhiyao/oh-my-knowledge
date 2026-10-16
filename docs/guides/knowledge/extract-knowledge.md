@@ -135,6 +135,14 @@ The workspace contains source snapshots, revisions and raw generation output, wh
 For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
 
 
+## Admission statistics
+
+`omk observe knowledge quality --workspace ./knowledge --json` and Studio’s **Extraction history → Admission statistics** share the same read-only projection, `omk.extraction-quality/v1`. They read the whole selected workspace without model calls or historical checker replay. Runs are grouped by prompt version **and hash**, executor, model and run Schema version. Each saved run is counted once from its birth write intents, including prepared runs; later entity corrections, knowledge edits and maintenance choices do not change generation counts.
+
+Entity, mention and knowledge-proposal admission rates divide summed accepted items by summed accepted plus rejected items, rather than averaging run percentages. Identifier-fragment rejections use all recorded mention items as the denominator. Exact localization separately reports passed, rejected, not checked and unknown: accepted mentions and saved post-location rejection reasons prove position checking; structural/duplicate-ID rejection precedes checking. Unknown reasons are not interpreted. Not-checked items are excluded from the localization denominator; any unknown check records, missing historical entity rejection lists or absent admission records make the corresponding rate unknown. Empty denominators are `null`, never 100%.
+
+Failed/cancelled/generating runs, runs without admission records and zero-admission/zero-knowledge runs remain visible. Reason counts can overlap on one item. Reference/dependency rejection counts do not establish causal cascades; exact position and structural admission do not prove semantic accuracy, recall or knowledge usefulness. Corrupt or unsupported run files fail the query; Studio offers a reload instead of displaying a healthy empty workspace. No source, prompt, raw output, saved run or historical score is rewritten.
+
 ## Extraction quality checks
 
 Use the [current annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md). Generating a review package makes no model calls and does not establish overall quality acceptance. Historical results are reproduced only at their frozen revisions, without rescoring using current artifacts.

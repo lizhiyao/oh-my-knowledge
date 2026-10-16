@@ -16,6 +16,7 @@ import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observab
 import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/model-input.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow } from './fixtures.js';
+import { extractionQuality } from '../../src/observability/knowledge-extraction/quality.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -44,6 +45,50 @@ function setup(text = 'Alpha 使用 Beta') {
 }
 
 describe('shared knowledge application', () => {
+  it('aggregates saved birth admission with proven localization stages, unknowns and once-per-run recovery', async () => {
+    const { app, snapshot, model, ports, generate } = setup();
+    const first = await app.generate(snapshot.snapshotId, model);
+    const packet = modelWindow(); packet.mentions[0].selection.quote = 'not in this window';
+    packet.mentions.push({ ...packet.mentions[0], mentionId: 'extra-bad-mention' });
+    model.generate = async () => ({ output: JSON.stringify(packet).replaceAll('record-1', snapshot.excerpts[0].evidenceRef), durationMs: 1 });
+    const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce(() => { throw new Error('interrupted before entity write'); });
+    const id = randomUUID(); await expect(app.generate(snapshot.snapshotId, model, id)).rejects.toThrow('interrupted'); write.mockRestore();
+    const prepared = app.quality().groups[0]; expect(prepared.runs).toMatchObject({ prepared: 1, completed: 1, total: 2 });
+    app.resume(id);
+    const group = app.quality().groups[0];
+    expect(group.entities).toEqual({ accepted: 3, rejected: 1, recorded: 4, unknownRuns: 0, acceptanceRate: 3 / 4 });
+    expect(group.mentions).toEqual({ accepted: 3, rejected: 2, recorded: 5, unknownRuns: 0, acceptanceRate: 3 / 5 });
+    expect(group.proposals).toEqual({ accepted: 1, rejected: 1, recorded: 2, unknownRuns: 0, acceptanceRate: 1 / 2 });
+    expect(group.localization).toEqual({ passed: 3, rejected: 2, notChecked: 0, unknown: 0, unknownRuns: 0, passRate: 3 / 5 });
+    expect(group.referenceRejections).toBe(2);
+    expect(group.runs).toMatchObject({ prepared: 0, completed: 2, total: 2, zeroKnowledge: 1, withoutAdmission: 0 });
+    expect(group.entities).toEqual(prepared.entities);
+    // Later human maintenance and entity corrections are not generation quality measurements.
+    const before = app.entities(first.runId); const edit = structuredClone(before.revision); edit.entities[0].label = 'Changed by human';
+    app.correctEntities(first.runId, before.revision.revisionId, before.history.generation, { entities: edit.entities, mentions: edit.mentions }, 'Reviewed identity');
+    expect(app.quality().groups[0]).toEqual(group);
+    model.generate = async () => ({ output: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4, entities: [], mentions: [], proposals: [] }), durationMs: 1 });
+    const empty = await app.generate(snapshot.snapshotId, { ...model, model: 'empty' });
+    expect(app.quality().groups.find(value => value.identity.model === 'empty')).toMatchObject({ runs: { zeroAccepted: 1, zeroKnowledge: 1 }, mentions: { acceptanceRate: null }, localization: { passRate: null } });
+    await app.generate(snapshot.snapshotId, { ...model, model: 'failed', generate: async () => { throw new Error('fixture failure'); } });
+    expect(app.quality().groups.find(value => value.identity.model === 'failed')).toMatchObject({ runs: { failed: 1, withoutAdmission: 1 }, mentions: { unknownRuns: 1, acceptanceRate: null } });
+    const calls = generate.mock.calls.length;
+    expect(await executeKnowledgeOperation(app, { operation: 'quality' })).toEqual(app.quality()); expect(generate).toHaveBeenCalledTimes(calls);
+    const rejections = ['invalid_structure', 'duplicate_mention', 'mention_identifier_fragment', 'duplicate_mention_position', 'unknown_entity', 'future_check'];
+    const diagnostic = { ...empty, entityRejections: rejections.map((reason, index) => ({ component: 'mention' as const, index, reasons: [reason] })) };
+    const details = extractionQuality([diagnostic]).groups[0];
+    expect(details.localization).toEqual({ passed: 3, rejected: 0, notChecked: 2, unknown: 1, unknownRuns: 0, passRate: null });
+    expect(details.identifierFragmentRejections).toBe(1); expect(details.identifierFragmentRejectionRate).toBe(1 / 6);
+    const localShapes = ['invalid_collection_shape', 'incomplete_collection_without_reason', 'partial_collection_without_members', 'unknown_future_rule'];
+    const local = { ...empty, entityRejections: localShapes.map((reason, index) => ({ component: 'entity' as const, index, reasons: [reason] })) };
+    expect(extractionQuality([local]).groups[0].referenceRejections).toBe(0);
+    expect(extractionQuality([{ ...local, rejections: [{ index: 0, reasons: ['unknown_component', 'unknown_entity_analysis_reference'] }] }]).groups[0].referenceRejections).toBe(1);
+    const legacy = extractionQuality([{ ...first, entityRejections: undefined }]).groups[0];
+    expect(legacy.mentions).toMatchObject({ accepted: 2, unknownRuns: 1, acceptanceRate: null }); expect(legacy.localization.passRate).toBeNull();
+    expect(extractionQuality([first, { ...first, runId: randomUUID(), promptHash: 'different' }]).groups).toHaveLength(2);
+    expect(() => extractionQuality([first, first])).toThrow('Duplicate extraction run');
+  });
+
   it('bounds the full UTF-8 model input before reservation, preserves source bytes and permits a smaller capture', async () => {
     const { app, snapshot, model, generate, source, runs, ports } = setup('中'.repeat(400_000));
     const original = readFileSync(source);

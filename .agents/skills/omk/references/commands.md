@@ -515,7 +515,7 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):归档、提炼、核对与维护知识；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
+- `operation`(必填):归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
 
 **Flags:**
 
@@ -555,6 +555,10 @@ omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> 
 
 ```bash
 omk observe knowledge list --workspace ./knowledge
+```
+
+```bash
+omk observe knowledge quality --workspace ./knowledge --json
 ```
 
 ```bash

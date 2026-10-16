@@ -36,6 +36,7 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       else next.push(t('尚无可恢复的模型结果；先核对运行状态。resume 不重新提炼，也不启动第二次模型调用。', 'No saved model result is available to restore. Inspect the run first; resume neither re-extracts nor starts a second model call.'), command('runs'));
       break;
     }
+    case 'quality': next.push(command('runs', { json: true })); break;
     case 'runs':
       if (Array.isArray(value) && value.length) next.push(t('恢复只处理已保存结果，不调用模型。选择运行身份：', 'Recovery only handles saved results, without calling a model. Select a run identity:'), command('resume', { id: value[0].runId }));
       else next.push(command('capture', { source: './session.jsonl' }));
@@ -65,6 +66,24 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
   if (Array.isArray(value)) return value.length ? value.map((entry) => formatBody(entry, lang)).join('\n\n') : (lang === 'zh' ? '暂无记录。' : 'No records.');
   if (!value || typeof value !== 'object') return String(value);
   const item = value as Record<string, unknown>;
+  if (item.projectionKind === 'knowledge-extraction-quality') {
+    const quality = value as ReturnType<KnowledgeApplication['quality']>;
+    const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+    const rate = (value: number | null) => value === null ? t('未知／无分母', 'unknown / no denominator') : `${(value * 100).toFixed(1)}%`;
+    return [t('提炼接纳统计（整个知识工作区）', 'Extraction admission statistics (whole knowledge workspace)'),
+      t('只汇总首次接纳意图，每个运行计一次；不调用模型，不重判历史，不反映后续人工修订。', 'Saved birth admission only, once per run; no model calls, historical rechecking, or later human edits.'),
+      t('位置匹配不证明语义准确；引用／依赖拒绝不证明因果级联；零接纳不代表质量通过。', 'Position matches do not prove semantic accuracy; reference rejections do not prove causal cascades; zero admission is not a quality pass.'),
+      `${quality.runCount} ${t('次运行', 'runs')}`,
+      ...quality.groups.flatMap(group => [
+        `${group.identity.promptVersion} / ${group.identity.executor} / ${group.identity.model} / schema ${group.identity.schemaVersion}\n${group.identity.promptHash}`,
+        `${t('运行状态', 'Run status')}: ${JSON.stringify(group.runs)}`,
+        ...(['entities', 'mentions', 'proposals'] as const).map(component => `${t(component === 'entities' ? '实体接纳' : component === 'mentions' ? '提及接纳' : '知识提案接纳', component)}: ${group[component].accepted}/${group[component].recorded} · ${rate(group[component].acceptanceRate)} · ${group[component].unknownRuns} ${t('次分母未知', 'runs with unknown denominators')}`),
+        `${t('逐字定位：通过／拒绝／未检查／未知', 'Exact localization: passed / rejected / not checked / unknown')}: ${group.localization.passed}/${group.localization.rejected}/${group.localization.notChecked}/${group.localization.unknown} · ${rate(group.localization.passRate)} · ${group.localization.unknownRuns} ${t('次检查记录未知', 'runs with unknown check records')}`,
+        `${t('标识符碎片拒绝', 'Identifier-fragment rejections')}: ${group.identifierFragmentRejections} · ${rate(group.identifierFragmentRejectionRate)}; ${t('引用／依赖拒绝项', 'Reference/dependency rejected items')}: ${group.referenceRejections}`,
+        ...group.reasons.map(reason => `${reason.component} / ${reason.reason}: ${reason.count}`),
+      ]),
+    ].join('\n\n');
+  }
   if (item.runKind === 'knowledge-extraction-run') {
     const run = item as unknown as ExtractionRun;
     return [lang === 'zh' ? `提炼运行：${run.status}` : `Extraction run: ${run.status}`,
