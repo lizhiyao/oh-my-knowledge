@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,22 @@ import { modelWindow } from '../knowledge/fixtures.js';
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 describe('observe knowledge command wiring', () => {
+  it('exports the exact wire schema and identity before reading settings or creating a workspace', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-schema-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root);
+    const settings = join(root, 'settings.json'); writeFileSync(settings, '{invalid');
+    const workspace = join(root, 'unused-workspace');
+    const base = ['schema', '--workspace', workspace];
+    const raw = (await runCommand(ObserveKnowledge, base, { cwd: root })).stdout;
+    const bundle = JSON.parse((await runCommand(ObserveKnowledge, [...base, '--json'], { cwd: root })).stdout);
+    expect(bundle).toMatchObject({ responseKind: 'knowledge-extraction-wire-contract',
+      identity: { domainSchemaVersion: 4, profile: 'omk-strict-structural/v1' } });
+    expect(bundle.schema).toEqual(JSON.parse(raw));
+    expect(bundle.identity.wireSchemaDigest).toBe(`sha256:${createHash('sha256').update(raw).digest('hex')}`);
+    expect(bundle.hostOnly.nullableOptionals.map((value: { property: string }) => value.property).sort()).toEqual(['object', 'occurrence']);
+    expect(readFileSync(settings, 'utf8')).toBe('{invalid');
+    expect(existsSync(workspace)).toBe(false);
+  });
   it('captures one selected source, inspects it and deletes its snapshot through shared operations', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
     const path = join(root, 'trace.jsonl ');

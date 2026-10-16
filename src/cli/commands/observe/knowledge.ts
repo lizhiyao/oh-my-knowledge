@@ -14,8 +14,8 @@ const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('从选定工作日志提炼、核对和维护候选知识。', 'Extract, inspect, and maintain candidate knowledge from selected work logs.');
   static args = {
-    operation: Args.string({ required: true, options: ['capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'Capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['schema', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
@@ -40,9 +40,10 @@ export default class ObserveKnowledge extends BaseCommand {
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID，用于重试同一次运行。', 'generate: stable UUID for retrying the same run.') }),
-    json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要。', 'Print complete JSON instead of a readable summary.') }),
+    json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。', 'Print complete JSON instead of a readable summary; schema defaults to the JSON Schema alone.') }),
   };
   static examples = [
+    '<%= config.bin %> observe knowledge schema --json',
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
@@ -57,6 +58,14 @@ export default class ObserveKnowledge extends BaseCommand {
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
+    if (args.operation === 'schema') {
+      const wire = await import('../../../observability/knowledge-extraction/model-wire.js');
+      if (flags.json) this.log(JSON.stringify({ responseKind: 'knowledge-extraction-wire-contract',
+        wireId: wire.WINDOW_EXTRACTION_WIRE_ID, identity: wire.WINDOW_EXTRACTION_WIRE_IDENTITY,
+        schema: wire.WINDOW_EXTRACTION_WIRE_SCHEMA, hostOnly: wire.WINDOW_EXTRACTION_WIRE_HOST_ONLY }, null, 2));
+      else process.stdout.write(wire.WINDOW_EXTRACTION_WIRE_SCHEMA_JSON);
+      return;
+    }
     const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     const need = (value: string | undefined, name: string): string => {
       if (!value?.trim()) this.error(`--${name} ${t('不能为空', 'is required')}`, { exit: 2 });

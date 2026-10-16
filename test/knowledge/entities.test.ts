@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 import { admitEntities, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
-import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
-import { identityWindow } from './fixtures.js';
+import { WindowExtractionModelSchema, checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { identityWindow, modelWindow } from './fixtures.js';
+import { decodeWindowExtractionWire, WINDOW_EXTRACTION_WIRE_HOST_ONLY, WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_IDENTITY, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
 
 const entityId = 'cf13bba6-6385-455b-b0c0-c4d4e4931b10';
 const mentionId = '6ad46f7c-7959-43b4-ae97-c240f9a1c422';
@@ -224,5 +225,111 @@ describe('entity correction history', () => {
   it('permits removing false mentions to leave an empty independent result', () => {
     const input = command(); input.revision.entities = []; input.revision.mentions = [];
     expect(applyEntityAnalysisWrite(undefined, input, actor, 'empty').revisions[0].entities).toEqual([]);
+  });
+});
+
+
+// Candidate wire mode only: no production adapter, prompt, storage, or model invocation is changed.
+describe('derived strict structural wire with original itemwise admission', () => {
+  const wirePacket = (packet = modelWindow()) => ({ ...packet,
+    mentions: packet.mentions.map(mention => ({ ...mention, selection: { ...mention.selection, occurrence: mention.selection.occurrence ?? null } })),
+    proposals: packet.proposals.map(proposal => ({ ...proposal,
+      draft: { ...proposal.draft, content: { ...proposal.draft.content,
+        statements: proposal.draft.content.statements.map(statement => ({ ...statement, object: statement.object ?? null })) } },
+      citations: proposal.citations.map(citation => ({ ...citation, selection: { ...citation.selection, occurrence: citation.selection.occurrence ?? null } })),
+    })),
+  });
+  const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
+
+  it('maps only explicit optional placeholders while preserving meaningful nulls, arrays, union branches and exact raw bytes', () => {
+    const packet = identityWindow();
+    packet.mentions[0].selection.occurrence = 0;
+    delete packet.proposals[0].draft.content.statements[0].object;
+    const wire = wirePacket(packet); const raw = Buffer.from(JSON.stringify(wire, null, 2) + '\n', 'utf8');
+    const before = Buffer.from(raw); const result = decodeWindowExtractionWire(raw);
+    expect(result.decodeStatus).toBe('decoded');
+    if (result.decodeStatus !== 'decoded') throw new Error(result.error);
+    expect(result.wireStatus).toBe('valid'); expect(result.wireFailures).toEqual([]);
+    expect(result.domainInput).toEqual(JSON.parse(JSON.stringify(packet)));
+    expect(WindowExtractionModelSchema.safeParse(result.domainInput).success).toBe(true);
+    expect(result.raw.text).toBe(raw.toString('utf8')); expect(Buffer.from(result.raw.bytesBase64, 'base64')).toEqual(before);
+    expect(raw).toEqual(before);
+    expect((result.domainInput as typeof packet).entities[0].componentRef).toBeNull();
+    expect((result.domainInput as typeof packet).entities[0].collection).toBeNull();
+    expect((result.domainInput as typeof packet).mentions[0].selection.occurrence).toBe(0);
+    expect(Object.hasOwn((result.domainInput as typeof packet).mentions[1].selection, 'occurrence')).toBe(false);
+    expect(WINDOW_EXTRACTION_WIRE_ID).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(JSON.parse(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toEqual(WINDOW_EXTRACTION_WIRE_SCHEMA);
+    expect(Object.isFrozen(WINDOW_EXTRACTION_WIRE_SCHEMA)).toBe(true);
+    expect(WINDOW_EXTRACTION_WIRE_IDENTITY).toMatchObject({ domainSchemaVersion: 4, profile: 'omk-strict-structural/v1' });
+    expect(WINDOW_EXTRACTION_WIRE_HOST_ONLY.nullableOptionals.map(value => value.property).sort()).toEqual(['object', 'occurrence']);
+    expect(WINDOW_EXTRACTION_WIRE_HOST_ONLY.disjointUnionConversions.map(value => value.discriminator).sort()).toEqual(['boundKind', 'knowledgeKind', 'timeKind']);
+  });
+
+  it('retains malformed and unknown sibling fields as wire failures and still admits valid knowledge', () => {
+    const wire = wirePacket();
+    const badEntity = { ...wire.entities[0], entityId: 'bad-entity', unexpected: true };
+    const badMention = { ...wire.mentions[0], mentionId: 'bad-mention', unexpected: true };
+    const badProposal = { ...wire.proposals[0], proposalId: 'bad-proposal', unexpected: true };
+    wire.entities.push(badEntity); wire.mentions.push(badMention); wire.proposals.push(badProposal);
+    const raw = JSON.stringify(wire, null, 2) + '\n'; const result = decodeWindowExtractionWire(Buffer.from(raw));
+    expect(result.decodeStatus).toBe('decoded');
+    if (result.decodeStatus !== 'decoded') throw new Error(result.error);
+    expect(result.wireStatus).toBe('item_failures');
+    expect(result.wireFailures.map(value => [value.field, value.index])).toEqual([['entities', 2], ['mentions', 2], ['proposals', 1]]);
+    expect(JSON.stringify(result.domainInput).match(/"unexpected":true/g)).toHaveLength(3);
+    expect(result.raw.text).toBe(raw);
+    const admitted = checkWindowExtractionResponse(result.domainInput, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta' }]);
+    expect(admitted.analysis.entities).toHaveLength(2); expect(admitted.analysis.mentions).toHaveLength(2);
+    expect(admitted.analysis.rejected).toEqual(expect.arrayContaining([
+      { component: 'entity', index: 2, reasons: ['invalid_structure'] }, { component: 'mention', index: 2, reasons: ['invalid_structure'] },
+    ]));
+    expect(admitted.rejected).toEqual([{ index: 1, reasons: expect.arrayContaining(['invalid_structure:']) }]);
+    expect(admitted.accepted.map(proposal => proposal.proposalId)).toEqual(['candidate-1']);
+  });
+
+  it('leaves unsupported scalar/refinement/grounding checks with the unchanged host and never repairs quote text', () => {
+    const packet = modelWindow();
+    const bad = structuredClone(packet.proposals[0]); bad.proposalId = 'bad-time';
+    bad.draft.content.statements[0].context.occurredDuring = { timeKind: 'interval',
+      start: { boundKind: 'known', at: '2026-01-01T00:00:00Z' }, end: { boundKind: 'known', at: '2026-01-01T00:00:00Z' } };
+    packet.proposals.push(bad);
+    const wire = wirePacket(packet); const result = decode(wire);
+    expect(result.decodeStatus).toBe('decoded');
+    if (result.decodeStatus !== 'decoded') throw new Error(result.error);
+    expect(result.wireStatus).toBe('valid'); // Structural provider guarantee does not encode interval ordering.
+    const admitted = checkWindowExtractionResponse(result.domainInput, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta' }]);
+    expect(admitted.accepted.map(proposal => proposal.proposalId)).toEqual(['candidate-1']);
+    expect(admitted.rejected).toEqual([{ index: 1, reasons: expect.arrayContaining(['invalid_structure:draft.content.statements.0.context.occurredDuring']) }]);
+    wire.mentions[0].selection.quote = 'ALPHA';
+    const nonexact = decode(wire);
+    if (nonexact.decodeStatus !== 'decoded') throw new Error(nonexact.error);
+    expect((nonexact.domainInput as typeof packet).mentions[0].selection.quote).toBe('ALPHA');
+    expect(checkWindowExtractionResponse(nonexact.domainInput, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta' }]).analysis.rejected)
+      .toContainEqual({ component: 'mention', index: 0, reasons: ['quote_mismatch'] });
+    wire.mentions[0].selection.quote = 'Alpha'; wire.mentions[0].selection.occurrence = null;
+    const repeated = decode(wire);
+    if (repeated.decodeStatus !== 'decoded') throw new Error(repeated.error);
+    expect(checkWindowExtractionResponse(repeated.domainInput, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta，Alpha 待复核' }]).analysis.rejected)
+      .toContainEqual({ component: 'mention', index: 0, reasons: ['ambiguous_quote'] });
+  });
+
+  it('distinguishes bad envelopes and invalid byte/JSON evidence from item failures without swallowing semantic null', () => {
+    const wire = wirePacket();
+    for (const value of [{ ...wire, unexpected: true }, { ...wire, entities: null }, { ...wire, schemaVersion: 3 }]) {
+      expect(decode(value)).toMatchObject({ decodeStatus: 'envelope_failure', failureKind: 'invalid_envelope' });
+    }
+    const requiredNull = wirePacket(); requiredNull.entities[0].label = null as unknown as string;
+    const result = decode(requiredNull);
+    if (result.decodeStatus !== 'decoded') throw new Error(result.error);
+    expect(result.wireStatus).toBe('item_failures');
+    expect((result.domainInput as typeof requiredNull).entities[0].label).toBeNull();
+    expect(checkWindowExtractionResponse(result.domainInput, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta' }]).analysis.rejected)
+      .toContainEqual({ component: 'entity', index: 0, reasons: ['invalid_structure'] });
+    const invalidBytes = new Uint8Array([0xff, 0x00]);
+    const invalid = decodeWindowExtractionWire(invalidBytes);
+    expect(invalid).toMatchObject({ decodeStatus: 'envelope_failure', failureKind: 'invalid_utf8', raw: { text: null, byteLength: 2 } });
+    expect(Buffer.from(invalid.raw.bytesBase64, 'base64')).toEqual(Buffer.from(invalidBytes));
+    expect(decodeWindowExtractionWire(Buffer.from('{ broken'))).toMatchObject({ decodeStatus: 'envelope_failure', failureKind: 'invalid_json', raw: { text: '{ broken' } });
   });
 });

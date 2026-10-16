@@ -17,13 +17,13 @@ export const WindowExtractionModelSchema = z.strictObject({
   proposals: z.array(windowProposal).max(12),
 });
 export type WindowExtractionModel = z.infer<typeof WindowExtractionModelSchema>;
-const rawResponse = WindowExtractionModelSchema.extend({
+export const WindowExtractionEnvelopeSchema = WindowExtractionModelSchema.extend({
   entities: z.array(z.unknown()).max(256), mentions: z.array(z.unknown()).max(512), proposals: z.array(z.unknown()).max(12),
 });
 export interface CheckedWindowProposals extends CheckedProposals { analysis: AdmittedEntityAnalysis }
 
 export function checkWindowExtractionResponse(input: unknown, excerpts: readonly EvidenceExcerpt[]): CheckedWindowProposals {
-  const response = rawResponse.parse(input);
+  const response = WindowExtractionEnvelopeSchema.parse(input);
   const analysis = admitEntities(response.entities, response.mentions, excerpts);
   const entityById = new Map(analysis.entities.map(entity => [entity.entityId, entity]));
   const mentionById = new Map(analysis.mentions.map(mention => [mention.mentionId, mention]));

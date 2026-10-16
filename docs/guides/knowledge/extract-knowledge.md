@@ -46,6 +46,15 @@ Use `--start-record`/`--end-record` to bound non-empty records (zero-based and i
 
 Before generation, the complete UTF-8 request, including fixed rules and selected excerpts, is limited to 1 MiB. This is not a token, model-context, or spending budget. Oversized requests make no model call, create no extraction run, and consume no automatic extraction calls; source text is never truncated. Capture a smaller range, or select fewer messages from one turn in Studio. `omk agents extract` also accepts `--start-record`/`--end-record` without changing the collection report.
 
+To freeze a structured-output experiment, export the current build's derived JSON Schema; `--json` includes its identity and the checks retained by the host. This reads no knowledge workspace and calls no model:
+
+```bash
+omk observe knowledge schema
+omk observe knowledge schema --json
+```
+
+The structural wire protocol requires every field, with nullable placeholders for optional `object` and `occurrence`. Current `generate` still uses the original v14 prompt and admission path. Using this wire for generation requires a new prompt/pipeline identity; exact evidence and semantic checks remain the host's responsibility. Exporting a Schema does not verify a provider's support.
+
 Default text summaries show the selected knowledge workspace and next commands carrying the same `--workspace`; without a configured model, `generate` still requires `--model`. `--json` preserves the complete machine result without mixing guidance into JSON stdout. Required parameters and JSON syntax are checked before settings or storage access: parameter failures exit `2`, business failures exit `1`, and success exits `0`. Revision conflicts include a reload command. Retry a busy workspace after its current write ends without removing live locks. Maintenance choices remain separate from effectiveness verification.
 
 ## Inspect and maintain {#inspect-and-maintain}
