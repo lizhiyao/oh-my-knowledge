@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { digestCanonicalJson } from '../../../../src/eval-core/contracts/index.js';
+import { digestCanonicalJson, type JsonValue } from '../../../../src/eval-core/contracts/index.js';
 import type { ExecutorRuntimeFingerprint } from '../../../../src/executors/contracts/runtime.js';
 import { createJudgeProviderRuntimeIdentity } from '../../../../src/eval-workflows/hosts/composition/judge-provider-identity.js';
 
@@ -36,6 +36,10 @@ describe('Node judge provider identity', () => {
     const evidence = manifest?.coverageKind === 'fingerprint-plus-facets'
       ? manifest.facets.find((facet) => facet.facetId === 'executor.runtime') : undefined;
     expect(evidence?.value).toMatchObject({ protocolAdapterVersion: 'codex-reconnect/v2' });
+    expect(identity.fingerprint).toBe(digestCanonicalJson({
+      derivation: 'omk.judge-provider-runtime/v2', executorId: 'codex', model: 'gpt-test',
+      deployment: { coverage: 'remote-opaque' }, executorRuntime: evidence!.value,
+    }));
   });
 
   it('treats undeclared remote judge deployments as opaque', () => {
@@ -52,6 +56,20 @@ describe('Node judge provider identity', () => {
     });
     expect(JSON.stringify(identity)).not.toContain('/private/host/node');
     expect(JSON.stringify(identity)).not.toContain('must not be persisted');
+    const manifest = identity.implementationManifest;
+    if (manifest?.coverageKind !== 'fingerprint-plus-facets') throw new Error('Missing provider facets');
+    const runtime = manifest.facets.find(facet => facet.facetId === 'executor.runtime')!.value;
+    expect(runtime).toMatchObject({ protocolAdapterVersion: 'openai-chat-completions/v3' });
+    expect(identity.fingerprint).toBe(digestCanonicalJson({
+      derivation: 'omk.judge-provider-runtime/v3', executorId: 'openai-api', model: 'gpt-test',
+      deployment: { coverage: 'remote-opaque' }, executorRuntime: runtime,
+    }));
+    const previousRuntime = { ...runtime as Record<string, JsonValue> };
+    delete previousRuntime.protocolAdapterVersion;
+    expect(identity.fingerprint).not.toBe(digestCanonicalJson({
+      derivation: 'omk.judge-provider-runtime/v2', executorId: 'openai-api', model: 'gpt-test',
+      deployment: { coverage: 'remote-opaque' }, executorRuntime: previousRuntime,
+    }));
   });
 
   it('seals an explicit deployment revision without pretending it was verified', () => {

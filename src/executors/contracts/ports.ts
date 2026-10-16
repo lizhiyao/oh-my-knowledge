@@ -2,6 +2,12 @@ import type { ExecResult } from './result.js';
 import type { ExecutorRuntimeFingerprint } from './runtime.js';
 import type { Mock } from './mock.js';
 
+/** A requested protocol, not a claim that a compatible remote service enforces it. */
+export type ExecutorOutputFormat =
+  | { mode: 'json-schema'; name: string; schema: Readonly<Record<string, unknown>> }
+  | { mode: 'json-object' }
+  | { mode: 'prompt-json' };
+
 export interface ExecutorInput {
   model: string;
   system?: string | null;
@@ -28,6 +34,10 @@ export interface ExecutorInput {
   lean?: boolean;
   /** 推理投入级别；由支持该选项的宿主执行。 */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Explicit structured-output protocol. json-schema always requests strict decoding. */
+  outputFormat?: ExecutorOutputFormat;
+  /** Provider-enforced output ceiling; unsupported hosts reject instead of ignoring it. */
+  maxOutputTokens?: number;
   /** Cooperative cancellation owned by the caller; executors forward it to I/O. */
   abortSignal?: AbortSignal;
 }

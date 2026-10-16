@@ -1,4 +1,4 @@
-import type { ExecResult } from './contracts/result.js';
+import type { ExecResult, ExecutorFailureKind } from './contracts/result.js';
 import type { ToolCallInfo, TurnInfo } from './contracts/trace.js';
 import { isJsonValue } from '../shared/json-value.js';
 import { normalizeRfc3339Timestamp } from '../shared/timestamp.js';
@@ -10,6 +10,11 @@ const TOOL_STATUSES = new Set(['success', 'failure', 'cancelled', 'unknown']);
 const TOOL_STATUS_SOURCES = new Set(['runtime', 'tool-output', 'inferred', 'unknown']);
 const TRACE_ROLES = new Set(['standalone', 'main', 'subagent']);
 const TURN_ROLES = new Set(['user', 'assistant', 'tool']);
+const FAILURE_KINDS: Readonly<Record<ExecutorFailureKind, true>> = {
+  rate_limit: true, server_error: true, network_error: true, timeout: true, cancelled: true,
+  authentication: true, permission: true, invalid_request: true, unsupported_output: true,
+  refusal: true, content_filter: true, truncation: true, invalid_response: true, capacity: true, unknown: true,
+};
 
 /**
  * Validate the source-neutral executor result contract at process/cache
@@ -64,6 +69,19 @@ export function executorResultValidationError(value: unknown): string | undefine
   }
   if (!isOptionalBoolean(value.cached)) return '"cached" must be boolean when present';
   if (!isOptionalString(value.error)) return '"error" must be string when present';
+  if (value.failure !== undefined) {
+    const failure = value.failure;
+    if (value.ok || !isRecord(failure) || typeof failure.failureKind !== 'string' || !Object.hasOwn(FAILURE_KINDS, failure.failureKind)
+      || (failure.httpStatus !== undefined && (typeof failure.httpStatus !== 'number' || !Number.isInteger(failure.httpStatus)
+        || failure.httpStatus < 100 || failure.httpStatus > 599))
+      || (failure.retryAfterMs !== undefined && (optionalTokenCount(failure.retryAfterMs) === undefined
+        || (failure.retryAfterMs as number) > 2_147_483_647))) {
+      return '"failure" must contain valid diagnostics on a failed result';
+    }
+  }
+  if (value.refusal !== undefined && (value.ok || typeof value.refusal !== 'string')) {
+    return '"refusal" must contain original text on a failed result';
+  }
   if (!isOptionalCount(value.fullNumTurns)) {
     return '"fullNumTurns" must be a non-negative safe integer when present';
   }

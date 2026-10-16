@@ -334,6 +334,7 @@ export function buildCodexResult({
     output: finalOutput.trim() ? finalOutput : null,
     stopReason: ok ? extractCodexStopReason(events) : 'error',
     ...(uniqueErrors.length > 0 && { error: uniqueErrors.join('; ') }),
+    ...(!ok && { failure: { failureKind: schemaError || malformedLineCount > 0 ? 'invalid_response' as const : 'unknown' as const } }),
     numTurns: resultEvents.length,
     fullNumTurns: trace.fullNumTurns,
     numSubAgents: trace.numSubAgents,

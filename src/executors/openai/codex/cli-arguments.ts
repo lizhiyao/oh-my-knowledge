@@ -8,6 +8,7 @@ export interface CodexExecArguments {
   readonly color?: 'never';
   readonly shellEnvironmentInheritance?: 'none';
   readonly effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  readonly outputSchemaPath?: string;
 }
 
 export function buildCodexExecArguments(input: Readonly<CodexExecArguments>): string[] {
@@ -30,6 +31,7 @@ export function buildCodexExecArguments(input: Readonly<CodexExecArguments>): st
       : ['-c', `model_reasoning_effort=${JSON.stringify(input.effort)}`]),
     ...(input.model === undefined ? [] : ['--model', input.model]),
     ...(input.workingDirectory === undefined ? [] : ['-C', input.workingDirectory]),
+    ...(input.outputSchemaPath === undefined ? [] : ['--output-schema', input.outputSchemaPath]),
     // A prompt beginning with '-' must remain data, including frontmatter and system text.
     '--', input.prompt,
   ];

@@ -52,6 +52,30 @@ describe('executor sample-mock capabilities', () => {
       getExecutorCapabilities('./custom-executor.sh').sampleMocks,
       'delegated-script',
     );
+    assert.deepEqual(getExecutorCapabilities('openai-api').outputFormats, ['json-schema', 'json-object', 'prompt-json']);
+    assert.deepEqual(getExecutorCapabilities('codex').outputFormats, ['json-schema', 'prompt-json']);
+    assert.equal(getExecutorCapabilities('openai-api').maxOutputTokens, true);
+    assert.equal(getExecutorCapabilities('codex').maxOutputTokens, false);
+  });
+
+  it('rejects unsupported or invalid explicit output requests before dispatch', async () => {
+    const execute = vi.fn(okExecutor);
+    const schemaFormat = { mode: 'json-schema', name: 'fixture', schema: { type: 'object' } } as const;
+    for (const executor of ['codex-sdk', 'dsh-host', './custom-executor.sh']) {
+      const wrapped = enforceExecutorCapabilities(executor, execute);
+      for (const outputFormat of [schemaFormat, { mode: 'json-object' }, { mode: 'prompt-json' }] as const) {
+        await assert.rejects(() => wrapped({ model: '', prompt: '', outputFormat }), /不支持输出模式/);
+      }
+    }
+    await assert.rejects(() => enforceExecutorCapabilities('codex', execute)({ model: '', prompt: '', outputFormat: { mode: 'json-object' } }), /不支持输出模式/);
+    for (const executor of ['codex', 'codex-sdk', './custom-executor.sh']) {
+      await assert.rejects(() => enforceExecutorCapabilities(executor, execute)({ model: '', prompt: '', maxOutputTokens: 1 }), /不支持 maxOutputTokens/);
+    }
+    for (const maxOutputTokens of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      await assert.rejects(() => enforceExecutorCapabilities('openai-api', execute)({ model: '', prompt: '', maxOutputTokens }), /positive safe integer/);
+    }
+    await assert.rejects(() => enforceExecutorCapabilities('openai-api', execute)({ model: '', prompt: '', outputFormat: { ...schemaFormat, name: '../invalid' } }), /valid name/);
+    assert.equal(execute.mock.calls.length, 0);
   });
 
   it('preflights production executor inputs before dispatch', () => {

@@ -1,4 +1,7 @@
 import { buildCodexExecArguments } from './cli-arguments.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ExecResult } from '../../contracts/result.js';
 import type { ExecutorInput } from '../../contracts/ports.js';
 import {
@@ -11,9 +14,9 @@ import {
   buildExecEnv,
   errorMessage,
   interruptedExecResult,
-  timeoutExecResult,
 } from '../../core/runtime.js';
 import { spawnWithSigintPropagation, type SpawnHelperError } from '../../core/subprocess.js';
+import { assertExecutorInputCapabilities } from '../../core/capabilities.js';
 
 export {
   extractCodexFinalOutput,
@@ -80,7 +83,7 @@ export function parseCodexJsonl(stdout: string): CodexJsonlParseResult {
 }
 
 /** Invocation policy for non-Trial callers such as generation and judge calls. */
-export function buildCodexArgs({ model, cwd, prompt, effort }: Pick<ExecutorInput, 'model' | 'cwd' | 'prompt' | 'effort'>): string[] {
+export function buildCodexArgs({ model, cwd, prompt, effort, outputSchemaPath }: Pick<ExecutorInput, 'model' | 'cwd' | 'prompt' | 'effort'> & { outputSchemaPath?: string }): string[] {
   return buildCodexExecArguments({
     ...(model ? { model } : {}),
     ...(cwd ? { workingDirectory: cwd } : {}),
@@ -88,6 +91,7 @@ export function buildCodexArgs({ model, cwd, prompt, effort }: Pick<ExecutorInpu
     sandbox: 'read-only',
     strictConfig: false,
     ...(effort === undefined ? {} : { effort }),
+    ...(outputSchemaPath === undefined ? {} : { outputSchemaPath }),
   });
 }
 
@@ -105,7 +109,8 @@ function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: s
   return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
 }
 
-export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort, outputFormat, maxOutputTokens }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+  assertExecutorInputCapabilities('codex', { model, prompt, outputFormat, maxOutputTokens });
   assertCodexSkillDiscovery(allowedSkills);
 
   // codex CLI 没有 --system-prompt flag。降级:把 system 拼到 prompt 头部,
@@ -120,11 +125,21 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     hasWarnedCost = true;
   }
 
-  const args = buildCodexArgs({ model, cwd, prompt: finalPrompt, effort });
   const env = buildExecEnv(skillDir, environment);
 
   const start = Date.now();
+  let schemaDirectory: string | undefined;
+  let invocationStarted = false;
   try {
+    abortSignal?.throwIfAborted();
+    let outputSchemaPath: string | undefined;
+    if (outputFormat?.mode === 'json-schema') {
+      schemaDirectory = mkdtempSync(join(tmpdir(), 'omk-codex-schema-'));
+      outputSchemaPath = join(schemaDirectory, 'output.json');
+      writeFileSync(outputSchemaPath, JSON.stringify(outputFormat.schema), { mode: 0o600 });
+    }
+    const args = buildCodexArgs({ model, cwd, prompt: finalPrompt, effort, outputSchemaPath });
+    invocationStarted = true;
     const { stdout } = await runCodexExec(args, {
       maxBuffer: MAX_BUFFER,
       timeout: timeoutMs,
@@ -142,18 +157,27 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     });
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    const details = err as SpawnHelperError;
-    if (details.failureKind !== 'buffer-limit' && details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
-    if (details.failureKind !== 'buffer-limit' && details.killedBySignal) return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
-
+    if (!invocationStarted && abortSignal?.aborted) {
+      return { ...interruptedExecResult(durationMs), failure: { failureKind: 'cancelled' } };
+    }
+    const details = err && typeof err === 'object' ? err as Partial<SpawnHelperError> : {};
     // 失败路径仍保留已完成的事件、用量与 trace，但不能反转为成功。
-    const parsed = parseCodexJsonl(details.stdout || '');
-    return buildCodexResult({
+    const parsed = parseCodexJsonl(typeof details.stdout === 'string' ? details.stdout : '');
+    const result = buildCodexResult({
       events: parsed.events,
       wallClockDurationMs: durationMs,
       source: 'codex --json',
       malformedLineCount: parsed.malformedLineCount,
-      forcedError: details.failureKind === 'buffer-limit' ? details.message : details.stderr?.trim() || errorMessage(err),
+      forcedError: details.failureKind === 'buffer-limit' && typeof details.message === 'string' ? details.message
+        : (typeof details.stderr === 'string' ? details.stderr.trim() : '') || errorMessage(err),
     });
+    if (details.failureKind === 'buffer-limit') return { ...result, failure: { failureKind: 'capacity' } };
+    if (details.killedByTimeout) return { ...result, stopReason: 'timeout',
+      error: `execution timed out after ${timeoutMs / 1000}s`, failure: { failureKind: 'timeout' } };
+    if (details.killedBySignal || abortSignal?.aborted) return { ...result, stopReason: 'interrupted',
+      error: 'execution interrupted', failure: { failureKind: 'cancelled' } };
+    return result;
+  } finally {
+    if (schemaDirectory) rmSync(schemaDirectory, { recursive: true, force: true });
   }
 }
