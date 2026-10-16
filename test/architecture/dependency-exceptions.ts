@@ -41,7 +41,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'executors/openai/codex/sdk.ts',
     expression: 'CODEX_SDK_PACKAGE',
-    sourceSha256: '3bf8ac4d7c42b8667b111d3cd768e1dd8531c82ad6747791fe5a0709c30236d7',
+    sourceSha256: '88a5ebb2fc9a572806afb9cd2f20c5369b58d684067e3c77a4df2c499ebfb839',
     rationale: 'Loads the fixed optional Codex SDK package; the source hash seals its binding.',
   },
   {

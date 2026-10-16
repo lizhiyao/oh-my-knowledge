@@ -12,6 +12,7 @@ import {
   timeoutExecResult,
 } from '../core/runtime.js';
 import { spawnWithSigintPropagation, type SpawnHelperError } from '../core/subprocess.js';
+import { assertExecutorInputCapabilities } from '../core/capabilities.js';
 
 // script executor 由用户自定义,omk 无法保证它实现 skill 隔离。
 // 任何 allowedSkills(包括 [])下都 stderr 一次性 warn,不阻塞执行,
@@ -124,7 +125,8 @@ export function createScriptExecutor(command: string, environment: NodeJS.Proces
   const cmd = resolved.command;
   const args = resolved.args;
 
-  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, abortSignal }: ExecutorInput): Promise<ExecResult> {
+  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, abortSignal, outputFormat, maxOutputTokens }: ExecutorInput): Promise<ExecResult> {
+    assertExecutorInputCapabilities('自定义脚本', { model, prompt, outputFormat, maxOutputTokens });
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
       scriptIsolationWarned = true;
       process.stderr.write(

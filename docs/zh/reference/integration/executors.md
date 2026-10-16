@@ -20,7 +20,21 @@
 
 辅助执行器在创建时捕获环境。API 诊断先遮蔽已知凭证值与 Bearer／Basic 凭证，再缩短错误摘要；API 响应上限为 4 MiB，也约束流式响应。这些处理不改写成功输出或原始 trace，也不能识别服务商文本中的所有秘密。
 
-**BREAKING-RUNTIME / BREAKING-COMPARABILITY：**评委 provider identity 升级为 `omk.judge-provider-runtime/v2`。Node 评委调用使用捕获的调用环境；API 评委身份还封存端点摘要、Chat Completions 协议和响应上限。已有报告仍可读取，但跨越此 runtime 边界合并测量前应建立新基线。Prompt 字节与评分公式不变。
+**BREAKING-RUNTIME / BREAKING-COMPARABILITY：**API 评委 provider identity 升级为 `omk.judge-provider-runtime/v3`，封存 `openai-chat-completions/v3` 适配器及拒绝、过滤、截断的失败语义。其他评委 provider 保留原有 v2 derivation。Node 评委调用使用捕获的调用环境；API 评委身份还封存端点摘要、Chat Completions 协议和响应上限。已有报告仍可读取，但跨越此 runtime 边界合并测量前应建立新基线。Prompt 字节与评分公式不变。
+
+### 辅助调用的结构化输出
+
+编程式辅助接口 `ExecutorInput` 接受显式 `outputFormat`：`json-schema` 提供 `{ name, schema }`，始终请求 strict 解码；`json-object` 请求 JSON mode；`prompt-json` 依靠调用方的 prompt，不发送 provider 格式参数。省略该字段保留普通文本调用。这些控制不增加 CLI flag，也不改变 Core 目标执行。
+
+| 执行器 | 支持的输出模式 | `maxOutputTokens` |
+|---|---|---|
+| `openai-api` | `json-schema`、`json-object`、`prompt-json` | 传为 `max_completion_tokens` |
+| `codex` | `json-schema`、`prompt-json` | 不支持 |
+| `codex-sdk`、自定义脚本及其他宿主 | 此适配器不支持显式模式 | 不支持 |
+
+不支持的显式请求会在执行前失败。OpenAI schema 模式发送带 `strict: true` 的 `response_format.json_schema`；兼容端点或所选模型仍可能拒绝。Codex 通过 `--output-schema` 传入私有临时 schema 文件，在成功、失败、超时或取消后删除。Schema 只约束输出结构；调用方仍须校验逐字引文、身份及其他领域要求。OpenAI strict schema 要求所有属性 required，所有对象设置 `additionalProperties: false`；可选 wire 值用 `null` 表达，再显式映射到领域契约。参见 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs) 与 [Codex schema 输出](https://learn.chatgpt.com/docs/non-interactive-mode)。
+
+每次调用只发送一个请求，不自动降级或重试。失败结果保留可取得的助手原文和已报告 token 分桶（含缓存读取），同时提供类型化 `failure` 诊断及原有展示 `error`。原始拒绝通道另存为 `refusal`；`output` 优先保留原 content，缺失时回退到拒绝原文。这些原始字段不属于诊断摘要，可能含私有文本。拒绝、`content_filter` 和输出上限截断仍是失败，即使文本能解析成 JSON。HTTP 诊断保留状态及合法、有界的 `Retry-After`；缺失用量明确标记为未报告。调用方负责降级、取消、累计预算和持久化尝试证据，并须将所选模式、schema 与重试策略纳入测量身份。缓存命中统计不保证下一次请求一定命中；参见 [Prompt 缓存](https://developers.openai.com/api/docs/guides/prompt-caching)。
 
 原内置 `gemini` 执行器已经移除，因为它无法提供可信内置集成所需的 trace、隔离、mock 和成本证据。既有 `executor: gemini` 配置现在会明确失败，不会静默回退到自定义执行器协议。需要继续使用 Gemini CLI 时，请编写[自定义执行器](#自定义执行器)适配 OMK 的 JSON stdin/stdout 协议。
 

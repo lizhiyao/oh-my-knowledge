@@ -1,4 +1,5 @@
 import type { ExecutorFn, ExecutorInput } from '../contracts/ports.js';
+import type { ExecutorFailure } from '../contracts/result.js';
 import { createExecutorDiagnosticRedactor } from './diagnostics.js';
 import {
   getExecutorDescriptor,
@@ -15,7 +16,14 @@ export type { ExecutorCapabilities, SampleMockSupport } from './registry.js';
 export function getExecutorCapabilities(executorName: string): ExecutorCapabilities {
   return {
     sampleMocks: getExecutorDescriptor(executorName)?.sampleMocks ?? 'delegated-script',
+    outputFormats: executorName === 'openai-api' ? ['json-schema', 'json-object', 'prompt-json']
+      : executorName === 'codex' ? ['json-schema', 'prompt-json'] : [],
+    maxOutputTokens: executorName === 'openai-api',
   };
+}
+
+export class ExecutorCapabilityError extends Error {
+  readonly failure: ExecutorFailure = { failureKind: 'unsupported_output' };
 }
 
 export function executorSupportsSampleMocks(executorName: string): boolean {
@@ -34,6 +42,25 @@ export function assertExecutorInputCapabilities(
   executorName: string,
   input: ExecutorInput,
 ): void {
+  const capabilities = getExecutorCapabilities(executorName);
+  if (input.outputFormat !== undefined) {
+    const format = input.outputFormat;
+    if (!capabilities.outputFormats.includes(format.mode)) {
+      throw new ExecutorCapabilityError(`执行器「${executorName}」不支持输出模式「${format.mode}」。`);
+    }
+    if (format.mode === 'json-schema' && (
+      !/^[a-zA-Z0-9_-]{1,64}$/.test(format.name)
+      || !format.schema || typeof format.schema !== 'object' || Array.isArray(format.schema)
+    )) throw new TypeError('Structured output requires a valid name and JSON Schema object.');
+  }
+  if (input.maxOutputTokens !== undefined) {
+    if (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0) {
+      throw new TypeError('maxOutputTokens must be a positive safe integer.');
+    }
+    if (!capabilities.maxOutputTokens) {
+      throw new ExecutorCapabilityError(`执行器「${executorName}」不支持 maxOutputTokens 输出上限。`);
+    }
+  }
   if (
     executorSupportsSampleMocks(executorName)
     || !Array.isArray(input.mocks)

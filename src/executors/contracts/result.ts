@@ -1,5 +1,17 @@
 import type { ToolCallInfo, TurnInfo } from './trace.js';
 
+export type ExecutorFailureKind =
+  | 'rate_limit' | 'server_error' | 'network_error' | 'timeout' | 'cancelled'
+  | 'authentication' | 'permission' | 'invalid_request' | 'unsupported_output'
+  | 'refusal' | 'content_filter' | 'truncation' | 'invalid_response' | 'capacity' | 'unknown';
+
+/** Machine-readable diagnostics; retry policy belongs to the calling workflow. */
+export interface ExecutorFailure {
+  failureKind: ExecutorFailureKind;
+  httpStatus?: number;
+  retryAfterMs?: number;
+}
+
 export interface ExecResult {
   ok: boolean;
   output: string | null;
@@ -29,6 +41,10 @@ export interface ExecResult {
   fullNumTurns?: number;
   numSubAgents?: number;
   error?: string;
+  /** Failed attempts may still carry original assistant output and measured usage. */
+  failure?: ExecutorFailure;
+  /** Original assistant refusal channel, separate from content and redacted display diagnostics. */
+  refusal?: string;
   cached?: boolean;
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];

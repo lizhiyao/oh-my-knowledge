@@ -16,14 +16,14 @@ export function resolveOpenAiEndpoint(baseUrl: string | undefined, operation: 'r
   return base.href;
 }
 
-function responseLimitError(): Error {
-  return new Error(`API response exceeded ${MAX_API_RESPONSE_BYTES} bytes.`);
+export class ApiResponseCapacityError extends Error {
+  constructor() { super(`API response exceeded ${MAX_API_RESPONSE_BYTES} bytes.`); }
 }
 
 export async function readJsonResponse<T>(response: Response): Promise<JsonResponseBody<T>> {
   if (Number(response.headers.get('content-length')) > MAX_API_RESPONSE_BYTES) {
     void response.body?.cancel().catch(() => undefined);
-    throw responseLimitError();
+    throw new ApiResponseCapacityError();
   }
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -36,7 +36,7 @@ export async function readJsonResponse<T>(response: Response): Promise<JsonRespo
         size += value.byteLength;
         if (size > MAX_API_RESPONSE_BYTES) {
           void reader.cancel().catch(() => undefined);
-          throw responseLimitError();
+          throw new ApiResponseCapacityError();
         }
         chunks.push(value);
       }

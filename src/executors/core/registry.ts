@@ -1,4 +1,5 @@
 import type { ExecutorRuntimeCapabilities, ExecutorRuntimeKind } from '../contracts/runtime.js';
+import type { ExecutorOutputFormat } from '../contracts/ports.js';
 
 export type ExecutorVendor = 'openai' | 'unknown';
 
@@ -13,6 +14,8 @@ export type SampleMockSupport =
 
 export interface ExecutorCapabilities {
   sampleMocks: SampleMockSupport;
+  outputFormats: readonly ExecutorOutputFormat['mode'][];
+  maxOutputTokens: boolean;
 }
 
 export type ExecutorFingerprintSpec =

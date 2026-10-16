@@ -17,11 +17,11 @@ import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 describe('buildCodexArgs flag schema', () => {
   it('preserves auxiliary isolation, explicit effort, cwd and a dash-leading prompt without enabling Trial policy', () => {
     const prompt = '---\nname: skill\n---\n正文';
-    assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt, effort: 'high' }), [
+    assert.deepEqual(buildCodexArgs({ model: 'm', cwd: '/tmp/a b', prompt, effort: 'high', outputSchemaPath: '/tmp/private schema/output.json' }), [
       'exec', '--json', '--ephemeral', '--ignore-user-config', '--ignore-rules',
       '--skip-git-repo-check', '--sandbox', 'read-only',
       '-c', 'approval_policy="never"', '-c', 'model_reasoning_effort="high"',
-      '--model', 'm', '-C', '/tmp/a b', '--', prompt,
+      '--model', 'm', '-C', '/tmp/a b', '--output-schema', '/tmp/private schema/output.json', '--', prompt,
     ]);
     for (const cwd of [null, undefined, '']) {
       assert.deepEqual(buildCodexArgs({ model: '', cwd, prompt: '' }), [

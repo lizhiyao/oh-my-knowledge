@@ -15,6 +15,91 @@ describe('openAiApiExecutor usage', () => {
     else process.env.OPENAI_API_KEY = originalApiKey;
   });
 
+  it('sends only the selected structured-output protocol and provider output ceiling without mutating the schema', async () => {
+    process.env.OPENAI_API_KEY = 'fixture-key';
+    const schema = { type: 'object', properties: { value: { type: ['string', 'null'] } }, required: ['value'], additionalProperties: false };
+    const originalSchema = JSON.stringify(schema);
+    for (const outputFormat of [
+      { mode: 'json-schema', name: 'knowledge_window', schema },
+      { mode: 'json-object' }, { mode: 'prompt-json' }, undefined,
+    ] as const) {
+      const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.max_completion_tokens, 321);
+        assert.deepEqual(body.messages, [{ role: 'system', content: 'stable system' }, { role: 'user', content: 'JSON input' }]);
+        if (outputFormat?.mode === 'json-schema') {
+          assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { name: 'knowledge_window', schema, strict: true } });
+        } else if (outputFormat?.mode === 'json-object') assert.deepEqual(body.response_format, { type: 'json_object' });
+        else assert.equal(Object.hasOwn(body, 'response_format'), false);
+        return new Response(JSON.stringify({ choices: [{ message: { content: '{"value":null}' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 5, completion_tokens: 3 } }));
+      });
+      vi.stubGlobal('fetch', fetch);
+      const result = await openAiApiExecutor({ model: 'fixture', system: 'stable system', prompt: 'JSON input', outputFormat, maxOutputTokens: 321 });
+      assert.equal(result.ok, true);
+      assert.equal(fetch.mock.calls.length, 1);
+    }
+    assert.equal(JSON.stringify(schema), originalSchema);
+  });
+
+  it('classifies HTTP failures and bounded Retry-After without retrying or losing reported evidence', async () => {
+    process.env.OPENAI_API_KEY = 'fixture-key';
+    const cases = [
+      { status: 400, error: { code: 'invalid_json_schema', param: 'response_format' }, failureKind: 'invalid_request' },
+      { status: 400, error: { code: 'unsupported_value', param: 'response_format' }, failureKind: 'unsupported_output' },
+      { status: 401, failureKind: 'authentication' }, { status: 403, failureKind: 'permission' },
+      { status: 408, failureKind: 'timeout' }, { status: 429, failureKind: 'rate_limit' }, { status: 503, failureKind: 'server_error' },
+    ];
+    for (const fixture of cases) {
+      const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'fixture-key unavailable', ...fixture.error },
+        choices: [{ message: { content: 'original partial output' } }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 2 } } }),
+      { status: fixture.status, headers: { 'retry-after': fixture.status === 429 ? '1.25' : '99999999999' } }));
+      vi.stubGlobal('fetch', fetch);
+      const result = await openAiApiExecutor({ model: 'fixture', prompt: 'JSON input' });
+      assert.equal(result.ok, false);
+      assert.deepEqual(result.failure, { failureKind: fixture.failureKind, httpStatus: fixture.status,
+        ...(fixture.status === 429 ? { retryAfterMs: 1250 } : {}) });
+      assert.equal(result.output, 'original partial output');
+      assert.equal(result.inputTokens, 10);
+      assert.equal(result.cacheReadTokens, 2);
+      assert.equal(result.outputTokens, 3);
+      assert.doesNotMatch(result.error ?? '', /fixture-key/);
+      assert.equal(fetch.mock.calls.length, 1);
+    }
+  });
+
+  it('distinguishes transport errors, timeouts, cancellation and missing credentials without synthetic usage', async () => {
+    process.env.OPENAI_API_KEY = 'fixture-key';
+    for (const [name, failureKind] of [['TypeError', 'network_error'], ['TimeoutError', 'timeout']] as const) {
+      const fetch = vi.fn(async () => { const error = new Error('fixture transport'); error.name = name; throw error; });
+      vi.stubGlobal('fetch', fetch);
+      const result = await openAiApiExecutor({ model: 'fixture', prompt: '' });
+      assert.equal(result.failure?.failureKind, failureKind);
+      assert.equal(result.tokenUsageReportedByExecutor, false);
+      assert.equal(fetch.mock.calls.length, 1);
+    }
+    for (const failureKind of ['network_error', 'timeout', 'authentication'] as const) {
+      vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => new Response(new ReadableStream({
+        start(controller) {
+          if (failureKind !== 'timeout') controller.error(new TypeError('body connection terminated'));
+          else init?.signal?.addEventListener('abort', () => controller.error(new DOMException('body aborted', 'AbortError')), { once: true });
+        },
+      }), { status: failureKind === 'authentication' ? 401 : 200 })));
+      const result = await openAiApiExecutor({ model: 'fixture', prompt: '', timeoutMs: 10 });
+      assert.equal(result.failure?.failureKind, failureKind);
+      assert.equal(result.tokenUsageReportedByExecutor, false);
+    }
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const controller = new AbortController(); controller.abort();
+    const cancelled = await openAiApiExecutor({ model: 'fixture', prompt: '', abortSignal: controller.signal });
+    assert.equal(cancelled.failure?.failureKind, 'cancelled');
+    delete process.env.OPENAI_API_KEY;
+    const missing = await openAiApiExecutor({ model: 'fixture', prompt: '' });
+    assert.equal(missing.failure?.failureKind, 'authentication');
+    assert.equal(fetch.mock.calls.length, 0);
+  });
+
   it('captures provider selection and credentials at factory creation without changing successful output', async () => {
     const environment = { OPENAI_BASE_URL: 'https://selected.example/', OPENAI_API_KEY: 'selected-credential' };
     const executor = createExecutor('openai-api', { env: environment });
@@ -41,6 +126,7 @@ describe('openAiApiExecutor usage', () => {
       vi.stubEnv('OPENAI_BASE_URL', base);
       const result = await openAiApiExecutor({ model: 'fixture', prompt: 'fixture' });
       assert.equal(result.ok, false);
+      assert.equal(result.failure?.failureKind, 'invalid_request');
       assert.match(result.error ?? '', /OPENAI_BASE_URL/);
       assert.doesNotMatch(result.error ?? '', /private-user|private-pass|private-query/);
     }
@@ -64,6 +150,7 @@ describe('openAiApiExecutor usage', () => {
       }), { headers: declared ? { 'content-length': String(MAX_API_RESPONSE_BYTES + 1) } : {} })));
       const result = await openAiApiExecutor({ model: 'fixture', prompt: 'fixture' });
       assert.equal(result.ok, false);
+      assert.equal(result.failure?.failureKind, 'capacity');
       assert.match(result.error ?? '', /API response exceeded/);
       assert.equal(result.output, null);
       assert.equal(cancelled, true);
@@ -126,14 +213,27 @@ describe('openAiApiExecutor usage', () => {
     assert.equal(result.inputTokens, 0);
     assert.equal(result.cacheReadTokens, 0);
     assert.equal(result.outputTokens, 0);
+    assert.equal(result.output, 'done');
+    assert.equal(result.failure?.failureKind, 'invalid_response');
+    assert.equal(result.tokenUsageReportedByExecutor, false);
   });
 
-  it('treats a successful HTTP response without assistant text as protocol failure', async () => {
+  it('preserves refusal, filtered and truncated text and usage as failures even if the text parses as valid JSON', async () => {
     process.env.OPENAI_API_KEY = 'test-key';
+    const refusal = `request refused test-key ${'原文'.repeat(1000)}`;
+    for (const fixture of [
+      { content: null, refusal, finish_reason: 'stop', failureKind: 'refusal' },
+      { content: '{}', refusal, finish_reason: 'stop', failureKind: 'refusal' },
+      { content: '{}', finish_reason: 'content_filter', failureKind: 'content_filter' },
+      { content: '{}', finish_reason: 'length', failureKind: 'truncation' },
+      { content: '{}', finish_reason: 'tool_calls', failureKind: 'invalid_response' },
+      { content: '{}', finish_reason: 'stop', tool_calls: [{ id: 'unexpected', type: 'function' }], failureKind: 'invalid_response' },
+      { content: '{}', finish_reason: undefined, outputFormat: { mode: 'json-object' as const }, failureKind: 'invalid_response' },
+    ]) {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       choices: [{
-        message: { content: null, refusal: 'request refused' },
-        finish_reason: 'stop',
+        message: { content: fixture.content, refusal: fixture.refusal, tool_calls: fixture.tool_calls },
+        finish_reason: fixture.finish_reason,
       }],
       usage: {
         prompt_tokens: 12,
@@ -148,15 +248,22 @@ describe('openAiApiExecutor usage', () => {
     const result = await openAiApiExecutor({
       model: 'gpt-test',
       prompt: 'prompt',
+      outputFormat: fixture.outputFormat,
     });
 
     assert.equal(result.ok, false);
-    assert.match(result.error ?? '', /refused/);
+    assert.equal(result.failure?.failureKind, fixture.failureKind);
     assert.equal(result.inputTokens, 10);
     assert.equal(result.cacheReadTokens, 2);
     assert.equal(result.outputTokens, 3);
-    assert.equal(result.output, null);
+    assert.equal(result.output, fixture.content ?? fixture.refusal);
+    assert.equal(result.refusal, fixture.refusal);
+    if (fixture.refusal) {
+      assert.doesNotMatch(result.error ?? '', /test-key/);
+      assert.ok((result.error?.length ?? 0) <= 1027);
+    }
     assert.equal(result.costReportedByExecutor, false);
+    }
   });
 
   it('keeps status and safe diagnostics for non-JSON proxies and malformed error messages, redacting before preview truncation', async () => {

@@ -43,6 +43,18 @@ describe('executor result contract', () => {
     };
     assert.equal(executorResultValidationError(result), undefined);
     assert.equal(normalizeExecResultToolIdentities(result).output, 'done');
+    assert.equal(executorResultValidationError({ ...result, ok: false, failure: { failureKind: 'rate_limit', httpStatus: 429, retryAfterMs: 1000 } }), undefined);
+    for (const failure of [null, { failureKind: 'made-up' }, { failureKind: 'timeout', httpStatus: 999 },
+      { failureKind: 'rate_limit', retryAfterMs: -1 }, { failureKind: 'rate_limit', retryAfterMs: Infinity },
+      { failureKind: 'rate_limit', retryAfterMs: 2_147_483_648 }]) {
+      assert.match(executorResultValidationError({ ...result, ok: false, failure }) ?? '', /valid diagnostics/);
+    }
+    assert.match(executorResultValidationError({ ...result, failure: { failureKind: 'refusal' } }) ?? '', /valid diagnostics/);
+    const refused = { ...result, ok: false, output: null, refusal: 'original refusal', failure: { failureKind: 'refusal' as const } };
+    assert.equal(executorResultValidationError(refused), undefined);
+    assert.equal(normalizeExecResultToolIdentities(refused).refusal, 'original refusal');
+    assert.match(executorResultValidationError({ ...result, refusal: 'unexpected' }) ?? '', /original text/);
+    assert.match(executorResultValidationError({ ...refused, refusal: 12 }) ?? '', /original text/);
   });
 
   it('normalizes provider-native tools at the shared result boundary', () => {

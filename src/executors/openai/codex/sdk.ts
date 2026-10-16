@@ -19,6 +19,7 @@ import {
 } from '../../core/runtime.js';
 import { registerSigintSubscriber } from '../../core/subprocess.js';
 import { assertCodexSkillDiscovery } from './cli.js';
+import { assertExecutorInputCapabilities } from '../../core/capabilities.js';
 
 interface CodexSdkThread {
   runStreamed(input: string, options?: { signal?: AbortSignal }): Promise<{
@@ -129,7 +130,8 @@ function normalizeSdkEvent(event: unknown): CodexEvent {
   return normalizeCodexProtocolEvent(event) ?? {};
 }
 
-export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+export async function codexSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort, outputFormat, maxOutputTokens }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+  assertExecutorInputCapabilities('codex-sdk', { model, prompt, outputFormat, maxOutputTokens });
   assertCodexSkillDiscovery(allowedSkills, 'codex-sdk');
 
   const finalPrompt = system ? `${system}\n\n---\n\n${prompt}` : prompt;

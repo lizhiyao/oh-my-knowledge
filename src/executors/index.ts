@@ -22,6 +22,7 @@ export {
   assertExecutorInputCapabilities,
   executorSupportsSampleMocks,
   getExecutorCapabilities,
+  ExecutorCapabilityError,
 } from './core/capabilities.js';
 
 export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv } = {}): ExecutorFn {

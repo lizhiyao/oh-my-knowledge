@@ -6,6 +6,7 @@ import {
   type RuntimeIdentity,
 } from '../../../eval-core/contracts/index.js';
 import type { ExecutorRuntimeFingerprint } from '../../../executors/contracts/runtime.js';
+import { OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION } from '../../../executors/openai/api.js';
 
 function executorRuntimeEvidence(
   runtime: Readonly<ExecutorRuntimeFingerprint>,
@@ -18,6 +19,8 @@ function executorRuntimeEvidence(
     capabilities: runtime.capabilities as unknown as JsonValue,
     ...(['codex', 'codex-sdk'].includes(runtime.executor)
       ? { protocolAdapterVersion: 'codex-reconnect/v2' } : {}),
+    ...(runtime.executor === 'openai-api'
+      ? { protocolAdapterVersion: OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION } : {}),
     ...(runtime.binary === undefined ? {} : {
       binary: {
         name: runtime.binary.name,
@@ -79,7 +82,7 @@ export function createJudgeProviderRuntimeIdentity(input: Readonly<{
   return deepFreezeCanonicalJson(RuntimeIdentitySchema.parse({
     implementationId: input.executorId,
     fingerprint: digestCanonicalJson({
-      derivation: 'omk.judge-provider-runtime/v2',
+      derivation: input.executorId === 'openai-api' ? 'omk.judge-provider-runtime/v3' : 'omk.judge-provider-runtime/v2',
       executorId: input.executorId,
       model: input.model,
       deployment,
