@@ -273,15 +273,15 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 
 omk 通过原生 coding-agent runtime 跑 baseline-vs-skill 评测时，baseline 可能发现从未被声明为测量输入的本地知识，导致它不再是「裸模型」，形成 **construct invalidity**。
 
-Claude runtime 有三条相关通道：SDK / CLI 的 skill 发现、子代理 `Skill` 工具，以及普通 cwd 文件访问。Codex 会从 workspace 与本地 profile 发现 `AGENTS.md`、`.agents/skills/`、项目规则等上下文。两类 runtime 也都可能通过普通工具读取 cwd 下的 `skills/<name>/`。
+Codex 会从 workspace 与本地 profile 发现 `AGENTS.md`、`.agents/skills/`、项目规则等上下文，也可能通过普通工具读取 cwd 下的 `skills/<name>/`。
 
-因此严格 baseline 必须同时使用干净的逐次运行 cwd 与执行器特定的隔离控制。任一发现通道仍然开放，verdict / Δ 反映的都会是污染基线 vs treatment，而非预期的「无知识 vs 有知识」。
+严格 baseline 要求 Runtime 能禁用 skill 发现，私有工作区状态本身不能证明这一能力。发现仍启用时，verdict / Δ 测量的是所选 runtime context 与声明 treatment 的共同影响，不能解释为「无知识 vs 有知识」。
 
 ### 2. 术语
 
 - **`allowedSkills`**（逐 variant 配置与编译后的执行控制）：
   - `undefined` → 使用执行器默认 runtime context，不请求隔离
-  - `[]` → **请求严格隔离**：omk 提供空的逐次运行 cwd，并应用当前执行器支持的全部隔离控制
+  - `[]` → **请求禁用 skill 发现**：所选 Runtime 必须支持此能力，否则在 provider call 前拒绝执行；当前 Codex CLI／SDK adapter 不支持
   - `[name1, ...]`（非空）→ **在统一 execution-plan 边界拒绝**：原生 agent、API 与自定义执行器之间不存在可移植且可证明的白名单机制；严格隔离请用 `[]`，不隔离则省略
 - **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
 - **隔离身份**：隔离声明由输入编译封入执行控制，结合 Runtime identity 和执行坐标验证复用；现行报告没有 `meta.skillIsolation` 字段，详见[输入编译规范](../evaluation/cli-evaluation-input-compilation.md)。
@@ -294,23 +294,21 @@ eval.yaml variant.allowedSkills (显式)
   > default (strictBaseline = true)
 ```
 
-baseline-kind 默认 `[]`（strict），其他 kind 默认 `undefined`（执行器默认上下文）。
+baseline-kind 默认 `[]`（strict），其他 kind 默认 `undefined`（执行器默认上下文）。因此严格 Codex baseline 会被拒绝。裸模型 baseline 使用 `openai-api`；在固定 runtime context 下测量 Codex 时，比较两个显式 artifact 版本，并使用 runtime-default 发现。关闭 strict baseline 会改变测量声明。
 
 ### 4. 隔离覆盖范围
 
 | Runtime / 通道 | 覆盖？ | 机制 |
 |---|---|---|
-| 通用 cwd 文件访问 | 是，针对隐式 baseline cwd | `~/.oh-my-knowledge/state/isolated-cwd/` 下的全新逐次运行空目录 |
-| Codex CLI profile、session 与规则 | 是 | `--ephemeral --ignore-user-config --ignore-rules` + 隔离 `-C` |
-| Codex SDK profile 与 session | 是 | 临时 `CODEX_HOME`（只复制凭证）+ 隔离 working directory |
-| Codex SDK 项目 execpolicy | SDK 限制 | SDK 不暴露 `--ignore-rules`；要求这一层隔离时使用 `codex` 执行器 |
-| Claude SDK skill 发现 / 子代理 Skill 工具 | 是 | `skills: []` + `disallowedTools: ['Skill']` |
-| Claude CLI skill 命令 | 是 | `--disable-slash-commands --disallowedTools Skill` |
+| Core Trial 工作区 | 可变状态分离 | 已验证 workspace snapshot 的私有副本；没有绑定时使用私有空目录；同一 Trial 的重试保留状态 |
+| Codex CLI profile、session 与规则 | 部分 | `--ephemeral --ignore-user-config --ignore-rules` 限制这些通道；skill 发现仍为 `runtime-default` |
+| Codex SDK profile 与 session | 部分 | 私有 `CODEX_HOME` 分离 session 状态；项目规则和 runtime-default skill 发现仍然生效 |
+| `openai-api` 本地 skill 发现 | 已禁用 | 无状态请求不加载本地 skill 或文件工具 |
 | 自定义 script 执行器 | 无法强制 | 一次性告警；omk 无法证明用户命令加载了什么 |
 
-**为什么 cwd 单独列出**：provider 特定的 flag 无法阻止 agent 用普通文件工具读取评测 workspace 下的 `skills/<name>/`。因此严格 baseline 在没有显式 cwd 时，每次执行都使用一个全新的空目录。**用户显式指定 baseline cwd 时，omk 不会替换它**，因为该目录属于用户有意纳入测量的 runtime context。
+**为什么工作区状态单独列出**：Core Trial 工作区隔离防止不同 Trial 共享可变状态，不会禁用工作区之外的用户、管理员或内置 skill。显式 workspace 会作为已验证资源捕获，再复制到 Trial；没有 workspace binding 时使用私有空 Trial 目录。两种情况都不能证明 Codex skill 发现已禁用。
 
-注：isolated-cwd 不是 sandbox，baseline 仍可能读取任意绝对路径。空 cwd 和发现控制不能保证阻止 prompt 引导的读取；需要文件访问隔离的场景应另行提供 sandbox。
+私有工作区不是文件系统 sandbox。文件访问限制取决于所选 Runtime 的 sandbox 及其声明能力，空目录本身不能阻止读取绝对路径。
 
 ### 5. cache key 版本
 
@@ -322,12 +320,12 @@ Core 分阶段持有缓存。Execution key 的派生身份为 `omk.execution-cac
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
-| `codex` | 执行器默认 cwd | 隔离 cwd + 忽略用户配置 / rules | **统一 planner 抛错** |
-| `codex-sdk` | 项目 cwd；隔离 `CODEX_HOME` | 隔离 cwd + 隔离 `CODEX_HOME` | **统一 planner 抛错** |
-| API 执行器 | 不隐式发现本地 skill | 无额外效果 | **统一 planner 抛错** |
+| `codex` | runtime-default skill 发现 | **拒绝：不支持禁用发现** | **统一 planner 抛错** |
+| `codex-sdk` | runtime-default skill 发现；私有 `CODEX_HOME` | **拒绝：不支持禁用发现** | **统一 planner 抛错** |
+| `openai-api` | 不隐式发现本地 skill | 接受；没有本地发现可禁用 | **统一 planner 抛错** |
 | 自定义 script | 由命令决定 | stderr 告警，无法保证隔离 | **统一 planner 抛错** |
 
-非空 skill 白名单 `[name]` 会在执行器分发前被拒绝，programmatic caller 即使绕过 eval.yaml 校验也一样。严格隔离使用 `[]`，执行器默认上下文则省略。自定义 script 即使收到 `[]` 也无法证明严格隔离，因此 omk 会告警并记录隔离声明用于审计，不会静默声称已经兑现。
+非空 skill 白名单 `[name]` 会在执行器分发前被拒绝，programmatic caller 即使绕过 eval.yaml 校验也一样。只有支持禁用发现的 Runtime（如 `openai-api`）才能使用 `[]`；执行器默认上下文则省略。辅助 Codex CLI／SDK 调用同样拒绝所有显式 `allowedSkills`，包括 `[]`。自定义 script 即使收到 `[]` 也无法证明严格隔离，因此辅助脚本调用只会告警，不声称已强制执行；Core 测量取决于自定义 Runtime 声明的契约。
 
 ## 七、落地判断标准
 

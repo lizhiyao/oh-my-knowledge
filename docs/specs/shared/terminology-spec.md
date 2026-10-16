@@ -271,15 +271,15 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 
 When omk runs baseline-vs-skill evaluations through a native coding-agent runtime, the baseline may discover local knowledge that was never declared as measured input. That makes the baseline something other than a "bare model" — a **construct invalidity**.
 
-Claude runtimes expose three relevant channels: SDK / CLI skill discovery, the subagent `Skill` tool, and ordinary cwd file access. Codex discovers `AGENTS.md`, `.agents/skills/`, project rules, and related context from its workspace and local profile. Both families can also read a `skills/<name>/` path under cwd with ordinary tools.
+Codex discovers `AGENTS.md`, `.agents/skills/`, project rules, and related context from its workspace and local profile. It can also read a `skills/<name>/` path under cwd with ordinary tools.
 
-The strict baseline therefore combines a clean per-attempt cwd with executor-specific controls. If any discovery channel remains open, verdict / Δ reflects a contaminated baseline vs. treatment rather than the intended "no knowledge vs. knowledge".
+A strict baseline requires a Runtime that can disable skill discovery. Private workspace state alone cannot establish that capability. If discovery remains enabled, verdict / Δ measures the selected runtime context together with the declared treatment rather than "no knowledge vs. knowledge".
 
 ### 2. Terminology
 
 - **`allowedSkills`** (per-variant configuration and compiled execution control):
   - `undefined` → executor-default runtime discovery; no isolation is requested
-  - `[]` → **strict isolation requested**: omk supplies an empty per-attempt cwd and applies every isolation control supported by the selected executor
+  - `[]` → **skill discovery disabled requested**: the selected Runtime must support this capability or execution is rejected before a provider call; current Codex CLI／SDK adapters do not support it
   - `[name1, ...]` (non-empty) → **rejected at the shared execution-plan boundary**: a portable whitelist cannot be enforced across native agent, API, and custom executors; use `[]` for strict isolation or omit for none
 - **`--strict-baseline` flag** (default true): automatically sets `allowedSkills = []` for every `kind === 'baseline'` artifact; `--no-strict-baseline` turns it off (explicit opt-out).
 - **Isolation identity**: input compilation seals isolation declarations into execution controls; Runtime identity and execution coordinates govern reuse verification. Current reports have no `meta.skillIsolation` field; see [input compilation](../evaluation/cli-evaluation-input-compilation.md).
@@ -292,23 +292,21 @@ eval.yaml variant.allowedSkills (explicit)
   > default (strictBaseline = true)
 ```
 
-baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (executor-default context).
+baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (executor-default context). A strict Codex baseline is therefore rejected. Use `openai-api` for a bare-model baseline; compare two explicit artifact versions with runtime-default discovery when measuring Codex under a fixed runtime context. Opting out of strict baseline changes the measurement claim.
 
 ### 4. Isolation coverage
 
 | Runtime / channel | Covered? | Mechanism |
 |---|---|---|
-| Common cwd file access | yes, for implicit baseline cwd | fresh empty per-attempt cwd under `~/.oh-my-knowledge/state/isolated-cwd/` |
-| Codex CLI profile, sessions, and rules | yes | `--ephemeral --ignore-user-config --ignore-rules` plus isolated `-C` |
-| Codex SDK profile and sessions | yes | fresh `CODEX_HOME` with copied credentials plus isolated working directory |
-| Codex SDK project execpolicy | SDK limitation | SDK does not expose `--ignore-rules`; use the `codex` executor when this final boundary matters |
-| Claude SDK skill discovery / subagent Skill tool | yes | `skills: []` plus `disallowedTools: ['Skill']` |
-| Claude CLI skill commands | yes | `--disable-slash-commands --disallowedTools Skill` |
+| Core Trial workspace | separate mutable state | private copy of the verified workspace snapshot, or an empty private directory when unbound; retries within one Trial retain its state |
+| Codex CLI profile, sessions, and rules | partial | `--ephemeral --ignore-user-config --ignore-rules` limits these channels; skill discovery remains `runtime-default` |
+| Codex SDK profile and sessions | partial | private `CODEX_HOME` separates session state; project rules and runtime-default skill discovery remain |
+| `openai-api` local skill discovery | disabled | stateless requests do not load local skills or file tools |
 | Custom script executor | not enforceable | one-time warning; omk cannot prove what the user command loads |
 
-**Why the cwd channel is listed separately**: provider-specific flags cannot prevent ordinary file tools from reading `skills/<name>/` under an evaluation workspace. A strict baseline without an explicit cwd therefore gets a fresh empty directory for each execution. **An explicitly supplied baseline cwd is not replaced**, because the directory is intentional runtime context in the measurement.
+**Why workspace state is listed separately**: Core Trial workspace isolation prevents mutable state from being shared between Trials. It does not disable user, administrator, or bundled skills outside that workspace. An explicit workspace is captured as a verified resource and copied into the Trial; no workspace binding yields an empty private Trial directory. Neither case proves that Codex skill discovery is disabled.
 
-Note: isolated-cwd is not a sandbox. A baseline may still read absolute paths. An empty cwd and discovery controls do not prevent prompt-directed reads; scenarios needing file-access isolation require a separate sandbox.
+A private workspace is not a filesystem sandbox. File-access restrictions depend on the selected Runtime sandbox and its declared capabilities; an empty directory alone cannot prevent reads of absolute paths.
 
 ### 5. Cache key version
 
@@ -320,12 +318,12 @@ Core owns stage-specific caches. The Execution key uses `omk.execution-cache-key
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
-| `codex` | executor-default cwd | isolated cwd + ignored user config / rules | **throw at shared planner** |
-| `codex-sdk` | project cwd; isolated `CODEX_HOME` | isolated cwd + isolated `CODEX_HOME` | **throw at shared planner** |
-| API executors | no implicit local skill discovery | no additional effect | **throw at shared planner** |
+| `codex` | runtime-default skill discovery | **rejected: disabling discovery is unsupported** | **throw at shared planner** |
+| `codex-sdk` | runtime-default skill discovery; private `CODEX_HOME` | **rejected: disabling discovery is unsupported** | **throw at shared planner** |
+| `openai-api` | no implicit local skill discovery | accepted; no local discovery to disable | **throw at shared planner** |
 | custom script | command-defined | stderr warning; cannot guarantee isolation | **throw at shared planner** |
 
-A non-empty skill whitelist `[name]` is rejected before executor dispatch, including programmatic callers that bypass eval.yaml validation. Use `[]` for strict isolation or omit the field for executor-default context. A custom script cannot prove strict isolation even with `[]`, so omk warns and records the isolation declaration for audit rather than silently claiming it was enforced.
+A non-empty skill whitelist `[name]` is rejected before executor dispatch, including programmatic callers that bypass eval.yaml validation. Use `[]` only with a Runtime that supports disabling discovery, such as `openai-api`, or omit the field for executor-default context. Auxiliary Codex CLI／SDK calls also reject every explicit `allowedSkills`, including `[]`. A custom script cannot prove strict isolation even with `[]`, so auxiliary script calls warn rather than claim enforcement; Core measurement depends on the custom Runtime’s declared contract.
 
 ## 7. Decision criteria
 

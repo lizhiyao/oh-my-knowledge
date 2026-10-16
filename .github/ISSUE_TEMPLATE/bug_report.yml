@@ -70,4 +70,4 @@ body:
     id: extra
     attributes:
       label: Anything else?
-      description: Context that might help — which executor (claude / openai / gemini), custom assertions, MCP setup, etc.
+      description: Context that might help — which executor (codex / codex-sdk / openai-api / custom executable), custom assertions, MCP setup, etc.
