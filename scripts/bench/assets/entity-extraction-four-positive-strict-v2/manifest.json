@@ -1,0 +1,156 @@
+{
+  "manifestKind": "omk-entity-fewshot-candidate-assets/v2",
+  "assetVersion": 2,
+  "status": "inactive-demonstration",
+  "productionActivated": false,
+  "modelCalls": 0,
+  "humanReview": "pending",
+  "independentHumanReview": "pending",
+  "gold": "none",
+  "qualityConclusion": "not_evaluated",
+  "dataUse": "prompt-demonstration-only;not-an-evaluation-split",
+  "sourceManifestDigest": "sha256:4179285127f38cd561cfe1169ec3e7cf4970b41f3a88249ed1c2660351faeaef",
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "validators": {
+    "zod": "4.6.5",
+    "ajv": "8.20.0"
+  },
+  "arms": {
+    "control": {
+      "name": "v14-derived-strict",
+      "file": "v14-derived-strict.prompt.txt",
+      "collectorPromptVariant": "v14-derived"
+    },
+    "candidate": {
+      "name": "v15-candidate-strict",
+      "file": "v15-candidate-strict.prompt.txt",
+      "collectorPromptVariant": "v15-candidate"
+    }
+  },
+  "pair": {
+    "baselineName": "v14-derived-strict",
+    "candidateName": "v15-candidate-strict",
+    "originalV14Preserved": true,
+    "originalRawV15Preserved": true,
+    "originalRulePrefixBytes": 22514,
+    "originalRulePrefixDigest": "sha256:960b45dc357cd86471a7e55ddd975d71b52de416ff80f001d1a89c921825d909",
+    "finalOutputRulePreserved": true,
+    "sharedWireInstructionsDigest": "sha256:1bf2f73c38d67577010e0b7461b4e64f294928778d32597bffa519a862edc1c2",
+    "sharedWireSchemaDigest": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+    "onlyDifference": "four-positive-strict-fewshot-block-plus-separator-lf",
+    "blockBytes": 9273,
+    "baselineBytes": 31884,
+    "candidateBytes": 41158,
+    "inputTokens": "not_measured",
+    "blockDigest": "sha256:0a0af50cd8f4571eeb89c6420145c2ab4dbb03cf6c8c6fa1990e57f34385710e"
+  },
+  "expectedAuthorChecks": [
+    {
+      "exampleId": "synthetic-occurrence-and-identifier-v1",
+      "inputDigest": "sha256:d5fdeedf9bebb9774999c80b3fa8248b9bdc9d0b79831bbe8ab6206d325a1b21",
+      "wireOutputDigest": "sha256:9deaa50490b315d9fa5835b52d6525c1684c08b28d18d3ffd23f5bd9b9d28d26",
+      "domainOutputDigest": "sha256:9deaa50490b315d9fa5835b52d6525c1684c08b28d18d3ffd23f5bd9b9d28d26",
+      "host": {
+        "entities": 2,
+        "mentions": 3,
+        "entityRejections": 0,
+        "acceptedProposals": 0,
+        "rejectedProposals": 0,
+        "knowledgeDraftsValid": 0
+      }
+    },
+    {
+      "exampleId": "synthetic-property-and-independent-metric-v2",
+      "inputDigest": "sha256:5fc6f598d6932c04cf3ddb35b7cf021ab8ed43374a33f93e026071d648f5689f",
+      "wireOutputDigest": "sha256:ee8fa213f95a4fbbdf4ea22505d4f5ce12bbe27b189cfe757e2e6db901ab3f49",
+      "domainOutputDigest": "sha256:8306e2c2ed026c06ea539a55f31280b948d649b23f19eef6d4a00eb26c18b86c",
+      "host": {
+        "entities": 2,
+        "mentions": 3,
+        "entityRejections": 0,
+        "acceptedProposals": 1,
+        "rejectedProposals": 0,
+        "knowledgeDraftsValid": 1
+      }
+    },
+    {
+      "exampleId": "synthetic-unknown-not-resolved-by-assistant-v1",
+      "inputDigest": "sha256:c75de602c332429f3e344b95a31d4ed2483f1b8ee915118a9703cff73c4ebbd7",
+      "wireOutputDigest": "sha256:ff097a444e7d6e7dc9e083fa48711f8d9d990fb3c727887bdd7d1dbc6bb71056",
+      "domainOutputDigest": "sha256:ff097a444e7d6e7dc9e083fa48711f8d9d990fb3c727887bdd7d1dbc6bb71056",
+      "host": {
+        "entities": 2,
+        "mentions": 2,
+        "entityRejections": 0,
+        "acceptedProposals": 0,
+        "rejectedProposals": 0,
+        "knowledgeDraftsValid": 0
+      }
+    },
+    {
+      "exampleId": "synthetic-normative-grounding-and-partial-admission-v2",
+      "inputDigest": "sha256:3fe0d450f373a651bd04f12b97f036897f005daaccd721b26be859c8d2d7d7cf",
+      "wireOutputDigest": "sha256:d79934d4fc0b73468a6a51bed5a7e57c57a12bcbcf4c9cc4b5e7c1e3d4d9354f",
+      "domainOutputDigest": "sha256:3ea71e40229f30168df2c76f1794111508f2f4412ea6eb3c6dcef5415b0eb0a8",
+      "host": {
+        "entities": 1,
+        "mentions": 1,
+        "entityRejections": 0,
+        "acceptedProposals": 1,
+        "rejectedProposals": 0,
+        "knowledgeDraftsValid": 1
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "v14-derived-strict.prompt.txt",
+      "bytes": 31884,
+      "sha256": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+      "endsWithLf": false
+    },
+    {
+      "path": "v15-candidate-strict.prompt.txt",
+      "bytes": 41158,
+      "sha256": "sha256:097bf49208e596afdd8df67c1d4091dfeb730ad92d00f30e880df64463913254",
+      "endsWithLf": false
+    },
+    {
+      "path": "strict-positive-examples.json",
+      "bytes": 17530,
+      "sha256": "sha256:96470e4a4161d7dd6a0f40788ffc47c280863ea12c74f8a77978d4a505dff579",
+      "endsWithLf": true
+    },
+    {
+      "path": "wire-schema.json",
+      "bytes": 8327,
+      "sha256": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+      "endsWithLf": false
+    },
+    {
+      "path": "wire-identity.json",
+      "bytes": 767,
+      "sha256": "sha256:db39b23186df42d1051537be69357bee123a211b92ced1194430495d534b449b",
+      "endsWithLf": true
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 6799,
+      "sha256": "sha256:4179285127f38cd561cfe1169ec3e7cf4970b41f3a88249ed1c2660351faeaef",
+      "endsWithLf": true
+    },
+    {
+      "path": "author-review.json",
+      "bytes": 6401,
+      "sha256": "sha256:ad00d3844073ca77479edb2be601e85d3bd6c73a4b1ceafeeaafac4e9c793387",
+      "endsWithLf": true
+    }
+  ],
+  "authorReview": "completed",
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-four-positive-strict-v1",
+    "manifestDigest": "sha256:49d70b7b12ef3ce8f7df910f321d67d8de9d32e8863f28a9615e9adbbdd45c66",
+    "examplesDigest": "sha256:4c2d04bf6bfb9a9b27d1ef89e80fe9c36f734fa9a5686b71f89d023ff618bec6",
+    "candidatePromptDigest": "sha256:7bf5c9fbf5e181346c76f84963911adf5b25a52db954d1e80495327b476f0dd6"
+  }
+}

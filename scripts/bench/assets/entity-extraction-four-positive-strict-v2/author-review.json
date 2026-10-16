@@ -1,0 +1,112 @@
+{
+  "authorReviewVersion": "omk-entity-fewshot-author-review/v1",
+  "reviewKind": "ai-author-review",
+  "reviewer": "Codex",
+  "status": "completed",
+  "reviewedAt": "2026-10-16T14:32:37.223Z",
+  "reviewedAfterDemonstrationsViewed": true,
+  "independentHumanAttestation": false,
+  "examplesDigest": "sha256:96470e4a4161d7dd6a0f40788ffc47c280863ea12c74f8a77978d4a505dff579",
+  "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+  "candidatePromptDigest": "sha256:097bf49208e596afdd8df67c1d4091dfeb730ad92d00f30e880df64463913254",
+  "dataUse": "prompt-demonstration-only;not-an-evaluation-split",
+  "scope": "AI 作者逐例审阅最终四个合成示例的完整输入、实体与提及、知识陈述、条件与未知、原文引文及来源强度，并读回最终候选 prompt 中的同一示例块；不是独立真人复核。",
+  "standards": [
+    "docs/specs/entities/entity-identity.md",
+    "docs/specs/entities/entity-extraction-evaluation.md"
+  ],
+  "bindings": {
+    "examplesFile": "strict-positive-examples.json",
+    "examplesDigest": "sha256:96470e4a4161d7dd6a0f40788ffc47c280863ea12c74f8a77978d4a505dff579",
+    "controlPromptFile": "v14-derived-strict.prompt.txt",
+    "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+    "candidatePromptFile": "v15-candidate-strict.prompt.txt",
+    "candidatePromptDigest": "sha256:097bf49208e596afdd8df67c1d4091dfeb730ad92d00f30e880df64463913254"
+  },
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-four-positive-strict-v1",
+    "manifestDigest": "sha256:49d70b7b12ef3ce8f7df910f321d67d8de9d32e8863f28a9615e9adbbdd45c66",
+    "examplesDigest": "sha256:4c2d04bf6bfb9a9b27d1ef89e80fe9c36f734fa9a5686b71f89d023ff618bec6",
+    "candidatePromptDigest": "sha256:7bf5c9fbf5e181346c76f84963911adf5b25a52db954d1e80495327b476f0dd6"
+  },
+  "decisions": [
+    {
+      "exampleId": "synthetic-occurrence-and-identifier-v1",
+      "decision": "approved",
+      "rationale": "两个并列巡检对象分别保留，未凭名称补造组件或实例；完整 FrostGateShadow 不截为前缀。末个 FrostGate 的 occurrence 为 2，计入复合标识符中的同字节子串；两次独立提及有上下文指回依据。描述保留仍待复核，未声称已通过；空知识候选不构成知识覆盖通过。",
+      "changes": []
+    },
+    {
+      "exampleId": "synthetic-property-and-independent-metric-v2",
+      "decision": "approved",
+      "rationale": "玻璃杯保留为对象，容量与 300 毫升作为其属性陈述；来源明确独立定义的 M_4 保留为指标对象，该杯指回唯一的玻璃杯。两条描述性陈述保留单位、指标比较对象与未知目标值，时间未知，证据仍为 source_assertion，原文引文闭合。修订后不把容量来源陈述提升为已执行测量。",
+      "changes": [
+        {
+          "field": "output.entities[0].description",
+          "reason": "来源未记录实际测量，不应补造被测性质。",
+          "before": "原文被测容量为 300 毫升的玻璃杯。",
+          "after": "原文称容量为 300 毫升的玻璃杯。"
+        },
+        {
+          "field": "output.proposals[0].reuseRationale",
+          "reason": "容量值仅为来源陈述，不称为测量值。",
+          "before": "复查本次容量评审时保留测量值、指标用途及尚缺的目标值。",
+          "after": "复查本次容量评审时保留来源陈述的容量值、指标用途及尚缺的目标值。"
+        }
+      ]
+    },
+    {
+      "exampleId": "synthetic-unknown-not-resolved-by-assistant-v1",
+      "decision": "approved",
+      "rationale": "保留用户原始蓝鹭为 unresolved，并将助手明确提出的蓝鹭数据库作为同层候选分别定位；后续用户要求不按猜测消歧，描述与 uncertainties 均未把助手回答提升为用户确认。未补造候选真实存在、产品类型细分或已解决身份；空知识候选不构成关联质量通过。",
+      "changes": []
+    },
+    {
+      "exampleId": "synthetic-normative-grounding-and-partial-admission-v2",
+      "decision": "approved",
+      "rationale": "BeaconTray 只作来源明确的对象；不得发布保留 normative/negative 及未完成人工复核条件，source_assertion 未升级为遵守规程或实际未发布的观测。原引文继续支持门禁，新增同 l_gate 的精确原句引文支持没有发布执行记录的窗口限制；时间仍未知。它是完整正例，不证明坏 sibling 或部分接纳失败路径。",
+      "changes": [
+        {
+          "field": "output.proposals[0].citations[1]",
+          "reason": "单独定位窗口缺少发布执行记录的来源，不以门禁句替代该证据。",
+          "added": {
+            "evidenceLinkId": "l_gate",
+            "selection": {
+              "evidenceRef": "beacon-1",
+              "quote": "该窗口没有发布执行记录。",
+              "occurrence": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "preparation": {
+    "runtimeKind": "repository-dist",
+    "validators": {
+      "zod": "4.6.5",
+      "ajv": "8.20.0"
+    },
+    "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+    "wireMapping": "Production decodeWindowExtractionWire used only to derive per-example domain-output digests.",
+    "hostCounts": "Inherited author expectations; this data-generation step did not run host admission or verifier.",
+    "verifierRun": false,
+    "testsRun": false,
+    "modelCalls": 0,
+    "executorCalls": 0,
+    "apiPlansCreated": false,
+    "existingApiProposalMigrated": false
+  },
+  "humanReview": "pending",
+  "independentHumanReview": "pending",
+  "semanticReview": "pending",
+  "gold": "none",
+  "qualityConclusion": "not_evaluated",
+  "productionActivated": false,
+  "limitations": [
+    "示例及答案已经进入候选 prompt，不能用作未见评测、Gold、效果提升或生产发布结论。",
+    "AI 作者自审不能替代独立真人标注或输出语义复核；本记录不签署独立人审。",
+    "v1 原件及历史来源索引保持原字节；本修订不改写旧结果或旧授权。",
+    "本地 repository-dist 的 Zod 4.6.5 与隔离 installed runtime 的 Zod 4.6.7 分属不同 wire identity；现有 API 提案不自动迁移。"
+  ]
+}

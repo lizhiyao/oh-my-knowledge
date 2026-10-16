@@ -15,6 +15,8 @@ node dist-scripts/bench/entity-extraction-capture.js check --plan /absolute/new-
 
 可用 `--review-bundle /absolute/frozen-review-directory` 代替 `--source`。它校验已有 manifest 的 measurement 与 corpus 摘要，再为实际选中输入和真实 provider 请求建立新绑定。旧 review measurement ID 只是来源元数据，不能证明 provider、端点或执行条件。不能用保留的 validation 内容调 prompt。真实消息须使用下面的新来源协议，并单独完成许可、最小化及复核。
 
+未激活的[四示例候选修订 2](./assets/entity-extraction-four-positive-strict-v2/README.zh.md) 修正 AI 作者审阅发现的来源强度和限制引用缺口。修订 1 保持冻结。修订后 prompt 使用新摘要，实验须另建计划；两份修订都不是评测 split 或独立真人证据。
+
 ## 来源、配置与身份
 
 新输入文件使用 `sourceVersion: "omk-entity-capture-source/v1"`。`provenance` 包含 `sourceKind`（`synthetic`、`public-redacted-real` 或 `private-real`）、`originDigest`（`sha256:...`）、非空 `transformation` 描述和 `toolPolicy: "excluded"`。文件同时包含 `review: {"human":"pending","independent":"pending","gold":"none"}` 和 `cases` 数组。每个 case 有唯一 kebab-case `caseId`、`split: "development"`、非空 `limitations` 和 `excerpts`。每条 excerpt 包含 `evidenceRef: "<caseId>:<recordIndex>"`、非负整数 `recordIndex`、`eventKind: "message"`、`role: "user" | "assistant"` 和精确非空 `text`。该协议不能包含 tool。来源声明只是记录声明，collector 不独立证明来源或认证脱敏效果。不能把真实文本改标为 synthetic，也不能把新编造文本标作真实来源。
