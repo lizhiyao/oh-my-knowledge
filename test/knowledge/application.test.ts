@@ -510,14 +510,35 @@ describe('shared knowledge application', () => {
     expect(knowledge.list()[0].generation).toBe(1);
     expect(generate).toHaveBeenCalledTimes(1);
   });
-  it('keeps invalid model output as failure evidence and treats an empty result as completed', async () => {
-    const { app, snapshot, model } = setup();
-    model.generate = async () => ({ output: 'invalid JSON', durationMs: 1 });
-    const failed = await app.generate(snapshot.snapshotId, model);
-    expect(failed).toMatchObject({ status: 'failed', rawOutput: 'invalid JSON' });
+  it('preserves invalid-output evidence, rejects oversized responses once, and completes an empty result at the limit', async () => {
+    const { app, snapshot, model, generate, runs, ports, root } = setup();
+    generate.mockResolvedValue({ output: 'invalid JSON', durationMs: 1 });
+    const invalid = await app.generate(snapshot.snapshotId, model);
+    expect(invalid).toMatchObject({ status: 'failed', rawOutput: 'invalid JSON' });
     expect(app.list()).toEqual([]);
-    model.generate = async () => ({ output: '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}', durationMs: 1 });
-    expect(await app.generate(snapshot.snapshotId, model)).toMatchObject({ status: 'completed', committed: [] });
+
+    const empty = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';
+    // The current v4 guard measures JavaScript string length, rather than UTF-8 bytes.
+    const maxOutputLength = 2 * 1024 * 1024;
+    generate.mockResolvedValue({ output: empty.padEnd(maxOutputLength + 1, ' '), durationMs: 1 });
+    const runId = randomUUID();
+    const failed = await app.generate(snapshot.snapshotId, model, runId);
+    expect(failed).toMatchObject({ schemaVersion: 4, status: 'failed', error: 'Extraction response exceeds capacity.', intents: [], committed: [] });
+    expect(ports.entities.list()).toEqual({ histories: [], unavailable: 0 }); expect(app.list()).toEqual([]);
+    expect(runs.read(runId)).toEqual(failed);
+    const failedFile = join(root, 'runs', `${runId}.json`), failedBytes = readFileSync(failedFile);
+    expect(await app.generate(snapshot.snapshotId, model, runId)).toEqual(failed);
+    expect(app.resume(runId)).toEqual(failed);
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(readFileSync(failedFile)).toEqual(failedBytes);
+
+    const atLimit = empty.padEnd(maxOutputLength, ' ');
+    generate.mockResolvedValue({ output: atLimit, durationMs: 1 });
+    const completed = await app.generate(snapshot.snapshotId, model);
+    expect(completed).toMatchObject({ schemaVersion: 4, status: 'completed', rawOutput: atLimit, committed: [] });
+    expect(runs.read(completed.runId)).toEqual(completed);
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(readFileSync(failedFile)).toEqual(failedBytes);
   });
   it('binds corrections to a new analysis and knowledge revision without changing historical positions', async () => {
     const { app, snapshot, model, root } = setup();
