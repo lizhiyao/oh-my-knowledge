@@ -11,6 +11,7 @@ export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> &
   origin?: EvidenceWindow['origin'];
 };
 export type KnowledgeCandidateSource = EvidenceWindow;
+export type KnowledgeExtractionQuality = ReturnType<KnowledgeApplication['quality']>;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
 export type KnowledgeEntityCatalog = ReturnType<KnowledgeApplication['queryEntities']>;
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source'> & Pick<KnowledgeEntityAnalysisDetail, 'source'>;

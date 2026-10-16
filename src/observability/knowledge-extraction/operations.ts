@@ -9,6 +9,7 @@ export const knowledgeOperationSchemas = {
   list: z.strictObject({ operation: z.literal('list') }),
   tag: z.strictObject({ operation: z.literal('tag'), id: text, generation: z.number().int().nonnegative(), tags: z.array(z.string()).max(32) }),
   runs: z.strictObject({ operation: z.literal('runs') }),
+  quality: z.strictObject({ operation: z.literal('quality') }),
   show: z.strictObject({ operation: z.literal('show'), id: text, revision: text.optional() }),
   entities: z.strictObject({ operation: z.literal('entities'), analysisId: uuid, revision: uuid.optional() }),
   'entity-catalog': z.strictObject({ operation: z.literal('entity-catalog'), query: text.max(512).optional(), identityStatus: z.enum(['all', 'proposed', 'unresolved']).optional(), sourceStatus: z.enum(['all', 'available', 'unavailable']).optional(), threadId: text.optional(), analysisId: uuid.optional(), page: z.number().int().min(1).max(100_000).optional(), pageSize: z.number().int().min(1).max(100).optional() }),
@@ -24,7 +25,7 @@ export const knowledgeOperationSchemas = {
   revise: z.strictObject({ operation: z.literal('revise'), id: text, revision: text, generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
 };
 export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
-  knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs,
+  knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
   knowledgeOperationSchemas.show, knowledgeOperationSchemas.entities, knowledgeOperationSchemas['entity-catalog'],
   knowledgeOperationSchemas['entity-detail'], knowledgeOperationSchemas['correct-entities'], knowledgeOperationSchemas['apply-entities'],
   knowledgeOperationSchemas.capture, knowledgeOperationSchemas.generate, knowledgeOperationSchemas.resume,
@@ -33,7 +34,7 @@ export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
 export type KnowledgeOperation = z.infer<typeof KnowledgeOperationSchema>;
 type Results = {
   list: ReturnType<KnowledgeApplication['list']>; tag: ReturnType<KnowledgeApplication['tag']>;
-  runs: ReturnType<KnowledgeApplication['runs']>; show: ReturnType<KnowledgeApplication['detail']>;
+  quality: ReturnType<KnowledgeApplication['quality']>; runs: ReturnType<KnowledgeApplication['runs']>; show: ReturnType<KnowledgeApplication['detail']>;
   entities: ReturnType<KnowledgeApplication['entities']>; 'entity-catalog': ReturnType<KnowledgeApplication['queryEntities']>;
   'entity-detail': ReturnType<KnowledgeApplication['entityDetail']>; 'correct-entities': ReturnType<KnowledgeApplication['correctEntities']>;
   'apply-entities': ReturnType<KnowledgeApplication['reviseUsingEntities']>; capture: ReturnType<KnowledgeApplication['capture']>;
@@ -50,6 +51,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'list': return app.list();
       case 'tag': return app.tag(request.id, request.generation, request.tags);
       case 'runs': return app.runs();
+      case 'quality': return app.quality();
       case 'show': return app.detail(request.id, request.revision);
       case 'entities': return app.entities(request.analysisId, request.revision);
       case 'entity-catalog': return app.queryEntities({ query: request.query, identityStatus: request.identityStatus, sourceStatus: request.sourceStatus, threadId: request.threadId, analysisId: request.analysisId, page: request.page, pageSize: request.pageSize });

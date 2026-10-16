@@ -68,6 +68,11 @@ describe('observe knowledge command wiring', () => {
     await expect(runCommand(ObserveKnowledge, ['entities', ...base, '--entity-revision', 'orphan'], { cwd: root })).rejects.toMatchObject({ code: 2 });
     const inspect = await runCommand(ObserveKnowledge, ['entities', ...base, '--analysis', run.runId], { cwd: root });
     expect(inspect.stdout).toContain('实体分析'); expect(inspect.stdout).toContain('Alpha');
+    const quality = await runCommand(ObserveKnowledge, ['quality', ...base, '--json'], { cwd: root });
+    expect(JSON.parse(quality.stdout)).toEqual(app.quality());
+    const statistics = await runCommand(ObserveKnowledge, ['quality', ...base], { cwd: root });
+    expect(statistics.stdout).toContain('提炼接纳统计'); expect(statistics.stdout).toContain('位置匹配不证明语义准确');
+    expect(statistics.stdout).toContain(`--workspace ${workspace}`);
     const before = app.entities(run.runId);
     const edit = { entities: structuredClone(before.revision.entities), mentions: before.revision.mentions };
     edit.entities[0].label = '项目 Alpha';

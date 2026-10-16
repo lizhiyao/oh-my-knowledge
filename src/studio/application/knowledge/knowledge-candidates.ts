@@ -32,6 +32,7 @@ const requestSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas['list'].extend(common),
   knowledgeOperationSchemas['tag'].extend(common),
   knowledgeOperationSchemas['runs'].extend(common),
+  knowledgeOperationSchemas['quality'].extend(common),
   knowledgeOperationSchemas['show'].extend(common),
   knowledgeOperationSchemas['entities'].extend(common),
   knowledgeOperationSchemas['entity-catalog'].extend(common),
@@ -81,6 +82,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
       const ids = new Set(runs.flatMap(run => run.committed.map(ref => ref.knowledgeId)));
       return { rows: app.list().filter(row => ids.has(row.knowledgeId)), runs: runs.map(extractionRunSummary) };
     }
+    case 'quality': return execute(request);
     case 'list': return execute(request);
     case 'tag': return execute(request);
     case 'runs': return (await execute(request)).sort((a, b) => (Date.parse(b.startedAt) - Date.parse(a.startedAt)) || a.runId.localeCompare(b.runId)).map(extractionRunSummary);

@@ -135,6 +135,15 @@ describe('Studio candidate action boundary', () => {
     expect(applied.status).toBe(200);
     const latest = await applied.json(); expect(latest.history.revisions).toHaveLength(2);
     expect(latest.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
+    const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
+    expect(await quality.json()).toEqual(app.quality());
+    const runPath = join(workspace, 'runs', `${run.runId}.json`); const savedRun = readFileSync(runPath);
+    try {
+      writeFileSync(runPath, '{bad private content');
+      const failedQuality = await post({ operation: 'quality' }); expect(failedQuality.status).toBe(400);
+      expect(await failedQuality.json()).toEqual({ error: 'knowledge_request_failed' });
+    } finally { writeFileSync(runPath, savedRun); }
+    expect(await (await post({ operation: 'quality' })).json()).toEqual(app.quality());
     const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
     expect(summaries.find((entry: { runId: string }) => entry.runId === run.runId).entityAnalysis.entityCount).toBe(2);
     await post({ operation: 'delete-source', snapshot: snapshot.snapshotId });

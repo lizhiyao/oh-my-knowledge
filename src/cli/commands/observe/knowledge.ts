@@ -14,8 +14,8 @@ const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('从选定工作日志提炼、核对和维护候选知识。', 'Extract, inspect, and maintain candidate knowledge from selected work logs.');
   static args = {
-    operation: Args.string({ required: true, options: ['capture', 'generate', 'runs', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('归档、提炼、核对与维护知识；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'Capture, extract, inspect, and maintain knowledge; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'Capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
@@ -46,6 +46,7 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
+    '<%= config.bin %> observe knowledge quality --workspace ./knowledge --json',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --analysis <run-id>',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --query Atlas --json',
     '<%= config.bin %> observe knowledge show --workspace ./knowledge --id <knowledge-id> --json',
@@ -83,7 +84,7 @@ export default class ObserveKnowledge extends BaseCommand {
     switch (args.operation) {
       case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
       case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'] }; break;
-      case 'runs': case 'list': operation = { operation: args.operation }; break;
+      case 'runs': case 'quality': case 'list': operation = { operation: args.operation }; break;
       case 'resume': operation = { operation: 'resume', id: need(flags.id, 'id') }; break;
       case 'show': operation = { operation: 'show', id: need(flags.id, 'id'), revision: flags.revision }; break;
       case 'entities': {

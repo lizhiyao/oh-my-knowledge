@@ -16,6 +16,7 @@ import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type Entit
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
 import { assertExtractionInputCapacity, extractionModelInput } from './model-input.js';
+import { extractionQuality } from './quality.js';
 
 export interface ExtractionModel {
   executor: string; model: string;
@@ -47,6 +48,7 @@ export class KnowledgeApplication {
     }; });
   }
   runs() { return this.ports.runs.list(); }
+  quality(): ReturnType<typeof extractionQuality> { return extractionQuality(this.ports.runs.list()); }
   source(snapshotId: string, version?: string) { return this.ports.evidence.read(snapshotId, version); }
   deleteSource(snapshotId: string): void { this.ports.evidence.delete(snapshotId); }
   entities(analysisId: string, revisionId?: string) {

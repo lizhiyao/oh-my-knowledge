@@ -1,3 +1,5 @@
+import { ExtractionQualityView } from '../../../src/studio/web/components/knowledge/extraction-quality.js';
+import { extractionQuality } from '../../../src/observability/knowledge-extraction/quality.js';
 import { ConversationExtractionConfirmation, ConversationExtractionPicker } from '../../../src/studio/web/components/knowledge/conversation-extraction.js';
 import type { KnowledgeConversationPreview } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { ExtractedKnowledge } from '../../../src/studio/web/components/observe/extracted-knowledge.js';
@@ -97,4 +99,26 @@ it('keeps conversation and turn selection on the knowledge page, with explicit e
   expect(html).not.toContain('href=');
   const empty = renderToStaticMarkup(createElement(ConversationExtractionPicker, { conversations: [], conversationId: '', loading: false, lang: 'en', onConversation() {}, onScope() {} }));
   expect(empty).toContain('No local conversations available'); expect(empty).toContain('Import a log file from More');
+});
+
+it('presents admission scope, unknown denominators and retry without claiming semantic quality', () => {
+  const renderQuality = (overrides = {}) => renderToStaticMarkup(createElement(ExtractionQualityView, {
+    quality: extractionQuality([]), loading: false, failed: false, lang: 'zh', onRetry() {}, ...overrides,
+  }));
+  const empty = renderQuality(); expect(empty).toContain('整个知识工作区'); expect(empty).toContain('不采用后续人工修订');
+  expect(empty).toContain('位置匹配不证明语义准确'); expect(empty).toContain('零接纳不代表质量通过'); expect(empty).toContain('尚无提炼运行');
+  const failed = renderQuality({ failed: true }); expect(failed).toContain('统计暂不可读'); expect(failed).toContain('重新读取统计'); expect(failed).not.toContain('共 0 次运行');
+  expect(renderQuality({ loading: true })).not.toContain('尚无提炼运行');
+  const group = { identity: { schemaVersion: 4, promptVersion: 'knowledge-extraction-v14', promptHash: '<unsafe>', executor: 'fixture', model: 'fixture' },
+    runs: { total: 1, generating: 0, prepared: 0, completed: 0, failed: 1, cancelled: 0, withAdmission: 0, withoutAdmission: 1, zeroAccepted: 0, zeroKnowledge: 0 },
+    entities: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
+    mentions: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
+    proposals: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
+    localization: { passed: 0, rejected: 0, notChecked: 0, unknown: 0, unknownRuns: 1, passRate: null },
+    identifierFragmentRejections: 0, identifierFragmentRejectionRate: null, referenceRejections: 0, reasons: [],
+  };
+  const html = renderQuality({ quality: { ...extractionQuality([]), runCount: 1, groups: [group] } });
+  expect(html).toContain('未知／无分母'); expect(html).toContain('逐字定位：通过／拒绝／未检查／未知'); expect(html).toContain('1 次检查记录未知');
+  expect(html).toContain('&lt;unsafe&gt;'); expect(html).not.toContain('<unsafe>');
+  expect(renderQuality({ lang: 'en' })).toContain('empty workspace is not a quality pass');
 });
