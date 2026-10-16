@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import type { ConversationCatalog } from '../../src/observability/conversation/c
 import type { ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
 import { modelWindow } from './fixtures.js';
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
+import { conversationExtractionSource } from '../../src/observability/knowledge-extraction/conversation-source.js';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -94,6 +95,86 @@ describe('authorized conversation auto extraction', () => {
     await f.enable(1); await f.tick();
     expect(f.inputs).toHaveLength(1);
     expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 1 });
+  });
+  it('rejects whole-conversation byte or message capacity while keeping each task and a later narrowed source readable', async () => {
+    for (const boundary of ['bytes', 'messages'] as const) {
+      const f = fixture(), load = f.catalog.loadTaskMessageRecords!.bind(f.catalog);
+      f.tasks.splice(2);
+      const message = (index: number, text: string) => ({ recordIndex: index, raw: JSON.stringify({ type: 'response_item', payload: {
+        type: 'message', role: index % 2 ? 'assistant' : 'user', content: [{ type: index % 2 ? 'output_text' : 'input_text', text }],
+      } }) });
+      const windows = boundary === 'bytes'
+        ? [[message(0, 'a'.repeat(9 * 1024 * 1024))], [message(1, 'b'.repeat(9 * 1024 * 1024))]]
+        : [Array.from({ length: 501 }, (_, index) => message(index, `Message ${index}`)),
+          Array.from({ length: 500 }, (_, index) => message(index + 501, `Message ${index + 501}`))];
+      f.catalog.loadTaskMessageRecords = async (_thread, turn) => ({ path: join(f.root, 'synthetic.jsonl'), records: windows[Number(turn.split('-')[1])] });
+      const rawBytes = windows.map(records => records.reduce((sum, record) => sum + Buffer.byteLength(record.raw), 0));
+      expect(rawBytes.every(bytes => bytes < 16 * 1024 * 1024)).toBe(true);
+      if (boundary === 'bytes') expect(rawBytes[0] + rawBytes[1]).toBeGreaterThan(16 * 1024 * 1024);
+      else expect(rawBytes[0] + rawBytes[1]).toBeLessThan(16 * 1024 * 1024);
+      for (let index = 0; index < 2; index++) {
+        const task = await conversationExtractionSource(f.catalog, 'thread', `turn-${index}`);
+        expect(task.messages.map(item => item.recordIndex)).toEqual(windows[index].map(item => item.recordIndex));
+      }
+      await expect(conversationExtractionSource(f.catalog, 'thread')).rejects.toThrow(boundary === 'bytes'
+        ? 'Conversation exceeds capacity' : 'Conversation exceeds message capacity');
+      expect(f.inputs).toHaveLength(0);
+      expect(existsSync(f.workspace)).toBe(false);
+      expect(readdirSync(f.root)).toEqual([]);
+      f.catalog.loadTaskMessageRecords = load; f.tasks.splice(1);
+      const narrowed = await conversationExtractionSource(f.catalog, 'thread');
+      expect(narrowed.messages.map(item => item.text)).toEqual(['Alpha 使用 Beta turn-0']);
+      expect(narrowed.window.origin).toEqual({ threadId: 'thread', title: 'Synthetic conversation', cwd: '/project' });
+      expect(f.inputs).toHaveLength(0); expect(readdirSync(f.root)).toEqual([]);
+    }
+  });
+  it('stops at durable automation capacity before a reservation and recovers only after its owned filler is removed', async () => {
+    for (const boundary of ['attempted-versions', 'directory-entries'] as const) {
+      const f = fixture(); await f.enable(1);
+      const directory = join(f.workspace, 'auto-extraction');
+      const files = readdirSync(directory), stateFile = join(directory, files.find(name => !name.startsWith('permission-'))!);
+      const permissionFile = join(directory, files.find(name => name.startsWith('permission-'))!);
+      const permission = readFileSync(permissionFile);
+      const fillers: string[] = [];
+      const versions = Array.from({ length: 1000 }, (_, index) => `sha256:${index.toString(16).padStart(64, '0')}`);
+      if (boundary === 'attempted-versions') {
+        const state = f.service.status(f.workspace, 'thread')!;
+        writeFileSync(stateFile, JSON.stringify({ ...state, attemptedVersions: versions }));
+      } else {
+        for (let index = files.length; index < 3000; index++) {
+          const path = join(directory, `owned-capacity-${index}.json`);
+          writeFileSync(path, '{}', { flag: 'wx' }); fillers.push(path);
+        }
+      }
+      await f.tick();
+      const stopped = f.service.status(f.workspace, 'thread')!;
+      expect(stopped).toMatchObject({ enabled: false, reason: 'capacity', callsUsed: 0 });
+      expect(stopped).not.toHaveProperty('lastRunId');
+      expect(stopped.attemptedVersions).toEqual(boundary === 'attempted-versions' ? versions : []);
+      expect(readFileSync(permissionFile)).toEqual(permission);
+      expect(readdirSync(directory).some(name => name.startsWith('attempt-'))).toBe(false);
+      expect(createLocalKnowledgeApplication(f.workspace).runs()).toEqual([]);
+      expect(readdirSync(f.workspace)).toEqual(['auto-extraction']);
+      expect(f.inputs).toHaveLength(0);
+      const before = () => readdirSync(directory).sort().map(name => [name, readFileSync(join(directory, name), 'utf8')]);
+      const stoppedBytes = before(); await f.tick();
+      expect(before()).toEqual(stoppedBytes); expect(f.inputs).toHaveLength(0);
+      if (boundary === 'directory-entries') {
+        await expect(f.enable(1)).rejects.toThrow('Automation capacity exceeded');
+        expect(before()).toEqual(stoppedBytes);
+        for (const path of fillers) { expect(readFileSync(path, 'utf8')).toBe('{}'); rmSync(path); }
+      } else {
+        // These entries were created by this fixture, never real invocation history.
+        const state = f.service.status(f.workspace, 'thread')!;
+        writeFileSync(stateFile, JSON.stringify({ ...state, attemptedVersions: state.attemptedVersions.filter(value => !versions.includes(value)) }));
+      }
+      await f.enable(1); await f.tick();
+      expect(f.inputs).toHaveLength(1);
+      expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 1 });
+      expect(readdirSync(directory).filter(name => name.startsWith('attempt-'))).toHaveLength(1);
+      expect(createLocalKnowledgeApplication(f.workspace).runs()).toHaveLength(1);
+      expect(readFileSync(permissionFile)).toEqual(permission);
+    }
   });
   it('aborts in-flight generation on stop and preserves the reservation without a retry', async () => {
     const f = fixture(); let aborted = false; let entered!: () => void;

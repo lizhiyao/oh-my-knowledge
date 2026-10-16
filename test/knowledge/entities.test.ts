@@ -75,7 +75,7 @@ describe('window entity admission', () => {
     expect(result.entities[1].componentRef).toEqual(version.componentRef);
     expect(result.mentions.map(item => [item.selection.start, item.selection.end])).toEqual([[0, 7], [0, 11], [15, 33]]);
   });
-  it('rejects dependent knowledge instead of replacing a bad mention reference, while leaving citations exact-only', () => {
+  it('rejects invalid analysis references without repairing them or losing valid knowledge siblings', () => {
     const packet = identityWindow();
     packet.entities = packet.entities.slice(0, 1); packet.entities[0].referentKind = 'object';
     packet.mentions = [
@@ -95,6 +95,25 @@ describe('window entity admission', () => {
     expect(checked.accepted.map(item => item.proposalId)).toEqual(['valid']);
     expect(checked.accepted[0].citations[0].selection.start).toBe(7);
     expect(packet).toEqual(before);
+
+    const duplicateReferences = identityWindow();
+    const valid = duplicateReferences.proposals[0];
+    duplicateReferences.proposals.unshift(
+      { ...structuredClone(valid), proposalId: 'duplicate-entities', entityIds: [...valid.entityIds, valid.entityIds[0]] },
+      { ...structuredClone(valid), proposalId: 'duplicate-mentions', mentionIds: [...valid.mentionIds, valid.mentionIds[0]] },
+    );
+    const duplicateRaw = structuredClone(duplicateReferences);
+    const duplicateCheck = checkWindowExtractionResponse(duplicateReferences,
+      [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta；它们共同失败。' }]);
+    expect(duplicateCheck.analysis.rejected).toEqual([]);
+    expect(duplicateCheck.rejected).toEqual([
+      { index: 0, reasons: ['duplicate_entity_reference'] },
+      { index: 1, reasons: ['duplicate_mention_reference'] },
+    ]);
+    expect(duplicateCheck.accepted.map(proposal => proposal.proposalId)).toEqual([valid.proposalId]);
+    expect(duplicateCheck.accepted[0].draft.entities).toHaveLength(valid.entityIds.length);
+    expect(duplicateCheck.accepted[0].mentions).toHaveLength(valid.mentionIds.length);
+    expect(duplicateReferences).toEqual(duplicateRaw);
   });
   it('rejects all colliding identities even when one object has invalid structure', () => {
     const result = admitEntities([entity('a'), { entityId: 'a' }], [mention('a', 'm')], [{ evidenceRef: 'r', text: 'Echo' }]);
@@ -114,6 +133,23 @@ describe('window entity admission', () => {
     expect(result.rejected).toEqual([]);
     expect(result.entities[2]).toEqual(uncertain);
     expect(result.mentions[2].entityId).toBe('unknown');
+
+    const chained: EntityModel = { ...entity('chained'), identityStatus: 'unresolved',
+      possibleEntityIds: ['unknown'], uncertainties: ['候选自身尚未消解，不能当作确定候选'] };
+    const input = { entities: [entity('a'), entity('b'), uncertain, chained],
+      mentions: [mention('a', 'm1', 'Queue'), mention('b', 'm2', 'Cache'),
+        { ...mention('unknown', 'm3', '它'), basis: 'inference' as const },
+        { ...mention('chained', 'm4', '那个'), basis: 'inference' as const }] };
+    const before = structuredClone(input);
+    const rejected = admitEntities(input.entities, input.mentions,
+      [{ evidenceRef: 'r', text: 'Queue 和 Cache；它失败了；那个也待确认。' }]);
+    expect(rejected.entities).toEqual(result.entities);
+    expect(rejected.mentions).toEqual(result.mentions);
+    expect(rejected.rejected).toEqual([
+      { component: 'entity', index: 3, reasons: ['unresolved_possible_entity'] },
+      { component: 'mention', index: 3, reasons: ['unknown_entity'] },
+    ]);
+    expect(input).toEqual(before);
   });
   it('rejects unsupported dependencies through to their mentions while retaining unrelated results', () => {
     const unknown = { ...entity('unknown'), identityStatus: 'unresolved', possibleEntityIds: ['missing'], uncertainties: ['缺少先行项'] };

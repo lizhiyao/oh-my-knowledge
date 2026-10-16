@@ -1,6 +1,6 @@
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -520,7 +520,7 @@ describe('shared knowledge application', () => {
     expect(await app.generate(snapshot.snapshotId, model)).toMatchObject({ status: 'completed', committed: [] });
   });
   it('binds corrections to a new analysis and knowledge revision without changing historical positions', async () => {
-    const { app, snapshot, model } = setup();
+    const { app, snapshot, model, root } = setup();
     const run = await app.generate(snapshot.snapshotId, model);
     const { knowledgeId, revisionId } = run.committed[0];
     const before = app.detail(knowledgeId);
@@ -529,7 +529,37 @@ describe('shared knowledge application', () => {
     const analysis = app.entities(run.runId);
     const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
     edit.entities[0].label = '项目 Alpha';
+    const historyBytes = () => Object.fromEntries(['entities', 'items', 'runs'].flatMap(directory =>
+      readdirSync(join(root, directory)).filter(name => name.endsWith('.json')).sort().map(name => {
+        const path = join(root, directory, name);
+        return [path, readFileSync(path, 'utf8')] as const;
+      })));
+    const originalBytes = historyBytes();
+    const duplicateEntity = structuredClone(edit);
+    duplicateEntity.entities[0].entityId = 'new:project';
+    duplicateEntity.mentions[0].entityId = 'new:project';
+    duplicateEntity.entities.push(structuredClone(duplicateEntity.entities[0]));
+    const duplicateMention = structuredClone(edit);
+    duplicateMention.mentions[0].mentionId = 'new:mention';
+    duplicateMention.mentions.push(structuredClone(duplicateMention.mentions[0]));
+    const unresolvedCandidate = structuredClone(edit);
+    unresolvedCandidate.entities.forEach(entity => {
+      entity.identityStatus = 'unresolved'; entity.uncertainties = ['来源尚未消解该对象'];
+    });
+    unresolvedCandidate.entities[0].possibleEntityIds = [unresolvedCandidate.entities[1].entityId];
+    for (const [invalid, message] of [
+      [duplicateEntity, 'Duplicate correction identity'],
+      [duplicateMention, 'Duplicate correction identity'],
+      [unresolvedCandidate, 'unresolved_possible_entity'],
+    ] as const) {
+      expect(() => app.correctEntities(run.runId, analysis.revision.revisionId, analysis.history.generation,
+        invalid, '拒绝不闭合或重复身份')).toThrow(message);
+      expect(historyBytes()).toEqual(originalBytes);
+      expect(app.entities(run.runId).history.generation).toBe(1);
+    }
     const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, analysis.history.generation, edit, '明确项目');
+    expect(corrected.history.generation).toBe(2);
+    expect(app.entities(run.runId, analysis.revision.revisionId).revision).toEqual(analysis.revision);
     draft.entities = draft.entities.map(entity => {
       const correctedEntity = corrected.revision.entities.find(value => value.entityId === entity.entityId)!;
       return { entityId: entity.entityId, label: correctedEntity.label, description: correctedEntity.description };
