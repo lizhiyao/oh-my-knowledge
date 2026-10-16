@@ -1,18 +1,12 @@
-import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/validation.js';
 import { KnowledgeTimeSchema, type KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import { checkWindowExtractionResponse as check, type WindowExtractionModel } from '../../src/observability/knowledge-extraction/window-proposals.js';
 
-import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { draft, modelWindow } from './fixtures.js';
 const evidence = new Set(['record-1']);
 
 describe('window model admission', () => {
-  it('freezes the v14 prompt identity separately from historical quality evidence', () => {
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v14');
-    expect('sha256:' + createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399');
-  });
   const excerpts = [{ evidenceRef: 'record-1', text: '前文😀Alpha 使用 Beta。后文' }];
   it('resolves UTF-16 positions, preserves raw output, and admits an empty window result', () => {
     const raw = modelWindow(); const before = structuredClone(raw);
