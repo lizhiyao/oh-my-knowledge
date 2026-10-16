@@ -515,7 +515,7 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
+- `operation`(必填):schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
 
 **Flags:**
 
@@ -528,7 +528,7 @@ omk observe knowledge <operation> [flags]
 - `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
 - `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
-- `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
+- `--json` `boolean`:输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--page` `option`:entities：检索页码，从 1 开始。
@@ -544,6 +544,10 @@ omk observe knowledge <operation> [flags]
 - `--workspace` `option`:本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。
 
 **示例:**
+
+```bash
+omk observe knowledge schema --json
+```
 
 ```bash
 omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl

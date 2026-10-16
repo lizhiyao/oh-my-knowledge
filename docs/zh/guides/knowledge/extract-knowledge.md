@@ -46,6 +46,15 @@ omk observe knowledge list --workspace ./knowledge --json
 
 生成前会检查固定规则与所选片段的完整 UTF-8 请求，合计上限为 1 MiB；这不是 token、模型上下文或金额预算。超限时不调用模型、不创建提炼运行，也不消耗自动提炼的调用次数；原文不会被截断。请重新归档较小范围，或在 Studio 选择一轮中的较少消息。`omk agents extract` 同样支持 `--start-record`／`--end-record`，无需修改采集报告。
 
+冻结结构化输出实验前，可导出当前构建派生的 JSON Schema；`--json` 同时包含协议身份和保留在宿主的检查。该操作不读取知识工作区，也不调用模型：
+
+```bash
+omk observe knowledge schema
+omk observe knowledge schema --json
+```
+
+结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。当前 `generate` 仍使用原版 v14 prompt 和接纳路径；生成时采用此协议需要新的 prompt／pipeline 身份，逐字证据与语义检查仍由宿主负责。导出 Schema 不代表已验证具体 provider 的支持能力。
+
 默认文本摘要显示当前知识工作区和带同一 `--workspace` 的下一步命令；未配置模型时，`generate` 仍须显式传入 `--model`。`--json` 保持完整机器结果，提示不混入 JSON stdout。必要参数与 JSON 语法在读取设置或存储前检查；参数失败退出 `2`，业务失败退出 `1`，成功退出 `0`。修订冲突提示重读命令，工作区忙时等待当前写入结束再重试，不删除活跃锁。维护决定与效果验证分别呈现。
 
 ## 核对与处理 {#核对与处理}
