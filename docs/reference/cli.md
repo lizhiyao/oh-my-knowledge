@@ -291,14 +291,16 @@ omk agents extract --session <runId>     # draft candidate knowledge from one co
 **Flags:**
 
 ```text
-  --dir <value>        Inventory and collection dir; defaults to the global ~/.oh-my-knowledge/observe/agents.
-  --executor <value>   extract: generation executor, using OMK runtime configuration.
-  --json               Print complete JSON instead of a readable summary.
-  --knowledge <value>  extract: knowledge workspace; defaults to the global knowledge dir.
-  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-  --limit <value>      Per-run session file cap for collect.
-  --model <value>      extract: generation model, using the configured model.
-  --session <value>    extract: a runId from the collection report.
+  --dir <value>           Inventory and collection dir; defaults to the global ~/.oh-my-knowledge/observe/agents.
+  --end-record <value>    extract: last record index, inclusive.
+  --executor <value>      extract: generation executor, using OMK runtime configuration.
+  --json                  Print complete JSON instead of a readable summary.
+  --knowledge <value>     extract: knowledge workspace; defaults to the global knowledge dir.
+  --lang <value>          Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
+  --limit <value>         Per-run session file cap for collect.
+  --model <value>         extract: generation model, using the configured model.
+  --session <value>       extract: a runId from the collection report.
+  --start-record <value>  extract: zero-based nonempty record index, inclusive.
 ```
 
 For full descriptions: `omk agents --help`.

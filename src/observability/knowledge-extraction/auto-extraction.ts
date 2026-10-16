@@ -11,6 +11,7 @@ import { createLocalKnowledgeApplication } from './local.js';
 import { validateExtractionModelSelection } from './adapters/executor.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { conversationExtractionSource } from './conversation-source.js';
+import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './model-input.js';
 
 const text = z.string().min(1).max(4096);
 const schema = z.strictObject({
@@ -163,6 +164,8 @@ export class ConversationAutoExtraction {
           const first = turns.indexOf(pending[0]);
           const selected = state.initialTurns.length ? pending : [...turns.slice(Math.max(0, first - 2), first), ...pending];
           const { window } = await conversationExtractionSource(this.catalog, threadId, undefined, controller.signal, selected);
+          // Check before reserving a paid call or marking this source version attempted.
+          assertExtractionInputCapacity(extractionModelInput(window));
           const stable = this.stable.get(key);
           if (!stable || stable.version !== window.sourceVersion) { this.stable.set(key, { version: window.sourceVersion, since: this.now() }); continue; }
           if (this.now() - stable.since < (this.options.stableMs ?? 30_000)) continue;
@@ -200,11 +203,11 @@ export class ConversationAutoExtraction {
             else if (current.callsUsed >= current.maxCalls) { current.enabled = false; current.reason = 'quota'; }
             this.write(root, current);
           });
-        } catch {
+        } catch (error) {
           // Errors never trigger a fresh model attempt; details stay in local run evidence.
           try { withWorkspaceWrite(root, () => {
             const current = this.read(root, threadId);
-            if (current?.enabled && current.owner === this.owner) { current.enabled = false; current.reason = 'failed'; this.write(root, current); }
+            if (current?.enabled && current.owner === this.owner) { current.enabled = false; current.reason = error instanceof ExtractionInputCapacityError ? 'capacity' : 'failed'; this.write(root, current); }
           }); } catch { /* A blocked store must not crash the server or authorize another call. */ }
         } finally { if (deadline) clearTimeout(deadline); this.active = undefined; }
       }

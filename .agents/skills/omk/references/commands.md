@@ -21,6 +21,7 @@ omk agents <operation> [flags]
 **Flags:**
 
 - `--dir` `option`:清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
+- `--end-record` `option`:extract：最后一条记录序号，包含。
 - `--executor` `option`:extract：生成执行器，沿用 OMK 运行配置。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
 - `--knowledge` `option`:extract：知识工作区，默认全局知识目录。
@@ -28,6 +29,7 @@ omk agents <operation> [flags]
 - `--limit` `option`:collect 单轮处理的会话文件上限。
 - `--model` `option`:extract：生成模型，沿用已配置模型。
 - `--session` `option`:extract：采集报告里的 runId。
+- `--start-record` `option`:extract：从零开始的非空记录序号，包含。
 
 **示例:**
 
@@ -41,6 +43,10 @@ omk agents collect --limit 50
 
 ```bash
 omk agents extract --session <runId> --executor codex --model <model>
+```
+
+```bash
+omk agents extract --session <runId> --start-record 10 --end-record 30 --executor codex --model <model>
 ```
 
 ## omk doctor
