@@ -67,6 +67,11 @@ const NON_STATIC_ENTRIES: Array<{
     reason: 'build-script',
     evidence: 'scripts/build/schemas-samples.mjs',
   },
+  {
+    path: 'src/cli/runtime/entity-capture.ts',
+    reason: 'build-script',
+    evidence: 'scripts/bench/entity-capture-provider.ts',
+  },
   { path: 'src/eval-workflows/inputs/eval-samples.ts', reason: 'package-entrypoint' },
   { path: 'src/eval-workflows/projections/index.ts', reason: 'package-entrypoint' },
 ];

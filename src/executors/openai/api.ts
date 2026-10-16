@@ -2,10 +2,11 @@ import type { ExecResult, ExecutorFailure, ExecutorFailureKind } from '../contra
 import type { ExecutorInput } from '../contracts/ports.js';
 import { optionalTokenCount, splitInclusiveInputTokens } from '../contracts/token-usage.js';
 import { DEFAULT_TIMEOUT_MS } from '../core/limits.js';
-import { ApiResponseCapacityError, readJsonResponse, responseBodyPreview, resolveOpenAiEndpoint } from '../core/http.js';
+import { ApiResponseCapacityError, readJsonResponse, responseBodyPreview } from '../core/http.js';
 import { asErrorLike, errorMessage } from '../core/runtime.js';
 import { createExecutorDiagnosticRedactor } from '../core/diagnostics.js';
 import { assertExecutorInputCapabilities } from '../core/capabilities.js';
+import { buildOpenAiChatRequest, type OpenAiDispatchPolicy } from './request.js';
 
 export const OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION = 'openai-chat-completions/v3' as const;
 
@@ -52,9 +53,9 @@ function httpFailure(response: Response, error: OpenAiResponse['error']): Execut
 }
 
 /** Exactly one request. Callers own fallback, retry policy and cumulative budgets. */
-export async function openAiApiExecutor(input: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
+export async function openAiApiExecutor(input: ExecutorInput, environment: NodeJS.ProcessEnv = process.env, dispatchPolicy?: OpenAiDispatchPolicy): Promise<ExecResult> {
   assertExecutorInputCapabilities('openai-api', input);
-  const { model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal, outputFormat, maxOutputTokens } = input;
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, abortSignal, outputFormat } = input;
   const apiKey = environment.OPENAI_API_KEY;
   const redact = createExecutorDiagnosticRedactor(environment);
   const start = Date.now();
@@ -74,28 +75,22 @@ export async function openAiApiExecutor(input: ExecutorInput, environment: NodeJ
   };
   if (abortSignal?.aborted) return failed({ failureKind: 'cancelled' }, 'OpenAI API request was cancelled');
   if (!apiKey) return failed({ failureKind: 'authentication' }, 'OPENAI_API_KEY environment variable is not set');
-  const messages: Array<{ role: string; content: string }> = [];
-  if (system) messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user', content: prompt });
   let phase: 'configuration' | 'transport' | 'response' = 'configuration';
   let requestSignal: AbortSignal | undefined;
   let timeoutSignal: AbortSignal | undefined;
   let response: Response | undefined;
   try {
-    const endpoint = resolveOpenAiEndpoint(environment.OPENAI_BASE_URL, 'chat/completions');
-    const responseFormat = outputFormat?.mode === 'json-schema'
-      ? { type: 'json_schema', json_schema: { name: outputFormat.name, schema: outputFormat.schema, strict: true } }
-      : outputFormat?.mode === 'json-object' ? { type: 'json_object' } : undefined;
-    const body = JSON.stringify({ model: model || 'gpt-4o', messages,
-      ...(responseFormat ? { response_format: responseFormat } : {}),
-      ...(maxOutputTokens === undefined ? {} : { max_completion_tokens: maxOutputTokens }) });
+    const request = buildOpenAiChatRequest(input, environment, dispatchPolicy?.requestConstraints);
+    const { endpoint, body } = request;
     timeoutSignal = AbortSignal.timeout(timeoutMs);
     requestSignal = abortSignal === undefined ? timeoutSignal : AbortSignal.any([abortSignal, timeoutSignal]);
+    dispatchPolicy?.beforeDispatch(Object.freeze(request));
     phase = 'transport';
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body,
       signal: requestSignal,
+      ...(dispatchPolicy ? { redirect: dispatchPolicy.redirect } : {}),
     });
     response = res;
     phase = 'response';

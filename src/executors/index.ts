@@ -3,6 +3,7 @@ import { openAiApiExecutor } from './openai/api.js';
 import { codexCliExecutor } from './openai/codex/cli.js';
 import { codexSdkExecutor } from './openai/codex/sdk.js';
 import { createScriptExecutor } from './script/index.js';
+import type { OpenAiDispatchPolicy } from './openai/request.js';
 import { enforceExecutorCapabilities } from './core/capabilities.js';
 import {
   getExecutorDescriptor,
@@ -25,7 +26,7 @@ export {
   ExecutorCapabilityError,
 } from './core/capabilities.js';
 
-export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv } = {}): ExecutorFn {
+export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv; apiDispatchPolicy?: OpenAiDispatchPolicy } = {}): ExecutorFn {
   if (name.trim().length === 0) {
     throw new Error('executor name or script command is required');
   }
@@ -34,6 +35,7 @@ export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv 
       `内置 ${name} 执行器已移除；请改用 codex、codex-sdk、openai-api 或自定义执行器文件路径。`,
     );
   }
+  if (options.apiDispatchPolicy && name !== 'openai-api') throw new Error('API dispatch policy requires openai-api.');
   const descriptor = getExecutorDescriptor(name);
   if (descriptor?.execution === 'host-only') {
     throw new Error('dsh-host 仅供 DeepSeek Harness 宿主插件内部使用；请在 DSH 中运行 /omk eval。');
@@ -41,7 +43,8 @@ export function createExecutor(name: string, options: { env?: NodeJS.ProcessEnv 
   if (descriptor) assertOptionalExecutorDependency(descriptor.name);
   const environment = Object.freeze({ ...(options.env ?? process.env) });
   const executor = descriptor
-    ? (input: ExecutorInput) => EXECUTOR_FACTORIES[descriptor.name](input, environment)
+    ? (input: ExecutorInput) => descriptor.name === 'openai-api'
+      ? openAiApiExecutor(input, environment, options.apiDispatchPolicy) : EXECUTOR_FACTORIES[descriptor.name](input, environment)
     : createScriptExecutor(name, environment);
   return enforceExecutorCapabilities(name, executor, environment);
 }

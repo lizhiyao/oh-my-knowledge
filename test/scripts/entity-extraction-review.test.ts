@@ -1,13 +1,16 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus, reviewOutputRoot } from '../../scripts/bench/entity-extraction-review.js';
-import { runCli, PROJECT_ROOT } from '../helpers/cli-process.js';
+import { runCli, runCliFailing, PROJECT_ROOT } from '../helpers/cli-process.js';
 import { modelWindow } from '../knowledge/fixtures.js';
+import { identityDigest, type CaptureRuntime } from '../../scripts/bench/entity-capture-provider.js';
+import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
 
 const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
@@ -654,4 +657,170 @@ describe('entity extraction review with author evidence', () => {
     expect(parseEntityReviewArguments(['--corpus', '/corpus', '--output', '/outside/review'])).toMatchObject({ corpus: '/corpus', output: '/outside/review' });
     for (const args of [[], ['--model', 'model'], ['--corpus', '/corpus'], ['--corpus', '/corpus', '--output', '/outside', '--output', '/again']]) expect(() => parseEntityReviewArguments(args)).toThrow();
   });
+});
+
+
+// Actual new CLI child + production createExecutor, with a process-local fake fetch restricted to loopback.
+describe('live collector command (zero external/model requests)', () => {
+  const entry = join(PROJECT_ROOT, 'dist-scripts/bench/entity-extraction-capture.js');
+  function fixture(root: string) {
+    const source = join(root, 'source.json'); const prompt = join(root, 'prompt.txt'); const config = join(root, 'config.json');
+    const http = join(root, 'http.json'); const log = join(root, 'requests.jsonl'); const preload = join(root, 'transport.mjs');
+    writeFileSync(source, JSON.stringify({ sourceVersion: 'omk-entity-capture-source/v1',
+      provenance: { sourceKind: 'synthetic', originDigest: reviewDigest('new authored fixture'), transformation: 'Authored synthetic messages.', toolPolicy: 'excluded' },
+      review: { human: 'pending', independent: 'pending', gold: 'none' }, cases: [{ caseId: 'capture', split: 'development',
+        excerpts: [{ evidenceRef: 'capture:0', recordIndex: 0, eventKind: 'message', role: 'user', text: 'Alpha 使用 Beta' }], limitations: ['Authored test only.'] }] }));
+    writeFileSync(prompt, 'Authored candidate extraction prompt; no model-quality claim.');
+    const configuration = { executor: 'openai-api', model: 'authored-loopback-test', profileId: 'loopback-test/v1', timeoutMs: 1000,
+      maxOutputTokens: 64, maxCalls: 2, maxTokens: 2176, outputMode: 'prompt-json', schemaName: null,
+      promptVariant: 'v15-candidate', caseIds: ['capture'], split: 'development', repeats: 2 };
+    writeFileSync(config, JSON.stringify(configuration));
+    const response = () => ({ choices: [{ message: { content: JSON.stringify(modelWindow()).replaceAll('record-1', 'capture:0') }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 12, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 2 } } });
+    writeFileSync(http, JSON.stringify(response()));
+    writeFileSync(preload, `import { readFileSync, appendFileSync } from 'node:fs';
+globalThis.fetch = async (url, init) => {
+  if (new URL(String(url)).hostname !== '127.0.0.1') throw new Error('Test transport forbids non-loopback traffic.');
+  appendFileSync(process.env.OMK_CAPTURE_TEST_LOG, JSON.stringify({ url, body: String(init.body), redirect: init.redirect }) + '\\n');
+  return new Response(readFileSync(process.env.OMK_CAPTURE_TEST_RESPONSE, 'utf8'), { status: 200 });
+};`);
+    const env: NodeJS.ProcessEnv = { ...process.env, OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321',
+      NODE_OPTIONS: '--import=' + pathToFileURL(preload).href, OMK_CAPTURE_TEST_LOG: log, OMK_CAPTURE_TEST_RESPONSE: http };
+    const cli = (args: string[]) => runCli(args, { entry, cwd: root, env });
+    const fail = (args: string[], code = 1) => runCliFailing(args, code, { entry, cwd: root, env });
+    const prepare = async (directory: string) => JSON.parse((await cli(['prepare', '--source', source, '--prompt', prompt, '--config', config, '--out', directory])).stdout);
+    const permit = (directory: string) => {
+      const value = JSON.parse(readFileSync(join(directory, 'permission-template.json'), 'utf8'));
+      Object.assign(value, { authorizationStatus: 'granted', grantedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), authorizedBy: 'Hermetic test only; no online authorization.' });
+      const path = join(directory, 'test-permission.json'); writeFileSync(path, JSON.stringify(value)); return path;
+    };
+    const execute = (directory: string, planId: string, permission: string, slot: string) => ['execute-one', '--plan', directory,
+      '--permission', permission, '--authorize-plan', planId, '--slot', slot];
+    const requests = () => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    return { source, prompt, config, configuration, http, env, cli, fail, prepare, permit, execute, requests, response };
+  }
+
+  it('defaults to zero requests, archives complete native failure/usage, and replays the unchanged production admission', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-cli-'));
+    try {
+      const sourceRuntime: CaptureRuntime = await import('../../src/cli/runtime/entity-capture.js');
+      expect(typeof sourceRuntime.createExecutor).toBe('function'); // Type-check the compiled bridge's consumer projection.
+      const f = fixture(root); const directory = join(root, 'capture');
+      await f.cli([]); await f.fail(['execute-one'], 2);
+      const prepared = await f.prepare(directory); expect(f.requests()).toEqual([]);
+      expect(JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).host.validatorIdentity).toEqual(sourceRuntime.CAPTURE_VALIDATOR_IDENTITY);
+      expect(JSON.parse((await f.cli(['check', '--plan', directory])).stdout)).toMatchObject({ executable: true, permissionRequired: true, requestsByThisCommand: 0 });
+      await f.fail(f.execute(directory, prepared.planId, join(directory, 'permission-template.json'), 'capture-repeat-1'));
+      expect(f.requests()).toEqual([]);
+      const permission = f.permit(directory);
+      expect(JSON.parse((await f.cli(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'))).stdout))
+        .toMatchObject({ outcome: 'output', dispatchCount: 1, authority: 'loopback-test-only', modelCalls: 'not_attested' });
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
+      writeFileSync(f.http, JSON.stringify({ choices: [{ message: { content: 'raw failed output', refusal: 'authored refusal' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 2 } } }));
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-2'));
+      const rawFailure = JSON.parse(readFileSync(join(directory, 'ledger', 'capture-repeat-2.native.json'), 'utf8'));
+      expect(rawFailure).toMatchObject({ ok: false, output: 'raw failed output', refusal: 'authored refusal', failure: { failureKind: 'refusal' },
+        inputTokens: 10, cacheReadTokens: 2, cacheCreationTokens: 0, outputTokens: 5, costReportedByExecutor: false });
+      expect(f.requests()).toHaveLength(2);
+      for (const request of f.requests()) expect({ ...JSON.parse(request.body), redirect: request.redirect }).toMatchObject({ n: 1, stream: false, max_completion_tokens: 64, redirect: 'error' });
+      const report = join(root, 'replay.json'); await f.cli(['replay', '--plan', directory, '--out', report]);
+      const replay = JSON.parse(readFileSync(report, 'utf8'));
+      expect(replay.records[0].admission.accepted).toHaveLength(1); expect(replay.records[1].admission).toBeNull();
+      expect(replay).toMatchObject({ unattempted: [], requestsByThisCommand: 0, semanticReview: 'pending', independentHumanReview: 'pending', qualityConclusion: 'not_evaluated' });
+      expect(f.requests()).toHaveLength(2); expect(existsSync(join(directory, 'active.lock'))).toBe(false);
+      writeFileSync(f.prompt, 'A second authored candidate prompt, no quality claim.');
+      const right = join(root, 'right'); await f.prepare(right);
+      const comparison = JSON.parse((await f.cli(['compare', '--left', directory, '--right', right])).stdout);
+      expect(comparison).toMatchObject({ matchingConditions: true, controlledExecutionClaim: false });
+      expect(comparison.recordSummaries.left).toHaveLength(2); expect(comparison.recordSummaries.right).toEqual([]);
+      writeFileSync(join(directory, 'ledger', 'capture-repeat-1.native.json'), JSON.stringify({ output: 'tampered' }));
+      await f.fail(['compare', '--left', directory, '--right', right]); expect(f.requests()).toHaveLength(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('fails closed for unknown usage, reservations, env/permission/budget drift and unsupported Codex caps without invoking even a fake binary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-gates-'));
+    try {
+      const f = fixture(root); const directory = join(root, 'unknown'); const prepared = await f.prepare(directory); const permission = f.permit(directory);
+      await runCliFailing(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'), 1, {
+        entry, cwd: root, env: { ...f.env, OPENAI_BASE_URL: 'http://127.0.0.1:9999' },
+      });
+      const permissionBytes = readFileSync(permission, 'utf8');
+      writeFileSync(permission, JSON.stringify({ ...JSON.parse(permissionBytes), maxCalls: 1 }));
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
+      writeFileSync(permission, permissionBytes); expect(f.requests()).toEqual([]);
+      writeFileSync(f.http, JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }] }));
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
+      const unknown = JSON.parse(readFileSync(join(directory, 'ledger', 'capture-repeat-1.attempt.json'), 'utf8'));
+      expect(unknown).toMatchObject({ blocked: true, usage: { inputTokens: null, cacheReadTokens: null, cacheCreationTokens: null, outputTokens: null } });
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-2'));
+      rmSync(join(directory, 'ledger', 'capture-repeat-1.attempt.json'));
+      await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
+      expect(f.requests()).toHaveLength(1);
+      const poor = join(root, 'poor'); writeFileSync(f.config, JSON.stringify({ ...f.configuration, maxTokens: 1 }));
+      const poorPlan = await f.prepare(poor); await f.fail(['check', '--plan', poor]);
+      await f.fail(f.execute(poor, poorPlan.planId, f.permit(poor), 'capture-repeat-1'));
+      const binaryDirectory = join(root, 'bin'); mkdirSync(binaryDirectory); const marker = join(root, 'codex-invoked');
+      const binary = join(binaryDirectory, 'codex'); writeFileSync(binary, '#!/bin/sh\ntouch "' + marker + '"\n'); chmodSync(binary, 0o700);
+      f.env.PATH = binaryDirectory + ':' + (process.env.PATH ?? '');
+      writeFileSync(f.config, JSON.stringify({ ...f.configuration, executor: 'codex' }));
+      const codex = join(root, 'codex'); const codexPlan = await f.prepare(codex);
+      await f.fail(['check', '--plan', codex]);
+      await f.fail(f.execute(codex, codexPlan.planId, join(codex, 'permission-template.json'), 'capture-repeat-1'));
+      expect(existsSync(marker)).toBe(false); expect(f.requests()).toHaveLength(1);
+      writeFileSync(f.config, JSON.stringify(f.configuration));
+      const drift = join(root, 'validator-drift'); await f.prepare(drift);
+      const previous = JSON.parse(readFileSync(join(drift, 'plan.json'), 'utf8'));
+      const identity = { ...previous }; delete identity.planId;
+      identity.host.validatorIdentity.zod = '0.0.0';
+      writeFileSync(join(drift, 'plan.json'), JSON.stringify({ ...identity, planId: identityDigest(identity) }, null, 2) + '\n');
+      expect((await f.fail(['check', '--plan', drift])).stderr).toContain('Capture plan/host/checker identity mismatch');
+      await f.fail(['compare', '--left', drift, '--right', directory]);
+      expect((await f.fail(f.execute(drift, identityDigest(identity), join(drift, 'permission-template.json'), 'capture-repeat-1'))).stderr).toContain('Capture plan/host/checker identity mismatch');
+      expect(f.requests()).toHaveLength(1);
+      writeFileSync(f.config, JSON.stringify({ ...f.configuration, model: 'gpt-5.4-2026-03-05', profileId: 'openai-gpt54-snapshot-context/v1', maxCalls: 1, maxTokens: 1_050_064 }));
+      const officialEnv = { ...f.env, NODE_OPTIONS: '', OPENAI_BASE_URL: 'https://api.openai.com' };
+      const official = join(root, 'official-offline');
+      await runCli(['prepare', '--source', f.source, '--prompt', f.prompt, '--config', f.config, '--out', official], { entry, cwd: root, env: officialEnv });
+      expect(JSON.parse((await runCli(['check', '--plan', official], { entry, cwd: root, env: officialEnv })).stdout).executable).toBe(true);
+      const wrapper = join(root, 'loader-wrapper.mjs');
+      writeFileSync(wrapper, `import { spawnSync } from 'node:child_process';\nconst result=spawnSync(process.execPath,[...JSON.parse(process.argv[2]),process.argv[3],...process.argv.slice(4)],{env:process.env,stdio:'inherit'});\nif(result.error)throw result.error;process.exitCode=result.status??99;\n`);
+      for (const flags of [['--experimental-loader=data:text/javascript,export{}'], ['--experimental-loader', 'data:text/javascript,export{}']]) {
+        const rejected = await runCliFailing([JSON.stringify(flags), entry, 'check', '--plan', official], 1, { entry: wrapper, cwd: root, env: officialEnv });
+        expect(JSON.parse(rejected.stdout)).toMatchObject({ executable: false, reasons: ['Error: Official profile rejects injected Node loaders.'], requestsByThisCommand: 0 });
+      }
+      expect(f.requests()).toHaveLength(1);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('replays explicit strict-wire partial admission and rejects native Unicode replacement while retaining the full native result', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-wire-'));
+    try {
+      const f = fixture(root); const directory = join(root, 'capture'); const schema = join(root, 'wire.json');
+      writeFileSync(schema, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON);
+      writeFileSync(f.config, JSON.stringify({ ...f.configuration, outputMode: 'json-schema', schemaName: 'knowledge_window' }));
+      const prepared = JSON.parse((await f.cli(['prepare', '--source', f.source, '--prompt', f.prompt, '--config', f.config,
+        '--out', directory, '--wire-schema', schema])).stdout);
+      const permission = f.permit(directory);
+      const wire = JSON.parse(JSON.stringify(modelWindow()).replaceAll('record-1', 'capture:0'));
+      for (const mention of wire.mentions) mention.selection.occurrence = null;
+      for (const proposal of wire.proposals) for (const citation of proposal.citations) citation.selection.occurrence = null;
+      wire.entities.push({ ...wire.entities[0], entityId: 'bad', unexpected: 'retained' });
+      const response = f.response(); response.choices[0].message.content = JSON.stringify(wire);
+      writeFileSync(f.http, JSON.stringify(response));
+      await f.cli(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
+      response.choices[0].message.content = JSON.stringify(wire).replace('本次日志中的项目', String.fromCharCode(0xd800));
+      writeFileSync(f.http, JSON.stringify(response));
+      await f.cli(f.execute(directory, prepared.planId, permission, 'capture-repeat-2'));
+      const report = join(root, 'replay.json'); await f.cli(['replay', '--plan', directory, '--out', report]);
+      const replay = JSON.parse(readFileSync(report, 'utf8'));
+      expect(replay.records[0].wire).toMatchObject({ wireStatus: 'item_failures' });
+      expect(replay.records[0].wire.domainInput.entities[2].unexpected).toBe('retained');
+      expect(replay.records[0].admission.accepted).toHaveLength(1);
+      expect(replay.records[1].admission).toBeNull(); expect(replay.records[1].parseFailure).toContain('round-trip UTF-8');
+      expect(replay.records[1].native.output).toBe(response.choices[0].message.content);
+      expect(f.requests()).toHaveLength(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
 });

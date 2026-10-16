@@ -1,0 +1,57 @@
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+export interface CaptureInput {
+  model: string; system: string; prompt: string; timeoutMs: number; maxOutputTokens: number; abortSignal?: AbortSignal;
+  outputFormat: { mode: 'prompt-json' } | { mode: 'json-object' } | { mode: 'json-schema'; name: string; schema: Readonly<Record<string, unknown>> };
+}
+export interface NativeResult {
+  ok: boolean; output: string | null; error?: string; failure?: { failureKind: string }; refusal?: string;
+  inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number;
+  tokenUsageReportedByExecutor?: boolean; costUSD: number; costReportedByExecutor?: boolean; attemptCount?: number; toolCalls?: unknown[];
+}
+export interface CaptureRuntime {
+  CAPTURE_VALIDATOR_IDENTITY: Readonly<{ zod: string; ajv: string }>;
+  OPENAI_CHAT_REQUEST_VERSION: string; OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION: string;
+  WINDOW_EXTRACTION_WIRE_ID: string; WINDOW_EXTRACTION_WIRE_SCHEMA: Readonly<Record<string, unknown>>;
+  WINDOW_EXTRACTION_WIRE_IDENTITY: { wireSchemaDigest: string };
+  buildOpenAiChatRequest(input: CaptureInput, env: NodeJS.ProcessEnv, constraints: 'single-completion/v1'): { endpoint: string; body: string };
+  assertExecutorInputCapabilities(executor: string, input: CaptureInput): void;
+  createExecutor(name: string, options: { env: NodeJS.ProcessEnv; apiDispatchPolicy: {
+    requestConstraints: 'single-completion/v1'; redirect: 'error'; beforeDispatch(request: Readonly<{ endpoint: string; body: string }>): void;
+  } }): (input: CaptureInput) => Promise<NativeResult>;
+  checkWindowExtractionResponse(response: unknown, excerpts: readonly { evidenceRef: string; text: string }[]): {
+    analysis: { entities: unknown[]; mentions: unknown[]; rejected: unknown[] }; accepted: unknown[]; rejected: unknown[];
+  };
+  decodeWindowExtractionWire(bytes: Uint8Array): { decodeStatus: string; domainInput?: unknown; wireStatus?: string; wireFailures?: unknown[] };
+}
+export const bytesDigest = (bytes: string | Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+export const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b, 'en'))) : item);
+export const identityDigest = (value: unknown) => bytesDigest(canonical(value));
+export async function loadCaptureRuntime(repository: string): Promise<CaptureRuntime> {
+  // Fixed built composition root; neither source/capture content nor arguments can select imported code.
+  return await import(pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href) as CaptureRuntime;
+}
+function treeDigest(root: string) {
+  const files: string[] = [];
+  const walk = (directory: string) => { for (const item of readdirSync(directory, { withFileTypes: true })) {
+    const path = resolve(directory, item.name);
+    if (item.isDirectory()) walk(path); else if (item.isFile()) files.push(path); else throw new Error('Frozen build must contain regular files only.');
+  } }; walk(root); files.sort();
+  const hash = createHash('sha256'); for (const file of files) { hash.update(relative(root, file)); hash.update('\0'); hash.update(readFileSync(file)); hash.update('\0'); }
+  return `sha256:${hash.digest('hex')}`;
+}
+export function captureHostIdentity(repository: string, validatorIdentity: CaptureRuntime['CAPTURE_VALIDATOR_IDENTITY']) {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return { runtimeDigest: treeDigest(resolve(repository, 'dist')),
+    collectorDigest: bytesDigest(['entity-capture-provider.js', 'entity-capture-profile.js', 'entity-capture.js', 'entity-extraction-capture.js']
+      .map(file => readFileSync(resolve(here, file), 'utf8')).join('\0')),
+    checkerDigest: bytesDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js'].map(file => readFileSync(resolve(here, file), 'utf8')).join('\0')),
+    dependencyDigest: bytesDigest(['package.json', 'yarn.lock'].map(file => readFileSync(resolve(repository, file), 'utf8')).join('\0')),
+    guideDigest: bytesDigest(['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
+      .map(file => readFileSync(resolve(repository, file), 'utf8')).join('\0')),
+    validatorIdentity, nodeVersion: process.versions.node, nodeBinaryDigest: bytesDigest(readFileSync(process.execPath)) };
+}
