@@ -51,7 +51,8 @@ export function createStudioRequestHandler({
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
-  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => configuredExtractionModel(executor, model, createExtractionArchiveProducer(process.env)) });
+  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model, policy) => configuredExtractionModel(executor, model,
+    createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
   const artifactRoutes = createArtifactAuthoringRoutes();

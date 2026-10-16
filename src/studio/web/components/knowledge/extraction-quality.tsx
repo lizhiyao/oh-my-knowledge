@@ -4,6 +4,7 @@ import { Alert, Button, Skeleton } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeExtractionQuality } from '../../../view-models/knowledge/knowledge-candidates';
 import { requestKnowledge } from './request';
+import { GenerationPolicyFields } from './generation-policy-fields';
 
 /** The domain owns every count and ratio. This component only presents its projection. */
 export function ExtractionQualityView({ quality, loading, failed, onRetry, lang }: {
@@ -21,11 +22,15 @@ export function ExtractionQualityView({ quality, loading, failed, onRetry, lang 
         : quality && <>
           <Button size="small" onClick={onRetry}>{t('重新读取统计', 'Reload statistics')}</Button>
           <p>{t(`共 ${quality.runCount} 次运行，${quality.groups.length} 组测量来源。`, `${quality.runCount} runs, ${quality.groups.length} measurement-source groups.`)}</p>
+          <p className="candidate-help">{quality.projectionVersion} · {t('按完整政策与初始调用限制分组；重试不增加运行或候选分母。', 'Grouped by complete policy and initial invocation limits; retries add no run or candidate denominators.')}</p>
           {!quality.groups.length && <p>{t('尚无 v5 提炼运行。提炼后可在此核对结构接纳记录；零记录不是质量通过。', 'No v5 extraction runs yet. Inspect saved admission after extraction; no records is not a quality pass.')}</p>}
           {quality.groups.map(group => <details className="candidate-statement" key={JSON.stringify(group.identity)}>
             <summary>{group.identity.promptVersion} · {group.identity.executor} / {group.identity.model} · {group.runs.total} {t('次运行', 'runs')}</summary>
             <p className="extraction-quality-identity">Schema {group.identity.schemaVersion} · {group.identity.promptHash}</p>
             <p className="extraction-quality-identity">{t('策略：', 'Policy: ')}{group.identity.policyId} · {t('输出模式：', 'Output mode: ')}{group.identity.outputMode}</p>
+            <GenerationPolicyFields lang={lang} value={group.identity.policy} presentation="summary"/>
+            <p className="extraction-quality-identity">{t('初始调用超时（毫秒）：', 'Initial invocation timeout (ms): ')}{group.identity.timeoutMs} · {t('初始输出 token 上限：', 'Initial output token limit: ')}{group.identity.maxOutputTokens ?? t('未设置', 'Not set')}</p>
+            <details><summary>{t('完整政策身份', 'Complete policy identity')}</summary><pre>{JSON.stringify(group.identity.policy, null, 2)}</pre></details>
             <p className="extraction-quality-identity">{t('结构线协议：', 'Structural wire: ')}{group.identity.wireId ?? t('未使用', 'Not used')}</p>
             <p className="extraction-quality-identity">Producer：{group.identity.producerId} · {group.identity.producerRevision}</p>
             <p>{t(`已完成 ${group.runs.completed}，已准备 ${group.runs.prepared}，生成中 ${group.runs.generating}，失败 ${group.runs.failed}，取消 ${group.runs.cancelled}。`, `Completed ${group.runs.completed}, prepared ${group.runs.prepared}, generating ${group.runs.generating}, failed ${group.runs.failed}, cancelled ${group.runs.cancelled}.`)}</p>

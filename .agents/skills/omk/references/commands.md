@@ -23,6 +23,7 @@ omk agents <operation> [flags]
 - `--dir` `option`:清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
 - `--end-record` `option`:extract：最后一条记录序号，包含。
 - `--executor` `option`:extract：生成执行器，沿用 OMK 运行配置。
+- `--generation-policy` `option`:extract：完整生成策略 JSON；省略时仅调用一次。有界重试须明确调用及 token 预算，输出上限取自策略。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要。
 - `--knowledge` `option`:extract：知识工作区，默认全局知识目录。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
@@ -598,6 +599,7 @@ omk observe knowledge <operation> [flags]
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
 - `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
+- `--generation-policy` `option`:generate：完整生成策略 JSON；省略时仅调用一次。有界重试须明确模型、调用及 token 预算，输出上限取自策略。
 - `--id` `option`:知识身份；resume 时为运行身份。
 - `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。

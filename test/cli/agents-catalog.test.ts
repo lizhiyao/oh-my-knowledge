@@ -20,6 +20,7 @@ import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
+import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
 import {
   AGENT_CATALOG_VERSION,
   AGENT_COLLECTION_VERSION,
@@ -31,6 +32,7 @@ const tempRoots: string[] = [];
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const root of tempRoots.splice(0, tempRoots.length)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -110,6 +112,9 @@ describe('omk agents 与本机登记表扩展', () => {
     assert.ok(report.sessions.length, JSON.stringify(report));
     const workspace = join(sandbox.home, 'knowledge');
     const args = ['extract', '--session', report.sessions[0].runId, '--dir', sandbox.outDir, '--knowledge', workspace, '--executor', 'codex', '--model', 'fixture', '--json'];
+    for (const values of [['list', '--generation-policy', '{}'], [...args, '--generation-policy', '{invalid'], [...args, '--generation-policy', '{}']]) {
+      await expect(runCommand(AgentsCommand, values, options)).rejects.toMatchObject({ code: 2 });
+    }
     await expect(runCommand(AgentsCommand, [...args, '--start-record', '2', '--end-record', '1'], options)).rejects.toMatchObject({ code: 2 });
     expect(existsSync(workspace)).toBe(false);
     await expect(runCommand(AgentsCommand, args, options)).rejects.toMatchObject({ code: 1, message: expect.stringContaining('--start-record/--end-record') });
@@ -134,6 +139,21 @@ describe('omk agents 与本机登记表扩展', () => {
       expect(error).toMatchObject({ code: 1, message: expect.stringContaining(`--workspace ${workspace} --json`) });
       expect((error as { stdout: string }).stdout).not.toContain('提炼完成');
     }
+    create.mockRestore();
+    const policy = boundedExtractionPolicy({ maxInvocations: 1, maxReasks: 0, profileId: 'loopback-test/v1', maxTotalTokens: 1088, maxOutputTokens: 64 });
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions');
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'authored-loopback-test', max_completion_tokens: 64, n: 1, stream: false });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4,
+        entities: [], mentions: [], proposals: [] }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3 } }));
+    }); vi.stubGlobal('fetch', fetch);
+    const bounded = await runCommand(AgentsCommand, ['extract', '--session', report.sessions[0].runId, '--dir', sandbox.outDir,
+      '--knowledge', join(sandbox.home, 'bounded-knowledge'), '--executor', 'openai-api', '--model', 'authored-loopback-test',
+      '--start-record', '1', '--end-record', '1', '--generation-policy', JSON.stringify(policy), '--json'], {
+      ...options, env: { ...sandbox.env, OPENAI_API_KEY: 'isolated-loopback-fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321' },
+    });
+    expect(JSON.parse(bounded.stdout).run).toMatchObject({ status: 'completed', policy, attempts: [{ request: { maxOutputTokens: 64 }, budget: { tokensReserved: 1088 } }] });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it('list 把扩展条目当成本机登记表的一部分，并按同一身份与日志根计数', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));

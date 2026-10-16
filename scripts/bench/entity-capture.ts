@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ENTITY_CHECK_VERSION, ENTITY_GUIDE_VERSION, entityReviewInput, parseEntityReviewCorpus } from './entity-review-corpus.js';
 import { reviewOutputRoot } from './entity-extraction-review.js';
-import { bytesDigest, canonical, captureHostIdentity, identityDigest, loadCaptureRuntime, type CaptureInput, type NativeResult } from './entity-capture-provider.js';
-import { OPENAI_CAPTURE_BUDGET_EVIDENCE, OPENAI_CAPTURE_BUDGET_EVIDENCE_DIGEST, resolveCaptureBudgetProfile } from './entity-capture-profile.js';
+import { bytesDigest, canonical, captureHostIdentity, identityDigest, loadCaptureRuntime, type CaptureInput, type NativeResult, type CaptureRuntime } from './entity-capture-provider.js';
+import { captureBudgetProfile } from './entity-capture-profile.js';
 
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/); const positive = z.number().int().positive();
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/); const text = z.string().min(1); const time = z.iso.datetime({ offset: true });
@@ -95,6 +95,7 @@ function inputFor(plan: LiveCapturePlan, prompt: string, sample: z.infer<typeof 
 export async function prepareLiveCapture(options: { repository: string; output: string; source?: string; reviewBundle?: string; prompt: string; config: string; wireSchema?: string }, environment: NodeJS.ProcessEnv) {
   if (!!options.source === !!options.reviewBundle) throw new Error('Choose exactly one --source or --review-bundle.');
   const config = Config.parse(readJson(options.config)); const runtime = await loadCaptureRuntime(options.repository);
+  const { OPENAI_CAPTURE_BUDGET_EVIDENCE, OPENAI_CAPTURE_BUDGET_EVIDENCE_DIGEST } = captureBudgetProfile(runtime);
   const sourceKind = options.source ? 'capture-source' : 'review-bundle';
   const sourceBytes = readFileSync(options.source ?? resolve(options.reviewBundle!, 'corpus.json'));
   const manifest = options.reviewBundle ? readFileSync(resolve(options.reviewBundle, 'manifest.json')) : null;
@@ -144,6 +145,7 @@ export async function openLiveCapture(repository: string, directory: string) {
   privateDirectory(directory); for (const name of ['ledger', 'requests', 'gates']) privateDirectory(resolve(directory, name));
   const plan = Plan.parse(readJson(resolve(directory, 'plan.json'))); const { planId, ...identity } = plan;
   const runtime = await loadCaptureRuntime(repository);
+  const { OPENAI_CAPTURE_BUDGET_EVIDENCE, OPENAI_CAPTURE_BUDGET_EVIDENCE_DIGEST } = captureBudgetProfile(runtime);
   if (identityDigest(identity) !== planId || !equal(plan.host, captureHostIdentity(repository, runtime.CAPTURE_VALIDATOR_IDENTITY)) || plan.checkVersion !== ENTITY_CHECK_VERSION || plan.guideVersion !== ENTITY_GUIDE_VERSION) throw new Error('Capture plan/host/checker identity mismatch.');
   const sourceBytes = readFileSync(resolve(directory, 'source.json')); const promptBytes = readFileSync(resolve(directory, 'prompt.txt'));
   const manifest = plan.source.reviewManifestDigest ? readFileSync(resolve(directory, 'review-manifest.json')) : null;
@@ -206,16 +208,16 @@ function ledger(directory: string, plan: LiveCapturePlan, reservationTokens: num
   if (records.length > plan.config.maxCalls || records.length * reservationTokens > plan.config.maxTokens) throw new Error('Ledger exceeds frozen budget.');
   return { records, blocked };
 }
-function profileFor(plan: LiveCapturePlan) {
+function profileFor(plan: LiveCapturePlan, runtime: CaptureRuntime) {
   if (plan.config.executor !== 'openai-api' || !plan.endpoint) throw new Error('Codex has no enforceable output token cap; no dispatch allowed.');
-  const profile = resolveCaptureBudgetProfile(plan.config.profileId, plan.config.model, plan.endpoint);
+  const profile = captureBudgetProfile(runtime).resolveCaptureBudgetProfile(plan.config.profileId, plan.config.model, plan.endpoint);
   if (plan.config.maxOutputTokens > profile.outputUpperBound) throw new Error('Requested output cap exceeds the verified profile.');
   return profile;
 }
 export async function checkLiveCapture(repository: string, directory: string, env: NodeJS.ProcessEnv) {
   const bundle = await openLiveCapture(repository, directory); const { plan } = bundle;
   try {
-    const profile = profileFor(plan);
+    const profile = profileFor(plan, bundle.runtime);
     if (profile.authority === 'official-contract' && ((env.NODE_OPTIONS ?? '').trim() || process.execArgv.some(arg => /^(--import|--require|--loader|--experimental-loader|-r$)/.test(arg)))) throw new Error('Official profile rejects injected Node loaders.');
     const input = inputFor(plan, bundle.prompt, bundle.cases[0], bundle.schema);
     bundle.runtime.assertExecutorInputCapabilities(plan.config.executor, input);
@@ -288,7 +290,7 @@ export async function executeLiveCapture(options: { repository: string; director
   } finally { closeSync(fd); unlinkSync(lock); }
 }
 export async function replayLiveCapture(repository: string, directory: string) {
-  const bundle = await openLiveCapture(repository, directory); const { plan } = bundle; const profile = profileFor(plan);
+  const bundle = await openLiveCapture(repository, directory); const { plan } = bundle; const profile = profileFor(plan, bundle.runtime);
   const state = ledger(directory, plan, profile.inputUpperBound + plan.config.maxOutputTokens, profile.inputUpperBound);
   const records = state.records.map(({ reservation, attempt, native }) => {
     const result = Native.safeParse(native); let admission: unknown = null; let parseFailure: string | null = null; let wire: unknown = null;

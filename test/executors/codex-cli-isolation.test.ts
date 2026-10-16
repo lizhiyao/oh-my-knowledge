@@ -72,7 +72,14 @@ setInterval(() => {}, 1000);
         outputFormat: { mode: 'json-schema' as const, name: 'fixture', schema } };
       const producer = createCodexArchiveProducer({ PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
         OMK_SCHEMA_FIXTURE_CAPTURE: capture, OMK_SCHEMA_FIXTURE_OUTCOME: outcome, EXAMPLE_API_KEY: 'long-fixture-credential' });
-      const configured = producer.configure('codex', request);
+      if (outcome === 'success') {
+        let refusedGates = 0;
+        const refused = producer.configure('codex', request, () => { refusedGates++; throw new Error('reservation refused'); });
+        await assert.rejects(() => refused.execute({ ...request, cwd: privateCwd }), /reservation refused/);
+        assert.equal(refusedGates, 1); assert.equal(existsSync(capture), false); assert.deepEqual(readdirSync(privateCwd), []);
+      }
+      let dispatchGates = 0;
+      const configured = producer.configure('codex', request, () => { dispatchGates++; assert.equal(existsSync(capture), false); });
       assert.ok(configured.evidence.maxOutcomeJsonBytes > 256 * 1024 * 1024);
       assert.ok(configured.evidence.maxOutcomeJsonBytes < 512 * 1024 * 1024);
       const promise = configured.execute({ ...request, cwd: privateCwd, abortSignal: controller.signal });
@@ -84,6 +91,7 @@ setInterval(() => {}, 1000);
           controller.abort();
         }
         const result = await promise;
+        assert.equal(dispatchGates, 1);
         const observed = JSON.parse(readFileSync(capture, 'utf8'));
         assert.deepEqual(observed.schema, schema);
         assert.equal(observed.mode, 0o600);
@@ -170,13 +178,14 @@ it('proves a frozen Codex return profile and rejects unbound configuration befor
     for (let index = 0; index < 130; index++) deep = { nested: deep };
     assert.throws(() => producer.configure('codex', { ...request, outputFormat: { ...request.outputFormat, schema: deep } }), /schema depth/);
     assert.equal(accessorCalls, 0); assert.equal(creates, 0);
-    const configured = producer.configure('codex', request);
+    let gates = 0;
+    const configured = producer.configure('codex', request, () => { gates++; });
     assert.equal(creates, 1); assert.equal(calls, 0);
     await assert.rejects(() => configured.execute({ ...request, cwd, prompt: 'drifted bytes' }), /identity conflict/);
     await assert.rejects(() => configured.execute({ ...request, cwd: dirname(cwd) }), /private cwd/);
     await assert.rejects(() => configured.execute({ ...request, cwd, abortSignal: AbortSignal.abort() }));
-    assert.equal(calls, 0);
+    assert.equal(calls, 0); assert.equal(gates, 0);
     const result = await configured.execute({ ...request, cwd });
-    assert.equal(result.output, 'original partial result'); assert.equal(result.durationMs, -500); assert.equal(calls, 1);
+    assert.equal(result.output, 'original partial result'); assert.equal(result.durationMs, -500); assert.equal(calls, 1); assert.equal(gates, 1);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });

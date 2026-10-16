@@ -5,11 +5,9 @@ import { canonicalJson } from '../../knowledge/store.js';
 import { WINDOW_EXTRACTION_WIRE_ID, decodeWindowExtractionWire } from './model-wire.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from './strict-prompt.js';
+import { SINGLE_EXTRACTION_POLICY } from './generation-policy.js';
 
-export const EXTRACTION_GENERATION_POLICY = Object.freeze({
-  policyId: 'knowledge-generation-single/v1' as const,
-  maxInvocations: 1 as const, retry: 'none' as const, fallback: 'none' as const,
-});
+export const EXTRACTION_GENERATION_POLICY = SINGLE_EXTRACTION_POLICY;
 export const EXTRACTION_OUTCOME_MAX_BYTES = 512 * 1024 * 1024 - 64 * 1024;
 const digest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 export const extractionRequestDigest = (value: unknown) => digest(canonicalJson(value));
@@ -23,8 +21,9 @@ export interface ExtractionModel {
   readonly wireId?: string;
   readonly timeoutMs?: number;
   readonly maxOutputTokens?: number;
+  readonly dispatchGate?: 'producer-before-dispatch/v1';
   inspect?(system: string, input: string): ExecutorArchiveEvidence;
-  generate(system: string, input: string, signal?: AbortSignal): Promise<AuthoredExtractionResult | ExtractionOutcome>;
+  generate(system: string, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<AuthoredExtractionResult | ExtractionOutcome>;
 }
 
 export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>) {
@@ -81,10 +80,11 @@ export function extractionExecution(model: ExtractionModel, system: string, inpu
     systemDigest: digest(system), inputDigest: digest(input), producer };
 }
 
-export async function invokeExtractionModel(model: ExtractionModel, system: string, input: string, signal?: AbortSignal): Promise<ExtractionOutcome> {
+export async function invokeExtractionModel(model: ExtractionModel, system: string, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<ExtractionOutcome> {
   let value: Awaited<ReturnType<ExtractionModel['generate']>>;
   try {
-    value = await model.generate(system, input, signal);
+    if (!model.dispatchGate) beforeDispatch?.();
+    value = await model.generate(system, input, signal, beforeDispatch);
   } catch (error) { return { outcomeKind: 'exception', error: observeExtractionException(error) }; }
   return 'outcomeKind' in value ? value : { outcomeKind: 'model-port-projection', scope: 'authored-model-port/v1', result: value };
 }

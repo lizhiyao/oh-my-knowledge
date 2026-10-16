@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ExtractionGenerationPolicySchema } from '../../../observability/application.js';
 import type { ConversationAutoExtraction } from '../../../observability/application.js';
 const text = z.string().trim().min(1).max(4096);
 const request = z.discriminatedUnion('operation', [
@@ -6,7 +7,7 @@ const request = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('status'), workspace: text, threadId: text }),
   z.strictObject({ operation: z.literal('stop'), workspace: text, threadId: text }),
   z.strictObject({ operation: z.literal('enable'), workspace: text, threadId: text, token: text,
-    executor: text, model: text, maxCalls: z.number().int().min(1).max(20) }),
+    executor: text, model: text, maxCalls: z.number().int().min(1).max(20), policy: ExtractionGenerationPolicySchema.optional() }),
 ]);
 export function executeAutoExtractionAction(input: unknown, service: ConversationAutoExtraction, signal?: AbortSignal) {
   const value = request.parse(input);

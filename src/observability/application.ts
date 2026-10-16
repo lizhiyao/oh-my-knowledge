@@ -47,6 +47,8 @@ export type { KnowledgeOperation } from './knowledge-extraction/operations.js';
 export { LibrarySaveSchema } from './knowledge-extraction/library.js';
 export type { KnowledgeLibraryApplication } from './knowledge-extraction/library.js';
 export type { ExtractionRunSummary } from './knowledge-extraction/runs.js';
+export { ExtractionGenerationPolicySchema } from './knowledge-extraction/generation-policy.js';
+export type { ExtractionGenerationPolicy, ExtractionBoundedPolicy } from './knowledge-extraction/generation-policy.js';
 export {
   confidenceOf,
   effectiveObserveBand,

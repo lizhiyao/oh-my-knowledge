@@ -9,6 +9,7 @@ import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
+import { boundedExtractionPolicy } from '../../../src/observability/knowledge-extraction/generation-policy.js';
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
@@ -47,8 +48,13 @@ describe('Studio candidate action boundary', () => {
     expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toBeNull();
     const consent = { operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
     expect((await auto({ ...consent, maxCalls: 0 })).status).toBe(400);
+    const policy = boundedExtractionPolicy({ maxInvocations: 3, maxReasks: 2, profileId: 'openai-gpt54-snapshot-context/v1', maxTotalTokens: 3_162_288, maxOutputTokens: 4096 });
+    expect((await auto({ ...consent, policy: { ...policy, maxInvocations: 1 } })).status).toBe(400);
     changed = true; expect((await auto(consent)).status).toBe(409); changed = false;
     expect((await auto(consent)).status).toBe(200);
+    expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
+    // A fresh, explicit permission records its selected policy, without constructing or dispatching a model.
+    expect(await (await auto({ ...consent, policy })).json()).toMatchObject({ policy, callsUsed: 0, tokensReserved: 0 });
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
     expect(createLocalKnowledgeApplication(workspace).runs()).toHaveLength(0);
   });
@@ -112,7 +118,8 @@ describe('Studio candidate action boundary', () => {
     const text = await response.text(); const rows = JSON.parse(text);
     expect(rows).toEqual([expect.objectContaining({ runId: run.runId, status: 'failed', invocation: {
       policyId: 'knowledge-generation-single/v1', outputMode: 'prompt-json', wireId: null, attemptCount: 1,
-      archiveStatus: 'recorded', failureKind: 'network' } })]);
+      archiveStatus: 'recorded', failureKind: 'network', limits: { maxInvocations: 1, maxReasks: 0 },
+      budget: { reservedTokens: 0, observedTokens: null, unknownAttempts: 1 } } })]);
     for (const privateValue of ['private-native-', 'producerRevision', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
   });
   it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {

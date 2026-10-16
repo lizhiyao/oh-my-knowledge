@@ -6,6 +6,7 @@ import { KnowledgeRevisionSchema } from '../../knowledge/contracts.js';
 import { EntityAnalysisWriteSchema } from '../../knowledge/entities/contracts.js';
 import { validateEntityAnalysis } from '../../knowledge/entities/validation.js';
 import { validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
+import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ExtractionAttemptAccountingSchema } from './generation-policy.js';
 
 export type ExtractionJson = null | boolean | number | string | ExtractionJson[] | { [key: string]: ExtractionJson };
 export interface ExtractionNativeResult { ok: boolean; output: string | null; [key: string]: ExtractionJson }
@@ -82,6 +83,9 @@ export const ExtractionOutcomeSchema = z.custom<ExtractionOutcome>(isExtractionO
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const ExtractionOutcomeRefSchema = z.strictObject({ bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), digest });
 export type ExtractionOutcomeRef = z.infer<typeof ExtractionOutcomeRefSchema>;
+const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const rejection = z.strictObject({ index: count, reasons: z.array(z.string()) });
+const entityRejection = z.strictObject({ component: z.enum(['entity', 'mention']), index: count, reasons: z.array(z.string()) });
 export const ExtractionAttemptSchema = z.strictObject({
   attemptId: z.string().uuid(), startedAt: z.iso.datetime({ offset: true }), requestDigest: digest,
   request: z.strictObject({ systemDigest: digest, inputDigest: digest, outputMode: z.enum(['json-schema', 'prompt-json']),
@@ -91,12 +95,20 @@ export const ExtractionAttemptSchema = z.strictObject({
     maxOutcomeJsonBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), proof: z.custom<ExtractionJson>(isExtractionJsonData) }),
   outcome: ExtractionOutcomeRefSchema.optional(), failure: z.strictObject({ failureKind: z.string().min(1).max(256), diagnostic: z.string().max(4096) }).optional(),
   wireDiagnostic: z.strictObject({ wireId: digest, wireStatus: z.enum(['valid', 'item_failures']), itemFailureCount: z.number().int().nonnegative() }).optional(),
+  budget: ExtractionBudgetReservationSchema.optional(), accounting: ExtractionAttemptAccountingSchema.optional(),
+  trigger: z.strictObject({ triggerKind: z.enum(['transient', 'validation']), previousAttemptId: z.string().uuid(),
+    notBefore: z.iso.datetime({ offset: true }), delayMs: count,
+    feedback: z.strictObject({ feedbackVersion: z.literal('knowledge-generation-feedback/v1'), body: z.string().max(8192), digest }).optional() }).optional(),
+  admission: z.strictObject({ assessmentVersion: z.literal('knowledge-generation-admission/v1'),
+    entityCount: count, mentionCount: count, proposalCount: count, entityRejections: z.array(entityRejection), rejections: z.array(rejection) }).optional(),
 }).superRefine((attempt, context) => {
   if (attempt.request.outputMode === 'json-schema' && !attempt.request.wireId) context.addIssue({ code: 'custom', path: ['request', 'wireId'], message: 'Structured output requires a frozen wire identity.' });
+  if ((attempt.accounting || attempt.admission) && !attempt.outcome) {
+    context.addIssue({ code: 'custom', path: ['outcome'], message: 'Extraction assessment requires its archived outcome.' });
+  }
+  if (attempt.accounting && !attempt.budget) context.addIssue({ code: 'custom', path: ['budget'], message: 'Extraction accounting requires its reservation.' });
 });
 export type ExtractionAttempt = z.infer<typeof ExtractionAttemptSchema>;
-export const ExtractionSinglePolicySchema = z.strictObject({ policyId: z.literal('knowledge-generation-single/v1'),
-  maxInvocations: z.literal(1), retry: z.literal('none'), fallback: z.literal('none') });
 
 export const ExtractionRunSchema = z.strictObject({
   runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(5),
@@ -106,13 +118,13 @@ export const ExtractionRunSchema = z.strictObject({
   executor: z.string().min(1), model: z.string().min(1),
   promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
-  policy: ExtractionSinglePolicySchema, attempts: z.array(ExtractionAttemptSchema).length(1), selectedAttemptId: z.string().uuid().optional(),
+  policy: ExtractionGenerationPolicySchema, attempts: z.array(ExtractionAttemptSchema).min(1).max(3), selectedAttemptId: z.string().uuid().optional(),
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),
   error: z.string().optional(), rawOutput: z.string().optional(),
-  rejections: z.array(z.strictObject({ index: z.number().int().nonnegative(), reasons: z.array(z.string()) })),
+  rejections: z.array(rejection),
   entityAnalysis: EntityAnalysisWriteSchema.optional(),
-  entityRejections: z.array(z.strictObject({ component: z.enum(['entity', 'mention']), index: z.number().int().nonnegative(), reasons: z.array(z.string()) })).optional(),
+  entityRejections: z.array(entityRejection).optional(),
   intents: z.array(z.strictObject({
     requestId: z.string(), revision: KnowledgeRevisionSchema, grounding: GroundingSchema,
   })),
@@ -123,13 +135,39 @@ export const ExtractionRunSchema = z.strictObject({
     tokenUsageReportedByExecutor: z.boolean().optional(), costUSD: z.number().optional(), costReportedByExecutor: z.boolean().optional(),
   }).optional(),
 }).superRefine((run, context) => {
+  const add = (path: (string | number)[], message: string) => context.addIssue({ code: 'custom', path, message });
+  if (new Set(run.attempts.map(attempt => attempt.attemptId)).size !== run.attempts.length) add(['attempts'], 'Duplicate extraction attempt identity.');
+  if (run.policy.policyId === 'knowledge-generation-single/v1') {
+    if (run.attempts.length !== 1) add(['attempts'], 'Single invocation policy requires exactly one attempt.');
+    if (run.attempts.some(attempt => attempt.budget || attempt.accounting || attempt.trigger || attempt.admission)) add(['attempts'], 'Single invocation policy does not carry bounded-policy facts.');
+  } else {
+    if (run.attempts.length > run.policy.maxInvocations) add(['attempts'], 'Extraction invocation limit exceeded.');
+    let reserved = 0n, reasks = 0;
+    for (const [index, attempt] of run.attempts.entries()) {
+      const previous = run.attempts[index - 1];
+      if (!attempt.budget || attempt.budget.profileId !== run.policy.profileId
+        || attempt.budget.outputUpperBound !== run.policy.maxOutputTokens || attempt.request.maxOutputTokens !== run.policy.maxOutputTokens) {
+        add(['attempts', index, 'budget'], 'Bounded extraction requires the matching frozen token reservation.');
+      }
+      if (attempt.budget) reserved += BigInt(attempt.budget.tokensReserved);
+      if (index === 0 ? attempt.trigger !== undefined : !attempt.trigger || attempt.trigger.previousAttemptId !== previous.attemptId || !previous.outcome || !previous.accounting) {
+        add(['attempts', index, 'trigger'], 'Extraction attempt must follow its archived and accounted predecessor.');
+      }
+      if (attempt.trigger?.triggerKind === 'validation') reasks++;
+      if (attempt.trigger?.triggerKind === 'transient' && attempt.trigger.feedback) add(['attempts', index, 'trigger'], 'Transient retry cannot introduce validation feedback.');
+    }
+    if (reserved > BigInt(run.policy.maxTotalTokens)) add(['attempts'], 'Extraction cumulative token reservation exceeded.');
+    if (reasks > run.policy.maxReasks) add(['attempts'], 'Extraction validation reask limit exceeded.');
+  }
   const selected = run.attempts.find(attempt => attempt.attemptId === run.selectedAttemptId);
+  if (selected && run.policy.policyId === 'knowledge-generation-bounded/v1'
+    && selected.attemptId !== run.attempts[run.attempts.length - 1].attemptId) add(['selectedAttemptId'], 'Bounded extraction must select its final attempt.');
   if ((run.selectedAttemptId !== undefined && !selected?.outcome) || (run.rawOutput !== undefined && !selected?.outcome)
     || (['prepared', 'completed'].includes(run.status) && (!selected?.outcome || run.rawOutput === undefined))) {
     context.addIssue({ code: 'custom', path: ['selectedAttemptId'], message: 'Selected extraction output requires its archived attempt.' });
   }
-  if (['prepared', 'completed'].includes(run.status) && run.attempts[0].failure) {
-    context.addIssue({ code: 'custom', path: ['attempts', 0, 'failure'], message: 'Failed extraction attempt cannot prepare knowledge.' });
+  if (['prepared', 'completed'].includes(run.status) && selected?.failure) {
+    context.addIssue({ code: 'custom', path: ['selectedAttemptId'], message: 'Failed extraction attempt cannot prepare knowledge.' });
   }
   if (['prepared', 'completed'].includes(run.status) && !run.entityAnalysis) {
     context.addIssue({ code: 'custom', path: ['entityAnalysis'], message: 'Prepared window extraction needs an entity intent, including empty results.' });
@@ -139,7 +177,6 @@ export const ExtractionRunSchema = z.strictObject({
     || run.entityAnalysis.expectedHeadRevisionId !== null)) {
     context.addIssue({ code: 'custom', path: ['entityAnalysis'], message: 'Entity intent does not match the extraction window.' });
   }
-  const add = (path: (string | number)[], message: string) => context.addIssue({ code: 'custom', path, message });
   if (['prepared', 'completed'].includes(run.status) && run.rawOutput === undefined) add(['rawOutput'], 'Prepared extraction needs its original output.');
   const analysis = run.entityAnalysis?.revision;
   if (!analysis) {
@@ -193,10 +230,19 @@ export interface ExtractionRunStore {
 /** Safe run summary. Counts describe the prepared birth revision; inspection loads the chosen history revision. */
 export function extractionRunSummary(run: ExtractionRun) {
   const analysis = run.entityAnalysis;
+  const last = run.attempts[run.attempts.length - 1];
+  const selected = run.attempts.find(attempt => attempt.attemptId === run.selectedAttemptId) ?? last;
+  const reservedTokens = run.attempts.reduce((sum, attempt) => sum + (attempt.budget?.tokensReserved ?? 0), 0);
+  const unknownAttempts = run.attempts.filter(attempt => !attempt.accounting || attempt.accounting.observedTokens === null).length;
+  const observedTotal = run.attempts.reduce((sum, attempt) => sum + BigInt(attempt.accounting?.observedTokens ?? 0), 0n);
+  const observedTokens = unknownAttempts || observedTotal > BigInt(Number.MAX_SAFE_INTEGER) ? null : Number(observedTotal);
   return { runId: run.runId, status: run.status, startedAt: run.startedAt, committed: run.committed, rejections: run.rejections,
-    invocation: { policyId: run.policy.policyId, outputMode: run.attempts[0].request.outputMode, wireId: run.attempts[0].request.wireId ?? null,
-      attemptCount: 1 as const, archiveStatus: run.attempts[0].outcome ? 'recorded' as const : 'pending' as const,
-      failureKind: run.attempts[0].failure?.failureKind ?? null },
+    invocation: { policyId: run.policy.policyId, outputMode: selected.request.outputMode, wireId: selected.request.wireId ?? null,
+      attemptCount: run.attempts.length, archiveStatus: last.outcome ? 'recorded' as const : 'pending' as const,
+      failureKind: selected.failure?.failureKind ?? null,
+      limits: { maxInvocations: run.policy.maxInvocations, maxReasks: run.policy.policyId === 'knowledge-generation-single/v1' ? 0 : run.policy.maxReasks },
+      budget: { reservedTokens, observedTokens, unknownAttempts,
+        ...(run.policy.policyId === 'knowledge-generation-bounded/v1' ? { maxTotalTokens: run.policy.maxTotalTokens } : {}) } },
     ...(run.runtime ? { runtime: run.runtime } : {}),
     ...(analysis ? { entityAnalysis: { analysisId: analysis.analysisId, revisionId: analysis.revision.revisionId,
       entityCount: analysis.revision.entities.length, mentionCount: analysis.revision.mentions.length,

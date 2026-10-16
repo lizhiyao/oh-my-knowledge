@@ -8,6 +8,7 @@ import { ExtractionOutcomeSchema, ExtractionOutcomeRefSchema, ExtractionRunSchem
   type ExtractionOutcome, type ExtractionOutcomeRef, type ExtractionRun, type ExtractionRunStore } from '../runs.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
 import { assertCurrentStorage } from './storage-state.js';
+import { accountExtractionOutcome } from '../generation-policy.js';
 
 export const EXTRACTION_RUN_MAX_BYTES = 16 * 1024 * 1024;
 // JSON.parse needs one string: even an all-ASCII file must stay below V8's string ceiling.
@@ -70,7 +71,7 @@ function parse(bytes: Uint8Array): unknown {
   catch { throw new Error('Invalid extraction JSON file.'); }
 }
 
-/** Only v5 manifests are read. Native evidence is immutable and never a model retry trigger. */
+/** Current v5 policy branches retain immutable native evidence and append-only invocation reservations. */
 export class FileExtractionRunStore implements ExtractionRunStore {
   private readonly root: string;
   private readonly workspace: string;
@@ -130,32 +131,43 @@ export class FileExtractionRunStore implements ExtractionRunStore {
       this.syncDirectories(dirname(path));
     } finally { if (fd !== undefined) closeSync(fd); if (existsSync(temp)) rmSync(temp); }
   }
-  private checkAllocation(run: ExtractionRun) {
-    const attempt = run.attempts[0];
-    const overhead = measured(this.envelope(run.runId, attempt.attemptId, null), 4096).bytes - 4;
-    if (attempt.producer.maxOutcomeJsonBytes + overhead > EXTRACTION_OUTCOME_MAX_BYTES) throw new Error('Extraction outcome capacity exceeded before invocation.');
+  private checkAllocation(run: ExtractionRun, fromIndex = 0) {
+    for (const attempt of run.attempts.slice(fromIndex)) {
+      const overhead = measured(this.envelope(run.runId, attempt.attemptId, null), 4096).bytes - 4;
+      if (attempt.producer.maxOutcomeJsonBytes + overhead > EXTRACTION_OUTCOME_MAX_BYTES) throw new Error('Extraction outcome capacity exceeded before invocation.');
+    }
   }
   private checkArchived(run: ExtractionRun) {
-    const attempt = run.attempts[0];
-    let archived: { outcome: ExtractionOutcome; ref: ExtractionOutcomeRef } | undefined;
-    if (attempt.outcome) {
+    const selected = run.attempts.find(attempt => attempt.attemptId === run.selectedAttemptId);
+    const projected = selected ?? run.attempts[run.attempts.length - 1];
+    let outcome: ExtractionOutcome | undefined;
+    for (const attempt of run.attempts) {
+      if (!attempt.outcome) continue;
+      let archived: { outcome: ExtractionOutcome; ref: ExtractionOutcomeRef };
       try { archived = this.readOutcome(run.runId, attempt.attemptId, attempt.outcome); }
       catch (error) { if (missing(error)) throw new Error('Archived extraction outcome is missing.'); throw error; }
+      if (attempt.attemptId === projected.attemptId) outcome = archived.outcome;
+      if (attempt.accounting && (!attempt.budget
+        || canonicalJson(attempt.accounting) !== canonicalJson(accountExtractionOutcome(archived.outcome, attempt.budget)))) {
+        throw new Error('Extraction accounting differs from its archive.');
+      }
     }
     if (run.runtime) {
-      if (!archived || archived.outcome.outcomeKind === 'exception') throw new Error('Extraction runtime has no returned result archive.');
-      const result = archived.outcome.result as Record<string, unknown>;
+      if (!selected && run.policy.policyId === 'knowledge-generation-bounded/v1' && !['failed', 'cancelled'].includes(run.status)) throw new Error('Unselected extraction runtime requires a terminal run.');
+      if (!outcome || outcome.outcomeKind === 'exception') throw new Error('Extraction runtime has no returned result archive.');
+      const result = outcome.result as Record<string, unknown>;
       for (const [key, value] of Object.entries(run.runtime)) if (value !== result[key]) throw new Error('Extraction runtime differs from its archive.');
     }
-    if (!run.selectedAttemptId) return;
-    const { outcome } = archived!;
-    if (outcome.outcomeKind === 'exception' || outcome.result.output !== run.rawOutput) throw new Error('Selected extraction output differs from its archive.');
+    if (!selected) return;
+    if (!outcome || outcome.outcomeKind === 'exception' || outcome.result.output !== run.rawOutput) throw new Error('Selected extraction output differs from its archive.');
     if (outcome.outcomeKind === 'result' && !outcome.result.ok && ['prepared', 'completed'].includes(run.status)) throw new Error('Failed native output cannot be prepared.');
+    if (selected.accounting?.status === 'policy_violation' && ['prepared', 'completed'].includes(run.status)) throw new Error('Budget policy violation cannot prepare knowledge.');
   }
   create(input: ExtractionRun): void {
     this.checkRoot();
     withWorkspaceWrite(this.workspace, () => {
       const run = this.check(input), path = this.path(run.runId);
+      if (run.attempts.length !== 1) throw new Error('Extraction run must start with one invocation reservation.');
       try { lstatSync(path); throw Object.assign(new Error('Extraction run already exists.'), { code: 'EEXIST' }); }
       catch (error) { if (!missing(error)) throw error; }
       // Occupancy is checked by filename only; no v4 reader or migration exists.
@@ -193,14 +205,25 @@ export class FileExtractionRunStore implements ExtractionRunStore {
         }
       }
       if (run.committed.length < current.committed.length || canonicalJson(run.committed.slice(0, current.committed.length)) !== canonicalJson(current.committed)) throw new Error('Committed extraction prefix is immutable.');
-      const previous = current.attempts[0], next = run.attempts[0];
-      const { outcome: oldOutcome, failure: oldFailure, wireDiagnostic: oldWire, ...oldIdentity } = previous;
-      const { outcome: nextOutcome, failure: nextFailure, wireDiagnostic: nextWire, ...nextIdentity } = next;
-      if (canonicalJson(oldIdentity) !== canonicalJson(nextIdentity)
-        || (oldOutcome && canonicalJson(oldOutcome) !== canonicalJson(nextOutcome ?? null))
-        || (oldFailure && canonicalJson(oldFailure) !== canonicalJson(nextFailure ?? null))
-        || (oldWire && canonicalJson(oldWire) !== canonicalJson(nextWire ?? null))) throw new Error('Extraction attempt conflict.');
+      if (run.attempts.length < current.attempts.length || run.attempts.length > current.attempts.length + 1) throw new Error('Extraction attempt prefix conflict.');
+      const appended = run.attempts.length > current.attempts.length;
+      if (appended && (current.policy.policyId === 'knowledge-generation-single/v1' || current.selectedAttemptId
+        || current.entityAnalysis || ['prepared', 'completed'].includes(current.status))) throw new Error('Selected extraction run cannot append another attempt.');
+      if (appended && (!current.attempts[current.attempts.length - 1].outcome || !current.attempts[current.attempts.length - 1].accounting)) throw new Error('Extraction predecessor is not archived and accounted.');
+      for (const [index, previous] of current.attempts.entries()) {
+        const next = run.attempts[index];
+        const { outcome: oldOutcome, failure: oldFailure, wireDiagnostic: oldWire, accounting: oldAccounting, admission: oldAdmission, ...oldIdentity } = previous;
+        const { outcome: nextOutcome, failure: nextFailure, wireDiagnostic: nextWire, accounting: nextAccounting, admission: nextAdmission, ...nextIdentity } = next;
+        if (canonicalJson(oldIdentity) !== canonicalJson(nextIdentity)
+          || (oldOutcome && canonicalJson(oldOutcome) !== canonicalJson(nextOutcome ?? null))
+          || (oldFailure && canonicalJson(oldFailure) !== canonicalJson(nextFailure ?? null))
+          || (oldWire && canonicalJson(oldWire) !== canonicalJson(nextWire ?? null))
+          || (oldAccounting && canonicalJson(oldAccounting) !== canonicalJson(nextAccounting ?? null))
+          || (oldAdmission && canonicalJson(oldAdmission) !== canonicalJson(nextAdmission ?? null))
+          || (index < current.attempts.length - 1 && canonicalJson(previous) !== canonicalJson(next))) throw new Error('Extraction attempt conflict.');
+      }
       if (current.selectedAttemptId && run.selectedAttemptId !== current.selectedAttemptId) throw new Error('Selected extraction attempt conflict.');
+      if (appended) this.checkAllocation(run, current.attempts.length);
       this.checkArchived(run); this.publish(this.path(run.runId), [JSON.stringify(run, null, 2)], false);
     });
   }

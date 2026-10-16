@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCode, type KnowledgeOperation } from '../../../observability/knowledge-extraction/operations.js';
 import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-output.js';
 import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
+import { ExtractionGenerationPolicySchema } from '../../../observability/knowledge-extraction/generation-policy.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
@@ -40,6 +41,7 @@ export default class ObserveKnowledge extends BaseCommand {
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。', 'generate: stable UUID; repeated requests only restore archived results without another model call.') }),
+    'generation-policy': Flags.string({ description: description('generate：完整生成策略 JSON；省略时仅调用一次。有界重试须明确模型、调用及 token 预算，输出上限取自策略。', 'generate: complete generation-policy JSON; omitted means one invocation. Bounded retries require explicit model, invocation and token budgets; the policy sets the output cap.') }),
     json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。', 'Print complete JSON instead of a readable summary; schema defaults to the JSON Schema alone.') }),
   };
   static examples = [
@@ -58,6 +60,9 @@ export default class ObserveKnowledge extends BaseCommand {
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
+    if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {
+      this.error(this.lang === 'zh' ? '--generation-policy 仅用于 generate。' : '--generation-policy is only valid for generate.', { exit: 2 });
+    }
     if (args.operation === 'schema') {
       const wire = await import('../../../observability/knowledge-extraction/model-wire.js');
       if (flags.json) this.log(JSON.stringify({ responseKind: 'knowledge-extraction-wire-contract',
@@ -88,11 +93,15 @@ export default class ObserveKnowledge extends BaseCommand {
       } catch { this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.')); }
       return jsonInput(raw!, '--input');
     };
+    const policy = flags['generation-policy'] === undefined ? undefined
+      : ExtractionGenerationPolicySchema.safeParse(jsonInput(flags['generation-policy'], '--generation-policy'));
+    if (policy && !policy.success) this.error(t('生成策略无效。请核对完整策略及调用、token 预算。', 'Invalid generation policy. Check the complete policy and invocation/token budgets.'), { exit: 2 });
     // Required arguments and draft syntax are checked before settings or storage access.
     let operation: KnowledgeOperation;
     switch (args.operation) {
       case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
-      case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'] }; break;
+      case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'],
+        ...(policy?.success ? { policy: policy.data } : {}) }; break;
       case 'runs': case 'quality': case 'list': operation = { operation: args.operation }; break;
       case 'resume': operation = { operation: 'resume', id: need(flags.id, 'id') }; break;
       case 'show': operation = { operation: 'show', id: need(flags.id, 'id'), revision: flags.revision }; break;
@@ -126,7 +135,8 @@ export default class ObserveKnowledge extends BaseCommand {
     await this.runWithCancellation(async signal => {
       if (operation.operation === 'generate') this.logToStderr(`${operation.executor} / ${operation.model} · ${operation.snapshot} · ${t('仅发送选定来源片段；费用以执行器实际报告为准。', 'Only selected excerpts are sent; cost depends on executor reporting.')}`);
       let result: unknown;
-      try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => configuredExtractionModel(executor, model, createExtractionArchiveProducer(process.env))); }
+      try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model, policy) => configuredExtractionModel(executor, model,
+        createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined)); }
       catch (cause) {
         const code = knowledgeFailureCode(cause);
         const reload = operation.operation === 'correct-entities' ? knowledgeCommand(settings.workspace, 'entities', { analysis: operation.analysisId })

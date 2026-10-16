@@ -12,6 +12,7 @@ export interface ExecutorArchiveProducer {
   assertCapabilities(executor: string, input: ExecutorInput): void;
   /** Pure local preflight; no executor construction, filesystem or network. */
   inspect(executor: string, input: ExecutorInput): ExecutorArchiveEvidence;
-  /** Must not dispatch; snapshot configuration and prove the complete returned JSON bound. */
-  configure(executor: string, input: ExecutorInput): { evidence: ExecutorArchiveEvidence; execute: ExecutorFn };
+  /** Snapshot configuration and prove the complete returned JSON bound without dispatch.
+   * The optional synchronous gate runs after identity checks, immediately before dispatch. */
+  configure(executor: string, input: ExecutorInput, beforeDispatch?: () => void): { evidence: ExecutorArchiveEvidence; execute: ExecutorFn };
 }

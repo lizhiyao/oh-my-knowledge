@@ -17,6 +17,14 @@ export interface CaptureRuntime {
   OPENAI_CHAT_REQUEST_VERSION: string; OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION: string;
   WINDOW_EXTRACTION_WIRE_ID: string; WINDOW_EXTRACTION_WIRE_SCHEMA: Readonly<Record<string, unknown>>;
   WINDOW_EXTRACTION_WIRE_IDENTITY: { wireSchemaDigest: string };
+  OPENAI_TOKEN_BUDGET_EVIDENCE: Readonly<{
+    evidenceVersion: string; retrievedOn: string; model: string; contextTokens: number; maxOutputTokens: number;
+    modelSource: string; modelFacts: string; capSource: string; capFacts: string; accountingSource: string; accountingFacts: string; reservationRule: string;
+  }>;
+  OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST: string;
+  resolveTokenBudgetProfile(id: string, model: string, endpoint: string): {
+    profileId: string; authority: 'official-contract' | 'loopback-test-only'; evidenceDigest: string; inputUpperBound: number; outputUpperBound: number;
+  };
   buildOpenAiChatRequest(input: CaptureInput, env: NodeJS.ProcessEnv, constraints: 'single-completion/v1'): { endpoint: string; body: string };
   assertExecutorInputCapabilities(executor: string, input: CaptureInput): void;
   createExecutor(name: string, options: { env: NodeJS.ProcessEnv; apiDispatchPolicy: {

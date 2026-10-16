@@ -13,6 +13,6 @@ export function createExtractionArchiveProducer(environment: NodeJS.ProcessEnv):
   return {
     assertCapabilities: (executor, input) => select(executor).assertCapabilities(executor, input),
     inspect: (executor, input) => select(executor).inspect(executor, input),
-    configure: (executor, input) => select(executor).configure(executor, input),
+    configure: (executor, input, beforeDispatch) => select(executor).configure(executor, input, beforeDispatch),
   };
 }

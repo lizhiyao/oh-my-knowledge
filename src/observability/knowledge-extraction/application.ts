@@ -7,7 +7,7 @@ import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
-import type { ExtractionOutcome, ExtractionRun, ExtractionRunStore } from './runs.js';
+import type { ExtractionOutcome, ExtractionOutcomeRef, ExtractionRun, ExtractionRunStore } from './runs.js';
 import { ExtractionAttemptSchema } from './runs.js';
 import type { ExtractionProposal } from './proposals.js';
 import { EntityModelSchema } from './entities.js';
@@ -15,8 +15,13 @@ import { checkWindowExtractionResponse } from './window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
-import { assertExtractionInputCapacity, extractionModelInput } from './model-input.js';
+import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './model-input.js';
 import { extractionQuality } from './quality.js';
+import { setTimeout as wait } from 'node:timers/promises';
+import { resolveTokenBudgetProfile } from '../../executors/contracts/token-budget.js';
+import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, accountExtractionOutcome,
+  TRANSIENT_EXTRACTION_FAILURES, REASK_EXTRACTION_FAILURES, EXTRACTION_FEEDBACK_PREAMBLE,
+  type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from './generation-policy.js';
 import { EXTRACTION_GENERATION_POLICY, extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from './generation.js';
 import type { ExtractionModel } from './generation.js';
 export type { ExtractionModel } from './generation.js';
@@ -26,6 +31,13 @@ export interface KnowledgeApplicationPorts {
   entities: EntityAnalysisStore;
   id(): string; now(): string; hash(value: unknown): string;
   actor: KnowledgeActor;
+  generationTiming?: { now(): number; random(): number; wait(ms: number, signal?: AbortSignal): Promise<void> };
+}
+export interface ExtractionGenerationOptions {
+  policy?: ExtractionGenerationPolicy;
+  beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation }) => void;
+  /** Durable returned facts, outside the run-store lock and before admission or another invocation. */
+  onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
 }
 
 /** Both delivery hosts call this workflow; neither owns knowledge state transitions. */
@@ -122,7 +134,10 @@ export class KnowledgeApplication {
     this.ports.knowledge.read(knowledgeId);
     return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
   }
-  async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal): Promise<ExtractionRun> {
+  async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal,
+    options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
+    const policy = ExtractionGenerationPolicySchema.parse(options?.policy ?? EXTRACTION_GENERATION_POLICY);
+    if (policy.policyId === 'knowledge-generation-bounded/v1') return this.generateBounded(snapshotId, model, runId, policy, signal, options);
     signal?.throwIfAborted();
     const source = this.source(snapshotId);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
@@ -136,7 +151,7 @@ export class KnowledgeApplication {
       timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
       if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
-      return this.resume(runId, signal);
+      return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     };
     // Current-format receipts may predate this capacity policy. Reuse them without a fresh call.
     let previous: ExtractionRun | undefined;
@@ -165,12 +180,21 @@ export class KnowledgeApplication {
     }
     this.invocationInFlight = runId;
     try {
-      const outcome = await invokeExtractionModel(model, system, input, signal);
+      let called = false;
+      const outcome = await invokeExtractionModel(model, system, input, signal, () => {
+        signal?.throwIfAborted();
+        if (called) throw new Error('Extraction dispatch gate was already consumed.');
+        called = true; options?.beforeDispatch?.({ runId, attemptId, requestDigest: run.attempts[0].requestDigest });
+      });
       this.heldOutcome = { runId, attemptId, outcome, maxBytes: producer.maxOutcomeJsonBytes };
-      return this.resume(runId, signal);
+      return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     } finally { this.invocationInFlight = undefined; }
   }
   resume(runId: string, signal?: AbortSignal): ExtractionRun {
+    return this.settleRun(runId, signal);
+  }
+  private settleRun(runId: string, signal?: AbortSignal, retryOwner = false,
+    onOutcomeArchived?: ExtractionGenerationOptions['onOutcomeArchived']): ExtractionRun {
     let run = this.ports.runs.read(runId);
     let heldRecorded: ReturnType<ExtractionRunStore['readOutcome']> | undefined;
     if (this.heldOutcome?.runId === runId) {
@@ -179,10 +203,13 @@ export class KnowledgeApplication {
       const outcome = serializeExtractionObservation(held.outcome) as unknown as ExtractionOutcome;
       const ref = this.ports.runs.writeOutcome(runId, held.attemptId, outcome, held.maxBytes);
       heldRecorded = { outcome, ref };
-      if (!run.attempts[0].outcome) run = this.saveRun(run, { attempts: [{ ...run.attempts[0], outcome: ref }] });
+      if (!run.attempts.find(attempt => attempt.attemptId === held.attemptId)!.outcome) run = this.saveRun(run, {
+        attempts: run.attempts.map(attempt => attempt.attemptId === held.attemptId ? { ...attempt, outcome: ref } : attempt) });
       else this.ports.runs.save(run, run.generation - 1);
       this.heldOutcome = undefined;
+      onOutcomeArchived?.({ runId, attemptId: held.attemptId, outcome, ref });
     }
+    if (run.policy.policyId === 'knowledge-generation-bounded/v1') return this.settleBounded(run, signal, retryOwner);
     if (run.status === 'completed' || run.attempts[0].failure) return run;
     if (run.status !== 'prepared') {
       const attempt = run.attempts[0];
@@ -245,6 +272,202 @@ export class KnowledgeApplication {
     run = this.saveRun(run, { status: 'completed', finishedAt: this.ports.now(),
       committed: run.intents.map((intent) => ({ knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) });
     return run;
+  }
+  private async generateBounded(snapshotId: string, model: ExtractionModel, runId: string, policy: ExtractionBoundedPolicy,
+    signal?: AbortSignal, options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
+    signal?.throwIfAborted();
+    const source = this.source(snapshotId);
+    if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
+    const window = source.window, initialInput = extractionModelInput(window);
+    const { system, promptVersion } = extractionPrompt(model);
+    const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
+      promptHash: this.ports.hash(system), inputDigest: this.ports.hash(initialInput), actor: this.ports.actor,
+      policy, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
+      timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
+    const reuse = (previous: ExtractionRun) => {
+      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      return this.resume(runId, signal);
+    };
+    let previous: ExtractionRun | undefined;
+    try { previous = this.ports.runs.read(runId); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    if (previous) return reuse(previous);
+    if (this.heldOutcome || this.invocationInFlight) throw new Error('An extraction invocation or outcome archive is pending. Resume that run before starting another invocation.');
+    const makeAttempt = (input: string, trigger?: ExtractionRun['attempts'][number]['trigger']) => {
+      assertExtractionInputCapacity(input, system);
+      const { producer, ...request } = extractionExecution(model, system, input);
+      const proof = producer.proof as Record<string, unknown> | null;
+      if (model.executor !== 'openai-api' || model.dispatchGate !== 'producer-before-dispatch/v1'
+        || request.outputMode !== 'json-schema' || request.maxOutputTokens !== policy.maxOutputTokens
+        || producer.producerId !== 'openai-chat-archive/v1' || proof?.proofKind !== 'openai-chat-return-bound/v1'
+        || proof.dispatchGate !== 'producer-before-dispatch/v1' || proof.singleCompletion !== true || proof.stream !== false
+        || proof.redirect !== 'error' || typeof proof.endpoint !== 'string') {
+        throw new Error('Bounded generation requires a verified single-completion API producer and a hard output-token cap.');
+      }
+      const profile = resolveTokenBudgetProfile(policy.profileId, model.model, proof.endpoint);
+      if (policy.maxOutputTokens > profile.outputUpperBound) throw new Error('Output-token limit exceeds the verified budget profile.');
+      const budget = ExtractionBudgetReservationSchema.parse({ ...profile, outputUpperBound: policy.maxOutputTokens,
+        tokensReserved: profile.inputUpperBound + policy.maxOutputTokens });
+      if (budget.tokensReserved > policy.maxTotalTokens) throw new Error('Token budget cannot reserve one invocation; no request allowed.');
+      return ExtractionAttemptSchema.parse({ attemptId: this.ports.id(), startedAt: this.ports.now(), request, producer, budget,
+        ...(trigger ? { trigger } : {}), requestDigest: extractionRequestDigest({ requestDigest, request, producer, policy, budget, trigger: trigger ?? null }) });
+    };
+    const first = makeAttempt(initialInput);
+    let run: ExtractionRun = { runKind: 'knowledge-extraction-run', schemaVersion: 5, runId, requestDigest, generation: 1,
+      snapshotId, sourceVersion: window.sourceVersion, ...(window.origin ? { origin: window.origin } : {}), executor: model.executor, model: model.model,
+      promptVersion, promptHash: this.ports.hash(system), inputDigest: this.ports.hash(initialInput), actor: this.ports.actor,
+      startedAt: this.ports.now(), status: 'generating', policy, attempts: [first], intents: [], rejections: [], committed: [], entityRejections: [] };
+    try { this.ports.runs.create(run); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      return reuse(this.ports.runs.read(runId));
+    }
+    // Only this creation winner owns this sequence. Recovery never creates another paid effect.
+    this.invocationInFlight = runId;
+    let input = initialInput;
+    try {
+      for (;;) {
+        const attempt = run.attempts.at(-1)!;
+        if (attempt.trigger) {
+          const delay = Math.max(0, Date.parse(attempt.trigger.notBefore) - this.generationNow());
+          try {
+            if (this.ports.generationTiming) await this.ports.generationTiming.wait(delay, signal);
+            else await wait(delay, undefined, { signal });
+            signal?.throwIfAborted();
+          } catch (error) {
+            if (!signal?.aborted) throw error;
+            return this.saveRun(this.ports.runs.read(runId), { status: 'cancelled', finishedAt: this.ports.now(), error: 'Extraction cancelled during retry backoff.' });
+          }
+        }
+        let called = false, hostDenied = false;
+        const outcome = await invokeExtractionModel(model, system, input, signal, () => {
+          try {
+            signal?.throwIfAborted();
+            if (called) throw new Error('Extraction dispatch gate was already consumed.');
+            called = true;
+            options?.beforeDispatch?.({ runId, attemptId: attempt.attemptId, requestDigest: attempt.requestDigest, budget: attempt.budget });
+          } catch (error) { hostDenied = true; throw error; }
+        });
+        this.heldOutcome = { runId, attemptId: attempt.attemptId, outcome, maxBytes: attempt.producer.maxOutcomeJsonBytes };
+        run = this.settleRun(runId, signal, !hostDenied && called, options?.onOutcomeArchived);
+        if (run.status !== 'generating' || run.selectedAttemptId) return run;
+        const retry = this.retryTrigger(run);
+        if (!retry) return this.settleRun(runId, signal);
+        if (retry.triggerKind === 'validation') {
+          const last = run.attempts.at(-1)!;
+          const diagnostics = [...(last.admission?.entityRejections ?? []).map(value => ({ component: value.component, index: value.index, reasons: value.reasons })),
+            ...(last.admission?.rejections ?? []).map(value => ({ component: 'proposal', index: value.index, reasons: value.reasons }))];
+          const body = JSON.stringify({ instruction: EXTRACTION_FEEDBACK_PREAMBLE,
+            failureCode: last.failure?.failureKind ?? 'empty_validation', diagnostics: diagnostics.slice(0, 12).map(value => ({
+              component: value.component, index: value.index,
+              codes: value.reasons.slice(0, 6).map(reason => reason.split(':')[0].replace(/[^a-z_]/g, '').slice(0, 48)) })) });
+          retry.feedback = { feedbackVersion: policy.feedbackVersion, body, digest: extractionRequestDigest({ body }) };
+          input = JSON.stringify({ ...JSON.parse(initialInput), feedback: { feedbackVersion: policy.feedbackVersion, ...JSON.parse(body) } });
+        }
+        let next: ExtractionRun['attempts'][number];
+        try { next = makeAttempt(input, retry); }
+        catch (error) {
+          if (!(error instanceof ExtractionInputCapacityError)) throw error;
+          return this.saveRun(run, { status: 'failed', finishedAt: this.ports.now(), error: error.message });
+        }
+        // A resume in another host may already have selected/committed. CAS never grants that host a second effect.
+        run = this.saveRun(run, { attempts: [...run.attempts, next], status: 'generating', finishedAt: undefined, error: undefined });
+      }
+    } finally { this.invocationInFlight = undefined; }
+  }
+  private generationNow(): number { return this.ports.generationTiming?.now() ?? Date.now(); }
+  private retryTrigger(run: ExtractionRun, eligibilityOnly = false): ExtractionRun['attempts'][number]['trigger'] | undefined {
+    const policy = run.policy;
+    if (policy.policyId !== 'knowledge-generation-bounded/v1' || run.status !== 'generating' || run.selectedAttemptId
+      || run.attempts.length >= policy.maxInvocations) return;
+    const last = run.attempts.at(-1)!;
+    if (!last.outcome || !last.accounting || last.accounting.status === 'policy_violation' || !last.budget
+      || run.attempts.reduce((sum, attempt) => sum + attempt.budget!.tokensReserved, 0) + last.budget.tokensReserved > policy.maxTotalTokens) return;
+    const transient = !!last.failure && TRANSIENT_EXTRACTION_FAILURES.has(last.failure.failureKind);
+    const validation = !!last.failure && REASK_EXTRACTION_FAILURES.has(last.failure.failureKind)
+      || !!last.admission && last.admission.entityCount === 0 && last.admission.proposalCount === 0
+        && (last.admission.entityRejections.length + last.admission.rejections.length > 0 || last.wireDiagnostic?.wireStatus === 'item_failures');
+    if (!transient && (!validation || run.attempts.filter(attempt => attempt.trigger?.triggerKind === 'validation').length >= policy.maxReasks)) return;
+    const archived = this.ports.runs.readOutcome(run.runId, last.attemptId, last.outcome).outcome;
+    const nativeFailure = archived.outcomeKind === 'result' ? archived.result.failure : undefined;
+    const retryAfter = nativeFailure && typeof nativeFailure === 'object' && !Array.isArray(nativeFailure) ? nativeFailure.retryAfterMs : undefined;
+    if (retryAfter !== undefined && (typeof retryAfter !== 'number' || !Number.isSafeInteger(retryAfter) || retryAfter < 0 || retryAfter > policy.backoff.retryAfterCapMs)) return;
+    const sample = eligibilityOnly ? 0 : this.ports.generationTiming?.random() ?? Math.random();
+    if (!Number.isFinite(sample) || sample < 0 || sample >= 1) throw new Error('Invalid retry jitter source.');
+    const jitter = Math.floor(sample * Math.min(policy.backoff.capMs, policy.backoff.baseMs * 2 ** (run.attempts.length - 1)));
+    const delayMs = Math.max(jitter, typeof retryAfter === 'number' ? retryAfter : 0);
+    return { triggerKind: transient ? 'transient' : 'validation', previousAttemptId: last.attemptId,
+      delayMs, notBefore: new Date(this.generationNow() + delayMs).toISOString() };
+  }
+  private settleBounded(run: ExtractionRun, signal?: AbortSignal, retryOwner = false): ExtractionRun {
+    if (run.status === 'completed') return run;
+    if (run.status === 'prepared') return this.commitPrepared(run, signal);
+    if (run.status === 'failed' || run.status === 'cancelled' && (!run.attempts.at(-1)!.outcome || run.attempts.at(-1)!.failure)) return run;
+    let attempt = run.attempts.at(-1)!;
+    let recorded: ReturnType<ExtractionRunStore['readOutcome']>;
+    try { recorded = this.ports.runs.readOutcome(run.runId, attempt.attemptId, attempt.outcome); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !attempt.outcome) return run; throw error; }
+    const updateAttempt = (value: typeof attempt) => this.saveRun(run, { attempts: run.attempts.map(item => item.attemptId === value.attemptId ? value : item) });
+    if (!attempt.outcome || !attempt.accounting) {
+      run = updateAttempt({ ...attempt, outcome: recorded.ref, accounting: accountExtractionOutcome(recorded.outcome, attempt.budget!) });
+      attempt = run.attempts.at(-1)!;
+    }
+    let decoded = extractionResponse(recorded.outcome, attempt.request.outputMode, attempt.request.wireId);
+    if (attempt.accounting?.status === 'policy_violation') decoded = { status: 'failed', failure: { failureKind: 'budget_policy_violation', diagnostic: 'Executor usage exceeds the frozen token policy; original outcome remains archived.' } };
+    let source: ReturnType<KnowledgeApplication['source']> | undefined;
+    let checked: ReturnType<typeof checkWindowExtractionResponse> | undefined;
+    if (decoded.status === 'decoded' && !signal?.aborted) {
+      source = this.source(run.snapshotId, run.sourceVersion);
+      if (source.status !== 'available') decoded = { status: 'failed', failure: {
+        failureKind: 'source_unavailable', diagnostic: 'Extraction source is unavailable; no further invocation or admission is allowed.' } };
+      else try { checked = checkWindowExtractionResponse(decoded.response, source.window.excerpts); }
+      catch (error) {
+        if (!(error instanceof SyntaxError || error instanceof Error && error.name === 'ZodError')) throw error;
+        decoded = { status: 'failed', failure: { failureKind: 'envelope_error', diagnostic: 'Extraction response envelope was rejected.' } };
+      }
+    }
+    const settled = { ...attempt,
+      ...(decoded.status === 'failed' ? { failure: { ...decoded.failure, diagnostic: decoded.failure.diagnostic.slice(0, 4096) } } : {}),
+      ...(decoded.status === 'decoded' && decoded.wireDiagnostic ? { wireDiagnostic: { wireId: decoded.wireDiagnostic.wireId,
+        wireStatus: decoded.wireDiagnostic.wireStatus, itemFailureCount: decoded.wireDiagnostic.itemFailures.length } } : {}),
+      ...(checked ? { admission: { assessmentVersion: 'knowledge-generation-admission/v1' as const,
+        entityCount: checked.analysis.entities.length, mentionCount: checked.analysis.mentions.length, proposalCount: checked.accepted.length,
+        entityRejections: checked.analysis.rejected, rejections: checked.rejected } } : {}) };
+    if (this.ports.hash(settled) !== this.ports.hash(attempt)) { run = updateAttempt(settled); attempt = run.attempts.at(-1)!; }
+    if (!signal?.aborted && retryOwner && this.source(run.snapshotId, run.sourceVersion).status === 'available' && this.retryTrigger(run, true)) return run;
+    const result = extractionOutcomeResult(recorded.outcome), fields = result as Record<string, unknown> | undefined;
+    const metric = (key: string) => typeof fields?.[key] === 'number' && Number.isFinite(fields[key]) ? fields[key] as number : undefined;
+    const flag = (key: string) => typeof fields?.[key] === 'boolean' ? fields[key] as boolean : undefined;
+    const runtime = result && metric('durationMs') !== undefined ? { durationMs: metric('durationMs')!,
+      ...Object.fromEntries(['durationApiMs', 'inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens', 'costUSD']
+        .filter(key => metric(key) !== undefined && (key === 'durationApiMs' || (key === 'costUSD' ? flag('costReportedByExecutor') !== false : flag('tokenUsageReportedByExecutor') !== false)))
+        .map(key => [key, metric(key)])),
+      ...(flag('tokenUsageReportedByExecutor') === undefined ? {} : { tokenUsageReportedByExecutor: flag('tokenUsageReportedByExecutor') }),
+      ...(flag('costReportedByExecutor') === undefined ? {} : { costReportedByExecutor: flag('costReportedByExecutor') }) } : undefined;
+    const rawOutput = typeof result?.output === 'string' && result.output.length <= 2 * 1024 * 1024 ? result.output : undefined;
+    const projection = { ...(runtime ? { runtime } : {}), ...(rawOutput === undefined ? {} : { rawOutput, selectedAttemptId: attempt.attemptId }) };
+    if (signal?.aborted || decoded.status === 'failed') return this.saveRun(run, { ...projection, status: signal?.aborted ? 'cancelled' : 'failed',
+      finishedAt: this.ports.now(), error: signal?.aborted ? 'Extraction cancelled after outcome archive.' : decoded.status === 'failed' ? decoded.failure.diagnostic : undefined });
+    run = this.saveRun(run, projection);
+    // Recompute no new source fact: admission above and this birth use the same checker invocation.
+    if (source?.status !== 'available' || !checked) throw new Error('Extraction admission source is missing.');
+    try { run = this.prepare(run, source.window, decoded.response, undefined, checked); }
+    catch (error) {
+      if (!(error instanceof Error && /capacity|exceeds/i.test(error.message))) throw error;
+      const diagnostic = 'Extraction application intent exceeds storage capacity; original outcome remains archived.';
+      return this.saveRun(run, { status: 'failed', finishedAt: this.ports.now(), error: diagnostic,
+        attempts: run.attempts.map(item => item.attemptId === attempt.attemptId ? { ...item, failure: { failureKind: 'capacity', diagnostic } } : item) });
+    }
+    return this.commitPrepared(run, signal);
+  }
+  private commitPrepared(run: ExtractionRun, signal?: AbortSignal): ExtractionRun {
+    signal?.throwIfAborted();
+    this.ports.entities.write(run.entityAnalysis!, run.entityAnalysis!.revision.revisedBy);
+    for (const intent of run.intents) {
+      signal?.throwIfAborted();
+      this.ports.knowledge.write({ requestId: intent.requestId, knowledgeId: intent.revision.knowledgeId, expectedGeneration: 0,
+        commandKind: 'append_revision', expectedHeadRevisionId: null, revision: intent.revision, grounding: intent.grounding }, intent.revision.revisedBy);
+    }
+    return this.saveRun(run, { status: 'completed', finishedAt: this.ports.now(),
+      committed: run.intents.map(intent => ({ knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) });
   }
   maintain(knowledgeId: string, revisionId: string, choice: 'retain' | 'discard', reason: string, expectedGeneration: number, requestId = this.ports.id()) {
     return this.ports.knowledge.write({ knowledgeId, requestId, expectedGeneration, commandKind: 'record_maintenance',
@@ -321,9 +544,10 @@ export class KnowledgeApplication {
     return this.detail(knowledgeId, revision.revisionId);
   }
   private prepare(run: ExtractionRun, window: EvidenceWindow, response: unknown,
-    wireDiagnostic?: { wireId: string; wireStatus: 'valid' | 'item_failures'; itemFailureCount: number }): ExtractionRun {
+    wireDiagnostic?: { wireId: string; wireStatus: 'valid' | 'item_failures'; itemFailureCount: number },
+    assessment?: ReturnType<typeof checkWindowExtractionResponse>): ExtractionRun {
     const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId };
-    const checked = checkWindowExtractionResponse(response, window.excerpts);
+    const checked = assessment ?? checkWindowExtractionResponse(response, window.excerpts);
     const entityIds = new Map(checked.analysis.entities.map(entity => [entity.entityId, this.ports.id()]));
     const mentionIds = new Map(checked.analysis.mentions.map(mention => [mention.mentionId, this.ports.id()]));
     const entityAnalysis: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: run.runId,
@@ -334,7 +558,7 @@ export class KnowledgeApplication {
         limitations: window.limitations,
       } };
     return this.saveRun(run, { status: 'prepared', error: undefined, finishedAt: undefined, entityAnalysis, entityRejections: checked.analysis.rejected, rejections: checked.rejected,
-      ...(wireDiagnostic ? { attempts: [{ ...run.attempts[0], wireDiagnostic }] } : {}),
+      ...(wireDiagnostic ? { attempts: run.attempts.map(attempt => attempt.attemptId === run.selectedAttemptId ? { ...attempt, wireDiagnostic } : attempt) } : {}),
       intents: checked.accepted.map(proposal => this.intent(proposal, window, actor, { entityIds, mentionIds,
         ref: { analysisId: run.runId, revisionId: entityAnalysis.revision.revisionId } })) });
   }
@@ -351,7 +575,7 @@ export class KnowledgeApplication {
         if ((update.status === 'prepared' && ['prepared', 'completed'].includes(saved.status)
           || update.status === 'completed' && saved.status === 'completed')
           && saved.requestDigest === next.requestDigest && saved.selectedAttemptId === next.selectedAttemptId
-          && saved.rawOutput === next.rawOutput && saved.attempts[0].requestDigest === next.attempts[0].requestDigest) {
+          && saved.rawOutput === next.rawOutput && this.ports.hash(saved.attempts) === this.ports.hash(next.attempts)) {
           this.ports.runs.save(saved, saved.generation - 1); return saved;
         }
       }

@@ -12,6 +12,7 @@ import {
 } from '../../src/observability/soft-standards/constants.js';
 import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/prompt.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/strict-prompt.js';
+import { EXTRACTION_FEEDBACK_PREAMBLE } from '../../src/observability/knowledge-extraction/generation-policy.js';
 import { ENTITY_LINK_PROMPT_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
 
 /**
@@ -112,6 +113,13 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
     module: 'src/observability/knowledge-extraction/strict-prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex'),
+  },
+  {
+    promptId: 'knowledge-extraction-feedback',
+    purpose: '有限校验重问的宿主反馈指令（knowledge-generation-feedback/v1）',
+    module: 'src/observability/knowledge-extraction/generation-policy.ts',
+    measurementInvariant: true,
+    getHash: () => createHash('sha256').update(EXTRACTION_FEEDBACK_PREAMBLE).digest('hex'),
   },
   {
     promptId: 'entity-link-proposal',

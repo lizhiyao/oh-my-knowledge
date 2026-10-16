@@ -26,7 +26,7 @@ omk studio
 
 ### 对话自动提炼与项目待办 {#对话自动提炼与项目待办}
 
-自动提炼是可选入口。先预览选定对话的消息、目录、模型与调用次数，确认发送授权后开启；授权限当前对话、24 小时及当前服务生命周期。次数上限不是金额预算，失败或中断停止，重启不自动恢复。知识待办汇集候选供核对，不自动决定保留或改写载体。
+自动提炼是可选入口。先预览选定对话的消息、目录、模型及调用／预算上限，确认发送授权后开启；授权限当前对话、24 小时及当前服务生命周期。每次初始调用、重试和校验重问均消耗会话总 `maxCalls` 的一次额度，一个 run 调用三次就占三次。显式启用的 token 预约总额跨所有窗口累计，同时限制每个 run。派发前持久化预约，按不可变回执恢复计数，未知用量或发送前中断均不退款。修改显示的范围、模型或上限会清除同意勾选；既有无 policy 权限仍仅允许单次调用，重试须重新明确批准。硬失败或中断停止自动化；终态瞬时失败可继续等待新的稳定窗口，但不重发同一来源。已归档服务端 Retry-After 会持久保存，每次派发前检查，包含新窗口及重新授权；超过 run 重试上限的等待值不缩短，权限到期仍阻止派发。非法等待值停止自动化。完整核验的空派发 ledger 可释放本地拒绝的来源窗口，供重新明确批准，不删除失败 run 或证据；任何预约或不明确回执仍保留来源去重。重启不自动恢复。知识待办汇集候选供核对，不自动决定保留或改写载体。
 
 ## 选择来源并生成 {#选择来源并生成}
 
@@ -56,6 +56,12 @@ omk observe knowledge schema --json
 strict 结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。默认生成使用该协议，解码占位后再进入现有宿主接纳检查。默认配置生成使用无 few-shot strict prompt v15 并绑定其完整 system 摘要；领域响应 Schema v4 不变，作者 prompt-json 端口仍用原 v14。prompt、wire、完整请求与 pipeline 分别有自己的身份；本次不激活四正例候选，也不继承历史 prompt-json 质量结果，不宣称完成新的真实模型验收。不支持的执行器能力在派发前拒绝，不回退为仅靠 prompt 约束输出。逐字证据与语义检查仍由宿主负责。导出 Schema 不代表已验证具体 provider 的支持能力或模型质量。
 
 默认文本摘要显示当前知识工作区和带同一 `--workspace` 的下一步命令；未配置模型时，`generate` 仍须显式传入 `--model`。`--json` 保持完整机器结果，提示不混入 JSON stdout。必要参数与 JSON 语法在读取设置或存储前检查；参数失败退出 `2`，业务失败退出 `1`，成功退出 `0`。修订冲突提示重读命令，工作区忙时等待当前写入结束再重试，不删除活跃锁。维护决定与效果验证分别呈现。
+
+生成默认使用 `knowledge-generation-single/v1`：一次 OMK invocation，不自动重试、校验重问或 fallback。Studio 高级配置与 CLI `--generation-policy '<完整政策 JSON>'` 显式启用 `knowledge-generation-bounded/v1`；`omk agents extract` 也支持同一参数。bounded 政策声明 `maxInvocations`（最多 3）、`maxReasks`（最多 2，计入总调用数）、`profileId`、`maxTotalTokens` 与 `maxOutputTokens`，并冻结 retry、accounting、selection、feedback 与 backoff 规则；须传完整政策，不能只给局部覆盖。Studio 默认关闭此开关，确认前显示实际上限。
+
+生产 token 依据 `openai-gpt54-snapshot-context/v1` 仅接受 `openai-api`、请求快照 `gpt-5.4-2026-03-05` 与精确的官方 Chat Completions endpoint。每次预约文档规定的 1,050,000 token 上下文上界加所选输出上限，不按文本长度预测。Studio 初始启用值为最多 3 次调用、2 次重问、3,162,288 token 预约总额及每次 4096 输出 token；实际报告用量较低或未知也不退还全额预约。其他 endpoint／模型组合与 Codex 仍可使用 single 政策，但不会自动获得此 bounded 依据或 fallback 到其他 provider。次数只限制 OMK 调用，不等于 provider 内部请求数或美元金额上限。
+
+bounded 政策仅重试已分类的限流／服务端／网络／超时失败，并可对 parse／envelope／wire 失败或无接纳项的结果重问；只要有接纳 sibling，即选定该部分结果，不额外调用。每份返回结果先归档再分类；未知执行、待归档、存储或提交失败均不授权再次派发。这项工程政策不声明新的真实模型质量或费用改善。
 
 ## 核对与处理 {#核对与处理}
 
@@ -130,7 +136,7 @@ OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若�
 ## 中断与来源管理 {#中断与来源管理}
 
 
-`generate --run-id <UUID>` 可为一次请求指定稳定身份。重复相同请求不会再次调用模型；修改来源或运行配置时不要复用该身份。一个 v5 run 只允许一次 OMK invocation，不自动重试或 fallback；reask、瞬时失败重试与累计预算策略仍未完成。
+`generate --run-id <UUID>` 可为一次请求及冻结政策指定稳定身份。重复相同请求不会再次调用模型；修改来源、政策或运行配置时不要复用该身份。默认 v5 run 仍限单次 invocation；显式 bounded run 分别记录每次获准尝试及预约。两种政策均不使用 fallback。
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
@@ -148,7 +154,7 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 
 ## 接纳统计
 
-`omk observe knowledge quality --workspace ./knowledge --json` 与 Studio 的**提炼记录 → 结构接纳统计**共用只读投影 `omk.extraction-quality/v2`，范围为选定工作区 `extraction-runs/` 中的当前 v5 run；不调用模型，不用当前检查器重判历史。原 `runs/` 文件不进入此投影，缺席不代表工作区从未提炼过。分组绑定 prompt 版本／摘要、执行器、请求模型、run Schema 版本、policyId、outputMode、wireId（或 null）、producerId 与 producerRevision；这些维度不证明 endpoint 或完整运行条件相同，计数也不是质量因果实验。每个 run 的已保存出生接纳只计一次，原生 outcome 证据不增加候选分母。后续实体纠正、知识修订和维护决定不改变生成计数。
+`omk observe knowledge quality --workspace ./knowledge --json` 与 Studio 的**提炼记录 → 结构接纳统计**共用只读投影 `omk.extraction-quality/v3`，范围为选定工作区 `extraction-runs/` 中的当前 v5 run；不调用模型，不用当前检查器重判历史。原 `runs/` 文件不进入此投影，缺席不代表工作区从未提炼过。分组绑定 prompt 版本／摘要、执行器、请求模型、run Schema 版本、policyId 及完整政策配置、初始 timeout／输出 token 上限、outputMode、wireId（或 null）、producerId 与 producerRevision。这相对投影 v2 是 `BREAKING-COMPARABILITY`：重试／预算上限不同，不再仅因 policyId 相同而混组。这些维度不证明 endpoint 或完整运行条件相同，计数也不是质量因果实验。每个 run 最终选定的出生接纳只计一次，重试和原生 outcome 证据不增加运行或候选分母。后续实体纠正、知识修订和维护决定不改变生成计数。
 
 实体、提及和知识提案的接纳率为汇总接纳数除以汇总接纳数与拒绝数之和，不平均各 run 的百分比。标识符碎片拒绝率以全部已记录提及项为分母。逐字定位分别显示通过、拒绝、未检查、未知：已接纳提及及定位后拒绝理由能证明执行了位置检查，结构／重复 ID 拒绝发生在定位前；未知理由不作解释。未检查项不进入定位分母；未知检查记录、历史实体拒绝列表缺失或尚无接纳记录，会使相应比例未知。空分母为 `null`，不显示 100%。
 

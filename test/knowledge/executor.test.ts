@@ -4,6 +4,8 @@ import type { ExecutorArchiveProducer } from '../../src/executors/contracts/arch
 import { assertExecutorInputCapabilities, createExecutor } from '../../src/executors/index.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import { OPENAI_TOKEN_BUDGET_EVIDENCE, OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST, resolveTokenBudgetProfile } from '../../src/executors/contracts/token-budget.js';
+import { captureBudgetProfile } from '../../scripts/bench/entity-capture-profile.js';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
@@ -70,9 +72,12 @@ describe('knowledge generation executor boundary', () => {
     });
     const model = configuredExtractionModel('codex', 'test', createCodexArchiveProducer({}, create));
     expect(model.wireId).toBe(WINDOW_EXTRACTION_WIRE_ID);
+    expect(model.dispatchGate).toBe('producer-before-dispatch/v1');
+    const beforeDispatch = vi.fn();
     model.inspect!(STRICT_EXTRACTION_PROMPT, 'selected text');
     expect(create).not.toHaveBeenCalled();
-    const received = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', controller.signal);
+    const received = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', controller.signal, beforeDispatch);
+    expect(beforeDispatch).toHaveBeenCalledTimes(1);
     if (!('outcomeKind' in received)) throw new Error('Expected the native executor observation.');
     if (outcome === 'throw' || outcome === 'cleanup-exception') {
       expect(received).toMatchObject({ outcomeKind: 'exception', error: { sourceType: 'object', message: 'null' } });
@@ -88,29 +93,43 @@ describe('knowledge generation executor boundary', () => {
     expect(directory).not.toBe('');
     expect(existsSync(directory)).toBe(outcome.startsWith('cleanup-'));
     const callsBefore = create.mock.calls.length;
-    await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', AbortSignal.abort())).rejects.toThrow();
+    await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', AbortSignal.abort(), beforeDispatch)).rejects.toThrow();
     expect(create).toHaveBeenCalledTimes(callsBefore);
+    expect(beforeDispatch).toHaveBeenCalledTimes(1);
   });
   it('uses the exact strict API request and preserves normalized native evidence before deriving success or refusal admission', async () => {
     const output = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';
     let refusal = false;
+    let maxOutputTokens = 4096;
+    const events: string[] = [];
+    const beforeDispatch = vi.fn(() => { events.push('gate'); });
     const fetch = vi.fn(async (_url: unknown, options?: RequestInit) => {
+      events.push('fetch');
       expect(_url).toBe('https://fixture.invalid/v1/chat/completions');
+      expect(options?.redirect).toBe('error');
       const body = JSON.parse(String(options?.body));
       expect(body).not.toHaveProperty('tools');
       expect(body).not.toHaveProperty('cwd');
       expect(body).toEqual({ model: 'fixture-model', messages: [{ role: 'system', content: STRICT_EXTRACTION_PROMPT }, { role: 'user', content: 'selected evidence' }],
         response_format: { type: 'json_schema', json_schema: { name: 'knowledge_extraction_v1', schema: WINDOW_EXTRACTION_WIRE_SCHEMA, strict: true } },
-        max_completion_tokens: 4096, n: 1, stream: false });
+        max_completion_tokens: maxOutputTokens, n: 1, stream: false });
       return new Response(JSON.stringify({ choices: [{ message: { content: refusal ? '  original partial text\n' : output,
         ...(refusal ? { refusal: '  original refusal\n' } : {}) }, finish_reason: 'stop' }],
       usage: { prompt_tokens: 13, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 3 } } }));
     });
     vi.stubGlobal('fetch', fetch);
-    const model = configuredExtractionModel('openai-api', 'fixture-model', createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'https://fixture.invalid' }, createExecutor));
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'https://fixture.invalid' }, createExecutor);
+    const model = configuredExtractionModel('openai-api', 'fixture-model', producer);
+    const capped = configuredExtractionModel('openai-api', 'fixture-model', producer, { maxOutputTokens: 8192 });
+    const originalExecution = extractionExecution(model, STRICT_EXTRACTION_PROMPT, 'selected evidence');
+    const cappedExecution = extractionExecution(capped, STRICT_EXTRACTION_PROMPT, 'selected evidence');
+    expect(originalExecution.maxOutputTokens).toBe(4096); expect(cappedExecution.maxOutputTokens).toBe(8192);
+    expect(cappedExecution.producer.proof).not.toEqual(originalExecution.producer.proof);
+    expect(model.dispatchGate).toBe('producer-before-dispatch/v1');
     model.inspect!(STRICT_EXTRACTION_PROMPT, 'selected evidence'); expect(fetch).not.toHaveBeenCalled();
     for (refusal of [false, true]) {
-      const received = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence');
+      const selected = refusal ? capped : model; maxOutputTokens = selected.maxOutputTokens!;
+      const received = await selected.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence', undefined, beforeDispatch);
       if (!('outcomeKind' in received) || received.outcomeKind !== 'result') throw new Error('Expected API native result.');
       expect(received.result).toMatchObject({ ok: !refusal, output: refusal ? '  original partial text\n' : output,
         inputTokens: 10, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 0, costReportedByExecutor: false });
@@ -125,6 +144,16 @@ describe('knowledge generation executor boundary', () => {
       expect(JSON.stringify(recorded)).toBe(before);
     }
     expect(fetch).toHaveBeenCalledTimes(2);
+    expect(beforeDispatch).toHaveBeenCalledTimes(2); expect(events).toEqual(['gate', 'fetch', 'gate', 'fetch']);
+    const reject = vi.fn(() => { throw new Error('attempt reservation rejected'); });
+    const blocked = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence', undefined, reject);
+    expect(blocked).toMatchObject({ outcomeKind: 'result', result: { ok: false, failure: { failureKind: 'invalid_request' }, tokenUsageReportedByExecutor: false } });
+    expect(reject).toHaveBeenCalledTimes(1); expect(fetch).toHaveBeenCalledTimes(2);
+    const request = { model: 'fixture-model', system: STRICT_EXTRACTION_PROMPT, prompt: 'selected evidence', maxOutputTokens: 4096 };
+    const driftGate = vi.fn();
+    const drifted = await producer.configure('openai-api', request, driftGate).execute({ ...request, prompt: 'changed after reservation' });
+    expect(drifted).toMatchObject({ ok: false, failure: { failureKind: 'invalid_request' } });
+    expect(driftGate).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledTimes(2);
     const controller = new AbortController(); controller.abort();
     await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence', controller.signal)).rejects.toThrow();
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -178,10 +207,30 @@ describe('knowledge generation executor boundary', () => {
     expect(extractionResponse(recorded, 'json-schema', model.wireId)).toMatchObject({ status: 'failed', failure: { failureKind: 'unexpected_tools' } });
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
-  it('rejects an empty model before asking the host for an executor', () => {
+  it('rejects empty model selection and unsupported output caps before asking the host for an executor', () => {
     const create = vi.fn(createExecutor);
     expect(() => configuredExtractionModel('codex', ' ', createCodexArchiveProducer({}, create))).toThrow('explicitly configured model');
+    expect(() => configuredExtractionModel('codex', 'fixture', createCodexArchiveProducer({}, create), { maxOutputTokens: 1 })).toThrow('不支持 maxOutputTokens');
+    for (const maxOutputTokens of [0, -1, 1.5, NaN, Infinity]) {
+      expect(() => configuredExtractionModel('openai-api', 'fixture', createOpenAiArchiveProducer({}, create), { maxOutputTokens })).toThrow('positive safe integer');
+    }
     expect(create).not.toHaveBeenCalled();
+  });
+  it('keeps capture evidence on the production profile and refuses model or endpoint aliases as hard-token authority', () => {
+    const capture = captureBudgetProfile({ OPENAI_TOKEN_BUDGET_EVIDENCE, OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST, resolveTokenBudgetProfile });
+    expect(JSON.stringify(capture.OPENAI_CAPTURE_BUDGET_EVIDENCE)).toBe(JSON.stringify(OPENAI_TOKEN_BUDGET_EVIDENCE));
+    expect(capture.OPENAI_CAPTURE_BUDGET_EVIDENCE_DIGEST).toBe(OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST);
+    expect(resolveTokenBudgetProfile('openai-gpt54-snapshot-context/v1', 'gpt-5.4-2026-03-05', 'https://api.openai.com/v1/chat/completions'))
+      .toMatchObject({ authority: 'official-contract', inputUpperBound: 1_050_000, outputUpperBound: 128_000, evidenceDigest: OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST });
+    expect(resolveTokenBudgetProfile('loopback-test/v1', 'authored-loopback-test', 'http://127.0.0.1:9321/v1/chat/completions'))
+      .toMatchObject({ authority: 'loopback-test-only', inputUpperBound: 1024, outputUpperBound: 64 });
+    for (const endpoint of ['http://localhost:9321/v1/chat/completions', 'http://2130706433:9321/v1/chat/completions',
+      'http://127.0.0.01:9321/v1/chat/completions', 'http://user@127.0.0.1:9321/v1/chat/completions',
+      'http://127.0.0.1:9321/v1/chat/completions?extra=1', 'https://api.openai.com/v1/chat/completions']) {
+      expect(() => resolveTokenBudgetProfile('loopback-test/v1', 'authored-loopback-test', endpoint)).toThrow('No verified budget profile');
+    }
+    expect(() => resolveTokenBudgetProfile('openai-gpt54-snapshot-context/v1', 'gpt-5.4', 'https://api.openai.com/v1/chat/completions')).toThrow('No verified budget profile');
+    expect(() => resolveTokenBudgetProfile('openai-gpt54-snapshot-context/v1', 'gpt-5.4-2026-03-05', 'https://proxy.invalid/v1/chat/completions')).toThrow('No verified budget profile');
   });
   it.each(['codex-sdk'])('rejects agent executor %s before invoking a runtime', (executor) => {
     const create = vi.fn(createExecutor);

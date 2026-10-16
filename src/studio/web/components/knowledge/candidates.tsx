@@ -4,6 +4,7 @@ import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
+import { GenerationPolicyFields } from './generation-policy-fields';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { ApplyEntitiesDialog } from './apply-entities';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
@@ -18,6 +19,7 @@ import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
+import type { ExtractionGenerationPolicy } from '../../../../observability/application';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(rows: KnowledgeCandidateRow[]): void }) {
   const zh = lang === 'zh';
@@ -41,6 +43,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [end, setEnd] = useState<number | null>(null);
   const [executor, setExecutor] = useState('codex');
   const [model, setModel] = useState('');
+  const [policy, setPolicy] = useState<ExtractionGenerationPolicy>();
   const [snapshot, setSnapshot] = useState<KnowledgeCandidateSource | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -203,7 +206,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: !workspace || embedded },
         ], onClick: ({ key }) => {
           if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
-          if (key === 'import') { setSnapshot(null); setShowImport(true); }
+          if (key === 'import') { setSnapshot(null); setPolicy(undefined); setShowImport(true); }
         } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
@@ -295,10 +298,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
         <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={value => { setExecutor(value); setModel(''); }} options={['codex', 'openai-api'].map((value) => ({ value, label: value }))}/></label>
         <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
+        <GenerationPolicyFields lang={lang} value={policy} presentation="summary"/>
+        <details className="conversation-extract-options"><summary>{t('调整调用与预算上限', 'Adjust invocation and budget limits')}</summary><GenerationPolicyFields lang={lang} value={policy} onChange={setPolicy} disabled={busy} presentation="fields"/></details>
         <Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
           {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}
           <p>{t('仅处理选定输入；不会自动修改 AGENTS.md 或 skill。模型费用以执行器实际报告为准。', 'Only selected input is processed. No automatic AGENTS.md or skill edits. Cost depends on executor reporting.')}</p>
-          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
+          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID(), ...(policy ? { policy } : {}) }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
     <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} size={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId);
@@ -337,7 +342,16 @@ function ExtractionInvocationSummary({ invocation, lang }: { invocation: Knowled
   return <details className="candidate-help extraction-invocation">
     <summary>{t('结果证据归档：', 'Outcome evidence archive: ')}{invocation.archiveStatus === 'recorded' ? t('已记录', 'Recorded') : t('待归档', 'Pending')}
       {invocation.failureKind !== null && <> · {t('失败类别：', 'Failure category: ')}{invocation.failureKind}</>}</summary>
-    <p>{t('本运行限 ', 'This run permits ')}{invocation.attemptCount}{t(' 次 OMK 调用；不自动重试或 fallback。', ' OMK invocation; no automatic retry or fallback.')}</p>
+    <p>{invocation.policyId === 'knowledge-generation-single/v1'
+      ? t(`本运行限 ${invocation.limits.maxInvocations} 次 OMK 调用；不自动重试或 fallback。`, `This run permits ${invocation.limits.maxInvocations} OMK invocation; no automatic retry or fallback.`)
+      : t(`本运行最多 ${invocation.limits.maxInvocations} 次 OMK 调用，含最多 ${invocation.limits.maxReasks} 次校验重问；不使用 fallback。`, `This run permits up to ${invocation.limits.maxInvocations} OMK invocations, including up to ${invocation.limits.maxReasks} validation reasks; no fallback.`)}</p>
+    <p>{t('已记录 OMK 调用尝试：', 'Recorded OMK invocation attempts: ')}{invocation.attemptCount}</p>
+    <p>{invocation.budget.maxTotalTokens === undefined
+      ? t('未启用 token 预约预算。', 'No token reservation budget is enabled.')
+      : t(`token 预约已用 ${invocation.budget.reservedTokens}／总额 ${invocation.budget.maxTotalTokens}；已预约额度不返还。`, `Token reservation used ${invocation.budget.reservedTokens} / total ${invocation.budget.maxTotalTokens}; reservations are not refunded.`)}</p>
+    {invocation.policyId === 'knowledge-generation-bounded/v1'
+      ? <p>{t('观测 token 用量：', 'Observed token usage: ')}{invocation.budget.observedTokens ?? t('未知', 'Unknown')} · {t('用量未知调用：', 'Invocations with unknown usage: ')}{invocation.budget.unknownAttempts}</p>
+      : <p>{t('未启用预约核算；原生用量见运行详情。', 'Reservation accounting is not enabled; inspect the run details for native usage.')}</p>}
     <p>{t('策略：', 'Policy: ')}<code>{invocation.policyId}</code> · {t('输出模式：', 'Output mode: ')}<code>{invocation.outputMode}</code></p>
     <p>{t('结构线协议：', 'Structural wire: ')}{invocation.wireId === null ? t('未使用', 'Not used') : <code>{invocation.wireId}</code>}</p>
     <p>{invocation.archiveStatus === 'pending'

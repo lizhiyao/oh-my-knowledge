@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { EXTRACTION_OUTCOME_MAX_BYTES, FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
-import { ExtractionOutcomeSchema, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/observability/knowledge-extraction/runs.js';
+import { ExtractionOutcomeSchema, ExtractionRunSchema, extractionRunSummary, type ExtractionAttempt, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/observability/knowledge-extraction/runs.js';
+import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
@@ -51,6 +52,25 @@ function nativeOutcome(output = 'original output'): Extract<ExtractionOutcome, {
   return { outcomeKind: 'result', result: { ok: true, output, durationMs: -3, durationApiMs: 0, inputTokens: 42, outputTokens: 5,
     cacheReadTokens: 12, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false,
     stopReason: 'end_turn', numTurns: 1, additionalProviderField: { retained: true } } };
+}
+function boundedRunFixture(): ExtractionRun {
+  const run = runFixture(), attempt = run.attempts[0];
+  return { ...run, executor: 'openai-api', model: 'authored-loopback-test',
+    policy: boundedExtractionPolicy({ maxInvocations: 3, maxReasks: 2, profileId: 'loopback-test/v1', maxTotalTokens: 3264, maxOutputTokens: 64 }),
+    attempts: [{ ...attempt, request: { ...attempt.request, maxOutputTokens: 64 },
+      budget: { profileId: 'loopback-test/v1', authority: 'loopback-test-only', evidenceDigest: sha('0'), inputUpperBound: 1024, outputUpperBound: 64, tokensReserved: 1088 } }] };
+}
+function followingAttempt(run: ExtractionRun): ExtractionAttempt {
+  const previous = run.attempts[run.attempts.length - 1], first = run.attempts[0];
+  return { attemptId: randomUUID(), startedAt: run.startedAt, requestDigest: sha('b'), request: first.request, producer: first.producer,
+    budget: first.budget, trigger: { triggerKind: 'transient', previousAttemptId: previous.attemptId, notBefore: run.startedAt, delayMs: 0 } };
+}
+function archiveBoundedAttempt(store: FileExtractionRunStore, run: ExtractionRun, outcome: ExtractionOutcome, failure?: ExtractionAttempt['failure']): ExtractionRun {
+  const attempt = run.attempts[run.attempts.length - 1];
+  const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+  const settled: ExtractionAttempt = { ...attempt, outcome: ref, accounting: accountExtractionOutcome(outcome, attempt.budget!), ...(failure ? { failure } : {}) };
+  const next = { ...run, generation: run.generation + 1, attempts: [...run.attempts.slice(0, -1), settled] };
+  store.save(next, run.generation); return next;
 }
 
 describe('v5 extraction manifests and immutable native evidence', () => {
@@ -177,6 +197,67 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     const target = join(workspace, 'private.json'); writeFileSync(target, '{}'); symlinkSync(target, path);
     expect(() => store.readOutcome(run.runId, attempt.attemptId)).toThrow('Invalid extraction file');
     expect(readFileSync(target, 'utf8')).toBe('{}');
+  });
+  it('preserves single-policy v5 bytes and enforces bounded reservations, cumulative limits and an immutable attempt prefix', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const single = runFixture(); store.create(single);
+    const singlePath = join(directory, `${single.runId}.json`), singleBytes = readFileSync(singlePath, 'utf8');
+    expect(store.read(single.runId)).toEqual(single); expect(readFileSync(singlePath, 'utf8')).toBe(singleBytes);
+    let run = boundedRunFixture(); store.create(run);
+    const pending = followingAttempt(run);
+    expect(() => store.save({ ...run, generation: 2, attempts: [...run.attempts, pending] }, 1)).toThrow('predecessor');
+    const firstOutcome = nativeOutcome('private failed native output');
+    firstOutcome.result.ok = false; firstOutcome.result.failure = { failureKind: 'server_error' };
+    run = archiveBoundedAttempt(store, run, firstOutcome, { failureKind: 'server_error', diagnostic: 'private native diagnostic' });
+    const firstSidecar = join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`), firstBytes = readFileSync(firstSidecar, 'utf8');
+    const second = followingAttempt(run), two: ExtractionRun = { ...run, generation: 3, attempts: [...run.attempts, second] };
+    expect(() => store.create({ ...two, runId: randomUUID() })).toThrow('start with one');
+    store.save(two, 2);
+    expect(() => store.save({ ...two, attempts: [...run.attempts, { ...second, attemptId: randomUUID() }] }, 2)).toThrow('run conflict');
+    expect(() => store.save({ ...two, generation: 4, attempts: [two.attempts[0]] }, 3)).toThrow('prefix conflict');
+    expect(() => store.save({ ...two, generation: 4, attempts: [{ ...two.attempts[0], budget: { ...two.attempts[0].budget!, authority: 'official-contract' } }, second] }, 3)).toThrow('attempt conflict');
+    expect(() => store.save({ ...two, generation: 4, attempts: [{ ...two.attempts[0], accounting: { ...two.attempts[0].accounting!, observedTokens: 0 } }, second] }, 3)).toThrow('attempt conflict');
+    const secondOutcome = nativeOutcome('second native output'); secondOutcome.result.tokenUsageReportedByExecutor = true;
+    run = archiveBoundedAttempt(store, two, secondOutcome);
+    const summary = extractionRunSummary(run);
+    expect(summary.invocation).toMatchObject({ attemptCount: 2, archiveStatus: 'recorded', failureKind: null,
+      limits: { maxInvocations: 3, maxReasks: 2 }, budget: { reservedTokens: 2176, observedTokens: null, unknownAttempts: 1, maxTotalTokens: 3264 } });
+    expect(JSON.stringify(summary)).not.toContain('private'); expect(readFileSync(firstSidecar, 'utf8')).toBe(firstBytes);
+    const third = followingAttempt(run); const three = { ...run, generation: run.generation + 1, attempts: [...run.attempts, third] };
+    store.save(three, run.generation);
+    expect(ExtractionRunSchema.safeParse({ ...three, policy: { ...three.policy, maxTotalTokens: 3263 } }).success).toBe(false);
+    expect(ExtractionRunSchema.safeParse({ ...three, attempts: [...three.attempts, followingAttempt(three)] }).success).toBe(false);
+    expect(ExtractionRunSchema.safeParse({ ...single, attempts: [...single.attempts, single.attempts[0]] }).success).toBe(false);
+    expect(ExtractionRunSchema.safeParse({ ...single, attempts: [{ ...single.attempts[0], budget: run.attempts[0].budget }] }).success).toBe(false);
+    expect(readFileSync(singlePath, 'utf8')).toBe(singleBytes);
+  });
+  it('verifies accounting against every native archive and binds the single birth to the selected final attempt', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    let run = boundedRunFixture(); store.create(run);
+    const firstOutcome = nativeOutcome('malformed first response');
+    run = archiveBoundedAttempt(store, run, firstOutcome, { failureKind: 'parse_error', diagnostic: 'invalid JSON' });
+    const second = followingAttempt(run);
+    second.trigger = { ...second.trigger!, triggerKind: 'validation', feedback: { feedbackVersion: 'knowledge-generation-feedback/v1', body: 'invalid_json', digest: sha('c') } };
+    run = { ...run, generation: run.generation + 1, attempts: [...run.attempts, second] }; store.save(run, run.generation - 1);
+    const outcome = nativeOutcome('final response'); outcome.result.durationMs = 23; outcome.result.tokenUsageReportedByExecutor = true;
+    const ref = store.writeOutcome(run.runId, second.attemptId, outcome, second.producer.maxOutcomeJsonBytes);
+    const accounting = accountExtractionOutcome(outcome, second.budget!);
+    expect(() => store.save({ ...run, generation: run.generation + 1, attempts: [run.attempts[0], { ...second, outcome: ref, accounting: { ...accounting, observedTokens: 0 } }] }, run.generation)).toThrow('accounting differs');
+    run = archiveBoundedAttempt(store, run, outcome);
+    const attempt = run.attempts[1];
+    const prepared: ExtractionRun = { ...run, generation: run.generation + 1, status: 'prepared', selectedAttemptId: attempt.attemptId,
+      rawOutput: outcome.result.output!, runtime: { durationMs: 23 }, entityAnalysis: { requestId: randomUUID(), analysisId: run.runId,
+        snapshotId: run.snapshotId, sourceVersion: run.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
+        revision: { revisionId: randomUUID(), revisedAt: run.startedAt, revisedBy: { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId },
+          revisionReason: 'One final birth', entities: [], mentions: [], limitations: [] } } };
+    expect(() => store.save({ ...prepared, rawOutput: firstOutcome.result.output! }, run.generation)).toThrow('output differs');
+    expect(() => store.save({ ...prepared, runtime: { durationMs: -3 } }, run.generation)).toThrow('runtime differs');
+    store.save(prepared, run.generation);
+    expect(store.read(run.runId).selectedAttemptId).toBe(attempt.attemptId);
+    expect(() => store.save({ ...prepared, generation: prepared.generation + 1, attempts: [...prepared.attempts, followingAttempt(prepared)] }, prepared.generation)).toThrow('select its final attempt');
+    const firstSidecar = join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`);
+    const original = readFileSync(firstSidecar, 'utf8'); writeFileSync(firstSidecar, original.replace('malformed first response', 'changed first response'));
+    expect(() => store.read(run.runId)).toThrow('integrity mismatch');
   });
 });
 
