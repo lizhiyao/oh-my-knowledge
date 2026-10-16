@@ -39,6 +39,8 @@ export {
 } from './knowledge-extraction/local.js';
 export { KnowledgeStorageStateError } from '../evidence/storage/knowledge-workspace.js';
 export { extractionRunSummary } from './knowledge-extraction/runs.js';
+export { createLocalEntityLinks } from './knowledge-extraction/local.js';
+export type { EntityLinkApplication } from './knowledge-extraction/entity-links.js';
 export { createLocalKnowledgeLibrary } from './knowledge-extraction/local.js';
 export { executeKnowledgeOperation, knowledgeOperationSchemas, knowledgeFailureCode } from './knowledge-extraction/operations.js';
 export type { KnowledgeOperation } from './knowledge-extraction/operations.js';

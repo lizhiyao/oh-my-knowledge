@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { type KnowledgeActor } from '../../knowledge/contracts.js';
-import { LibraryDraftSchema, memberKey, type LibraryDraft, type LibraryMember, type LibraryStore } from '../../knowledge/library/contracts.js';
+import { LibraryWriteSchema, type LibraryWrite, LibraryDraftSchema, memberKey, type LibraryDraft, type LibraryMember, type LibraryStore } from '../../knowledge/library/contracts.js';
 import { canonicalJson } from '../../knowledge/store.js';
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeApplication } from './application.js';
+import { EntityLinkConflictError, type EntityLinkEndpoint } from '../../knowledge/entities/links.js';
+import { currentEntityLinkSource } from './entity-link-source.js';
 
 export const LibraryQuerySchema = z.strictObject({ query: z.string().trim().max(512).default(''),
   page: z.number().int().min(1).max(100_000).default(1), pageSize: z.number().int().min(1).max(100).default(20) });
@@ -154,6 +156,35 @@ export class KnowledgeLibraryApplication {
         if (previous && canonicalJson(previous) === canonicalJson(member)) continue;
         this.validateMember(member, request.draft);
       }
+    });
+  }
+
+  /** Stable reviewed intent; the lock-bound store validates both sides, including unchanged members. */
+  applyLinkIntent(input: LibraryWrite, endpoints: readonly EntityLinkEndpoint[]) {
+    const command = LibraryWriteSchema.parse(input);
+    if (this.actor.actorKind !== 'human' || canonicalJson(command.revision.revisedBy) !== canonicalJson(this.actor)) throw new Error('Entity-link author mismatch.');
+    return this.store.write(command, (existing, all) => {
+      const draft = command.revision.draft;
+      if (existing && existing.revisions[0].draft.referentKind !== draft.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+      const endpointKeys = new Set(endpoints.map(memberKey));
+      const owners = new Map(all.filter(history => history.objectId !== command.objectId)
+        .flatMap(history => history.revisions.at(-1)!.draft.members.map(member => [memberKey(member), history.objectId] as const)));
+      for (const endpoint of endpoints) {
+        const ownersNow = all.filter(history => history.revisions.at(-1)!.draft.members.some(member => memberKey(member) === memberKey(endpoint)));
+        const owner = ownersNow[0];
+        const identity = owner ? { objectId: owner.objectId, generation: owner.generation, headRevisionId: owner.writeHeadRevisionId } : null;
+        if (ownersNow.length > 1 || canonicalJson(identity) !== canonicalJson(endpoint.owner)) throw new EntityLinkConflictError('owner_conflict');
+        const detail = currentEntityLinkSource(this.knowledge, endpoint);
+        if (detail.entity.identityStatus !== 'proposed' || detail.entity.referentKind !== draft.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+        const member = draft.members.find(member => memberKey(member) === memberKey(endpoint));
+        if (!member || member.entityRevisionId !== endpoint.entityRevisionId || canonicalJson(member.mentionIds) !== canonicalJson(endpoint.mentionIds)) throw new Error('Entity-link intent endpoint mismatch.');
+      }
+      for (const member of draft.members) {
+        if (owners.has(memberKey(member))) throw new EntityLinkConflictError('owner_conflict');
+        if (!endpointKeys.has(memberKey(member)) && !existing?.revisions.at(-1)!.draft.members.some(previous => canonicalJson(previous) === canonicalJson(member))) throw new Error('Entity-link intent added an unrelated member.');
+      }
+      if (existing?.revisions.at(-1)!.draft.members.some(previous => !endpointKeys.has(memberKey(previous))
+        && !draft.members.some(member => canonicalJson(previous) === canonicalJson(member)))) throw new Error('Entity-link intent removed an unrelated member.');
     });
   }
 
