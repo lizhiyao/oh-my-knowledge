@@ -26,6 +26,7 @@ const FROZEN: Record<string, string> = {
   'rag-context-recall': 'a1ad34978824',
   'observe-llm-enhanced-review': '5c5c8e5bf0af8fce3ebf22d2363ca863cdb430dafd087bec19e170517cfa0b83', // 2026-05-22.v7
   'knowledge-extraction': 'e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399', // knowledge-extraction-v14, raw UTF-8
+  'entity-link-proposal': '18353503713a448bf56b6ec5cadeef94384a74525d0a73cd09beaecdf9829bb8', // entity-link-proposal-v1, raw UTF-8 including derived response Schema
 };
 
 const INVARIANT = PROMPT_REGISTRY.filter((e) => e.measurementInvariant);

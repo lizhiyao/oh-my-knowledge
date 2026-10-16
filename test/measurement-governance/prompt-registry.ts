@@ -11,6 +11,7 @@ import {
   SOFT_STANDARD_PROMPT_VERSION,
 } from '../../src/observability/soft-standards/constants.js';
 import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/prompt.js';
+import { ENTITY_LINK_PROMPT_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
 
 /**
  * omk 所有 LLM prompt 的单一编目 —— 发现入口 + 测量学冻结入口。
@@ -25,6 +26,7 @@ import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/
  *   - RAG / semantic:12 位(getRagJudgePromptHash / getSemanticPromptHash,仅供冻结 drift 检测);
  *   - observe 复盘:64 位(readPromptDocument 读 .md 全文 sha256);
  *   - knowledge extraction:64 位(EXTRACTION_PROMPT 原始 UTF-8 sha256,非运行时规范化 JSON hash)。
+ *   - entity link proposal:64 位(system 原始 UTF-8 sha256,包含唯一响应 Schema 的派生文本)。
  * 用限定名 `promptId`(非裸 `kind`,见 terminology-spec §5.4)。
  */
 export interface PromptRegistryEntry {
@@ -102,6 +104,13 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
     module: 'src/observability/knowledge-extraction/prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(EXTRACTION_PROMPT).digest('hex'),
+  },
+  {
+    promptId: 'entity-link-proposal',
+    purpose: '跨窗口实体关联建议(输出及其质量测量身份)',
+    module: 'src/observability/knowledge-extraction/entity-link-prompt.ts',
+    measurementInvariant: true,
+    getHash: () => ENTITY_LINK_PROMPT_HASH.slice('sha256:'.length),
   },
 
   // —— 其它用途:不在当前冻结范围,仅登记供发现 ——
