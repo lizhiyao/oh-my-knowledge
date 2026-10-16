@@ -1,0 +1,160 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import type { KnowledgeActor } from '../../src/knowledge/contracts.js';
+import { canonicalJson } from '../../src/knowledge/store.js';
+import { EntityLinkSuggestionSchema } from '../../src/knowledge/entities/links.js';
+import {
+  EntityLinkExecutionOutcomeSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
+  type EntityLinkInvocationPorts, type EntityLinkExecutionOutcome, type EntityLinkExecutionResult,
+} from '../../src/knowledge/entities/link-invocation.js';
+import { entityLinkConfirmationDigest, transitionEntityLinkInvocation, projectEntityLinkInvocation, validateEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
+
+const textHash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
+const hash = (value: unknown) => textHash(canonicalJson(value));
+const human = { actorKind: 'human' as const, actorId: 'fixture-person' }, host = { actorKind: 'agent' as const, actorId: 'fixture-host', executionRef: 'fixture-execution' };
+const at = '2026-10-16T00:00:00Z';
+function fixture() {
+  const binding = () => ({ analysisId: randomUUID(), entityId: randomUUID(), entityRevisionId: randomUUID(), generation: 1,
+    snapshotId: randomUUID(), sourceVersion: textHash('source'), owner: null, mentionIds: [randomUUID()] });
+  const left = binding(), right = binding();
+  const side = (endpoint: typeof left) => ({ binding: endpoint,
+    entity: { entityId: endpoint.entityId, label: '同名对象', description: '只在此来源窗口所指的对象', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
+      referentKind: 'object', componentRef: null, collection: null },
+    mentions: [{ mentionId: endpoint.mentionIds[0], entityId: endpoint.entityId, basis: 'explicit', rationale: '原文提及', selection: { evidenceRef: 'record-1', start: 0, end: 4, quote: '同名对象' } }], limitations: [] });
+  const schema = z.record(z.string(), z.json()).parse(z.toJSONSchema(EntityLinkSuggestionSchema)), system = 'fixture prompt only';
+  const requestBody = { requestKind: 'entity-link-execution-request' as const, protocolId: 'entity-link-executor/v1' as const, executor: 'openai-api' as const,
+    model: 'fixture-model', system, prompt: canonicalJson({ protocolId: 'entity-link-model-input/v1', left: side(left), right: side(right) }),
+    promptVersion: 'entity-link-proposal-v1' as const, promptHash: textHash(system), responseSchemaId: 'entity-link-suggestion/v1' as const, responseSchemaHash: hash(schema),
+    outputFormat: { mode: 'json-schema' as const, name: 'entity_link_suggestion_v1' as const, schema }, timeoutMs: 300_000 as const, maxOutputTokens: 4096 as const };
+  let alive = true, producerCurrent = true, reservationAvailable = true, reservationBytes = 100_000;
+  const reviewId = randomUUID(), inputBody = { left, right, request: { ...requestBody, requestDigest: hash(requestBody) }, retryOf: null, producerContextDigest: hash({ producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: hash(requestBody), sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof: { fixture: true } }) };
+  const plan: EntityLinkInvocationPlan = { ...inputBody, confirmedDigest: entityLinkConfirmationDigest(reviewId, inputBody, hash) };
+  const ports: EntityLinkInvocationPorts = { hashJson: hash, hashText: textHash,
+    reserve: request => {
+      if (!reservationAvailable) return;
+      // An explicit TEST producer only. These numbers are not a production bound.
+      const proof = { producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: request.requestDigest,
+        sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof: { fixture: true } };
+      return { ...proof, reservationDigest: hash(proof) };
+    }, reservationIsCurrent: (request, reservation) => producerCurrent && reservation.producerId === 'fixture-only/v1' && reservation.requestDigest === request.requestDigest,
+    proveOwnerExited: owner => alive ? undefined : { proofKind: 'local-process-exited', owner, observedAt: at } };
+  let history: EntityLinkInvocation | undefined;
+  const command = <T extends object>(body: T, actor: KnowledgeActor = host) => ({ reviewId, requestId: randomUUID(), eventId: randomUUID(), at, actor, expectedGeneration: history?.generation ?? 0, ...body }) as unknown as EntityLinkInvocationCommand;
+  const apply = (value: EntityLinkInvocationCommand) => { const transition = transitionEntityLinkInvocation(history, value, ports); history = transition.history; return transition; };
+  const prepare = () => apply(command({ commandKind: 'prepare', input: plan }, human));
+  const executionId = randomUUID(), owner = { ownerId: randomUUID(), hostname: 'fixture-local-host', pid: 12345 };
+  const start = () => apply(command({ commandKind: 'start', executionId, owner }));
+  const output = JSON.stringify({ responseKind: 'entity-link-suggestion', schemaVersion: 1, leftEntityId: left.entityId, rightEntityId: right.entityId,
+    assessment: 'same_object', leftMentionIds: left.mentionIds, rightMentionIds: right.mentionIds, rationale: '仍需人工核对' });
+  const result = (patch: Partial<EntityLinkExecutionResult> = {}): EntityLinkExecutionResult => ({ ok: true, output, durationMs: 100, durationApiMs: 80,
+    inputTokens: 11, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 2, costUSD: 0, costReportedByExecutor: false, stopReason: 'stop', numTurns: 1, ...patch });
+  const archive = (outcome: EntityLinkExecutionOutcome) => apply(command({ commandKind: 'execution_recorded', executionId, outcome }));
+  return { reviewId, plan, ports, command, apply, prepare, start, result, archive, executionId,
+    get history() { return history!; }, setAlive(value: boolean) { alive = value; }, setCurrent(value: boolean) { producerCurrent = value; },
+    setAvailable(value: boolean) { reservationAvailable = value; }, setBytes(value: number) { reservationBytes = value; plan.producerContextDigest = ports.reserve(plan.request)!.reservationDigest; plan.confirmedDigest = entityLinkConfirmationDigest(reviewId, plan, hash); } };
+}
+
+describe('entity-link invocation pure production flow', () => {
+  it('requires a trusted producer reservation, exact confirmation and current proof before any dispatch effect', () => {
+    const f = fixture(); f.setAvailable(false); expect(() => f.prepare()).toThrow('proven producer');
+    f.setAvailable(true); const changed = { ...f.plan, request: { ...f.plan.request, model: 'different-model' } };
+    expect(() => f.apply(f.command({ commandKind: 'prepare', input: changed }, human))).toThrow('Frozen');
+    expect(() => f.apply(f.command({ commandKind: 'prepare', input: f.plan, reservation: {} }, human))).toThrow();
+    expect(f.prepare().effect).toBe('none'); f.setCurrent(false); expect(() => f.start()).toThrow('reservation changed');
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'prepared', invocationBudget: { reserved: 1, consumed: 0 } });
+  });
+  it('claims dispatch once, refuses concurrent starts, and never refunds started or unknown calls', () => {
+    const f = fixture(); f.prepare(); const start = f.command({ commandKind: 'start', executionId: f.executionId, owner: { ownerId: randomUUID(), hostname: 'host', pid: 44 } });
+    expect(f.apply(start).effect).toBe('dispatch_once'); expect(f.apply({ ...start, eventId: randomUUID(), at: '2026-10-16T01:00:00Z' }).effect).toBe('none');
+    expect(() => f.start()).toThrow('Only one'); expect(() => f.apply(f.command({ commandKind: 'cancel_before_start', reason: 'cancel' }))).toThrow('refund');
+    expect(() => f.apply(f.command({ commandKind: 'execution_unknown', executionId: f.executionId }))).toThrow('live or unverifiable');
+    f.setAlive(false); f.apply(f.command({ commandKind: 'execution_unknown', executionId: f.executionId }));
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'execution_unknown', canStart: false, invocationBudget: { consumed: 1 }, executorAttemptCount: null,
+      usage: { inputTokens: null, costUSD: null } });
+    const restored = JSON.parse(JSON.stringify(f.history)); expect(validateEntityLinkInvocation(restored, f.ports)).toEqual(f.history);
+    f.archive({ outcomeKind: 'result', result: f.result() }); expect(projectEntityLinkInvocation(f.history, f.ports).status).toBe('awaiting_review');
+  });
+  it('cancels only an unstarted reservation and cannot start it after restart', () => {
+    const f = fixture(); f.prepare(); f.apply(f.command({ commandKind: 'cancel_before_start', reason: '取消发送' }));
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'cancelled_before_start', invocationBudget: { reserved: 0, consumed: 0 } });
+    expect(() => f.start()).toThrow('Only one');
+  });
+  it.each(['rate_limit', 'timeout', 'cancelled', 'refusal', 'truncation', 'unsupported_output'] as const)('archives failed %s output, refusal and full usage before admission', failureKind => {
+    const f = fixture(); f.prepare(); f.start(); const result = f.result({ ok: false, output: '原始部分响应', refusal: '原始拒绝通道', failure: { failureKind, httpStatus: 429, retryAfterMs: 10 },
+      error: '脱敏错误', costUSD: 0.02, costReportedByExecutor: true, attemptCount: 2, cached: false, fullNumTurns: 3, numSubAgents: 1,
+      turns: [{ role: 'assistant', content: '原始部分响应' }], toolCalls: [{ tool: 'example', input: { value: 1 }, output: null, success: false }], futureProducerField: { retain: true } });
+    f.archive({ outcomeKind: 'result', result, cleanupFailure: { diagnostic: 'cleanup failed' } });
+    const saved = f.history.events.at(-1)!.command; expect(saved).toMatchObject({ commandKind: 'execution_recorded', outcome: { result, cleanupFailure: { diagnostic: 'cleanup failed' } } });
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'execution_failed', executorAttemptCount: 2, invocationBudget: { consumed: 1 },
+      usage: { inputTokens: 11, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 2, costUSD: 0.02 } });
+    expect(() => f.apply(f.command({ commandKind: 'reviewed', decision: 'accept', identityConfirmed: true, reason: 'cannot accept', objectLabel: null,
+      application: { applicationKind: 'conflict', conflictCode: 'entity_changed' } }, human))).toThrow('confirmation');
+  });
+  it('retains unknown usage, bounded exception observation and the consumed slot after a post-start throw', () => {
+    const f = fixture(); f.prepare(); f.start(); const error = { representationKind: 'exception-diagnostic/v1' as const, sourceType: 'object' as const,
+      name: 'Error', message: 'mkdtemp/pre-abort/dispatch may have thrown; outcome unknown', truncated: false, accessorsSkipped: true };
+    const running = f.history; f.archive({ outcomeKind: 'exception', error });
+    const resultCommand = f.command({ commandKind: 'execution_recorded', executionId: f.executionId, outcome: { outcomeKind: 'result', result: f.result() } });
+    expect(() => f.apply(resultCommand)).toThrow('outcome identity');
+    const alternate = transitionEntityLinkInvocation(running, { ...resultCommand, expectedGeneration: running.generation }, f.ports).history.events.at(-1)!;
+    const eventBody = { command: resultCommand, commandDigest: alternate.commandDigest, facts: alternate.facts };
+    const doubled = { ...f.history, generation: f.history.generation + 1, writeHeadEventId: resultCommand.eventId,
+      events: [...f.history.events, { ...eventBody, eventDigest: hash(eventBody) }] };
+    expect(() => validateEntityLinkInvocation(doubled, f.ports)).toThrow('receipt conflict');
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'execution_unknown', executorAttemptCount: null, usage: { inputTokens: null, costUSD: null }, invocationBudget: { consumed: 1 } });
+    const raw: Record<string, unknown> = {}; raw.self = raw;
+    expect(EntityLinkExecutionOutcomeSchema.safeParse({ outcomeKind: 'exception', error: raw }).success).toBe(false);
+    expect(EntityLinkExecutionOutcomeSchema.safeParse({ outcomeKind: 'exception', error: { ...error, message: '界'.repeat(1366) } }).success).toBe(false);
+  });
+  it('saves an unexpected reservation overrun in full and prevents semantic admission rather than dropping raw evidence', () => {
+    const f = fixture(); f.setBytes(32); f.prepare(); f.start(); const result = f.result({ output: 'original response '.repeat(1000) });
+    f.archive({ outcomeKind: 'result', result });
+    expect(f.history.events.at(-1)!.command).toMatchObject({ commandKind: 'execution_recorded', outcome: { result } });
+    expect(projectEntityLinkInvocation(f.history, f.ports).admission).toEqual({ admissionKind: 'rejected', reason: 'reservation_overrun' });
+  });
+  it('recovers an archive acknowledgement without rerunning and rejects changed output under the same execution identity', () => {
+    const f = fixture(); f.prepare(); f.start(); const outcome = { outcomeKind: 'result' as const, result: f.result({ tokenUsageReportedByExecutor: false }) };
+    f.archive(outcome); const before = f.history; const replay = f.archive(outcome); expect(replay).toEqual({ history: before, effect: 'none' });
+    expect(() => f.apply({ ...f.command({ commandKind: 'execution_recorded', executionId: f.executionId, outcome }), reviewId: randomUUID() })).toThrow('review identity');
+    expect(() => f.archive({ outcomeKind: 'result', result: f.result({ output: 'different' }) })).toThrow('outcome identity');
+    expect(projectEntityLinkInvocation(f.history, f.ports).usage).toEqual({ inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheCreationTokens: null, costUSD: null });
+    const tampered = structuredClone(f.history); const last = tampered.events.at(-1)!.command;
+    if (last.commandKind === 'execution_recorded' && last.outcome.outcomeKind === 'result') last.outcome.result.cacheReadTokens = 999;
+    expect(() => validateEntityLinkInvocation(tampered, f.ports)).toThrow('integrity');
+  });
+  it('requires independent human identity review and verifies a stable matching library receipt', () => {
+    const f = fixture(); f.prepare(); f.start(); const uncertain = f.result(); uncertain.output = uncertain.output!.replace('same_object', 'insufficient_evidence');
+    f.archive({ outcomeKind: 'result', result: uncertain });
+    const reason = '人工核对两侧范围后确认同一对象'; const intent = { requestId: randomUUID(), objectId: randomUUID(), expectedGeneration: 0, expectedHeadRevisionId: null,
+      revision: { revisionId: randomUUID(), revisedAt: at, revisedBy: human, reason, draft: { label: '人工组织名', description: '限定对象', referentKind: 'object',
+        members: [f.plan.left, f.plan.right].map(side => ({ analysisId: side.analysisId, entityId: side.entityId, entityRevisionId: side.entityRevisionId, mentionIds: side.mentionIds, rationale: reason })) } } };
+    const body = { commandKind: 'reviewed', decision: 'accept', identityConfirmed: true, reason, objectLabel: '人工组织名', application: { applicationKind: 'intent', intent } };
+    expect(() => f.apply(f.command(body))).toThrow(); f.apply(f.command(body, human));
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'accepted_pending_application', canResumeOrganization: true });
+    const receipt = { requestId: intent.requestId, commandDigest: hash(intent), committedGeneration: 1, revisionId: intent.revision.revisionId };
+    expect(() => f.apply(f.command({ commandKind: 'application_applied', receipt: { ...receipt, revisionId: randomUUID() } }, human))).toThrow('receipt');
+    const applied = f.command({ commandKind: 'application_applied', receipt }, human); f.apply(applied); expect(f.apply(applied).effect).toBe('none');
+    expect(projectEntityLinkInvocation(f.history, f.ports).status).toBe('applied');
+  });
+  it('retains a human rejection as terminal and does not allow a later model execution or acceptance', () => {
+    const f = fixture(); f.prepare(); f.start(); f.archive({ outcomeKind: 'result', result: f.result() });
+    f.apply(f.command({ commandKind: 'reviewed', decision: 'reject', identityConfirmed: false, reason: '同名不证明同一对象', objectLabel: null, application: null }, human));
+    const before = JSON.stringify(f.history); expect(projectEntityLinkInvocation(f.history, f.ports).status).toBe('rejected'); expect(() => f.start()).toThrow();
+    expect(JSON.stringify(f.history)).toBe(before);
+  });
+  it.each(['invalid_json', 'observed_tools'] as const)('saves successful transport with %s but refuses semantic admission', mode => {
+    const f = fixture(); f.prepare(); f.start(); const result = f.result(mode === 'invalid_json' ? { output: '{bad' } : { toolCalls: [{ tool: 'example', input: null, output: null, success: true }] });
+    f.archive({ outcomeKind: 'result', result });
+    expect(f.history.events.at(-1)!.command).toMatchObject({ commandKind: 'execution_recorded', outcome: { result } });
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'execution_failed', admission: { admissionKind: 'rejected', reason: mode === 'invalid_json' ? 'invalid_response' : 'observed_tools' } });
+  });
+  it('records explicit human acceptance with a prepublication conflict as terminal without a library receipt', () => {
+    const f = fixture(); f.prepare(); f.start(); f.archive({ outcomeKind: 'result', result: f.result() });
+    f.apply(f.command({ commandKind: 'reviewed', decision: 'accept', identityConfirmed: true, reason: '接受判断，但当前owner已经变化', objectLabel: null,
+      application: { applicationKind: 'conflict', conflictCode: 'owner_conflict' } }, human));
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'accepted_conflict', canResumeOrganization: false });
+    expect(() => f.apply(f.command({ commandKind: 'application_conflict', conflictCode: 'library_capacity' }, human))).toThrow('stable reviewed intent');
+  });
+
+});

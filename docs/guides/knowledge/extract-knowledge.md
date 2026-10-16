@@ -155,3 +155,42 @@ Failed/cancelled/generating runs, runs without admission records and zero-admiss
 ## Extraction quality checks
 
 Use the [current annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md). Generating a review package makes no model calls and does not establish overall quality acceptance. Historical results are reproduced only at their frozen revisions, without rescoring using current artifacts.
+
+
+## Review cross-window entity links {#review-cross-window-entity-links}
+
+`omk observe entity-links` reviews two entities from different source windows. Name normalization only recalls candidates; it does not confirm identity. Original entity UUIDs, analyses and knowledge revisions remain separate. Accepted reviews organize references in the library; they do not merge entity records or rewrite knowledge.
+
+1. Run `candidates --workspace ./knowledge --analysis <analysis-id> --entity <entity-id> --json`, then inspect the selected sources and mentions.
+2. Freeze one plan and save its complete JSON. Use `preview --input` to inspect that **same file**; a new preview creates new stable IDs and a different confirmation digest.
+
+```bash
+omk observe entity-links preview --workspace ./knowledge \
+  --analysis <left-analysis> --entity <left-entity> \
+  --right-analysis <right-analysis> --right-entity <right-entity> \
+  --executor openai-api --model <model> --json > link-plan.json
+omk observe entity-links preview --input link-plan.json
+omk observe entity-links propose --input link-plan.json \
+  --confirm-input <confirmedDigest> --json
+```
+
+`preview` makes no model request. Review the complete fixed rules, selected content, model, endpoint and nonsecret producer context before explicitly copying the file’s **top-level** `confirmedDigest`. This CLI confirmation binds the normalized absolute workspace and complete shared preview; the nested host confirmation remains a separate identity. Optional repeated `--mention` / `--right-mention` flags limit the selected mentions. The saved plan binds its absolute workspace; `propose` rejects another workspace, changed request/proof content, or changed observable producer configuration before starting. The plan must be a regular JSON file of at most 2 MiB, not a symlink. It contains selected source text: store and share it accordingly.
+
+The API producer is currently supported. It freezes the API request, endpoint, relevant environment and archive-capacity proof; it is not a complete binary, provider or host attestation. Codex is rejected before process dispatch until its archive bound is proven. The invocation budget is one explicitly confirmed call, not a USD spending ceiling; unavailable usage or costs stay unknown. There is no fallback or automatic retry. This command does not restore Anthropic execution.
+
+`propose` durably prepares before starting. Repeating the same plan inspects its saved review without dispatching again, including when configuration or credentials have since changed. After an uncertain acknowledgement, run `show --workspace ./knowledge --id <review-id> --json` first. Only a review still at `prepared` can explicitly continue the same attempt with `propose ... --start-prepared`; the source, owner and producer proof are rechecked. To abandon an unstarted reservation, use `resume --workspace ./knowledge --id <review-id> --cancel-before-start --request-id <stable-UUID> --generation <generation> --reason "cancel reviewed plan"`.
+
+`list` and `show` expose the shared projection and immutable evidence. `show --json` includes the complete raw result, refusal, usage and event history. Inspecting a failed review succeeds with exit 0; a mutating operation that remains running, unknown, failed or in application conflict exits 1. Invalid parameters or plans exit 2. When produced, JSON stdout contains one machine result; diagnostics use stderr.
+
+Accept only after a person confirms both original UUIDs refer to the same object; the model assessment, even `same_object`, is not acceptance. Keep the request UUID stable when replaying a decision and use the generation returned by `show`.
+
+```bash
+omk observe entity-links accept --workspace ./knowledge --id <review-id> \
+  --request-id <stable-UUID> --generation <generation> \
+  --reason "checked both sources and identity" --confirm-identity --object-label "complete object label" --json
+omk observe entity-links reject --workspace ./knowledge --id <review-id> \
+  --request-id <stable-UUID> --generation <generation> --reason "insufficient identity evidence" --json
+omk observe entity-links resume --workspace ./knowledge --id <review-id> --json
+```
+
+A rejection suppresses the same pair of source/entity revisions in either order. `resume` never calls a model; it handles already held archival facts in the same live host or a stable pending library intent. A fresh CLI process cannot recover raw output lost before archival. For a crashed running owner, `resume --recover-unknown --request-id <stable-UUID>` records unknown only after the local owner is proven exited; no TTL makes that decision, and the consumed slot is not refunded. Inspect failed/unknown evidence before creating a **new** preview with `--retry-of <prior-review-id>` and explicitly confirming the new plan. Cancellation and process loss are not successful delivery. See [entity-link contracts](../../specs/entities/entity-links.md) for the storage and recovery boundaries. Studio integration remains separate.
