@@ -1,29 +1,184 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
-import { FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
+import { EXTRACTION_OUTCOME_MAX_BYTES, FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
+import { ExtractionOutcomeSchema, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/observability/knowledge-extraction/runs.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import type { EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
-const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined }));
+const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0 }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
-  return { ...fs, openSync: (path: string, flags: string) => {
+  return { ...fs, openSync: (path: string, flags: string | number, mode?: number) => {
     if (path.includes('.recovery-') && faults.beforeRecovery) {
       const operation = faults.beforeRecovery; faults.beforeRecovery = undefined; operation();
     }
-    return fs.openSync(path, flags);
+    return fs.openSync(path, flags, mode);
+  }, linkSync: (source: string, path: string) => {
+    fs.linkSync(source, path);
+    if (faults.afterOutcomeLink && path.includes('outcomes')) { faults.afterOutcomeLink = false; throw new Error('outcome acknowledgement interrupted'); }
+  }, renameSync: (source: string, path: string) => {
+    fs.renameSync(source, path);
+    if (faults.afterManifestRename && path.includes('extraction-runs') && path.endsWith('.json')) { faults.afterManifestRename = false; throw new Error('manifest acknowledgement interrupted'); }
+  }, fsyncSync: (fd: number) => {
+    faults.syncs++; fs.fsyncSync(fd);
   } };
 });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storage-')); roots.push(path); return path; };
-afterEach(() => { faults.beforeRecovery = undefined; for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
+
+const sha = (digit = 'a') => `sha256:${digit.repeat(64)}`;
+function runFixture(): ExtractionRun {
+  const at = '2026-10-16T00:00:00Z';
+  return { runKind: 'knowledge-extraction-run', schemaVersion: 5, runId: randomUUID(), requestDigest: sha(), generation: 1,
+    snapshotId: randomUUID(), sourceVersion: sha(), executor: 'codex', model: 'fixture', promptVersion: 'knowledge-extraction-v14',
+    promptHash: sha(), inputDigest: sha(), actor: { actorKind: 'human', actorId: 'tester' }, startedAt: at, status: 'generating',
+    policy: { policyId: 'knowledge-generation-single/v1', maxInvocations: 1, retry: 'none', fallback: 'none' },
+    attempts: [{ attemptId: randomUUID(), startedAt: at, requestDigest: sha(),
+      request: { systemDigest: sha(), inputDigest: sha(), outputMode: 'prompt-json', timeoutMs: 300_000 },
+      producer: { producerId: 'storage-fixture', producerRevision: sha(), sourceChannels: [{ channel: 'fixture', maxBytes: 1024 * 1024 }],
+        maxOutcomeJsonBytes: 1024 * 1024, proof: { scope: 'synthetic-storage-fixture-not-transport-proof' } } }],
+    intents: [], committed: [], rejections: [], entityRejections: [] };
+}
+function nativeOutcome(output = 'original output'): Extract<ExtractionOutcome, { outcomeKind: 'result' }> {
+  return { outcomeKind: 'result', result: { ok: true, output, durationMs: -3, durationApiMs: 0, inputTokens: 42, outputTokens: 5,
+    cacheReadTokens: 12, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false,
+    stopReason: 'end_turn', numTurns: 1, additionalProviderField: { retained: true } } };
+}
+
+describe('v5 extraction manifests and immutable native evidence', () => {
+  it('archives before metadata acknowledgement, preserves every JSON field and replays the same bytes before new capacity checks', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = runFixture(), attempt = run.attempts[0]; store.create(run);
+    const outcome = nativeOutcome(`${'界'.repeat(16_383)}😀\ud800`);
+    const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+    expect(store.read(run.runId).attempts[0].outcome).toBeUndefined();
+    expect(store.readOutcome(run.runId, attempt.attemptId)).toEqual({ outcome, ref });
+    expect(store.writeOutcome(run.runId, attempt.attemptId, outcome, 1)).toEqual(ref);
+    const next: ExtractionRun = { ...run, generation: 2, selectedAttemptId: attempt.attemptId, rawOutput: outcome.result.output!,
+      runtime: { durationMs: -3, cacheReadTokens: 12, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costReportedByExecutor: false },
+      attempts: [{ ...attempt, outcome: ref }] };
+    store.save(next, 1); store.save(next, 1);
+    expect(store.read(run.runId)).toEqual(next); expect(store.list()).toHaveLength(1);
+    expect(() => store.readOutcome(run.runId, attempt.attemptId, { ...ref, digest: sha('b') })).toThrow('integrity mismatch');
+    expect(() => store.writeOutcome(run.runId, attempt.attemptId, nativeOutcome('different output'), attempt.producer.maxOutcomeJsonBytes)).toThrow('identity conflict');
+    expect(() => store.save({ ...next, generation: 3, attempts: [{ ...next.attempts[0], requestDigest: sha('b') }] }, 2)).toThrow('attempt conflict');
+    expect(() => store.save({ ...next, generation: 3, runtime: { durationMs: 5 } }, 2)).toThrow('runtime differs');
+    expect(() => store.save({ ...next, generation: 3, runtime: undefined }, 2)).toThrow('runtime differs');
+    expect(() => store.save({ ...next, generation: 3, rawOutput: 'replacement' }, 2)).toThrow('output differs');
+    expect(() => store.save({ ...next, generation: 3 }, 1)).toThrow('run conflict');
+    expect(store.read(run.runId).generation).toBe(2);
+    rmSync(join(directory, 'outcomes', run.runId, `${attempt.attemptId}.json`));
+    expect(() => store.read(run.runId)).toThrow('Archived extraction outcome is missing');
+  });
+  it('recovers an exclusively published sidecar after lost acknowledgement without another invocation or metadata overwrite', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = runFixture(), attempt = run.attempts[0], outcome = nativeOutcome(); store.create(run);
+    faults.afterOutcomeLink = true;
+    expect(() => store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes)).toThrow('acknowledgement interrupted');
+    const recovered = store.readOutcome(run.runId, attempt.attemptId);
+    expect(recovered.outcome).toEqual(outcome); expect(store.read(run.runId).generation).toBe(1);
+    expect(store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes)).toEqual(recovered.ref);
+    // Large/failed output may have an honest metric projection without selecting raw output.
+    const next: ExtractionRun = { ...run, generation: 2, runtime: { durationMs: -3, cacheReadTokens: 12 }, attempts: [{ ...attempt, outcome: recovered.ref }] };
+    faults.afterManifestRename = true;
+    expect(() => store.save(next, 1)).toThrow('manifest acknowledgement interrupted');
+    expect(store.read(run.runId)).toEqual(next);
+    const syncs = faults.syncs; store.save(next, 1);
+    expect(faults.syncs).toBeGreaterThan(syncs);
+    expect(readdirSync(join(directory, 'outcomes', run.runId))).toEqual([`${attempt.attemptId}.json`]);
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+  });
+  it('handles deep native JSON iteratively and refuses cycles and getters without invoking accessors', () => {
+    const workspace = root(), store = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace);
+    const run = runFixture(), attempt = run.attempts[0]; store.create(run);
+    let trace: ExtractionJson = 'tail'; for (let index = 0; index < 20_000; index++) trace = { next: trace };
+    const outcome = nativeOutcome(); outcome.result.trace = trace;
+    const toolCall = { name: 'fixture-tool', arguments: { nested: true } };
+    outcome.result.toolCalls = [toolCall]; outcome.result.turns = [{ toolCalls: [toolCall] }];
+    const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+    const loaded = store.readOutcome(run.runId, attempt.attemptId, ref).outcome;
+    expect(loaded.outcomeKind).toBe('result');
+    if (loaded.outcomeKind !== 'result') throw new Error('Expected native result.');
+    let current = loaded.result.trace; let depth = 0;
+    while (current && typeof current === 'object' && !Array.isArray(current)) { depth++; current = current.next; }
+    expect(depth).toBe(20_000); expect(current).toBe('tail');
+    expect(loaded.result.toolCalls).toEqual([toolCall]); expect(loaded.result.turns).toEqual([{ toolCalls: [toolCall] }]);
+    const cyclic = nativeOutcome(); cyclic.result.self = cyclic.result;
+    expect(ExtractionOutcomeSchema.safeParse(cyclic).success).toBe(false);
+    const getter = vi.fn(() => 'must not run'); const unsafe = nativeOutcome(); Object.defineProperty(unsafe.result, 'secret', { enumerable: true, get: getter });
+    expect(ExtractionOutcomeSchema.safeParse(unsafe).success).toBe(false); expect(getter).not.toHaveBeenCalled();
+  });
+  it('preserves failure/refusal/cleanup evidence and explicitly labels authored projections', () => {
+    const workspace = root(), store = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace);
+    const outcomes: ExtractionOutcome[] = [
+      { ...nativeOutcome('partial output'), result: { ...nativeOutcome().result, ok: false, output: 'partial output', refusal: 'original refusal', failure: { failureKind: 'refusal' } }, cleanupFailure: { diagnostic: 'cleanup did not finish' } },
+      { outcomeKind: 'exception' as const, error: { representationKind: 'exception-diagnostic/v1' as const, sourceType: 'object' as const,
+        name: 'Error', message: 'observed failure', truncated: false, accessorsSkipped: true } },
+      { outcomeKind: 'model-port-projection' as const, scope: 'authored-model-port/v1' as const, result: { output: 'authored', durationMs: 0 } },
+    ];
+    for (const outcome of outcomes) {
+      const run = runFixture(), attempt = run.attempts[0]; store.create(run);
+      const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+      expect(store.readOutcome(run.runId, attempt.attemptId, ref).outcome).toEqual(outcome);
+      if (outcome.outcomeKind === 'exception') expect(() => store.save({ ...run, generation: 2, runtime: { durationMs: 0 }, attempts: [{ ...attempt, outcome: ref }] }, 1)).toThrow('no returned result archive');
+      const failed: ExtractionRun = { ...run, generation: 2, status: 'failed', attempts: [{ ...attempt, outcome: ref, failure: { failureKind: 'fixture_failure', diagnostic: 'final failure' } }] };
+      store.save(failed, 1);
+      expect(() => store.save({ ...failed, generation: 3, attempts: [{ ...failed.attempts[0], failure: { failureKind: 'different', diagnostic: 'changed' } }] }, 2)).toThrow('attempt conflict');
+    }
+  });
+  it('keeps prepared UUIDs, rejections and intents immutable and never rolls a completed run back', () => {
+    const workspace = root(), store = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace);
+    const run = runFixture(), attempt = run.attempts[0], outcome = nativeOutcome(); store.create(run);
+    const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+    const prepared: ExtractionRun = { ...run, generation: 2, status: 'prepared', rawOutput: outcome.result.output!, selectedAttemptId: attempt.attemptId,
+      attempts: [{ ...attempt, outcome: ref }], entityRejections: [], entityAnalysis: { requestId: randomUUID(), analysisId: run.runId,
+        snapshotId: run.snapshotId, sourceVersion: run.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
+        revision: { revisionId: randomUUID(), revisedAt: run.startedAt, revisedBy: { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId },
+          revisionReason: 'Empty birth analysis', entities: [], mentions: [], limitations: [] } } };
+    store.save(prepared, 1);
+    expect(() => store.save({ ...prepared, generation: 3, entityAnalysis: { ...prepared.entityAnalysis!, requestId: randomUUID() } }, 2)).toThrow('intents are immutable');
+    expect(() => store.save({ ...prepared, generation: 3, rejections: [{ index: 0, reasons: ['replacement'] }] }, 2)).toThrow('intents are immutable');
+    expect(() => store.save({ ...prepared, generation: 3, entityRejections: [{ component: 'entity', index: 0, reasons: ['replacement'] }] }, 2)).toThrow('intents are immutable');
+    const completed: ExtractionRun = { ...prepared, generation: 3, status: 'completed' }; store.save(completed, 2);
+    expect(() => store.save({ ...completed, generation: 4, status: 'failed' }, 3)).toThrow('terminal');
+    expect(store.read(run.runId)).toEqual(completed);
+  });
+  it('rejects occupied legacy/entity UUIDs without decoding them, leaves old runs untouched and admits fresh identities', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = runFixture();
+    for (const namespace of ['runs', 'entities']) {
+      mkdirSync(join(workspace, namespace), { recursive: true }); const old = join(workspace, namespace, `${run.runId}.json`); writeFileSync(old, 'not decoded');
+      expect(() => store.create(run)).toThrow('already occupied'); expect(readFileSync(old, 'utf8')).toBe('not decoded');
+      expect(existsSync(directory)).toBe(false); rmSync(old);
+    }
+    writeFileSync(join(workspace, 'runs', `${randomUUID()}.json`), 'unrelated malformed v4');
+    store.create(run); expect(store.list().map(value => value.runId)).toEqual([run.runId]);
+    expect(() => store.create(run)).toThrow('already exists');
+    expect(readdirSync(join(workspace, 'runs'))).toHaveLength(1);
+  });
+  it('rejects producer reservations before creating a manifest and bounds corrupt/linked sidecars before reading', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = runFixture();
+    expect(() => store.create({ ...run, attempts: [{ ...run.attempts[0], producer: { ...run.attempts[0].producer, maxOutcomeJsonBytes: EXTRACTION_OUTCOME_MAX_BYTES } }] })).toThrow('capacity exceeded before invocation');
+    expect(existsSync(directory)).toBe(false); store.create(run);
+    const attempt = run.attempts[0], outcome = nativeOutcome();
+    expect(() => store.writeOutcome(run.runId, attempt.attemptId, outcome, 1)).toThrow('reservation conflict');
+    const path = join(directory, 'outcomes', run.runId, `${attempt.attemptId}.json`); mkdirSync(join(directory, 'outcomes', run.runId), { recursive: true });
+    writeFileSync(path, '{}'); truncateSync(path, EXTRACTION_OUTCOME_MAX_BYTES + 1);
+    expect(() => store.readOutcome(run.runId, attempt.attemptId)).toThrow('Invalid extraction file'); rmSync(path);
+    const target = join(workspace, 'private.json'); writeFileSync(target, '{}'); symlinkSync(target, path);
+    expect(() => store.readOutcome(run.runId, attempt.attemptId)).toThrow('Invalid extraction file');
+    expect(readFileSync(target, 'utf8')).toBe('{}');
+  });
+});
 
 describe('current knowledge storage', () => {
   it('rejects an entity revision that exceeds readable disk capacity, preserving the previous history and releasing locks', () => {
@@ -72,7 +227,7 @@ describe('current knowledge storage', () => {
     expect(() => store.list()).toThrow('capacity exceeded');
   });
   it('rejects unsupported storage envelopes without rewriting the original bytes', () => {
-    const workspace = root(); const items = join(workspace, 'items'); const runs = join(workspace, 'runs');
+    const workspace = root(); const items = join(workspace, 'items'); const runs = join(workspace, 'extraction-runs');
     mkdirSync(items); mkdirSync(runs);
     const knowledge = new FileKnowledgeStore(items, 'local', workspace); const runStore = new FileExtractionRunStore(runs, workspace);
     const itemPath = join(items, 'unsupported.json'); const runId = randomUUID(); const runPath = join(runs, `${runId}.json`);
@@ -82,7 +237,8 @@ describe('current knowledge storage', () => {
     }
     for (const value of [{ runId }, { runKind: 'knowledge-extraction-run', schemaVersion: 1 },
       { runKind: 'knowledge-extraction-run', schemaVersion: 2, promptVersion: 'knowledge-extraction-v3' },
-      { runKind: 'knowledge-extraction-run', schemaVersion: 3, promptVersion: 'knowledge-extraction-v2' }]) {
+      { runKind: 'knowledge-extraction-run', schemaVersion: 3, promptVersion: 'knowledge-extraction-v2' },
+      { runKind: 'knowledge-extraction-run', schemaVersion: 4, promptVersion: 'knowledge-extraction-v14' }]) {
       const bytes = JSON.stringify(value); writeFileSync(runPath, bytes);
       expect(() => runStore.read(runId)).toThrow('knowledge_storage_unsupported'); expect(readFileSync(runPath, 'utf8')).toBe(bytes);
     }

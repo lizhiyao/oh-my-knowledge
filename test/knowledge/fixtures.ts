@@ -57,6 +57,18 @@ export function modelWindow(): WindowExtractionModel {
   };
 }
 
+/** Authored transport fixture: optionals are explicit nulls in the strict wire contract. */
+export function wireModelWindow(packet = modelWindow()) {
+  return { ...packet,
+    mentions: packet.mentions.map(mention => ({ ...mention, selection: { ...mention.selection, occurrence: mention.selection.occurrence ?? null } })),
+    proposals: packet.proposals.map(proposal => ({ ...proposal,
+      draft: { ...proposal.draft, content: { ...proposal.draft.content,
+        statements: proposal.draft.content.statements.map(statement => ({ ...statement, object: statement.object ?? null })) } },
+      citations: proposal.citations.map(citation => ({ ...citation, selection: { ...citation.selection, occurrence: citation.selection.occurrence ?? null } })),
+    })),
+  };
+}
+
 /** Distinct component, instance and collective identity in one immutable source window. */
 export function identityWindow(): WindowExtractionModel {
   const packet = modelWindow();

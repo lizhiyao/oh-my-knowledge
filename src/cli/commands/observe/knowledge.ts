@@ -1,4 +1,4 @@
-import { createExecutor } from '../../../executors/index.js';
+import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { readFileSync, lstatSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -39,7 +39,7 @@ export default class ObserveKnowledge extends BaseCommand {
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
-    'run-id': Flags.string({ description: description('generate：稳定 UUID，用于重试同一次运行。', 'generate: stable UUID for retrying the same run.') }),
+    'run-id': Flags.string({ description: description('generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。', 'generate: stable UUID; repeated requests only restore archived results without another model call.') }),
     json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。', 'Print complete JSON instead of a readable summary; schema defaults to the JSON Schema alone.') }),
   };
   static examples = [
@@ -126,7 +126,7 @@ export default class ObserveKnowledge extends BaseCommand {
     await this.runWithCancellation(async signal => {
       if (operation.operation === 'generate') this.logToStderr(`${operation.executor} / ${operation.model} · ${operation.snapshot} · ${t('仅发送选定来源片段；费用以执行器实际报告为准。', 'Only selected excerpts are sent; cost depends on executor reporting.')}`);
       let result: unknown;
-      try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => configuredExtractionModel(executor, model, createExecutor)); }
+      try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => configuredExtractionModel(executor, model, createExtractionArchiveProducer(process.env))); }
       catch (cause) {
         const code = knowledgeFailureCode(cause);
         const reload = operation.operation === 'correct-entities' ? knowledgeCommand(settings.workspace, 'entities', { analysis: operation.analysisId })

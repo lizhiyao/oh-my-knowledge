@@ -44,16 +44,16 @@ omk observe knowledge list --workspace ./knowledge --json
 
 Use `--start-record`/`--end-record` to bound non-empty records (zero-based and inclusive); inspect the snapshot scope and limits first. See [extraction contracts](../../specs/entities/entity-extraction.md) for supported executors and current formats. Generation sends selected excerpts, whose private content still needs review.
 
-Before generation, the complete UTF-8 request, including fixed rules and selected excerpts, is limited to 1 MiB. This is not a token, model-context, or spending budget. Oversized requests make no model call, create no extraction run, and consume no automatic extraction calls; source text is never truncated. Capture a smaller range, or select fewer messages from one turn in Studio. `omk agents extract` also accepts `--start-record`/`--end-record` without changing the collection report.
+Before generation, the combined system and input text, including fixed rules and selected excerpts, is limited to 1 MiB in UTF-8. This is not an HTTP-body, token, model-context, or spending budget. Oversized requests make no model call, create no extraction run, and consume no automatic extraction calls; source text is never truncated. Capture a smaller range, or select fewer messages from one turn in Studio. `omk agents extract` also accepts `--start-record`/`--end-record` without changing the collection report.
 
-To freeze a structured-output experiment, export the current build's derived JSON Schema; `--json` includes its identity and the checks retained by the host. This reads no knowledge workspace and calls no model:
+Export the current build's derived JSON Schema to inspect or freeze the strict structural wire used by default generation; `--json` includes its identity and the checks retained by the host. This reads no knowledge workspace and calls no model:
 
 ```bash
 omk observe knowledge schema
 omk observe knowledge schema --json
 ```
 
-The structural wire protocol requires every field, with nullable placeholders for optional `object` and `occurrence`. Current `generate` still uses the original v14 prompt and admission path. Using this wire for generation requires a new prompt/pipeline identity; exact evidence and semantic checks remain the host's responsibility. Exporting a Schema does not verify a provider's support.
+The strict structural wire requires every field, with nullable placeholders for optional `object` and `occurrence`. Default generation uses that wire and decodes the placeholders before the existing host admission checks. Default configured generation uses no-few-shot strict prompt v15, with its full system digest; domain response Schema v4 is unchanged, and authored prompt-json ports retain original v14. Prompt, wire, rendered request and pipeline have separate identities; this activates no four-demonstration candidate and inherits no historical prompt-json quality result. No new real-model acceptance is claimed. Unsupported executor capabilities fail before dispatch, with no prompt-only fallback. Exact evidence and semantic checks remain the host's responsibility. Exporting a Schema does not verify a provider's support or model quality.
 
 Default text summaries show the selected knowledge workspace and next commands carrying the same `--workspace`; without a configured model, `generate` still requires `--model`. `--json` preserves the complete machine result without mixing guidance into JSON stdout. Required parameters and JSON syntax are checked before settings or storage access: parameter failures exit `2`, business failures exit `1`, and success exits `0`. Revision conflicts include a reload command. Retry a busy workspace after its current write ends without removing live locks. Maintenance choices remain separate from effectiveness verification.
 
@@ -130,14 +130,16 @@ OMK uses `codex` from the current process PATH. Check `codex --version`; if the 
 ## Recovery and data {#recovery-and-data}
 
 
-Use `generate --run-id <UUID>` to identify one request. Retrying that request does not call the model again; do not reuse it for different input or runtime configuration.
+Use `generate --run-id <UUID>` to identify one request. Repeating that request does not call the model again; do not reuse it for different input or runtime configuration. A v5 run permits one OMK invocation with no automatic retry or fallback. Reask, transient retry and cumulative-budget strategies remain unfinished work.
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
 omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 ```
 
-Resume handles already persisted output or pending writes, never regenerating. If a process exits before persisting output, its run may remain generating. Confirm the original process ended before deliberately starting a new run. Failure or cancellation is not successful delivery.
+Resume archives the original outcome still held by the same application instance, reads a persisted native outcome, or finishes stable pending writes; it never calls the model. If a started invocation loses its unsaved result when the process exits, its outcome and usage remain unknown. Process exit does not prove the request was unsent or cost zero, and does not refund or authorize resending. Inspect the record before explicitly starting a new request under a fresh run identity. Failure or cancellation is not successful delivery.
+
+New metadata lives at `extraction-runs/<run-id>.json`, with immutable complete native outcomes at `extraction-runs/outcomes/<run-id>/<attempt-id>.json`. Former `runs/` v4 files remain untouched and are neither read nor migrated: their details, resume, conversation/project batches and admission statistics are unavailable. Existing current source snapshots, entity history v2 and knowledge history v2 remain readable in the same workspace; no empty workspace is required.
 
 The workspace contains source snapshots, revisions and raw generation output, which can contain private data. `delete-source --snapshot <snapshot-id>` removes that snapshot and leaves an unavailable marker. It does not alter the original log or erase quoted text in revisions or model output; it is not a complete workspace wipe. Missing, corrupt or deleted sources remain explicitly unavailable.
 
@@ -146,11 +148,11 @@ For initial acceptance, inspect source fidelity, scope and future usefulness, re
 
 ## Admission statistics
 
-`omk observe knowledge quality --workspace ./knowledge --json` and Studio’s **Extraction history → Admission statistics** share the same read-only projection, `omk.extraction-quality/v1`. They read the whole selected workspace without model calls or historical checker replay. Runs are grouped by prompt version **and hash**, executor, model and run Schema version. Each saved run is counted once from its birth write intents, including prepared runs; later entity corrections, knowledge edits and maintenance choices do not change generation counts.
+`omk observe knowledge quality --workspace ./knowledge --json` and Studio’s **Extraction history → Admission statistics** share the read-only `omk.extraction-quality/v2` projection of current v5 runs in the selected workspace’s `extraction-runs/`. They make no model calls and do not replay historical checkers. Former `runs/` files are outside this projection; their absence does not mean that workspace was never extracted. Groups bind prompt version/hash, executor, requested model, run Schema version, policyId, outputMode, wireId (or null), producerId and producerRevision. These dimensions do not establish matching endpoints or complete runtime conditions, and the counts are not a causal quality experiment. Each run contributes its saved birth admission once; native outcome evidence is not an additional candidate denominator. Later entity corrections, knowledge edits and maintenance choices do not change generation counts.
 
 Entity, mention and knowledge-proposal admission rates divide summed accepted items by summed accepted plus rejected items, rather than averaging run percentages. Identifier-fragment rejections use all recorded mention items as the denominator. Exact localization separately reports passed, rejected, not checked and unknown: accepted mentions and saved post-location rejection reasons prove position checking; structural/duplicate-ID rejection precedes checking. Unknown reasons are not interpreted. Not-checked items are excluded from the localization denominator; any unknown check records, missing historical entity rejection lists or absent admission records make the corresponding rate unknown. Empty denominators are `null`, never 100%.
 
-Failed/cancelled/generating runs, runs without admission records and zero-admission/zero-knowledge runs remain visible. Reason counts can overlap on one item. Reference/dependency rejection counts do not establish causal cascades; exact position and structural admission do not prove semantic accuracy, recall or knowledge usefulness. Corrupt or unsupported run files fail the query; Studio offers a reload instead of displaying a healthy empty workspace. No source, prompt, raw output, saved run or historical score is rewritten.
+Failed/cancelled/generating runs, runs without admission records and zero-admission/zero-knowledge runs remain visible. Reason counts can overlap on one item. Reference/dependency rejection counts do not establish causal cascades; exact position and structural admission do not prove semantic accuracy, recall or knowledge usefulness. Corrupt or unsupported files inside the current run directory fail the query; Studio offers a reload instead of displaying a healthy empty workspace. Preserved files in the former directory do not enter the query. No source, prompt, raw output, saved run or historical score is rewritten.
 
 ## Extraction quality checks
 

@@ -12,7 +12,7 @@ local application 能召回候选、预览精确有限输入、持久准备一�
 
 ## 2. 独立 v1 存储
 
-`entity-links/<review-id>.json` 使用 `storeKind: entity-link-invocation-history`、`schemaVersion: 1`，替换尚未发布的离线 `record(capture)` 协议，不保留兼容别名或第二个 reader。实体历史 v2、提炼 run v4、知识历史 v2 与 library v1 不变。不支持的存储关闭式失败。
+`entity-links/<review-id>.json` 使用 `storeKind: entity-link-invocation-history`、`schemaVersion: 1`，替换尚未发布的离线 `record(capture)` 协议，不保留兼容别名或第二个 reader。实体历史 v2、知识历史 v2 与 library v1 不变。独立的 extraction-run v5 升级及旧 run 读取边界由[实体提取规范](./entity-extraction.md)规定，不改变本 v1 日志。不支持的存储关闭式失败。
 
 Preparation 保存两侧精确绑定、受治理的完整 system／prompt 和 JSON Schema、prompt／schema hash、model／executor／输出／超时设置、确认摘要、重试前驱及可信具体 producer 容量证明。request digest 证明精确请求完整性，不宣称完整 runtime 或凭据身份。实际 API builder 和执行器使用同一冻结环境；beforeDispatch 将真实 endpoint／body 与已准备的证明比对。证明不保存凭据。零 I/O inspect 在预览中返回非敏感 producerContext，producerContextDigest 共同进入内容／模型确认摘要；预览到 prepare 之间 endpoint 或证明上下文变化会明确拒绝，不能静默切换配置。共享 PreviewSchema 核对展示输入与计划一致，返回稳定 reviewId、prepare requestId 和 startRequestId。
 

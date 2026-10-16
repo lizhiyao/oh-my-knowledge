@@ -1,4 +1,4 @@
-import { createExecutor } from '../../executors/index.js';
+import { createExtractionArchiveProducer } from '../../executors/archive.js';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
@@ -234,7 +234,7 @@ export default class AgentsCommand extends BaseCommand {
       }, signal);
       const run = await app.generate(
         captured.snapshotId,
-        configuredExtractionModel(settings.executor, settings.model, createExecutor),
+        configuredExtractionModel(settings.executor, settings.model, createExtractionArchiveProducer(process.env)),
         undefined,
         signal,
       );

@@ -20,7 +20,7 @@
 
 写入需携带预期 generation／写头，拒绝过期草稿；原子写入前检查容量和成员占用。不可读的组织文件使查询与写入失败，不将其跳过后宣称对象未被占用。复用现有工作区锁及本机死进程锁恢复，不另建后台写入或自动重试。
 
-现有 `items/`、`entities/`、`sources/`、`runs/`、`tags/`、`artifacts/` 格式与内容保持；无需迁移。组织层不保存知识正文副本，不修改提取提示词、Schema、程序接纳或历史分数，也不为旧结构增加兼容 reader。
+组织层保持当前 `items/`、`entities/`、`sources/`、`tags/`、`artifacts/` 格式与内容，无需迁移。独立的 [extraction-run v5 升级](../entities/entity-extraction.md)使用 `extraction-runs/`，保留原 `runs/` 文件但不读取或迁移；当前实体与知识历史仍为 v2，可继续在同一工作区组织。组织层不保存知识正文副本，不修改提取提示词、Schema、程序接纳或历史分数，也不为旧结构增加兼容 reader。
 
 ## 知识投影与修订
 

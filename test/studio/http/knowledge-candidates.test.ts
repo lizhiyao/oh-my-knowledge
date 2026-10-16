@@ -102,6 +102,19 @@ describe('Studio candidate action boundary', () => {
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
+  it('exposes bounded invocation status without native diagnostics or archive witnesses', async () => {
+    const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected);
+    const source = app.capture({ path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
+    const run = await app.generate(source.snapshotId, { executor: 'fixture', model: 'fixture', generate: async () => ({
+      outcomeKind: 'result', result: { ok: false, output: 'private-native-output', error: 'private-native-diagnostic',
+        durationMs: 2, failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }) });
+    const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
+    const text = await response.text(); const rows = JSON.parse(text);
+    expect(rows).toEqual([expect.objectContaining({ runId: run.runId, status: 'failed', invocation: {
+      policyId: 'knowledge-generation-single/v1', outputMode: 'prompt-json', wireId: null, attemptCount: 1,
+      archiveStatus: 'recorded', failureKind: 'network' } })]);
+    for (const privateValue of ['private-native-', 'producerRevision', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
+  });
   it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {
     const entitySource = join(root, 'entity.jsonl');
     writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
@@ -137,7 +150,7 @@ describe('Studio candidate action boundary', () => {
     expect(latest.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
     const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
     expect(await quality.json()).toEqual(app.quality());
-    const runPath = join(workspace, 'runs', `${run.runId}.json`); const savedRun = readFileSync(runPath);
+    const runPath = join(workspace, 'extraction-runs', `${run.runId}.json`); const savedRun = readFileSync(runPath);
     try {
       writeFileSync(runPath, '{bad private content');
       const failedQuality = await post({ operation: 'quality' }); expect(failedQuality.status).toBe(400);
@@ -208,7 +221,7 @@ describe('Studio candidate action boundary', () => {
     expect((await post({ workspace: selected, operation: 'tag', id: current.revision.knowledgeId, generation: 0, tags: ['tag'] })).status).toBe(200);
   });
   it('rejects unsupported storage and removed operations without altering files or exposing data', async () => {
-    const selected = join(root, 'unsupported'); const folder = join(selected, 'runs'); mkdirSync(folder, { recursive: true });
+    const selected = join(root, 'unsupported'); const folder = join(selected, 'extraction-runs'); mkdirSync(folder, { recursive: true });
     const path = join(folder, `${randomUUID()}.json`);
     const original = JSON.stringify({ schemaVersion: 0, privateValue: 'private-sensitive-value' }); writeFileSync(path, original);
     const required = await post({ workspace: selected, operation: 'runs' }); expect(required.status).toBe(409);

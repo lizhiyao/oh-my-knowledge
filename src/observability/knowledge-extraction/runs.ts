@@ -7,14 +7,106 @@ import { EntityAnalysisWriteSchema } from '../../knowledge/entities/contracts.js
 import { validateEntityAnalysis } from '../../knowledge/entities/validation.js';
 import { validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
 
+export type ExtractionJson = null | boolean | number | string | ExtractionJson[] | { [key: string]: ExtractionJson };
+export interface ExtractionNativeResult { ok: boolean; output: string | null; [key: string]: ExtractionJson }
+export interface ExtractionExceptionObservation {
+  representationKind: 'exception-diagnostic/v1';
+  sourceType: 'undefined' | 'boolean' | 'number' | 'bigint' | 'string' | 'symbol' | 'function' | 'object';
+  name: string | null; message: string; truncated: boolean; accessorsSkipped: boolean;
+}
+export interface ExtractionModelProjection { output: string; durationMs: number; inputTokens?: number; outputTokens?: number; costUSD?: number }
+export type ExtractionOutcome =
+  | { outcomeKind: 'result'; result: ExtractionNativeResult; cleanupFailure?: { diagnostic: string } }
+  | { outcomeKind: 'exception'; error: ExtractionExceptionObservation; cleanupFailure?: { diagnostic: string } }
+  | { outcomeKind: 'model-port-projection'; scope: 'authored-model-port/v1'; result: ExtractionModelProjection };
+
+/** JSON data only. Explicit frames permit deeply nested native trace JSON without getters or recursion. */
+export function isExtractionJsonData(input: unknown): input is ExtractionJson {
+  const active = new WeakSet<object>();
+  const stack: { value: unknown; keys?: string[]; index: number }[] = [{ value: input, index: 0 }];
+  try {
+    while (stack.length) {
+      const frame = stack[stack.length - 1], value = frame.value;
+      if (value === null || typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) { stack.pop(); continue; }
+      if (!value || typeof value !== 'object') return false;
+      if (!frame.keys) {
+        if (active.has(value)) return false;
+        const array = Array.isArray(value), prototype = Object.getPrototypeOf(value);
+        if (prototype !== (array ? Array.prototype : Object.prototype) && prototype !== null) return false;
+        const own = Reflect.ownKeys(value);
+        if (own.some(key => typeof key !== 'string')) return false;
+        const keys: string[] = [];
+        for (const key of own as string[]) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (!descriptor || !('value' in descriptor)) return false;
+          if (array && key === 'length') continue;
+          if (!descriptor.enumerable) return false;
+          keys.push(key);
+        }
+        if (array && (keys.length !== value.length || keys.some((key, index) => key !== String(index)))) return false;
+        frame.keys = keys; active.add(value);
+      }
+      if (frame.index >= frame.keys.length) { active.delete(value); stack.pop(); continue; }
+      const key = frame.keys[frame.index++], descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !('value' in descriptor)) return false;
+      stack.push({ value: descriptor.value, index: 0 });
+    }
+    return true;
+  } catch { return false; }
+}
+const jsonRecord = (value: unknown): value is Record<string, ExtractionJson> => !!value && typeof value === 'object' && !Array.isArray(value);
+const utf8Limit = (value: unknown, max: number): value is string => typeof value === 'string' && new TextEncoder().encode(value).byteLength <= max;
+function isExtractionOutcome(value: unknown): value is ExtractionOutcome {
+  if (!isExtractionJsonData(value) || !jsonRecord(value)) return false;
+  if (value.cleanupFailure !== undefined && (!jsonRecord(value.cleanupFailure) || Object.keys(value.cleanupFailure).length !== 1
+    || !utf8Limit(value.cleanupFailure.diagnostic, 4096))) return false;
+  if (value.outcomeKind === 'result') return Object.keys(value).every(key => ['outcomeKind', 'result', 'cleanupFailure'].includes(key))
+    && jsonRecord(value.result) && typeof value.result.ok === 'boolean' && (value.result.output === null || typeof value.result.output === 'string');
+  if (value.outcomeKind === 'exception') {
+    const error = value.error;
+    return Object.keys(value).every(key => ['outcomeKind', 'error', 'cleanupFailure'].includes(key)) && jsonRecord(error)
+      && Object.keys(error).length === 6 && error.representationKind === 'exception-diagnostic/v1' && typeof error.sourceType === 'string'
+      && ['undefined', 'boolean', 'number', 'bigint', 'string', 'symbol', 'function', 'object'].includes(error.sourceType)
+      && (error.name === null || utf8Limit(error.name, 256)) && utf8Limit(error.message, 4096)
+      && typeof error.truncated === 'boolean' && typeof error.accessorsSkipped === 'boolean';
+  }
+  if (value.outcomeKind !== 'model-port-projection' || value.scope !== 'authored-model-port/v1'
+    || Object.keys(value).length !== 3 || !jsonRecord(value.result)) return false;
+  const result = value.result;
+  return Object.keys(result).every(key => ['output', 'durationMs', 'inputTokens', 'outputTokens', 'costUSD'].includes(key))
+    && typeof result.output === 'string' && typeof result.durationMs === 'number'
+    && ['inputTokens', 'outputTokens', 'costUSD'].every(key => result[key] === undefined || typeof result[key] === 'number');
+}
+// z.custom retains the original JSON object, including unknown native fields, without recursive Zod cloning.
+export const ExtractionOutcomeSchema = z.custom<ExtractionOutcome>(isExtractionOutcome, 'Invalid extraction outcome JSON data.');
+const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+export const ExtractionOutcomeRefSchema = z.strictObject({ bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), digest });
+export type ExtractionOutcomeRef = z.infer<typeof ExtractionOutcomeRefSchema>;
+export const ExtractionAttemptSchema = z.strictObject({
+  attemptId: z.string().uuid(), startedAt: z.iso.datetime({ offset: true }), requestDigest: digest,
+  request: z.strictObject({ systemDigest: digest, inputDigest: digest, outputMode: z.enum(['json-schema', 'prompt-json']),
+    wireId: digest.optional(), timeoutMs: z.number().int().positive().max(2_147_483_647), maxOutputTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional() }),
+  producer: z.strictObject({ producerId: z.string().min(1).max(256), producerRevision: digest,
+    sourceChannels: z.array(z.strictObject({ channel: z.string().min(1).max(256), maxBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) })).min(1),
+    maxOutcomeJsonBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), proof: z.custom<ExtractionJson>(isExtractionJsonData) }),
+  outcome: ExtractionOutcomeRefSchema.optional(), failure: z.strictObject({ failureKind: z.string().min(1).max(256), diagnostic: z.string().max(4096) }).optional(),
+  wireDiagnostic: z.strictObject({ wireId: digest, wireStatus: z.enum(['valid', 'item_failures']), itemFailureCount: z.number().int().nonnegative() }).optional(),
+}).superRefine((attempt, context) => {
+  if (attempt.request.outputMode === 'json-schema' && !attempt.request.wireId) context.addIssue({ code: 'custom', path: ['request', 'wireId'], message: 'Structured output requires a frozen wire identity.' });
+});
+export type ExtractionAttempt = z.infer<typeof ExtractionAttemptSchema>;
+export const ExtractionSinglePolicySchema = z.strictObject({ policyId: z.literal('knowledge-generation-single/v1'),
+  maxInvocations: z.literal(1), retry: z.literal('none'), fallback: z.literal('none') });
+
 export const ExtractionRunSchema = z.strictObject({
-  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(4),
+  runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(5),
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
   origin: EvidenceWindowSchema.shape.origin,
   executor: z.string().min(1), model: z.string().min(1),
   promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,
+  policy: ExtractionSinglePolicySchema, attempts: z.array(ExtractionAttemptSchema).length(1), selectedAttemptId: z.string().uuid().optional(),
   startedAt: z.iso.datetime({ offset: true }), finishedAt: z.iso.datetime({ offset: true }).optional(),
   status: z.enum(['generating', 'prepared', 'completed', 'failed', 'cancelled']),
   error: z.string().optional(), rawOutput: z.string().optional(),
@@ -27,9 +119,18 @@ export const ExtractionRunSchema = z.strictObject({
   committed: z.array(z.strictObject({ knowledgeId: z.string(), revisionId: z.string() })),
   runtime: z.strictObject({
     durationMs: z.number(), inputTokens: z.number().optional(), outputTokens: z.number().optional(),
-    costUSD: z.number().optional(),
+    durationApiMs: z.number().optional(), cacheReadTokens: z.number().optional(), cacheCreationTokens: z.number().optional(),
+    tokenUsageReportedByExecutor: z.boolean().optional(), costUSD: z.number().optional(), costReportedByExecutor: z.boolean().optional(),
   }).optional(),
 }).superRefine((run, context) => {
+  const selected = run.attempts.find(attempt => attempt.attemptId === run.selectedAttemptId);
+  if ((run.selectedAttemptId !== undefined && !selected?.outcome) || (run.rawOutput !== undefined && !selected?.outcome)
+    || (['prepared', 'completed'].includes(run.status) && (!selected?.outcome || run.rawOutput === undefined))) {
+    context.addIssue({ code: 'custom', path: ['selectedAttemptId'], message: 'Selected extraction output requires its archived attempt.' });
+  }
+  if (['prepared', 'completed'].includes(run.status) && run.attempts[0].failure) {
+    context.addIssue({ code: 'custom', path: ['attempts', 0, 'failure'], message: 'Failed extraction attempt cannot prepare knowledge.' });
+  }
   if (['prepared', 'completed'].includes(run.status) && !run.entityAnalysis) {
     context.addIssue({ code: 'custom', path: ['entityAnalysis'], message: 'Prepared window extraction needs an entity intent, including empty results.' });
   }
@@ -85,12 +186,17 @@ export interface ExtractionRunStore {
   read(runId: string): ExtractionRun;
   list(): ExtractionRun[];
   save(run: ExtractionRun, expectedGeneration: number): void;
+  writeOutcome(runId: string, attemptId: string, outcome: ExtractionOutcome, maxBytes: number): ExtractionOutcomeRef;
+  readOutcome(runId: string, attemptId: string, ref?: ExtractionOutcomeRef): { outcome: ExtractionOutcome; ref: ExtractionOutcomeRef };
 }
 
 /** Safe run summary. Counts describe the prepared birth revision; inspection loads the chosen history revision. */
 export function extractionRunSummary(run: ExtractionRun) {
   const analysis = run.entityAnalysis;
   return { runId: run.runId, status: run.status, startedAt: run.startedAt, committed: run.committed, rejections: run.rejections,
+    invocation: { policyId: run.policy.policyId, outputMode: run.attempts[0].request.outputMode, wireId: run.attempts[0].request.wireId ?? null,
+      attemptCount: 1 as const, archiveStatus: run.attempts[0].outcome ? 'recorded' as const : 'pending' as const,
+      failureKind: run.attempts[0].failure?.failureKind ?? null },
     ...(run.runtime ? { runtime: run.runtime } : {}),
     ...(analysis ? { entityAnalysis: { analysisId: analysis.analysisId, revisionId: analysis.revision.revisionId,
       entityCount: analysis.revision.entities.length, mentionCount: analysis.revision.mentions.length,

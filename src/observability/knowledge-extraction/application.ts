@@ -7,9 +7,9 @@ import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
-import type { ExtractionRun, ExtractionRunStore } from './runs.js';
+import type { ExtractionOutcome, ExtractionRun, ExtractionRunStore } from './runs.js';
+import { ExtractionAttemptSchema } from './runs.js';
 import type { ExtractionProposal } from './proposals.js';
-import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { EntityModelSchema } from './entities.js';
 import { checkWindowExtractionResponse } from './window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
@@ -17,13 +17,10 @@ import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
 import { assertExtractionInputCapacity, extractionModelInput } from './model-input.js';
 import { extractionQuality } from './quality.js';
+import { EXTRACTION_GENERATION_POLICY, extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from './generation.js';
+import type { ExtractionModel } from './generation.js';
+export type { ExtractionModel } from './generation.js';
 
-export interface ExtractionModel {
-  executor: string; model: string;
-  generate(system: string, input: string, signal?: AbortSignal): Promise<{
-    output: string; durationMs: number; inputTokens?: number; outputTokens?: number; costUSD?: number;
-  }>;
-}
 export interface KnowledgeApplicationPorts {
   evidence: EvidenceStore; knowledge: KnowledgeStore; runs: ExtractionRunStore; tags: KnowledgeTagStore;
   entities: EntityAnalysisStore;
@@ -33,6 +30,8 @@ export interface KnowledgeApplicationPorts {
 
 /** Both delivery hosts call this workflow; neither owns knowledge state transitions. */
 export class KnowledgeApplication {
+  private heldOutcome?: { runId: string; attemptId: string; outcome: ExtractionOutcome; maxBytes: number };
+  private invocationInFlight?: string;
   constructor(private readonly ports: KnowledgeApplicationPorts) {}
   capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow { return this.ports.evidence.capture(selection, signal); }
   list() {
@@ -130,20 +129,14 @@ export class KnowledgeApplication {
     const window = source.window;
     // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
     const input = extractionModelInput(window);
+    const { system, promptVersion } = extractionPrompt(model);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
-      promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input), actor: this.ports.actor });
-    let run: ExtractionRun = {
-      runKind: 'knowledge-extraction-run', schemaVersion: 4,
-      runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
-      ...(window.origin ? { origin: window.origin } : {}),
-      executor: model.executor, model: model.model, promptVersion: EXTRACTION_PROMPT_VERSION,
-      promptHash: this.ports.hash(EXTRACTION_PROMPT), inputDigest: this.ports.hash(input),
-      actor: this.ports.actor, startedAt: this.ports.now(), status: 'generating', intents: [], rejections: [], committed: [],
-      entityRejections: [],
-    };
+      promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
+      policy: EXTRACTION_GENERATION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
+      timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
       if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
-      return previous.status === 'prepared' ? this.resume(runId, signal) : previous;
+      return this.resume(runId, signal);
     };
     // Current-format receipts may predate this capacity policy. Reuse them without a fresh call.
     let previous: ExtractionRun | undefined;
@@ -151,33 +144,92 @@ export class KnowledgeApplication {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
     if (previous) return reuse(previous);
-    assertExtractionInputCapacity(input);
-    // Exclusive reservation precedes any model call. A retry never starts another generation.
+    assertExtractionInputCapacity(input, system);
+    if (this.heldOutcome || this.invocationInFlight) throw new Error('An extraction invocation or outcome archive is pending. Resume that run before starting another invocation.');
+    const { producer, ...request } = extractionExecution(model, system, input);
+    const startedAt = this.ports.now(), attemptId = this.ports.id();
+    const run: ExtractionRun = {
+      runKind: 'knowledge-extraction-run', schemaVersion: 5,
+      runId, requestDigest, generation: 1, snapshotId, sourceVersion: window.sourceVersion,
+      ...(window.origin ? { origin: window.origin } : {}), executor: model.executor, model: model.model,
+      promptVersion, promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input),
+      actor: this.ports.actor, startedAt, status: 'generating', policy: EXTRACTION_GENERATION_POLICY,
+      attempts: [ExtractionAttemptSchema.parse({ attemptId, startedAt, request, producer,
+        requestDigest: extractionRequestDigest({ requestDigest, request, producer, policy: EXTRACTION_GENERATION_POLICY }) })],
+      intents: [], rejections: [], committed: [], entityRejections: [],
+    };
+    // Only the exclusive creation winner may invoke. Reopening a started run never grants a new effect.
     try { this.ports.runs.create(run); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       return reuse(this.ports.runs.read(runId));
     }
+    this.invocationInFlight = runId;
     try {
-      const result = await model.generate(EXTRACTION_PROMPT, input, signal);
-      if (result.output.length > 2 * 1024 * 1024) throw new Error('Extraction response exceeds capacity.');
-      run = this.saveRun(run, { rawOutput: result.output,
-        runtime: { durationMs: result.durationMs, ...(result.inputTokens === undefined ? {} : { inputTokens: result.inputTokens }),
-          ...(result.outputTokens === undefined ? {} : { outputTokens: result.outputTokens }),
-          ...(result.costUSD === undefined ? {} : { costUSD: result.costUSD }) } });
-      signal?.throwIfAborted();
-      run = this.prepare(run, window);
-    } catch (error) {
-      return this.saveRun(run, { status: signal?.aborted ? 'cancelled' : 'failed', finishedAt: this.ports.now(), error: error instanceof Error ? error.message : String(error) });
-    }
-    return this.resume(run.runId, signal);
+      const outcome = await invokeExtractionModel(model, system, input, signal);
+      this.heldOutcome = { runId, attemptId, outcome, maxBytes: producer.maxOutcomeJsonBytes };
+      return this.resume(runId, signal);
+    } finally { this.invocationInFlight = undefined; }
   }
   resume(runId: string, signal?: AbortSignal): ExtractionRun {
     let run = this.ports.runs.read(runId);
-    if (['generating', 'cancelled', 'failed'].includes(run.status) && run.rawOutput !== undefined && !run.intents.length) {
+    let heldRecorded: ReturnType<ExtractionRunStore['readOutcome']> | undefined;
+    if (this.heldOutcome?.runId === runId) {
+      const held = this.heldOutcome;
+      // Representation/archive failures retain the held return value; they are not executor exceptions.
+      const outcome = serializeExtractionObservation(held.outcome) as unknown as ExtractionOutcome;
+      const ref = this.ports.runs.writeOutcome(runId, held.attemptId, outcome, held.maxBytes);
+      heldRecorded = { outcome, ref };
+      if (!run.attempts[0].outcome) run = this.saveRun(run, { attempts: [{ ...run.attempts[0], outcome: ref }] });
+      else this.ports.runs.save(run, run.generation - 1);
+      this.heldOutcome = undefined;
+    }
+    if (run.status === 'completed' || run.attempts[0].failure) return run;
+    if (run.status !== 'prepared') {
+      const attempt = run.attempts[0];
+      let recorded: ReturnType<ExtractionRunStore['readOutcome']>;
+      if (heldRecorded) recorded = heldRecorded;
+      else {
+        try { recorded = this.ports.runs.readOutcome(runId, attempt.attemptId, attempt.outcome); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !attempt.outcome) return run; throw error; }
+      }
+      if (!attempt.outcome) run = this.saveRun(run, { attempts: [{ ...attempt, outcome: recorded.ref }] });
+      const result = extractionOutcomeResult(recorded.outcome);
+      const fields = result as unknown as Record<string, unknown> | undefined;
+      const metric = (key: string) => { const value = fields?.[key]; return typeof value === 'number' && Number.isFinite(value) ? value : undefined; };
+      const flag = (key: string) => { const value = fields?.[key]; return typeof value === 'boolean' ? value : undefined; };
+      const runtime = result && metric('durationMs') !== undefined ? { durationMs: metric('durationMs')!,
+        ...(metric('durationApiMs') === undefined ? {} : { durationApiMs: metric('durationApiMs') }),
+        ...(flag('tokenUsageReportedByExecutor') === undefined ? {} : { tokenUsageReportedByExecutor: flag('tokenUsageReportedByExecutor') }),
+        ...(flag('costReportedByExecutor') === undefined ? {} : { costReportedByExecutor: flag('costReportedByExecutor') }),
+        ...Object.fromEntries(['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens']
+          .filter(key => flag('tokenUsageReportedByExecutor') !== false && metric(key) !== undefined).map(key => [key, metric(key)])),
+        ...(flag('costReportedByExecutor') === false || metric('costUSD') === undefined ? {} : { costUSD: metric('costUSD') }),
+      } : undefined;
+      const rawOutput = result && typeof result.output === 'string' && result.output.length <= 2 * 1024 * 1024 ? result.output : undefined;
+      if (run.selectedAttemptId === undefined && (runtime || rawOutput !== undefined)) {
+        run = this.saveRun(run, { ...(runtime ? { runtime } : {}), ...(rawOutput === undefined ? {} : { rawOutput, selectedAttemptId: attempt.attemptId }) });
+      }
+      const decoded = extractionResponse(recorded.outcome, attempt.request.outputMode, attempt.request.wireId);
+      if (decoded.status === 'failed') {
+        const failure = { ...decoded.failure, diagnostic: decoded.failure.diagnostic.slice(0, 4096) };
+        return this.saveRun(run, { status: signal?.aborted ? 'cancelled' : 'failed', finishedAt: this.ports.now(), error: failure.diagnostic,
+          attempts: [{ ...run.attempts[0], failure }] });
+      }
+      if (signal?.aborted) return run.status === 'cancelled' ? run : this.saveRun(run, { status: 'cancelled', finishedAt: this.ports.now(), error: 'Extraction cancelled after outcome archive.' });
       const source = this.source(run.snapshotId, run.sourceVersion);
       if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
-      try { run = this.prepare(run, source.window); } catch (error) {
-        return this.saveRun(run, { status: 'failed', finishedAt: this.ports.now(), error: error instanceof Error ? error.message : String(error) });
+      try { run = this.prepare(run, source.window, decoded.response,
+        decoded.wireDiagnostic ? { wireId: decoded.wireDiagnostic.wireId, wireStatus: decoded.wireDiagnostic.wireStatus,
+          itemFailureCount: decoded.wireDiagnostic.itemFailures.length } : undefined); } catch (error) {
+        // Store failures preserve the acknowledged native artifact and do not become another model invocation.
+        const invalidEnvelope = error instanceof SyntaxError || (error instanceof Error && error.name === 'ZodError');
+        const capacity = error instanceof Error && /capacity|exceeds/i.test(error.message);
+        if (invalidEnvelope || capacity) {
+          const diagnostic = capacity ? 'Extraction application intent exceeds storage capacity; original outcome remains archived.' : 'Extraction response envelope was rejected.';
+          return this.saveRun(run, { status: 'failed', finishedAt: this.ports.now(), error: diagnostic,
+            attempts: [{ ...run.attempts[0], failure: { failureKind: capacity ? 'capacity' : 'envelope_error', diagnostic } }] });
+        }
+        throw error;
       }
     }
     if (run.status !== 'prepared') return run;
@@ -268,9 +320,10 @@ export class KnowledgeApplication {
       expectedHeadRevisionId: expectedRevisionId, revision, grounding }, this.ports.actor);
     return this.detail(knowledgeId, revision.revisionId);
   }
-  private prepare(run: ExtractionRun, window: EvidenceWindow): ExtractionRun {
+  private prepare(run: ExtractionRun, window: EvidenceWindow, response: unknown,
+    wireDiagnostic?: { wireId: string; wireStatus: 'valid' | 'item_failures'; itemFailureCount: number }): ExtractionRun {
     const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId };
-    const checked = checkWindowExtractionResponse(JSON.parse(run.rawOutput!), window.excerpts);
+    const checked = checkWindowExtractionResponse(response, window.excerpts);
     const entityIds = new Map(checked.analysis.entities.map(entity => [entity.entityId, this.ports.id()]));
     const mentionIds = new Map(checked.analysis.mentions.map(mention => [mention.mentionId, this.ports.id()]));
     const entityAnalysis: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: run.runId,
@@ -281,13 +334,30 @@ export class KnowledgeApplication {
         limitations: window.limitations,
       } };
     return this.saveRun(run, { status: 'prepared', error: undefined, finishedAt: undefined, entityAnalysis, entityRejections: checked.analysis.rejected, rejections: checked.rejected,
+      ...(wireDiagnostic ? { attempts: [{ ...run.attempts[0], wireDiagnostic }] } : {}),
       intents: checked.accepted.map(proposal => this.intent(proposal, window, actor, { entityIds, mentionIds,
         ref: { analysisId: run.runId, revisionId: entityAnalysis.revision.revisionId } })) });
   }
 
   private saveRun(run: ExtractionRun, update: Partial<ExtractionRun>): ExtractionRun {
-    const next = { ...run, ...update, generation: run.generation + 1 };
-    this.ports.runs.save(next, run.generation);
+    // Match manifest JSON omission (not native outcome serialization) before comparing lost acknowledgements.
+    const next = JSON.parse(JSON.stringify({ ...run, ...update, generation: run.generation + 1 })) as ExtractionRun;
+    try { this.ports.runs.save(next, run.generation); }
+    catch (error) {
+      // A failed acknowledgement can follow a successful atomic publication. Never replay the invocation.
+      try {
+        const saved = this.ports.runs.read(run.runId);
+        if (this.ports.hash(saved) === this.ports.hash(next)) { this.ports.runs.save(next, run.generation); return saved; }
+        if ((update.status === 'prepared' && ['prepared', 'completed'].includes(saved.status)
+          || update.status === 'completed' && saved.status === 'completed')
+          && saved.requestDigest === next.requestDigest && saved.selectedAttemptId === next.selectedAttemptId
+          && saved.rawOutput === next.rawOutput && saved.attempts[0].requestDigest === next.attempts[0].requestDigest) {
+          this.ports.runs.save(saved, saved.generation - 1); return saved;
+        }
+      }
+      catch { /* Preserve the original persistence failure. */ }
+      throw error;
+    }
     return next;
   }
   private intent(proposal: ExtractionProposal, window: EvidenceWindow, actor: KnowledgeActor,

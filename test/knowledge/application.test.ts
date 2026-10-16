@@ -12,10 +12,12 @@ import { FileExtractionRunStore } from '../../src/observability/knowledge-extrac
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
+import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/model-input.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { identityWindow, modelWindow } from './fixtures.js';
+import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
+import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/strict-prompt.js';
 import { extractionQuality } from '../../src/observability/knowledge-extraction/quality.js';
 
 const roots: string[] = [];
@@ -25,7 +27,7 @@ function setup(text = 'Alpha 使用 Beta') {
   const source = join(root, 'log.jsonl');
   writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }));
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'test');
-  const runs = new FileExtractionRunStore(join(root, 'runs'));
+  const runs = new FileExtractionRunStore(join(root, 'extraction-runs'), root);
   const evidence = new TraceEvidenceStore(join(root, 'sources'));
   const ports = {
     evidence, knowledge, runs, tags: new FileKnowledgeTags(join(root, 'tags'), 'test'), id: randomUUID, now: () => '2026-09-14T00:00:00Z',
@@ -90,7 +92,7 @@ describe('shared knowledge application', () => {
   });
 
   it('bounds the full UTF-8 model input before reservation, preserves source bytes and permits a smaller capture', async () => {
-    const { app, snapshot, model, generate, source, runs, ports } = setup('中'.repeat(400_000));
+    const { app, snapshot, model, generate, source, runs } = setup('中'.repeat(400_000));
     const original = readFileSync(source);
     const input = JSON.stringify({ excerpts: snapshot.excerpts, limitations: snapshot.limitations });
     expect(input.length + EXTRACTION_PROMPT.length).toBeLessThan(EXTRACTION_INPUT_MAX_BYTES);
@@ -98,17 +100,6 @@ describe('shared knowledge application', () => {
     await expect(app.generate(snapshot.snapshotId, model)).rejects.toThrow(/--start-record\/--end-record.*one turn/);
     expect(generate).not.toHaveBeenCalled(); expect(runs.list()).toEqual([]); expect(app.list()).toEqual([]);
     expect(readFileSync(source)).toEqual(original);
-    const previous = { runKind: 'knowledge-extraction-run' as const, schemaVersion: 4 as const,
-      runId: randomUUID(), generation: 1, snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion,
-      executor: model.executor, model: model.model, promptHash: ports.hash(EXTRACTION_PROMPT), inputDigest: ports.hash(input),
-      promptVersion: EXTRACTION_PROMPT_VERSION, actor: ports.actor, startedAt: ports.now(), status: 'generating' as const,
-      intents: [], rejections: [], entityRejections: [], committed: [],
-      requestDigest: ports.hash({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion,
-        executor: model.executor, model: model.model, promptHash: ports.hash(EXTRACTION_PROMPT), inputDigest: ports.hash(input), actor: ports.actor }) };
-    runs.create(previous);
-    expect(await app.generate(snapshot.snapshotId, model, previous.runId)).toEqual(previous);
-    await expect(app.generate(snapshot.snapshotId, { ...model, model: 'changed' }, previous.runId)).rejects.toThrow('identity conflict');
-    expect(generate).not.toHaveBeenCalled(); expect(runs.read(previous.runId)).toEqual(previous);
     writeFileSync(source, `${original.toString()}\n${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } })}`);
     const smaller = app.capture({ path: source, startRecord: 1, endRecord: 1 });
     model.generate = async () => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', smaller.excerpts[0].evidenceRef), durationMs: 1 });
@@ -157,7 +148,7 @@ describe('shared knowledge application', () => {
     const run = await app.generate(snapshot.snapshotId, model);
     expect(run.status).toBe('completed'); expect(run.entityRejections).toEqual([]); expect(run.rejections).toEqual([]);
     const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
-      runs: new FileExtractionRunStore(join(root, 'runs')), entities: new FileEntityAnalysisStore(join(root, 'entities')),
+      runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root), entities: new FileEntityAnalysisStore(join(root, 'entities')),
       evidence: new TraceEvidenceStore(join(root, 'sources')) });
     const detail = reopened.detail(run.committed[0].knowledgeId);
     expect(detail.entityAnalysis?.status).toBe('available');
@@ -260,7 +251,7 @@ describe('shared knowledge application', () => {
     expect(app.entities(runId).revision.revisionId).toBe(prepared.entityAnalysis!.revision.revisionId);
     const analysis = app.entities(runId);
     expect(analysis.history.schemaVersion).toBe(2);
-    expect(prepared).toMatchObject({ schemaVersion: 4, promptVersion: EXTRACTION_PROMPT_VERSION });
+    expect(prepared).toMatchObject({ schemaVersion: 5, promptVersion: EXTRACTION_PROMPT_VERSION });
     const [component, instance, group] = analysis.revision.entities;
     const [, instanceMention, groupMention] = analysis.revision.mentions;
     expect(instance.componentRef).toMatchObject({ entityId: component.entityId, mentionIds: [instanceMention.mentionId] });
@@ -277,13 +268,13 @@ describe('shared knowledge application', () => {
     write.mockRestore();
     const prepared = runs.read(runId);
     const historical = { ...prepared, promptVersion: 'knowledge-extraction-v4', promptHash: 'frozen-original-prompt', requestDigest: 'frozen-original-request' };
-    const file = join(root, 'runs', `${runId}.json`); const bytes = JSON.stringify(historical);
+    const file = join(root, 'extraction-runs', `${runId}.json`); const bytes = JSON.stringify(historical);
     writeFileSync(file, bytes);
     expect(runs.read(runId)).toEqual(historical); expect(readFileSync(file, 'utf8')).toBe(bytes);
-    // A new v5 request cannot reuse the identity of a v4 generation.
+    // A current prompt request cannot reuse a historical prompt generation identity.
     await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('identity conflict');
     const resumed = app.resume(runId);
-    expect(resumed).toMatchObject({ status: 'completed', schemaVersion: 4,
+    expect(resumed).toMatchObject({ status: 'completed', schemaVersion: 5,
       promptVersion: historical.promptVersion, promptHash: historical.promptHash, requestDigest: historical.requestDigest, rawOutput: prepared.rawOutput });
     expect(app.entities(runId).revision).toEqual(prepared.entityAnalysis!.revision);
     expect(generate).toHaveBeenCalledTimes(1);
@@ -321,7 +312,7 @@ describe('shared knowledge application', () => {
   });
   it('rejects old entity and run files without rewriting them while keeping knowledge bodies readable', async () => {
     const { app, snapshot, model, root, runs } = setup(); const run = await app.generate(snapshot.snapshotId, model);
-    const entityPath = join(root, 'entities', `${run.runId}.json`); const runPath = join(root, 'runs', `${run.runId}.json`);
+    const entityPath = join(root, 'entities', `${run.runId}.json`); const runPath = join(root, 'extraction-runs', `${run.runId}.json`);
     const oldEntity = JSON.parse(readFileSync(entityPath, 'utf8')); oldEntity.schemaVersion = 1;
     for (const entity of oldEntity.revisions[0].entities) { delete entity.referentKind; delete entity.componentRef; delete entity.collection; }
     const oldRun = { ...run, schemaVersion: 3, promptVersion: 'knowledge-extraction-v3' };
@@ -355,7 +346,7 @@ describe('shared knowledge application', () => {
     const write = vi.spyOn(ports.entities, 'write').mockImplementationOnce(() => { throw new Error('stop before entity commit'); });
     const runId = randomUUID(); await expect(app.generate(snapshot.snapshotId, model, runId)).rejects.toThrow('stop before');
     write.mockRestore(); const prepared = runs.read(runId);
-    const path = join(root, 'runs', `${runId}.json`);
+    const path = join(root, 'extraction-runs', `${runId}.json`);
     const stored = JSON.parse(readFileSync(path, 'utf8'));
     if (target === 'binding') stored.intents[0].grounding.entityAnalysisRef.revisionId = randomUUID();
     if (target === 'mention') stored.intents[0].grounding.mentions[0].selection.quote = 'Beta';
@@ -404,7 +395,7 @@ describe('shared knowledge application', () => {
     model.generate = async (_prompt, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
     const run = await app.generate(snapshot.snapshotId, model); const before = app.detail(run.committed[0].knowledgeId);
     const analysis = app.entities(run.runId); const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
-    const runFile = join(root, 'runs', `${run.runId}.json`); const runBytes = readFileSync(runFile);
+    const runFile = join(root, 'extraction-runs', `${run.runId}.json`); const runBytes = readFileSync(runFile);
     edit.entities[1].description = '来源中的本次被测构建 T'; edit.entities[1].qualifiers = ['本次测试'];
     edit.entities[1].uncertainties = ['精确构建未知', '发布状态及是否为 R 未确认'];
     const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, 1, edit, '不继承发布包的限定');
@@ -420,7 +411,7 @@ describe('shared knowledge application', () => {
     expect(reviewed.grounding.citations).toEqual(before.grounding.citations);
     expect(reviewed.grounding.entityAnalysisRef?.revisionId).toBe(corrected.revision.revisionId);
     const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
-      entities: new FileEntityAnalysisStore(join(root, 'entities')), runs: new FileExtractionRunStore(join(root, 'runs')),
+      entities: new FileEntityAnalysisStore(join(root, 'entities')), runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root),
       evidence: new TraceEvidenceStore(join(root, 'sources')) });
     expect(reopened.detail(before.revision.knowledgeId, before.revision.revisionId).revision).toEqual(before.revision);
     expect(reopened.entities(run.runId, analysis.revision.revisionId).revision).toEqual(analysis.revision);
@@ -431,18 +422,22 @@ describe('shared knowledge application', () => {
     expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
   });
   it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
-    const { app, snapshot, model, generate } = setup(); const controller = new AbortController();
-    const runtime = configuredExtractionModel('codex', 'fixture', () => async input => {
-      const result = await model.generate(input.system ?? '', input.prompt); controller.abort();
-      return { ...result, ok: true, durationApiMs: 5, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
+    const { app, snapshot, generate } = setup(); const controller = new AbortController();
+    const runtime = configuredExtractionModel('codex', 'fixture', createCodexArchiveProducer({}, () => async input => {
+      const result = await generate(input.system ?? '', input.prompt); controller.abort();
+      return { ...result, output: JSON.stringify(wireModelWindow(JSON.parse(result.output))), ok: true, durationApiMs: 5, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, costReportedByExecutor: false, stopReason: 'end_turn', numTurns: 1 };
-    });
+    }));
     const cancelled = await app.generate(snapshot.snapshotId, runtime, randomUUID(), controller.signal);
     expect(cancelled).toMatchObject({ status: 'cancelled', runtime: { durationMs: 5, inputTokens: 7, outputTokens: 9 } });
     expect(cancelled.runtime).not.toHaveProperty('costUSD');
+    expect(cancelled.promptVersion).toBe(STRICT_EXTRACTION_PROMPT_VERSION);
+    expect(generate.mock.calls[0][0]).toBe(STRICT_EXTRACTION_PROMPT);
+    expect(cancelled.attempts[0].request.systemDigest).toBe(`sha256:${createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')}`);
     expect(cancelled.rawOutput).toBeTruthy();
     const completed = app.resume(cancelled.runId);
     expect(completed.status).toBe('completed'); expect(completed.error).toBeUndefined();
+    expect(completed.committed).toHaveLength(1); expect(completed.attempts[0].wireDiagnostic).toMatchObject({ wireStatus: 'valid', itemFailureCount: 0 });
     expect(generate).toHaveBeenCalledTimes(1);
   });
   it('stores topic tags through the shared Studio action without changing claims, decisions or generation calls', async () => {
@@ -510,6 +505,64 @@ describe('shared knowledge application', () => {
     expect(knowledge.list()[0].generation).toBe(1);
     expect(generate).toHaveBeenCalledTimes(1);
   });
+  it('archives the complete failed return before admission and keeps unreported metrics unknown', async () => {
+    const { app, snapshot, model, runs } = setup();
+    const native = { ok: false, output: 'partial original assistant text', durationMs: 7, durationApiMs: 6,
+      error: 'transport interrupted', failure: { failureKind: 'network', retryable: true }, refusal: 'original refusal',
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0,
+      tokenUsageReportedByExecutor: false, costReportedByExecutor: false,
+      turns: [{ tools: [{ input: { original: [1, null, 'private native detail'] }, output: 'untouched' }] }] };
+    const call = vi.fn(async () => ({ outcomeKind: 'result' as const, result: native })); model.generate = call;
+    const run = await app.generate(snapshot.snapshotId, model);
+    expect(run).toMatchObject({ status: 'failed', rawOutput: native.output, runtime: { durationMs: 7, durationApiMs: 6,
+      tokenUsageReportedByExecutor: false, costReportedByExecutor: false }, attempts: [{ failure: { failureKind: 'network' } }] });
+    expect(run.runtime).not.toHaveProperty('inputTokens'); expect(run.runtime).not.toHaveProperty('costUSD');
+    expect(runs.readOutcome(run.runId, run.attempts[0].attemptId, run.attempts[0].outcome).outcome)
+      .toEqual({ outcomeKind: 'result', result: native });
+    expect(app.resume(run.runId)).toEqual(run); expect(await app.generate(snapshot.snapshotId, model, run.runId)).toEqual(run);
+    expect(call).toHaveBeenCalledTimes(1); expect(app.list()).toEqual([]);
+  });
+  it('retains an unacknowledged return, blocks competing effects and retries only archival', async () => {
+    const { app, snapshot, model, generate, runs, ports } = setup();
+    let release!: () => void; const ready = new Promise<void>(resolve => { release = resolve; });
+    model.generate = async (system, input) => { await ready; return generate(system, input); };
+    const id = randomUUID(), other = randomUUID(); const pending = app.generate(snapshot.snapshotId, model, id);
+    await expect(app.generate(snapshot.snapshotId, model, other)).rejects.toThrow('pending');
+    expect(() => runs.read(other)).toThrow(); expect(app.resume(id).status).toBe('generating');
+    const archive = vi.spyOn(runs, 'writeOutcome').mockImplementationOnce(() => { throw new Error('archive unavailable'); });
+    release(); await expect(pending).rejects.toThrow('archive unavailable');
+    expect(runs.read(id)).toMatchObject({ status: 'generating', attempts: [expect.not.objectContaining({ outcome: expect.anything() })] });
+    expect(new KnowledgeApplication(ports).resume(id).status).toBe('generating');
+    await expect(app.generate(snapshot.snapshotId, model, other)).rejects.toThrow('pending');
+    expect(app.resume(id).status).toBe('completed'); expect(archive).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it('recovers a published outcome after lost acknowledgement in a fresh application without redispatch', async () => {
+    const { app, snapshot, model, generate, runs, ports } = setup(); const id = randomUUID();
+    const original = runs.writeOutcome.bind(runs);
+    vi.spyOn(runs, 'writeOutcome').mockImplementationOnce((...args) => { original(...args); throw new Error('lost archive acknowledgement'); });
+    await expect(app.generate(snapshot.snapshotId, model, id)).rejects.toThrow('lost archive acknowledgement');
+    expect(runs.read(id).attempts[0].outcome).toBeUndefined();
+    const reopened = new KnowledgeApplication(ports); const recovered = await reopened.generate(snapshot.snapshotId, model, id);
+    expect(recovered.status).toBe('completed'); expect(recovered.attempts[0].outcome).toBeDefined();
+    expect(app.resume(id)).toEqual(recovered); expect(generate).toHaveBeenCalledTimes(1);
+    expect(ports.entities.read(id).generation).toBe(1); expect(ports.knowledge.list()).toHaveLength(1);
+    expect((await app.generate(snapshot.snapshotId, model)).status).toBe('completed'); expect(generate).toHaveBeenCalledTimes(2);
+  });
+  it('recovers a lost manifest acknowledgement and preserves one frozen birth across overlapping resumes', async () => {
+    const { app, snapshot, model, runs, ports, generate } = setup(); const id = randomUUID();
+    const save = runs.save.bind(runs); let reentered = false, lostAcknowledgement = false;
+    vi.spyOn(runs, 'save').mockImplementation((run, generation) => {
+      if (run.status === 'prepared' && !reentered) { reentered = true; new KnowledgeApplication(ports).resume(id); }
+      save(run, generation);
+      if (run.generation === 2 && !lostAcknowledgement) { lostAcknowledgement = true; throw new Error('lost manifest acknowledgement'); }
+    });
+    const run = await app.generate(snapshot.snapshotId, model, id);
+    expect(run.status).toBe('completed'); expect(reentered).toBe(true); expect(generate).toHaveBeenCalledTimes(1);
+    expect(ports.entities.read(id).generation).toBe(1); expect(ports.knowledge.list()).toHaveLength(1);
+    expect(ports.knowledge.list()[0].generation).toBe(1);
+    expect(app.resume(id)).toEqual(run);
+  });
   it('preserves invalid-output evidence, rejects oversized responses once, and completes an empty result at the limit', async () => {
     const { app, snapshot, model, generate, runs, ports, root } = setup();
     generate.mockResolvedValue({ output: 'invalid JSON', durationMs: 1 });
@@ -518,15 +571,18 @@ describe('shared knowledge application', () => {
     expect(app.list()).toEqual([]);
 
     const empty = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';
-    // The current v4 guard measures JavaScript string length, rather than UTF-8 bytes.
+    // The v5 admission guard keeps the existing JavaScript string-length boundary after native archival.
     const maxOutputLength = 2 * 1024 * 1024;
     generate.mockResolvedValue({ output: empty.padEnd(maxOutputLength + 1, ' '), durationMs: 1 });
     const runId = randomUUID();
     const failed = await app.generate(snapshot.snapshotId, model, runId);
-    expect(failed).toMatchObject({ schemaVersion: 4, status: 'failed', error: 'Extraction response exceeds capacity.', intents: [], committed: [] });
+    expect(failed).toMatchObject({ schemaVersion: 5, status: 'failed', error: 'Extraction response exceeds capacity.', intents: [], committed: [] });
     expect(ports.entities.list()).toEqual({ histories: [], unavailable: 0 }); expect(app.list()).toEqual([]);
     expect(runs.read(runId)).toEqual(failed);
-    const failedFile = join(root, 'runs', `${runId}.json`), failedBytes = readFileSync(failedFile);
+    const archived = runs.readOutcome(runId, failed.attempts[0].attemptId, failed.attempts[0].outcome);
+    expect(archived.outcome.outcomeKind).toBe('model-port-projection');
+    if (archived.outcome.outcomeKind !== 'exception') expect(archived.outcome.result.output).toHaveLength(maxOutputLength + 1);
+    const failedFile = join(root, 'extraction-runs', `${runId}.json`), failedBytes = readFileSync(failedFile);
     expect(await app.generate(snapshot.snapshotId, model, runId)).toEqual(failed);
     expect(app.resume(runId)).toEqual(failed);
     expect(generate).toHaveBeenCalledTimes(2);
@@ -535,7 +591,7 @@ describe('shared knowledge application', () => {
     const atLimit = empty.padEnd(maxOutputLength, ' ');
     generate.mockResolvedValue({ output: atLimit, durationMs: 1 });
     const completed = await app.generate(snapshot.snapshotId, model);
-    expect(completed).toMatchObject({ schemaVersion: 4, status: 'completed', rawOutput: atLimit, committed: [] });
+    expect(completed).toMatchObject({ schemaVersion: 5, status: 'completed', rawOutput: atLimit, committed: [] });
     expect(runs.read(completed.runId)).toEqual(completed);
     expect(generate).toHaveBeenCalledTimes(3);
     expect(readFileSync(failedFile)).toEqual(failedBytes);
@@ -550,8 +606,8 @@ describe('shared knowledge application', () => {
     const analysis = app.entities(run.runId);
     const edit = structuredClone({ entities: analysis.revision.entities, mentions: analysis.revision.mentions });
     edit.entities[0].label = '项目 Alpha';
-    const historyBytes = () => Object.fromEntries(['entities', 'items', 'runs'].flatMap(directory =>
-      readdirSync(join(root, directory)).filter(name => name.endsWith('.json')).sort().map(name => {
+    const historyBytes = () => Object.fromEntries(['entities', 'items', 'extraction-runs'].flatMap(directory =>
+      readdirSync(join(root, directory), { recursive: true, encoding: 'utf8' }).filter(name => name.endsWith('.json')).sort().map(name => {
         const path = join(root, directory, name);
         return [path, readFileSync(path, 'utf8')] as const;
       })));

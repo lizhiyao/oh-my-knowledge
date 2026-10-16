@@ -12,7 +12,8 @@ export function ExtractionQualityView({ quality, loading, failed, onRetry, lang 
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const rate = (value: number | null) => value === null ? t('未知／无分母', 'Unknown / no denominator') : `${(value * 100).toFixed(1)}%`;
   return <section className="candidate-form extraction-quality" aria-label={t('结构接纳统计', 'Admission statistics')}>
-    <p className="candidate-help">{t('整个知识工作区，按首次接纳意图统计，每个运行计一次。读取不调用模型，不重判历史，也不采用后续人工修订。', 'Whole knowledge workspace; saved birth admission, once per run. Reading calls no model, rechecks no history, and excludes later human edits.')}</p>
+    <p className="candidate-help">{t('仅统计当前工作区 extraction-runs/ 中的 v5 运行，按首次接纳意图统计，每个运行计一次。读取不调用模型，不重判历史，也不采用后续人工修订。', 'Current v5 runs in this workspace’s extraction-runs/ only; saved birth admission, once per run. Reading calls no model, rechecks no history, and excludes later human edits.')}</p>
+    <p className="candidate-help">{t('旧 runs/ 记录不计入；没有 v5 记录不代表工作区从未提炼。分组不证明 endpoint 或完整运行条件相同，也不是质量因果实验。', 'Former runs/ records are excluded; no v5 records does not mean this workspace was never extracted. Groups do not establish matching endpoints or complete runtime conditions, and are not a causal quality experiment.')}</p>
     <p className="candidate-help">{t('位置匹配不证明语义准确；引用／依赖拒绝不是因果级联；零接纳不代表质量通过。', 'Position matches do not prove semantic accuracy; reference/dependency rejections are not causal cascades; zero admission is not a quality pass.')}</p>
     {loading ? <Skeleton active paragraph={{ rows: 3 }}/>
       : failed ? <Alert type="warning" title={t('统计暂不可读；不能据此判断没有运行或拒绝。', 'Statistics unavailable; this does not mean there are no runs or rejections.')}
@@ -20,10 +21,13 @@ export function ExtractionQualityView({ quality, loading, failed, onRetry, lang 
         : quality && <>
           <Button size="small" onClick={onRetry}>{t('重新读取统计', 'Reload statistics')}</Button>
           <p>{t(`共 ${quality.runCount} 次运行，${quality.groups.length} 组测量来源。`, `${quality.runCount} runs, ${quality.groups.length} measurement-source groups.`)}</p>
-          {!quality.groups.length && <p>{t('尚无提炼运行。提炼后可在此核对结构接纳记录；空库不是质量通过。', 'No extraction runs yet. Inspect saved admission after extraction; an empty workspace is not a quality pass.')}</p>}
+          {!quality.groups.length && <p>{t('尚无 v5 提炼运行。提炼后可在此核对结构接纳记录；零记录不是质量通过。', 'No v5 extraction runs yet. Inspect saved admission after extraction; no records is not a quality pass.')}</p>}
           {quality.groups.map(group => <details className="candidate-statement" key={JSON.stringify(group.identity)}>
             <summary>{group.identity.promptVersion} · {group.identity.executor} / {group.identity.model} · {group.runs.total} {t('次运行', 'runs')}</summary>
             <p className="extraction-quality-identity">Schema {group.identity.schemaVersion} · {group.identity.promptHash}</p>
+            <p className="extraction-quality-identity">{t('策略：', 'Policy: ')}{group.identity.policyId} · {t('输出模式：', 'Output mode: ')}{group.identity.outputMode}</p>
+            <p className="extraction-quality-identity">{t('结构线协议：', 'Structural wire: ')}{group.identity.wireId ?? t('未使用', 'Not used')}</p>
+            <p className="extraction-quality-identity">Producer：{group.identity.producerId} · {group.identity.producerRevision}</p>
             <p>{t(`已完成 ${group.runs.completed}，已准备 ${group.runs.prepared}，生成中 ${group.runs.generating}，失败 ${group.runs.failed}，取消 ${group.runs.cancelled}。`, `Completed ${group.runs.completed}, prepared ${group.runs.prepared}, generating ${group.runs.generating}, failed ${group.runs.failed}, cancelled ${group.runs.cancelled}.`)}</p>
             <p>{t(`有首次接纳记录 ${group.runs.withAdmission}，未形成记录 ${group.runs.withoutAdmission}；零接纳 ${group.runs.zeroAccepted}，零知识提案接纳 ${group.runs.zeroKnowledge}。`, `Birth admission recorded ${group.runs.withAdmission}, not recorded ${group.runs.withoutAdmission}; zero admission ${group.runs.zeroAccepted}, zero knowledge proposal admission ${group.runs.zeroKnowledge}.`)}</p>
             {(['entities', 'mentions', 'proposals'] as const).map(component => <p key={component}>

@@ -20,7 +20,7 @@ The additive `library/<object-id>.json` uses `knowledge-library-object-history`,
 
 Writes carry expected generation and head and reject stale drafts. Capacity and ownership are checked before atomic publication. An unreadable organization file fails queries and writes rather than being skipped and interpreted as unowned. Existing workspace locking and local dead-process recovery are reused, without background writes or automatic retries.
 
-Existing `items/`, `entities/`, `sources/`, `runs/`, `tags/`, and `artifacts/` formats and contents remain intact; no migration is needed. Organization stores no copy of knowledge bodies and changes no extraction prompt, Schema, admission, or historical scores. No compatibility reader is added.
+The organization layer leaves current `items/`, `entities/`, `sources/`, `tags/`, and `artifacts/` formats and contents intact; it needs no migration. The separate [extraction-run v5 upgrade](../entities/entity-extraction.md) uses `extraction-runs/` and preserves former `runs/` files without reading or migrating them. Current entity and knowledge histories remain v2 and can still be organized in the same workspace. Organization stores no copy of knowledge bodies and changes no extraction prompt, Schema, admission, or historical scores. No compatibility reader is added.
 
 ## Knowledge projection and revisions
 

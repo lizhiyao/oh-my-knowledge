@@ -105,11 +105,11 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 
 ## 明确选择的知识工作区
 
-用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4，保留原始 prompt 身份与摘要、原始输出、实体／知识写入意图及运行用量。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。`entity-links/<review-id>.json` 独立使用 `entity-link-invocation-history` v1，保存已确认请求与调用生命周期、完整执行器返回结果及失败证据、不可变人工决定及可恢复的 library intent/receipt；见[跨窗口复核日志](../entities/entity-links.md)。
+用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5，保存单次 invocation 的 system／input 摘要与来源绑定、接纳事实及稳定写入意图。完整执行器返回 JSON 结果以不可变 sidecar 保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`，通过身份与摘要引用；失败／refusal 原文和用量标志均保留。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。`entity-links/<review-id>.json` 独立使用 `entity-link-invocation-history` v1，保存已确认请求与调用生命周期、完整执行器返回结果及失败证据、不可变人工决定及可恢复的 library intent/receipt；见[跨窗口复核日志](../entities/entity-links.md)。
 
-来源归档／删除、实体与知识历史、主题标签、知识库关联、自动提炼状态及载体发布共用 `.knowledge-write.lock`。载体的最终选择校验与发布持续持有该边界；完整生成树在发布前通过容量检查，失败暂存内容被清理。锁等待失败报告 `knowledge_workspace_busy`。只恢复已证明退出的本机 owner，拒绝存储目录的软链跳转。文件 Schema 版本与 prompt 来源身份分开：Schema v4 运行保留原始 `knowledge-extraction-vN` 身份（正整数版本），新生成使用当前提取 prompt。读取或幂等恢复受支持的运行保留原始证据，不重新提取或升级结果，边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。
+来源归档／删除、run metadata／outcome、实体与知识历史、主题标签、知识库关联、自动提炼状态及载体发布共用 `.knowledge-write.lock`。载体的最终选择校验与发布持续持有该边界；完整生成树在发布前通过容量检查，失败暂存内容被清理。锁等待失败报告 `knowledge_workspace_busy`。只恢复已证明退出的本机 owner，拒绝存储目录的软链跳转。文件 Schema 版本与 prompt／wire／pipeline 来源身份分开：领域响应 v4 保持不变，配置后的 strict 生成使用无 few-shot prompt v15，作者 prompt-json 端口保留原 v14；历史 prompt-json 与新 strict 身份不共用质量结论。读取或幂等恢复受支持的运行保留原始证据，不发送模型或升级结果，边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。
 
-旧实体历史 v1 和运行 Schema v3 被拒绝，不添加兼容 reader、恢复、迁移、自动改写或删除。旧知识 v2 正文仍可读，但所绑定的旧实体分析不可用。用户选择新的空知识目录，从原始日志重新提炼；新实体不会自动接管旧知识绑定。存储文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
+原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；v5 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行来源快照、实体历史 v2、知识历史 v2 和已有绑定仍可读取，不要求替换为空工作区。实体历史 v1 和不支持的运行格式仍被拒绝，不添加兼容 reader。新提炼的实体不会自动接管旧知识绑定。存储文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
 
 ## 为什么这样命名
 

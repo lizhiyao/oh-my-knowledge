@@ -28,4 +28,4 @@ Held-result recovery is limited to the same application instance. After a restar
 
 ## 4. Verification boundary
 
-Controlled loopback HTTP and rendered/lifecycle tests cover transport consent, workspace substitution, one dispatch, raw failure retention, archive recovery, cancellation, stale responses and human controls with zero external/model requests. These checks do not replace production Next/Chrome acceptance after integration, a real human identity decision, a Codex capacity proof or a real-model quality measurement. Extraction run v4 is unchanged.
+Controlled loopback HTTP and rendered/lifecycle tests cover transport consent, workspace substitution, one dispatch, raw failure retention, archive recovery, cancellation, stale responses and human controls with zero external/model requests. These checks do not replace production Next/Chrome acceptance after integration, a real human identity decision, a Codex capacity proof or a real-model quality measurement. This v1 review journal is independent of extraction-run v5. Current entity and knowledge histories remain v2; this surface adds no reader for old extraction runs.

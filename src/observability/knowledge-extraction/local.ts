@@ -23,7 +23,7 @@ export function createLocalKnowledgeApplication(root: string): KnowledgeApplicat
   return new KnowledgeApplication({
     evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace),
     knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
-    runs: new FileExtractionRunStore(join(workspace, 'runs'), workspace),
+    runs: new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace),
     tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace),
     entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
     id: randomUUID, now: () => new Date().toISOString(),

@@ -44,16 +44,16 @@ omk observe knowledge list --workspace ./knowledge --json
 
 可用 `--start-record`／`--end-record` 限定非空行范围（零起始、含首尾）；先读取快照核对范围和限制。支持的执行器与当前格式见[实体提取契约](../../specs/entities/entity-extraction.md)。生成只发送选定片段，仍须检查其中的私有内容。
 
-生成前会检查固定规则与所选片段的完整 UTF-8 请求，合计上限为 1 MiB；这不是 token、模型上下文或金额预算。超限时不调用模型、不创建提炼运行，也不消耗自动提炼的调用次数；原文不会被截断。请重新归档较小范围，或在 Studio 选择一轮中的较少消息。`omk agents extract` 同样支持 `--start-record`／`--end-record`，无需修改采集报告。
+生成前会检查包含固定规则与所选片段的 system 加 input 文本，UTF-8 合计上限为 1 MiB；这不是 HTTP body、token、模型上下文或金额预算。超限时不调用模型、不创建提炼运行，也不消耗自动提炼的调用次数；原文不会被截断。请重新归档较小范围，或在 Studio 选择一轮中的较少消息。`omk agents extract` 同样支持 `--start-record`／`--end-record`，无需修改采集报告。
 
-冻结结构化输出实验前，可导出当前构建派生的 JSON Schema；`--json` 同时包含协议身份和保留在宿主的检查。该操作不读取知识工作区，也不调用模型：
+可导出当前构建派生的 JSON Schema，检查或冻结默认生成使用的 strict 结构线协议；`--json` 同时包含协议身份和保留在宿主的检查。该操作不读取知识工作区，也不调用模型：
 
 ```bash
 omk observe knowledge schema
 omk observe knowledge schema --json
 ```
 
-结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。当前 `generate` 仍使用原版 v14 prompt 和接纳路径；生成时采用此协议需要新的 prompt／pipeline 身份，逐字证据与语义检查仍由宿主负责。导出 Schema 不代表已验证具体 provider 的支持能力。
+strict 结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。默认生成使用该协议，解码占位后再进入现有宿主接纳检查。默认配置生成使用无 few-shot strict prompt v15 并绑定其完整 system 摘要；领域响应 Schema v4 不变，作者 prompt-json 端口仍用原 v14。prompt、wire、完整请求与 pipeline 分别有自己的身份；本次不激活四正例候选，也不继承历史 prompt-json 质量结果，不宣称完成新的真实模型验收。不支持的执行器能力在派发前拒绝，不回退为仅靠 prompt 约束输出。逐字证据与语义检查仍由宿主负责。导出 Schema 不代表已验证具体 provider 的支持能力或模型质量。
 
 默认文本摘要显示当前知识工作区和带同一 `--workspace` 的下一步命令；未配置模型时，`generate` 仍须显式传入 `--model`。`--json` 保持完整机器结果，提示不混入 JSON stdout。必要参数与 JSON 语法在读取设置或存储前检查；参数失败退出 `2`，业务失败退出 `1`，成功退出 `0`。修订冲突提示重读命令，工作区忙时等待当前写入结束再重试，不删除活跃锁。维护决定与效果验证分别呈现。
 
@@ -130,14 +130,16 @@ OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若�
 ## 中断与来源管理 {#中断与来源管理}
 
 
-`generate --run-id <UUID>` 可为一次运行指定稳定身份。相同请求重试不会再次调用模型；修改来源或模型时不要复用该身份。
+`generate --run-id <UUID>` 可为一次请求指定稳定身份。重复相同请求不会再次调用模型；修改来源或运行配置时不要复用该身份。一个 v5 run 只允许一次 OMK invocation，不自动重试或 fallback；reask、瞬时失败重试与累计预算策略仍未完成。
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
 omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 ```
 
-`resume` 只恢复已持久化输出的接纳或保存，不重新调用模型。若进程在保存输出前退出，记录可能仍为 generating；确认原进程已结束后，检查记录并以新的运行身份重新生成。失败或取消不代表完整候选已交付。
+`resume` 只归档同一 application 实例仍持有的原结果、读取已保存的原生 outcome，或完成稳定待写意图，不调用模型。已启动调用若在进程退出时丢失尚未保存的结果，其结果与用量保持未知。进程退出不证明请求未发送或费用为零，也不退款或授权补发；先检查记录，再显式用新的 run 身份开始新请求。失败或取消不代表完整候选已交付。
+
+新 metadata 位于 `extraction-runs/<run-id>.json`，完整不可变原生 outcome 位于 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`。原 `runs/` v4 文件保留原样，不读取或迁移：旧详情、恢复、对话／项目批次及接纳统计不可用。已有当前来源快照、实体历史 v2 与知识历史 v2 仍可在同一工作区读取，不要求空工作区。
 
 工作区含来源快照、候选修订及生成原始输出。它们可能包含私有内容，应按本地数据管理。`delete-source --snapshot <snapshot-id>` 删除来源快照并留下不可用标记，不修改原日志，也不擦除知识修订或生成输出中的引用文字；不要将它当作工作区的彻底清除。来源缺失、损坏或删除后，候选仍保留，但不能再声称原始依据可完整核对。
 
@@ -146,11 +148,11 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 
 ## 接纳统计
 
-`omk observe knowledge quality --workspace ./knowledge --json` 与 Studio 的**提炼记录 → 结构接纳统计**共用只读投影 `omk.extraction-quality/v1`。读取范围是整个选定知识工作区，不调用模型，不用当前检查器重判历史。按提示词版本**及摘要**、执行器、模型和 run Schema 版本分组；每个保存的 run 按出生写入意图计一次，包含 prepared 状态。后续实体纠正、知识修订和维护决定不改变生成计数。
+`omk observe knowledge quality --workspace ./knowledge --json` 与 Studio 的**提炼记录 → 结构接纳统计**共用只读投影 `omk.extraction-quality/v2`，范围为选定工作区 `extraction-runs/` 中的当前 v5 run；不调用模型，不用当前检查器重判历史。原 `runs/` 文件不进入此投影，缺席不代表工作区从未提炼过。分组绑定 prompt 版本／摘要、执行器、请求模型、run Schema 版本、policyId、outputMode、wireId（或 null）、producerId 与 producerRevision；这些维度不证明 endpoint 或完整运行条件相同，计数也不是质量因果实验。每个 run 的已保存出生接纳只计一次，原生 outcome 证据不增加候选分母。后续实体纠正、知识修订和维护决定不改变生成计数。
 
 实体、提及和知识提案的接纳率为汇总接纳数除以汇总接纳数与拒绝数之和，不平均各 run 的百分比。标识符碎片拒绝率以全部已记录提及项为分母。逐字定位分别显示通过、拒绝、未检查、未知：已接纳提及及定位后拒绝理由能证明执行了位置检查，结构／重复 ID 拒绝发生在定位前；未知理由不作解释。未检查项不进入定位分母；未知检查记录、历史实体拒绝列表缺失或尚无接纳记录，会使相应比例未知。空分母为 `null`，不显示 100%。
 
-失败、取消、生成中、尚无接纳记录，以及零接纳／零知识提案接纳的运行分别显示。同一项可有多个拒绝理由；引用／依赖拒绝数不证明因果级联，位置匹配和结构接纳不证明语义准确、召回或知识价值。损坏或不支持的 run 文件使查询失败，Studio 提供重读，不显示为健康空库。来源、提示词、原始输出、保存的 run 和历史分数都不会改写。
+失败、取消、生成中、尚无接纳记录，以及零接纳／零知识提案接纳的运行分别显示。同一项可有多个拒绝理由；引用／依赖拒绝数不证明因果级联，位置匹配和结构接纳不证明语义准确、召回或知识价值。当前 run 目录中损坏或不支持的文件使查询失败，Studio 提供重读，不显示为健康空库；原目录保留文件不进入查询。来源、提示词、原始输出、保存的 run 和历史分数都不会改写。
 
 ## 提取质量检查
 

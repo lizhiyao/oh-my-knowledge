@@ -101,6 +101,8 @@ describe('observe knowledge command wiring', () => {
     expect(JSON.parse(quality.stdout)).toEqual(app.quality());
     const statistics = await runCommand(ObserveKnowledge, ['quality', ...base], { cwd: root });
     expect(statistics.stdout).toContain('提炼接纳统计'); expect(statistics.stdout).toContain('位置匹配不证明语义准确');
+    expect(statistics.stdout).toContain('当前 v5 运行'); expect(statistics.stdout).toContain('knowledge-generation-single/v1');
+    expect(statistics.stdout).toContain('authored-model-port/v1');
     expect(statistics.stdout).toContain(`--workspace ${workspace}`);
     const before = app.entities(run.runId);
     const edit = { entities: structuredClone(before.revision.entities), mentions: before.revision.mentions };

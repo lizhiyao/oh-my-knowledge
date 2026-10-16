@@ -32,7 +32,8 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
         next.push(command('entities', { analysis: run.runId }));
         if (run.committed.length) next.push(command('show', { id: run.committed[0].knowledgeId }));
         else next.push(t('本次未提交知识。核对实体结果、拒绝原因和原始来源；不要把零结果视为提炼质量通过。', 'No knowledge was committed. Review entities, rejection reasons and the source; zero results do not demonstrate extraction quality.'), command('runs', { json: true }), command('source', { snapshot: run.snapshotId }));
-      } else if (run.rawOutput !== undefined || run.status === 'prepared') next.push(t('resume 恢复已保存结果，不再次调用模型：', 'Resume restores saved results without another model call:'), command('resume', { id: run.runId }));
+      } else if (run.attempts[0].failure) next.push(t('本次调用已终止，原始结果仍保存在本地归档。核对失败类别和来源后再决定是否发起新运行；resume 不会重试模型。', 'This invocation is terminal; its original outcome remains archived locally. Inspect the failure and source before deciding on a new run; resume does not retry the model.'), command('runs', { json: true }));
+      else if (run.attempts[0].outcome || run.status === 'prepared') next.push(t('resume 恢复已保存结果，不再次调用模型：', 'Resume restores saved results without another model call:'), command('resume', { id: run.runId }));
       else next.push(t('尚无可恢复的模型结果；先核对运行状态。resume 不重新提炼，也不启动第二次模型调用。', 'No saved model result is available to restore. Inspect the run first; resume neither re-extracts nor starts a second model call.'), command('runs'));
       break;
     }
@@ -70,12 +71,14 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
     const quality = value as ReturnType<KnowledgeApplication['quality']>;
     const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
     const rate = (value: number | null) => value === null ? t('未知／无分母', 'unknown / no denominator') : `${(value * 100).toFixed(1)}%`;
-    return [t('提炼接纳统计（整个知识工作区）', 'Extraction admission statistics (whole knowledge workspace)'),
+    return [t('提炼接纳统计（当前 v5 运行）', 'Extraction admission statistics (current v5 runs)'),
+      t('只读取 extraction-runs/；保留在 runs/ 的旧记录不参与统计。', 'Reads extraction-runs/ only; retained legacy runs/ records are excluded.'),
       t('只汇总首次接纳意图，每个运行计一次；不调用模型，不重判历史，不反映后续人工修订。', 'Saved birth admission only, once per run; no model calls, historical rechecking, or later human edits.'),
       t('位置匹配不证明语义准确；引用／依赖拒绝不证明因果级联；零接纳不代表质量通过。', 'Position matches do not prove semantic accuracy; reference rejections do not prove causal cascades; zero admission is not a quality pass.'),
       `${quality.runCount} ${t('次运行', 'runs')}`,
       ...quality.groups.flatMap(group => [
         `${group.identity.promptVersion} / ${group.identity.executor} / ${group.identity.model} / schema ${group.identity.schemaVersion}\n${group.identity.promptHash}`,
+        `${group.identity.policyId} / ${group.identity.outputMode} / ${group.identity.wireId ?? '—'}\n${group.identity.producerId} / ${group.identity.producerRevision}`,
         `${t('运行状态', 'Run status')}: ${JSON.stringify(group.runs)}`,
         ...(['entities', 'mentions', 'proposals'] as const).map(component => `${t(component === 'entities' ? '实体接纳' : component === 'mentions' ? '提及接纳' : '知识提案接纳', component)}: ${group[component].accepted}/${group[component].recorded} · ${rate(group[component].acceptanceRate)} · ${group[component].unknownRuns} ${t('次分母未知', 'runs with unknown denominators')}`),
         `${t('逐字定位：通过／拒绝／未检查／未知', 'Exact localization: passed / rejected / not checked / unknown')}: ${group.localization.passed}/${group.localization.rejected}/${group.localization.notChecked}/${group.localization.unknown} · ${rate(group.localization.passRate)} · ${group.localization.unknownRuns} ${t('次检查记录未知', 'runs with unknown check records')}`,
@@ -88,6 +91,8 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
     const run = item as unknown as ExtractionRun;
     return [lang === 'zh' ? `提炼运行：${run.status}` : `Extraction run: ${run.status}`,
       `${run.runId} · ${run.executor} / ${run.model}`,
+      `${run.policy.policyId} · ${run.attempts[0].request.outputMode} · ${run.attempts[0].outcome ? (lang === 'zh' ? '结果已归档' : 'outcome archived') : (lang === 'zh' ? '归档待确认，发送和费用状态不能据此推断' : 'archive pending; dispatch and cost cannot be inferred')}`,
+      ...(run.attempts[0].failure ? [`${lang === 'zh' ? '失败类别' : 'Failure'}: ${run.attempts[0].failure.failureKind}`] : []),
       lang === 'zh' ? `已提交 ${run.committed.length} 条知识；${run.rejections.length} 条知识未接纳；${run.entityRejections ? `${run.entityRejections.length} 条实体未接纳` : '实体拒绝数量未记录'}。接纳不代表已证实。` : `${run.committed.length} knowledge items committed; ${run.rejections.length} knowledge proposals rejected; ${run.entityRejections ? `${run.entityRejections.length} entity proposals rejected` : 'entity rejection count unreported'}. Admission does not verify truth.`,
       ...(run.error ? [run.error] : [])].join('\n');
   }
