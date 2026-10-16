@@ -3,7 +3,7 @@ const rejectedCodes = new Set([
   'carrier_conflict', 'carrier_knowledge_region_conflict', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'carrier_capacity_exceeded',
   'request_body_too_large',
 ]);
-const responseCodes = new Set([...rejectedCodes, 'knowledge_request_failed', 'carrier_request_failed', 'carrier_invalid_metadata']);
+const responseCodes = new Set([...rejectedCodes, 'entity_link_input_invalid', 'entity_link_confirmation_invalid', 'entity_link_outcome_unconfirmed', 'knowledge_request_failed', 'carrier_request_failed', 'carrier_invalid_metadata']);
 
 /** Generic server failures and unreadable acknowledgements do not prove a write was rejected. */
 export class KnowledgeRequestError extends Error {
@@ -14,7 +14,7 @@ export class KnowledgeRequestError extends Error {
   }
 }
 
-export async function requestKnowledge<T>(resource: 'candidates' | 'library' | 'artifacts' | 'auto-extraction',
+export async function requestKnowledge<T>(resource: 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links',
   payload: object, signal?: AbortSignal): Promise<T> {
   signal?.throwIfAborted();
   const response = await fetch(`/api/knowledge/${resource}`, { method: 'POST', headers: { 'content-type': 'application/json' },

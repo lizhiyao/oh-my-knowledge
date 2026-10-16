@@ -14,6 +14,7 @@ import { EntityRelations, referentLabel } from './entity-relations';
 import { notifyKnowledgeChange, resolveKnowledgeDirectory } from './workspace';
 import { requestKnowledge } from './request';
 import { LibraryEntityEntry } from './library-entry';
+import { EntityLinksDrawer } from './entity-links';
 
 type Target = { analysisId: string; entityId: string; revision?: string };
 function entityUrl(workspace: string, target: Target) {
@@ -30,6 +31,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [workspace, setWorkspace] = useState(''); const [error, setError] = useState('');
   const [catalog, setCatalog] = useState<KnowledgeEntityCatalog>(); const [loading, setLoading] = useState(true);
+  const [linkDetail, setLinkDetail] = useState<KnowledgeEntityLibraryDetail>();
   const [detail, setDetail] = useState<KnowledgeEntityLibraryDetail>(); const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false); const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState<Target | undefined>(initialAnalysisId && initialEntityId
@@ -40,11 +42,11 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
   const [refresh, setRefresh] = useState(0); const [pane, setPane] = useState<'list' | 'detail'>(target ? 'detail' : 'list');
   useEffect(() => {
     const next = initialAnalysisId && initialEntityId ? { analysisId: initialAnalysisId, entityId: initialEntityId, revision: initialRevision } : undefined;
-    setTarget(next); setPane(next ? 'detail' : 'list'); setPage(1); setEditing(false);
+    setLinkDetail(undefined); setTarget(next); setPane(next ? 'detail' : 'list'); setPage(1); setEditing(false);
   }, [initialAnalysisId, initialEntityId, initialRevision, threadId]);
   useEffect(() => {
     const controller = new AbortController();
-    setWorkspace(''); setCatalog(undefined); setDetail(undefined); setDetailError(''); setError(''); setLoading(true); setEditing(false);
+    setLinkDetail(undefined); setWorkspace(''); setCatalog(undefined); setDetail(undefined); setDetailError(''); setError(''); setLoading(true); setEditing(false);
     void resolveKnowledgeDirectory(initialWorkspace, controller.signal).then(value => { if (!controller.signal.aborted) setWorkspace(value); })
       .catch(() => { if (!controller.signal.aborted) { setError(t('未能读取知识工作区设置。', 'Could not read knowledge workspace settings.')); setLoading(false); } });
     return () => controller.abort();
@@ -74,7 +76,7 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
     window.addEventListener('omk-knowledge-changed', changed); return () => window.removeEventListener('omk-knowledge-changed', changed);
   }, [workspace]);
   function select(row: KnowledgeEntityCatalog['rows'][number]) {
-    const value = { analysisId: row.analysisId, entityId: row.entityId }; setTarget(value); setPane('detail');
+    setLinkDetail(undefined); const value = { analysisId: row.analysisId, entityId: row.entityId }; setTarget(value); setPane('detail');
     window.history.replaceState(null, '', entityUrl(workspace, value));
   }
   return <section className="entity-library">
@@ -107,12 +109,13 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
       <div className={`entity-library-detail ${pane === 'detail' ? 'entity-pane-active' : ''}`}>
         {target && <div className="entity-library-detail-actions"><Button disabled={detailLoading} onClick={() => setEditing(true)}>{t('核对／纠正实体与指代', 'Inspect / correct entities and references')}</Button></div>}
         <div className="entity-library-scroll">{detailLoading ? <Spin/> : detailError ? <Alert type="warning" title={detailError}/>
-          : detail ? <EntityLibraryDetail detail={detail} workspace={workspace} lang={lang} onRevision={revision => {
+          : detail ? <EntityLibraryDetail detail={detail} workspace={workspace} lang={lang} onLink={() => setLinkDetail(structuredClone(detail))} onRevision={revision => {
             if (target) { const value = { ...target, revision }; setTarget(value); window.history.replaceState(null, '', entityUrl(workspace, value)); }
           }}/>
             : <Empty description={t('选择一个实体，查看原文与关联知识。', 'Choose an entity to inspect its source and linked knowledge.')}/>}</div>
       </div>
     </div>
+    {linkDetail && <EntityLinksDrawer key={`${workspace}:${linkDetail.history.analysisId}:${linkDetail.entity.entityId}:${linkDetail.revision.revisionId}`} workspace={workspace} detail={linkDetail} lang={lang} onClose={() => setLinkDetail(undefined)}/>}
     {editing && target && <EntityAnalysisDrawer key={`${workspace}:${target.analysisId}:${target.revision ?? ''}:${target.entityId}`} workspace={workspace} analysisId={target.analysisId} initialRevision={target.revision} initialEntityId={target.entityId} lang={lang}
       onClose={() => setEditing(false)} onSaved={() => {
         const value = { analysisId: target.analysisId, entityId: target.entityId };
@@ -121,8 +124,8 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
   </section>;
 }
 
-export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
-  detail: KnowledgeEntityLibraryDetail; workspace: string; lang: Language; onRevision(revision: string): void;
+export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLink }: {
+  detail: KnowledgeEntityLibraryDetail; workspace: string; lang: Language; onRevision(revision: string): void; onLink?(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const { entity, revision, history } = detail;
@@ -131,6 +134,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision }: {
   return <article className="entity-library-article"><h2>{entity.label}</h2>
     <LibraryEntityEntry workspace={workspace} analysisId={history.analysisId} entityId={entity.entityId} entityRevisionId={revision.revisionId}
       current={revision.revisionId === history.writeHeadRevisionId} lang={lang}/>
+    <Button disabled={!onLink || revision.revisionId !== history.writeHeadRevisionId} onClick={onLink}>{t('查找跨窗口对应', 'Find cross-window identities')}</Button>
     <Tag>{entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应，待核对', 'Proposed assignment, needs review')}</Tag>
     <p>{entity.description}</p><p>{entity.qualifiers.join(' · ') || t('未给出进一步的对象限定。', 'No further entity qualifiers provided.')}</p>
     {entity.uncertainties.map((value, index) => <Alert key={index} type="warning" title={value}/>)}
