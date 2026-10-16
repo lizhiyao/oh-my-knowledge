@@ -1,0 +1,157 @@
+{
+  "manifestKind": "omk-external-entity-baseline/v1",
+  "status": "historical-development-capture",
+  "sourceIssue": "https://github.com/lizhiyao/oh-my-knowledge/issues/1127",
+  "capturedAt": "2026-10-12T02:19:50.332Z",
+  "historicalMeasurementId": "sha256:49723bd1c77f619a3b8384c5a344e6405c1ec50f4a093098f62997cb6397b218",
+  "historicalInputDigest": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0",
+  "historicalPromptDigest": "sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399",
+  "historicalRawOutputDigest": "sha256:115fb80e2f4ddabba8c894035c271c0b0c2003665b5ef59f0ecaee6b1434ceb2",
+  "rawOutputUtf8Bytes": 32951,
+  "promptVersion": "knowledge-extraction-v14",
+  "responseSchemaVersion": 4,
+  "outputMode": "prompt-json",
+  "historicalExecution": {
+    "requestedExecutor": "codex",
+    "requestedModel": "gpt-6.1-sol",
+    "providerReportedModel": null,
+    "providerSnapshot": null,
+    "providerEndpoint": null,
+    "providerRequestCount": null,
+    "omkExecutorInvocations": 1,
+    "automaticRetries": 0,
+    "inputTokens": 12681,
+    "outputTokens": 8493,
+    "providerPerBucketUsagePresence": "unknown",
+    "costUSD": null,
+    "remainingCalls": 0,
+    "budgetClosed": true,
+    "archiveScope": "serialized returned ExecResult;not raw provider HTTP or raw CLI transport",
+    "projectionScope": "capture/output.json.result is a five-field projection;runtime.json retains the serialized returned result"
+  },
+  "review": {
+    "historicalAuthor": "Codex",
+    "historicalAuthorReview": "completed",
+    "independentHumanReview": "not_performed",
+    "goldReady": false,
+    "currentQualityConclusion": "not_evaluated"
+  },
+  "historicalCounts": {
+    "entities": 19,
+    "mentions": 19,
+    "acceptedProposals": 3,
+    "statements": 10,
+    "citations": 9,
+    "evidenceLinks": 9,
+    "entityRejections": 0,
+    "proposalRejections": 0
+  },
+  "dataPolicy": {
+    "rawFilesPublished": false,
+    "originals": "external-explicit-capture-dir-only",
+    "credentialAudit": "metadata-only;raw-runtime-not-cleared-for-publication",
+    "grant": "historical-one-call-exhausted;no-new-dispatch-or-publication-permission",
+    "sample": "previously-viewed-development-window;not-heldout",
+    "limitations": [
+      "Local replay wrapper/reference identities differ from original model input and are not new capture provenance.",
+      "Historical prompt-json capture is not either current strict-wire experiment arm and must not be pooled with them."
+    ],
+    "originalInputLimitations": {
+      "count": 4,
+      "jsonStringifyDigest": "sha256:bab8a22f8eda90bcc2280d1f7588f2e2876eab4fbcfce10e9f5428784eb8f684",
+      "scopeSummary": "Selected redacted historical messages only; tools/system/surroundings omitted; replaced URL/path/identifier values; 24 unparsed outside records and source completeness unknown."
+    }
+  },
+  "files": [
+    {
+      "path": "capture/checks.json",
+      "bytes": 77819,
+      "sha256": "sha256:d48cbc65b49155e778ed66995fc8f14eabd6eeda1caf37b6e4a09b26c2224aad"
+    },
+    {
+      "path": "capture/execution-plan.json",
+      "bytes": 28601,
+      "sha256": "sha256:bd4e632f3edb8c68afa25e793fb94eb68cedfdda33e3a553ebaa81100c3a6088"
+    },
+    {
+      "path": "capture/input.json",
+      "bytes": 4962,
+      "sha256": "sha256:ccf08332531aebfadfc7051b6fe4229fd01c2107cc6aaf333d4f4b3ca80563a0"
+    },
+    {
+      "path": "capture/manifest.json",
+      "bytes": 2070,
+      "sha256": "sha256:8883682f9ca9bef1080df51982f1260cbca4f5e9b86471d440c01cabd3290c55"
+    },
+    {
+      "path": "capture/output.json",
+      "bytes": 36405,
+      "sha256": "sha256:49e94713fcc7bf6e1703c9fc8baeb8795ed511dc5441f93a8e25ba922073f13d"
+    },
+    {
+      "path": "capture/prompt.txt",
+      "bytes": 35784,
+      "sha256": "sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399"
+    },
+    {
+      "path": "capture/runtime.json",
+      "bytes": 72449,
+      "sha256": "sha256:62bb1158cf876262e97e22aeb800e6b16de996e66dce48ce331ca6fd616fcab4"
+    },
+    {
+      "path": "measurement-identity.json",
+      "bytes": 2068,
+      "sha256": "sha256:49723bd1c77f619a3b8384c5a344e6405c1ec50f4a093098f62997cb6397b218"
+    },
+    {
+      "path": "plan.json",
+      "bytes": 27260,
+      "sha256": "sha256:22a96a119cb557700fccda2d41a98df1169309b864ef139975e5bdddf356d134"
+    },
+    {
+      "path": "authorization.json",
+      "bytes": 1294,
+      "sha256": "sha256:82deeb998570b062aa5b9807e9492d2e3691b45324bc677d4f9932f389ff9d5a"
+    },
+    {
+      "path": "preparation-receipt.json",
+      "bytes": 3391,
+      "sha256": "sha256:cddf9793969af333d094fbd439a41456226849216d1aa104895b87b2ec9fe0c6"
+    },
+    {
+      "path": "response-schema.json",
+      "bytes": 41493,
+      "sha256": "sha256:24a27f91a79312babcbabf5f8154acfcd2eaa29f5f1ddf10ef1fa2e118c526ca"
+    },
+    {
+      "path": "capture.mjs",
+      "bytes": 6069,
+      "sha256": "sha256:34b5b8962983fe4d6302d150568f3aaf8b1ce31fee4bf5a7f97552dfbeed0edf"
+    },
+    {
+      "path": "preflight.mjs",
+      "bytes": 11540,
+      "sha256": "sha256:57b452658a4d768c22ee37600a5b0357a28531ff45bc75949041d5e011e672d8"
+    },
+    {
+      "path": "results/execution-receipt.json",
+      "bytes": 3323,
+      "sha256": "sha256:b6af3787b137cfce8f8290e302d7dadd05eb0855605ff14eb73c70feebbf82f4"
+    },
+    {
+      "path": "results/final-verification.json",
+      "bytes": 2023,
+      "sha256": "sha256:78b86aa5844b0f187e660ed7eb0d194da460ea3f68fed61811c95060dbfa631c"
+    },
+    {
+      "path": "results/source-wrapper-disclosure.json",
+      "bytes": 5931,
+      "sha256": "sha256:6a81639815aa1435d90d9b6e6899146be2b2451733617bbbcc2f76bb334abe89"
+    },
+    {
+      "path": "results/closure-receipt.json",
+      "bytes": 1695,
+      "sha256": "sha256:275a526148603ae859d4f60f25cff088465f0280ab6688383caa2fc5645bc2df"
+    }
+  ]
+}
