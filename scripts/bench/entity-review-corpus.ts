@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ENTITY_CHECK_VERSION = 'omk-entity-critical-checks/v4';
+export const ENTITY_CHECK_VERSION = 'omk-entity-critical-checks/v5';
 export const ENTITY_GUIDE_VERSION = 'omk-entity-annotation/v10';
 const key = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const text = z.string().trim().min(1).max(8192);

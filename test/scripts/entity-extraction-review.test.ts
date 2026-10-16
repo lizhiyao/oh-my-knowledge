@@ -237,7 +237,7 @@ describe('entity extraction review with author evidence', () => {
     base.citations[0].selection = { evidenceRef: `${selected.caseId}:0`, quote: selected.messages[0].text };
     const review = () => checkEntityReview(selected, checkWindowExtractionResponse(output, entityReviewInput(selected).excerpts));
     expect(review().checkVersion).toBe(ENTITY_CHECK_VERSION);
-    expect(ENTITY_CHECK_VERSION).toBe('omk-entity-critical-checks/v4');
+    expect(ENTITY_CHECK_VERSION).toBe('omk-entity-critical-checks/v5');
     expect(review().criticalMentionRecall.value).toBe(1);
     expect(review().roles[0]).toMatchObject({ endpointStatus: 'endpoints_matched', semanticReview: 'pending' });
     // An endpoint match with a lossy sentence still requires semantic review; there is no literal-keyword pass.
@@ -588,11 +588,17 @@ describe('entity extraction review with author evidence', () => {
       reviewedAt: '2020-01-01T00:00:00Z', reviewedBeforeOutputs: true, decisions: receipt().decisions };
     const approved = authorReviewStatus(JSON.stringify(author), corpus, measurementId, '2020-02-01T00:00:00Z');
     expect(approved.status).toBe('completed');
-    expect(annotationReadiness(approved.status, 'pending')).toEqual({ goldReady: false, exploratoryReady: true });
-    expect(annotationReadiness('pending', 'pending')).toEqual({ goldReady: false, exploratoryReady: false });
-    expect(annotationReadiness('pending', 'attested_independent_human')).toEqual({ goldReady: true, exploratoryReady: true });
-    for (const statuses of [['completed', 'changes_requested'], ['changes_requested', 'attested_independent_human']] as const)
-      expect(annotationReadiness(statuses[0], statuses[1])).toEqual({ goldReady: false, exploratoryReady: false });
+    for (const [authorStatus, independentStatus, goldReady, exploratoryReady] of [
+      ['pending', 'pending', false, false],
+      ['pending', 'attested_independent_human', false, true],
+      ['pending', 'changes_requested', false, false],
+      ['completed', 'pending', false, true],
+      ['completed', 'attested_independent_human', true, true],
+      ['completed', 'changes_requested', false, false],
+      ['changes_requested', 'pending', false, false],
+      ['changes_requested', 'attested_independent_human', false, false],
+      ['changes_requested', 'changes_requested', false, false],
+    ] as const) expect(annotationReadiness(authorStatus, independentStatus)).toEqual({ goldReady, exploratoryReady });
     const changes = structuredClone(author); changes.decisions[0].decision = 'changes_requested';
     expect(authorReviewStatus(JSON.stringify(changes), corpus, measurementId).status).toBe('changes_requested');
     expect(authorReviewStatus(undefined, corpus, measurementId).status).toBe('pending');

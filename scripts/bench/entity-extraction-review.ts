@@ -80,7 +80,7 @@ export function reviewReceiptStatus(raw: string | undefined, corpus: EntityRevie
 
 export function annotationReadiness(author: ReturnType<typeof authorReviewStatus>['status'], independent: ReturnType<typeof reviewReceiptStatus>['status']) {
   const blocked = author === 'changes_requested' || independent === 'changes_requested';
-  return { goldReady: !blocked && independent === 'attested_independent_human',
+  return { goldReady: !blocked && author === 'completed' && independent === 'attested_independent_human',
     exploratoryReady: !blocked && (author === 'completed' || independent === 'attested_independent_human') };
 }
 

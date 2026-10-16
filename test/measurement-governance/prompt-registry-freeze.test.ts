@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROMPT_REGISTRY } from './prompt-registry.js';
 
-// 统一冻结:omk 所有「直接决定分数」的评委 prompt 的 byte-level 锚点。任何动其模板字节(含
+// 统一冻结:omk 所有影响分数或测量产物可比性的 prompt 的 byte-level 锚点。任何动其模板字节(含
 // 标点 / 空白 / 版本串 / 共享去偏块)都会让对应 hash 变,从而让历史报告不可比。除非显式想 bump
 // 对应 prompt 的版本,否则这些断言必须永远通过。取代了原 judge-hash-frozen / llm-enhanced-review-prompt
-// 两个分散的冻结测试,统一由 PROMPT_REGISTRY 驱动。
+// 及 knowledge validation 中分散的冻结测试,统一由 PROMPT_REGISTRY 驱动。
 //
 // rubric 评委历史值(已 archive,仅留底):
 //   v2-cot          : fdc81b19c721
@@ -25,6 +25,7 @@ const FROZEN: Record<string, string> = {
   'rag-answer-relevancy': 'f776a5d12b5c',
   'rag-context-recall': 'a1ad34978824',
   'observe-llm-enhanced-review': '5c5c8e5bf0af8fce3ebf22d2363ca863cdb430dafd087bec19e170517cfa0b83', // 2026-05-22.v7
+  'knowledge-extraction': 'e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399', // knowledge-extraction-v14, raw UTF-8
 };
 
 const INVARIANT = PROMPT_REGISTRY.filter((e) => e.measurementInvariant);
