@@ -1,6 +1,6 @@
 # 选定记录中的实体提取
 
-状态（2026-10-12）：[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按用户确认的 beta 完成口径收尾：身份规则、存储、检索展示、来源追溯、纠正与知识显式绑定已交付；完整使用动线及当前 v14 提示词的最小真实回归完成作者逐项自审。真实回归只有一个已查看的开发窗口，不证明整体准确率或稳定性。独立复核与全量质量验收仍待完成；[验收指南与离线检查器](./entity-extraction-evaluation.md)的严格门槛不因 beta 收尾而改变。
+状态（2026-10-12）：[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按用户确认的 beta 完成口径收尾：身份规则、存储、检索展示、来源追溯、纠正与知识显式绑定已交付；完整使用动线及当时 v14 提示词的最小真实回归完成作者逐项自审。真实回归只有一个已查看的开发窗口，不证明整体准确率或稳定性。独立复核与全量质量验收仍待完成；[验收指南与离线检查器](./entity-extraction-evaluation.md)的严格门槛不因 beta 收尾而改变。
 
 组件／实例、集合／未知、改名／版本与晚到纠正规则见[实体身份规则](./entity-identity.md)。§6 规定当前契约；当前只支持现行数据结构，不提供旧格式读取、恢复或迁移。跨日志／跨 Agent 统一身份和复用收益仍待实现与验证；调研、结构校验或功能完成不证明模型整体效果。
 
@@ -69,7 +69,9 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 实体领域代码集中在 `src/knowledge/entities/`：`contracts.ts` 定义实体分析及存储端口，`identity.ts` 定义身份与关联规则，`validation.ts` 校验分析中的引用和提及，`history.ts` 处理不可变修订及确定性写入规则。调用方按职责直接导入；该模块不调用模型、读写文件或依赖 Studio。模型输出接纳与实体／知识联合提炼仍由 `observability/knowledge-extraction` 编排，实体文件存储仍由其适配器实现。目录划分不增加模型调用或用户步骤。
 
-运行先持久化预约，再调用模型；原始输出及实际报告的用量先保存，再准备实体与知识写入意图。恢复使用已经分配的身份、当前 prompt 身份和幂等命令，不重新调用模型。实体提交在知识提交前完成；中途失败仍可继续保存未完成的知识意图。
+每个 v5 run 只允许一次 OMK invocation。派发前持久化精确 system／input 摘要、来源绑定、prompt／wire／pipeline 身份及 producer 预约。API producer 证明另绑定实际完整 body 摘要与 endpoint；这不是完整请求字节归档，也不记录未观测的 Codex 全局上下文。结构解码、接纳和准备实体／知识写入意图前，将完整执行器返回 JSON 或有界异常观测归档到不可变 outcome sidecar。失败部分输出、独立 refusal 通道、usage／cache 字段与 reported 标志、内部 attemptCount 及停止／失败诊断均保留原始证据，不以展示错误代替；不据此声称已捕获原 HTTP 或 CLI 传输、确定 provider 请求数，或每个归一的零均由 provider 显式报告。作者提供的 model-port projection 保留其声明的较窄证据范围。
+
+恢复只归档同一应用实例仍持有的 outcome、读取已持久化 sidecar，或完成已经分配身份的幂等写入意图，不重新调用模型。实体提交在知识提交前完成。进程丢失后，已开始但尚无归档字节的调用保持未知，不据此重发或退还预约。首批 v5 没有自动重试或 fallback；reask、瞬态重试与累计预算策略仍是独立的未完成工作。
 
 提取只发送选定片段和覆盖限制；不发送原始路径，不按日志中的指令读取外部来源或调用工具。未报告成本表示未知，不能当作零。
 
@@ -77,13 +79,15 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
-`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4；存储按文件 Schema 校验，`promptVersion` 保存 `knowledge-extraction-vN`（正整数版本）的来源身份，当前生成使用 v14。提示词身份与文件格式独立，读取及恢复已有 Schema v4 运行时保留原提示词版本、摘要、原始输出和实体／知识意图，不重新提炼，也不自动升级结果。新生成请求的摘要绑定当前提示词，不能借旧 runId 复用不同提示词的请求。这不是旧文件格式兼容读取器；Schema v3 等旧文件格式仍拒绝。
+`extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5；不可变原生结果保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`。运行 metadata 绑定 sidecar 的身份／摘要、接纳事实与稳定的实体／知识写入意图。metadata 和 outcome 容量均须在发送前通过接纳。既有响应守卫按 JavaScript 字符串长度限制为 2 × 1024² 个 code unit；完整 outcome 先归档，再限制接纳，不截断原生证据。新 reader 校验现行格式及精确引用，不接受放入新目录的 v4 文件。
+
+默认配置生成使用 `knowledge-extraction-v15`：沿用原 v14 指令的无 few-shot strict 渲染，以唯一 wire Schema 替换内嵌的领域 Schema。生成明确请求 strict 输出，先解码 nullable 占位，再执行既有宿主接纳检查；领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
-不添加兼容 reader、迁移、自动改写或删除。旧实体历史显示不可用，旧运行不能恢复；旧知识 v2 正文仍可读，但所绑定旧实体分析不可用。用户选择新的空知识目录，从原始日志重新提炼；新实体不会自动接管旧知识绑定。
+原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
-当前生成的提示词身份为 v14，原始 UTF-8 摘要为 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`；这不表示总体质量已通过。`promptVersion` 与文件 Schema 独立，历史运行不自动升级或重评分。
+完整 strict v15 system 的冻结原始 UTF-8 摘要为 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；run metadata 绑定实际完整 system 摘要，不沿用旧 v14 摘要。原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。本次未激活四正例 few-shot 候选，也没有新增真实模型测量；历史 prompt-json v14 证据、未激活实验臂与本 strict 生产身份不能混作同一测量或继承质量／Gold 结论。历史运行不自动升级或重评分。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

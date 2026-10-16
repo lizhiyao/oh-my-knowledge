@@ -75,7 +75,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       else setError(cause instanceof Error && cause.message === 'knowledge_conflict'
         ? t('内容已被其他操作更新，请重新打开后再处理。', 'Content changed. Reopen it before editing.')
         : cause instanceof Error && cause.message === 'knowledge_storage_unsupported'
-          ? t('此知识目录的数据格式不受支持。请点击“保存位置”，选择一个空目录重新提炼知识。', 'This knowledge directory uses an unsupported format. Choose an empty directory under Save location and extract knowledge again.')
+          ? t('此操作遇到不支持的数据格式。请核对保存位置；不会自动迁移或改写原文件。', 'This operation encountered an unsupported data format. Check the save location; original files are not automatically migrated or rewritten.')
         : cause instanceof Error && cause.message === 'knowledge_workspace_busy'
           ? t('知识目录正在写入，请稍后重试。', 'The knowledge directory is being written. Try again shortly.')
         : cause instanceof Error && cause.message === 'knowledge_tags_invalid'
@@ -320,13 +320,30 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       </div>}
     </Drawer>
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
+      <p className="candidate-help">{t('仅显示当前 v5 运行。旧 runs/ 记录不在此读取，已有来源、实体 v2 与知识 v2 仍可在同一目录使用。', 'Only current v5 runs are shown. Former runs/ records are not read here; existing sources, entity v2 and knowledge v2 remain usable in this workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p>
+        <ExtractionInvocationSummary invocation={run.invocation} lang={lang}/>
         <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
-        {run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating', 'cancelled', 'failed'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复已生成候选', 'Resume generated candidates')}</Button></section>) : <Empty/>}
+        {run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating', 'cancelled', 'failed'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
+}
+
+/** Present the safe domain summary without loading raw outcomes or interpreting usage. */
+function ExtractionInvocationSummary({ invocation, lang }: { invocation: KnowledgeCandidateRun['invocation']; lang: Language }) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  return <details className="candidate-help extraction-invocation">
+    <summary>{t('结果证据归档：', 'Outcome evidence archive: ')}{invocation.archiveStatus === 'recorded' ? t('已记录', 'Recorded') : t('待归档', 'Pending')}
+      {invocation.failureKind !== null && <> · {t('失败类别：', 'Failure category: ')}{invocation.failureKind}</>}</summary>
+    <p>{t('本运行限 ', 'This run permits ')}{invocation.attemptCount}{t(' 次 OMK 调用；不自动重试或 fallback。', ' OMK invocation; no automatic retry or fallback.')}</p>
+    <p>{t('策略：', 'Policy: ')}<code>{invocation.policyId}</code> · {t('输出模式：', 'Output mode: ')}<code>{invocation.outputMode}</code></p>
+    <p>{t('结构线协议：', 'Structural wire: ')}{invocation.wireId === null ? t('未使用', 'Not used') : <code>{invocation.wireId}</code>}</p>
+    <p>{invocation.archiveStatus === 'pending'
+      ? t('待归档不能证明请求未发送或费用为零；恢复不会再次调用模型。', 'Pending archival does not prove the request was unsent or cost zero; resume never calls the model again.')
+      : t('归档不代表内容已通过接纳或质量验证；恢复不会再次调用模型。', 'Archival does not establish admission or quality; resume never calls the model again.')}</p>
+  </details>;
 }
 
 export function candidateMatches(row: Pick<KnowledgeCandidateRow, 'title' | 'choice' | 'tags'>, filter: 'all' | 'pending' | 'retain' | 'discard', query: string): boolean {
@@ -391,9 +408,10 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
         {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <><p>{t('暂时无法读取已有记录。请检查保存位置，再重新读取；读取失败不表示没有候选。', 'Could not load existing records. Check the save location and retry; a failed read does not mean there are no candidates.')}</p>{onRetry && <Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button>}</> : latest ? <>
           <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionRunStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionRunStatusLabel(latest.status, lang)}`)}</strong>
           <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
+          <ExtractionInvocationSummary invocation={latest.invocation} lang={lang}/>
           {onEntities && <EntityAnalysisSummary run={latest} lang={lang} disabled={busy} onOpen={onEntities}/>}
           <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
-        </> : <p>{t('还没有提炼记录，从左侧选择一份工作记录开始。', 'No extractions yet. Choose a work log to begin.')}</p>}
+        </> : <p>{t('尚无当前 v5 提炼记录；旧 runs/ 记录不在此读取。从左侧选择工作记录开始。', 'No current v5 extraction records; former runs/ records are not read here. Choose a work log to begin.')}</p>}
       </div>
     </aside>
   </div>;

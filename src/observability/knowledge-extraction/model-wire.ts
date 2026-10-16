@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import _Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import { z } from 'zod';
 import { WindowExtractionEnvelopeSchema, WindowExtractionModelSchema } from './window-proposals.js';
 
@@ -121,7 +121,6 @@ export const WINDOW_EXTRACTION_WIRE_HOST_ONLY = freeze({
     'Time interval ordering and timestamp validity', 'Unique IDs, dependency closure, identity/collection/component rules',
     'Exact quote occurrence and identifier boundaries', 'Proposal/entity/mention/evidence/statement references and grounding'],
 });
-const Ajv2020 = _Ajv2020 as unknown as typeof _Ajv2020.default;
 const ajv = new Ajv2020({ strict: true, allErrors: false, coerceTypes: false, useDefaults: false, removeAdditional: false });
 const validateWire = ajv.compile(wireSchema);
 const branchValidators = new Map<Schema, ValidateFunction>();

@@ -610,7 +610,7 @@ omk observe knowledge <operation> [flags]
 - `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
 - `--reason` `option`:保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。
 - `--revision` `option`:查看或处理的明确修订身份。
-- `--run-id` `option`:generate：稳定 UUID，用于重试同一次运行。
+- `--run-id` `option`:generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
 - `--source` `option`:capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。
 - `--source-status` `all|available|unavailable`:entities：筛选原文可用状态。

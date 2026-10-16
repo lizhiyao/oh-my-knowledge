@@ -1,6 +1,9 @@
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
 import type { ExecResult } from '../../src/executors/contracts/result.js';
+import type { ExecutorArchiveProducer } from '../../src/executors/contracts/archive.js';
 import { assertExecutorInputCapabilities, createExecutor } from '../../src/executors/index.js';
+import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
+import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
@@ -8,6 +11,12 @@ import { configuredEntityLinkExecutor, createEntityLinkExecutionRequest } from '
 import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
 import { EntityLinkSuggestionSchema } from '../../src/knowledge/entities/links.js';
 import { entityLinkDigest } from '../../src/observability/knowledge-extraction/entity-link-hash.js';
+import { EXTRACTION_OUTCOME_MAX_BYTES, extractionExecution, extractionResponse, serializeExtractionObservation } from '../../src/observability/knowledge-extraction/generation.js';
+import { ExtractionOutcomeSchema } from '../../src/observability/knowledge-extraction/runs.js';
+import { WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/strict-prompt.js';
+import { parseCodexJsonl } from '../../src/executors/openai/codex/cli.js';
+import { buildCodexResult } from '../../src/executors/openai/codex/protocol.js';
 
 const cleanupFault = vi.hoisted(() => ({ once: false }));
 vi.mock('node:fs', async importOriginal => {
@@ -24,58 +33,159 @@ afterEach(() => {
   vi.unstubAllEnvs(); vi.unstubAllGlobals();
 });
 describe('knowledge generation executor boundary', () => {
-  it.each(['success', 'failure', 'tool', 'cancel'] as const)('cleans Codex text execution after %s', async (outcome) => {
+  it.each(['result', 'failure', 'tool', 'throw', 'cancel', 'cleanup-result', 'cleanup-exception'] as const)(
+    'retains the complete Codex %s observation before admission and attempts private cwd cleanup', async (outcome) => {
     let directory = '';
     const controller = new AbortController();
+    const tool = { tool: 'read_file', input: { path: 'fixture' }, output: 'original tool text', success: true };
+    const native: ExecResult & { providerExtra: { nested: string[] } } = {
+      ok: outcome !== 'failure', output: '  {"not_a_domain_envelope":true}\n', durationMs: -500, durationApiMs: 0,
+      inputTokens: 7, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 0,
+      costUSD: 0, costReportedByExecutor: false, stopReason: 'fixture', numTurns: 1,
+      fullNumTurns: 2, numSubAgents: 0, attemptCount: 1, cached: true, providerExtra: { nested: ['original extra fact'] },
+      ...(outcome === 'failure' ? { tokenUsageReportedByExecutor: false, failure: { failureKind: 'refusal' as const },
+        error: 'original failed diagnostic', refusal: '  raw refusal\n' } : {}),
+      ...(outcome === 'tool' ? { toolCalls: [tool], turns: [{ role: 'assistant' as const, content: 'original turn', toolCalls: [tool] }] } : {}),
+    };
     const create = vi.fn((name: string): ExecutorFn => {
       expect(name).toBe('codex');
       return async (input) => {
-        directory = input.cwd!;
+        directory = input.cwd!; directories.push(directory);
         expect(readdirSync(directory)).toEqual([]);
         expect(input.allowedSkills).toBeUndefined();
+        expect(input.maxOutputTokens).toBeUndefined();
         expect(input.prompt).toBe('selected text');
-        if (outcome === 'failure') throw new Error('fixture failure');
+        expect(input.system).toBe(STRICT_EXTRACTION_PROMPT);
+        expect(input.timeoutMs).toBe(300_000);
+        expect(input.outputFormat?.mode).toBe('json-schema');
+        if (input.outputFormat?.mode === 'json-schema') {
+          expect(input.outputFormat.name).toBe('knowledge_extraction_v1');
+          expect(JSON.stringify(input.outputFormat.schema)).toBe(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON);
+        }
+        if (outcome.startsWith('cleanup-')) cleanupFault.once = true;
+        if (outcome === 'throw' || outcome === 'cleanup-exception') throw null;
         if (outcome === 'cancel') controller.abort();
-        return { ok: true, output: '{"proposals":[]}', durationMs: 1, durationApiMs: 1,
-          inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
-          costUSD: 0, stopReason: 'end_turn', numTurns: 1,
-          ...(outcome === 'tool' ? { toolCalls: [{ tool: 'read_file', input: {}, output: '', success: true }] } : {}) };
+        return native;
       };
     });
-    const model = configuredExtractionModel('codex', 'test', create);
+    const model = configuredExtractionModel('codex', 'test', createCodexArchiveProducer({}, create));
+    expect(model.wireId).toBe(WINDOW_EXTRACTION_WIRE_ID);
+    model.inspect!(STRICT_EXTRACTION_PROMPT, 'selected text');
     expect(create).not.toHaveBeenCalled();
-    const promise = model.generate('system', 'selected text', controller.signal);
-    if (outcome === 'success' || outcome === 'cancel') expect(await promise).toMatchObject({ output: '{"proposals":[]}', inputTokens: 1, outputTokens: 1 });
-    else await expect(promise).rejects.toThrow();
+    const received = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', controller.signal);
+    if (!('outcomeKind' in received)) throw new Error('Expected the native executor observation.');
+    if (outcome === 'throw' || outcome === 'cleanup-exception') {
+      expect(received).toMatchObject({ outcomeKind: 'exception', error: { sourceType: 'object', message: 'null' } });
+    } else {
+      expect(received.outcomeKind).toBe('result');
+      if (received.outcomeKind !== 'result') throw new Error('Expected original native result.');
+      expect(received.result).toBe(native);
+      expect(received.result.providerExtra).toEqual({ nested: ['original extra fact'] });
+    }
+    if (outcome.startsWith('cleanup-')) expect(received).toHaveProperty('cleanupFailure.diagnostic', 'Private execution directory cleanup failed.');
+    else expect(received).not.toHaveProperty('cleanupFailure');
     expect(create).toHaveBeenCalledTimes(1);
     expect(directory).not.toBe('');
-    expect(existsSync(directory)).toBe(false);
+    expect(existsSync(directory)).toBe(outcome.startsWith('cleanup-'));
+    const callsBefore = create.mock.calls.length;
+    await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', AbortSignal.abort())).rejects.toThrow();
+    expect(create).toHaveBeenCalledTimes(callsBefore);
   });
-  it.each(['openai-api'])('sends text without tools through %s', async (executor) => {
-    vi.stubEnv('OPENAI_API_KEY', 'fixture');
+  it('uses the exact strict API request and preserves normalized native evidence before deriving success or refusal admission', async () => {
+    const output = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';
+    let refusal = false;
     const fetch = vi.fn(async (_url: unknown, options?: RequestInit) => {
+      expect(_url).toBe('https://fixture.invalid/v1/chat/completions');
       const body = JSON.parse(String(options?.body));
       expect(body).not.toHaveProperty('tools');
       expect(body).not.toHaveProperty('cwd');
-      expect(body.messages.at(-1).content).toBe('selected evidence');
-      return new Response(JSON.stringify({ choices: [{ message: { content: '{"proposals":[]}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 2 } }));
+      expect(body).toEqual({ model: 'fixture-model', messages: [{ role: 'system', content: STRICT_EXTRACTION_PROMPT }, { role: 'user', content: 'selected evidence' }],
+        response_format: { type: 'json_schema', json_schema: { name: 'knowledge_extraction_v1', schema: WINDOW_EXTRACTION_WIRE_SCHEMA, strict: true } },
+        max_completion_tokens: 4096, n: 1, stream: false });
+      return new Response(JSON.stringify({ choices: [{ message: { content: refusal ? '  original partial text\n' : output,
+        ...(refusal ? { refusal: '  original refusal\n' } : {}) }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 13, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 3 } } }));
     });
     vi.stubGlobal('fetch', fetch);
-    const model = configuredExtractionModel(executor, 'fixture-model', createExecutor);
-    expect(await model.generate('system', 'selected evidence')).toMatchObject({ output: '{"proposals":[]}' });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    const model = configuredExtractionModel('openai-api', 'fixture-model', createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'https://fixture.invalid' }, createExecutor));
+    model.inspect!(STRICT_EXTRACTION_PROMPT, 'selected evidence'); expect(fetch).not.toHaveBeenCalled();
+    for (refusal of [false, true]) {
+      const received = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence');
+      if (!('outcomeKind' in received) || received.outcomeKind !== 'result') throw new Error('Expected API native result.');
+      expect(received.result).toMatchObject({ ok: !refusal, output: refusal ? '  original partial text\n' : output,
+        inputTokens: 10, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 0, costReportedByExecutor: false });
+      expect(Object.hasOwn(received.result, 'tokenUsageReportedByExecutor')).toBe(false);
+      const recorded = ExtractionOutcomeSchema.parse(serializeExtractionObservation(received));
+      const before = JSON.stringify(recorded);
+      const admission = extractionResponse(recorded, model.outputMode!, model.wireId);
+      if (refusal) {
+        expect(recorded).toHaveProperty('result.refusal', '  original refusal\n');
+        expect(admission).toMatchObject({ status: 'failed', failure: { failureKind: 'refusal' } });
+      } else expect(admission).toMatchObject({ status: 'decoded', rawOutput: output, wireDiagnostic: { wireStatus: 'valid' } });
+      expect(JSON.stringify(recorded)).toBe(before);
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
     const controller = new AbortController(); controller.abort();
-    await expect(model.generate('system', 'selected evidence', controller.signal)).rejects.toThrow();
-    expect(fetch).toHaveBeenCalledTimes(1);
+    await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence', controller.signal)).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('rejects producer drift and unreservable native bounds before dispatch instead of silently changing the invocation profile', async () => {
+    const dispatch = vi.fn(async () => { throw new Error('must not dispatch'); });
+    const create = vi.fn((): ExecutorFn => dispatch);
+    const actual = createCodexArchiveProducer({}, create);
+    const changed: ExecutorArchiveProducer = { ...actual, configure(executor, request) {
+      const configured = actual.configure(executor, request);
+      return { ...configured, evidence: { ...configured.evidence, producerRevision: `sha256:${'f'.repeat(64)}` } };
+    } };
+    const model = configuredExtractionModel('codex', 'fixture', changed);
+    model.inspect!(STRICT_EXTRACTION_PROMPT, 'selected evidence');
+    await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence')).rejects.toThrow('changed after reservation');
+    expect(dispatch).not.toHaveBeenCalled(); expect(directories).toEqual([]);
+    create.mockClear();
+    const oversized: ExecutorArchiveProducer = { ...actual, inspect(executor, request) {
+      return { ...actual.inspect(executor, request), maxOutcomeJsonBytes: EXTRACTION_OUTCOME_MAX_BYTES + 1 };
+    } };
+    const blocked = configuredExtractionModel('codex', 'fixture', oversized);
+    expect(() => extractionExecution(blocked, STRICT_EXTRACTION_PROMPT, 'selected evidence')).toThrow('capacity exceeded before invocation');
+    expect(create).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
+  });
+  it('serializes real Codex JSON number semantics and shared tools without relabeling a returned result as an execution exception', async () => {
+    const output = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';
+    const raw = '{"type":"item.completed","item":{"id":"tool","type":"mcp_tool_call","server":"fixture","tool":"inspect","arguments":{"huge":1e999},"status":"completed"}}\n'
+      + JSON.stringify({ type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: output } }) + '\n'
+      + '{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":2,"output_tokens":3}}\n';
+    const parsed = parseCodexJsonl(raw);
+    const native = buildCodexResult({ events: parsed.events, source: 'codex --json', wallClockDurationMs: 1 });
+    expect(native.ok).toBe(true);
+    expect(native.toolCalls?.[0].input).toEqual({ huge: Infinity });
+    expect(native.turns?.[0].toolCalls?.[0]).toBe(native.toolCalls?.[0]);
+    // Infinity is produced by the actual protocol parser. These extra JS values
+    // additionally lock standard undefined/array-hole serialization semantics.
+    const extra = { omit: undefined, values: new Array<unknown>(3) };
+    extra.values[1] = undefined; extra.values[2] = Infinity;
+    Object.assign(native, { extra });
+    const dispatch = vi.fn(async (input: Parameters<ExecutorFn>[0]) => { directories.push(input.cwd!); return native; });
+    const model = configuredExtractionModel('codex', 'fixture', createCodexArchiveProducer({}, () => dispatch));
+    const returned = await model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence');
+    const recorded = ExtractionOutcomeSchema.parse(serializeExtractionObservation(returned));
+    expect(recorded.outcomeKind).toBe('result');
+    if (recorded.outcomeKind !== 'result') throw new Error('Serialization must not fabricate an executor exception.');
+    expect(recorded.result.toolCalls).toEqual([expect.objectContaining({ input: { huge: null } })]);
+    expect(recorded.result.turns).toEqual([expect.objectContaining({ toolCalls: [expect.objectContaining({ input: { huge: null } })] })]);
+    expect(recorded.result.extra).toEqual({ values: [null, null, null] });
+    expect(native.toolCalls?.[0].input).toEqual({ huge: Infinity }); expect(Object.hasOwn(extra, 'omit')).toBe(true);
+    expect(Object.hasOwn(extra.values, 0)).toBe(false);
+    expect(extractionResponse(recorded, 'json-schema', model.wireId)).toMatchObject({ status: 'failed', failure: { failureKind: 'unexpected_tools' } });
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
   it('rejects an empty model before asking the host for an executor', () => {
     const create = vi.fn(createExecutor);
-    expect(() => configuredExtractionModel('codex', ' ', create)).toThrow('explicitly configured model');
+    expect(() => configuredExtractionModel('codex', ' ', createCodexArchiveProducer({}, create))).toThrow('explicitly configured model');
     expect(create).not.toHaveBeenCalled();
   });
   it.each(['codex-sdk'])('rejects agent executor %s before invoking a runtime', (executor) => {
     const create = vi.fn(createExecutor);
-    expect(() => configuredExtractionModel(executor, 'test', create)).toThrow('adapter');
+    expect(() => configuredExtractionModel(executor, 'test', createCodexArchiveProducer({}, create))).toThrow('adapter');
     expect(create).not.toHaveBeenCalled();
   });
 });

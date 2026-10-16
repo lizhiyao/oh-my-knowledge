@@ -531,7 +531,7 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
   .entity-library>.knowledge-workspace{font-size:12px}
 }
 
-.extraction-quality{margin-block:var(--studio-space-5);overflow-wrap:anywhere}.extraction-quality p{margin:0;font-size:13px;line-height:1.7}.extraction-quality .candidate-statement>p,.extraction-quality .candidate-statement>details{margin-top:var(--studio-space-4)}.extraction-quality .extraction-quality-identity{font-size:12px;color:var(--studio-ink-muted)}
+.extraction-invocation{overflow-wrap:anywhere}.extraction-invocation>summary{cursor:pointer;color:var(--studio-action-ink)}.extraction-invocation>summary:hover{color:var(--studio-action)}.extraction-invocation>summary:active{background:var(--studio-surface-press)}.extraction-invocation>summary:focus-visible{outline:2px solid var(--studio-action);outline-offset:3px}.extraction-quality{margin-block:var(--studio-space-5);overflow-wrap:anywhere}.extraction-quality p{margin:0;font-size:13px;line-height:1.7}.extraction-quality .candidate-statement>p,.extraction-quality .candidate-statement>details{margin-top:var(--studio-space-4)}.extraction-quality .extraction-quality-identity{font-size:12px;color:var(--studio-ink-muted)}
 
 /* Cross-window review extends the existing knowledge reading surface. */
 .entity-links-workbench { height: 100%; min-height: 0; display: flex; flex-direction: column; }

@@ -11,6 +11,7 @@ import {
   SOFT_STANDARD_PROMPT_VERSION,
 } from '../../src/observability/soft-standards/constants.js';
 import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/prompt.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/strict-prompt.js';
 import { ENTITY_LINK_PROMPT_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
 
 /**
@@ -104,6 +105,13 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
     module: 'src/observability/knowledge-extraction/prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(EXTRACTION_PROMPT).digest('hex'),
+  },
+  {
+    promptId: 'knowledge-extraction-strict',
+    purpose: 'strict 知识与实体提取(独立 v15 提示词及测量身份)',
+    module: 'src/observability/knowledge-extraction/strict-prompt.ts',
+    measurementInvariant: true,
+    getHash: () => createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex'),
   },
   {
     promptId: 'entity-link-proposal',

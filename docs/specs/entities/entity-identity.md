@@ -234,11 +234,11 @@ An invalid link makes its containing entity inadmissible. Dependent mentions, co
 | Object | Current version | Impact |
 |---|---|---|
 | Entity history | `entity-analysis-history` v2 | Stores referent levels, component links and members; old formats are unreadable and counted as unreadable analyses. |
-| Extraction run | `knowledge-extraction-run` v4 | Binds prepared intent, raw model output, prompt version and digest; old formats cannot resume. |
-| Prompt/model output | `knowledge-extraction-v14`/output v4 | Prompt identity is independent of file format; old responses do not enter the new admission path. |
+| Extraction run | `knowledge-extraction-run` v5 | Binds one invocation, exact system/input digests and source bindings, independent prompt/wire/pipeline identities, immutable native outcome sidecars, admission and stable write intents; v4 runs cannot be read or resumed. |
+| Prompt/model output | Strict `knowledge-extraction-v15`; authored prompt-json v14; domain output v4 | Full prompt/wire/pipeline identities are independent of file format. The no-few-shot strict identity inherits no historical prompt-json quality conclusion. |
 | Knowledge history | `knowledge-item-history` v2 | Old knowledge bodies remain readable, with explicit limits when bound entity history is unavailable. |
 
-Keep old files unchanged, without automatic rewriting, deletion, conversion, migration, or compatibility readers. Users select a new empty knowledge directory and re-extract original records. Only new-version runs can resume with their original idempotent identities. New same-named objects do not inherit old knowledge bindings. Historical quality reports, corpus, and evidence are not recomputed.
+Keep old files unchanged, without automatic rewriting, deletion, conversion, migration, or compatibility readers. The run upgrade leaves former `runs/` v4 files unread and writes new v5 metadata and outcomes under `extraction-runs/`; old run details, resume, conversation/project batches and quality statistics are unavailable. Current source snapshots, entity history v2 and knowledge history v2 remain readable in the same workspace, including existing bindings; no empty workspace is required. Entity history v1 remains unsupported separately. Only v5 runs can resume with their original idempotent identities. New same-named objects do not inherit old knowledge bindings. Historical quality reports, corpus, and evidence are not recomputed.
 
 ### 8.4 Delivery boundary
 

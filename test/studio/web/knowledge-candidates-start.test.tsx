@@ -11,7 +11,9 @@ import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/know
 import { KnowledgeInboxSummary } from '../../../src/studio/web/components/knowledge/inbox.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
-const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [] };
+const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [],
+  invocation: { policyId: 'knowledge-generation-single/v1', outputMode: 'json-schema', wireId: `sha256:${'a'.repeat(64)}`,
+    attemptCount: 1, archiveStatus: 'recorded', failureKind: null } };
 const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeCandidateStart, {
   lang: 'zh', loading: false, busy: false, onChoose() {}, onHistory() {}, onRetry() {}, ...overrides,
 }));
@@ -27,14 +29,23 @@ describe('knowledge extraction onboarding', () => {
   });
   it('distinguishes zero candidates, rejected output, failure, loading, and a fresh workspace', () => {
     expect(render({ latest })).toContain('上次提炼完成，返回 0 条候选');
-    expect(render({ latest })).not.toContain('还没有提炼记录');
+    expect(render({ latest })).not.toContain('尚无当前 v5 提炼记录');
+    expect(render({ latest })).toContain('结果证据归档：已记录');
+    expect(render({ latest })).toContain('knowledge-generation-single/v1');
+    expect(render({ latest })).toContain('json-schema'); expect(render({ latest })).toContain(latest.invocation.wireId!);
+    expect(render({ latest })).toContain('本运行限 1 次 OMK 调用；不自动重试或 fallback');
+    expect(render({ latest })).toContain('归档不代表内容已通过接纳或质量验证');
     expect(render({ latest: { ...latest, rejections: [{ index: 0, reasons: ['quote_mismatch'] }] } })).toContain('未通过引用或格式校验');
     expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：提炼失败');
+    const pending = render({ latest: { ...latest, status: 'failed', invocation: { ...latest.invocation, archiveStatus: 'pending', failureKind: '<unsafe>' } } });
+    expect(pending).toContain('结果证据归档：待归档'); expect(pending).not.toContain('结果证据归档：已记录');
+    expect(pending).toContain('待归档不能证明请求未发送或费用为零'); expect(pending).toContain('恢复不会再次调用模型');
+    expect(pending).toContain('失败类别：&lt;unsafe&gt;'); expect(pending).not.toContain('<unsafe>');
     expect(render({ latest, loading: true })).not.toContain('上次提炼完成');
     expect(render({ failedToLoad: true })).toContain('暂时无法读取已有记录');
     expect(render({ failedToLoad: true })).toContain('重新读取候选');
     expect(render({ failedToLoad: true })).toContain('读取失败不表示没有候选');
-    expect(render()).toContain('还没有提炼记录');
+    expect(render()).toContain('尚无当前 v5 提炼记录'); expect(render()).toContain('旧 runs/ 记录不在此读取');
     expect(render()).not.toContain('设置保存位置并开始');
   });
   it('starts extraction in place instead of navigating to a selection page', () => {
@@ -51,6 +62,8 @@ describe('knowledge extraction onboarding', () => {
     expect(html).toContain('Choose a conversation');
     expect(html).toContain('Last extraction completed with 0 candidates');
     expect(html).toContain('Preview the content before confirming a model request.');
+    expect(html).toContain('Outcome evidence archive: Recorded');
+    expect(render({ lang: 'en', latest: { ...latest, invocation: { ...latest.invocation, outputMode: 'prompt-json', wireId: null, archiveStatus: 'pending' } } })).toContain('Structural wire: Not used');
   });
   it('does not report an empty source scope until loading succeeds, and offers a retry after failure', () => {
     const scoped = (overrides = {}) => renderToStaticMarkup(createElement(ScopedCandidateEmpty, { lang: 'zh', loading: false, busy: false, failedToLoad: false, onRetry() {}, ...overrides }));
@@ -105,11 +118,14 @@ it('presents admission scope, unknown denominators and retry without claiming se
   const renderQuality = (overrides = {}) => renderToStaticMarkup(createElement(ExtractionQualityView, {
     quality: extractionQuality([]), loading: false, failed: false, lang: 'zh', onRetry() {}, ...overrides,
   }));
-  const empty = renderQuality(); expect(empty).toContain('整个知识工作区'); expect(empty).toContain('不采用后续人工修订');
-  expect(empty).toContain('位置匹配不证明语义准确'); expect(empty).toContain('零接纳不代表质量通过'); expect(empty).toContain('尚无提炼运行');
+  const empty = renderQuality(); expect(empty).toContain('仅统计当前工作区 extraction-runs/ 中的 v5 运行'); expect(empty).toContain('不采用后续人工修订');
+  expect(empty).toContain('旧 runs/ 记录不计入'); expect(empty).toContain('没有 v5 记录不代表工作区从未提炼');
+  expect(empty).toContain('分组不证明 endpoint 或完整运行条件相同');
+  expect(empty).toContain('位置匹配不证明语义准确'); expect(empty).toContain('零接纳不代表质量通过'); expect(empty).toContain('尚无 v5 提炼运行');
   const failed = renderQuality({ failed: true }); expect(failed).toContain('统计暂不可读'); expect(failed).toContain('重新读取统计'); expect(failed).not.toContain('共 0 次运行');
-  expect(renderQuality({ loading: true })).not.toContain('尚无提炼运行');
-  const group = { identity: { schemaVersion: 4, promptVersion: 'knowledge-extraction-v14', promptHash: '<unsafe>', executor: 'fixture', model: 'fixture' },
+  expect(renderQuality({ loading: true })).not.toContain('尚无 v5 提炼运行');
+  const group = { identity: { schemaVersion: 5, promptVersion: 'knowledge-extraction-v15', promptHash: '<unsafe>', executor: 'fixture', model: 'fixture',
+    policyId: 'knowledge-generation-single/v1', outputMode: 'json-schema' as const, wireId: '<wire>', producerId: '<producer>', producerRevision: '<revision>' },
     runs: { total: 1, generating: 0, prepared: 0, completed: 0, failed: 1, cancelled: 0, withAdmission: 0, withoutAdmission: 1, zeroAccepted: 0, zeroKnowledge: 0 },
     entities: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
     mentions: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
@@ -120,5 +136,11 @@ it('presents admission scope, unknown denominators and retry without claiming se
   const html = renderQuality({ quality: { ...extractionQuality([]), runCount: 1, groups: [group] } });
   expect(html).toContain('未知／无分母'); expect(html).toContain('逐字定位：通过／拒绝／未检查／未知'); expect(html).toContain('1 次检查记录未知');
   expect(html).toContain('&lt;unsafe&gt;'); expect(html).not.toContain('<unsafe>');
-  expect(renderQuality({ lang: 'en' })).toContain('empty workspace is not a quality pass');
+  expect(html).toContain('Schema 5'); expect(html).toContain('knowledge-extraction-v15');
+  expect(html).toContain('knowledge-generation-single/v1'); expect(html).toContain('json-schema');
+  for (const value of ['wire', 'producer', 'revision']) { expect(html).toContain(`&lt;${value}&gt;`); expect(html).not.toContain(`<${value}>`); }
+  const promptOnly = renderQuality({ lang: 'en', quality: { ...extractionQuality([]), runCount: 1,
+    groups: [{ ...group, identity: { ...group.identity, outputMode: 'prompt-json' as const, wireId: null } }] } });
+  expect(promptOnly).toContain('Structural wire: Not used');
+  expect(renderQuality({ lang: 'en' })).toContain('no records is not a quality pass');
 });

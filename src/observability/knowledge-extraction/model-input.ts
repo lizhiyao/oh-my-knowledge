@@ -1,5 +1,4 @@
 import type { EvidenceWindow } from './evidence.js';
-import { EXTRACTION_PROMPT } from './prompt.js';
 
 /** Local request capacity, not a model context estimate or a spending limit. */
 export const EXTRACTION_INPUT_MAX_BYTES = 1024 * 1024;
@@ -17,8 +16,8 @@ export function extractionModelInput(window: Pick<EvidenceWindow, 'excerpts' | '
 }
 
 /** Validate only a new call; saved request receipts remain readable at their original identity. */
-export function assertExtractionInputCapacity(input: string): void {
-  if (Buffer.byteLength(EXTRACTION_PROMPT, 'utf8') + Buffer.byteLength(input, 'utf8') > EXTRACTION_INPUT_MAX_BYTES) {
+export function assertExtractionInputCapacity(input: string, system: string): void {
+  if (Buffer.byteLength(system, 'utf8') + Buffer.byteLength(input, 'utf8') > EXTRACTION_INPUT_MAX_BYTES) {
     throw new ExtractionInputCapacityError();
   }
 }

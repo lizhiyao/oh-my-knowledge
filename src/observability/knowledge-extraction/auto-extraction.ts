@@ -12,6 +12,7 @@ import { validateExtractionModelSelection } from './adapters/executor.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { conversationExtractionSource } from './conversation-source.js';
 import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './model-input.js';
+import { extractionPrompt } from './generation.js';
 
 const text = z.string().min(1).max(4096);
 const schema = z.strictObject({
@@ -165,7 +166,8 @@ export class ConversationAutoExtraction {
           const selected = state.initialTurns.length ? pending : [...turns.slice(Math.max(0, first - 2), first), ...pending];
           const { window } = await conversationExtractionSource(this.catalog, threadId, undefined, controller.signal, selected);
           // Check before reserving a paid call or marking this source version attempted.
-          assertExtractionInputCapacity(extractionModelInput(window));
+          const model = this.options.model(state.executor, state.model);
+          assertExtractionInputCapacity(extractionModelInput(window), extractionPrompt(model).system);
           const stable = this.stable.get(key);
           if (!stable || stable.version !== window.sourceVersion) { this.stable.set(key, { version: window.sourceVersion, since: this.now() }); continue; }
           if (this.now() - stable.since < (this.options.stableMs ?? 30_000)) continue;
@@ -193,7 +195,6 @@ export class ConversationAutoExtraction {
           deadline = setTimeout(() => controller.abort(), Math.max(0, Date.parse(reserved.expiresAt) - this.now())); deadline.unref();
           const app = createLocalKnowledgeApplication(root);
           const snapshot = app.capture({ path: window.sourcePath, records: window.records, origin: window.origin }, controller.signal);
-          const model = this.options.model(reserved.executor, reserved.model);
           const run = await app.generate(snapshot.snapshotId, model, reserved.lastRunId!, controller.signal);
           withWorkspaceWrite(root, () => {
             const current = this.read(root, threadId);

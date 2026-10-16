@@ -234,11 +234,11 @@
 | 对象 | 当前版本 | 影响 |
 |---|---|---|
 | 实体历史 | `entity-analysis-history` v2 | 保存指代层次、组件关联及成员结构；旧格式拒读，目录计入不可读分析。 |
-| 提炼运行 | `knowledge-extraction-run` v4 | 绑定准备意图、原始模型输出、提示词版本及摘要；旧格式不能恢复。 |
-| 提示词／模型输出 | `knowledge-extraction-v14`／输出 v4 | 提示词身份与文件格式独立；旧响应不进入新接纳器。 |
+| 提炼运行 | `knowledge-extraction-run` v5 | 绑定一次调用、精确 system／input 摘要与来源、独立 prompt／wire／pipeline 身份、不可变原生 outcome sidecar、接纳及稳定写入意图；v4 run 不能读取或恢复。 |
+| 提示词／模型输出 | strict `knowledge-extraction-v15`；作者 prompt-json v14；领域输出 v4 | 完整 prompt／wire／pipeline 身份与文件格式独立；无 few-shot strict 身份不继承历史 prompt-json 质量结论。 |
 | 知识历史 | `knowledge-item-history` v2 | 旧知识正文仍可读取，绑定不可用实体历史时明确显示限制。 |
 
-旧文件保持原样，不自动改写、删除、转换或迁移，不添加兼容 reader。用户使用新的空知识目录，从原始记录重新提炼；只有新版本运行能够按原幂等身份恢复。旧知识不会被重新生成的同名对象自动接管。旧质量报告、语料和证据不重算。
+旧文件保持原样，不自动改写、删除、转换或迁移，不添加兼容 reader。本次 run 升级不读取原 `runs/` v4 文件，新的 v5 metadata 与 outcome 写入 `extraction-runs/`；旧 run 详情、恢复、对话／项目批次及接纳统计不可用。当前来源快照、实体历史 v2 与知识历史 v2 及其已有绑定仍可在同一工作区读取，不要求空工作区；实体历史 v1 仍单独属于不支持格式。只有 v5 run 能按原幂等身份恢复。旧知识不会被重新生成的同名对象自动接管。旧质量报告、语料和证据不重算。
 
 ### 8.4 交付边界
 

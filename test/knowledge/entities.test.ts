@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 import { admitEntities, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
 import { WindowExtractionModelSchema, checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
-import { identityWindow, modelWindow } from './fixtures.js';
+import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
 import { decodeWindowExtractionWire, WINDOW_EXTRACTION_WIRE_HOST_ONLY, WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_IDENTITY, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
+import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
+import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/strict-prompt.js';
 
 const entityId = 'cf13bba6-6385-455b-b0c0-c4d4e4931b10';
 const mentionId = '6ad46f7c-7959-43b4-ae97-c240f9a1c422';
@@ -229,17 +233,21 @@ describe('entity correction history', () => {
 });
 
 
-// Candidate wire mode only: no production adapter, prompt, storage, or model invocation is changed.
+// Structural wire guarantees remain separate from deterministic host admission.
 describe('derived strict structural wire with original itemwise admission', () => {
-  const wirePacket = (packet = modelWindow()) => ({ ...packet,
-    mentions: packet.mentions.map(mention => ({ ...mention, selection: { ...mention.selection, occurrence: mention.selection.occurrence ?? null } })),
-    proposals: packet.proposals.map(proposal => ({ ...proposal,
-      draft: { ...proposal.draft, content: { ...proposal.draft.content,
-        statements: proposal.draft.content.statements.map(statement => ({ ...statement, object: statement.object ?? null })) } },
-      citations: proposal.citations.map(citation => ({ ...citation, selection: { ...citation.selection, occurrence: citation.selection.occurrence ?? null } })),
-    })),
-  });
+  const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
+
+  it('renders the production strict transport at the frozen no-fewshot control bytes while preserving original v14', () => {
+    const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v15');
+    expect(Buffer.from(STRICT_EXTRACTION_PROMPT, 'utf8')).toEqual(control);
+    expect(control.length).toBe(31884);
+    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
+    expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v14');
+    expect(createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399');
+  });
 
   it('maps only explicit optional placeholders while preserving meaningful nulls, arrays, union branches and exact raw bytes', () => {
     const packet = identityWindow();
