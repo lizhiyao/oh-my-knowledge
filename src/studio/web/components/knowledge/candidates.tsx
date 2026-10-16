@@ -319,7 +319,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         </section>)}
       </div>}
     </Drawer>
-    <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size={620}>
+    <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
       <p className="candidate-help">{t('仅显示当前 v5 运行。旧 runs/ 记录不在此读取，已有来源、实体 v2 与知识 v2 仍可在同一目录使用。', 'Only current v5 runs are shown. Former runs/ records are not read here; existing sources, entity v2 and knowledge v2 remain usable in this workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 
