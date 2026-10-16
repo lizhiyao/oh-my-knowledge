@@ -85,13 +85,13 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 `knowledge-extraction-v15`：沿用原 v14 指令的无 few-shot strict 渲染，以唯一 wire Schema 替换内嵌的领域 Schema。生成明确请求 strict 输出，先解码 nullable 占位，再执行既有宿主接纳检查；领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 `knowledge-extraction-v16`：strict 渲染包含四个经 AI 作者逐项审阅的修订 2 合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
-完整 strict v15 system 的冻结原始 UTF-8 摘要为 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；run metadata 绑定实际完整 system 摘要，不沿用旧 v14 摘要。原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。本次未激活四正例 few-shot 候选，也没有新增真实模型测量；历史 prompt-json v14 证据、未激活实验臂与本 strict 生产身份不能混作同一测量或继承质量／Gold 结论。历史运行不自动升级或重评分。
+完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；run metadata 绑定该实际完整 system 及新版本。本次 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分。本次工程不增加真实模型调用，不形成模型性能、质量、缓存命中或费用结论。独立真人复核按用户决定暂缓，不记录为通过；历史与当前身份不能合并统计或继承质量／Gold 结论。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

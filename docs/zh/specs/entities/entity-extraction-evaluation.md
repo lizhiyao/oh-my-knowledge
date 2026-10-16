@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：现行检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v5`；已记录范围为 prompt-json `knowledge-extraction-v14`／响应 Schema v4。当前无 few-shot strict v15、run v5 与 quality 投影 v3 不继承该范围的模型质量或 Gold 结论，需要另行冻结测量与复核；独立身份的 bounded 重试／预算政策同样不继承历史模型质量或 Gold 结论，工程交付不增加真实模型调用。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 BREAKING-COMPARABILITY；每个 run 最终选定的出生接纳仍只计一次。四正例实验仍未激活，没有新增真实模型调用。独立复核和整体质量验收仍未完成。[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按另行确认的 beta 范围收尾，不改变本页的质量门槛。
+状态：现行检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v5`；已记录范围为 prompt-json `knowledge-extraction-v14`／响应 Schema v4。当前 strict v16 few-shot 生成、run v5 与 quality 投影 v3 不继承该范围的模型质量或 Gold 结论，需要另行冻结测量与复核；独立身份的 bounded 重试／预算政策同样不继承历史模型质量或 Gold 结论，工程交付不增加真实模型调用。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 BREAKING-COMPARABILITY；每个 run 最终选定的出生接纳仍只计一次。生产 v16 包含四个作者审阅示例及独立的宿主部分接纳诊断；本次工程激活不等于执行历史双臂实验，不增加真实模型调用。真实模型执行与独立真人复核按用户决定暂缓，模型性能、质量、缓存命中与费用仍未验证，整体质量验收仍未完成。[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按另行确认的 beta 范围收尾，不改变本页的质量门槛。
 
 最近的真实回归为 2026-10-12 的 v14 最小回归：一次调用、一个已查看的开发窗口。作者逐项核对全部原始／接纳及额外输出，四项构建身份、九核心对象与五项知识要求均符合；未纠正原始输出的保存、重读、检索和来源／知识绑定也通过，适配器回放不增加模型调用。没有独立人工复核，`goldReady=false`，费用未知；该结果不证明因果改善、整体准确率或稳定性。被测 beta 对象在输出前单独规定为定向必需，不能与不同测量身份的整体分数横比。明确同一产物的自动归并控制与跨 Agent 身份／复用收益仍未验证，详细证据见上述 Issue。
 
@@ -16,7 +16,9 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 提示词、语料、双语指南、检查器及运行产物的原始字节摘要共同绑定测量身份。更新当前文档也会改变新复核包的指南摘要，须重新生成并冻结复核包；旧输出、标注、严格失败与分数保持原样，不按现行规则重算。不同测量身份不能直接横比；冻结原文可从对应 Git 版本和 Issue／PR 追溯。
 
-检查器 v5 落实既有双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready 状态。这会改变测量身份。v4 复核包及其已报告的 ready 状态保留为历史证据；须生成新包，并将两份复核记录绑定到新身份。当时的 checker v5 变更本身不修改提示词字节与 run 格式；后续 strict v15／run v5 交付有独立 prompt／wire／pipeline 身份。本指南更新会改变新的 preparation 摘要，旧 pending plan 须在任何新获授权的测量前重新准备并冻结；旧结果与 receipt 仍绑定原身份。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
+检查器 v5 落实既有双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready 状态。这会改变测量身份。v4 复核包及其已报告的 ready 状态保留为历史证据；须生成新包，并将两份复核记录绑定到新身份。当时的 checker v5 变更本身不修改提示词字节与 run 格式；历史无 few-shot strict v15／run v5 证据保留其独立 prompt／wire／pipeline 身份。生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新也会改变新的 preparation 摘要，旧 pending plan 须在任何新获授权的测量前重新准备并冻结；旧 runId 与执行许可不能授权新的 v16 请求。旧冻结资产、结果与 receipt 仍绑定原身份，不迁移、不重评分。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
+
+四个修订 2 完整输入／输出示例已完成 AI 作者逐项审阅，答案已进入生产 prompt；它们不是评测 split、未见验证或 Gold，回放构造答案不能证明模型效果。单独标明的部分接纳诊断复用第四例，展示原文 quote 不匹配的 sibling 被拒绝而合法候选保留；故意错误的 sibling 说明宿主行为，不是期望模型生成的输出。这些离线工程检查不等于真实模型对照或独立质量门槛完成；暂缓这些活动不阻塞工程激活，也不将任一活动记录为通过。
 
 ## 2. 标注单位与允许表达
 

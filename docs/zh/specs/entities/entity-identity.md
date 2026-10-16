@@ -235,8 +235,10 @@
 |---|---|---|
 | 实体历史 | `entity-analysis-history` v2 | 保存指代层次、组件关联及成员结构；旧格式拒读，目录计入不可读分析。 |
 | 提炼运行 | `knowledge-extraction-run` v5 | 绑定一次调用、精确 system／input 摘要与来源、独立 prompt／wire／pipeline 身份、不可变原生 outcome sidecar、接纳及稳定写入意图；v4 run 不能读取或恢复。 |
-| 提示词／模型输出 | strict `knowledge-extraction-v15`；作者 prompt-json v14；领域输出 v4 | 完整 prompt／wire／pipeline 身份与文件格式独立；无 few-shot strict 身份不继承历史 prompt-json 质量结论。 |
+| 提示词／模型输出 | strict `knowledge-extraction-v16`；作者 prompt-json v14；领域输出 v4 | 完整 prompt／wire／pipeline 身份与文件格式独立；四个完整作者审阅示例及独立的部分接纳诊断引入新 prompt 身份，不继承历史质量结论。 |
 | 知识历史 | `knowledge-item-history` v2 | 旧知识正文仍可读取，绑定不可用实体历史时明确显示限制。 |
+
+strict v16 只改变 prompt 内容／版本及完整 system 摘要，属于 **BREAKING-COMPARABILITY**；wire／领域 Schema、run 存储与 pipeline 政策均不变。诊断中原文 quote 不匹配的 sibling 被拒绝，合法 sibling 保留；该坏候选不是正确输出模板。原 prompt-json v14 字节、无 few-shot strict v15 冻结资产与历史结果保持不变。新的 v16 请求不能复用旧 runId 或执行许可，存量数据不迁移、不重评分。答案已见的合成 demonstrations 不是评测 split 或 Gold。本次工程不增加真实模型调用，不声明性能、质量、缓存或费用结论；独立真人复核由用户暂缓，仍未完成。
 
 旧文件保持原样，不自动改写、删除、转换或迁移，不添加兼容 reader。本次 run 升级不读取原 `runs/` v4 文件，新的 v5 metadata 与 outcome 写入 `extraction-runs/`；旧 run 详情、恢复、对话／项目批次及接纳统计不可用。当前来源快照、实体历史 v2 与知识历史 v2 及其已有绑定仍可在同一工作区读取，不要求空工作区；实体历史 v1 仍单独属于不支持格式。只有 v5 run 能按原幂等身份恢复。旧知识不会被重新生成的同名对象自动接管。旧质量报告、语料和证据不重算。
 
