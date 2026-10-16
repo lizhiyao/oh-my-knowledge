@@ -55,7 +55,11 @@ describe('Studio entity-link production service boundary', () => {
     expect(one.projection.status).toBe('awaiting_review'); expect(['awaiting_review', 'running']).toContain(two.projection.status); expect(calls).toHaveBeenCalledTimes(1);
     const show = await json<EntityLinkStudioInspection>({ operation: 'show', reviewId: value.preview.reviewId });
     expect(show.history).toEqual(one.history); expect(show.projection.usage).toMatchObject({ inputTokens: 7, outputTokens: 3, costUSD: null });
-    await json({ operation: 'list' }); await json({ operation: 'resume', reviewId: value.preview.reviewId }); expect(calls).toHaveBeenCalledTimes(1);
+    await json({ operation: 'list' }); await json({ operation: 'resume', reviewId: value.preview.reviewId });
+    const quality = await json<ReturnType<ReturnType<typeof createLocalEntityLinks>['quality']>>({ operation: 'quality' });
+    expect(quality).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v1', readStatus: 'available', reviewCount: 1 });
+    expect(quality.groups[0]).toMatchObject({ reviews: { dispatched: 1 }, admission: { admitted: 1 }, humanDecisions: { decided: 0, undecidedAdmitted: 1 } });
+    expect(calls).toHaveBeenCalledTimes(1);
     const rejected = await json<EntityLinkStudioInspection>({ operation: 'reject', reviewId: value.preview.reviewId, requestId: randomUUID(), expectedGeneration: show.history.generation, reason: '真人不采纳此建议' });
     expect(rejected.projection.status).toBe('rejected'); expect(rejected.projection.decision?.actor.actorKind).toBe('human');
     const candidates = await json<{ rows: unknown[] }>({ operation: 'candidates', selected: { analysisId: value.preview.plan.left.analysisId, entityId: value.preview.plan.left.entityId } });
@@ -77,6 +81,8 @@ describe('Studio entity-link production service boundary', () => {
     expect(saved.projection.status).toBe('execution_failed'); expect(JSON.stringify(saved.history)).toContain('完整失败原文'); expect(JSON.stringify(saved.history)).toContain('完整拒绝');
     writeFileSync(join(workspace, 'entity-links', `${randomUUID()}.json`), '{broken');
     const unreadable = await post({ operation: 'list' }); expect(unreadable.status).toBe(503); expect(await unreadable.json()).toEqual({ error: 'entity_link_outcome_unconfirmed' });
+    const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
+    expect(await quality.json()).toEqual({ projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v1', readStatus: 'unreadable', reviewCount: null, groups: [] });
     await json({ operation: 'show', reviewId: value.preview.reviewId }); expect(calls).toHaveBeenCalledTimes(1);
   });
   it('retains a raw result in the same service application after archive IO failure and restores it without dispatch', async () => {

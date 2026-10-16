@@ -83,7 +83,7 @@ Studio 是知识工作的操作界面：用户在其中阅读会话、追溯执�
 - [知识提炼指南](docs/zh/guides/knowledge/extract-knowledge.md)：候选生成、核对、修订、维护和来源管理的现有能力。
 - [观测与任务轨迹](docs/zh/guides/observe/observe-production.md)：会话阅读、执行追溯、观测信号与完整性边界。
 - [三阶段工作流](docs/zh/explanation/three-stage-workflow.md)：doctor → eval 的受控发布判断与 observe 的反馈作用。
-- [知识建设领域模型](./docs/zh/specs/knowledge/knowledge-domain-model.md)：知识建设的领域设计和案例推演；设计草案不等同于已发布契约或完整实现。
+- [知识建设与维护契约](./docs/zh/specs/knowledge/knowledge-domain-model.md)：提取到评测的端到端职责、身份边界、失败恢复与行业决策；功能契约和质量证据分别维护。
 - [示例画廊](examples/README.zh.md)：可运行场景；示例和生成样本不能替代真实领域的独立验证证据。
 
 以上资料支持产品描述与工作流说明，不构成普遍效果提升、客户采用或商业收益的证明。

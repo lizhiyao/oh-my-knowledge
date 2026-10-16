@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Drawer, Empty, Input, Select, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
-import type { EntityLinkCandidates, EntityLinkStudioInspection, EntityLinkStudioList, EntityLinkStudioPreview } from '../../../view-models/knowledge/entity-links';
+import type { EntityLinkCandidates, EntityLinkStudioInspection, EntityLinkStudioList, EntityLinkStudioPreview, EntityLinkStudioQuality } from '../../../view-models/knowledge/entity-links';
 import { requestKnowledge } from './request';
 import { EntityLinkPreviewEvidence, EntityLinkSavedEvidence, entityLinkStatusLabel } from './entity-link-evidence';
 import { notifyKnowledgeChange } from './workspace';
+import { EntityLinkQualityEvidence } from './entity-link-quality';
 
 export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
   workspace: string; detail: KnowledgeEntityLibraryDetail; lang: Language; onClose(): void;
@@ -14,6 +15,7 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [candidates, setCandidates] = useState<EntityLinkCandidates>();
   const [history, setHistory] = useState<EntityLinkStudioList>();
+  const [quality, setQuality] = useState<EntityLinkStudioQuality>(), [qualityFailed, setQualityFailed] = useState(false);
   const [right, setRight] = useState<KnowledgeEntityLibraryDetail>();
   const [rightId, setRightId] = useState('');
   const [leftMentions, setLeftMentions] = useState<string[]>([]), [rightMentions, setRightMentions] = useState<string[]>([]);
@@ -43,8 +45,15 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
     } finally { if (current === epoch.current && controller.current === active) { controller.current = null; setBusy(false); } }
   }
   async function load(signal: AbortSignal) {
-    const [rows, records] = await Promise.all([api<EntityLinkCandidates>('candidates', { selected: left }, signal), api<EntityLinkStudioList>('list', {}, signal)]);
-    if (!signal.aborted) { setCandidates(rows); setHistory(records); }
+    setQuality(undefined); setQualityFailed(false);
+    const [catalog, observation] = await Promise.allSettled([
+      Promise.all([api<EntityLinkCandidates>('candidates', { selected: left }, signal), api<EntityLinkStudioList>('list', {}, signal)]),
+      api<EntityLinkStudioQuality>('quality', {}, signal),
+    ]);
+    if (signal.aborted) return;
+    if (observation.status === 'fulfilled') setQuality(observation.value); else setQualityFailed(true);
+    if (catalog.status === 'rejected') throw catalog.reason;
+    setCandidates(catalog.value[0]); setHistory(catalog.value[1]);
   }
   async function inspect(id: string, signal: AbortSignal) {
     const value = await api<EntityLinkStudioInspection>('show', { reviewId: id }, signal);
@@ -56,7 +65,7 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
     if (value.projection.status === 'applied') notifyKnowledgeChange(workspace);
   }
   useEffect(() => {
-    setCandidates(undefined); setHistory(undefined); setPreview(undefined); setSaved(undefined); setRight(undefined); setRightId(''); setReviewId(''); setRetryOf(undefined);
+    setCandidates(undefined); setHistory(undefined); setQuality(undefined); setQualityFailed(false); setPreview(undefined); setSaved(undefined); setRight(undefined); setRightId(''); setReviewId(''); setRetryOf(undefined);
     setUncertain(false); setContentConfirmed(false); setIdentityConfirmed(false); setReason(''); setLabel(''); setModel('');
     setLeftMentions(mentionOptions(detail).map(value => value.value));
     void action(load);
@@ -89,6 +98,7 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
       {error && <Alert type="error" showIcon title={error}/>}
       <Space wrap><Button disabled={busy} onClick={() => void action(load)}>{t('重新读取候选与历史', 'Reload candidates and history')}</Button>{busy && <Spin size="small"/>}</Space></header>
       <div className="entity-links-scroll">
+        <EntityLinkQualityEvidence value={quality} failed={qualityFailed} lang={lang}/>
         <section><h3>{t('同名候选', 'Name-based candidates')}</h3>
           {!candidates ? <p>{t('候选尚未读取。', 'Candidates have not been read.')}</p> : <>
             {!!candidates.unavailableAnalyses && <Alert type="warning" title={t(`${candidates.unavailableAnalyses} 份分析不可读；候选不覆盖整个工作区。`, `${candidates.unavailableAnalyses} analyses are unreadable; candidates do not cover the workspace.`)}/>}

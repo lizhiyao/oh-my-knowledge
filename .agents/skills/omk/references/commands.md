@@ -469,7 +469,7 @@ omk observe entity-links <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；其余读取、人审或零调用恢复。
+- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；其余读取、人审或零调用恢复。
 
 **Flags:**
 
@@ -517,6 +517,10 @@ omk observe entity-links propose --input ./link-plan.json --confirm-input <confi
 
 ```bash
 omk observe entity-links show --workspace ./knowledge --id <review-id> --json
+```
+
+```bash
+omk observe entity-links quality --workspace ./knowledge --json
 ```
 
 ```bash

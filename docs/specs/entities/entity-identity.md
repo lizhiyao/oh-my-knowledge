@@ -1,6 +1,6 @@
-# Entity identity rules (Beta)
+# Entity identity rules
 
-Status (2026-10-12): this document defines identity rules and examples for [Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127). The approved section 8 contracts and interfaces are delivered, and the issue is closed under the user-approved beta scope: the complete workflow and minimal v14 real regression have completed itemwise author review. independent review and overall quality gates remain incomplete; the [annotation guide](./entity-extraction-evaluation.md) retains these limits, without regrading historical failures or scores. The [entity extraction specification](./entity-extraction.md) describes the current implementation.
+This specification owns source-supported identity rules and examples. The [entity extraction specification](./entity-extraction.md) owns current execution and storage contracts; the [evaluation protocol](./entity-extraction-evaluation.md) alone owns quality versions, measured scope and readiness. The [construction design](../knowledge/knowledge-domain-model.md) connects window identities to cross-window review and knowledge maintenance.
 
 This specification follows the [knowledge definition](../../explanation/knowledge.md): entities are things described by knowledge; knowledge expresses their states, relations, or behavior in context. OMK implements the rules itself, borrowing established designs without requiring a third-party memory framework, graph database, or additional model.
 
@@ -18,7 +18,7 @@ Entity extraction should help people and AI answer these questions, rather than 
 | Distinguish plans from results | Find requirements, actual execution, and observed results separately. | Treat an intention as completed execution. |
 | Inspect “it / they” | Return to the source and inspect reference rationale, collection members, or identity gaps. | Arbitrarily select an object or distribute a collective description incorrectly to individuals. |
 
-Identity remains bounded by one immutable source window and its analysis revisions. Workspace search may show same-named objects from multiple windows; that does not establish a shared identity. Managing knowledge across agents is a product direction; automatic identity resolution across agents is outside this specification.
+Identity remains bounded by one immutable source window and its analysis revisions. Workspace search may show same-named objects from multiple windows; that does not establish a shared identity. Human-confirmed [library organization](../knowledge/knowledge-library.md) references those identities without replacing them. Automatic cross-Agent disambiguation is outside this specification.
 
 ## 2. Decision process and basic rules
 
@@ -146,7 +146,7 @@ Frozen annotations may allow `object`/`version` where both models are source-sup
 
 When release status or artifact correspondence is unknown, the known tested object may remain `proposed`; a missing SHA does not make it `unresolved`. Retain unknowns in entity `uncertainties` and affected statement `context.unknowns`, without inventing qualifications in `description`/`qualifiers`. A statement's “version unknown” cannot repair a subject entity incorrectly qualified as released; review the entity and knowledge references together.
 
-Prompt v14 implements this rule without response or storage changes. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements.
+Current extraction prompts implement this rule. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements. The [extraction specification](./entity-extraction.md) owns prompt and response versions.
 
 ## 4. Collections, unresolved identities, and mention positions
 
@@ -195,7 +195,7 @@ These requirements supplement the [revision and storage boundaries](./entity-ext
 
 ## 7. From rules to implementation and acceptance
 
-These examples specify rules; they are neither independently adjudicated gold nor evidence of improved extraction. Current contracts, storage and interfaces are delivered. Independent human annotation review, full synthetic regression and independently reviewed real-quality acceptance remain incomplete; the [evaluation guide](./entity-extraction-evaluation.md) owns their gates.
+These examples specify rules; they are neither independently adjudicated gold nor evidence of improved extraction. The [evaluation protocol](./entity-extraction-evaluation.md) owns annotation, regression and independent-review gates and their current evidence.
 
 Acceptance cannot compare entity counts alone. Check referential levels, required identity separations, coreference rationale, collection/unknown representations, knowledge subjects/objects and conditions, and revision bindings after correction. Annotate critical mentions and required identities before output; do not inspect only returned objects or let the model omit instances to avoid false merges.
 
@@ -231,19 +231,12 @@ An invalid link makes its containing entity inadmissible. Dependent mentions, co
 
 ### 8.3 Versions and existing-data impact
 
-| Object | Current version | Impact |
-|---|---|---|
-| Entity history | `entity-analysis-history` v2 | Stores referent levels, component links and members; old formats are unreadable and counted as unreadable analyses. |
-| Extraction run | `knowledge-extraction-run` v5 | Binds one invocation, exact system/input digests and source bindings, independent prompt/wire/pipeline identities, immutable native outcome sidecars, admission and stable write intents; v4 runs cannot be read or resumed. |
-| Prompt/model output | Strict `knowledge-extraction-v16`; authored prompt-json v14; domain output v4 | Full prompt/wire/pipeline identities are independent of file format. Four complete author-reviewed demonstrations and a separate partial-admission diagnostic introduce a new prompt identity, without inheriting historical quality conclusions. |
-| Knowledge history | `knowledge-item-history` v2 | Old knowledge bodies remain readable, with explicit limits when bound entity history is unavailable. |
+The [extraction specification](./entity-extraction.md) owns the current prompt, wire/domain response, run and entity/knowledge history versions, frozen prompt identities, unsupported-version behavior and existing-data impact. The [library](../knowledge/knowledge-library.md) and [entity-link journal](./entity-links.md) own their separate organization and review formats. A prompt version is not a storage or measurement version; changing the frozen request requires a new run identity and does not inherit an old experiment's execution permission.
 
-Strict v16 changes only prompt content/version and the complete system digest, with **BREAKING-COMPARABILITY**; wire/domain Schemas, run storage and pipeline policies remain unchanged. Its diagnostic rejects a sibling whose quote does not match the source while retaining the valid sibling; that bad candidate is not a correct-output template. Original prompt-json v14 bytes, no-few-shot strict v15 frozen assets and historical results remain intact. New v16 requests cannot reuse old runIds or execution permissions; existing data is not migrated or rescored. The already viewed synthetic demonstrations are not an evaluation split or Gold. This engineering delivery makes no real-model calls or performance, quality, cache or cost claims; independent human review is deferred by the user and remains incomplete.
-
-Keep old files unchanged, without automatic rewriting, deletion, conversion, migration, or compatibility readers. The run upgrade leaves former `runs/` v4 files unread and writes new v5 metadata and outcomes under `extraction-runs/`; old run details, resume, conversation/project batches and quality statistics are unavailable. Current source snapshots, entity history v2 and knowledge history v2 remain readable in the same workspace, including existing bindings; no empty workspace is required. Entity history v1 remains unsupported separately. Only v5 runs can resume with their original idempotent identities. New same-named objects do not inherit old knowledge bindings. Historical quality reports, corpus, and evidence are not recomputed.
+Preserve old files, outputs and evidence without automatic rewriting, deletion, conversion, migration, compatibility readers or rescoring. Unsupported entity histories remain visibly unreadable; available knowledge retains its original binding and limits. New same-named entities do not inherit old knowledge. Corrections require new immutable revisions, and only supported run formats can resume with their original idempotent identities.
 
 ### 8.4 Delivery boundary
 
 Current implementation covers identity/link validation, model quotes, prompts, host identity mapping, write/recovery, corrections, and membership/component presentation and retrieval. The [extraction specification](./entity-extraction.md) owns interactions and failure boundaries.
 
-Regressions without model calls cover empty results, homonym isolation, collections/unresolved identities, cascaded invalid-link rejection, duplicate quotes, case roles, idempotent recovery and unsupported-version rejection. Independent annotation review and new model quality acceptance remain incomplete; acceptance tools must not silently combine current prompts with old criteria from a different measurement identity.
+Functional regressions cover empty results, homonym isolation, collections/unresolved identities, cascaded invalid-link rejection, duplicate quotes, case roles, idempotent recovery and unsupported-version rejection. Quality evidence and its limitations remain in the evaluation protocol; acceptance tools must not silently combine current prompts with criteria from a different measurement identity.

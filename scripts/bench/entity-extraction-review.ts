@@ -49,8 +49,9 @@ const AuthorReviewSchema = z.strictObject({
   decisions: z.array(z.strictObject({ caseId: text, decision: z.enum(['approved', 'changes_requested']), rationale: text })),
 });
 
+export interface AnnotationCorpusIdentity { authors: readonly string[]; cases: readonly { caseId: string }[] }
 function validateReview(record: z.infer<typeof AuthorReviewSchema> | z.infer<typeof ReceiptSchema>,
-  corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
+  corpus: AnnotationCorpusIdentity, measurementId: string, outputsStartedAt?: string) {
   if (record.measurementId !== measurementId) throw new Error('Review receipt is for a different measurement identity.');
   if (new Date(record.reviewedAt).getTime() > Date.now()) throw new Error('Review time is in the future.');
   if (outputsStartedAt && new Date(record.reviewedAt).getTime() > new Date(outputsStartedAt).getTime()) throw new Error('Gold review must precede output capture.');
@@ -59,7 +60,7 @@ function validateReview(record: z.infer<typeof AuthorReviewSchema> | z.infer<typ
     || record.decisions.some(value => !cases.has(value.caseId))) throw new Error('Review must cover every case exactly once.');
 }
 
-export function authorReviewStatus(raw: string | undefined, corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
+export function authorReviewStatus(raw: string | undefined, corpus: AnnotationCorpusIdentity, measurementId: string, outputsStartedAt?: string) {
   if (raw === undefined) return { status: 'pending' as const, receipt: null };
   const receipt = AuthorReviewSchema.parse(JSON.parse(raw));
   validateReview(receipt, corpus, measurementId, outputsStartedAt);
@@ -67,7 +68,7 @@ export function authorReviewStatus(raw: string | undefined, corpus: EntityReview
   return { status: receipt.decisions.some(value => value.decision === 'changes_requested') ? 'changes_requested' as const : 'completed' as const, receipt };
 }
 
-export function reviewReceiptStatus(raw: string | undefined, corpus: EntityReviewCorpus, measurementId: string, outputsStartedAt?: string) {
+export function reviewReceiptStatus(raw: string | undefined, corpus: AnnotationCorpusIdentity, measurementId: string, outputsStartedAt?: string) {
   if (raw === undefined) return { status: 'pending' as const, receipt: null };
   const receipt = ReceiptSchema.parse(JSON.parse(raw));
   validateReview(receipt, corpus, measurementId, outputsStartedAt);
@@ -164,7 +165,7 @@ export function entityReviewHtml(corpus: EntityReviewCorpus, measurementId: stri
 }
 
 /** Hash built bytes, including transitive runtime dependencies, rather than trusting a stale dist version label. */
-function builtDigest(root: string) {
+export function reviewBuiltDigest(root: string) {
   const files: string[] = [];
   const walk = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
@@ -193,7 +194,7 @@ async function main() {
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),
     checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
       .map(path => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), path), 'utf8')).join('\0')),
-    runtimeDigest: builtDigest(resolve(repo, 'dist')),
+    runtimeDigest: reviewBuiltDigest(resolve(repo, 'dist')),
     dependencyDigest: reviewDigest(['package.json', 'yarn.lock'].map(path => readFileSync(resolve(repo, path), 'utf8')).join('\0')),
     nodeVersion: process.versions.node, promptVersion: promptModule.EXTRACTION_PROMPT_VERSION,
     promptHash: reviewDigest(promptModule.EXTRACTION_PROMPT), promptHashEncoding: 'raw-utf8', responseSchemaVersion: 4 };

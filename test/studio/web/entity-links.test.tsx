@@ -4,11 +4,29 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EntityLinkPreviewEvidence, EntityLinkSavedEvidence } from '../../../src/studio/web/components/knowledge/entity-link-evidence.js';
 import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { entityLinkFixture } from './entity-link-fixture.js';
+import { EntityLinkQualityEvidence } from '../../../src/studio/web/components/knowledge/entity-link-quality.js';
+import { entityLinkQuality } from '../../../src/observability/knowledge-extraction/entity-link-quality.js';
+import { entityLinkDigest } from '../../../src/observability/knowledge-extraction/entity-link-hash.js';
+import { entityLinkTextHash } from '../../../src/observability/knowledge-extraction/adapters/entity-link-api-producer.js';
 
 let fixture: Awaited<ReturnType<typeof entityLinkFixture>>;
 beforeAll(async () => { fixture = await entityLinkFixture(); });
 afterAll(() => fixture?.cleanup());
 describe('entity-link actual evidence rendering', () => {
+  it('renders shared quality denominators and unknown usage in both languages, escaping model identity and distinguishing unreadable', () => {
+    const quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash });
+    for (const lang of ['zh', 'en'] as const) {
+      const value = structuredClone(quality); value.groups[0].identity.model = '<script>unsafe</script>';
+      const html = renderToStaticMarkup(createElement(EntityLinkQualityEvidence, { value, failed: false, lang }));
+      expect(html).toContain(lang === 'zh' ? '机器接纳分母：1' : 'Admission denominator: 1');
+      expect(html).toContain(lang === 'zh' ? '人工决定分母：0' : 'Human decision denominator: 0');
+      expect(html).toContain('insufficient_evidence'); expect(html).toContain('unknownReviewCount'); expect(html).toContain('knownTotal');
+      expect(html).toContain(lang === 'zh' ? '均不代表准确率' : 'neither measures accuracy');
+      expect(html).toContain('&lt;script&gt;unsafe&lt;/script&gt;'); expect(html).not.toContain('<script>');
+      const failed = renderToStaticMarkup(createElement(EntityLinkQualityEvidence, { failed: true, lang }));
+      expect(failed).toContain(lang === 'zh' ? '数量未知' : 'counts are unknown'); expect(failed).not.toContain('review：0');
+    }
+  });
   it('shows the current entity entry and keeps historical revisions read-only', () => {
     const render = (current: boolean) => renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: current ? fixture.left : { ...fixture.left, history: { ...fixture.left.history, writeHeadRevisionId: 'newer' } }, workspace: fixture.workspace, lang: 'zh', onRevision() {}, onLink() {} }));
     expect(render(true)).toContain('查找跨窗口对应'); expect(render(false)).toMatch(/<button[^>]*disabled=""[^>]*><span>查找跨窗口对应/);

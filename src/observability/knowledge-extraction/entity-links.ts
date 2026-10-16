@@ -17,6 +17,7 @@ import { currentEntityLinkSource } from './entity-link-source.js';
 import { createEntityLinkExecutionRequest } from './adapters/entity-link-executor.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 import { configureEntityLinkApiProducer, inspectEntityLinkApiProducer, entityLinkTextHash } from './adapters/entity-link-api-producer.js';
+import { entityLinkQuality, unreadableEntityLinkQuality } from './entity-link-quality.js';
 
 const reference = z.strictObject({ analysisId: z.string().uuid(), entityId: z.string().uuid(), mentionIds: z.array(z.string().uuid()).min(1).max(64).optional() });
 const decisionSchema = z.discriminatedUnion('decision', [
@@ -70,6 +71,10 @@ export class EntityLinkApplication {
       } };
   }
   list() { return this.reviews.list(); }
+  quality() {
+    try { return entityLinkQuality(this.reviews.list(), this.integrity); }
+    catch { return unreadableEntityLinkQuality(); }
+  }
   read(reviewId: string) { return this.reviews.read(reviewId); }
   projectHistory(history: EntityLinkInvocation) { return projectEntityLinkInvocation(history, this.integrity); }
   inspect(reviewId: string) { const history = this.read(reviewId); return { history, projection: this.projectHistory(history) }; }

@@ -1,9 +1,9 @@
 # Knowledge construction and maintenance
 
-Specifies consistency of content revisions, organization links, and carrier maintenance.
+Start with the end-to-end construction design for extraction, host admission, cross-window review, library organization, knowledge maintenance, carrier saving and evaluation. Stage specifications own their detailed contracts.
 
 ## Current specifications
 
-- [Knowledge construction and maintenance contracts](knowledge-domain-model.md)
+- [End-to-end construction design and industry decisions](knowledge-domain-model.md)
 - [Entity knowledge library](knowledge-library.md)
 - [Knowledge maintenance, automatic extraction, and carrier contracts](knowledge-maintenance.md)

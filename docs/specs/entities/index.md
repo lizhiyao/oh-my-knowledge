@@ -7,11 +7,13 @@ Entities organize the objects described by knowledge; identifying an entity does
 | Question | Read |
 |---|---|
 | What are entities, knowledge, and carriers? | [Concept definitions](../../explanation/knowledge.md) |
+| How does extraction become maintained knowledge and carrier evidence? | [End-to-end design and industry decisions](../knowledge/knowledge-domain-model.md) |
 | How are identity, granularity, and ambiguity handled? | [Entity identity](./entity-identity.md) |
 | What is implemented, and which formats are supported? | [Entity extraction](./entity-extraction.md) |
 | How do I review, correct, retain, and reuse knowledge? | [Knowledge guide](../../guides/knowledge/extract-knowledge.md) · [Entity knowledge library](../knowledge/knowledge-library.md) |
-| What is the cross-window review foundation and its remaining integration scope? | [Entity review journal](./entity-links.md) |
+| How are cross-window proposals, human decisions and recovery connected? | [Entity review journal](./entity-links.md) |
 | How are annotations, checks, and quality acceptance defined? | [Extraction evaluation protocol](./entity-extraction-evaluation.md) |
+| How are the three entity-link assessments evaluated and reviewed? | [Entity-link evaluation protocol](./entity-link-evaluation.md) |
 | Can the original real v14 output be replayed without a new request? | [Historical external baseline](./entity-extraction-real-v14-baseline.md) |
 
-The current specification records the user-approved beta scope and one previously viewed development-window regression of prompt v14, with itemwise author review. Independent review and overall quality acceptance remain incomplete. Structural admission, recorded-output workflow acceptance, and retaining knowledge are separate from extraction accuracy, truth, stability, or reuse benefit; see the current specification and protocol for their exact limits.
+The evaluation protocols own measured quality scope and review status. Structural admission, recorded-output workflow acceptance, human organization decisions and retaining knowledge are separate from extraction accuracy, truth, stability or reuse benefit.

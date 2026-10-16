@@ -1,10 +1,12 @@
 # Knowledge construction and maintenance contracts
 
-This document specifies current ownership and consistency boundaries for content, source identity, organization, and carrier maintenance. [Knowledge principles](../../explanation/knowledge.md) alone own concept definitions; the [knowledge maintenance guide](../../guides/knowledge/extract-knowledge.md) owns user steps.
+This document is the end-to-end design for turning selected records into maintained knowledge and measurable carrier changes. It owns the connections between stages, identity boundaries, and architectural decisions. [Knowledge principles](../../explanation/knowledge.md) alone own concept definitions; the [knowledge maintenance guide](../../guides/knowledge/extract-knowledge.md) owns user steps. Detailed contracts remain in the linked stage specifications rather than being copied here.
 
 ## 1. Delivered scope {#current-scope}
 
-Within an explicitly chosen local workspace, CLI and Studio share source capture, candidate extraction, review decisions, immutable revisions, entity correction, tags, entity-library organization, and carrier saving. These entrypoints do not automatically unify identities across Agents, establish truth, or prove reuse benefits.
+Within an explicitly chosen local workspace, CLI and Studio share source capture, candidate extraction, review decisions, immutable revisions, entity correction, tags, cross-window entity review, entity-library organization, and carrier saving. Human-confirmed cross-window organization is implemented. Automatic cross-Agent identity unification is outside this design; neither a model suggestion nor a library link establishes truth or reuse benefits.
+
+The design does not require a graph database, embedding retrieval, background identity merging, or automatic deletion of contradicted claims. Each would need its own explicit contract and evidence before adoption.
 
 ## 2. Objects and responsibilities {#current-objects}
 
@@ -12,6 +14,7 @@ Within an explicitly chosen local workspace, CLI and Studio share source capture
 |---|---|
 | Source window | Selected excerpts, source identity, scope, and limits; later judgments can return to the same evidence |
 | Source entity analysis | Window-local objects, mentions, and immutable analysis revisions; no cross-window unified identity |
+| Entity-link review | Pinned entities from two windows, exact model request/outcome, structural admission, separate human decision, and recoverable library intent |
 | Knowledge content | Stable identity, immutable content revisions, and supporting/opposing/background evidence; candidate is a review state |
 | Maintenance decision | Retain/discard and reason for an exact knowledge revision; retention is not truth verification |
 | Library object | User-confirmed cross-window organization; references source identity without copying content |
@@ -20,6 +23,39 @@ Within an explicitly chosen local workspace, CLI and Studio share source capture
 | Measurement evidence | Existing Core run/report/Decision testing a specific carrier change; not a substitute for review |
 
 One carrier may cite many items; one item may appear in multiple carriers or object entries. Each retains its identity. Names, chronology, or UI placement establish neither identical objects nor claim truth.
+
+### 2.1 Stages and contract ownership {#construction-pipeline}
+
+```mermaid
+flowchart LR
+  source[Selected source window] --> extract[Extraction and host admission]
+  extract --> catalog[Window entity catalog]
+  extract --> knowledge[Knowledge review and revisions]
+  catalog --> review[Cross-window entity review]
+  review --> library[Library organization]
+  library --> knowledge
+  knowledge --> carrier[Carrier generation and saving]
+  carrier --> evaluate[Controlled evaluation]
+```
+
+The branches are intentional: entities and knowledge candidates can be admitted together, and knowledge maintenance does not require a library link. The library adds a cross-window reading and selection entry, not a second extraction or content store.
+
+| Stage | Responsibility and hand-off | Authoritative specification |
+|---|---|---|
+| Window extraction | Freeze selected source and limits; prepare invocation before dispatch; preserve the complete returned executor outcome before decoding. | [Entity extraction](../entities/entity-extraction.md) |
+| Host admission | Resolve exact quote occurrences to UTF-16 positions; validate wire/domain structure and reference closure; reject invalid mentions and dependent entities/statements with reasons, retaining valid siblings and the original outcome. Admission does not adjudicate semantics. | [Extraction contracts](../entities/entity-extraction.md#_3-contracts-and-identity) and [identity rules](../entities/entity-identity.md) |
+| Entity catalog | Query current window analyses while preserving analysis/entity/revision identities; disclose unreadable analyses and sources. Search does not create a shared identity. | [Extraction storage and catalog](../entities/entity-extraction.md#_6-current-storage-contracts) |
+| Cross-window review | Normalized recall → bounded preview → confirmed durable preparation → governed model suggestion → archived outcome and admission → explicit human acceptance/rejection → recoverable application. Retrieval and model advice cannot publish organization. | [Entity-link journal](../entities/entity-links.md); [Studio transport](../studio/studio-entity-links.md) |
+| Library organization | Reference original window identities through a separately maintained object; confirm identity and source evidence; publish immutable membership revisions under the workspace lock. | [Entity knowledge library](knowledge-library.md) |
+| Knowledge maintenance | Retain/discard an exact knowledge revision, revise content and source interpretation, and explicitly apply entity corrections. Organization never transfers a claim automatically. | [Sections 3–4](#current-revisions) and [maintenance contract](knowledge-maintenance.md) |
+| Carrier generation and saving | Select exact retained revisions, preserve conditions and evidence, preview the change, and save a new skill/prompt version without rewriting previous content. | [Maintenance and carrier contract](knowledge-maintenance.md) |
+| Controlled evaluation | Bind carrier versions, fixed task model, samples and scoring plan to existing Core evidence. Review outcomes before adopting a change; saving and evaluation completion are separate facts. | [Carrier evaluation](knowledge-maintenance.md) and [Evaluation Core](../evaluation/eval-core-vnext.md) |
+
+### 2.2 Identity hand-offs {#construction-identities}
+
+Model references are local to one source window. Host-assigned `analysisId`, `entityId`, and `entityRevisionId` identify its admitted and corrected records; catalog recall does not replace them. A review pins both windows, source versions, entity revisions, selected mentions and owner heads. Only an explicit human identity decision can authorize the library application.
+
+The library's independent `objectId` organizes those original references across windows; it never becomes a replacement entity UUID. One current window entity has at most one owner object. A knowledge identity and its exact content revision remain independent of both identities, and carriers reference those exact knowledge revisions. A new entity revision, library revision, retained decision or carrier version does not silently upgrade any other layer.
 
 ## 3. Knowledge and revisions {#current-revisions}
 
@@ -34,6 +70,8 @@ Source matching establishes location and reference closure, not claim support. U
 ### 4.1 Library organization {#current-library}
 
 User-confirmed links connect window entities and library objects, binding analysis, entity, entity revision, and original mentions. Equal names do not merge identities. [Entity identity](../entities/entity-identity.md) owns component, instance, version, and unresolved-identity constraints.
+
+The [entity-link journal](../entities/entity-links.md) records `same_object`, `different_objects`, or `insufficient_evidence` as a model recommendation. An admitted recommendation still needs a separate human decision and reason. Accepting may override the recommendation, but preserves it unchanged and does not convert the decision into a model-quality score. A rejection leaves source entities, knowledge and the library unchanged and suppresses that exact reviewed pair.
 
 Organization and content histories remain separate. A knowledge binding that disagrees with the organization's entity revision requires review and cannot enter the object's current retained set or default carrier selection. Unlinking does not delete knowledge; empty objects retain history. See the [library specification](knowledge-library.md).
 
@@ -51,6 +89,33 @@ Saving, actual use, and controlled effect verification are separate records. The
 
 Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
 
+### 5.1 Failure and recovery hand-offs {#construction-recovery}
+
+| Boundary | Required result and next action | Contract owner |
+|---|---|---|
+| Model output is refused, malformed, unsupported, or partly invalid | Preserve the complete returned outcome first; record decoding/admission facts. Valid extraction siblings can survive; invalid dependent references cannot. Failed link admission prevents acceptance and library publication, while an explicit human rejection can close the review. | Extraction and entity-link specifications |
+| Invocation starts but no outcome survives process loss | Preserve running/unknown evidence and consumed invocation identity. A read, reload, or resume never resends. An explicit new confirmed retry has a new identity and consumes its own allowance. | Extraction and entity-link specifications |
+| Source/entity/owner changes after preview | Recheck pinned heads and exact source positions under the same workspace lock; reject stale preparation or record an explicit application conflict after a decision. Fix the source/organization and create a new review from current bindings. | Entity-link journal and library specification |
+| Library write commits but acknowledgement or journal append fails | Resume the durable stable intent with the same command/receipt; record the already committed fact without another model call or duplicate library revision. Unknown I/O remains retryable, rather than being called a proven rejection. | Entity-link journal |
+| Knowledge or entity revision changes | Preserve old content, decisions and bindings. Mark mismatches for review and require explicit application of the chosen revision. Removing a library link does not delete knowledge. | Library and maintenance specifications |
+| Carrier save or evaluation is interrupted | Keep prior versions intact; inspect an uncertain save/run before another action. Recover writes or inspect the existing run, without background rewriting or automatic model resends. | Maintenance contract |
+
+These are recoverable application boundaries, not a multi-file filesystem transaction or a guarantee of remote exactly-once delivery. Missing, corrupt and unreadable evidence must remain distinguishable from empty healthy results.
+
 ## 6. Acceptance and limits {#current-evidence}
 
 Functional acceptance covers continued accumulation, knowledge revision, source/version rereading, organization links, and carrier reminders/update consistency. Usability does not establish overall extraction accuracy, truth, or task benefits; each has its own evidence.
+
+Structural admission, real-process/service workflow acceptance, human organization decisions, and independently reviewed semantic quality are separate evidence. Extraction quality versions, measured scope and readiness are owned only by the [extraction evaluation protocol](../entities/entity-extraction-evaluation.md); source replay and demonstrations cannot inherit those conclusions. The [entity-link evaluation protocol](../entities/entity-link-evaluation.md) separately binds its frozen three-way criteria, inputs, governed request, checker and review records. Workspace admission/decision observations keep their own denominators and do not turn human organizational decisions into semantic labels. Neither a successful model call nor a human organizational acceptance automatically satisfies independent quality review.
+
+## 7. Research and decisions {#construction-decisions}
+
+The following primary sources inform the architecture; their performance results are not evidence of OMK performance. “Adopt” and “adapt” refer to the stated design practice, not introducing those frameworks as dependencies.
+
+| Primary source | Relevant practice | OMK decision and reason |
+|---|---|---|
+| [GraphRAG Dataflow](https://microsoft.github.io/graphrag/index/default_dataflow/) | TextUnits retain source provenance; the default graph extraction merges entities with equal titles and types. | **Adopt** source-to-derived-record traceability. **Reject** title/type merging and whole-graph indexing: same-named objects may differ by project, instance or version, and source identities must remain inspectable. |
+| [Mem0 paper, §2.1](https://arxiv.org/html/2504.19413v1#S2.SS1) and [current add contract](https://docs.mem0.ai/core-concepts/memory-operations/add) | The paper separates extraction from incremental ADD/UPDATE/DELETE/NOOP decisions against existing memories. The current add documentation instead describes additive storage; these are distinct source scopes. | **Adapt** incremental reconciliation with existing records. Separate recorded model advice from explicit human decisions and immutable revisions; do not let an LLM overwrite/delete claims or infer identity from retrieved similarity. The paper's four operations are not asserted to be the current default API behavior. |
+| [Neo4j Agent Memory: resolution and deduplication](https://neo4j.com/labs/agent-memory/explanation/resolution-deduplication/) | Resolution determines whether references denote the same thing; deduplication applies that decision. Similarity signals and type constraints do not alone prove identity. | **Adopt** the separation, **adapt** execution to recall/preview/proposal versus human decide/library publication. Reject automatic similarity-threshold merging; the cost of false identity transfer requires visible source review. |
+| [Graphiti temporal context graphs](https://github.com/getzep/graphiti#why-graphiti) and [fact-time fields](https://github.com/getzep/graphiti/blob/main/graphiti_core/edges.py) | Facts retain source episodes and temporal history, including `valid_at`/`invalid_at`; changed facts can be automatically invalidated while old facts remain recorded. | **Adopt** provenance and preserved history. **Reject** automatic temporal truth/identity invalidation: a later statement may be a plan, correction, different context or contradiction. Use immutable revisions and explicit correction, discard or unlinking; time and source assertions remain evidence, not an automatic verdict. |
+| [LangExtract source grounding](https://github.com/google/langextract) | Extractions map back to source spans; unlocatable outputs are visibly ungrounded. | **Adopt and tighten** host location: require exact continuous quotes and explicit occurrence selection for repeated text, then reject ungrounded or ambiguously located dependencies. Exact location still does not prove semantic identity or claim support. |

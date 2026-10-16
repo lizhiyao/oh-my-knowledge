@@ -5,6 +5,7 @@ import { canonicalJson } from '../../knowledge/store.js';
 import { EntityLinkPreviewSchema, type EntityLinkInvocation } from '../../knowledge/entities/link-invocation.js';
 import type { EntityLinkApplication } from '../../observability/knowledge-extraction/entity-links.js';
 import type { Lang } from '../../shared/language.js';
+import type { EntityLinkQuality } from '../../observability/knowledge-extraction/entity-link-quality.js';
 
 /** CLI authorization envelope only; the shared host owns the execution protocol. */
 const EntityLinkCliPlanBodySchema = z.strictObject({
@@ -49,5 +50,21 @@ export function formatEntityLinkInvocation(history: EntityLinkInvocation, projec
   const recorded = history.events.find(event => event.command.commandKind === 'execution_recorded')?.command;
   if (recorded?.commandKind === 'execution_recorded') lines.push(t('完整执行事实：', 'Complete execution evidence:'), JSON.stringify(recorded.outcome, null, 2));
   lines.push(t('show --json 可导出完整历史。resume 不调用模型；unknown 或确认丢失时先核对本 reviewId。', 'show --json exports complete history. resume never calls a model; inspect this reviewId after unknown acknowledgements.'));
+  return lines.join('\n');
+}
+
+export function formatEntityLinkQuality(quality: EntityLinkQuality, workspace: string, lang: Lang): string {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const lines = [`workspace: ${workspace}`, quality.projectionVersion,
+    t('只读已保存记录；机器接纳与人工选择均不代表准确率。本次零模型调用。', 'Reads saved evidence only. Machine admission and human choices do not measure accuracy. No model invocation.')];
+  if (quality.readStatus === 'unreadable') return [...lines, t('关联历史不可读；数量未知，不能据此判断为 0。请核对工作区权限和存储格式后重新读取。', 'Link history is unreadable; its count is unknown, not zero. Inspect workspace permissions and storage format, then reload.')].join('\n');
+  lines.push(`${t('持久 review', 'Durable reviews')}: ${quality.reviewCount}; ${t('可比分组', 'Comparison groups')}: ${quality.groups.length}`);
+  for (const group of quality.groups) {
+    lines.push(JSON.stringify(group.identity),
+      `${t('执行分母', 'Invocation denominator')}: ${group.reviews.total}; ${t('已派发', 'dispatched')}=${group.reviews.dispatched}; ${t('未派发', 'not dispatched')}=${group.reviews.notDispatched}; ${t('结果未归档', 'outcome unrecorded')}=${group.reviews.outcomeUnrecorded}`,
+      `${t('机器接纳分母', 'Admission denominator')}: ${group.admission.recorded}; admitted=${group.admission.admitted}; rejected=${group.admission.rejected}; ${t('已派发但未知', 'dispatched unknown')}=${group.admission.unrecordedDispatched}`,
+      `${t('人工决定分母', 'Human decision denominator')}: ${group.humanDecisions.decided}; accept=${group.humanDecisions.accepted}; reject=${group.humanDecisions.rejected}; ${t('接纳后待定', 'admitted undecided')}=${group.humanDecisions.undecidedAdmitted}`,
+      `${t('状态、拒绝原因、三种建议及已知／未知用量', 'States, rejection reasons, three assessments, and known/unknown usage')}: ${JSON.stringify({ states: group.reviews.byStatus, reasons: group.admission.reasons, assessments: group.assessments, executionFailures: group.executionFailures, organization: group.organization, usage: group.usage })}`);
+  }
   return lines.join('\n');
 }
