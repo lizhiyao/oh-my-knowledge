@@ -1,3 +1,4 @@
+import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from './write-errors.js';
 import { canonicalJson } from '../store.js';
 import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type LibraryWrite } from './contracts.js';
 
@@ -28,6 +29,8 @@ export function applyLibraryWrite(existing: LibraryEnvelope | undefined, input: 
     || (existing?.writeHeadRevisionId ?? null) !== command.expectedHeadRevisionId
     || (command.revision.parentRevisionId ?? null) !== command.expectedHeadRevisionId) throw new Error('Library revision conflict.');
   if (existing && canonicalJson(existing.revisions.at(-1)!.draft) === canonicalJson(command.revision.draft)) throw new Error('Library change required.');
+  if (existing && command.revision.draft.referentKind !== existing.revisions[0].draft.referentKind) throw new LibraryReferentKindConflictError();
+  if (existing && existing.revisions.length >= 256) throw new LibraryWriteCapacityError('history');
   const next = LibraryEnvelopeSchema.parse({ storeKind: 'knowledge-library-object-history', schemaVersion: 1,
     objectId: command.objectId, generation: command.expectedGeneration + 1, writeHeadRevisionId: command.revision.revisionId,
     revisions: [...(existing?.revisions ?? []), command.revision],

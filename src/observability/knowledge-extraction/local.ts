@@ -9,6 +9,8 @@ import { FileKnowledgeTags } from './adapters/knowledge-tags.js';
 import { FileLibraryStore } from './adapters/library-store.js';
 import { KnowledgeLibraryApplication } from './library.js';
 import { FileEntityAnalysisStore } from './adapters/entity-store.js';
+import { FileEntityLinkStore } from './adapters/entity-link-store.js';
+import { EntityLinkApplication } from './entity-links.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
 export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
@@ -30,4 +32,14 @@ export function createLocalKnowledgeLibrary(root: string): KnowledgeLibraryAppli
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
   return new KnowledgeLibraryApplication(createLocalKnowledgeApplication(workspace), new FileLibraryStore(join(workspace, 'library'), workspace));
+}
+
+/** Cross-window reviews have their own v1 journal; extraction histories stay unchanged. */
+export function createLocalEntityLinks(root: string): EntityLinkApplication {
+  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
+  const workspace = resolve(root);
+  return new EntityLinkApplication(createLocalKnowledgeApplication(workspace),
+    new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
+    new FileEntityLinkStore(join(workspace, 'entity-links'), workspace),
+    new FileLibraryStore(join(workspace, 'library'), workspace));
 }

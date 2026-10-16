@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../../../knowledge/library/contracts.js';
 import { applyLibraryWrite, validateLibraryHistory } from '../../../knowledge/library/history.js';
+import { LibraryWriteCapacityError } from '../../../knowledge/library/write-errors.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
@@ -39,18 +40,31 @@ export class FileLibraryStore implements LibraryStore {
   }
   write(input: LibraryWrite, validate: Parameters<LibraryStore['write']>[1]): LibraryEnvelope {
     const command = LibraryWriteSchema.parse(input);
-    const digest = `sha256:${createHash('sha256').update(canonicalJson(command)).digest('hex')}`;
+    return this.transaction(library => library.write(command, validate));
+  }
+  /** Lock-bound port for workflows that coordinate another durable record with library writes. */
+  transaction<T>(operation: (library: LibraryStore) => T): T {
     return withWorkspaceWrite(this.workspaceRoot, () => {
-      checkStorageDirectory(this.root); const all = this.list();
-      const existing = all.find(value => value.objectId === command.objectId);
-      const next = applyLibraryWrite(existing, command, digest);
-      if (next === existing) return next;
-      if (!existing && all.length >= 4096) throw new Error('Library capacity exceeded.');
-      validate(existing, all);
-      const bytes = Buffer.byteLength(JSON.stringify(next, null, 2));
-      if (bytes > MAX_BYTES || all.reduce((sum, item) => sum + Buffer.byteLength(JSON.stringify(item, null, 2)), 0)
-        - (existing ? Buffer.byteLength(JSON.stringify(existing, null, 2)) : 0) + bytes > 64 * 1024 * 1024) throw new Error('Library capacity exceeded.');
-      writeJsonFileAtomic(this.path(command.objectId), next); return next;
+      let active = true;
+      try { return operation({ list: () => this.list(), read: id => this.read(id), write: (input, validate) => {
+        if (!active) throw new Error('Library transaction expired.');
+        return this.publish(input, validate);
+      } }); } finally { active = false; }
     });
+  }
+  private publish(input: LibraryWrite, validate: Parameters<LibraryStore['write']>[1]): LibraryEnvelope {
+    const command = LibraryWriteSchema.parse(input);
+    const digest = `sha256:${createHash('sha256').update(canonicalJson(command)).digest('hex')}`;
+    checkStorageDirectory(this.root); const all = this.list();
+    const existing = all.find(value => value.objectId === command.objectId);
+    const next = applyLibraryWrite(existing, command, digest);
+    if (next === existing) return next;
+    if (!existing && all.length >= 4096) throw new LibraryWriteCapacityError('workspace');
+    validate(existing, all);
+    const bytes = Buffer.byteLength(JSON.stringify(next, null, 2));
+    if (bytes > MAX_BYTES) throw new LibraryWriteCapacityError('file');
+    if (all.reduce((sum, item) => sum + Buffer.byteLength(JSON.stringify(item, null, 2)), 0)
+      - (existing ? Buffer.byteLength(JSON.stringify(existing, null, 2)) : 0) + bytes > 64 * 1024 * 1024) throw new LibraryWriteCapacityError('workspace');
+    writeJsonFileAtomic(this.path(command.objectId), next); return next;
   }
 }

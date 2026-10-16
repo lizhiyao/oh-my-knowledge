@@ -105,7 +105,7 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 
 ## 明确选择的知识工作区
 
-用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4，保留原始 prompt 身份与摘要、原始输出、实体／知识写入意图及运行用量。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。
+用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`runs/<run-id>.json` 使用 `knowledge-extraction-run` v4，保留原始 prompt 身份与摘要、原始输出、实体／知识写入意图及运行用量。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。`entity-links/<review-id>.json` 独立使用 `entity-link-review-history` v1，保存模型建议、不可变人工决定及可恢复的 library intent/receipt；见[跨窗口复核基础](../entities/entity-links.md)。
 
 来源归档／删除、实体与知识历史、主题标签、知识库关联、自动提炼状态及载体发布共用 `.knowledge-write.lock`。载体的最终选择校验与发布持续持有该边界；完整生成树在发布前通过容量检查，失败暂存内容被清理。锁等待失败报告 `knowledge_workspace_busy`。只恢复已证明退出的本机 owner，拒绝存储目录的软链跳转。文件 Schema 版本与 prompt 来源身份分开：Schema v4 运行保留原始 `knowledge-extraction-vN` 身份（正整数版本），新生成使用当前提取 prompt。读取或幂等恢复受支持的运行保留原始证据，不重新提取或升级结果，边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。
 
