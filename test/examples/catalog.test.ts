@@ -7,6 +7,7 @@ import { describe, it } from 'vitest';
 import EvalCommand from '../../src/cli/commands/eval/index.js';
 import { loadSamples } from '../../src/eval-workflows/inputs/load-samples.js';
 import { runCommand } from '../helpers/run-command.js';
+import { runCli } from '../helpers/cli-process.js';
 
 const examplesRoot = resolve('examples');
 const publicExamples = [
@@ -15,6 +16,7 @@ const publicExamples = [
   'codex-task-trajectory',
   'custom-executor',
   'eval-runtime',
+  'knowledge-extraction',
   'local-task',
   'rag-eval',
   'skill-map-showcase',
@@ -62,6 +64,22 @@ describe('public examples catalog', () => {
       const { samples } = loadSamples(resolve(path));
       assert.ok(samples.length > 0, `${path} must contain at least one sample`);
     }
+  });
+
+  it('round-trips one authored extraction through source-bound knowledge and entity search without model calls', async () => {
+    const { stdout, stderr } = await runCli([], {
+      entry: resolve(examplesRoot, 'knowledge-extraction/run.mjs'),
+      cwd: resolve('.'),
+      env: { ...process.env, OMK_PACKAGE_ROOT: resolve('.') },
+    });
+    assert.equal(stderr, '');
+    assert.deepEqual(JSON.parse(stdout), {
+      fixtureInvocations: 1, modelCalls: 0, runStatus: 'completed',
+      candidateCount: 1, entityCount: 2, reopened: true, sourceBindingVerified: true,
+      entitySearchMatches: 1, linkedKnowledgeCount: 1, reviewStatus: 'pending',
+      humanReview: 'pending', independentReview: 'pending', usageReported: false,
+      temporaryWorkspaceRemoved: true,
+    });
   });
 
   it('keeps the documented evaluation dry-runs compilable', async () => {
