@@ -3,12 +3,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
+import { KnowledgeDraftSchema } from '../../src/knowledge/contracts.js';
 import { admitEntities, type EntityModel } from '../../src/observability/knowledge-extraction/entities.js';
 import { WindowExtractionModelSchema, checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
 import { decodeWindowExtractionWire, WINDOW_EXTRACTION_WIRE_HOST_ONLY, WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_IDENTITY, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/strict-prompt.js';
+import { STRICT_EXTRACTION_FEWSHOT_BLOCK, STRICT_EXTRACTION_FEWSHOT_EXAMPLES, STRICT_EXTRACTION_PARTIAL_ADMISSION_DIAGNOSTIC, renderStrictExtractionFewshotBlock } from '../../src/observability/knowledge-extraction/strict-fewshot.js';
 
 const entityId = 'cf13bba6-6385-455b-b0c0-c4d4e4931b10';
 const mentionId = '6ad46f7c-7959-43b4-ae97-c240f9a1c422';
@@ -238,15 +240,61 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('renders the production strict transport at the frozen no-fewshot control bytes while preserving original v14', () => {
+  it('renders the v16 production examples while preserving the frozen v14 and no-fewshot control', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v15');
-    expect(Buffer.from(STRICT_EXTRACTION_PROMPT, 'utf8')).toEqual(control);
+    const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v2/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v16');
+    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toEqual(frozenExamples.examples);
+    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(4);
+    expect(STRICT_EXTRACTION_FEWSHOT_BLOCK).toBe(renderStrictExtractionFewshotBlock());
+    expect(STRICT_EXTRACTION_PROMPT.split(STRICT_EXTRACTION_FEWSHOT_BLOCK)).toHaveLength(2);
+    expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).toBe(control.toString('utf8'));
     expect(control.length).toBe(31884);
-    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
+    expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
     expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v14');
     expect(createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399');
+  });
+
+  it.each(STRICT_EXTRACTION_FEWSHOT_EXAMPLES)('admits the actual production demonstration $exampleId through the wire and domain host', example => {
+    const before = structuredClone(example);
+    const raw = Buffer.from(JSON.stringify(example.output) + '\n');
+    const decoded = decodeWindowExtractionWire(raw);
+    expect(decoded.decodeStatus).toBe('decoded');
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    expect(decoded.wireStatus).toBe('valid'); expect(decoded.wireFailures).toEqual([]);
+    const admitted = checkWindowExtractionResponse(decoded.domainInput, example.input.excerpts);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+    expect(admitted.analysis.entities.map(entity => entity.entityId)).toEqual(example.output.entities.map(entity => entity.entityId));
+    expect(admitted.analysis.mentions.map(mention => mention.mentionId)).toEqual(example.output.mentions.map(mention => mention.mentionId));
+    expect(admitted.accepted.map(proposal => proposal.proposalId)).toEqual(example.output.proposals.map(proposal => proposal.proposalId));
+    for (const proposal of admitted.accepted) expect(KnowledgeDraftSchema.safeParse(proposal.draft).success).toBe(true);
+    expect(decoded.raw.text).toBe(raw.toString('utf8'));
+    expect(Buffer.from(decoded.raw.bytesBase64, 'base64')).toEqual(raw);
+    expect(example).toEqual(before);
+  });
+
+  it('keeps the correct normative proposal when a diagnostic-only sibling has a non-source citation', () => {
+    const diagnostic = STRICT_EXTRACTION_PARTIAL_ADMISSION_DIAGNOSTIC;
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES[3]; const beforeExample = structuredClone(example);
+    expect(example.exampleId).toBe(diagnostic.exampleId);
+    const good = example.output.proposals[0];
+    const bad = { ...structuredClone(good), proposalId: diagnostic.badProposalId,
+      citations: good.citations.map((citation, index) => ({ ...citation, selection: { ...citation.selection,
+        quote: index === diagnostic.citationIndex ? diagnostic.badQuote : citation.selection.quote } })) };
+    const packet = { ...example.output, proposals: [good, bad] }; const beforePacket = structuredClone(packet);
+    const raw = Buffer.from(JSON.stringify(packet) + '\n'); const beforeRaw = Buffer.from(raw);
+    const decoded = decodeWindowExtractionWire(raw);
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    expect(decoded.wireStatus).toBe('valid'); expect(decoded.wireFailures).toEqual([]);
+    const admitted = checkWindowExtractionResponse(decoded.domainInput, example.input.excerpts);
+    expect(admitted.analysis.rejected).toEqual([]);
+    expect(admitted.accepted.map(proposal => proposal.proposalId)).toEqual([diagnostic.goodProposalId]);
+    expect(admitted.rejected).toEqual([{ index: 1, reasons: ['citation:quote_mismatch'] }]);
+    expect(KnowledgeDraftSchema.safeParse(admitted.accepted[0].draft).success).toBe(true);
+    expect(decoded.raw.text).toBe(beforeRaw.toString('utf8'));
+    expect(Buffer.from(decoded.raw.bytesBase64, 'base64')).toEqual(beforeRaw);
+    expect(raw).toEqual(beforeRaw); expect(packet).toEqual(beforePacket); expect(example).toEqual(beforeExample);
   });
 
   it('maps only explicit optional placeholders while preserving meaningful nulls, arrays, union branches and exact raw bytes', () => {
