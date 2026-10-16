@@ -11,6 +11,10 @@ import { KnowledgeLibraryApplication } from './library.js';
 import { FileEntityAnalysisStore } from './adapters/entity-store.js';
 import { FileEntityLinkStore } from './adapters/entity-link-store.js';
 import { EntityLinkApplication } from './entity-links.js';
+import { validateEntityLinkPreview } from '../../knowledge/entities/link-invocation-state.js';
+import { entityLinkDigest } from './entity-link-hash.js';
+import { entityLinkTextHash } from './adapters/entity-link-api-producer.js';
+import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
 export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
@@ -35,11 +39,16 @@ export function createLocalKnowledgeLibrary(root: string): KnowledgeLibraryAppli
 }
 
 /** Cross-window reviews have their own v1 journal; extraction histories stay unchanged. */
-export function createLocalEntityLinks(root: string): EntityLinkApplication {
+export function createLocalEntityLinks(root: string, execution: ExecutorArchiveProducer): EntityLinkApplication {
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
   return new EntityLinkApplication(createLocalKnowledgeApplication(workspace),
     new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
     new FileEntityLinkStore(join(workspace, 'entity-links'), workspace),
-    new FileLibraryStore(join(workspace, 'library'), workspace));
+    new FileLibraryStore(join(workspace, 'library'), workspace), execution);
+}
+
+/** Parse a portable confirmation plan without touching a workspace or executor. */
+export function parseEntityLinkPreview(value: unknown) {
+  return validateEntityLinkPreview(value, { hashJson: entityLinkDigest, hashText: entityLinkTextHash });
 }
