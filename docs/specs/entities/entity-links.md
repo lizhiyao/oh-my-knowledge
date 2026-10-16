@@ -1,6 +1,6 @@
 # Cross-window entity review journal
 
-The local application retrieves candidates, previews exact bounded input, durably prepares one explicitly confirmed invocation, executes the current production API adapter, archives its complete returned result, records a separate human decision, and recovers library publication. The governed prompt and request bytes are pinned. The CLI now exposes this workflow; Studio review and real-model quality acceptance remain pending.
+The local application retrieves candidates, previews exact bounded input, durably prepares one explicitly confirmed invocation, executes the current production API adapter, archives its complete returned result, records a separate human decision, and recovers library publication. The governed prompt and request bytes are pinned. The CLI and [Studio review surface](../studio/studio-entity-links.md) expose this workflow; real-model quality acceptance remains pending.
 
 ## 1. Identity and candidate boundaries
 

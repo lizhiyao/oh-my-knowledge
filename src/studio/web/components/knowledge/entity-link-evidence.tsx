@@ -1,0 +1,68 @@
+'use client';
+import { Alert, Tag } from 'antd';
+import type { Language } from '../layout/shell';
+import type { EntityLinkPreview, EntityLinkStudioInspection, EntityLinkStudioPreview } from '../../../view-models/knowledge/entity-links';
+import { KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
+import Link from 'next/link';
+
+export function entityLinkStatusLabel(status: EntityLinkStudioInspection['projection']['status'], lang: Language) {
+  const names = { prepared: ['已预约，尚未发送', 'Prepared, not sent'], running: ['已开始，等待归档', 'Started, awaiting archive'],
+    execution_unknown: ['调用结果未知', 'Execution outcome unknown'], execution_failed: ['结果未接纳', 'Result not admitted'], awaiting_review: ['等待人工核对', 'Awaiting human review'],
+    rejected: ['人工已拒绝', 'Rejected by human'], accepted_pending_application: ['已接受，组织待恢复', 'Accepted, organization pending'],
+    applied: ['知识库组织已保存', 'Library organization saved'], accepted_conflict: ['已接受，组织冲突', 'Accepted, organization conflict'],
+    cancelled_before_start: ['发送前已取消', 'Cancelled before sending'] };
+  return names[status][lang === 'zh' ? 0 : 1];
+}
+
+function RequestEvidence({ plan, context, lang }: { plan: EntityLinkPreview['plan']; context: unknown; lang: Language }) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const proof = context && typeof context === 'object' && 'proof' in context ? context.proof : undefined;
+  const endpoint = proof && typeof proof === 'object' && 'endpoint' in proof && typeof proof.endpoint === 'string' ? proof.endpoint : t('不可读', 'Unavailable');
+  return <section className="entity-link-request"><h3>{t('精确发送内容与调用身份', 'Exact content and execution identity')}</h3>
+    <p>{plan.request.executor} · {plan.request.model}</p><p className="knowledge-workspace">endpoint: {endpoint}</p>
+    <p>{t('一次调用，最多 4096 个输出 token；费用未知。模型建议不等于人工身份确认。', 'One invocation, up to 4096 output tokens; cost unknown. A model suggestion is not human identity confirmation.')}</p>
+    <details><summary>{t('精确实体与来源身份', 'Exact entity and source identities')}</summary><dl>{([['left', t('左侧原始实体', 'Original left entity')], ['right', t('右侧原始实体', 'Original right entity')]] as const).map(([side, label]) => <div key={side}>
+      <dt>{label}</dt><dd><code>{plan[side].analysisId} / {plan[side].entityId}</code><br/>
+        <code>{plan[side].entityRevisionId} · {plan[side].snapshotId} · {plan[side].sourceVersion}</code><br/>
+        {t('选中提及：', 'Selected mentions: ')}{plan[side].mentionIds.join('，')}<br/>
+        {t('当前知识库归属：', 'Current library owner: ')}{plan[side].owner?.objectId ?? t('尚无', 'None')}</dd>
+    </div>)}</dl></details>
+    <details><summary>{t('查看 endpoint、容量证明与请求摘要', 'Inspect endpoint, capacity proof, and request digest')}</summary><pre>{JSON.stringify(context, null, 2)}</pre><p><code>{plan.request.requestDigest}</code></p></details>
+    <details><summary>{t('查看完整 system 与发送原文', 'Inspect complete system and original request')}</summary><h4>system</h4><pre>{plan.request.system}</pre><h4>prompt</h4><pre>{plan.request.prompt}</pre></details>
+    <p className="candidate-help">{t('名称只用于召回候选。原实体 UUID 与知识内容保持各自身份，接受只保存知识库组织关系。', 'Names only retrieve candidates. Original entity UUIDs and knowledge retain their identities; acceptance saves only library organization.')}</p>
+  </section>;
+}
+
+export function EntityLinkPreviewEvidence({ value, lang }: { value: EntityLinkStudioPreview; lang: Language }) {
+  return <><p className="knowledge-workspace">{lang === 'zh' ? '确认工作区：' : 'Confirmed workspace: '}{value.workspace}</p>
+    <p><code>{value.preview.reviewId}</code></p>
+    <div className="entity-link-comparison">{([value.preview.input.left, value.preview.input.right]).map((side, index) => <section key={index}>
+      <h3>{side.entity.label}</h3><p>{side.entity.description}</p><p>{side.entity.qualifiers.join(' · ')}</p>
+      {side.entity.uncertainties.map((text, i) => <Alert type="warning" title={text} key={i}/>)}
+      {side.mentions.map(mention => <blockquote key={mention.mentionId}><q>{mention.selection.quote}</q><p>{mention.rationale}</p><details><summary>{lang === 'zh' ? '精确提及定位' : 'Exact mention location'}</summary><code>{mention.mentionId} · {mention.selection.evidenceRef} [{mention.selection.start}, {mention.selection.end})</code></details></blockquote>)}
+      {side.limitations.map((text, i) => <p className="candidate-help" key={i}>{text}</p>)}
+    </section>)}</div><RequestEvidence plan={value.preview.plan} context={value.preview.producerContext} lang={lang}/></>;
+}
+
+export function EntityLinkSavedEvidence({ value, lang }: { value: EntityLinkStudioInspection; lang: Language }) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const { history, projection } = value;
+  const preparation = history.events[0].command;
+  const outcome = history.events.find(event => event.command.commandKind === 'execution_recorded')?.command;
+  const objectId = projection.decision?.application?.applicationKind === 'intent' ? projection.decision.application.intent.objectId : undefined;
+  const applied = history.events.find(event => event.command.commandKind === 'application_applied')?.command;
+  return <section className="entity-link-saved"><h3>{t('持久记录与原生证据', 'Durable history and native evidence')}</h3>
+    <Tag>{entityLinkStatusLabel(projection.status, lang)}</Tag><p><code>{history.reviewId}</code> · {t('修订', 'Generation')} {history.generation}</p>
+    <p className="knowledge-workspace">{t('工作区：', 'Workspace: ')}{value.workspace}</p>
+    <p>{t('预约调用：', 'Reserved invocations: ')}{projection.invocationBudget.reserved} · {t('已消耗调用：', 'Consumed invocations: ')}{projection.invocationBudget.consumed} · {t('执行器尝试数：', 'Executor attempts: ')}{projection.executorAttemptCount ?? t('未知', 'Unknown')}</p>
+    <p>{t('输入／输出／缓存读取／缓存创建 token：', 'Input / output / cache read / cache creation tokens: ')}{[projection.usage.inputTokens, projection.usage.outputTokens, projection.usage.cacheReadTokens, projection.usage.cacheCreationTokens].map(value => value ?? t('未知', 'Unknown')).join(' / ')} · {t('费用 USD：', 'Cost USD: ')}{projection.usage.costUSD ?? t('未知', 'Unknown')}</p>
+    <p className="candidate-help">{t('用量为执行器标准化计数；缓存为 0 不证明提供方明确报告了 0。未知调用不退还预算，也不会自动重新发送。', 'Usage is normalized by the executor; cache zero does not prove a provider explicitly reported zero. Unknown execution does not refund budget or trigger resending.')}</p>
+    {projection.admission && <><h4>{t('结构接纳', 'Structural admission')}</h4><pre>{JSON.stringify(projection.admission, null, 2)}</pre></>}
+    {projection.decision && <><h4>{t('独立人工决定', 'Separate human decision')}</h4><p>{projection.decision.decision} · {projection.decision.actor.actorId}</p><p>{projection.decision.reason}</p></>}
+    {projection.status === 'running' || projection.status === 'execution_unknown' ? <Alert type="warning" title={t('先核对同一 review。读取与恢复不会重新发送；原进程仍存活时不能把运行强行判为未知。', 'Inspect this same review first. Reads and recovery never resend; a live owner cannot be forced into unknown.')}/> : null}
+    {applied?.commandKind === 'application_applied' && objectId && <Link href={`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ workspace: value.workspace, object: objectId })}`}>{t('查看已保存的知识库对象', 'Open the saved library object')}</Link>}
+    {preparation.commandKind === 'prepare' && <RequestEvidence plan={preparation.input} context={history.events[0].facts.reservation} lang={lang}/>}
+    <details><summary>{t('完整原生结果／失败与用量', 'Complete native result / failure and usage')}</summary><pre>{outcome?.commandKind === 'execution_recorded' ? JSON.stringify(outcome.outcome, null, 2) : t('尚无可用的归档结果。', 'No archived outcome is available.')}</pre></details>
+    <details><summary>{t('完整持久事件历史', 'Complete durable event history')}</summary><pre>{JSON.stringify(history, null, 2)}</pre></details>
+  </section>;
+}

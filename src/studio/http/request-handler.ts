@@ -1,3 +1,5 @@
+import { createOpenAiArchiveProducer } from '../../executors/openai/archive.js';
+import { createEntityLinkRoutes } from './routes/entity-links.js';
 import { createExecutor } from '../../executors/index.js';
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
@@ -39,6 +41,7 @@ export function createStudioRequestHandler({
   doctorsDir,
   observationsDir,
   conversationCatalog,
+  entityLinkProducer,
   coreStudioCatalog,
   includeObserveCards = false,
   includeDoctorCards = false,
@@ -49,6 +52,7 @@ export function createStudioRequestHandler({
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
   const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => configuredExtractionModel(executor, model, createExecutor) });
+  const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
@@ -139,6 +143,7 @@ export function createStudioRequestHandler({
       if (studioPages) {
         if (await settingsRoutes(routeContext)) return;
         if (await candidateRoutes(routeContext)) return;
+        if (await entityLinkRoutes(routeContext)) return;
         if (await artifactRoutes(routeContext)) return;
         if (await measurements.handle(routeContext)) return;
         if (await knowledgeRoutes({ ...routeContext, analysesDir, doctorsDir })) return;
