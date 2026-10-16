@@ -27,6 +27,12 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/entity-capture-provider.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href",
+    sourceSha256: '761ed8d3efd34c61036cf128d4b4a4c2204288fc89d948c6fd042b9b06540cec',
+    rationale: 'Loads only the fixed built capture composition root; capture input cannot select code, and sending requires explicit plan permission and a verified budget profile.',
+  },
+  {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
     sourceSha256: 'ebf3d022ad305558842a4e89a5f2f3e8750b34c587fc89d125291cfb538fe557',

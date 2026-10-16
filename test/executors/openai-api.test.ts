@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openAiApiExecutor } from '../../src/executors/openai/api.js';
 import { MAX_API_RESPONSE_BYTES } from '../../src/executors/core/http.js';
 import { createExecutor } from '../../src/executors/index.js';
+import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
 
 describe('openAiApiExecutor usage', () => {
   const originalApiKey = process.env.OPENAI_API_KEY;
@@ -26,6 +27,9 @@ describe('openAiApiExecutor usage', () => {
       const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
         const body = JSON.parse(String(init?.body));
         assert.equal(body.max_completion_tokens, 321);
+        assert.equal(Object.hasOwn(body, 'n'), false);
+        assert.equal(Object.hasOwn(body, 'stream'), false);
+        assert.equal(init?.redirect, undefined);
         assert.deepEqual(body.messages, [{ role: 'system', content: 'stable system' }, { role: 'user', content: 'JSON input' }]);
         if (outputFormat?.mode === 'json-schema') {
           assert.deepEqual(body.response_format, { type: 'json_schema', json_schema: { name: 'knowledge_window', schema, strict: true } });
@@ -40,6 +44,31 @@ describe('openAiApiExecutor usage', () => {
       assert.equal(fetch.mock.calls.length, 1);
     }
     assert.equal(JSON.stringify(schema), originalSchema);
+  });
+
+  it('binds the actual shared request before one opt-in bounded dispatch and rejects drift without fetch', async () => {
+    const environment = { OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321' };
+    const input = { model: 'fixture-model', system: 'system bytes', prompt: 'input bytes', maxOutputTokens: 12 };
+    const events: string[] = [];
+    const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+      events.push('fetch'); assert.equal(url, 'http://127.0.0.1:9321/v1/chat/completions');
+      assert.equal(init?.redirect, 'error');
+      assert.deepEqual(JSON.parse(String(init?.body)), { model: 'fixture-model', messages: [{ role: 'system', content: 'system bytes' },
+        { role: 'user', content: 'input bytes' }], max_completion_tokens: 12, n: 1, stream: false });
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 1 } }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const policy = { requestConstraints: 'single-completion/v1' as const, redirect: 'error' as const,
+      beforeDispatch(request: Readonly<{ endpoint: string; body: string }>) {
+        events.push('gate'); assert.equal(Object.isFrozen(request), true);
+        assert.deepEqual(request, buildOpenAiChatRequest(input, environment, 'single-completion/v1'));
+      } };
+    const execute = createExecutor('openai-api', { env: environment, apiDispatchPolicy: policy });
+    assert.equal((await execute(input)).ok, true); assert.deepEqual(events, ['gate', 'fetch']);
+    const blocked = createExecutor('openai-api', { env: environment, apiDispatchPolicy: { ...policy, beforeDispatch() { throw new Error('plan drift'); } } });
+    assert.equal((await blocked(input)).failure?.failureKind, 'invalid_request');
+    assert.equal(fetch.mock.calls.length, 1);
+    assert.throws(() => createExecutor('codex', { env: environment, apiDispatchPolicy: policy }), /openai-api/);
   });
 
   it('classifies HTTP failures and bounded Retry-After without retrying or losing reported evidence', async () => {
