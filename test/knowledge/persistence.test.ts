@@ -1,10 +1,11 @@
-import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, ftruncateSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import type { KnowledgeWrite } from '../../src/knowledge/store.js';
+import type { SourceSelection } from '../../src/observability/knowledge-extraction/evidence.js';
 import { draft, proposal } from './fixtures.js';
 
 const roots: string[] = [];
@@ -125,6 +126,52 @@ describe('selected Codex evidence snapshots', () => {
     writeFileSync(join(evidenceRoot, `${captured.snapshotId}.json`), '{}');
     expect(store.read(captured.snapshotId)).toMatchObject({ status: 'unavailable', reason: 'invalid_source' });
     expect(readdirSync(evidenceRoot)).toHaveLength(1);
+  });
+  it('preserves existing evidence and permits recovery after each source or storage capacity rejection', () => {
+    for (const boundary of ['raw-bytes', 'record-count', 'projection', 'workspace-bytes'] as const) {
+      const root = temp(), path = source(root), evidenceRoot = join(root, 'evidence');
+      const store = new TraceEvidenceStore(evidenceRoot), saved = store.capture({ path });
+      const file = join(evidenceRoot, `${saved.snapshotId}.json`), before = readFileSync(file);
+      const original = readFileSync(path);
+      const record = (text: string) => JSON.stringify({ type: 'response_item', payload: {
+        type: 'message', role: 'user', content: [{ type: 'input_text', text }],
+      } });
+      let selection: SourceSelection = { path }, error: string, filler: string | undefined;
+      if (boundary === 'raw-bytes') {
+        const raw = record('中'.repeat(6 * 1024 * 1024));
+        expect(raw.length).toBeLessThan(16 * 1024 * 1024);
+        expect(Buffer.byteLength(raw)).toBeGreaterThan(16 * 1024 * 1024);
+        selection = { path, records: [{ recordIndex: 0, raw }] };
+        error = 'Selected source exceeds capacity';
+      } else if (boundary === 'record-count') {
+        const records = Array.from({ length: 100_001 }, (_, recordIndex) => ({ recordIndex, raw: '{}' }));
+        expect(records.reduce((sum, entry) => sum + Buffer.byteLength(entry.raw), 0)).toBeLessThan(16 * 1024 * 1024);
+        selection = { path, records }; error = 'Selected source exceeds capacity';
+      } else if (boundary === 'projection') {
+        const raw = record('x'.repeat(9 * 1024 * 1024));
+        expect(Buffer.byteLength(raw)).toBeLessThan(16 * 1024 * 1024);
+        selection = { path, records: [{ recordIndex: 0, raw }] };
+        error = 'Projected source exceeds capacity';
+      } else {
+        filler = join(evidenceRoot, 'owned-capacity-filler.json');
+        const descriptor = openSync(filler, 'wx');
+        try { ftruncateSync(descriptor, 64 * 1024 * 1024); } finally { closeSync(descriptor); }
+        error = 'Evidence storage capacity exceeded';
+      }
+      expect(() => store.capture(selection)).toThrow(error);
+      expect(readFileSync(file)).toEqual(before);
+      expect(readFileSync(path)).toEqual(original);
+      expect(store.read(saved.snapshotId, saved.sourceVersion)).toEqual({ status: 'available', window: saved });
+      expect(readdirSync(evidenceRoot).sort()).toEqual([
+        `${saved.snapshotId}.json`, ...(filler ? ['owned-capacity-filler.json'] : []),
+      ].sort());
+      if (filler) rmSync(filler);
+      const recovered = store.capture({ path });
+      expect(recovered.snapshotId).not.toBe(saved.snapshotId);
+      expect(store.read(recovered.snapshotId, recovered.sourceVersion)).toEqual({ status: 'available', window: recovered });
+      expect(readFileSync(file)).toEqual(before);
+      expect(readdirSync(evidenceRoot).sort()).toEqual([`${saved.snapshotId}.json`, `${recovered.snapshotId}.json`].sort());
+    }
   });
   it('rejects redirected source directories without reading, creating or deleting external evidence', () => {
     const root = temp(); const source = join(root, 'source.jsonl'); const directory = join(root, 'evidence');

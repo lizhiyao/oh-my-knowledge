@@ -61,7 +61,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
     {!open && error && <span role="alert">{error}</span>}
     <Modal className="auto-extraction-confirmation" styles={{ body: { maxHeight: '65vh', overflow: 'auto', overscrollBehavior: 'contain' } }} title={t('确认这条对话的自动提炼', 'Confirm auto extraction for this conversation')} open={open} width={720}
       onCancel={() => { controller.current?.abort(); setOpen(false); }}
-      okText={t('批准并开启', 'Approve and enable')} cancelText={t('取消', 'Cancel')} confirmLoading={busy}
+      okText={t('批准并开启', 'Approve and enable')} cancelText={t('取消', 'Cancel')} confirmLoading={busy && preview !== undefined}
       okButtonProps={{ disabled: !preview || !confirmed || !workspace.trim() || !model.trim() }}
       onOk={() => void work(async signal => {
         const next = await api<AutoExtractionState>('enable', { workspace: workspace.trim(), threadId, token: preview!.token, executor, model: model.trim(), maxCalls: limit }, signal);
@@ -72,7 +72,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
       <label>{t('候选保存目录', 'Candidate folder')}<Input value={workspace} disabled={busy} onChange={event => setWorkspace(event.target.value)}/></label>
       <Space wrap><label>{t('发送到执行器', 'Send to executor')}<Select value={executor} disabled={busy} onChange={setExecutor} options={['codex', 'openai-api'].map(value => ({ value, label: value }))}/></label>
         <label>{t('模型', 'Model')}<Input value={model} disabled={busy} onChange={event => setModel(event.target.value)}/></label>
-        <label>{t('最多调用次数', 'Maximum calls')}<InputNumber min={1} max={20} value={limit} disabled={busy} onChange={value => setLimit(value ?? 5)}/></label></Space>
+        <label>{t('最多调用次数', 'Maximum calls')}<InputNumber aria-label={t('最多调用次数', 'Maximum calls')} min={1} max={20} value={limit} disabled={busy} onChange={value => setLimit(value ?? 5)}/></label></Space>
       <p>{t('美元费用未知；次数上限不是美元预算。调用前预留额度，即使中断后未实际发送，也不会返还或重试。只发送窗口消息、时间／序号及限制和提取 Schema／提示词；原始路径留在本机。', 'USD cost is unknown; a call limit is not a dollar budget. Calls are reserved before invocation; interruptions may consume a reservation without sending, with no refund or retry. Only window messages, timestamps/indexes, limitations and the extraction schema/prompt are sent; raw paths stay local.')}</p>
       {preview && <details><summary>{t(`核对初始发送内容：${preview.turnCount} 轮、${preview.messages.length} 条消息`, `Review initial content: ${preview.turnCount} turns, ${preview.messages.length} messages`)}</summary>
         <h3>{preview.title}</h3>{preview.messages.map(message => <pre key={message.evidenceRef}>{message.role} · {message.timestamp ?? '—'} · #{message.recordIndex}{'\n'}{message.text}</pre>)}{preview.limitations.map(value => <p key={value}>{value}</p>)}</details>}

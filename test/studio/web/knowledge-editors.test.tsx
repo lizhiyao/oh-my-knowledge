@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { act, type PropsWithChildren } from 'react';
 import { ConfigProvider } from 'antd';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryEditor } from '../../../src/studio/web/components/knowledge/library-editor';
 import { ArtifactAuthoringDialog } from '../../../src/studio/web/components/knowledge/artifact-authoring';
+import { AutoExtractConversation } from '../../../src/studio/web/components/knowledge/auto-extraction';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
-import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -95,6 +96,90 @@ beforeEach(() => {
   vi.spyOn(window, 'getComputedStyle').mockImplementation(element => computedStyle(element));
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe('conversation automation consent lifecycle', () => {
+  it('requires fresh reviewed consent, ignores cancelled previews, and disposes an in-flight status poll on unmount', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const calls: Call[] = [], previews = [deferred<Response>(), deferred<Response>(), deferred<Response>()];
+    const poll = deferred<Response>(), onChanged = vi.fn();
+    const intervals = vi.spyOn(globalThis, 'setInterval'), clear = vi.spyOn(globalThis, 'clearInterval');
+    let previewIndex = 0;
+    const preview = (token: string, text: string): AutoExtractionPreview => ({ token, title: 'Synthetic conversation', turnCount: 1,
+      messages: [{ evidenceRef: `preview-${token}`, recordIndex: 0, eventKind: 'message', role: 'user', text }], limitations: [] });
+    const enabled: AutoExtractionState = { schemaVersion: 1, automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
+      owner: uuid(500), pid: 1, hostname: 'fixture', permissionId: uuid(501), executor: 'openai-api', model: 'reviewed-model',
+      maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
+      checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url === '/api/settings') return json({ effective: { workspace: '/initial', executor: 'openai-api', model: 'initial-model' } });
+      expect(url).toBe('/api/knowledge/auto-extraction');
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const call = { resource: 'auto-extraction', operation: String(body.operation), body, signal: init.signal ?? undefined };
+      calls.push(call);
+      if (call.operation === 'status') return calls.filter(item => item.operation === 'status').length === 1 ? json(null) : poll.promise;
+      if (call.operation === 'preview') return previews[previewIndex++].promise;
+      if (call.operation === 'enable') return json(enabled);
+      throw new Error(`Unexpected automation operation: ${call.operation}`);
+    }));
+    const requests = (operation: string) => calls.filter(call => call.operation === operation);
+    const dialog = () => screen.getByRole('dialog', { name: 'Confirm auto extraction for this conversation' });
+    const approve = () => within(dialog()).getByRole('button', { name: /Approve and enable$/ });
+    const consent = () => within(dialog()).getByRole('checkbox', { name: /Approve sending the initial and future windows/ }) as HTMLInputElement;
+    const cancel = () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+    const view = render(<AutoExtractConversation threadId="thread/a" lang="en" onChanged={onChanged}/>, { wrapper });
+    await waitFor(() => expect(requests('status')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
+    await waitFor(() => expect(requests('preview')).toHaveLength(1));
+    expect(approve().hasAttribute('disabled')).toBe(true); expect(consent().disabled).toBe(true);
+    expect(requests('enable')).toHaveLength(0);
+    cancel(); expect(requests('preview')[0].signal?.aborted).toBe(true);
+    await act(async () => previews[0].resolve(json(preview('cancelled-token', 'Late cancelled preview'))));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText('Late cancelled preview')).toBeNull(); expect(requests('enable')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
+    await waitFor(() => expect(requests('preview')).toHaveLength(2));
+    const unsafe = '<script>window.__omkAutoExecuted = true</script><img src=x onerror=alert(1)>';
+    await act(async () => previews[1].resolve(json(preview('reviewed-but-cancelled-token', unsafe))));
+    fireEvent.click(within(dialog()).getByText('Review initial content: 1 turns, 1 messages'));
+    expect(within(dialog()).getByText(unsafe, { exact: false }).tagName).toBe('PRE');
+    expect(dialog().querySelector('script, img')).toBeNull();
+    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
+    fireEvent.click(consent()); expect(approve().hasAttribute('disabled')).toBe(false);
+    change('Candidate folder', ''); expect(approve().hasAttribute('disabled')).toBe(true);
+    change('Candidate folder', ' /reviewed '); expect(approve().hasAttribute('disabled')).toBe(false);
+    change('Model', ''); expect(approve().hasAttribute('disabled')).toBe(true);
+    change('Model', ' reviewed-model '); expect(approve().hasAttribute('disabled')).toBe(false);
+    fireEvent.change(within(dialog()).getByRole('spinbutton', { name: 'Maximum calls' }), { target: { value: '2' } });
+    fireEvent.blur(within(dialog()).getByRole('spinbutton', { name: 'Maximum calls' }));
+    cancel(); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(requests('enable')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
+    await waitFor(() => expect(requests('preview')).toHaveLength(3));
+    expect(consent().checked).toBe(false); expect(consent().disabled).toBe(true);
+    expect(approve().hasAttribute('disabled')).toBe(true);
+    await act(async () => previews[2].resolve(json(preview('fresh-token', 'Fresh reviewed preview'))));
+    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
+    fireEvent.click(consent()); fireEvent.click(approve()); fireEvent.click(approve());
+    await screen.findByRole('button', { name: 'Stop auto extraction' });
+    expect(requests('enable').map(call => call.body)).toEqual([{ operation: 'enable', workspace: '/reviewed', threadId: 'thread/a',
+      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2 }]);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    const index = intervals.mock.calls.findIndex(([, delay]) => delay === 5000);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const callback = intervals.mock.calls[index][0], timer = intervals.mock.results[index].value;
+    if (typeof callback !== 'function') throw new Error('Expected an automation polling callback');
+    await act(async () => { callback(); });
+    await waitFor(() => expect(requests('status')).toHaveLength(2));
+    view.unmount();
+    expect(clear).toHaveBeenCalledWith(timer); expect(requests('status')[1].signal?.aborted).toBe(true);
+    await act(async () => poll.resolve(json({ ...enabled, callsUsed: 1 })));
+    await act(async () => { callback(); });
+    expect(requests('status')).toHaveLength(2); expect(requests('enable')).toHaveLength(1);
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('organization editor component lifecycle', () => {
   it('retries source reads, keeps the draft, and only links evidence after an explicit review', async () => {
