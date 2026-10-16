@@ -54,7 +54,7 @@ Analysis binding 同时携带 `referenceId` 和 Core `requirementKind`。Samplin
 
 Assembly 首先复制并深度冻结 Definition、Series 和 RuntimeBindingRequest。Factory 按 `implementationId` 查找，但按 binding 分别调用，因此共享同一实现的两个 reference 仍得到不同 port instance。
 
-`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、Claude CLI／SDK、OpenAI API、Anthropic API、custom executor，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
+`createProductionRuntimeFactoryRegistry()` 是 Codex CLI／SDK、OpenAI API、custom executor，以及 OMK 自有 scoring／analysis 实现的唯一生产映射。它先快照化配置并暴露不可变 map view，不调用未使用的 factory。Executor preflight declaration 是必填宿主输入，并与同一配置一起捕获；registry 不伪造 doctor、credential、connectivity、filesystem、MCP 或 mock 检查成功。Node support port 共享一个校验 digest 的 content store 实例，clock 也必须显式传入。
 
 Factory 返回实际 port identity 和 version resolution。Assembly 校验 port 形状与 implementation identity，捕获不可变 identity snapshot，并用原始实例的方法包装 port。Executor binding 还必须与 `TargetDefinition.executionRequirements` 精确相等；qualification 直接复用该 canonical 值，不重新派生 feature 语义。Core preparation resolver 和运行 port 由同一个 entry 投影；后续 registry 或请求对象变化不能造成 split-brain。只有 Core 能把 requirements 与实际 port capability manifest 做匹配。
 
@@ -134,25 +134,7 @@ Capability manifest 有意比旧 CLI executor 更窄。它声明 prepend system 
 
 JSONL 边界严格验证 event／item family、lifecycle closure、terminal status、最终 assistant output 与安全 token count。Provider event 投影为既有 source-neutral turn／tool-call trace；raw event 与 stderr 不返回 Core。未上报 usage 与 provider cost 继续保持缺失。已报告 input／output token 原样保存，cached／reasoning token 保留为具名 detail；可信 terminal usage record 可以伴随被脱敏的 failure，但不能把 failure 变成 success。`createCodexCliCoreSchemaValidators()` 从计算 advertised schema identity 的同一组 input／output／trace contract 派生 validator，composition root 无需维护宽松或独立的 provider-schema registry。
 
-## 九、Claude CLI Runtime adapter
-
-`createClaudeCliExecutorAdapter()` 把一次 attempt 一个进程的 Claude Code Runtime 绑定到 `omk.invoke/v1`。在探测 executable 前，会捕获 Target、binding、model、受支持 effort、execution requirement、execution-control digest、behavior digest 与准确的聚合 resource requirement。每个 Trial 都会与 sealed sample control 核对，只得到自己的 workspace 与 built-in tool allow-list。每次 attempt 获得私有 `CLAUDE_CONFIG_DIR`、通过 stdin 输入的 canonical user envelope，以及由 verified artifact entrypoint 生成的可选原生 system-instruction file。目录 artifact 要求根部存在 `SKILL.md`；其它 UTF-8 文件继续在 user envelope 中显式标记为 supporting resource，绝不提升为 system instruction。Expected answer、evaluation context、analysis membership 与 Gold resource 不会跨过 Executor 边界。
-
-启动契约遵循当前 [Claude Code CLI reference](https://code.claude.com/docs/en/cli-usage)、[settings precedence](https://code.claude.com/docs/en/configuration) 与 [memory controls](https://code.claude.com/docs/en/memory)：stream JSON、verbose event、禁用 session persistence 与 Chrome integration、不读取普通 user／project／local setting source、使用严格且显式的 MCP config、禁用 CLAUDE.md／auto-memory、把 `@file` 当字面输入而非隐式展开、禁用持久后台任务、updater 与非必要流量。Prompt content 不放入 argv。这组更窄的控制保留显式 runtime-default skill／plugin；不会采用更宽的 `--bare`，因为它会静默违背已声明能力。Assembly 会拒绝低于审计基线的版本、prerelease build，以及 help surface 缺少任一必需 flag 的准确 launcher。Child 只接收完整分类环境与 adapter 自有 control，绝不继承 `process.env`。Child tool 可以检查环境，因此 credential entry 会把 output／trace 污染为 secret，effect locator 则污染为 sensitive。系统不声称能够抑制 host-managed setting、managed instruction 与 managed MCP policy。由于这些状态和 remote model deployment 仍不透明，即使 executable 与全部已声明 implementation file 都经过内容 hash 和 spawn 前复核，identity assurance 仍为 `declared`。
-
-Native MCP config、PreToolUse mock interception、built-in tool allow-list、runtime-default skill discovery 与完整 skill disablement，只在 CLI 可强制执行的组合中受支持。不支持的组合会在 adapter assembly 或 open run 时失败：存在 dynamic MCP tool 时，built-in allow-list 不能冒充完整 policy；MCP mock server 名称不能与 sealed MCP config 冲突；非空 skill allow-list 会被拒绝；系统不声明任何 sandbox ID。Mock rule 与 payload 只来自独立 secret verified lease。任何模型进程启动前都会验证规则；每次 retry attempt 都重新物化 payload，并在 child settle 后移除。配置的 Node launcher 本身属于 content identity；没有 mock interception 时，它不会被加入 PATH 或 Runtime identity。
-
-Capability 固定且由源码持有：串行 stochastic execution、best-effort cancellation、per-invocation stateless protocol、必需 source-neutral trace、可选 usage 与 provider-reported USD cost、不支持 seed control，也没有 sandbox。Adapter 只负责有界 stdin／stdout materialization、identity probe、process coordination 与 cleanup；timeout、retry、cache、budget 与 admission 只由 Core 持有。JSONL 必须包含一个结构一致的 terminal result；malformed conversation record、不一致 success flag、重复 terminal、不安全 counter、溢出 cost、terminal 后继续输出 conversation，以及 success 缺失 output，都会 fail closed，且不会暴露 stderr 或 provider error text。
-
-## 十、Claude SDK Runtime adapter
-
-`createClaudeSdkExecutorAdapter()` 把可选的 `@anthropic-ai/claude-agent-sdk` Runtime 绑定到同一 Core protocol，不经过旧 `ExecutorFn`。它遵循官方 [TypeScript Agent SDK contract](https://code.claude.com/docs/en/agent-sdk/typescript)：每个 Core attempt 创建全新 `query()`，获得独立 `AbortController` 与私有 `CLAUDE_CONFIG_DIR`，消费原生 async message stream，并在 attempt cleanup 前关闭 query。Core 继续独占 timeout／retry／budget／cache。Adapter 不使用旧进程级 SDK cache、SIGINT subscriber、wall-clock timeout、debug transcript 或补零 usage fallback。
-
-Assembly 解析 SDK package 及其 platform-specific bundled Claude Code package，不使用进程级 identity cache。SDK package tree、native package tree、manifest、entrypoint 与准确 executable 都会计算 content hash，并在每次 query 前复核；SDK version 与 bundled Claude Code version 是两个独立 identity facet。Remote deployment 与 host-managed policy 仍不透明，因此 assurance 为 `declared`。可信 resolver seam 只用于离线 conformance 与替代宿主解析，并且必须提供相同的最低 identity coverage。
-
-SDK 接收完整分类环境而非 `process.env`；没有 MCP lease 时接收显式空 MCP config；filesystem setting source、CLAUDE.md、auto-memory、attachment 与 session persistence 均关闭，同时启用严格 MCP validation、带 verified artifact append 的 Claude Code preset system instruction，以及与 CLI family 相同的 canonical supporting-resource envelope。Built-in tool allow-list 会禁用 dynamic MCP tool；skill discovery 只能是 runtime-default 或完全关闭。SDK PreToolUse mock 每次 attempt 都重新创建，并且只有 sealed MCP config 中存在对应 server 时才能拦截其 tool。Output 与 trace 继承 resource／environment 的最强 classification。Provider message 共用严格的 Claude terminal／usage／trace parser，但采用 SDK 专属 schema identity 与稳定 failure code。
-
-## 十一、资源需求
+## 九、资源需求
 
 RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 locator 或内容：
 
@@ -163,13 +145,13 @@ RuntimeBindingRequest 只记录资源角色和预期 lease mode，不记录 loca
 
 这些只是 acquisition requirement。后续 Verified HostResource lease 层仍须在 port 打开 run 前验证 kind、classification、size、digest、实际字节／目录树、隔离和 exactly-once release。Gold resource 不得出现在 executor 或 evaluator binding requirement 中。
 
-Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。Workspace binding lease 只暴露已验证的只读 base。Codex CLI／SDK、Claude CLI／SDK、DSH 和 custom-executor adapter 在每个 Trial 开始时创建私有可写副本，在 Trial 结束时释放；没有绑定 workspace 的 Trial 从空的私有目录开始。同一 Trial 的 attempt 保留目录状态，不同 Trial 和 run 绝不共享可写工作目录。Run 不再分配可写 overlay。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
+Lease acquisition 在首个 effect 之前同步复制并冻结全部 descriptor 和 binding request。随后它只物化 active binding 请求的资源，把源字节复制到 run 私有目录，并验证私有 snapshot，而不是继续消费 locator。Immutable snapshot 是只读的。Workspace binding lease 只暴露已验证的只读 base。Codex CLI／SDK、DSH 和 custom-executor adapter 在每个 Trial 开始时创建私有可写副本，在 Trial 结束时释放；没有绑定 workspace 的 Trial 从空的私有目录开始。同一 Trial 的 attempt 保留目录状态，不同 Trial 和 run 绝不共享可写工作目录。Run 不再分配可写 overlay。Node backend 当前用 eager private copy 实现这个 copy-on-write 隔离契约；lease mode 规定的是隔离语义，而不是强制某种文件系统机制。Gold 只能通过 analysis-host map 投影。
 
 文件身份是实际消费字节的 SHA-256。目录树身份使用 `omk.tree-sha256/v1`：条目按相对路径排序，并将条目类型、UTF-8 路径、文件大小、executable／non-executable mode 和文件字节纳入 framing。空目录参与身份；symlink 和特殊文件 fail closed。Pinned Git 还会验证精确的 `HEAD` commit 和干净的常规文件 checkout；dirty、untracked、ignored 或 submodule 内容不能冒充 commit 内容。根 `.git` metadata 在 resolve 与 lease 两个阶段的目录树身份中都会被排除。只有 snapshot 的实际 size 和 digest 都与 v2 descriptor 一致才会被接受。Acquisition 失败会清理部分创建的 run root；成功的 lease 暴露同一个幂等 `dispose()` promise，底层只尝试一次清理。
 
 单资源和整个 run 的字节／条目上限约束取得的 snapshot。Trial 副本受已验证 base 的大小限制；这不是 provider 后续新建文件的磁盘配额。计划的逻辑字节数在复制前就会被拒绝；条目上限则在有界资源物化过程中执行。错误只携带稳定 code 与 resource／binding identity，不包含 locator、secret 字节或 Gold 内容。结构合法但没有被 active binding 请求的 inventory entry 不会被打开、哈希、Git probe 或复制，以保持 no-Judge 副作用边界。
 
-**BREAKING-COMPARABILITY：** Trial 工作区隔离修正了原先共享 run 目录的行为。Codex CLI／SDK、Claude CLI／SDK 和 DSH adapter implementation version 更新为 `2.0.0`；custom-executor 在工作目录 facet 中封存 `trial-private-sealed-snapshot-v2`。新身份将修正后的执行条件与旧报告区分开。要建立可比基线，需要重新评测；不提供恢复旧目录共享行为的兼容模式。本次修正不改变 prompt 字节、评分和统计、Core Schema 或报告存储格式。
+**BREAKING-COMPARABILITY（早期工作区迁移）：** Trial 工作区隔离修正了原先共享 run 目录的行为。该次迁移将 Codex CLI／SDK、后来已移除的 Claude CLI／SDK 和 DSH adapter implementation version 更新为 `2.0.0`；custom-executor 在工作目录 facet 中封存 `trial-private-sealed-snapshot-v2`。新身份将修正后的执行条件与旧报告区分开。要建立可比基线，需要重新评测；不提供恢复旧目录共享行为的兼容模式。本次修正不改变 prompt 字节、评分和统计、Core Schema 或报告存储格式。
 
 Runtime 通过 `createEvaluationExecution()` 持有运行生命周期。接口只接收 Core Definition、MeasurementPolicy、可选运行元数据、显式 engine port，以及可选的宿主 `acquireRun` 回调，不依赖 Workflow／CLI 类型。Prepare 在物理 preflight 前封存 Core Plan；start 获取宿主资源、激活 binding-scoped access，只有获取成功且未取消时才启动 Core。调度、超时、重试和预算仍由 Core 独占。
 
@@ -179,7 +161,7 @@ Runtime 通过 `createEvaluationExecution()` 持有运行生命周期。接口�
 
 已有 Core 结果后发生清理失败时，Runtime 抛出 `EvaluationRuntimeLifecycleError`，并在 `runResult` 中保留原始结果。产品持久化路径仍保存完整证据链。CLI 和 DSH 等待持久化后再返回运行错误；Series 的任一 member 发生运行拒绝时，即使报告成功保存，也会拒绝本次发布与自动迭代。保存测量证据不等于批准失败的宿主生命周期通过发布门禁。
 
-## 十二、Core Composition 与 Support Ports
+## 十、Core Composition 与 Support Ports
 
 `createOmkEvaluationRuntime()` 只消费一份完整的 `CliEvaluationCompileResult`；调用方不能在 `prepare()` 或 `start()` 传入替代 Definition／Policy。Composition root 会校验 compiled canonical digest、快照化全部宿主配置、合并 Core-owned Analysis schema validator 与 Runtime factory、装配 binding，再把测量声明和注入端口传给 Runtime 拥有的 `createEvaluationExecution()` 接口。独立 Series assembly 单独暴露，不进入 single-run engine。
 
@@ -195,7 +177,7 @@ Clock 与 SchemaValidator contract 在 factory assembly 前校验。Core-owned A
 
 EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required delivery 会在 resource acquisition 后、Core start 前创建 writer，并通过 `PreparedEvaluation.start()` 注入；disabled mode 绝不调用 factory。Policy 要求的 port 缺失或形状错误时，在任何 Runtime factory 或 run port 调用前失败。因此不存在 Judge binding 时，也不会构造 Judge factory、读取凭证、执行 connectivity probe 或物化对应资源。
 
-## 十三、错误归属
+## 十一、错误归属
 
 - malformed input、coverage、duplicate、Definition mismatch、missing factory、factory failure 和 invalid port 在 Run 开始前使用稳定 `OmkRuntimeAssemblyError` code；
 - compiled input、support port、cache source、schema conflict 与 writer construction 使用稳定 `OmkEvaluationRuntimeError` code；
@@ -206,7 +188,7 @@ EventWriter 不进入静态 `EvaluationEngineRuntime`。Optional／required deli
 
 本层不修改冻结 prompt、五层评分、统计公式、cache 语义、Bundle／Report schema 或旧 pipeline。
 
-## 十四、故障隔离与依赖边界
+## 十二、故障隔离与依赖边界
 
 Composition root 把每个 `runId` 视为独立 failure domain。并发 run 拥有彼此独立的 lease registration、adapter session、raw-event mirror、progress queue、cancellation signal 与 teardown promise。取消一个进行中的 run，不能取消另一个 run、向对方的 event／progress channel 发布内容，或释放对方资源。Runtime port lifecycle 与宿主 lease 都只在各自 run settle 后准确释放一次。
 
