@@ -29,7 +29,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-capture-provider.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href",
-    sourceSha256: '761ed8d3efd34c61036cf128d4b4a4c2204288fc89d948c6fd042b9b06540cec',
+    sourceSha256: '0b0de123cdb7c62d050c29f0aff87bc47e4d23949d6c456c89e78c5b33972b28',
     rationale: 'Loads only the fixed built capture composition root; capture input cannot select code, and sending requires explicit plan permission and a verified budget profile.',
   },
   {

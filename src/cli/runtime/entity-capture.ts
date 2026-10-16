@@ -9,6 +9,7 @@ export const CAPTURE_VALIDATOR_IDENTITY = Object.freeze({ zod: WINDOW_EXTRACTION
 export { createExecutor, assertExecutorInputCapabilities, getExecutorCapabilities } from '../../executors/index.js';
 export { buildOpenAiChatRequest, OPENAI_CHAT_REQUEST_VERSION } from '../../executors/openai/request.js';
 export { OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION } from '../../executors/openai/api.js';
+export { OPENAI_TOKEN_BUDGET_EVIDENCE, OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST, resolveTokenBudgetProfile } from '../../executors/contracts/token-budget.js';
 export { checkWindowExtractionResponse } from '../../observability/knowledge-extraction/window-proposals.js';
 export { decodeWindowExtractionWire, WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_IDENTITY,
   WINDOW_EXTRACTION_WIRE_SCHEMA } from '../../observability/knowledge-extraction/model-wire.js';

@@ -62,6 +62,8 @@ test/knowledge/entities.test.ts
 test/knowledge/entity-identity.test.ts
 test/knowledge/quote-occurrence.test.ts
 test/knowledge/storage.test.ts
+test/knowledge/bounded-generation.test.ts
+test/knowledge/quality.test.ts
 test/knowledge/library.test.ts
 test/knowledge/entity-link-host.test.ts
 test/knowledge/link-invocation.test.ts

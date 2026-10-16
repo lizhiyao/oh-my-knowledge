@@ -1,4 +1,5 @@
 import type { ExtractionRun } from './runs.js';
+import { canonicalJson } from '../../knowledge/store.js';
 
 interface AdmissionCounts {
   accepted: number; rejected: number; recorded: number; unknownRuns: number; acceptanceRate: number | null;
@@ -8,7 +9,8 @@ interface LocalizationCounts {
 }
 interface QualityGroup {
   identity: Pick<ExtractionRun, 'schemaVersion' | 'promptVersion' | 'promptHash' | 'executor' | 'model'> & {
-    policyId: string; outputMode: 'json-schema' | 'prompt-json'; wireId: string | null; producerId: string; producerRevision: string;
+    policyId: string; policy: ExtractionRun['policy']; outputMode: 'json-schema' | 'prompt-json'; wireId: string | null;
+    timeoutMs: number; maxOutputTokens: number | null; producerId: string; producerRevision: string;
   };
   runs: Record<ExtractionRun['status'], number> & { total: number; withAdmission: number; withoutAdmission: number; zeroAccepted: number; zeroKnowledge: number };
   entities: AdmissionCounts; mentions: AdmissionCounts; proposals: AdmissionCounts;
@@ -40,9 +42,10 @@ export function extractionQuality(runs: readonly ExtractionRun[]) {
     seen.add(run.runId);
     const attempt = run.attempts[0];
     const identity = { schemaVersion: run.schemaVersion, promptVersion: run.promptVersion, promptHash: run.promptHash, executor: run.executor, model: run.model,
-      policyId: run.policy.policyId, outputMode: attempt.request.outputMode, wireId: attempt.request.wireId ?? null,
+      policyId: run.policy.policyId, policy: run.policy, outputMode: attempt.request.outputMode, wireId: attempt.request.wireId ?? null,
+      timeoutMs: attempt.request.timeoutMs, maxOutputTokens: attempt.request.maxOutputTokens ?? null,
       producerId: attempt.producer.producerId, producerRevision: attempt.producer.producerRevision };
-    const key = JSON.stringify(identity);
+    const key = canonicalJson(identity);
     let group = groups.get(key);
     if (!group) {
       group = { identity, runs: { total: 0, generating: 0, prepared: 0, completed: 0, failed: 0, cancelled: 0,
@@ -100,6 +103,6 @@ export function extractionQuality(runs: readonly ExtractionRun[]) {
       ? group.localization.passed / checked : null;
     group.reasons.sort((a, b) => a.component.localeCompare(b.component) || a.reason.localeCompare(b.reason));
   }
-  return { projectionKind: 'knowledge-extraction-quality' as const, projectionVersion: 'omk.extraction-quality/v2' as const,
+  return { projectionKind: 'knowledge-extraction-quality' as const, projectionVersion: 'omk.extraction-quality/v3' as const,
     runCount: runs.length, groups: [...groups.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, group]) => group) };
 }

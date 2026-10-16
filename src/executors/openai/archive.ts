@@ -11,7 +11,8 @@ export type OpenAiArchiveExecutorFactory = (name: string, options: { env: NodeJS
 const textHash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const PRODUCER = 'openai-chat-archive/v1';
 const revision = textHash(JSON.stringify({ producer: PRODUCER, api: OPENAI_CHAT_COMPLETIONS_ADAPTER_VERSION,
-  builder: OPENAI_CHAT_REQUEST_VERSION, httpMax: MAX_API_RESPONSE_BYTES, proofVersion: 'three-utf8-strings-double-diagnostic-redaction-signed-duration/v1' }));
+  builder: OPENAI_CHAT_REQUEST_VERSION, httpMax: MAX_API_RESPONSE_BYTES, proofVersion: 'three-utf8-strings-double-diagnostic-redaction-signed-duration/v1',
+  dispatchGate: 'producer-before-dispatch/v1' }));
 /** The exact same credential variants/order as diagnostics.ts; values never enter the witness. */
 export function openAiArchiveDiagnosticGrowth(environment: NodeJS.ProcessEnv): bigint {
   const credentials = [...new Set(Object.entries(environment)
@@ -53,14 +54,15 @@ export function createOpenAiArchiveProducer(environment: NodeJS.ProcessEnv, crea
       proof: { proofKind: 'openai-chat-return-bound/v1', endpoint: wire.endpoint, bodyDigest: textHash(wire.body),
         utf8ReplacementFactor: 3, jsonUtf8Factor: 6, retainedRawStringChannels: ['output', 'refusal', 'stopReason'],
         innerDiagnosticCodeUnits: 1027, outerDiagnosticGrowth: growth.toString(), fixedJsonBytes: fixedBytes,
-        singleCompletion: true, stream: false, redirect: 'error', producerRevision: revision } };
+        singleCompletion: true, stream: false, redirect: 'error', dispatchGate: 'producer-before-dispatch/v1', producerRevision: revision } };
     return { evidence, wire };
   };
   return { assertCapabilities: assertExecutorInputCapabilities, inspect: (executor, input) => inspect(executor, input).evidence,
-    configure(executor, input) {
+    configure(executor, input, beforeDispatch) {
     const { evidence, wire } = inspect(executor, input);
     const execute = create(executor, { env, apiDispatchPolicy: { requestConstraints: 'single-completion/v1', redirect: 'error', beforeDispatch: actual => {
       if (actual.endpoint !== wire.endpoint || actual.body !== wire.body) throw new Error('API dispatch identity conflict.');
+      beforeDispatch?.();
     } } });
     return { evidence, execute };
   } };

@@ -30,7 +30,7 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 | [LLM 共指能力评测](https://aclanthology.org/2024.lrec-main.145/)（2024） | 用自动与人工分析考察不同提示词的优势和失败。 | 分开报告结构接纳与语义错误，采用输出前冻结的案例。 |
 | [LEA 共指评测研究](https://aclanthology.org/P16-1060/)（2016） | 从实体链接考察共指评测口径。 | 单独检查应对应和必须分开的提及，避免只报实体数量或名称匹配。首版不声称实现完整 LEA 指标。 |
 
-这些资料支持设计取舍，不能证明 OMK 日志上的提取效果。采用一次调用是当前架构选择，是否增加第二次调用须用固定模型、输入和复核标准比较收益、成本及失败。
+这些资料支持设计取舍，不能证明 OMK 日志上的提取效果。一次调用仍为默认；独立身份的 bounded 重试政策只允许明确授权的额外尝试，不宣称收益。比较其收益、成本及失败仍须固定模型、输入、政策和复核标准。
 
 ## 3. 契约与身份
 
@@ -69,9 +69,11 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 实体领域代码集中在 `src/knowledge/entities/`：`contracts.ts` 定义实体分析及存储端口，`identity.ts` 定义身份与关联规则，`validation.ts` 校验分析中的引用和提及，`history.ts` 处理不可变修订及确定性写入规则。调用方按职责直接导入；该模块不调用模型、读写文件或依赖 Studio。模型输出接纳与实体／知识联合提炼仍由 `observability/knowledge-extraction` 编排，实体文件存储仍由其适配器实现。目录划分不增加模型调用或用户步骤。
 
-每个 v5 run 只允许一次 OMK invocation。派发前持久化精确 system／input 摘要、来源绑定、prompt／wire／pipeline 身份及 producer 预约。API producer 证明另绑定实际完整 body 摘要与 endpoint；这不是完整请求字节归档，也不记录未观测的 Codex 全局上下文。结构解码、接纳和准备实体／知识写入意图前，将完整执行器返回 JSON 或有界异常观测归档到不可变 outcome sidecar。失败部分输出、独立 refusal 通道、usage／cache 字段与 reported 标志、内部 attemptCount 及停止／失败诊断均保留原始证据，不以展示错误代替；不据此声称已捕获原 HTTP 或 CLI 传输、确定 provider 请求数，或每个归一的零均由 provider 显式报告。作者提供的 model-port projection 保留其声明的较窄证据范围。
+每个 v5 run 默认使用 `knowledge-generation-single/v1`，只允许一次 OMK invocation；显式 `knowledge-generation-bounded/v1` 最多允许三次 invocation，包含最多两次校验重问，不使用 fallback。每次派发前持久化精确 system／input 摘要、来源绑定、prompt／wire／pipeline 身份与 producer 预约；bounded 政策另记录不退款的 token 预约及触发依据。API producer 证明另绑定实际完整 body 摘要与 endpoint；这不是完整请求字节归档，也不记录未观测的 Codex 全局上下文。结构解码、接纳和准备实体／知识写入意图前，将完整执行器返回 JSON 或有界异常观测归档到不可变 outcome sidecar。失败部分输出、独立 refusal 通道、usage／cache 字段与 reported 标志、内部 attemptCount 及停止／失败诊断均保留原始证据，不以展示错误代替；不据此声称已捕获原 HTTP 或 CLI 传输、确定 provider 请求数，或每个归一的零均由 provider 显式报告。作者提供的 model-port projection 保留其声明的较窄证据范围。
 
-恢复只归档同一应用实例仍持有的 outcome、读取已持久化 sidecar，或完成已经分配身份的幂等写入意图，不重新调用模型。实体提交在知识提交前完成。进程丢失后，已开始但尚无归档字节的调用保持未知，不据此重发或退还预约。首批 v5 没有自动重试或 fallback；reask、瞬态重试与累计预算策略仍是独立的未完成工作。
+恢复只归档同一应用实例仍持有的 outcome、读取已持久化 sidecar，或完成已经分配身份的幂等写入意图，不重新调用模型。实体提交在知识提交前完成。进程丢失后，已开始但尚无归档字节的调用保持未知，不据此重发或退还预约；同 run 身份重放 generate 也仅恢复，不重启重试调度。
+
+bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTokens`、`maxOutputTokens`、retry／backoff、feedback 与 selection 规则，校验重问计入同一调用上限。仅已分类的限流／服务端／网络／超时失败，以及 parse／wire／envelope 或零接纳结果可触发下一次尝试；任一接纳 sibling 即选定部分结果。归档及提交失败不能触发新调用。每次按已验证输入／输出上界全额预约，实际报告较低或未知也不退款；规范化 input、cache-read、cache-creation 与 output 桶分别保留观测。不支持的预算依据在派发前拒绝。生产依据要求精确的官方 API endpoint 与模型快照，Codex 继续支持默认 single 政策。这引入独立政策／测量身份，不是新 prompt 或响应 Schema、模型质量证据，也不自动 fallback 到其他 provider。
 
 提取只发送选定片段和覆盖限制；不发送原始路径，不按日志中的指令读取外部来源或调用工具。未报告成本表示未知，不能当作零。
 
@@ -80,6 +82,8 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
 `extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5；不可变原生结果保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`。运行 metadata 绑定 sidecar 的身份／摘要、接纳事实与稳定的实体／知识写入意图。metadata 和 outcome 容量均须在发送前通过接纳。既有响应守卫按 JavaScript 字符串长度限制为 2 × 1024² 个 code unit；完整 outcome 先归档，再限制接纳，不截断原生证据。新 reader 校验现行格式及精确引用，不接受放入新目录的 v4 文件。
+
+自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
 默认配置生成使用 `knowledge-extraction-v15`：沿用原 v14 指令的无 few-shot strict 渲染，以唯一 wire Schema 替换内嵌的领域 Schema。生成明确请求 strict 输出，先解码 nullable 占位，再执行既有宿主接纳检查；领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 

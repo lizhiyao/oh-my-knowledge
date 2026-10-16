@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ExtractionModel, KnowledgeApplication } from './application.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from './generation-policy.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
@@ -17,7 +18,7 @@ export const knowledgeOperationSchemas = {
   'correct-entities': z.strictObject({ operation: z.literal('correct-entities'), analysisId: uuid, revision: uuid, generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
   'apply-entities': z.strictObject({ operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: uuid, entityRevision: uuid, draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional() }),
   capture: z.strictObject({ operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
-  generate: z.strictObject({ operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: uuid.optional() }),
+  generate: z.strictObject({ operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: uuid.optional(), policy: ExtractionGenerationPolicySchema.optional() }),
   resume: z.strictObject({ operation: z.literal('resume'), id: text }),
   source: z.strictObject({ operation: z.literal('source'), snapshot: text }),
   'delete-source': z.strictObject({ operation: z.literal('delete-source'), snapshot: text }),
@@ -44,7 +45,7 @@ type Results = {
 };
 /** One dispatch path for CLI and Studio; models remain an injected host adapter. */
 export async function executeKnowledgeOperation<C extends KnowledgeOperation>(app: KnowledgeApplication, request: C,
-  signal?: AbortSignal, model?: (executor: string, model: string) => ExtractionModel): Promise<Results[C['operation']]> {
+  signal?: AbortSignal, model?: (executor: string, model: string, policy?: ExtractionGenerationPolicy) => ExtractionModel): Promise<Results[C['operation']]> {
   signal?.throwIfAborted();
   const execute = () => {
     switch (request.operation) {
@@ -61,7 +62,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
       case 'generate': {
         if (!model) throw new Error('Extraction model adapter unavailable.');
-        return app.generate(request.snapshot, model(request.executor, request.model), request.runId, signal);
+        return app.generate(request.snapshot, model(request.executor, request.model, request.policy), request.runId, signal, { policy: request.policy });
       }
       case 'resume': return app.resume(request.id, signal);
       case 'source': return app.source(request.snapshot);

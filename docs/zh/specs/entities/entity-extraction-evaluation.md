@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-状态：现行检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v5`；已记录范围为 prompt-json `knowledge-extraction-v14`／响应 Schema v4。当前无 few-shot strict v15、run v5 与 quality 投影 v2 不继承该范围的模型质量或 Gold 结论，需要另行冻结测量与复核；四正例实验仍未激活，没有新增真实模型调用。独立复核和整体质量验收仍未完成。[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按另行确认的 beta 范围收尾，不改变本页的质量门槛。
+状态：现行检查工具与作者自审标注。指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查 `omk-entity-critical-checks/v5`；已记录范围为 prompt-json `knowledge-extraction-v14`／响应 Schema v4。当前无 few-shot strict v15、run v5 与 quality 投影 v3 不继承该范围的模型质量或 Gold 结论，需要另行冻结测量与复核；独立身份的 bounded 重试／预算政策同样不继承历史模型质量或 Gold 结论，工程交付不增加真实模型调用。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 BREAKING-COMPARABILITY；每个 run 最终选定的出生接纳仍只计一次。四正例实验仍未激活，没有新增真实模型调用。独立复核和整体质量验收仍未完成。[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按另行确认的 beta 范围收尾，不改变本页的质量门槛。
 
 最近的真实回归为 2026-10-12 的 v14 最小回归：一次调用、一个已查看的开发窗口。作者逐项核对全部原始／接纳及额外输出，四项构建身份、九核心对象与五项知识要求均符合；未纠正原始输出的保存、重读、检索和来源／知识绑定也通过，适配器回放不增加模型调用。没有独立人工复核，`goldReady=false`，费用未知；该结果不证明因果改善、整体准确率或稳定性。被测 beta 对象在输出前单独规定为定向必需，不能与不同测量身份的整体分数横比。明确同一产物的自动归并控制与跨 Agent 身份／复用收益仍未验证，详细证据见上述 Issue。
 

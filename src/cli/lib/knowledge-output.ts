@@ -1,6 +1,7 @@
 import type { KnowledgeApplication } from '../../observability/knowledge-extraction/application.js';
 import type { KnowledgeOperation } from '../../observability/knowledge-extraction/operations.js';
 import type { ExtractionRun } from '../../observability/knowledge-extraction/runs.js';
+import { extractionRunSummary } from '../../observability/knowledge-extraction/runs.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 
 /** Every copyable next step carries the same explicit workspace. */
@@ -28,12 +29,13 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
     }
     case 'generate': case 'resume': {
       const run = value as ExtractionRun;
+      const { invocation } = extractionRunSummary(run);
       if (run.status === 'completed') {
         next.push(command('entities', { analysis: run.runId }));
         if (run.committed.length) next.push(command('show', { id: run.committed[0].knowledgeId }));
         else next.push(t('本次未提交知识。核对实体结果、拒绝原因和原始来源；不要把零结果视为提炼质量通过。', 'No knowledge was committed. Review entities, rejection reasons and the source; zero results do not demonstrate extraction quality.'), command('runs', { json: true }), command('source', { snapshot: run.snapshotId }));
-      } else if (run.attempts[0].failure) next.push(t('本次调用已终止，原始结果仍保存在本地归档。核对失败类别和来源后再决定是否发起新运行；resume 不会重试模型。', 'This invocation is terminal; its original outcome remains archived locally. Inspect the failure and source before deciding on a new run; resume does not retry the model.'), command('runs', { json: true }));
-      else if (run.attempts[0].outcome || run.status === 'prepared') next.push(t('resume 恢复已保存结果，不再次调用模型：', 'Resume restores saved results without another model call:'), command('resume', { id: run.runId }));
+      } else if (invocation.failureKind && ['failed', 'cancelled'].includes(run.status)) next.push(t('本次调用已终止，原始结果仍保存在本地归档。核对失败类别和来源后再决定是否发起新运行；resume 不会重试模型。', 'This invocation is terminal; its original outcome remains archived locally. Inspect the failure and source before deciding on a new run; resume does not retry the model.'), command('runs', { json: true }));
+      else if (invocation.archiveStatus === 'recorded' || run.status === 'prepared') next.push(t('resume 恢复已保存结果，不再次调用模型：', 'Resume restores saved results without another model call:'), command('resume', { id: run.runId }));
       else next.push(t('尚无可恢复的模型结果；先核对运行状态。resume 不重新提炼，也不启动第二次模型调用。', 'No saved model result is available to restore. Inspect the run first; resume neither re-extracts nor starts a second model call.'), command('runs'));
       break;
     }
@@ -79,6 +81,7 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
       ...quality.groups.flatMap(group => [
         `${group.identity.promptVersion} / ${group.identity.executor} / ${group.identity.model} / schema ${group.identity.schemaVersion}\n${group.identity.promptHash}`,
         `${group.identity.policyId} / ${group.identity.outputMode} / ${group.identity.wireId ?? '—'}\n${group.identity.producerId} / ${group.identity.producerRevision}`,
+        `${t('完整策略与请求上限', 'Full policy and request limits')}: ${JSON.stringify({ policy: group.identity.policy, timeoutMs: group.identity.timeoutMs, maxOutputTokens: group.identity.maxOutputTokens })}`,
         `${t('运行状态', 'Run status')}: ${JSON.stringify(group.runs)}`,
         ...(['entities', 'mentions', 'proposals'] as const).map(component => `${t(component === 'entities' ? '实体接纳' : component === 'mentions' ? '提及接纳' : '知识提案接纳', component)}: ${group[component].accepted}/${group[component].recorded} · ${rate(group[component].acceptanceRate)} · ${group[component].unknownRuns} ${t('次分母未知', 'runs with unknown denominators')}`),
         `${t('逐字定位：通过／拒绝／未检查／未知', 'Exact localization: passed / rejected / not checked / unknown')}: ${group.localization.passed}/${group.localization.rejected}/${group.localization.notChecked}/${group.localization.unknown} · ${rate(group.localization.passRate)} · ${group.localization.unknownRuns} ${t('次检查记录未知', 'runs with unknown check records')}`,
@@ -89,10 +92,15 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
   }
   if (item.runKind === 'knowledge-extraction-run') {
     const run = item as unknown as ExtractionRun;
+    const { invocation } = extractionRunSummary(run);
     return [lang === 'zh' ? `提炼运行：${run.status}` : `Extraction run: ${run.status}`,
       `${run.runId} · ${run.executor} / ${run.model}`,
-      `${run.policy.policyId} · ${run.attempts[0].request.outputMode} · ${run.attempts[0].outcome ? (lang === 'zh' ? '结果已归档' : 'outcome archived') : (lang === 'zh' ? '归档待确认，发送和费用状态不能据此推断' : 'archive pending; dispatch and cost cannot be inferred')}`,
-      ...(run.attempts[0].failure ? [`${lang === 'zh' ? '失败类别' : 'Failure'}: ${run.attempts[0].failure.failureKind}`] : []),
+      `${run.policy.policyId} · ${invocation.outputMode} · ${invocation.archiveStatus === 'recorded' ? (lang === 'zh' ? '结果已归档' : 'outcome archived') : (lang === 'zh' ? '归档待确认，发送和费用状态不能据此推断' : 'archive pending; dispatch and cost cannot be inferred')}`,
+      lang === 'zh' ? `已预约 ${invocation.attemptCount} 次尝试；本运行最多 ${invocation.limits.maxInvocations} 次调用，含最多 ${invocation.limits.maxReasks} 次校验重问。` : `${invocation.attemptCount} attempts reserved; up to ${invocation.limits.maxInvocations} invocations, including ${invocation.limits.maxReasks} validation reasks.`,
+      ...(run.policy.policyId === 'knowledge-generation-bounded/v1' ? [lang === 'zh'
+        ? `累计 token 预约 ${invocation.budget.reservedTokens}/${invocation.budget.maxTotalTokens}；观测用量 ${invocation.budget.observedTokens ?? '未知'}；${invocation.budget.unknownAttempts} 次用量未知。预约不退款，不表示金额上限。`
+        : `Cumulative token reservation ${invocation.budget.reservedTokens}/${invocation.budget.maxTotalTokens}; observed usage ${invocation.budget.observedTokens ?? 'unknown'}; ${invocation.budget.unknownAttempts} attempts with unknown usage. No refunds; this is not a spending limit.`] : []),
+      ...(invocation.failureKind ? [`${lang === 'zh' ? '失败类别' : 'Failure'}: ${invocation.failureKind}`] : []),
       lang === 'zh' ? `已提交 ${run.committed.length} 条知识；${run.rejections.length} 条知识未接纳；${run.entityRejections ? `${run.entityRejections.length} 条实体未接纳` : '实体拒绝数量未记录'}。接纳不代表已证实。` : `${run.committed.length} knowledge items committed; ${run.rejections.length} knowledge proposals rejected; ${run.entityRejections ? `${run.entityRejections.length} entity proposals rejected` : 'entity rejection count unreported'}. Admission does not verify truth.`,
       ...(run.error ? [run.error] : [])].join('\n');
   }

@@ -18,7 +18,8 @@ const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 
   source: { status: 'available', excerpts: [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], limitations: ['仅所选消息'] } };
 const run: KnowledgeCandidateRun = { runId: 'analysis', status: 'completed', committed: [], rejections: [],
   invocation: { policyId: 'knowledge-generation-single/v1', outputMode: 'json-schema', wireId: `sha256:${'a'.repeat(64)}`,
-    attemptCount: 1, archiveStatus: 'recorded', failureKind: null },
+    attemptCount: 1, archiveStatus: 'recorded', failureKind: null,
+    limits: { maxInvocations: 1, maxReasks: 0 }, budget: { reservedTokens: 0, observedTokens: null, unknownAttempts: 1 } },
   entityAnalysis: { analysisId: 'analysis', revisionId: 'revision-1', entityCount: 2, mentionCount: 1, unresolvedCount: 1, rejectedCount: 0 } };
 
 describe('entity analysis user views', () => {

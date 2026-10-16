@@ -100,7 +100,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('conversation automation consent lifecycle', () => {
   it('requires fresh reviewed consent, ignores cancelled previews, and disposes an in-flight status poll on unmount', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    const calls: Call[] = [], previews = [deferred<Response>(), deferred<Response>(), deferred<Response>()];
+    const calls: Call[] = [], previews = [deferred<Response>(), deferred<Response>(), deferred<Response>()], settings = deferred<Response>();
     const poll = deferred<Response>(), onChanged = vi.fn();
     const intervals = vi.spyOn(globalThis, 'setInterval'), clear = vi.spyOn(globalThis, 'clearInterval');
     let previewIndex = 0;
@@ -111,7 +111,7 @@ describe('conversation automation consent lifecycle', () => {
       maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
       checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === '/api/settings') return json({ effective: { workspace: '/initial', executor: 'openai-api', model: 'initial-model' } });
+      if (url === '/api/settings') return settings.promise;
       expect(url).toBe('/api/knowledge/auto-extraction');
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       const call = { resource: 'auto-extraction', operation: String(body.operation), body, signal: init.signal ?? undefined };
@@ -127,7 +127,11 @@ describe('conversation automation consent lifecycle', () => {
     const consent = () => within(dialog()).getByRole('checkbox', { name: /Approve sending the initial and future windows/ }) as HTMLInputElement;
     const cancel = () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
     const view = render(<AutoExtractConversation threadId="thread/a" lang="en" onChanged={onChanged}/>, { wrapper });
+    expect(screen.getByRole('button', { name: 'Enable auto extraction' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' })); expect(requests('preview')).toHaveLength(0);
+    await act(async () => settings.resolve(json({ effective: { workspace: '/initial', executor: 'openai-api', model: 'initial-model' } })));
     await waitFor(() => expect(requests('status')).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enable auto extraction' }).hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
     await waitFor(() => expect(requests('preview')).toHaveLength(1));
     expect(approve().hasAttribute('disabled')).toBe(true); expect(consent().disabled).toBe(true);
@@ -147,11 +151,14 @@ describe('conversation automation consent lifecycle', () => {
     expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
     fireEvent.click(consent()); expect(approve().hasAttribute('disabled')).toBe(false);
     change('Candidate folder', ''); expect(approve().hasAttribute('disabled')).toBe(true);
-    change('Candidate folder', ' /reviewed '); expect(approve().hasAttribute('disabled')).toBe(false);
+    change('Candidate folder', ' /reviewed '); expect(approve().hasAttribute('disabled')).toBe(true);
+    expect(consent().checked).toBe(false); fireEvent.click(consent());
     change('Model', ''); expect(approve().hasAttribute('disabled')).toBe(true);
-    change('Model', ' reviewed-model '); expect(approve().hasAttribute('disabled')).toBe(false);
-    fireEvent.change(within(dialog()).getByRole('spinbutton', { name: 'Maximum calls' }), { target: { value: '2' } });
-    fireEvent.blur(within(dialog()).getByRole('spinbutton', { name: 'Maximum calls' }));
+    change('Model', ' reviewed-model '); expect(approve().hasAttribute('disabled')).toBe(true);
+    expect(consent().checked).toBe(false); fireEvent.click(consent());
+    fireEvent.change(within(dialog()).getByRole('spinbutton', { name: 'Maximum OMK invocations for this conversation permission' }), { target: { value: '2' } });
+    fireEvent.blur(within(dialog()).getByRole('spinbutton', { name: 'Maximum OMK invocations for this conversation permission' }));
+    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
     cancel(); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(requests('enable')).toHaveLength(0);
 
@@ -161,6 +168,12 @@ describe('conversation automation consent lifecycle', () => {
     expect(approve().hasAttribute('disabled')).toBe(true);
     await act(async () => previews[2].resolve(json(preview('fresh-token', 'Fresh reviewed preview'))));
     expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
+    expect(within(dialog()).getByText(/This run permits 1 OMK invocation/)).toBeTruthy();
+    fireEvent.click(consent());
+    const retries = within(dialog()).getByRole('checkbox', { name: 'Allow retries or validation reasks within these limits' });
+    fireEvent.click(retries); expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
+    expect(within(dialog()).getByText(/3 OMK invocations/)).toBeTruthy();
+    fireEvent.click(retries); expect(consent().checked).toBe(false);
     fireEvent.click(consent()); fireEvent.click(approve()); fireEvent.click(approve());
     await screen.findByRole('button', { name: 'Stop auto extraction' });
     expect(requests('enable').map(call => call.body)).toEqual([{ operation: 'enable', workspace: '/reviewed', threadId: 'thread/a',

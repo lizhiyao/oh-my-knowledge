@@ -39,6 +39,7 @@ const revision = hash(JSON.stringify({ producer: PRODUCER, proofVersion: PROOF_V
   schemaMaxBytes: MAX_SCHEMA_BYTES, schemaMaxDepth: MAX_SCHEMA_DEPTH, environmentMaxBytes: MAX_ENV_BYTES,
   pathMaxBytes: MAX_PATH_BYTES, modelMaxBytes: MAX_MODEL_BYTES, outcomeQuotaBytes: OUTCOME_QUOTA_BYTES,
   requestPolicy: 'frozen-data-request-private-cwd-and-temp-root/v1',
+  dispatchGate: 'producer-before-dispatch/v1',
   resultPolicy: 'complete-returned-json-before-contract-admission/iterative-writer-required',
   protocol: 'codex-jsonl-protocol-and-trace/v1', diagnosticPolicy: 'frozen-credential-variants-and-bearer-basic/v1' }));
 
@@ -178,12 +179,12 @@ export function createCodexArchiveProducer(environment: NodeJS.ProcessEnv, creat
         minimumCredentialVariantCodeUnits: 10, schemaMaxDepth: MAX_SCHEMA_DEPTH,
         sourceDigests: SOURCE_DIGESTS, nodeVersion: process.version,
         temporaryRootDigest: hash(tempRoot), privateCwdPrefix: CWD_PREFIX, privateCwdMaxBytes: MAX_PATH_BYTES,
-        traceCopies: 2, namespaceContentCopies: 8, nativeAdmission: 'after-archive',
+        traceCopies: 2, namespaceContentCopies: 8, nativeAdmission: 'after-archive', dispatchGate: 'producer-before-dispatch/v1',
         scope: 'Complete returned JSON; protocol streams, binary configuration, provider calls and token/cost bounds are not attested.' } };
     return { evidence, snapshot, requestJson };
   };
   return { assertCapabilities, inspect: (executor, input) => inspect(executor, input).evidence,
-    configure(executor, input) {
+    configure(executor, input, beforeDispatch) {
       const { evidence, snapshot, requestJson } = inspect(executor, input);
       const execute = create(executor, { env });
       return { evidence, execute: async actual => {
@@ -196,6 +197,7 @@ export function createCodexArchiveProducer(environment: NodeJS.ProcessEnv, creat
           || Buffer.byteLength(normalized) > MAX_PATH_BYTES) throw new Error('Codex archive requires a private cwd under the frozen temporary root.');
         // No await between local gates and the actual adapter. Only the verified
         // runtime cwd/signal are added; schema/request/env snapshots cannot drift.
+        beforeDispatch?.();
         return execute({ ...snapshot, cwd: normalized, abortSignal: actual.abortSignal });
       } };
     } };

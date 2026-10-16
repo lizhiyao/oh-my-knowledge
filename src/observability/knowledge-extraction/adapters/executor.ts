@@ -17,12 +17,15 @@ export function validateExtractionModelSelection(executor: string, model: string
 }
 
 /** Delivery supplies a concrete, frozen producer. Inspect is local; generation performs one invocation. */
-export function configuredExtractionModel(executor: string, model: string, producer: ExecutorArchiveProducer): ExtractionModel {
+export function configuredExtractionModel(executor: string, model: string, producer: ExecutorArchiveProducer,
+  options?: { maxOutputTokens?: number }): ExtractionModel {
   validateExtractionModelSelection(executor, model);
+  const maxOutputTokens = options?.maxOutputTokens === undefined ? executor === 'openai-api' ? 4096 : undefined : options.maxOutputTokens;
+  if (options?.maxOutputTokens !== undefined) producer.assertCapabilities(executor, { model, prompt: '', maxOutputTokens });
   const privateRoot = resolve(tmpdir());
   const request = (system: string, input: string): ExecutorInput => ({ model, system, prompt: input,
     outputFormat: { mode: 'json-schema', name: 'knowledge_extraction_v1', schema: WINDOW_EXTRACTION_WIRE_SCHEMA },
-    timeoutMs: 300_000, ...(executor === 'openai-api' ? { maxOutputTokens: 4096 } : {}) });
+    timeoutMs: 300_000, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }) });
   const inspected = new Map<string, string>();
   const inspect = (system: string, input: string) => {
     const execution = request(system, input);
@@ -32,12 +35,12 @@ export function configuredExtractionModel(executor: string, model: string, produ
   };
   return {
     executor, model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, timeoutMs: 300_000,
-    ...(executor === 'openai-api' ? { maxOutputTokens: 4096 } : {}), inspect,
-    async generate(system, input, signal): Promise<ExtractionOutcome> {
+    dispatchGate: 'producer-before-dispatch/v1', ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), inspect,
+    async generate(system, input, signal, beforeDispatch): Promise<ExtractionOutcome> {
       signal?.throwIfAborted();
       const execution = request(system, input), key = canonicalJson(execution);
       if (!inspected.has(key)) inspect(system, input);
-      const configured = producer.configure(executor, execution);
+      const configured = producer.configure(executor, execution, beforeDispatch);
       if (canonicalJson(configured.evidence) !== inspected.get(key)) throw new Error('Extraction producer changed after reservation.');
       let cwd: string | undefined, outcome: Exclude<ExtractionOutcome, { outcomeKind: 'model-port-projection' }>;
       try {

@@ -15,15 +15,39 @@ import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
 import { createLocalKnowledgeApplication, createLocalEntityLinks, parseEntityLinkPreview } from '../../src/observability/knowledge-extraction/local.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { modelWindow } from '../knowledge/fixtures.js';
+import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
+import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 
 const roots: string[] = [];
 const linkServers: Server[] = [];
 afterEach(async () => {
-  vi.unstubAllEnvs();
+  vi.unstubAllEnvs(); vi.unstubAllGlobals();
   for (const server of linkServers.splice(0)) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 describe('observe knowledge command wiring', () => {
+  it('formats the selected or pending final attempt without promoting a previous failure to current status', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-output-')); roots.push(root);
+    const source = join(root, 'source.jsonl'), workspace = join(root, 'workspace');
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+    const app = createLocalKnowledgeApplication(workspace), snapshot = app.capture({ path: source });
+    const original = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async () => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', snapshot.excerpts[0].evidenceRef), durationMs: 1 }) });
+    const policy = boundedExtractionPolicy({ maxInvocations: 3, maxReasks: 2, profileId: 'loopback-test/v1', maxTotalTokens: 3264, maxOutputTokens: 64 });
+    const budget = { profileId: 'loopback-test/v1', authority: 'loopback-test-only' as const, evidenceDigest: `sha256:${'0'.repeat(64)}`, inputUpperBound: 1024, outputUpperBound: 64, tokensReserved: 1088 };
+    const first = { ...original.attempts[0], budget, failure: { failureKind: 'parse_error', diagnostic: 'earlier invalid output' } };
+    const last = { ...original.attempts[0], attemptId: randomUUID(), budget };
+    const run = { ...original, policy, attempts: [first, last], selectedAttemptId: last.attemptId };
+    const command = { operation: 'resume' as const, id: run.runId };
+    const completed = formatKnowledgeResult(run, 'zh', command, workspace);
+    expect(completed).toContain('completed'); expect(completed).toContain('结果已归档'); expect(completed).not.toContain('失败类别');
+    expect(completed).toContain('累计 token 预约 2176/3264'); expect(completed).toContain('已预约 2 次尝试');
+    const pending = { ...run, status: 'generating' as const, selectedAttemptId: undefined, entityAnalysis: undefined, intents: [], committed: [], rawOutput: undefined,
+      attempts: [first, { ...last, outcome: undefined }] };
+    const waiting = formatKnowledgeResult(pending, 'zh', command, workspace);
+    expect(waiting).toContain('归档待确认'); expect(waiting).not.toContain('结果已归档'); expect(waiting).not.toContain('失败类别');
+    expect(waiting).not.toContain('本次调用已终止'); expect(waiting).toContain('尚无可恢复的模型结果');
+    expect(waiting).toContain(`--workspace ${workspace}`);
+  });
   it('exports the exact wire schema and identity before reading settings or creating a workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-schema-cli-')); roots.push(root);
     vi.stubEnv('OMK_HOME', root);
@@ -69,6 +93,31 @@ describe('observe knowledge command wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);
     vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
     await expect(runCommand(ObserveKnowledge, ['retain', '--workspace', root], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    for (const args of [['list', '--generation-policy', '{}'], ['schema', '--generation-policy', '{}'],
+      ['generate', '--snapshot', 'fixture', '--generation-policy', '{invalid'], ['generate', '--snapshot', 'fixture', '--generation-policy', '{}']]) {
+      await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+  });
+  it('passes explicit bounded policy and its output cap through the command and shared operations, reusing a run without another dispatch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-bounded-knowledge-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root); vi.stubEnv('OPENAI_API_KEY', 'isolated-loopback-fixture-key'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9321');
+    const workspace = join(root, 'knowledge'), source = join(root, 'source.jsonl');
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+    const captured = JSON.parse((await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', source, '--json'], { cwd: root })).stdout);
+    const policy = boundedExtractionPolicy({ maxInvocations: 1, maxReasks: 0, profileId: 'loopback-test/v1', maxTotalTokens: 1088, maxOutputTokens: 64 });
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions'); expect(init?.redirect).toBe('error');
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'authored-loopback-test', max_completion_tokens: 64, n: 1, stream: false });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4,
+        entities: [], mentions: [], proposals: [] }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 2 } } }));
+    }); vi.stubGlobal('fetch', fetch);
+    const args = ['generate', '--workspace', workspace, '--snapshot', captured.snapshotId, '--executor', 'openai-api', '--model', 'authored-loopback-test',
+      '--run-id', randomUUID(), '--generation-policy', JSON.stringify(policy), '--json'];
+    const run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
+    expect(run).toMatchObject({ status: 'completed', policy, attempts: [{ request: { maxOutputTokens: 64 },
+      budget: { tokensReserved: 1088 }, accounting: { chargedTokens: 1088, status: 'reported' } }] });
+    expect(JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout)).toEqual(run);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it('keeps text next steps in the selected workspace and leaves JSON as a single machine result', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-cli-loop-')); roots.push(root);

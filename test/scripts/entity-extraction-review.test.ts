@@ -709,6 +709,9 @@ globalThis.fetch = async (url, init) => {
       await f.cli([]); await f.fail(['execute-one'], 2);
       const prepared = await f.prepare(directory); expect(f.requests()).toEqual([]);
       expect(JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).host.validatorIdentity).toEqual(sourceRuntime.CAPTURE_VALIDATOR_IDENTITY);
+      const budget = readFileSync(join(directory, 'budget-evidence.json'), 'utf8');
+      expect(budget).toBe(JSON.stringify(sourceRuntime.OPENAI_TOKEN_BUDGET_EVIDENCE, null, 2) + '\n');
+      expect(JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).budgetEvidenceDigest).toBe(sourceRuntime.OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST);
       expect(JSON.parse((await f.cli(['check', '--plan', directory])).stdout)).toMatchObject({ executable: true, permissionRequired: true, requestsByThisCommand: 0 });
       await f.fail(f.execute(directory, prepared.planId, join(directory, 'permission-template.json'), 'capture-repeat-1'));
       expect(f.requests()).toEqual([]);

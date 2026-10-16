@@ -1,18 +1,25 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationAutoExtraction } from '../../src/observability/knowledge-extraction/auto-extraction.js';
 import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
 import type { ConversationCatalog } from '../../src/observability/conversation/catalog.js';
 import type { ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
-import { modelWindow } from './fixtures.js';
+import { modelWindow, wireModelWindow } from './fixtures.js';
+import { boundedExtractionPolicy, type ExtractionGenerationPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
+import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
+import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
 import { conversationExtractionSource } from '../../src/observability/knowledge-extraction/conversation-source.js';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
-function fixture() {
+function fixture(options?: { realTime?: boolean }) {
   const root = mkdtempSync(join(tmpdir(), 'omk-auto-extraction-'));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const workspace = join(root, 'knowledge');
@@ -33,16 +40,19 @@ function fixture() {
     const output = JSON.stringify(modelWindow()).replaceAll('record-1', parsed.excerpts[0].evidenceRef);
     return { output, durationMs: 1 };
   };
+  let factory: ((executor: string, model: string, policy?: ExtractionGenerationPolicy) => ExtractionModel) | undefined;
   const create = () => {
-    const service = new ConversationAutoExtraction(catalog, { intervalMs: 0, stableMs: 30_000, now: () => now,
-      model: (executor, model) => ({ executor, model, generate: (...args) => implementation(...args) }) });
+    const service = new ConversationAutoExtraction(catalog, { intervalMs: 0, stableMs: options?.realTime ? 0 : 30_000, now: options?.realTime ? Date.now : () => now,
+      model: (executor, model, policy) => factory?.(executor, model, policy) ?? { executor, model, generate: (...args) => implementation(...args) } });
     cleanups.push(() => service.close()); return service;
   };
   const service = create();
-  const enable = async (limit = 5) => service.enable(workspace, 'thread', { token: (await service.preview('thread')).token, executor: 'codex', model: 'synthetic', maxCalls: limit });
+  const enable = async (limit = 5, policy?: ExtractionGenerationPolicy, selection = { executor: 'codex', model: 'synthetic' }) => service.enable(workspace, 'thread', {
+    token: (await service.preview('thread')).token, ...selection, maxCalls: limit, ...(policy ? { policy } : {}) });
   const tick = async () => { await service.tick(); now += 30_000; await service.tick(); };
   return { root, workspace, tasks, catalog, service, create, inputs, enable, tick,
-    advance: (ms: number) => { now += ms; }, change: () => { changed += ' changed'; }, setModel: (fn: ExtractionModel['generate']) => { implementation = fn; } };
+    now: () => now, advance: (ms: number) => { now += ms; }, change: () => { changed += ' changed'; }, setModel: (fn: ExtractionModel['generate']) => { implementation = fn; },
+    setFactory: (value: NonNullable<typeof factory>) => { factory = value; } };
 }
 describe('authorized conversation auto extraction', () => {
   it('previews locally, rejects stale consent, then processes a stable bounded window and pauses at quota', async () => {
@@ -79,6 +89,139 @@ describe('authorized conversation auto extraction', () => {
     expect(JSON.stringify(f.service.status(f.workspace, 'thread'))).not.toContain('credential');
     await f.enable(); await f.tick(); expect(calls).toBe(1);
   });
+  it('charges every bounded dispatch across attempts and recovers stale counters without refunding or re-sending a source', async () => {
+    const f = fixture(); let calls = 0;
+    const policy = boundedExtractionPolicy({ profileId: 'loopback-test/v1', maxInvocations: 3, maxReasks: 0, maxTotalTokens: 3264, maxOutputTokens: 64 });
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1'));
+      calls++;
+      return { ok: false, output: null, error: 'Synthetic transient failure', failure: { failureKind: 'network_error' }, durationMs: 1, durationApiMs: 1, stopReason: 'error',
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false,
+        costUSD: 0, costReportedByExecutor: false, numTurns: 0 };
+    });
+    f.setFactory((executor, model, selected) => configuredExtractionModel(executor, model, producer,
+      { maxOutputTokens: selected?.policyId === 'knowledge-generation-bounded/v1' ? selected.maxOutputTokens : 64 }));
+    await f.enable(2, policy, { executor: 'openai-api', model: 'authored-loopback-test' }); await f.tick();
+    expect(calls).toBe(2);
+    const state = f.service.status(f.workspace, 'thread')!;
+    expect(state).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 2, tokensReserved: 2176, policy });
+    const directory = join(f.workspace, 'auto-extraction'), files = readdirSync(directory);
+    const receipts = files.filter(name => name.startsWith('attempt-')).map(name => ({ path: join(directory, name), bytes: readFileSync(join(directory, name)) }));
+    expect(receipts).toHaveLength(2);
+    expect(receipts.map(({ bytes }) => JSON.parse(bytes.toString())).sort((a, b) => a.callNumber - b.callNumber)).toMatchObject([
+      { permissionId: state.permissionId, runId: state.lastRunId, callNumber: 1, requestDigest: expect.stringMatching(/^sha256:/), budget: { tokensReserved: 1088 } },
+      { permissionId: state.permissionId, runId: state.lastRunId, callNumber: 2, requestDigest: expect.stringMatching(/^sha256:/), budget: { tokensReserved: 1088 } },
+    ]);
+    const statePath = join(directory, files.find(name => /^[a-f0-9]{64}\.json$/.test(name))!);
+    const staging = `${receipts[0].path}.123.00000000-0000-4000-8000-000000000000.tmp`;
+    writeFileSync(staging, receipts[0].bytes, { flag: 'wx' });
+    const old = { schemaVersion: 1, automationKind: 'conversation-knowledge-attempt', runId: randomUUID(), permissionId: randomUUID(),
+      threadId: 'thread', turnIds: ['turn-0'], sourceVersion: `sha256:${'a'.repeat(64)}`, reservedAt: new Date(f.now()).toISOString(), callNumber: 1 };
+    const oldPath = join(directory, `attempt-${old.runId}.json`), oldBytes = JSON.stringify(old);
+    writeFileSync(oldPath, oldBytes, { flag: 'wx' });
+    // The immutable dispatch receipt wins when the mutable state acknowledgement was lost.
+    writeFileSync(statePath, JSON.stringify({ ...state, callsUsed: 0, tokensReserved: 0 }));
+    expect(f.service.status(f.workspace, 'thread')).toMatchObject({ callsUsed: 2, tokensReserved: 2176 });
+    await f.tick(); expect(calls).toBe(2);
+    await f.enable(); expect(f.service.status(f.workspace, 'thread')).not.toHaveProperty('policy');
+    await f.tick(); expect(calls).toBe(2);
+    for (const receipt of receipts) expect(readFileSync(receipt.path)).toEqual(receipt.bytes);
+    expect(readFileSync(staging)).toEqual(receipts[0].bytes);
+    expect(readFileSync(oldPath, 'utf8')).toBe(oldBytes);
+  });
+  it('records cooldown once before ordinary retry backoff and permits the next invocation after that wait', async () => {
+    const f = fixture({ realTime: true }); let calls = 0;
+    const dispatched: number[] = [];
+    const policy = boundedExtractionPolicy({ profileId: 'loopback-test/v1', maxInvocations: 3, maxReasks: 0, maxTotalTokens: 3264, maxOutputTokens: 64 });
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1'));
+      calls++; dispatched.push(Date.now());
+      return { ok: calls > 1, output: calls > 1 ? JSON.stringify(wireModelWindow()).replaceAll('record-1', JSON.parse(input.prompt).excerpts[0].evidenceRef) : null,
+        ...(calls === 1 ? { error: 'Synthetic rate limit', failure: { failureKind: 'rate_limit' as const, retryAfterMs: 20 } } : {}),
+        durationMs: 1, durationApiMs: 1, stopReason: calls > 1 ? 'stop' : 'error', inputTokens: 0, outputTokens: 0,
+        cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, numTurns: 1 };
+    });
+    f.setFactory((executor, model) => configuredExtractionModel(executor, model, producer, { maxOutputTokens: 64 }));
+    await f.enable(5, policy, { executor: 'openai-api', model: 'authored-loopback-test' }); await f.tick();
+    expect(calls).toBe(2); expect(createLocalKnowledgeApplication(f.workspace).runs()[0].status).toBe('completed');
+    const directory = join(f.workspace, 'auto-extraction', 'cooldowns');
+    const facts = readdirSync(directory).filter(name => name.endsWith('.json')).map(name => ({ path: join(directory, name), value: JSON.parse(readFileSync(join(directory, name), 'utf8')) }));
+    const required = facts.find(fact => fact.value.decision === 'required')!;
+    expect(required.value.retryAfterMs).toBe(20); expect(dispatched[1]).toBeGreaterThanOrEqual(Date.parse(required.value.notBefore));
+    const bytes = readFileSync(required.path); f.service.status(f.workspace, 'thread'); f.service.status(f.workspace, 'thread');
+    expect(readFileSync(required.path)).toEqual(bytes);
+  });
+  it('preserves an already-archived rate limit when stopped during retry backoff before reapproval', async () => {
+    const f = fixture(); let calls = 0;
+    const policy = boundedExtractionPolicy({ profileId: 'loopback-test/v1', maxInvocations: 3, maxReasks: 0, maxTotalTokens: 3264, maxOutputTokens: 64 });
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1')); calls++;
+      return { ok: false, output: null, error: 'Synthetic rate limit', failure: { failureKind: 'rate_limit', retryAfterMs: 120_000 },
+        durationMs: 1, durationApiMs: 1, stopReason: 'error', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+        tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, numTurns: 0 };
+    });
+    f.setFactory((executor, model) => configuredExtractionModel(executor, model, producer, { maxOutputTokens: 64 }));
+    const selection = { executor: 'openai-api', model: 'authored-loopback-test' };
+    await f.enable(5, policy, selection); await f.service.tick(); f.advance(30_000);
+    const generating = f.service.tick();
+    await vi.waitFor(() => expect(createLocalKnowledgeApplication(f.workspace).runs()[0]?.attempts).toHaveLength(2));
+    f.service.stop(f.workspace, 'thread'); await generating;
+    const stopped = f.service.status(f.workspace, 'thread')!;
+    expect(stopped).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 1 }); expect(stopped.notBefore).toBeTruthy();
+    const run = createLocalKnowledgeApplication(f.workspace).runs()[0]; expect(run.status).toBe('cancelled'); expect(run.attempts[1].outcome).toBeUndefined();
+    // The processing fact keeps its original deadline across explicit reapproval.
+    const directory = join(f.workspace, 'auto-extraction', 'cooldowns');
+    const required = readdirSync(directory).map(name => join(directory, name)).find(path => JSON.parse(readFileSync(path, 'utf8')).decision === 'required')!;
+    const bytes = readFileSync(required);
+    f.tasks.push({ ...f.tasks[0], turnId: 'turn-4' }); await f.enable(5, policy, selection); await f.tick();
+    expect(calls).toBe(1); expect(f.service.status(f.workspace, 'thread')?.notBefore).toBe(stopped.notBefore); expect(readFileSync(required)).toEqual(bytes);
+    // Recreate the crash boundary before fact/state publication using only this fixture's files.
+    f.service.stop(f.workspace, 'thread');
+    const statePath = join(f.workspace, 'auto-extraction', readdirSync(join(f.workspace, 'auto-extraction')).find(name => /^[a-f0-9]{64}\.json$/.test(name))!);
+    const withoutDeadline = f.service.status(f.workspace, 'thread')!; delete withoutDeadline.notBefore;
+    writeFileSync(statePath, JSON.stringify(withoutDeadline)); rmSync(required);
+    f.advance(1000); await f.enable(5, policy, selection); await f.tick();
+    const recovered = JSON.parse(readFileSync(required, 'utf8'));
+    expect(recovered).toMatchObject({ decision: 'required', runId: run.runId, attemptId: run.attempts[0].attemptId, outcome: run.attempts[0].outcome });
+    expect(Date.parse(recovered.notBefore)).toBeGreaterThanOrEqual(Date.parse(stopped.notBefore!)); expect(calls).toBe(1);
+  });
+  it('honors archived server cooldown across windows and applies one non-refundable token allowance', async () => {
+    for (const retryAfterMs of [120_000, 300_001, 86_400_001, -1]) {
+    const f = fixture(); let calls = 0;
+    const policy = boundedExtractionPolicy({ profileId: 'loopback-test/v1', maxInvocations: 1, maxReasks: 0, maxTotalTokens: 2176, maxOutputTokens: 64 });
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1')); calls++;
+      const output = JSON.stringify(wireModelWindow()).replaceAll('record-1', JSON.parse(input.prompt).excerpts[0].evidenceRef);
+      return { ok: calls > 1, output: calls > 1 ? output : null,
+        ...(calls === 1 ? { error: 'Synthetic transient failure', failure: { failureKind: 'rate_limit' as const, retryAfterMs } } : {}),
+        durationMs: 1, durationApiMs: 1, stopReason: calls > 1 ? 'stop' : 'error', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+        tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, numTurns: 1 };
+    });
+    f.setFactory((executor, model) => configuredExtractionModel(executor, model, producer, { maxOutputTokens: 64 }));
+    await f.enable(5, policy, { executor: 'openai-api', model: 'authored-loopback-test' }); await f.tick();
+    if (retryAfterMs < 0) {
+      expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'failed', callsUsed: 1, tokensReserved: 1088 });
+      f.tasks.push({ ...f.tasks[0], turnId: 'turn-4' }); await f.tick(); expect(calls).toBe(1); continue;
+    }
+    expect(calls).toBe(1); expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: true, reason: 'waiting', callsUsed: 1, tokensReserved: 1088 });
+    const notBefore = f.service.status(f.workspace, 'thread')!.notBefore!;
+    expect(Date.parse(notBefore) - f.now()).toBe(retryAfterMs);
+    if (retryAfterMs > 24 * 60 * 60 * 1000) {
+      f.tasks.push({ ...f.tasks[0], turnId: 'turn-4' }); f.advance(24 * 60 * 60 * 1000); await f.service.tick();
+      expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'expired', callsUsed: 1 });
+      expect(calls).toBe(1); continue;
+    }
+    await f.tick(); expect(calls).toBe(1);
+    f.tasks.push({ ...f.tasks[0], turnId: 'turn-4' }); await f.tick(); expect(calls).toBe(1);
+    expect(createLocalKnowledgeApplication(f.workspace).runs()).toHaveLength(1);
+    f.advance(Date.parse(notBefore) - f.now() - 1); await f.service.tick(); expect(calls).toBe(1);
+    f.advance(1); await f.service.tick(); expect(calls).toBe(1); // The new source must still become stable.
+    f.advance(30_000); await f.service.tick(); expect(calls).toBe(2);
+    expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 2, tokensReserved: 2176 });
+    f.tasks.push({ ...f.tasks[0], turnId: 'turn-5' }); await f.tick(); expect(calls).toBe(2);
+    expect(createLocalKnowledgeApplication(f.workspace).list()).toHaveLength(1);
+    }
+  });
   it('rejects oversized input without reserving calls and can be explicitly enabled again after narrowing', async () => {
     const f = fixture();
     const load = f.catalog.loadTaskMessageRecords!.bind(f.catalog);
@@ -95,6 +238,23 @@ describe('authorized conversation auto extraction', () => {
     await f.enable(1); await f.tick();
     expect(f.inputs).toHaveLength(1);
     expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'quota', callsUsed: 1 });
+    const preflight = fixture(); let dispatched = 0;
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1')); dispatched++;
+      return { ok: true, output: JSON.stringify(wireModelWindow()).replaceAll('record-1', JSON.parse(input.prompt).excerpts[0].evidenceRef),
+        durationMs: 1, durationApiMs: 1, stopReason: 'stop', inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
+        costUSD: 0, costReportedByExecutor: false, numTurns: 1 };
+    });
+    preflight.setFactory((executor, model) => configuredExtractionModel(executor, model, producer, { maxOutputTokens: 64 }));
+    const policy = boundedExtractionPolicy({ profileId: 'loopback-test/v1', maxInvocations: 1, maxReasks: 0, maxTotalTokens: 1087, maxOutputTokens: 64 });
+    const selection = { executor: 'openai-api', model: 'authored-loopback-test' };
+    await preflight.enable(1, policy, selection); await preflight.tick();
+    expect(dispatched).toBe(0); expect(preflight.service.status(preflight.workspace, 'thread')).toMatchObject({ enabled: false, callsUsed: 0, attemptedVersions: [] });
+    expect(readdirSync(join(preflight.workspace, 'auto-extraction')).some(name => name.startsWith('attempt-'))).toBe(false);
+    await preflight.enable(1, { ...policy, maxTotalTokens: 1088 }, selection); await preflight.tick();
+    expect(dispatched).toBe(1);
+    preflight.service.stop(preflight.workspace, 'thread'); await preflight.enable(1, { ...policy, maxTotalTokens: 1088 }, selection); await preflight.tick();
+    expect(dispatched).toBe(1); // Explicit reapproval never refunds or resends the already-dispatched window.
   });
   it('rejects whole-conversation byte or message capacity while keeping each task and a later narrowed source readable', async () => {
     for (const boundary of ['bytes', 'messages'] as const) {
@@ -132,7 +292,7 @@ describe('authorized conversation auto extraction', () => {
     for (const boundary of ['attempted-versions', 'directory-entries'] as const) {
       const f = fixture(); await f.enable(1);
       const directory = join(f.workspace, 'auto-extraction');
-      const files = readdirSync(directory), stateFile = join(directory, files.find(name => !name.startsWith('permission-'))!);
+      const files = readdirSync(directory), stateFile = join(directory, files.find(name => /^[a-f0-9]{64}\.json$/.test(name))!);
       const permissionFile = join(directory, files.find(name => name.startsWith('permission-'))!);
       const permission = readFileSync(permissionFile);
       const fillers: string[] = [];
@@ -156,7 +316,8 @@ describe('authorized conversation auto extraction', () => {
       expect(createLocalKnowledgeApplication(f.workspace).runs()).toEqual([]);
       expect(readdirSync(f.workspace)).toEqual(['auto-extraction']);
       expect(f.inputs).toHaveLength(0);
-      const before = () => readdirSync(directory).sort().map(name => [name, readFileSync(join(directory, name), 'utf8')]);
+      const before = () => readdirSync(directory).sort().map(name => [name, name === 'cooldowns'
+        ? readdirSync(join(directory, name)).sort() : readFileSync(join(directory, name), 'utf8')]);
       const stoppedBytes = before(); await f.tick();
       expect(before()).toEqual(stoppedBytes); expect(f.inputs).toHaveLength(0);
       if (boundary === 'directory-entries') {
@@ -176,16 +337,38 @@ describe('authorized conversation auto extraction', () => {
       expect(readFileSync(permissionFile)).toEqual(permission);
     }
   });
-  it('aborts in-flight generation on stop and preserves the reservation without a retry', async () => {
-    const f = fixture(); let aborted = false; let entered!: () => void;
+  it('stops in-flight generation, preserves a late 429 and protects a renewed owner until its own cooldown check', async () => {
+    const f = fixture(); let aborted = false, calls = 0; let entered!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
-    f.setModel(async (_system, _input, signal) => { entered(); await new Promise<void>((_resolve, reject) => {
-      signal!.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')); }, { once: true });
-    }); throw new Error('unreachable'); });
-    await f.enable(); await f.service.tick(); f.advance(30_000);
+    let finishLate!: () => void;
+    const late = new Promise<void>(resolve => { finishLate = resolve; });
+    const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321/v1' }, (_executor, options) => async input => {
+      options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, 'single-completion/v1')); calls++;
+      input.abortSignal!.addEventListener('abort', () => { aborted = true; }, { once: true }); entered(); await late;
+      return { ok: false, output: null, error: 'Synthetic late rate limit', failure: { failureKind: 'rate_limit', retryAfterMs: 120_000 },
+        durationMs: 1, durationApiMs: 1, stopReason: 'error', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+        tokenUsageReportedByExecutor: false, costUSD: 0, costReportedByExecutor: false, numTurns: 0 };
+    });
+    f.setFactory((executor, model) => configuredExtractionModel(executor, model, producer, { maxOutputTokens: 64 }));
+    await f.enable(5, undefined, { executor: 'openai-api', model: 'authored-loopback-test' }); await f.service.tick(); f.advance(30_000);
     const generating = f.service.tick(); await started;
-    f.service.stop(f.workspace, 'thread'); await generating;
-    expect(aborted).toBe(true); expect(f.service.status(f.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 1 });
+    f.service.stop(f.workspace, 'thread');
+    const stopped = f.service.status(f.workspace, 'thread')!;
+    expect(aborted).toBe(true); expect(stopped).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 1 });
+    f.tasks.push({ ...f.tasks[0], turnId: 'turn-4' });
+    const next = f.create();
+    const renewed = await next.enable(f.workspace, 'thread', { token: (await next.preview('thread')).token,
+      executor: 'openai-api', model: 'authored-loopback-test', maxCalls: 5 });
+    expect(renewed.lastRunId).toBe(stopped.lastRunId); expect(renewed.permissionId).not.toBe(stopped.permissionId);
+    expect(renewed).toMatchObject({ enabled: true, reason: 'waiting', callsUsed: 0 });
+    const statePath = join(f.workspace, 'auto-extraction', readdirSync(join(f.workspace, 'auto-extraction')).find(name => /^[a-f0-9]{64}\.json$/.test(name))!);
+    const before = readFileSync(statePath);
+    finishLate(); await generating;
+    expect(readFileSync(statePath)).toEqual(before); // The old owner published a fact, never rewrote the new grant.
+    const reconciled = next.status(f.workspace, 'thread')!;
+    expect(reconciled).toMatchObject({ permissionId: renewed.permissionId, owner: renewed.owner, enabled: true, reason: 'waiting', callsUsed: 0 });
+    expect(Date.parse(reconciled.notBefore!)).toBe(f.now() + 120_000);
+    await next.tick(); f.advance(30_000); await next.tick(); expect(calls).toBe(1);
     expect(createLocalKnowledgeApplication(f.workspace).runs()[0].status).toBe('cancelled');
   });
   it('expires without calling and requires another explicit enable after Studio closes', async () => {
@@ -193,6 +376,22 @@ describe('authorized conversation auto extraction', () => {
     expect(f.inputs).toHaveLength(0); expect(f.service.status(f.workspace, 'thread')?.reason).toBe('expired');
     await f.enable(); f.service.close(); const next = f.create();
     expect(next.status(f.workspace, 'thread')?.enabled).toBe(false); await next.tick(); expect(f.inputs).toHaveLength(0);
+    const delayed = fixture(); await delayed.enable(); await delayed.service.tick(); delayed.advance(24 * 60 * 60 * 1000 - 1);
+    const original = fs.fsyncSync; let crossedDeadline = false;
+    const sync = vi.spyOn(fs, 'fsyncSync').mockImplementation(fd => {
+      original(fd);
+      if (crossedDeadline || !fs.fstatSync(fd).isFile()) return;
+      let document: { automationKind?: string };
+      try { document = JSON.parse(fs.readFileSync(fd, 'utf8')); } catch { return; }
+      if (document.automationKind === 'conversation-knowledge-attempt') { crossedDeadline = true; delayed.advance(100); }
+    });
+    try {
+      syncBuiltinESMExports();
+      await delayed.service.tick();
+    } finally { sync.mockRestore(); syncBuiltinESMExports(); }
+    expect(crossedDeadline).toBe(true); expect(delayed.inputs).toHaveLength(0);
+    expect(delayed.service.status(delayed.workspace, 'thread')).toMatchObject({ enabled: false, reason: 'expired', callsUsed: 1 });
+    expect(readdirSync(join(delayed.workspace, 'auto-extraction')).filter(name => /^attempt-.*\.json$/.test(name))).toHaveLength(1);
   });
   it('recovers a dead owner conservatively and rejects invalid sidecars or concurrent owners', async () => {
     const f = fixture(); await f.enable();
