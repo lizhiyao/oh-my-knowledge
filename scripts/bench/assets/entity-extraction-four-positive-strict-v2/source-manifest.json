@@ -1,0 +1,196 @@
+{
+  "manifestKind": "strict-wire-four-positive-experiment-assets/v1",
+  "productionActivated": false,
+  "sourceDirectory": "/tmp/omk-1236-fewshot",
+  "readScope": [
+    "fewshot-candidate-v1.json",
+    "positive-fewshot-block.txt",
+    "v14.prompt.txt",
+    "v15.candidate.prompt.txt",
+    "PAIRING-NOTES.zh.md"
+  ],
+  "excluded": [
+    "host-counterexamples-only.json",
+    "existing corpus",
+    "heldout/validation cases",
+    "real sources"
+  ],
+  "promptEncoding": "raw-utf8-no-added-final-newline",
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "files": [
+    {
+      "path": "examples/synthetic-normative-grounding-and-partial-admission-v1.domain-output.json",
+      "bytes": 1721,
+      "sha256": "sha256:f1a34fc9d9cb7af469e820cc04d1070666005839a7e9853aa6277f57a4f3cb47",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-normative-grounding-and-partial-admission-v1.input.json",
+      "bytes": 277,
+      "sha256": "sha256:3fe0d450f373a651bd04f12b97f036897f005daaccd721b26be859c8d2d7d7cf",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-normative-grounding-and-partial-admission-v1.wire-output.json",
+      "bytes": 1735,
+      "sha256": "sha256:097a90c55cbdbda29b2eb8f9e944ceec46acd8949a80394bb099aecbaf7b4e4b",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-occurrence-and-identifier-v1.domain-output.json",
+      "bytes": 1310,
+      "sha256": "sha256:9deaa50490b315d9fa5835b52d6525c1684c08b28d18d3ffd23f5bd9b9d28d26",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-occurrence-and-identifier-v1.input.json",
+      "bytes": 192,
+      "sha256": "sha256:d5fdeedf9bebb9774999c80b3fa8248b9bdc9d0b79831bbe8ab6206d325a1b21",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-occurrence-and-identifier-v1.wire-output.json",
+      "bytes": 1310,
+      "sha256": "sha256:9deaa50490b315d9fa5835b52d6525c1684c08b28d18d3ffd23f5bd9b9d28d26",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-property-and-independent-metric-v1.domain-output.json",
+      "bytes": 3270,
+      "sha256": "sha256:952e4d83340adce7d8ddad4e2fa7d2e5f99c62551ae9c332f4587364a8c807d4",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-property-and-independent-metric-v1.input.json",
+      "bytes": 249,
+      "sha256": "sha256:5fc6f598d6932c04cf3ddb35b7cf021ab8ed43374a33f93e026071d648f5689f",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-property-and-independent-metric-v1.wire-output.json",
+      "bytes": 3284,
+      "sha256": "sha256:ebc5366d59acb265bd4062f58eeb73e2f0e5e98b3ff29f1967e2e99a8449761e",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-unknown-not-resolved-by-assistant-v1.domain-output.json",
+      "bytes": 1271,
+      "sha256": "sha256:ff097a444e7d6e7dc9e083fa48711f8d9d990fb3c727887bdd7d1dbc6bb71056",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-unknown-not-resolved-by-assistant-v1.input.json",
+      "bytes": 440,
+      "sha256": "sha256:c75de602c332429f3e344b95a31d4ed2483f1b8ee915118a9703cff73c4ebbd7",
+      "endsWithLf": false
+    },
+    {
+      "path": "examples/synthetic-unknown-not-resolved-by-assistant-v1.wire-output.json",
+      "bytes": 1271,
+      "sha256": "sha256:ff097a444e7d6e7dc9e083fa48711f8d9d990fb3c727887bdd7d1dbc6bb71056",
+      "endsWithLf": false
+    },
+    {
+      "path": "mechanical-diff.json",
+      "bytes": 945,
+      "sha256": "sha256:26ff4bcb28dd37785547a907c820bbcbff80f22a834f6cf85d0228c484e5fb08",
+      "endsWithLf": true
+    },
+    {
+      "path": "original-rule-prefix.txt",
+      "bytes": 22514,
+      "sha256": "sha256:960b45dc357cd86471a7e55ddd975d71b52de416ff80f001d1a89c921825d909",
+      "endsWithLf": true
+    },
+    {
+      "path": "originals/fewshot-candidate-v1.json",
+      "bytes": 18482,
+      "sha256": "sha256:8d26aa7e9e9d0a435a0b8362f97ab7fda2bb9c0a4ed62fe40e89e4d145e75538",
+      "endsWithLf": true
+    },
+    {
+      "path": "originals/PAIRING-NOTES.zh.md",
+      "bytes": 7488,
+      "sha256": "sha256:0b6844f899c9a6fe379eaf803291f82cfab2d18e23e665e2806021de7d165b7d",
+      "endsWithLf": true
+    },
+    {
+      "path": "originals/positive-fewshot-block.txt",
+      "bytes": 9044,
+      "sha256": "sha256:2dfb1afb7752e75627900cae1904fa4fbf8a57e2398839315fc2dab29dc3278c",
+      "endsWithLf": false
+    },
+    {
+      "path": "originals/v14.prompt.txt",
+      "bytes": 35784,
+      "sha256": "sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399",
+      "endsWithLf": false
+    },
+    {
+      "path": "originals/v15.candidate.prompt.txt",
+      "bytes": 44829,
+      "sha256": "sha256:8a231a0f136717157a299189eed903c32510e3a77fe758535d6683fb042f5fde",
+      "endsWithLf": false
+    },
+    {
+      "path": "prepare-strict-wire.mjs",
+      "bytes": 15081,
+      "sha256": "sha256:dbf373e6a043a247acab8a8e549a4eb60183789db29d96be38bcb67139332cce",
+      "endsWithLf": true
+    },
+    {
+      "path": "preserved-final-output-rule.txt",
+      "bytes": 157,
+      "sha256": "sha256:53fd59ac8fd0827058bb994ad0069913991c28103cd78ade3ff1bce007b6a203",
+      "endsWithLf": true
+    },
+    {
+      "path": "shared-wire-instructions.txt",
+      "bytes": 886,
+      "sha256": "sha256:1bf2f73c38d67577010e0b7461b4e64f294928778d32597bffa519a862edc1c2",
+      "endsWithLf": true
+    },
+    {
+      "path": "strict-positive-examples.json",
+      "bytes": 17246,
+      "sha256": "sha256:4c2d04bf6bfb9a9b27d1ef89e80fe9c36f734fa9a5686b71f89d023ff618bec6",
+      "endsWithLf": true
+    },
+    {
+      "path": "strict-positive-fewshot-block.txt",
+      "bytes": 9132,
+      "sha256": "sha256:268e1880c2c776525ac44f6d1d79f4f80ab90ab53380b3964d4c2843f036d894",
+      "endsWithLf": true
+    },
+    {
+      "path": "v14-derived-strict.prompt.txt",
+      "bytes": 31884,
+      "sha256": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+      "endsWithLf": false
+    },
+    {
+      "path": "v15-candidate-strict.prompt.txt",
+      "bytes": 41017,
+      "sha256": "sha256:7bf5c9fbf5e181346c76f84963911adf5b25a52db954d1e80495327b476f0dd6",
+      "endsWithLf": false
+    },
+    {
+      "path": "verification.json",
+      "bytes": 6971,
+      "sha256": "sha256:fc2aa06e5afc017be44861a91e75e576a73f8c78654c849e8d5e0486aebfafd1",
+      "endsWithLf": true
+    },
+    {
+      "path": "wire-identity.json",
+      "bytes": 767,
+      "sha256": "sha256:db39b23186df42d1051537be69357bee123a211b92ced1194430495d534b449b",
+      "endsWithLf": true
+    },
+    {
+      "path": "wire-schema.json",
+      "bytes": 8327,
+      "sha256": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+      "endsWithLf": false
+    }
+  ]
+}
