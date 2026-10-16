@@ -20,6 +20,20 @@ export const EntityLinkSuggestionSchema = z.strictObject({
   assessment: z.enum(['same_object', 'different_objects', 'insufficient_evidence']),
   leftMentionIds: z.array(id).min(1).max(64), rightMentionIds: z.array(id).min(1).max(64), rationale: text,
 });
+
+/** Shared deterministic admission; a valid assessment is still only a proposal. */
+export function checkEntityLinkSuggestion(value: unknown, binding: {
+  left: Pick<EntityLinkEndpoint, 'entityId' | 'mentionIds'>;
+  right: Pick<EntityLinkEndpoint, 'entityId' | 'mentionIds'>;
+}) {
+  const suggestion = EntityLinkSuggestionSchema.parse(value);
+  for (const side of ['left', 'right'] as const) {
+    const mentions = suggestion[`${side}MentionIds`];
+    if (suggestion[`${side}EntityId`] !== binding[side].entityId || new Set(mentions).size !== mentions.length
+      || mentions.some(mentionId => !binding[side].mentionIds.includes(mentionId))) throw new Error('Entity-link evidence mismatch.');
+  }
+  return suggestion;
+}
 export const EntityLinkConflictCodeSchema = z.enum(['entity_changed', 'source_unavailable', 'identity_unresolved', 'owner_conflict', 'library_changed', 'library_capacity', 'pair_already_reviewed']);
 export class EntityLinkConflictError extends Error {
   constructor(readonly conflictCode: z.infer<typeof EntityLinkConflictCodeSchema>) { super(`Entity-link ${conflictCode} conflict.`); }

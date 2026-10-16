@@ -2,7 +2,7 @@
 
 ## Goal and scope
 
-This design builds on beta entity extraction to organize knowledge across conversations in one explicitly selected knowledge workspace. The first delivery supports reading, maintenance, and artifact generation through lists, object knowledge pages, sources, and organization history; a graph is an optional later view.
+The library organizes knowledge across conversations in one explicitly selected knowledge workspace. Lists, object knowledge pages, sources, and organization history support reading, maintenance, and artifact generation. The [construction design](knowledge-domain-model.md) owns the full extraction-to-evaluation chain; this page owns organization, membership revisions and knowledge projection. A graph is an optional view, not an identity mechanism.
 
 Entities are entry points. Knowledge consists of facts, cases, or methods with scenario, conditions, time, and evidence. One item may concern several entities; extracting an entity need not produce knowledge, and retention does not verify truth.
 
@@ -44,8 +44,8 @@ Lists and details stay within the application viewport with internal scrolling, 
 
 ## Acceptance and limits
 
-Reuse two non-overlapping windows of existing redacted real SDK maintenance records: an earlier protected-override review and later public-interface changes. Review project-specific SDK core identity and knowledge. The later historical output calls core a generic object; where source supports it, explicitly correct the local copy to component and apply it to a new knowledge revision. This maintenance is not an automatic extraction result and never overwrites raw outputs or historical scores.
+Use distinct source windows and inspect source-supported identity and knowledge. If a recorded entity needs correction before organization, correct a local revision explicitly and apply it to a new knowledge revision. This maintenance is not an automatic extraction result and never overwrites raw outputs or historical scores.
 
 Acceptance covers cross-window linking and removal, same-name separation, level/ambiguity rejection, multi-entity entry points, exact revisions, save/reopen, sources and history, source loss, conflicts, empty results, and artifact save. Existing-output replay makes no model calls; normal, short, and narrow Studio flows are tested separately.
 
-This stage verifies library functionality, not overall extraction accuracy, truth, automatic cross-Agent identity, or task benefits. Record interaction costs and limits and contribute later-use evidence to the knowledge-value research; neither counts nor completed UI establish benefits.
+Library workflow evidence verifies organization functionality. Extraction and association quality follow their [extraction](../entities/entity-extraction-evaluation.md) and [entity-link](../entities/entity-link-evaluation.md) evaluation protocols. Truth, automatic cross-Agent identity, and task benefits are separate questions. Record interaction costs and limits and contribute later-use evidence to the knowledge-value research; neither counts nor completed UI establish benefits.

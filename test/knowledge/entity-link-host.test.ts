@@ -75,6 +75,7 @@ describe('entity-link actual host/store/API flow', () => {
       expect(saved.events.at(-1)!.command.commandKind).toBe('start'); expect(body).toMatchObject({ model: selection.model, n: 1, stream: false, max_completion_tokens: 4096, response_format: { type: 'json_schema' } }); return native(suggestion(preview)); });
     const app = createLocalEntityLinks(root, createOpenAiArchiveProducer(transport.env)); const preview = app.preview(a.ref, b.ref, selection);
     expect(transport.count).toBe(0); expect(app.list()).toEqual([]);
+    expect(app.quality()).toMatchObject({ readStatus: 'available', reviewCount: 0, groups: [] });
     const altered = structuredClone(preview); altered.input.left.entity.label = '与发送计划不同的展示'; expect(() => EntityLinkPreviewSchema.parse(altered)).toThrow('content/context');
     const forgedContext = structuredClone(preview); (forgedContext.producerContext.proof as Record<string, unknown>).endpoint = 'https://unconfirmed.invalid/v1/chat/completions'; expect(() => parseEntityLinkPreview(forgedContext)).toThrow('integrity');
     expect(parseEntityLinkPreview(preview)).toEqual(preview); expect(preview.plan.producerContextDigest).toBe(preview.producerContext.reservationDigest); const stored = prepare(app, preview);
@@ -205,6 +206,10 @@ describe('entity-link actual host/store/API flow', () => {
     knowledge().deleteSource(c.source.snapshotId); const accepted = accept(app, another);
     expect(app.project(accepted.reviewId).status).toBe('accepted_conflict'); expect(accepted.events.at(-1)!.command).toMatchObject({ application: { conflictCode: 'source_unavailable' } });
     expect(createLocalKnowledgeLibrary(root).catalog().objectCount).toBe(0);
+    const quality = app.quality(); expect(quality.readStatus).toBe('available'); expect(quality.groups).toHaveLength(1);
+    expect(quality.groups[0]).toMatchObject({ reviews: { total: 2, dispatched: 2 }, admission: { admitted: 2 },
+      humanDecisions: { decided: 2, accepted: 1, rejected: 1 }, organization: { acceptedConflict: 1 }, usage: { costUSD: { unknownReviewCount: 2, knownTotal: null } } });
+    expect(transport.count).toBe(2); // Aggregation neither rereads deleted sources nor dispatches another request.
   });
   it('preserves an existing owner and unrelated members, and terminates known library history capacity', async () => {
     const a = await window('a'), b = await window('b'), c = await window('c'); let preview!: ReturnType<EntityLinkApplication['preview']>;
@@ -286,7 +291,9 @@ describe('entity-link actual host/store/API flow', () => {
   it('fails closed on corrupt/unsupported/symlink files, releases atomic temps/locks, and rejects escaped transactions', async () => {
     const a = await window('a'), b = await window('b'), app = host({ OPENAI_API_KEY: 'fixture-key-long' });
     const preview = app.preview(a.ref, b.ref, selection), saved = prepare(app, preview), file = join(root, 'entity-links', `${saved.reviewId}.json`), bytes = readFileSync(file);
-    writeFileSync(file, '{bad'); expect(() => app.list()).toThrow(); expect(() => app.recall(a.ref)).toThrow(); writeFileSync(file, JSON.stringify({ ...saved, storeKind: 'entity-link-review-history' }));
+    writeFileSync(file, '{bad'); expect(() => app.list()).toThrow(); expect(() => app.recall(a.ref)).toThrow();
+    expect(app.quality()).toMatchObject({ readStatus: 'unreadable', reviewCount: null, groups: [] });
+    writeFileSync(file, JSON.stringify({ ...saved, storeKind: 'entity-link-review-history' }));
     expect(() => app.read(saved.reviewId)).toThrow('knowledge_storage_unsupported'); writeFileSync(file, bytes);
     let escaped!: EntityLinkInvocationTransaction; new FileEntityLinkStore(join(root, 'entity-links'), root).transaction(tx => { escaped = tx; });
     expect(() => escaped.save(saved, 1)).toThrow('expired'); expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false);

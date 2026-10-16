@@ -5,6 +5,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { KnowledgeEntities } from '../../../src/studio/web/components/knowledge/entities.js';
 import { EntityLinksDrawer } from '../../../src/studio/web/components/knowledge/entity-links.js';
 import { entityLinkFixture } from './entity-link-fixture.js';
+import { entityLinkQuality } from '../../../src/observability/knowledge-extraction/entity-link-quality.js';
+import { entityLinkDigest } from '../../../src/observability/knowledge-extraction/entity-link-hash.js';
+import { entityLinkTextHash } from '../../../src/observability/knowledge-extraction/adapters/entity-link-api-producer.js';
+import type { EntityLinkStudioQuality } from '../../../src/studio/view-models/knowledge/entity-links.js';
 
 // Keep the production handlers/evidence; native controls isolate lifecycle from portal/layout machinery.
 vi.mock('antd', () => {
@@ -18,7 +22,8 @@ vi.mock('antd', () => {
     Space: ({ children }: { children: ReactNode }) => createElement('div', {}, children), Spin: () => createElement('span', {}, 'loading'), Tag: ({ children }: { children: ReactNode }) => createElement('span', {}, children) };
 });
 let fixture: Awaited<ReturnType<typeof entityLinkFixture>>;
-beforeAll(async () => { fixture = await entityLinkFixture(); });
+let quality: EntityLinkStudioQuality;
+beforeAll(async () => { fixture = await entityLinkFixture(); quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }); });
 afterAll(() => fixture?.cleanup());
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 function harness(options: { failPropose?: boolean } = {}) {
@@ -26,7 +31,7 @@ function harness(options: { failPropose?: boolean } = {}) {
   const fetch = vi.fn(async (_url: unknown, init: RequestInit) => {
     const body = JSON.parse(init.body as string); calls.push(body);
     if (body.operation === 'propose' && options.failPropose) throw new Error('ack lost');
-    const value = body.operation === 'candidates' ? fixture.candidates : body.operation === 'list' ? [] : body.operation === 'entity-detail' ? fixture.right
+    const value = body.operation === 'quality' ? quality : body.operation === 'candidates' ? fixture.candidates : body.operation === 'list' ? [] : body.operation === 'entity-detail' ? fixture.right
       : body.operation === 'preview' ? fixture.preview : fixture.saved;
     return new Response(JSON.stringify(value), { status: 200 });
   });
@@ -73,7 +78,7 @@ describe('entity-link drawer lifecycle and explicit authorization', () => {
       const value = body.operation === 'entity-catalog' ? { rows: [], analysisCount: 2, total: 0, page: 1, pageSize: 20, unavailableAnalyses: 0, knowledgeStatus: 'available' }
         : body.operation === 'owners' ? []
           : body.operation === 'entity-detail' ? (++detailReads && (body.analysisId === fixture.right.history.analysisId ? fixture.right : fixture.left))
-            : body.operation === 'candidates' ? fixture.candidates : body.operation === 'list' ? [] : body.operation === 'preview' ? fixture.preview : fixture.saved;
+            : body.operation === 'quality' ? quality : body.operation === 'candidates' ? fixture.candidates : body.operation === 'list' ? [] : body.operation === 'preview' ? fixture.preview : fixture.saved;
       return new Response(JSON.stringify(value));
     });
     vi.stubGlobal('fetch', fetch);
@@ -92,7 +97,7 @@ describe('entity-link drawer lifecycle and explicit authorization', () => {
   });
   it('aborts old workspace requests and ignores late responses without dispatching', async () => {
     let release!: (response: Response) => void; const old = new Promise<Response>(resolve => { release = resolve; }); let signal: AbortSignal | undefined;
-    const fetch = vi.fn((_url: unknown, init: RequestInit) => { const body = JSON.parse(init.body as string); if (body.workspace === '/old') { signal = init.signal as AbortSignal; return old; } return Promise.resolve(new Response(JSON.stringify(body.operation === 'candidates' ? fixture.candidates : []))); });
+    const fetch = vi.fn((_url: unknown, init: RequestInit) => { const body = JSON.parse(init.body as string); if (body.workspace === '/old') { signal = init.signal as AbortSignal; return old; } return Promise.resolve(new Response(JSON.stringify(body.operation === 'quality' ? quality : body.operation === 'candidates' ? fixture.candidates : []))); });
     vi.stubGlobal('fetch', fetch);
     const rendered = render(createElement(EntityLinksDrawer, { workspace: '/old', detail: fixture.left, lang: 'zh', onClose() {} }));
     rendered.rerender(createElement(EntityLinksDrawer, { workspace: fixture.workspace, detail: fixture.left, lang: 'zh', onClose() {} }));

@@ -9,12 +9,13 @@ import {
   type EntityLinkInvocationPorts, type EntityLinkExecutionOutcome, type EntityLinkExecutionResult,
 } from '../../src/knowledge/entities/link-invocation.js';
 import { entityLinkConfirmationDigest, transitionEntityLinkInvocation, projectEntityLinkInvocation, validateEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
+import { entityLinkQuality } from '../../src/observability/knowledge-extraction/entity-link-quality.js';
 
 const textHash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const hash = (value: unknown) => textHash(canonicalJson(value));
 const human = { actorKind: 'human' as const, actorId: 'fixture-person' }, host = { actorKind: 'agent' as const, actorId: 'fixture-host', executionRef: 'fixture-execution' };
 const at = '2026-10-16T00:00:00Z';
-function fixture() {
+function fixture(options: { model?: string; system?: string; endpoint?: string } = {}) {
   const binding = () => ({ analysisId: randomUUID(), entityId: randomUUID(), entityRevisionId: randomUUID(), generation: 1,
     snapshotId: randomUUID(), sourceVersion: textHash('source'), owner: null, mentionIds: [randomUUID()] });
   const left = binding(), right = binding();
@@ -22,21 +23,22 @@ function fixture() {
     entity: { entityId: endpoint.entityId, label: '同名对象', description: '只在此来源窗口所指的对象', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
       referentKind: 'object', componentRef: null, collection: null },
     mentions: [{ mentionId: endpoint.mentionIds[0], entityId: endpoint.entityId, basis: 'explicit', rationale: '原文提及', selection: { evidenceRef: 'record-1', start: 0, end: 4, quote: '同名对象' } }], limitations: [] });
-  const schema = z.record(z.string(), z.json()).parse(z.toJSONSchema(EntityLinkSuggestionSchema)), system = 'fixture prompt only';
+  const schema = z.record(z.string(), z.json()).parse(z.toJSONSchema(EntityLinkSuggestionSchema)), system = options.system ?? 'fixture prompt only';
   const requestBody = { requestKind: 'entity-link-execution-request' as const, protocolId: 'entity-link-executor/v1' as const, executor: 'openai-api' as const,
-    model: 'fixture-model', system, prompt: canonicalJson({ protocolId: 'entity-link-model-input/v1', left: side(left), right: side(right) }),
+    model: options.model ?? 'fixture-model', system, prompt: canonicalJson({ protocolId: 'entity-link-model-input/v1', left: side(left), right: side(right) }),
     promptVersion: 'entity-link-proposal-v1' as const, promptHash: textHash(system), responseSchemaId: 'entity-link-suggestion/v1' as const, responseSchemaHash: hash(schema),
     outputFormat: { mode: 'json-schema' as const, name: 'entity_link_suggestion_v1' as const, schema }, timeoutMs: 300_000 as const, maxOutputTokens: 4096 as const };
   let alive = true, producerCurrent = true, reservationAvailable = true, reservationBytes = 100_000;
-  const reviewId = randomUUID(), inputBody = { left, right, request: { ...requestBody, requestDigest: hash(requestBody) }, retryOf: null, producerContextDigest: hash({ producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: hash(requestBody), sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof: { fixture: true } }) };
+  const proof = { fixture: true, endpoint: options.endpoint ?? 'https://fixture.invalid' };
+  const reviewId = randomUUID(), inputBody = { left, right, request: { ...requestBody, requestDigest: hash(requestBody) }, retryOf: null, producerContextDigest: hash({ producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: hash(requestBody), sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof }) };
   const plan: EntityLinkInvocationPlan = { ...inputBody, confirmedDigest: entityLinkConfirmationDigest(reviewId, inputBody, hash) };
   const ports: EntityLinkInvocationPorts = { hashJson: hash, hashText: textHash,
     reserve: request => {
       if (!reservationAvailable) return;
       // An explicit TEST producer only. These numbers are not a production bound.
-      const proof = { producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: request.requestDigest,
-        sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof: { fixture: true } };
-      return { ...proof, reservationDigest: hash(proof) };
+      const evidence = { producerId: 'fixture-only/v1', producerRevision: textHash('fixture-producer'), requestDigest: request.requestDigest,
+        sourceChannels: [{ channel: 'fixture-result', maxBytes: reservationBytes }], maxOutcomeJsonBytes: reservationBytes, proof };
+      return { ...evidence, reservationDigest: hash(evidence) };
     }, reservationIsCurrent: (request, reservation) => producerCurrent && reservation.producerId === 'fixture-only/v1' && reservation.requestDigest === request.requestDigest,
     proveOwnerExited: owner => alive ? undefined : { proofKind: 'local-process-exited', owner, observedAt: at } };
   let history: EntityLinkInvocation | undefined;
@@ -157,4 +159,54 @@ describe('entity-link invocation pure production flow', () => {
     expect(() => f.apply(f.command({ commandKind: 'application_conflict', conflictCode: 'library_capacity' }, human))).toThrow('stable reviewed intent');
   });
 
+});
+
+describe('entity-link quality saved-fact projection', () => {
+  it('separates invocation, admission and human decision denominators, including rejected executions and unknown usage', () => {
+    const prepared = fixture(); prepared.prepare();
+    const cancelled = fixture(); cancelled.prepare(); cancelled.apply(cancelled.command({ commandKind: 'cancel_before_start', reason: '停止发送' }, human));
+    const running = fixture(); running.prepare(); running.start();
+    const unknown = fixture(); unknown.prepare(); unknown.start(); unknown.setAlive(false); unknown.apply(unknown.command({ commandKind: 'execution_unknown', executionId: unknown.executionId }));
+    const admitted = fixture(); admitted.prepare(); admitted.start(); admitted.archive({ outcomeKind: 'result', result: admitted.result() });
+    const accepted = fixture(); accepted.prepare(); accepted.start(); accepted.archive({ outcomeKind: 'result', result: accepted.result({ output: accepted.result().output!.replace('same_object', 'different_objects') }) });
+    accepted.apply(accepted.command({ commandKind: 'reviewed', decision: 'accept', identityConfirmed: true, reason: '人审独立确认', objectLabel: null, application: { applicationKind: 'conflict', conflictCode: 'owner_conflict' } }, human));
+    const rejected = fixture(); rejected.prepare(); rejected.start(); rejected.archive({ outcomeKind: 'result', result: rejected.result({ output: rejected.result().output!.replace('same_object', 'insufficient_evidence') }) });
+    rejected.apply(rejected.command({ commandKind: 'reviewed', decision: 'reject', identityConfirmed: false, reason: '证据不足', objectLabel: null, application: null }, human));
+    const failed = fixture(); failed.prepare(); failed.start(); failed.archive({ outcomeKind: 'result', result: failed.result({ ok: false, output: '拒绝', failure: { failureKind: 'refusal' }, tokenUsageReportedByExecutor: false }) });
+    failed.apply(failed.command({ commandKind: 'reviewed', decision: 'reject', identityConfirmed: false, reason: '拒绝失败结果', objectLabel: null, application: null }, human));
+    const exception = fixture(); exception.prepare(); exception.start(); exception.archive({ outcomeKind: 'exception', error: {
+      representationKind: 'exception-diagnostic/v1', sourceType: 'undefined', name: null, message: 'unknown thrown result', truncated: true, accessorsSkipped: true } });
+    const histories = [prepared, cancelled, running, unknown, admitted, accepted, rejected, failed, exception].map(f => f.history), before = canonicalJson(histories);
+    const result = entityLinkQuality(histories, prepared.ports);
+    expect(result).toMatchObject({ readStatus: 'available', reviewCount: 9 }); expect(result.groups).toHaveLength(1);
+    const group = result.groups[0];
+    expect(group.reviews).toMatchObject({ total: 9, notDispatched: 2, dispatched: 7, reserved: 1, resultRecorded: 4, exceptionRecorded: 1, outcomeUnrecorded: 2 });
+    expect(group.admission).toEqual({ recorded: 5, admitted: 3, rejected: 2, unrecordedDispatched: 2, admissionRate: 0.6, reasons: [{ reason: 'exception', count: 1 }, { reason: 'failed_execution', count: 1 }] });
+    expect(group.humanDecisions).toEqual({ decided: 3, accepted: 1, rejected: 2, undecidedAdmitted: 1, undecidedRejected: 1, acceptanceRate: 1 / 3 });
+    expect(group.assessments).toEqual([{ assessment: 'different_objects', admitted: 1, humanAccepted: 1, humanRejected: 0, humanUndecided: 0 },
+      { assessment: 'insufficient_evidence', admitted: 1, humanAccepted: 0, humanRejected: 1, humanUndecided: 0 },
+      { assessment: 'same_object', admitted: 1, humanAccepted: 0, humanRejected: 0, humanUndecided: 1 }]);
+    expect(group.usage.inputTokens).toEqual({ knownReviewCount: 3, unknownReviewCount: 4, reportingUnspecifiedReviewCount: 3, knownTotal: 33, overflow: false });
+    expect(group.usage.costUSD).toEqual({ knownReviewCount: 0, unknownReviewCount: 7, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: false });
+    expect(group.executionFailures).toEqual([{ failureKind: 'refusal', count: 1 }]); expect(group.organization.acceptedConflict).toBe(1);
+    expect(canonicalJson(histories)).toBe(before); expect(entityLinkQuality([...histories].reverse(), prepared.ports)).toEqual(result);
+  });
+  it('keeps model, prompt and producer policy groups separate, rejects duplicate/corrupt histories and never mixes unknown with zero', () => {
+    const all = [fixture(), fixture({ model: 'other-model' }), fixture({ system: 'other prompt' }), fixture({ endpoint: 'https://other.invalid' })];
+    for (const f of all) f.prepare();
+    const result = entityLinkQuality(all.map(f => f.history), all[0].ports); expect(result.groups).toHaveLength(4);
+    expect(result.groups.every(group => group.admission.admissionRate === null && group.humanDecisions.acceptanceRate === null && group.usage.inputTokens.knownTotal === null)).toBe(true);
+    expect(() => entityLinkQuality([all[0].history, all[0].history], all[0].ports)).toThrow('Duplicate');
+    const corrupt = structuredClone(all[0].history); corrupt.events[0].command.at = '2026-10-17T00:00:00Z';
+    expect(() => entityLinkQuality([corrupt], all[0].ports)).toThrow('integrity');
+    expect(entityLinkQuality([], all[0].ports)).toMatchObject({ readStatus: 'available', reviewCount: 0, groups: [] });
+  });
+  it('preserves reported zero and refuses unsafe usage sums while retaining per-review known/unknown counts', () => {
+    const all = Array.from({ length: 3 }, () => fixture());
+    for (const [index, f] of all.entries()) { f.prepare(); f.start(); f.archive({ outcomeKind: 'result', result: f.result({ inputTokens: index ? Number.MAX_SAFE_INTEGER - 10 : 0,
+      outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, tokenUsageReportedByExecutor: true, costUSD: 0, costReportedByExecutor: true }) }); }
+    const result = entityLinkQuality(all.map(f => f.history), all[0].ports);
+    expect(result.groups[0].usage.inputTokens).toEqual({ knownReviewCount: 3, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: true });
+    expect(result.groups[0].usage.costUSD).toEqual({ knownReviewCount: 3, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: 0, overflow: false });
+  });
 });

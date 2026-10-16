@@ -238,6 +238,22 @@ describe('observe entity-links confirmed CLI flow', () => {
     }
     expect(existsSync(workspace)).toBe(false);
   });
+  it('reads the shared link-quality projection without credentials or model dispatch, and reports unreadable rather than zero', async () => {
+    const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b');
+    const app = createLocalEntityLinks(workspace, createOpenAiArchiveProducer({ OPENAI_API_KEY: 'fixture-prepare-only-key' }));
+    const preview = app.preview(a.ref(), b.ref(), { executor: 'openai-api', model: 'fixture-only' });
+    app.prepare({ ...preview, confirmDigest: preview.plan.confirmedDigest });
+    vi.stubEnv('OMK_HOME', join(root, 'settings')); vi.stubEnv('OPENAI_API_KEY', '');
+    const fetch = vi.fn(() => { throw new Error('Read must not dispatch.'); }); vi.stubGlobal('fetch', fetch);
+    const output = await runCommand(ObserveEntityLinks, ['quality', '--workspace', workspace, '--json'], { cwd: root });
+    expect(JSON.parse(output.stdout)).toEqual({ workspace, ...app.quality() }); expect(fetch).not.toHaveBeenCalled();
+    const text = await runCommand(ObserveEntityLinks, ['quality', '--workspace', workspace, '--lang', 'zh'], { cwd: root });
+    expect(text.stdout).toContain('人工决定分母'); expect(text.stdout).toContain('不代表准确率'); expect(text.stdout).toContain('未派发=1');
+    writeFileSync(join(workspace, 'entity-links', `${preview.reviewId}.json`), '{broken');
+    await expect(runCommand(ObserveEntityLinks, ['quality', '--workspace', workspace, '--json'], { cwd: root })).rejects.toMatchObject({ code: 1,
+      stdout: expect.stringContaining('"readStatus": "unreadable"') });
+    expect(app.quality()).toMatchObject({ readStatus: 'unreadable', reviewCount: null, groups: [] }); expect(fetch).not.toHaveBeenCalled();
+  });
   it('dispatches a frozen saved plan once and explicitly organizes original UUIDs after human confirmation', async () => {
     const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b');
     const api = await transport(), env = environment(root, api.endpoint), saved = await preview(root, workspace, a.ref(), b.ref(), env);

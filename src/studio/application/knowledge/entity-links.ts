@@ -17,6 +17,7 @@ const schema = z.discriminatedUnion('operation', [
   z.strictObject({ ...base, operation: z.literal('propose'), previewToken: id, contentConfirmed: z.literal(true) }),
   z.strictObject({ ...base, operation: z.literal('continue'), reviewId: id, startToken: id, contentConfirmed: z.literal(true) }),
   z.strictObject({ ...base, operation: z.literal('list') }),
+  z.strictObject({ ...base, operation: z.literal('quality') }),
   z.strictObject({ ...base, operation: z.literal('show'), reviewId: id }),
   z.strictObject({ ...base, operation: z.literal('resume'), reviewId: id }),
   z.strictObject({ ...base, operation: z.literal('recover-unknown'), reviewId: id, requestId: id }),
@@ -104,6 +105,7 @@ export function createEntityLinkStudioService(producer: ExecutorArchiveProducer)
           result = inspect(application, request.workspace, await application.start({ reviewId: consent.reviewId, requestId: consent.requestId, expectedGeneration: consent.generation }, signal)); break;
         }
         case 'list': result = application.list().map(history => application.projectHistory(history)); break;
+        case 'quality': result = application.quality(); break;
         case 'show': result = inspect(application, request.workspace, application.read(request.reviewId)); break;
         case 'resume': result = inspect(application, request.workspace, application.resume(request.reviewId)); break;
         case 'recover-unknown': result = inspect(application, request.workspace, application.recoverUnknown(request.reviewId, request.requestId)); break;

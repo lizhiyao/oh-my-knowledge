@@ -1,6 +1,6 @@
 # Cross-window entity review journal
 
-The local application retrieves candidates, previews exact bounded input, durably prepares one explicitly confirmed invocation, executes the current production API adapter, archives its complete returned result, records a separate human decision, and recovers library publication. The governed prompt and request bytes are pinned. The CLI and [Studio review surface](../studio/studio-entity-links.md) expose this workflow; real-model quality acceptance remains pending.
+The local application retrieves candidates, previews exact bounded input, durably prepares one explicitly confirmed invocation, executes the current production API adapter, archives its complete returned result, records a separate human decision, and recovers library publication. The governed prompt and request bytes are pinned. The CLI and [Studio review surface](../studio/studio-entity-links.md) expose this workflow. Quality criteria, frozen measurements and review readiness are owned by the separate [entity-link evaluation protocol](entity-link-evaluation.md); workflow completion does not establish semantic quality.
 
 ## 1. Identity and candidate boundaries
 

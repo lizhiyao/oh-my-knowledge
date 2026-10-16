@@ -1,8 +1,8 @@
 # 选定记录中的实体提取
 
-状态（2026-10-12）：[Issue #1127](https://github.com/lizhiyao/oh-my-knowledge/issues/1127) 已按用户确认的 beta 完成口径收尾：身份规则、存储、检索展示、来源追溯、纠正与知识显式绑定已交付；完整使用动线及当时 v14 提示词的最小真实回归完成作者逐项自审。真实回归只有一个已查看的开发窗口，不证明整体准确率或稳定性。独立复核与全量质量验收仍待完成；[验收指南与离线检查器](./entity-extraction-evaluation.md)的严格门槛不因 beta 收尾而改变。
+本规范负责窗口提取、确定性宿主准入、来源／实体／知识绑定、当前存储及调用恢复。[端到端建设设计](../knowledge/knowledge-domain-model.md)连接提取、跨窗口组织、维护与载体评测；质量版本、被测范围及就绪状态由[评测协议](./entity-extraction-evaluation.md)维护。
 
-组件／实例、集合／未知、改名／版本与晚到纠正规则见[实体身份规则](./entity-identity.md)。§6 规定当前契约；当前只支持现行数据结构，不提供旧格式读取、恢复或迁移。跨日志／跨 Agent 统一身份和复用收益仍待实现与验证；调研、结构校验或功能完成不证明模型整体效果。
+组件／实例、集合／未知、改名／版本与晚到纠正规则见[实体身份规则](./entity-identity.md)。§6 规定当前契约；当前只支持现行数据结构，不提供旧格式读取、恢复或迁移。人工确认的跨窗口组织已通过[实体关联日志](./entity-links.md)及[知识库](../knowledge/knowledge-library.md)提供，不替换窗口身份。自动跨 Agent 身份合并不在范围内。调研、结构校验或功能完成不证明模型效果或复用收益。
 
 ## 1. 用户结果与范围
 
@@ -91,7 +91,7 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
-完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；run metadata 绑定该实际完整 system 及新版本。本次 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分。本次工程不增加真实模型调用，不形成模型性能、质量、缓存命中或费用结论。独立真人复核按用户决定暂缓，不记录为通过；历史与当前身份不能合并统计或继承质量／Gold 结论。
+完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；run metadata 绑定该实际完整 system 及新版本。本次 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 
@@ -99,10 +99,4 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 ## 7. 质量与完成证据
 
-案例在模型运行前冻结重要提及、允许的对应、必须分开的对象、未消解指代及知识中的主体／对象。来源为合成案例，不能声称覆盖真实用户总体。编写者与复核依据的限制在报告中明确。
-
-分别报告重要提及遗漏、误识别、错误对应／误合并、擅自消解，以及知识角色错误。精确原文匹配证明定位；引用闭合证明结构；两者都不单独证明语义正确。必要对照保留逐例输出、输入／prompt 摘要、实际用量及失败。
-
-完成须同时有：独立实体结果、可操作的核对纠正、知识共同身份与修订绑定、空结果及部分失败／中断恢复验证、当前格式及不支持版本的拒绝验证、语义质量报告、真实入口验收、双语文档、自主 CR 及交付门禁。跨日志关联和跨 Agent 复用收益不由本轮推断。
-
-最新真实回归及其作者自审范围、独立证据缺口和未知费用见[验收指南](./entity-extraction-evaluation.md)。当前仅验证一个已查看的开发窗口，不证明整体质量或跨 Agent 复用收益。
+功能验证覆盖独立实体结果、核对纠正、知识共同身份与精确修订绑定、空结果及部分失败／中断恢复，以及不支持格式的拒绝。[评测协议](./entity-extraction-evaluation.md)单独维护冻结质量标准、checker／corpus／guide 身份、模型对比、复核闸门与当前证据。定位及引用闭合证明结构，不证明语义准确性、真值或复用收益；动线测试不能替代该协议。

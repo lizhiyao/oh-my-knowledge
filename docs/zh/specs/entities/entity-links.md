@@ -1,6 +1,6 @@
 # 跨窗口实体复核日志
 
-local application 能召回候选、预览精确有限输入、持久准备一次明确确认的调用、执行当前生产 API adapter、归档完整返回结果、记录独立人工决定，以及恢复知识库发布。受治理 prompt 与请求字节均被固定。CLI 与 [Studio 核对界面](../studio/studio-entity-links.md)已接入这一闭环；真实模型质量验收仍待完成。
+local application 能召回候选、预览精确有限输入、持久准备一次明确确认的调用、执行当前生产 API adapter、归档完整返回结果、记录独立人工决定，以及恢复知识库发布。受治理 prompt 与请求字节均被固定。CLI 与 [Studio 核对界面](../studio/studio-entity-links.md)已接入这一闭环。质量标准、冻结测量及复核就绪状态由独立的[实体关联评测协议](entity-link-evaluation.md)维护；动线完成不证明语义质量。
 
 ## 1. 身份与候选边界
 

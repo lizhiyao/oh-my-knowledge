@@ -10,3 +10,4 @@ export interface EntityLinkStudioPreview {
 }
 export type EntityLinkStudioInspection = EntityLinkInspection & { workspace: string; startToken?: string };
 export type EntityLinkStudioList = Array<EntityLinkInspection['projection']>;
+export type EntityLinkStudioQuality = ReturnType<EntityLinkApplication['quality']>;

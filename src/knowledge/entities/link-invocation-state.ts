@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { canonicalJson } from '../store.js';
-import { entityLinkPairKey, EntityLinkSuggestionSchema } from './links.js';
+import { checkEntityLinkSuggestion, entityLinkPairKey, EntityLinkSuggestionSchema } from './links.js';
 import {
   EntityLinkInvocationSchema, EntityLinkInvocationCommandSchema, EntityLinkModelInputSchema, EntityLinkReservationSchema, EntityLinkPreviewSchema,
   EntityLinkOwnerExitSchema, EntityLinkInvocationAdmissionSchema,
@@ -59,12 +59,7 @@ function admit(input: EntityLinkInvocationPlan, outcome: EntityLinkExecutionOutc
   if (!Number.isSafeInteger(result.inputTokens + result.outputTokens + result.cacheReadTokens + result.cacheCreationTokens)) return { admissionKind: 'rejected', reason: 'invalid_response' };
   if (result.toolCalls?.length || result.turns?.some(turn => turn && typeof turn === 'object' && !Array.isArray(turn) && Array.isArray(turn.toolCalls) && turn.toolCalls.length)) return { admissionKind: 'rejected', reason: 'observed_tools' };
   try {
-    const suggestion = EntityLinkSuggestionSchema.parse(JSON.parse(result.output!));
-    for (const side of ['left', 'right'] as const) {
-      const mentions = suggestion[`${side}MentionIds`];
-      if (suggestion[`${side}EntityId`] !== input[side].entityId || new Set(mentions).size !== mentions.length
-        || mentions.some(id => !input[side].mentionIds.includes(id))) throw new Error('Evidence mismatch.');
-    }
+    const suggestion = checkEntityLinkSuggestion(JSON.parse(result.output!), input);
     return { admissionKind: 'admitted', suggestion };
   } catch { return { admissionKind: 'rejected', reason: 'invalid_response' }; }
 }

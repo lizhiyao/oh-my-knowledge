@@ -9,13 +9,13 @@ import { createOpenAiArchiveProducer } from '../../../executors/openai/archive.j
 import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../observability/knowledge-extraction/local.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import type { EntityLinkInvocation } from '../../../knowledge/entities/link-invocation.js';
-import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkPreview, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';
+import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkPreview, formatEntityLinkQuality, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveEntityLinks extends BaseCommand {
   static description = description('跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。', 'Review cross-window entity links: preview locally, confirm one invocation, then explicitly accept or reject.');
-  static args = { operation: Args.string({ required: true, options: ['candidates', 'preview', 'propose', 'list', 'show', 'accept', 'reject', 'resume'],
-    description: description('candidates 本地召回；preview 冻结内容与配置；propose 明确调用；其余读取、人审或零调用恢复。', 'candidates recalls locally; preview freezes content/configuration; propose explicitly invokes; other operations inspect, review, or recover without a model call.') }) };
+  static args = { operation: Args.string({ required: true, options: ['candidates', 'preview', 'propose', 'list', 'show', 'quality', 'accept', 'reject', 'resume'],
+    description: description('candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；其余读取、人审或零调用恢复。', 'candidates recalls locally; preview freezes content/configuration; propose explicitly invokes; quality aggregates without invocation; other operations inspect, review, or recover without a model call.') }) };
   static flags = {
     lang: LANG_FLAG,
     workspace: Flags.string({ description: description('知识工作区；propose 默认沿用计划中的绝对目录，不得覆盖为其它目录。', 'Knowledge workspace; propose uses the plan’s absolute directory and rejects a different override.') }),
@@ -47,6 +47,7 @@ export default class ObserveEntityLinks extends BaseCommand {
     '<%= config.bin %> observe entity-links preview --input ./link-plan.json',
     '<%= config.bin %> observe entity-links propose --input ./link-plan.json --confirm-input <confirmedDigest> --json',
     '<%= config.bin %> observe entity-links show --workspace ./knowledge --id <review-id> --json',
+    '<%= config.bin %> observe entity-links quality --workspace ./knowledge --json',
     '<%= config.bin %> observe entity-links accept --workspace ./knowledge --id <review-id> --request-id <request-id> --generation <generation> --reason "已核对两侧原文与身份" --confirm-identity',
     '<%= config.bin %> observe entity-links reject --workspace ./knowledge --id <review-id> --request-id <request-id> --generation <generation> --reason "证据不足"',
     '<%= config.bin %> observe entity-links resume --workspace ./knowledge --id <review-id>',
@@ -124,6 +125,12 @@ export default class ObserveEntityLinks extends BaseCommand {
           break;
         }
         case 'list': this.log(JSON.stringify({ responseKind: 'entity-link-invocation-list', workspace, rows: app.list().map(history => app.projectHistory(history)) }, null, 2)); break;
+        case 'quality': {
+          const quality = app.quality();
+          this.log(flags.json ? JSON.stringify({ workspace, ...quality }, null, 2) : formatEntityLinkQuality(quality, workspace, this.lang));
+          if (quality.readStatus === 'unreadable') failed = true;
+          break;
+        }
         case 'show': emit(app.inspect(id!).history); break;
         case 'accept': emit(app.decide({ reviewId: id!, requestId: requestId!, expectedGeneration: flags.generation!, decision: 'accept', identityConfirmed: true,
           reason: flags.reason!, ...(flags['object-label'] === undefined ? {} : { objectLabel: flags['object-label'] }) }), true); break;
