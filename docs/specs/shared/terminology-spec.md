@@ -265,6 +265,15 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 - On a read path, separate what OMK authored from what was recorded. Studio's knowledge findings render OMK's own rule text in the request language, while evidence persisted earlier — a doctor rule's own message, a Diagnosis title, summary or recommendation — is shown in the language it was recorded in. Re-translating stored evidence at render time would rewrite the record behind the view.
 - Where that language is chosen per request, it also belongs in the cache identity: a cached projection holding display text must not serve the first requester's language to everyone else.
 
+### 7. Two libraries: entity organization and carrier storage
+
+Two domains each own a "library"; the names are not interchangeable:
+
+- **Entity organization library** — `src/knowledge/library/`: user-confirmed cross-window organization of extracted entities (`knowledge-library-object-history`).
+- **Carrier library** — `src/knowledge-artifacts/authoring/carrier-library.ts` (`CarrierLibrary`): versioned storage of saved skill/prompt artifacts (`omk-carrier-v1`). Code and file names carry the `carrier-` qualifier; do not shorten to bare `library` in new code.
+
+The artifact domain directory stays `src/knowledge-artifacts/`: the bare `src/artifacts` name was retired (#613) because it collides with measurement artifacts (evaluation outputs), a different concept. Do not reintroduce it.
+
 ## 6. Skill isolation
 
 ### 1. Problem background
