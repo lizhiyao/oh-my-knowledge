@@ -267,6 +267,15 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 - 读路径上要区分「OMK 自己写的」与「已被记录下来的」。Studio 知识页的待优化项里，OMK 自己的规则文案按请求语言呈现；更早落盘的证据——doctor 规则自己的 message、Diagnosis 的标题／摘要／建议——按记录时的语言原样显示。在渲染层重翻已存证据，等于改写视图背后的记录。
 - 语言按请求决定时，它同时属于缓存身份：缓存里存着展示文案的投影，不能把第一个请求者的语言发给之后所有人。
 
+### 7. 两个库：实体组织与载体存储
+
+两个域各自拥有一个「库」，命名不可混用：
+
+- **实体组织库**——`src/knowledge/library/`：对提取实体的用户确认跨窗组织（`knowledge-library-object-history`）。
+- **载体库**——`src/knowledge-artifacts/authoring/carrier-library.ts`（`CarrierLibrary`）：已保存 skill／prompt 载体的版本化存储（`omk-carrier-v1`）。代码与文件名使用 `carrier-` 限定；新代码不得再缩写为裸 `library`。
+
+载体域目录保持 `src/knowledge-artifacts/`：裸名 `src/artifacts` 已被废弃（#613），因为它与评测产物（measurement artifacts，评测输出）冲突，两者是不同概念。不得重新引入。
+
 ## 六、Skill Isolation
 
 ### 1. 问题背景
