@@ -15,11 +15,11 @@ import { FileExtractionRunStore } from '../../src/observability/knowledge-extrac
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
-import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
-import { extractionRunSummary, type ExtractionRun } from '../../src/observability/knowledge-extraction/runs.js';
+import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import { extractionRunSummary, type ExtractionRun } from '../../src/observability/knowledge-extraction/extraction/runs.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
-import { extractionModelInput, EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/model-input.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/strict-prompt.js';
+import { extractionModelInput, EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/extraction/model-input.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/extraction/strict-prompt.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

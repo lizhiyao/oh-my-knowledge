@@ -10,12 +10,12 @@ import { createLocalKnowledgeApplication } from '../../src/observability/knowled
 import type { ConversationCatalog } from '../../src/observability/conversation/catalog.js';
 import type { ExtractionModel } from '../../src/observability/knowledge-extraction/application.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
-import { boundedExtractionPolicy, type ExtractionGenerationPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
+import { boundedExtractionPolicy, type ExtractionGenerationPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
 import { executeKnowledgeCandidateAction } from '../../src/studio/application/knowledge/knowledge-candidates.js';
-import { conversationExtractionSource } from '../../src/observability/knowledge-extraction/conversation-source.js';
+import { conversationExtractionSource } from '../../src/observability/knowledge-extraction/extraction/conversation-source.js';
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

@@ -6,25 +6,25 @@ import { validateEntityAnalysis, validateEntityMentionSelection } from '../../kn
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../../knowledge/store.js';
 import type { KnowledgeTagStore } from '../../knowledge/tags.js';
-import type { EvidenceStore, EvidenceWindow, SourceSelection } from './evidence.js';
-import type { ExtractionOutcome, ExtractionOutcomeRef, ExtractionRun, ExtractionRunStore } from './runs.js';
-import { ExtractionAttemptSchema } from './runs.js';
-import type { ExtractionProposal } from './proposals.js';
-import { EntityModelSchema } from './entities.js';
-import { checkWindowExtractionResponse } from './window-proposals.js';
+import type { EvidenceStore, EvidenceWindow, SourceSelection } from './extraction/evidence.js';
+import type { ExtractionOutcome, ExtractionOutcomeRef, ExtractionRun, ExtractionRunStore } from './extraction/runs.js';
+import { ExtractionAttemptSchema } from './extraction/runs.js';
+import type { ExtractionProposal } from './extraction/proposals.js';
+import { EntityModelSchema } from './extraction/entities.js';
+import { checkWindowExtractionResponse } from './extraction/window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
 import { mapEntityIdentity } from '../../knowledge/entities/identity.js';
-import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './model-input.js';
-import { extractionQuality } from './quality.js';
+import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './extraction/model-input.js';
+import { extractionQuality } from './extraction/quality.js';
 import { setTimeout as wait } from 'node:timers/promises';
 import { resolveTokenBudgetProfile } from '../../executors/contracts/token-budget.js';
 import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, accountExtractionOutcome,
   TRANSIENT_EXTRACTION_FAILURES, REASK_EXTRACTION_FAILURES, EXTRACTION_FEEDBACK_PREAMBLE,
-  type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from './generation-policy.js';
-import { EXTRACTION_GENERATION_POLICY, extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from './generation.js';
-import type { ExtractionModel } from './generation.js';
-export type { ExtractionModel } from './generation.js';
+  type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from './extraction/generation-policy.js';
+import { EXTRACTION_GENERATION_POLICY, extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from './extraction/generation.js';
+import type { ExtractionModel } from './extraction/generation.js';
+export type { ExtractionModel } from './extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
   evidence: EvidenceStore; knowledge: KnowledgeStore; runs: ExtractionRunStore; tags: KnowledgeTagStore;

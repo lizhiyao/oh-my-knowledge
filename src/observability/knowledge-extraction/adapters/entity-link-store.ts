@@ -6,7 +6,7 @@ import { EntityLinkWriteCapacityError, type EntityLinkInvocation, type EntityLin
 import { validateEntityLinkInvocation, projectEntityLinkInvocation } from '../../../knowledge/entities/link-invocation-state.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { checkStorageDirectory, KnowledgeStorageStateError } from '../../../evidence/storage/knowledge-workspace.js';
-import { entityLinkDigest } from '../entity-link-hash.js';
+import { entityLinkDigest } from '../linking/entity-link-hash.js';
 import { createHash } from 'node:crypto';
 import { FileLibraryStore } from './library-store.js';
 

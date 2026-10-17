@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KnowledgeDraftSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
+import { KnowledgeDraftSchema, type EvidenceExcerpt } from '../../../knowledge/contracts.js';
 import { admitEntities, EntityModelMentionSchema, EntityModelSchema, type AdmittedEntityAnalysis } from './entities.js';
 import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 import { resolvedProposalProblems, type CheckedProposals, type ExtractionProposal } from './proposals.js';

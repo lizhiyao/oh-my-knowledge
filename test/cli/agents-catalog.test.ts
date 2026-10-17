@@ -20,7 +20,7 @@ import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 import { createLocalKnowledgeApplication } from '../../src/observability/knowledge-extraction/local.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
-import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
+import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
 import {
   AGENT_CATALOG_VERSION,
   AGENT_COLLECTION_VERSION,

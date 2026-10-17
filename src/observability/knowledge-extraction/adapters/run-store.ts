@@ -5,10 +5,10 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { canonicalJson } from '../../../knowledge/store.js';
 import { ExtractionOutcomeSchema, ExtractionOutcomeRefSchema, ExtractionRunSchema,
-  type ExtractionOutcome, type ExtractionOutcomeRef, type ExtractionRun, type ExtractionRunStore } from '../runs.js';
+  type ExtractionOutcome, type ExtractionOutcomeRef, type ExtractionRun, type ExtractionRunStore } from '../extraction/runs.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
 import { assertCurrentStorage } from './storage-state.js';
-import { accountExtractionOutcome } from '../generation-policy.js';
+import { accountExtractionOutcome } from '../extraction/generation-policy.js';
 
 export const EXTRACTION_RUN_MAX_BYTES = 16 * 1024 * 1024;
 // JSON.parse needs one string: even an all-ASCII file must stay below V8's string ceiling.

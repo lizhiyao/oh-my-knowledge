@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EvidenceSelectionSchema, type EvidenceExcerpt, type EvidenceSelection } from '../../knowledge/contracts.js';
+import { EvidenceSelectionSchema, type EvidenceExcerpt, type EvidenceSelection } from '../../../knowledge/contracts.js';
 
 export const QuoteOccurrenceLocatorSchema = EvidenceSelectionSchema.omit({ start: true, end: true }).extend({
   occurrence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),

@@ -34,26 +34,26 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
-    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/prompt.js')).href",
-    sourceSha256: '2128943a736c1c3dfb4fcc9bc5e87620b091811459a760e0cd82b71cdc98e640',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/extraction/prompt.js')).href",
+    sourceSha256: 'b9a3a71565c0244072fc82396f4012b7e4c4662cb4328e32c0b38d6e02293367',
     rationale: 'Offline v14 inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
-    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/window-proposals.js')).href",
-    sourceSha256: '2128943a736c1c3dfb4fcc9bc5e87620b091811459a760e0cd82b71cdc98e640',
+    expression: "pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/extraction/window-proposals.js')).href",
+    sourceSha256: 'b9a3a71565c0244072fc82396f4012b7e4c4662cb4328e32c0b38d6e02293367',
     rationale: 'Offline v14 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
     importer: 'scripts/bench/entity-link-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
-    sourceSha256: '651026838635ce966f39172b6d12153c9e8c284a6b31e9c467c0672d970a0c55',
+    sourceSha256: 'bb3f7d1c55e57f2205fdc79ecc6354586b6798bd710d640d5b640fa28e0d40d6',
     rationale: 'Offline link review loads only three fixed production modules; corpus and captures cannot choose code. Actual checker and matching installed production validator bytes enter the measurement identity; preparation has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-link-live.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
-    sourceSha256: '7f40a915d490364d10776dbeb1707378417fe6759dab3eca8cd163b11c78ac50',
+    sourceSha256: '50c5f02fb6d7367c0e31084fc594a21a39bc22e1eed3bce6938bc71329718f31',
     rationale: 'Loads only fixed production request, outcome, executor and admission modules. A verified frozen measurement, exact plan confirmation and exclusive invocation reservation precede sending; input data cannot choose modules.',
   },
   {

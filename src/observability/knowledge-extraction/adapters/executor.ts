@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ExecutorInput } from '../../../executors/contracts/ports.js';
 import type { ExecutorArchiveProducer } from '../../../executors/contracts/archive.js';
-import type { ExtractionModel } from '../generation.js';
-import type { ExtractionOutcome } from '../runs.js';
-import { observeExtractionException } from '../generation.js';
-import { WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_SCHEMA } from '../model-wire.js';
+import type { ExtractionModel } from '../extraction/generation.js';
+import type { ExtractionOutcome } from '../extraction/runs.js';
+import { observeExtractionException } from '../extraction/generation.js';
+import { WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_SCHEMA } from '../extraction/model-wire.js';
 import { canonicalJson } from '../../../knowledge/store.js';
 
 export function validateExtractionModelSelection(executor: string, model: string): void {

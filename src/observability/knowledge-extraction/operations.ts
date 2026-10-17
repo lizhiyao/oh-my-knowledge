@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ExtractionModel, KnowledgeApplication } from './application.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
-import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from './generation-policy.js';
+import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from './extraction/generation-policy.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();

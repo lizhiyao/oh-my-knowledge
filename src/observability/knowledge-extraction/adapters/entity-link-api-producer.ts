@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ExecutorArchiveProducer } from '../../../executors/contracts/archive.js';
 import { EntityLinkReservationSchema, type EntityLinkExecutionRequest } from '../../../knowledge/entities/link-invocation.js';
-import { entityLinkDigest } from '../entity-link-hash.js';
+import { entityLinkDigest } from '../linking/entity-link-hash.js';
 import { configuredEntityLinkExecutor, createEntityLinkExecutionRequest } from './entity-link-executor.js';
 import { ENTITY_LINK_FILE_BYTES } from './entity-link-store.js';
 

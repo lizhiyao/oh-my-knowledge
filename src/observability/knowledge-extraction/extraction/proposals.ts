@@ -1,6 +1,6 @@
-import type { EntityMention, EvidenceExcerpt, EvidenceSelection, KnowledgeDraft } from '../../knowledge/contracts.js';
-import { GroundingSchema } from '../../knowledge/store.js';
-import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../../knowledge/validation.js';
+import type { EntityMention, EvidenceExcerpt, EvidenceSelection, KnowledgeDraft } from '../../../knowledge/contracts.js';
+import { GroundingSchema } from '../../../knowledge/store.js';
+import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../../../knowledge/validation.js';
 
 /** Host-resolved proposal using the shared window's temporary model identities. */
 export interface ExtractionProposal {

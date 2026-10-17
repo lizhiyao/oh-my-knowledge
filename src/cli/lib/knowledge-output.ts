@@ -1,7 +1,7 @@
 import type { KnowledgeApplication } from '../../observability/knowledge-extraction/application.js';
 import type { KnowledgeOperation } from '../../observability/knowledge-extraction/operations.js';
-import type { ExtractionRun } from '../../observability/knowledge-extraction/runs.js';
-import { extractionRunSummary } from '../../observability/knowledge-extraction/runs.js';
+import type { ExtractionRun } from '../../observability/knowledge-extraction/extraction/runs.js';
+import { extractionRunSummary } from '../../observability/knowledge-extraction/extraction/runs.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 
 /** Every copyable next step carries the same explicit workspace. */

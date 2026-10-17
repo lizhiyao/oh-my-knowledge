@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/extraction/window-proposals.js';
 import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus, reviewOutputRoot } from '../../scripts/bench/entity-extraction-review.js';
 import { runCli, runCliFailing, PROJECT_ROOT } from '../helpers/cli-process.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 import { identityDigest, type CaptureRuntime } from '../../scripts/bench/entity-capture-provider.js';
-import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/model-wire.js';
+import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/extraction/model-wire.js';
 
 const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
