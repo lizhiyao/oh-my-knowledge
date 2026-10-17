@@ -67,7 +67,7 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 `knowledge` 保存纯契约、引用和修订不变量。`observability/knowledge-extraction` 保存选定窗口、模型传输、接纳和应用流程；文件适配器实现存储。Studio 与 CLI 复用同一应用流程。Evaluation Core 不承担观测实体或文件系统副作用。
 
-实体领域代码集中在 `src/knowledge/entities/`：`contracts.ts` 定义实体分析及存储端口，`identity.ts` 定义身份与关联规则，`validation.ts` 校验分析中的引用和提及，`history.ts` 处理不可变修订及确定性写入规则。调用方按职责直接导入；该模块不调用模型、读写文件或依赖 Studio。模型输出接纳与实体／知识联合提炼仍由 `observability/knowledge-extraction` 编排，实体文件存储仍由其适配器实现。目录划分不增加模型调用或用户步骤。
+实体领域代码集中在 `src/knowledge/entities/`：`contracts.ts` 定义实体分析及存储端口，`identity.ts` 定义身份规则，`links.ts` 与 `link-invocation.ts` 定义跨窗复核与调用契约，`validation.ts` 校验分析中的引用和提及，`history.ts` 处理不可变修订及确定性写入规则。调用方按职责直接导入；该模块不调用模型、读写文件或依赖 Studio。模型输出接纳与实体／知识联合提炼仍由 `observability/knowledge-extraction` 编排，实体文件存储仍由其适配器实现。目录划分不增加模型调用或用户步骤。
 
 每个 v5 run 默认使用 `knowledge-generation-single/v1`，只允许一次 OMK invocation；显式 `knowledge-generation-bounded/v1` 最多允许三次 invocation，包含最多两次校验重问，不使用 fallback。每次派发前持久化精确 system／input 摘要、来源绑定、prompt／wire／pipeline 身份与 producer 预约；bounded 政策另记录不退款的 token 预约及触发依据。API producer 证明另绑定实际完整 body 摘要与 endpoint；这不是完整请求字节归档，也不记录未观测的 Codex 全局上下文。结构解码、接纳和准备实体／知识写入意图前，将完整执行器返回 JSON 或有界异常观测归档到不可变 outcome sidecar。失败部分输出、独立 refusal 通道、usage／cache 字段与 reported 标志、内部 attemptCount 及停止／失败诊断均保留原始证据，不以展示错误代替；不据此声称已捕获原 HTTP 或 CLI 传输、确定 provider 请求数，或每个归一的零均由 provider 显式报告。作者提供的 model-port projection 保留其声明的较窄证据范围。
 
