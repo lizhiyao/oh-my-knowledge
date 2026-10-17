@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createLocalKnowledgeApplication } from '../../../observability/application.js';
-import { CarrierLibrary } from '../../../knowledge-artifacts/authoring/library.js';
+import { CarrierLibrary } from '../../../knowledge-artifacts/authoring/carrier-library.js';
 import { carrierMetadata, chooseCarrierDirectory, composeCarrierContent, renderCarrierKnowledge } from '../../../knowledge-artifacts/authoring/knowledge-content.js';
 import { reviewCarrierKnowledge } from '../../../knowledge-artifacts/authoring/knowledge-review.js';
 import type { CarrierDetail, ReviewedCarrierDraft } from '../../view-models/knowledge/artifact-authoring.js';

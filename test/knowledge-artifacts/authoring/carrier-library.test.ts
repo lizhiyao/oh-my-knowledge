@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/observability/application.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
-import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
+import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/carrier-library.js';
 import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../src/studio/view-models/knowledge/artifact-authoring.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 import yaml from 'js-yaml';
