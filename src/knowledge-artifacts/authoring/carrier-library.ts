@@ -6,7 +6,7 @@ import { recoverStorageLock, withWorkspaceWrite } from '../../evidence/storage/k
 import { withFileLock } from '../../shared/file-lock.js';
 import { validateCarrierSkill } from './knowledge-content.js';
 import { distributableCopyFilter, hashArtifactSource } from '../sources/content-hash.js';
-import type { AuthoredArtifactKind, CarrierDetail, CarrierDraft, CarrierRow, CarrierSource, CarrierVersion } from './library-contracts.js';
+import type { AuthoredArtifactKind, CarrierDetail, CarrierDraft, CarrierRow, CarrierSource, CarrierVersion } from './carrier-contracts.js';
 
 const uuid = z.string().uuid();
 const refSchema = z.strictObject({ knowledgeId: uuid, revisionId: uuid, generation: z.number().int().positive() });

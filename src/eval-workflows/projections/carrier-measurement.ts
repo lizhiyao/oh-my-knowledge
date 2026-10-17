@@ -1,4 +1,4 @@
-import type { CarrierKnowledgeRef } from '../../knowledge-artifacts/authoring/library-contracts.js';
+import type { CarrierKnowledgeRef } from '../../knowledge-artifacts/authoring/carrier-contracts.js';
 import type { CoreCliRunOutcome } from './contracts.js';
 
 export type CarrierControl = { sourceKind: 'version'; artifactId: string; version: number } | { sourceKind: 'local'; path: string };

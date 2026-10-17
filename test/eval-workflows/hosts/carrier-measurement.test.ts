@@ -2,12 +2,12 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/library.js';
+import { CarrierLibrary } from '../../../src/knowledge-artifacts/authoring/carrier-library.js';
 import { createCarrierMeasurementService } from '../../../src/eval-workflows/hosts/carrier-measurement.js';
 import { createNodeEvaluationApplication } from '../../../src/eval-workflows/hosts/application.js';
 import { captureNodeCliEvaluationEnvironment } from '../../../src/eval-workflows/hosts/node-environment.js';
 import { carrierMeasureCatalog, carrierMeasureOrigin } from '../../../src/studio/application/measure/carrier-measurement.js';
-import type { CarrierDraft } from '../../../src/knowledge-artifacts/authoring/library-contracts.js';
+import type { CarrierDraft } from '../../../src/knowledge-artifacts/authoring/carrier-contracts.js';
 import type { CarrierMeasurementInput, CarrierMeasurementRecord } from '../../../src/eval-workflows/projections/carrier-measurement.js';
 import { randomUUID } from 'node:crypto';
 

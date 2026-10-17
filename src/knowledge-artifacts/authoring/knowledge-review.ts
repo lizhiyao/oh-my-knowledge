@@ -1,4 +1,4 @@
-import type { CarrierKnowledgeRef, CarrierKnowledgeReview, CarrierKnowledgeCheck } from './library-contracts.js';
+import type { CarrierKnowledgeRef, CarrierKnowledgeReview, CarrierKnowledgeCheck } from './carrier-contracts.js';
 import { renderCarrierKnowledge, type CarrierKnowledge } from './knowledge-content.js';
 
 interface ReviewKnowledge extends CarrierKnowledge { choice: 'retain' | 'discard' | null; sourceAvailable: boolean }

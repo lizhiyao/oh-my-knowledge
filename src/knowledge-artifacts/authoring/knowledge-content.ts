@@ -1,7 +1,7 @@
 import yaml from 'js-yaml';
 import type { KnowledgeRevision } from '../../knowledge/contracts.js';
 import type { KnowledgeGrounding } from '../../knowledge/store.js';
-import type { AuthoredArtifactKind } from './library-contracts.js';
+import type { AuthoredArtifactKind } from './carrier-contracts.js';
 
 export interface CarrierKnowledge { revision: KnowledgeRevision; grounding: KnowledgeGrounding; sourceWarnings: string[]; tagging: { tags: string[] } }
 
