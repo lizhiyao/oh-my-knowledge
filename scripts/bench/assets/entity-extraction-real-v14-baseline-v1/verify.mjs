@@ -105,15 +105,15 @@ async function verify(options) {
   assert.equal(hash(bytes.get('capture/manifest.json')), receipt.rawCaptureFiles.find(file => file.file === 'capture/manifest.json').digest);
   stage = 'current-pure-runtime';
   const runtimeRoot = realpathSync(resolve(repository, 'dist'));
-  const components = ['observability/knowledge-extraction/model-wire.js', 'observability/knowledge-extraction/window-proposals.js',
-    'observability/knowledge-extraction/entities.js', 'observability/knowledge-extraction/quote-occurrence.js',
-    'observability/knowledge-extraction/proposals.js', 'knowledge/contracts.js', 'knowledge/validation.js', 'observability/knowledge-extraction/prompt.js'];
+  const components = ['observability/knowledge-extraction/extraction/model-wire.js', 'observability/knowledge-extraction/extraction/window-proposals.js',
+    'observability/knowledge-extraction/extraction/entities.js', 'observability/knowledge-extraction/extraction/quote-occurrence.js',
+    'observability/knowledge-extraction/extraction/proposals.js', 'knowledge/contracts.js', 'knowledge/validation.js', 'observability/knowledge-extraction/extraction/prompt.js'];
   const moduleDigests = components.map(path => ({ path, sha256: hash(readFileSync(resolve(runtimeRoot, path))) }));
   // Literal deterministic production entry points. Never import old scripts, sealed-build, an executor or a corpus.
-  const wire = await import('../../../../dist/observability/knowledge-extraction/model-wire.js');
-  const checker = await import('../../../../dist/observability/knowledge-extraction/window-proposals.js');
+  const wire = await import('../../../../dist/observability/knowledge-extraction/extraction/model-wire.js');
+  const checker = await import('../../../../dist/observability/knowledge-extraction/extraction/window-proposals.js');
   const knowledge = await import('../../../../dist/knowledge/contracts.js');
-  const prompt = await import('../../../../dist/observability/knowledge-extraction/prompt.js');
+  const prompt = await import('../../../../dist/observability/knowledge-extraction/extraction/prompt.js');
   const requireValidator = createRequire(pathToFileURL(resolve(runtimeRoot, components[0])));
   const validators = { zod: requireValidator('zod/package.json').version, ajv: requireValidator('ajv/package.json').version };
   const currentPromptDigest = hash(Buffer.from(prompt.EXTRACTION_PROMPT, 'utf8'));

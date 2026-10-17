@@ -1,6 +1,6 @@
-import { canonicalJson } from '../../knowledge/store.js';
-import { EntityLinkReservationSchema, type EntityLinkInvocation, type EntityLinkInvocationPorts } from '../../knowledge/entities/link-invocation.js';
-import { projectEntityLinkInvocation, type EntityLinkInvocationStatus } from '../../knowledge/entities/link-invocation-state.js';
+import { canonicalJson } from '../../../knowledge/store.js';
+import { EntityLinkReservationSchema, type EntityLinkInvocation, type EntityLinkInvocationPorts } from '../../../knowledge/entities/link-invocation.js';
+import { projectEntityLinkInvocation, type EntityLinkInvocationStatus } from '../../../knowledge/entities/link-invocation-state.js';
 
 type Integrity = Pick<EntityLinkInvocationPorts, 'hashJson' | 'hashText'>;
 type Projection = ReturnType<typeof projectEntityLinkInvocation>;

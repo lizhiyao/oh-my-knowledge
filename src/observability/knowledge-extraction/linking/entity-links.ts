@@ -1,22 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { z } from 'zod';
-import { KnowledgeActorSchema, type KnowledgeActor } from '../../knowledge/contracts.js';
-import type { EntityAnalysisStore } from '../../knowledge/entities/contracts.js';
-import { EntityLinkEndpointSchema, EntityLinkConflictError, entityLinkPairKey, type EntityLinkEndpoint } from '../../knowledge/entities/links.js';
+import { KnowledgeActorSchema, type KnowledgeActor } from '../../../knowledge/contracts.js';
+import type { EntityAnalysisStore } from '../../../knowledge/entities/contracts.js';
+import { EntityLinkEndpointSchema, EntityLinkConflictError, entityLinkPairKey, type EntityLinkEndpoint } from '../../../knowledge/entities/links.js';
 import { EntityLinkExecutionRequestSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
-  type EntityLinkInvocationPorts, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction, type EntityLinkExecutionOutcome } from '../../knowledge/entities/link-invocation.js';
-import { entityLinkConfirmationDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../../knowledge/entities/link-invocation-state.js';
-import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../../knowledge/library/contracts.js';
-import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../../knowledge/library/write-errors.js';
+  type EntityLinkInvocationPorts, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction, type EntityLinkExecutionOutcome } from '../../../knowledge/entities/link-invocation.js';
+import { entityLinkConfirmationDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../../../knowledge/entities/link-invocation-state.js';
+import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../../../knowledge/library/contracts.js';
+import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../../../knowledge/library/write-errors.js';
 import { entityLinkDigest } from './entity-link-hash.js';
-import { canonicalJson } from '../../knowledge/store.js';
-import type { KnowledgeApplication } from './application.js';
-import { KnowledgeLibraryApplication } from './library.js';
+import { canonicalJson } from '../../../knowledge/store.js';
+import type { KnowledgeApplication } from '.././application.js';
+import { KnowledgeLibraryApplication } from '.././library.js';
 import { currentEntityLinkSource } from './entity-link-source.js';
-import { createEntityLinkExecutionRequest } from './adapters/entity-link-executor.js';
-import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
-import { configureEntityLinkApiProducer, inspectEntityLinkApiProducer, entityLinkTextHash } from './adapters/entity-link-api-producer.js';
+import { createEntityLinkExecutionRequest } from '.././adapters/entity-link-executor.js';
+import type { ExecutorArchiveProducer } from '../../../executors/contracts/archive.js';
+import { configureEntityLinkApiProducer, inspectEntityLinkApiProducer, entityLinkTextHash } from '.././adapters/entity-link-api-producer.js';
 import { entityLinkQuality, unreadableEntityLinkQuality } from './entity-link-quality.js';
 
 const reference = z.strictObject({ analysisId: z.string().uuid(), entityId: z.string().uuid(), mentionIds: z.array(z.string().uuid()).min(1).max(64).optional() });

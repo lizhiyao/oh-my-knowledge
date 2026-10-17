@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AnalyzedEntity, EntityAnalysisEnvelope } from '../../knowledge/entities/contracts.js';
 import type { KnowledgeEnvelope } from '../../knowledge/store.js';
-import type { EvidenceWindow, SourceResolution } from './evidence.js';
+import type { EvidenceWindow, SourceResolution } from './extraction/evidence.js';
 
 export const EntityQuerySchema = z.strictObject({
   query: z.string().trim().max(512).default(''),

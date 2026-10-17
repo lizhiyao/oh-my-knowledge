@@ -1,6 +1,6 @@
-import type { KnowledgeApplication } from './application.js';
-import { EntityLinkConflictError, type EntityLinkEndpoint } from '../../knowledge/entities/links.js';
-import { validateEvidenceSelection } from '../../knowledge/validation.js';
+import type { KnowledgeApplication } from '.././application.js';
+import { EntityLinkConflictError, type EntityLinkEndpoint } from '../../../knowledge/entities/links.js';
+import { validateEvidenceSelection } from '../../../knowledge/validation.js';
 
 /** Called inside the workspace transaction immediately before organization publication. */
 export function currentEntityLinkSource(knowledge: KnowledgeApplication, endpoint: EntityLinkEndpoint) {

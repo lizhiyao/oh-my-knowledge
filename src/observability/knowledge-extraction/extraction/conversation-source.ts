@@ -1,5 +1,5 @@
-import type { ConversationCatalog } from '../conversation/catalog.js';
-import { projectTraceEvidence } from './adapters/trace-evidence.js';
+import type { ConversationCatalog } from '../../conversation/catalog.js';
+import { projectTraceEvidence } from '.././adapters/trace-evidence.js';
 import type { EvidenceWindow } from './evidence.js';
 
 /** Resolve the current scope through Observe. Never trust browser paths or message text. */

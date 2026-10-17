@@ -9,7 +9,7 @@ import {
   EVIDENCE_PROJECTION_VERSION,
   EvidenceWindowSchema, type EvidenceStore, type EvidenceWindow,
   type SourceResolution, type SourceSelection,
-} from '../evidence.js';
+} from '../extraction/evidence.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;

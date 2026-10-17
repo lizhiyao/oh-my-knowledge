@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { EntityLinkSuggestionSchema } from '../../knowledge/entities/links.js';
-import { canonicalJson } from '../../knowledge/store.js';
+import { EntityLinkSuggestionSchema } from '../../../knowledge/entities/links.js';
+import { canonicalJson } from '../../../knowledge/store.js';
 
 function freezeJson<T>(value: T): T {
   if (value && typeof value === 'object') {

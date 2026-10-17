@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { locateQuoteOccurrence } from '../../src/observability/knowledge-extraction/quote-occurrence.js';
+import { locateQuoteOccurrence } from '../../src/observability/knowledge-extraction/extraction/quote-occurrence.js';
 
 const excerpts = [{ evidenceRef: 'r', text: '😀 Echo 调用 Echo，前者是服务，后者是工具。' }];
 const quote = { evidenceRef: 'r', quote: 'Echo' };

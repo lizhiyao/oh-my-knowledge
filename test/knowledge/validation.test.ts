@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateEvidenceSelection, validateKnowledgeDraft } from '../../src/knowledge/validation.js';
 import { KnowledgeTimeSchema, type KnowledgeDraft } from '../../src/knowledge/contracts.js';
-import { checkWindowExtractionResponse as check, type WindowExtractionModel } from '../../src/observability/knowledge-extraction/window-proposals.js';
+import { checkWindowExtractionResponse as check, type WindowExtractionModel } from '../../src/observability/knowledge-extraction/extraction/window-proposals.js';
 
 import { draft, modelWindow } from './fixtures.js';
 const evidence = new Set(['record-1']);

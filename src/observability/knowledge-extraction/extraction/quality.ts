@@ -1,5 +1,5 @@
 import type { ExtractionRun } from './runs.js';
-import { canonicalJson } from '../../knowledge/store.js';
+import { canonicalJson } from '../../../knowledge/store.js';
 
 interface AdmissionCounts {
   accepted: number; rejected: number; recorded: number; unknownRuns: number; acceptanceRate: number | null;

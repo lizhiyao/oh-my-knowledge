@@ -13,12 +13,12 @@ import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
-import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/prompt.js';
-import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/model-input.js';
+import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/extraction/prompt.js';
+import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/observability/knowledge-extraction/extraction/model-input.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
-import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/strict-prompt.js';
-import { extractionQuality } from '../../src/observability/knowledge-extraction/quality.js';
+import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/observability/knowledge-extraction/extraction/strict-prompt.js';
+import { extractionQuality } from '../../src/observability/knowledge-extraction/extraction/quality.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

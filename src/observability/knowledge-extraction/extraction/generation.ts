@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import type { ExecutorArchiveEvidence } from '../../executors/contracts/archive.js';
+import type { ExecutorArchiveEvidence } from '../../../executors/contracts/archive.js';
 import type { ExtractionJson, ExtractionOutcome } from './runs.js';
-import { canonicalJson } from '../../knowledge/store.js';
+import { canonicalJson } from '../../../knowledge/store.js';
 import { WINDOW_EXTRACTION_WIRE_ID, decodeWindowExtractionWire } from './model-wire.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from './strict-prompt.js';

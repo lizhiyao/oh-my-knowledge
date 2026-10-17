@@ -10,10 +10,10 @@ import {
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
 } from '../../src/observability/soft-standards/constants.js';
-import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/prompt.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/strict-prompt.js';
-import { EXTRACTION_FEEDBACK_PREAMBLE } from '../../src/observability/knowledge-extraction/generation-policy.js';
-import { ENTITY_LINK_PROMPT_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
+import { EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/extraction/prompt.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/extraction/strict-prompt.js';
+import { EXTRACTION_FEEDBACK_PREAMBLE } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import { ENTITY_LINK_PROMPT_HASH } from '../../src/observability/knowledge-extraction/linking/entity-link-prompt.js';
 
 /**
  * omk 所有 LLM prompt 的单一编目 —— 发现入口 + 测量学冻结入口。
@@ -103,28 +103,28 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   {
     promptId: 'knowledge-extraction',
     purpose: '知识与实体提取(输出及其质量测量身份)',
-    module: 'src/observability/knowledge-extraction/prompt.ts',
+    module: 'src/observability/knowledge-extraction/extraction/prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(EXTRACTION_PROMPT).digest('hex'),
   },
   {
     promptId: 'knowledge-extraction-strict',
     purpose: 'strict 知识与实体提取(含 few-shot 的独立 v16 提示词及测量身份)',
-    module: 'src/observability/knowledge-extraction/strict-prompt.ts',
+    module: 'src/observability/knowledge-extraction/extraction/strict-prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex'),
   },
   {
     promptId: 'knowledge-extraction-feedback',
     purpose: '有限校验重问的宿主反馈指令（knowledge-generation-feedback/v1）',
-    module: 'src/observability/knowledge-extraction/generation-policy.ts',
+    module: 'src/observability/knowledge-extraction/extraction/generation-policy.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(EXTRACTION_FEEDBACK_PREAMBLE).digest('hex'),
   },
   {
     promptId: 'entity-link-proposal',
     purpose: '跨窗口实体关联建议(输出及其质量测量身份)',
-    module: 'src/observability/knowledge-extraction/entity-link-prompt.ts',
+    module: 'src/observability/knowledge-extraction/linking/entity-link-prompt.ts',
     measurementInvariant: true,
     getHash: () => ENTITY_LINK_PROMPT_HASH.slice('sha256:'.length),
   },

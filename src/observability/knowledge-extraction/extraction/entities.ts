@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { EntityMentionSchema, type EvidenceExcerpt } from '../../knowledge/contracts.js';
-import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../knowledge/entities/identity.js';
-import { validateEntityMentionSelection } from '../../knowledge/entities/validation.js';
+import { EntityMentionSchema, type EvidenceExcerpt } from '../../../knowledge/contracts.js';
+import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../../../knowledge/entities/identity.js';
+import { validateEntityMentionSelection } from '../../../knowledge/entities/validation.js';
 import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256);

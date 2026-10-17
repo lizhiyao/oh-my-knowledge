@@ -58,19 +58,19 @@ async function verify() {
   const { wireId, actualValidators, nullableOptionals, ...wireIdentity } = frozen;
   assert.deepEqual(actualValidators, manifest.validators); assert.equal(hash(schema), wireIdentity.wireSchemaDigest);
   const runtime = realpathSync(resolve(repository, 'dist'));
-  const paths = ['observability/knowledge-extraction/model-wire.js', 'observability/knowledge-extraction/window-proposals.js',
-    'observability/knowledge-extraction/entities.js', 'observability/knowledge-extraction/quote-occurrence.js', 'observability/knowledge-extraction/proposals.js',
-    'knowledge/contracts.js', 'knowledge/validation.js', 'observability/knowledge-extraction/prompt.js'];
+  const paths = ['observability/knowledge-extraction/extraction/model-wire.js', 'observability/knowledge-extraction/extraction/window-proposals.js',
+    'observability/knowledge-extraction/extraction/entities.js', 'observability/knowledge-extraction/extraction/quote-occurrence.js', 'observability/knowledge-extraction/extraction/proposals.js',
+    'knowledge/contracts.js', 'knowledge/validation.js', 'observability/knowledge-extraction/extraction/prompt.js'];
   const moduleDigests = paths.map(path => ({ path, sha256: hash(readFileSync(resolve(runtime, path))) }));
   const previousFetch = globalThis.fetch; let attemptedFetches = 0;
   globalThis.fetch = async () => { attemptedFetches++; throw new Error('This offline verifier forbids network/model access.'); };
   try {
     // Fixed deterministic production modules only: no executor, bench corpus or capture entry is imported.
     const wirePath = resolve(runtime, paths[0]);
-    const wire = await import('../../../../dist/observability/knowledge-extraction/model-wire.js');
-    const checker = await import('../../../../dist/observability/knowledge-extraction/window-proposals.js');
+    const wire = await import('../../../../dist/observability/knowledge-extraction/extraction/model-wire.js');
+    const checker = await import('../../../../dist/observability/knowledge-extraction/extraction/window-proposals.js');
     const knowledge = await import('../../../../dist/knowledge/contracts.js');
-    const production = await import('../../../../dist/observability/knowledge-extraction/prompt.js');
+    const production = await import('../../../../dist/observability/knowledge-extraction/extraction/prompt.js');
     const validatorRequire = createRequire(pathToFileURL(wirePath));
     const validators = { zod: validatorRequire('zod/package.json').version, ajv: validatorRequire('ajv/package.json').version };
     assert.deepEqual(validators, manifest.validators, 'Validator version drift needs a new explicit candidate identity; do not silently rebaseline.');
