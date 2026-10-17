@@ -35,6 +35,7 @@ test/eval-core/compiler/digests.test.ts
 test/eval-core/compiler/execution-bundle.test.ts
 test/eval-core/compiler/immutability.test.ts
 test/eval-core/conformance/neutrality.test.ts
+test/eval-core/contracts/budget.test.ts
 test/eval-core/contracts/comparability.test.ts
 test/eval-core/contracts/evaluator-measurement-identities.test.ts
 test/eval-core/contracts/execution-bundle.test.ts

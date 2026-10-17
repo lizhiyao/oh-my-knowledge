@@ -8,6 +8,7 @@ import {
   canonicalizeJson,
   digestCanonicalJson,
 } from './json.js';
+import { compareStrings } from '../primitives/ordering.js';
 const LedgerProviderCostSchema = z.object({
   amount: z.number().nonnegative(),
   currency: z.string().regex(/^[A-Z]{3}$/),
@@ -144,6 +145,127 @@ export const BudgetWallClockSummarySchema = z.object({
   overshootMs: z.number().nonnegative(),
 }).strict();
 
+/** Per-scope running totals before they are sealed into a BudgetSummary. */
+export interface BudgetScopeTotals {
+  invocations: number;
+  activeDurationMs: number;
+  providerCosts: Map<string, number>;
+  unreportedProviderCostInvocations: number;
+}
+
+/** Sum ledger entries into per-scope totals. The run and both stage scopes always exist. */
+export function accumulateBudgetScopeTotals(
+  entries: readonly BudgetLedgerEntry[],
+  runId: string,
+): Map<string, BudgetScopeTotals> {
+  const totals = new Map<string, BudgetScopeTotals>();
+  const empty = (): BudgetScopeTotals => ({
+    invocations: 0,
+    activeDurationMs: 0,
+    providerCosts: new Map(),
+    unreportedProviderCostInvocations: 0,
+  });
+  const add = (scopeKind: 'run' | 'stage' | 'coordinate', scopeId: string,
+    entry: BudgetLedgerEntry): void => {
+    const key = `${scopeKind}:${scopeId}`;
+    const current = totals.get(key) ?? empty();
+    current.invocations += 1;
+    current.activeDurationMs += entry.activeDurationMs;
+    if (entry.providerCost === undefined) current.unreportedProviderCostInvocations += 1;
+    else {
+      current.providerCosts.set(
+        entry.providerCost.currency,
+        (current.providerCosts.get(entry.providerCost.currency) ?? 0) + entry.providerCost.amount,
+      );
+    }
+    totals.set(key, current);
+  };
+  for (const entry of entries) {
+    add('run', runId, entry);
+    add('stage', entry.stage, entry);
+    add('coordinate', entry.coordinateId, entry);
+  }
+  if (!totals.has(`run:${runId}`)) totals.set(`run:${runId}`, empty());
+  for (const stage of ['execution', 'evaluation'] as const) {
+    if (!totals.has(`stage:${stage}`)) totals.set(`stage:${stage}`, empty());
+  }
+  return totals;
+}
+
+/** Build one sealed scope row from its totals and limits snapshot. */
+export function buildBudgetScopeSummary(
+  scopeKind: 'run' | 'stage' | 'coordinate',
+  scopeId: string,
+  limits: BudgetScopeLimitSnapshot,
+  totals: BudgetScopeTotals,
+): BudgetScopeSummary {
+  const providerCostAmount = limits.maxProviderCost === undefined
+    ? undefined
+    : totals.providerCosts.get(limits.maxProviderCost.currency) ?? 0;
+  return {
+    scopeKind,
+    scopeId,
+    limits,
+    totals: {
+      invocations: totals.invocations,
+      activeDurationMs: totals.activeDurationMs,
+      ...(totals.providerCosts.size === 0 ? {} : {
+        reportedProviderCosts: [...totals.providerCosts.entries()]
+          .map(([currency, amount]) => ({ amount, currency }))
+          .sort((left, right) => compareStrings(left.currency, right.currency)),
+      }),
+      unreportedProviderCostInvocations: totals.unreportedProviderCostInvocations,
+    },
+    overshoot: {
+      invocations: limits.maxInvocations === undefined
+        ? 0
+        : Math.max(0, totals.invocations - limits.maxInvocations),
+      activeDurationMs: limits.maxActiveDurationMs === undefined
+        ? 0
+        : Math.max(0, totals.activeDurationMs - limits.maxActiveDurationMs),
+      ...(limits.maxProviderCost === undefined
+        ? {}
+        : {
+          providerCost: {
+            amount: Math.max(0, (providerCostAmount as number)
+              - limits.maxProviderCost.amount),
+            currency: limits.maxProviderCost.currency,
+          },
+        }),
+    },
+  };
+}
+
+/** Canonical scope ordering: UTF-16 lexicographic on `scopeKind:scopeId`, host-locale independent. */
+export function compareBudgetScopeSummaries(
+  left: BudgetScopeSummary,
+  right: BudgetScopeSummary,
+): number {
+  return compareStrings(
+    `${left.scopeKind}:${left.scopeId}`,
+    `${right.scopeKind}:${right.scopeId}`,
+  );
+}
+
+/**
+ * Recompute the canonical sealed scope list from ledger entries. resolveLimits supplies
+ * each scope's limits snapshot (default `{}` when absent), matching the producer's policy.
+ */
+export function recomputeBudgetScopeSummaries(
+  entries: readonly BudgetLedgerEntry[],
+  runId: string,
+  resolveLimits: (scopeKind: 'run' | 'stage' | 'coordinate', scopeId: string) => BudgetScopeLimitSnapshot,
+): BudgetScopeSummary[] {
+  return [...accumulateBudgetScopeTotals(entries, runId).entries()]
+    .map(([key, totals]) => {
+      const separator = key.indexOf(':');
+      const scopeKind = key.slice(0, separator) as 'run' | 'stage' | 'coordinate';
+      const scopeId = key.slice(separator + 1);
+      return buildBudgetScopeSummary(scopeKind, scopeId, resolveLimits(scopeKind, scopeId), totals);
+    })
+    .sort(compareBudgetScopeSummaries);
+}
+
 export const BudgetSummarySchema = z.object({
   schemaVersion: z.literal(BUDGET_SUMMARY_SCHEMA_VERSION),
   runId: IdentifierSchema,
@@ -213,99 +335,15 @@ export const BudgetSummarySchema = z.object({
       message: 'Wall-clock overshoot must be derived from elapsed time and the sealed limit.',
     });
   }
-  const totals = new Map<string, {
-    invocations: number;
-    activeDurationMs: number;
-    costs: Map<string, number>;
-    unreported: number;
-  }>();
-  const add = (scopeKind: 'run' | 'stage' | 'coordinate', scopeId: string,
-    entry: z.infer<typeof BudgetLedgerEntrySchema>): void => {
-    const key = `${scopeKind}:${scopeId}`;
-    const current = totals.get(key) ?? {
-      invocations: 0,
-      activeDurationMs: 0,
-      costs: new Map(),
-      unreported: 0,
-    };
-    current.invocations += 1;
-    current.activeDurationMs += entry.activeDurationMs;
-    if (entry.providerCost === undefined) current.unreported += 1;
-    else {
-      current.costs.set(
-        entry.providerCost.currency,
-        (current.costs.get(entry.providerCost.currency) ?? 0) + entry.providerCost.amount,
-      );
-    }
-    totals.set(key, current);
-  };
-  for (const entry of summary.entries) {
-    add('run', summary.runId, entry);
-    add('stage', entry.stage, entry);
-    add('coordinate', entry.coordinateId, entry);
-  }
-  if (summary.entries.length === 0) {
-    totals.set(`run:${summary.runId}`, {
-      invocations: 0,
-      activeDurationMs: 0,
-      costs: new Map(),
-      unreported: 0,
-    });
-  }
-  for (const stage of ['execution', 'evaluation'] as const) {
-    const key = `stage:${stage}`;
-    if (!totals.has(key)) totals.set(key, {
-      invocations: 0,
-      activeDurationMs: 0,
-      costs: new Map(),
-      unreported: 0,
-    });
-  }
   const suppliedScopes = new Map(summary.scopes.map((scope) => [
     `${scope.scopeKind}:${scope.scopeId}`,
     scope,
   ]));
-  const recomputedScopes = [...totals.entries()].map(([key, value]) => {
-    const separator = key.indexOf(':');
-    const supplied = suppliedScopes.get(key);
-    const limits = supplied?.limits ?? {};
-    const providerCostAmount = limits.maxProviderCost === undefined
-      ? undefined
-      : value.costs.get(limits.maxProviderCost.currency) ?? 0;
-    return {
-      scopeKind: key.slice(0, separator) as 'run' | 'stage' | 'coordinate',
-      scopeId: key.slice(separator + 1),
-      limits,
-      totals: {
-        invocations: value.invocations,
-        activeDurationMs: value.activeDurationMs,
-        ...(value.costs.size === 0 ? {} : {
-          reportedProviderCosts: [...value.costs.entries()]
-            .map(([currency, amount]) => ({ amount, currency }))
-            .sort((left, right) => left.currency.localeCompare(right.currency)),
-        }),
-        unreportedProviderCostInvocations: value.unreported,
-      },
-      overshoot: {
-        invocations: limits.maxInvocations === undefined
-          ? 0
-          : Math.max(0, value.invocations - limits.maxInvocations),
-        activeDurationMs: limits.maxActiveDurationMs === undefined
-          ? 0
-          : Math.max(0, value.activeDurationMs - limits.maxActiveDurationMs),
-        ...(limits.maxProviderCost === undefined
-          ? {}
-          : {
-            providerCost: {
-              amount: Math.max(0, (providerCostAmount as number)
-                - limits.maxProviderCost.amount),
-              currency: limits.maxProviderCost.currency,
-            },
-          }),
-      },
-    };
-  }).sort((left, right) => `${left.scopeKind}:${left.scopeId}`
-    .localeCompare(`${right.scopeKind}:${right.scopeId}`));
+  const recomputedScopes = recomputeBudgetScopeSummaries(
+    summary.entries,
+    summary.runId,
+    (scopeKind, scopeId) => suppliedScopes.get(`${scopeKind}:${scopeId}`)?.limits ?? {},
+  );
   if (canonicalizeJson(summary.scopes) !== canonicalizeJson(recomputedScopes)) {
     context.addIssue({
       code: 'custom',
