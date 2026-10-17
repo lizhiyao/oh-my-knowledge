@@ -7,8 +7,8 @@ import {
   digestArtifactPayload,
   digestCanonicalJson,
   deriveEvaluationAttemptId,
+  recomputeBudgetScopeSummaries,
   type BudgetLedgerEntry,
-  type BudgetScopeSummary,
   type BudgetSummary,
   type EvaluationBundle,
   type EvaluationEvent,
@@ -61,84 +61,9 @@ function reconcileBudgetSummary(
   const coordinateLimits = summary.scopes.find(
     (scope) => scope.scopeKind === 'coordinate',
   )?.limits ?? {};
-  const totals = new Map<string, {
-    invocations: number;
-    activeDurationMs: number;
-    costs: Map<string, number>;
-    unreported: number;
-  }>();
-  for (const key of [
-    `run:${summary.runId}`,
-    'stage:evaluation',
-    'stage:execution',
-  ]) totals.set(key, {
-    invocations: 0,
-    activeDurationMs: 0,
-    costs: new Map(),
-    unreported: 0,
-  });
-  for (const entry of summary.entries) {
-    for (const key of [
-      `run:${summary.runId}`,
-      `stage:${entry.stage}`,
-      `coordinate:${entry.coordinateId}`,
-    ]) {
-      const value = totals.get(key) ?? {
-        invocations: 0,
-        activeDurationMs: 0,
-        costs: new Map<string, number>(),
-        unreported: 0,
-      };
-      value.invocations += 1;
-      value.activeDurationMs += entry.activeDurationMs;
-      if (entry.providerCost === undefined) value.unreported += 1;
-      else value.costs.set(
-        entry.providerCost.currency,
-        (value.costs.get(entry.providerCost.currency) ?? 0) + entry.providerCost.amount,
-      );
-      totals.set(key, value);
-    }
-  }
-  summary.scopes = [...totals.entries()].map(([key, value]): BudgetScopeSummary => {
-    const separator = key.indexOf(':');
-    const scopeKind = key.slice(0, separator) as BudgetScopeSummary['scopeKind'];
-    const scopeId = key.slice(separator + 1);
-    const limits = previousLimits.get(key)
-      ?? (scopeKind === 'coordinate' ? coordinateLimits : {});
-    const cost = limits.maxProviderCost === undefined
-      ? undefined
-      : value.costs.get(limits.maxProviderCost.currency) ?? 0;
-    return {
-      scopeKind,
-      scopeId,
-      limits,
-      totals: {
-        invocations: value.invocations,
-        activeDurationMs: value.activeDurationMs,
-        ...(value.costs.size === 0 ? {} : {
-          reportedProviderCosts: [...value.costs.entries()]
-            .map(([currency, amount]) => ({ amount, currency }))
-            .sort((left, right) => left.currency.localeCompare(right.currency)),
-        }),
-        unreportedProviderCostInvocations: value.unreported,
-      },
-      overshoot: {
-        invocations: limits.maxInvocations === undefined
-          ? 0
-          : Math.max(0, value.invocations - limits.maxInvocations),
-        activeDurationMs: limits.maxActiveDurationMs === undefined
-          ? 0
-          : Math.max(0, value.activeDurationMs - limits.maxActiveDurationMs),
-        ...(limits.maxProviderCost === undefined ? {} : {
-          providerCost: {
-            amount: Math.max(0, (cost as number) - limits.maxProviderCost.amount),
-            currency: limits.maxProviderCost.currency,
-          },
-        }),
-      },
-    };
-  }).sort((left, right) => `${left.scopeKind}:${left.scopeId}`
-    .localeCompare(`${right.scopeKind}:${right.scopeId}`));
+  summary.scopes = recomputeBudgetScopeSummaries(summary.entries, summary.runId,
+    (scopeKind, scopeId) => previousLimits.get(`${scopeKind}:${scopeId}`)
+      ?? (scopeKind === 'coordinate' ? coordinateLimits : {}));
   const { ledgerDigest: _ledgerDigest, ...payload } = summary;
   void _ledgerDigest;
   summary.ledgerDigest = digestCanonicalJson(payload);

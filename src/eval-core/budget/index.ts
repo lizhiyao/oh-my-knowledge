@@ -1,7 +1,9 @@
 import {
   BUDGET_SUMMARY_SCHEMA_VERSION,
   BudgetSummarySchema,
+  buildBudgetScopeSummary,
   budgetSummaryMatchesPolicy,
+  compareBudgetScopeSummaries,
   digestCanonicalJson,
   type BudgetLedgerEntry,
   type BudgetScopeLimitSnapshot,
@@ -516,48 +518,9 @@ class RunBudgetAuthority implements RunBudgetController {
         const separator = key.indexOf(':');
         const scopeKind = key.slice(0, separator) as BudgetScopeSummary['scopeKind'];
         const scopeId = key.slice(separator + 1);
-        const limits = this.scopeLimits(scopeKind, scopeId);
-        const providerCostAmount = limits.maxProviderCost === undefined
-          ? undefined
-          : totals.providerCosts.get(limits.maxProviderCost.currency) ?? 0;
-        return {
-          scopeKind,
-          scopeId,
-          limits,
-          totals: {
-            invocations: totals.invocations,
-            activeDurationMs: totals.activeDurationMs,
-            ...(totals.providerCosts.size === 0
-              ? {}
-              : {
-                reportedProviderCosts: [...totals.providerCosts.entries()]
-                  .map(([currency, amount]) => ({ amount, currency }))
-                  .sort((left, right) => compareStrings(left.currency, right.currency)),
-              }),
-            unreportedProviderCostInvocations: totals.unreportedProviderCostInvocations,
-          },
-          overshoot: {
-            invocations: limits.maxInvocations === undefined
-              ? 0
-              : Math.max(0, totals.invocations - limits.maxInvocations),
-            activeDurationMs: limits.maxActiveDurationMs === undefined
-              ? 0
-              : Math.max(0, totals.activeDurationMs - limits.maxActiveDurationMs),
-            ...(limits.maxProviderCost === undefined
-              ? {}
-              : {
-                providerCost: {
-                  amount: Math.max(0, (providerCostAmount as number)
-                    - limits.maxProviderCost.amount),
-                  currency: limits.maxProviderCost.currency,
-                },
-              }),
-          },
-        };
+        return buildBudgetScopeSummary(scopeKind, scopeId, this.scopeLimits(scopeKind, scopeId), totals);
       })
-      .sort((left, right) => compareStrings(
-        `${left.scopeKind}:${left.scopeId}`, `${right.scopeKind}:${right.scopeId}`,
-      ));
+      .sort(compareBudgetScopeSummaries);
     const outstandingProviderCosts = new Map<string, number>();
     for (const reservation of this.#reservations.values()) {
       const bound = reservation.providerCostUpperBound;
