@@ -12,9 +12,9 @@ import { EntityLinkModelInputSchema, EntityLinkExecutionOutcomeSchema } from '..
 import { checkEntityLinkSuggestion } from '../../src/knowledge/entities/links.js';
 import { createEntityLinkExecutionRequest, configuredEntityLinkExecutor } from '../../src/observability/knowledge-extraction/adapters/entity-link-executor.js';
 import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_PROMPT_VERSION, ENTITY_LINK_RESPONSE_JSON_SCHEMA,
-  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/observability/knowledge-extraction/entity-link-prompt.js';
+  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/observability/knowledge-extraction/linking/entity-link-prompt.js';
 import { assertExecutorInputCapabilities } from '../../src/executors/core/capabilities.js';
-import { observeExtractionException } from '../../src/observability/knowledge-extraction/generation.js';
+import { observeExtractionException } from '../../src/observability/knowledge-extraction/extraction/generation.js';
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
 
 let root: string, repository: string, bundle: string, output: string;

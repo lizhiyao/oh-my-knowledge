@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { ExtractionRunSchema, type ExtractionRun } from '../../src/observability/knowledge-extraction/runs.js';
-import { boundedExtractionPolicy, SINGLE_EXTRACTION_POLICY, type ExtractionGenerationPolicy } from '../../src/observability/knowledge-extraction/generation-policy.js';
-import { extractionQuality } from '../../src/observability/knowledge-extraction/quality.js';
+import { ExtractionRunSchema, type ExtractionRun } from '../../src/observability/knowledge-extraction/extraction/runs.js';
+import { boundedExtractionPolicy, SINGLE_EXTRACTION_POLICY, type ExtractionGenerationPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import { extractionQuality } from '../../src/observability/knowledge-extraction/extraction/quality.js';
 
 const sha = `sha256:${'a'.repeat(64)}`;
 function savedRun(policy: ExtractionGenerationPolicy, timeoutMs = 300_000, maxOutputTokens = policy.policyId === 'knowledge-generation-bounded/v1' ? policy.maxOutputTokens : 4096): ExtractionRun {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
+import { TraceSourceKindSchema } from '../../../executors/contracts/trace-source-schema.js';
 
 /** v1 只登记过 Codex 来源；读侧继续接受，写侧统一升级到 v2。 */
 export const EVIDENCE_PROJECTION_VERSION = 'knowledge-window-v2' as const;

@@ -5,18 +5,18 @@ import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import type { ConversationCatalog } from '../conversation/catalog.js';
-import type { EvidenceWindow } from './evidence.js';
+import type { EvidenceWindow } from './extraction/evidence.js';
 import type { ExtractionModel } from './application.js';
 import { createLocalKnowledgeApplication } from './local.js';
 import { validateExtractionModelSelection } from './adapters/executor.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
-import { conversationExtractionSource } from './conversation-source.js';
-import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './model-input.js';
-import { extractionPrompt } from './generation.js';
+import { conversationExtractionSource } from './extraction/conversation-source.js';
+import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from './extraction/model-input.js';
+import { extractionPrompt } from './extraction/generation.js';
 import { FileExtractionRunStore } from './adapters/run-store.js';
-import { ExtractionOutcomeRefSchema } from './runs.js';
+import { ExtractionOutcomeRefSchema } from './extraction/runs.js';
 import { ExtractionBudgetReservationSchema, ExtractionGenerationPolicySchema, SINGLE_EXTRACTION_POLICY, TRANSIENT_EXTRACTION_FAILURES,
-  type ExtractionBudgetReservation, type ExtractionGenerationPolicy } from './generation-policy.js';
+  type ExtractionBudgetReservation, type ExtractionGenerationPolicy } from './extraction/generation-policy.js';
 
 const text = z.string().min(1).max(4096);
 const schema = z.strictObject({

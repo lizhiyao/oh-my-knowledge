@@ -8,7 +8,7 @@ import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { AgentCollectionEntry } from '../../observability/agents/index.js';
-import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../../observability/knowledge-extraction/generation-policy.js';
+import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../../observability/knowledge-extraction/extraction/generation-policy.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 

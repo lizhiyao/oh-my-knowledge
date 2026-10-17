@@ -12,12 +12,12 @@ import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKno
 import { FileEntityLinkStore, entityLinkAllocation, ENTITY_LINK_NAMESPACE_BYTES } from '../../src/observability/knowledge-extraction/adapters/entity-link-store.js';
 import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
 import { FileLibraryStore } from '../../src/observability/knowledge-extraction/adapters/library-store.js';
-import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/observability/knowledge-extraction/entity-links.js';
+import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/observability/knowledge-extraction/linking/entity-links.js';
 import { configureEntityLinkApiProducer, entityLinkTextHash } from '../../src/observability/knowledge-extraction/adapters/entity-link-api-producer.js';
 import { KnowledgeLibraryApplication } from '../../src/observability/knowledge-extraction/library.js';
 import { transitionEntityLinkInvocation, projectEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
 import { EntityLinkPreviewSchema, type EntityLinkInvocation, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction } from '../../src/knowledge/entities/link-invocation.js';
-import { entityLinkDigest } from '../../src/observability/knowledge-extraction/entity-link-hash.js';
+import { entityLinkDigest } from '../../src/observability/knowledge-extraction/linking/entity-link-hash.js';
 import { modelWindow } from './fixtures.js';
 
 let root: string;

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
 import type { KnowledgeWrite } from '../../src/knowledge/store.js';
-import type { SourceSelection } from '../../src/observability/knowledge-extraction/evidence.js';
+import type { SourceSelection } from '../../src/observability/knowledge-extraction/extraction/evidence.js';
 import { draft, proposal } from './fixtures.js';
 
 const roots: string[] = [];

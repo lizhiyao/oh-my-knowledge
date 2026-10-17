@@ -6,7 +6,7 @@ import { canonicalJson } from '../../knowledge/store.js';
 import { validateEvidenceSelection } from '../../knowledge/validation.js';
 import type { KnowledgeApplication } from './application.js';
 import { EntityLinkConflictError, type EntityLinkEndpoint } from '../../knowledge/entities/links.js';
-import { currentEntityLinkSource } from './entity-link-source.js';
+import { currentEntityLinkSource } from './linking/entity-link-source.js';
 
 export const LibraryQuerySchema = z.strictObject({ query: z.string().trim().max(512).default(''),
   page: z.number().int().min(1).max(100_000).default(1), pageSize: z.number().int().min(1).max(100).default(20) });
