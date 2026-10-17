@@ -16,7 +16,7 @@ describe('knowledge-artifacts 领域布局', () => {
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
       .toEqual(['authoring', 'doctor', 'skills', 'sources']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
-      .toEqual(['contracts.ts']);
+      .toEqual(['AGENTS.md', 'contracts.ts']);
   });
 
   it('不保留旧源码、测试或构建顶层兼容目录', () => {
