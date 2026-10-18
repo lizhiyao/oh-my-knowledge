@@ -13,7 +13,6 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'evidence',
   'executors',
   'knowledge',
-  'knowledge-artifacts',
   'mcp',
   'observability',
   'shared',
@@ -55,11 +54,13 @@ const EXPECTED_SHARED_FILES = [
 
 const RETIRED_TOP_LEVEL_DIRECTORIES = [
   'artifact-graph',
+  'artifacts',
   'authoring',
   'doctor',
   'evaluation-core',
   'grading',
   'inputs',
+  'knowledge-artifacts',
   'managed',
   'measurement-artifacts',
   'package-api',
@@ -119,8 +120,8 @@ describe('src 最终领域地图', () => {
       .toEqual([]);
   });
 
-  it('不恢复任何迁移前的顶层目录或构建产物', () => {
-    const violations = RETIRED_TOP_LEVEL_DIRECTORIES.flatMap((directory) => [
+  it('不恢复任何迁移前的目录或构建产物', () => {
+    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observability/knowledge-extraction'].flatMap((directory) => [
       `src/${directory}`,
       `test/${directory}`,
       ...(existsSync(resolve('dist')) ? [`dist/${directory}`] : []),

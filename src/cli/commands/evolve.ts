@@ -98,7 +98,7 @@ export async function runEvolve(
     throw new CliExit(1);
   }
 
-  const { evolveSkillCore } = await import('../../knowledge-artifacts/authoring/core-evolver.js');
+  const { evolveSkillCore } = await import('../../knowledge/artifacts/authoring/core-evolver.js');
   const { runCoreEvaluationCommand } = await import('../lib/run-core-evaluation.js');
   const { prepareCliEvaluation } = await import('../lib/prepare-evaluation.js');
   const evolveEffort = flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined;

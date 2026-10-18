@@ -4,12 +4,12 @@ import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
-import { createLocalKnowledgeApplication } from '../../../observability/knowledge-extraction/local.js';
+import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { z } from 'zod';
-import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCode, type KnowledgeOperation } from '../../../observability/knowledge-extraction/operations.js';
+import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCode, type KnowledgeOperation } from '../../../knowledge/application/operations.js';
 import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-output.js';
-import { configuredExtractionModel } from '../../../observability/knowledge-extraction/adapters/executor.js';
-import { ExtractionGenerationPolicySchema } from '../../../observability/knowledge-extraction/extraction/generation-policy.js';
+import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
+import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
@@ -64,7 +64,7 @@ export default class ObserveKnowledge extends BaseCommand {
       this.error(this.lang === 'zh' ? '--generation-policy 仅用于 generate。' : '--generation-policy is only valid for generate.', { exit: 2 });
     }
     if (args.operation === 'schema') {
-      const wire = await import('../../../observability/knowledge-extraction/extraction/model-wire.js');
+      const wire = await import('../../../knowledge/extraction/model-wire.js');
       if (flags.json) this.log(JSON.stringify({ responseKind: 'knowledge-extraction-wire-contract',
         wireId: wire.WINDOW_EXTRACTION_WIRE_ID, identity: wire.WINDOW_EXTRACTION_WIRE_IDENTITY,
         schema: wire.WINDOW_EXTRACTION_WIRE_SCHEMA, hostOnly: wire.WINDOW_EXTRACTION_WIRE_HOST_ONLY }, null, 2));

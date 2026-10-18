@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { EntityLinkModelInputSchema } from '../../src/knowledge/entities/link-invocation.js';
 import { EntityLinkSuggestionSchema, checkEntityLinkSuggestion } from '../../src/knowledge/entities/links.js';
 import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_PROMPT_VERSION, ENTITY_LINK_RESPONSE_JSON_SCHEMA,
-  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/observability/knowledge-extraction/linking/entity-link-prompt.js';
+  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/knowledge/linking/entity-link-prompt.js';
 import { annotationReadiness, authorReviewStatus, reviewDigest, reviewReceiptStatus } from '../../scripts/bench/entity-extraction-review.js';
 import { entityLinkReviewInput, parseEntityLinkReviewCorpus, type EntityLinkReviewCase, type EntityLinkReviewCorpus } from '../../scripts/bench/entity-link-review-corpus.js';
 import { canonicalLinkReview, entityLinkReviewHostIdentity, reviewEntityLinkCapture, type EntityLinkReviewRuntime } from '../../scripts/bench/entity-link-review.js';

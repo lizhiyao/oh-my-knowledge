@@ -30,25 +30,25 @@ export type {
 } from './inbox/view-model.js';
 export {
   configuredExtractionModel,
-} from './knowledge-extraction/adapters/executor.js';
+} from '../knowledge/adapters/executor.js';
 export {
   projectTraceEvidence,
-} from './knowledge-extraction/adapters/trace-evidence.js';
+} from '../knowledge/adapters/trace-evidence.js';
 export {
   createLocalKnowledgeApplication,
-} from './knowledge-extraction/local.js';
+} from '../knowledge/application/local.js';
 export { KnowledgeStorageStateError } from '../evidence/storage/knowledge-workspace.js';
-export { extractionRunSummary } from './knowledge-extraction/extraction/runs.js';
-export { createLocalEntityLinks, parseEntityLinkPreview } from './knowledge-extraction/local.js';
-export type { EntityLinkApplication } from './knowledge-extraction/linking/entity-links.js';
-export { createLocalKnowledgeLibrary } from './knowledge-extraction/local.js';
-export { executeKnowledgeOperation, knowledgeOperationSchemas, knowledgeFailureCode } from './knowledge-extraction/operations.js';
-export type { KnowledgeOperation } from './knowledge-extraction/operations.js';
-export { LibrarySaveSchema } from './knowledge-extraction/library.js';
-export type { KnowledgeLibraryApplication } from './knowledge-extraction/library.js';
-export type { ExtractionRunSummary } from './knowledge-extraction/extraction/runs.js';
-export { ExtractionGenerationPolicySchema } from './knowledge-extraction/extraction/generation-policy.js';
-export type { ExtractionGenerationPolicy, ExtractionBoundedPolicy } from './knowledge-extraction/extraction/generation-policy.js';
+export { extractionRunSummary } from '../knowledge/extraction/runs.js';
+export { createLocalEntityLinks, parseEntityLinkPreview } from '../knowledge/application/local.js';
+export type { EntityLinkApplication } from '../knowledge/linking/entity-links.js';
+export { createLocalKnowledgeLibrary } from '../knowledge/application/local.js';
+export { executeKnowledgeOperation, knowledgeOperationSchemas, knowledgeFailureCode } from '../knowledge/application/operations.js';
+export type { KnowledgeOperation } from '../knowledge/application/operations.js';
+export { LibrarySaveSchema } from '../knowledge/application/library.js';
+export type { KnowledgeLibraryApplication } from '../knowledge/application/library.js';
+export type { ExtractionRunSummary } from '../knowledge/extraction/runs.js';
+export { ExtractionGenerationPolicySchema } from '../knowledge/extraction/generation-policy.js';
+export type { ExtractionGenerationPolicy, ExtractionBoundedPolicy } from '../knowledge/extraction/generation-policy.js';
 export {
   confidenceOf,
   effectiveObserveBand,
@@ -67,11 +67,11 @@ export type {
 } from './conversation/catalog.js';
 export type {
   KnowledgeApplication,
-} from './knowledge-extraction/application.js';
+} from '../knowledge/application/application.js';
 export type {
   EvidenceWindow,
-} from './knowledge-extraction/extraction/evidence.js';
+} from '../knowledge/extraction/evidence.js';
 
-export { conversationExtractionSource } from './knowledge-extraction/extraction/conversation-source.js';
-export { ConversationAutoExtraction } from './knowledge-extraction/auto-extraction.js';
-export type { AutoExtractionState, AutoExtractionPreview } from './knowledge-extraction/auto-extraction.js';
+export { conversationExtractionSource } from '../knowledge/extraction/conversation-source.js';
+export { ConversationAutoExtraction } from '../knowledge/application/auto-extraction.js';
+export type { AutoExtractionState, AutoExtractionPreview } from '../knowledge/application/auto-extraction.js';

@@ -5,7 +5,7 @@
  * 颜色」的口径，放在这里一次算完，React 树只取标签与色调，不重新解释体检引擎的词汇 —— 与
  * application/observe/health-format.ts 同一条边界。
  */
-import type { DoctorRuleResult, DoctorRuleStatus } from '../../../knowledge-artifacts/doctor/contracts.js';
+import type { DoctorRuleResult, DoctorRuleStatus } from '../../../knowledge/artifacts/doctor/contracts.js';
 import type { SkillGraphNodePreview, SkillGraphSnapshot } from '../../view-models/knowledge/skill-index.js';
 
 /** 体检引擎在 finding 上使用的中文分级词（见 doctor/health/dimension-spec.ts 的 HealthFindingLevel）。 */

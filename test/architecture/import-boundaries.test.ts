@@ -41,11 +41,11 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
-  {
-    from: 'observability/', to: 'executors/',
-    reason: 'Observability 只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',
+  ...['observability/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/linking/'].map((from) => ({
+    from, to: 'executors/',
+    reason: '观测与知识提炼只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',
     allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
-  },
+  })),
   {
     from: 'observability/trace/adapters/', to: 'observability/trace/source.ts',
     reason: 'Trace 适配器只暴露证据谓词与 parse 入口；发现、流式读取、session 分组留在 source.ts，单向消费适配器。',
@@ -70,10 +70,6 @@ const RULES: ForbiddenRule[] = [
         reason: '观测私有实现不得通过消费方入口反向聚合自身依赖。',
       }))
   )),
-  ...['observability/', 'executors/', 'cli/', 'studio/', 'evidence/', 'eval-workflows/', 'knowledge-artifacts/'].map((to) => ({
-    from: 'knowledge/', to,
-    reason: '知识内容和接纳规则保持宿主无关；来源、执行器与存储由应用层注入。',
-  })),
   ...['eval-core/', 'eval-runtime/', 'shared/'].map((from) => ({
     from, to: 'knowledge/', reason: '知识提炼不属于测量内核或跨领域叶子。',
   })),
@@ -115,7 +111,7 @@ const RULES: ForbiddenRule[] = [
   )),
 
   {
-    from: 'knowledge-artifacts/sources/',
+    from: 'knowledge/artifacts/sources/',
     to: 'eval-workflows/',
     reason: '通用载体来源解析不依赖评测样本、配置或工作流策略。',
   },
@@ -197,7 +193,7 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'executors/',
-    to: 'knowledge-artifacts/',
+    to: 'knowledge/',
     reason: 'Executor 只消费自身 contracts 描述的结构事实，不依赖知识载体生命周期实现。',
   },
   {
@@ -254,11 +250,6 @@ const RULES: ForbiddenRule[] = [
     from: 'shared/',
     to: 'diagnosis/',
     reason: 'shared 是跨领域叶子依赖；Diagnosis parser 由 diagnosis 领域拥有。',
-  },
-  {
-    from: 'shared/',
-    to: 'knowledge-artifacts/',
-    reason: 'shared 是跨领域叶子依赖；Artifact、Skill、Doctor、Authoring 与 Governance 均由 knowledge-artifacts 领域拥有。',
   },
   {
     from: 'shared/',
@@ -365,17 +356,6 @@ const FORBIDDEN_HOST_GLOBALS = new Set([
   'Bun',
 ]);
 
-function moduleSpecifier(node: ts.Node): ts.Expression | undefined {
-  if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-    return node.moduleSpecifier;
-  }
-  if (ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-    return node.arguments[0];
-  }
-  return undefined;
-}
-
 function isPropertyName(identifier: ts.Identifier): boolean {
   const parent = identifier.parent;
   return (ts.isPropertyAccessExpression(parent) && parent.name === identifier)
@@ -395,9 +375,15 @@ function isLocallyDeclared(
   ) ?? false;
 }
 
-function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] {
+function collectPureCapabilityViolations(options: {
+  files: string[];
+  isAllowedLocalDependency(path: string): boolean;
+  externalImports: ReadonlySet<string>;
+  label: string;
+  allowPackageSchemaResolver?: boolean;
+}): CoreCapabilityViolation[] {
   const violations: CoreCapabilityViolation[] = [];
-  const files = listTsFiles(EVALUATION_CORE_DIR);
+  const { files } = options;
   const program = ts.createProgram(files, {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.Node16,
@@ -409,37 +395,36 @@ function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] 
   for (const file of files) {
     const fileName = toSrcRelative(file);
     const source = program.getSourceFile(file);
-    if (source === undefined) throw new Error(`无法解析 Evaluation Core 源文件：${fileName}`);
+    if (source === undefined) throw new Error(`无法解析 ${options.label} 源文件：${fileName}`);
     const report = (detail: string): void => {
       violations.push({ file: fileName, detail });
     };
-    const visit = (node: ts.Node): void => {
-      const specifier = moduleSpecifier(node);
-      if (specifier !== undefined) {
-        if (!ts.isStringLiteralLike(specifier)) {
-          report('使用了非字面量 dynamic import，无法证明依赖闭包。');
-        } else if (specifier.text.startsWith('.')) {
-          const resolved = resolveSpecifier(file, specifier.text);
-          if (resolved === null
-              || (!resolved.startsWith(`${EVALUATION_CORE_DIR_NORMALIZED}/`)
-                && resolved !== EVALUATION_CORE_DIR_NORMALIZED)) {
-            report(`跨出 Evaluation Core 的依赖：${specifier.text}`);
-          }
-        } else if (!ALLOWED_CORE_EXTERNAL_IMPORTS.has(specifier.text)) {
-          report(`未获准的外部依赖：${specifier.text}`);
-        } else if (specifier.text === 'node:crypto') {
-          if (!ts.isImportDeclaration(node)
-              || node.importClause?.name !== undefined
-              || node.importClause?.namedBindings === undefined
-              || !ts.isNamedImports(node.importClause.namedBindings)
-              || node.importClause.namedBindings.elements.some((element) => (
-                (element.propertyName?.text ?? element.name.text) !== 'createHash'
-              ))) {
-            report('node:crypto 只允许具名导入确定性的 createHash。');
-          }
+    for (const { specifier } of sourceModuleReferences(source)) {
+      const node = specifier.parent;
+      if (!ts.isStringLiteralLike(specifier)) {
+        report('使用了非字面量 dynamic import，无法证明依赖闭包。');
+      } else if (specifier.text.startsWith('.')) {
+        const resolved = resolveSpecifier(file, specifier.text);
+        if (resolved === null
+            || !options.isAllowedLocalDependency(resolved)) {
+          report(`跨出 ${options.label} 的依赖：${specifier.text}`);
+        }
+      } else if (!options.externalImports.has(specifier.text)) {
+        report(`未获准的外部依赖：${specifier.text}`);
+      } else if (specifier.text === 'node:crypto') {
+        if (!ts.isImportDeclaration(node)
+            || node.importClause?.name !== undefined
+            || node.importClause?.namedBindings === undefined
+            || !ts.isNamedImports(node.importClause.namedBindings)
+            || node.importClause.namedBindings.elements.some((element) => (
+              (element.propertyName?.text ?? element.name.text) !== 'createHash'
+            ))) {
+          report('node:crypto 只允许具名导入确定性的 createHash。');
         }
       }
+    }
 
+    const visit = (node: ts.Node): void => {
       if (ts.isIdentifier(node)
           && FORBIDDEN_HOST_GLOBALS.has(node.text)
           && !isPropertyName(node)
@@ -469,7 +454,8 @@ function collectEvaluationCoreCapabilityViolations(): CoreCapabilityViolation[] 
       }
       if (ts.isMetaProperty(node)
           && node.keywordToken === ts.SyntaxKind.ImportKeyword) {
-        const packageSchemaResolver = fileName === 'eval-core/schema-url.ts'
+        const packageSchemaResolver = options.allowPackageSchemaResolver
+          && fileName === 'eval-core/schema-url.ts'
           && ts.isPropertyAccessExpression(node.parent)
           && node.parent.name.text === 'url';
         if (!packageSchemaResolver) report('访问了宿主模块位置：import.meta');
@@ -565,16 +551,28 @@ describe('架构边界守门', () => {
     ]);
   });
 
-  it('knowledge 纯逻辑只依赖自身与 Schema 校验库', () => {
-    const violations: string[] = [];
-    for (const file of listTsFiles(join(SRC_DIR, 'knowledge'))) {
-      for (const specifier of extractSpecifiers(readFileSync(file, 'utf-8'), file)) {
-        const target = resolveSpecifier(file, specifier);
-        if (specifier === 'zod' || (target && toSrcRelative(target).startsWith('knowledge/'))) continue;
-        violations.push(`${toSrcRelative(file)} → ${specifier}`);
-      }
+  it('迁出的知识执行子域仍只消费执行器契约，载体保留具体执行能力', () => {
+    for (const domain of ['adapters', 'application', 'extraction', 'linking']) {
+      const importer = `knowledge/${domain}/fixture.ts`;
+      expect(RULES.some((rule) => violatesRule(importer, 'executors/index.ts', rule)), importer).toBe(true);
+      expect(RULES.some((rule) => violatesRule(importer, 'executors/contracts/archive.ts', rule)), importer).toBe(false);
     }
-    expect(violations).toEqual([]);
+    expect(RULES.some((rule) => violatesRule('knowledge/artifacts/doctor/fixture.ts', 'executors/index.ts', rule))).toBe(false);
+  });
+
+  it('knowledge 根契约、entities 与 library 保持纯核心且不依赖伞内应用和适配器', () => {
+    const isKnowledgeCoreFile = (file: string): boolean => {
+      const path = toSrcRelative(file);
+      return /^knowledge\/[^/]+\.ts$/.test(path)
+        || path.startsWith('knowledge/entities/')
+        || path.startsWith('knowledge/library/');
+    };
+    expect(collectPureCapabilityViolations({
+      files: listTsFiles(join(SRC_DIR, 'knowledge')).filter(isKnowledgeCoreFile),
+      isAllowedLocalDependency: isKnowledgeCoreFile,
+      externalImports: new Set(['zod']),
+      label: 'Knowledge 纯核心',
+    })).toEqual([]);
   });
   it('Runtime Adapter provider 保持内聚目录与单向 shared 依赖', () => {
     const rootSourceFiles = readdirSync(RUNTIME_ADAPTERS_DIR, { withFileTypes: true })
@@ -1170,7 +1168,13 @@ describe('架构边界守门', () => {
   });
 
   it('Evaluation Core 只依赖内部模块、Zod 和确定性哈希', () => {
-    const violations = collectEvaluationCoreCapabilityViolations();
+    const violations = collectPureCapabilityViolations({
+      files: listTsFiles(EVALUATION_CORE_DIR),
+      isAllowedLocalDependency: path => path.startsWith(`${EVALUATION_CORE_DIR_NORMALIZED}/`),
+      externalImports: ALLOWED_CORE_EXTERNAL_IMPORTS,
+      label: 'Evaluation Core',
+      allowPackageSchemaResolver: true,
+    });
     if (violations.length > 0) {
       throw new Error([
         `发现 ${violations.length} 处 Evaluation Core 宿主能力越界：`,

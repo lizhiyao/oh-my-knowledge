@@ -187,9 +187,9 @@ async function main() {
   const guides = ['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
     .map(path => readFileSync(resolve(repo, path), 'utf8'));
   const guideText = guides.join('\0');
-  const promptModule = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/extraction/prompt.js')).href);
+  const promptModule = await import(pathToFileURL(resolve(repo, 'dist/knowledge/extraction/prompt.js')).href);
   if (promptModule.EXTRACTION_PROMPT_VERSION !== 'knowledge-extraction-v14') throw new Error('This measurement requires the built v14 prompt/runtime.');
-  const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/observability/knowledge-extraction/extraction/window-proposals.js')).href);
+  const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/knowledge/extraction/window-proposals.js')).href);
   const identity = { corpusVersion: corpus.corpusVersion, checkVersion: ENTITY_CHECK_VERSION, guideVersion: ENTITY_GUIDE_VERSION,
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),
     checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']

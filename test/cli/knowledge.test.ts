@@ -12,10 +12,10 @@ import ObserveEntityLinks from '../../src/cli/commands/observe/entity-links.js';
 import { createEntityLinkCliPlan } from '../../src/cli/lib/entity-link-output.js';
 import { runCommand } from '../helpers/run-command.js';
 import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
-import { createLocalKnowledgeApplication, createLocalEntityLinks, parseEntityLinkPreview } from '../../src/observability/knowledge-extraction/local.js';
+import { createLocalKnowledgeApplication, createLocalEntityLinks, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { modelWindow } from '../knowledge/fixtures.js';
-import { boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 
 const roots: string[] = [];

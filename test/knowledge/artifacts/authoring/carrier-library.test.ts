@@ -1,0 +1,293 @@
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir, hostname } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLocalKnowledgeApplication } from '../../../../src/observability/application.js';
+import { executeArtifactAuthoring } from '../../../../src/studio/application/knowledge/artifact-authoring.js';
+import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../../src/evidence/storage/knowledge-workspace.js';
+import { CarrierLibrary } from '../../../../src/knowledge/artifacts/authoring/carrier-library.js';
+import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../../src/studio/view-models/knowledge/artifact-authoring.js';
+import { modelWindow } from '../../fixtures.js';
+import yaml from 'js-yaml';
+
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+async function setup() {
+  const root = mkdtempSync(join(tmpdir(), 'omk-carrier-')); roots.push(root);
+  const workspace = join(root, 'knowledge');
+  const source = join(root, 'trace.jsonl');
+  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+  const app = createLocalKnowledgeApplication(workspace);
+  const snapshot = app.capture({ path: source });
+  const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', async generate(_system, input) {
+    const ref = JSON.parse(input).excerpts.find((entry: { text: string }) => entry.text === 'Alpha 使用 Beta').evidenceRef;
+    return { output: JSON.stringify(modelWindow()).replaceAll('record-1', ref), durationMs: 1 };
+  } });
+  expect(run).toMatchObject({ status: 'completed', rejections: [], committed: [expect.any(Object)] });
+  const entry = run.committed[0];
+  const execute = (fields: Record<string, unknown>) => executeArtifactAuthoring({ workspace, ...fields }, 'zh');
+  const preview = (fields: Record<string, unknown> = {}) => execute({ operation: 'preview', source: { sourceKind: 'new' }, artifactKind: 'skill', name: '工具使用', ids: [entry.knowledgeId], ...fields }) as CarrierDraft;
+  const save = (draft: CarrierDraft, content = draft.content) => execute({ operation: 'save', artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections }) as CarrierDetail;
+  const retain = () => { const current = app.detail(entry.knowledgeId); app.maintain(entry.knowledgeId, current.revision.revisionId, 'retain', '核对后维护', current.history.generation); };
+  return { root, workspace, app, entry, snapshot, execute, preview, save, retain };
+}
+
+describe('reviewed knowledge carrier authoring', () => {
+  it.each(['skill', 'prompt'] as const)('rebuilds %s from exact current selections, preserves manual content and freezes historical versions', async artifactKind => {
+    const s = await setup(); s.retain();
+    const firstDraft = s.preview({ artifactKind });
+    // The pre-marker format remains readable and migrates only from its exact generated suffix.
+    const legacy = firstDraft.content.replace('<!-- omk:knowledge:v1:start -->\n', '').replace('<!-- omk:knowledge:v1:end -->\n', '');
+    const first = s.save(firstDraft, legacy);
+    const other = s.save(s.preview({ artifactKind }));
+    s.retain(); // A new maintenance generation alone does not change the incorporated revision.
+    expect(s.execute({ operation: 'show', id: first.artifactId })).toMatchObject({ knowledgeReview: { needsReviewCount: 0 } });
+    const stale = s.preview({ artifactKind, source: { sourceKind: 'library', artifactId: first.artifactId } });
+    const current = s.app.detail(s.entry.knowledgeId);
+    const { content, entities, evidence } = current.revision;
+    s.app.revise(s.entry.knowledgeId, current.revision.revisionId, current.history.generation, { title: '历史使用说法', content: { ...content, statements: content.statements.map(statement => ({ ...statement, relation: '曾使用（仅旧窗口）' })) }, entities, evidence }, '限定历史范围');
+    expect(() => s.save(stale)).toThrow('conflict');
+    expect(() => s.preview({ artifactKind, source: stale.source })).toThrow('conflict');
+    const pending = s.execute({ operation: 'show', id: first.artifactId }) as ReviewedCarrierDetail;
+    expect(pending.knowledgeReview).toMatchObject({ needsReviewCount: 1, checks: [{ reasons: ['revision_changed', 'not_retained'], changedFields: ['title', 'statements'] }] });
+    expect(pending.knowledgeReview.checks[0].incorporatedContent).toContain('### 项目 Alpha 使用工具 Beta');
+    expect(pending.knowledgeReview.checks[0].currentContent).toContain('曾使用（仅旧窗口）');
+    s.retain();
+    const update = s.preview({ artifactKind, source: stale.source });
+    expect((update as ReviewedCarrierDraft).selectionChanges).toMatchObject([{ changeKind: 'replaced', previousRevisionIds: [current.revision.revisionId] }]);
+    expect(update.knowledgeRefs).toEqual(update.selectedRefs);
+    expect(update.knowledgeRefs).toHaveLength(1);
+    expect(update.content).not.toContain(current.revision.revisionId);
+    expect(update.content).not.toContain('### 项目 Alpha 使用工具 Beta');
+    expect(update.content).toContain('曾使用（仅旧窗口）');
+    const second = s.save(update, update.content + '\nManual suffix  \n');
+    expect(s.execute({ operation: 'show', id: first.artifactId })).toMatchObject({ knowledgeReview: { needsReviewCount: 0 } });
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ knowledgeReview: { needsReviewCount: 1 }, content: legacy });
+    expect(s.execute({ operation: 'list' })).toEqual(expect.arrayContaining([expect.objectContaining({ artifactId: other.artifactId, knowledgeReview: expect.objectContaining({ needsReviewCount: 1 }) })]));
+    const unchanged = s.preview({ artifactKind, source: stale.source });
+    expect(unchanged.content).toBe(second.content);
+    const empty = s.preview({ artifactKind, source: stale.source, ids: [] });
+    expect((empty as ReviewedCarrierDraft).selectionChanges[0].changeKind).toBe('removed');
+    expect(empty.knowledgeRefs).toEqual([]);
+    expect(empty.content).not.toContain('曾使用（仅旧窗口）');
+    expect(empty.content).toContain('Manual suffix  \n');
+    const header = yaml.load(empty.content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    expect(artifactKind === 'skill' ? (header.metadata as Record<string, unknown>).omk_knowledge_revisions : header.knowledge_revisions).toEqual(artifactKind === 'skill' ? '[]' : []);
+    expect(s.save(empty).knowledgeRefs).toEqual([]);
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: legacy, contentHash: first.contentHash });
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 2 })).toMatchObject({ content: second.content, contentHash: second.contentHash });
+  });
+  it('reports discarded and unreadable knowledge while preserving carrier content and manifest bytes', async () => {
+    const s = await setup(); s.retain(); const saved = s.save(s.preview());
+    const manifest = join(s.workspace, 'artifacts', saved.artifactId, 'v1', 'manifest.json'); const original = readFileSync(manifest, 'utf8');
+    const current = s.app.detail(s.entry.knowledgeId); s.app.maintain(s.entry.knowledgeId, current.revision.revisionId, 'discard', '当前不再使用', current.history.generation);
+    expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ knowledgeReview: { checks: [{ reasons: ['not_retained'], currentChoice: 'discard' }] } });
+    const item = join(s.workspace, 'items', readdirSync(join(s.workspace, 'items'))[0]); writeFileSync(item, '{broken');
+    const unreadable = s.execute({ operation: 'show', id: saved.artifactId }) as ReviewedCarrierDetail;
+    expect(unreadable.content).toBe(saved.content);
+    expect(unreadable.knowledgeReview).toMatchObject({ needsReviewCount: 1, unavailableCount: 1, checks: [{ reasons: ['incorporated_unavailable', 'current_unavailable'], currentContent: null }] });
+    expect(s.execute({ operation: 'list' })).toMatchObject([{ knowledgeReview: { needsReviewCount: 1, unavailableCount: 1 } }]);
+    expect(readFileSync(manifest, 'utf8')).toBe(original);
+    expect(JSON.stringify(unreadable.knowledgeReview)).not.toContain(s.root);
+  });
+  it('refuses ambiguous legacy regions and malformed markers without losing edited content', async () => {
+    const s = await setup(); s.retain();
+    for (const transform of [
+      (value: string) => value.replace('<!-- omk:knowledge:v1:start -->\n', '').replace('<!-- omk:knowledge:v1:end -->\n', '') + '\nHandwritten legacy suffix',
+      (value: string) => value.replace('<!-- omk:knowledge:v1:end -->', ''),
+      (value: string) => value + '\n<!-- omk:knowledge:v1:start -->',
+      (value: string) => value.replace('### 项目 Alpha 使用工具 Beta', '### 人工修改的知识'),
+    ]) {
+      const draft = s.preview(); const edited = transform(draft.content); const saved = s.save(draft, edited);
+      expect(() => s.preview({ source: { sourceKind: 'library', artifactId: saved.artifactId } })).toThrow('carrier_knowledge_region_conflict');
+      expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ version: 1, content: edited });
+    }
+  });
+  it('exports tag/property snapshots, rejects changed tags, and updates metadata without duplicating knowledge', async () => {
+    const s = await setup(); s.retain();
+    s.app.tag(s.entry.knowledgeId, 0, ['排障/证据判断', 'Taro']);
+    const header = (content: string) => yaml.load(content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    const draft = s.preview({ artifactKind: 'prompt' });
+    expect(header(draft.content)).toMatchObject({ tags: ['排障/证据判断', 'Taro'], knowledge_types: ['fact'], evidence_bases: ['inference'], verification_status: 'not_assessed', knowledge_revisions: [`${s.entry.knowledgeId}/${s.entry.revisionId}`] });
+    s.app.tag(s.entry.knowledgeId, 1, ['排障']);
+    expect(() => s.save(draft)).toThrow('conflict');
+    const first = s.save(s.preview({ artifactKind: 'prompt' }));
+    s.app.tag(s.entry.knowledgeId, 2, []);
+    const update = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId }, artifactKind: 'prompt' });
+    expect(header(update.content).tags).toEqual([]);
+    expect(update.content.match(/### 项目 Alpha 使用工具 Beta/g)).toHaveLength(1);
+    const second = s.save(update);
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: first.content });
+    expect(second.knowledgeRefs).toEqual(first.knowledgeRefs);
+    const skill = header(s.preview().content);
+    expect(skill.metadata).toMatchObject({ omk_tags: '[]', omk_knowledge_types: '["fact"]', omk_verification_status: 'not_assessed' });
+    expect(Object.values(skill.metadata as object).every(value => typeof value === 'string')).toBe(true);
+  });
+  it('preserves imported custom properties and body bytes while validating malformed property headers', async () => {
+    const s = await setup(); s.retain(); s.app.tag(s.entry.knowledgeId, 0, ['new']);
+    const local = join(s.root, 'prompt.md');
+    writeFileSync(local, '---\ntags:\n  - existing\ncustom: "kept"\n---\n\nOriginal body  \n\n');
+    const fields = { artifactKind: 'prompt', source: { sourceKind: 'local', path: local } };
+    const draft = s.preview(fields);
+    const metadata = yaml.load(draft.content.match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
+    expect(metadata).toMatchObject({ tags: ['existing', 'new'], custom: 'kept' });
+    expect(draft.content).toContain('\n\nOriginal body  \n\n');
+    expect(readFileSync(local, 'utf8')).not.toContain('omk_schema');
+    for (const invalid of ['tags: [unfinished', 'tags: single-value', 'tags: [123]']) {
+      writeFileSync(local, `---\n${invalid}\n---\nBody`);
+      expect(() => s.preview(fields)).toThrow('carrier_invalid_metadata');
+    }
+  });
+  it('requires retained current revisions; rendering preserves conditions, uncertainty and source identity', async () => {
+    const s = await setup();
+    expect(() => s.preview()).toThrow('conflict');
+    s.retain();
+    const draft = s.preview();
+    expect(draft.content).toContain('未记录版本');
+    expect(draft.content).toContain('未来适用范围尚未验证');
+    expect(draft.content).toContain('背景');
+    expect(draft.content).toContain('推断');
+    expect(draft.content).toContain('Alpha 使用 Beta');
+    expect(draft.content).toContain(s.entry.revisionId);
+    expect(draft.content).toContain(s.snapshot.snapshotId);
+    expect(draft.content).toContain('保留表示愿意维护，不代表已证实');
+    const edited = `${draft.content}\n `;
+    const saved = s.save(draft, edited);
+    expect(readFileSync(saved.locator, 'utf8')).toBe(edited);
+    expect(saved.knowledgeRefs).toEqual(draft.selectedRefs);
+    expect(saved.locator).toContain(`/${draft.directoryName}/SKILL.md`);
+    expect(saved.content).toContain(`name: \"${draft.directoryName}\"`);
+    expect(() => s.save(s.preview(), 'invalid skill')).toThrow('carrier_invalid_skill');
+    expect(s.execute({ operation: 'list' })).toMatchObject([{ artifactId: saved.artifactId, version: 1, drifted: false }]);
+    expect(() => s.save(draft)).toThrow('conflict');
+  });
+  it('saves prompt versions without duplicating previously incorporated revisions or losing original content', async () => {
+    const s = await setup(); s.retain();
+    const first = s.save(s.preview({ artifactKind: 'prompt' }));
+    const update = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId }, artifactKind: 'prompt' });
+    expect(update.content).toBe(first.content);
+    const next = s.save(update);
+    expect(next.contentHash).toBe(first.contentHash);
+    expect(next.version).toBe(2);
+    expect(next.baseline?.revisionId).toBe(first.revisionId);
+    expect(next.knowledgeRefs).toEqual(first.knowledgeRefs);
+    expect(s.execute({ operation: 'show', id: first.artifactId, version: 1 })).toMatchObject({ content: first.content, contentHash: first.contentHash });
+    expect(() => s.save(update)).toThrow('conflict');
+  });
+  it('preserves local skill assets in managed versions and rejects changes to either the baseline or knowledge', async () => {
+    const s = await setup(); s.retain();
+    const local = join(s.root, 'original'); mkdirSync(local); mkdirSync(join(local, 'references'));
+    writeFileSync(join(local, 'SKILL.md'), '---\nname: old\ndescription: local\n---\n\nOriginal instructions\n');
+    writeFileSync(join(local, 'references', 'guide.md'), 'Original asset');
+    writeFileSync(join(s.workspace, 'SKILL.md'), '---\nname: nested\ndescription: nested source\n---\n');
+    expect(() => s.preview({ source: { sourceKind: 'local', path: join(s.workspace, 'SKILL.md') } })).toThrow('source_contains_destination');
+    const fields = { source: { sourceKind: 'local', path: join(local, 'SKILL.md') } };
+    const draft = s.preview(fields);
+    writeFileSync(join(local, 'references', 'guide.md'), 'Changed asset');
+    expect(() => s.save(draft)).toThrow('conflict');
+    const fresh = s.preview(fields);
+    const result = s.save(fresh);
+    expect(readFileSync(join(local, 'SKILL.md'), 'utf8')).not.toContain('知识');
+    expect(readFileSync(join(result.locator, '..', 'references', 'guide.md'), 'utf8')).toBe('Changed asset');
+    const updated = s.save(s.preview({ source: { sourceKind: 'library', artifactId: result.artifactId } }));
+    expect(updated.content).toContain('Original instructions\n');
+    expect(readFileSync(join(updated.locator, '..', 'references', 'guide.md'), 'utf8')).toBe('Changed asset');
+    const stale = s.preview();
+    const current = s.app.detail(s.entry.knowledgeId); s.app.maintain(s.entry.knowledgeId, current.revision.revisionId, 'discard', '暂不采用', current.history.generation);
+    expect(() => s.save(stale)).toThrow('conflict');
+  });
+  it('rejects an oversized composed tree before publishing any version and removes staging', async () => {
+    const s = await setup(); s.retain(); const local = join(s.root, 'bounded-skill'); mkdirSync(local);
+    const original = '---\nname: bounded-skill\ndescription: source\n---\n\nOriginal instructions\n';
+    writeFileSync(join(local, 'SKILL.md'), original); const asset = join(local, 'asset.bin'); writeFileSync(asset, '');
+    truncateSync(asset, 64 * 1024 * 1024 - Buffer.byteLength(original));
+    const draft = s.preview({ source: { sourceKind: 'local', path: join(local, 'SKILL.md') } });
+    expect(() => s.save(draft)).toThrow('capacity');
+    expect(readdirSync(join(s.workspace, 'artifacts', draft.artifactId))).toEqual([]);
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(readFileSync(join(local, 'SKILL.md'), 'utf8')).toBe(original);
+  });
+  it('reports unavailable evidence, detects external drift and refuses symlink redirects', async () => {
+    const s = await setup(); s.retain(); s.app.deleteSource(s.snapshot.snapshotId);
+    const draft = s.preview(); expect(draft.content).toContain('来源不可用');
+    const saved = s.save(draft); writeFileSync(saved.locator, 'externally edited');
+    expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ drifted: true, knowledgeReview: { needsReviewCount: 1, checks: [{ reasons: ['source_unavailable'] }] } });
+    expect(new CarrierLibrary(s.workspace).show(saved.artifactId).drifted).toBe(true);
+    expect(() => s.preview({ source: { sourceKind: 'library', artifactId: saved.artifactId } })).toThrow('conflict');
+    const redirected = join(s.root, 'redirected'); mkdirSync(redirected); symlinkSync(s.root, join(redirected, 'artifacts'));
+    expect(() => new CarrierLibrary(redirected).list()).toThrow('invalid_directory');
+    const container = join(s.workspace, 'artifacts', saved.artifactId, 'v1', 'content');
+    const moved = join(s.root, 'moved-content'); renameSync(container, moved); symlinkSync(moved, container);
+    expect(() => new CarrierLibrary(s.workspace).show(saved.artifactId)).toThrow('invalid_directory');
+  });
+  it('recovers a dead local writer and removes its unpublished staging before the next save', async () => {
+    const s = await setup(); s.retain(); const first = s.save(s.preview());
+    const folder = join(s.workspace, 'artifacts', first.artifactId);
+    const dead = spawnSync(process.execPath, ['-e', ''], { cwd: s.root });
+    expect(dead.status).toBe(0);
+    const lock = join(folder, 'write.lock');
+    writeFileSync(lock, JSON.stringify({ owner: randomUUID(), pid: dead.pid, hostname: hostname(), acquiredAt: new Date(0).toISOString() }));
+    utimesSync(lock, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+    mkdirSync(join(folder, '.staging-aborted')); writeFileSync(join(folder, '.staging-aborted', 'partial'), 'unfinished');
+    const update = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId }, ids: [] });
+    expect(s.save(update).version).toBe(2);
+    expect(readdirSync(folder)).toEqual(['v1', 'v2']);
+  });
+  it('retains case and method roles, and preserves original whitespace when appending', async () => {
+    for (const knowledgeKind of ['case', 'method'] as const) {
+      const s = await setup();
+      const current = s.app.detail(s.entry.knowledgeId);
+      const { title, content, entities, evidence } = current.revision;
+      const statementId = content.statements[0].statementId;
+      const organization = knowledgeKind === 'case'
+        ? { knowledgeKind, situation: '明确场景', actionStatementIds: [statementId], outcomeStatementIds: [], gaps: ['尚无结果依据'] }
+        : { knowledgeKind, purpose: '明确目的', instructionStatementIds: [statementId] };
+      s.app.revise(s.entry.knowledgeId, current.revision.revisionId, current.history.generation, { title, content: { ...content, organization }, entities, evidence }, '澄清组织形式');
+      s.retain();
+      const local = join(s.root, 'prompt.txt'); const original = 'Original instructions  \n\n'; writeFileSync(local, original);
+      const draft = s.preview({ artifactKind: 'prompt', source: { sourceKind: 'local', path: local } });
+      expect(draft.content.slice(draft.content.indexOf('\n---\n') + 5)).toContain(original);
+      expect(draft.content).toContain(knowledgeKind === 'case' ? '行动' : '方法步骤');
+      expect(draft.content).toContain(knowledgeKind === 'case' ? '尚无结果依据' : '明确目的');
+      expect(s.save(draft).knowledgeRefs).toHaveLength(1);
+    }
+  });
+  it('cleans staging and locks on cancelled publication, leaving the previous version readable', async () => {
+    const s = await setup(); s.retain(); const first = s.save(s.preview());
+    const draft = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId }, ids: [] });
+    const controller = new AbortController();
+    expect(() => new CarrierLibrary(s.workspace).save(draft, controller.signal, () => controller.abort())).toThrow();
+    expect(readdirSync(join(s.workspace, 'artifacts', first.artifactId))).toEqual(['v1']);
+    expect(new CarrierLibrary(s.workspace).show(first.artifactId).content).toBe(first.content);
+    const oversized = { ...draft, artifactId: randomUUID(), source: { sourceKind: 'new' as const }, content: '中'.repeat(1024 * 1024) };
+    expect(() => new CarrierLibrary(s.workspace).save(oversized)).toThrow('capacity');
+
+  });
+  it('keeps tag updates inside the same knowledge workspace write boundary', async () => {
+    const s = await setup(); s.retain();
+    const clock = vi.spyOn(Date, 'now'); let tick = 0;
+    clock.mockImplementation(() => tick += 6000);
+    try {
+      expect(() => withWorkspaceWrite(s.workspace, () => s.app.tag(s.entry.knowledgeId, 0, ['changed'])))
+        .toThrow('knowledge_workspace_busy');
+      expect(s.app.detail(s.entry.knowledgeId).tagging).toEqual({ generation: 0, tags: [] });
+    } finally { clock.mockRestore(); }
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(s.app.tag(s.entry.knowledgeId, 0, ['after-release'])).toEqual({ generation: 1, tags: ['after-release'] });
+  });
+  it('holds the workspace boundary through carrier validation and publication and releases it on failure', async () => {
+    const s = await setup(); s.retain(); const first = s.save(s.preview());
+    const draft = s.preview({ source: { sourceKind: 'library', artifactId: first.artifactId } });
+    expect(() => new CarrierLibrary(s.workspace).save(draft, undefined, () => {
+      expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('busy');
+      throw new Error('stop-publication');
+    })).toThrow('stop-publication');
+    expect(storageLockState(join(s.workspace, WORKSPACE_LOCK_FILE))).toBe('absent');
+    expect(readdirSync(join(s.workspace, 'artifacts', first.artifactId))).toEqual(['v1']);
+    expect(new CarrierLibrary(s.workspace).show(first.artifactId).content).toBe(first.content);
+    expect(s.save(draft).version).toBe(2);
+  });
+
+});

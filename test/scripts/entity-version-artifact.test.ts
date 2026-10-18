@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EntityReviewCorpusSchema, entityReviewInput, reviewMentions } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview } from '../../scripts/bench/entity-review-checks.js';
-import { checkWindowExtractionResponse } from '../../src/observability/knowledge-extraction/extraction/window-proposals.js';
+import { checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
 describe('version artifact distinction diagnostic v1 (authored responses, no model calls)', () => {

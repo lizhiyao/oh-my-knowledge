@@ -22,7 +22,7 @@ const FORBIDDEN_FILES = [
   'src/renderer/html-renderer.ts',
   'src/renderer/test-view.ts',
   'src/artifact-graph/eval.ts',
-  'src/knowledge-artifacts/governance/version-scores.ts',
+  'src/knowledge/artifacts/governance/version-scores.ts',
 ] as const;
 
 const FORBIDDEN_SPECIFIER_FRAGMENTS = [

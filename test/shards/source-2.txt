@@ -59,9 +59,9 @@ test/examples/codex-task-trajectory.test.ts
 test/executors/codex-sdk.test.ts
 test/executors/mock-runtime/runtime.test.ts
 test/executors/result-validation.test.ts
-test/knowledge-artifacts/authoring/scaffold.test.ts
-test/knowledge-artifacts/doctor/report-parser.test.ts
-test/knowledge-artifacts/sources/deploy-artifact.test.ts
+test/knowledge/artifacts/authoring/scaffold.test.ts
+test/knowledge/artifacts/doctor/report-parser.test.ts
+test/knowledge/artifacts/sources/deploy-artifact.test.ts
 test/knowledge/executor.test.ts
 test/mcp/http.test.ts
 test/observability/conversation-turn-index.test.ts

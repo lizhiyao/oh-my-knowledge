@@ -6,11 +6,11 @@ import { Args, Flags, Errors } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { resolveInstallSource, resolveRemoteGitSource, usingInstallSource, SourceResolveError } from '../../knowledge-artifacts/sources/install-source.js';
-import type { ArtifactKind } from '../../knowledge-artifacts/contracts.js';
+import { resolveInstallSource, resolveRemoteGitSource, usingInstallSource, SourceResolveError } from '../../knowledge/artifacts/sources/install-source.js';
+import type { ArtifactKind } from '../../knowledge/artifacts/contracts.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
-import { replaceDeployedArtifact } from '../../knowledge-artifacts/sources/deploy-artifact.js';
+import { replaceDeployedArtifact } from '../../knowledge/artifacts/sources/deploy-artifact.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
 const INSTALLABLE_KINDS: ArtifactKind[] = ['skill', 'prompt', 'agent', 'workflow'];

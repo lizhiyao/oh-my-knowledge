@@ -4,11 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FileKnowledgeStore } from '../../src/observability/knowledge-extraction/adapters/knowledge-store.js';
-import { EXTRACTION_OUTCOME_MAX_BYTES, FileExtractionRunStore } from '../../src/observability/knowledge-extraction/adapters/run-store.js';
-import { ExtractionOutcomeSchema, ExtractionRunSchema, extractionRunSummary, type ExtractionAttempt, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/observability/knowledge-extraction/extraction/runs.js';
-import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/observability/knowledge-extraction/extraction/generation-policy.js';
-import { FileEntityAnalysisStore } from '../../src/observability/knowledge-extraction/adapters/entity-store.js';
+import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
+import { EXTRACTION_OUTCOME_MAX_BYTES, FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
+import { ExtractionOutcomeSchema, ExtractionRunSchema, extractionRunSummary, type ExtractionAttempt, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
+import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
+import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import type { EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';

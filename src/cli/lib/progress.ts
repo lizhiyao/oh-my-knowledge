@@ -1,5 +1,5 @@
 import { tCli, type CliLang } from './i18n.js';
-import type { DoctorProgressInfo } from '../../knowledge-artifacts/doctor/contracts.js';
+import type { DoctorProgressInfo } from '../../knowledge/artifacts/doctor/contracts.js';
 
 // 图标 + 状态枚举(pass/warn/fail 是技术枚举,与图标一样语言无关,不进 i18n 模板)。
 const DOCTOR_STATUS_LABEL: Record<string, string> = {

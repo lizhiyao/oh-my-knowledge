@@ -28,7 +28,7 @@ describe('#531/#547 Core downstream projection boundary', () => {
       'src/eval-workflows/hosts/application.ts',
       'src/eval-workflows/orchestration/evaluation-service.ts',
       'src/cli/commands/eval/gold/compare.ts',
-      'src/knowledge-artifacts/authoring/core-evolver.ts',
+      'src/knowledge/artifacts/authoring/core-evolver.ts',
       'src/eval-workflows/orchestration/artifact-graph-persistence.ts',
       'src/studio/http/request-handler.ts',
     ].map((file) => readFileSync(file, 'utf8')).join('\n');

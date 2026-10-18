@@ -1,0 +1,54 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { join, resolve } from 'node:path';
+import { canonicalJson } from '../store.js';
+import { KnowledgeApplication } from './application.js';
+import { TraceEvidenceStore } from '../adapters/trace-evidence.js';
+import { FileKnowledgeStore } from '../adapters/knowledge-store.js';
+import { FileExtractionRunStore } from '../adapters/run-store.js';
+import { FileKnowledgeTags } from '../adapters/knowledge-tags.js';
+import { FileLibraryStore } from '../adapters/library-store.js';
+import { KnowledgeLibraryApplication } from './library.js';
+import { FileEntityAnalysisStore } from '../adapters/entity-store.js';
+import { FileEntityLinkStore } from '../adapters/entity-link-store.js';
+import { EntityLinkApplication } from '../linking/entity-links.js';
+import { validateEntityLinkPreview } from '../entities/link-invocation-state.js';
+import { entityLinkDigest } from '../linking/entity-link-hash.js';
+import { entityLinkTextHash } from '../adapters/entity-link-api-producer.js';
+import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
+
+/** The root is an explicit user choice shared by CLI and Studio. */
+export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
+  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
+  const workspace = resolve(root);
+  return new KnowledgeApplication({
+    evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace),
+    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
+    runs: new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace),
+    tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace),
+    entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
+    id: randomUUID, now: () => new Date().toISOString(),
+    hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
+    actor: { actorKind: 'human', actorId: 'local-user' },
+  });
+}
+
+export function createLocalKnowledgeLibrary(root: string): KnowledgeLibraryApplication {
+  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
+  const workspace = resolve(root);
+  return new KnowledgeLibraryApplication(createLocalKnowledgeApplication(workspace), new FileLibraryStore(join(workspace, 'library'), workspace));
+}
+
+/** Cross-window reviews have their own v1 journal; extraction histories stay unchanged. */
+export function createLocalEntityLinks(root: string, execution: ExecutorArchiveProducer): EntityLinkApplication {
+  if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
+  const workspace = resolve(root);
+  return new EntityLinkApplication(createLocalKnowledgeApplication(workspace),
+    new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
+    new FileEntityLinkStore(join(workspace, 'entity-links'), workspace),
+    new FileLibraryStore(join(workspace, 'library'), workspace), execution);
+}
+
+/** Parse a portable confirmation plan without touching a workspace or executor. */
+export function parseEntityLinkPreview(value: unknown) {
+  return validateEntityLinkPreview(value, { hashJson: entityLinkDigest, hashText: entityLinkTextHash });
+}

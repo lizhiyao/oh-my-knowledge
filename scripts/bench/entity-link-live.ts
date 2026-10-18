@@ -125,10 +125,10 @@ async function loadRuntime(): Promise<EntityLinkLiveRuntime> {
       const identity = review.entityLinkReviewHostIdentity(repository);
       const binary = codexBinary(environment);
       loaded = {
-        adapter: await importBuilt(repository, 'observability/knowledge-extraction/adapters/entity-link-executor.js'),
+        adapter: await importBuilt(repository, 'knowledge/adapters/entity-link-executor.js'),
         invocation: await importBuilt(repository, 'knowledge/entities/link-invocation.js'),
         executors: await importBuilt(repository, 'executors/index.js'), links: await importBuilt(repository, 'knowledge/entities/links.js'),
-        generation: await importBuilt(repository, 'observability/knowledge-extraction/extraction/generation.js') };
+        generation: await importBuilt(repository, 'knowledge/extraction/generation.js') };
       return Host.parse({ ...identity, nodeBinaryDigest: bytesDigest(readFileSync(process.execPath)),
         codexBinaryPath: binary, codexBinaryDigest: bytesDigest(readFileSync(binary)),
         runnerDigest: reviewDigest(readFileSync(fileURLToPath(import.meta.url), 'utf8')) });

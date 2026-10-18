@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const caseDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(process.env.OMK_PACKAGE_ROOT ?? join(caseDirectory, '../..'));
-const applicationEntry = join(packageRoot, 'dist/observability/knowledge-extraction/local.js');
+const applicationEntry = join(packageRoot, 'dist/knowledge/application/local.js');
 assert.ok(existsSync(applicationEntry), 'Run yarn build:runtime from the OMK source checkout before this example.');
 const { createLocalKnowledgeApplication } = await import(pathToFileURL(applicationEntry).href);
 const sandbox = mkdtempSync(join(tmpdir(), 'omk-knowledge-example-'));

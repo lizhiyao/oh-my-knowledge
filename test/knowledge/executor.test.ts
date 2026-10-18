@@ -8,15 +8,15 @@ import { OPENAI_TOKEN_BUDGET_EVIDENCE, OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST, reso
 import { captureBudgetProfile } from '../../scripts/bench/entity-capture-profile.js';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configuredExtractionModel } from '../../src/observability/knowledge-extraction/adapters/executor.js';
-import { configuredEntityLinkExecutor, createEntityLinkExecutionRequest } from '../../src/observability/knowledge-extraction/adapters/entity-link-executor.js';
-import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/observability/knowledge-extraction/linking/entity-link-prompt.js';
+import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
+import { configuredEntityLinkExecutor, createEntityLinkExecutionRequest } from '../../src/knowledge/adapters/entity-link-executor.js';
+import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/knowledge/linking/entity-link-prompt.js';
 import { EntityLinkSuggestionSchema } from '../../src/knowledge/entities/links.js';
-import { entityLinkDigest } from '../../src/observability/knowledge-extraction/linking/entity-link-hash.js';
-import { EXTRACTION_OUTCOME_MAX_BYTES, extractionExecution, extractionResponse, serializeExtractionObservation } from '../../src/observability/knowledge-extraction/extraction/generation.js';
-import { ExtractionOutcomeSchema } from '../../src/observability/knowledge-extraction/extraction/runs.js';
-import { WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/observability/knowledge-extraction/extraction/model-wire.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/observability/knowledge-extraction/extraction/strict-prompt.js';
+import { entityLinkDigest } from '../../src/knowledge/linking/entity-link-hash.js';
+import { EXTRACTION_OUTCOME_MAX_BYTES, extractionExecution, extractionResponse, serializeExtractionObservation } from '../../src/knowledge/extraction/generation.js';
+import { ExtractionOutcomeSchema } from '../../src/knowledge/extraction/runs.js';
+import { WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/knowledge/extraction/model-wire.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
 import { parseCodexJsonl } from '../../src/executors/openai/codex/cli.js';
 import { buildCodexResult } from '../../src/executors/openai/codex/protocol.js';
 

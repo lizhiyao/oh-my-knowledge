@@ -1,5 +1,5 @@
 import { ExtractionQualityView } from '../../../src/studio/web/components/knowledge/extraction-quality.js';
-import { extractionQuality } from '../../../src/observability/knowledge-extraction/extraction/quality.js';
+import { extractionQuality } from '../../../src/knowledge/extraction/quality.js';
 import { ConversationExtractionConfirmation, ConversationExtractionPicker } from '../../../src/studio/web/components/knowledge/conversation-extraction.js';
 import type { KnowledgeConversationPreview } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { ExtractedKnowledge } from '../../../src/studio/web/components/observe/extracted-knowledge.js';
@@ -10,7 +10,7 @@ import { KnowledgeCandidateStart, KnowledgeCandidates, ScopedCandidateEmpty } fr
 import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { KnowledgeInboxSummary } from '../../../src/studio/web/components/knowledge/inbox.js';
 import { GenerationPolicyFields } from '../../../src/studio/web/components/knowledge/generation-policy-fields.js';
-import type { ExtractionBoundedPolicy } from '../../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import type { ExtractionBoundedPolicy } from '../../../src/knowledge/extraction/generation-policy.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 const latest: KnowledgeCandidateRun = { runId: 'fixture', status: 'completed', committed: [], rejections: [],

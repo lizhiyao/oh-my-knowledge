@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FileKnowledgeTags } from '../../src/observability/knowledge-extraction/adapters/knowledge-tags.js';
+import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { KnowledgeTagsSchema } from '../../src/knowledge/tags.js';
 
 const roots: string[] = [];

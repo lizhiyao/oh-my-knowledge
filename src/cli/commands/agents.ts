@@ -8,7 +8,7 @@ import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { AgentCollectionEntry } from '../../observability/agents/index.js';
-import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../../observability/knowledge-extraction/extraction/generation-policy.js';
+import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../../knowledge/extraction/generation-policy.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 
@@ -233,8 +233,8 @@ export default class AgentsCommand extends BaseCommand {
           ? '缺少生成模型，请用 --model 指定。'
           : 'No generation model; pass --model.', { exit: 2 });
       }
-      const { createLocalKnowledgeApplication } = await import('../../observability/knowledge-extraction/local.js');
-      const { configuredExtractionModel } = await import('../../observability/knowledge-extraction/adapters/executor.js');
+      const { createLocalKnowledgeApplication } = await import('../../knowledge/application/local.js');
+      const { configuredExtractionModel } = await import('../../knowledge/adapters/executor.js');
       const app = createLocalKnowledgeApplication(settings.workspace);
       this.logToStderr(lang === 'zh'
         ? `${session.agentId} / ${session.sourceKind} · 仅发送选定来源片段；费用以执行器实际报告为准。`

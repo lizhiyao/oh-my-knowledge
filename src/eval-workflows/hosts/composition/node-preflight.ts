@@ -2,7 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { checkDependencies } from '../../../executors/preflight/dependencies.js';
-import type { Artifact } from '../../../knowledge-artifacts/contracts.js';
+import type { Artifact } from '../../../knowledge/artifacts/contracts.js';
 import type { CliEvaluationCompileResult } from '../../input-compilation/index.js';
 import type { OmkRuntimePreflightDeclaration } from '../types.js';
 import { OmkUserFacingPreflightFailure } from './preflight.js';
@@ -78,8 +78,8 @@ function dependencyDoctor(
         }
         const artifacts = await doctorArtifacts(compiled);
         if (artifacts.length === 0) return;
-        const { runDoctor } = await import('../../../knowledge-artifacts/doctor/index.js');
-        const { renderDoctorReportText } = await import('../../../knowledge-artifacts/doctor/renderer.js');
+        const { runDoctor } = await import('../../../knowledge/artifacts/doctor/index.js');
+        const { renderDoctorReportText } = await import('../../../knowledge/artifacts/doctor/renderer.js');
         const { tEvalWorkflowMessage } = await import('../../messages.js');
         const language = compiled.presentation.language;
         const report = await runDoctor({

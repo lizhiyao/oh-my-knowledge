@@ -6,7 +6,7 @@ import { nonEmptyStringParser } from '../oclif/parsers.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
-import { writeProjectScaffold } from '../../knowledge-artifacts/authoring/scaffold.js';
+import { writeProjectScaffold } from '../../knowledge/artifacts/authoring/scaffold.js';
 import { projectLayout } from '../../evidence/storage/layout.js';
 import {
   DEFAULT_INIT_SAMPLE_COUNT,

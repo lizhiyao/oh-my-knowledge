@@ -1,4 +1,4 @@
-import type { ExperimentRole, RemoteGitRef } from '../../../knowledge-artifacts/contracts.js';
+import type { ExperimentRole, RemoteGitRef } from '../../../knowledge/artifacts/contracts.js';
 
 export interface VariantSpec {
   name: string;           // variant 显示名,从 expr 提取

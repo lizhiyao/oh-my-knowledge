@@ -16,8 +16,8 @@ import {
   listDoctorCards,
 } from '../../../src/evidence/storage/discovery-index.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
-import { pruneDoctorHistory } from '../../../src/knowledge-artifacts/doctor/persistence.js';
-import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
+import { pruneDoctorHistory } from '../../../src/knowledge/artifacts/doctor/persistence.js';
+import type { DoctorReport } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 
 type DoctorCardInput = Parameters<typeof writeDoctorIndex>[0];
 type ObserveSource = Parameters<typeof writeObserveIndex>[0];

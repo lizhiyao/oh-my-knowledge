@@ -10,7 +10,7 @@ import { afterEach, describe, it } from 'vitest';
 import { buildSkillIndex, createSkillIndexCache } from '../../../src/studio/application/knowledge/skill-index.js';
 import type { SkillIndex } from '../../../src/studio/view-models/knowledge/skill-index.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
-import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
+import type { DoctorReport } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 
 const roots: string[] = [];
 function tempRoot(prefix: string): string {

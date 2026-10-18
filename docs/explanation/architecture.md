@@ -62,7 +62,7 @@ Each stage retains its own artifacts. Reusing existing artifacts through staged 
 
 ## Source dependency model
 
-`knowledge/` owns reusable knowledge content contracts and pure knowledge validation, separately from carrier lifecycle in `knowledge-artifacts/`. CLI and Studio share these rules; outer application flows and adapters own source reads, extraction calls, and persistence. Reference checks establish structural and source-location integrity, not support for a claim. Candidate extraction and review, immutable revisions, entity-library organization, and carrier maintenance are implemented. The [extraction](../specs/entities/entity-extraction.md) and [library](../specs/knowledge/knowledge-library.md) specifications own their scope and limits; a concept diagram establishes neither automatic linking nor verified benefits.
+`knowledge/` owns knowledge construction and maintenance as an umbrella domain: pure content contracts, entity and library rules, extraction, cross-window linking, application flows, adapters, and carrier lifecycle. CLI and Studio consume these responsibilities directly. The pure core is limited to root TypeScript modules, `entities/`, and `library/`; source reads, model calls, and persistence belong to execution subdomains and adapters within the umbrella. Reference checks establish structural and source-location integrity, not support for a claim. Candidate extraction and review, immutable revisions, entity-library organization, and carrier maintenance are implemented. The [extraction](../specs/entities/entity-extraction.md) and [library](../specs/knowledge/knowledge-library.md) specifications own their scope and limits; a concept diagram establishes neither automatic linking nor verified benefits.
 
 Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
 
@@ -88,10 +88,38 @@ eval-core ← eval-runtime ← product orchestration
 
 The arrow points from consumer to dependency. `eval-runtime` may depend on Core and type-only Executor contracts; it must not import `eval-workflows`, provider implementations, or delivery surfaces. `eval-workflows` reuses Runtime foundation leaf modules instead of importing the canonical user façade or maintaining a second lifecycle implementation.
 
+Knowledge responsibilities retain separate dependency boundaries within one source owner:
+
+```text
+knowledge/
+├── contracts.ts  # knowledge content and evidence contracts
+├── history.ts    # immutable revision rules
+├── store.ts      # storage ports and canonical identity
+├── tags.ts       # tag contracts
+├── validation.ts # deterministic reference and evidence validation
+├── entities/     # pure window identity, link review and invocation contracts
+├── library/      # pure cross-window organization contracts and revisions
+├── extraction/   # selected windows, model protocols and output admission
+├── linking/      # cross-window candidate and review execution
+├── application/  # shared use cases and local application assembly
+├── adapters/     # model transport, source reads and file persistence
+└── artifacts/    # knowledge carrier lifecycle
+```
+
+The pure core depends only on itself and `zod`, never on execution subdomains or host effects.
+Application flows consume extraction, linking and adapters; linking also consumes library
+application behavior and execution adapters. Existing adapter relationships with extraction and
+linking remain explicit. Runtime and type-only edges are audited separately by architecture
+guards; grouping these subdomains does not make every dependency point only toward the core.
+Entities remain here because window identity, knowledge bindings and library organization form
+one current responsibility; an independent top-level entity lifecycle is not required.
+This source reorganization changes no public exports, model invocations, prompt bytes, Schema
+identity or persisted workspace paths, and adds no aggregate entrypoint or compatibility shim.
+
 Knowledge artifact lifecycle capabilities share one ownership boundary:
 
 ```text
-knowledge-artifacts/
+knowledge/artifacts/
 ├── contracts.ts  # artifact identity and experiment roles
 ├── skills/       # skill frontmatter, hard rules, and workflow definitions
 ├── doctor/       # static and model-assisted artifact health checks
@@ -101,7 +129,7 @@ knowledge-artifacts/
 
 Governance consumes authenticated evaluation and observation evidence; it does not recompute Core
 scores or decisions. These capabilities remain separate subdomains so that sharing one lifecycle
-owner does not turn `knowledge-artifacts` into a generic utility layer.
+owner does not turn `knowledge/artifacts` into a generic utility layer. The enclosing `knowledge` path keeps carrier meaning distinct from measurement artifacts; the retired top-level `src/artifacts` path remains absent.
 
 Evaluation inputs, evaluator instruments, and Gold calibration share the workflow boundary, while effectful
 runtime readiness belongs to executors:
@@ -141,7 +169,7 @@ results and prepared capabilities. Capture and compilation cannot depend on run
 state, and internal modules cannot import the public façade. These modules add no
 package subpaths and retain the existing identity and measurement contracts.
 
-Artifact discovery, local and Git source resolution, and content-addressed copies belong to `knowledge-artifacts/sources`. Doctor, installation and evaluation consume that shared implementation. Batch discovery that requires evaluation samples stays in `eval-workflows/inputs/batch-discovery.ts`; the source layer must not import Workflow.
+Artifact discovery, local and Git source resolution, and content-addressed copies belong to `knowledge/artifacts/sources`. Doctor, installation and evaluation consume that shared implementation. Batch discovery that requires evaluation samples stays in `eval-workflows/inputs/batch-discovery.ts`; the source layer must not import Workflow.
 
 
 `eval-workflows/instruments` and `eval-workflows/gold` do not own measurement meaning: they adapt
@@ -188,7 +216,7 @@ need not become a public API. This inventory records domain boundaries without f
 | Core / Runtime | `eval-core`, package root and `eval-runtime`; service callers and product Workflow | Core execution and measurement contracts, Runtime adoption and generic scoring; verify published packages, contracts, scheduling and cancellation |
 | Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
-| Knowledge artifacts | Internal consumers in CLI, Workflow and observation | Artifact authoring, health checks and shared source resolution; verify source identity, isolated copies, installation and doctor |
+| Knowledge | Internal consumers in CLI, Studio, Workflow and observation | Pure content/entity/library contracts; extraction, linking and persistence; carrier authoring, health checks and source resolution; verify immutable histories, source identity, recovery, isolated copies, installation and doctor |
 | Observability / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
 | Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
@@ -221,7 +249,7 @@ reach Studio through diagnosis and domain projections. Extract shared mechanics 
 contracts. The user facade's event consumption and product run-lease wrapper do not constitute
 duplicate scheduling merely because both invoke Core.
 
-Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The knowledge-content domain is implemented in `knowledge/contracts.ts`, `validation.ts`, `history.ts` and `store.ts`; filesystem adapters and extraction orchestration remain outside that pure domain.
+Shared hosts remain because CLI and DSH actually reuse binding, registration and resource assembly; entry-specific policy belongs to its entrypoint. Internal tests follow host adapters, Runtime, product measurement and projections. Historical Schema/instrument versions are distinct from npm 0.x compatibility and remain governed by public references and evidence-reading needs. The pure knowledge-content core is implemented in `knowledge/contracts.ts`, `validation.ts`, `history.ts` and `store.ts`; filesystem adapters and extraction orchestration remain outside that pure core, within the `knowledge` umbrella.
 
 ### Sample input admission
 
@@ -273,7 +301,6 @@ observability/
 ├── conversation/  # conversation catalog, windows and debugger projections
 ├── experience/  # experience facts, report derivation and text signals
 ├── inbox/  # observation inbox, review and feedback projections
-├── knowledge-extraction/  # extraction orchestration, evidence selection and adapters
 ├── prompts/  # frozen review prompts and document loading
 ├── skill-health/  # skill chain, health checks and advisories
 ├── soft-standards/  # derived-standard extraction, storage and execution
@@ -286,7 +313,7 @@ covering `.js` and extensionless Next imports, re-exports and literal module loa
 subdomains cannot import the root application/presentation entrypoints. The client runtime
 closure guard separately prevents Node capabilities from reaching presentation consumers;
 `view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles every directory tree listed in this
-document (`knowledge-artifacts`, `eval-workflows`, `executors`, `eval-workflows/hosts`,
+document (`knowledge`, `knowledge/artifacts`, `eval-workflows`, `executors`, `eval-workflows/hosts`,
 `evidence`, `observability`) with the source tree, in both languages.
 
 Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
