@@ -12,7 +12,7 @@
 最基础的 A/B fixture：`skills/v1.md`（单行最小审查 prompt）vs `skills/v2.md`（多维审查 prompt），都是扁平 `.md`。
 
 消费方与 load-bearing 值：
-- `test/cli/{doctor,doctor-eval-embed,judge-models-validation,oclif-eval,removed-options}.test.ts` 与 `test/knowledge-artifacts/{doctor,sources}/*`：用它当可解析的 skill-dir（`v1` / `v2`）与样本文件（`eval-samples.json`，5 条样本）。
+- `test/cli/{doctor,doctor-eval-embed,judge-models-validation,oclif-eval,removed-options}.test.ts` 与 `test/knowledge/artifacts/{doctor,sources}/*`：用它当可解析的 skill-dir（`v1` / `v2`）与样本文件（`eval-samples.json`，5 条样本）。
 - `test/eval-workflows/inputs/yaml-parser.test.ts`：按现行 `omk.eval-sample-set/v3` 封套读取 `samples` 与 `sampleId`，验证 Schema 和规范化输入。
 
 ## custom-executor/
@@ -37,9 +37,9 @@ OMK MCP 主动知识反馈的行为契约 fixture。它覆盖显式保存、`$om
 
 load-bearing 值：
 - `test/eval-workflows/inputs/batch-discovery.test.ts`：锁定三个目录 skill 的发现顺序及 `.omk/eval-samples.json` 位置，排除已退出的扁平 sidecar。
-- `test/knowledge-artifacts/sources/artifact-resolution.test.ts`：核对 classifier 的路径解析、artifact 类型与工作目录。
+- `test/knowledge/artifacts/sources/artifact-resolution.test.ts`：核对 classifier 的路径解析、artifact 类型与工作目录。
 - `classifier` 保留 2 条样本以覆盖 batch 的 `UNDERPOWERED` 分支；其余 skill 只保留 1 条。这些夹具验证 batch 发现、任务规划和聚合门禁，不验证领域用例多样性；增加样本会按「skill × 样本 × 2 variants」放大子进程数量。
-- `src/knowledge-artifacts/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。
+- `src/knowledge/artifacts/doctor/messages.ts` 的 frontmatter 报错文案指向 `examples/skill-map-showcase/skills/release-readiness`，不要改回已删除的 examples 旧路径。
 
 ## 实体离线复核
 

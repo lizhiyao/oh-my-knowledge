@@ -55,8 +55,8 @@ test/examples/codex-observe-router.test.ts
 test/executors/codex-trace.test.ts
 test/executors/runtime-fingerprint.test.ts
 test/executors/sigint-propagation.test.ts
-test/knowledge-artifacts/sources/install-source.test.ts
-test/knowledge-artifacts/sources/materialize-copy.test.ts
+test/knowledge/artifacts/sources/install-source.test.ts
+test/knowledge/artifacts/sources/materialize-copy.test.ts
 test/knowledge/validation.test.ts
 test/knowledge/entities.test.ts
 test/knowledge/entity-identity.test.ts

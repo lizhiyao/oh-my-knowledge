@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createJsonFileAtomic } from '../../src/shared/atomic-json.js';
 import { writeTextFileAtomic } from '../../src/evidence/storage/atomic-text.js';
-import { hashArtifactSource } from '../../src/knowledge-artifacts/sources/content-hash.js';
+import { hashArtifactSource } from '../../src/knowledge/artifacts/sources/content-hash.js';
 
 const fault = vi.hoisted(() => ({
   beforePublish: undefined as ((path: string) => void) | undefined,

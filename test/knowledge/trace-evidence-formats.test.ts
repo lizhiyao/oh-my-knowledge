@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TraceEvidenceStore } from '../../src/observability/knowledge-extraction/adapters/trace-evidence.js';
-import { EVIDENCE_PROJECTION_VERSION } from '../../src/observability/knowledge-extraction/extraction/evidence.js';
+import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
+import { EVIDENCE_PROJECTION_VERSION } from '../../src/knowledge/extraction/evidence.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

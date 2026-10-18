@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, it } from 'vitest';
-import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-artifacts/doctor/contracts.js';
+import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page.js';
 import type { KnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query.js';
 import type {

@@ -8,7 +8,7 @@ import { projectDoctorRules, projectDoctorSampling } from '../../../application/
 import type { SkillDoctorSnapshot } from '../../../view-models/knowledge/skill-index';
 import type { DoctorRunSummary, KnowledgePage, KnowledgeRow } from '../../../http/pages/knowledge-page';
 import { KNOWLEDGE_INDEX_PATH, KNOWLEDGE_SKILL_PREFIX, SKILL_TREND_PREFIX } from '../../../http/page-paths';
-import type { DoctorRuleStatus } from '../../../../knowledge-artifacts/doctor/contracts';
+import type { DoctorRuleStatus } from '../../../../knowledge/artifacts/doctor/contracts';
 import { displayTime, formatPercent } from '../../../application/display/format';
 import type { SkillObserveSnapshot } from '../../../view-models/knowledge/skill-index';
 import { type Language } from '../layout/shell';

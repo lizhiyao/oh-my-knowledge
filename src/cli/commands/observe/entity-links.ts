@@ -6,7 +6,7 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
 import { createOpenAiArchiveProducer } from '../../../executors/openai/archive.js';
-import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../observability/knowledge-extraction/local.js';
+import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../knowledge/application/local.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import type { EntityLinkInvocation } from '../../../knowledge/entities/link-invocation.js';
 import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkPreview, formatEntityLinkQuality, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';

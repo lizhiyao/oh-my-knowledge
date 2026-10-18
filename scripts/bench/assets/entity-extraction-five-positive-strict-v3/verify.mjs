@@ -67,8 +67,8 @@ assert.deepEqual(author.bindings, { examplesFile: 'strict-positive-examples.json
   candidatePromptFile: manifest.arms.candidate.file, candidatePromptDigest: author.candidatePromptDigest });
 
 // Production consistency: the bundle must match the built production prompt and examples byte for byte.
-const productionPrompt = await import(pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-prompt.js')).href);
-const productionFewshot = await import(pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-fewshot.js')).href);
+const productionPrompt = await import(pathToFileURL(resolve(repository, 'dist/knowledge/extraction/strict-prompt.js')).href);
+const productionFewshot = await import(pathToFileURL(resolve(repository, 'dist/knowledge/extraction/strict-fewshot.js')).href);
 assert.equal(productionPrompt.STRICT_EXTRACTION_PROMPT_VERSION, 'knowledge-extraction-v17');
 assert.equal(hash(candidate), hash(Buffer.from(productionPrompt.STRICT_EXTRACTION_PROMPT, 'utf8')));
 assert.equal(hash(control), hash(Buffer.from(productionPrompt.STRICT_EXTRACTION_PROMPT.replace(productionFewshot.STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', ''), 'utf8')));

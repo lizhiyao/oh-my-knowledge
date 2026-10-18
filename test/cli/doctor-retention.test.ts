@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pruneDoctorHistory } from '../../src/knowledge-artifacts/doctor/persistence.js';
+import { pruneDoctorHistory } from '../../src/knowledge/artifacts/doctor/persistence.js';
 import { writeMeasurementReportBundle } from '../../src/evidence/storage/report-bundle.js';
 
 function doctorReport(skillName: string, id: string, timestamp: string) {

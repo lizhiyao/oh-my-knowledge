@@ -1,8 +1,8 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { type JsonValue } from '../../../eval-core/contracts/index.js';
-import { resolveArtifacts, variantIdentity, parseVariantCwd } from '../../../knowledge-artifacts/sources/artifact-resolution.js';
-import type { Artifact } from '../../../knowledge-artifacts/contracts.js';
+import { resolveArtifacts, variantIdentity, parseVariantCwd } from '../../../knowledge/artifacts/sources/artifact-resolution.js';
+import type { Artifact } from '../../../knowledge/artifacts/contracts.js';
 import { CliEvaluationInputError, type CliEvaluationRequest, type ResolvedResourceDescriptor } from '../../input-compilation/index.js';
 import { absolute, fail, fileResource, materializeBytes, mediaType, treeResource, type ResourceRegistry } from './resolution-resources.js';
 

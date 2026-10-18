@@ -8,8 +8,8 @@ import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
 import { projectDoctorsDir, globalDoctorsDir } from '../../evidence/storage/directories.js';
-import type { DoctorRule, DoctorRuleLike } from '../../knowledge-artifacts/doctor/contracts.js';
-import { persistDoctorReport } from '../../knowledge-artifacts/doctor/persistence.js';
+import type { DoctorRule, DoctorRuleLike } from '../../knowledge/artifacts/doctor/contracts.js';
+import { persistDoctorReport } from '../../knowledge/artifacts/doctor/persistence.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -187,20 +187,20 @@ export default class Doctor extends BaseCommand {
       const cwd = process.cwd();
 
       // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
-      await import('../../knowledge-artifacts/doctor/health/register.js');
+      await import('../../knowledge/artifacts/doctor/health/register.js');
 
       if (flags.dimensions) {
-        const { loadAndRegisterCustomDimensions } = await import('../../knowledge-artifacts/doctor/health/load-custom-dimensions.js');
+        const { loadAndRegisterCustomDimensions } = await import('../../knowledge/artifacts/doctor/health/load-custom-dimensions.js');
         const count = loadAndRegisterCustomDimensions(resolve(flags.dimensions));
         if (count > 0) {
           process.stderr.write(lang === 'zh' ? `已加载 ${count} 个自定义维度\n` : `Loaded ${count} custom dimension(s)\n`);
         }
       }
 
-      const { runDoctor } = await import('../../knowledge-artifacts/doctor/index.js');
-      const { renderDoctorReportText, renderDoctorReportJson, renderDoctorActionPlanText } = await import('../../knowledge-artifacts/doctor/renderer.js');
-      const { getRegisteredRules } = await import('../../knowledge-artifacts/doctor/rules.js');
-      const { isComposerRule } = await import('../../knowledge-artifacts/doctor/rule-kind.js');
+      const { runDoctor } = await import('../../knowledge/artifacts/doctor/index.js');
+      const { renderDoctorReportText, renderDoctorReportJson, renderDoctorActionPlanText } = await import('../../knowledge/artifacts/doctor/renderer.js');
+      const { getRegisteredRules } = await import('../../knowledge/artifacts/doctor/rules.js');
+      const { isComposerRule } = await import('../../knowledge/artifacts/doctor/rule-kind.js');
       // 默认:静态规则 + 在线检查(LLM health composer + endpoint 自定义维度 external=true)。
       // --static-only:只跑静态检测(纯静态内置 rule),但排除 samples_contract_aligned
       // (那条要 samples.json,与离线解耦) → 且不加载 samples,依赖检查只扫 skill 正文。
@@ -277,7 +277,7 @@ export default class Doctor extends BaseCommand {
           process.stderr.write(lang === 'zh' ? '✅ 没有需要修复的问题\n' : '✅ Nothing to fix\n');
           throw new CliExit(0);
         }
-        const { runDoctorFix } = await import('../../knowledge-artifacts/doctor/fixer.js');
+        const { runDoctorFix } = await import('../../knowledge/artifacts/doctor/fixer.js');
         const changed = await runDoctorFix({ signal, report: existing, executorName, model, timeoutMs, effort });
         throw new CliExit(changed ? 0 : (existing.outcome === 'failed' ? 1 : 0));
       }

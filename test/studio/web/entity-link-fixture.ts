@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createLocalEntityLinks, createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
+import { createLocalEntityLinks, createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
 import type { ExecutorArchiveProducer } from '../../../src/executors/contracts/archive.js';
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { KnowledgeEntityLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';

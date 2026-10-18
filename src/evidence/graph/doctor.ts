@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync 
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalArtifactFileStem } from '../storage/file-names.js';
 import { measurementDerivedDir } from '../storage/report-bundle.js';
-import { hashArtifactSource } from '../../knowledge-artifacts/sources/content-hash.js';
+import { hashArtifactSource } from '../../knowledge/artifacts/sources/content-hash.js';
 import { parseArtifactGraphDocument } from './schema.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { writeTextFileAtomic } from '../storage/atomic-text.js';
@@ -12,12 +12,12 @@ import {
   extractSkillHardRules,
   extractSkillWorkflows,
   parseSkillFrontmatter,
-} from '../../knowledge-artifacts/skills/hard-rules.js';
+} from '../../knowledge/artifacts/skills/hard-rules.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
-} from '../../knowledge-artifacts/doctor/contracts.js';
+} from '../../knowledge/artifacts/doctor/contracts.js';
 import type { Lang } from '../../shared/language.js';
 import type {
   ArtifactGraphBinding,

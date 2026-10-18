@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge-artifacts/doctor/contracts.js';
+import type { DoctorRuleResult, DoctorRuleStatus } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 import type {
   SkillGraphNodePreview,
   SkillGraphSnapshot,

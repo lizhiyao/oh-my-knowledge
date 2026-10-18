@@ -10,7 +10,7 @@ import { createCoreStudioCatalog } from '../../../src/studio/application/measure
 import { createNodeCoreRunArtifactStore } from '../../../src/eval-workflows/artifact-store/index.js';
 import { runConformanceScenario } from '../../eval-core/conformance/harness.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
-import type { DoctorReport } from '../../../src/knowledge-artifacts/doctor/contracts.js';
+import type { DoctorReport } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 
 const servers: ReportServer[] = [];
 const roots: string[] = [];

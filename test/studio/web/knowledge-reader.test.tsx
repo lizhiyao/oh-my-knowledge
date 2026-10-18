@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
-import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
+import { createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
 import { executeKnowledgeCandidateAction } from '../../../src/studio/application/knowledge/knowledge-candidates.js';
 import type { KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader.js';

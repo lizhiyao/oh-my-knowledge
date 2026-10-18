@@ -37,6 +37,19 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
   'sample-generation',
 ]);
 
+// 知识伞下保留领域所有权；仅有类型依赖的方向不能借目录合并升级成 runtime 依赖。
+const KNOWLEDGE_SUBDOMAIN_DEPENDENCIES: Record<string, { runtime: readonly string[]; typeOnly?: readonly string[] }> = {
+  'knowledge/adapters': { runtime: ['knowledge', 'knowledge/entities', 'knowledge/extraction', 'knowledge/library', 'knowledge/linking'] },
+  'knowledge/application': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities', 'knowledge/extraction', 'knowledge/library', 'knowledge/linking'] },
+  'knowledge/artifacts/authoring': { runtime: ['knowledge/artifacts/sources'], typeOnly: ['knowledge'] },
+  'knowledge/artifacts/doctor': { runtime: ['knowledge/artifacts/authoring', 'knowledge/artifacts/skills', 'knowledge/artifacts/sources'], typeOnly: ['knowledge/artifacts'] },
+  'knowledge/artifacts/sources': { runtime: ['knowledge/artifacts/skills'], typeOnly: ['knowledge/artifacts'] },
+  'knowledge/entities': { runtime: ['knowledge', 'knowledge/library'] },
+  'knowledge/extraction': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities'] },
+  'knowledge/library': { runtime: ['knowledge'] },
+  'knowledge/linking': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/application', 'knowledge/entities', 'knowledge/library'] },
+};
+
 interface ModuleEdge {
   importer: string;
   target: string;
@@ -62,15 +75,17 @@ function sourceRelative(path: string): string {
 }
 
 function moduleDomain(path: string): string {
-  const [topLevel, subdomain] = path.split('/');
+  const [topLevel, subdomain, lifecycle] = path.split('/');
   if (topLevel === 'eval-core' && subdomain !== undefined && subdomain.includes('.') === false) {
     return `${topLevel}/${subdomain}`;
   }
-  if (
-    topLevel === 'knowledge-artifacts'
-    && ['authoring', 'doctor', 'skills', 'sources'].includes(subdomain)
-  ) {
-    return `${topLevel}/${subdomain}`;
+  if (topLevel === 'knowledge') {
+    if (subdomain === 'artifacts' && ['authoring', 'doctor', 'skills', 'sources'].includes(lifecycle)) {
+      return `${topLevel}/${subdomain}/${lifecycle}`;
+    }
+    if (['adapters', 'application', 'artifacts', 'entities', 'extraction', 'library', 'linking'].includes(subdomain)) {
+      return `${topLevel}/${subdomain}`;
+    }
   }
   if (
     topLevel === 'eval-workflows'
@@ -154,10 +169,9 @@ function runtimeCycles(edges: ModuleEdge[]): RuntimeCycle[] {
     const domainSet = new Set(domains);
     return {
       domains,
-      edges: runtimeEdges
+      edges: [...new Set(runtimeEdges
         .filter((edge) => domainSet.has(edge.importerDomain) && domainSet.has(edge.targetDomain))
-        .map(edgeKey)
-        .sort(),
+        .map(edgeKey))].sort(),
     };
   }).sort((left, right) => left.domains.join('/').localeCompare(right.domains.join('/')));
 }
@@ -216,11 +230,15 @@ describe('src 与 scripts 依赖图', () => {
   const { edges, nonLiteralDynamicImports } = collectDependencyGraph();
 
   it('按稳定子域而非粗粒度物理顶层分析聚合领域依赖', () => {
-    expect(moduleDomain('knowledge-artifacts/contracts.ts')).toBe('knowledge-artifacts');
+    expect(moduleDomain('knowledge/contracts.ts')).toBe('knowledge');
+    for (const subdomain of ['adapters', 'application', 'entities', 'extraction', 'library', 'linking']) {
+      expect(moduleDomain(`knowledge/${subdomain}/module.ts`)).toBe(`knowledge/${subdomain}`);
+    }
+    expect(moduleDomain('knowledge/artifacts/contracts.ts')).toBe('knowledge/artifacts');
     expect(moduleDomain('eval-core/contracts/comparability.ts')).toBe('eval-core/contracts');
     expect(moduleDomain('eval-core/compiler/index.ts')).toBe('eval-core/compiler');
-    expect(moduleDomain('knowledge-artifacts/doctor/index.ts')).toBe('knowledge-artifacts/doctor');
-    expect(moduleDomain('knowledge-artifacts/sources/content-hash.ts')).toBe('knowledge-artifacts/sources');
+    expect(moduleDomain('knowledge/artifacts/doctor/index.ts')).toBe('knowledge/artifacts/doctor');
+    expect(moduleDomain('knowledge/artifacts/sources/content-hash.ts')).toBe('knowledge/artifacts/sources');
     expect(moduleDomain('eval-workflows/inputs/load-samples.ts')).toBe('eval-workflows/inputs');
     expect(moduleDomain('eval-workflows/instruments/prompts/judge-prompts.ts')).toBe('eval-workflows/instruments');
     expect(moduleDomain('eval-workflows/gold/human.ts')).toBe('eval-workflows/gold');
@@ -236,6 +254,20 @@ describe('src 与 scripts 依赖图', () => {
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
     expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
+  });
+
+  it('知识子域只消费已登记方向，type-only 边不升级为运行时依赖', () => {
+    const allowed = (edge: Pick<ModuleEdge, 'importerDomain' | 'targetDomain' | 'typeOnly'>): boolean => {
+      const dependencies = KNOWLEDGE_SUBDOMAIN_DEPENDENCIES[edge.importerDomain];
+      return dependencies?.runtime.includes(edge.targetDomain) === true
+        || (edge.typeOnly && dependencies?.typeOnly?.includes(edge.targetDomain) === true);
+    };
+    expect(edges.filter((edge) => edge.importerDomain.startsWith('knowledge')
+      && edge.targetDomain.startsWith('knowledge') && !allowed(edge)).map(describeEdge)).toEqual([]);
+    const fixture = { importerDomain: 'knowledge/artifacts/authoring', targetDomain: 'knowledge', typeOnly: true };
+    expect(allowed(fixture)).toBe(true);
+    expect(allowed({ ...fixture, typeOnly: false })).toBe(false);
+    expect(allowed({ importerDomain: 'knowledge', targetDomain: 'knowledge/application', typeOnly: true })).toBe(false);
   });
 
   it('根公开入口和维护脚本都进入检查范围', () => {
@@ -346,6 +378,10 @@ describe('src 与 scripts 依赖图', () => {
       'observability',
     ]);
     expect(runtimeCycles(expandedFixture)).not.toEqual(runtimeCycles(fixture));
+    const typeOnlyExpansion = expandedFixture.map((edge) =>
+      edge.importerDomain === 'evidence' || edge.targetDomain === 'evidence'
+        ? { ...edge, typeOnly: true } : edge);
+    expect(runtimeCycles(typeOnlyExpansion)).toEqual(runtimeCycles(fixture));
   });
 
   it('非字面量 dynamic import／require 必须按调用点、表达式与完整来源约束完成审计登记', () => {

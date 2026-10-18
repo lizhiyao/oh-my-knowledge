@@ -1,6 +1,6 @@
 import type { KnowledgeDraft } from '../../src/knowledge/contracts.js';
-import type { ExtractionProposal } from '../../src/observability/knowledge-extraction/extraction/proposals.js';
-import type { WindowExtractionModel } from '../../src/observability/knowledge-extraction/extraction/window-proposals.js';
+import type { ExtractionProposal } from '../../src/knowledge/extraction/proposals.js';
+import type { WindowExtractionModel } from '../../src/knowledge/extraction/window-proposals.js';
 
 export function draft(): KnowledgeDraft {
   return {

@@ -5,9 +5,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { KnowledgeEntities } from '../../../src/studio/web/components/knowledge/entities.js';
 import { EntityLinksDrawer } from '../../../src/studio/web/components/knowledge/entity-links.js';
 import { entityLinkFixture } from './entity-link-fixture.js';
-import { entityLinkQuality } from '../../../src/observability/knowledge-extraction/linking/entity-link-quality.js';
-import { entityLinkDigest } from '../../../src/observability/knowledge-extraction/linking/entity-link-hash.js';
-import { entityLinkTextHash } from '../../../src/observability/knowledge-extraction/adapters/entity-link-api-producer.js';
+import { entityLinkQuality } from '../../../src/knowledge/linking/entity-link-quality.js';
+import { entityLinkDigest } from '../../../src/knowledge/linking/entity-link-hash.js';
+import { entityLinkTextHash } from '../../../src/knowledge/adapters/entity-link-api-producer.js';
 import type { EntityLinkStudioQuality } from '../../../src/studio/view-models/knowledge/entity-links.js';
 
 // Keep the production handlers/evidence; native controls isolate lifecycle from portal/layout machinery.

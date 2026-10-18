@@ -26,7 +26,7 @@ export interface EntityLinkReviewRuntime {
 export async function loadEntityLinkReviewRuntime(repository: string): Promise<EntityLinkReviewRuntime> {
   const load = (path: string) => import(pathToFileURL(resolve(repository, 'dist', path)).href);
   const [input, link, prompt] = await Promise.all([load('knowledge/entities/link-invocation.js'), load('knowledge/entities/links.js'),
-    load('observability/knowledge-extraction/linking/entity-link-prompt.js')]);
+    load('knowledge/linking/entity-link-prompt.js')]);
   return { validateInput: (value: unknown) => input.EntityLinkModelInputSchema.parse(value),
     parseSuggestion: (value: unknown) => link.EntityLinkSuggestionSchema.parse(value),
     admitSuggestion: (value: unknown, selected: EntityLinkReviewInput) => link.checkEntityLinkSuggestion(value, {

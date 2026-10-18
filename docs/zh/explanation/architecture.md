@@ -62,7 +62,7 @@ flowchart TD
 
 ## 源码依赖模型
 
-`knowledge/` 拥有可复用知识的内容契约和纯接纳校验，区别于 `knowledge-artifacts/` 的载体生命周期。CLI 与 Studio 共享这些规则；来源读取、提炼调用与持久化由外层应用流程和 adapter 负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。当前已实现候选提炼与核对、不可变修订、实体知识库组织和载体维护；实现范围与限制分别见[提炼规范](../specs/entities/entity-extraction.md)及[知识库规范](../specs/knowledge/knowledge-library.md)，不能由概念图推定自动关联或效果已获验证。
+`knowledge/` 是知识建设与维护的伞形域，收拢纯内容契约、实体与知识库规则、提炼、跨窗关联、应用流程、适配器和载体生命周期。CLI 与 Studio 按职责直接消费。纯核心仅包括根目录 TypeScript 模块、`entities/` 和 `library/`；来源读取、模型调用与持久化由伞内执行子域及适配器负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。当前已实现候选提炼与核对、不可变修订、实体知识库组织和载体维护；实现范围与限制分别见[提炼规范](../specs/entities/entity-extraction.md)及[知识库规范](../specs/knowledge/knowledge-library.md)，不能由概念图推定自动关联或效果已获验证。
 
 `src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
 
@@ -88,10 +88,36 @@ eval-core ← eval-runtime ← 产品编排
 
 箭头从 consumer 指向 dependency。`eval-runtime` 可以依赖 Core 与 type-only Executor contract，但不得导入 `eval-workflows`、provider implementation 或 delivery surface。`eval-workflows` 只复用 Runtime foundation 叶子模块，不导入 canonical 用户 façade，也不维护第二份生命周期实现。
 
+知识职责收拢于同一个源码所有者，依赖边界继续分开：
+
+```text
+knowledge/
+├── contracts.ts  # 知识内容与证据契约
+├── history.ts    # 不可变修订规则
+├── store.ts      # 存储端口与规范身份
+├── tags.ts       # 标签契约
+├── validation.ts # 确定性的引用与证据校验
+├── entities/     # 纯窗口身份、关联复核与调用契约
+├── library/      # 纯跨窗组织契约与修订
+├── extraction/   # 选定窗口、模型协议与输出接纳
+├── linking/      # 跨窗候选与复核执行
+├── application/  # 共用用例与本地应用装配
+├── adapters/     # 模型传输、来源读取与文件持久化
+└── artifacts/    # 知识载体生命周期
+```
+
+纯核心只依赖自身与 `zod`，不能反向依赖执行子域或宿主副作用。
+应用流程消费提炼、关联与适配器；关联还消费知识库应用行为和执行适配器。
+适配器与提炼、关联之间的既有关系继续显式保留。架构守卫分别审计运行时和仅类型依赖；
+目录收拢不意味着所有子域只能向核心单向依赖。
+实体保留在此，是因为窗口身份、知识绑定和知识库组织属于当前内聚职责，尚无独立顶层实体生命周期需求。
+本次源码组织调整不改变公开 exports、模型调用、prompt 字节、Schema 身份或工作区持久化路径，
+不增加统一聚合入口或兼容 shim。
+
 知识载体生命周期能力归入同一个所有权边界：
 
 ```text
-knowledge-artifacts/
+knowledge/artifacts/
 ├── contracts.ts  # artifact 身份与实验角色
 ├── skills/       # skill frontmatter、硬规则与 workflow 定义
 ├── doctor/       # 静态与模型辅助的 artifact 健康检查
@@ -100,7 +126,7 @@ knowledge-artifacts/
 ```
 
 Governance 只消费经过认证的评测与观测证据，不重新计算 Core 分数或决定。各能力仍保持独立
-子域，共享生命周期所有者不等于把 `knowledge-artifacts` 变成通用工具层。
+子域，共享生命周期所有者不等于把 `knowledge/artifacts` 变成通用工具层。外层 `knowledge` 保留载体语义，区别于测量产物；已废弃的顶层 `src/artifacts` 不恢复。
 
 评测输入、evaluator instrument 与 Gold 校准共享 workflow 边界；带副作用的 Runtime 就绪检查归 executors 所有：
 
@@ -133,7 +159,7 @@ executors/
 
 Runtime 的标准入口 `evaluate.ts` 从内部 `evaluation/` 模块导出原有 API。输入与评分器捕获供 Definition 编译使用，准备阶段负责封存和运行，结果复用先通过 Core 准入再执行重新评分、分析或决策。认证结果和 prepared capability 由同一个状态模块管理。捕获与编译不得依赖运行状态，内部模块不得反向导入用户 façade。这些内部模块不增加包子路径，也不改变现有身份与测量契约。
 
-载体发现、本地与 Git 来源解析、内容寻址副本归 `knowledge-artifacts/sources`，由 doctor、安装和评测共用。要求存在评测样本的批量发现留在 `eval-workflows/inputs/batch-discovery.ts`；来源层不得导入 Workflow。
+载体发现、本地与 Git 来源解析、内容寻址副本归 `knowledge/artifacts/sources`，由 doctor、安装和评测共用。要求存在评测样本的批量发现留在 `eval-workflows/inputs/batch-discovery.ts`；来源层不得导入 Workflow。
 
 
 `eval-workflows/instruments` 与 `eval-workflows/gold` 不拥有测量含义；它们把评委执行与 Gold 校准
@@ -176,7 +202,7 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | Core／Runtime | `eval-core`、包根及 `eval-runtime`；服务调用方与产品 Workflow | Core 约束执行和测量协议，Runtime 提供通用评分与接入；验证公开包、契约、调度和取消 |
 | Workflow | `eval-samples`、`projections`；CLI、DSH、Studio、载体改进 | 产品声明、版本化评分／分析、编排与评测产物存储；验证编译、结果投影及发布判断 |
 | Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
-| Knowledge artifacts | 内部调用；CLI、Workflow 与观测 | 载体编写、健康检查与共用来源解析；验证源身份、隔离副本、安装与 doctor |
+| Knowledge | 内部调用；CLI、Studio、Workflow 与观测 | 纯内容／实体／知识库契约，提炼、关联及持久化，载体编写、健康检查与来源解析；验证不可变历史、来源身份、恢复、隔离副本、安装与 doctor |
 | Observability／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
 | Evidence | 各产品领域与交付入口 | 跨来源证据布局与关联；不替代 Workflow 的评测产物校验，不决定评分或发布 |
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
@@ -201,7 +227,7 @@ Runtime；生成、修复及辅助分析可以直接使用 `ExecutorFn`；观测
 Studio。这些路径用途不同，共用机制须按契约提取。用户 façade 的事件消费与产品运行租约也不能
 仅因都调用 Core 就认定为重复调度。
 
-当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。知识内容领域已由 `knowledge/contracts.ts`、`validation.ts`、`history.ts` 和 `store.ts` 实现；文件系统适配和提炼编排仍归外层。
+当前保留共用宿主，是因为 CLI 与 DSH 实际复用其绑定、注册和资源装配；入口专属策略已经归入口。内部实现测试按宿主适配、Runtime、产品测量和投影分别归属。历史 Schema／instrument 版本与 npm 0.x 兼容是不同问题，应依据公开引用与证据读取需求决定保留或迁移。纯知识内容核心已由 `knowledge/contracts.ts`、`validation.ts`、`history.ts` 和 `store.ts` 实现；文件系统适配和提炼编排位于纯核心之外、`knowledge` 伞形域之内。
 
 ### 样本输入准入
 
@@ -251,7 +277,6 @@ observability/
 ├── conversation/  # 对话目录、窗口与调试投影
 ├── experience/  # 体验事实、报告派生与文本信号
 ├── inbox/  # 观测收件箱、复核与反馈投影
-├── knowledge-extraction/  # 知识提炼编排、证据选择与适配
 ├── prompts/  # 冻结的复盘 prompt 与文档加载
 ├── skill-health/  # Skill chain、健康检查与建议
 ├── soft-standards/  # 衍生标准提取、存储与执行
@@ -263,7 +288,7 @@ observability/
 覆盖 `.js` 和 Next 无扩展名 import、再导出及字面量模块加载。私有子域不能反向导入根应用／展示入口。
 客户端运行时闭包守卫另行保证展示入口不引入 Node 能力；`view-models/` 只提供类型。
 `test/architecture/architecture-docs.test.ts` 对账本文列出的全部目录树
-（`knowledge-artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`observability`）
+（`knowledge`、`knowledge/artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`observability`）
 与源码目录，中英文同步。
 
 Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。

@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import DoctorCommand from '../../src/cli/commands/doctor.js';
 import { runCommand, type CommandRunError } from '../helpers/run-command.js';
-import * as doctorFixer from '../../src/knowledge-artifacts/doctor/fixer.js';
+import * as doctorFixer from '../../src/knowledge/artifacts/doctor/fixer.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');

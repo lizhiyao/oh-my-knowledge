@@ -9,9 +9,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../../src/knowledge-artifacts/sources/artifact-resolution.js';
-import { resolveRemoteGitSource } from '../../../src/knowledge-artifacts/sources/install-source.js';
-import { hashArtifactSource } from '../../../src/knowledge-artifacts/sources/content-hash.js';
+import { isPlausibleGitUrl, fetchRemoteGitRef, SourceResolveError, resolveArtifacts } from '../../../src/knowledge/artifacts/sources/artifact-resolution.js';
+import { resolveRemoteGitSource } from '../../../src/knowledge/artifacts/sources/install-source.js';
+import { hashArtifactSource } from '../../../src/knowledge/artifacts/sources/content-hash.js';
 
 const git = (repo: string, args: string[]): string =>
   execFileSync('git', ['-c', 'user.email=t@t.t', '-c', 'user.name=t', ...args], { cwd: repo, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });

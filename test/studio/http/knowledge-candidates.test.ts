@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createLocalKnowledgeApplication } from '../../../src/observability/knowledge-extraction/local.js';
+import { createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
-import { boundedExtractionPolicy } from '../../../src/observability/knowledge-extraction/extraction/generation-policy.js';
+import { boundedExtractionPolicy } from '../../../src/knowledge/extraction/generation-policy.js';
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
