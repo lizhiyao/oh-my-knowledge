@@ -515,7 +515,7 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
     }
   },
   {
-    "exampleId": "synthetic-version-artifact-v1",
+    "exampleId": "synthetic-version-artifact-v2",
     "input": {
       "excerpts": [
         {
@@ -555,7 +555,7 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
           "entityId": "e_prompt",
           "label": "提取提示词",
           "description": "持续迭代的提取提示词本身；当前版本只是限定，不另建版本实体。",
-          "qualifiers": ["当前版本 knowledge-extraction-v14"],
+          "qualifiers": ["当前版本 v14"],
           "identityStatus": "proposed",
           "possibleEntityIds": [],
           "uncertainties": [],

@@ -1,0 +1,94 @@
+{
+  "manifestKind": "omk-entity-fewshot-candidate-assets/v4",
+  "assetVersion": 4,
+  "status": "production-demonstration",
+  "productionActivated": true,
+  "modelCalls": 0,
+  "humanReview": "pending",
+  "independentHumanReview": "pending",
+  "gold": "none",
+  "qualityConclusion": "not_evaluated",
+  "dataUse": "prompt-demonstration-only;not-an-evaluation-split",
+  "sourceManifestDigest": "sha256:bf22d3523d6acab8e5fdfc3007a1db69ab1bb0c8e1814c8921ab32b8ae799dd4",
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "validators": {
+    "zod": "4.6.5",
+    "ajv": "8.20.0"
+  },
+  "arms": {
+    "control": {
+      "name": "v14-derived-strict",
+      "file": "v14-derived-strict.prompt.txt"
+    },
+    "candidate": {
+      "name": "v18-candidate-strict",
+      "file": "v18-candidate-strict.prompt.txt"
+    }
+  },
+  "pair": {
+    "baselineName": "v14-derived-strict",
+    "candidateName": "v18-candidate-strict",
+    "originalV14Preserved": true,
+    "originalRulePrefixBytes": 22514,
+    "originalRulePrefixDigest": "sha256:960b45dc357cd86471a7e55ddd975d71b52de416ff80f001d1a89c921825d909",
+    "finalOutputRulePreserved": true,
+    "sharedWireInstructionsDigest": "sha256:1bf2f73c38d67577010e0b7461b4e64f294928778d32597bffa519a862edc1c2",
+    "sharedWireSchemaDigest": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+    "onlyDifference": "five-positive-strict-fewshot-block-and-version-bump",
+    "blockDigest": "sha256:0800dcb1f648e9224045e3d624ca3069bdaf8e6f65fe24318d80a5abfd43d253",
+    "blockBytes": 12999,
+    "baselineBytes": 31884,
+    "candidateBytes": 44884
+  },
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-five-positive-strict-v3",
+    "manifestDigest": "sha256:a9bcb1042e691b365459436635dd74e1c40788225ad1eb4cd470f43cc6dcdbea",
+    "examplesDigest": "sha256:3bd18b7e3ea1bba9318fbcd1d3a6eabc410548d4f17acd74d3db919c2db56b62",
+    "candidatePromptDigest": "sha256:cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87"
+  },
+  "authorReview": "completed",
+  "files": [
+    {
+      "path": "author-review.json",
+      "bytes": 1739,
+      "sha256": "sha256:d3efa9d14249d1e00b0e744756369c62d1f124cfce99a5f13eaa390a759a0e31",
+      "endsWithLf": true
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 1169,
+      "sha256": "sha256:bf22d3523d6acab8e5fdfc3007a1db69ab1bb0c8e1814c8921ab32b8ae799dd4",
+      "endsWithLf": true
+    },
+    {
+      "path": "strict-positive-examples.json",
+      "bytes": 22654,
+      "sha256": "sha256:fcdf432aa4bbcf9303e6fcdebea932094f92a6a791b3dbe35b8e3d185632ce6a",
+      "endsWithLf": true
+    },
+    {
+      "path": "v14-derived-strict.prompt.txt",
+      "bytes": 31884,
+      "sha256": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+      "endsWithLf": false
+    },
+    {
+      "path": "v18-candidate-strict.prompt.txt",
+      "bytes": 44884,
+      "sha256": "sha256:46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229",
+      "endsWithLf": false
+    },
+    {
+      "path": "wire-identity.json",
+      "bytes": 767,
+      "sha256": "sha256:db39b23186df42d1051537be69357bee123a211b92ced1194430495d534b449b",
+      "endsWithLf": true
+    },
+    {
+      "path": "wire-schema.json",
+      "bytes": 8327,
+      "sha256": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+      "endsWithLf": false
+    }
+  ]
+}

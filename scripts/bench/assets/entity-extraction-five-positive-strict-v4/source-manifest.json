@@ -1,0 +1,22 @@
+{
+  "manifestKind": "strict-wire-five-positive-experiment-assets/v2",
+  "productionActivated": true,
+  "sourceDirectory": "scripts/bench/assets/entity-extraction-five-positive-strict-v3",
+  "readScope": [
+    "scripts/bench/assets/entity-extraction-five-positive-strict-v3",
+    "src/observability/knowledge-extraction/extraction/strict-fewshot.ts"
+  ],
+  "promptEncoding": "raw-utf8-no-added-final-newline",
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "provenance": {
+    "sourceKind": "revision-of-viewed-synthetic-examples",
+    "modelCalls": 0,
+    "priorExposure": "The preceding review read the dogfood run records and v16/v17 outputs. This is an already-viewed development revision, not a blind evaluation."
+  },
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-five-positive-strict-v3",
+    "manifestDigest": "sha256:a9bcb1042e691b365459436635dd74e1c40788225ad1eb4cd470f43cc6dcdbea",
+    "examplesDigest": "sha256:3bd18b7e3ea1bba9318fbcd1d3a6eabc410548d4f17acd74d3db919c2db56b62",
+    "candidatePromptDigest": "sha256:cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87"
+  }
+}

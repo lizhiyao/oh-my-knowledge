@@ -1,0 +1,25 @@
+{
+  "reviewKind": "ai-author-review",
+  "status": "completed",
+  "independentHumanAttestation": false,
+  "reviewer": "Codex source-grounding correction author",
+  "reviewedAt": "2026-10-18T12:32:53.999Z",
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-five-positive-strict-v3",
+    "manifestDigest": "sha256:a9bcb1042e691b365459436635dd74e1c40788225ad1eb4cd470f43cc6dcdbea",
+    "examplesDigest": "sha256:3bd18b7e3ea1bba9318fbcd1d3a6eabc410548d4f17acd74d3db919c2db56b62",
+    "candidatePromptDigest": "sha256:cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87"
+  },
+  "examplesDigest": "sha256:fcdf432aa4bbcf9303e6fcdebea932094f92a6a791b3dbe35b8e3d185632ce6a",
+  "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+  "candidatePromptDigest": "sha256:46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229",
+  "notes": "Reviewed the source support of the fifth example: its input only supplies v14, so the output qualifier now retains 当前版本 v14. The example identity advances to v2. All other input/output content is unchanged from v3. This is an AI author review; independent human review and semantic effectiveness remain unverified.",
+  "bindings": {
+    "examplesFile": "strict-positive-examples.json",
+    "examplesDigest": "sha256:fcdf432aa4bbcf9303e6fcdebea932094f92a6a791b3dbe35b8e3d185632ce6a",
+    "controlPromptFile": "v14-derived-strict.prompt.txt",
+    "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+    "candidatePromptFile": "v18-candidate-strict.prompt.txt",
+    "candidatePromptDigest": "sha256:46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229"
+  }
+}

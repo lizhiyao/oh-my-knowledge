@@ -57,6 +57,18 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
     rationale: 'Offline bundle verification reads only the fixed built few-shot block for production equality; bundle data cannot select imported code.',
   },
   {
+    importer: 'scripts/bench/assets/entity-extraction-five-positive-strict-v4/verify.mjs',
+    expression: "pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-prompt.js')).href",
+    sourceSha256: '8bc3bb13c26e0937a8dc002a26debbbb2ecb97b00aa7e49cfb4c8931b24837fd',
+    rationale: 'Offline revision verification reads only the fixed built production prompt; it does not dispatch a model or register a collector arm.',
+  },
+  {
+    importer: 'scripts/bench/assets/entity-extraction-five-positive-strict-v4/verify.mjs',
+    expression: "pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-fewshot.js')).href",
+    sourceSha256: '8bc3bb13c26e0937a8dc002a26debbbb2ecb97b00aa7e49cfb4c8931b24837fd',
+    rationale: 'Offline revision verification compares the fixed production demonstrations with the frozen v3 revision and the source-grounding correction.',
+  },
+  {
     importer: 'scripts/bench/entity-link-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
     sourceSha256: 'bb3f7d1c55e57f2205fdc79ecc6354586b6798bd710d640d5b640fa28e0d40d6',

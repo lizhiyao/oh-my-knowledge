@@ -26,7 +26,7 @@ const FROZEN: Record<string, string> = {
   'rag-context-recall': 'a1ad34978824',
   'observe-llm-enhanced-review': '5c5c8e5bf0af8fce3ebf22d2363ca863cdb430dafd087bec19e170517cfa0b83', // 2026-05-22.v7
   'knowledge-extraction': 'e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399', // knowledge-extraction-v14, raw UTF-8
-  'knowledge-extraction-strict': 'cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87', // knowledge-extraction-v17, raw UTF-8; production few-shot
+  'knowledge-extraction-strict': '46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229', // knowledge-extraction-v18, raw UTF-8; production few-shot
   'knowledge-extraction-feedback': 'd6d7ee7dd8000298702c3fb0b72e6c54dee884bd67b696ca1bb2358740edcabc', // knowledge-generation-feedback/v1
   'entity-link-proposal': '18353503713a448bf56b6ec5cadeef94384a74525d0a73cd09beaecdf9829bb8', // entity-link-proposal-v1, raw UTF-8 including derived response Schema
 };
