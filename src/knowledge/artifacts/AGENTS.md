@@ -5,7 +5,7 @@
 ## 命名说明
 
 - 路径为 `knowledge/artifacts`：外层 `knowledge` 提供知识载体语义，`artifacts` 是伞内子域名。`src/artifacts` 是被 #613 废弃的旧顶层名，与「评测产物（measurement artifacts）」有歧义，不恢复该路径；原顶层 `src/knowledge-artifacts` 也不保留兼容入口。`test/architecture/src-root-layout.test.ts` 维护目录地图与退役路径约束。
-- 载体库（`authoring/carrier-library.ts` 的 `CarrierLibrary`）与 `src/knowledge/library/`（实体跨窗组织库）是两个领域概念，命名不得再混用。
+- 载体库（`authoring/carrier-library.ts` 的 `CarrierLibrary`）与 `src/knowledge/entity-library/`（实体跨窗组织库）是两个领域概念，命名不得再混用。
 
 ## 领域不变量
 

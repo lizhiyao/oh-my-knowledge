@@ -39,15 +39,15 @@ const EVAL_WORKFLOW_SUBDOMAINS = new Set([
 
 // 知识伞下保留领域所有权；仅有类型依赖的方向不能借目录合并升级成 runtime 依赖。
 const KNOWLEDGE_SUBDOMAIN_DEPENDENCIES: Record<string, { runtime: readonly string[]; typeOnly?: readonly string[] }> = {
-  'knowledge/adapters': { runtime: ['knowledge', 'knowledge/entities', 'knowledge/extraction', 'knowledge/library', 'knowledge/linking'] },
-  'knowledge/application': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities', 'knowledge/extraction', 'knowledge/library', 'knowledge/linking'] },
+  'knowledge/adapters': { runtime: ['knowledge', 'knowledge/entities', 'knowledge/extraction', 'knowledge/entity-library', 'knowledge/entity-linking'] },
+  'knowledge/application': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities', 'knowledge/extraction', 'knowledge/entity-library', 'knowledge/entity-linking'] },
   'knowledge/artifacts/authoring': { runtime: ['knowledge/artifacts/sources'], typeOnly: ['knowledge'] },
   'knowledge/artifacts/doctor': { runtime: ['knowledge/artifacts/authoring', 'knowledge/artifacts/skills', 'knowledge/artifacts/sources'], typeOnly: ['knowledge/artifacts'] },
   'knowledge/artifacts/sources': { runtime: ['knowledge/artifacts/skills'], typeOnly: ['knowledge/artifacts'] },
-  'knowledge/entities': { runtime: ['knowledge', 'knowledge/library'] },
+  'knowledge/entities': { runtime: ['knowledge', 'knowledge/entity-library'] },
   'knowledge/extraction': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities'] },
-  'knowledge/library': { runtime: ['knowledge'] },
-  'knowledge/linking': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/application', 'knowledge/entities', 'knowledge/library'] },
+  'knowledge/entity-library': { runtime: ['knowledge'] },
+  'knowledge/entity-linking': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/application', 'knowledge/entities', 'knowledge/entity-library'] },
 };
 
 interface ModuleEdge {
@@ -83,7 +83,7 @@ function moduleDomain(path: string): string {
     if (subdomain === 'artifacts' && ['authoring', 'doctor', 'skills', 'sources'].includes(lifecycle)) {
       return `${topLevel}/${subdomain}/${lifecycle}`;
     }
-    if (['adapters', 'application', 'artifacts', 'entities', 'extraction', 'library', 'linking'].includes(subdomain)) {
+    if (['adapters', 'application', 'artifacts', 'entities', 'extraction', 'entity-library', 'entity-linking'].includes(subdomain)) {
       return `${topLevel}/${subdomain}`;
     }
   }
@@ -231,7 +231,7 @@ describe('src 与 scripts 依赖图', () => {
 
   it('按稳定子域而非粗粒度物理顶层分析聚合领域依赖', () => {
     expect(moduleDomain('knowledge/contracts.ts')).toBe('knowledge');
-    for (const subdomain of ['adapters', 'application', 'entities', 'extraction', 'library', 'linking']) {
+    for (const subdomain of ['adapters', 'application', 'entities', 'extraction', 'entity-library', 'entity-linking']) {
       expect(moduleDomain(`knowledge/${subdomain}/module.ts`)).toBe(`knowledge/${subdomain}`);
     }
     expect(moduleDomain('knowledge/artifacts/contracts.ts')).toBe('knowledge/artifacts');

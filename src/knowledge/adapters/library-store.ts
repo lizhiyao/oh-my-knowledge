@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../library/contracts.js';
-import { applyLibraryWrite, validateLibraryHistory } from '../library/history.js';
-import { LibraryWriteCapacityError } from '../library/write-errors.js';
+import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../entity-library/contracts.js';
+import { applyLibraryWrite, validateLibraryHistory } from '../entity-library/history.js';
+import { LibraryWriteCapacityError } from '../entity-library/write-errors.js';
 import { canonicalJson } from '../store.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';

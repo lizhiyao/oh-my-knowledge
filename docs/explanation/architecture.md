@@ -62,7 +62,7 @@ Each stage retains its own artifacts. Reusing existing artifacts through staged 
 
 ## Source dependency model
 
-`knowledge/` owns knowledge construction and maintenance as an umbrella domain: pure content contracts, entity and library rules, extraction, cross-window linking, application flows, adapters, and carrier lifecycle. CLI and Studio consume these responsibilities directly. The pure core is limited to root TypeScript modules, `entities/`, and `library/`; source reads, model calls, and persistence belong to execution subdomains and adapters within the umbrella. Reference checks establish structural and source-location integrity, not support for a claim. Candidate extraction and review, immutable revisions, entity-library organization, and carrier maintenance are implemented. The [extraction](../specs/entities/entity-extraction.md) and [library](../specs/knowledge/knowledge-library.md) specifications own their scope and limits; a concept diagram establishes neither automatic linking nor verified benefits.
+`knowledge/` owns knowledge construction and maintenance as an umbrella domain: pure content contracts, entity and library rules, extraction, cross-window linking, application flows, adapters, and carrier lifecycle. CLI and Studio consume these responsibilities directly. The pure core is limited to root TypeScript modules, `entities/`, and `entity-library/`; source reads, model calls, and persistence belong to execution subdomains and adapters within the umbrella. Reference checks establish structural and source-location integrity, not support for a claim. Candidate extraction and review, immutable revisions, entity-library organization, and carrier maintenance are implemented. The [extraction](../specs/entities/entity-extraction.md) and [library](../specs/knowledge/knowledge-library.md) specifications own their scope and limits; a concept diagram establishes neither automatic linking nor verified benefits.
 
 Directories under `src` express domain ownership rather than one mechanical repository-wide layering scheme. Three dependency kinds are reviewed separately:
 
@@ -98,9 +98,9 @@ knowledge/
 ├── tags.ts       # tag contracts
 ├── validation.ts # deterministic reference and evidence validation
 ├── entities/     # pure window identity, link review and invocation contracts
-├── library/      # pure cross-window organization contracts and revisions
+├── entity-library/      # pure cross-window organization contracts and revisions
 ├── extraction/   # selected windows, model protocols and output admission
-├── linking/      # cross-window candidate and review execution
+├── entity-linking/      # cross-window candidate and review execution
 ├── application/  # shared use cases and local application assembly
 ├── adapters/     # model transport, source reads and file persistence
 └── artifacts/    # knowledge carrier lifecycle

@@ -7,8 +7,8 @@ import { EntityLinkEndpointSchema, EntityLinkConflictError, entityLinkPairKey, t
 import { EntityLinkExecutionRequestSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
   type EntityLinkInvocationPorts, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction, type EntityLinkExecutionOutcome } from '../entities/link-invocation.js';
 import { entityLinkConfirmationDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../entities/link-invocation-state.js';
-import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../library/contracts.js';
-import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../library/write-errors.js';
+import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../entity-library/contracts.js';
+import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../entity-library/write-errors.js';
 import { entityLinkDigest } from './entity-link-hash.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeApplication } from '../application/application.js';

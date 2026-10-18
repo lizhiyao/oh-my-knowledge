@@ -8,7 +8,7 @@ describe('knowledge 领域布局', () => {
   it('知识域收拢纯核心、提取、关联、应用与载体生命周期', () => {
     const entries = readdirSync(DOMAIN_ROOT, { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['adapters', 'application', 'artifacts', 'entities', 'extraction', 'library', 'linking']);
+      .toEqual(['adapters', 'application', 'artifacts', 'entities', 'entity-library', 'entity-linking', 'extraction']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual(['AGENTS.md', 'contracts.ts', 'history.ts', 'store.ts', 'tags.ts', 'validation.ts']);
   });

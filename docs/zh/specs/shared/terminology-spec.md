@@ -271,7 +271,7 @@ Core 已发布的 `admit*` 能力 API（`admitExecutionBundle` 及同族）与 S
 
 两个域各自拥有一个「库」，命名不可混用：
 
-- **实体组织库**——`src/knowledge/library/`：对提取实体的用户确认跨窗组织（`knowledge-library-object-history`）。
+- **实体组织库**——`src/knowledge/entity-library/`：对提取实体的用户确认跨窗组织（`knowledge-library-object-history`）。
 - **载体库**——`src/knowledge/artifacts/authoring/carrier-library.ts`（`CarrierLibrary`）：已保存 skill／prompt 载体的版本化存储（`omk-carrier-v1`）。代码与文件名使用 `carrier-` 限定；新代码不得再缩写为裸 `library`。
 
 载体域目录保持 `src/knowledge/artifacts/`：裸名 `src/artifacts` 已被废弃（#613），因为它与评测产物（measurement artifacts，评测输出）冲突，两者是不同概念。不得重新引入。

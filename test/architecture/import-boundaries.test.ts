@@ -41,7 +41,7 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
-  ...['observability/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/linking/'].map((from) => ({
+  ...['observability/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/entity-linking/'].map((from) => ({
     from, to: 'executors/',
     reason: '观测与知识提炼只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',
     allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
@@ -552,7 +552,7 @@ describe('架构边界守门', () => {
   });
 
   it('迁出的知识执行子域仍只消费执行器契约，载体保留具体执行能力', () => {
-    for (const domain of ['adapters', 'application', 'extraction', 'linking']) {
+    for (const domain of ['adapters', 'application', 'extraction', 'entity-linking']) {
       const importer = `knowledge/${domain}/fixture.ts`;
       expect(RULES.some((rule) => violatesRule(importer, 'executors/index.ts', rule)), importer).toBe(true);
       expect(RULES.some((rule) => violatesRule(importer, 'executors/contracts/archive.ts', rule)), importer).toBe(false);
@@ -560,12 +560,12 @@ describe('架构边界守门', () => {
     expect(RULES.some((rule) => violatesRule('knowledge/artifacts/doctor/fixture.ts', 'executors/index.ts', rule))).toBe(false);
   });
 
-  it('knowledge 根契约、entities 与 library 保持纯核心且不依赖伞内应用和适配器', () => {
+  it('knowledge 根契约、entities 与 entity-library 保持纯核心且不依赖伞内应用和适配器', () => {
     const isKnowledgeCoreFile = (file: string): boolean => {
       const path = toSrcRelative(file);
       return /^knowledge\/[^/]+\.ts$/.test(path)
         || path.startsWith('knowledge/entities/')
-        || path.startsWith('knowledge/library/');
+        || path.startsWith('knowledge/entity-library/');
     };
     expect(collectPureCapabilityViolations({
       files: listTsFiles(join(SRC_DIR, 'knowledge')).filter(isKnowledgeCoreFile),

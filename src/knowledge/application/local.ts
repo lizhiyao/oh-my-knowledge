@@ -10,9 +10,9 @@ import { FileLibraryStore } from '../adapters/library-store.js';
 import { KnowledgeLibraryApplication } from './library.js';
 import { FileEntityAnalysisStore } from '../adapters/entity-store.js';
 import { FileEntityLinkStore } from '../adapters/entity-link-store.js';
-import { EntityLinkApplication } from '../linking/entity-links.js';
+import { EntityLinkApplication } from '../entity-linking/entity-links.js';
 import { validateEntityLinkPreview } from '../entities/link-invocation-state.js';
-import { entityLinkDigest } from '../linking/entity-link-hash.js';
+import { entityLinkDigest } from '../entity-linking/entity-link-hash.js';
 import { entityLinkTextHash } from '../adapters/entity-link-api-producer.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 

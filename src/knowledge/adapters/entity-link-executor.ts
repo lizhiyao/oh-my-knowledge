@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import type { ExecutorFn, ExecutorInput } from '../../executors/contracts/ports.js';
 import type { ExecResult } from '../../executors/contracts/result.js';
 import { canonicalJson } from '../store.js';
-import { entityLinkDigest } from '../linking/entity-link-hash.js';
+import { entityLinkDigest } from '../entity-linking/entity-link-hash.js';
 import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_PROMPT_VERSION,
-  ENTITY_LINK_RESPONSE_JSON_SCHEMA, ENTITY_LINK_RESPONSE_SCHEMA_HASH, ENTITY_LINK_RESPONSE_SCHEMA_ID } from '../linking/entity-link-prompt.js';
+  ENTITY_LINK_RESPONSE_JSON_SCHEMA, ENTITY_LINK_RESPONSE_SCHEMA_HASH, ENTITY_LINK_RESPONSE_SCHEMA_ID } from '../entity-linking/entity-link-prompt.js';
 
 const TIMEOUT_MS = 300_000;
 const API_MAX_OUTPUT_TOKENS = 4096;

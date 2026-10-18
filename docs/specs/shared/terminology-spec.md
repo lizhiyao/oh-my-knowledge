@@ -269,7 +269,7 @@ Do not introduce i18next / vue-i18n and do not sweep inline Studio copy into a c
 
 Two domains each own a "library"; the names are not interchangeable:
 
-- **Entity organization library** — `src/knowledge/library/`: user-confirmed cross-window organization of extracted entities (`knowledge-library-object-history`).
+- **Entity organization library** — `src/knowledge/entity-library/`: user-confirmed cross-window organization of extracted entities (`knowledge-library-object-history`).
 - **Carrier library** — `src/knowledge/artifacts/authoring/carrier-library.ts` (`CarrierLibrary`): versioned storage of saved skill/prompt artifacts (`omk-carrier-v1`). Code and file names carry the `carrier-` qualifier; do not shorten to bare `library` in new code.
 
 The artifact domain directory stays `src/knowledge/artifacts/`: the bare `src/artifacts` name was retired (#613) because it collides with measurement artifacts (evaluation outputs), a different concept. Do not reintroduce it.

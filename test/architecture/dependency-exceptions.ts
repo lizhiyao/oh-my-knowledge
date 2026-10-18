@@ -17,10 +17,10 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
 // #1285 只移动既有依赖：按新子域观察后，原 Observability 聚合环显露为六域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
 const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
-  'knowledge/adapters/entity-link-api-producer.ts → knowledge/linking/entity-link-hash.ts',
-  'knowledge/adapters/entity-link-executor.ts → knowledge/linking/entity-link-hash.ts',
-  'knowledge/adapters/entity-link-executor.ts → knowledge/linking/entity-link-prompt.ts',
-  'knowledge/adapters/entity-link-store.ts → knowledge/linking/entity-link-hash.ts',
+  'knowledge/adapters/entity-link-api-producer.ts → knowledge/entity-linking/entity-link-hash.ts',
+  'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-hash.ts',
+  'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-prompt.ts',
+  'knowledge/adapters/entity-link-store.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/generation.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/model-wire.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/generation-policy.ts',
@@ -41,7 +41,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/generation.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
-  'knowledge/application/library.ts → knowledge/linking/entity-link-source.ts',
+  'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-store.ts',
@@ -50,13 +50,13 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/library-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/run-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/trace-evidence.ts',
-  'knowledge/application/local.ts → knowledge/linking/entity-link-hash.ts',
-  'knowledge/application/local.ts → knowledge/linking/entity-links.ts',
+  'knowledge/application/local.ts → knowledge/entity-linking/entity-link-hash.ts',
+  'knowledge/application/local.ts → knowledge/entity-linking/entity-links.ts',
   'knowledge/application/operations.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/extraction/conversation-source.ts → knowledge/adapters/trace-evidence.ts',
-  'knowledge/linking/entity-links.ts → knowledge/adapters/entity-link-api-producer.ts',
-  'knowledge/linking/entity-links.ts → knowledge/adapters/entity-link-executor.ts',
-  'knowledge/linking/entity-links.ts → knowledge/application/library.ts',
+  'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-api-producer.ts',
+  'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-executor.ts',
+  'knowledge/entity-linking/entity-links.ts → knowledge/application/library.ts',
   'observability/application.ts → knowledge/adapters/executor.ts',
   'observability/application.ts → knowledge/adapters/trace-evidence.ts',
   'observability/application.ts → knowledge/application/auto-extraction.ts',
@@ -74,8 +74,8 @@ const KNOWLEDGE_AGGREGATE_TYPE_EDGES = [
   'knowledge/adapters/trace-evidence.ts → observability/trace/trace-ir.ts',
   'knowledge/application/auto-extraction.ts → observability/conversation/catalog.ts',
   'knowledge/extraction/conversation-source.ts → observability/conversation/catalog.ts',
-  'knowledge/linking/entity-link-source.ts → knowledge/application/application.ts',
-  'knowledge/linking/entity-links.ts → knowledge/application/application.ts',
+  'knowledge/entity-linking/entity-link-source.ts → knowledge/application/application.ts',
+  'knowledge/entity-linking/entity-links.ts → knowledge/application/application.ts',
   'observability/application.ts → knowledge/application/application.ts',
   'observability/application.ts → knowledge/application/auto-extraction.ts',
   'observability/application.ts → knowledge/application/library.ts',
@@ -93,7 +93,7 @@ function isRegisteredKnowledgeBoundary(edge: BoundaryEdge): boolean {
 
 export const REGISTERED_RUNTIME_CYCLES = [
   {
-    domains: ['diagnosis', 'knowledge/adapters', 'knowledge/application', 'knowledge/extraction', 'knowledge/linking', 'observability'],
+    domains: ['diagnosis', 'knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction', 'observability'],
     edges: [
       'diagnosis/observe-producer.ts → observability/skill-health/advisories.ts',
       ...KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
@@ -149,7 +149,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-link-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
-    sourceSha256: '43a718cc6be8dc728c0a69df5e076948479f53d0a2331927dd715797231e92ac',
+    sourceSha256: 'f893f866cfa5da138385b4097c97bac2cc45d2b34cc5a08491f4836d9f70b00d',
     rationale: 'Offline link review loads only three fixed production modules; corpus and captures cannot choose code. Actual checker and matching installed production validator bytes enter the measurement identity; preparation has no executor entry.',
   },
   {
@@ -186,9 +186,9 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
 
 export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => boolean> = {
   'knowledge/adapters↔knowledge/extraction': isRegisteredKnowledgeBoundary,
-  'knowledge/adapters↔knowledge/linking': isRegisteredKnowledgeBoundary,
+  'knowledge/adapters↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
   'knowledge/adapters↔observability': isRegisteredKnowledgeBoundary,
-  'knowledge/application↔knowledge/linking': isRegisteredKnowledgeBoundary,
+  'knowledge/application↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
   'knowledge/application↔observability': isRegisteredKnowledgeBoundary,
   'knowledge/extraction↔observability': isRegisteredKnowledgeBoundary,
   'evidence/graph↔knowledge/artifacts/doctor': (edge) => {

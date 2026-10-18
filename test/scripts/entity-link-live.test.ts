@@ -12,7 +12,7 @@ import { EntityLinkModelInputSchema, EntityLinkExecutionOutcomeSchema } from '..
 import { checkEntityLinkSuggestion } from '../../src/knowledge/entities/links.js';
 import { createEntityLinkExecutionRequest, configuredEntityLinkExecutor } from '../../src/knowledge/adapters/entity-link-executor.js';
 import { ENTITY_LINK_PROMPT, ENTITY_LINK_PROMPT_HASH, ENTITY_LINK_PROMPT_VERSION, ENTITY_LINK_RESPONSE_JSON_SCHEMA,
-  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/knowledge/linking/entity-link-prompt.js';
+  ENTITY_LINK_RESPONSE_SCHEMA_HASH } from '../../src/knowledge/entity-linking/entity-link-prompt.js';
 import { assertExecutorInputCapabilities } from '../../src/executors/core/capabilities.js';
 import { observeExtractionException } from '../../src/knowledge/extraction/generation.js';
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';

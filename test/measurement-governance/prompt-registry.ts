@@ -13,7 +13,7 @@ import {
 import { EXTRACTION_PROMPT } from '../../src/knowledge/extraction/prompt.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
 import { EXTRACTION_FEEDBACK_PREAMBLE } from '../../src/knowledge/extraction/generation-policy.js';
-import { ENTITY_LINK_PROMPT_HASH } from '../../src/knowledge/linking/entity-link-prompt.js';
+import { ENTITY_LINK_PROMPT_HASH } from '../../src/knowledge/entity-linking/entity-link-prompt.js';
 
 /**
  * omk 所有 LLM prompt 的单一编目 —— 发现入口 + 测量学冻结入口。
@@ -124,7 +124,7 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   {
     promptId: 'entity-link-proposal',
     purpose: '跨窗口实体关联建议(输出及其质量测量身份)',
-    module: 'src/knowledge/linking/entity-link-prompt.ts',
+    module: 'src/knowledge/entity-linking/entity-link-prompt.ts',
     measurementInvariant: true,
     getHash: () => ENTITY_LINK_PROMPT_HASH.slice('sha256:'.length),
   },

@@ -5,8 +5,8 @@ import { EntityLinkPreviewEvidence, EntityLinkSavedEvidence } from '../../../src
 import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { entityLinkFixture } from './entity-link-fixture.js';
 import { EntityLinkQualityEvidence } from '../../../src/studio/web/components/knowledge/entity-link-quality.js';
-import { entityLinkQuality } from '../../../src/knowledge/linking/entity-link-quality.js';
-import { entityLinkDigest } from '../../../src/knowledge/linking/entity-link-hash.js';
+import { entityLinkQuality } from '../../../src/knowledge/entity-linking/entity-link-quality.js';
+import { entityLinkDigest } from '../../../src/knowledge/entity-linking/entity-link-hash.js';
 import { entityLinkTextHash } from '../../../src/knowledge/adapters/entity-link-api-producer.js';
 
 let fixture: Awaited<ReturnType<typeof entityLinkFixture>>;
