@@ -1,0 +1,82 @@
+{
+  "reviewVersion": "omk-entity-version-artifact/v1",
+  "provenance": "synthetic",
+  "sample": {
+    "caseId": "version-artifact-distinction",
+    "projectGroup": "version-artifact",
+    "conversationGroup": "version-artifact",
+    "split": "development",
+    "messages": [
+      {
+        "role": "user",
+        "text": "回归语料已冻结为 omk-entity-quality/v12，摘要已登记，此后只读。提取提示词继续迭代，当前是 v14。"
+      },
+      {
+        "role": "assistant",
+        "text": "确认：v12 语料按归档版本保留，不与后续版本混算；提取提示词作为持续对象，版本仅作限定。"
+      }
+    ],
+    "limitations": ["合成开发回归，只覆盖两条消息；没有真实语料文件或提示词文件。"],
+    "tags": ["version-artifact", "referent-kind", "frozen-artifact"],
+    "entities": [
+      {
+        "entityKey": "corpus-v12",
+        "referentKinds": ["version"],
+        "identityStatus": "proposed",
+        "possibleEntities": [],
+        "component": null,
+        "collection": null,
+        "rationale": "冻结、归档、只读的具体语料版本，有独立版本标识与摘要。"
+      },
+      {
+        "entityKey": "extraction-prompt",
+        "referentKinds": ["object"],
+        "identityStatus": "proposed",
+        "possibleEntities": [],
+        "component": null,
+        "collection": null,
+        "rationale": "持续迭代的提示词本身；v14 只是当前版本限定，不另建版本实体。"
+      }
+    ],
+    "mentions": [
+      {
+        "mentionKey": "corpus-full-name",
+        "entity": "corpus-v12",
+        "messageIndex": 0,
+        "alternatives": [{ "quote": "omk-entity-quality/v12", "occurrence": 0 }],
+        "rationale": "冻结语料的完整版本标识。"
+      },
+      {
+        "mentionKey": "corpus-short-name",
+        "entity": "corpus-v12",
+        "messageIndex": 1,
+        "alternatives": [{ "quote": "v12 语料", "occurrence": 0 }],
+        "rationale": "后文以限定短名继续指代同一归档版本。"
+      },
+      {
+        "mentionKey": "prompt-name",
+        "entity": "extraction-prompt",
+        "messageIndex": 0,
+        "alternatives": [{ "quote": "提取提示词", "occurrence": 0 }],
+        "rationale": "持续对象本身的名称；版本号仅作限定。"
+      }
+    ],
+    "roles": [
+      {
+        "roleKey": "no-mix",
+        "coverage": "required",
+        "subject": "corpus-v12",
+        "object": null,
+        "messageIndex": 1,
+        "anchor": { "quote": "不与后续版本混算", "occurrence": 0 },
+        "interpretation": "normative/negative：归档版本不与后续版本合并计算。"
+      }
+    ],
+    "knowledgePolicy": "optional",
+    "semanticChecks": [
+      "语料实体必须是 version 层次；把冻结归档制品标为 object 属于层次错误。",
+      "提示词实体必须保持 object（持续对象），版本号只作限定，不另建版本实体。",
+      "不混算陈述须为 normative/negative 且引用「不与后续版本混算」原文。"
+    ]
+  }
+}

@@ -85,7 +85,7 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 `knowledge-extraction-v16`：strict 渲染包含四个经 AI 作者逐项审阅的修订 2 合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 `knowledge-extraction-v17`：strict 渲染包含五个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 

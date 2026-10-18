@@ -513,6 +513,146 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
         }
       ]
     }
+  },
+  {
+    "exampleId": "synthetic-version-artifact-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "ice-1",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "user",
+          "text": "回归语料已冻结为 omk-entity-quality/v12，摘要已登记，此后只读。提取提示词继续迭代，当前是 v14。"
+        },
+        {
+          "evidenceRef": "ice-2",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "assistant",
+          "text": "确认：v12 语料按归档版本保留，不与后续版本混算；提取提示词作为持续对象，版本仅作限定。"
+        }
+      ],
+      "limitations": []
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_corpus",
+          "label": "回归语料 v12",
+          "description": "已冻结归档、此后只读的具体语料版本。",
+          "qualifiers": ["omk-entity-quality/v12", "摘要已登记"],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "version",
+          "componentRef": null,
+          "collection": null
+        },
+        {
+          "entityId": "e_prompt",
+          "label": "提取提示词",
+          "description": "持续迭代的提取提示词本身；当前版本只是限定，不另建版本实体。",
+          "qualifiers": ["当前版本 knowledge-extraction-v14"],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_corpus_full",
+          "entityId": "e_corpus",
+          "selection": {
+            "evidenceRef": "ice-1",
+            "quote": "omk-entity-quality/v12",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "冻结归档语料的完整版本标识。"
+        },
+        {
+          "mentionId": "m_corpus_short",
+          "entityId": "e_corpus",
+          "selection": {
+            "evidenceRef": "ice-2",
+            "quote": "v12 语料",
+            "occurrence": 0
+          },
+          "basis": "inference",
+          "rationale": "后文以限定短名继续指代同一归档版本。"
+        },
+        {
+          "mentionId": "m_prompt",
+          "entityId": "e_prompt",
+          "selection": {
+            "evidenceRef": "ice-1",
+            "quote": "提取提示词",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "持续对象本身的名称；v14 是其当前版本限定，不新建版本实体。"
+        }
+      ],
+      "proposals": [
+        {
+          "proposalId": "k_no_mix",
+          "draft": {
+            "title": "归档版本语料不与后续版本合并计算",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s1",
+                  "subject": { "entityId": "e_corpus" },
+                  "relation": "与后续版本语料合并计算",
+                  "object": null,
+                  "modality": "normative",
+                  "polarity": "negative",
+                  "context": {
+                    "scenario": "语料版本演进",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [],
+                    "occurredDuring": { "timeKind": "unknown", "reason": "来源未说明发生时间" },
+                    "validDuring": { "timeKind": "unknown", "reason": "来源未说明适用期限" }
+                  }
+                }
+              ],
+              "organization": { "knowledgeKind": "fact" }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_no_mix",
+                "evidenceRef": "ice-2",
+                "statementIds": ["s1"],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "助手在确认中明确提出不混算约束。"
+              }
+            ]
+          },
+          "entityIds": ["e_corpus"],
+          "mentionIds": ["m_corpus_short"],
+          "citations": [
+            {
+              "evidenceLinkId": "l_no_mix",
+              "selection": {
+                "evidenceRef": "ice-2",
+                "quote": "不与后续版本混算",
+                "occurrence": 0
+              }
+            }
+          ],
+          "reuseRationale": "后续任何冻结制品升版时复查同一不混算约束。",
+          "identityUncertainties": []
+        }
+      ]
+    }
   }
 ] as const satisfies readonly StrictExtractionFewshotExample[];
 
@@ -530,7 +670,7 @@ export function renderStrictExtractionFewshotBlock(): string {
   const examples = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.map((example, index) =>
     `正例 ${index + 1}：完整输入与一个合法 wire 输出示范。\n输入：\n${JSON.stringify(example.input)}\n输出：\n${JSON.stringify(example.output)}`);
   const diagnostic = STRICT_EXTRACTION_PARTIAL_ADMISSION_DIAGNOSTIC;
-  return `以下四例是合成示范，用于展示前述规则如何落实；不是当前窗口的事实，也不是待复制的实体或知识。只依据当前输入提炼。\n`
+  return `以下正例共 ${STRICT_EXTRACTION_FEWSHOT_EXAMPLES.length} 例，是合成示范，用于展示前述规则如何落实；不是当前窗口的事实，也不是待复制的实体或知识。只依据当前输入提炼。\n`
     + examples.join('\n\n')
     + `\n\n宿主逐项接纳诊断（故障注入说明，不是模型输出示范）：保持正例 4 的原始输入不变，保留正确候选 ${diagnostic.goodProposalId}；测试另复制一个候选为 ${diagnostic.badProposalId}，仅把第一条引用的 quote 改成原文不存在的“${diagnostic.badQuote}”。这个故意错误的副本由宿主以 ${diagnostic.rejectionReason} 拒绝，正确的 ${diagnostic.goodProposalId} 仍被保留，原始响应字节也不得改写。不得生成或模仿这个错误副本；本诊断对应的合法输出示范仍是正例 4 所示、仅含 ${diagnostic.goodProposalId} 的 JSON。`;
 }

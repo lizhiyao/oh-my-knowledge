@@ -45,6 +45,18 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
     rationale: 'Offline v14 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
+    importer: 'scripts/bench/assets/entity-extraction-five-positive-strict-v3/verify.mjs',
+    expression: "pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-prompt.js')).href",
+    sourceSha256: '94fac425697d6f9f95d316ed9a6fffe4dd29dff81ddc603463addaeafaf40bc8',
+    rationale: 'Offline bundle verification reads only the fixed built production prompt identity; bundle data cannot select imported code.',
+  },
+  {
+    importer: 'scripts/bench/assets/entity-extraction-five-positive-strict-v3/verify.mjs',
+    expression: "pathToFileURL(resolve(repository, 'dist/observability/knowledge-extraction/extraction/strict-fewshot.js')).href",
+    sourceSha256: '94fac425697d6f9f95d316ed9a6fffe4dd29dff81ddc603463addaeafaf40bc8',
+    rationale: 'Offline bundle verification reads only the fixed built few-shot block for production equality; bundle data cannot select imported code.',
+  },
+  {
     importer: 'scripts/bench/entity-link-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
     sourceSha256: 'bb3f7d1c55e57f2205fdc79ecc6354586b6798bd710d640d5b640fa28e0d40d6',

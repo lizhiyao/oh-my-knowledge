@@ -78,6 +78,7 @@ test/observability/inbox/signal-detection.test.ts
 test/observability/inbox/source-record-archive.test.ts
 test/scripts/docs-mermaid.test.ts
 test/scripts/entity-extraction-review.test.ts
+test/scripts/entity-version-artifact.test.ts
 test/scripts/entity-link-live.test.ts
 test/scripts/entity-link-review.test.ts
 test/scripts/legacy-evaluation-removal.test.ts

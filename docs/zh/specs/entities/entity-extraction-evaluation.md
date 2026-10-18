@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查器 `omk-entity-critical-checks/v5`。生产 strict `knowledge-extraction-v16`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 prompt-json v14 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查器 `omk-entity-critical-checks/v5`。生产 strict `knowledge-extraction-v17`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 prompt-json v14 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 
@@ -77,6 +77,12 @@ description: 实体提取标注、分层检查与独立复核契约。
 逐项自审核对：对应陈述是否保留判断及条件、约束、例外和纠正；直接定位的引文是否支持该陈述；提及身份及理由是否对应实际位置；计划、来源说法和未验证限制是否保留。只定位到提及可帮助用户找原文，不能替代陈述的关键引文；整条消息可访问、宽引文包含关键词、相同端点或引用绑到别的陈述，都不自动算语义覆盖。复用关键检查 v5 的锚点／陈述列表只产生复核线索，`semanticReview` 仍为 pending。
 
 预声明的定向门槛为：计划调用有记录且无调用／解析／结构失败，两个对象身份正确，五项关键知识及来源逐项自审符合，缺失、确定错误或标注争议立即停止。独立证据缺失保持显式；这一门槛不替换 §3 的原关键回归门槛，也不证明总体质量或稳定性。当前仅完成构造响应回归，新增模型调用 0；实际自动提取效果未验收。
+
+### 2.3 制品版本定向诊断 v1
+
+`test/fixtures/entity-version-artifact-v1.json` 是独立的合成开发用例，`omk-entity-version-artifact/v1`：两条消息、两个对象（一份冻结归档语料与一个持续提示词）和一条必需的不混算义务。它不加入 60 窗语料，不改变关键提及分母。
+
+预声明检查：冻结、归档并带版本标识与摘要的制品必须取 `version` 指代层次，持续提示词保持 `object`、当前版本只作限定。把归档语料标为 `object` 必须被离线检查器报为 `referent_kind` 不匹配。生产 `knowledge-extraction-v17` 携带一条该区分的合成示范（`synthetic-version-artifact-v1`，资产包 `entity-extraction-five-positive-strict-v3`）；示范是提示词材料，不是评测 split，也不证明语义效果改善。模型产出的类型判断仍须逐项复核；`semanticReview` 保持 pending。
 
 ## 3. 分层结果与通过门槛
 

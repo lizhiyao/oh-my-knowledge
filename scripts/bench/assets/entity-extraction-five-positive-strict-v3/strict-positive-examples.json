@@ -1,0 +1,675 @@
+{
+  "productionActivated": false,
+  "gold": "none",
+  "humanReview": "pending",
+  "independentHumanReview": "pending",
+  "assetVersion": 3,
+  "provenance": {
+    "sourceKind": "new-synthetic-development-examples",
+    "corpusCasesRead": 0,
+    "validationCasesRead": 0,
+    "realLogsRead": 0,
+    "modelCalls": 0
+  },
+  "examples": [
+    {
+      "exampleId": "synthetic-occurrence-and-identifier-v1",
+      "input": {
+        "excerpts": [
+          {
+            "evidenceRef": "frost-1",
+            "recordIndex": 0,
+            "eventKind": "message",
+            "role": "user",
+            "text": "巡检对象是 FrostGate 与 FrostGateShadow。FrostGate 仍待复核。"
+          }
+        ],
+        "limitations": []
+      },
+      "output": {
+        "responseKind": "knowledge-extraction",
+        "schemaVersion": 4,
+        "entities": [
+          {
+            "entityId": "e_gate",
+            "label": "FrostGate",
+            "description": "原文列出的第一个巡检对象，后文仍待复核。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          },
+          {
+            "entityId": "e_shadow",
+            "label": "FrostGateShadow",
+            "description": "原文另列的完整名称，与 FrostGate 分别指代。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          }
+        ],
+        "mentions": [
+          {
+            "mentionId": "m_gate_first",
+            "entityId": "e_gate",
+            "selection": {
+              "evidenceRef": "frost-1",
+              "quote": "FrostGate",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "第一次独立出现的完整名称。"
+          },
+          {
+            "mentionId": "m_shadow",
+            "entityId": "e_shadow",
+            "selection": {
+              "evidenceRef": "frost-1",
+              "quote": "FrostGateShadow",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "第二个对象的完整标识符，不截成前缀。"
+          },
+          {
+            "mentionId": "m_gate_last",
+            "entityId": "e_gate",
+            "selection": {
+              "evidenceRef": "frost-1",
+              "quote": "FrostGate",
+              "occurrence": 2
+            },
+            "basis": "explicit",
+            "rationale": "后一句再次指向第一个巡检对象；中间复合名称中的同字节子串也计入 occurrence。"
+          }
+        ],
+        "proposals": []
+      }
+    },
+    {
+      "exampleId": "synthetic-property-and-independent-metric-v2",
+      "input": {
+        "excerpts": [
+          {
+            "evidenceRef": "cup-1",
+            "recordIndex": 0,
+            "eventKind": "message",
+            "role": "user",
+            "text": "玻璃杯 C 的容量是 300 毫升。评审单独定义容量偏差指标 M_4，用于比较该杯的容量与目标容量的差。"
+          }
+        ],
+        "limitations": []
+      },
+      "output": {
+        "responseKind": "knowledge-extraction",
+        "schemaVersion": 4,
+        "entities": [
+          {
+            "entityId": "e_cup",
+            "label": "玻璃杯 C",
+            "description": "原文称容量为 300 毫升的玻璃杯。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          },
+          {
+            "entityId": "e_metric",
+            "label": "容量偏差指标 M_4",
+            "description": "评审单独定义的指标，用于比较该杯容量与目标容量的差。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          }
+        ],
+        "mentions": [
+          {
+            "mentionId": "m_cup",
+            "entityId": "e_cup",
+            "selection": {
+              "evidenceRef": "cup-1",
+              "quote": "玻璃杯 C",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "原文完整的杯名称。"
+          },
+          {
+            "mentionId": "m_metric",
+            "entityId": "e_metric",
+            "selection": {
+              "evidenceRef": "cup-1",
+              "quote": "容量偏差指标 M_4",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "原文明确独立定义的指标，不仅是一个数值属性。"
+          },
+          {
+            "mentionId": "m_cup_pronoun",
+            "entityId": "e_cup",
+            "selection": {
+              "evidenceRef": "cup-1",
+              "quote": "该杯",
+              "occurrence": 0
+            },
+            "basis": "inference",
+            "rationale": "同一句承接前述唯一的玻璃杯 C。"
+          }
+        ],
+        "proposals": [
+          {
+            "proposalId": "p_capacity",
+            "draft": {
+              "title": "杯容量与容量偏差指标定义",
+              "content": {
+                "statements": [
+                  {
+                    "statementId": "s_capacity",
+                    "subject": {
+                      "entityId": "e_cup"
+                    },
+                    "relation": "容量为 300 毫升",
+                    "modality": "descriptive",
+                    "polarity": "positive",
+                    "context": {
+                      "scenario": "本次评审中的玻璃杯 C",
+                      "conditions": [],
+                      "exceptions": [],
+                      "unknowns": [],
+                      "occurredDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      },
+                      "validDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      }
+                    },
+                    "object": null
+                  },
+                  {
+                    "statementId": "s_metric",
+                    "subject": {
+                      "entityId": "e_metric"
+                    },
+                    "relation": "衡量容量相对目标容量的差",
+                    "modality": "descriptive",
+                    "polarity": "positive",
+                    "context": {
+                      "scenario": "本次评审中的容量偏差指标",
+                      "conditions": [],
+                      "exceptions": [],
+                      "unknowns": [
+                        "目标容量数值未提供。"
+                      ],
+                      "occurredDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      },
+                      "validDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      }
+                    },
+                    "object": {
+                      "entityId": "e_cup"
+                    }
+                  }
+                ],
+                "organization": {
+                  "knowledgeKind": "fact"
+                }
+              },
+              "evidence": [
+                {
+                  "evidenceLinkId": "l_capacity",
+                  "evidenceRef": "cup-1",
+                  "statementIds": [
+                    "s_capacity"
+                  ],
+                  "relation": "supports",
+                  "basis": "source_assertion",
+                  "interpretation": "原文直接给出了杯的容量及单位。"
+                },
+                {
+                  "evidenceLinkId": "l_metric",
+                  "evidenceRef": "cup-1",
+                  "statementIds": [
+                    "s_metric"
+                  ],
+                  "relation": "supports",
+                  "basis": "source_assertion",
+                  "interpretation": "原文明确说明指标独立定义及其比较对象；不补造目标容量。"
+                }
+              ]
+            },
+            "entityIds": [
+              "e_cup",
+              "e_metric"
+            ],
+            "mentionIds": [
+              "m_cup",
+              "m_metric",
+              "m_cup_pronoun"
+            ],
+            "citations": [
+              {
+                "evidenceLinkId": "l_capacity",
+                "selection": {
+                  "evidenceRef": "cup-1",
+                  "quote": "玻璃杯 C 的容量是 300 毫升。",
+                  "occurrence": 0
+                }
+              },
+              {
+                "evidenceLinkId": "l_metric",
+                "selection": {
+                  "evidenceRef": "cup-1",
+                  "quote": "评审单独定义容量偏差指标 M_4，用于比较该杯的容量与目标容量的差。",
+                  "occurrence": 0
+                }
+              }
+            ],
+            "reuseRationale": "复查本次容量评审时保留来源陈述的容量值、指标用途及尚缺的目标值。",
+            "identityUncertainties": []
+          }
+        ]
+      }
+    },
+    {
+      "exampleId": "synthetic-unknown-not-resolved-by-assistant-v1",
+      "input": {
+        "excerpts": [
+          {
+            "evidenceRef": "heron-user",
+            "recordIndex": 0,
+            "eventKind": "message",
+            "role": "user",
+            "text": "我说的「蓝鹭」指的是哪一个，目前还不确定。"
+          },
+          {
+            "evidenceRef": "heron-assistant",
+            "recordIndex": 1,
+            "eventKind": "message",
+            "role": "assistant",
+            "text": "我猜是蓝鹭数据库。"
+          },
+          {
+            "evidenceRef": "heron-user-later",
+            "recordIndex": 2,
+            "eventKind": "message",
+            "role": "user",
+            "text": "先别按这个猜测消歧。"
+          }
+        ],
+        "limitations": []
+      },
+      "output": {
+        "responseKind": "knowledge-extraction",
+        "schemaVersion": 4,
+        "entities": [
+          {
+            "entityId": "e_ambiguous",
+            "label": "蓝鹭",
+            "description": "用户尚未确认所指的蓝鹭。",
+            "qualifiers": [],
+            "identityStatus": "unresolved",
+            "possibleEntityIds": [
+              "e_candidate"
+            ],
+            "uncertainties": [
+              "用户未确认具体对象；助手猜测不能作为用户澄清。"
+            ],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          },
+          {
+            "entityId": "e_candidate",
+            "label": "蓝鹭数据库",
+            "description": "助手提出的候选解释，不代表用户原指代已经确定。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [
+              "仅是助手猜测，用户明确要求暂不据此消歧。"
+            ],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          }
+        ],
+        "mentions": [
+          {
+            "mentionId": "m_ambiguous",
+            "entityId": "e_ambiguous",
+            "selection": {
+              "evidenceRef": "heron-user",
+              "quote": "蓝鹭",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "保留用户原始含糊名称，不用后续助手答案覆盖它。"
+          },
+          {
+            "mentionId": "m_candidate",
+            "entityId": "e_candidate",
+            "selection": {
+              "evidenceRef": "heron-assistant",
+              "quote": "蓝鹭数据库",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "只识别助手猜测中明确提出的候选名称，不合并成用户已确认身份。"
+          }
+        ],
+        "proposals": []
+      }
+    },
+    {
+      "exampleId": "synthetic-normative-grounding-and-partial-admission-v2",
+      "input": {
+        "excerpts": [
+          {
+            "evidenceRef": "beacon-1",
+            "recordIndex": 0,
+            "eventKind": "message",
+            "role": "user",
+            "text": "离线规程规定：BeaconTray 在未完成人工复核时不得发布。该窗口没有发布执行记录。"
+          }
+        ],
+        "limitations": [
+          "仅包含规程说明，未附执行轨迹。"
+        ]
+      },
+      "output": {
+        "responseKind": "knowledge-extraction",
+        "schemaVersion": 4,
+        "entities": [
+          {
+            "entityId": "e_tray",
+            "label": "BeaconTray",
+            "description": "离线规程中须在发布前完成人工复核的对象。",
+            "qualifiers": [],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          }
+        ],
+        "mentions": [
+          {
+            "mentionId": "m_tray",
+            "entityId": "e_tray",
+            "selection": {
+              "evidenceRef": "beacon-1",
+              "quote": "BeaconTray",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "原文使用完整名称，不截取前缀。"
+          }
+        ],
+        "proposals": [
+          {
+            "proposalId": "p_gate",
+            "draft": {
+              "title": "发布前的人工复核门禁",
+              "content": {
+                "statements": [
+                  {
+                    "statementId": "s_gate",
+                    "subject": {
+                      "entityId": "e_tray"
+                    },
+                    "relation": "发布",
+                    "modality": "normative",
+                    "polarity": "negative",
+                    "context": {
+                      "scenario": "离线规程中的发布门禁",
+                      "conditions": [
+                        "未完成人工复核"
+                      ],
+                      "exceptions": [],
+                      "unknowns": [
+                        "本窗口没有发布执行记录。"
+                      ],
+                      "occurredDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      },
+                      "validDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源没有提供时间。"
+                      }
+                    },
+                    "object": null
+                  }
+                ],
+                "organization": {
+                  "knowledgeKind": "fact"
+                }
+              },
+              "evidence": [
+                {
+                  "evidenceLinkId": "l_gate",
+                  "evidenceRef": "beacon-1",
+                  "statementIds": [
+                    "s_gate"
+                  ],
+                  "relation": "supports",
+                  "basis": "source_assertion",
+                  "interpretation": "来源规定未复核时不得发布；不是已经遵守规程的执行证据。"
+                }
+              ]
+            },
+            "entityIds": [
+              "e_tray"
+            ],
+            "mentionIds": [
+              "m_tray"
+            ],
+            "citations": [
+              {
+                "evidenceLinkId": "l_gate",
+                "selection": {
+                  "evidenceRef": "beacon-1",
+                  "quote": "BeaconTray 在未完成人工复核时不得发布。",
+                  "occurrence": 0
+                }
+              },
+              {
+                "evidenceLinkId": "l_gate",
+                "selection": {
+                  "evidenceRef": "beacon-1",
+                  "quote": "该窗口没有发布执行记录。",
+                  "occurrence": 0
+                }
+              }
+            ],
+            "reuseRationale": "准备发布时复查规程的适用条件，不把规定当成已执行结果。",
+            "identityUncertainties": []
+          }
+        ]
+      }
+    },
+    {
+      "exampleId": "synthetic-version-artifact-v1",
+      "input": {
+        "excerpts": [
+          {
+            "evidenceRef": "ice-1",
+            "recordIndex": 0,
+            "eventKind": "message",
+            "role": "user",
+            "text": "回归语料已冻结为 omk-entity-quality/v12，摘要已登记，此后只读。提取提示词继续迭代，当前是 v14。"
+          },
+          {
+            "evidenceRef": "ice-2",
+            "recordIndex": 1,
+            "eventKind": "message",
+            "role": "assistant",
+            "text": "确认：v12 语料按归档版本保留，不与后续版本混算；提取提示词作为持续对象，版本仅作限定。"
+          }
+        ],
+        "limitations": []
+      },
+      "output": {
+        "responseKind": "knowledge-extraction",
+        "schemaVersion": 4,
+        "entities": [
+          {
+            "entityId": "e_corpus",
+            "label": "回归语料 v12",
+            "description": "已冻结归档、此后只读的具体语料版本。",
+            "qualifiers": [
+              "omk-entity-quality/v12",
+              "摘要已登记"
+            ],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "version",
+            "componentRef": null,
+            "collection": null
+          },
+          {
+            "entityId": "e_prompt",
+            "label": "提取提示词",
+            "description": "持续迭代的提取提示词本身；当前版本只是限定，不另建版本实体。",
+            "qualifiers": [
+              "当前版本 knowledge-extraction-v14"
+            ],
+            "identityStatus": "proposed",
+            "possibleEntityIds": [],
+            "uncertainties": [],
+            "referentKind": "object",
+            "componentRef": null,
+            "collection": null
+          }
+        ],
+        "mentions": [
+          {
+            "mentionId": "m_corpus_full",
+            "entityId": "e_corpus",
+            "selection": {
+              "evidenceRef": "ice-1",
+              "quote": "omk-entity-quality/v12",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "冻结归档语料的完整版本标识。"
+          },
+          {
+            "mentionId": "m_corpus_short",
+            "entityId": "e_corpus",
+            "selection": {
+              "evidenceRef": "ice-2",
+              "quote": "v12 语料",
+              "occurrence": 0
+            },
+            "basis": "inference",
+            "rationale": "后文以限定短名继续指代同一归档版本。"
+          },
+          {
+            "mentionId": "m_prompt",
+            "entityId": "e_prompt",
+            "selection": {
+              "evidenceRef": "ice-1",
+              "quote": "提取提示词",
+              "occurrence": 0
+            },
+            "basis": "explicit",
+            "rationale": "持续对象本身的名称；v14 是其当前版本限定，不新建版本实体。"
+          }
+        ],
+        "proposals": [
+          {
+            "proposalId": "k_no_mix",
+            "draft": {
+              "title": "归档版本语料不与后续版本合并计算",
+              "content": {
+                "statements": [
+                  {
+                    "statementId": "s1",
+                    "subject": {
+                      "entityId": "e_corpus"
+                    },
+                    "relation": "与后续版本语料合并计算",
+                    "object": null,
+                    "modality": "normative",
+                    "polarity": "negative",
+                    "context": {
+                      "scenario": "语料版本演进",
+                      "conditions": [],
+                      "exceptions": [],
+                      "unknowns": [],
+                      "occurredDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源未说明发生时间"
+                      },
+                      "validDuring": {
+                        "timeKind": "unknown",
+                        "reason": "来源未说明适用期限"
+                      }
+                    }
+                  }
+                ],
+                "organization": {
+                  "knowledgeKind": "fact"
+                }
+              },
+              "evidence": [
+                {
+                  "evidenceLinkId": "l_no_mix",
+                  "evidenceRef": "ice-2",
+                  "statementIds": [
+                    "s1"
+                  ],
+                  "relation": "supports",
+                  "basis": "source_assertion",
+                  "interpretation": "助手在确认中明确提出不混算约束。"
+                }
+              ]
+            },
+            "entityIds": [
+              "e_corpus"
+            ],
+            "mentionIds": [
+              "m_corpus_short"
+            ],
+            "citations": [
+              {
+                "evidenceLinkId": "l_no_mix",
+                "selection": {
+                  "evidenceRef": "ice-2",
+                  "quote": "不与后续版本混算",
+                  "occurrence": 0
+                }
+              }
+            ],
+            "reuseRationale": "后续任何冻结制品升版时复查同一不混算约束。",
+            "identityUncertainties": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -112,6 +112,12 @@ Architectural responsibilities in the source can support component identity with
 | “Quartz passed, but the record does not say in which environment.” | Retain Quartz when the discussed component is known; environment is unknown and the success claim has limited scope. | Invent an “unknown Quartz instance” for the unknown environment, or apply success to production. |
 | “T and P are both called Quartz. It failed; which one is still unknown.” | Keep T and P separate; “it” is one unresolved instance with T and P as candidates. | Select the nearest mention P, or hide instance ambiguity in the abstract component. |
 
+**Frozen, archived artifacts are version objects too, not only code states.** A dataset, corpus, schema or build that the source freezes, archives or registers with a version identifier and digest takes `version` identity, and its version may appear in its name; the continuing specification, prompt or tool it belongs to stays `object`/`component`, with the current version only in qualifiers or statements. Do not type an archived artifact as a plain `object` merely because it is not code, and do not split a living thing into version identities merely because a current version is mentioned.
+
+| Source expression | Required identity and claims | Disallowed treatment |
+|---|---|---|
+| “回归语料已冻结为 omk-entity-quality/v12，摘要已登记，此后只读。提取提示词继续迭代，当前是 v14。” | The frozen v12 corpus as `version`; the extraction prompt as one continuing `object`, with v14 only as a qualifier. | Typing the archived corpus as `object`, or creating a version entity for the living prompt. |
+
 The phrase “production Quartz” alone does not determine granularity. Reuse the component when context describes its production behavior; use an established production deployment when context refers to that instance. When the distinction remains uncertain and affects knowledge attribution, retain explicit granularity uncertainty rather than silently substituting a more abstract or specific object.
 
 **Components and instances are not interchangeable subjects.** “Instance P failed” can help users find related experience through the component; it does not imply “all instances of this component failed.” Retrieving related knowledge and generalizing a claim to related objects are different actions.
