@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { createLocalKnowledgeLibrary } from '../../src/knowledge/application/local.js';
-import type { LibraryDraft, LibraryMember } from '../../src/knowledge/library/contracts.js';
+import type { LibraryDraft, LibraryMember } from '../../src/knowledge/entity-library/contracts.js';
 import { modelWindow } from './fixtures.js';
 
 describe('entity knowledge library', () => {

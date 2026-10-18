@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Checkbox, Input, Modal, Pagination, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
-import { LibraryDraftSchema, type LibraryDraft, type LibraryMember } from '../../../../knowledge/library/contracts';
+import { LibraryDraftSchema, type LibraryDraft, type LibraryMember } from '../../../../knowledge/entity-library/contracts';
 import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/knowledge-library';
 import type { KnowledgeEntityCatalog } from '../../../view-models/knowledge/knowledge-candidates';
 import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './library-request';

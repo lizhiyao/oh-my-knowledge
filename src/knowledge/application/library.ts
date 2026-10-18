@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { type KnowledgeActor } from '../contracts.js';
-import { LibraryWriteSchema, type LibraryWrite, LibraryDraftSchema, memberKey, type LibraryDraft, type LibraryMember, type LibraryStore } from '../library/contracts.js';
+import { LibraryWriteSchema, type LibraryWrite, LibraryDraftSchema, memberKey, type LibraryDraft, type LibraryMember, type LibraryStore } from '../entity-library/contracts.js';
 import { canonicalJson } from '../store.js';
 import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
 import { EntityLinkConflictError, type EntityLinkEndpoint } from '../entities/links.js';
-import { currentEntityLinkSource } from '../linking/entity-link-source.js';
+import { currentEntityLinkSource } from '../entity-linking/entity-link-source.js';
 
 export const LibraryQuerySchema = z.strictObject({ query: z.string().trim().max(512).default(''),
   page: z.number().int().min(1).max(100_000).default(1), pageSize: z.number().int().min(1).max(100).default(20) });

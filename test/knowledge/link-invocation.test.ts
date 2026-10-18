@@ -9,7 +9,7 @@ import {
   type EntityLinkInvocationPorts, type EntityLinkExecutionOutcome, type EntityLinkExecutionResult,
 } from '../../src/knowledge/entities/link-invocation.js';
 import { entityLinkConfirmationDigest, transitionEntityLinkInvocation, projectEntityLinkInvocation, validateEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
-import { entityLinkQuality } from '../../src/knowledge/linking/entity-link-quality.js';
+import { entityLinkQuality } from '../../src/knowledge/entity-linking/entity-link-quality.js';
 
 const textHash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const hash = (value: unknown) => textHash(canonicalJson(value));

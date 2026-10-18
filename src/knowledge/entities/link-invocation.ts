@@ -3,7 +3,7 @@ import { EntityMentionSchema, KnowledgeActorSchema } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { AnalyzedEntitySchema } from './contracts.js';
 import { EntityLinkEndpointSchema, EntityLinkConflictCodeSchema, EntityLinkSuggestionSchema } from './links.js';
-import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryStore } from '../library/contracts.js';
+import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryStore } from '../entity-library/contracts.js';
 
 const id = z.string().uuid();
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);

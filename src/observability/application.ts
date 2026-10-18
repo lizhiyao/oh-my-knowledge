@@ -40,7 +40,7 @@ export {
 export { KnowledgeStorageStateError } from '../evidence/storage/knowledge-workspace.js';
 export { extractionRunSummary } from '../knowledge/extraction/runs.js';
 export { createLocalEntityLinks, parseEntityLinkPreview } from '../knowledge/application/local.js';
-export type { EntityLinkApplication } from '../knowledge/linking/entity-links.js';
+export type { EntityLinkApplication } from '../knowledge/entity-linking/entity-links.js';
 export { createLocalKnowledgeLibrary } from '../knowledge/application/local.js';
 export { executeKnowledgeOperation, knowledgeOperationSchemas, knowledgeFailureCode } from '../knowledge/application/operations.js';
 export type { KnowledgeOperation } from '../knowledge/application/operations.js';

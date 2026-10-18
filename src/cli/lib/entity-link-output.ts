@@ -3,9 +3,9 @@ import { isAbsolute, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../knowledge/store.js';
 import { EntityLinkPreviewSchema, type EntityLinkInvocation } from '../../knowledge/entities/link-invocation.js';
-import type { EntityLinkApplication } from '../../knowledge/linking/entity-links.js';
+import type { EntityLinkApplication } from '../../knowledge/entity-linking/entity-links.js';
 import type { Lang } from '../../shared/language.js';
-import type { EntityLinkQuality } from '../../knowledge/linking/entity-link-quality.js';
+import type { EntityLinkQuality } from '../../knowledge/entity-linking/entity-link-quality.js';
 
 /** CLI authorization envelope only; the shared host owns the execution protocol. */
 const EntityLinkCliPlanBodySchema = z.strictObject({
