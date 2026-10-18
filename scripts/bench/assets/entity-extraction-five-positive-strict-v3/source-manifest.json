@@ -1,0 +1,23 @@
+{
+  "manifestKind": "strict-wire-five-positive-experiment-assets/v1",
+  "productionActivated": false,
+  "sourceDirectory": "agent-authored in working session 2026-10-18; no corpus, validation, real-log or model inputs read",
+  "readScope": [
+    "src/observability/knowledge-extraction/extraction/strict-fewshot.ts"
+  ],
+  "excluded": [
+    "existing corpus",
+    "heldout/validation cases",
+    "real sources"
+  ],
+  "promptEncoding": "raw-utf8-no-added-final-newline",
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "provenance": {
+    "sourceKind": "new-synthetic-development-examples",
+    "corpusCasesRead": 0,
+    "validationCasesRead": 0,
+    "realLogsRead": 0,
+    "modelCalls": 0
+  },
+  "files": []
+}

@@ -1,0 +1,24 @@
+{
+  "wireId": "sha256:9a9985e1806f0ab2225fb6e86b944382fcb3f47624a35d1211f4d6973679859a",
+  "wireVersion": "omk-knowledge-extraction-wire/v1",
+  "profile": "omk-strict-structural/v1",
+  "domainSchemaVersion": 4,
+  "zodVersion": "4.6.5",
+  "sourceDomainSchemaDigest": "sha256:1968f04bd96adafb8c244d69a5f51f7a8978caf03df12dbaa1e38af06ccc3ee1",
+  "wireSchemaDigest": "sha256:a11c474841b5f73a681794e25725ba77d35e2570fc9939757206d366f0d71b69",
+  "mappingPolicy": "nonnullable-optional-null-to-absence/v1",
+  "actualValidators": {
+    "zod": "4.6.5",
+    "ajv": "8.20.0"
+  },
+  "nullableOptionals": [
+    {
+      "schemaPath": "#/$defs/__schema14",
+      "property": "occurrence"
+    },
+    {
+      "schemaPath": "#/$defs/__schema18",
+      "property": "object"
+    }
+  ]
+}

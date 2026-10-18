@@ -1,0 +1,25 @@
+{
+  "reviewKind": "ai-author-review",
+  "status": "completed",
+  "independentHumanAttestation": false,
+  "reviewer": "kimi-code session agent (dogfood artifact-version work)",
+  "reviewedAt": "2026-10-18T06:47:07.083Z",
+  "revisionOf": {
+    "directory": "scripts/bench/assets/entity-extraction-four-positive-strict-v2",
+    "manifestDigest": "sha256:54e48450a3f17954fade896052d12c23880e3a9e2e10d6405b6e2c030612c191",
+    "examplesDigest": "sha256:96470e4a4161d7dd6a0f40788ffc47c280863ea12c74f8a77978d4a505dff579",
+    "candidatePromptDigest": "sha256:097bf49208e596afdd8df67c1d4091dfeb730ad92d00f30e880df64463913254"
+  },
+  "examplesDigest": "sha256:3bd18b7e3ea1bba9318fbcd1d3a6eabc410548d4f17acd74d3db919c2db56b62",
+  "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+  "candidatePromptDigest": "sha256:cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87",
+  "bindings": {
+    "examplesFile": "strict-positive-examples.json",
+    "examplesDigest": "sha256:3bd18b7e3ea1bba9318fbcd1d3a6eabc410548d4f17acd74d3db919c2db56b62",
+    "controlPromptFile": "v14-derived-strict.prompt.txt",
+    "controlPromptDigest": "sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d",
+    "candidatePromptFile": "v17-candidate-strict.prompt.txt",
+    "candidatePromptDigest": "sha256:cb8e95c372741005c9eeb9295a0099271cc8ad45dfc7e2e103474cfd2184ed87"
+  },
+  "notes": "Fifth example synthetic-version-artifact-v1 teaches frozen/archived artifact → version referentKind; four prior examples carried byte-equivalent from v2. Human and independent review remain pending and are not substituted."
+}

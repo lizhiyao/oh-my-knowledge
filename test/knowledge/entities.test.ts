@@ -240,12 +240,12 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('renders the v16 production examples while preserving the frozen v14 and no-fewshot control', () => {
+  it('renders the v17 production examples while preserving the frozen v14 and no-fewshot control', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
-    const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v2/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v16');
+    const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v3/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v17');
     expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toEqual(frozenExamples.examples);
-    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(4);
+    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(5);
     expect(STRICT_EXTRACTION_FEWSHOT_BLOCK).toBe(renderStrictExtractionFewshotBlock());
     expect(STRICT_EXTRACTION_PROMPT.split(STRICT_EXTRACTION_FEWSHOT_BLOCK)).toHaveLength(2);
     expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).toBe(control.toString('utf8'));
