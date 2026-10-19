@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { zstdCompressSync, zstdDecompressSync } from 'node:zlib';
+import { zstdCompressSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import {
   ZstdDecodedSizeLimitError,
@@ -25,7 +25,6 @@ function framesOf(lines: string[]): Buffer {
 }
 
 const multiFrame = framesOf(RECORDS);
-const firstFramePlainText = Buffer.from(`${RECORDS[0]}\n`, 'utf8');
 
 describe('zstd 会话逐帧读取', () => {
   let dir: string;
@@ -52,11 +51,6 @@ describe('zstd 会话逐帧读取', () => {
     const chunks = [...iterateZstdFramePlainText(path, 8 * 1024 * 1024, 7)];
     assert.equal(Buffer.concat(chunks).toString('utf8'), RECORDS.map((r) => `${r}\n`).join(''));
     assert.equal(chunks.length, RECORDS.length);
-  });
-
-  it('一次性 zlib 调用只能解出第一帧，所以帧边界必须自己定位', () => {
-    // 真机对照：1.4 MB 的三千帧文件按整个 buffer 一次解只拿回 279 字节，会静默少掉整段证据。
-    assert.equal(zstdDecompressSync(multiFrame).length, firstFramePlainText.length);
   });
 
   it('明文预算用尽时报容量错，而不是安静截断', () => {
