@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { ExecutorArchiveEvidence } from '../../executors/contracts/archive.js';
 import type { ExtractionJson, ExtractionOutcome } from './runs.js';
 import { canonicalJson } from '../store.js';
@@ -24,10 +25,28 @@ export interface ExtractionModel {
   generate(system: string, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<AuthoredExtractionResult | ExtractionOutcome>;
 }
 
-export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>) {
-  return model.outputMode === 'json-schema'
+export const ExtractionPromptProfileSchema = z.strictObject({
+  profileVersion: z.literal('knowledge-extraction-prompt-profile/v1'),
+  promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/),
+  system: z.string().min(1).max(2 * 1024 * 1024).refine(value => value.trim().length > 0
+    && Buffer.byteLength(value, 'utf8') <= 2 * 1024 * 1024 && Buffer.from(value, 'utf8').toString('utf8') === value),
+});
+export type ExtractionPromptProfile = z.infer<typeof ExtractionPromptProfileSchema>;
+
+/** Explicit study profiles preserve raw bytes and cannot relabel either published default prompt. */
+export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>, profileInput?: ExtractionPromptProfile) {
+  const standard = model.outputMode === 'json-schema'
     ? { system: STRICT_EXTRACTION_PROMPT, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION }
     : { system: EXTRACTION_PROMPT, promptVersion: EXTRACTION_PROMPT_VERSION };
+  if (profileInput === undefined) return standard;
+  const profile = ExtractionPromptProfileSchema.parse(profileInput);
+  for (const known of [{ system: EXTRACTION_PROMPT, promptVersion: EXTRACTION_PROMPT_VERSION },
+    { system: STRICT_EXTRACTION_PROMPT, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION }]) {
+    if (profile.promptVersion === known.promptVersion && profile.system !== known.system) {
+      throw new Error('A known extraction prompt version cannot identify different bytes.');
+    }
+  }
+  return { system: profile.system, promptVersion: profile.promptVersion };
 }
 
 /** Exceptions are observations, with accessors skipped and an explicit representation bound. */

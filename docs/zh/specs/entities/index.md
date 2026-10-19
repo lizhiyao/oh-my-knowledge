@@ -14,6 +14,7 @@
 | 跨窗口提案、人工决定和恢复如何连接？ | [实体复核日志](./entity-links.md) |
 | 标注、检查与参考标注准备度如何定义？ | [实体提取评测协议](./entity-extraction-evaluation.md) |
 | 生成输出如何逐项语义复核并保守裁决？ | [输出语义复核](./entity-extraction-semantic-review.md) |
+| 真实来源研究如何冻结、执行并依据生产证据比较？ | [真实提取研究](./entity-extraction-study.md) |
 | 实体关联三判别如何评测与复核？ | [实体关联评测协议](./entity-link-evaluation.md) |
 | 原始真实 v14 输出能否不发新请求地回放？ | [历史外部基线](./entity-extraction-real-v14-baseline.md) |
 

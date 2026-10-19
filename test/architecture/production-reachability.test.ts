@@ -72,6 +72,11 @@ const NON_STATIC_ENTRIES: Array<{
     reason: 'build-script',
     evidence: 'scripts/bench/entity-capture-provider.ts',
   },
+  {
+    path: 'src/cli/runtime/knowledge-study.ts',
+    reason: 'build-script',
+    evidence: 'scripts/bench/knowledge-study.ts',
+  },
   { path: 'src/eval-workflows/inputs/eval-samples.ts', reason: 'package-entrypoint' },
   { path: 'src/eval-workflows/projections/index.ts', reason: 'package-entrypoint' },
 ];
@@ -100,19 +105,26 @@ function productionRoots(modules: string[]): { roots: Set<string>; dangling: str
   return { roots, dangling };
 }
 
-function unreachableModules(): { unreachable: string[]; dangling: string[]; rootCount: number } {
+function unreachableModules(): { unreachable: string[]; redundantEntries: string[]; dangling: string[]; rootCount: number } {
   const modules = sourceFiles(SRC_DIR, { skippedDirectories: new Set(['.next', 'node_modules']) });
   const { roots, dangling } = productionRoots(modules);
   const seen = new Set<string>();
-  const queue = [...roots];
-  while (queue.length) {
-    const file = queue.pop() as string;
-    if (seen.has(file)) continue;
-    seen.add(file);
-    for (const target of importedModules(file)) if (!seen.has(target)) queue.push(target);
-  }
+  const visit = (entries: Iterable<string>) => {
+    const queue = [...entries];
+    while (queue.length) {
+      const file = queue.pop() as string;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      for (const target of importedModules(file)) if (!seen.has(target)) queue.push(target);
+    }
+  };
+  visit(roots);
+  const redundantEntries = NON_STATIC_ENTRIES.filter(entry => seen.has(join(REPO_ROOT, entry.path))).map(entry => entry.path).sort();
+  // 有具体入口证据的组合根及其静态依赖都属于生产闭包，不逐个豁免其实现模块。
+  visit(NON_STATIC_ENTRIES.map(entry => join(REPO_ROOT, entry.path)));
   return {
     unreachable: modules.filter((file) => !seen.has(file)).map(toRepoRelative).sort(),
+    redundantEntries,
     dangling,
     rootCount: roots.size,
   };
@@ -125,11 +137,10 @@ describe('生产可达性守门', () => {
   });
 
   it('src 下不存在生产入口到不了的模块（非静态入口必须登记并给出可复核理由）', () => {
-    const { unreachable, rootCount } = unreachableModules();
+    const { unreachable, redundantEntries, rootCount } = unreachableModules();
     expect(rootCount).toBeGreaterThan(0);
-    const registered = NON_STATIC_ENTRIES.map((entry) => entry.path).sort();
-    // 双向：未登记的不可达模块＝停在生产层里的非生产代码；已登记却静态可达的＝腐烂条目。
-    expect({ unreachable, registered }).toEqual({ unreachable: registered, registered });
+    // 双向：闭包外模块是孤儿；已静态可达的额外入口登记是腐烂条目。
+    expect({ unreachable, redundantEntries }).toEqual({ unreachable: [], redundantEntries: [] });
   });
 
   it('每条非静态入口登记都仍然成立', () => {
