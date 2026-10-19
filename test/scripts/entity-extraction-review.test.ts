@@ -746,7 +746,7 @@ describe('entity extraction review with author evidence', () => {
         entry: join(PROJECT_ROOT, 'dist-scripts/bench/entity-extraction-review.js'), cwd: PROJECT_ROOT,
       });
       const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
-      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v19', checkVersion: ENTITY_CHECK_VERSION,
+      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v21', checkVersion: ENTITY_CHECK_VERSION,
         conclusion: 'not_evaluated', goldReady: false, modelCallsByThisCommand: 0,
         splitCounts: { development: 62, validation: 2 } });
       const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']

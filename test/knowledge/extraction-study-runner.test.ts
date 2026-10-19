@@ -11,6 +11,9 @@ import { boundedExtractionPolicy, SINGLE_EXTRACTION_POLICY } from '../../src/kno
 import { nativeStudyFixture, studyNativeResult as native } from './extraction-study-fixtures.js';
 import { parseKnowledgeStudyArguments } from '../../scripts/bench/knowledge-study.js';
 import { parseExtractionStudyPlan } from '../../src/knowledge/extraction/study-plan.js';
+import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
+import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
+import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -137,20 +140,65 @@ describe('production extraction study runner (authored executor, zero model acce
     const f = setup(), plan = f.prepare({ changedVariable: 'prompt', variants: [
       { variantId: 'baseline', model: f.model(), policy: SINGLE_EXTRACTION_POLICY },
       { variantId: 'candidate', model: f.model(), policy: SINGLE_EXTRACTION_POLICY,
-        promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v21', system: 'Authored candidate rules; exercise bytes only, no quality claim.' } },
+        promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v9001', system: 'Authored candidate rules; exercise bytes only, no quality claim.' } },
     ] });
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
     for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
     const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(report.slots[0].run?.promptHash).not.toBe(report.slots[1].run?.promptHash);
-    expect(report.slots[1].run?.promptVersion).toBe('knowledge-extraction-v21');
+    expect(report.slots[1].run?.promptVersion).toBe('knowledge-extraction-v9001');
     expect(report.slots[0].run?.policy).toEqual(report.slots[1].run?.policy);
-    const selected = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2176, maxOutputTokens: 64, profileId: 'loopback-test/v1' });
+    const create = vi.fn(() => { throw new Error('Preparation must not configure an executor.'); });
+    const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' }, create);
+    const selected = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2304, maxOutputTokens: 128, profileId: 'loopback-test/v1' });
     const policyPlan = f.prepare({ changedVariable: 'policy', variants: [
-      { variantId: 'baseline', model: f.model(), policy: SINGLE_EXTRACTION_POLICY }, { variantId: 'candidate', model: f.model(), policy: selected },
+      { variantId: 'baseline', model: f.model(), policy: SINGLE_EXTRACTION_POLICY },
+      { variantId: 'candidate', model: configuredExtractionModel('openai-api', 'authored-loopback-test', producer, { maxOutputTokens: 128 }), policy: selected },
     ] });
     expect(policyPlan.variants[0].promptProfile).toEqual(policyPlan.variants[1].promptProfile);
     expect(policyPlan.variants[0].policy).not.toEqual(policyPlan.variants[1].policy);
+    expect(policyPlan.slots.map(slot => slot.request.maxOutputTokens)).toEqual([64, 128]);
+    expect(policyPlan.slots[0].producer.proof).not.toEqual(policyPlan.slots[1].producer.proof);
+    expect(create).not.toHaveBeenCalled(); expect(f.effects).toHaveBeenCalledTimes(2);
+  });
+  it('compares real Codex producers on a common request while preserving both actual prompt-dependent proofs without execution', () => {
+    const f = setup(), create = vi.fn(() => { throw new Error('Preparation must not configure an executor.'); });
+    const producer = createCodexArchiveProducer({ NODE_ENV: 'test', HOME: f.root }, create);
+    const baseline = configuredExtractionModel('codex', 'authored-codex-test', producer);
+    const candidate = configuredExtractionModel('codex', 'authored-codex-test', producer);
+    const baselineProfile = { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: 'Authored baseline.' };
+    const candidateProfile = { ...baselineProfile, promptVersion: 'knowledge-extraction-v9002', system: 'Authored longer candidate; no model quality claim.' };
+    const plan = f.prepare({ changedVariable: 'prompt', variants: [
+      { variantId: 'baseline', model: baseline, policy: SINGLE_EXTRACTION_POLICY, promptProfile: baselineProfile },
+      { variantId: 'candidate', model: candidate, policy: SINGLE_EXTRACTION_POLICY, promptProfile: candidateProfile },
+    ] });
+    const [a, b] = plan.slots;
+    expect(a.producer).toEqual(baseline.inspect!(baselineProfile.system, plan.cases[0].input));
+    expect(b.producer).toEqual(candidate.inspect!(candidateProfile.system, plan.cases[0].input));
+    const aProof = a.producer.proof as Record<string, unknown>, bProof = b.producer.proof as Record<string, unknown>;
+    expect(aProof.requestDigest).not.toBe(bProof.requestDigest);
+    expect(aProof.localContextBytes).not.toBe(bProof.localContextBytes);
+    expect(a.producer.sourceChannels).not.toEqual(b.producer.sourceChannels);
+    expect(a.producer.maxOutcomeJsonBytes).not.toBe(b.producer.maxOutcomeJsonBytes);
+    expect(parseExtractionStudyPlan(plan)).toEqual(plan);
+    expect(() => configuredExtractionModel('codex', 'authored-codex-test', producer, { maxOutputTokens: 128 })).toThrow('maxOutputTokens');
+    expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled();
+  });
+  it.each(['environment', 'temporary-root'] as const)('rejects real Codex %s drift despite a common request without execution', difference => {
+    const f = setup(), create = vi.fn(() => { throw new Error('Preparation must not configure an executor.'); });
+    const environment = { NODE_ENV: 'test', HOME: f.root, TMPDIR: join(f.root, 'authored-tmp') };
+    const baseline = configuredExtractionModel('codex', 'authored-codex-test', createCodexArchiveProducer(environment, create));
+    let candidate: ReturnType<typeof configuredExtractionModel>;
+    try {
+      if (difference === 'temporary-root') vi.stubEnv('TMPDIR', join(f.root, 'other-authored-tmp'));
+      candidate = configuredExtractionModel('codex', 'authored-codex-test', createCodexArchiveProducer(
+        difference === 'environment' ? { ...environment, TMPDIR: join(f.root, 'different-env-tmp') } : environment, create));
+    } finally { vi.unstubAllEnvs(); }
+    expect(() => f.prepare({ variants: [
+      { variantId: 'baseline', model: baseline, policy: SINGLE_EXTRACTION_POLICY },
+      { variantId: 'candidate', model: candidate, policy: SINGLE_EXTRACTION_POLICY },
+    ] })).toThrow('producer conditions differ');
+    expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled();
   });
   it('retains external raw bytes and refuses overwrite, symlink or workspace output destinations', () => {
     const f = setup(), plan = f.prepare(); f.files.create(plan, f.corpusRaw, f.configurationRaw);

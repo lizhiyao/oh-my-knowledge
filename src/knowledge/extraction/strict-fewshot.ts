@@ -653,6 +653,315 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
         }
       ]
     }
+  },
+  {
+    "exampleId": "synthetic-source-time-and-fact-time-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "harbor-status",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "assistant",
+          "timestamp": "2026-10-20T08:00:00.000Z",
+          "text": "HarborDesk 的首批功能已交付，但整体准确率尚未验收。"
+        },
+        {
+          "evidenceRef": "harbor-plan",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "user",
+          "timestamp": "2026-10-20T08:10:00.000Z",
+          "text": "后续重构 HarborDesk 时必须保留来源和修订历史。"
+        },
+        {
+          "evidenceRef": "harbor-event",
+          "recordIndex": 2,
+          "eventKind": "message",
+          "role": "assistant",
+          "timestamp": "2026-10-20T09:00:00.000Z",
+          "text": "HarborDesk 于 2026-10-20T08:30:00.000Z 完成构建，并于 2026-10-20T09:00:00.000Z 完成启动；这是助手转述，窗口没有执行器原始记录。"
+        }
+      ],
+      "limitations": [
+        "合成时间语义示范；来源消息时间不认证事实时间，助手转述不等于直接观测。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_harbor",
+          "label": "HarborDesk",
+          "description": "本例交付状态、重构要求与事件所指的对象。",
+          "qualifiers": [],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_harbor",
+          "entityId": "e_harbor",
+          "selection": {
+            "evidenceRef": "harbor-status",
+            "quote": "HarborDesk",
+            "occurrence": null
+          },
+          "basis": "explicit",
+          "rationale": "三条消息明确使用相同名称连续讨论同一对象；不补具体构建或部署身份。"
+        }
+      ],
+      "proposals": [
+        {
+          "proposalId": "p_status_and_events",
+          "draft": {
+            "title": "HarborDesk 的交付状态与事件记录",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_delivered",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "首批功能已交付",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手汇报的交付状态",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "没有交付发生时间依据，不能从消息时间推出。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未提供该事实的发生时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_acceptance",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "整体准确率已完成验收",
+                  "modality": "descriptive",
+                  "polarity": "negative",
+                  "context": {
+                    "scenario": "助手汇报的验收缺口",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "未给出验收活动时间或后续验收结果。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未提供该事实的发生时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_build",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "完成构建",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手转述的构建事件",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "窗口未提供执行器原始记录，不构成独立验证。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "instant",
+                      "at": "2026-10-20T08:30:00.000Z"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_start",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "完成启动",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手转述的启动事件",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "窗口未提供执行器原始记录，不构成独立验证。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "instant",
+                      "at": "2026-10-20T09:00:00.000Z"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "fact"
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_status",
+                "evidenceRef": "harbor-status",
+                "statementIds": [
+                  "s_delivered",
+                  "s_acceptance"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "交付完成与尚未验收分别表达；原文无事实时点，不能复制消息 timestamp。"
+              },
+              {
+                "evidenceLinkId": "l_events",
+                "evidenceRef": "harbor-event",
+                "statementIds": [
+                  "s_build",
+                  "s_start"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "原文明示两个事件时刻；启动时刻虽等于消息时间仍保留，但不提升为直接观测。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_harbor"
+          ],
+          "mentionIds": [
+            "m_harbor"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_status",
+              "selection": {
+                "evidenceRef": "harbor-status",
+                "quote": "HarborDesk 的首批功能已交付，但整体准确率尚未验收。",
+                "occurrence": null
+              }
+            },
+            {
+              "evidenceLinkId": "l_events",
+              "selection": {
+                "evidenceRef": "harbor-event",
+                "quote": "HarborDesk 于 2026-10-20T08:30:00.000Z 完成构建，并于 2026-10-20T09:00:00.000Z 完成启动；这是助手转述，窗口没有执行器原始记录。",
+                "occurrence": null
+              }
+            }
+          ],
+          "reuseRationale": "核对交付、验收与事件记录时，分别读取来源主张和其确有依据的事实时间。",
+          "identityUncertainties": []
+        },
+        {
+          "proposalId": "p_plan",
+          "draft": {
+            "title": "HarborDesk 后续重构的保留要求",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_protect",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "重构时保留来源和修订历史",
+                  "modality": "normative",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "用户提出的后续重构要求，未记录执行结果",
+                    "conditions": [
+                      "后续重构 HarborDesk 时"
+                    ],
+                    "exceptions": [],
+                    "unknowns": [
+                      "来源未提供执行时间或适用起止时间。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "未来要求不表示执行已经发生，来源未给执行时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "method",
+                "purpose": "约束后续重构时对来源与修订历史的处理。",
+                "instructionStatementIds": [
+                  "s_protect"
+                ]
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_plan",
+                "evidenceRef": "harbor-plan",
+                "statementIds": [
+                  "s_protect"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "保留用户要求；来源没有提供执行或适用时段，不用消息 timestamp 补齐。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_harbor"
+          ],
+          "mentionIds": [
+            "m_harbor"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_plan",
+              "selection": {
+                "evidenceRef": "harbor-plan",
+                "quote": "后续重构 HarborDesk 时必须保留来源和修订历史。",
+                "occurrence": null
+              }
+            }
+          ],
+          "reuseRationale": "后续重构时保留来源与历史，不把要求的提出当作已经执行。",
+          "identityUncertainties": []
+        }
+      ]
+    }
   }
 ] as const satisfies readonly StrictExtractionFewshotExample[];
 

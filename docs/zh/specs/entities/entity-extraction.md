@@ -93,11 +93,13 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 strict `knowledge-extraction-v20`：strict 渲染包含五个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v19`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 strict `knowledge-extraction-v22`：strict 渲染包含六个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v21`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
-v19／v20 在第 3 节调整提取范围，属于 **BREAKING-COMPARABILITY**：prompt 字节与标注指南／语料身份变化，wire／领域 Schema、存储格式和 pipeline 政策不变，不增加生成后的黑名单。五个示例文本与历史 v4 bundle 保持逐字节一致；当前完整 strict system 的规则前缀已经变化，不等于该 bundle 冻结的 v18 candidate。当前请求须使用新的 run 身份和匹配执行许可；旧输出与维护决定不自动成为现行口径结果。
+v19／v20 在第 3 节调整提取范围，属于 **BREAKING-COMPARABILITY**：prompt 字节与标注指南／语料身份变化，wire／领域 Schema、存储格式和 pipeline 政策不变，不增加生成后的黑名单。五个示例文本与历史 v4 bundle 保持逐字节一致；v20 完整 strict system 的规则前缀已经变化，不等于该 bundle 冻结的 v18 candidate。当前请求须使用新的 run 身份和匹配执行许可；旧输出与维护决定不自动成为现行口径结果。
+
+v21／v22 时间指引修正与第六个示范属于 **BREAKING-COMPARABILITY**。消息 `timestamp` 记录来源时间，不自动成为 `occurredDuring` 或 `validDuring`。无依据的状态与未来规范保留 unknown；原文明示的事件时刻保留其支持精度，包括恰好等于消息时间的时刻。前五个示例的序列化字节保持不变。新版避免将已发布 strict v20 的名称复用于另一份 prompt-json 字节。收录范围、公共 Schema、wire、存储和 pipeline 政策不变，宿主不增加时间相等黑名单或改写为 unknown。新指引只影响新请求：旧输出、修订、维护决定及分数不变、不重评，不与新版输出混合统计。结构／接线测试不证明模型服从或保证所有时间错误已修复；实际效果须另冻计划验证。
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
