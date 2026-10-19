@@ -14,6 +14,7 @@ Entities organize the objects described by knowledge; identifying an entity does
 | How are cross-window proposals, human decisions and recovery connected? | [Entity review journal](./entity-links.md) |
 | How are annotations, checks, and reference readiness defined? | [Extraction evaluation protocol](./entity-extraction-evaluation.md) |
 | How are generated outputs reviewed item by item and conservatively decided? | [Output semantic review](./entity-extraction-semantic-review.md) |
+| How are real-source studies frozen, run and compared through production evidence? | [Real extraction studies](./entity-extraction-study.md) |
 | How are the three entity-link assessments evaluated and reviewed? | [Entity-link evaluation protocol](./entity-link-evaluation.md) |
 | Can the original real v14 output be replayed without a new request? | [Historical external baseline](./entity-extraction-real-v14-baseline.md) |
 

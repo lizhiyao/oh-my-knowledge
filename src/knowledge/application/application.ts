@@ -24,7 +24,7 @@ import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ac
   TRANSIENT_EXTRACTION_FAILURES, REASK_EXTRACTION_FAILURES, EXTRACTION_FEEDBACK_PREAMBLE,
   type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from '../extraction/generation-policy.js';
 import { extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from '../extraction/generation.js';
-import type { ExtractionModel } from '../extraction/generation.js';
+import type { ExtractionModel, ExtractionPromptProfile } from '../extraction/generation.js';
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -36,6 +36,8 @@ export interface KnowledgeApplicationPorts {
 }
 export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
+  /** Internal controlled studies bind an explicit version and the exact dispatched system bytes. */
+  promptProfile?: ExtractionPromptProfile;
   beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation }) => void;
   /** Durable returned facts, outside the run-store lock and before admission or another invocation. */
   onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
@@ -145,13 +147,13 @@ export class KnowledgeApplication {
     const window = source.window;
     // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
     const input = extractionModelInput(window);
-    const { system, promptVersion } = extractionPrompt(model);
+    const { system, promptVersion } = extractionPrompt(model, options?.promptProfile);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
       policy: SINGLE_EXTRACTION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
       timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
-      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      if (previous.requestDigest !== requestDigest || previous.promptVersion !== promptVersion) throw new Error('Extraction request identity conflict.');
       return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     };
     // Current-format receipts may predate this capacity policy. Reuse them without a fresh call.
@@ -280,13 +282,13 @@ export class KnowledgeApplication {
     const source = this.source(snapshotId);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const window = source.window, initialInput = extractionModelInput(window);
-    const { system, promptVersion } = extractionPrompt(model);
+    const { system, promptVersion } = extractionPrompt(model, options?.promptProfile);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(initialInput), actor: this.ports.actor,
       policy, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
       timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
-      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      if (previous.requestDigest !== requestDigest || previous.promptVersion !== promptVersion) throw new Error('Extraction request identity conflict.');
       return this.resume(runId, signal);
     };
     let previous: ExtractionRun | undefined;
