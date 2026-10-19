@@ -12,6 +12,7 @@ import { candidateReviewRun, projectCandidateBatch } from '../../../application/
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeReader } from './reader';
 import { ExtractionQualityPanel } from './extraction-quality';
+import { KnowledgeStudyInspectionDrawer } from './study-inspection';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space } from 'antd';
@@ -51,6 +52,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [busy, setBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showRuns, setShowRuns] = useState(false);
+  const [showStudy, setShowStudy] = useState(false);
   const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
   const [applyingEntities, setApplyingEntities] = useState(false);
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
@@ -64,6 +66,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [tagsDraft, setTagsDraft] = useState<string[]>([]);
   const [directory, setDirectory] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const moreControl = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
+  const studyWasOpen = useRef(false);
+  useEffect(() => {
+    if (studyWasOpen.current && !showStudy) moreControl.current?.focus();
+    studyWasOpen.current = showStudy;
+  }, [showStudy]);
   useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); setDecisionChoice(null); }, [detail]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
     const data = await requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal ?? controller.current?.signal);
@@ -210,13 +218,15 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       <Space wrap>{!embedded && <Button disabled={busy} onClick={() => { setWorkspaceDraft(workspace); setShowSettings(true); }}>{t('保存位置', 'Save location')}</Button>}
         {!embedded && rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
-        <Dropdown trigger={['click']} disabled={busy} menu={{ items: [
-          { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: !workspace },
-          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: !workspace || embedded },
+        <Dropdown trigger={['click']} menu={{ items: [
+          { key: 'study', label: t('核对研究证据', 'Inspect study evidence') },
+          { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: busy || !workspace },
+          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: busy || !workspace || embedded },
         ], onClick: ({ key }) => {
+          if (key === 'study') setShowStudy(true);
           if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
           if (key === 'import') { setSnapshot(null); setPolicy(undefined); setShowImport(true); }
-        } }}><Button disabled={busy}>{t('更多', 'More')}</Button></Dropdown>
+        } }}><Button ref={moreControl}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
     {needsRefresh && !error && detail && <Button disabled={busy} onClick={() => void work(() => continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId))}>{t('重新读取后继续', 'Reload to continue')}</Button>}
@@ -257,6 +267,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           : <div className="knowledge-reader knowledge-reader-empty"><Empty description={t('没有匹配知识，请调整筛选。', 'No matching knowledge. Adjust the filters.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/></div>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
+    {showStudy && <KnowledgeStudyInspectionDrawer lang={lang} onClose={() => setShowStudy(false)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
       lang={lang} onClose={() => setEntityTarget(undefined)}/>}
     {applyingEntities && detail && <ApplyEntitiesDialog key={`${workspace}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
@@ -322,6 +333,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
       }}/>}
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
+      <Button onClick={() => { setShowRuns(false); setShowStudy(true); }}>{t('核对研究证据', 'Inspect study evidence')}</Button>
       <p className="candidate-help">{t('仅显示当前 v5 运行。旧 runs/ 记录不在此读取，已有来源、实体 v2 与知识 v2 仍可在同一目录使用。', 'Only current v5 runs are shown. Former runs/ records are not read here; existing sources, entity v2 and knowledge v2 remain usable in this workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 

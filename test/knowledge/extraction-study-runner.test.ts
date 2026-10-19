@@ -1,66 +1,23 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareExtractionStudy, reportExtractionStudy, replayExtractionStudyEvidence, runExtractionStudySlot } from '../../src/knowledge/application/study-runner.js';
-import { createExtractionStudyPorts } from '../../src/knowledge/application/study-local.js';
+import { reportExtractionStudy, replayExtractionStudyEvidence, runExtractionStudySlot } from '../../src/knowledge/application/study-runner.js';
 import { ExtractionStudyFiles } from '../../src/knowledge/adapters/study-files.js';
-import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
-import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
-import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
 import type { ExecResult } from '../../src/executors/contracts/result.js';
-import { freezeExtractionStudyCorpus, extractionStudyDigest } from '../../src/knowledge/extraction/study-corpus.js';
+import { extractionStudyDigest } from '../../src/knowledge/extraction/study-corpus.js';
 import { boundedExtractionPolicy, SINGLE_EXTRACTION_POLICY } from '../../src/knowledge/extraction/generation-policy.js';
-import { wireModelWindow } from './fixtures.js';
+import { nativeStudyFixture, studyNativeResult as native } from './extraction-study-fixtures.js';
 import { parseKnowledgeStudyArguments } from '../../scripts/bench/knowledge-study.js';
 import { parseExtractionStudyPlan } from '../../src/knowledge/extraction/study-plan.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
-const criteria = { maxConfirmedErrors: 0, confirmedErrorsRationale: 'Authored regression; no errors allowed.', maxRequiredGaps: 0, requiredGapsRationale: 'Authored regression; no missing required evidence.' };
-const sampling = { selectionFrame: 'Authored test-only source, not real quality evidence.', inclusionExclusion: 'One authored source selected before outputs.',
-  unit: 'lineage-group' as const, strata: [{ stratumId: 'work-record', coverageRationale: 'Exercise controlled native capture only.' }],
-  sampleSizeRationale: 'One source tests invariants; no statistical quality claim.', stoppingRule: 'Execute declared slots; unknown reservation stops further effects.',
-  budgetRationale: 'Each authored test uses the production declared invocation policy.', interruptionPolicy: 'Persist unknown; never repeat a started run.' };
-function native(output: string | null, changes: Partial<ExecResult> = {}): ExecResult {
-  return { ok: true, output, durationMs: 5, durationApiMs: 0, inputTokens: 7, outputTokens: 4, cacheReadTokens: 2, cacheCreationTokens: 0,
-    costUSD: 0, costReportedByExecutor: false, tokenUsageReportedByExecutor: true, stopReason: 'stop', numTurns: 1, attemptCount: 1, ...changes };
-}
 function setup(reply?: (index: number, output: string) => ExecResult) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-runner-'))); roots.push(root);
-  const workspace = join(root, 'workspace'); mkdirSync(workspace);
-  const source = join(root, 'source.jsonl');
-  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
-  let index = 0;
-  const effects = vi.fn(async (input: { prompt: string }) => {
-    const ref = JSON.parse(input.prompt).excerpts[0].evidenceRef;
-    const output = JSON.stringify(wireModelWindow()).replaceAll('record-1', ref);
-    return reply ? reply(index++, output) : native(output);
-  });
-  const producer = createOpenAiArchiveProducer({ OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' }, (_executor, options) => async input => {
-    options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, options.apiDispatchPolicy.requestConstraints));
-    return effects(input);
-  });
-  const model = () => configuredExtractionModel('openai-api', 'authored-loopback-test', producer, { maxOutputTokens: 64 });
-  const digest = extractionStudyDigest('authored runtime identity; not a measured host');
-  const identity = () => ({ runtimeDigest: digest, dependencyDigest: digest, runnerDigest: digest, nodeVersion: 'authored-node', nodeBinaryDigest: digest });
-  const ports = createExtractionStudyPorts({ workspace, actor: { actorKind: 'agent', actorId: 'authored-study-test', executionRef: 'authored-study-runner-test' }, identity, model });
-  const window = ports.application.capture({ path: source });
-  const corpus = freezeExtractionStudyCorpus({ corpusVersion: 'omk-extraction-study-corpus/v1', sourceKind: 'private-real', authors: ['authored-author'], cases: [{
-    caseId: 'case-a', split: 'development', exposure: 'seen', projectGroup: 'p', conversationGroup: 'c', lineageGroup: 'l', ancestorLineageIds: [],
-    stratumId: 'work-record', originDigest: digest, transformation: 'Authored regression source, not an independent real sample.',
-    sourceRecords: window.records.map(value => ({ recordIndex: value.recordIndex, recordId: `authored:${value.recordIndex}`, originalDigest: extractionStudyDigest(value.raw) })), window,
-    reference: { annotationScope: 'unannotated', entities: [], mentions: [], knowledge: [], semanticChecks: [] },
-  }] });
-  const corpusRaw = JSON.stringify(corpus), configurationRaw = '{}';
-  const prepare = (extra: Partial<Parameters<typeof prepareExtractionStudy>[1]> = {}) => prepareExtractionStudy(ports, {
-    corpus, corpusBytesDigest: hash(corpusRaw), configurationDigest: hash(configurationRaw), split: 'development', repeats: 1, changedVariable: 'replication', criteria, sampling,
-    variants: [{ variantId: 'baseline', model: model(), policy: SINGLE_EXTRACTION_POLICY }, { variantId: 'candidate', model: model(), policy: SINGLE_EXTRACTION_POLICY }], ...extra,
-  });
-  const files = new ExtractionStudyFiles({ directory: join(root, 'study'), workspace, repository: resolve('.') });
-  return { root, workspace, ports, effects, corpus, corpusRaw, configurationRaw, prepare, files, model };
+  return nativeStudyFixture(root, reply);
 }
 
 describe('production extraction study runner (authored executor, zero model access)', () => {
