@@ -105,6 +105,18 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/entity-semantic-review.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/prompt.js')).href",
+    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    rationale: 'Offline semantic inspection verifies the fixed built prompt identity; no bundle or capture can choose imported code.',
+  },
+  {
+    importer: 'scripts/bench/entity-semantic-review.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/window-proposals.js')).href",
+    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    rationale: 'Offline semantic inspection reuses the fixed production admission validator and has no model execution path.',
+  },
+  {
     importer: 'scripts/bench/entity-capture-provider.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href",
     sourceSha256: '0b0de123cdb7c62d050c29f0aff87bc47e4d23949d6c456c89e78c5b33972b28',
