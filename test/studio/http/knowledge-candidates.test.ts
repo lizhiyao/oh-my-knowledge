@@ -124,7 +124,8 @@ describe('Studio candidate action boundary', () => {
   });
   it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {
     const entitySource = join(root, 'entity.jsonl');
-    writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
+    writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), message('user', '仅在隔离环境中使用 Beta，语义质量尚未验收。'),
+      JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
     const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: entitySource });
     const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => ({
       output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
@@ -149,12 +150,39 @@ describe('Studio candidate action boundary', () => {
     expect(candidate.entityAnalysis.revision.revisionId).toBe(before.revision.revisionId);
     expect(candidate.entityAnalysis.source).not.toHaveProperty('window');
     const entities = corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description }));
-    const applied = await post({ operation: 'apply-entities', id: candidate.revision.knowledgeId, revision: candidate.revision.revisionId,
+    const originalKnowledge = app.detail(candidate.revision.knowledgeId);
+    const extraLinkId = randomUUID(), conditions = before.source.excerpts[1];
+    const evidence = [...candidate.revision.evidence, { ...candidate.revision.evidence[0], evidenceLinkId: extraLinkId,
+      evidenceRef: conditions.evidenceRef, relation: 'supports', basis: 'source_assertion', interpretation: '保留后文条件与未验收限制，精确定位不是语义验收。' }];
+    const citationLocators = [...candidate.grounding.citations.map((citation: { evidenceLinkId: string; selection: { evidenceRef: string; quote: string } }) => ({
+      evidenceLinkId: citation.evidenceLinkId, selection: { evidenceRef: citation.selection.evidenceRef, quote: citation.selection.quote, occurrence: 0 },
+    })), { evidenceLinkId: extraLinkId, selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, occurrence: 0 } }];
+    const applyRequest = { operation: 'apply-entities', id: candidate.revision.knowledgeId, revision: candidate.revision.revisionId,
       generation: candidate.history.generation, analysisId: run.runId, entityRevision: corrected.revision.revisionId,
-      draft: { title: candidate.revision.title, content: candidate.revision.content, evidence: candidate.revision.evidence, entities }, reason: '明确陈述主体', identityUncertainties: [] });
+      draft: { title: candidate.revision.title, content: { ...candidate.revision.content,
+        statements: candidate.revision.content.statements.map((statement: { context: { conditions: string[]; unknowns: string[] } }) => ({ ...statement,
+          context: { ...statement.context, conditions: [...statement.context.conditions, '仅在隔离环境中'],
+            unknowns: [...statement.context.unknowns, '语义质量尚未验收'] } })) }, evidence, entities },
+      reason: '明确陈述主体并补入后文条件的精确引文', identityUncertainties: [], citationLocators };
+    const invalid = await post({ ...applyRequest, citationLocators: [{ ...citationLocators[0],
+      selection: { ...citationLocators[0].selection, quote: `not-in-source ${root}` } }] });
+    expect(invalid.status).toBe(400); expect(await invalid.json()).toEqual({ error: 'knowledge_citations_invalid' });
+    expect(app.detail(candidate.revision.knowledgeId)).toEqual(originalKnowledge);
+    const malformed = await post({ ...applyRequest, citationLocators: [] });
+    expect(malformed.status).toBe(400); expect(await malformed.json()).toEqual({ error: 'knowledge_citations_invalid' });
+    const applied = await post(applyRequest);
     expect(applied.status).toBe(200);
     const latest = await applied.json(); expect(latest.history.revisions).toHaveLength(2);
     expect(latest.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
+    expect(latest.grounding.citations.find((citation: { evidenceLinkId: string }) => citation.evidenceLinkId === extraLinkId)).toEqual({
+      evidenceLinkId: extraLinkId, selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, start: 0, end: conditions.text.length } });
+    const oldRevision = app.detail(candidate.revision.knowledgeId, candidate.revision.revisionId);
+    expect(oldRevision.revision).toEqual(originalKnowledge.revision);
+    expect(oldRevision.grounding).toEqual(originalKnowledge.grounding);
+    const revised = await post({ operation: 'revise', id: candidate.revision.knowledgeId, revision: latest.revision.revisionId,
+      generation: latest.history.generation, draft: applyRequest.draft, reason: '同一修订入口读回并保留精确引文', citationLocators });
+    expect(revised.status).toBe(200);
+    expect((await revised.json()).grounding.citations).toEqual(latest.grounding.citations);
     const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
     expect(await quality.json()).toEqual(app.quality());
     const runPath = join(workspace, 'extraction-runs', `${run.runId}.json`); const savedRun = readFileSync(runPath);

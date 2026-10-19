@@ -7,6 +7,7 @@ import { ConversationExtractionDialog } from './conversation-extraction';
 import { GenerationPolicyFields } from './generation-policy-fields';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { ApplyEntitiesDialog } from './apply-entities';
+import { KnowledgeRevisionDrawer } from './revision-editor';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeReader } from './reader';
@@ -58,7 +59,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showBatchSummary, setShowBatchSummary] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
   const [reason, setReason] = useState('');
   const [decisionChoice, setDecisionChoice] = useState<'retain' | 'discard' | null>(null);
   const [tagsDraft, setTagsDraft] = useState<string[]>([]);
@@ -112,6 +112,20 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
     if (embedded) return;
     const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
+  }
+  function readbackDetail(latest: KnowledgeCandidateDetail) {
+    setEditing(false); setApplyingEntities(false); setDetail(latest); setNeedsRefresh(false); setError(''); setReason('');
+    if (!embedded) {
+      const url = new URL(window.location.href); url.searchParams.set('id', latest.revision.knowledgeId);
+      url.searchParams.set('revision', latest.revision.revisionId); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url);
+    }
+  }
+  function closeRevisionEditor(needsReadback: boolean) {
+    setEditing(false); setApplyingEntities(false);
+    if (needsReadback) {
+      setNeedsRefresh(true);
+      setError(t('草稿已关闭。先重新读取知识及修订历史，再开始新的修订；不会重发先前保存。', 'Draft closed. Reload knowledge and revision history before starting a new revision; the previous save will not be resent.'));
+    }
   }
   async function initializeWorkspace() {
     setLoading(true);
@@ -180,11 +194,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       setError(t('标签已保存，但未能读取最新结果。重新读取后再继续。', 'Tags were saved, but the result could not be loaded. Reload before continuing.'));
     }
   }
-  type EditableDraft = Pick<KnowledgeCandidateDetail['revision'], 'title' | 'content' | 'entities' | 'evidence'>;
-  const editableDraft: EditableDraft | null = draft ? JSON.parse(draft) : null;
-  function updateDraft(edit: (value: EditableDraft) => void) {
-    const value: EditableDraft = JSON.parse(draft); edit(value); setDraft(JSON.stringify(value));
-  }
   const batch = projectCandidateBatch(runs.find(run => run.runId === batchRunId), rows, detail?.revision.knowledgeId);
   const summary = showBatchSummary && batch?.complete;
   const visibleRows = batch ? batch.rows : rows.filter(row => candidateMatches(row, filter, query) && (kind === 'all' || row.knowledgeKind === kind));
@@ -244,14 +253,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           tools={<CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>}
           footer={<>{detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <Button disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button>}
             <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} choice={decisionChoice} onChoice={setDecisionChoice} onReason={setReason}
-              onEdit={() => { setDraft(JSON.stringify({ title: detail.revision.title, content: detail.revision.content, entities: detail.revision.entities, evidence: detail.revision.evidence }, null, 2)); setEditing(true); }} onDecision={choice => void work(() => decide(choice))}/></>}/>
+              onEdit={() => setEditing(true)} onDecision={choice => void work(() => decide(choice))}/></>}/>
           : <div className="knowledge-reader knowledge-reader-empty"><Empty description={t('没有匹配知识，请调整筛选。', 'No matching knowledge. Adjust the filters.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/></div>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
       lang={lang} onClose={() => setEntityTarget(undefined)}/>}
-    {applyingEntities && detail && <ApplyEntitiesDialog key={`${workspace}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} onClose={() => setApplyingEntities(false)} onSaved={saved => {
-      setApplyingEntities(false); setDetail(saved); setReason(''); setNeedsRefresh(false);
+    {applyingEntities && detail && <ApplyEntitiesDialog key={`${workspace}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
+      notifyKnowledgeChange(workspace); setApplyingEntities(false); setDetail(saved); setReason(''); setNeedsRefresh(false);
       setNotice(t('已保存绑定实体新修订的知识。请重新核对并决定保留或舍弃。', 'Saved knowledge bound to the new entity revision. Review it and make a new retention decision.'));
       void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
     }}/>}
@@ -306,24 +315,12 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID(), ...(policy ? { policy } : {}) }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
-    <Drawer title={t('修订知识内容', 'Edit knowledge content')} open={editing} onClose={() => setEditing(false)} size={680} extra={<Button type="primary" disabled={busy || !reason.trim()} onClick={() => void work(async () => { if (!detail) return; await api('revise', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId, generation: detail.history.generation, draft: JSON.parse(draft), reason }); setEditing(false); await refresh(); await open(detail.revision.knowledgeId);
-      setNotice(t('已保存新修订，需要重新决定保留或舍弃。', 'Saved a new revision. Decide again whether to retain or discard it.')); })}>{t('保存新修订', 'Save new revision')}</Button>}>
-      <p>{t('修改标题、陈述与上下文。来源及实体身份保持绑定；保存后是一条新修订，原先的保留或舍弃决定不会带过来。', 'Edit the title, statements, and context. Sources and entity identities remain bound; saving creates a new revision, and the previous retain or discard decision does not carry over.')}</p>
-      <Input aria-label={t('修订理由', 'Revision reason')} value={reason} placeholder={t('修订理由', 'Revision reason')} onChange={(event) => setReason(event.target.value)}/>
-      {editableDraft && <div className="candidate-form">
-        <label>{t('标题', 'Title')}<Input value={editableDraft.title} onChange={(event) => updateDraft((value) => { value.title = event.target.value; })}/></label>
-        {detail?.grounding.entityAnalysisRef && <p>{t('实体名称来自已绑定的分析。需要改名称或对应时，先核对实体，再应用实体修订。', 'Entity names come from the bound analysis. Inspect entities and apply an entity revision to change names or assignments.')}</p>}
-        {editableDraft.entities.map((entity, index) => <label key={entity.entityId}>{t('实体名称', 'Entity name')}<Input value={entity.label} disabled={!!detail?.grounding.entityAnalysisRef} onChange={(event) => updateDraft((value) => { value.entities[index].label = event.target.value; })}/></label>)}
-        {editableDraft.evidence.map((link, index) => <label key={link.evidenceLinkId}>{t('证据解释', 'Evidence interpretation')}<Input.TextArea value={link.interpretation} rows={2} onChange={(event) => updateDraft((value) => { value.evidence[index].interpretation = event.target.value; })}/></label>)}
-        {editableDraft.content.statements.map((statement, index) => <section key={statement.statementId} className="candidate-form candidate-statement">
-          <label>{t('陈述', 'Statement')}<Input.TextArea value={statement.relation} rows={3} onChange={(event) => updateDraft((value) => { value.content.statements[index].relation = event.target.value; })}/></label>
-          <label>{t('肯定／否定', 'Polarity')}<Select value={statement.polarity} options={[{ value: 'positive', label: t('肯定', 'Positive') }, { value: 'negative', label: t('否定', 'Negative') }]} onChange={(polarity) => updateDraft((value) => { value.content.statements[index].polarity = polarity; })}/></label>
-          <label>{t('陈述含义', 'Modality')}<Select value={statement.modality} options={[{ value: 'descriptive', label: t('描述', 'Description') }, { value: 'normative', label: t('规范要求', 'Normative requirement') }, { value: 'capability', label: t('能力', 'Capability') }, { value: 'permission', label: t('许可', 'Permission') }]} onChange={(modality) => updateDraft((value) => { value.content.statements[index].modality = modality; })}/></label>
-          <label>{t('适用场景', 'Scenario')}<Input.TextArea value={statement.context.scenario} rows={2} onChange={(event) => updateDraft((value) => { value.content.statements[index].context.scenario = event.target.value; })}/></label>
-          {(['conditions', 'exceptions', 'unknowns'] as const).map((field) => <label key={field}>{field === 'conditions' ? t('条件（每行一项）', 'Conditions (one per line)') : field === 'exceptions' ? t('例外（每行一项）', 'Exceptions (one per line)') : t('未知信息（每行一项）', 'Unknowns (one per line)')}<Input.TextArea value={statement.context[field].join('\n')} rows={2} onChange={(event) => updateDraft((value) => { value.content.statements[index].context[field] = event.target.value.split('\n').filter((line) => line.trim()); })}/></label>)}
-        </section>)}
-      </div>}
-    </Drawer>
+    {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang}
+      onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
+        setEditing(false); setDetail(saved); setReason(''); notifyKnowledgeChange(workspace);
+        setNotice(t('已保存新修订，需要重新决定保留或舍弃。', 'Saved a new revision. Decide again whether to retain or discard it.'));
+        void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
+      }}/>}
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
       <p className="candidate-help">{t('仅显示当前 v5 运行。旧 runs/ 记录不在此读取，已有来源、实体 v2 与知识 v2 仍可在同一目录使用。', 'Only current v5 runs are shown. Former runs/ records are not read here; existing sources, entity v2 and knowledge v2 remain usable in this workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}

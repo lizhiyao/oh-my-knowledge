@@ -11,6 +11,7 @@ import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-out
 import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
 import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
+import { KnowledgeCitationLocatorsSchema } from '../../../knowledge/application/citation-locators.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
@@ -39,6 +40,7 @@ export default class ObserveKnowledge extends BaseCommand {
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
     reason: Flags.string({ description: description('保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。', 'Reason for maintenance or editing; retention does not verify truth, and entity corrections do not automatically rewrite knowledge.') }),
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
+    citations: Flags.string({ description: description('revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。', 'revise/apply-entities: JSON file with the full nonempty replacement citation locator array for the new revision, from the same archived window; omit to retain applicable prior citations. Each selection has evidenceRef, exact quote, and optional zero-based occurrence; repeated quotes require occurrence.') }),
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。', 'generate: stable UUID; repeated requests only restore archived results without another model call.') }),
@@ -57,12 +59,16 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --reason "已核对来源与适用条件"',
     '<%= config.bin %> observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation 1 --input ./entities.json --reason "纠正身份对应"',
     '<%= config.bin %> observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"',
+    '<%= config.bin %> observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./knowledge.json --citations ./citations.json --reason "逐项核对并替换引用"',
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
     if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {
       this.error(this.lang === 'zh' ? '--generation-policy 仅用于 generate。' : '--generation-policy is only valid for generate.', { exit: 2 });
+    }
+    if (flags.citations !== undefined && !['revise', 'apply-entities'].includes(args.operation)) {
+      this.error(this.lang === 'zh' ? '--citations 仅用于 revise／apply-entities。' : '--citations is only valid for revise/apply-entities.', { exit: 2 });
     }
     if (args.operation === 'schema') {
       const wire = await import('../../../knowledge/extraction/model-wire.js');
@@ -85,14 +91,28 @@ export default class ObserveKnowledge extends BaseCommand {
       try { return JSON.parse(raw); }
       catch { this.error(t(`${label} 不是有效 JSON。请核对输入后重试；原记录未改写。`, `${label} is not valid JSON. Check the input and retry; saved records were not changed.`), { exit: 2 }); }
     };
-    const draft = (): unknown => {
-      const path = need(flags.input, 'input'); let raw: string;
+    const fileInput = (path: string, label: '--input' | '--citations'): unknown => {
+      let raw: string;
       try {
         const stat = lstatSync(path);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw new Error();
         raw = readFileSync(path, 'utf8');
-      } catch { this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.')); }
-      return jsonInput(raw!, '--input');
+      } catch {
+        if (label === '--input') this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.'));
+        this.error(t('引用文件不可读。--citations 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Citation file is unreadable. --citations must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.'), { exit: 2 });
+      }
+      return jsonInput(raw!, label);
+    };
+    const draft = () => fileInput(need(flags.input, 'input'), '--input');
+    const citationLocators = () => {
+      if (flags.citations === undefined) return undefined;
+      const input = fileInput(need(flags.citations, 'citations'), '--citations');
+      const parsed = KnowledgeCitationLocatorsSchema.safeParse(input);
+      if (!parsed.success) {
+        if (Array.isArray(input) && input.length === 0) this.error(t('--citations 引用数组不能为空；请提供新修订需要的全部引用，原记录未改写。', '--citations cannot be an empty array; provide all citations needed by the new revision. Saved records were not changed.'), { exit: 2 });
+        this.error(t('--citations 格式无效。请提供 1～512 项引用定位器的完整数组，每项含 evidenceLinkId 及 selection（evidenceRef、quote、可选的零基 occurrence）；原记录未改写。', '--citations is invalid. Provide a complete array of 1–512 citation locators, each with evidenceLinkId and selection (evidenceRef, quote, optional zero-based occurrence). Saved records were not changed.') + '\n' + parsed.error.issues.map(issue => issue.path.join('.')).join(', '), { exit: 2 });
+      }
+      return parsed.data;
     };
     const policy = flags['generation-policy'] === undefined ? undefined
       : ExtractionGenerationPolicySchema.safeParse(jsonInput(flags['generation-policy'], '--generation-policy'));
@@ -119,12 +139,13 @@ export default class ObserveKnowledge extends BaseCommand {
         generation: generation(), reason: need(flags.reason, 'reason'), draft: draft() }; break;
       case 'apply-entities': operation = { operation: 'apply-entities', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
         analysisId: need(flags.analysis, 'analysis'), entityRevision: need(flags['entity-revision'], 'entity-revision'), reason: need(flags.reason, 'reason'), draft: draft(),
+        citationLocators: citationLocators(),
         identityUncertainties: flags['identity-uncertainties'] === undefined ? undefined : jsonInput(flags['identity-uncertainties'], '--identity-uncertainties') as string[] }; break;
       case 'source': case 'delete-source': operation = { operation: args.operation, snapshot: need(flags.snapshot, 'snapshot') }; break;
       case 'retain': case 'discard': operation = { operation: 'maintain', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), choice: args.operation,
         reason: need(flags.reason, 'reason'), generation: generation() }; break;
       case 'revise': operation = { operation: 'revise', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
-        reason: need(flags.reason, 'reason'), draft: draft() }; break;
+        reason: need(flags.reason, 'reason'), draft: draft(), citationLocators: citationLocators() }; break;
       default: this.error(t('未知知识操作。请运行 omk observe knowledge --help。', 'Unknown knowledge operation. Run omk observe knowledge --help.'), { exit: 2 });
     }
     const checked = KnowledgeOperationSchema.safeParse(operation!);
@@ -146,6 +167,7 @@ export default class ObserveKnowledge extends BaseCommand {
         if (code === 'knowledge_conflict') this.error(`${code} · ${t('记录已变化。先重读最新修订与 generation，再核对草稿后重试；不要覆盖他人的修改。', 'The record changed. Reload its latest revision and generation, review your draft, then retry without overwriting another edit.')}\n${reload}`);
         if (code === 'knowledge_workspace_busy') this.error(`${code} · ${t('工作区正在写入。等待当前操作结束后重试；不要删除仍在使用的锁。', 'The workspace is being written. Retry after the current operation finishes; do not remove a live lock.')}`);
         if (code === 'knowledge_storage_unsupported') this.error(`${code} · ${t('所选工作区含不支持的记录。请核对目录；如需重新提炼，选择新的空目录，不改写旧记录。', 'This workspace contains unsupported records. Check the directory; use a new empty workspace to extract again, preserving old records.')}`);
+        if (code === 'knowledge_citations_invalid') this.error(`${code} · ${t('引用校验失败。请核对 --citations 中的 evidenceLinkId、同窗口 evidenceRef、精确 quote 及零基 occurrence，并为每条证据提供引用；原记录未改写。', 'Citation validation failed. Check evidenceLinkId, same-window evidenceRef, exact quote and zero-based occurrence in --citations, and cite every evidence link. Saved records were not changed.')}`);
         if (signal.aborted) this.error(t('操作已中断。先读取提炼运行；resume 只恢复已保存结果，不再次调用模型。', 'Operation interrupted. Inspect extraction runs first; resume restores saved results without another model call.') + `\n${knowledgeCommand(settings.workspace, 'runs')}`);
         if (cause instanceof z.ZodError) this.error(t('草稿内容未通过校验。核对以下字段后重试；原记录未改写。', 'Draft validation failed. Review the following fields and retry; saved records were not changed.') + '\n' + cause.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('\n'));
         if (operation.operation === 'capture') this.error(t('来源归档未完成。核对 --source 的路径、读取权限、日志格式与记录范围后重试。', 'Source capture did not finish. Check --source path, read permissions, log format and record range before retrying.') + '\n' + (cause instanceof Error ? cause.message : String(cause)));
