@@ -1,6 +1,7 @@
 import { createOpenAiArchiveProducer } from '../../executors/openai/archive.js';
 import { createEntityLinkRoutes } from './routes/entity-links.js';
 import { createExtractionArchiveProducer } from '../../executors/archive.js';
+import { FALLBACK_LANG } from '../../shared/language-preference.js';
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
 import { createSettingsRoutes } from './routes/settings.js';
@@ -22,6 +23,7 @@ import { studioHostLanguage } from './language.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { createArtifactAuthoringRoutes } from './routes/artifact-authoring.js';
 import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
+import { createKnowledgeStudyRoutes } from './routes/knowledge-study.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
 
@@ -55,6 +57,7 @@ export function createStudioRequestHandler({
     createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
+  const studyRoutes = createKnowledgeStudyRoutes();
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -116,6 +119,8 @@ export function createStudioRequestHandler({
         response.end('Not Found');
         return;
       }
+      // Portable studies do not resolve or open active workspace/settings paths.
+      if (studioPages && await studyRoutes({ request, response, url, path, lang: FALLBACK_LANG })) return;
       const selectedCoreRoute = studioPages && url.searchParams.get('workspace')
         ? createCoreStudioRouteHandler({ catalog: carrierMeasureCatalog(url.searchParams.get('workspace')!, coreStudioCatalog), apiBasePath: '/api/reports' }) : coreStudioRoute;
       if (selectedCoreRoute !== undefined) {
@@ -131,14 +136,7 @@ export function createStudioRequestHandler({
       }
 
       const { analysesDir, doctorsDir } = query.directories();
-      const routeContext = {
-        request,
-        response,
-        url,
-        path,
-        lang: studioHostLanguage(),
-      };
-
+      const routeContext = { request, response, url, path, lang: studioHostLanguage() };
       if (await hostRoutes(routeContext)) return;
       // 页面渲染全部归 Next 宿主；这里剩下的只有 /health、/api/shutdown 与各 /api/* 的 JSON 投影与 SSE。
       if (studioPages) {

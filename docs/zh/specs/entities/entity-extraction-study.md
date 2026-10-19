@@ -162,7 +162,7 @@ expected host 来自固定安装适配器 `extractionStudyHostIdentity()`：实�
 
 `analyzeExtractionStudy` 输出整体和逐场景有限集合结果。完整独立复核的实体／提及参考可产生范围内匹配 precision／recall／F1，参考匹配须一一对应，部分或缺失参考不能产生这些指标。重复和相关目标不是独立样本。配对结果使用 lineage group，显示不完整配对、已知转移和符合条件的 candidate-minus-baseline 差异；指标差异对符合条件的 lineage group 等权。场景分层可重叠，不能相加当作独立样本。尚未建立有代表性、可交换的抽样，因此总体 precision／recall／F1 和置信区间保持 `null`。
 
-`calibrateExtractionStudyJudge` 当前是编程原语，不是命令参数。它比较绑定同一证据的实际 agent 与独立人工 receipt，重算两份复核报告，提供逐错误类别检测计数、缺失／不确定目标和关键漏检。缺少真人证据时，校准保持 pending，指标不可用。完整校准覆盖不要求候选通过质量门禁，`ready` 也不认证评委：没有预声明校准验收标准时，`judgeAcceptance` 仍为 `not_assessed`。不会合成模型或真人复核。
+`calibrateExtractionStudyJudge` 是共享编程原语，下文的安装版 CLI 与 Studio 核对入口也使用它。它比较绑定同一证据的实际 agent 与独立人工 receipt，重算两份复核报告，提供逐错误类别检测计数、缺失／不确定目标和关键漏检。缺少真人证据时，校准保持 pending，指标不可用。完整校准覆盖不要求候选通过质量门禁，`ready` 也不认证评委：没有预声明校准验收标准时，`judgeAcceptance` 仍为 `not_assessed`。不会合成模型或真人复核。
 
 agent 输出 receipt 必须提供 `judgeIdentity`，human receipt 禁止此字段。其 `identityVersion` 为 `omk-extraction-study-judge-identity/v1`，`evidenceScope: reviewer-declared;not-native-verified/v1`；声明 `executor`、`executorRevision`、`model`、`modelRevision`、`promptVersion`、精确 `promptDigest` 和 `configurationDigest`、`selectedAttemptId` 及全部声明 `attempts`。每个 attempt 含唯一 `attemptId`、`attemptStatus`（`completed`、`failed` 或 `unknown`）、`runEvidence: { reference, digest }`、可空 `outputEvidence: { reference, digest }`，以及各值明确可空的 `usage: { durationMs, inputTokens, outputTokens, costUSD }`。completed attempt 要求输出证据，选中 attempt 必须 completed。这些是单独范围的评委声明，不并入提取生成器成本。评估器不读取引用，不认证声明的版本、用量或原生执行，缺失金额不补零。
 
@@ -170,4 +170,23 @@ agent 输出 receipt 必须提供 `judgeIdentity`，human receipt 禁止此字�
 
 研究目录和报告目录须是显式绝对新路径，位于仓库与选中工作区之外，父目录已存在。拒绝软链和覆盖，目录权限 `0700`、文件 `0600`。生产工作区继续使用既有来源、实体、知识和 run 契约；证据导出复制原始 run／outcome 文本，再分析另建输出目录。来源隐私及实际向评委／模型传输的授权，与本地 prepare 分开处理。
 
-本实现提供仓内 prepare／run／report 和可复用确定性原语，已安装 CLI 与 Studio 尚未消费新研究协议。既有生产质量投影 v3 继续表达已保存的工程接纳，不代表此独立语义裁决。合成／作者编写的执行器 fixture 验证工程行为，不能提供真实来源质量证据、人工批准、总体结论、发布资格或父质量议题完成证据。在另行安排的真人复核及所需真实证据齐备前，正式语义验收持续未完成。
+从本次构建安装的 CLI 提供与 Studio 共用的零模型调用核对入口：
+
+```bash
+omk observe knowledge study --evidence /absolute/evidence.json --json
+omk observe knowledge study --evidence /absolute/evidence.json \
+  --author-review /absolute/reference-author.json \
+  --reference-review /absolute/reference-independent.json \
+  --output-review /absolute/output-review.json \
+  --judge-review /absolute/agent-judge-review.json
+```
+
+回执均可省略；缺失项保持待完成。该操作在全局设置和工作区解析之前处理，不需要 `--workspace` 或模型凭据，不读取证据中的路径，也不派发、恢复或修订运行。`--json` 输出共享只读投影；命令成功退出不代表语义通过。输入参数错误退出 2，宿主或证据校验失败退出 1。
+
+Studio 候选核对页的更多菜单提供“核对研究证据”，无工作区时也可打开。用户显式选择 `evidence.json`，按需添加作者、独立参考、输出和 AI 评委回执后执行核对。结果只留在本次抽屉中，关闭清空；换文件立即撤下旧结论，迟到响应不能覆盖新选择。逐例展示原文 excerpts、出生实体／提及／陈述、引用、判断理由及缺项，不把便携 ID 当作当前工作区可维护的身份。
+
+CLI 和 `/api/knowledge/study` 共用固定宿主、原始证据回放与分析。产品只返回明确选择的来源／出生输出和安全统计，不返回原始 transport、完整 run、sourcePath 或 producer proof。HTTP 保留同源保护，数据不落工作区。所有输入和回执合成后的 UTF-8 JSON 总容量为 128 MiB；转义后的请求超限也拒绝，不静默裁剪，其他 API 的既有限额保持不变。
+
+宿主严格绑定实际构建、验证器依赖与 Node 字节。不同宿主的旧研究需要在其冻结环境中核对；不能省略宿主核验来显示通过，也不能将重新分析称为新的独立模型验证。正式参考交接应冻结最终运行环境，避免在真人复核期间继续改动其身份。逐 run 的起止时间差是本地墙钟耗时，包含生成、归档、写入与等待；未知保持空值，不推断人工主动核对／纠正负担。
+
+既有生产质量投影 v3 继续表达已保存的工程接纳，不代表此独立语义裁决。合成／作者编写的执行器 fixture 验证工程行为，不能提供真实来源质量证据、人工批准、总体结论、发布资格或父质量议题完成证据。在另行安排的真人复核及所需真实证据齐备前，正式语义验收持续未完成。

@@ -1,5 +1,5 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
-import { readFileSync, lstatSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
@@ -12,16 +12,25 @@ import { configuredExtractionModel } from '../../../knowledge/adapters/executor.
 import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
 import { KnowledgeCitationLocatorsSchema } from '../../../knowledge/application/citation-locators.js';
+import { ExtractionStudyInspectionError, inspectExtractionStudy } from '../../../knowledge/application/study-inspection.js';
+import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../../knowledge/extraction/study-capacity.js';
+import { formatKnowledgeStudy } from '../../lib/knowledge-study-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
+const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 export default class ObserveKnowledge extends BaseCommand {
   static description = description(`从选定工作日志提炼、核对和维护候选知识。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Extract, inspect, and maintain candidate knowledge from selected work logs. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = {
-    operation: Args.string({ required: true, options: ['schema', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['schema', 'study', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; study inspects portable study evidence and reviews without model calls; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
+    evidence: Flags.string({ description: description('study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。', 'study: evidence.json exported by the repository study tool; recompute original evidence read-only, with at most 128 MiB across all inputs and no knowledge workspace access.') }),
+    'author-review': Flags.string({ description: description('study：输出前作者参考复核 JSON 文件。', 'study: pre-output author reference review JSON file.') }),
+    'reference-review': Flags.string({ description: description('study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。', 'study: pre-output independent human reference review JSON file; absence cannot produce goldReady.') }),
+    'output-review': Flags.string({ description: description('study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。', 'study: item review JSON file bound to the actual outputs; exploratory AI review is not independent human acceptance.') }),
+    'judge-review': Flags.string({ description: description('study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。', 'study: model-judge review JSON with version identity and separate declared usage, compared with human judgments; does not execute the judge.') }),
     workspace: Flags.string({ description: description('本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。', 'Local knowledge workspace; defaults to global settings shared with Studio.') }),
     source: Flags.string({ description: description('capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。', 'capture: one supported agent session log (Codex / Claude / Qoder / ...).') }),
     'start-record': Flags.integer({ min: 0, description: description('从零开始的非空记录序号，包含。', 'Zero-based nonempty record index, inclusive.') }),
@@ -49,6 +58,8 @@ export default class ObserveKnowledge extends BaseCommand {
   };
   static examples = [
     '<%= config.bin %> observe knowledge schema --json',
+    '<%= config.bin %> observe knowledge study --evidence ./evidence.json --json',
+    '<%= config.bin %> observe knowledge study --evidence ./evidence.json --author-review ./reference-author.json --reference-review ./reference-independent.json --output-review ./output-review.json --judge-review ./judge-review.json',
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
@@ -64,6 +75,55 @@ export default class ObserveKnowledge extends BaseCommand {
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
+    const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
+    if (args.operation !== 'study' && studyFlags.some(name => flags[name] !== undefined)) {
+      this.error(t('--evidence 及研究复核参数仅用于 study。', '--evidence and study review flags are only valid for study.'), { exit: 2 });
+    }
+    if (args.operation === 'study') {
+      const allowed = new Set<string>([...studyFlags, 'lang', 'json']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && !allowed.has(name))) {
+        this.error(t('study 仅接受 --evidence、研究复核参数、--lang 和 --json，不接受工作区或生成参数。', 'study accepts only --evidence, study review flags, --lang and --json; workspace and generation flags are not allowed.'), { exit: 2 });
+      }
+      if (!flags.evidence?.trim()) this.error(t('study 必须提供 --evidence。', 'study requires --evidence.'), { exit: 2 });
+      let consumed = 0;
+      const file = (path: string, label: string): unknown => {
+        let fd: number | undefined;
+        try {
+          const stat = lstatSync(path), remaining = EXTRACTION_STUDY_INSPECTION_MAX_BYTES - consumed;
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.size > remaining) throw new Error();
+          fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+          const opened = fstatSync(fd);
+          if (!opened.isFile() || opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size !== stat.size) throw new Error();
+          const bytes = Buffer.allocUnsafe(stat.size + 1); let offset = 0;
+          while (offset < bytes.length) {
+            const count = readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count;
+          }
+          if (offset !== stat.size || fstatSync(fd).size !== stat.size) throw new Error();
+          const raw = bytes.subarray(0, offset), text = raw.toString('utf8');
+          if (!Buffer.from(text).equals(raw)) throw new Error();
+          consumed += raw.length;
+          return JSON.parse(text) as unknown;
+        } catch {
+          this.error(t(`${label} 不可读或格式无效；请使用普通 UTF-8 JSON 文件，所有研究输入合计不超过 128 MiB。`, `${label} is unreadable or invalid; use regular UTF-8 JSON files totaling at most 128 MiB.`), { exit: 2 });
+        } finally { if (fd !== undefined) closeSync(fd); }
+      };
+      const input = { evidence: file(flags.evidence!, '--evidence'),
+        ...(flags['author-review'] === undefined ? {} : { authorReceipt: file(flags['author-review'], '--author-review') }),
+        ...(flags['reference-review'] === undefined ? {} : { referenceReceipt: file(flags['reference-review'], '--reference-review') }),
+        ...(flags['output-review'] === undefined ? {} : { outputReceipt: file(flags['output-review'], '--output-review') }),
+        ...(flags['judge-review'] === undefined ? {} : { judgeReceipt: file(flags['judge-review'], '--judge-review') }) };
+      try {
+        const result = inspectExtractionStudy(input);
+        this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeStudy(result, this.lang));
+      } catch (cause) {
+        const code = cause instanceof ExtractionStudyInspectionError ? cause.code : 'knowledge_study_evidence_invalid';
+        if (code === 'knowledge_study_capacity_exceeded') {
+          this.error(`${code} · ${t('所有研究输入封装后的 JSON 合计不得超过 128 MiB。', 'The complete serialized study input must not exceed 128 MiB.')}`, { exit: 2 });
+        }
+        this.error(`${code} · ${t('研究证据未通过核对。请使用冻结时匹配的版本并检查完整导出与复核绑定；没有调用模型或改写工作区。', 'Study evidence could not be verified. Use its matching frozen version and check the complete export and review bindings; no model call or workspace change was made.')}`, { exit: 1 });
+      }
+      return;
+    }
     if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {
       this.error(this.lang === 'zh' ? '--generation-policy 仅用于 generate。' : '--generation-policy is only valid for generate.', { exit: 2 });
     }
@@ -78,7 +138,6 @@ export default class ObserveKnowledge extends BaseCommand {
       else process.stdout.write(wire.WINDOW_EXTRACTION_WIRE_SCHEMA_JSON);
       return;
     }
-    const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     const need = (value: string | undefined, name: string): string => {
       if (!value?.trim()) this.error(`--${name} ${t('不能为空', 'is required')}`, { exit: 2 });
       return value!;
