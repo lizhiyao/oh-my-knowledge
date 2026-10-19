@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Alert, Button, Checkbox, Input, Modal, Pagination, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
 import { LibraryDraftSchema, type LibraryDraft, type LibraryMember } from '../../../../knowledge/entity-library/contracts';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../../knowledge/entities/identity';
 import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/knowledge-library';
 import type { KnowledgeEntityCatalog } from '../../../view-models/knowledge/knowledge-candidates';
 import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './library-request';
@@ -93,6 +94,7 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
     </Space>}>
     {error && <Alert className="knowledge-operation-feedback" type="error" title={error}/>}
     <p>{t('只维护知识的组织关联，不改写原始实体或知识。仅名称相同不能确认同一对象。', 'Maintains organization links without rewriting entities or knowledge. Equal names do not confirm identity.')}</p>
+    <p className="candidate-help">{ENTITY_SCOPE_REVIEW_GUIDANCE[lang]}</p>
     <div className="library-editor-fields"><label>{t('对象名称', 'Object name')}<Input aria-label={t('对象名称', 'Object name')} maxLength={256} readOnly={busy || uncertain} value={draft.label} onChange={event => change({ ...draft, label: event.target.value })}/></label>
       <label>{t('用户维护简介', 'User-maintained description')}<Input.TextArea aria-label={t('用户维护简介', 'User-maintained description')} maxLength={4096} readOnly={busy || uncertain} value={draft.description} onChange={event => change({ ...draft, description: event.target.value })}/></label></div>
     <h3>{t('已选择的来源关联', 'Selected source links')}</h3>

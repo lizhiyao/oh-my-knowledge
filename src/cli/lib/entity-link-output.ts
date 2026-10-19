@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isAbsolute, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../knowledge/store.js';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../knowledge/entities/identity.js';
 import { EntityLinkPreviewSchema, type EntityLinkInvocation } from '../../knowledge/entities/link-invocation.js';
 import type { EntityLinkApplication } from '../../knowledge/entity-linking/entity-links.js';
 import type { Lang } from '../../shared/language.js';
@@ -45,6 +46,7 @@ export function formatEntityLinkInvocation(history: EntityLinkInvocation, projec
     `${t('调用额度', 'Invocation budget')}: reserved=${projection.invocationBudget.reserved}, consumed=${projection.invocationBudget.consumed}`,
     `${t('用量', 'Usage')}: input=${known(projection.usage.inputTokens)}, output=${known(projection.usage.outputTokens)}, cache-read=${known(projection.usage.cacheReadTokens)}, USD=${known(projection.usage.costUSD)}`,
     t('接纳结果（模型建议不代表人工同意）：', 'Admission (a model suggestion is not human acceptance):'), JSON.stringify(projection.admission, null, 2)];
+  if (projection.status === 'awaiting_review') lines.push(ENTITY_SCOPE_REVIEW_GUIDANCE[lang]);
   const prepare = history.events[0].command;
   if (prepare.commandKind === 'prepare') lines.push(t('已发送／计划发送的选定内容：', 'Selected content sent/planned:'), prepare.input.request.prompt);
   const recorded = history.events.find(event => event.command.commandKind === 'execution_recorded')?.command;

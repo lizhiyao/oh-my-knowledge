@@ -8,6 +8,7 @@ import { requestKnowledge } from './request';
 import { EntityLinkPreviewEvidence, EntityLinkSavedEvidence, entityLinkStatusLabel } from './entity-link-evidence';
 import { notifyKnowledgeChange } from './workspace';
 import { EntityLinkQualityEvidence } from './entity-link-quality';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../../knowledge/entities/identity';
 
 export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
   workspace: string; detail: KnowledgeEntityLibraryDetail; lang: Language; onClose(): void;
@@ -124,7 +125,7 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
         </section>
         {saved && <EntityLinkSavedEvidence value={saved} lang={lang}/>}
         {saved && (status === 'awaiting_review' || status === 'prepared') && <label className="knowledge-field">{t('人工处理理由', 'Human decision reason')}<Input.TextArea rows={3} maxLength={4096} value={reason} readOnly={busy || uncertain} onChange={event => setReason(event.target.value)}/></label>}
-        {status === 'awaiting_review' && <><label className="knowledge-field">{t('新知识库对象名称（可选）', 'New library object label (optional)')}<Input maxLength={256} value={label} readOnly={busy || uncertain} onChange={event => setLabel(event.target.value)}/></label>
+        {status === 'awaiting_review' && <><p className="candidate-help">{ENTITY_SCOPE_REVIEW_GUIDANCE[lang]}</p><label className="knowledge-field">{t('新知识库对象名称（可选）', 'New library object label (optional)')}<Input maxLength={256} value={label} readOnly={busy || uncertain} onChange={event => setLabel(event.target.value)}/></label>
           <Checkbox checked={identityConfirmed} disabled={busy || uncertain} onChange={event => setIdentityConfirmed(event.target.checked)}>{t('我已独立核对两侧来源与身份，确认是同一对象。', 'I independently checked both sources and confirm these are the same entity.')}</Checkbox></>}
       </div>
       <footer className="entity-links-footer">

@@ -43,4 +43,4 @@ load-bearing 值：
 
 ## 实体离线复核
 
-`entity-extraction-review-v12.json` 是现行公开合成语料，供 `test/scripts/entity-extraction-review.test.ts` 和离线复核命令使用；关键提及、分组、允许边界与测量版本属于冻结契约，不随文档清理改写。`entity-source-coverage-v1.json` 单独验证关键来源定位，不并入该语料的分母。已退役的质量采集工具与原始试验账本不常驻当前检出，追溯使用 Git 历史。
+`entity-extraction-review-v13.json` 是现行公开合成语料，供 `test/scripts/entity-extraction-review.test.ts` 和离线复核命令使用；v12 保留为历史冻结字节。v13 继承原 60 窗并增加 4 个开发窗口，核对 Issue／PR 概念与具体工作记录的范围边界；关键提及、分组、允许边界与测量版本属于冻结契约，不随文档清理改写。`entity-source-coverage-v1.json` 单独验证关键来源定位，不并入该语料的分母。已退役的质量采集工具与原始试验账本不常驻当前检出，追溯使用 Git 历史。

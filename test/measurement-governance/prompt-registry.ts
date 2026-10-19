@@ -109,7 +109,7 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   },
   {
     promptId: 'knowledge-extraction-strict',
-    purpose: 'strict 知识与实体提取(含 few-shot 的独立 v18 提示词及测量身份)',
+    purpose: 'strict 知识与实体提取(含 few-shot 的独立提示词及测量身份)',
     module: 'src/knowledge/extraction/strict-prompt.ts',
     measurementInvariant: true,
     getHash: () => createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex'),
