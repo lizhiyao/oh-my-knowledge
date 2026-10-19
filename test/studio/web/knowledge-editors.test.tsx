@@ -202,6 +202,11 @@ describe('organization editor component lifecycle', () => {
       if (call.operation === 'entity-detail' && !sourceFailed) { sourceFailed = true; return json({}, 503); }
     });
     render(<LibraryEditor workspace="/isolated" lang="en" onClose={vi.fn()} onSaved={vi.fn()}/>, { wrapper });
+    const scope = screen.getByText(/Issue and PR concepts can be entities/);
+    expect(scope.textContent).toContain('concrete Issue or PR records belong only in source or case context');
+    expect(scope.textContent).toContain('identifiers and links in knowledge context');
+    expect(scope.textContent).toContain('do not turn them into concepts by organizing or renaming them');
+    expect(scope.textContent).toContain('Other source-supported concrete instances remain eligible');
     change('Object name', 'My draft');
     fireEvent.click(await screen.findByRole('button', { name: 'Reload source entities' }));
     fireEvent.click(await screen.findByRole('button', { name: /Alpha · Imported source/ }));

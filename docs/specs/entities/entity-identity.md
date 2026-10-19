@@ -97,6 +97,17 @@ New generation and correction reject `mention_identifier_fragment` when a mentio
 
 Evaluation exactly matches equivalent boundaries declared before outputs. A longer quotation containing a short name supplies review cues, never automatic trimming, completion or keyword/regex-based meaning judgments. Offline replay demonstrates matching/admission, not improved model choices.
 
+### 2.4 Issue/PR concepts and individual work records
+
+**Issue and PR can be entities when the source independently discusses their concepts or mechanisms; individual numbered Issues and PRs remain source-side work records and do not receive standalone entity identities.** A record's number, link, title, or status is not a reason to create an entity. Retain relevant identifiers, links, and states in source citations or case context, preserving who reported them and whether they were verified.
+
+| Source expression | Objects and knowledge to retain | Disallowed treatment |
+|---|---|---|
+| “An Issue tracks a problem; a PR submits changes for review. These mechanisms have different responsibilities.” | Retain Issue and PR concepts when the source independently discusses them; express their responsibilities as knowledge. | Exclude those concepts merely because individual numbered work records are outside entity scope. |
+| “Issue #42 was created; PR #73 was merged.” | Retain the record identifiers and reported states in source evidence or case context; bind useful knowledge to an existing source-supported subject where appropriate. | Create standalone Issue #42 / PR #73 entities, or strip their numbers and invent Issue / PR concepts that the source did not independently discuss. |
+
+This is a narrow output-scope rule for these work records, not a ban on specific objects or all instances. Source-supported files, deployments, version artifacts, plans, and activities continue to follow their respective identity rules. Do not generalize a work-record title into a new concept merely to replace an excluded record; if the source provides no supported knowledge subject, do not invent one.
+
 ## 3. Components, versions, and deployment instances
 
 **A component identity defaults to the system or module the source continues to discuss. Environment, version, and time usually qualify statements rather than automatically creating entities.** Create separate identities when the source explicitly discusses individually referable deployments, instances, or version objects. Component-instance relations require evidence, not matching names.

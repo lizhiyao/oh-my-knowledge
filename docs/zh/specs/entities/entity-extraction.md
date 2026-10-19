@@ -45,6 +45,8 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 - 关联依据须包含所属实体自己的提及；集合短语只产生一条提及，不复制跨度给成员。案例行动／结果只引用描述性陈述。结构接纳不验证身份判断或陈述真实性。
 - 部分拒绝逐项记录原因。无效提及不能支撑实体，无效实体不能支撑陈述；不静默修补或删除歧义后接纳。
 
+生成和逐项复核遵守[身份规则 §2.4](./entity-identity.md)：来源独立讨论 Issue／PR 概念时可以建实体，具体编号的 Issue／PR 则保留为工作记录证据或案例 context。不单独创建记录实体，也不通过去掉编号将记录改造成概念。此范围不排除其他有来源的具体对象或实例；结构接纳不能独自裁决这条语义边界。
+
 ### 3.1 关键来源与普通重复提及
 
 对象身份与知识依据分别覆盖。提及选择对象名称或实际指代；已提炼知识的目的、条件、约束、例外、纠正和未验证限制，由对应陈述的证据关联及精确 `citations` 直接定位。分散的依据分别引用，保留理解判断所需的上下文；只有早期名称、同消息背景、整条消息可访问或 `rationale` 描述不足以证明关键依据可直接定位。
@@ -58,6 +60,8 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 实体分析拥有不可变修订、父修订、作者、时间及理由，修改采用 generation 与写入头检查，并保留幂等写入身份。用户可以改提及对应、拆分或合并局部对象、补充遗漏提及、删除误识别和保留歧义。已有提及身份不能被换到另一段原文；重新定位须另建提及。Studio 支持层次、组件关联、集合成员／完整性和依据的显式纠正；改变字段不会静默删除其他信息，不一致的草稿须先补齐。合并／删除及提及转移前，引用它的组件、成员、候选和依据须先明确纠正；界面列出依赖对象供核对，不自动删引用或推定成员完整性。合并前明确移除原对象自身的关联信息并核对目标；删除移除其自身信息，但不改写其他对象。原始修订与来源快照保留。
 
 知识 grounding 绑定明确的实体分析及修订。生成后的纠正不覆盖旧知识。用户将新分析用于知识时，核对各陈述的主体／对象和证据，另建知识修订。一个旧对象被拆成多个对象时，应用流程不任取一个作为新主体。
+
+已有分析把具体 Issue／PR 记录提成实体时，先核对依赖引用，再通过新的实体分析修订显式纠正实体目录；不将记录改名成概念，也不复用其 UUID 改变含义。之后逐条修订受影响知识的陈述、主体／对象绑定及 citations，使用有来源的主体，并在 citations 或 context 中保留记录编号、链接、状态及主张者；新知识修订重新核对保留状态。没有有据改绑方案时，保留旧绑定及其限制，等待明确修订或舍弃决定。原分析、知识修订、来源和 outcome 保持不变；提取范围变化不自动迁移或重评分。
 
 纠正仍是人或 Agent 的判断，不自动变成事实验证，也不继承旧知识修订的保留决定。来源删除或不可读取保持显式不可用，不能仅凭保存的引用声称重新核对过原文。
 
@@ -85,13 +89,15 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 `knowledge-extraction-v18`：strict 渲染包含五个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。原 prompt-json v14 字节保持不变，供作者 model port 使用。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 strict `knowledge-extraction-v20`：strict 渲染包含五个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v19`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
+v19／v20 在第 3 节调整提取范围，属于 **BREAKING-COMPARABILITY**：prompt 字节与标注指南／语料身份变化，wire／领域 Schema、存储格式和 pipeline 政策不变，不增加生成后的黑名单。五个示例文本与历史 v4 bundle 保持逐字节一致；当前完整 strict system 的规则前缀已经变化，不等于该 bundle 冻结的 v18 candidate。当前请求须使用新的 run 身份和匹配执行许可；旧输出与维护决定不自动成为现行口径结果。
+
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
-完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；run metadata 绑定该实际完整 system 及新版本。本次 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
+历史完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；对应 run metadata 绑定该完整 system 与 v16。该历史 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

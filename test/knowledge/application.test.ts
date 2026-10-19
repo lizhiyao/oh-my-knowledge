@@ -421,6 +421,60 @@ describe('shared knowledge application', () => {
     expect(readFileSync(runFile)).toEqual(runBytes);
     expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
   });
+
+  it('rebinds a work-record claim to its source topic without rewriting birth results or losing record provenance', async () => {
+    const text = '缓存策略要求缓存 60 秒；PR #23 已合并该策略，记录链接 https://example.com/pr/23，线上效果未知。';
+    const { app, snapshot, model, root, ports } = setup(text); const packet = modelWindow();
+    packet.entities[0] = { ...packet.entities[0], label: '缓存策略', description: '来源讨论的缓存时效策略' };
+    packet.entities[1] = { ...packet.entities[1], label: 'PR #23', description: '来源中的具体工作记录' };
+    packet.mentions[0].selection.quote = '缓存策略'; packet.mentions[1].selection.quote = 'PR #23';
+    const proposal = packet.proposals[0]; const statement = proposal.draft.content.statements[0];
+    proposal.draft.title = 'PR #23 的合并记录';
+    statement.subject = { entityId: 'tool' }; delete statement.object;
+    statement.relation = '已合并缓存 60 秒的策略';
+    statement.context = { ...statement.context, scenario: '来源报告的一次策略合并', unknowns: ['线上效果未知'] };
+    proposal.draft.evidence[0] = { ...proposal.draft.evidence[0], relation: 'supports', basis: 'source_assertion' };
+    proposal.citations[0].selection.quote = text;
+    model.generate = async (_system, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const run = await app.generate(snapshot.snapshotId, model); const knowledgeId = run.committed[0].knowledgeId;
+    const birth = app.detail(knowledgeId); const analysis = app.entities(run.runId);
+    const runFile = join(root, 'extraction-runs', run.runId + '.json'); const runBytes = readFileSync(runFile);
+    const quality = app.quality(); const calls = vi.fn(model.generate); model.generate = calls;
+    app.maintain(knowledgeId, birth.revision.revisionId, 'retain', '原规则下的来源候选', birth.history.generation);
+    const retained = app.detail(knowledgeId);
+    const topic = analysis.revision.entities.find(entity => entity.label === '缓存策略')!;
+    const record = analysis.revision.entities.find(entity => entity.label === 'PR #23')!;
+    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, analysis.history.generation, {
+      entities: [topic], mentions: analysis.revision.mentions.filter(mention => mention.entityId === topic.entityId),
+    }, '具体工作记录回到来源上下文，主题身份不变');
+    const draft = { title: '缓存策略的时效选择', entities: [{ entityId: topic.entityId, label: topic.label, description: topic.description }],
+      content: structuredClone(retained.revision.content), evidence: retained.revision.evidence };
+    draft.content.statements[0].subject = { entityId: topic.entityId };
+    draft.content.statements[0].relation = '要求缓存 60 秒';
+    draft.content.statements[0].context = { ...draft.content.statements[0].context,
+      scenario: 'PR #23 报告已合并该策略；记录链接 https://example.com/pr/23', unknowns: ['线上效果未知'] };
+    const invalid = { ...draft, entities: retained.revision.entities };
+    expect(() => app.reviseUsingEntities(knowledgeId, retained.revision.revisionId, retained.history.generation,
+      run.runId, corrected.revision.revisionId, invalid, '不可保留已退出目录的端点')).toThrow('Knowledge entity differs');
+    const revised = app.reviseUsingEntities(knowledgeId, retained.revision.revisionId, retained.history.generation,
+      run.runId, corrected.revision.revisionId, draft, '按主题组织知识并保留工作记录依据');
+    expect(revised.maintenance).toBeNull();
+    expect(revised.grounding.citations).toEqual(birth.grounding.citations);
+    expect(revised.revision.content.statements[0]).toMatchObject({ subject: { entityId: topic.entityId },
+      context: { scenario: expect.stringContaining('https://example.com/pr/23') } });
+    expect(revised.revision.entities.map(entity => entity.entityId)).toEqual([topic.entityId]);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      entities: new FileEntityAnalysisStore(join(root, 'entities')), runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    expect(reopened.detail(knowledgeId).revision).toEqual(revised.revision);
+    expect(reopened.detail(knowledgeId, birth.revision.revisionId).revision).toEqual(birth.revision);
+    expect(reopened.entities(run.runId, analysis.revision.revisionId).revision.entities).toContainEqual(record);
+    expect(() => reopened.entityDetail(run.runId, record.entityId)).toThrow('Entity is absent');
+    expect(reopened.quality()).toEqual(quality);
+    reopened.resume(run.runId);
+    expect(readFileSync(runFile)).toEqual(runBytes); expect(calls).not.toHaveBeenCalled();
+    expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
+  });
   it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
     const { app, snapshot, generate } = setup(); const controller = new AbortController();
     const runtime = configuredExtractionModel('codex', 'fixture', createCodexArchiveProducer({}, () => async input => {

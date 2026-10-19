@@ -30,10 +30,14 @@ describe('entity analysis user views', () => {
     expect(start).toContain('返回 0 条候选'); expect(start).toContain('核对实体与指代');
     expect(renderToStaticMarkup(createElement(EntityAnalysisSummary, { run: { ...run, entityAnalysis: undefined }, lang: 'zh', onOpen() {} }))).toBe('');
   });
-  it('shows provenance and unavailable source limits in both languages', () => {
+  it('shows entity scope, provenance and unavailable source limits in both languages', () => {
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToStaticMarkup(createElement(EntityAnalysisContext, { detail: { ...detail, source: { status: 'unavailable', reason: 'deleted', detail: 'Snapshot deleted.' } }, lang }));
       expect(html).toContain(lang === 'zh' ? '不能重新核对或纠正' : 'rechecking and corrections are unavailable');
+      const scope = lang === 'zh'
+        ? ['Issue／PR 概念可以是实体', '具体 Issue／PR 工作记录仅保留在来源或案例上下文', '不要通过组织或改名将它变成概念', '其他有来源依据的具体实例仍可保留']
+        : ['Issue and PR concepts can be entities', 'concrete Issue or PR records belong only in source or case context', 'identifiers and links in knowledge context', 'do not turn them into concepts by organizing or renaming them', 'Other source-supported concrete instances remain eligible'];
+      for (const message of scope) expect(html).toContain(message);
       expect(html).toContain('2026-10-08 00:00:00 UTC'); expect(html).toContain('等待核对'); expect(html).toContain('仅所选消息');
     }
   });

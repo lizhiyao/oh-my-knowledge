@@ -10,10 +10,11 @@ import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCo
 import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-output.js';
 import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
 import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveKnowledge extends BaseCommand {
-  static description = description('从选定工作日志提炼、核对和维护候选知识。', 'Extract, inspect, and maintain candidate knowledge from selected work logs.');
+  static description = description(`从选定工作日志提炼、核对和维护候选知识。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Extract, inspect, and maintain candidate knowledge from selected work logs. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = {
     operation: Args.string({ required: true, options: ['schema', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
       description: description('schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),

@@ -240,10 +240,10 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('renders source-grounded v18 examples while preserving the frozen v14 and no-fewshot control', () => {
+  it('versions the work-record boundary while preserving frozen v14 controls and the five demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v18');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v20');
     expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toEqual(frozenExamples.examples);
     expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(5);
     const versionExample = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(example => example.exampleId === 'synthetic-version-artifact-v2')!;
@@ -256,12 +256,16 @@ describe('derived strict structural wire with original itemwise admission', () =
     expect(versionExample.output.entities.find(entity => entity.entityId === 'e_corpus')?.referentKind).toBe('version');
     expect(STRICT_EXTRACTION_FEWSHOT_BLOCK).toBe(renderStrictExtractionFewshotBlock());
     expect(STRICT_EXTRACTION_PROMPT.split(STRICT_EXTRACTION_FEWSHOT_BLOCK)).toHaveLength(2);
-    expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).toBe(control.toString('utf8'));
+    const legacyControl = control.toString('utf8');
+    expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).not.toBe(legacyControl);
+    expect(STRICT_EXTRACTION_PROMPT).toContain('具体工作记录只保留为来源或案例上下文');
+    expect(EXTRACTION_PROMPT).toContain('有对象但无可复用知识时，proposals 可为空');
     expect(control.length).toBe(31884);
     expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v14');
-    expect(createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399');
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v19');
+    const frozenV18 = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/v18-candidate-strict.prompt.txt', import.meta.url));
+    expect(createHash('sha256').update(frozenV18).digest('hex')).toBe('46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229');
   });
 
   it.each(STRICT_EXTRACTION_FEWSHOT_EXAMPLES)('admits the actual production demonstration $exampleId through the wire and domain host', example => {
