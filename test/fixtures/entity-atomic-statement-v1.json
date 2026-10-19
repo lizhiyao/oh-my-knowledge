@@ -1,0 +1,68 @@
+{
+  "reviewVersion": "omk-entity-atomic-statement/v1",
+  "provenance": "synthetic",
+  "sample": {
+    "caseId": "atomic-delivery-and-quality",
+    "projectGroup": "atomic-statement",
+    "conversationGroup": "atomic-statement",
+    "split": "development",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Lumen 软件已交付。Lumen 的提取语义质量尚未验收。"
+      }
+    ],
+    "limitations": [
+      "合成开发回归，只包含一条来源陈述；没有独立交付或质量验收证据。"
+    ],
+    "tags": ["atomic-statement", "mixed-polarity", "source-assertion"],
+    "entities": [
+      {
+        "entityKey": "lumen",
+        "referentKinds": ["object"],
+        "identityStatus": "proposed",
+        "possibleEntities": [],
+        "component": null,
+        "collection": null,
+        "rationale": "两句都指向本次讨论的同一软件，不将验收状态另造为实体。"
+      }
+    ],
+    "mentions": [
+      {
+        "mentionKey": "lumen-name",
+        "entity": "lumen",
+        "messageIndex": 0,
+        "alternatives": [{"quote": "Lumen", "occurrence": 0}],
+        "rationale": "首处软件名；本诊断不要求保留普通重复提及。"
+      }
+    ],
+    "roles": [
+      {
+        "roleKey": "delivery-completed",
+        "coverage": "required",
+        "subject": "lumen",
+        "object": null,
+        "messageIndex": 0,
+        "anchor": {"quote": "Lumen 软件已交付。", "occurrence": 0},
+        "interpretation": "来源声称软件交付完成，使用独立的 descriptive、positive 陈述，不推断质量验收完成。"
+      },
+      {
+        "roleKey": "quality-not-accepted",
+        "coverage": "required",
+        "subject": "lumen",
+        "object": null,
+        "messageIndex": 0,
+        "anchor": {"quote": "Lumen 的提取语义质量尚未验收。", "occurrence": 0},
+        "interpretation": "来源声称提取语义质量尚未验收，使用独立的 descriptive、negative 陈述表达质量已验收命题的否定。"
+      }
+    ],
+    "knowledgePolicy": "optional",
+    "semanticChecks": [
+      "这是独立的 synthetic development 回归，不并入 v13 的 64 窗口或 212 条关键提及分母，也不是正式独立人工参考集。",
+      "交付完成与质量尚未验收是两项必需命题，须拆为各自统一 polarity 和 modality 的陈述，并由各自定位的引文支持。",
+      "一条 positive 陈述同时写入交付完成与质量未验收，虽然不颠倒来源事实且可通过生产结构检查，仍需显式语义裁决指出原子性错误。",
+      "引文覆盖、端点匹配、陈述数量及‘但’‘尚未’等字词均不自动判定语义；裁决须读取来源、完整命题及其 polarity 和 modality。",
+      "证据 basis 保持 source_assertion，事实发生与持续时间保持 unknown；修正样本不得凭结构通过自动获得独立人工验收。"
+    ]
+  }
+}
