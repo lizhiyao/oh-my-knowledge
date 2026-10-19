@@ -41,6 +41,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/generation.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
+  'knowledge/application/citation-locators.ts → knowledge/extraction/quote-occurrence.ts',
   'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-store.ts',

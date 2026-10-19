@@ -94,9 +94,29 @@ describe('observe knowledge command wiring', () => {
     vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
     await expect(runCommand(ObserveKnowledge, ['retain', '--workspace', root], { cwd: root })).rejects.toMatchObject({ code: 2 });
     for (const args of [['list', '--generation-policy', '{}'], ['schema', '--generation-policy', '{}'],
+      ['list', '--citations', 'missing.json'], ['schema', '--citations', 'missing.json'], ['correct-entities', '--citations', 'missing.json'],
       ['generate', '--snapshot', 'fixture', '--generation-policy', '{invalid'], ['generate', '--snapshot', 'fixture', '--generation-policy', '{}']]) {
       await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
+  });
+  it('validates citation files and complete locator arrays before settings or storage for both revision commands', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-citation-input-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
+    const workspace = join(root, 'unused-workspace'), draftPath = join(root, 'draft.json'); writeFileSync(draftPath, '{}');
+    const malformed = join(root, 'malformed.json'), empty = join(root, 'empty.json'), invalid = join(root, 'invalid.json'), linked = join(root, 'linked.json');
+    writeFileSync(malformed, '{invalid'); writeFileSync(empty, '[]');
+    writeFileSync(invalid, JSON.stringify([{ evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: -1 } }]));
+    symlinkSync(empty, linked);
+    const cases = [[join(root, 'missing.json'), '引用文件不可读'], [linked, '引用文件不可读'],
+      [malformed, '--citations 不是有效 JSON'], [empty, '引用数组不能为空'], [invalid, '--citations 格式无效']];
+    for (const operation of ['revise', 'apply-entities']) for (const [path, diagnostic] of cases) {
+      const args = [operation, '--workspace', workspace, '--id', 'knowledge', '--revision', 'revision', '--generation', '1',
+        '--input', draftPath, '--citations', path, '--reason', '核对引用', '--lang', 'zh'];
+      if (operation === 'apply-entities') args.push('--analysis', randomUUID(), '--entity-revision', randomUUID());
+      await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2, stderr: expect.stringContaining(diagnostic) });
+    }
+    expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
+    expect(existsSync(workspace)).toBe(false);
   });
   it('passes explicit bounded policy and its output cap through the command and shared operations, reusing a run without another dispatch', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-bounded-knowledge-cli-')); roots.push(root);
@@ -135,7 +155,8 @@ describe('observe knowledge command wiring', () => {
   it('inspects and corrects an independent entity result, then explicitly binds a new knowledge revision', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-entities-cli-')); roots.push(root);
     const workspace = join(root, 'knowledge'); const source = join(root, 'trace.jsonl');
-    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
+    const sourceText = 'Alpha 使用 Beta。操作备注：仍按上述方式使用。';
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: sourceText }] } }));
     const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: source });
     const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture',
       generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
@@ -165,19 +186,39 @@ describe('observe knowledge command wiring', () => {
     expect(old.revision.entities[0].label).toBe('Alpha');
     await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('observe knowledge entities') });
     const draft = { title: old.revision.title, entities: corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description })),
-      content: old.revision.content, evidence: old.revision.evidence };
+      content: old.revision.content, evidence: old.revision.evidence.map(link => ({ ...link, evidenceLinkId: 'reviewed-link' })) };
     const draftPath = join(root, 'knowledge.json'); writeFileSync(draftPath, JSON.stringify(draft));
+    const citationPath = join(root, 'citations.json');
+    const locator = { evidenceLinkId: 'reviewed-link', selection: { evidenceRef: old.revision.evidence[0].evidenceRef, quote: 'Alpha 使用 Beta。', occurrence: 0 } };
+    writeFileSync(citationPath, JSON.stringify([locator]));
     const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-entities', ...base, '--id', old.revision.knowledgeId,
       '--revision', old.revision.revisionId, '--generation', '1', '--analysis', run.runId,
-      '--entity-revision', corrected.revision.revisionId, '--input', draftPath, '--identity-uncertainties', '[]', '--reason', '明确知识主体', '--json'], { cwd: root })).stdout);
+      '--entity-revision', corrected.revision.revisionId, '--input', draftPath, '--citations', citationPath,
+      '--identity-uncertainties', '[]', '--reason', '明确知识主体', '--json'], { cwd: root })).stdout);
     expect(applied.revision.entities[0].label).toBe('项目 Alpha');
     expect(applied.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
+    expect(applied.grounding.citations).toEqual([{ evidenceLinkId: 'reviewed-link',
+      selection: { evidenceRef: locator.selection.evidenceRef, start: 0, end: 14, quote: 'Alpha 使用 Beta。' } }]);
     expect(applied.history.revisions[0]).toEqual(old.revision);
+    expect(app.detail(old.revision.knowledgeId, old.revision.revisionId).grounding).toEqual(old.grounding);
     await runCommand(ObserveKnowledge, ['retain', ...base, '--id', old.revision.knowledgeId, '--revision', applied.revision.revisionId,
       '--generation', '2', '--reason', '核对条件后保留'], { cwd: root });
     const kept = await runCommand(ObserveKnowledge, ['show', ...base, '--id', old.revision.knowledgeId], { cwd: root });
     expect(kept.stdout).toContain('维护决定：已保留'); expect(kept.stdout).toContain('效果尚未验证');
     expect(kept.stdout).toContain('--generation 3');
+    const reviseArgs = ['revise', ...base, '--id', old.revision.knowledgeId, '--revision', applied.revision.revisionId,
+      '--generation', '3', '--input', draftPath, '--citations', citationPath, '--reason', '逐项核对引用', '--json'];
+    const beforeInvalid = app.detail(old.revision.knowledgeId).history;
+    writeFileSync(citationPath, JSON.stringify([{ ...locator, selection: { ...locator.selection, quote: 'PRIVATE-ABSENT-QUOTE' } }]));
+    await expect(runCommand(ObserveKnowledge, reviseArgs, { cwd: root })).rejects.toMatchObject({ code: 1,
+      stderr: expect.stringContaining('knowledge_citations_invalid') });
+    expect(app.detail(old.revision.knowledgeId).history).toEqual(beforeInvalid);
+    writeFileSync(citationPath, JSON.stringify([{ ...locator, selection: { ...locator.selection, quote: sourceText } }]));
+    const revised = JSON.parse((await runCommand(ObserveKnowledge, reviseArgs, { cwd: root })).stdout);
+    expect(revised.grounding.citations).toEqual([{ evidenceLinkId: 'reviewed-link',
+      selection: { evidenceRef: locator.selection.evidenceRef, start: 0, end: sourceText.length, quote: sourceText } }]);
+    expect(revised.maintenance).toBeNull();
+    expect(app.detail(old.revision.knowledgeId, applied.revision.revisionId).grounding).toEqual(applied.grounding);
     await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
   });
   it('rejects unknown operations, invalid filter values and flags before touching the workspace', async () => {

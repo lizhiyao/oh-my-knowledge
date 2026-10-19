@@ -18,7 +18,7 @@ it('reads explicit directories without model settings and still requires setting
   await expect(resolveKnowledgeDirectory()).rejects.toThrow('settings unavailable');
 });
 it('distinguishes rejected writes from unknown outcomes without exposing raw server failures', async () => {
-  for (const [status, code, rejected] of [[409, 'knowledge_workspace_busy', true], [400, 'knowledge_capacity_exceeded', true],
+  for (const [status, code, rejected] of [[409, 'knowledge_workspace_busy', true], [400, 'knowledge_capacity_exceeded', true], [400, 'knowledge_citations_invalid', true],
     [400, 'knowledge_request_failed', false], [400, 'carrier_invalid_metadata', false], [500, 'knowledge_workspace_busy', false], [500, '/private/secret', false]] as const) {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: code }), { status })));
     await expect(requestKnowledge('library', { operation: 'save' })).rejects.toMatchObject({

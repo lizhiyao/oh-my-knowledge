@@ -3,7 +3,7 @@ import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { z } from 'zod';
 import { EntityAnalysisDraftSchema, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
-import { validateEvidenceSelection } from '../validation.js';
+import { validateEvidenceSelection, validateGroundingReferences } from '../validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from '../extraction/evidence.js';
@@ -13,6 +13,7 @@ import type { ExtractionProposal } from '../extraction/proposals.js';
 import { EntityModelSchema } from '../extraction/entities.js';
 import { checkWindowExtractionResponse } from '../extraction/window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
+import { KnowledgeCitationRevisionError, resolveKnowledgeCitationLocators } from './citation-locators.js';
 import type { KnowledgeEnvelope } from '../store.js';
 import { mapEntityIdentity } from '../entities/identity.js';
 import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from '../extraction/model-input.js';
@@ -473,11 +474,11 @@ export class KnowledgeApplication {
     return this.ports.knowledge.write({ knowledgeId, requestId, expectedGeneration, commandKind: 'record_maintenance',
       maintenance: { revisionId, choice, reason, actor: this.ports.actor, at: this.ports.now() } }, this.ports.actor);
   }
-  revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
+  revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string, citationLocatorsInput?: unknown) {
     const previous = this.detail(knowledgeId, expectedRevisionId);
     const ref = previous.grounding.entityAnalysisRef;
     if (!ref) throw new Error('Knowledge has no bound entity analysis.');
-    return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason);
+    return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason, undefined, citationLocatorsInput);
   }
 
   correctEntities(analysisId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
@@ -509,7 +510,7 @@ export class KnowledgeApplication {
     return this.entities(analysisId);
   }
   reviseUsingEntities(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, analysisId: string,
-    analysisRevisionId: string, input: unknown, reason: string, identityUncertaintiesInput?: unknown) {
+    analysisRevisionId: string, input: unknown, reason: string, identityUncertaintiesInput?: unknown, citationLocatorsInput?: unknown) {
     const previous = this.detail(knowledgeId, expectedRevisionId);
     const analysis = this.entities(analysisId, analysisRevisionId);
     if (analysis.source.status !== 'available') throw new Error('Entity source unavailable.');
@@ -528,11 +529,17 @@ export class KnowledgeApplication {
       const catalog = analysis.revision.entities.find(candidate => candidate.entityId === entity.entityId);
       if (!catalog || catalog.label !== entity.label || catalog.description !== entity.description) throw new Error('Knowledge entity differs from the bound analysis.');
     }
+    const mentions = analysis.revision.mentions.filter(mention => draft.entities.some(entity => entity.entityId === mention.entityId));
+    const citations = citationLocatorsInput === undefined
+      ? previous.grounding.citations.filter(citation => draft.evidence.some(link => link.evidenceLinkId === citation.evidenceLinkId))
+      : resolveKnowledgeCitationLocators(citationLocatorsInput, excerpts);
+    if (validateGroundingReferences(draft, { mentions, citations }, new Set(excerpts.map(excerpt => excerpt.evidenceRef))).length
+      || citations.some(citation => validateEvidenceSelection(citation.selection, excerpts).length)) {
+      throw new KnowledgeCitationRevisionError();
+    }
     const revision: KnowledgeRevision = { ...previous.revision, ...draft, revisionId: this.ports.id(),
       parentRevision: { knowledgeId, revisionId: expectedRevisionId }, revisedAt: this.ports.now(), revisedBy: this.ports.actor, revisionReason: reason };
-    const mentions = analysis.revision.mentions.filter(mention => draft.entities.some(entity => entity.entityId === mention.entityId));
-    const grounding: KnowledgeGrounding = { ...previous.grounding, revisionId: revision.revisionId, mentions,
-      citations: previous.grounding.citations.filter(citation => draft.evidence.some(link => link.evidenceLinkId === citation.evidenceLinkId)),
+    const grounding: KnowledgeGrounding = { ...previous.grounding, revisionId: revision.revisionId, mentions, citations,
       entityAnalysisRef: { analysisId, revisionId: analysisRevisionId },
       sourceBindings: [{ snapshotId: analysis.history.snapshotId, sourceVersion: analysis.history.sourceVersion,
         evidenceRefs: [...new Set([...draft.evidence.map(link => link.evidenceRef), ...mentions.map(mention => mention.selection.evidenceRef)])] }],

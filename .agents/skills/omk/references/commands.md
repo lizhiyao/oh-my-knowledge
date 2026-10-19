@@ -599,6 +599,7 @@ omk observe knowledge <operation> [flags]
 **Flags:**
 
 - `--analysis` `option`:entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。
+- `--citations` `option`:revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。
 - `--end-record` `option`:最后一条记录序号，包含。
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
 - `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
@@ -667,6 +668,10 @@ omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-i
 
 ```bash
 omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"
+```
+
+```bash
+omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./knowledge.json --citations ./citations.json --reason "逐项核对并替换引用"
 ```
 
 ```bash

@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import { act, type PropsWithChildren } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { ConfigProvider } from 'antd';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryEditor } from '../../../src/studio/web/components/knowledge/library-editor';
 import { ArtifactAuthoringDialog } from '../../../src/studio/web/components/knowledge/artifact-authoring';
+import { KnowledgeRevisionDrawer } from '../../../src/studio/web/components/knowledge/revision-editor';
+import { ApplyEntitiesDialog } from '../../../src/studio/web/components/knowledge/apply-entities';
+import { CitationLocatorEditor, initialCitationLocators } from '../../../src/studio/web/components/knowledge/citation-editor';
+import { draft as knowledgeDraft } from '../../knowledge/fixtures';
 import { AutoExtractConversation } from '../../../src/studio/web/components/knowledge/auto-extraction';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
-import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -419,4 +424,167 @@ describe('artifact editor component lifecycle', () => {
     await screen.findByRole('textbox', { name: 'Artifact name' });
     expect(writes(calls, 'artifacts')).toHaveLength(1);
   });
+});
+
+
+function citationFixture(): { detail: KnowledgeCandidateDetail; analysis: KnowledgeEntityAnalysisDetail } {
+  const base = knowledgeDraft();
+  base.entities = [entity().entity, entity('Beta', 2).entity].map(({ entityId, label, description }) => ({ entityId, label, description }));
+  base.content.statements[0].subject.entityId = uuid(1); base.content.statements[0].object = { entityId: uuid(2) };
+  const revision: KnowledgeCandidateDetail['revision'] = { ...base, knowledgeId: candidate.knowledgeId, revisionId: candidate.revisionId,
+    observationRefs: [], derivations: [], createdAt: now, createdBy: { actorKind: 'human', actorId: 'reviewer' },
+    revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original authored fixture' };
+  const quotation = 'Alpha 使用 Beta', text = `${quotation}；${quotation}\n<script>fixture only</script>`;
+  const excerpts = [{ evidenceRef: 'record-1', text, recordIndex: 0, eventKind: 'message', role: 'user' },
+    { evidenceRef: 'record-2', text: '纠正：Alpha 未使用 Beta', recordIndex: 1, eventKind: 'message', role: 'user' }];
+  const original = entity(), analysisRevision = { ...original.revision, entities: [entity().entity, entity('Beta', 2).entity],
+    mentions: [entity().revision.mentions[0], { ...entity('Beta', 2).revision.mentions[0], selection: { evidenceRef: 'record-1', start: 9, end: 13, quote: 'Beta' } }] };
+  const analysis: KnowledgeEntityAnalysisDetail = { revision: analysisRevision,
+    history: { ...original.history, revisions: [analysisRevision] }, source: { status: 'available', excerpts, limitations: ['Authored UI fixture; no model calls.'] } };
+  const grounding: KnowledgeCandidateDetail['grounding'] = { revisionId: revision.revisionId, mentions: analysisRevision.mentions,
+    citations: [{ evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: quotation, start: quotation.length + 1, end: quotation.length * 2 + 1 } }],
+    sourceBindings: [{ snapshotId: original.history.snapshotId, sourceVersion: digest, evidenceRefs: ['record-1'] }],
+    reuseRationale: 'Authored UI evidence', identityUncertainties: ['Keep this source assertion uncertain.'],
+    entityAnalysisRef: { analysisId: analysis.history.analysisId, revisionId: analysis.revision.revisionId } };
+  return { analysis, detail: { revision, grounding, history: { storeKind: 'knowledge-item-history', schemaVersion: 2,
+    namespace: 'fixture', knowledgeId: revision.knowledgeId, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
+    grounding: [grounding], maintenance: [], receipts: [{ requestId: uuid(900), commandDigest: digest, committedGeneration: 1, revisionId: revision.revisionId }] },
+    reviewStatus: 'pending', maintenance: null, tagging: { generation: 0, tags: [] }, entityAnalysis: { status: 'available', ...analysis },
+    sources: [{ status: 'available', window: { snapshotId: original.history.snapshotId, sourceVersion: digest, sourcePath: '/authored-fixture', sourceKind: 'codex',
+      projectionVersion: 'knowledge-window-v2', capturedAt: now, startRecord: 0, endRecord: 1, excerpts,
+      records: excerpts.map(excerpt => ({ recordIndex: excerpt.recordIndex, raw: JSON.stringify(excerpt) })), limitations: [] } }] } };
+}
+
+const revisionEntries = ['revise', 'apply-entities'] as const;
+function citationEditor(entry: typeof revisionEntries[number], detail: KnowledgeCandidateDetail, onSaved = vi.fn(), onReadback = vi.fn()) {
+  const props = { workspace: '/citation-fixture', detail, lang: 'en' as const, onClose: vi.fn(), onSaved, onReadback };
+  return entry === 'revise' ? <KnowledgeRevisionDrawer {...props}/> : <ApplyEntitiesDialog {...props}/>;
+}
+function revisionSaveButton(entry: typeof revisionEntries[number]) {
+  return screen.getByRole('button', { name: entry === 'revise' ? /Save new revision$/ : /Review and save a new knowledge revision$/ });
+}
+function revisionReason(entry: typeof revisionEntries[number]) { change(entry === 'revise' ? 'Revision reason' : 'Reason for applying', 'Checked exact original quotations'); }
+
+// Both entry points share one controlled locator form and the same conservative acknowledgement lifecycle.
+describe('knowledge citation revision editors', () => {
+  it('renders exact saved quotations and accessible source/occurrence fields in both languages without executing source markup', () => {
+    const { detail } = citationFixture();
+    expect(initialCitationLocators(detail)[0].selection).toEqual({ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', occurrence: 1 });
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(<CitationLocatorEditor detail={detail} evidence={detail.revision.evidence}
+        value={initialCitationLocators(detail)} readOnly={false} lang={lang} onChange={() => {}}/>);
+      expect(html).toContain(lang === 'zh' ? '已保存的引文' : 'Saved citations');
+      expect(html).toContain(lang === 'zh' ? '出现序号（从零开始，可留空）' : '(zero-based, optional)');
+      expect(html).toContain(lang === 'zh' ? '重叠出现也计数' : 'overlapping occurrences also count');
+      expect(html).toContain('&lt;script&gt;fixture only&lt;/script&gt;'); expect(html).not.toContain('<script>');
+      expect(html).toContain(lang === 'zh' ? '原始消息（只读）' : 'Original message (read-only)');
+      const parsed = new DOMParser().parseFromString(html, 'text/html');
+      const original = parsed.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${lang === 'zh' ? '原始消息（只读）' : 'Original message (read-only)'}"]`);
+      expect(original?.readOnly).toBe(true); expect(original?.disabled).toBe(false);
+    }
+  });
+  it.each(revisionEntries)('%s preserves failed drafts, sends a complete locator replacement and freezes its original baseline', async entry => {
+    const { detail, analysis } = citationFixture(), pending = deferred<Response>(), saved = vi.fn();
+    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry
+      ? calls.filter(value => value.operation === entry).length === 1 ? pending.promise : json(detail) : undefined);
+    const view = render(citationEditor(entry, detail, saved), { wrapper });
+    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
+    expect((screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }) as HTMLInputElement).value).toBe('1');
+    change('Quotation for citation 1', 'Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Add citation' }));
+    change('Quotation for citation 2', 'Beta');
+    fireEvent.click(screen.getByRole('button', { name: 'Add citation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove citation 3' }));
+    revisionReason(entry);
+    const refreshed = structuredClone(detail); refreshed.history.generation = 7;
+    view.rerender(citationEditor(entry, refreshed, saved));
+    fireEvent.click(revisionSaveButton(entry));
+    expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(revisionSaveButton(entry));
+    await waitFor(() => expect(calls.filter(call => call.operation === entry)).toHaveLength(1));
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
+    const command = calls.find(call => call.operation === entry)!.body;
+    expect(command.generation).toBe(1);
+    expect(command.citationLocators).toEqual([
+      { evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: 1 } },
+      { evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Beta' } },
+    ]);
+    expect(JSON.stringify(command.citationLocators)).not.toMatch(/"(?:start|end)"/);
+    await act(async () => pending.resolve(json({ error: 'knowledge_citations_invalid', detail: '/private/secret-source' }, 400)));
+    await screen.findByText(/Invalid citations. Check the source, exact quotation and occurrence/);
+    expect(document.body.textContent).not.toContain('/private/secret-source');
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Alpha');
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(false);
+    expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(false);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Occurrence for citation 2 (zero-based, optional)' }), { target: { value: '0' } });
+    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Occurrence for citation 2 (zero-based, optional)' }));
+    fireEvent.click(revisionSaveButton(entry));
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+    expect(calls.filter(call => call.operation === entry)).toHaveLength(2);
+  });
+  it.each(revisionEntries)('%s synchronizes a same-window message change across the full evidence link without replacing quotations', async entry => {
+    const { detail, analysis } = citationFixture(), saved = vi.fn();
+    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? json(detail) : undefined);
+    render(citationEditor(entry, detail, saved), { wrapper });
+    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add citation' })); change('Quotation for citation 2', 'Beta');
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Source message for citation 1' }));
+    fireEvent.click(await screen.findByText('1 · user · 纠正：Alpha 未使用 Beta'));
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Alpha 使用 Beta');
+    expect((screen.getByRole('textbox', { name: 'Original message (read-only)' }) as HTMLTextAreaElement).value).toBe('纠正：Alpha 未使用 Beta');
+    change('Quotation for citation 1', 'Alpha 未使用 Beta');
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }), { target: { value: '0' } });
+    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }));
+    revisionReason(entry); fireEvent.click(revisionSaveButton(entry)); await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+    const command = calls.find(call => call.operation === entry)!.body;
+    expect((command.draft as KnowledgeCandidateDetail['revision']).evidence[0].evidenceRef).toBe('record-2');
+    expect((command.citationLocators as { selection: { evidenceRef: string } }[]).map(locator => locator.selection.evidenceRef)).toEqual(['record-2', 'record-2']);
+  });
+  it.each(revisionEntries.flatMap(entry => [409, 503].map(status => ({ entry, status }))))('$entry freezes $status outcomes and only reads current knowledge without another write', async ({ entry, status }) => {
+    const { detail, analysis } = citationFixture(), saved = vi.fn(), readback = vi.fn();
+    const latest = structuredClone(detail); latest.revision.revisionId = uuid(901); latest.revision.revisionReason = 'New persisted revision';
+    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry
+      ? json({ error: status === 409 ? 'knowledge_conflict' : '/private/raw-server-error' }, status)
+      : call.operation === 'show' ? json(latest) : undefined);
+    render(citationEditor(entry, detail, saved, readback), { wrapper });
+    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
+    change('Quotation for citation 1', 'Preserved source draft'); revisionReason(entry);
+    fireEvent.click(revisionSaveButton(entry));
+    await screen.findByRole('button', { name: 'Check latest knowledge (read-only)' });
+    expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Preserved source draft');
+    expect(document.body.textContent).not.toContain('/private/raw-server-error');
+    fireEvent.click(revisionSaveButton(entry));
+    fireEvent.click(screen.getByRole('button', { name: 'Check latest knowledge (read-only)' }));
+    await screen.findByText('Latest revision loaded');
+    expect(saved).not.toHaveBeenCalled(); expect(calls.filter(call => call.operation === entry)).toHaveLength(1);
+    expect(calls.filter(call => call.operation === 'show').map(call => call.body)).toEqual([{ workspace: '/citation-fixture', operation: 'show', id: detail.revision.knowledgeId }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Close draft and inspect this revision' }));
+    expect(readback).toHaveBeenCalledWith(latest); expect(saved).not.toHaveBeenCalled();
+  });
+  it.each(revisionEntries)('%s discards late write and readback responses after unmount without resending', async entry => {
+    const { detail, analysis } = citationFixture(), saved = vi.fn(), readback = vi.fn(), pendingWrite = deferred<Response>();
+    const first = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? pendingWrite.promise : undefined);
+    const writer = render(citationEditor(entry, detail, saved, readback), { wrapper });
+    await screen.findByRole('textbox', { name: 'Quotation for citation 1' }); revisionReason(entry);
+    fireEvent.click(revisionSaveButton(entry));
+    await waitFor(() => expect(first.filter(call => call.operation === entry)).toHaveLength(1));
+    expect(first.find(call => call.operation === entry)!.body).not.toHaveProperty('citationLocators');
+    writer.unmount(); expect(first.find(call => call.operation === entry)!.signal?.aborted).toBe(true);
+    await act(async () => pendingWrite.resolve(json(detail)));
+    expect(saved).not.toHaveBeenCalled(); expect(readback).not.toHaveBeenCalled();
+
+    const pendingRead = deferred<Response>();
+    const second = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? json({}, 503) : call.operation === 'show' ? pendingRead.promise : undefined);
+    const reader = render(citationEditor(entry, detail, saved, readback), { wrapper });
+    await screen.findByRole('textbox', { name: 'Quotation for citation 1' }); revisionReason(entry); fireEvent.click(revisionSaveButton(entry));
+    fireEvent.click(await screen.findByRole('button', { name: 'Check latest knowledge (read-only)' }));
+    await waitFor(() => expect(second.filter(call => call.operation === 'show')).toHaveLength(1));
+    reader.unmount(); expect(second.find(call => call.operation === 'show')!.signal?.aborted).toBe(true);
+    await act(async () => pendingRead.resolve(json(detail)));
+    expect(saved).not.toHaveBeenCalled(); expect(readback).not.toHaveBeenCalled();
+    expect(second.filter(call => call.operation === entry)).toHaveLength(1);
+  });
+
 });

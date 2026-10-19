@@ -81,6 +81,23 @@ omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revis
 
 使用实际读取的 generation，不照抄示例数字。修订生成新版本，旧内容和处理理由仍保留，新版本不继承旧版本的保留选择。原文位置继续绑定；新提及或实体必须在同一分析的原文中纠正，不能凭空填入引用。新来源窗口需要新的提炼。可用 `show --revision <old-revision-id>` 查看旧版本。
 
+补入后文条件、纠正错误引文或增加证据链接时，把新修订需要的**全部引文**保存为 `citations.json`，再给 `revise` 或 `apply-entities` 加上 `--citations ./citations.json`：
+
+```json
+[
+  {
+    "evidenceLinkId": "<draft-evidence-link-id>",
+    "selection": {
+      "evidenceRef": "<same-window-evidence-ref>",
+      "quote": "需要逐字核对的原文片段",
+      "occurrence": 0
+    }
+  }
+]
+```
+
+从绑定实体分析的来源消息复制 `evidenceRef` 和连续原文，链接标识对应草稿的 `evidence`；一个链接可引用多段。`occurrence` 从零计数，重叠也算一次；同一片段出现多次时必须明确选择，不能猜测第一处。不要填写 start／end，宿主会按原文计算。省略 `--citations` 沿用仍被草稿引用的旧引文；提供文件则完整替换，空数组无效。定位或引用错误会保留原修订；不能用另一个来源窗口的材料补引文。Studio 的两种修订入口也能编辑引文并查看原消息；明确的引用错误保留草稿供纠正，冲突或结果未知时先核对最新知识，不盲目重提。
+
 
 ## 核对实体并应用纠正 {#核对实体并应用纠正}
 

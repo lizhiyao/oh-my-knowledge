@@ -1,5 +1,5 @@
 const rejectedCodes = new Set([
-  'knowledge_conflict', 'knowledge_storage_unsupported', 'knowledge_workspace_busy', 'knowledge_tags_invalid', 'knowledge_capacity_exceeded',
+  'knowledge_conflict', 'knowledge_storage_unsupported', 'knowledge_workspace_busy', 'knowledge_tags_invalid', 'knowledge_capacity_exceeded', 'knowledge_citations_invalid',
   'carrier_conflict', 'carrier_knowledge_region_conflict', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'carrier_capacity_exceeded',
   'request_body_too_large',
 ]);
