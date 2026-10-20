@@ -234,3 +234,80 @@ describe('core content-object coverage diagnostic (authored responses, separate 
     expect(review.identityPairs).toMatchObject([{ expected: 'same', status: 'wrong_split' }]);
   });
 });
+
+
+/** These authored judgments exercise the existing gate; no source-claim NLP is added. */
+describe('source-claim fields remain semantic review obligations (isolated synthetic development)', () => {
+  const claims = [
+    { caseId: 'dev-independent-review-with-unsupported-containment', entityId: 'harbor-script',
+      claim: '河港导览词包含珊瑚展柜清单，清单属于该导览词。', errorCode: 'unsupported_fact',
+      rationale: '同批分别审查不支持两份资料间的包含或所属关系；明确的内部播报段落不能替该关系背书。' },
+    { caseId: 'dev-provider-organizer-with-unknown-origin', entityId: 'tundra-plan',
+      claim: '青禾最先提出苔原采样构想，是该构想的提出者。', errorCode: 'provenance',
+      rationale: '来源只支持青禾提供与整理，未给苔原构想提出者；另一方案的明确来源不能转借。' },
+  ];
+  const fieldCases = claims.flatMap(claim => (['description', 'qualifiers', 'rationale'] as const).map(field => ({ ...claim, field })));
+  it.each(fieldCases)('blocks an authored unsupported $field claim despite explicit exact anchors ($caseId)',
+    ({ caseId, entityId, claim, errorCode, rationale, field }) => {
+      const sample = coreSelected(caseId), output = authored(sample);
+      const entity = output.entities.find(value => value.entityId === entityId)!;
+      const mention = output.mentions.find(value => value.entityId === entityId)!;
+      if (field === 'description') entity.description = claim;
+      else if (field === 'qualifiers') entity.qualifiers = [claim];
+      else mention.rationale = claim;
+      entity.uncertainties = ['该来源关系或角色尚未获确认；此说明不能抵消其它字段已写入的无保留断言。'];
+      expect(mention.basis).toBe('explicit');
+      const { checked, review } = inspect(sample, output);
+      expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+      expect(review.criticalMentionRecall.value).toBe(1);
+      expect(review.identities.every(value => value.status === 'matched')).toBe(true);
+      expect(review.identityPairs.every(value => value.status === 'matched')).toBe(true);
+      expect(review.semanticReview).toBe('pending');
+      const context = semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors });
+      expect(evaluateSemanticReview(context)).toMatchObject({ status: 'pending', outputReview: { reviewed: 0 } });
+      const receipt = { reviewVersion: 'omk-entity-output-review/v1', planId: context.plan.planId, capturesDigest: context.capturesDigest,
+        reviewer: { actorKind: 'agent', actorId: coreFixture.authors[0] }, independentHuman: false, reviewedAt: '2020-03-01T00:00:00Z',
+        decisions: semanticReviewTargets(context).map(target => {
+          const wrong = field === 'rationale' ? target.itemKind === 'mention' && target.mentionId === mention.mentionId
+            : target.itemKind === 'entity' && target.entityId === entityId;
+          return { target, verdict: wrong ? 'incorrect' : 'uncertain', errorCodes: wrong ? [errorCode] : [],
+            rationale: wrong ? rationale : '本用例只显式裁决这项来源断言；其它目标仍待逐项复核。' };
+        }) };
+      const report = evaluateSemanticReview({ ...context, receipt });
+      expect(report).toMatchObject({ status: 'blocked', reference: { goldReady: false },
+        outputReview: { confirmedErrors: 1, requiredGaps: 0, independentHuman: false } });
+      expect(report.blockers).toContain('critical_semantic_error');
+      expect(report.blockers).not.toContain('structural_rejection');
+      expect(report.blockers).not.toContain('critical_regression_failure');
+    });
+
+  it.each([
+    { caseId: claims[0].caseId, form: 'neutral independent review' },
+    { caseId: claims[0].caseId, form: 'explicit local inclusion' },
+    { caseId: claims[1].caseId, form: 'provider with unknown origin' },
+    { caseId: claims[1].caseId, form: 'explicit origin and organizer' },
+  ])('keeps faithful $form without mechanical rejection ($caseId)', ({ caseId, form }) => {
+    const sample = coreSelected(caseId), output = authored(sample);
+    if (form === 'explicit local inclusion') {
+      output.entities[0].description = '河港导览词；来源明确其内部包含闭馆播报段落，展柜清单另行审查。';
+      output.entities[0].qualifiers = ['内部有闭馆播报段落'];
+    } else if (form === 'provider with unknown origin') {
+      output.entities[0].description = '青禾提供并整理的苔原采样方案；来源未说明最初构想提出者。';
+      output.entities[0].uncertainties = ['最初构想提出者未知'];
+      expect(output.entities[0].identityStatus).toBe('proposed');
+    } else if (form === 'explicit origin and organizer') {
+      output.entities[1].qualifiers = ['最初构想由闻溪提出', '青禾整理成稿'];
+    }
+    const { checked, review } = inspect(sample, output);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    expect(review.criticalMentionRecall.value).toBe(1);
+    const context = semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors });
+    const receipt = { reviewVersion: 'omk-entity-output-review/v1', planId: context.plan.planId, capturesDigest: context.capturesDigest,
+      reviewer: { actorKind: 'agent', actorId: coreFixture.authors[0] }, independentHuman: false, reviewedAt: '2020-03-01T00:00:00Z',
+      decisions: semanticReviewTargets(context).map(target => ({ target, verdict: 'correct', errorCodes: [],
+        rationale: '此合成响应保留有据指代和关系／角色，来源未知仍如实保留；判断仅为测试作者提供的局部复核见证。' })) };
+    expect(evaluateSemanticReview({ ...context, receipt })).toMatchObject({ status: 'exploratory_reviewed',
+      reference: { goldReady: false }, outputReview: { confirmedErrors: 0, requiredGaps: 0, uncertain: 0, independentHuman: false } });
+    // This demonstrates that no deterministic keyword filter rejects the faithful response, not model success or Gold.
+  });
+});

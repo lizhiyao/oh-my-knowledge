@@ -435,6 +435,161 @@
         "两条有独立作用的局部规则可以分别保留；背景所属方案没有成为独立评审对象，不要求补出整体。",
         "整体与局部边界不是固定每次生成一对owner/part，也不把不同局部规则合并为背景方案。"
       ]
+    },
+    {
+      "caseId": "dev-independent-review-with-unsupported-containment",
+      "projectGroup": "dev-independent-review-with-unsupported-containment",
+      "conversationGroup": "dev-independent-review-with-unsupported-containment",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "请在同一批次分别审查《河港导览词》和《珊瑚展柜清单》，两项各自给出意见。当前记录未说明两份资料是否相互包含或所属。《河港导览词》明确包含“闭馆播报段落”，这是导览词内部的一段。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "source-claims"
+      ],
+      "entities": [
+        {
+          "entityKey": "harbor-script",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被单独审查的河港导览词；同批清单不是已知成员。来源只明确导览词内有闭馆播报段落。"
+        },
+        {
+          "entityKey": "coral-inventory",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被单独审查的珊瑚展柜清单；与另一资料的包含或所属关系未给。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-harbor-script",
+          "entity": "harbor-script",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《河港导览词》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "此处完整标题指向受审资料整体，不增补完整规范身份或组件身份。"
+        },
+        {
+          "mentionKey": "reviewed-coral-inventory",
+          "entity": "coral-inventory",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《珊瑚展柜清单》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "原文独立指向另一份受审资料；同批审查不证明包含或所属。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "逐项核对description、qualifiers和mention.rationale中的包含或所属断言；同批独立审查本身不提供这些关系。",
+        "精确标题提及与basis=explicit仅支持此处指代，不为额外关系背书；无据断言不能用unknown抵消。",
+        "来源明确的导览词内播报段落关系可保留；背景局部未被独立审查，不强制增加实体。",
+        "完整标题指资料整体的正常读法不应机械当作完整规范名称或组件身份主张。"
+      ]
+    },
+    {
+      "caseId": "dev-provider-organizer-with-unknown-origin",
+      "projectGroup": "dev-provider-organizer-with-unknown-origin",
+      "conversationGroup": "dev-provider-organizer-with-unknown-origin",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "比较《苔原采样方案》和《盐沼采样方案》。《苔原采样方案》由资料员青禾提供并整理，记录没有说明谁最先提出该构想。《盐沼采样方案》的最初构想由研究员闻溪提出，青禾只整理成稿。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "source-claims"
+      ],
+      "entities": [
+        {
+          "entityKey": "tundra-plan",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被比较的苔原采样方案；青禾提供并整理，最初构想提出者在记录中未知。"
+        },
+        {
+          "entityKey": "salt-marsh-plan",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被比较的盐沼采样方案；来源明确最初构想由闻溪提出，青禾整理成稿。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "compared-tundra-plan",
+          "entity": "tundra-plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《苔原采样方案》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "首处标题明确指向被比较的方案；后文提供整理角色不自动变为构想提出角色。"
+        },
+        {
+          "mentionKey": "compared-salt-marsh-plan",
+          "entity": "salt-marsh-plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《盐沼采样方案》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "首处标题明确指向另一方案；来源后文独立给出它的构想来源。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "提供、整理、转述或执行身份不自动证明构想发起或提出；各字段的额外来源角色须另有依据。",
+        "未知构想来源不改变已知方案的proposed身份；中性描述和明确的来源未知可保留。",
+        "闻溪提出盐沼构想与青禾整理成稿分别有原文依据，不机械禁止来源明确的提出角色。"
+      ]
     }
   ]
 }

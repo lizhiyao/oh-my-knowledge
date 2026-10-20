@@ -240,10 +240,10 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('versions whole-part guidance while preserving frozen controls and all eight demonstration bytes', () => {
+  it('versions field-level source grounding while preserving frozen controls and all eight demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v28');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v30');
     expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
     expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
       .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');
@@ -271,7 +271,7 @@ describe('derived strict structural wire with original itemwise admission', () =
     expect(control.length).toBe(31884);
     expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v27');
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v29');
     const frozenV18 = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/v18-candidate-strict.prompt.txt', import.meta.url));
     expect(createHash('sha256').update(frozenV18).digest('hex')).toBe('46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229');
   });
