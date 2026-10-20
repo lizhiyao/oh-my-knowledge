@@ -25,7 +25,7 @@ description: 对冻结的实体提取输出逐项语义复核，并形成保守�
 | [纠正、冲突与历史](./entity-extraction.md) | 保留不可变原始记录、精确 revision 绑定、显式新 revision 及拒绝／恢复路径。 | 检查后续纠正、未解决冲突和发言归属；纠正不得强化原证据。 | 用新 revision 及证据纠正归属／不复用旧身份改义或覆盖出生结果。 |
 | [元数据与截断来源](./entity-extraction-evaluation.md) | 保留冻结输入及声明的限制。 | 检查指令／元数据污染、不完整上下文和无依据补全；窗口缺失的证据保持未知。 | 把环境消息标为元数据／不将其当作用户主张的事实。 |
 
-领域规则使用指南 `omk-entity-annotation/v11` 和语料 `omk-entity-quality/v13`；确定性关键检查仍为 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v23`、strict `knowledge-extraction-v24`、response Schema v4、run v5 和 quality projection v3 保持各自身份。新输出复核协议拥有独立 v1 身份；加入它不会静默升级旧指南、重算历史分数或迁移存量 run。时间与引用语境指引及示范字节变化显式标记 **BREAKING-COMPARABILITY**，不证明语义通过；逐项时间、身份和限定复核仍然必要。
+领域规则使用指南 `omk-entity-annotation/v11` 和语料 `omk-entity-quality/v13`；确定性关键检查仍为 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v25`、strict `knowledge-extraction-v26`、response Schema v4、run v5 和 quality projection v3 保持各自身份。新输出复核协议拥有独立 v1 身份；加入它不会静默升级旧指南、重算历史分数或迁移存量 run。时间、引用语境与核心对象指引及示范字节变化显式标记 **BREAKING-COMPARABILITY**，不证明语义通过；逐项时间、身份和限定复核仍然必要。
 
 ## 2. 在输出前冻结复核范围
 

@@ -91,11 +91,13 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
+v25／v26 的核心对象指引与第八个完整 wire 示范属于 **BREAKING-COMPARABILITY**。来源独立评价或修订的内容对象，不能由包含它的文件、页面或位置替代；两者都被独立讨论时，分别保留有据身份。包含关系本身不要求把每个章节或示例拆成实体。前七个示范序列化字节不变。动因是一个已见真实开发窗口的重复运行漏掉学习正例：返回出处文件并在文件 description 提到正例，不等于覆盖正例身份。这是特定遗漏线索，不是错误率估计。既有指南／评分身份、64例语料、wire、公共 Schema、存储和 single 调用政策不变。独立合成诊断使用既有检查验证必需内容遗漏、无据拆分和明确别名；构造响应证明工程检查，不证明真实模型改善。旧计划和结果不改，新请求须有新身份及逐项真实验证。
+
 `extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5；不可变原生结果保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`。运行 metadata 绑定 sidecar 的身份／摘要、接纳事实与稳定的实体／知识写入意图。metadata 和 outcome 容量均须在发送前通过接纳。既有响应守卫按 JavaScript 字符串长度限制为 2 × 1024² 个 code unit；完整 outcome 先归档，再限制接纳，不截断原生证据。新 reader 校验现行格式及精确引用，不接受放入新目录的 v4 文件。
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 strict `knowledge-extraction-v24`：strict 渲染包含七个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v23`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 strict `knowledge-extraction-v26`：strict 渲染包含八个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v25`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 

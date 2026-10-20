@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v23`、strict `knowledge-extraction-v24`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v25`、strict `knowledge-extraction-v26`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 
@@ -19,6 +19,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 指南 v11 与语料 v13 按[身份规则 §2.4](./entity-identity.md) 显式约定 Issue／PR 工作记录边界，与 prompt-json v19／strict v20 一起相对指南 v10／语料 v12 构成 **BREAKING-COMPARABILITY**；旧标注、冻结资产、原始输出和已报告分数保留原身份。检查器 v5 保持不变：将未标注的额外实体提交逐项复核，不增加自动语义判决或生成后的黑名单。新用例属于开发回归，不是新的盲测质量证据。
 
 本轮引用语境修正保留指南 v11 的标注／评分规则身份、语料 v13 的 64 例原始字节与检查器 v5 源码；当前双语指南页面的版本说明和诊断内容已更新，因此页面原始字节及 `guideDigest` 会变化。新 prompt-json v23／strict v24 的请求须使用新的测量身份并重新冻结复核包，不能复用旧许可、runId 或回执。历史冻结包中的双语指南、输出和分数保留原始字节；“指南规则版本不变”不表示当前页面摘要不变。
+
+后续 v25／v26 修正在同时提到出处文件时，保留被独立评价的内容对象。指南 v11 规则、语料 v13 和检查器 v5 不变；新的内容／载体合成诊断保留独立身份与分母。构造的仅文件响应可以通过结构接纳，但既有必需提及检查仍能暴露内容对象缺失，文件 description 不能替代该身份。反向案例覆盖仅讨论文件、背景包含关系和明确别名。遗漏来自已见真实来源的重复观测，仍是开发证据；这些回归和提示词示范都不证明稳定改善或独立验收。当前指南页面字节和新 `guideDigest` 变化，须重新冻结测量包；历史分数和输出不改。
 
 检查器 v5 落实双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready。历史复核包及其已报告就绪状态保留原测量身份。历史生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新改变新的 preparation 摘要，变化的 pending plan 须在捕获前重新准备冻结包及匹配记录；旧 runId 与实验许可不能授权变化的请求。旧冻结资产、结果及 receipt 保持原样，不迁移、不重评分。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
 

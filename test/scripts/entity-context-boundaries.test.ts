@@ -10,14 +10,20 @@ import { modelWindow } from '../knowledge/fixtures.js';
 const fixtureText = readFileSync(new URL('../fixtures/entity-context-boundaries-v1.json', import.meta.url), 'utf8');
 const fixture = JSON.parse(fixtureText);
 const cases = EntityReviewCorpusSchema.shape.cases.element.array().parse(fixture.cases);
+const coreFixtureText = readFileSync(new URL('../fixtures/entity-core-object-coverage-v1.json', import.meta.url), 'utf8');
+const coreFixture = JSON.parse(coreFixtureText);
+const coreCases = EntityReviewCorpusSchema.shape.cases.element.array().parse(coreFixture.cases);
+const coreSelected = (caseId: string) => coreCases.find(sample => sample.caseId === caseId)!;
 const baseline = parseEntityReviewCorpus(readFileSync(new URL('../fixtures/entity-extraction-review-v13.json', import.meta.url), 'utf8'));
 const selected = (caseId: string) => cases.find(sample => sample.caseId === caseId)!;
 
 function authored(sample: EntityReviewCase) {
   const output = modelWindow(); output.proposals = [];
+  const isContextFixture = cases.some(value => value.caseId === sample.caseId);
   output.entities = sample.entities.map(entity => ({ ...output.entities[0], entityId: entity.entityKey,
-    label: entity.entityKey, description: entity.rationale, referentKind: 'object',
-    qualifiers: sample.caseId === 'dev-unconfirmed-context-correspondence'
+    label: sample.mentions.find(mention => mention.entity === entity.entityKey)?.alternatives[0]?.quote ?? entity.entityKey,
+    description: entity.rationale, referentKind: entity.referentKinds[0] ?? 'object',
+    qualifiers: !isContextFixture ? [] : sample.caseId === 'dev-unconfirmed-context-correspondence'
       ? entity.entityKey === 'unresolved-prompt' ? ['记录内当前版本 r14'] : []
       : [entity.entityKey === 'example-prompt' ? '示例内当前版本 r14' : '本轮审查当前版本 r17'],
     identityStatus: entity.identityStatus, possibleEntityIds: entity.possibleEntities,
@@ -34,31 +40,35 @@ const inspect = (sample: EntityReviewCase, output: ReturnType<typeof authored>) 
   return { checked, review: checkEntityReview(sample, checked) };
 };
 
-/** Test-authored judgment; the deterministic engine validates it rather than inferring qualifier support. */
-function qualifierReview(sample: EntityReviewCase, output: ReturnType<typeof authored>) {
-  // A targeted development harness with its own identity; never relabel these cases as held-out v13 data.
-  const corpus = { ...baseline, authors: fixture.authors, cases: [sample] };
-  const measurementId = reviewDigest(fixtureText);
+/** The isolated diagnostic supplies its own bytes; its cases never enter the published 64-case corpus. */
+function semanticContext(sample: EntityReviewCase, output: ReturnType<typeof authored>,
+  source: { raw: string; authors: string[] } = { raw: fixtureText, authors: fixture.authors }) {
+  const corpus = { ...baseline, authors: source.authors, cases: [sample] };
+  const measurementId = reviewDigest(source.raw);
   const plan = createSemanticPlan({ measurementId, declaredAt: '2020-01-01T00:00:00Z', split: 'development', repeats: 1,
     caseIds: [sample.caseId], criteria: { maxConfirmedErrors: 0,
-      confirmedErrorsRationale: 'This authored qualifier-boundary regression permits no confirmed unsupported qualifier.',
-      maxRequiredGaps: 0, requiredGapsRationale: 'No knowledge coverage obligations are declared in this entity-only diagnostic.' } });
+      confirmedErrorsRationale: 'This scoped authored regression permits no confirmed semantic error.',
+      maxRequiredGaps: 0, requiredGapsRationale: 'These entity-only diagnostics declare no mandatory knowledge roles.' } });
   const raw = JSON.stringify({ captureVersion: 'omk-entity-captures/v1', measurementId, split: 'development', repeats: 1,
     startedAt: '2020-02-01T00:00:00Z', executor: 'authored-fixture', model: 'no-model-call',
     records: [{ caseId: sample.caseId, repeat: 1, inputDigest: reviewDigest(JSON.stringify(entityReviewInput(sample))),
       result: { captureStatus: 'output', output: JSON.stringify(output) } }] });
   const capture = reviewCapture(raw, corpus, measurementId, checkWindowExtractionResponse);
-  const capturesDigest = reviewDigest(raw);
-  const receipt = { reviewVersion: 'omk-entity-output-review/v1', planId: plan.planId, capturesDigest,
+  return { plan, capturesDigest: reviewDigest(raw), capture, corpus, measurementId, authorReview: 'completed' as const,
+    annotationReview: 'pending' as const, now: '2020-04-01T00:00:00Z' };
+}
+
+/** Test-authored judgment; the deterministic engine validates it rather than inferring qualifier support. */
+function qualifierReview(sample: EntityReviewCase, output: ReturnType<typeof authored>) {
+  const context = semanticContext(sample, output);
+  const receipt = { reviewVersion: 'omk-entity-output-review/v1', planId: context.plan.planId, capturesDigest: context.capturesDigest,
     reviewer: { actorKind: 'agent', actorId: fixture.authors[0] }, independentHuman: false, reviewedAt: '2020-03-01T00:00:00Z',
-    decisions: semanticReviewTargets({ capture, corpus }).map(target => {
+    decisions: semanticReviewTargets(context).map(target => {
       const wrong = target.itemKind === 'entity' && target.entityId === 'atlas-prompt';
       return { target, verdict: wrong ? 'incorrect' : 'uncertain', errorCodes: wrong ? ['unsupported_qualifier'] : [],
         rationale: wrong ? 'Atlas 的版本未给；r14 来自没有确认对应关系的另一处记录，不能移入 Atlas 的 description 或 qualifiers。'
           : '本测试只裁决已知的限定归属错误，其余目标仍待逐项语义复核。' };
     }) };
-  const context = { plan, capturesDigest, capture, corpus, measurementId, authorReview: 'completed' as const,
-    annotationReview: 'pending' as const, now: '2020-04-01T00:00:00Z' };
   return { pending: evaluateSemanticReview(context), judged: evaluateSemanticReview({ ...context, receipt }) };
 }
 
@@ -126,5 +136,64 @@ describe('entity context boundary development diagnostic (authored responses, no
       outputReview: { independentHuman: false, confirmedErrors: 1 } });
     expect(judged.blockers).toContain('confirmed_error_threshold');
     expect(judged.blockers).not.toContain('structural_rejection');
+  });
+});
+
+
+describe('core content-object coverage diagnostic (authored responses, separate development scope)', () => {
+  it('admits the source-defined targets without forcing background content or changing the published denominator', () => {
+    expect(coreFixture).toMatchObject({ reviewVersion: 'omk-entity-core-object-coverage/v1', provenance: 'synthetic' });
+    expect(baseline.cases).toHaveLength(64);
+    expect(baseline.cases.reduce((total, sample) => total + sample.mentions.length, 0)).toBe(212);
+    for (const sample of coreCases) {
+      expect(sample.split).toBe('development');
+      expect(baseline.cases.some(value => value.caseId === sample.caseId)).toBe(false);
+      const { checked, review } = inspect(sample, authored(sample));
+      expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+      expect(review.criticalMentionRecall).toMatchObject({ matched: sample.mentions.length, total: sample.mentions.length });
+      expect(review.identityPairs.every(pair => pair.status === 'matched')).toBe(true);
+      expect(review.identities.every(identity => identity.status === 'matched')).toBe(true);
+      expect(review.semanticReview).toBe('pending'); expect(review.precision).toBeNull(); expect(review.f1).toBeNull();
+    }
+    expect(coreSelected('dev-edit-file-with-background-content').entities.map(value => value.entityKey)).toEqual(['edited-file']);
+    expect(coreSelected('dev-background-section-not-target').entities.map(value => value.entityKey)).toEqual(['shift-guide']);
+  });
+
+  it('blocks a missing reviewed content identity even when its source file description names the content', () => {
+    const sample = coreSelected('dev-file-only-locates-content'), output = authored(sample);
+    output.entities = [{ ...output.entities[0], entityId: 'locator-file', label: 'lessons/rook-pair.md',
+      description: '保存被审查棋类教学练习《双车配合》的来源文件。' }];
+    output.mentions = [{ mentionId: 'file-path', entityId: 'locator-file', basis: 'explicit', rationale: '文件路径仅提供练习的定位出处。',
+      selection: { evidenceRef: `${sample.caseId}:0`, quote: 'lessons/rook-pair.md', occurrence: 0 } }];
+    const { checked, review } = inspect(sample, output);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    expect(checked.analysis.entities).toHaveLength(1);
+    expect(review.criticalMentions).toMatchObject([{ mentionKey: 'reviewed-exercise', status: 'missing', entityId: null }]);
+    expect(review.identities).toMatchObject([{ entity: 'chess-exercise', status: 'not_evaluable' }]);
+    const report = evaluateSemanticReview(semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors }));
+    expect(report).toMatchObject({ status: 'blocked', reference: { goldReady: false } });
+    expect(report.blockers).toContain('critical_regression_failure');
+    expect(report.blockers).not.toContain('structural_rejection');
+  });
+
+  it('does not let complete source spans hide a merge of independently reviewed content and carrier', () => {
+    const sample = coreSelected('dev-content-and-carrier-evaluated'), output = authored(sample);
+    output.entities = output.entities.filter(entity => entity.entityId === 'tour-script');
+    output.entities[0].description = '导览词《潮汐》及其存储卡 card-7。';
+    output.mentions.forEach(mention => { mention.entityId = 'tour-script'; });
+    const { checked, review } = inspect(sample, output);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    expect(review.criticalMentionRecall.value).toBe(1);
+    expect(review.identityPairs).toMatchObject([{ expected: 'different', status: 'wrong_merge' }]);
+  });
+
+  it('detects splitting two explicit names for one artifact instead of inventing a content-container pair', () => {
+    const sample = coreSelected('dev-explicit-document-alias'), output = authored(sample);
+    output.entities.push({ ...output.entities[0], entityId: 'separate-artifact' });
+    output.mentions.find(mention => mention.mentionId === 'manual-alias')!.entityId = 'separate-artifact';
+    const { checked, review } = inspect(sample, output);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    expect(review.criticalMentionRecall.value).toBe(1);
+    expect(review.identityPairs).toMatchObject([{ expected: 'same', status: 'wrong_split' }]);
   });
 });
