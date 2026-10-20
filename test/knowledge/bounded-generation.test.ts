@@ -105,7 +105,7 @@ describe('bounded extraction generation', () => {
       { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001\n', system: '候选' },
       { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '\ud800' },
       { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '字'.repeat(700_000) },
-      ...['knowledge-extraction-v19', 'knowledge-extraction-v20', 'knowledge-extraction-v21', 'knowledge-extraction-v22', 'knowledge-extraction-v23', 'knowledge-extraction-v24', 'knowledge-extraction-v25', 'knowledge-extraction-v26', 'knowledge-extraction-v27', 'knowledge-extraction-v28', 'knowledge-extraction-v29'].map(promptVersion => ({
+      ...['knowledge-extraction-v19', 'knowledge-extraction-v20', 'knowledge-extraction-v21', 'knowledge-extraction-v22', 'knowledge-extraction-v23', 'knowledge-extraction-v24', 'knowledge-extraction-v25', 'knowledge-extraction-v26', 'knowledge-extraction-v27', 'knowledge-extraction-v28', 'knowledge-extraction-v29', 'knowledge-extraction-v30', 'knowledge-extraction-v31'].map(promptVersion => ({
         profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion, system: 'Different bytes cannot borrow a published identity.',
       })),
       { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: `${STRICT_EXTRACTION_PROMPT}\n改变` },

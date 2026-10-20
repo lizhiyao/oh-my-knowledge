@@ -3,7 +3,7 @@ import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from './model-wire.js';
 import { STRICT_EXTRACTION_FEWSHOT_BLOCK } from './strict-fewshot.js';
 
 /** Scope rules and few-shot rendering have their own identity; historical assets retain their frozen bytes. */
-export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v30' as const;
+export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v32' as const;
 const finalOutputRule = '输出纯 JSON 对象，responseKind 为 knowledge-extraction，schemaVersion 为 4，不要 Markdown 围栏。整个响应严格遵守以下 JSON Schema：\n';
 const boundary = EXTRACTION_PROMPT.indexOf(finalOutputRule);
 if (boundary < 0 || EXTRACTION_PROMPT.lastIndexOf(finalOutputRule) !== boundary) throw new Error('Extraction prompt final output rule changed; re-audit strict prompt rendering.');

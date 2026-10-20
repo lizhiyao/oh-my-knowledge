@@ -101,7 +101,7 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 strict `knowledge-extraction-v30`：strict 渲染包含八个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v29`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 strict `knowledge-extraction-v32`：strict 渲染包含八个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v31`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
@@ -116,6 +116,8 @@ v25／v26 的核心对象指引与第八个完整 wire 示范属于 **BREAKING-C
 v27／v28 进一步明确受审整体与局部内容的对应，属于 **BREAKING-COMPARABILITY**：规则与同一次调用内的输出自检字节变化，八个完整 wire 示范逐字节保留，不新增示范或调用阶段。v19 至 v26 的已登记原始摘要约束继续有效。指南 v11、检查器 v5、主语料 64 例／212 处关键提及、wire、公共 Schema、存储及 single 政策不变。动因仍是已见开发诊断的整体遗漏，不能据此宣称稳定改善；新字节须另冻测量身份、验证工程行为并逐项复核真实输出，旧运行和分数不重算。
 
 v29／v30 的来源断言指引与同一次调用内的输出自检属于 **BREAKING-COMPARABILITY**：description、qualifiers 和 mention rationale 分别需要来源依据，不机械地把整体或完整跨度措辞当成规范名称断言。八个 wire 示范与 v19 至 v28 已登记的原始字节摘要约束保持不变。指南 v11、检查器 v5、主语料 64 例／212 处关键提及、公共 Schema、wire、存储及 single 政策不变，不增加调用阶段。已见开发问题是本轮动因，不证明真实模型已服从或稳定改善。新 prompt 与指南页面字节须重新冻结测量身份并逐项复核；历史输出、分数与冻结包不改写。
+
+v31／v32 的双向覆盖自检属于 **BREAKING-COMPARABILITY**：生成在同一次调用内从来源独立讨论的对象反查实体／提及目录，再从已输出身份反查来源。名称只出现在另一对象描述、陈述 context 或 citation 中，不构成遗漏对象已被保留。背景、包含关系和普通重复仍不要求机械拆分。八个示范及 v19 至 v30 已登记的原始字节约束保持不变；不新增调用阶段，不改变 Schema、wire、存储、收录政策或评分分母。手写遗漏检查验证诊断接线，不证明真实模型改善；新 prompt 字节须使用另行冻结的比较与逐项复核，历史输出和成绩保留原样。
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 

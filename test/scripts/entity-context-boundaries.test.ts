@@ -163,20 +163,26 @@ describe('core content-object coverage diagnostic (authored responses, separate 
 
   it.each([
     { caseId: 'dev-file-only-locates-content', entityId: 'locator-file', quote: 'lessons/rook-pair.md',
-      description: '保存被审查棋类教学练习《双车配合》的来源文件。' },
+      description: '保存被审查棋类教学练习《双车配合》的来源文件。', missingEntity: 'chess-exercise' },
     { caseId: 'dev-whole-review-with-local-guidance', entityId: 'rope-guidance', quote: '绳索收纳提示',
-      description: '《岬湾救援手册》中的一条工具存放指引，只指局部，不指手册整体。' },
-  ])('blocks the absent core when only a locator or local guidance is returned ($caseId)', ({ caseId, entityId, quote, description }) => {
+      description: '《岬湾救援手册》中的一条工具存放指引，只指局部，不指手册整体。', missingEntity: 'rescue-manual' },
+    { caseId: 'dev-content-and-carrier-evaluated', entityId: 'tour-script', quote: '导览词《潮汐》',
+      description: '记录在存储卡 card-7 上的导览词《潮汐》，这里只保留导览内容身份。', missingEntity: 'storage-card' },
+  ])('blocks an omitted independent object even when its name remains in another description ($caseId)', ({ caseId, entityId, quote, description, missingEntity }) => {
     const sample = coreSelected(caseId), output = authored(sample);
     output.entities = [{ ...output.entities[0], entityId, label: quote, description }];
     output.mentions = [{ mentionId: 'substitute-only', entityId, basis: 'explicit',
-      rationale: '这里只保留有据的定位载体或局部指引，未返回本轮被审查的核心整体。',
+      rationale: '这里只保留一个有据对象；description 中的其它名称没有对应的独立实体与提及。',
       selection: { evidenceRef: `${sample.caseId}:0`, quote, occurrence: 0 } }];
     const { checked, review } = inspect(sample, output);
     expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
     expect(checked.analysis.entities).toHaveLength(1);
-    expect(review.criticalMentions).toMatchObject([{ mentionKey: sample.mentions[0].mentionKey, status: 'missing', entityId: null }]);
-    expect(review.identities).toMatchObject([{ entity: sample.entities[0].entityKey, status: 'not_evaluable' }]);
+    const missingMentions = sample.mentions.filter(mention => mention.entity === missingEntity);
+    expect(review.criticalMentions.filter(mention => mention.status === 'missing')
+      .map(({ mentionKey, status, entityId }) => ({ mentionKey, status, entityId }))).toEqual(missingMentions.map(mention => ({
+      mentionKey: mention.mentionKey, status: 'missing', entityId: null,
+    })));
+    expect(review.identities.find(identity => identity.entity === missingEntity)).toMatchObject({ status: 'not_evaluable' });
     const report = evaluateSemanticReview(semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors }));
     expect(report).toMatchObject({ status: 'blocked', reference: { goldReady: false } });
     expect(report.blockers).toContain('critical_regression_failure');

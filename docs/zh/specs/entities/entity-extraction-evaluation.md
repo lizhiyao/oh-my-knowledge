@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v29`、strict `knowledge-extraction-v30`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v31`、strict `knowledge-extraction-v32`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 
@@ -25,6 +25,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 v27／v28 在同一次调用的规则与输出自检中明确整体／局部边界，属于 **BREAKING-COMPARABILITY**。参考要求来源中被独立审查的整体时，返回其局部指引或描述中提到整体，不能算整体身份覆盖；仅讨论局部或文件时不反向强制新增整体。局部对象资格未决与已知整体遗漏分别记录，不看输出事后放宽参考。八个示范、指南 v11 规则、检查器 v5 与主语料分母保持原样；当前指南页面及 `guideDigest` 变化，须重新冻结测量包。已见诊断和构造响应不证明新规则已消除遗漏、提升稳定性或完成真人验收。
 
 v29／v30 的来源断言澄清改变规则与同一次调用内的输出自检字节，属于 **BREAKING-COMPARABILITY**。description、qualifiers 和 mention rationale 分别评价：精确定位或 `basis: explicit` 不能证明新增的角色、包含或所属断言。同轮／同 PR 关联不补足这些关系。已确认无据的断言即使外部真伪未知仍是错误；真实短语歧义保持 uncertain，不能计为通过。完整跨度与整体称谓须结合上下文解释，不凭某个词认定编造规范标识。
+
+v31／v32 的双向覆盖自检属于 **BREAKING-COMPARABILITY**：生成在同一次调用内从来源独立讨论的对象反查实体／提及目录，再从已输出身份反查来源。名称只出现在另一对象描述、陈述 context 或 citation 中，不构成遗漏对象已被保留。背景、包含关系和普通重复仍不要求机械拆分。八个示范及 v19 至 v30 已登记的原始字节约束保持不变；不新增调用阶段，不改变 Schema、wire、存储、收录政策或评分分母。手写遗漏检查验证诊断接线，不证明真实模型改善；新 prompt 字节须使用另行冻结的比较与逐项复核，历史输出和成绩保留原样。
 
 八个示范、v19 至 v28 已登记的原始字节约束、指南 v11 规则、检查器 v5、64 例／212 处关键提及分母、公共 Schema、wire、存储及 single 政策不变。当前指南页面及 `guideDigest` 变化，须重新冻结测量包；历史包、run、分数与复核证据保留原身份。来源断言诊断仍是开发证据，不证明 v29／v30 输出已通过、能够泛化或完成独立真人验收，也不增加调用阶段。
 

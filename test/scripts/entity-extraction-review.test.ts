@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';
+import { EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/prompt.js';
 import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
 import { annotationReadiness, authorReviewStatus, entityReviewHtml, parseEntityReviewArguments, reviewCapture, reviewDigest, reviewReceiptStatus, reviewOutputRoot } from '../../scripts/bench/entity-extraction-review.js';
@@ -746,7 +747,7 @@ describe('entity extraction review with author evidence', () => {
         entry: join(PROJECT_ROOT, 'dist-scripts/bench/entity-extraction-review.js'), cwd: PROJECT_ROOT,
       });
       const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
-      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v29', checkVersion: ENTITY_CHECK_VERSION,
+      expect(manifest).toMatchObject({ promptVersion: EXTRACTION_PROMPT_VERSION, checkVersion: ENTITY_CHECK_VERSION,
         conclusion: 'not_evaluated', goldReady: false, modelCallsByThisCommand: 0,
         splitCounts: { development: 62, validation: 2 } });
       const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
