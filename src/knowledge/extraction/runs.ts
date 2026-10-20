@@ -220,14 +220,16 @@ export const ExtractionRunSchema = z.strictObject({
 export type ExtractionRun = z.infer<typeof ExtractionRunSchema>;
 export interface ExtractionRunStore {
   create(run: ExtractionRun): void;
+  /** Validate the manifest and its referenced native archives before execution or recovery. */
   read(runId: string): ExtractionRun;
-  list(): ExtractionRun[];
+  /** Validate manifests only; recorded outcome references do not attest current archive integrity. */
+  listManifests(): ExtractionRun[];
   save(run: ExtractionRun, expectedGeneration: number): void;
   writeOutcome(runId: string, attemptId: string, outcome: ExtractionOutcome, maxBytes: number): ExtractionOutcomeRef;
   readOutcome(runId: string, attemptId: string, ref?: ExtractionOutcomeRef): { outcome: ExtractionOutcome; ref: ExtractionOutcomeRef };
 }
 
-/** Safe run summary. Counts describe the prepared birth revision; inspection loads the chosen history revision. */
+/** Safe manifest summary. Counts describe the saved birth; recorded means a saved outcome receipt, not archive verification. */
 export function extractionRunSummary(run: ExtractionRun) {
   const analysis = run.entityAnalysis;
   const last = run.attempts[run.attempts.length - 1];

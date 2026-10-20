@@ -178,13 +178,16 @@ export class FileExtractionRunStore implements ExtractionRunStore {
       this.checkAllocation(run); this.checkArchived(run); this.publish(path, [JSON.stringify(run, null, 2)], true);
     });
   }
-  read(runId: string): ExtractionRun {
+  private readManifest(runId: string): ExtractionRun {
     this.checkRoot(); const raw = parse(readBounded(this.path(runId), EXTRACTION_RUN_MAX_BYTES)); assertCurrentStorage(raw, 'run');
     const run = this.check(raw); if (run.runId !== runId) throw new Error('Extraction run identity mismatch.');
-    this.checkArchived(run); return run;
+    return run;
   }
-  list(): ExtractionRun[] {
-    this.checkRoot(); return existsSync(this.root) ? readdirSync(this.root).filter(name => name.endsWith('.json')).sort().map(name => this.read(name.slice(0, -5))) : [];
+  read(runId: string): ExtractionRun {
+    const run = this.readManifest(runId); this.checkArchived(run); return run;
+  }
+  listManifests(): ExtractionRun[] {
+    this.checkRoot(); return existsSync(this.root) ? readdirSync(this.root).filter(name => name.endsWith('.json')).sort().map(name => this.readManifest(name.slice(0, -5))) : [];
   }
   save(input: ExtractionRun, expectedGeneration: number): void {
     this.checkRoot();

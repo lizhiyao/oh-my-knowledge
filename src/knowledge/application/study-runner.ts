@@ -355,7 +355,7 @@ export function replayExtractionStudyEvidence(input: unknown, expectedHost?: Ext
   const absent = () => Object.assign(new Error('Study evidence is not recorded.'), { code: 'ENOENT' });
   const forbidden = () => { throw new Error('Portable study replay cannot write or generate.'); };
   const runs: ExtractionRunStore = { create: forbidden, save: forbidden, writeOutcome: forbidden,
-    list: () => [...runRecords.values()], read: runId => { const run = runRecords.get(runId); if (!run) throw absent(); return run; },
+    listManifests: () => [...runRecords.values()], read: runId => { const run = runRecords.get(runId); if (!run) throw absent(); return run; },
     readOutcome: (runId, attemptId, expected) => {
       const native = nativeRecords.get(`${runId}/${attemptId}`); if (!native) throw absent();
       if (expected && !equal(expected, native.ref)) throw new Error('Portable native archive digest mismatch.');

@@ -39,14 +39,18 @@ describe('observe knowledge command wiring', () => {
     const run = { ...original, policy, attempts: [first, last], selectedAttemptId: last.attemptId };
     const command = { operation: 'resume' as const, id: run.runId };
     const completed = formatKnowledgeResult(run, 'zh', command, workspace);
-    expect(completed).toContain('completed'); expect(completed).toContain('结果已归档'); expect(completed).not.toContain('失败类别');
+    expect(completed).toContain('completed'); expect(completed).toContain('归档引用已记录'); expect(completed).not.toContain('失败类别');
     expect(completed).toContain('累计 token 预约 2176/3264'); expect(completed).toContain('已预约 2 次尝试');
     const pending = { ...run, status: 'generating' as const, selectedAttemptId: undefined, entityAnalysis: undefined, intents: [], committed: [], rawOutput: undefined,
       attempts: [first, { ...last, outcome: undefined }] };
     const waiting = formatKnowledgeResult(pending, 'zh', command, workspace);
-    expect(waiting).toContain('归档待确认'); expect(waiting).not.toContain('结果已归档'); expect(waiting).not.toContain('失败类别');
+    expect(waiting).toContain('归档待确认'); expect(waiting).not.toContain('归档引用已记录'); expect(waiting).not.toContain('失败类别');
     expect(waiting).not.toContain('本次调用已终止'); expect(waiting).toContain('尚无可恢复的模型结果');
     expect(waiting).toContain(`--workspace ${workspace}`);
+    const listed = formatKnowledgeResult([run], 'zh', { operation: 'runs' }, workspace);
+    expect(listed).toContain('归档引用已记录'); expect(listed).toContain('清单仅投影已保存记录，不校验当前归档完整性；恢复时会校验');
+    const english = formatKnowledgeResult([run], 'en', { operation: 'runs' }, workspace);
+    expect(english).toContain('archive reference recorded'); expect(english).toContain('Listings project saved records without verifying current archive integrity');
   });
   it('exports the exact wire schema and identity before reading settings or creating a workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-schema-cli-')); roots.push(root);

@@ -94,6 +94,18 @@ describe('shared knowledge application', () => {
     expect(() => extractionQuality([first, first])).toThrow('Duplicate extraction run');
   });
 
+  it.each(['missing', 'corrupt'] as const)('projects saved run/quality manifests without %s native archives but refuses recovery', async problem => {
+    const { app, snapshot, model, runs, generate, root } = setup();
+    const run = await app.generate(snapshot.snapshotId, model), quality = app.quality();
+    const path = join(root, 'extraction-runs', 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`);
+    if (problem === 'missing') rmSync(path); else writeFileSync(path, '{invalid native archive');
+    expect(app.runs()).toEqual([run]); expect(app.quality()).toEqual(quality);
+    expect(await executeKnowledgeOperation(app, { operation: 'runs' })).toEqual([run]);
+    expect(await executeKnowledgeOperation(app, { operation: 'quality' })).toEqual(quality);
+    expect(() => runs.read(run.runId)).toThrow(); expect(() => app.resume(run.runId)).toThrow();
+    await expect(app.generate(snapshot.snapshotId, model, run.runId)).rejects.toThrow();
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
   it('bounds the full UTF-8 model input before reservation, preserves source bytes and permits a smaller capture', async () => {
     const { app, snapshot, model, generate, source, runs } = setup('中'.repeat(400_000));
     const original = readFileSync(source);
@@ -101,7 +113,7 @@ describe('shared knowledge application', () => {
     expect(input.length + EXTRACTION_PROMPT.length).toBeLessThan(EXTRACTION_INPUT_MAX_BYTES);
     expect(Buffer.byteLength(input) + Buffer.byteLength(EXTRACTION_PROMPT)).toBeGreaterThan(EXTRACTION_INPUT_MAX_BYTES);
     await expect(app.generate(snapshot.snapshotId, model)).rejects.toThrow(/--start-record\/--end-record.*one turn/);
-    expect(generate).not.toHaveBeenCalled(); expect(runs.list()).toEqual([]); expect(app.list()).toEqual([]);
+    expect(generate).not.toHaveBeenCalled(); expect(runs.listManifests()).toEqual([]); expect(app.list()).toEqual([]);
     expect(readFileSync(source)).toEqual(original);
     writeFileSync(source, `${original.toString()}\n${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } })}`);
     const smaller = app.capture({ path: source, startRecord: 1, endRecord: 1 });
