@@ -47,6 +47,8 @@ Studio 首先呈现对象含义、限定、歧义、原文提及和关联知识�
 
 生成和逐项复核遵守[身份规则 §2.4](./entity-identity.md)：来源独立讨论 Issue／PR 概念时可以建实体，具体编号的 Issue／PR 则保留为工作记录证据或案例 context。不单独创建记录实体，也不通过去掉编号将记录改造成概念。此范围不排除其他有来源的具体对象或实例；结构接纳不能独自裁决这条语义边界。
 
+生成与逐项复核还须保留引用语境：教学示例、假设和反例中引入的对象不自动等同于真实当前对象；名称相同不足以跨语境合并。来源明确仍指同一对象时，即使跨引述也保留同一身份，不能因引号或“示例”标签机械拆分；对应关系不明时保留歧义。实体 description、qualifiers、mention 归属及其理由须由同一对象语境支持，不能把示例版本、环境或结果转移到当前对象，也不补出来源未给的限定。宿主继续只做确定性结构与定位检查，不新增 NLP 语义过滤器。
+
 ### 3.1 关键来源与普通重复提及
 
 对象身份与知识依据分别覆盖。提及选择对象名称或实际指代；已提炼知识的目的、条件、约束、例外、纠正和未验证限制，由对应陈述的证据关联及精确 `citations` 直接定位。分散的依据分别引用，保留理解判断所需的上下文；只有早期名称、同消息背景、整条消息可访问或 `rationale` 描述不足以证明关键依据可直接定位。
@@ -93,13 +95,15 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
-默认配置生成使用 strict `knowledge-extraction-v22`：strict 渲染包含六个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v21`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
+默认配置生成使用 strict `knowledge-extraction-v24`：strict 渲染包含七个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v23`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
 
 v19／v20 在第 3 节调整提取范围，属于 **BREAKING-COMPARABILITY**：prompt 字节与标注指南／语料身份变化，wire／领域 Schema、存储格式和 pipeline 政策不变，不增加生成后的黑名单。五个示例文本与历史 v4 bundle 保持逐字节一致；v20 完整 strict system 的规则前缀已经变化，不等于该 bundle 冻结的 v18 candidate。当前请求须使用新的 run 身份和匹配执行许可；旧输出与维护决定不自动成为现行口径结果。
 
 v21／v22 时间指引修正与第六个示范属于 **BREAKING-COMPARABILITY**。消息 `timestamp` 记录来源时间，不自动成为 `occurredDuring` 或 `validDuring`。无依据的状态与未来规范保留 unknown；原文明示的事件时刻保留其支持精度，包括恰好等于消息时间的时刻。前五个示例的序列化字节保持不变。新版避免将已发布 strict v20 的名称复用于另一份 prompt-json 字节。收录范围、公共 Schema、wire、存储和 pipeline 政策不变，宿主不增加时间相等黑名单或改写为 unknown。新指引只影响新请求：旧输出、修订、维护决定及分数不变、不重评，不与新版输出混合统计。结构／接线测试不证明模型服从或保证所有时间错误已修复；实际效果须另冻计划验证。
+
+v23／v24 的引用语境指引与第七个完整 wire 示范属于 **BREAKING-COMPARABILITY**：新提示词与示范字节使用新的测量身份，前六个示例的序列化字节保留不变。动因是一个已见真实开发窗口的旧版输出把示例对象的版本限定移到了本轮对象；这是特定输出的错误线索，不是总体错误率。wire、公共 Schema、存储、收录范围、pipeline 政策与调用次数不变；不迁移或重评旧 run，不重算原分数。新的合成语境诊断独立于 64 例主语料；构造响应回归与提示词示范不证明真实 v24 输出已经修复或稳定提升。实际效果仍须冻结真实对照并逐项复核。
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 

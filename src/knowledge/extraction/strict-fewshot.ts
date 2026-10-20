@@ -962,6 +962,122 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
         }
       ]
     }
+  },
+  {
+    "exampleId": "synthetic-quoted-context-and-explicit-identity-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "context-current",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "user",
+          "text": "本轮审查的提示词叫 ReviewPrompt，当前版本是 v17。"
+        },
+        {
+          "evidenceRef": "context-example",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "assistant",
+          "text": "下面是学习示例，未说明示例对象与本轮受审对象相同：用户说“提取提示词当前是 v14”。"
+        },
+        {
+          "evidenceRef": "context-alias",
+          "recordIndex": 2,
+          "eventKind": "message",
+          "role": "user",
+          "text": "我说的“本轮提示词”就是第一条的 ReviewPrompt；引用“ReviewPrompt 当前是 v17”也仍指这个受审对象，没有改名或新增对象。"
+        }
+      ],
+      "limitations": [
+        "仅有这些选定消息；未提供示例对象与受审对象同一性的依据。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_current",
+          "label": "ReviewPrompt",
+          "description": "本轮正在审查的提示词；后文明确简称及引用仍指它。",
+          "qualifiers": [
+            "本轮审查",
+            "当前版本 v17"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        },
+        {
+          "entityId": "e_example",
+          "label": "示例中的提取提示词",
+          "description": "学习示例输入所谈到的提示词，未与本轮受审对象建立对应。",
+          "qualifiers": [
+            "学习示例",
+            "示例中当前版本 v14"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [
+            "未给出完整制品标识，也未确认与本轮受审对象相同。"
+          ],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_current",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-current",
+            "quote": "ReviewPrompt",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "首条消息命名本轮受审对象。"
+        },
+        {
+          "mentionId": "m_example",
+          "entityId": "e_example",
+          "selection": {
+            "evidenceRef": "context-example",
+            "quote": "提取提示词",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "这处位于学习示例的输入中，只支持示例对象及其 v14 限定，不继承受审对象的 v17。"
+        },
+        {
+          "mentionId": "m_alias",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-alias",
+            "quote": "本轮提示词",
+            "occurrence": 0
+          },
+          "basis": "inference",
+          "rationale": "用户明确说该简称就是第一条的 ReviewPrompt。"
+        },
+        {
+          "mentionId": "m_quoted_current",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-alias",
+            "quote": "ReviewPrompt",
+            "occurrence": 1
+          },
+          "basis": "inference",
+          "rationale": "引用中的第二处名称被明确说明仍指这个受审对象；不因引号另建对象。"
+        }
+      ],
+      "proposals": []
+    }
   }
 ] as const satisfies readonly StrictExtractionFewshotExample[];
 
