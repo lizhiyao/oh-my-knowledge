@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { measurementRuntimeDigest } from './entity-measurement-runtime.js';
 
 export interface CaptureInput {
   model: string; system: string; prompt: string; timeoutMs: number; maxOutputTokens: number; abortSignal?: AbortSignal;
@@ -43,21 +44,12 @@ export async function loadCaptureRuntime(repository: string): Promise<CaptureRun
   // Fixed built composition root; neither source/capture content nor arguments can select imported code.
   return await import(pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href) as CaptureRuntime;
 }
-function treeDigest(root: string) {
-  const files: string[] = [];
-  const walk = (directory: string) => { for (const item of readdirSync(directory, { withFileTypes: true })) {
-    const path = resolve(directory, item.name);
-    if (item.isDirectory()) walk(path); else if (item.isFile()) files.push(path); else throw new Error('Frozen build must contain regular files only.');
-  } }; walk(root); files.sort();
-  const hash = createHash('sha256'); for (const file of files) { hash.update(relative(root, file)); hash.update('\0'); hash.update(readFileSync(file)); hash.update('\0'); }
-  return `sha256:${hash.digest('hex')}`;
-}
 export function captureHostIdentity(repository: string, validatorIdentity: CaptureRuntime['CAPTURE_VALIDATOR_IDENTITY']) {
   const here = dirname(fileURLToPath(import.meta.url));
-  return { runtimeDigest: treeDigest(resolve(repository, 'dist')),
-    collectorDigest: bytesDigest(['entity-capture-provider.js', 'entity-capture-profile.js', 'entity-capture.js', 'entity-extraction-capture.js']
+  return { runtimeDigest: measurementRuntimeDigest(resolve(repository, 'dist')),
+    collectorDigest: bytesDigest(['entity-capture-provider.js', 'entity-capture-profile.js', 'entity-capture.js', 'entity-extraction-capture.js', 'entity-measurement-runtime.js']
       .map(file => readFileSync(resolve(here, file), 'utf8')).join('\0')),
-    checkerDigest: bytesDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js'].map(file => readFileSync(resolve(here, file), 'utf8')).join('\0')),
+    checkerDigest: bytesDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js', 'entity-measurement-runtime.js'].map(file => readFileSync(resolve(here, file), 'utf8')).join('\0')),
     dependencyDigest: bytesDigest(['package.json', 'yarn.lock'].map(file => readFileSync(resolve(repository, file), 'utf8')).join('\0')),
     guideDigest: bytesDigest(['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
       .map(file => readFileSync(resolve(repository, file), 'utf8')).join('\0')),

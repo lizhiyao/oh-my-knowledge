@@ -119,7 +119,7 @@ v29／v30 的来源断言指引与同一次调用内的输出自检属于 **BREA
 
 原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
-历史完整 strict v16 system 的冻结原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`；对应 run metadata 绑定该完整 system 与 v16。该历史 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
+历史记载的完整 strict v16 system 原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`。这是历史摘要声明：当前树没有对应的完整 v16 prompt 资产，`test/measurement-governance/prompt-registry.ts` 及其冻结测试也没有 v16 条目，因此不能为该值提供可复算的字节级锚点；仅有版本号或摘要不能还原原始 system 字节。该历史 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
 
 每次写入通过工作区的 `.knowledge-write.lock` 串行化。只有本机 PID 经 SIG0 返回 ESRCH 证明确已退出的锁可以恢复；不凭年龄或运行状态抢占。恢复者按原 owner 身份串行，避免删除后来接管的活跃锁；中断的恢复锁也遵守同一规则。
 

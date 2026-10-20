@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { ENTITY_CHECK_VERSION, ENTITY_GUIDE_VERSION, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCorpus } from './entity-review-corpus.js';
 import { reviewCapturedOutput, type EntityReviewAdmission } from './entity-review-checks.js';
+import { ENTITY_MEASUREMENT_RUNTIME_VERSION, measurementRuntimeDigest, reviewSourceRevision } from './entity-measurement-runtime.js';
 
 export const reviewDigest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 export function reviewOutputRoot(root: string, requested: string): string {
@@ -164,20 +165,8 @@ export function entityReviewHtml(corpus: EntityReviewCorpus, measurementId: stri
     <nav>${corpus.cases.map(sample => `<a href="#${sample.caseId}">${escape(sample.caseId)}</a>`).join(' ／ ')}</nav>${cases}</html>`;
 }
 
-/** Hash built bytes, including transitive runtime dependencies, rather than trusting a stale dist version label. */
-export function reviewBuiltDigest(root: string) {
-  const files: string[] = [];
-  const walk = (directory: string) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
-      const path = resolve(directory, entry.name);
-      if (entry.isDirectory()) walk(path); else if (entry.isFile() && /\.(?:js|json)$/.test(entry.name)) files.push(path);
-    }
-  };
-  walk(root);
-  const hash = createHash('sha256');
-  for (const path of files) { hash.update(relative(root, path)); hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0'); }
-  return `sha256:${hash.digest('hex')}`;
-}
+/** Bind measurement runtime assets while excluding the unrelated Next.js web build. */
+export function reviewBuiltDigest(root: string) { return measurementRuntimeDigest(root); }
 
 async function main() {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -192,7 +181,7 @@ async function main() {
   const { checkWindowExtractionResponse } = await import(pathToFileURL(resolve(repo, 'dist/knowledge/extraction/window-proposals.js')).href);
   const identity = { corpusVersion: corpus.corpusVersion, checkVersion: ENTITY_CHECK_VERSION, guideVersion: ENTITY_GUIDE_VERSION,
     corpusDigest: reviewDigest(corpusText), guideDigest: reviewDigest(guideText),
-    checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
+    checkerDigest: reviewDigest(['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js', 'entity-measurement-runtime.js']
       .map(path => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), path), 'utf8')).join('\0')),
     runtimeDigest: reviewBuiltDigest(resolve(repo, 'dist')),
     dependencyDigest: reviewDigest(['package.json', 'yarn.lock'].map(path => readFileSync(resolve(repo, path), 'utf8')).join('\0')),
@@ -204,7 +193,8 @@ async function main() {
   const review = reviewReceiptStatus(args.review ? readFileSync(resolve(args.review), 'utf8') : undefined, corpus, measurementId, result?.capture.startedAt);
   const author = authorReviewStatus(args.selfReview ? readFileSync(resolve(args.selfReview), 'utf8') : undefined, corpus, measurementId, result?.capture.startedAt);
   const readiness = annotationReadiness(author.status, review.status);
-  const manifest = { ...identity, measurementId, annotationReview: review.status, authorReview: author.status, provenance: corpus.provenance,
+  const manifest = { ...identity, measurementId, runtimeDigestVersion: ENTITY_MEASUREMENT_RUNTIME_VERSION,
+    sourceRevision: reviewSourceRevision(repo), annotationReview: review.status, authorReview: author.status, provenance: corpus.provenance,
     splitCounts: { development: corpus.cases.filter(sample => sample.split === 'development').length,
       validation: corpus.cases.filter(sample => sample.split === 'validation').length },
     conclusion: author.status === 'changes_requested' || review.status === 'changes_requested' ? 'annotation_changes_requested'

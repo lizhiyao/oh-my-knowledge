@@ -87,6 +87,7 @@ test/observability/inbox/source-record-archive.test.ts
 test/scripts/docs-mermaid.test.ts
 test/scripts/entity-context-boundaries.test.ts
 test/scripts/entity-extraction-review.test.ts
+test/scripts/entity-measurement-runtime.test.ts
 test/scripts/entity-atomic-statement.test.ts
 test/scripts/entity-semantic-checks.test.ts
 test/scripts/entity-semantic-review.test.ts

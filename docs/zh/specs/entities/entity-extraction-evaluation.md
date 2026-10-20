@@ -28,7 +28,7 @@ v29／v30 的来源断言澄清改变规则与同一次调用内的输出自检�
 
 八个示范、v19 至 v28 已登记的原始字节约束、指南 v11 规则、检查器 v5、64 例／212 处关键提及分母、公共 Schema、wire、存储及 single 政策不变。当前指南页面及 `guideDigest` 变化，须重新冻结测量包；历史包、run、分数与复核证据保留原身份。来源断言诊断仍是开发证据，不证明 v29／v30 输出已通过、能够泛化或完成独立真人验收，也不增加调用阶段。
 
-检查器 v5 落实双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready。历史复核包及其已报告就绪状态保留原测量身份。历史生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新改变新的 preparation 摘要，变化的 pending plan 须在捕获前重新准备冻结包及匹配记录；旧 runId 与实验许可不能授权变化的请求。旧冻结资产、结果及 receipt 保持原样，不迁移、不重评分。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
+检查器 v5 落实双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready。历史复核包及其已报告就绪状态保留原测量身份。历史生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新改变新的 preparation 摘要，变化的 pending plan 须在捕获前重新准备冻结包及匹配记录；旧 runId 与实验许可不能授权变化的请求。旧冻结资产、结果及 receipt 保持原样，不迁移、不重评分。当前已登记提示词的原始 UTF-8 摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 冻结。该登记表不是全部历史提示词的完整归档；strict v16 须使用原始完整资产和对应修订复算其历史记录摘要。
 
 四个修订 2 完整输入／输出示例已完成 AI 作者逐项审阅，已进入生产 prompt；它们不是评测 split、未见验证或 Gold，回放构造答案不能证明模型效果。单独标明的部分接纳诊断复用第四例，展示原文 quote 不匹配的 sibling 被拒绝而合法候选保留；故意错误的 sibling 说明宿主行为，不是期望模型生成的输出。这些离线工程检查不等于真实模型对照或独立质量门槛完成。
 
@@ -132,7 +132,7 @@ prompt-json v23／strict v24 增加引用语境指导与第七个完整 wire 示
 2. 与作者独立的人逐例检查指南、允许边界、身份组、角色及语义标准；在 `review-template.json` 填写每例 `approved` 或 `changes_requested`、理由、复核人、时间和独立性声明。独立模型评委不等同于独立人工复核。
 3. 争议在看到输出之前裁决，记录问题、结论和独立裁决人。未解决时使用 `changes_requested`。需改语料／指南／检查器时升级相应版本并重新生成复核包，不能靠修改复核记录批准旧摘要。
 4. 作者与独立复核记录均必须覆盖全部案例，绑定测量身份，并早于输出捕获。任一已提供记录要求修改时，两种 ready 状态均为 false，不能用自审覆盖独立异议。检查器拒绝作者自称独立、缺项、错误摘要和事后批准。它只能验证声明与记录闭合，不能验证复核人身份真实或保证其判断正确；`attested_independent_human` 表示有声明，不是效果结论。
-5. 测量身份由语料、双语指南、已编译检查器及生产运行产物摘要、依赖清单／锁文件摘要、Node 版本、提示词原始 UTF-8 摘要和版本组成。重建改变产物字节也会改变身份；冻结后保留同一构建用于验收。复核包分别保留中英指南原始字节及便于阅读的合并稿。运行时 promptHash 的规范化 JSON 摘要与这里的原始 UTF-8 摘要不同，不能混用。
+5. 测量身份由语料、双语指南、已编译检查器及生产运行产物摘要、依赖清单／锁文件摘要、Node 版本、提示词原始 UTF-8 摘要和版本组成。运行产物摘要采用 `omk-entity-measurement-runtime/v2`：覆盖 `dist` 内所有普通文件的规范化相对路径与原始字节，仅排除无关的 Next.js 子树 `studio/web`。相关运行代码或资源变化仍会使身份失效；仅网页重建不会。该范围变化相对早期 bench 摘要属于 **BREAKING-COMPARABILITY**：重新准备复核包及匹配回执或 live plan，旧证据继续使用原冻结宿主，不迁移、不重评分。共享摘要模块计入检查器／采集器摘要，实体关联复核也包含该模块。复核包分别保留中英指南原始字节及便于阅读的合并稿。manifest 另记观测到的 `sourceRevision.commit` 和 `sourceRevision.dirty`，不进入测量身份；无法确定 Git 来源时两者均为 `null`。dirty 检出的 commit 不能复现未提交源码，也不能证明已有构建由哪份源码生成。运行时 promptHash 的规范化 JSON 摘要与这里的原始 UTF-8 摘要不同，不能混用。
 
 ## 5. 离线复核工具与证据
 
