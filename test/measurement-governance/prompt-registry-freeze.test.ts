@@ -25,8 +25,8 @@ const FROZEN: Record<string, string> = {
   'rag-answer-relevancy': 'f776a5d12b5c',
   'rag-context-recall': 'a1ad34978824',
   'observe-llm-enhanced-review': '5c5c8e5bf0af8fce3ebf22d2363ca863cdb430dafd087bec19e170517cfa0b83', // 2026-05-22.v7
-  'knowledge-extraction': 'aecb8127e6b936f308fe7a87de4bb044b4aaaf357ef801d6f09d9326d3860614', // knowledge-extraction-v25, raw UTF-8; core content cannot be replaced by its container
-  'knowledge-extraction-strict': '1d7b8b43b0918af7fc14b32c0cc20ef55f5d61e7c0109d66c5714d02d82225b7', // knowledge-extraction-v26, raw UTF-8; content eighth demonstration, first seven unchanged
+  'knowledge-extraction': '8d58914f4fe02eaf16cfae409df1dd1e839abe9ff626669cfbdd187ad50d61b9', // knowledge-extraction-v27, raw UTF-8; independently reviewed whole cannot be replaced by local guidance
+  'knowledge-extraction-strict': 'd7746055f9ba82b4720d065465e0df2e3e5654c3071d9a2f159186fde7073b3d', // knowledge-extraction-v28, raw UTF-8; all eight demonstrations unchanged
   'knowledge-extraction-feedback': 'd6d7ee7dd8000298702c3fb0b72e6c54dee884bd67b696ca1bb2358740edcabc', // knowledge-generation-feedback/v1
   'entity-link-proposal': '18353503713a448bf56b6ec5cadeef94384a74525d0a73cd09beaecdf9829bb8', // entity-link-proposal-v1, raw UTF-8 including derived response Schema
 };

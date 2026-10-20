@@ -305,6 +305,136 @@
         "明确同一资料的别名应归一个身份，不能因名称不同或本轮讨论内容就机械拆成内容/载体两个对象。",
         "正确位置但别名错拆必须显露wrong_split，不能以提及命中掩盖。"
       ]
+    },
+    {
+      "caseId": "dev-whole-review-with-local-guidance",
+      "projectGroup": "dev-whole-review-with-local-guidance",
+      "conversationGroup": "dev-whole-review-with-local-guidance",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "本轮评审《岬湾救援手册》的整体处置顺序。手册中的“绳索收纳提示”只说明工具存放方式，未被单独审查；不要把这条提示当作整本手册。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "whole-part"
+      ],
+      "entities": [
+        {
+          "entityKey": "rescue-manual",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "本轮被独立评审的是救援手册整体；一条局部存放指引不能替代它，也没有独立入选要求。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-manual",
+          "entity": "rescue-manual",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《岬湾救援手册》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "标题在本轮直接指向受审手册整体，不是局部收纳提示的别名。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "只返回局部收纳提示仍缺少本轮独立受审的手册整体，局部实体描述中提到手册不补算整体。",
+        "即使局部实体的mention选到手册标题，也须检查description和rationale实际指代范围；字符命中不代替整体身份的语义覆盖。",
+        "正确保留手册整体即可满足核心；未独立审查的局部要求不机械拆为额外实体，整体知识可描述该要求。"
+      ]
+    },
+    {
+      "caseId": "dev-local-guidance-with-background-owner",
+      "projectGroup": "dev-local-guidance-with-background-owner",
+      "conversationGroup": "dev-local-guidance-with-background-owner",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "只比较《雾岚接待方案》中的“预约提醒规则”和“到场确认规则”，两条规则分别决定何时提醒与何时确认。本次不评价接待方案整体，也不讨论方案的其他内容。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "whole-part"
+      ],
+      "entities": [
+        {
+          "entityKey": "appointment-rule",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "预约提醒规则被独立比较；方案名称只说明所属背景，不因此要求补整体对象。"
+        },
+        {
+          "entityKey": "arrival-rule",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "到场确认规则有独立作用并与另一规则比较，不与预约提醒规则共享身份。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "appointment-guidance",
+          "entity": "appointment-rule",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "预约提醒规则",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源独立比较的第一条局部规则。"
+        },
+        {
+          "mentionKey": "arrival-guidance",
+          "entity": "arrival-rule",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "到场确认规则",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源独立比较的第二条局部规则。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "两条有独立作用的局部规则可以分别保留；背景所属方案没有成为独立评审对象，不要求补出整体。",
+        "整体与局部边界不是固定每次生成一对owner/part，也不把不同局部规则合并为背景方案。"
+      ]
     }
   ]
 }

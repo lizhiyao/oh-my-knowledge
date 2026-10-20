@@ -157,23 +157,60 @@ describe('core content-object coverage diagnostic (authored responses, separate 
     }
     expect(coreSelected('dev-edit-file-with-background-content').entities.map(value => value.entityKey)).toEqual(['edited-file']);
     expect(coreSelected('dev-background-section-not-target').entities.map(value => value.entityKey)).toEqual(['shift-guide']);
+    expect(coreSelected('dev-whole-review-with-local-guidance').entities.map(value => value.entityKey)).toEqual(['rescue-manual']);
+    expect(coreSelected('dev-local-guidance-with-background-owner').entities.map(value => value.entityKey)).toEqual(['appointment-rule', 'arrival-rule']);
   });
 
-  it('blocks a missing reviewed content identity even when its source file description names the content', () => {
-    const sample = coreSelected('dev-file-only-locates-content'), output = authored(sample);
-    output.entities = [{ ...output.entities[0], entityId: 'locator-file', label: 'lessons/rook-pair.md',
-      description: '保存被审查棋类教学练习《双车配合》的来源文件。' }];
-    output.mentions = [{ mentionId: 'file-path', entityId: 'locator-file', basis: 'explicit', rationale: '文件路径仅提供练习的定位出处。',
-      selection: { evidenceRef: `${sample.caseId}:0`, quote: 'lessons/rook-pair.md', occurrence: 0 } }];
+  it.each([
+    { caseId: 'dev-file-only-locates-content', entityId: 'locator-file', quote: 'lessons/rook-pair.md',
+      description: '保存被审查棋类教学练习《双车配合》的来源文件。' },
+    { caseId: 'dev-whole-review-with-local-guidance', entityId: 'rope-guidance', quote: '绳索收纳提示',
+      description: '《岬湾救援手册》中的一条工具存放指引，只指局部，不指手册整体。' },
+  ])('blocks the absent core when only a locator or local guidance is returned ($caseId)', ({ caseId, entityId, quote, description }) => {
+    const sample = coreSelected(caseId), output = authored(sample);
+    output.entities = [{ ...output.entities[0], entityId, label: quote, description }];
+    output.mentions = [{ mentionId: 'substitute-only', entityId, basis: 'explicit',
+      rationale: '这里只保留有据的定位载体或局部指引，未返回本轮被审查的核心整体。',
+      selection: { evidenceRef: `${sample.caseId}:0`, quote, occurrence: 0 } }];
     const { checked, review } = inspect(sample, output);
     expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
     expect(checked.analysis.entities).toHaveLength(1);
-    expect(review.criticalMentions).toMatchObject([{ mentionKey: 'reviewed-exercise', status: 'missing', entityId: null }]);
-    expect(review.identities).toMatchObject([{ entity: 'chess-exercise', status: 'not_evaluable' }]);
+    expect(review.criticalMentions).toMatchObject([{ mentionKey: sample.mentions[0].mentionKey, status: 'missing', entityId: null }]);
+    expect(review.identities).toMatchObject([{ entity: sample.entities[0].entityKey, status: 'not_evaluable' }]);
     const report = evaluateSemanticReview(semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors }));
     expect(report).toMatchObject({ status: 'blocked', reference: { goldReady: false } });
     expect(report.blockers).toContain('critical_regression_failure');
     expect(report.blockers).not.toContain('structural_rejection');
+  });
+
+  it('keeps a part-only identity pending despite the owner title span until an explicit coverage judgment blocks it', () => {
+    const sample = coreSelected('dev-whole-review-with-local-guidance'), output = authored(sample);
+    output.entities[0] = { ...output.entities[0], entityId: 'rope-guidance', label: '手册中的绳索收纳提示',
+      description: '手册内部的一条工具存放指引，范围仅是该提示，不是整本救援手册。' };
+    output.mentions[0].entityId = 'rope-guidance';
+    output.mentions[0].rationale = '用所属手册的标题定位其中的局部存放提示，只指该局部指引。';
+    const { checked, review } = inspect(sample, output);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    expect(review.criticalMentionRecall.value).toBe(1);
+    expect(review.identities.every(identity => identity.status === 'matched')).toBe(true);
+    expect(review.semanticReview).toBe('pending');
+    const context = semanticContext(sample, output, { raw: coreFixtureText, authors: coreFixture.authors });
+    expect(evaluateSemanticReview(context)).toMatchObject({ status: 'pending', outputReview: { reviewed: 0 } });
+    const receipt = { reviewVersion: 'omk-entity-output-review/v1', planId: context.plan.planId, capturesDigest: context.capturesDigest,
+      reviewer: { actorKind: 'agent', actorId: coreFixture.authors[0] }, independentHuman: false, reviewedAt: '2020-03-01T00:00:00Z',
+      decisions: semanticReviewTargets(context).map(target => {
+        const missingWhole = target.itemKind === 'semantic_check' && target.checkIndex === 0;
+        return { target, verdict: missingWhole ? 'incorrect' : 'uncertain', errorCodes: missingWhole ? ['coverage'] : [],
+          rationale: missingWhole ? '响应只有局部指引；标题字符命中和所属描述不能替代本轮独立受审的手册整体。'
+            : '本诊断仅裁决整体覆盖缺口，其余输出仍待逐项语义复核。' };
+      }) };
+    // Entity obligations have no required_missing verdict here; use the existing scoped coverage judgment.
+    const judged = evaluateSemanticReview({ ...context, receipt });
+    expect(judged).toMatchObject({ status: 'blocked', reference: { goldReady: false },
+      outputReview: { confirmedErrors: 1, requiredGaps: 0, independentHuman: false } });
+    expect(judged.blockers).toContain('confirmed_error_threshold');
+    expect(judged.blockers).not.toContain('critical_regression_failure');
+    expect(judged.blockers).not.toContain('structural_rejection');
   });
 
   it('does not let complete source spans hide a merge of independently reviewed content and carrier', () => {

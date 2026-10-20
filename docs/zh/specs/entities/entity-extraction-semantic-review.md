@@ -25,7 +25,7 @@ description: 对冻结的实体提取输出逐项语义复核，并形成保守�
 | [纠正、冲突与历史](./entity-extraction.md) | 保留不可变原始记录、精确 revision 绑定、显式新 revision 及拒绝／恢复路径。 | 检查后续纠正、未解决冲突和发言归属；纠正不得强化原证据。 | 用新 revision 及证据纠正归属／不复用旧身份改义或覆盖出生结果。 |
 | [元数据与截断来源](./entity-extraction-evaluation.md) | 保留冻结输入及声明的限制。 | 检查指令／元数据污染、不完整上下文和无依据补全；窗口缺失的证据保持未知。 | 把环境消息标为元数据／不将其当作用户主张的事实。 |
 
-领域规则使用指南 `omk-entity-annotation/v11` 和语料 `omk-entity-quality/v13`；确定性关键检查仍为 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v25`、strict `knowledge-extraction-v26`、response Schema v4、run v5 和 quality projection v3 保持各自身份。新输出复核协议拥有独立 v1 身份；加入它不会静默升级旧指南、重算历史分数或迁移存量 run。时间、引用语境与核心对象指引及示范字节变化显式标记 **BREAKING-COMPARABILITY**，不证明语义通过；逐项时间、身份和限定复核仍然必要。
+领域规则使用指南 `omk-entity-annotation/v11` 和语料 `omk-entity-quality/v13`；确定性关键检查仍为 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v27`、strict `knowledge-extraction-v28`、response Schema v4、run v5 和 quality projection v3 保持各自身份。新输出复核协议拥有独立 v1 身份；加入它不会静默升级旧指南、重算历史分数或迁移存量 run。时间、引用语境、核心对象与整体／局部指引及示范字节变化显式标记 **BREAKING-COMPARABILITY**，不证明语义通过；逐项时间、身份和限定复核仍然必要。
 
 ## 2. 在输出前冻结复核范围
 
@@ -48,6 +48,8 @@ description: 对冻结的实体提取输出逐项语义复核，并形成保守�
 每个单元均参照完整冻结窗记录决定与具体理由。正确来源引文不证明含义正确。陈述复核包括端点、关系、极性、模态、条件、例外、时间、citation，以及主张／观测／计划状态。一个条目结构拒绝可能造成依赖级联拒绝；这些保留为工程证据，不冒充多次独立成立的语义错误。
 
 引用语境复核沿用 `identity` 与 `unsupported_qualifier` 错误代码：按完整窗口核对实体 description、qualifiers、每个 mention 及其理由。把隔离示例、假设或反例对象误并入当前对象属于身份问题；把另一语境的版本等属性移入当前对象属于无依据限定。来源明确跨引述仍指同一对象时须保留同一身份，不能因引述而自动拆分；无法确认对应时保留 uncertain。精确 quote 和结构接纳都不能证明这些判断正确。
+
+整体／局部复核看实际所指，不能凭共同名称、qualifiers 或包含跨度将局部映射为整体。局部提及可以精确且绑定正确，同时预声明的整体仍然缺失；局部是否具备独立实体资格也可能保持 uncertain。仅在来源独立讨论整体且参考已声明义务时确认其覆盖，不为每个所属短语强制拆分。记录相关条目的裁决及共同遗漏机制，不将多个受影响目标冒充独立错误样本，也不事后改写参考或旧结论。
 
 `omk-entity-output-review/v1` 绑定 `planId` 和 `capturesDigest`，记录 `reviewer: { actorKind, actorId }`、`independentHuman`、`reviewedAt` 与 `decisions`。`actorKind` 为 `agent` 或 `human`；agent 不能声明独立人工复核。每项决定绑定 `target`、`verdict`、`errorCodes` 及非空 `rationale`。target 均包含 `caseId`、`repeat` 和 `itemKind`：
 

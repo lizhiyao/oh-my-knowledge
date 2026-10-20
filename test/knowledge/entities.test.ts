@@ -240,16 +240,18 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('versions core-content guidance while preserving frozen controls and the first seven demonstration bytes', () => {
+  it('versions whole-part guidance while preserving frozen controls and all eight demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v26');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v28');
     expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
     expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
       .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');
     expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 7))).digest('hex'))
       .toBe('6503dffda427bd05bbbaca754ea53c663874346249ed229d7015d4967f23be89');
     expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(8);
+    expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES)).digest('hex'))
+      .toBe('7b09b1160b1d841618a4e356aed0cc438d0fcff48e05c6a43fc5fef05f2c1643');
     const versionExample = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(example => example.exampleId === 'synthetic-version-artifact-v2')!;
     const source = versionExample.input.excerpts.map(excerpt => excerpt.text).join('\n');
     expect(source).toContain('当前是 v14');
@@ -269,7 +271,7 @@ describe('derived strict structural wire with original itemwise admission', () =
     expect(control.length).toBe(31884);
     expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v25');
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v27');
     const frozenV18 = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/v18-candidate-strict.prompt.txt', import.meta.url));
     expect(createHash('sha256').update(frozenV18).digest('hex')).toBe('46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229');
   });
