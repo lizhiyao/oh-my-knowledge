@@ -60,7 +60,7 @@ description: 跨窗口实体提案的冻结参考、分层检查与独立复核�
 
 ## 5. 测量身份与零调用准备 {#link-evaluation-identity}
 
-测量身份绑定 corpus／guide／check 版本、原始语料字节、双语指南字节、已编译 checker 组件、已构建生产 runtime 树、包清单／锁文件、实际 Zod validator 版本／目录树、Node 版本／二进制，以及精确受治理 prompt 版本／原始 UTF-8 摘要与响应 Schema 摘要。runtime 与 validator 树摘要覆盖 `.js`／`.json` 路径及字节，checker 包含共享标注组件。包／锁文件摘要记录依赖声明，不代表全部已安装传递依赖字节。任一绑定字节变化都需要新冻结包及复核记录，重建不自动保证身份不变。这是已声明产物闭包，不代表捕获全部操作系统、账号、凭据或 provider 状态。
+测量身份绑定 corpus／guide／check 版本、原始语料字节、双语指南字节、已编译 checker 组件、已构建生产 runtime 树、包清单／锁文件、实际 Zod validator 版本／目录树、Node 版本／二进制，以及精确受治理 prompt 版本／原始 UTF-8 摘要与响应 Schema 摘要。runtime 与 validator 树摘要采用共享的 `omk-entity-measurement-runtime/v2` 范围：所有普通文件的规范化相对路径与原始字节，仅排除 runtime 树内的 `studio/web`；checker 包含共享标注组件及摘要模块。该变化相对早期 bench 树摘要属于 **BREAKING-COMPARABILITY**；新身份须使用新冻结包、回执和 live plan，历史证据继续使用原宿主，不迁移、不重评分。包／锁文件摘要记录依赖声明，不代表全部已安装传递依赖字节。任一绑定字节变化都需要新冻结包及复核记录，重建不自动保证身份不变。这是已声明产物闭包，不代表捕获全部操作系统、账号、凭据或 provider 状态。
 
 先更新 runtime 构建，再创建新的仓库外复核包：
 

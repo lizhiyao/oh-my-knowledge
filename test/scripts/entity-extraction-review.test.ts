@@ -748,10 +748,16 @@ describe('entity extraction review with author evidence', () => {
       const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
       expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v29', checkVersion: ENTITY_CHECK_VERSION,
         conclusion: 'not_evaluated', goldReady: false, modelCallsByThisCommand: 0,
+        runtimeDigestVersion: 'omk-entity-measurement-runtime/v2',
+        sourceRevision: { commit: expect.stringMatching(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/), dirty: expect.any(Boolean) },
         splitCounts: { development: 62, validation: 2 } });
-      const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
+      const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js', 'entity-measurement-runtime.js']
         .map(file => readFileSync(join(PROJECT_ROOT, 'dist-scripts/bench', file), 'utf8')).join('\0');
       expect(manifest.checkerDigest).toBe(reviewDigest(currentTools));
+      // Observational fields cannot change a receipt's measurement identity.
+      const keys = ['corpusVersion', 'checkVersion', 'guideVersion', 'corpusDigest', 'guideDigest', 'checkerDigest',
+        'runtimeDigest', 'dependencyDigest', 'nodeVersion', 'promptVersion', 'promptHash', 'promptHashEncoding', 'responseSchemaVersion'];
+      expect(manifest.measurementId).toBe(reviewDigest(JSON.stringify(Object.fromEntries(keys.map(key => [key, manifest[key]])))));
       expect(readFileSync(join(output, 'corpus.json'), 'utf8')).toBe(corpusText);
       const inputs = JSON.parse(readFileSync(join(output, 'inputs.json'), 'utf8'));
       expect(inputs).toHaveLength(corpus.cases.length);

@@ -149,31 +149,31 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-semantic-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/prompt.js')).href",
-    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    sourceSha256: 'f7d024c120b88d810548b541df9a5da1ffd4eb37bdda81ce71847cad92577f03',
     rationale: 'Offline semantic inspection verifies the fixed built prompt identity; no bundle or capture can choose imported code.',
   },
   {
     importer: 'scripts/bench/entity-semantic-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/window-proposals.js')).href",
-    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    sourceSha256: 'f7d024c120b88d810548b541df9a5da1ffd4eb37bdda81ce71847cad92577f03',
     rationale: 'Offline semantic inspection reuses the fixed production admission validator and has no model execution path.',
   },
   {
     importer: 'scripts/bench/entity-capture-provider.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href",
-    sourceSha256: '0b0de123cdb7c62d050c29f0aff87bc47e4d23949d6c456c89e78c5b33972b28',
+    sourceSha256: '4cede9fe33761c090fda04fbfd419002704853faabc4d3661add4e353217bd19',
     rationale: 'Loads only the fixed built capture composition root; capture input cannot select code, and sending requires explicit plan permission and a verified budget profile.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/prompt.js')).href",
-    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
+    sourceSha256: '6113ce7dc4a44d428d9479e04264510d7a6d64052476c3c3fcf6960908675340',
     rationale: 'Offline entity inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/window-proposals.js')).href",
-    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
+    sourceSha256: '6113ce7dc4a44d428d9479e04264510d7a6d64052476c3c3fcf6960908675340',
     rationale: 'Offline entity inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
@@ -203,7 +203,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-link-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist', path)).href",
-    sourceSha256: 'f893f866cfa5da138385b4097c97bac2cc45d2b34cc5a08491f4836d9f70b00d',
+    sourceSha256: '102c43bdc4b091e81e1aaad44b0b83904479a61f3993e805cccab02a57ada024',
     rationale: 'Offline link review loads only three fixed production modules; corpus and captures cannot choose code. Actual checker and matching installed production validator bytes enter the measurement identity; preparation has no executor entry.',
   },
   {

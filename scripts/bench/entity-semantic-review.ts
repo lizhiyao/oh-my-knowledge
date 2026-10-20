@@ -31,7 +31,7 @@ export async function loadSemanticBundle(repository: string, directory: string) 
   const guides = ['annotation-guide.en.md', 'annotation-guide.zh.md'].map(name => readText(resolve(directory, name)));
   const currentGuides = ['docs/specs/entities/entity-extraction-evaluation.md', 'docs/zh/specs/entities/entity-extraction-evaluation.md']
     .map(name => readText(resolve(repository, name)));
-  const tools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
+  const tools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js', 'entity-measurement-runtime.js']
     .map(name => readText(resolve(repository, 'dist-scripts/bench', name)));
   if (identity.corpusDigest !== reviewDigest(corpusText) || identity.guideDigest !== reviewDigest(guides.join('\0'))
     || guides.some((guide, index) => guide !== currentGuides[index]) || identity.checkerDigest !== reviewDigest(tools.join('\0'))

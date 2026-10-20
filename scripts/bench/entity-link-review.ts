@@ -37,7 +37,7 @@ export async function loadEntityLinkReviewRuntime(repository: string): Promise<E
 
 export function entityLinkReviewHostIdentity(repository: string) {
   const here = dirname(fileURLToPath(import.meta.url)), extension = extname(fileURLToPath(import.meta.url));
-  const names = ['entity-link-review', 'entity-link-review-corpus', 'entity-extraction-review', 'entity-review-corpus', 'entity-review-checks'];
+  const names = ['entity-link-review', 'entity-link-review-corpus', 'entity-extraction-review', 'entity-review-corpus', 'entity-review-checks', 'entity-measurement-runtime'];
   const require = createRequire(import.meta.url); const zodRoot = dirname(require.resolve('zod/package.json'));
   const validatorVersion = JSON.parse(readFileSync(resolve(zodRoot, 'package.json'), 'utf8')).version as string;
   const validatorDigest = reviewBuiltDigest(zodRoot);
