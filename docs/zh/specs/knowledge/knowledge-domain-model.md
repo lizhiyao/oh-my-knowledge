@@ -112,10 +112,15 @@ flowchart LR
 
 下列原始来源用于架构取舍，其性能结果不构成 OMK 的效果证据。“采纳”与“改编”针对表中设计实践，不表示引入这些框架依赖。
 
+下列 Mem0、OWASP 与 ACE 映射核对于 2026-10-21。论文和 OWASP 发布明确版本或日期；持续更新的 Mem0 文档只说明所引操作，不代表所有版本。这些对照不构成行业共识、OWASP 合规或 OMK 质量验收结论。
+
 | 原始来源 | 相关实践 | OMK 决策与理由 |
 |---|---|---|
 | [GraphRAG Dataflow](https://microsoft.github.io/graphrag/index/default_dataflow/) | TextUnit 保留来源追溯；默认图提取将标题和类型相同的实体合并。 | **采纳**来源到派生记录的追溯；**拒绝**标题／类型合并与全图索引：同名对象可能属于不同项目、实例或版本，原始身份须可核对。 |
-| [Mem0 论文 §2.1](https://arxiv.org/html/2504.19413v1#S2.SS1)及[当前 add 契约](https://docs.mem0.ai/core-concepts/memory-operations/add) | 论文将提取与针对既有记忆的 ADD／UPDATE／DELETE／NOOP 增量裁决分开；当前 add 文档改为描述追加存储，两者属于不同来源范围。 | **改编**与既有记录增量对账的思路。模型建议与人工明确决定、不可变修订分离；不由 LLM 覆写／删除主张，不从召回相似度推断身份。论文的四操作不被写成现行 API 默认行为。 |
+| [Mem0 论文 v1 §2.1（2025-04）](https://arxiv.org/html/2504.19413v1#S2.SS1) | 提取之后，针对既有记忆作 ADD／UPDATE／DELETE／NOOP 对账。 | **改编**与既有记录对账的思路，将模型建议、维护决定和不可变内容修订分离；召回相似度不能确立身份。论文操作不定义现行 API。 |
+| [Mem0 OSS v2→v3 迁移](https://docs.mem0.ai/migration/oss-v2-to-v3)、[update](https://docs.mem0.ai/core-concepts/memory-operations/update) 及 [history](https://docs.mem0.ai/api-reference/memory/history-memory) | 迁移指南规定 ADD-only 提取；显式 update 仍替换已存内容，history 提供变更日志。追加提取与历史记录不等于统一的不可变修订契约。 | **采纳**新增提取与既有内容维护的区分。OMK 保留不可变内容修订和精确版本的决定，不采用原地替换内容，也不声称 Mem0 v3 已具备相同修订语义。 |
 | [Neo4j Agent Memory：消解与去重](https://neo4j.com/labs/agent-memory/explanation/resolution-deduplication/) | 消解判断两个引用是否指同一事物，去重执行该判断；相似度信号及类型约束不能单独证明身份。 | **采纳**分层，**改编**为 recall／preview／proposal 与人工 decide／知识库发布分离。拒绝相似度阈值自动合并，误转移身份的代价要求可见的来源核对。 |
 | [Graphiti 时态上下文图](https://github.com/getzep/graphiti#why-graphiti)及[事实时间字段](https://github.com/getzep/graphiti/blob/main/graphiti_core/edges.py) | 事实保留来源 episode 及时间历史，包括 `valid_at`／`invalid_at`；信息变化可自动使旧事实失效并保留历史。 | **采纳**来源追溯与历史保留；**拒绝**自动按时间裁决真值／身份失效：晚到陈述可能是计划、纠正、不同条件或冲突。采用不可变修订与明确纠正、舍弃或解除关联；时间和来源断言是证据，不是自动裁决。 |
 | [LangExtract 来源定位](https://github.com/google/langextract) | 提取映射回来源片段，无法定位的输出显式无 grounding。 | **采纳并收紧**宿主定位：要求精确连续 quote，重复文本明确选择 occurrence，再拒绝无 grounding 或歧义定位的依赖。精确位置仍不证明语义身份或主张支持。 |
+| [OWASP Agentic Top 10 2026，ASI06：Memory & Context Poisoning（2025-12-09）](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | 持久污染会影响后续会话；缓解措施包括来源归属、记忆隔离、写入前校验、版本恢复和高风险动作的人工复核。 | **改编**来源追溯、明确来源范围、保留修订与分开的晋升门槛。候选写入和 Agent 修订不要求独立人工复核；跨窗口知识库发布需要明确人工决定，载体预览选择当前已保留的精确修订，保存前重新核对这些引用并生成新版本。这些边界不证明抗投毒效果，也不表示已实现全部 ASI06 缓解措施。 |
+| [ACE v3，§§3.1–3.2（2026-03-29）](https://arxiv.org/html/2510.04618v3) | 结构化条目接收局部增量，生成、反思与整理分离；精炼可更新条目并去除冗余。 | **改编**逐条维护与精确知识修订的明确选择。OMK 当前重建所选载体知识区段并保存新版本，没有实现 ACE 的增量合并／裁剪或自主在线适应；载体收益仍须受控测量。 |
