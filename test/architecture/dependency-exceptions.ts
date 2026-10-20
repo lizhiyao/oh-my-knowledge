@@ -167,13 +167,13 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/prompt.js')).href",
-    sourceSha256: '3a2025dc51ecf631aa3f3e9e5ef894dfdf0fd865bd429925a4a93b352dfc1c4e',
+    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
     rationale: 'Offline entity inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/window-proposals.js')).href",
-    sourceSha256: '3a2025dc51ecf631aa3f3e9e5ef894dfdf0fd865bd429925a4a93b352dfc1c4e',
+    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
     rationale: 'Offline entity inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {

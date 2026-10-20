@@ -21,9 +21,11 @@ description: 冻结真实提取研究，回放生产原生结果，并区分工�
 | `omk-extraction-study-review/v1` / `omk-extraction-study-analysis/v1` | 重算的门禁、逐臂与有限集合分析。 |
 | `omk-extraction-study-judge-calibration/v1` | 已保存的 agent 判断与独立人工判断的比较。 |
 
-既有合成语料 v13、标注指南 v11、检查器 v5 保持原身份与分母。当前默认 prompt-json v21、strict v22；其[时间指引修正](./entity-extraction.md)标记 **BREAKING-COMPARABILITY**，生产 run v5 和质量投影 v3 不变。显式研究 prompt profile 不改变两个默认值，已发布默认版本不得标识不同 prompt 字节。以后改变收录口径或评分时，仍须另行声明可比性影响。旧冻结研究仍绑定原 prompt、宿主与输出，不能用新默认值重算或继承质量结论。
+既有合成语料 v13、标注指南 v11、检查器 v5 保持原身份与分母。当前默认 prompt-json v29、strict v30；[时间、引用语境、核心对象及整体／局部指引修正](./entity-extraction.md)标记 **BREAKING-COMPARABILITY**，生产 run v5 和质量投影 v3 不变。显式研究 prompt profile 不改变两个默认值，已发布默认版本不得标识不同 prompt 字节。以后改变收录口径或评分时，仍须另行声明可比性影响。旧冻结研究仍绑定原 prompt、宿主与输出，不能用新默认值重算或继承质量结论。
 
-显式研究 profile 接口引入时的默认 v19／v20，以及后续 v21／v22，均保留已登记的原始字节摘要约束；默认继续升级也不能放开已有身份。新默认必须显式登记版本和摘要，不加载历史实现，也不改写旧运行。
+显式研究 profile 接口引入时的默认 v19／v20，以及后续 v21／v22、v23／v24、v25／v26，均保留已登记的原始字节摘要约束；默认继续升级也不能放开已有身份。新默认必须显式登记版本和摘要，不加载历史实现，也不改写旧运行。
+
+v29／v30 的来源断言规则及同次调用自检变化标记 **BREAKING-COMPARABILITY**。此前 v27／v28 与 v19 至 v28 全部已登记摘要约束继续受保护，八个 wire 示范逐字节保留。指南 v11、检查器 v5、64 例／212 处关键提及分母、公共 Schema、存储、wire 及 single 政策不变，不增加调用阶段。新 prompt 与当前指南页面字节须另冻测量身份，旧证据不重评分。已见诊断只是改动动因，不证明模型服从、稳定改善或独立验收。
 
 准备阶段用同一请求核对两臂归档器的固定条件，避免把提示词变化引起的请求摘要与归档容量差异误判为环境漂移。每个实际 slot 仍保存各自完整请求与归档证明，并在运行和派发前逐臂重新核对；共同请求的检查不替代实际请求证据。
 
@@ -40,6 +42,10 @@ description: 冻结真实提取研究，回放生产原生结果，并区分工�
 | `unannotated` | 仅工程捕获与探索复核；没有参考答案分母，也不能形成范围内语义通过。 |
 
 参考实体与提及包含描述、允许等价表达和精确 quote locator。提及绑定参考实体，并可通过 `locators` 声明多种合法精确边界。知识义务区分 `required` 与 `if_selected`，语义标准显式保留。每个参考实体须有参考提及。来源引文使用生产 locator 与宿主 UTF-16 约定，文字命中不负责判断语义等价。
+
+参考映射按对象身份而非名称包含判断：返回整体的局部指引或属性内容，不能因其 mention／qualifiers 含有整体名称就覆盖整体。只有来源和输出确实指同一对象，才能记录有据的等价表达；精确命中声明 locator 与其他有意义定位的逻辑覆盖分别报告。整体遗漏与局部独立资格未知分别保留，不在看到输出后补 locator 或改参考追认。已见来源的重复观测仍是开发诊断，不构成独立样本、稳定改善或真人验收。
+
+所有生成 description、qualifiers 和 mention rationale 都须各自复核来源依据，不能用核心对象覆盖或精确位置代替。同轮／同 PR 关联或 `basis: explicit` 不补足未说明的关系与行动者角色。已确认来源无据与外部真伪未知分别保留，真实措辞歧义也与编造规范标识分别处理：完整来源短语可以指向整体，而不声称完整组件名称。未决输出语义不能计为通过。不看输出放宽参考，不用关键词分类；更正解释时保留复核修订及此前证据。
 
 从独立准备的草稿生成语料时，使用构建后的原语；草稿须提供上文描述的真实分组、来源窗和参考范围：
 
@@ -99,7 +105,9 @@ writeFileSync('/private/tmp/study-corpus.json', JSON.stringify(corpus, null, 2) 
 }
 ```
 
-每个实验臂可选提供 `maxOutputTokens` 和 `promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion, system }`。`system` 是精确原始 prompt 文本，不是文件名；省略时使用现有配置生产默认值。有界重试复用既有显式生产政策，包括已验证的 endpoint／model 预算 profile、重试／重问次数、反馈版本及不退款的 token 预约。研究不另建重试调度器，也不新增任意固定的总调用额度。
+每个实验臂可选提供 `timeoutMs`、`maxOutputTokens` 和 `promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion, system }`。`system` 是精确原始 prompt 文本，不是文件名；省略时使用现有配置生产默认值。有界重试复用既有显式生产政策，包括已验证的 endpoint／model 预算 profile、重试／重问次数、反馈版本及不退款的 token 预约。研究不另建重试调度器，也不新增任意固定的总调用额度。
+
+内部 `timeoutMs` 选项默认 `300000`，接受 1 至 `2147483647` 毫秒的整数，与归档／子进程上限一致。两个实验臂须使用相同 timeout。实际值冻结在既有 plan 和 slot request 中；执行时同时核对冻结的 producer 证明，并原样传递 timeout；调整必须另立新计划，不能给旧调用加时或重发。它不新增公开 CLI flag，不改变普通 CLI／Studio 默认值，也不授权重试。已保存超时仍是失败观测，未知用量不退款、不填零。
 
 prepare 冻结选中 split 的全部案例，并为每个案例 × 重复 × 实验臂预分配 slot 和生产 `runId`。每个案例／重复配对交替首个实验臂。紧凑序列化计划有 16 MiB 的技术证据容量，在展开 slot 前检查；它不是模型调用或消费预算。实际授权调用上限来自预声明 slot 和生产政策。
 

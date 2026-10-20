@@ -1078,6 +1078,163 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
       ],
       "proposals": []
     }
+  },
+  {
+    "exampleId": "synthetic-reviewed-content-and-container-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "content-review",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "user",
+          "text": "接待手册文件 reception.docx 的第三节有一张预约须知卡，卡片把“短信通知可选”写成了“必须接收短信通知”，需要更正。"
+        },
+        {
+          "evidenceRef": "container-change",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "user",
+          "text": "reception.docx 还要改名为 visitor-handbook.docx；这里只确定了改名要求，尚未执行。"
+        }
+      ],
+      "limitations": [
+        "仅有这两条消息，未提供内容修订或文件改名的执行结果。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_card",
+          "label": "预约须知卡",
+          "description": "接待手册第三节中被独立指出内容错误并要求更正的卡片。",
+          "qualifiers": [
+            "位于 reception.docx 第三节"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        },
+        {
+          "entityId": "e_file",
+          "label": "reception.docx",
+          "description": "承载卡片且另有改名要求的接待手册文件。",
+          "qualifiers": [],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_card",
+          "entityId": "e_card",
+          "selection": {
+            "evidenceRef": "content-review",
+            "quote": "预约须知卡",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "来源直接指出该卡片的内容错误并要求更正；文件不能替代被修订的卡片身份。"
+        },
+        {
+          "mentionId": "m_file",
+          "entityId": "e_file",
+          "selection": {
+            "evidenceRef": "container-change",
+            "quote": "reception.docx",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "来源另行要求文件改名；它与文件内被修订的卡片分别有据，改名要求不表示已经完成。"
+        }
+      ],
+      "proposals": [
+        {
+          "proposalId": "p_card",
+          "draft": {
+            "title": "预约须知卡的短信通知要求需更正",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_correct",
+                  "subject": {
+                    "entityId": "e_card"
+                  },
+                  "relation": "将短信通知要求更正为可选",
+                  "object": null,
+                  "modality": "normative",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "接待手册中的预约须知卡内容修订",
+                    "conditions": [
+                      "当前卡片将可选短信通知写成必须接收"
+                    ],
+                    "exceptions": [],
+                    "unknowns": [
+                      "来源未说明卡片是否已完成修订。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源提出修订要求，未提供执行时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未给出要求的适用期限。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "method",
+                "purpose": "纠正预约须知卡中强化了通知义务的表述。",
+                "instructionStatementIds": [
+                  "s_correct"
+                ]
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_card",
+                "evidenceRef": "content-review",
+                "statementIds": [
+                  "s_correct"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "来源对卡片提出更正要求，没有报告修订已执行。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_card"
+          ],
+          "mentionIds": [
+            "m_card"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_card",
+              "selection": {
+                "evidenceRef": "content-review",
+                "quote": "预约须知卡，卡片把“短信通知可选”写成了“必须接收短信通知”，需要更正。",
+                "occurrence": 0
+              }
+            }
+          ],
+          "reuseRationale": "修订须知内容时核对原来的可选条件，避免把要求强化为必须；不把定位文件当作受评内容对象。",
+          "identityUncertainties": []
+        }
+      ]
+    }
   }
 ] as const satisfies readonly StrictExtractionFewshotExample[];
 

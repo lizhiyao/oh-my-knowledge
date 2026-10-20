@@ -39,7 +39,8 @@ export function createExtractionStudyPorts(input: {
 const arm = z.strictObject({ variantId: z.enum(['baseline', 'candidate']), executor: z.enum(['openai-api', 'codex']),
   model: z.string().trim().min(1), policy: ExtractionGenerationPolicySchema,
   promptProfile: ExtractionPromptProfileSchema.optional(),
-  maxOutputTokens: z.number().int().positive().optional() });
+  maxOutputTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().max(2_147_483_647).optional() });
 const configuration = z.strictObject({ configurationVersion: z.literal('omk-knowledge-extraction-study-configuration/v1'),
   actor: KnowledgeActorSchema, changedVariable: ExtractionStudyPlanSchema.shape.changedVariable,
   split: ExtractionStudyPlanSchema.shape.split, repeats: ExtractionStudyPlanSchema.shape.repeats,
@@ -54,10 +55,10 @@ export async function executeLocalExtractionStudy(input: {
   const { values } = input;
   const files = new ExtractionStudyFiles({ directory: values['--study'], workspace: values['--workspace'], repository: input.repository });
   const identity = () => extractionStudyHostIdentity();
-  const model = (variant: { executor: string; model: string; maxOutputTokens?: number | null; policy: z.infer<typeof ExtractionGenerationPolicySchema> }) => {
+  const model = (variant: { executor: string; model: string; maxOutputTokens?: number | null; timeoutMs?: number; policy: z.infer<typeof ExtractionGenerationPolicySchema> }) => {
     const maxOutputTokens = variant.maxOutputTokens ?? (variant.policy.policyId === 'knowledge-generation-bounded/v1' ? variant.policy.maxOutputTokens : undefined);
     return configuredExtractionModel(variant.executor, variant.model, input.producer,
-      maxOutputTokens === undefined ? undefined : { maxOutputTokens });
+      { ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), ...(variant.timeoutMs === undefined ? {} : { timeoutMs: variant.timeoutMs }) });
   };
   if (input.command === 'prepare') {
     const corpusText = extractionStudyFileText(values['--corpus']), configText = extractionStudyFileText(values['--config'], 4 * 1024 * 1024);

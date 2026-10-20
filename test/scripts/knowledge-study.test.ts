@@ -56,6 +56,88 @@ describe('built repository knowledge study entry', () => {
     expect(denied.status).toBe(1);
     expect(existsSync(join(workspace, 'extraction-runs')) ? readdirSync(join(workspace, 'extraction-runs')) : []).toEqual([]);
   });
+  it('carries configured and default timeouts through the built study host, native producer and frozen run without configuration drift', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-timeout-'))); roots.push(root);
+    const moduleUrl = (path: string) => pathToFileURL(join(repository, 'dist', path)).href;
+    // Production composition and producer; the executor return is authored and has no provider access.
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
+      import { createExtractionStudyPorts, executeLocalExtractionStudy as execute } from ${JSON.stringify(moduleUrl('knowledge/application/study-local.js'))};
+      import { ExtractionStudyFiles } from ${JSON.stringify(moduleUrl('knowledge/adapters/study-files.js'))};
+      import { freezeExtractionStudyCorpus, extractionStudyDigest as digest } from ${JSON.stringify(moduleUrl('knowledge/extraction/study-corpus.js'))};
+      import { SINGLE_EXTRACTION_POLICY } from ${JSON.stringify(moduleUrl('knowledge/extraction/generation-policy.js'))};
+      import { createCodexArchiveProducer } from ${JSON.stringify(moduleUrl('executors/openai/codex/archive.js'))};
+      const repository = ${JSON.stringify(repository)}, root = process.cwd(), workspace = join(root, 'workspace'); mkdirSync(workspace);
+      const effects = [], producerCalls = [];
+      const actual = createCodexArchiveProducer({}, () => async input => {
+        effects.push(input.timeoutMs);
+        return { ok: true, stopReason: 'completed', output: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4, entities: [], mentions: [], proposals: [] }),
+          durationMs: 1, durationApiMs: 0, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
+          costUSD: 0, costReportedByExecutor: false, numTurns: 1 };
+      });
+      const producer = Object.fromEntries(['assertCapabilities', 'inspect', 'configure'].map(name => [name, (...args) => {
+        producerCalls.push({ name, timeoutMs: args[1].timeoutMs }); return actual[name](...args);
+      }]));
+      const forbidden = () => { throw new Error('Capture cannot generate.'); };
+      const actor = { actorKind: 'agent', actorId: 'authored-timeout-test', executionRef: 'authored-timeout-fixture' };
+      const ports = createExtractionStudyPorts({ workspace, actor, model: forbidden, identity: forbidden });
+      const source = join(root, 'source.jsonl');
+      writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Authored timeout boundary.' }] } }));
+      const window = ports.application.capture({ path: source });
+      const corpus = freezeExtractionStudyCorpus({ corpusVersion: 'omk-extraction-study-corpus/v1', sourceKind: 'private-real', authors: [actor.actorId], cases: [{
+        caseId: 'authored-timeout', split: 'development', exposure: 'seen', projectGroup: 'p', conversationGroup: 'c', lineageGroup: 'l', ancestorLineageIds: [],
+        stratumId: 'authored', originDigest: digest('authored-only'), transformation: 'Authored timeout wiring test; no quality evidence.',
+        sourceRecords: window.records.map(record => ({ recordIndex: record.recordIndex, recordId: 'authored:' + record.recordIndex, originalDigest: digest(record.raw) })),
+        window, reference: { annotationScope: 'unannotated', entities: [], mentions: [], knowledge: [], semanticChecks: [] }
+      }] });
+      const corpusPath = join(root, 'corpus.json'), configPath = join(root, 'configuration.json'); writeFileSync(corpusPath, JSON.stringify(corpus));
+      const configuration = timeouts => ({ configurationVersion: 'omk-knowledge-extraction-study-configuration/v1', actor,
+        changedVariable: 'replication', split: 'development', repeats: 1,
+        criteria: { maxConfirmedErrors: 0, confirmedErrorsRationale: 'Authored test.', maxRequiredGaps: 0, requiredGapsRationale: 'Authored test.' },
+        sampling: { selectionFrame: 'Authored fixture.', inclusionExclusion: 'Authored fixture only.', unit: 'lineage-group', strata: [{ stratumId: 'authored', coverageRationale: 'Timeout wiring.' }],
+          sampleSizeRationale: 'No quality inference.', stoppingRule: 'One authored invocation per plan.', budgetRationale: 'No provider calls.', interruptionPolicy: 'Do not retry.' },
+        variants: ['baseline', 'candidate'].map((variantId, index) => ({ variantId, executor: 'codex', model: 'fixture', policy: SINGLE_EXTRACTION_POLICY,
+          ...(timeouts[index] === undefined ? {} : { timeoutMs: timeouts[index] }) })) });
+      const request = (command, study, extra = {}) => execute({ command, repository, runnerFile: ${JSON.stringify(script)}, producer,
+        values: { '--workspace': workspace, '--study': study, '--corpus': corpusPath, '--config': configPath, ...extra } });
+      for (const [index, timeoutMs] of [0, -1, 0.5, 2147483648, Number.MAX_SAFE_INTEGER + 1, null, '600000'].entries()) {
+        const study = join(root, 'invalid-' + index); writeFileSync(configPath, JSON.stringify(configuration([timeoutMs, timeoutMs])));
+        await assert.rejects(request('prepare', study)); assert.equal(existsSync(study), false);
+      }
+      writeFileSync(configPath, JSON.stringify(configuration([300000, 600000])));
+      await assert.rejects(request('prepare', join(root, 'drift')), /more than its declared variable/);
+      assert.equal(existsSync(join(root, 'drift')), false); assert.deepEqual(producerCalls, []); assert.deepEqual(effects, []);
+      const observed = [];
+      for (const [name, timeouts, expected] of [['explicit', [600000, 600000], 600000], ['default', [], 300000]]) {
+        const study = join(root, name); writeFileSync(configPath, JSON.stringify(configuration(timeouts)));
+        const prepared = await request('prepare', study), files = new ExtractionStudyFiles({ directory: study, workspace, repository }), { plan } = files.open();
+        assert.equal(prepared.modelCallsByThisCommand, 0); assert.deepEqual(effects, observed.map(value => value.actual));
+        assert.deepEqual(plan.variants.map(value => value.timeoutMs), [expected, expected]);
+        assert.deepEqual(plan.slots.map(value => value.request.timeoutMs), [expected, expected]);
+        assert.ok(producerCalls.every(value => value.timeoutMs === expected)); producerCalls.length = 0;
+        // Changing the source configuration cannot change a previously prepared plan, including a default-300000 plan.
+        writeFileSync(configPath, JSON.stringify(configuration([1200000, 1200000])));
+        const slot = plan.slots[0], advanced = await request('run', study, { '--slot': slot.slotId, '--authorize-plan': plan.planId });
+        assert.equal(advanced.exitCode, 0); assert.equal(advanced.omkDispatchesByThisCommand, 1);
+        const run = JSON.parse(readFileSync(join(workspace, 'extraction-runs', slot.runId + '.json'), 'utf8'));
+        assert.equal(run.status, 'completed'); assert.equal(run.attempts.length, 1);
+        assert.equal(run.attempts[0].request.timeoutMs, expected); assert.deepEqual(run.attempts[0].producer, slot.producer);
+        assert.ok(producerCalls.every(value => value.timeoutMs === expected)); producerCalls.length = 0;
+        const output = join(root, name + '-report'); await request('report', study, { '--output': output });
+        const report = JSON.parse(readFileSync(join(output, 'report.json'), 'utf8'));
+        assert.equal(report.slots[0].nativeVerified, true); assert.equal(report.summary.attempts, 1);
+        observed.push({ configured: expected, actual: effects.at(-1), run: run.attempts[0].request.timeoutMs, nativeVerified: report.slots[0].nativeVerified });
+      }
+      assert.deepEqual(effects, [600000, 300000]); process.stdout.write(JSON.stringify(observed));
+    `], { cwd: root, encoding: 'utf8', timeout: 60_000 });
+    expect(result.error).toBeUndefined(); expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      { configured: 600_000, actual: 600_000, run: 600_000, nativeVerified: true },
+      { configured: 300_000, actual: 300_000, run: 300_000, nativeVerified: true },
+    ]);
+  });
   it('freezes shared runtime and installed validator code and schema bytes, beyond dependency versions', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-host-'))); roots.push(root);
     cpSync(join(repository, 'dist'), join(root, 'dist'), { recursive: true,
