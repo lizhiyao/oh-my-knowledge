@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v19`、strict `knowledge-extraction-v20`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v21`、strict `knowledge-extraction-v22`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 
@@ -88,7 +88,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 预声明检查：冻结、归档并带版本标识与摘要的制品必须取 `version` 指代层次，持续提示词保持 `object`、当前版本只作限定。把归档语料标为 `object` 必须被离线检查器报为 `referent_kind` 不匹配。历史 `knowledge-extraction-v18` 引入一条该区分的合成示范（`synthetic-version-artifact-v2`，资产包 `entity-extraction-five-positive-strict-v4`）；示范是提示词材料，不是评测 split，也不证明语义效果改善。模型产出的类型判断仍须逐项复核；`semanticReview` 保持 pending。
 
-v18 修正只保留原文支持的限定“当前版本 v14”；v17 的示范曾补出来源没有提供的完整标识 `knowledge-extraction-v14`。这会改变 prompt 字节与测量身份（**BREAKING-COMPARABILITY**），没有新增模型调用或质量结论。原始输入、前四个示范、无 few-shot 对照及 wire 身份保持不变。v4 资产包绑定原 v3 摘要与新的 AI 作者复核，不登记新的实时采集入口。v3 资产和 v17 运行保留原始字节与事实。v3／v4 校验器绑定各自历史 v17／v18 构建，须在对应历史修订重新构建后运行。当前 strict v20 原样复用五个示例文本，但规则前缀已变化，完整 system 不等于 v4 bundle 冻结的 v18 candidate；现行运行时需要自己的测量身份。
+v18 修正只保留原文支持的限定“当前版本 v14”；v17 的示范曾补出来源没有提供的完整标识 `knowledge-extraction-v14`。这会改变 prompt 字节与测量身份（**BREAKING-COMPARABILITY**），没有新增模型调用或质量结论。原始输入、前四个示范、无 few-shot 对照及 wire 身份保持不变。v4 资产包绑定原 v3 摘要与新的 AI 作者复核，不登记新的实时采集入口。v3 资产和 v17 运行保留原始字节与事实。v3／v4 校验器绑定各自历史 v17／v18 构建，须在对应历史修订重新构建后运行。strict v20 曾原样复用五个示例文本，但规则前缀已变化。当前 strict v22 保留其序列化字节并增加第六个时间示范；完整 system 不等于 v4 bundle 冻结的 v18 candidate，需要自己的测量身份。v21／v22 时间修正属于 **BREAKING-COMPARABILITY**，不改收录范围或公共 Schema；仅影响新请求，不改旧输出与历史分数，也不保证语义正确。
 
 ## 3. 分层结果与通过门槛
 

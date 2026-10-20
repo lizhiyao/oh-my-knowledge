@@ -6,6 +6,7 @@ import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { inspectExtractionStudy } from '../../../src/knowledge/application/study-inspection.js';
 import { runExtractionStudySlot } from '../../../src/knowledge/application/study-runner.js';
 import { nativeStudyFixture } from '../../knowledge/extraction-study-fixtures.js';
+import { request } from '../../helpers/http-request.js';
 
 const trusted = vi.hoisted(() => ({ host: {} as Record<string, string> }));
 vi.mock('../../../src/knowledge/adapters/study-host.js', () => ({ extractionStudyHostIdentity: () => trusted.host }));
@@ -47,11 +48,15 @@ describe('portable study HTTP inspection', () => {
       expect(untrusted.status).toBe(403); expect(await untrusted.json()).toEqual({ error: 'mutation_not_trusted' });
       const suppliedTrust = await send('study', { evidence: {}, nativeVerified: true, status: 'accepted_within_scope', sourcePath: '/PRIVATE-STUDY-SENTINEL' });
       expect(suppliedTrust.status).toBe(400); expect(await suppliedTrust.json()).toEqual({ error: 'knowledge_study_input_invalid' });
-      const overLegacyLimit = { evidence: 'PRIVATE-STUDY-SENTINEL'.repeat(60_000) };
+      const overLegacyLimit = { evidence: 'PRIVATE-STUDY-SENTINEL'.padEnd(1024 * 1024, 'x') };
       const study = await send('study', overLegacyLimit);
       expect(study.status).toBe(400); expect(await study.json()).toEqual({ error: 'knowledge_study_evidence_invalid' });
-      const ordinary = await send('candidates', overLegacyLimit);
-      expect(ordinary.status).toBe(413); expect(await ordinary.json()).toEqual({ error: 'request_body_too_large' });
+      // Leave the request open just beyond the ordinary cap to verify rejection before client EOF.
+      const ordinary = await request(`${base}/api/knowledge/candidates`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(overLegacyLimit), endBody: false,
+      });
+      expect(ordinary.status).toBe(413); expect(JSON.parse(ordinary.body)).toEqual({ error: 'request_body_too_large' });
+      expect(ordinary.requestEnded).toBe(false); expect(ordinary.headers.connection).toBe('close');
     } finally { await server.stop(); }
   });
 });

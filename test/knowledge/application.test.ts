@@ -19,6 +19,8 @@ import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/knowledge/extraction/model
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
+import { STRICT_EXTRACTION_FEWSHOT_EXAMPLES } from '../../src/knowledge/extraction/strict-fewshot.js';
+import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { extractionQuality } from '../../src/knowledge/extraction/quality.js';
 
 const roots: string[] = [];
@@ -162,6 +164,36 @@ describe('shared knowledge application', () => {
       .toMatchObject({ identityStatus: 'proposed', referentKind: 'version', uncertainties: ['未记录提交标识'] });
     expect(reopened.queryEntities({ query: 'enabled' }).rows).toHaveLength(1);
     expect(reopened.queryEntities({ query: 'master' }).rows).toHaveLength(1);
+  });
+
+  it('persists authored unknown and explicit fact times unchanged without using message timestamps as a repair rule', async () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-source-time-and-fact-time-v1')!;
+    const { app, model, ports, root, source } = setup();
+    writeFileSync(source, example.input.excerpts.map(excerpt => JSON.stringify({ timestamp: excerpt.timestamp, type: 'response_item',
+      payload: { type: 'message', role: excerpt.role, content: [{ type: excerpt.role === 'assistant' ? 'output_text' : 'input_text', text: excerpt.text }] } })).join('\n'));
+    const snapshot = app.capture({ path: source });
+    expect(snapshot.excerpts.map(excerpt => excerpt.timestamp)).toEqual(example.input.excerpts.map(excerpt => excerpt.timestamp));
+    expect(snapshot.excerpts.map(excerpt => excerpt.role)).toEqual(example.input.excerpts.map(excerpt => excerpt.role));
+    let raw = JSON.stringify(example.output);
+    example.input.excerpts.forEach((excerpt, index) => { raw = raw.replaceAll(JSON.stringify(excerpt.evidenceRef), JSON.stringify(snapshot.excerpts[index].evidenceRef)); });
+    const generate = vi.fn(async () => ({ output: raw, durationMs: 1 }));
+    const strictModel: ExtractionModel = { ...model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, generate };
+    const run = await app.generate(snapshot.snapshotId, strictModel);
+    expect(run.status).toBe('completed'); expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
+    expect(run.rawOutput).toBe(raw); expect(run.promptVersion).toBe(STRICT_EXTRACTION_PROMPT_VERSION);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root), entities: new FileEntityAnalysisStore(join(root, 'entities')),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    const saved = run.committed.flatMap(({ knowledgeId }) => reopened.detail(knowledgeId).revision.content.statements);
+    expect(saved).toHaveLength(example.output.proposals.reduce((count, proposal) => count + proposal.draft.content.statements.length, 0));
+    for (const proposal of example.output.proposals) for (const expected of proposal.draft.content.statements) {
+      expect(saved.find(statement => statement.statementId === expected.statementId)?.context).toEqual(expected.context);
+    }
+    expect(saved.find(statement => statement.statementId === 's_start')?.context.occurredDuring)
+      .toEqual({ timeKind: 'instant', at: snapshot.excerpts[2].timestamp });
+    expect(run.attempts[0].wireDiagnostic).toMatchObject({ wireStatus: 'valid', itemFailureCount: 0 });
+    expect(generate).toHaveBeenCalledTimes(1);
+    // The callback supplies an authored response. This verifies persistence, not model behavior or semantic acceptance.
   });
   it('uses one window identity for entities and mentions across candidates', async () => {
     const { app, snapshot, model, generate } = setup();

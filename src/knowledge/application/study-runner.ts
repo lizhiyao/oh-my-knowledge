@@ -85,12 +85,12 @@ export function prepareExtractionStudy(ports: ExtractionStudyRunnerPorts, input:
     const execution = extractionExecution(model, variant.promptProfile.system, sample.input), { producer, ...request } = execution;
     return { caseId: sample.caseId, variantId: variant.variantId, requestDigest: rootRequest(base, sample, variant, ports.hash), request, producer };
   }));
-  for (const pair of templates) {
-    const identity = (value: typeof pair[number]) => {
-      const proof = value.producer.proof as Record<string, unknown>;
-      return { ...value.producer, proof: { ...proof, bodyDigest: null } };
-    };
-    if (!equal(identity(pair[0]), identity(pair[1]))) throw new Error('Study producer conditions differ between arms.');
+  for (const sample of cases) {
+    // Actual slot proofs retain each arm's request and request-dependent archive bound.
+    // Compare conditions using the same request instead of stripping opaque proof fields.
+    const common = input.variants.map(({ model }) => extractionExecution(model, variants[0].promptProfile.system, sample.input).producer);
+    const identity = (producer: typeof common[number]) => input.changedVariable === 'policy' ? stableProducer(producer) : producer;
+    if (!equal(identity(common[0]), identity(common[1]))) throw new Error('Study producer conditions differ between arms.');
   }
   const slotBytes = templates.flat().reduce((sum, value) => sum + BigInt(Buffer.byteLength(JSON.stringify({ ...value,
     slotId: `${value.caseId}-${value.variantId}-${repeats}`, repeat: repeats, runId: '00000000-0000-0000-0000-000000000000' }))) + 1n, 0n);
@@ -130,8 +130,8 @@ function attemptInput(sample: ExtractionStudyPlan['cases'][number], run: Extract
   } }) : sample.input;
 }
 
-/** Only request-body bytes may vary when production adds the predeclared validation feedback. */
-function stableProducer(producer: ExtractionStudyPlan['slots'][number]['producer']) {
+/** Only this API producer's body bytes may vary under declared policy caps or validation feedback. */
+function stableProducer(producer: ReturnType<typeof extractionExecution>['producer']) {
   const proof = producer.proof;
   return producer.producerId === 'openai-chat-archive/v1' && proof !== null && typeof proof === 'object' && !Array.isArray(proof)
     ? { ...producer, proof: { ...proof, bodyDigest: null } } : producer;

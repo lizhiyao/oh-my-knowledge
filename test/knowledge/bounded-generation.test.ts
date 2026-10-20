@@ -79,7 +79,7 @@ describe('bounded extraction generation', () => {
   it.each(['single', 'bounded'] as const)('binds explicit study prompt bytes through the %s production dispatch and immutable recovery', async mode => {
     const f = setup(), id = randomUUID();
     const promptProfile = { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const,
-      promptVersion: 'knowledge-extraction-v21', system: `${STRICT_EXTRACTION_PROMPT}\n\n受控开发候选：逐条保留条件。\n` };
+      promptVersion: 'knowledge-extraction-v9001', system: `${STRICT_EXTRACTION_PROMPT}\n\n受控开发候选：逐条保留条件。\n` };
     const options = { promptProfile, ...(mode === 'bounded' ? { policy: policy() } : {}) };
     const run = await f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, options);
     expect(run.status).toBe('completed');
@@ -91,9 +91,9 @@ describe('bounded extraction generation', () => {
     const savedBytes = readFileSync(join(f.root, 'extraction-runs', `${id}.json`));
     expect(new KnowledgeApplication(f.ports).resume(id)).toEqual(run);
     await expect(f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, { ...options,
-      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v22' } })).rejects.toThrow('identity conflict');
+      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v9002' } })).rejects.toThrow('identity conflict');
     await expect(f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, { ...options,
-      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v22', system: `${promptProfile.system}改变候选。` } })).rejects.toThrow('identity conflict');
+      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v9002', system: `${promptProfile.system}改变候选。` } })).rejects.toThrow('identity conflict');
     expect(f.effects).toHaveBeenCalledTimes(1);
     expect(readFileSync(join(f.root, 'extraction-runs', `${id}.json`))).toEqual(savedBytes);
   });
@@ -101,10 +101,13 @@ describe('bounded extraction generation', () => {
   it('rejects malformed profiles and relabelled default prompts before creating a run or dispatching', async () => {
     const f = setup();
     for (const promptProfile of [
-      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v21', system: '   ' },
-      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v21\n', system: '候选' },
-      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v21', system: '\ud800' },
-      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v21', system: '字'.repeat(700_000) },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '   ' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001\n', system: '候选' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '\ud800' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '字'.repeat(700_000) },
+      ...['knowledge-extraction-v19', 'knowledge-extraction-v20', 'knowledge-extraction-v21'].map(promptVersion => ({
+        profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion, system: 'Different bytes cannot borrow a published identity.',
+      })),
       { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: `${STRICT_EXTRACTION_PROMPT}\n改变` },
     ]) await expect(f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { promptProfile })).rejects.toThrow();
     expect(f.app.runs()).toEqual([]); expect(f.effects).not.toHaveBeenCalled();
