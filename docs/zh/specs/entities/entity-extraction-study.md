@@ -99,7 +99,9 @@ writeFileSync('/private/tmp/study-corpus.json', JSON.stringify(corpus, null, 2) 
 }
 ```
 
-每个实验臂可选提供 `maxOutputTokens` 和 `promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion, system }`。`system` 是精确原始 prompt 文本，不是文件名；省略时使用现有配置生产默认值。有界重试复用既有显式生产政策，包括已验证的 endpoint／model 预算 profile、重试／重问次数、反馈版本及不退款的 token 预约。研究不另建重试调度器，也不新增任意固定的总调用额度。
+每个实验臂可选提供 `timeoutMs`、`maxOutputTokens` 和 `promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion, system }`。`system` 是精确原始 prompt 文本，不是文件名；省略时使用现有配置生产默认值。有界重试复用既有显式生产政策，包括已验证的 endpoint／model 预算 profile、重试／重问次数、反馈版本及不退款的 token 预约。研究不另建重试调度器，也不新增任意固定的总调用额度。
+
+内部 `timeoutMs` 选项默认 `300000`，接受 1 至 `2147483647` 毫秒的整数，与归档／子进程上限一致。两个实验臂须使用相同 timeout。实际值冻结在既有 plan 和 slot request 中；执行时同时核对冻结的 producer 证明，并原样传递 timeout；调整必须另立新计划，不能给旧调用加时或重发。它不新增公开 CLI flag，不改变普通 CLI／Studio 默认值，也不授权重试。已保存超时仍是失败观测，未知用量不退款、不填零。
 
 prepare 冻结选中 split 的全部案例，并为每个案例 × 重复 × 实验臂预分配 slot 和生产 `runId`。每个案例／重复配对交替首个实验臂。紧凑序列化计划有 16 MiB 的技术证据容量，在展开 slot 前检查；它不是模型调用或消费预算。实际授权调用上限来自预声明 slot 和生产政策。
 

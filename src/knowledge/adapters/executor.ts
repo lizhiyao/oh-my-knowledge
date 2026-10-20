@@ -18,14 +18,18 @@ export function validateExtractionModelSelection(executor: string, model: string
 
 /** Delivery supplies a concrete, frozen producer. Inspect is local; generation performs one invocation. */
 export function configuredExtractionModel(executor: string, model: string, producer: ExecutorArchiveProducer,
-  options?: { maxOutputTokens?: number }): ExtractionModel {
+  options?: { maxOutputTokens?: number; timeoutMs?: number }): ExtractionModel {
   validateExtractionModelSelection(executor, model);
+  const timeoutMs = options?.timeoutMs === undefined ? 300_000 : options.timeoutMs;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new Error('Extraction timeoutMs must be a positive safe integer no greater than 2147483647.');
+  }
   const maxOutputTokens = options?.maxOutputTokens === undefined ? executor === 'openai-api' ? 4096 : undefined : options.maxOutputTokens;
-  if (options?.maxOutputTokens !== undefined) producer.assertCapabilities(executor, { model, prompt: '', maxOutputTokens });
+  if (options?.maxOutputTokens !== undefined) producer.assertCapabilities(executor, { model, prompt: '', maxOutputTokens, timeoutMs });
   const privateRoot = resolve(tmpdir());
   const request = (system: string, input: string): ExecutorInput => ({ model, system, prompt: input,
     outputFormat: { mode: 'json-schema', name: 'knowledge_extraction_v1', schema: WINDOW_EXTRACTION_WIRE_SCHEMA },
-    timeoutMs: 300_000, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }) });
+    timeoutMs, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }) });
   const inspected = new Map<string, string>();
   const inspect = (system: string, input: string) => {
     const execution = request(system, input);
@@ -34,7 +38,7 @@ export function configuredExtractionModel(executor: string, model: string, produ
     return evidence;
   };
   return {
-    executor, model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, timeoutMs: 300_000,
+    executor, model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, timeoutMs,
     dispatchGate: 'producer-before-dispatch/v1', ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), inspect,
     async generate(system, input, signal, beforeDispatch): Promise<ExtractionOutcome> {
       signal?.throwIfAborted();
