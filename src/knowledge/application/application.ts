@@ -61,8 +61,9 @@ export class KnowledgeApplication {
       ...(tags.length ? { tags } : {}),
     }; });
   }
-  runs() { return this.ports.runs.list(); }
-  quality(): ReturnType<typeof extractionQuality> { return extractionQuality(this.ports.runs.list()); }
+  // Listing and quality consume saved manifest facts; execution paths use the archive-validating read port.
+  runs() { return this.ports.runs.listManifests(); }
+  quality(): ReturnType<typeof extractionQuality> { return extractionQuality(this.ports.runs.listManifests()); }
   source(snapshotId: string, version?: string) { return this.ports.evidence.read(snapshotId, version); }
   deleteSource(snapshotId: string): void { this.ports.evidence.delete(snapshotId); }
   entities(analysisId: string, revisionId?: string) {

@@ -5,7 +5,7 @@ import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
-import { EXTRACTION_OUTCOME_MAX_BYTES, FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
+import { EXTRACTION_OUTCOME_MAX_BYTES, EXTRACTION_RUN_MAX_BYTES, FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
 import { ExtractionOutcomeSchema, ExtractionRunSchema, extractionRunSummary, type ExtractionAttempt, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
@@ -86,7 +86,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
       runtime: { durationMs: -3, cacheReadTokens: 12, cacheCreationTokens: 0, tokenUsageReportedByExecutor: false, costReportedByExecutor: false },
       attempts: [{ ...attempt, outcome: ref }] };
     store.save(next, 1); store.save(next, 1);
-    expect(store.read(run.runId)).toEqual(next); expect(store.list()).toHaveLength(1);
+    expect(store.read(run.runId)).toEqual(next); expect(store.listManifests()).toHaveLength(1);
     expect(() => store.readOutcome(run.runId, attempt.attemptId, { ...ref, digest: sha('b') })).toThrow('integrity mismatch');
     expect(() => store.writeOutcome(run.runId, attempt.attemptId, nativeOutcome('different output'), attempt.producer.maxOutcomeJsonBytes)).toThrow('identity conflict');
     expect(() => store.save({ ...next, generation: 3, attempts: [{ ...next.attempts[0], requestDigest: sha('b') }] }, 2)).toThrow('attempt conflict');
@@ -98,6 +98,40 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     rmSync(join(directory, 'outcomes', run.runId, `${attempt.attemptId}.json`));
     expect(() => store.read(run.runId)).toThrow('Archived extraction outcome is missing');
   });
+  it.each(['missing', 'corrupt'] as const)('lists manifest receipts without reading %s native evidence while execution reads fail closed', problem => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = runFixture(), attempt = run.attempts[0], outcome = nativeOutcome(); store.create(run);
+    const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+    const saved = { ...run, generation: 2, attempts: [{ ...attempt, outcome: ref }] }; store.save(saved, 1);
+    const manifestPath = join(directory, `${run.runId}.json`), before = readFileSync(manifestPath);
+    const path = join(directory, 'outcomes', run.runId, `${attempt.attemptId}.json`);
+    if (problem === 'missing') rmSync(path); else writeFileSync(path, '{invalid native archive');
+    expect(store.listManifests()).toEqual([saved]);
+    expect(extractionRunSummary(saved).invocation.archiveStatus).toBe('recorded');
+    expect(() => store.read(run.runId)).toThrow();
+    expect(() => store.save({ ...saved, generation: 3 }, 2)).toThrow();
+    expect(() => store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes)).toThrow();
+    expect(() => store.readOutcome(run.runId, attempt.attemptId, ref)).toThrow();
+    expect(readFileSync(manifestPath)).toEqual(before);
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+  });
+  it.each(['invalid-json', 'invalid-utf8', 'invalid-shape', 'wrong-identity', 'linked', 'oversized'] as const)(
+    'rejects a %s manifest before it enters a listing', problem => {
+      const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+      const run = runFixture(); store.create(run); const path = join(directory, `${run.runId}.json`);
+      if (problem === 'invalid-json') writeFileSync(path, '{');
+      if (problem === 'invalid-utf8') writeFileSync(path, Buffer.from([0xff]));
+      if (problem === 'invalid-shape') writeFileSync(path, JSON.stringify({ ...run, generation: 0 }));
+      if (problem === 'wrong-identity') writeFileSync(path, JSON.stringify({ ...run, runId: randomUUID() }));
+      if (problem === 'linked') {
+        const target = join(workspace, 'linked-manifest.json'); writeFileSync(target, JSON.stringify(run));
+        rmSync(path); symlinkSync(target, path);
+      }
+      if (problem === 'oversized') truncateSync(path, EXTRACTION_RUN_MAX_BYTES + 1);
+      expect(() => store.listManifests()).toThrow(); expect(() => store.read(run.runId)).toThrow();
+      expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+    },
+  );
   it('recovers an exclusively published sidecar after lost acknowledgement without another invocation or metadata overwrite', () => {
     const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
     const run = runFixture(), attempt = run.attempts[0], outcome = nativeOutcome(); store.create(run);
@@ -180,7 +214,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
       expect(existsSync(directory)).toBe(false); rmSync(old);
     }
     writeFileSync(join(workspace, 'runs', `${randomUUID()}.json`), 'unrelated malformed v4');
-    store.create(run); expect(store.list().map(value => value.runId)).toEqual([run.runId]);
+    store.create(run); expect(store.listManifests().map(value => value.runId)).toEqual([run.runId]);
     expect(() => store.create(run)).toThrow('already exists');
     expect(readdirSync(join(workspace, 'runs'))).toHaveLength(1);
   });
@@ -321,7 +355,8 @@ describe('current knowledge storage', () => {
       { runKind: 'knowledge-extraction-run', schemaVersion: 3, promptVersion: 'knowledge-extraction-v2' },
       { runKind: 'knowledge-extraction-run', schemaVersion: 4, promptVersion: 'knowledge-extraction-v14' }]) {
       const bytes = JSON.stringify(value); writeFileSync(runPath, bytes);
-      expect(() => runStore.read(runId)).toThrow('knowledge_storage_unsupported'); expect(readFileSync(runPath, 'utf8')).toBe(bytes);
+      expect(() => runStore.read(runId)).toThrow('knowledge_storage_unsupported');
+      expect(() => runStore.listManifests()).toThrow('knowledge_storage_unsupported'); expect(readFileSync(runPath, 'utf8')).toBe(bytes);
     }
   });
   it('does not infer dead writers from lock age, unverifiable hosts, or malformed owners', () => {

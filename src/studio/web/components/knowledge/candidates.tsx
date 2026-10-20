@@ -365,7 +365,7 @@ function ExtractionInvocationSummary({ invocation, lang }: { invocation: Knowled
     <p>{t('结构线协议：', 'Structural wire: ')}{invocation.wireId === null ? t('未使用', 'Not used') : <code>{invocation.wireId}</code>}</p>
     <p>{invocation.archiveStatus === 'pending'
       ? t('待归档不能证明请求未发送或费用为零；恢复不会再次调用模型。', 'Pending archival does not prove the request was unsent or cost zero; resume never calls the model again.')
-      : t('归档不代表内容已通过接纳或质量验证；恢复不会再次调用模型。', 'Archival does not establish admission or quality; resume never calls the model again.')}</p>
+      : t('已记录归档引用，不代表当前归档完整性已校验，也不代表内容已通过接纳或质量验证；恢复时会校验归档，不会再次调用模型。', 'Recorded archive references do not verify current archive integrity, admission or quality; resume validates the archive and never calls the model again.')}</p>
   </details>;
 }
 

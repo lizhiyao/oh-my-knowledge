@@ -212,7 +212,7 @@ describe('bounded extraction generation', () => {
   it('checks total reservation before the first request and never refunds a failed attempt to authorize another', async () => {
     const f = setup(() => failed('server_error'));
     await expect(f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { policy: policy(1087) })).rejects.toThrow(/budget|token/i);
-    expect(f.effects).not.toHaveBeenCalled(); expect(f.runs.list()).toEqual([]);
+    expect(f.effects).not.toHaveBeenCalled(); expect(f.runs.listManifests()).toEqual([]);
     const run = await f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { policy: policy(1088) });
     expect(run.status).toBe('failed'); expect(run.attempts).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
     expect(f.generationTiming.wait).not.toHaveBeenCalled(); expect(run.attempts[0].accounting?.chargedTokens).toBe(1088);

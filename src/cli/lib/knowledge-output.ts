@@ -41,6 +41,7 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
     }
     case 'quality': next.push(command('runs', { json: true })); break;
     case 'runs':
+      next.push(t('清单仅投影已保存记录，不校验当前归档完整性；恢复时会校验。', 'Listings project saved records without verifying current archive integrity; recovery validates the archive.'));
       if (Array.isArray(value) && value.length) next.push(t('恢复只处理已保存结果，不调用模型。选择运行身份：', 'Recovery only handles saved results, without calling a model. Select a run identity:'), command('resume', { id: value[0].runId }));
       else next.push(command('capture', { source: './session.jsonl' }));
       break;
@@ -95,7 +96,7 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
     const { invocation } = extractionRunSummary(run);
     return [lang === 'zh' ? `提炼运行：${run.status}` : `Extraction run: ${run.status}`,
       `${run.runId} · ${run.executor} / ${run.model}`,
-      `${run.policy.policyId} · ${invocation.outputMode} · ${invocation.archiveStatus === 'recorded' ? (lang === 'zh' ? '结果已归档' : 'outcome archived') : (lang === 'zh' ? '归档待确认，发送和费用状态不能据此推断' : 'archive pending; dispatch and cost cannot be inferred')}`,
+      `${run.policy.policyId} · ${invocation.outputMode} · ${invocation.archiveStatus === 'recorded' ? (lang === 'zh' ? '归档引用已记录' : 'archive reference recorded') : (lang === 'zh' ? '归档待确认，发送和费用状态不能据此推断' : 'archive pending; dispatch and cost cannot be inferred')}`,
       lang === 'zh' ? `已预约 ${invocation.attemptCount} 次尝试；本运行最多 ${invocation.limits.maxInvocations} 次调用，含最多 ${invocation.limits.maxReasks} 次校验重问。` : `${invocation.attemptCount} attempts reserved; up to ${invocation.limits.maxInvocations} invocations, including ${invocation.limits.maxReasks} validation reasks.`,
       ...(run.policy.policyId === 'knowledge-generation-bounded/v1' ? [lang === 'zh'
         ? `累计 token 预约 ${invocation.budget.reservedTokens}/${invocation.budget.maxTotalTokens}；观测用量 ${invocation.budget.observedTokens ?? '未知'}；${invocation.budget.unknownAttempts} 次用量未知。预约不退款，不表示金额上限。`

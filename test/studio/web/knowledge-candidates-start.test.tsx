@@ -42,7 +42,8 @@ describe('knowledge extraction onboarding', () => {
       limits: { maxInvocations: 3, maxReasks: 2 }, budget: { reservedTokens: 2108192, maxTotalTokens: 3162288, observedTokens: 1200, unknownAttempts: 0 } } } });
     expect(bounded).toContain('本运行最多 3 次 OMK 调用，含最多 2 次校验重问'); expect(bounded).toContain('已记录 OMK 调用尝试：2');
     expect(bounded).toContain('token 预约已用 2108192／总额 3162288'); expect(bounded).toContain('观测 token 用量：1200');
-    expect(render({ latest })).toContain('归档不代表内容已通过接纳或质量验证');
+    expect(render({ latest })).toContain('不代表当前归档完整性已校验，也不代表内容已通过接纳或质量验证');
+    expect(render({ latest })).toContain('恢复时会校验归档，不会再次调用模型');
     expect(render({ latest: { ...latest, rejections: [{ index: 0, reasons: ['quote_mismatch'] }] } })).toContain('未通过引用或格式校验');
     expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：提炼失败');
     const pending = render({ latest: { ...latest, status: 'failed', invocation: { ...latest.invocation, archiveStatus: 'pending', failureKind: '<unsafe>' } } });
@@ -71,6 +72,7 @@ describe('knowledge extraction onboarding', () => {
     expect(html).toContain('Last extraction completed with 0 candidates');
     expect(html).toContain('Preview the content before confirming a model request.');
     expect(html).toContain('Outcome evidence archive: Recorded');
+    expect(html).toContain('Recorded archive references do not verify current archive integrity, admission or quality');
     expect(render({ lang: 'en', latest: { ...latest, invocation: { ...latest.invocation, outputMode: 'prompt-json', wireId: null, archiveStatus: 'pending' } } })).toContain('Structural wire: Not used');
   });
   it('does not report an empty source scope until loading succeeds, and offers a retry after failure', () => {
