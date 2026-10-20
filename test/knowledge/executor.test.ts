@@ -4,6 +4,7 @@ import type { ExecutorArchiveProducer } from '../../src/executors/contracts/arch
 import { assertExecutorInputCapabilities, createExecutor } from '../../src/executors/index.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
 import { OPENAI_TOKEN_BUDGET_EVIDENCE, OPENAI_TOKEN_BUDGET_EVIDENCE_DIGEST, resolveTokenBudgetProfile } from '../../src/executors/contracts/token-budget.js';
 import { captureBudgetProfile } from '../../scripts/bench/entity-capture-profile.js';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
@@ -96,6 +97,47 @@ describe('knowledge generation executor boundary', () => {
     await expect(model.generate(STRICT_EXTRACTION_PROMPT, 'selected text', AbortSignal.abort(), beforeDispatch)).rejects.toThrow();
     expect(create).toHaveBeenCalledTimes(callsBefore);
     expect(beforeDispatch).toHaveBeenCalledTimes(1);
+  });
+  it.each(['codex', 'openai-api'])('freezes one explicit timeout across the %s producer and actual execution', async executor => {
+    const native: ExecResult = { ok: true, stopReason: 'completed', output: '{}', durationMs: 1, durationApiMs: 0, inputTokens: 1, outputTokens: 1,
+      cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, costReportedByExecutor: false, numTurns: 1 };
+    const dispatch = vi.fn(async (input: Parameters<ExecutorFn>[0]) => {
+      expect(input.timeoutMs).toBe(600_000);
+      if (input.cwd) directories.push(input.cwd);
+      return native;
+    });
+    const actual = executor === 'codex' ? createCodexArchiveProducer({}, () => dispatch)
+      : createOpenAiArchiveProducer({ OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' }, (_executor, options) => async input => {
+        options.apiDispatchPolicy.beforeDispatch(buildOpenAiChatRequest(input, options.env, options.apiDispatchPolicy.requestConstraints));
+        return dispatch(input);
+      });
+    const inspect = vi.fn(actual.inspect), configure = vi.fn(actual.configure);
+    const producer = { ...actual, inspect, configure };
+    const options = { timeoutMs: 600_000 };
+    const model = configuredExtractionModel(executor, 'fixture', producer, options);
+    options.timeoutMs = 1; // Later caller mutation cannot alter this model's reservation or execution.
+    expect(model.timeoutMs).toBe(600_000);
+    const execution = extractionExecution(model, STRICT_EXTRACTION_PROMPT, 'selected evidence');
+    expect(execution.timeoutMs).toBe(600_000);
+    const beforeDispatch = vi.fn();
+    await model.generate(STRICT_EXTRACTION_PROMPT, 'selected evidence', undefined, beforeDispatch);
+    expect(inspect.mock.calls.map(([, request]) => request.timeoutMs)).toEqual([600_000]);
+    expect(configure.mock.calls.map(([, request]) => request.timeoutMs)).toEqual([600_000]);
+    expect(dispatch).toHaveBeenCalledTimes(1); expect(beforeDispatch).toHaveBeenCalledTimes(1);
+    expect(extractionExecution(configuredExtractionModel(executor, 'fixture', actual), STRICT_EXTRACTION_PROMPT, 'selected evidence').timeoutMs).toBe(300_000);
+    if (executor === 'codex') expect(execution.producer).not.toEqual(
+      extractionExecution(configuredExtractionModel(executor, 'fixture', actual), STRICT_EXTRACTION_PROMPT, 'selected evidence').producer);
+  });
+  it('rejects invalid timeouts before asking the producer for capabilities, proof or execution', () => {
+    const forbidden = vi.fn(() => { throw new Error('Producer must not be consulted.'); });
+    const producer: ExecutorArchiveProducer = { assertCapabilities: forbidden, inspect: forbidden, configure: forbidden };
+    for (const timeoutMs of [0, -1, 1.5, NaN, Infinity, 2_147_483_648, Number.MAX_SAFE_INTEGER + 1, null, '600000']) {
+      expect(() => configuredExtractionModel('openai-api', 'fixture', producer,
+        { timeoutMs: timeoutMs as number, maxOutputTokens: 4096 })).toThrow('positive safe integer no greater than 2147483647');
+    }
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(configuredExtractionModel('codex', 'fixture', producer, { timeoutMs: 2_147_483_647 }).timeoutMs).toBe(2_147_483_647);
+    expect(forbidden).not.toHaveBeenCalled();
   });
   it('uses the exact strict API request and preserves normalized native evidence before deriving success or refusal admission', async () => {
     const output = '{"responseKind":"knowledge-extraction","schemaVersion":4,"entities":[],"mentions":[],"proposals":[]}';

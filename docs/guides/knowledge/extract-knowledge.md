@@ -81,6 +81,23 @@ omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revis
 
 Use the actual generation, not the example number. Edits create a new revision without inheriting the previous retention choice. Source positions remain bound. Correct new mentions/entities against the same analysis source; never invent references. New source windows require new extraction. Read old revisions using `show --revision <old-revision-id>`.
 
+To add later conditions, correct a quote or add an evidence link, save **all citations needed by the new revision** in `citations.json`, then add `--citations ./citations.json` to `revise` or `apply-entities`:
+
+```json
+[
+  {
+    "evidenceLinkId": "<draft-evidence-link-id>",
+    "selection": {
+      "evidenceRef": "<same-window-evidence-ref>",
+      "quote": "The exact source span to inspect",
+      "occurrence": 0
+    }
+  }
+]
+```
+
+Copy `evidenceRef` and continuous source text from the bound analysis messages. Link identities must match the draft's `evidence`; one link may cite several spans. `occurrence` is zero-based and includes overlaps; repeated spans need an explicit choice rather than guessing the first occurrence. Do not supply start/end offsets: the host computes them from source text. Omitting `--citations` preserves still-referenced prior citations; providing a file replaces the complete array, and an empty array is invalid. Invalid localization or references preserve the previous revision; another source window cannot supply the new quotes. Both Studio revision forms also edit citations and show source messages. A confirmed citation error preserves the editable draft; conflicts or unknown write outcomes require inspecting the latest knowledge before submitting again.
+
 
 ## Inspect entities and apply corrections {#inspect-entities-and-apply-corrections}
 

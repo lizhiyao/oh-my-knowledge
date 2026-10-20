@@ -1,4 +1,5 @@
 import type { ExecutorInput } from '../contracts/ports.js';
+import { serializeOpenAiChatBody } from '../contracts/openai-chat.js';
 import { resolveOpenAiEndpoint } from '../core/http.js';
 
 export const OPENAI_CHAT_REQUEST_VERSION = 'openai-chat-request/v1' as const;
@@ -12,17 +13,6 @@ export interface OpenAiDispatchPolicy {
 /** The actual production request builder, shared with preflight. Never includes credentials. */
 export function buildOpenAiChatRequest(input: ExecutorInput, environment: NodeJS.ProcessEnv,
   constraints?: OpenAiDispatchPolicy['requestConstraints']): OpenAiRequestEvidence {
-  const { model, system, prompt, outputFormat, maxOutputTokens } = input;
-  const messages: Array<{ role: string; content: string }> = [];
-  if (system) messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user', content: prompt });
-  const responseFormat = outputFormat?.mode === 'json-schema'
-    ? { type: 'json_schema', json_schema: { name: outputFormat.name, schema: outputFormat.schema, strict: true } }
-    : outputFormat?.mode === 'json-object' ? { type: 'json_object' } : undefined;
   return { endpoint: resolveOpenAiEndpoint(environment.OPENAI_BASE_URL, 'chat/completions'),
-    body: JSON.stringify({ model: model || 'gpt-4o', messages,
-      ...(responseFormat ? { response_format: responseFormat } : {}),
-      ...(maxOutputTokens === undefined ? {} : { max_completion_tokens: maxOutputTokens }),
-      ...(constraints === 'single-completion/v1' ? { n: 1, stream: false } : {}),
-    }) };
+    body: serializeOpenAiChatBody(input, constraints) };
 }

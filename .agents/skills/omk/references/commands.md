@@ -459,7 +459,7 @@ omk observe ~/.codex/sessions --last 7d
 
 ## omk observe entity-links
 
-跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。
+跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。 先核对实体范围：Issue／PR 概念可以是实体，具体 Issue／PR 工作记录仅保留在来源或案例上下文。若选中了具体记录，先回到来源实体修订中纠正，并在知识上下文保留编号和链接；不要通过组织或改名将它变成概念。确认是同一对象，不代表应纳入实体目录；其他有来源依据的具体实例仍可保留。
 
 **用法:**
 
@@ -584,7 +584,7 @@ omk observe ingest <traceDir> [flags]
 
 ## omk observe knowledge
 
-从选定工作日志提炼、核对和维护候选知识。
+从选定工作日志提炼、核对和维护候选知识。 先核对实体范围：Issue／PR 概念可以是实体，具体 Issue／PR 工作记录仅保留在来源或案例上下文。若选中了具体记录，先回到来源实体修订中纠正，并在知识上下文保留编号和链接；不要通过组织或改名将它变成概念。确认是同一对象，不代表应纳入实体目录；其他有来源依据的具体实例仍可保留。
 
 **用法:**
 
@@ -594,13 +594,16 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
+- `operation`(必填):schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
 
 **Flags:**
 
 - `--analysis` `option`:entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。
+- `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
+- `--citations` `option`:revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。
 - `--end-record` `option`:最后一条记录序号，包含。
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
+- `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
 - `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--generation-policy` `option`:generate：完整生成策略 JSON；省略时仅调用一次。有界重试须明确模型、调用及 token 预算，输出上限取自策略。
@@ -609,12 +612,15 @@ omk observe knowledge <operation> [flags]
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
 - `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。
+- `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--model` `option`:生成模型，沿用已配置模型。
+- `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities：检索页码，从 1 开始。
 - `--page-size` `option`:entities：每页对象数，默认 20，最多 100。
 - `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
 - `--reason` `option`:保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。
+- `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。
 - `--snapshot` `option`:generate／source／delete-source：归档身份。
@@ -627,6 +633,14 @@ omk observe knowledge <operation> [flags]
 
 ```bash
 omk observe knowledge schema --json
+```
+
+```bash
+omk observe knowledge study --evidence ./evidence.json --json
+```
+
+```bash
+omk observe knowledge study --evidence ./evidence.json --author-review ./reference-author.json --reference-review ./reference-independent.json --output-review ./output-review.json --judge-review ./judge-review.json
 ```
 
 ```bash
@@ -667,6 +681,10 @@ omk observe knowledge correct-entities --workspace ./knowledge --analysis <run-i
 
 ```bash
 omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"
+```
+
+```bash
+omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./knowledge.json --citations ./citations.json --reason "逐项核对并替换引用"
 ```
 
 ```bash

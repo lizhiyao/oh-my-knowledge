@@ -2,13 +2,13 @@ import { EXTRACTION_PROMPT } from './prompt.js';
 import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from './model-wire.js';
 import { STRICT_EXTRACTION_FEWSHOT_BLOCK } from './strict-fewshot.js';
 
-/** Few-shot generation has its own identity; historical assets retain their frozen bytes. */
-export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v18' as const;
+/** Scope rules and few-shot rendering have their own identity; historical assets retain their frozen bytes. */
+export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v30' as const;
 const finalOutputRule = '输出纯 JSON 对象，responseKind 为 knowledge-extraction，schemaVersion 为 4，不要 Markdown 围栏。整个响应严格遵守以下 JSON Schema：\n';
 const boundary = EXTRACTION_PROMPT.indexOf(finalOutputRule);
 if (boundary < 0 || EXTRACTION_PROMPT.lastIndexOf(finalOutputRule) !== boundary) throw new Error('Extraction prompt final output rule changed; re-audit strict prompt rendering.');
 
-// Keep the original rule prefix and strict transport instructions. Demonstrations
+// Share the current semantic rules and strict transport instructions. Demonstrations
 // ship as production literals, without a runtime dependency on benchmark assets.
 const wireInstructions = `
 以下仅适配 strict-wire 传输，不改变前述实体识别、知识提炼、原文定位和引用闭合规则。输出仍为 knowledge-extraction／Schema v4，并遵守末尾的唯一 wire JSON Schema。

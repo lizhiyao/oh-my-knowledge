@@ -1,0 +1,321 @@
+{
+  "reviewVersion": "omk-entity-context-boundaries/v1",
+  "provenance": "synthetic",
+  "authors": [
+    "entity-context-boundary-author"
+  ],
+  "cases": [
+    {
+      "caseId": "dev-isolated-example-objects",
+      "projectGroup": "dev-isolated-example-objects",
+      "conversationGroup": "dev-isolated-example-objects",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "本轮审查的提取提示词当前是 r17。"
+        },
+        {
+          "role": "assistant",
+          "text": "新增学习示例的输入：“提取提示词继续迭代，当前是 r14。”该示例中的提示词未给出完整制品标识。"
+        },
+        {
+          "role": "user",
+          "text": "继续检查本轮审查的提取提示词。"
+        }
+      ],
+      "limitations": [
+        "合成开发诊断；所有消息均为虚构，不含私人对话。",
+        "只覆盖对象来源范围、跨引述身份与限定归属；不是独立验证集或总体质量证据。"
+      ],
+      "tags": [
+        "context-boundary",
+        "identity",
+        "qualifier-scope"
+      ],
+      "entities": [
+        {
+          "entityKey": "current-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "本轮审查正在讨论的持续提示词对象；来源给出的当前版本是 r17。"
+        },
+        {
+          "entityKey": "example-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "学习示例输入讨论的提示词；来源未确认与本轮受审对象相同，r14 只限定示例对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "current-first",
+          "entity": "current-prompt",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "本轮审查的提取提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "原文直接指向本轮审查对象。"
+        },
+        {
+          "mentionKey": "example-first",
+          "entity": "example-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "提取提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "学习示例输入内部的名称，来源未建立与本轮审查对象的对应。"
+        },
+        {
+          "mentionKey": "example-again",
+          "entity": "example-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "该示例中的提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确回指同一示例对象。"
+        },
+        {
+          "mentionKey": "current-again",
+          "entity": "current-prompt",
+          "messageIndex": 2,
+          "alternatives": [
+            {
+              "quote": "本轮审查的提取提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "回到本轮审查对象，未建立与示例对象的同一性。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "分别保存示例输入与本轮审查中的两个局部对象，均为 object、分别有两处提及；未确认对应不等于已证实两者在窗口外一定不同。",
+        "当前审查对象不得继承示例中的 r14；示例对象不得继承审查对象的 r17。",
+        "精确引文和完整 identityPairs 只检查位置与已声明分组；description、qualifiers 的来源支持仍需语义复核。"
+      ]
+    },
+    {
+      "caseId": "dev-explicit-cross-quotation-identity",
+      "projectGroup": "dev-explicit-cross-quotation-identity",
+      "conversationGroup": "dev-explicit-cross-quotation-identity",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "本轮审查的提取提示词当前是 r17。"
+        },
+        {
+          "role": "assistant",
+          "text": "引述中的“被测提示词”就是前述本轮审查的提取提示词，指同一份持续对象；这里没有引入别的提示词。"
+        }
+      ],
+      "limitations": [
+        "合成开发诊断；所有消息均为虚构，不含私人对话。",
+        "只覆盖对象来源范围、跨引述身份与限定归属；不是独立验证集或总体质量证据。"
+      ],
+      "tags": [
+        "context-boundary",
+        "identity",
+        "qualifier-scope"
+      ],
+      "entities": [
+        {
+          "entityKey": "current-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "来源明确确认引述名称与前述审查提示词指向同一持续对象，不能仅因进入引述而拆分。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "current-first",
+          "entity": "current-prompt",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "本轮审查的提取提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "首次命名当前审查对象。"
+        },
+        {
+          "mentionKey": "quoted-name",
+          "entity": "current-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "被测提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源明确说就是前述对象，提供跨引述同一性依据。"
+        },
+        {
+          "mentionKey": "current-confirmed",
+          "entity": "current-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "本轮审查的提取提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确确认的回指名称。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "引述边界本身不决定对象不同；明确同一性依据支持归并，三个提及共享一个身份。",
+        "提示词是持续对象，当前版本只是限定，不机械新增具体版本实体。"
+      ]
+    },
+    {
+      "caseId": "dev-unconfirmed-context-correspondence",
+      "projectGroup": "dev-unconfirmed-context-correspondence",
+      "conversationGroup": "dev-unconfirmed-context-correspondence",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "本轮审查涉及 Atlas 提示词和 Beacon 提示词，未给这两份提示词的版本。"
+        },
+        {
+          "role": "assistant",
+          "text": "下面记录写着“提示词当前是 r14”，但没有说明这里的“提示词”是前述哪一份。"
+        }
+      ],
+      "limitations": [
+        "合成开发诊断；所有消息均为虚构，不含私人对话。",
+        "只覆盖对象来源范围、跨引述身份与限定归属；不是独立验证集或总体质量证据。"
+      ],
+      "tags": [
+        "context-boundary",
+        "identity",
+        "qualifier-scope"
+      ],
+      "entities": [
+        {
+          "entityKey": "atlas-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "明确命名的 Atlas 提示词；其版本未知。"
+        },
+        {
+          "entityKey": "beacon-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "明确命名的 Beacon 提示词；其版本未知。"
+        },
+        {
+          "entityKey": "unresolved-prompt",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "unresolved",
+          "possibleEntities": [
+            "atlas-prompt",
+            "beacon-prompt"
+          ],
+          "component": null,
+          "collection": null,
+          "rationale": "记录内的提示词所指未明；两份同层次提示词都是可能候选。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "atlas-name",
+          "entity": "atlas-prompt",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Atlas 提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确命名的第一个审查对象。"
+        },
+        {
+          "mentionKey": "beacon-name",
+          "entity": "beacon-prompt",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "Beacon 提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确命名的第二个审查对象。"
+        },
+        {
+          "mentionKey": "unresolved-first",
+          "entity": "unresolved-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "提示词",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "引述中的对象未对应到单一审查对象。"
+        },
+        {
+          "mentionKey": "unresolved-again",
+          "entity": "unresolved-prompt",
+          "messageIndex": 1,
+          "alternatives": [
+            {
+              "quote": "提示词",
+              "occurrence": 1
+            }
+          ],
+          "rationale": "同一记录内对含糊所指的再次引用，不能猜测归属。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "含糊记录的两处提及共享独立 unresolved 身份，并列出 Atlas 与 Beacon 为同层次候选。",
+        "没有澄清时不能把记录提及绑定到任一明确对象；r14 不得进入 Atlas 或 Beacon 的 description、qualifiers。",
+        "已知名称对象仍为 proposed；版本未知本身不使其 identityStatus 变为 unresolved。"
+      ]
+    }
+  ]
+}

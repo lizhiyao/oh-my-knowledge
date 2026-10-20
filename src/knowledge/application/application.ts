@@ -3,7 +3,7 @@ import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { z } from 'zod';
 import { EntityAnalysisDraftSchema, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
-import { validateEvidenceSelection } from '../validation.js';
+import { validateEvidenceSelection, validateGroundingReferences } from '../validation.js';
 import type { KnowledgeGrounding, KnowledgeStore } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
 import type { EvidenceStore, EvidenceWindow, SourceSelection } from '../extraction/evidence.js';
@@ -13,6 +13,7 @@ import type { ExtractionProposal } from '../extraction/proposals.js';
 import { EntityModelSchema } from '../extraction/entities.js';
 import { checkWindowExtractionResponse } from '../extraction/window-proposals.js';
 import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type EntityQuery } from './entity-catalog.js';
+import { KnowledgeCitationRevisionError, resolveKnowledgeCitationLocators } from './citation-locators.js';
 import type { KnowledgeEnvelope } from '../store.js';
 import { mapEntityIdentity } from '../entities/identity.js';
 import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from '../extraction/model-input.js';
@@ -23,7 +24,7 @@ import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ac
   TRANSIENT_EXTRACTION_FAILURES, REASK_EXTRACTION_FAILURES, EXTRACTION_FEEDBACK_PREAMBLE,
   type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from '../extraction/generation-policy.js';
 import { extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from '../extraction/generation.js';
-import type { ExtractionModel } from '../extraction/generation.js';
+import type { ExtractionModel, ExtractionPromptProfile } from '../extraction/generation.js';
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -35,6 +36,8 @@ export interface KnowledgeApplicationPorts {
 }
 export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
+  /** Internal controlled studies bind an explicit version and the exact dispatched system bytes. */
+  promptProfile?: ExtractionPromptProfile;
   beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation }) => void;
   /** Durable returned facts, outside the run-store lock and before admission or another invocation. */
   onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
@@ -144,13 +147,13 @@ export class KnowledgeApplication {
     const window = source.window;
     // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
     const input = extractionModelInput(window);
-    const { system, promptVersion } = extractionPrompt(model);
+    const { system, promptVersion } = extractionPrompt(model, options?.promptProfile);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
       policy: SINGLE_EXTRACTION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
       timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
-      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      if (previous.requestDigest !== requestDigest || previous.promptVersion !== promptVersion) throw new Error('Extraction request identity conflict.');
       return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     };
     // Current-format receipts may predate this capacity policy. Reuse them without a fresh call.
@@ -279,13 +282,13 @@ export class KnowledgeApplication {
     const source = this.source(snapshotId);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const window = source.window, initialInput = extractionModelInput(window);
-    const { system, promptVersion } = extractionPrompt(model);
+    const { system, promptVersion } = extractionPrompt(model, options?.promptProfile);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(initialInput), actor: this.ports.actor,
       policy, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
       timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
     const reuse = (previous: ExtractionRun) => {
-      if (previous.requestDigest !== requestDigest) throw new Error('Extraction request identity conflict.');
+      if (previous.requestDigest !== requestDigest || previous.promptVersion !== promptVersion) throw new Error('Extraction request identity conflict.');
       return this.resume(runId, signal);
     };
     let previous: ExtractionRun | undefined;
@@ -473,11 +476,11 @@ export class KnowledgeApplication {
     return this.ports.knowledge.write({ knowledgeId, requestId, expectedGeneration, commandKind: 'record_maintenance',
       maintenance: { revisionId, choice, reason, actor: this.ports.actor, at: this.ports.now() } }, this.ports.actor);
   }
-  revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
+  revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string, citationLocatorsInput?: unknown) {
     const previous = this.detail(knowledgeId, expectedRevisionId);
     const ref = previous.grounding.entityAnalysisRef;
     if (!ref) throw new Error('Knowledge has no bound entity analysis.');
-    return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason);
+    return this.reviseUsingEntities(knowledgeId, expectedRevisionId, expectedGeneration, ref.analysisId, ref.revisionId, input, reason, undefined, citationLocatorsInput);
   }
 
   correctEntities(analysisId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
@@ -509,7 +512,7 @@ export class KnowledgeApplication {
     return this.entities(analysisId);
   }
   reviseUsingEntities(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, analysisId: string,
-    analysisRevisionId: string, input: unknown, reason: string, identityUncertaintiesInput?: unknown) {
+    analysisRevisionId: string, input: unknown, reason: string, identityUncertaintiesInput?: unknown, citationLocatorsInput?: unknown) {
     const previous = this.detail(knowledgeId, expectedRevisionId);
     const analysis = this.entities(analysisId, analysisRevisionId);
     if (analysis.source.status !== 'available') throw new Error('Entity source unavailable.');
@@ -528,11 +531,17 @@ export class KnowledgeApplication {
       const catalog = analysis.revision.entities.find(candidate => candidate.entityId === entity.entityId);
       if (!catalog || catalog.label !== entity.label || catalog.description !== entity.description) throw new Error('Knowledge entity differs from the bound analysis.');
     }
+    const mentions = analysis.revision.mentions.filter(mention => draft.entities.some(entity => entity.entityId === mention.entityId));
+    const citations = citationLocatorsInput === undefined
+      ? previous.grounding.citations.filter(citation => draft.evidence.some(link => link.evidenceLinkId === citation.evidenceLinkId))
+      : resolveKnowledgeCitationLocators(citationLocatorsInput, excerpts);
+    if (validateGroundingReferences(draft, { mentions, citations }, new Set(excerpts.map(excerpt => excerpt.evidenceRef))).length
+      || citations.some(citation => validateEvidenceSelection(citation.selection, excerpts).length)) {
+      throw new KnowledgeCitationRevisionError();
+    }
     const revision: KnowledgeRevision = { ...previous.revision, ...draft, revisionId: this.ports.id(),
       parentRevision: { knowledgeId, revisionId: expectedRevisionId }, revisedAt: this.ports.now(), revisedBy: this.ports.actor, revisionReason: reason };
-    const mentions = analysis.revision.mentions.filter(mention => draft.entities.some(entity => entity.entityId === mention.entityId));
-    const grounding: KnowledgeGrounding = { ...previous.grounding, revisionId: revision.revisionId, mentions,
-      citations: previous.grounding.citations.filter(citation => draft.evidence.some(link => link.evidenceLinkId === citation.evidenceLinkId)),
+    const grounding: KnowledgeGrounding = { ...previous.grounding, revisionId: revision.revisionId, mentions, citations,
       entityAnalysisRef: { analysisId, revisionId: analysisRevisionId },
       sourceBindings: [{ snapshotId: analysis.history.snapshotId, sourceVersion: analysis.history.sourceVersion,
         evidenceRefs: [...new Set([...draft.evidence.map(link => link.evidenceRef), ...mentions.map(mention => mention.selection.evidenceRef)])] }],

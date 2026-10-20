@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ExtractionModel, KnowledgeApplication } from './application.js';
+import { KnowledgeCitationLocatorsSchema, KnowledgeCitationRevisionError } from './citation-locators.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
 import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../extraction/generation-policy.js';
 
@@ -16,14 +17,14 @@ export const knowledgeOperationSchemas = {
   'entity-catalog': z.strictObject({ operation: z.literal('entity-catalog'), query: text.max(512).optional(), identityStatus: z.enum(['all', 'proposed', 'unresolved']).optional(), sourceStatus: z.enum(['all', 'available', 'unavailable']).optional(), threadId: text.optional(), analysisId: uuid.optional(), page: z.number().int().min(1).max(100_000).optional(), pageSize: z.number().int().min(1).max(100).optional() }),
   'entity-detail': z.strictObject({ operation: z.literal('entity-detail'), analysisId: uuid, entityId: uuid, revision: uuid.optional() }),
   'correct-entities': z.strictObject({ operation: z.literal('correct-entities'), analysisId: uuid, revision: uuid, generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
-  'apply-entities': z.strictObject({ operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: uuid, entityRevision: uuid, draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional() }),
+  'apply-entities': z.strictObject({ operation: z.literal('apply-entities'), id: text, revision: text, generation: z.number().int().positive(), analysisId: uuid, entityRevision: uuid, draft: z.unknown(), reason: text, identityUncertainties: z.array(text.max(4096)).max(64).optional(), citationLocators: KnowledgeCitationLocatorsSchema.optional() }),
   capture: z.strictObject({ operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
   generate: z.strictObject({ operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: uuid.optional(), policy: ExtractionGenerationPolicySchema.optional() }),
   resume: z.strictObject({ operation: z.literal('resume'), id: text }),
   source: z.strictObject({ operation: z.literal('source'), snapshot: text }),
   'delete-source': z.strictObject({ operation: z.literal('delete-source'), snapshot: text }),
   maintain: z.strictObject({ operation: z.literal('maintain'), id: text, revision: text, generation: z.number().int().positive(), choice: z.enum(['retain', 'discard']), reason: text }),
-  revise: z.strictObject({ operation: z.literal('revise'), id: text, revision: text, generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
+  revise: z.strictObject({ operation: z.literal('revise'), id: text, revision: text, generation: z.number().int().positive(), draft: z.unknown(), reason: text, citationLocators: KnowledgeCitationLocatorsSchema.optional() }),
 };
 export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
@@ -58,7 +59,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'entity-catalog': return app.queryEntities({ query: request.query, identityStatus: request.identityStatus, sourceStatus: request.sourceStatus, threadId: request.threadId, analysisId: request.analysisId, page: request.page, pageSize: request.pageSize });
       case 'entity-detail': return app.entityDetail(request.analysisId, request.entityId, request.revision);
       case 'correct-entities': return app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason);
-      case 'apply-entities': return app.reviseUsingEntities(request.id, request.revision, request.generation, request.analysisId, request.entityRevision, request.draft, request.reason, request.identityUncertainties);
+      case 'apply-entities': return app.reviseUsingEntities(request.id, request.revision, request.generation, request.analysisId, request.entityRevision, request.draft, request.reason, request.identityUncertainties, request.citationLocators);
       case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
       case 'generate': {
         if (!model) throw new Error('Extraction model adapter unavailable.');
@@ -68,7 +69,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'source': return app.source(request.snapshot);
       case 'delete-source': app.deleteSource(request.snapshot); return { deleted: request.snapshot };
       case 'maintain': return app.maintain(request.id, request.revision, request.choice, request.reason, request.generation);
-      case 'revise': return app.revise(request.id, request.revision, request.generation, request.draft, request.reason);
+      case 'revise': return app.revise(request.id, request.revision, request.generation, request.draft, request.reason, request.citationLocators);
       default: { const unreachable: never = request; throw new Error(`Unknown knowledge operation: ${String(unreachable)}`); }
     }
   };
@@ -76,8 +77,12 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
   return await execute() as Results[C['operation']];
 }
 
-export function knowledgeFailureCode(cause: unknown): 'knowledge_storage_unsupported' | 'knowledge_workspace_busy' | 'knowledge_conflict' | 'knowledge_tags_invalid' | 'knowledge_capacity_exceeded' | 'knowledge_request_failed' {
+export function knowledgeFailureCode(cause: unknown): 'knowledge_storage_unsupported' | 'knowledge_workspace_busy' | 'knowledge_conflict' | 'knowledge_tags_invalid' | 'knowledge_capacity_exceeded' | 'knowledge_citations_invalid' | 'knowledge_request_failed' {
   if (cause instanceof KnowledgeStorageStateError) return cause.stateCode;
+  if (cause instanceof KnowledgeCitationRevisionError
+    || cause instanceof z.ZodError && cause.issues.length > 0 && cause.issues.every(issue => issue.path[0] === 'citationLocators')) {
+    return 'knowledge_citations_invalid';
+  }
   const message = cause instanceof Error ? cause.message : '';
   return /conflict/i.test(message) ? 'knowledge_conflict'
     : message === 'Knowledge tags invalid.' ? 'knowledge_tags_invalid'

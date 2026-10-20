@@ -53,8 +53,7 @@ describe('openAiApiExecutor usage', () => {
     const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       events.push('fetch'); assert.equal(url, 'http://127.0.0.1:9321/v1/chat/completions');
       assert.equal(init?.redirect, 'error');
-      assert.deepEqual(JSON.parse(String(init?.body)), { model: 'fixture-model', messages: [{ role: 'system', content: 'system bytes' },
-        { role: 'user', content: 'input bytes' }], max_completion_tokens: 12, n: 1, stream: false });
+      assert.equal(String(init?.body), '{"model":"fixture-model","messages":[{"role":"system","content":"system bytes"},{"role":"user","content":"input bytes"}],"max_completion_tokens":12,"n":1,"stream":false}');
       return new Response(JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 2, completion_tokens: 1 } }));
     });
     vi.stubGlobal('fetch', fetch);

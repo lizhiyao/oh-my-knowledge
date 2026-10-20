@@ -240,12 +240,18 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('renders source-grounded v18 examples while preserving the frozen v14 and no-fewshot control', () => {
+  it('versions field-level source grounding while preserving frozen controls and all eight demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v18');
-    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toEqual(frozenExamples.examples);
-    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(5);
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v30');
+    expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
+    expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
+      .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');
+    expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 7))).digest('hex'))
+      .toBe('6503dffda427bd05bbbaca754ea53c663874346249ed229d7015d4967f23be89');
+    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(8);
+    expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES)).digest('hex'))
+      .toBe('7b09b1160b1d841618a4e356aed0cc438d0fcff48e05c6a43fc5fef05f2c1643');
     const versionExample = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(example => example.exampleId === 'synthetic-version-artifact-v2')!;
     const source = versionExample.input.excerpts.map(excerpt => excerpt.text).join('\n');
     expect(source).toContain('当前是 v14');
@@ -256,12 +262,83 @@ describe('derived strict structural wire with original itemwise admission', () =
     expect(versionExample.output.entities.find(entity => entity.entityId === 'e_corpus')?.referentKind).toBe('version');
     expect(STRICT_EXTRACTION_FEWSHOT_BLOCK).toBe(renderStrictExtractionFewshotBlock());
     expect(STRICT_EXTRACTION_PROMPT.split(STRICT_EXTRACTION_FEWSHOT_BLOCK)).toHaveLength(2);
-    expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).toBe(control.toString('utf8'));
+    const legacyControl = control.toString('utf8');
+    expect(STRICT_EXTRACTION_PROMPT.replace(STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n', '')).not.toBe(legacyControl);
+    expect(STRICT_EXTRACTION_PROMPT).toContain('具体工作记录只保留为来源或案例上下文');
+    expect(EXTRACTION_PROMPT).toContain('有对象但无可复用知识时，proposals 可为空');
+    expect(EXTRACTION_PROMPT).toContain('excerpt.timestamp 只提供来源记录时间');
+    expect(EXTRACTION_PROMPT).toContain('相同或不同都不是时间有效性的判据');
     expect(control.length).toBe(31884);
     expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v14');
-    expect(createHash('sha256').update(EXTRACTION_PROMPT).digest('hex')).toBe('e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399');
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v29');
+    const frozenV18 = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/v18-candidate-strict.prompt.txt', import.meta.url));
+    expect(createHash('sha256').update(frozenV18).digest('hex')).toBe('46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229');
+  });
+
+  it('grounds separate example objects and explicit cross-quote aliases in the actual wire demonstration', () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-quoted-context-and-explicit-identity-v1')!;
+    const decoded = decode(example.output);
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    const admitted = checkWindowExtractionResponse(decoded.domainInput, example.input.excerpts);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+    expect(admitted.analysis.entities.map(entity => [entity.entityId, entity.qualifiers])).toEqual([
+      ['e_current', ['本轮审查', '当前版本 v17']], ['e_example', ['学习示例', '示例中当前版本 v14']],
+    ]);
+    expect(admitted.analysis.mentions.map(mention => [mention.mentionId, mention.entityId])).toEqual([
+      ['m_current', 'e_current'], ['m_example', 'e_example'], ['m_alias', 'e_current'], ['m_quoted_current', 'e_current'],
+    ]);
+    const quoted = admitted.analysis.mentions.find(mention => mention.mentionId === 'm_quoted_current')!;
+    expect(quoted.selection.start).toBe(example.input.excerpts[2].text.indexOf('ReviewPrompt', example.input.excerpts[2].text.indexOf('ReviewPrompt') + 1));
+    expect(admitted.accepted).toEqual([]); // Entity-only results remain independent of knowledge selection.
+  });
+
+  it('keeps independently reviewed content and its carrier distinct through the actual wire and knowledge grounding', () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-reviewed-content-and-container-v1')!;
+    const decoded = decode(example.output);
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    const packet = WindowExtractionModelSchema.parse(decoded.domainInput);
+    const admitted = checkWindowExtractionResponse(packet, example.input.excerpts);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+    expect(admitted.analysis.entities.map(entity => [entity.entityId, entity.referentKind])).toEqual([
+      ['e_card', 'object'], ['e_file', 'object'],
+    ]);
+    expect(admitted.analysis.mentions.map(mention => [mention.mentionId, mention.entityId, mention.selection.quote])).toEqual([
+      ['m_card', 'e_card', '预约须知卡'], ['m_file', 'e_file', 'reception.docx'],
+    ]);
+    expect(admitted.accepted).toHaveLength(1);
+    const proposal = admitted.accepted[0];
+    expect(proposal.draft.entities.map(entity => entity.entityId)).toEqual(['e_card']);
+    expect(proposal.mentions.map(mention => mention.mentionId)).toEqual(['m_card']);
+    expect(proposal.draft.content.statements).toMatchObject([{
+      subject: { entityId: 'e_card' }, relation: '将短信通知要求更正为可选', modality: 'normative', polarity: 'positive',
+    }]);
+    expect(proposal.citations[0].selection.quote).toBe('预约须知卡，卡片把“短信通知可选”写成了“必须接收短信通知”，需要更正。');
+    // The independently discussed file stays in the shared catalog without becoming the card's knowledge subject.
+    expect(admitted.analysis.entities.find(entity => entity.entityId === 'e_file')).toBeDefined();
+  });
+
+  it('carries authored time distinctions through the production wire without claiming model compliance', () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-source-time-and-fact-time-v1')!;
+    const decoded = decode(example.output);
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    const packet = WindowExtractionModelSchema.parse(decoded.domainInput);
+    const times = Object.fromEntries(packet.proposals.flatMap(proposal => proposal.draft.content.statements
+      .map(statement => [statement.statementId, statement.context])));
+    expect(example.input.excerpts.map(excerpt => excerpt.timestamp)).toEqual([
+      '2026-10-20T08:00:00.000Z', '2026-10-20T08:10:00.000Z', '2026-10-20T09:00:00.000Z',
+    ]);
+    expect(example.input.excerpts[0].text).toBe('HarborDesk 的首批功能已交付，但整体准确率尚未验收。');
+    expect(example.input.excerpts[1].text).toBe('后续重构 HarborDesk 时必须保留来源和修订历史。');
+    for (const statementId of ['s_delivered', 's_acceptance', 's_protect']) {
+      expect(times[statementId].occurredDuring).toMatchObject({ timeKind: 'unknown' });
+      expect(times[statementId].validDuring).toMatchObject({ timeKind: 'unknown' });
+    }
+    expect(times.s_build.occurredDuring).toEqual({ timeKind: 'instant', at: '2026-10-20T08:30:00.000Z' });
+    expect(times.s_start.occurredDuring).toEqual({ timeKind: 'instant', at: example.input.excerpts[2].timestamp });
+    expect(packet.proposals.flatMap(proposal => proposal.draft.evidence).every(link => link.basis === 'source_assertion')).toBe(true);
+    // These are authored expected values; structural admission cannot establish whether a model will follow them.
+    expect(checkWindowExtractionResponse(packet, example.input.excerpts).rejected).toEqual([]);
   });
 
   it.each(STRICT_EXTRACTION_FEWSHOT_EXAMPLES)('admits the actual production demonstration $exampleId through the wire and domain host', example => {

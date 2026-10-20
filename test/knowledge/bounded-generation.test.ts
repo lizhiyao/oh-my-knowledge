@@ -19,7 +19,7 @@ import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generati
 import { extractionRunSummary, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
 import { extractionModelInput, EXTRACTION_INPUT_MAX_BYTES } from '../../src/knowledge/extraction/model-input.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -76,6 +76,46 @@ function archived(run: ExtractionRun, runs: FileExtractionRunStore) {
 }
 
 describe('bounded extraction generation', () => {
+  it.each(['single', 'bounded'] as const)('binds explicit study prompt bytes through the %s production dispatch and immutable recovery', async mode => {
+    const f = setup(), id = randomUUID();
+    const promptProfile = { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const,
+      promptVersion: 'knowledge-extraction-v9001', system: `${STRICT_EXTRACTION_PROMPT}\n\n受控开发候选：逐条保留条件。\n` };
+    const options = { promptProfile, ...(mode === 'bounded' ? { policy: policy() } : {}) };
+    const run = await f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, options);
+    expect(run.status).toBe('completed');
+    expect(run.promptVersion).toBe(promptProfile.promptVersion);
+    expect(run.promptHash).toBe(f.ports.hash(promptProfile.system));
+    expect(f.effects.mock.calls[0][0].system).toBe(promptProfile.system);
+    expect(run.attempts[0].request.systemDigest).toBe(textDigest(promptProfile.system));
+    expect(run.attempts[0].producer).toEqual(f.model.inspect!(promptProfile.system, f.effects.mock.calls[0][0].prompt));
+    const savedBytes = readFileSync(join(f.root, 'extraction-runs', `${id}.json`));
+    expect(new KnowledgeApplication(f.ports).resume(id)).toEqual(run);
+    await expect(f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, { ...options,
+      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v9002' } })).rejects.toThrow('identity conflict');
+    await expect(f.app.generate(f.snapshot.snapshotId, f.model, id, undefined, { ...options,
+      promptProfile: { ...promptProfile, promptVersion: 'knowledge-extraction-v9002', system: `${promptProfile.system}改变候选。` } })).rejects.toThrow('identity conflict');
+    expect(f.effects).toHaveBeenCalledTimes(1);
+    expect(readFileSync(join(f.root, 'extraction-runs', `${id}.json`))).toEqual(savedBytes);
+  });
+
+  it('rejects malformed profiles and relabelled default prompts before creating a run or dispatching', async () => {
+    const f = setup();
+    for (const promptProfile of [
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '   ' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001\n', system: '候选' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '\ud800' },
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: 'knowledge-extraction-v9001', system: '字'.repeat(700_000) },
+      ...['knowledge-extraction-v19', 'knowledge-extraction-v20', 'knowledge-extraction-v21', 'knowledge-extraction-v22', 'knowledge-extraction-v23', 'knowledge-extraction-v24', 'knowledge-extraction-v25', 'knowledge-extraction-v26', 'knowledge-extraction-v27', 'knowledge-extraction-v28', 'knowledge-extraction-v29'].map(promptVersion => ({
+        profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion, system: 'Different bytes cannot borrow a published identity.',
+      })),
+      { profileVersion: 'knowledge-extraction-prompt-profile/v1' as const, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: `${STRICT_EXTRACTION_PROMPT}\n改变` },
+    ]) await expect(f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { promptProfile })).rejects.toThrow();
+    expect(f.app.runs()).toEqual([]); expect(f.effects).not.toHaveBeenCalled();
+    const original = await f.app.generate(f.snapshot.snapshotId, f.model);
+    expect(original.promptVersion).toBe(STRICT_EXTRACTION_PROMPT_VERSION);
+    expect(f.effects.mock.calls[0][0].system).toBe(STRICT_EXTRACTION_PROMPT);
+  });
+
   it('acknowledges the native archive before host observation and recovers a failed observer without redispatch', async () => {
     const f = setup(), id = randomUUID();
     const observed = vi.fn((event: { runId: string; attemptId: string; ref: { bytes: number; digest: string } }) => {

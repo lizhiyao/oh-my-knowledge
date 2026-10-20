@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -12,7 +13,7 @@ import { modelWindow } from '../knowledge/fixtures.js';
 import { identityDigest, type CaptureRuntime } from '../../scripts/bench/entity-capture-provider.js';
 import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/knowledge/extraction/model-wire.js';
 
-const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url), 'utf8');
+const corpusText = readFileSync(new URL('../fixtures/entity-extraction-review-v13.json', import.meta.url), 'utf8');
 const corpus = parseEntityReviewCorpus(corpusText);
 const measurementId = reviewDigest('frozen measurement');
 const sample: EntityReviewCase = {
@@ -43,7 +44,7 @@ function receipt() {
 describe('critical source coverage diagnostic v1 (authored responses, no model calls)', () => {
   const fixture = JSON.parse(readFileSync(new URL('../fixtures/entity-source-coverage-v1.json', import.meta.url), 'utf8'));
   const sample = EntityReviewCorpusSchema.shape.cases.element.parse(fixture.sample);
-  // This targeted fixture is not added to the frozen 60-window corpus or its mention denominator.
+  // This targeted fixture is not added to the current 64-window corpus or its mention denominator.
   function authored() {
     const output = modelWindow();
     output.entities[0] = { ...output.entities[0], entityId: 'handler', label: 'Handler', description: '事件处理函数' };
@@ -125,6 +126,111 @@ describe('critical source coverage diagnostic v1 (authored responses, no model c
   });
 });
 
+describe('prefrozen work-record boundary (authored responses, no model calls)', () => {
+  function selected(caseId: string) { return corpus.cases.find(value => value.caseId === caseId)!; }
+  function authored(value: EntityReviewCase) {
+    const output = modelWindow(); output.proposals = [];
+    output.entities = value.entities.map(entity => ({ ...output.entities[0], entityId: entity.entityKey,
+      label: value.mentions.find(mention => mention.entity === entity.entityKey)!.alternatives[0].quote,
+      description: entity.rationale, referentKind: entity.referentKinds[0] }));
+    output.mentions = value.mentions.map(mention => ({ mentionId: mention.mentionKey, entityId: mention.entity,
+      basis: 'explicit', rationale: mention.rationale,
+      selection: { evidenceRef: `${value.caseId}:${mention.messageIndex}`, ...mention.alternatives[0] } }));
+    return output;
+  }
+  function inspect(value: EntityReviewCase, output: ReturnType<typeof modelWindow>) {
+    const checked = checkWindowExtractionResponse(output, entityReviewInput(value).excerpts);
+    expect(checked.analysis.rejected).toEqual([]); expect(checked.rejected).toEqual([]);
+    return { checked, review: checkEntityReview(value, checked) };
+  }
+  function addExtra(value: EntityReviewCase, output: ReturnType<typeof modelWindow>, quote: string, messageIndex = 0) {
+    const entityId = `extra-${output.entities.length}`; const mentionId = `mention-${entityId}`;
+    output.entities.push({ ...output.entities[0], entityId, label: quote, description: 'Authored counterexample awaiting semantic review.' });
+    output.mentions.push({ mentionId, entityId, basis: 'explicit', rationale: 'Authored record-boundary counterexample.',
+      selection: { evidenceRef: `${value.caseId}:${messageIndex}`, quote, occurrence: 0 } });
+    return mentionId;
+  }
+
+  it('keeps v12 historical bytes and annotations while giving v13 a distinct guide identity', () => {
+    const historicalBytes = readFileSync(new URL('../fixtures/entity-extraction-review-v12.json', import.meta.url));
+    expect(createHash('sha256').update(historicalBytes).digest('hex')).toBe('7ad03efda303cd55300c11d04f3029a59f59df0ef569a51dfaf4570096c230af');
+    const historical = JSON.parse(historicalBytes.toString('utf8'));
+    expect(historical).toMatchObject({ corpusVersion: 'omk-entity-quality/v12', guideVersion: 'omk-entity-annotation/v10' });
+    expect(corpus).toMatchObject({ corpusVersion: 'omk-entity-quality/v13', guideVersion: 'omk-entity-annotation/v11' });
+    expect(corpus.cases.slice(0, historical.cases.length)).toEqual(historical.cases);
+    expect(corpus.cases.slice(historical.cases.length).every(value => value.split === 'development')).toBe(true);
+    expect(() => parseEntityReviewCorpus(historicalBytes.toString('utf8'))).toThrow();
+  });
+
+  it('retains independently discussed Issue/PR concepts and sends concrete record entities to semantic review', () => {
+    const value = selected('dev-work-record-concepts'); const output = authored(value);
+    const good = inspect(value, output).review;
+    expect(good.criticalMentionRecall).toMatchObject({ matched: 4, total: 4 });
+    expect(good.identities.every(identity => identity.status === 'matched')).toBe(true);
+    output.entities = output.entities.filter(entity => entity.entityId === 'budget');
+    output.mentions = output.mentions.filter(mention => mention.entityId === 'budget');
+    expect(inspect(value, output).review.criticalMentions.filter(mention => mention.status === 'missing').map(mention => mention.mentionKey))
+      .toEqual(['issue-concept', 'pr-concept']);
+    const withRecords = authored(value);
+    const extras = ['Issue #314', 'PR #315'].map(quote => addExtra(value, withRecords, quote, 1));
+    const review = inspect(value, withRecords).review;
+    expect(review.unmatchedMentionsNeedReview).toEqual(extras);
+    expect(review.semanticReview).toBe('pending'); expect(review.precision).toBeNull();
+  });
+
+  it.each([
+    ['concrete records', ['Issue #416', 'PR #417']], ['stripped prefixes', ['Issue', 'PR']],
+  ] as const)('does not silently approve %s where only numbered work records were discussed', (_name, quotes) => {
+    const value = selected('dev-numbered-records-no-concept'); const output = authored(value);
+    const extras = quotes.map(quote => addExtra(value, output, quote));
+    const review = inspect(value, output).review;
+    expect(review.criticalMentionRecall).toMatchObject({ matched: 2, total: 2 });
+    expect(review.unmatchedMentionsNeedReview).toEqual(extras);
+    // Critical recall is not a precision pass; the predeclared exclusion remains a semantic review obligation.
+    expect(review.semanticReview).toBe('pending'); expect(review.precision).toBeNull(); expect(review.f1).toBeNull();
+  });
+
+  it('preserves work-record identifiers and links in context and citations without dangling record endpoints', () => {
+    const value = selected('dev-work-record-title-context'); const output = authored(value);
+    const proposal = modelWindow().proposals[0]; const statement = proposal.draft.content.statements[0];
+    proposal.entityIds = output.entities.map(entity => entity.entityId);
+    proposal.mentionIds = output.mentions.map(mention => mention.mentionId);
+    proposal.draft.content.statements = [{ ...statement, subject: { entityId: 'validator' }, object: { entityId: 'ledger' },
+      relation: '校验', context: { ...statement.context, scenario: value.messages[0].text,
+        conditions: [], exceptions: [], unknowns: ['没有本轮工具验收记录。'] } }];
+    proposal.draft.evidence = [{ ...proposal.draft.evidence[0], evidenceRef: `${value.caseId}:0`,
+      relation: 'supports', basis: 'source_assertion', interpretation: value.roles[0].interpretation }];
+    proposal.citations = [{ ...proposal.citations[0], selection: { evidenceRef: `${value.caseId}:0`, quote: value.messages[0].text } }];
+    output.proposals = [proposal];
+    const { checked, review } = inspect(value, output);
+    expect(checked.accepted).toHaveLength(1);
+    expect(checked.accepted[0].draft.content.statements[0].context.scenario).toBe(value.messages[0].text);
+    expect(checked.accepted[0].citations[0].selection.quote).toBe(value.messages[0].text);
+    expect(checked.accepted[0].draft.entities.map(entity => entity.entityId)).toEqual(['ledger', 'validator']);
+    expect(review.roles[0]).toMatchObject({ endpointStatus: 'endpoints_matched', semanticReview: 'pending' });
+    const extra = addExtra(value, output, '知识架构整理');
+    expect(inspect(value, output).review.unmatchedMentionsNeedReview).toEqual([extra]);
+    // Even a structurally valid sentence that drops context still needs semantic review, not a keyword verdict.
+    proposal.draft.content.statements[0].context.scenario = '函数校验文件';
+    expect(inspect(value, output).review.knowledgeCoverage[0]).toMatchObject({ status: 'needs_review', semanticReview: 'pending' });
+    proposal.draft.content.statements[0].subject.entityId = 'excluded-work-record';
+    const dangling = checkWindowExtractionResponse(output, entityReviewInput(value).excerpts);
+    expect(dangling.accepted).toEqual([]);
+    expect(dangling.rejected[0].reasons).toContain('unknown_entity:content.statements.0.subject');
+  });
+
+  it('keeps ordinary concrete devices and their identities while work records stay contextual', () => {
+    const value = selected('dev-work-record-normal-instances'); const output = authored(value);
+    const good = inspect(value, output).review;
+    expect(good.criticalMentionRecall).toMatchObject({ matched: 3, total: 3 });
+    expect(good.identities.every(identity => identity.status === 'matched')).toBe(true);
+    expect(output.entities.map(entity => entity.referentKind)).toEqual(['instance', 'instance', 'instance']);
+    output.entities = output.entities.filter(entity => entity.entityId !== 'router-two');
+    output.mentions = output.mentions.filter(mention => mention.entityId !== 'router-two');
+    expect(inspect(value, output).review.criticalMentions.find(mention => mention.mentionKey === 'router-two')!.status).toBe('missing');
+  });
+});
+
 describe('entity extraction review with author evidence', () => {
   it('accepts current prefrozen boundaries and leaves property or claim spans as review candidates', () => {
     const admission = (sample: EntityReviewCase, mentionKey: string, selection: { quote: string; occurrence: number }) => {
@@ -147,9 +253,9 @@ describe('entity extraction review with author evidence', () => {
   });
 
   it('validates the current synthetic corpus and prevents group/window leakage and contradictory annotations', () => {
-    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(58);
+    expect(corpus.cases.filter(value => value.split === 'development')).toHaveLength(62);
     expect(corpus.cases.filter(value => value.split === 'validation')).toHaveLength(2);
-    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(199);
+    expect(corpus.cases.reduce((count, value) => count + value.mentions.length, 0)).toBe(212);
     for (const mutate of [
       (copy: typeof corpus) => { copy.cases[52].projectGroup = copy.cases[0].projectGroup; },
       (copy: typeof corpus) => { copy.cases[52].conversationGroup = copy.cases[0].conversationGroup; },
@@ -168,8 +274,8 @@ describe('entity extraction review with author evidence', () => {
     expect(input.excerpts[0].text).toBe(repeated.messages[0].text);
     for (const field of ['referentKinds', 'semanticChecks', 'projectGroup', 'split', 'alternatives', 'coverage', 'interpretation']) expect(JSON.stringify(input)).not.toContain(field);
     for (const mutation of [
-      { corpusVersion: 'omk-entity-quality/v11' },
-      { guideVersion: 'omk-entity-annotation/v9' },
+      { corpusVersion: 'omk-entity-quality/v12' },
+      { guideVersion: 'omk-entity-annotation/v10' },
     ]) {
       expect(() => parseEntityReviewCorpus(JSON.stringify({ ...corpus, ...mutation }))).toThrow();
     }
@@ -636,13 +742,13 @@ describe('entity extraction review with author evidence', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-review-package-'));
     try {
       const output = join(root, 'review');
-      await runCli(['--corpus', resolve('test/fixtures/entity-extraction-review-v12.json'), '--output', output], {
+      await runCli(['--corpus', resolve('test/fixtures/entity-extraction-review-v13.json'), '--output', output], {
         entry: join(PROJECT_ROOT, 'dist-scripts/bench/entity-extraction-review.js'), cwd: PROJECT_ROOT,
       });
       const manifest = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
-      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v14', checkVersion: ENTITY_CHECK_VERSION,
+      expect(manifest).toMatchObject({ promptVersion: 'knowledge-extraction-v29', checkVersion: ENTITY_CHECK_VERSION,
         conclusion: 'not_evaluated', goldReady: false, modelCallsByThisCommand: 0,
-        splitCounts: { development: 58, validation: 2 } });
+        splitCounts: { development: 62, validation: 2 } });
       const currentTools = ['entity-extraction-review.js', 'entity-review-corpus.js', 'entity-review-checks.js']
         .map(file => readFileSync(join(PROJECT_ROOT, 'dist-scripts/bench', file), 'utf8')).join('\0');
       expect(manifest.checkerDigest).toBe(reviewDigest(currentTools));

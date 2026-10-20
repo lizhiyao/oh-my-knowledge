@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Empty, Input, Select, Space, Spin, Tag } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
-import { entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entities/identity';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE, entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entities/identity';
 import { displayTime } from '../../../application/display/format';
 import { requestKnowledge } from './request';
 import { EntityRelationFields, identityProblemLabel } from './entity-relations';
@@ -107,6 +107,7 @@ export function EntityAnalysisContext({ detail, lang }: { detail: KnowledgeEntit
   const zh = lang === 'zh';
   return <div className="entity-analysis-context">
     <p>{zh ? '核对这些提及是否谈论同一对象。纠正会留下新修订；知识中已绑定的版本需另行应用。' : 'Check whether mentions refer to the same entity. Corrections create a new revision; apply it separately to bound knowledge.'}</p>
+    <p className="candidate-help">{ENTITY_SCOPE_REVIEW_GUIDANCE[lang]}</p>
     <p>{zh ? '本修订：' : 'This revision: '}{detail.revision.entities.length} {zh ? '个对象' : 'entities'} / {detail.revision.mentions.length} {zh ? '处提及' : 'mentions'} · {displayTime(detail.revision.revisedAt)} · {detail.revision.revisedBy.actorId}</p>
     <p>{detail.revision.revisionReason}</p>
     {detail.source.status === 'unavailable' && <Alert type="warning" title={zh ? '来源快照不可用；仅可查看保存的提及，不能重新核对或纠正。' : 'Source snapshot unavailable. Saved mentions remain visible; rechecking and corrections are unavailable.'}/>}

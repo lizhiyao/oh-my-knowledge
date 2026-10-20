@@ -9,11 +9,12 @@ import { createOpenAiArchiveProducer } from '../../../executors/openai/archive.j
 import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../knowledge/application/local.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import type { EntityLinkInvocation } from '../../../knowledge/entities/link-invocation.js';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
 import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkPreview, formatEntityLinkQuality, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveEntityLinks extends BaseCommand {
-  static description = description('跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。', 'Review cross-window entity links: preview locally, confirm one invocation, then explicitly accept or reject.');
+  static description = description(`跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Review cross-window entity links: preview locally, confirm one invocation, then explicitly accept or reject. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = { operation: Args.string({ required: true, options: ['candidates', 'preview', 'propose', 'list', 'show', 'quality', 'accept', 'reject', 'resume'],
     description: description('candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；其余读取、人审或零调用恢复。', 'candidates recalls locally; preview freezes content/configuration; propose explicitly invokes; quality aggregates without invocation; other operations inspect, review, or recover without a model call.') }) };
   static flags = {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { ExecutorArchiveEvidence } from '../../executors/contracts/archive.js';
 import type { ExtractionJson, ExtractionOutcome } from './runs.js';
 import { canonicalJson } from '../store.js';
@@ -24,10 +25,49 @@ export interface ExtractionModel {
   generate(system: string, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<AuthoredExtractionResult | ExtractionOutcome>;
 }
 
-export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>) {
-  return model.outputMode === 'json-schema'
+export const ExtractionPromptProfileSchema = z.strictObject({
+  profileVersion: z.literal('knowledge-extraction-prompt-profile/v1'),
+  promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/),
+  system: z.string().min(1).max(2 * 1024 * 1024).refine(value => value.trim().length > 0
+    && Buffer.byteLength(value, 'utf8') <= 2 * 1024 * 1024 && Buffer.from(value, 'utf8').toString('utf8') === value),
+});
+export type ExtractionPromptProfile = z.infer<typeof ExtractionPromptProfileSchema>;
+
+// Published identities remain pinned after defaults advance. These digests do not
+// load historical implementations or rewrite existing runs.
+const publishedPromptDigests: Readonly<Record<string, string>> = Object.freeze({
+  'knowledge-extraction-v19': 'sha256:a8ded7271b06aa3faa4c16e4875d693f03b7bb5be63748bfb3a585f1f8d9e745',
+  'knowledge-extraction-v20': 'sha256:581732fbe83f847ba6fe2f809fb0bd65e04dd7a69a7b924952c97bd5408901b9',
+  'knowledge-extraction-v21': 'sha256:beea0e93590f82fcf6ca30df279cb89e2e7eb62f39da5cfa4543a5ab1ddba130',
+  'knowledge-extraction-v22': 'sha256:c52c995810a59fde98cd4c9ac3812fd23ce79ca2e6ad85436cd3904eb574d179',
+  'knowledge-extraction-v23': 'sha256:55db71e6e190bc8059cbecd8f68f18159de0fc60721ad4cb3debf51088b2058a',
+  'knowledge-extraction-v24': 'sha256:b6d6de8496817d98a8d36cc751a37f394379d5cccb673e4c7ba74adbafe0ce99',
+  'knowledge-extraction-v25': 'sha256:aecb8127e6b936f308fe7a87de4bb044b4aaaf357ef801d6f09d9326d3860614',
+  'knowledge-extraction-v26': 'sha256:1d7b8b43b0918af7fc14b32c0cc20ef55f5d61e7c0109d66c5714d02d82225b7',
+  'knowledge-extraction-v27': 'sha256:8d58914f4fe02eaf16cfae409df1dd1e839abe9ff626669cfbdd187ad50d61b9',
+  'knowledge-extraction-v28': 'sha256:d7746055f9ba82b4720d065465e0df2e3e5654c3071d9a2f159186fde7073b3d',
+  'knowledge-extraction-v29': 'sha256:ad1dc989b54427edfeb6b8e771a1f5204ac007d93b616dd7bcc10d2fa4fbac91',
+  'knowledge-extraction-v30': 'sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085',
+});
+for (const current of [{ promptVersion: EXTRACTION_PROMPT_VERSION, system: EXTRACTION_PROMPT },
+  { promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: STRICT_EXTRACTION_PROMPT }]) {
+  if (publishedPromptDigests[current.promptVersion] !== digest(current.system)) {
+    throw new Error('Default extraction prompt requires an explicitly registered version and raw byte digest.');
+  }
+}
+
+/** Explicit study profiles preserve raw bytes and cannot relabel registered published versions. */
+export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>, profileInput?: ExtractionPromptProfile) {
+  const standard = model.outputMode === 'json-schema'
     ? { system: STRICT_EXTRACTION_PROMPT, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION }
     : { system: EXTRACTION_PROMPT, promptVersion: EXTRACTION_PROMPT_VERSION };
+  if (profileInput === undefined) return standard;
+  const profile = ExtractionPromptProfileSchema.parse(profileInput);
+  const knownDigest = publishedPromptDigests[profile.promptVersion];
+  if (knownDigest !== undefined && digest(profile.system) !== knownDigest) {
+    throw new Error('A known extraction prompt version cannot identify different bytes.');
+  }
+  return { system: profile.system, promptVersion: profile.promptVersion };
 }
 
 /** Exceptions are observations, with accessors skipped and an explicit representation bound. */

@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 const text = z.string().trim().min(1).max(4096);
 
+/** Human review guidance, not a classifier or a change to identity-confirmation semantics. */
+export const ENTITY_SCOPE_REVIEW_GUIDANCE = {
+  zh: '先核对实体范围：Issue／PR 概念可以是实体，具体 Issue／PR 工作记录仅保留在来源或案例上下文。若选中了具体记录，先回到来源实体修订中纠正，并在知识上下文保留编号和链接；不要通过组织或改名将它变成概念。确认是同一对象，不代表应纳入实体目录；其他有来源依据的具体实例仍可保留。',
+  en: 'Review entity scope first: Issue and PR concepts can be entities; concrete Issue or PR records belong only in source or case context. Correct such records in the source entity revision and preserve their identifiers and links in knowledge context; do not turn them into concepts by organizing or renaming them. Confirming the same identity does not establish eligibility for the entity catalog. Other source-supported concrete instances remain eligible.',
+} as const;
+
 /** Shared shape for window-local IDs and host-assigned persistent IDs. */
 export function entityIdentityShape(id: z.ZodType<string>) {
   const evidence = { mentionIds: z.array(id).min(1).max(64), rationale: text };

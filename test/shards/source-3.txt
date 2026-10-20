@@ -63,6 +63,14 @@ test/knowledge/entity-identity.test.ts
 test/knowledge/quote-occurrence.test.ts
 test/knowledge/storage.test.ts
 test/knowledge/bounded-generation.test.ts
+test/knowledge/extraction-study-review.test.ts
+test/knowledge/extraction-study-analysis.test.ts
+test/knowledge/extraction-study-inspection.test.ts
+test/cli/knowledge-study.test.ts
+test/studio/http/knowledge-study-server.test.ts
+test/studio/web/knowledge-study-inspection.test.tsx
+test/knowledge/extraction-study-runner.test.ts
+test/scripts/knowledge-study.test.ts
 test/knowledge/quality.test.ts
 test/knowledge/library.test.ts
 test/knowledge/entity-link-host.test.ts
@@ -77,7 +85,11 @@ test/observability/inbox/explicit-capture.test.ts
 test/observability/inbox/signal-detection.test.ts
 test/observability/inbox/source-record-archive.test.ts
 test/scripts/docs-mermaid.test.ts
+test/scripts/entity-context-boundaries.test.ts
 test/scripts/entity-extraction-review.test.ts
+test/scripts/entity-atomic-statement.test.ts
+test/scripts/entity-semantic-checks.test.ts
+test/scripts/entity-semantic-review.test.ts
 test/scripts/entity-version-artifact.test.ts
 test/scripts/entity-link-live.test.ts
 test/scripts/entity-link-review.test.ts

@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v10`，语料 `omk-entity-quality/v12`，检查器 `omk-entity-critical-checks/v5`。生产 strict `knowledge-extraction-v18`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 prompt-json v14 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v29`、strict `knowledge-extraction-v30`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 
@@ -12,11 +12,23 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 本指南采用[实体身份规则](./entity-identity.md)及[实体提取契约](./entity-extraction.md)，覆盖对象粒度、完整名称、配置知识、关键来源和构建身份。精确位置不能证明语义或产物同一性；记录输出回放与构造响应只验证表示、接纳和复核线索，不作为新模型效果证据。
 
-当前 `test/fixtures/entity-extraction-review-v12.json` 包含 60 个公开合成窗口、199 处关键提及，分为 58 个开发窗口与 2 个预留验证窗口。完整名称备选、身份、知识角色及逐例理由以冻结语料为准；它不是隐藏盲测集，也不代表真实日志分布，不含真实消息正文。已查看输出的窗口只作开发回归，不能用于宣称盲测收益；新的验证窗口须按项目／会话隔离并在输出前确定，不用于提示词调参。真实日志另行最小化、授权、分组和复核。
+当前 `test/fixtures/entity-extraction-review-v13.json` 原样保留 v12 的 60 个公开合成窗口、199 处关键提及，新增四个工作记录／概念边界的开发窗口；总计 64 个窗口、212 处关键提及，其中 62 个开发窗口与 2 个预留验证窗口。完整名称备选、身份、知识角色及逐例理由以冻结语料为准；它不是隐藏盲测集，也不代表真实日志分布，不含真实消息正文。已查看输出的窗口只作开发回归，不能用于宣称盲测收益；新的验证窗口须按项目／会话隔离并在输出前确定，不用于提示词调参。真实日志另行最小化、授权、分组和复核。
 
 提示词、语料、双语指南、检查器及运行产物的原始字节摘要共同绑定测量身份。更新当前文档也会改变新复核包的指南摘要，须重新生成并冻结复核包；旧输出、标注、严格失败与分数保持原样，不按现行规则重算。不同测量身份不能直接横比；冻结原文可从对应 Git 版本和 Issue／PR 追溯。
 
-检查器 v5 落实双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready。历史复核包及其已报告就绪状态保留原测量身份。生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新改变新的 preparation 摘要，变化的 pending plan 须在捕获前重新准备冻结包及匹配记录；旧 runId 与实验许可不能授权变化的请求。旧冻结资产、结果及 receipt 保持原样，不迁移、不重评分。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
+指南 v11 与语料 v13 按[身份规则 §2.4](./entity-identity.md) 显式约定 Issue／PR 工作记录边界，与 prompt-json v19／strict v20 一起相对指南 v10／语料 v12 构成 **BREAKING-COMPARABILITY**；旧标注、冻结资产、原始输出和已报告分数保留原身份。检查器 v5 保持不变：将未标注的额外实体提交逐项复核，不增加自动语义判决或生成后的黑名单。新用例属于开发回归，不是新的盲测质量证据。
+
+本轮引用语境修正保留指南 v11 的标注／评分规则身份、语料 v13 的 64 例原始字节与检查器 v5 源码；当前双语指南页面的版本说明和诊断内容已更新，因此页面原始字节及 `guideDigest` 会变化。新 prompt-json v23／strict v24 的请求须使用新的测量身份并重新冻结复核包，不能复用旧许可、runId 或回执。历史冻结包中的双语指南、输出和分数保留原始字节；“指南规则版本不变”不表示当前页面摘要不变。
+
+后续 v25／v26 修正在同时提到出处文件时，保留被独立评价的内容对象。指南 v11 规则、语料 v13 和检查器 v5 不变；新的内容／载体合成诊断保留独立身份与分母。构造的仅文件响应可以通过结构接纳，但既有必需提及检查仍能暴露内容对象缺失，文件 description 不能替代该身份。反向案例覆盖仅讨论文件、背景包含关系和明确别名。遗漏来自已见真实来源的重复观测，仍是开发证据；这些回归和提示词示范都不证明稳定改善或独立验收。当前指南页面字节和新 `guideDigest` 变化，须重新冻结测量包；历史分数和输出不改。
+
+v27／v28 在同一次调用的规则与输出自检中明确整体／局部边界，属于 **BREAKING-COMPARABILITY**。参考要求来源中被独立审查的整体时，返回其局部指引或描述中提到整体，不能算整体身份覆盖；仅讨论局部或文件时不反向强制新增整体。局部对象资格未决与已知整体遗漏分别记录，不看输出事后放宽参考。八个示范、指南 v11 规则、检查器 v5 与主语料分母保持原样；当前指南页面及 `guideDigest` 变化，须重新冻结测量包。已见诊断和构造响应不证明新规则已消除遗漏、提升稳定性或完成真人验收。
+
+v29／v30 的来源断言澄清改变规则与同一次调用内的输出自检字节，属于 **BREAKING-COMPARABILITY**。description、qualifiers 和 mention rationale 分别评价：精确定位或 `basis: explicit` 不能证明新增的角色、包含或所属断言。同轮／同 PR 关联不补足这些关系。已确认无据的断言即使外部真伪未知仍是错误；真实短语歧义保持 uncertain，不能计为通过。完整跨度与整体称谓须结合上下文解释，不凭某个词认定编造规范标识。
+
+八个示范、v19 至 v28 已登记的原始字节约束、指南 v11 规则、检查器 v5、64 例／212 处关键提及分母、公共 Schema、wire、存储及 single 政策不变。当前指南页面及 `guideDigest` 变化，须重新冻结测量包；历史包、run、分数与复核证据保留原身份。来源断言诊断仍是开发证据，不证明 v29／v30 输出已通过、能够泛化或完成独立真人验收，也不增加调用阶段。
+
+检查器 v5 落实双记录门禁：`goldReady` 同时要求作者自审完成与独立人工复核声明通过，缺任一记录仍为 false，任一要求修改则阻断两种 ready。历史复核包及其已报告就绪状态保留原测量身份。历史生产 strict v16 改变 prompt 字节、版本与完整 system 摘要，属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。本指南更新改变新的 preparation 摘要，变化的 pending plan 须在捕获前重新准备冻结包及匹配记录；旧 runId 与实验许可不能授权变化的请求。旧冻结资产、结果及 receipt 保持原样，不迁移、不重评分。原始 UTF-8 提示词摘要通过 `test/measurement-governance/prompt-registry.ts` 与 `prompt-registry-freeze.test.ts` 集中冻结。
 
 四个修订 2 完整输入／输出示例已完成 AI 作者逐项审阅，已进入生产 prompt；它们不是评测 split、未见验证或 Gold，回放构造答案不能证明模型效果。单独标明的部分接纳诊断复用第四例，展示原文 quote 不匹配的 sibling 被拒绝而合法候选保留；故意错误的 sibling 说明宿主行为，不是期望模型生成的输出。这些离线工程检查不等于真实模型对照或独立质量门槛完成。
 
@@ -42,6 +54,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 沿用的逐项语义核对另需确认：核心概念不被统计／适配对象替代，概念短跨度与复合对象完整跨度可以重叠但不能复制同一跨度；产品名含词不自动拆概念。助手选择回答不等于用户澄清，最初含糊提及保留 unresolved 及同层候选（层次不一致时空候选加理由），明确澄清后才重新判断先前提及。一条 statement 只有统一 modality／polarity 的命题，正负要求分开陈述、分别引用；不能靠 context 将单一 negative 限定到后半句，也不能将一个集体谓词机械拆成成员事实。这些标准由逐例复核执行，结构接纳不使用关键词推断或补写结果。
 
+引用语境核对沿用既有身份与限定规则：教学示例、假设或反例中的对象与真实当前对象分别依据各自语境识别，不能因名称相同而合并，也不能把示例的版本、环境或结果搬入当前实体的 description／qualifiers。mention 及理由须支持它所绑定的那个对象。来源明确跨引述仍指同一对象时须归并；引号或“示例”标签不能自动触发拆分。对应关系没有确认时保留 unresolved 与有依据的候选，不凭助手续答自行澄清。精确提及和身份分组检查不证明限定有来源；该项仍经完整窗口逐项语义复核。
+
 粒度核对同时检查遗漏与过度拆分：先判断来源是在描述事物的属性／行为，还是在独立定义、比较、指向或关联一个对象，再决定身份。普通属性可用关于所属对象的陈述表达，独立指标／操作概念不能因为属于统计／过程而被折叠。没有专名或知识候选不是排除依据；数值、单位、条件和未确认结果仍须保留在陈述中。关键提及命中不能证明这一边界正确；额外实体、实际知识文本和未生成的可选知识都须逐例记录，自审不称独立证据。不得根据输出事后修改身份方案。
 
 模态否定须按来源含义复核，以下是允许的等义表达示例，不是关键词分类器：
@@ -59,6 +73,8 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 配置知识按[身份规则 §2.2](./entity-identity.md)核对：选中相关知识时，保留影响判断／复用的精确值、类型、所属对象、范围、条件、来源理由及未知。已有所属对象可以为主体，但须明确字段和值；字段端点差异只是待核对线索。description、qualifiers 或引文可查不代表陈述完整。角色 `coverage: required` 预先要求事实覆盖；`if_selected` 仅在选择相关知识时检查信息保留。已有知识缺关键值是信息丢失，可选知识未生成是 not_observed，必需事实缺失是知识覆盖缺口，均与实体遗漏分开。`none` 不可含 required 角色。
 
+工作记录复核遵守[身份规则 §2.4](./entity-identity.md)：来源独立讨论 Issue／PR 概念时保留，具体编号记录不单独建实体，也不剥掉标识补造概念。有用的记录编号、链接、状态和主张者仍保留在来源或案例 context。即使额外对象有原文依据，也须遵守此范围；记录实体属于输出范围错误，不自动等同于补造来源事实。不将这条边界推广到文件、部署实例、版本或所有具体对象。新输出前冻结这些判断；输出后显式纠正实体目录及知识时保留原修订，不提高原运行分数。
+
 ### 2.1 完整名称逐例审核流程
 
 1. 对每个既有关键提及读取原文、身份组和所有边界，核对同一次出现，不把别处同名指代改作备选。
@@ -70,7 +86,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 ### 2.2 关键来源定向诊断 v1
 
-`test/fixtures/entity-source-coverage-v1.json` 是独立的 `omk-entity-source-coverage/v1` 合成开发案例：三条消息、两个对象、两处身份提及和五项关键知识依据（目的、当前限制、适用条件及例外、迟到约束、后续纠正及未验证限制）。它不并入 60 窗口语料，不改变关键提及分母。
+`test/fixtures/entity-source-coverage-v1.json` 是独立的 `omk-entity-source-coverage/v1` 合成开发案例：三条消息、两个对象、两处身份提及和五项关键知识依据（目的、当前限制、适用条件及例外、迟到约束、后续纠正及未验证限制）。它不并入主语料，不改变关键提及分母。
 
 新模型诊断前，冻结这个窗口、关键原文位置、必需知识及允许表达、当前提示词／Schema、运行产物和依赖摘要；具体模型、额度及发送范围另行授权。构造响应不计模型输出。本诊断的空知识仍结构合法，但五项预声明义务未覆盖；普通重复名称无需全部保存。
 
@@ -80,11 +96,19 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 ### 2.3 制品版本定向诊断 v1
 
-`test/fixtures/entity-version-artifact-v1.json` 是独立的合成开发用例，`omk-entity-version-artifact/v1`：两条消息、两个对象（一份冻结归档语料与一个持续提示词）和一条必需的不混算义务。它不加入 60 窗语料，不改变关键提及分母。
+`test/fixtures/entity-version-artifact-v1.json` 是独立的合成开发用例，`omk-entity-version-artifact/v1`：两条消息、两个对象（一份冻结归档语料与一个持续提示词）和一条必需的不混算义务。它不加入主语料，不改变关键提及分母。
 
-预声明检查：冻结、归档并带版本标识与摘要的制品必须取 `version` 指代层次，持续提示词保持 `object`、当前版本只作限定。把归档语料标为 `object` 必须被离线检查器报为 `referent_kind` 不匹配。生产 `knowledge-extraction-v18` 携带一条该区分的合成示范（`synthetic-version-artifact-v2`，资产包 `entity-extraction-five-positive-strict-v4`）；示范是提示词材料，不是评测 split，也不证明语义效果改善。模型产出的类型判断仍须逐项复核；`semanticReview` 保持 pending。
+预声明检查：冻结、归档并带版本标识与摘要的制品必须取 `version` 指代层次，持续提示词保持 `object`、当前版本只作限定。把归档语料标为 `object` 必须被离线检查器报为 `referent_kind` 不匹配。历史 `knowledge-extraction-v18` 引入一条该区分的合成示范（`synthetic-version-artifact-v2`，资产包 `entity-extraction-five-positive-strict-v4`）；示范是提示词材料，不是评测 split，也不证明语义效果改善。模型产出的类型判断仍须逐项复核；`semanticReview` 保持 pending。
 
-v18 修正只保留原文支持的限定“当前版本 v14”；v17 的示范曾补出来源没有提供的完整标识 `knowledge-extraction-v14`。这会改变 prompt 字节与测量身份（**BREAKING-COMPARABILITY**），没有新增模型调用或质量结论。原始输入、前四个示范、无 few-shot 对照及 wire 身份保持不变。v4 资产包绑定原 v3 摘要与新的 AI 作者复核，不登记新的实时采集入口。v3 资产和 v17 运行保留原始字节与事实。v3 校验器绑定生产 v17，须在对应历史修订重新构建后运行；v4 校验器检查当前 v18 构建。
+v18 修正只保留原文支持的限定“当前版本 v14”；v17 的示范曾补出来源没有提供的完整标识 `knowledge-extraction-v14`。这会改变 prompt 字节与测量身份（**BREAKING-COMPARABILITY**），没有新增模型调用或质量结论。原始输入、前四个示范、无 few-shot 对照及 wire 身份保持不变。v4 资产包绑定原 v3 摘要与新的 AI 作者复核，不登记新的实时采集入口。v3 资产和 v17 运行保留原始字节与事实。v3／v4 校验器绑定各自历史 v17／v18 构建，须在对应历史修订重新构建后运行。strict v20 曾原样复用五个示例文本，但规则前缀已变化。strict v22 保留其序列化字节并增加第六个时间示范；完整 system 不等于 v4 bundle 冻结的 v18 candidate，需要自己的测量身份。v21／v22 时间修正属于 **BREAKING-COMPARABILITY**，不改收录范围或公共 Schema；仅影响新请求，不改旧输出与历史分数，也不保证语义正确。
+
+### 2.4 引用语境定向诊断 v1
+
+`test/fixtures/entity-context-boundaries-v1.json` 是独立的 `omk-entity-context-boundaries/v1` 合成开发资产：三个案例、七条消息、十一处预声明关键提及，分别检查隔离示例对象分开、明确跨引述的同一对象归并，以及未确认对应关系保留歧义。它不含私人对话，不并入语料 v13 的 64 例或 212 处关键提及分母。
+
+构造响应回归复用现有精确位置、身份提及对与逐项语义复核：错误归并、错误拆分和无依据选择候选应产生可定位的检查差异；description／qualifiers 语境串用仍由 `identity`／`unsupported_qualifier` 逐项裁决，不新增 NLP 宿主过滤器。正确位置、身份对全命中或合法结构都不能自动确认限定正确。测试作者的构造裁决只验证 pending／blocked 的处理，不是模型输出或独立真人复核。
+
+prompt-json v23／strict v24 增加引用语境指导与第七个完整 wire 示范；前六个示范序列化字节不变，wire、公共 Schema、存储、政策和调用次数不变。此变更为 **BREAKING-COMPARABILITY**，旧 run 与原分数不重算。动因是已见真实开发输出的跨语境身份／版本限定错误，只作为回归线索，不能计成未见验证结果。真实模型诊断须在运行前冻结这些案例、允许身份和限定、当前字节摘要、模型与预算，并保留逐项目复核；本轮工程回归没有证明真实 v24 效果或总体质量改善，也不建立正式 Gold。
 
 ## 3. 分层结果与通过门槛
 
@@ -117,7 +141,7 @@ v18 修正只保留原文支持的限定“当前版本 v14”；v17 的示范�
 ```bash
 yarn build:runtime
 node dist-scripts/bench/entity-extraction-review.js \
-  --corpus test/fixtures/entity-extraction-review-v12.json \
+  --corpus test/fixtures/entity-extraction-review-v13.json \
   --output /private/tmp/omk-entity-review-unique
 ```
 

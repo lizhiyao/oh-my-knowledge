@@ -54,6 +54,9 @@ describe('entity-link drawer lifecycle and explicit authorization', () => {
     fireEvent.click(send); fireEvent.click(send);
     await waitFor(() => expect(screen.getByText('人工接受并组织知识库')).toBeTruthy());
     expect(calls.filter(call => call.operation === 'propose')).toHaveLength(1);
+    const scope = screen.getByText(/先核对实体范围/);
+    expect(scope.textContent).toContain('Issue／PR 概念可以是实体'); expect(scope.textContent).toContain('具体 Issue／PR 工作记录仅保留在来源或案例上下文');
+    expect(scope.textContent).toContain('不要通过组织或改名将它变成概念'); expect(scope.textContent).toContain('其他有来源依据的具体实例仍可保留');
     const accept = screen.getByText('人工接受并组织知识库') as HTMLButtonElement; expect(accept.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('人工处理理由'), { target: { value: '核对两侧来源' } }); expect(accept.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('我已独立核对两侧来源与身份，确认是同一对象。')); fireEvent.click(accept);

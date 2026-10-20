@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeApplication, type ExtractionModel } from '../../src/knowledge/application/application.js';
-import { executeKnowledgeOperation } from '../../src/knowledge/application/operations.js';
+import { executeKnowledgeOperation, knowledgeFailureCode, KnowledgeOperationSchema } from '../../src/knowledge/application/operations.js';
+import { KnowledgeCitationRevisionError, type KnowledgeCitationLocator } from '../../src/knowledge/application/citation-locators.js';
 import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
@@ -18,14 +19,16 @@ import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/knowledge/extraction/model
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
+import { STRICT_EXTRACTION_FEWSHOT_EXAMPLES } from '../../src/knowledge/extraction/strict-fewshot.js';
+import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { extractionQuality } from '../../src/knowledge/extraction/quality.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function setup(text = 'Alpha 使用 Beta') {
+function setup(text = 'Alpha 使用 Beta', extraTexts: string[] = []) {
   const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-app-')); roots.push(root);
   const source = join(root, 'log.jsonl');
-  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }));
+  writeFileSync(source, [text, ...extraTexts].map(value => JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: value }] } })).join('\n'));
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'test');
   const runs = new FileExtractionRunStore(join(root, 'extraction-runs'), root);
   const evidence = new TraceEvidenceStore(join(root, 'sources'));
@@ -161,6 +164,36 @@ describe('shared knowledge application', () => {
       .toMatchObject({ identityStatus: 'proposed', referentKind: 'version', uncertainties: ['未记录提交标识'] });
     expect(reopened.queryEntities({ query: 'enabled' }).rows).toHaveLength(1);
     expect(reopened.queryEntities({ query: 'master' }).rows).toHaveLength(1);
+  });
+
+  it('persists authored unknown and explicit fact times unchanged without using message timestamps as a repair rule', async () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-source-time-and-fact-time-v1')!;
+    const { app, model, ports, root, source } = setup();
+    writeFileSync(source, example.input.excerpts.map(excerpt => JSON.stringify({ timestamp: excerpt.timestamp, type: 'response_item',
+      payload: { type: 'message', role: excerpt.role, content: [{ type: excerpt.role === 'assistant' ? 'output_text' : 'input_text', text: excerpt.text }] } })).join('\n'));
+    const snapshot = app.capture({ path: source });
+    expect(snapshot.excerpts.map(excerpt => excerpt.timestamp)).toEqual(example.input.excerpts.map(excerpt => excerpt.timestamp));
+    expect(snapshot.excerpts.map(excerpt => excerpt.role)).toEqual(example.input.excerpts.map(excerpt => excerpt.role));
+    let raw = JSON.stringify(example.output);
+    example.input.excerpts.forEach((excerpt, index) => { raw = raw.replaceAll(JSON.stringify(excerpt.evidenceRef), JSON.stringify(snapshot.excerpts[index].evidenceRef)); });
+    const generate = vi.fn(async () => ({ output: raw, durationMs: 1 }));
+    const strictModel: ExtractionModel = { ...model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, generate };
+    const run = await app.generate(snapshot.snapshotId, strictModel);
+    expect(run.status).toBe('completed'); expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
+    expect(run.rawOutput).toBe(raw); expect(run.promptVersion).toBe(STRICT_EXTRACTION_PROMPT_VERSION);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root), entities: new FileEntityAnalysisStore(join(root, 'entities')),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    const saved = run.committed.flatMap(({ knowledgeId }) => reopened.detail(knowledgeId).revision.content.statements);
+    expect(saved).toHaveLength(example.output.proposals.reduce((count, proposal) => count + proposal.draft.content.statements.length, 0));
+    for (const proposal of example.output.proposals) for (const expected of proposal.draft.content.statements) {
+      expect(saved.find(statement => statement.statementId === expected.statementId)?.context).toEqual(expected.context);
+    }
+    expect(saved.find(statement => statement.statementId === 's_start')?.context.occurredDuring)
+      .toEqual({ timeKind: 'instant', at: snapshot.excerpts[2].timestamp });
+    expect(run.attempts[0].wireDiagnostic).toMatchObject({ wireStatus: 'valid', itemFailureCount: 0 });
+    expect(generate).toHaveBeenCalledTimes(1);
+    // The callback supplies an authored response. This verifies persistence, not model behavior or semantic acceptance.
   });
   it('uses one window identity for entities and mentions across candidates', async () => {
     const { app, snapshot, model, generate } = setup();
@@ -421,6 +454,66 @@ describe('shared knowledge application', () => {
     expect(readFileSync(runFile)).toEqual(runBytes);
     expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
   });
+
+  it('rebinds a work-record claim to its source topic without rewriting birth results or losing record provenance', async () => {
+    const text = '缓存策略要求缓存 60 秒；PR #23 已合并该策略，记录链接 https://example.com/pr/23，线上效果未知。';
+    const { app, snapshot, model, root, ports } = setup(text); const packet = modelWindow();
+    packet.entities[0] = { ...packet.entities[0], label: '缓存策略', description: '来源讨论的缓存时效策略' };
+    packet.entities[1] = { ...packet.entities[1], label: 'PR #23', description: '来源中的具体工作记录' };
+    packet.mentions[0].selection.quote = '缓存策略'; packet.mentions[1].selection.quote = 'PR #23';
+    const proposal = packet.proposals[0]; const statement = proposal.draft.content.statements[0];
+    proposal.draft.title = 'PR #23 的合并记录';
+    statement.subject = { entityId: 'tool' }; delete statement.object;
+    statement.relation = '已合并缓存 60 秒的策略';
+    statement.context = { ...statement.context, scenario: '来源报告的一次策略合并', unknowns: ['线上效果未知'] };
+    proposal.draft.evidence[0] = { ...proposal.draft.evidence[0], relation: 'supports', basis: 'source_assertion' };
+    proposal.citations[0].selection.quote = 'PR #23';
+    model.generate = async (_system, input) => ({ output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 });
+    const run = await app.generate(snapshot.snapshotId, model); const knowledgeId = run.committed[0].knowledgeId;
+    const birth = app.detail(knowledgeId); const analysis = app.entities(run.runId);
+    const runFile = join(root, 'extraction-runs', run.runId + '.json'); const runBytes = readFileSync(runFile);
+    const quality = app.quality(); const calls = vi.fn(model.generate); model.generate = calls;
+    app.maintain(knowledgeId, birth.revision.revisionId, 'retain', '原规则下的来源候选', birth.history.generation);
+    const retained = app.detail(knowledgeId);
+    const topic = analysis.revision.entities.find(entity => entity.label === '缓存策略')!;
+    const record = analysis.revision.entities.find(entity => entity.label === 'PR #23')!;
+    const corrected = app.correctEntities(run.runId, analysis.revision.revisionId, analysis.history.generation, {
+      entities: [topic], mentions: analysis.revision.mentions.filter(mention => mention.entityId === topic.entityId),
+    }, '具体工作记录回到来源上下文，主题身份不变');
+    const draft = { title: '缓存策略的时效选择', entities: [{ entityId: topic.entityId, label: topic.label, description: topic.description }],
+      content: structuredClone(retained.revision.content), evidence: retained.revision.evidence };
+    draft.content.statements[0].subject = { entityId: topic.entityId };
+    draft.content.statements[0].relation = '要求缓存 60 秒';
+    draft.content.statements[0].context = { ...draft.content.statements[0].context,
+      scenario: 'PR #23 报告已合并该策略；记录链接 https://example.com/pr/23', unknowns: ['线上效果未知'] };
+    const invalid = { ...draft, entities: retained.revision.entities };
+    expect(() => app.reviseUsingEntities(knowledgeId, retained.revision.revisionId, retained.history.generation,
+      run.runId, corrected.revision.revisionId, invalid, '不可保留已退出目录的端点')).toThrow('Knowledge entity differs');
+    const revised = await executeKnowledgeOperation(app, { operation: 'apply-entities', id: knowledgeId,
+      revision: retained.revision.revisionId, generation: retained.history.generation, analysisId: run.runId,
+      entityRevision: corrected.revision.revisionId, draft, reason: '按主题组织知识并保留工作记录依据',
+      citationLocators: [{ evidenceLinkId: draft.evidence[0].evidenceLinkId,
+        selection: { evidenceRef: draft.evidence[0].evidenceRef, quote: '缓存策略要求缓存 60 秒' } }],
+    });
+    expect(revised.maintenance).toBeNull();
+    expect(revised.grounding.citations[0].selection.quote).toBe('缓存策略要求缓存 60 秒');
+    expect(revised.grounding.citations).not.toEqual(birth.grounding.citations);
+    expect(app.detail(knowledgeId, birth.revision.revisionId).grounding).toEqual(birth.grounding);
+    expect(revised.revision.content.statements[0]).toMatchObject({ subject: { entityId: topic.entityId },
+      context: { scenario: expect.stringContaining('https://example.com/pr/23') } });
+    expect(revised.revision.entities.map(entity => entity.entityId)).toEqual([topic.entityId]);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      entities: new FileEntityAnalysisStore(join(root, 'entities')), runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    expect(reopened.detail(knowledgeId).revision).toEqual(revised.revision);
+    expect(reopened.detail(knowledgeId, birth.revision.revisionId).revision).toEqual(birth.revision);
+    expect(reopened.entities(run.runId, analysis.revision.revisionId).revision.entities).toContainEqual(record);
+    expect(() => reopened.entityDetail(run.runId, record.entityId)).toThrow('Entity is absent');
+    expect(reopened.quality()).toEqual(quality);
+    reopened.resume(run.runId);
+    expect(readFileSync(runFile)).toEqual(runBytes); expect(calls).not.toHaveBeenCalled();
+    expect(reopened.runs()[0].rawOutput).toBe(run.rawOutput);
+  });
   it('preserves output and usage when cancellation arrives after generation and resumes without regenerating', async () => {
     const { app, snapshot, generate } = setup(); const controller = new AbortController();
     const runtime = configuredExtractionModel('codex', 'fixture', createCodexArchiveProducer({}, () => async input => {
@@ -653,6 +746,118 @@ describe('shared knowledge application', () => {
     expect(() => app.revise(knowledgeId, after.revision.revisionId, 2, draft, '错误身份')).toThrow();
     expect(app.detail(knowledgeId).history.generation).toBe(2);
   });
+  it('replaces citations across excerpts in the same window with exact repeated UTF-16 ranges', async () => {
+    const text = '😀 Alpha 使用 Beta；限于本次；限于本次。';
+    const extra = 'Alpha 使用 Beta，限于本次；没有长期验证。';
+    const { app, snapshot, model, root, generate } = setup(text, [extra]);
+    const run = await app.generate(snapshot.snapshotId, model); const { knowledgeId, revisionId } = run.committed[0];
+    const runFile = join(root, 'extraction-runs', run.runId + '.json'); const runBytes = readFileSync(runFile);
+    const before = app.detail(knowledgeId); const quality = app.quality();
+    app.maintain(knowledgeId, revisionId, 'retain', '保留待修订依据', before.history.generation);
+    const retained = app.detail(knowledgeId);
+    const extraRef = snapshot.excerpts.find(excerpt => excerpt.text === extra)!.evidenceRef;
+    const evidence = before.revision.evidence[0];
+    const draft = { title: before.revision.title, content: structuredClone(before.revision.content), entities: before.revision.entities,
+      evidence: [{ ...evidence, evidenceRef: extraRef }, { ...evidence, evidenceLinkId: 'condition-link', interpretation: '原文中重复出现的适用条件' }] };
+    draft.content.statements[0].context.conditions = ['限于本次'];
+    draft.content.statements[0].context.unknowns = ['没有长期验证'];
+    const citationLocators: KnowledgeCitationLocator[] = [
+      { evidenceLinkId: evidence.evidenceLinkId, selection: { evidenceRef: extraRef, quote: extra } },
+      { evidenceLinkId: 'condition-link', selection: { evidenceRef: evidence.evidenceRef, quote: '限于本次', occurrence: 0 } },
+      { evidenceLinkId: 'condition-link', selection: { evidenceRef: evidence.evidenceRef, quote: '限于本次', occurrence: 1 } },
+    ];
+    const after = await executeKnowledgeOperation(app, { operation: 'revise', id: knowledgeId, revision: revisionId,
+      generation: retained.history.generation, draft, reason: '补齐同窗适用条件及未知信息的直接定位', citationLocators });
+    const first = text.indexOf('限于本次'); const second = text.indexOf('限于本次', first + 1);
+    expect(after.grounding.citations).toEqual([
+      { evidenceLinkId: evidence.evidenceLinkId, selection: { evidenceRef: extraRef, quote: extra, start: 0, end: extra.length } },
+      { evidenceLinkId: 'condition-link', selection: { evidenceRef: evidence.evidenceRef, quote: '限于本次', start: first, end: first + 4 } },
+      { evidenceLinkId: 'condition-link', selection: { evidenceRef: evidence.evidenceRef, quote: '限于本次', start: second, end: second + 4 } },
+    ]);
+    expect(after.maintenance).toBeNull();
+    expect(after.grounding.sourceBindings).toEqual([{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion,
+      evidenceRefs: [extraRef, evidence.evidenceRef] }]);
+    expect(app.detail(knowledgeId, revisionId).grounding).toEqual(before.grounding);
+    expect(app.detail(knowledgeId, revisionId).maintenance?.choice).toBe('retain');
+    expect(readFileSync(runFile)).toEqual(runBytes); expect(app.quality()).toEqual(quality);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+  it.each(['empty', 'capacity', 'offset', 'nonexact', 'ambiguous', 'occurrence', 'negative-occurrence', 'outside', 'unknown-link', 'wrong-excerpt', 'uncovered-link'] as const)(
+    'rejects %s replacement citations before writing and preserves the saved revision', async target => {
+      const { app, snapshot, model, root, knowledge, generate } = setup('Alpha 使用 Beta；重复；重复。', ['Alpha 仅限本次。']);
+      const run = await app.generate(snapshot.snapshotId, model); const { knowledgeId, revisionId } = run.committed[0];
+      const before = app.detail(knowledgeId);
+      const draft = { title: before.revision.title, content: before.revision.content, entities: before.revision.entities,
+        evidence: structuredClone(before.revision.evidence) };
+      const link = draft.evidence[0];
+      const locator = { evidenceLinkId: link.evidenceLinkId, selection: { evidenceRef: link.evidenceRef, quote: 'Alpha 使用 Beta' } };
+      let input: unknown = [locator];
+      if (target === 'empty') input = [];
+      if (target === 'capacity') input = Array.from({ length: 513 }, () => locator);
+      if (target === 'offset') input = [{ ...locator, selection: { ...locator.selection, start: 0 } }];
+      if (target === 'nonexact') locator.selection.quote = 'Alpha  使用 Beta';
+      if (target === 'ambiguous') locator.selection.quote = '重复';
+      if (target === 'occurrence') input = [{ ...locator, selection: { ...locator.selection, quote: '重复', occurrence: 2 } }];
+      if (target === 'negative-occurrence') input = [{ ...locator, selection: { ...locator.selection, occurrence: -1 } }];
+      if (target === 'outside') locator.selection.evidenceRef = 'outside-window';
+      if (target === 'unknown-link') locator.evidenceLinkId = 'not-in-draft';
+      if (target === 'wrong-excerpt') { locator.selection.evidenceRef = snapshot.excerpts[1].evidenceRef; locator.selection.quote = 'Alpha 仅限本次。'; }
+      if (target === 'uncovered-link') draft.evidence.push({ ...link, evidenceLinkId: 'missing-citation' });
+      const itemPath = join(root, 'items', readdirSync(join(root, 'items')).find(name => name.endsWith('.json'))!);
+      const bytes = readFileSync(itemPath); const write = vi.spyOn(knowledge, 'write');
+      expect(() => app.revise(knowledgeId, revisionId, before.history.generation, draft, '无效定位不得追加', input))
+        .toThrow(KnowledgeCitationRevisionError);
+      expect(write).not.toHaveBeenCalled(); expect(readFileSync(itemPath)).toEqual(bytes);
+      expect(app.detail(knowledgeId).history).toEqual(before.history); expect(generate).toHaveBeenCalledTimes(1);
+    });
+  it('rejects foreign windows, stale generations, stale heads and missing sources without appending citation revisions', async () => {
+    const { app, snapshot, model, root, source, knowledge } = setup();
+    const run = await app.generate(snapshot.snapshotId, model); const { knowledgeId, revisionId } = run.committed[0];
+    const before = app.detail(knowledgeId);
+    const draft = { title: before.revision.title, content: before.revision.content, entities: before.revision.entities, evidence: before.revision.evidence };
+    const citationLocators = before.grounding.citations.map(citation => ({ evidenceLinkId: citation.evidenceLinkId,
+      selection: { evidenceRef: citation.selection.evidenceRef, quote: citation.selection.quote } }));
+    const itemPath = join(root, 'items', readdirSync(join(root, 'items')).find(name => name.endsWith('.json'))!);
+    const birthBytes = readFileSync(itemPath);
+    const foreignSnapshot = app.capture({ path: source }); const foreignRun = await app.generate(foreignSnapshot.snapshotId, model);
+    const foreign = app.entities(foreignRun.runId);
+    expect(() => app.reviseUsingEntities(knowledgeId, revisionId, 1, foreignRun.runId, foreign.revision.revisionId,
+      draft, '外窗不得改绑', undefined, citationLocators)).toThrow('different evidence window');
+    expect(readFileSync(itemPath)).toEqual(birthBytes);
+    const write = vi.spyOn(knowledge, 'write').mockImplementationOnce(() => { throw new Error('fixture persistence failure'); });
+    expect(() => app.revise(knowledgeId, revisionId, 1, draft, '存储未提交', citationLocators)).toThrow('fixture persistence failure');
+    write.mockRestore(); expect(readFileSync(itemPath)).toEqual(birthBytes);
+    app.maintain(knowledgeId, revisionId, 'retain', '先核对维护状态', 1);
+    const retainedBytes = readFileSync(itemPath);
+    expect(() => app.revise(knowledgeId, revisionId, 1, draft, '旧 generation', citationLocators)).toThrow('conflict');
+    expect(readFileSync(itemPath)).toEqual(retainedBytes);
+    const revised = app.revise(knowledgeId, revisionId, 2, draft, '明确更新引用', citationLocators);
+    const revisedBytes = readFileSync(itemPath);
+    expect(() => app.revise(knowledgeId, revisionId, 3, draft, '旧 head', citationLocators)).toThrow('conflict');
+    expect(readFileSync(itemPath)).toEqual(revisedBytes);
+    app.deleteSource(snapshot.snapshotId);
+    expect(() => app.revise(knowledgeId, revised.revision.revisionId, revised.history.generation,
+      draft, '来源已不可用', citationLocators)).toThrow('Entity source unavailable');
+    expect(readFileSync(itemPath)).toEqual(revisedBytes);
+    expect(app.detail(knowledgeId, revisionId).grounding).toEqual(before.grounding);
+  });
+  it.each(['revise', 'apply-entities'] as const)('checks %s citation input with the shared schema and a bounded failure code', operation => {
+    const base = { operation, id: 'knowledge-id', revision: 'revision-id', generation: 1, draft: {}, reason: '明确更新引用',
+      ...(operation === 'apply-entities' ? { analysisId: randomUUID(), entityRevision: randomUUID() } : {}) };
+    const locator = { evidenceLinkId: 'link', selection: { evidenceRef: 'ref', quote: '原文' } };
+    expect(KnowledgeOperationSchema.safeParse(base).success).toBe(true);
+    expect(KnowledgeOperationSchema.safeParse({ ...base, citationLocators: [locator] }).success).toBe(true);
+    for (const citationLocators of [[], Array.from({ length: 513 }, () => locator), [{ ...locator, selection: { ...locator.selection, start: 0 } }]]) {
+      const parsed = KnowledgeOperationSchema.safeParse({ ...base, citationLocators });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(knowledgeFailureCode(parsed.error)).toBe('knowledge_citations_invalid');
+    }
+    const mixed = KnowledgeOperationSchema.safeParse({ ...base, generation: 0, citationLocators: [] });
+    expect(mixed.success).toBe(false);
+    if (!mixed.success) expect(knowledgeFailureCode(mixed.error)).toBe('knowledge_request_failed');
+    expect(knowledgeFailureCode(new KnowledgeCitationRevisionError())).toBe('knowledge_citations_invalid');
+    expect(knowledgeFailureCode(new Error('arbitrary citationLocators text'))).toBe('knowledge_request_failed');
+  });
   it('retains and revises without transferring a maintenance choice or changing the original revision', async () => {
     const { app, snapshot, model } = setup();
     const run = await app.generate(snapshot.snapshotId, model);
@@ -663,6 +868,7 @@ describe('shared knowledge application', () => {
     const draft = { title: '修订后的标题', content: before.revision.content, entities: before.revision.entities, evidence: before.revision.evidence };
     const after = app.revise(knowledgeId, revisionId, 2, draft, '明确适用项目');
     expect(after.revision.title).toBe('修订后的标题');
+    expect(after.grounding.citations).toEqual(before.grounding.citations);
     expect(after.reviewStatus).toBe('pending');
     expect(after.maintenance).toBeNull();
     expect(app.list()[0]).toMatchObject({ revisionId: after.revision.revisionId, title: draft.title, choice: null, reviewStatus: 'pending' });

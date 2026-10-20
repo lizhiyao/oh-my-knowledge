@@ -1,5 +1,5 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
-import { readFileSync, lstatSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
@@ -10,16 +10,27 @@ import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCo
 import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-output.js';
 import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
 import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
+import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
+import { KnowledgeCitationLocatorsSchema } from '../../../knowledge/application/citation-locators.js';
+import { ExtractionStudyInspectionError, inspectExtractionStudy } from '../../../knowledge/application/study-inspection.js';
+import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../../knowledge/extraction/study-capacity.js';
+import { formatKnowledgeStudy } from '../../lib/knowledge-study-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
+const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 export default class ObserveKnowledge extends BaseCommand {
-  static description = description('从选定工作日志提炼、核对和维护候选知识。', 'Extract, inspect, and maintain candidate knowledge from selected work logs.');
+  static description = description(`从选定工作日志提炼、核对和维护候选知识。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Extract, inspect, and maintain candidate knowledge from selected work logs. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = {
-    operation: Args.string({ required: true, options: ['schema', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('schema 导出响应协议；归档、提炼、核对与维护知识；quality 查看零调用的结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; capture, extract, inspect, and maintain knowledge; quality reads admission statistics without model calls; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['schema', 'study', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; study inspects portable study evidence and reviews without model calls; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
+    evidence: Flags.string({ description: description('study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。', 'study: evidence.json exported by the repository study tool; recompute original evidence read-only, with at most 128 MiB across all inputs and no knowledge workspace access.') }),
+    'author-review': Flags.string({ description: description('study：输出前作者参考复核 JSON 文件。', 'study: pre-output author reference review JSON file.') }),
+    'reference-review': Flags.string({ description: description('study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。', 'study: pre-output independent human reference review JSON file; absence cannot produce goldReady.') }),
+    'output-review': Flags.string({ description: description('study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。', 'study: item review JSON file bound to the actual outputs; exploratory AI review is not independent human acceptance.') }),
+    'judge-review': Flags.string({ description: description('study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。', 'study: model-judge review JSON with version identity and separate declared usage, compared with human judgments; does not execute the judge.') }),
     workspace: Flags.string({ description: description('本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。', 'Local knowledge workspace; defaults to global settings shared with Studio.') }),
     source: Flags.string({ description: description('capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。', 'capture: one supported agent session log (Codex / Claude / Qoder / ...).') }),
     'start-record': Flags.integer({ min: 0, description: description('从零开始的非空记录序号，包含。', 'Zero-based nonempty record index, inclusive.') }),
@@ -38,6 +49,7 @@ export default class ObserveKnowledge extends BaseCommand {
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
     reason: Flags.string({ description: description('保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。', 'Reason for maintenance or editing; retention does not verify truth, and entity corrections do not automatically rewrite knowledge.') }),
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
+    citations: Flags.string({ description: description('revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。', 'revise/apply-entities: JSON file with the full nonempty replacement citation locator array for the new revision, from the same archived window; omit to retain applicable prior citations. Each selection has evidenceRef, exact quote, and optional zero-based occurrence; repeated quotes require occurrence.') }),
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。', 'generate: stable UUID; repeated requests only restore archived results without another model call.') }),
@@ -46,6 +58,8 @@ export default class ObserveKnowledge extends BaseCommand {
   };
   static examples = [
     '<%= config.bin %> observe knowledge schema --json',
+    '<%= config.bin %> observe knowledge study --evidence ./evidence.json --json',
+    '<%= config.bin %> observe knowledge study --evidence ./evidence.json --author-review ./reference-author.json --reference-review ./reference-independent.json --output-review ./output-review.json --judge-review ./judge-review.json',
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
@@ -56,12 +70,65 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --reason "已核对来源与适用条件"',
     '<%= config.bin %> observe knowledge correct-entities --workspace ./knowledge --analysis <run-id> --entity-revision <entity-revision-id> --generation 1 --input ./entities.json --reason "纠正身份对应"',
     '<%= config.bin %> observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --analysis <run-id> --entity-revision <entity-revision-id> --input ./knowledge.json --reason "显式应用已核对实体"',
+    '<%= config.bin %> observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./knowledge.json --citations ./citations.json --reason "逐项核对并替换引用"',
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
+    const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
+    if (args.operation !== 'study' && studyFlags.some(name => flags[name] !== undefined)) {
+      this.error(t('--evidence 及研究复核参数仅用于 study。', '--evidence and study review flags are only valid for study.'), { exit: 2 });
+    }
+    if (args.operation === 'study') {
+      const allowed = new Set<string>([...studyFlags, 'lang', 'json']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && !allowed.has(name))) {
+        this.error(t('study 仅接受 --evidence、研究复核参数、--lang 和 --json，不接受工作区或生成参数。', 'study accepts only --evidence, study review flags, --lang and --json; workspace and generation flags are not allowed.'), { exit: 2 });
+      }
+      if (!flags.evidence?.trim()) this.error(t('study 必须提供 --evidence。', 'study requires --evidence.'), { exit: 2 });
+      let consumed = 0;
+      const file = (path: string, label: string): unknown => {
+        let fd: number | undefined;
+        try {
+          const stat = lstatSync(path), remaining = EXTRACTION_STUDY_INSPECTION_MAX_BYTES - consumed;
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.size > remaining) throw new Error();
+          fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+          const opened = fstatSync(fd);
+          if (!opened.isFile() || opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size !== stat.size) throw new Error();
+          const bytes = Buffer.allocUnsafe(stat.size + 1); let offset = 0;
+          while (offset < bytes.length) {
+            const count = readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count;
+          }
+          if (offset !== stat.size || fstatSync(fd).size !== stat.size) throw new Error();
+          const raw = bytes.subarray(0, offset), text = raw.toString('utf8');
+          if (!Buffer.from(text).equals(raw)) throw new Error();
+          consumed += raw.length;
+          return JSON.parse(text) as unknown;
+        } catch {
+          this.error(t(`${label} 不可读或格式无效；请使用普通 UTF-8 JSON 文件，所有研究输入合计不超过 128 MiB。`, `${label} is unreadable or invalid; use regular UTF-8 JSON files totaling at most 128 MiB.`), { exit: 2 });
+        } finally { if (fd !== undefined) closeSync(fd); }
+      };
+      const input = { evidence: file(flags.evidence!, '--evidence'),
+        ...(flags['author-review'] === undefined ? {} : { authorReceipt: file(flags['author-review'], '--author-review') }),
+        ...(flags['reference-review'] === undefined ? {} : { referenceReceipt: file(flags['reference-review'], '--reference-review') }),
+        ...(flags['output-review'] === undefined ? {} : { outputReceipt: file(flags['output-review'], '--output-review') }),
+        ...(flags['judge-review'] === undefined ? {} : { judgeReceipt: file(flags['judge-review'], '--judge-review') }) };
+      try {
+        const result = inspectExtractionStudy(input);
+        this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeStudy(result, this.lang));
+      } catch (cause) {
+        const code = cause instanceof ExtractionStudyInspectionError ? cause.code : 'knowledge_study_evidence_invalid';
+        if (code === 'knowledge_study_capacity_exceeded') {
+          this.error(`${code} · ${t('所有研究输入封装后的 JSON 合计不得超过 128 MiB。', 'The complete serialized study input must not exceed 128 MiB.')}`, { exit: 2 });
+        }
+        this.error(`${code} · ${t('研究证据未通过核对。请使用冻结时匹配的版本并检查完整导出与复核绑定；没有调用模型或改写工作区。', 'Study evidence could not be verified. Use its matching frozen version and check the complete export and review bindings; no model call or workspace change was made.')}`, { exit: 1 });
+      }
+      return;
+    }
     if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {
       this.error(this.lang === 'zh' ? '--generation-policy 仅用于 generate。' : '--generation-policy is only valid for generate.', { exit: 2 });
+    }
+    if (flags.citations !== undefined && !['revise', 'apply-entities'].includes(args.operation)) {
+      this.error(this.lang === 'zh' ? '--citations 仅用于 revise／apply-entities。' : '--citations is only valid for revise/apply-entities.', { exit: 2 });
     }
     if (args.operation === 'schema') {
       const wire = await import('../../../knowledge/extraction/model-wire.js');
@@ -71,7 +138,6 @@ export default class ObserveKnowledge extends BaseCommand {
       else process.stdout.write(wire.WINDOW_EXTRACTION_WIRE_SCHEMA_JSON);
       return;
     }
-    const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     const need = (value: string | undefined, name: string): string => {
       if (!value?.trim()) this.error(`--${name} ${t('不能为空', 'is required')}`, { exit: 2 });
       return value!;
@@ -84,14 +150,28 @@ export default class ObserveKnowledge extends BaseCommand {
       try { return JSON.parse(raw); }
       catch { this.error(t(`${label} 不是有效 JSON。请核对输入后重试；原记录未改写。`, `${label} is not valid JSON. Check the input and retry; saved records were not changed.`), { exit: 2 }); }
     };
-    const draft = (): unknown => {
-      const path = need(flags.input, 'input'); let raw: string;
+    const fileInput = (path: string, label: '--input' | '--citations'): unknown => {
+      let raw: string;
       try {
         const stat = lstatSync(path);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw new Error();
         raw = readFileSync(path, 'utf8');
-      } catch { this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.')); }
-      return jsonInput(raw!, '--input');
+      } catch {
+        if (label === '--input') this.error(t('草稿不可读。--input 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Draft is unreadable. --input must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.'));
+        this.error(t('引用文件不可读。--citations 需指向不超过 2 MiB 的普通 JSON 文件；请核对路径和权限，原记录未改写。', 'Citation file is unreadable. --citations must point to a regular JSON file of at most 2 MiB; check its path and permissions. Saved records were not changed.'), { exit: 2 });
+      }
+      return jsonInput(raw!, label);
+    };
+    const draft = () => fileInput(need(flags.input, 'input'), '--input');
+    const citationLocators = () => {
+      if (flags.citations === undefined) return undefined;
+      const input = fileInput(need(flags.citations, 'citations'), '--citations');
+      const parsed = KnowledgeCitationLocatorsSchema.safeParse(input);
+      if (!parsed.success) {
+        if (Array.isArray(input) && input.length === 0) this.error(t('--citations 引用数组不能为空；请提供新修订需要的全部引用，原记录未改写。', '--citations cannot be an empty array; provide all citations needed by the new revision. Saved records were not changed.'), { exit: 2 });
+        this.error(t('--citations 格式无效。请提供 1～512 项引用定位器的完整数组，每项含 evidenceLinkId 及 selection（evidenceRef、quote、可选的零基 occurrence）；原记录未改写。', '--citations is invalid. Provide a complete array of 1–512 citation locators, each with evidenceLinkId and selection (evidenceRef, quote, optional zero-based occurrence). Saved records were not changed.') + '\n' + parsed.error.issues.map(issue => issue.path.join('.')).join(', '), { exit: 2 });
+      }
+      return parsed.data;
     };
     const policy = flags['generation-policy'] === undefined ? undefined
       : ExtractionGenerationPolicySchema.safeParse(jsonInput(flags['generation-policy'], '--generation-policy'));
@@ -118,12 +198,13 @@ export default class ObserveKnowledge extends BaseCommand {
         generation: generation(), reason: need(flags.reason, 'reason'), draft: draft() }; break;
       case 'apply-entities': operation = { operation: 'apply-entities', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
         analysisId: need(flags.analysis, 'analysis'), entityRevision: need(flags['entity-revision'], 'entity-revision'), reason: need(flags.reason, 'reason'), draft: draft(),
+        citationLocators: citationLocators(),
         identityUncertainties: flags['identity-uncertainties'] === undefined ? undefined : jsonInput(flags['identity-uncertainties'], '--identity-uncertainties') as string[] }; break;
       case 'source': case 'delete-source': operation = { operation: args.operation, snapshot: need(flags.snapshot, 'snapshot') }; break;
       case 'retain': case 'discard': operation = { operation: 'maintain', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), choice: args.operation,
         reason: need(flags.reason, 'reason'), generation: generation() }; break;
       case 'revise': operation = { operation: 'revise', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(),
-        reason: need(flags.reason, 'reason'), draft: draft() }; break;
+        reason: need(flags.reason, 'reason'), draft: draft(), citationLocators: citationLocators() }; break;
       default: this.error(t('未知知识操作。请运行 omk observe knowledge --help。', 'Unknown knowledge operation. Run omk observe knowledge --help.'), { exit: 2 });
     }
     const checked = KnowledgeOperationSchema.safeParse(operation!);
@@ -145,6 +226,7 @@ export default class ObserveKnowledge extends BaseCommand {
         if (code === 'knowledge_conflict') this.error(`${code} · ${t('记录已变化。先重读最新修订与 generation，再核对草稿后重试；不要覆盖他人的修改。', 'The record changed. Reload its latest revision and generation, review your draft, then retry without overwriting another edit.')}\n${reload}`);
         if (code === 'knowledge_workspace_busy') this.error(`${code} · ${t('工作区正在写入。等待当前操作结束后重试；不要删除仍在使用的锁。', 'The workspace is being written. Retry after the current operation finishes; do not remove a live lock.')}`);
         if (code === 'knowledge_storage_unsupported') this.error(`${code} · ${t('所选工作区含不支持的记录。请核对目录；如需重新提炼，选择新的空目录，不改写旧记录。', 'This workspace contains unsupported records. Check the directory; use a new empty workspace to extract again, preserving old records.')}`);
+        if (code === 'knowledge_citations_invalid') this.error(`${code} · ${t('引用校验失败。请核对 --citations 中的 evidenceLinkId、同窗口 evidenceRef、精确 quote 及零基 occurrence，并为每条证据提供引用；原记录未改写。', 'Citation validation failed. Check evidenceLinkId, same-window evidenceRef, exact quote and zero-based occurrence in --citations, and cite every evidence link. Saved records were not changed.')}`);
         if (signal.aborted) this.error(t('操作已中断。先读取提炼运行；resume 只恢复已保存结果，不再次调用模型。', 'Operation interrupted. Inspect extraction runs first; resume restores saved results without another model call.') + `\n${knowledgeCommand(settings.workspace, 'runs')}`);
         if (cause instanceof z.ZodError) this.error(t('草稿内容未通过校验。核对以下字段后重试；原记录未改写。', 'Draft validation failed. Review the following fields and retry; saved records were not changed.') + '\n' + cause.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('\n'));
         if (operation.operation === 'capture') this.error(t('来源归档未完成。核对 --source 的路径、读取权限、日志格式与记录范围后重试。', 'Source capture did not finish. Check --source path, read permissions, log format and record range before retrying.') + '\n' + (cause instanceof Error ? cause.message : String(cause)));

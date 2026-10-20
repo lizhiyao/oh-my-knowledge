@@ -653,6 +653,588 @@ export const STRICT_EXTRACTION_FEWSHOT_EXAMPLES = [
         }
       ]
     }
+  },
+  {
+    "exampleId": "synthetic-source-time-and-fact-time-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "harbor-status",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "assistant",
+          "timestamp": "2026-10-20T08:00:00.000Z",
+          "text": "HarborDesk 的首批功能已交付，但整体准确率尚未验收。"
+        },
+        {
+          "evidenceRef": "harbor-plan",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "user",
+          "timestamp": "2026-10-20T08:10:00.000Z",
+          "text": "后续重构 HarborDesk 时必须保留来源和修订历史。"
+        },
+        {
+          "evidenceRef": "harbor-event",
+          "recordIndex": 2,
+          "eventKind": "message",
+          "role": "assistant",
+          "timestamp": "2026-10-20T09:00:00.000Z",
+          "text": "HarborDesk 于 2026-10-20T08:30:00.000Z 完成构建，并于 2026-10-20T09:00:00.000Z 完成启动；这是助手转述，窗口没有执行器原始记录。"
+        }
+      ],
+      "limitations": [
+        "合成时间语义示范；来源消息时间不认证事实时间，助手转述不等于直接观测。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_harbor",
+          "label": "HarborDesk",
+          "description": "本例交付状态、重构要求与事件所指的对象。",
+          "qualifiers": [],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_harbor",
+          "entityId": "e_harbor",
+          "selection": {
+            "evidenceRef": "harbor-status",
+            "quote": "HarborDesk",
+            "occurrence": null
+          },
+          "basis": "explicit",
+          "rationale": "三条消息明确使用相同名称连续讨论同一对象；不补具体构建或部署身份。"
+        }
+      ],
+      "proposals": [
+        {
+          "proposalId": "p_status_and_events",
+          "draft": {
+            "title": "HarborDesk 的交付状态与事件记录",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_delivered",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "首批功能已交付",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手汇报的交付状态",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "没有交付发生时间依据，不能从消息时间推出。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未提供该事实的发生时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_acceptance",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "整体准确率已完成验收",
+                  "modality": "descriptive",
+                  "polarity": "negative",
+                  "context": {
+                    "scenario": "助手汇报的验收缺口",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "未给出验收活动时间或后续验收结果。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未提供该事实的发生时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_build",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "完成构建",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手转述的构建事件",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "窗口未提供执行器原始记录，不构成独立验证。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "instant",
+                      "at": "2026-10-20T08:30:00.000Z"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                },
+                {
+                  "statementId": "s_start",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "完成启动",
+                  "modality": "descriptive",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "助手转述的启动事件",
+                    "conditions": [],
+                    "exceptions": [],
+                    "unknowns": [
+                      "窗口未提供执行器原始记录，不构成独立验证。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "instant",
+                      "at": "2026-10-20T09:00:00.000Z"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "fact"
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_status",
+                "evidenceRef": "harbor-status",
+                "statementIds": [
+                  "s_delivered",
+                  "s_acceptance"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "交付完成与尚未验收分别表达；原文无事实时点，不能复制消息 timestamp。"
+              },
+              {
+                "evidenceLinkId": "l_events",
+                "evidenceRef": "harbor-event",
+                "statementIds": [
+                  "s_build",
+                  "s_start"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "原文明示两个事件时刻；启动时刻虽等于消息时间仍保留，但不提升为直接观测。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_harbor"
+          ],
+          "mentionIds": [
+            "m_harbor"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_status",
+              "selection": {
+                "evidenceRef": "harbor-status",
+                "quote": "HarborDesk 的首批功能已交付，但整体准确率尚未验收。",
+                "occurrence": null
+              }
+            },
+            {
+              "evidenceLinkId": "l_events",
+              "selection": {
+                "evidenceRef": "harbor-event",
+                "quote": "HarborDesk 于 2026-10-20T08:30:00.000Z 完成构建，并于 2026-10-20T09:00:00.000Z 完成启动；这是助手转述，窗口没有执行器原始记录。",
+                "occurrence": null
+              }
+            }
+          ],
+          "reuseRationale": "核对交付、验收与事件记录时，分别读取来源主张和其确有依据的事实时间。",
+          "identityUncertainties": []
+        },
+        {
+          "proposalId": "p_plan",
+          "draft": {
+            "title": "HarborDesk 后续重构的保留要求",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_protect",
+                  "subject": {
+                    "entityId": "e_harbor"
+                  },
+                  "object": null,
+                  "relation": "重构时保留来源和修订历史",
+                  "modality": "normative",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "用户提出的后续重构要求，未记录执行结果",
+                    "conditions": [
+                      "后续重构 HarborDesk 时"
+                    ],
+                    "exceptions": [],
+                    "unknowns": [
+                      "来源未提供执行时间或适用起止时间。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "未来要求不表示执行已经发生，来源未给执行时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未说明适用时间范围。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "method",
+                "purpose": "约束后续重构时对来源与修订历史的处理。",
+                "instructionStatementIds": [
+                  "s_protect"
+                ]
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_plan",
+                "evidenceRef": "harbor-plan",
+                "statementIds": [
+                  "s_protect"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "保留用户要求；来源没有提供执行或适用时段，不用消息 timestamp 补齐。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_harbor"
+          ],
+          "mentionIds": [
+            "m_harbor"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_plan",
+              "selection": {
+                "evidenceRef": "harbor-plan",
+                "quote": "后续重构 HarborDesk 时必须保留来源和修订历史。",
+                "occurrence": null
+              }
+            }
+          ],
+          "reuseRationale": "后续重构时保留来源与历史，不把要求的提出当作已经执行。",
+          "identityUncertainties": []
+        }
+      ]
+    }
+  },
+  {
+    "exampleId": "synthetic-quoted-context-and-explicit-identity-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "context-current",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "user",
+          "text": "本轮审查的提示词叫 ReviewPrompt，当前版本是 v17。"
+        },
+        {
+          "evidenceRef": "context-example",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "assistant",
+          "text": "下面是学习示例，未说明示例对象与本轮受审对象相同：用户说“提取提示词当前是 v14”。"
+        },
+        {
+          "evidenceRef": "context-alias",
+          "recordIndex": 2,
+          "eventKind": "message",
+          "role": "user",
+          "text": "我说的“本轮提示词”就是第一条的 ReviewPrompt；引用“ReviewPrompt 当前是 v17”也仍指这个受审对象，没有改名或新增对象。"
+        }
+      ],
+      "limitations": [
+        "仅有这些选定消息；未提供示例对象与受审对象同一性的依据。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_current",
+          "label": "ReviewPrompt",
+          "description": "本轮正在审查的提示词；后文明确简称及引用仍指它。",
+          "qualifiers": [
+            "本轮审查",
+            "当前版本 v17"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        },
+        {
+          "entityId": "e_example",
+          "label": "示例中的提取提示词",
+          "description": "学习示例输入所谈到的提示词，未与本轮受审对象建立对应。",
+          "qualifiers": [
+            "学习示例",
+            "示例中当前版本 v14"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [
+            "未给出完整制品标识，也未确认与本轮受审对象相同。"
+          ],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_current",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-current",
+            "quote": "ReviewPrompt",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "首条消息命名本轮受审对象。"
+        },
+        {
+          "mentionId": "m_example",
+          "entityId": "e_example",
+          "selection": {
+            "evidenceRef": "context-example",
+            "quote": "提取提示词",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "这处位于学习示例的输入中，只支持示例对象及其 v14 限定，不继承受审对象的 v17。"
+        },
+        {
+          "mentionId": "m_alias",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-alias",
+            "quote": "本轮提示词",
+            "occurrence": 0
+          },
+          "basis": "inference",
+          "rationale": "用户明确说该简称就是第一条的 ReviewPrompt。"
+        },
+        {
+          "mentionId": "m_quoted_current",
+          "entityId": "e_current",
+          "selection": {
+            "evidenceRef": "context-alias",
+            "quote": "ReviewPrompt",
+            "occurrence": 1
+          },
+          "basis": "inference",
+          "rationale": "引用中的第二处名称被明确说明仍指这个受审对象；不因引号另建对象。"
+        }
+      ],
+      "proposals": []
+    }
+  },
+  {
+    "exampleId": "synthetic-reviewed-content-and-container-v1",
+    "input": {
+      "excerpts": [
+        {
+          "evidenceRef": "content-review",
+          "recordIndex": 0,
+          "eventKind": "message",
+          "role": "user",
+          "text": "接待手册文件 reception.docx 的第三节有一张预约须知卡，卡片把“短信通知可选”写成了“必须接收短信通知”，需要更正。"
+        },
+        {
+          "evidenceRef": "container-change",
+          "recordIndex": 1,
+          "eventKind": "message",
+          "role": "user",
+          "text": "reception.docx 还要改名为 visitor-handbook.docx；这里只确定了改名要求，尚未执行。"
+        }
+      ],
+      "limitations": [
+        "仅有这两条消息，未提供内容修订或文件改名的执行结果。"
+      ]
+    },
+    "output": {
+      "responseKind": "knowledge-extraction",
+      "schemaVersion": 4,
+      "entities": [
+        {
+          "entityId": "e_card",
+          "label": "预约须知卡",
+          "description": "接待手册第三节中被独立指出内容错误并要求更正的卡片。",
+          "qualifiers": [
+            "位于 reception.docx 第三节"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        },
+        {
+          "entityId": "e_file",
+          "label": "reception.docx",
+          "description": "承载卡片且另有改名要求的接待手册文件。",
+          "qualifiers": [],
+          "identityStatus": "proposed",
+          "possibleEntityIds": [],
+          "uncertainties": [],
+          "referentKind": "object",
+          "componentRef": null,
+          "collection": null
+        }
+      ],
+      "mentions": [
+        {
+          "mentionId": "m_card",
+          "entityId": "e_card",
+          "selection": {
+            "evidenceRef": "content-review",
+            "quote": "预约须知卡",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "来源直接指出该卡片的内容错误并要求更正；文件不能替代被修订的卡片身份。"
+        },
+        {
+          "mentionId": "m_file",
+          "entityId": "e_file",
+          "selection": {
+            "evidenceRef": "container-change",
+            "quote": "reception.docx",
+            "occurrence": 0
+          },
+          "basis": "explicit",
+          "rationale": "来源另行要求文件改名；它与文件内被修订的卡片分别有据，改名要求不表示已经完成。"
+        }
+      ],
+      "proposals": [
+        {
+          "proposalId": "p_card",
+          "draft": {
+            "title": "预约须知卡的短信通知要求需更正",
+            "content": {
+              "statements": [
+                {
+                  "statementId": "s_correct",
+                  "subject": {
+                    "entityId": "e_card"
+                  },
+                  "relation": "将短信通知要求更正为可选",
+                  "object": null,
+                  "modality": "normative",
+                  "polarity": "positive",
+                  "context": {
+                    "scenario": "接待手册中的预约须知卡内容修订",
+                    "conditions": [
+                      "当前卡片将可选短信通知写成必须接收"
+                    ],
+                    "exceptions": [],
+                    "unknowns": [
+                      "来源未说明卡片是否已完成修订。"
+                    ],
+                    "occurredDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源提出修订要求，未提供执行时间。"
+                    },
+                    "validDuring": {
+                      "timeKind": "unknown",
+                      "reason": "来源未给出要求的适用期限。"
+                    }
+                  }
+                }
+              ],
+              "organization": {
+                "knowledgeKind": "method",
+                "purpose": "纠正预约须知卡中强化了通知义务的表述。",
+                "instructionStatementIds": [
+                  "s_correct"
+                ]
+              }
+            },
+            "evidence": [
+              {
+                "evidenceLinkId": "l_card",
+                "evidenceRef": "content-review",
+                "statementIds": [
+                  "s_correct"
+                ],
+                "relation": "supports",
+                "basis": "source_assertion",
+                "interpretation": "来源对卡片提出更正要求，没有报告修订已执行。"
+              }
+            ]
+          },
+          "entityIds": [
+            "e_card"
+          ],
+          "mentionIds": [
+            "m_card"
+          ],
+          "citations": [
+            {
+              "evidenceLinkId": "l_card",
+              "selection": {
+                "evidenceRef": "content-review",
+                "quote": "预约须知卡，卡片把“短信通知可选”写成了“必须接收短信通知”，需要更正。",
+                "occurrence": 0
+              }
+            }
+          ],
+          "reuseRationale": "修订须知内容时核对原来的可选条件，避免把要求强化为必须；不把定位文件当作受评内容对象。",
+          "identityUncertainties": []
+        }
+      ]
+    }
   }
 ] as const satisfies readonly StrictExtractionFewshotExample[];
 

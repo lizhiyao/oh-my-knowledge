@@ -17,6 +17,39 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
 // #1285 只移动既有依赖：按新子域观察后，原 Observability 聚合环显露为六域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
 const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
+  'knowledge/application/study-inspection.ts → knowledge/adapters/study-host.ts',
+  'knowledge/application/study-inspection.ts → knowledge/extraction/study-plan.ts',
+  'knowledge/application/study-inspection.ts → knowledge/extraction/study-corpus.ts',
+  'knowledge/application/study-inspection.ts → knowledge/extraction/study-analysis.ts',
+  'knowledge/application/study-inspection.ts → knowledge/extraction/study-review.ts',
+  'knowledge/application/study-inspection.ts → knowledge/extraction/study-capacity.ts',
+
+  // #1290：研究适配器与应用复用生产生成和冻结证据，未开放适配器反向依赖应用。
+  'knowledge/adapters/study-files.ts → knowledge/extraction/study-corpus.ts',
+  'knowledge/adapters/study-files.ts → knowledge/extraction/study-plan.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/entity-store.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/executor.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/knowledge-store.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/knowledge-tags.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/run-store.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/study-files.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/study-host.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/trace-evidence.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/generation-policy.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/generation.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/study-analysis.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/study-corpus.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/study-plan.ts',
+  'knowledge/application/study-local.ts → knowledge/extraction/study-review.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/generation-policy.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/generation.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/model-input.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/model-wire.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/runs.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/study-corpus.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/study-plan.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/window-proposals.ts',
+
   'knowledge/adapters/entity-link-api-producer.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-prompt.ts',
@@ -41,6 +74,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/generation.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
+  'knowledge/application/citation-locators.ts → knowledge/extraction/quote-occurrence.ts',
   'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-store.ts',
@@ -69,6 +103,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
 ] as const;
 
 const KNOWLEDGE_AGGREGATE_TYPE_EDGES = [
+  'knowledge/adapters/study-host.ts → knowledge/extraction/study-plan.ts',
+  'knowledge/application/study-runner.ts → knowledge/extraction/study-plan.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/generation.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/runs.ts',
   'knowledge/adapters/trace-evidence.ts → observability/trace/trace-ir.ts',
@@ -105,6 +141,24 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/knowledge-study.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/knowledge-study.js')).href",
+    sourceSha256: 'd9ea717f5db9c3fead48476c29a146d85044bdb52f3c22b456121bd97d525235',
+    rationale: '研究入口只加载固定构建的生产组合根；语料和证据不能选择代码，执行还需精确计划授权。',
+  },
+  {
+    importer: 'scripts/bench/entity-semantic-review.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/prompt.js')).href",
+    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    rationale: 'Offline semantic inspection verifies the fixed built prompt identity; no bundle or capture can choose imported code.',
+  },
+  {
+    importer: 'scripts/bench/entity-semantic-review.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/window-proposals.js')).href",
+    sourceSha256: 'ebe23efc5f11e5516af2ee9a45adde4ba3c22afc078effdcaf18a82478a74cac',
+    rationale: 'Offline semantic inspection reuses the fixed production admission validator and has no model execution path.',
+  },
+  {
     importer: 'scripts/bench/entity-capture-provider.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/entity-capture.js')).href",
     sourceSha256: '0b0de123cdb7c62d050c29f0aff87bc47e4d23949d6c456c89e78c5b33972b28',
@@ -113,14 +167,14 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/prompt.js')).href",
-    sourceSha256: '9b382d997218aa487be476dad224761cd84cabe2859ffbd16bb6cb8cae57ac53',
-    rationale: 'Offline v14 inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
+    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
+    rationale: 'Offline entity inspection reads only the fixed built prompt for measurement identity; the sealed command has no executor entry.',
   },
   {
     importer: 'scripts/bench/entity-extraction-review.ts',
     expression: "pathToFileURL(resolve(repo, 'dist/knowledge/extraction/window-proposals.js')).href",
-    sourceSha256: '9b382d997218aa487be476dad224761cd84cabe2859ffbd16bb6cb8cae57ac53',
-    rationale: 'Offline v14 inspection loads only the fixed production admission validator; capture data cannot select imported code.',
+    sourceSha256: '104f1caab837477134a3d191a064c0c0e2bbedd9aa8db527080231177fc99956',
+    rationale: 'Offline entity inspection loads only the fixed production admission validator; capture data cannot select imported code.',
   },
   {
     importer: 'scripts/bench/assets/entity-extraction-five-positive-strict-v3/verify.mjs',

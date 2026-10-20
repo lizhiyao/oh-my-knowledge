@@ -1,0 +1,595 @@
+{
+  "reviewVersion": "omk-entity-core-object-coverage/v1",
+  "provenance": "synthetic",
+  "authors": [
+    "core-object-coverage-author"
+  ],
+  "cases": [
+    {
+      "caseId": "dev-content-and-carrier-evaluated",
+      "projectGroup": "dev-content-and-carrier-evaluated",
+      "conversationGroup": "dev-content-and-carrier-evaluated",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "导览词《潮汐》记录在存储卡 card-7 上。本轮分别检查导览词《潮汐》的叙事顺序和存储卡 card-7 的读取性能；两者不是同一个对象。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "carrier-content"
+      ],
+      "entities": [
+        {
+          "entityKey": "tour-script",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "来源分别评价导览内容的叙事顺序与承载硬件的读取性能；导览词是被审查的内容对象。"
+        },
+        {
+          "entityKey": "storage-card",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "来源独立评价该存储卡读取性能，不能用它替代导览词内容对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "tour-content",
+          "entity": "tour-script",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "导览词《潮汐》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确命名被评价的导览内容；普通第二次名称不另设必需提及。"
+        },
+        {
+          "mentionKey": "card-carrier",
+          "entity": "storage-card",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "存储卡 card-7",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "独立被评价的承载对象，与导览内容身份分开。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "内容与载体均独立评价，必须分别保留来源身份；description提到两者不能用一个实体替代。",
+        "两处关键名称全部命中也不证明身份正确；错合并应由既有identityPairs展示。"
+      ]
+    },
+    {
+      "caseId": "dev-file-only-locates-content",
+      "projectGroup": "dev-file-only-locates-content",
+      "conversationGroup": "dev-file-only-locates-content",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "棋类教学练习《双车配合》保存在 lessons/rook-pair.md。当前只评价这份练习的解题说明，不审查该文件的编码、权限或保存方式。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "carrier-content"
+      ],
+      "entities": [
+        {
+          "entityKey": "chess-exercise",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "本轮被评价的是练习内容；文件只是它的定位出处，不替代该内容身份。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-exercise",
+          "entity": "chess-exercise",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "棋类教学练习《双车配合》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "完整名称指练习内容而非路径或文件。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "必需核心是被评价练习；文件作为有来源的可选对象可以保留，但不能替代练习。",
+        "文件entity的description即使写到练习，若没有内容实体及其真实提及，预声明核心仍缺失。",
+        "文件路径指文件，包含/保存关系不等于内容与文件是同一对象。"
+      ]
+    },
+    {
+      "caseId": "dev-edit-file-with-background-content",
+      "projectGroup": "dev-edit-file-with-background-content",
+      "conversationGroup": "dev-edit-file-with-background-content",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "请修改 fixtures/catalog.yaml 的换行与缩进。它包含若干展品说明，但本次不评价这些说明的内容，也不另行讨论任何具体说明。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "carrier-content"
+      ],
+      "entities": [
+        {
+          "entityKey": "edited-file",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "本轮实际修改的对象是YAML文件；没有被独立命名或评价的具体内容对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "file-being-edited",
+          "entity": "edited-file",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "fixtures/catalog.yaml",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "实际修改对象的完整文件路径。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "只返回实际被修改文件可以满足本例核心，不强制为若干背景说明新建内容身份。",
+        "内容/载体区分不是每次遇到文件就复制一个内容实体，也不虚构具体展品说明。"
+      ]
+    },
+    {
+      "caseId": "dev-background-section-not-target",
+      "projectGroup": "dev-background-section-not-target",
+      "conversationGroup": "dev-background-section-not-target",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "请核对《纸鸢排班指南》的班次交接步骤。开头的“项目沿革”章节仅为背景，本次没有单独评价该章节。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "carrier-content"
+      ],
+      "entities": [
+        {
+          "entityKey": "shift-guide",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被评价的是排班指南；背景章节没有成为独立评审对象。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-guide",
+          "entity": "shift-guide",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《纸鸢排班指南》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "明确命名本次核对的指南对象。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "不因背景章节有标题就机械新增必需实体；也不将普通交接步骤强拆成对象。",
+        "背景章节未独立输出不是本例必需缺口；若模型另输出仍须按原文检查资格。"
+      ]
+    },
+    {
+      "caseId": "dev-explicit-document-alias",
+      "projectGroup": "dev-explicit-document-alias",
+      "conversationGroup": "dev-explicit-document-alias",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "《溪桥巡检手册》又称《巡检速查册》，两个名称指同一份资料。本轮审查《巡检速查册》的操作顺序。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "carrier-content"
+      ],
+      "entities": [
+        {
+          "entityKey": "inspection-manual",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "来源明确两个名称为同一份资料，不是内容和容器的关系。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "manual-title",
+          "entity": "inspection-manual",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《溪桥巡检手册》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "同一份资料的第一个名称。"
+        },
+        {
+          "mentionKey": "manual-alias",
+          "entity": "inspection-manual",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《巡检速查册》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源明确的同一制品别名；后续普通重复不另设必需位置。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "明确同一资料的别名应归一个身份，不能因名称不同或本轮讨论内容就机械拆成内容/载体两个对象。",
+        "正确位置但别名错拆必须显露wrong_split，不能以提及命中掩盖。"
+      ]
+    },
+    {
+      "caseId": "dev-whole-review-with-local-guidance",
+      "projectGroup": "dev-whole-review-with-local-guidance",
+      "conversationGroup": "dev-whole-review-with-local-guidance",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "本轮评审《岬湾救援手册》的整体处置顺序。手册中的“绳索收纳提示”只说明工具存放方式，未被单独审查；不要把这条提示当作整本手册。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "whole-part"
+      ],
+      "entities": [
+        {
+          "entityKey": "rescue-manual",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "本轮被独立评审的是救援手册整体；一条局部存放指引不能替代它，也没有独立入选要求。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-manual",
+          "entity": "rescue-manual",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《岬湾救援手册》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "标题在本轮直接指向受审手册整体，不是局部收纳提示的别名。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "只返回局部收纳提示仍缺少本轮独立受审的手册整体，局部实体描述中提到手册不补算整体。",
+        "即使局部实体的mention选到手册标题，也须检查description和rationale实际指代范围；字符命中不代替整体身份的语义覆盖。",
+        "正确保留手册整体即可满足核心；未独立审查的局部要求不机械拆为额外实体，整体知识可描述该要求。"
+      ]
+    },
+    {
+      "caseId": "dev-local-guidance-with-background-owner",
+      "projectGroup": "dev-local-guidance-with-background-owner",
+      "conversationGroup": "dev-local-guidance-with-background-owner",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "只比较《雾岚接待方案》中的“预约提醒规则”和“到场确认规则”，两条规则分别决定何时提醒与何时确认。本次不评价接待方案整体，也不讨论方案的其他内容。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "whole-part"
+      ],
+      "entities": [
+        {
+          "entityKey": "appointment-rule",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "预约提醒规则被独立比较；方案名称只说明所属背景，不因此要求补整体对象。"
+        },
+        {
+          "entityKey": "arrival-rule",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "到场确认规则有独立作用并与另一规则比较，不与预约提醒规则共享身份。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "appointment-guidance",
+          "entity": "appointment-rule",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "预约提醒规则",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源独立比较的第一条局部规则。"
+        },
+        {
+          "mentionKey": "arrival-guidance",
+          "entity": "arrival-rule",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "到场确认规则",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "来源独立比较的第二条局部规则。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "两条有独立作用的局部规则可以分别保留；背景所属方案没有成为独立评审对象，不要求补出整体。",
+        "整体与局部边界不是固定每次生成一对owner/part，也不把不同局部规则合并为背景方案。"
+      ]
+    },
+    {
+      "caseId": "dev-independent-review-with-unsupported-containment",
+      "projectGroup": "dev-independent-review-with-unsupported-containment",
+      "conversationGroup": "dev-independent-review-with-unsupported-containment",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "请在同一批次分别审查《河港导览词》和《珊瑚展柜清单》，两项各自给出意见。当前记录未说明两份资料是否相互包含或所属。《河港导览词》明确包含“闭馆播报段落”，这是导览词内部的一段。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "source-claims"
+      ],
+      "entities": [
+        {
+          "entityKey": "harbor-script",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被单独审查的河港导览词；同批清单不是已知成员。来源只明确导览词内有闭馆播报段落。"
+        },
+        {
+          "entityKey": "coral-inventory",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被单独审查的珊瑚展柜清单；与另一资料的包含或所属关系未给。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "reviewed-harbor-script",
+          "entity": "harbor-script",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《河港导览词》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "此处完整标题指向受审资料整体，不增补完整规范身份或组件身份。"
+        },
+        {
+          "mentionKey": "reviewed-coral-inventory",
+          "entity": "coral-inventory",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《珊瑚展柜清单》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "原文独立指向另一份受审资料；同批审查不证明包含或所属。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "逐项核对description、qualifiers和mention.rationale中的包含或所属断言；同批独立审查本身不提供这些关系。",
+        "精确标题提及与basis=explicit仅支持此处指代，不为额外关系背书；无据断言不能用unknown抵消。",
+        "来源明确的导览词内播报段落关系可保留；背景局部未被独立审查，不强制增加实体。",
+        "完整标题指资料整体的正常读法不应机械当作完整规范名称或组件身份主张。"
+      ]
+    },
+    {
+      "caseId": "dev-provider-organizer-with-unknown-origin",
+      "projectGroup": "dev-provider-organizer-with-unknown-origin",
+      "conversationGroup": "dev-provider-organizer-with-unknown-origin",
+      "split": "development",
+      "messages": [
+        {
+          "role": "user",
+          "text": "比较《苔原采样方案》和《盐沼采样方案》。《苔原采样方案》由资料员青禾提供并整理，记录没有说明谁最先提出该构想。《盐沼采样方案》的最初构想由研究员闻溪提出，青禾只整理成稿。"
+        }
+      ],
+      "limitations": [
+        "虚构的合成开发诊断，不含真实对话；构造答案只验证既有定位、身份及复核门禁。",
+        "仅预声明所列核心身份与关键提及；背景名词和普通重复不自动增加分母，不是独立验证或总体质量证据。"
+      ],
+      "tags": [
+        "core-object-coverage",
+        "source-claims"
+      ],
+      "entities": [
+        {
+          "entityKey": "tundra-plan",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被比较的苔原采样方案；青禾提供并整理，最初构想提出者在记录中未知。"
+        },
+        {
+          "entityKey": "salt-marsh-plan",
+          "referentKinds": [
+            "object"
+          ],
+          "identityStatus": "proposed",
+          "possibleEntities": [],
+          "component": null,
+          "collection": null,
+          "rationale": "被比较的盐沼采样方案；来源明确最初构想由闻溪提出，青禾整理成稿。"
+        }
+      ],
+      "mentions": [
+        {
+          "mentionKey": "compared-tundra-plan",
+          "entity": "tundra-plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《苔原采样方案》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "首处标题明确指向被比较的方案；后文提供整理角色不自动变为构想提出角色。"
+        },
+        {
+          "mentionKey": "compared-salt-marsh-plan",
+          "entity": "salt-marsh-plan",
+          "messageIndex": 0,
+          "alternatives": [
+            {
+              "quote": "《盐沼采样方案》",
+              "occurrence": 0
+            }
+          ],
+          "rationale": "首处标题明确指向另一方案；来源后文独立给出它的构想来源。"
+        }
+      ],
+      "roles": [],
+      "knowledgePolicy": "optional",
+      "semanticChecks": [
+        "提供、整理、转述或执行身份不自动证明构想发起或提出；各字段的额外来源角色须另有依据。",
+        "未知构想来源不改变已知方案的proposed身份；中性描述和明确的来源未知可保留。",
+        "闻溪提出盐沼构想与青禾整理成稿分别有原文依据，不机械禁止来源明确的提出角色。"
+      ]
+    }
+  ]
+}
