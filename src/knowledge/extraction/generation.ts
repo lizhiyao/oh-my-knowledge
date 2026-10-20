@@ -40,6 +40,8 @@ const publishedPromptDigests: Readonly<Record<string, string>> = Object.freeze({
   'knowledge-extraction-v20': 'sha256:581732fbe83f847ba6fe2f809fb0bd65e04dd7a69a7b924952c97bd5408901b9',
   'knowledge-extraction-v21': 'sha256:beea0e93590f82fcf6ca30df279cb89e2e7eb62f39da5cfa4543a5ab1ddba130',
   'knowledge-extraction-v22': 'sha256:c52c995810a59fde98cd4c9ac3812fd23ce79ca2e6ad85436cd3904eb574d179',
+  'knowledge-extraction-v23': 'sha256:55db71e6e190bc8059cbecd8f68f18159de0fc60721ad4cb3debf51088b2058a',
+  'knowledge-extraction-v24': 'sha256:b6d6de8496817d98a8d36cc751a37f394379d5cccb673e4c7ba74adbafe0ce99',
 });
 for (const current of [{ promptVersion: EXTRACTION_PROMPT_VERSION, system: EXTRACTION_PROMPT },
   { promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: STRICT_EXTRACTION_PROMPT }]) {

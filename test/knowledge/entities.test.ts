@@ -240,12 +240,14 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('versions time-evidence guidance while preserving frozen controls and the first five demonstration bytes', () => {
+  it('versions entity-context guidance while preserving frozen controls and the first six demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v22');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v24');
     expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
-    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(6);
+    expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
+      .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');
+    expect(STRICT_EXTRACTION_FEWSHOT_EXAMPLES).toHaveLength(7);
     const versionExample = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(example => example.exampleId === 'synthetic-version-artifact-v2')!;
     const source = versionExample.input.excerpts.map(excerpt => excerpt.text).join('\n');
     expect(source).toContain('当前是 v14');
@@ -265,9 +267,26 @@ describe('derived strict structural wire with original itemwise admission', () =
     expect(control.length).toBe(31884);
     expect(createHash('sha256').update(control).digest('hex')).toBe('d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d');
     expect(STRICT_EXTRACTION_PROMPT.endsWith(WINDOW_EXTRACTION_WIRE_SCHEMA_JSON)).toBe(true);
-    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v21');
+    expect(EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v23');
     const frozenV18 = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/v18-candidate-strict.prompt.txt', import.meta.url));
     expect(createHash('sha256').update(frozenV18).digest('hex')).toBe('46ba39fca01e132ac79c29824ae561e16ee03f26cb7e8e87109c8288f21d5229');
+  });
+
+  it('grounds separate example objects and explicit cross-quote aliases in the actual wire demonstration', () => {
+    const example = STRICT_EXTRACTION_FEWSHOT_EXAMPLES.find(value => value.exampleId === 'synthetic-quoted-context-and-explicit-identity-v1')!;
+    const decoded = decode(example.output);
+    if (decoded.decodeStatus !== 'decoded') throw new Error(decoded.error);
+    const admitted = checkWindowExtractionResponse(decoded.domainInput, example.input.excerpts);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+    expect(admitted.analysis.entities.map(entity => [entity.entityId, entity.qualifiers])).toEqual([
+      ['e_current', ['本轮审查', '当前版本 v17']], ['e_example', ['学习示例', '示例中当前版本 v14']],
+    ]);
+    expect(admitted.analysis.mentions.map(mention => [mention.mentionId, mention.entityId])).toEqual([
+      ['m_current', 'e_current'], ['m_example', 'e_example'], ['m_alias', 'e_current'], ['m_quoted_current', 'e_current'],
+    ]);
+    const quoted = admitted.analysis.mentions.find(mention => mention.mentionId === 'm_quoted_current')!;
+    expect(quoted.selection.start).toBe(example.input.excerpts[2].text.indexOf('ReviewPrompt', example.input.excerpts[2].text.indexOf('ReviewPrompt') + 1));
+    expect(admitted.accepted).toEqual([]); // Entity-only results remain independent of knowledge selection.
   });
 
   it('carries authored time distinctions through the production wire without claiming model compliance', () => {
