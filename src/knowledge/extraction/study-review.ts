@@ -154,7 +154,8 @@ function validateInput(input: ExtractionStudyReviewInput) {
     if (!slot.run) continue;
     const run = ExtractionRunSchema.parse(slot.run);
     if (seenRuns.has(run.runId) || run.runId !== planned.runId || run.snapshotId !== sample.window.snapshotId || run.sourceVersion !== sample.window.sourceVersion
-      || Date.parse(run.startedAt) > Date.parse(input.now) || (run.finishedAt && Date.parse(run.finishedAt) > Date.parse(input.now))) throw new Error('Study run differs from its frozen source or slot.');
+      || Date.parse(run.startedAt) > Date.parse(input.now) || (run.finishedAt && (Date.parse(run.finishedAt) > Date.parse(input.now)
+        || Date.parse(run.finishedAt) < Date.parse(run.startedAt)))) throw new Error('Study run differs from its frozen source or slot.');
     seenRuns.add(run.runId);
     const selections = [...(run.entityAnalysis?.revision.mentions.map(value => value.selection) ?? []), ...run.intents.flatMap(value => value.grounding.citations.map(citation => citation.selection))];
     if (selections.some(value => validateEvidenceSelection(value, sample.window.excerpts).length)) throw new Error('Study run quote differs from its frozen source.');
@@ -199,6 +200,8 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
   const seen = new Set<string>(), blockers: string[] = [];
   if (!input.integrity.planVerified || !input.integrity.outputVerified) blockers.push('unverified_frozen_evidence');
   if (input.slots.some(slot => !slot.run || slot.run.status !== 'completed')) blockers.push('capture_incomplete_or_failed');
+  const unverifiedCompletionSlots = input.slots.filter(slot => slot.run?.status === 'completed' && !slot.run.finishedAt);
+  if (unverifiedCompletionSlots.length) blockers.push('completion_time_unverified');
   if (input.slots.some(slot => slot.run && (!slot.nativeVerified || slot.run.attempts.some(attempt => !attempt.outcome)))) blockers.push('native_evidence_unverified');
   if (input.slots.some(slot => slot.run && (slot.run.rejections.length || slot.run.entityRejections?.length))) blockers.push('structural_rejection');
   if (input.slots.some(slot => slot.run && Date.parse(input.plan.declaredAt) > Date.parse(slot.run.startedAt))) blockers.push('plan_not_predeclared');
@@ -230,14 +233,17 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
     const complete = !!receipt && !targets.some(value => value.slotId === slot.slotId && !seen.has(canonicalJson(value))) && !selected.some(value => value.verdict === 'uncertain');
     return { slotId: slot.slotId, caseId: slot.caseId, variantId: slot.variantId, repeat: slot.repeat,
       runId: slot.run?.runId ?? null, annotationScope: sample.reference.annotationScope, nativeVerified: slot.nativeVerified,
-      metrics: { entities: matchingMetrics('entity', sample.reference.entities.map(value => value.referenceId), slot, selected, complete && reference.goldReady && independentHuman && sample.reference.annotationScope === 'full' && slot.run?.status === 'completed' && slot.nativeVerified && input.integrity.planVerified && input.integrity.outputVerified),
-        mentions: matchingMetrics('mention', sample.reference.mentions.map(value => value.referenceId), slot, selected, complete && reference.goldReady && independentHuman && sample.reference.annotationScope === 'full' && slot.run?.status === 'completed' && slot.nativeVerified && input.integrity.planVerified && input.integrity.outputVerified) } };
+      completionTimeStatus: slot.run?.status !== 'completed' ? 'not_completed' as const
+        : slot.run.finishedAt ? 'verified' as const : 'completion_time_unverified' as const,
+      metrics: { entities: matchingMetrics('entity', sample.reference.entities.map(value => value.referenceId), slot, selected, complete && reference.goldReady && independentHuman && sample.reference.annotationScope === 'full' && slot.run?.status === 'completed' && !!slot.run.finishedAt && slot.nativeVerified && input.integrity.planVerified && input.integrity.outputVerified),
+        mentions: matchingMetrics('mention', sample.reference.mentions.map(value => value.referenceId), slot, selected, complete && reference.goldReady && independentHuman && sample.reference.annotationScope === 'full' && slot.run?.status === 'completed' && !!slot.run.finishedAt && slot.nativeVerified && input.integrity.planVerified && input.integrity.outputVerified) } };
   });
   const variants = input.plan.variants.map(({ variantId }) => {
     const planned = input.slots.filter(value => value.variantId === variantId), slotIds = new Set(planned.map(value => value.slotId));
     const selected = decisions.filter(value => slotIds.has(value.target.slotId)), variantBlockers: string[] = [];
     if (!input.integrity.planVerified || !input.integrity.outputVerified) variantBlockers.push('unverified_frozen_evidence');
     if (planned.some(slot => !slot.run || slot.run.status !== 'completed')) variantBlockers.push('capture_incomplete_or_failed');
+    if (planned.some(slot => slot.run?.status === 'completed' && !slot.run.finishedAt)) variantBlockers.push('completion_time_unverified');
     if (planned.some(slot => slot.run && (!slot.nativeVerified || slot.run.attempts.some(attempt => !attempt.outcome)))) variantBlockers.push('native_evidence_unverified');
     if (planned.some(slot => slot.run && (slot.run.rejections.length || slot.run.entityRejections?.length))) variantBlockers.push('structural_rejection');
     if (planned.some(slot => slot.run && Date.parse(input.plan.declaredAt) > Date.parse(slot.run.startedAt))) variantBlockers.push('plan_not_predeclared');
@@ -250,8 +256,11 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
       status: variantBlockers.length ? 'blocked' as const : !receipt || missingTargets.some(value => slotIds.has(value.slotId)) || selected.some(value => value.verdict === 'uncertain') ? 'pending' as const
         : reference.goldReady && independentHuman && annotationComplete ? 'accepted_within_scope' as const : 'exploratory_reviewed' as const };
   });
-  const report = { reportVersion: 'omk-extraction-study-review/v1' as const, planId: input.plan.planId, corpusDigest: corpus.corpusDigest,
+  const report = { reportVersion: 'omk-extraction-study-review/v2' as const, planId: input.plan.planId, corpusDigest: corpus.corpusDigest,
     outputDigest: input.outputDigest, scope: 'frozen-real-study' as const, status, reference,
+    completionTime: { completedSlots: input.slots.filter(slot => slot.run?.status === 'completed').length,
+      verifiedCompletedSlots: input.slots.filter(slot => slot.run?.status === 'completed' && slot.run.finishedAt).length,
+      unverifiedSlotIds: unverifiedCompletionSlots.map(slot => slot.slotId) },
     releaseEligibility: 'not_assessed' as const,
     remainingRequirements: ['Independent reference and output judgments are required for scoped acceptance.',
       'The separate frozen synthetic critical regression is not evaluated by this real-study report.',
@@ -262,7 +271,7 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
     countingUnit: 'review-decision' as const, targets, decisions, missingTargets, forcedBlockingErrors, blockers, slots, variants,
     limits: ['Frozen real sources are a scoped study, not a representative population or release acceptance.',
       'Source provenance, prior exposure and human independence are attestations; digests only bind bytes.',
-      'Output review time is checked against each run.finishedAt when present, otherwise only run.startedAt; a missing finish cannot establish post-completion review.',
+      'Completed runs require finishedAt to qualify for post-completion review and scoped metrics; missing completion evidence blocks acceptance without rewriting the original run. Receipt time remains bounded by available timestamps and the supplied checking clock.',
       'Agent judge model, revisions, prompt/configuration digests, attempts and usage are reviewer declarations; referenced artifacts are not loaded or native-verified.',
       'Partial or missing reference annotation cannot establish overall precision, recall or F1.',
       'Runs and birth revisions are never rewritten by semantic review; later corrections do not alter these denominators.'] };

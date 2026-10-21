@@ -37,8 +37,8 @@ function treeDigest(directory: string): string {
   };
   walk(directory); return hash.digest('hex');
 }
-async function capturedFixture(annotated = false) {
-  const directory = root(), f = await nativeStudyEvidenceFixture(directory, { annotated, reply: (_index, output) => ({
+async function capturedFixture(annotated = false, withoutCompletedFinish = false) {
+  const directory = root(), f = await nativeStudyEvidenceFixture(directory, { annotated, withoutCompletedFinish, reply: (_index, output) => ({
     ...studyNativeResult(output), authoredPrivateNative: 'PRIVATE-NATIVE-STUDY-SENTINEL',
   }) });
   const evidencePath = join(directory, 'evidence.json');
@@ -55,7 +55,7 @@ describe('observe knowledge study read-only wiring', () => {
     const fetch = vi.fn(() => { throw new Error('Study must not call a model.'); }); vi.stubGlobal('fetch', fetch);
     const json = await runCommand(ObserveKnowledge, ['study', '--evidence', f.evidencePath, '--json', '--lang', 'en'], { cwd: f.directory });
     const dto = JSON.parse(json.stdout);
-    expect(dto).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v1', modelCallsByThisCommand: 0,
+    expect(dto).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2', modelCallsByThisCommand: 0,
       summary: { planned: 2, completed: 2, totalCostUSD: null }, review: { status: 'pending', reference: { goldReady: false } } });
     expect(json.stderr).toBe(''); expect(json.stdout).not.toContain('PRIVATE-NATIVE-STUDY-SENTINEL');
     expect(json.stdout).not.toContain('corpusRaw'); expect(json.stdout).not.toContain('sourcePath'); expect(json.stdout).not.toContain(f.directory);
@@ -69,6 +69,20 @@ describe('observe knowledge study read-only wiring', () => {
     expect(settings).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(f.effects).toHaveBeenCalledTimes(calls);
     expect(treeDigest(f.workspace)).toBe(original); expect(readFileSync(join(f.home, 'settings.json'), 'utf8')).toBe('{invalid');
   });
+  it('exposes completion-time limits through JSON and both readable languages without rewriting saved runs', async () => {
+    const f = await capturedFixture(true, true), before = treeDigest(f.workspace);
+    const json = await runCommand(ObserveKnowledge, ['study', '--evidence', f.evidencePath, '--json', '--lang', 'en'], { cwd: f.directory });
+    expect(JSON.parse(json.stdout)).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2',
+      summary: { completed: 2 }, review: { status: 'blocked', blockers: ['completion_time_unverified'] } });
+    for (const lang of ['zh', 'en']) {
+      const result = await runCommand(ObserveKnowledge, ['study', '--evidence', f.evidencePath, '--lang', lang], { cwd: f.directory });
+      expect(result.stdout).toContain(lang === 'zh' ? '完成时间未核实' : 'Completion time unverified');
+      expect(result.stdout).toContain(lang === 'zh' ? '不会补造时间' : 'No completion time is invented');
+      expect(result.stderr).toBe('');
+    }
+    expect(treeDigest(f.workspace)).toBe(before); expect(f.effects).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects study-only flags on other operations and unrelated study flags before opening files or settings', async () => {
     const directory = root(); vi.stubEnv('OMK_HOME', directory); writeFileSync(join(directory, 'settings.json'), '{invalid');
     const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve').mockImplementation(() => { throw new Error('Unexpected settings access.'); });

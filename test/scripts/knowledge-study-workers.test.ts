@@ -187,7 +187,7 @@ describe('fixed study workers (built runtime; authored local data, no model serv
     const output = join(directory, 'export');
     expect((await builtCall(installation, 'cli/runtime/knowledge-study.js', 'executeLocalExtractionStudy', { ...input, command: 'report', values: { ...input.values, '--output': output } })).ok).toBe(true);
     const inspected = await builtCall(installation, 'knowledge/application/study-inspection-service.js', 'inspectExtractionStudyFiles', { evidence: join(output, 'evidence.json') });
-    expect(inspected).toMatchObject({ ok: true, value: { inspectionVersion: 'omk-extraction-study-inspection/v1', modelCallsByThisCommand: 0,
+    expect(inspected).toMatchObject({ ok: true, value: { inspectionVersion: 'omk-extraction-study-inspection/v2', modelCallsByThisCommand: 0,
       summary: { unattempted: 2 }, review: { status: 'blocked', reference: { goldReady: false } } } });
     const byteCode = `
       import { readFileSync } from 'node:fs';
@@ -213,7 +213,7 @@ describe('fixed study workers (built runtime; authored local data, no model serv
     const cli = await runCli(['observe', 'knowledge', 'study', '--evidence', join(output, 'evidence.json'), '--json', '--lang', 'en'],
       { entry: join(repository, 'dist/cli/index.js'), cwd: directory, timeout: 120_000, maxBuffer: 8 * 1024 * 1024,
         env: { ...process.env, HOME: home, OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1', NODE_ENV: 'test' } });
-    expect(JSON.parse(cli.stdout)).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v1', modelCallsByThisCommand: 0, summary: { unattempted: 2 } });
+    expect(JSON.parse(cli.stdout)).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2', modelCallsByThisCommand: 0, summary: { unattempted: 2 } });
     expect(cli.stderr).toBe(''); expect(cli.stdout).not.toContain(directory); expect(readFileSync(join(home, 'settings.json'), 'utf8')).toBe('{invalid');
     const invalid = await builtCall(installation, 'knowledge/application/study-inspection-service.js', 'inspectExtractionStudyFiles', { evidence: join(directory, 'PRIVATE-MISSING-FILE') });
     expect(invalid).toMatchObject({ ok: false, code: 'knowledge_study_file_invalid' });
