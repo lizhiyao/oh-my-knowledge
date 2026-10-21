@@ -469,7 +469,7 @@ omk observe entity-links <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；terminate 人工终止已启动执行；其余读取、人审或零调用恢复。
+- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；accept-preview 零调用展示证据替换；terminate 人工终止已启动执行；其余读取、人审或零调用恢复。
 
 **Flags:**
 
@@ -477,6 +477,7 @@ omk observe entity-links <operation> [flags]
 - `--cancel-before-start` `boolean`:resume：明确取消尚未 started 的 prepared 计划，释放预约；须 request-id、generation 和 reason。
 - `--confirm-identity` `boolean`:accept 必填：人工核对后确认两侧所指同一对象，不以模型判断代替。
 - `--confirm-input` `option`:propose：人工核对内容、模型和 endpoint 后，显式填写计划顶层 confirmedDigest（含工作区）。
+- `--confirm-replacement` `option`:accept：独立核对 accept-preview 的旧／新证据后，明确填写该预览 confirmationDigest；理由、名称或 head 变化须重新预览。
 - `--entity` `option`:左侧实体 UUID；原实体身份保持不变。
 - `--execution-id` `option`:terminate：show 中原执行的 executionId；仅终止这一已启动执行。
 - `--executor` `openai-api|codex`:preview：执行器；API 已具备容量证明，Codex 尚不允许启动。
@@ -523,6 +524,10 @@ omk observe entity-links show --workspace ./knowledge --id <review-id> --json
 
 ```bash
 omk observe entity-links quality --workspace ./knowledge --json
+```
+
+```bash
+omk observe entity-links accept-preview --workspace ./knowledge --id <review-id> --generation <generation> --reason "已核对两侧原文与身份" --json
 ```
 
 ```bash

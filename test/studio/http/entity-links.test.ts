@@ -9,7 +9,7 @@ import type { ExecutorInput } from '../../../src/executors/contracts/ports.js';
 import type { ExecResult } from '../../../src/executors/contracts/result.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { createEntityLinkStudioService } from '../../../src/studio/application/knowledge/entity-links.js';
-import type { EntityLinkStudioInspection, EntityLinkStudioPreview } from '../../../src/studio/view-models/knowledge/entity-links.js';
+import type { EntityLinkStudioInspection, EntityLinkAcceptPreview, EntityLinkStudioPreview } from '../../../src/studio/view-models/knowledge/entity-links.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 
 let root: string, workspace: string, server: ReturnType<typeof createReportServer> | undefined, url: string;
@@ -57,7 +57,7 @@ describe('Studio entity-link production service boundary', () => {
     expect(show.history).toEqual(one.history); expect(show.projection.usage).toMatchObject({ inputTokens: 7, outputTokens: 3, costUSD: null });
     await json({ operation: 'list' }); await json({ operation: 'resume', reviewId: value.preview.reviewId });
     const quality = await json<ReturnType<ReturnType<typeof createLocalEntityLinks>['quality']>>({ operation: 'quality' });
-    expect(quality).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', readStatus: 'available', reviewCount: 1 });
+    expect(quality).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v3', readStatus: 'available', reviewCount: 1 });
     expect(quality.groups[0]).toMatchObject({ reviews: { dispatched: 1 }, admission: { admitted: 1 }, humanDecisions: { decided: 0, undecidedAdmitted: 1 } });
     expect(calls).toHaveBeenCalledTimes(1);
     const rejected = await json<EntityLinkStudioInspection>({ operation: 'reject', reviewId: value.preview.reviewId, requestId: randomUUID(), expectedGeneration: show.history.generation, reason: '真人不采纳此建议' });
@@ -75,6 +75,34 @@ describe('Studio entity-link production service boundary', () => {
     const app = createLocalKnowledgeApplication(workspace); expect(app.entities(value.preview.plan.left.analysisId).revision.entities[0].entityId).toBe(value.preview.plan.left.entityId);
     await json({ operation: 'resume', reviewId: value.preview.reviewId }); expect(calls).toHaveBeenCalledTimes(1);
   });
+  it('previews existing-member replacement without a model and rejects missing or stale separate consent', async () => {
+    const { calls } = await serve(), a = await source('replace-left'), b = await source('replace-right');
+    const detail = createLocalKnowledgeApplication(workspace).entities(a.analysisId), member = { ...a, entityRevisionId: detail.revision.revisionId,
+      mentionIds: detail.revision.mentions.filter(m => m.entityId === a.entityId).map(m => m.mentionId), rationale: '旧理由' };
+    const library = createLocalKnowledgeLibrary(workspace), owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+      identityConfirmed: true, reason: '旧组织', draft: { label: 'Alpha', description: '旧范围', referentKind: 'object', members: [member] } });
+    const value = await json<EntityLinkStudioPreview>({ operation: 'preview', left: a, right: b, selection: { executor: 'openai-api', model: 'explicit-fixture-model' } });
+    const saved = await json<EntityLinkStudioInspection>(propose(value));
+    const fields = { reviewId: value.preview.reviewId, expectedGeneration: saved.history.generation, reason: '明确替换旧理由' };
+    const evidence = await json<EntityLinkAcceptPreview>({ operation: 'accept-preview', ...fields });
+    expect(evidence.changes[0]).toMatchObject({ before: member, after: { ...member, rationale: fields.reason } }); expect(calls).toHaveBeenCalledTimes(1);
+    const acceptance = { operation: 'accept', ...fields, requestId: randomUUID(), identityConfirmed: true };
+    expect((await post(acceptance)).status).not.toBe(200); expect(library.detail(owner.objectId).history.generation).toBe(1);
+    const accepted = await json<EntityLinkStudioInspection>({ ...acceptance, replacementConfirmed: true, replacementConfirmationDigest: evidence.confirmationDigest });
+    expect(accepted.projection.status).toBe('applied'); expect(library.detail(owner.objectId).history.generation).toBe(2);
+    expect((await post({ ...acceptance, replacementConfirmed: true, replacementConfirmationDigest: `sha256:${'a'.repeat(64)}` })).status).not.toBe(200);
+    expect(calls).toHaveBeenCalledTimes(1);
+  });
+  it.each(['identity_unresolved', 'kind_mismatch'] as const)('returns safe actionable %s preflight without constructing a model invocation', async code => {
+    const { factory, calls } = await serve(), a = await source('classify-left'), b = await source('classify-right'), app = createLocalKnowledgeApplication(workspace);
+    const before = app.entities(a.analysisId), entities = structuredClone(before.revision.entities);
+    if (code === 'identity_unresolved') { entities[0].identityStatus = 'unresolved'; entities[0].uncertainties = ['身份未决']; }
+    else entities[0].referentKind = 'activity';
+    app.correctEntities(a.analysisId, before.revision.revisionId, before.history.generation, { entities, mentions: before.revision.mentions }, '明确身份或所指层级');
+    const response = await post({ operation: 'preview', left: a, right: b, selection: { executor: 'openai-api', model: 'explicit-fixture-model' } });
+    expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: `entity_link_${code}` });
+    expect(factory).not.toHaveBeenCalled(); expect(calls).not.toHaveBeenCalled(); expect(existsSync(join(workspace, 'entity-links'))).toBe(false);
+  });
   it('archives complete paid failures before admission, distinguishes unreadable history, and never retries on read/resume', async () => {
     const { calls } = await serve(async input => ({ ...result(input), ok: false, output: '完整失败原文 <script>', refusal: '完整拒绝', error: 'bounded fixture', failure: { failureKind: 'refusal' }, tokenUsageReportedByExecutor: true }));
     const value = await preview(), saved = await json<EntityLinkStudioInspection>(propose(value));
@@ -82,7 +110,7 @@ describe('Studio entity-link production service boundary', () => {
     writeFileSync(join(workspace, 'entity-links', `${randomUUID()}.json`), '{broken');
     const unreadable = await post({ operation: 'list' }); expect(unreadable.status).toBe(503); expect(await unreadable.json()).toEqual({ error: 'entity_link_outcome_unconfirmed' });
     const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
-    expect(await quality.json()).toEqual({ projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v2', readStatus: 'unreadable', reviewCount: null, groups: [] });
+    expect(await quality.json()).toEqual({ projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v3', readStatus: 'unreadable', reviewCount: null, groups: [] });
     await json({ operation: 'show', reviewId: value.preview.reviewId }); expect(calls).toHaveBeenCalledTimes(1);
   });
   it('projects a CLI-terminated invocation and its late archive without exposing a terminate HTTP mutation or admitting it', async () => {
@@ -96,12 +124,12 @@ describe('Studio entity-link production service boundary', () => {
       app.terminateExecution({ reviewId: running.history.reviewId, requestId: randomUUID(), expectedGeneration: running.history.generation,
         executionId: execution.executionId, ownerId: execution.owner.ownerId, reason: 'CLI人工终止，保留原结果' });
       const saved = await json<EntityLinkStudioInspection>({ operation: 'show', reviewId: running.history.reviewId });
-      expect(saved.projection).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v2', status: 'execution_terminated', admission: null, decision: null,
+      expect(saved.projection).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v3', status: 'execution_terminated', admission: null, decision: null,
         termination: { terminationVersion: 'omk.entity-link-termination/v1', reason: 'CLI人工终止，保留原结果' }, invocationBudget: { consumed: 1 } });
       expect(saved.startToken).toBeUndefined();
       await json({ operation: 'resume', reviewId: running.history.reviewId });
       const observation = await json<ReturnType<typeof app.quality>>({ operation: 'quality' });
-      expect(observation).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', readStatus: 'available' });
+      expect(observation).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v3', readStatus: 'available' });
       if (observation.readStatus !== 'available') throw new Error('Expected readable fixture observations.');
       expect(observation.groups[0]).toMatchObject({ humanTerminations: { total: 1, outcomeUnrecorded: 1, lateOutcomeRecorded: 0 },
         admission: { recorded: 0, terminatedDispatched: 1, unrecordedDispatched: 0 }, humanDecisions: { decided: 0 } });

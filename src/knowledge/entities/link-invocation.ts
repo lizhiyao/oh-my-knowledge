@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EntityMentionSchema, KnowledgeActorSchema } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { AnalyzedEntitySchema } from './contracts.js';
-import { EntityLinkEndpointSchema, EntityLinkConflictCodeSchema, EntityLinkSuggestionSchema } from './links.js';
+import { EntityLinkEndpointSchema, EntityLinkConflictCodeSchema, EntityLinkConflictV2CodeSchema, EntityLinkSuggestionSchema } from './links.js';
 import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryStore } from '../entity-library/contracts.js';
 
 const id = z.string().uuid();
@@ -85,6 +85,13 @@ const application = z.discriminatedUnion('applicationKind', [
   z.strictObject({ applicationKind: z.literal('intent'), intent: LibraryWriteSchema }),
   z.strictObject({ applicationKind: z.literal('conflict'), conflictCode: conflict }),
 ]);
+export const EntityLinkEvidenceReplacementSchema = z.strictObject({
+  confirmationVersion: z.literal('omk.entity-link-evidence-replacement/v1'), confirmedDigest: digest, previousMembersDigest: digest,
+});
+const applicationV2 = z.discriminatedUnion('applicationKind', [
+  z.strictObject({ applicationKind: z.literal('intent'), intent: LibraryWriteSchema }),
+  z.strictObject({ applicationKind: z.literal('conflict'), conflictCode: EntityLinkConflictV2CodeSchema }),
+]);
 export const EntityLinkInvocationCommandSchema = z.discriminatedUnion('commandKind', [
   z.strictObject({ ...common, commandKind: z.literal('prepare'), actor: human, input: EntityLinkInvocationPlanSchema }),
   z.strictObject({ ...common, commandKind: z.literal('start'), executionId: id, owner: EntityLinkExecutionOwnerSchema }),
@@ -95,10 +102,15 @@ export const EntityLinkInvocationCommandSchema = z.discriminatedUnion('commandKi
     actor: human, executionId: id, owner: EntityLinkExecutionOwnerSchema, reason }),
   z.strictObject({ ...common, commandKind: z.literal('reviewed'), actor: human, decision: z.enum(['accept', 'reject']), reason,
     identityConfirmed: z.boolean(), objectLabel: reason.max(256).nullable(), application: application.nullable() }),
+  z.strictObject({ ...common, commandKind: z.literal('reviewed_v2'), reviewVersion: z.literal('omk.entity-link-review/v2'),
+    actor: human, decision: z.enum(['accept', 'reject']), reason, identityConfirmed: z.boolean(), objectLabel: reason.max(256).nullable(),
+    evidenceReplacement: EntityLinkEvidenceReplacementSchema.nullable(), application: applicationV2.nullable() }),
+  z.strictObject({ ...common, commandKind: z.literal('application_conflict_v2'), conflictVersion: z.literal('omk.entity-link-conflict/v2'), conflictCode: EntityLinkConflictV2CodeSchema }),
   z.strictObject({ ...common, commandKind: z.literal('application_applied'), receipt: LibraryEnvelopeSchema.shape.receipts.element }),
   z.strictObject({ ...common, commandKind: z.literal('application_conflict'), conflictCode: conflict }),
 ]);
 export type EntityLinkInvocationCommand = z.infer<typeof EntityLinkInvocationCommandSchema>;
+export type EntityLinkReviewCommand = Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' | 'reviewed_v2' }>;
 export const EntityLinkInvocationEventSchema = z.strictObject({ command: EntityLinkInvocationCommandSchema,
   commandDigest: digest, facts: z.record(z.string(), z.json()), eventDigest: digest });
 export type EntityLinkInvocationEvent = z.infer<typeof EntityLinkInvocationEventSchema>;

@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { EntityLinkPreviewEvidence, EntityLinkSavedEvidence } from '../../../src/studio/web/components/knowledge/entity-link-evidence.js';
+import { EntityLinkPreviewEvidence, EntityLinkAcceptPreviewEvidence, EntityLinkSavedEvidence } from '../../../src/studio/web/components/knowledge/entity-link-evidence.js';
 import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { entityLinkFixture } from './entity-link-fixture.js';
 import { EntityLinkQualityEvidence } from '../../../src/studio/web/components/knowledge/entity-link-quality.js';
@@ -9,9 +9,9 @@ import { entityLinkQuality } from '../../../src/knowledge/entity-linking/entity-
 import { entityLinkDigest } from '../../../src/knowledge/entity-linking/entity-link-hash.js';
 import { entityLinkTextHash } from '../../../src/knowledge/adapters/entity-link-api-producer.js';
 
-let fixture: Awaited<ReturnType<typeof entityLinkFixture>>, terminatedFixture: Awaited<ReturnType<typeof entityLinkFixture>>;
-beforeAll(async () => { fixture = await entityLinkFixture(); terminatedFixture = await entityLinkFixture({ terminate: true }); });
-afterAll(() => { fixture?.cleanup(); terminatedFixture?.cleanup(); });
+let fixture: Awaited<ReturnType<typeof entityLinkFixture>>, replacementFixture: Awaited<ReturnType<typeof entityLinkFixture>>, terminatedFixture: Awaited<ReturnType<typeof entityLinkFixture>>;
+beforeAll(async () => { fixture = await entityLinkFixture(); replacementFixture = await entityLinkFixture({ existingMember: true }); terminatedFixture = await entityLinkFixture({ terminate: true }); });
+afterAll(() => { fixture?.cleanup(); replacementFixture?.cleanup(); terminatedFixture?.cleanup(); });
 describe('entity-link actual evidence rendering', () => {
   it('renders shared quality denominators and unknown usage in both languages, escaping model identity and distinguishing unreadable', () => {
     const quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash });
@@ -49,6 +49,17 @@ describe('entity-link actual evidence rendering', () => {
       expect(html).toContain(archived ? '模型不知道 &lt;script&gt;unsafe&lt;/script&gt;' : lang === 'zh' ? '尚无可用的归档结果。' : 'No archived outcome is available.');
     }
     expect(terminatedFixture.invocationCount()).toBe(1);
+  });
+  it('renders full old/new bindings, owner CAS and separate reasons with escaped replacement content', () => {
+    const value = replacementFixture.acceptancePreview('人工替换 <script>unsafe</script>');
+    for (const lang of ['zh', 'en'] as const) {
+      const html = renderToStaticMarkup(createElement(EntityLinkAcceptPreviewEvidence, { value, lang }));
+      expect(html).toContain(value.owner!.headRevisionId); expect(html).toContain(value.changes[0].before.entityRevisionId);
+      expect(html).toContain(value.changes[0].before.mentionIds[0]); expect(html).toContain('旧证据理由');
+      expect(html).toContain('&lt;script&gt;unsafe&lt;/script&gt;'); expect(html).not.toContain('<script>');
+      expect(html).toContain(lang === 'zh' ? '原绑定（完整）' : 'Previous binding (complete)');
+      expect(html).toContain(lang === 'zh' ? '拟写入绑定（完整）' : 'Proposed binding (complete)');
+    }
   });
   it('shows the current entity entry and keeps historical revisions read-only', () => {
     const render = (current: boolean) => renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: current ? fixture.left : { ...fixture.left, history: { ...fixture.left.history, writeHeadRevisionId: 'newer' } }, workspace: fixture.workspace, lang: 'zh', onRevision() {}, onLink() {} }));

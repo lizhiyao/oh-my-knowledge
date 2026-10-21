@@ -5,7 +5,7 @@ import type { KnowledgeActor } from '../../src/knowledge/contracts.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { EntityLinkSuggestionSchema } from '../../src/knowledge/entities/links.js';
 import {
-  EntityLinkExecutionOutcomeSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
+  EntityLinkExecutionOutcomeSchema, EntityLinkInvocationCommandSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
   type EntityLinkInvocationPorts, type EntityLinkExecutionOutcome, type EntityLinkExecutionResult,
 } from '../../src/knowledge/entities/link-invocation.js';
 import { entityLinkConfirmationDigest, transitionEntityLinkInvocation, projectEntityLinkInvocation, validateEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
@@ -94,7 +94,7 @@ describe('entity-link invocation pure production flow', () => {
     f.ports.proveOwnerExited = () => { throw new Error('Termination must not assert owner exit.'); };
     expect(f.apply(command).effect).toBe('none');
     expect(canonicalJson({ ...f.history, generation: 2, writeHeadEventId: f.history.events[1].command.eventId, events: f.history.events.slice(0, 2) })).toBe(runningBytes);
-    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v2',
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v3',
       status: 'execution_terminated', execution: { executionId: f.executionId, owner: f.owner }, termination: command,
       admission: null, decision: null, canStart: false, canResumeOrganization: false, canTerminateExecution: false,
       invocationBudget: { reserved: 0, consumed: 1 }, executorAttemptCount: null, usage: { inputTokens: null, costUSD: null } });
@@ -232,7 +232,7 @@ describe('entity-link quality saved-fact projection', () => {
     late.archive({ outcomeKind: 'result', result: late.result() });
     const histories = [prepared, cancelled, running, unknown, admitted, accepted, rejected, failed, exception, terminated, late].map(f => f.history), before = canonicalJson(histories);
     const result = entityLinkQuality(histories, prepared.ports);
-    expect(result).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', readStatus: 'available', reviewCount: 11 }); expect(result.groups).toHaveLength(1);
+    expect(result).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v3', readStatus: 'available', reviewCount: 11 }); expect(result.groups).toHaveLength(1);
     const group = result.groups[0];
     expect(group.reviews).toMatchObject({ total: 11, notDispatched: 2, dispatched: 9, reserved: 1, resultRecorded: 5, exceptionRecorded: 1, outcomeUnrecorded: 3, byStatus: { execution_terminated: 2 } });
     expect(group.admission).toEqual({ recorded: 5, admitted: 3, rejected: 2, unrecordedDispatched: 2, terminatedDispatched: 2, admissionRate: 0.6, reasons: [{ reason: 'exception', count: 1 }, { reason: 'failed_execution', count: 1 }] });
@@ -263,5 +263,28 @@ describe('entity-link quality saved-fact projection', () => {
     const result = entityLinkQuality(all.map(f => f.history), all[0].ports);
     expect(result.groups[0].usage.inputTokens).toEqual({ knownReviewCount: 3, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: true });
     expect(result.groups[0].usage.costUSD).toEqual({ knownReviewCount: 3, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: 0, overflow: false });
+  });  it('keeps legacy reasons unclassified and counts new identity/kind conflicts separately without rewriting history', () => {
+    const legacy = fixture(), identity = fixture(), kind = fixture();
+    for (const f of [legacy, identity, kind]) { f.prepare(); f.start(); f.archive({ outcomeKind: 'result', result: f.result() }); }
+    legacy.apply(legacy.command({ commandKind: 'reviewed', decision: 'accept', identityConfirmed: true, reason: '旧原因不可细分', objectLabel: null,
+      application: { applicationKind: 'conflict', conflictCode: 'identity_unresolved' } }, human));
+    const legacyBytes = canonicalJson(legacy.history);
+    for (const [f, conflictCode] of [[identity, 'identity_unresolved'], [kind, 'kind_mismatch']] as const) {
+      const command = f.command({ commandKind: 'reviewed_v2', reviewVersion: 'omk.entity-link-review/v2', decision: 'accept', identityConfirmed: true,
+        reason: '当前明确诊断', objectLabel: null, evidenceReplacement: null, application: { applicationKind: 'conflict', conflictCode } }, human);
+      f.apply(command); expect(f.apply(command).effect).toBe('none');
+      expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v3',
+        conflict: { classificationVersion: 'omk.entity-link-conflict/v2', conflictCode } });
+    }
+    expect(() => EntityLinkInvocationCommandSchema.parse(kind.command({ commandKind: 'reviewed', decision: 'accept', identityConfirmed: true,
+      reason: '旧事件不能静默加入新原因', objectLabel: null, application: { applicationKind: 'conflict', conflictCode: 'kind_mismatch' } }, human))).toThrow();
+    const quality = entityLinkQuality([legacy.history, identity.history, kind.history], legacy.ports);
+    expect(quality.groups[0].organization.conflicts).toEqual(expect.arrayContaining([
+      { classificationVersion: 'legacy/v1', conflictCode: 'identity_unresolved', count: 1 },
+      { classificationVersion: 'omk.entity-link-conflict/v2', conflictCode: 'identity_unresolved', count: 1 },
+      { classificationVersion: 'omk.entity-link-conflict/v2', conflictCode: 'kind_mismatch', count: 1 },
+    ]));
+    expect(quality.groups[0].organization.conflicts).toHaveLength(3); expect(canonicalJson(legacy.history)).toBe(legacyBytes);
   });
+
 });

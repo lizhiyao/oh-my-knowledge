@@ -4,7 +4,7 @@ const rejectedCodes = new Set([
   'request_body_too_large',
   'knowledge_study_input_invalid', 'knowledge_study_capacity_exceeded', 'knowledge_study_host_mismatch', 'knowledge_study_evidence_invalid',
 ]);
-const responseCodes = new Set([...rejectedCodes, 'knowledge_study_busy', 'knowledge_study_unavailable', 'entity_link_input_invalid', 'entity_link_confirmation_invalid', 'entity_link_outcome_unconfirmed', 'knowledge_request_failed', 'carrier_request_failed', 'carrier_invalid_metadata']);
+const responseCodes = new Set([...rejectedCodes, 'knowledge_study_busy', 'knowledge_study_unavailable', 'entity_link_input_invalid', 'entity_link_confirmation_invalid', 'entity_link_outcome_unconfirmed', 'entity_link_identity_unresolved', 'entity_link_kind_mismatch', 'knowledge_request_failed', 'carrier_request_failed', 'carrier_invalid_metadata']);
 
 /** Generic server failures and unreadable acknowledgements do not prove a write was rejected. */
 export class KnowledgeRequestError extends Error {

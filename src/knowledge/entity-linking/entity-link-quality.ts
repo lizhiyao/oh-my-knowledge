@@ -21,16 +21,17 @@ interface QualityGroup {
   assessments: { assessment: Assessment; admitted: number; humanAccepted: number; humanRejected: number; humanUndecided: number }[];
   humanDecisions: { decided: number; accepted: number; rejected: number; undecidedAdmitted: number; undecidedRejected: number; acceptanceRate: number | null };
   humanTerminations: { total: number; outcomeUnrecorded: number; lateOutcomeRecorded: number };
-  organization: { applied: number; acceptedPending: number; acceptedConflict: number };
+  organization: { applied: number; acceptedPending: number; acceptedConflict: number;
+    conflicts: { classificationVersion: 'legacy/v1' | 'omk.entity-link-conflict/v2'; conflictCode: string; count: number }[] };
   executionFailures: { failureKind: string; count: number }[];
   usage: Record<UsageKey, UsageCount>;
 }
-interface QualityBody { projectionKind: 'entity-link-quality'; projectionVersion: 'omk.entity-link-quality/v2' }
+interface QualityBody { projectionKind: 'entity-link-quality'; projectionVersion: 'omk.entity-link-quality/v3' }
 export type EntityLinkQuality = QualityBody & (
   { readStatus: 'available'; reviewCount: number; groups: QualityGroup[] }
   | { readStatus: 'unreadable'; reviewCount: null; groups: [] }
 );
-const body: QualityBody = { projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v2' };
+const body: QualityBody = { projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v3' };
 const statuses: EntityLinkInvocationStatus[] = ['prepared', 'running', 'execution_unknown', 'execution_terminated', 'awaiting_review', 'execution_failed',
   'cancelled_before_start', 'rejected', 'accepted_pending_application', 'accepted_conflict', 'applied'];
 const usageKeys: UsageKey[] = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens', 'costUSD'];
@@ -69,7 +70,7 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
       assessments: (['same_object', 'different_objects', 'insufficient_evidence'] as const).map(assessment => ({ assessment, admitted: 0, humanAccepted: 0, humanRejected: 0, humanUndecided: 0 })),
       humanDecisions: { decided: 0, accepted: 0, rejected: 0, undecidedAdmitted: 0, undecidedRejected: 0, acceptanceRate: null },
       humanTerminations: { total: 0, outcomeUnrecorded: 0, lateOutcomeRecorded: 0 },
-      organization: { applied: 0, acceptedPending: 0, acceptedConflict: 0 }, executionFailures: [],
+      organization: { applied: 0, acceptedPending: 0, acceptedConflict: 0, conflicts: [] }, executionFailures: [],
       usage: Object.fromEntries(usageKeys.map(key => [key, { knownReviewCount: 0, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: false }])) as Record<UsageKey, UsageCount> };
       groups.set(key, group);
     }
@@ -101,6 +102,11 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
     if (projection.status === 'applied') group.organization.applied++;
     if (projection.status === 'accepted_pending_application') group.organization.acceptedPending++;
     if (projection.status === 'accepted_conflict') group.organization.acceptedConflict++;
+    if (projection.conflict) {
+      const { classificationVersion, conflictCode } = projection.conflict;
+      const row = group.organization.conflicts.find(row => row.classificationVersion === classificationVersion && row.conflictCode === conflictCode);
+      if (row) row.count++; else group.organization.conflicts.push({ classificationVersion, conflictCode, count: 1 });
+    }
     if (dispatched) for (const key of usageKeys) {
       const value = projection.usage[key], counts = group.usage[key];
       if (value === null) { counts.unknownReviewCount++; continue; }
@@ -118,6 +124,7 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
   for (const group of groups.values()) {
     group.admission.admissionRate = group.admission.recorded ? group.admission.admitted / group.admission.recorded : null;
     group.humanDecisions.acceptanceRate = group.humanDecisions.decided ? group.humanDecisions.accepted / group.humanDecisions.decided : null;
+    group.organization.conflicts.sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
     group.admission.reasons.sort((a, b) => a.reason.localeCompare(b.reason));
     group.executionFailures.sort((a, b) => a.failureKind.localeCompare(b.failureKind)); group.assessments.sort((a, b) => a.assessment.localeCompare(b.assessment));
   }

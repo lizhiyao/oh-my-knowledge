@@ -1,3 +1,4 @@
+import { EntityLinkConflictError } from '../../../knowledge/entities/links.js';
 import { randomUUID } from 'node:crypto';
 import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
@@ -22,11 +23,17 @@ const schema = z.discriminatedUnion('operation', [
   z.strictObject({ ...base, operation: z.literal('resume'), reviewId: id }),
   z.strictObject({ ...base, operation: z.literal('recover-unknown'), reviewId: id, requestId: id }),
   z.strictObject({ ...base, operation: z.literal('cancel'), reviewId: id, requestId: id, expectedGeneration: z.number().int().positive(), reason: z.string().trim().min(1).max(4096) }),
+  z.strictObject({ ...base, operation: z.literal('accept-preview'), reviewId: id, expectedGeneration: z.number().int().positive(),
+    reason: z.string().trim().min(1).max(4096), objectLabel: z.string().trim().min(1).max(256).optional() }),
   z.strictObject({ ...base, operation: z.literal('accept'), reviewId: id, requestId: id, expectedGeneration: z.number().int().positive(),
-    reason: z.string().trim().min(1).max(4096), identityConfirmed: z.literal(true), objectLabel: z.string().trim().min(1).max(256).optional() }),
+    reason: z.string().trim().min(1).max(4096), identityConfirmed: z.literal(true), objectLabel: z.string().trim().min(1).max(256).optional(),
+    replacementConfirmed: z.boolean().optional(), replacementConfirmationDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional() }),
   z.strictObject({ ...base, operation: z.literal('reject'), reviewId: id, requestId: id, expectedGeneration: z.number().int().positive(), reason: z.string().trim().min(1).max(4096) }),
 ]);
 
+export class EntityLinkStudioConflictError extends Error {
+  constructor(readonly conflictCode: 'identity_unresolved' | 'kind_mismatch') { super(`entity_link_${conflictCode}`); }
+}
 export class EntityLinkStudioConfirmationError extends Error {
   constructor() { super('entity_link_confirmation_invalid'); }
 }
@@ -80,7 +87,7 @@ export function createEntityLinkStudioService(producer: ExecutorArchiveProducer)
         : request.operation === 'continue' ? authorization(request.startToken, request.workspace) : undefined;
       const application = app(request.workspace);
       let result: unknown;
-      switch (request.operation) {
+      try { switch (request.operation) {
         case 'discard-preview': authorizations.delete(request.previewToken); return { discarded: true };
         case 'candidates': result = application.recall(request.selected); break;
         case 'preview': {
@@ -114,14 +121,23 @@ export function createEntityLinkStudioService(producer: ExecutorArchiveProducer)
           for (const [token, entry] of authorizations) if (entry.workspace === request.workspace && (entry.authorizationKind === 'preview' ? entry.preview.reviewId : entry.reviewId) === request.reviewId) authorizations.delete(token);
           break;
         }
+        case 'accept-preview': result = application.acceptPreview({ reviewId: request.reviewId, expectedGeneration: request.expectedGeneration,
+          reason: request.reason, ...(request.objectLabel === undefined ? {} : { objectLabel: request.objectLabel }) }); break;
         case 'accept': case 'reject': {
           const command = { reviewId: request.reviewId, requestId: request.requestId, expectedGeneration: request.expectedGeneration, reason: request.reason };
-          const history = request.operation === 'accept' ? application.decide({ ...command, decision: 'accept', identityConfirmed: request.identityConfirmed, ...(request.objectLabel ? { objectLabel: request.objectLabel } : {}) })
+          const history = request.operation === 'accept' ? application.decide({ ...command, decision: 'accept', identityConfirmed: request.identityConfirmed, ...(request.replacementConfirmed === undefined ? {} : { replacementConfirmed: request.replacementConfirmed }),
+            ...(request.replacementConfirmationDigest === undefined ? {} : { replacementConfirmationDigest: request.replacementConfirmationDigest }), ...(request.objectLabel ? { objectLabel: request.objectLabel } : {}) })
             : application.decide({ ...command, decision: 'reject' });
           result = inspect(application, request.workspace, history); break;
         }
       }
       return structuredClone(result);
+      } catch (error) {
+        if (error instanceof EntityLinkConflictError && (error.conflictCode === 'identity_unresolved' || error.conflictCode === 'kind_mismatch')) {
+          throw new EntityLinkStudioConflictError(error.conflictCode);
+        }
+        throw error;
+      }
     },
   };
 }

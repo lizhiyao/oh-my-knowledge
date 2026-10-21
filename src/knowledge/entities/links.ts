@@ -35,6 +35,8 @@ export function checkEntityLinkSuggestion(value: unknown, binding: {
   return suggestion;
 }
 export const EntityLinkConflictCodeSchema = z.enum(['entity_changed', 'source_unavailable', 'identity_unresolved', 'owner_conflict', 'library_changed', 'library_capacity', 'pair_already_reviewed']);
+/** New classifications never reinterpret the legacy v1 conflict enum. */
+export const EntityLinkConflictV2CodeSchema = z.enum([...EntityLinkConflictCodeSchema.options, 'kind_mismatch']);
 export class EntityLinkConflictError extends Error {
-  constructor(readonly conflictCode: z.infer<typeof EntityLinkConflictCodeSchema>) { super(`Entity-link ${conflictCode} conflict.`); }
+  constructor(readonly conflictCode: z.infer<typeof EntityLinkConflictV2CodeSchema>) { super(`Entity-link ${conflictCode} conflict.`); }
 }
