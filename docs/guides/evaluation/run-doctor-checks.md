@@ -27,6 +27,8 @@ omk doctor skills/ --repeat 3 --concurrency 1  # serial (lower peak concurrency)
 
 ## Static checks (no LLM)
 
+Without a configured model, default doctor exits with code 2 and shows both model configuration steps and a `--static-only` command for the same target. It does not silently skip the LLM health audit.
+
 ```bash
 omk doctor skills/ --static-only
 ```

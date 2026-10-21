@@ -75,8 +75,18 @@ describe('Codex-first CLI runtime defaults', () => {
     assert.throws(
       () => resolveCliModel('codex', undefined, { env, lang: 'en' }),
       (error: unknown) => error instanceof Error && error.message.includes('Codex executor needs an explicit model')
+        && !error.message.includes('--static-only')
         && 'oclif' in error && (error.oclif as { exit: number }).exit === 2,
     );
+  });
+
+  it('uses a command-specific hint only for missing model configuration', () => {
+    const options = { env: {}, lang: 'en' as const, missingModelHint: 'Run static checks instead.' };
+    assert.throws(() => resolveRuntimeSelection({ executor: 'openai-api' }, options),
+      (error: unknown) => error instanceof Error && error.message.endsWith(options.missingModelHint));
+    assert.throws(() => resolveRuntimeSelection({ executor: 'claude' }, options),
+      (error: unknown) => error instanceof Error && error.message.includes('has been removed')
+        && !error.message.includes(options.missingModelHint));
   });
 
   it.each(['openai-api', '/custom/executor'])('requires an explicit model for %s and preserves overrides', (executor) => {
