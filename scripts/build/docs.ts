@@ -8,6 +8,7 @@
 // - docs/reference/cli.md / docs/zh/reference/cli.md:per-command flags 模式,
 //   每个 H3 顶层命令独立 marker 对,内容只输出 flag list
 //   (cli.md 已经手写 bash 示例和 prose,不重复)。
+// - docs/(zh/)reference/shared/knowledge-contract.md:从编译后的知识运行时常量与 Schema 生成当前身份和容量。
 // - docs/(zh/)specs/evaluation/cli-evaluation-input-compilation.md:从 #451 declarative
 //   registry 生成完整 input classification 表。
 //
@@ -23,6 +24,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Config, type Command } from '@oclif/core';
+import { loadCurrentKnowledgeContract, renderCurrentKnowledgeContract } from './knowledge-contract.js';
 
 const REPO_ROOT = resolve(process.cwd());
 
@@ -248,15 +250,15 @@ interface PerCmdFlagsTarget {
   topLevelIds: readonly string[];
 }
 
-interface EvalInputRegistryTarget {
-  mode: 'eval-input-registry';
+interface GeneratedContractTarget {
+  mode: 'eval-input-registry' | 'knowledge-contract';
   file: string;
   lang: Lang;
   markerStart: string;
   markerEnd: string;
 }
 
-type Target = FullbodyTarget | PerCmdFlagsTarget | EvalInputRegistryTarget;
+type Target = FullbodyTarget | PerCmdFlagsTarget | GeneratedContractTarget;
 
 /**
  * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(cli.md per-cmd-flags
@@ -272,6 +274,13 @@ export function getTopLevelIds(config: Config): readonly string[] {
 
 export function buildTargets(topLevelIds: readonly string[]): Target[] {
   return [
+    ...(['en', 'zh'] as const).map(lang => ({
+      mode: 'knowledge-contract' as const,
+      file: `docs/${lang === 'zh' ? 'zh/' : ''}reference/shared/knowledge-contract.md`,
+      lang,
+      markerStart: '<!-- omk:knowledge-contract:start -->',
+      markerEnd: '<!-- omk:knowledge-contract:end -->',
+    })),
     {
       mode: 'fullbody',
       file: '.agents/skills/omk/references/commands.md',
@@ -411,6 +420,7 @@ async function generateAll(): Promise<TargetResult[]> {
   const registryModule = await import(registryModuleUrl) as {
     renderCliEvaluationInputRegistryMarkdown(language: Lang): string;
   };
+  const knowledgeContract = await loadCurrentKnowledgeContract(REPO_ROOT);
   const topLevelIds = getTopLevelIds(config);
   const targets = buildTargets(topLevelIds);
   const results: TargetResult[] = [];
@@ -435,7 +445,9 @@ async function generateAll(): Promise<TargetResult[]> {
         missingMarkers: missing,
       });
     } else {
-      const body = registryModule.renderCliEvaluationInputRegistryMarkdown(target.lang);
+      const body = target.mode === 'knowledge-contract'
+        ? renderCurrentKnowledgeContract(knowledgeContract, target.lang)
+        : registryModule.renderCliEvaluationInputRegistryMarkdown(target.lang);
       const split = splitOnMarker(current, target.markerStart, target.markerEnd);
       results.push({
         file: target.file,
@@ -470,11 +482,11 @@ async function main(): Promise<void> {
   if (mode === 'check') {
     const drifted = results.filter((r) => r.next !== r.current);
     if (drifted.length === 0) {
-      process.stdout.write('[build-docs] all targets in sync with oclif source.\n');
+      process.stdout.write('[build-docs] all targets in sync with source contracts.\n');
       return;
     }
     process.stderr.write(
-      '[build-docs] drifted from oclif source. Run `yarn build:docs` to regenerate.\n',
+      '[build-docs] drifted from source contracts. Run `yarn build:docs` to regenerate.\n',
     );
     for (const r of drifted) {
       process.stderr.write(`\n--- ${r.file} ---\n`);

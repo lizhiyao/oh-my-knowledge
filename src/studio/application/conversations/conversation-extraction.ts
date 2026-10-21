@@ -1,1 +1,1 @@
-export { conversationExtractionSource } from '../../../observability/application.js';
+export { conversationExtractionSource } from '../../../knowledge/extraction/conversation-source.js';

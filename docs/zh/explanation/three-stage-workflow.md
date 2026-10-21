@@ -14,7 +14,7 @@ OMK 用 doctor、eval 和 observe 回答知识载体生命周期中的不同问�
 
 ## 主干：这次改动能不能发布？
 
-omk 的第一条有用闭环，应该像一张发布检查表：
+知识从真实工作中形成和维护；需要判断载体改动能否发布时，doctor → eval 提供检查与测量：
 
 ```text
 我改了一个 skill / prompt / agent artifact
@@ -36,7 +36,7 @@ omk 的第一条有用闭环，应该像一张发布检查表：
 
 ## eval —— 测量核心
 
-`eval` 是 omk 的心脏：一次**离线 A/B**，固定模型和用例，只改变 artifact 与封存的 runtime context，回答「新版本是否在噪声之外打赢了旧版本？」。它产出经过认证的 Execution／Evaluation／Analysis 证据、Bootstrap uncertainty、coverage 与 agreement 诊断，以及可用于 CI 路由的已注册 **Decision**（`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`）。
+`eval` 为知识载体的具体改动提供受控测量：一次**离线 A/B**，固定模型和用例，只改变 artifact 与封存的 runtime context，回答「新版本是否在噪声之外打赢了旧版本？」。它产出经过认证的 Execution／Evaluation／Analysis 证据、Bootstrap uncertainty、coverage 与 agreement 诊断，以及可用于 CI 路由的已注册 **Decision**（`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`）。
 
 omk 的测量严谨性都在这里。[工作原理](./architecture)、[统计严谨性](./statistical-rigor)、[评分公式](../specs/evaluation/scoring) 说明如何组合判定、覆盖、不确定性与原始证据，支持发布判断。
 

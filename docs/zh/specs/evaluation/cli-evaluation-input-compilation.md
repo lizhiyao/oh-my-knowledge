@@ -47,6 +47,10 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 ## 三、身份、lineage 与资源安全
 
+产品 CLI compiler 与 Runtime 声明 facade（`prepareEvaluation()`／`evaluate()`）共用 Core `EvaluationDefinition` schema，但不承诺身份映射可互换。CLI 要求恰好一个 control 和至少一个 treatment，派生 `slot-${targetId}` slot、每个 treatment 对应的 `control-vs-${targetId}` comparison，并编译产品 behavior config。Facade 派生基于 selector 摘要的 `slot:<digest>` slot，保留调用方声明的 comparison ID，并捕获自己的 Variant config envelope；它还支持 solo 与 independent design。两者是不同的输入契约，并非同一声明的两种序列化方式。
+
+相同的 sample 标签、Target／Variant 标签、模型名称或根 seed，因此不代表 Definition、Plan、randomization 或 Trial identity 相同。Slot identity 进入 assignment、randomization 和 scheduling；comparison identity 进入 analysis。不得为强行对齐而改名这些字段、跨入口复用 sealed Plan 或 cache entry，或仅凭标签推断可比性。Core 显式身份检查与 comparability assessment 仍是权威。本次澄清保留所有既有身份字节、schema 版本、seed 与测量语义，不引入迁移或兼容映射。
+
 行为身份和来源 lineage 是两条不同轴：
 
 - Target config 保存 artifact、mock、sandbox、model 与 effort 等 Target-wide behavior fact。canonical `executionControls` 单独保存 workspace 与工具授权的 Target 默认值和 Sample override；其中的 workspace descriptor 不包含 locator；

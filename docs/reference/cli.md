@@ -203,7 +203,7 @@ Studio opens the validated Core run rather than a second report model. The run d
 
 ## `omk observe`
 
-`omk observe` ships two workflows: the default skill-health report, and the observe inbox (`ingest` / `inbox` / `show`) for human review.
+`omk observe` defaults to the skill-health report. Subcommands also support the observation inbox (`ingest` / `inbox` / `show`), knowledge maintenance (`knowledge`) and cross-window entity-link review (`entity-links`).
 
 ### A. Skill-health report (default)
 
@@ -276,6 +276,14 @@ Every observation carries:
 Persisted experience reports use `schemaVersion: 4`: the timeline evidence kinds gain `observed_effect` — a file change the runtime observed, shown as its own row rather than folded into the tool call that triggered it, because most such changes are command side effects instead of model-initiated edits. Reports written in an older scheme such as `3` are no longer read: re-run `omk observe` on them to refresh. Review state is stored separately and timeline row ids derive from the evidence itself, so re-running re-attaches reviews to the same evidence and no dual-read branch is kept.
 
 Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), Qoder session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
+
+### C. Knowledge maintenance
+
+`omk observe knowledge` captures sources locally, generates candidates with the selected model, and supports entity/knowledge review, revisions and source inspection. `schema` and `study` are zero-model-call inspection operations; `generate` sends selected content. Follow the [knowledge maintenance guide](../guides/knowledge/extract-knowledge.md), including its [capability tiers](../guides/knowledge/extract-knowledge.md#availability), and inspect `omk observe knowledge --help` for operation-specific flags.
+
+### D. Cross-window entity-link review
+
+`omk observe entity-links` previews source/configuration locally, explicitly sends one confirmed `propose` invocation, and retains human accept/reject decisions. Matching names do not merge identities; failure or unknown execution does not authorize a resend. Use the [cross-window review steps](../guides/knowledge/extract-knowledge.md) and `omk observe entity-links --help` before dispatching.
 
 ## `omk agents`
 

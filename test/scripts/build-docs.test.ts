@@ -27,6 +27,7 @@ import yaml from 'js-yaml';
 // 从 build-docs.ts 复用 getTopLevelIds 派生函数(单一来源是 oclif Command 文件目录,
 // 不再 hardcode 常量),让 cli.md codegen 跟 SKILL.md frontmatter gate 共用同一份真值。
 import { getTopLevelIds } from '../../scripts/build/docs.js';
+import { loadCurrentKnowledgeContract, renderCurrentKnowledgeContract } from '../../scripts/build/knowledge-contract.js';
 import { PROJECT_ROOT, runCli, runCliFailing } from '../helpers/cli-process.js';
 
 const COMMANDS_MD = join(PROJECT_ROOT, '.agents/skills/omk/references/commands.md');
@@ -43,6 +44,8 @@ const GENERATED_DOC_TARGETS = [
   'docs/zh/reference/cli.md',
   'docs/specs/evaluation/cli-evaluation-input-compilation.md',
   'docs/zh/specs/evaluation/cli-evaluation-input-compilation.md',
+  'docs/reference/shared/knowledge-contract.md',
+  'docs/zh/reference/shared/knowledge-contract.md',
 ] as const;
 
 function createBuildDocsFixture(): string {
@@ -161,6 +164,41 @@ describe('scripts/build-docs codegen', () => {
       assert.ok(stderr.includes('drifted'), `stderr should mention drift: ${stderr.slice(0, 200)}`);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it('generates both languages from runtime values and reacts to changed identities and limits', async () => {
+    const current = await loadCurrentKnowledgeContract(PROJECT_ROOT);
+    for (const language of ['en', 'zh'] as const) {
+      const rendered = renderCurrentKnowledgeContract(current, language);
+      const file = join(PROJECT_ROOT, `docs/${language === 'zh' ? 'zh/' : ''}reference/shared/knowledge-contract.md`);
+      assert.ok(readFileSync(file, 'utf8').includes(rendered));
+      for (const [key, value] of Object.entries(current)) {
+        const replacement = typeof value === 'string' ? `changed-${key}` : value + 17;
+        const modified = renderCurrentKnowledgeContract({ ...current, [key]: replacement }, language);
+        assert.notEqual(modified, rendered, `${key} must affect generated documentation`);
+        assert.ok(modified.includes(typeof replacement === 'number' ? replacement.toLocaleString('en-US') : replacement));
+      }
+    }
+    assert.throws(() => renderCurrentKnowledgeContract({ ...current, studyPlanMaxBytes: Infinity }, 'en'));
+    assert.throws(() => renderCurrentKnowledgeContract({ ...current, strictPromptVersion: '' }, 'zh'));
+  });
+
+  it('rejects semantic value drift and --write restores only the generated current-contract section', async () => {
+    const root = createBuildDocsFixture();
+    try {
+      const target = join(root, 'docs/zh/reference/shared/knowledge-contract.md');
+      const original = readFileSync(target, 'utf8');
+      const current = await loadCurrentKnowledgeContract(PROJECT_ROOT);
+      writeFileSync(target, original.replace(current.strictPromptVersion, 'knowledge-extraction-stale'));
+      const checked = await runCliFailing(['--check'], 1, { entry: BUILD_DOCS, cwd: root });
+      assert.ok(checked.stderr.includes('knowledge-contract.md'));
+      assert.ok(checked.stderr.includes(current.strictPromptVersion));
+      await runCli(['--write'], { entry: BUILD_DOCS, cwd: root });
+      assert.equal(readFileSync(target, 'utf8'), original);
+      await runCli(['--check'], { entry: BUILD_DOCS, cwd: root });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   }, 30000);
 

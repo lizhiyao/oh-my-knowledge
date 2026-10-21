@@ -41,6 +41,10 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  {
+    from: 'observability/application.ts', to: 'knowledge/',
+    reason: '观测提供来源和投影，不聚合知识用例；交付层直接消费知识所属领域。',
+  },
   ...['observability/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/entity-linking/'].map((from) => ({
     from, to: 'executors/',
     reason: '观测与知识提炼只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',

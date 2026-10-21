@@ -426,7 +426,7 @@ omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/re
 
 ## omk observe
 
-把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。
+把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show / knowledge / entity-links。
 
 **用法:**
 

@@ -1,6 +1,7 @@
-import type { ConversationCatalog, ConversationAutoExtraction } from '../../../observability/application.js';
+import type { ConversationCatalog } from '../../../observability/application.js';
+import type { ConversationAutoExtraction } from '../../../knowledge/application/auto-extraction.js';
 import { autoExtractionStatusEtag, executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
-import { knowledgeFailureCode } from '../../../observability/application.js';
+import { knowledgeFailureCode } from '../../../knowledge/application/operations.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { executeKnowledgeLibraryAction } from '../../application/knowledge/knowledge-library.js';
 import { JSON_HEADERS } from '../errors.js';
