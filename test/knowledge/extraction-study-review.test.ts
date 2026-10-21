@@ -27,7 +27,7 @@ describe('frozen real extraction study protocol', () => {
     expect(outputs.decisions).toHaveLength(extractionStudyReviewTargets(f.input).length);
     expect(outputs).toMatchObject({ reviewer: { actorId: '' }, reviewedAt: '', independentHuman: false });
     const report = evaluateExtractionStudyReview(f.input);
-    expect(report).toMatchObject({ scope: 'frozen-real-study', status: 'accepted_within_scope', reference: { goldReady: true } });
+    expect(report).toMatchObject({ reportVersion: 'omk-extraction-study-review/v2', completionTime: { completedSlots: 2, verifiedCompletedSlots: 2, unverifiedSlotIds: [] }, scope: 'frozen-real-study', status: 'accepted_within_scope', reference: { goldReady: true } });
     expect(report.slots[0].metrics.entities).toMatchObject({ truePositive: 2, falsePositive: 0, falseNegative: 0, precision: 1, recall: 1, f1: 1 });
     expect(JSON.stringify(f.input)).toBe(before);
   });
@@ -142,7 +142,7 @@ describe('frozen real extraction study protocol', () => {
     expect(() => evaluateExtractionStudyReview(f.input)).toThrow(/reviewed entity identity|explicit reviewed output match/);
   });
 
-  it('checks output-review time against completion when available and preserves the v1 start-only fallback', () => {
+  it('checks exact review-time boundaries and blocks missing completion evidence under review v2', () => {
     const f = studyFixture();
     // The fixture clock and both run intervals are fixed, independent of test execution speed.
     f.receipt.reviewedAt = '2020-02-01T12:00:00Z';
@@ -156,10 +156,27 @@ describe('frozen real extraction study protocol', () => {
     for (const slot of f.input.slots) delete slot.run!.finishedAt;
     f.receipt.reviewedAt = '2020-02-01T00:00:00Z';
     const fallback = evaluateExtractionStudyReview(f.input);
-    expect(fallback.status).toBe('accepted_within_scope');
-    expect(fallback.limits).toContain('Output review time is checked against each run.finishedAt when present, otherwise only run.startedAt; a missing finish cannot establish post-completion review.');
+    expect(fallback).toMatchObject({ reportVersion: 'omk-extraction-study-review/v2', status: 'blocked', blockers: ['completion_time_unverified'],
+      reference: { goldReady: true }, completionTime: { completedSlots: 2, verifiedCompletedSlots: 0, unverifiedSlotIds: f.input.slots.map(slot => slot.slotId) } });
+    expect(fallback.slots.every(slot => slot.completionTimeStatus === 'completion_time_unverified'
+      && !slot.metrics.entities.eligible && slot.metrics.entities.f1 === null && slot.metrics.entities.truePositive === null
+      && !slot.metrics.mentions.eligible && slot.metrics.mentions.f1 === null)).toBe(true);
+    expect(fallback.variants.every(variant => variant.status === 'blocked' && variant.blockers.includes('completion_time_unverified'))).toBe(true);
     f.receipt.reviewedAt = '2020-01-31T23:59:59.999Z';
     expect(() => evaluateExtractionStudyReview(f.input)).toThrow('follow the captured outputs');
+  });
+
+  it('retains the verified arm and original run bytes when only the other completed run lacks a finish', () => {
+    const f = studyFixture(); delete f.input.slots[0].run!.finishedAt;
+    const before = JSON.stringify(f.input), review = evaluateExtractionStudyReview(f.input);
+    expect(review.status).toBe('blocked');
+    expect(review.slots[0]).toMatchObject({ completionTimeStatus: 'completion_time_unverified', metrics: { entities: { eligible: false, f1: null } } });
+    expect(review.slots[1]).toMatchObject({ completionTimeStatus: 'verified', metrics: { entities: { eligible: true, f1: 1 } } });
+    expect(review.variants).toMatchObject([{ status: 'blocked' }, { status: 'accepted_within_scope' }]);
+    expect(evaluateExtractionStudyReview({ ...f.input, outputReceipt: undefined }).blockers).toContain('completion_time_unverified');
+    expect(JSON.stringify(f.input)).toBe(before);
+    f.input.slots[0].run!.finishedAt = '2020-01-31T23:59:59Z';
+    expect(() => evaluateExtractionStudyReview(f.input)).toThrow('frozen source or slot');
   });
 
   it.each(['startedAt', 'finishedAt'] as const)('rejects a future run %s against the supplied study clock', field => {

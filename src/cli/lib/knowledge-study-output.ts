@@ -17,6 +17,7 @@ export function formatKnowledgeStudy(value: ExtractionStudyInspection, lang: Lan
     `${value.plan.planId} · ${value.plan.split} · ${value.plan.changedVariable}`,
     `${t('工程核对', 'Engineering verification')}：${complete ? t('来源与原生结果完整，确定性核对通过', 'complete source/native evidence; deterministic checks passed') : t('尚有缺失、未完成或拒绝项', 'missing, incomplete or rejected evidence remains')}`,
     `${t('语义结果', 'Semantic result')}：${status(value.review.status)}`,
+    ...(value.review.completionTime.unverifiedSlotIds.length ? [t('完成时间未核实：已完成记录缺少 finishedAt，不能取得完成后复核、匹配指标或校准就绪资格；不会补造时间。', 'Completion time unverified: completed records lack finishedAt; post-completion review, matching metrics and calibration readiness are unavailable. No completion time is invented.')] : []),
     `${t('复核覆盖：已复核／应复核／不确定／缺失', 'Review coverage: reviewed / expected / uncertain / missing')}：${value.review.outputReview.reviewed}/${value.review.outputReview.expected}/${value.review.outputReview.uncertain}/${value.review.missingTargets.length}`,
     `${t('参考标注准备度', 'Reference readiness')}：goldReady=${value.review.reference.goldReady}`,
     `${t('独立真人输出复核声明', 'Independent human output review attestation')}：${value.review.outputReview.independentHuman

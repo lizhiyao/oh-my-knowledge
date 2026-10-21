@@ -23,7 +23,7 @@ function judgeIdentity(identity: ExtractionStudyJudgeIdentity | null) {
 
 function reviewProjection(review: ReturnType<typeof evaluateExtractionStudyReview>) {
   return { reportVersion: review.reportVersion, reportId: review.reportId, planId: review.planId, corpusDigest: review.corpusDigest,
-    outputDigest: review.outputDigest, scope: review.scope, status: review.status, reference: review.reference,
+    outputDigest: review.outputDigest, scope: review.scope, status: review.status, reference: review.reference, completionTime: review.completionTime,
     releaseEligibility: review.releaseEligibility, remainingRequirements: review.remainingRequirements,
     outputReview: { reviewer: review.outputReview.reviewer, independentHuman: review.outputReview.independentHuman,
       reviewedAt: review.outputReview.reviewedAt, judgeIdentity: judgeIdentity(review.outputReview.judgeIdentity),
@@ -33,9 +33,9 @@ function reviewProjection(review: ReturnType<typeof evaluateExtractionStudyRevie
     forcedBlockingErrors: review.forcedBlockingErrors, blockers: review.blockers, slots: review.slots, variants: review.variants, limits: review.limits };
 }
 
-function elapsed(startedAt?: string, finishedAt?: string) {
+function elapsed(startedAt?: string, finishedAt?: string, completed = false) {
   if (!startedAt) return { elapsedMs: null, elapsedStatus: 'unattempted' as const };
-  if (!finishedAt) return { elapsedMs: null, elapsedStatus: 'unfinished' as const };
+  if (!finishedAt) return { elapsedMs: null, elapsedStatus: completed ? 'completion_time_unverified' as const : 'unfinished' as const };
   const duration = Date.parse(finishedAt) - Date.parse(startedAt);
   return Number.isSafeInteger(duration) && duration >= 0 ? { elapsedMs: duration, elapsedStatus: 'observed' as const }
     : { elapsedMs: null, elapsedStatus: 'invalid_clock_interval' as const };
@@ -70,7 +70,7 @@ export function inspectExtractionStudy(input: unknown) {
     if (judgeReview && judgeReview.outputReview.reviewer?.actorKind !== 'agent') throw new ExtractionStudyInspectionError('knowledge_study_evidence_invalid');
     const calibrated = request.judgeReceipt === undefined ? null : calibrateExtractionStudyJudge({ ...reviewInput,
       judgeReceipt: request.judgeReceipt, humanReceipt: request.outputReceipt });
-    return { inspectionVersion: 'omk-extraction-study-inspection/v1' as const, modelCallsByThisCommand: 0 as const,
+    return { inspectionVersion: 'omk-extraction-study-inspection/v2' as const, modelCallsByThisCommand: 0 as const,
       plan: { planVersion: plan.planVersion, planId: plan.planId, corpusDigest: plan.corpusDigest, declaredAt: plan.declaredAt,
         split: plan.split, caseIds: plan.caseIds, repeats: plan.repeats, changedVariable: plan.changedVariable, orderPolicy: plan.orderPolicy,
         criteria: plan.criteria, sampling: plan.sampling, host: plan.host,
@@ -81,7 +81,7 @@ export function inspectExtractionStudy(input: unknown) {
       summary: replay.summary, analysis,
       review: reviewProjection(review), judgeReview: judgeReview && reviewProjection(judgeReview),
       calibration: calibrated && { calibrationVersion: calibrated.calibrationVersion, planId: calibrated.planId, outputDigest: calibrated.outputDigest,
-        ready: calibrated.ready, reasons: calibrated.reasons, judgeReviewReportId: calibrated.judgeReviewReportId, humanReviewReportId: calibrated.humanReviewReportId,
+        ready: calibrated.ready, reasons: calibrated.reasons, completionTime: calibrated.completionTime, judgeReviewReportId: calibrated.judgeReviewReportId, humanReviewReportId: calibrated.humanReviewReportId,
         judgeEvidence: { identity: judgeIdentity(calibrated.judgeEvidence.identity), evidenceStatus: calibrated.judgeEvidence.evidenceStatus,
           nativeVerification: calibrated.judgeEvidence.nativeVerification, declaredAttemptCount: calibrated.judgeEvidence.declaredAttemptCount,
           usage: calibrated.judgeEvidence.usage }, status: calibrated.status, countingUnit: calibrated.countingUnit,
@@ -98,7 +98,9 @@ export function inspectExtractionStudy(input: unknown) {
           excerpts: sample.window.excerpts } })),
       slots: replay.slots.map(slot => ({ slotId: slot.slotId, caseId: slot.caseId, variantId: slot.variantId, repeat: slot.repeat,
         runId: slot.run?.runId ?? null, status: slot.run?.status ?? 'unattempted' as const, nativeVerified: slot.nativeVerified,
-        startedAt: slot.run?.startedAt ?? null, finishedAt: slot.run?.finishedAt ?? null, ...elapsed(slot.run?.startedAt, slot.run?.finishedAt),
+        startedAt: slot.run?.startedAt ?? null, finishedAt: slot.run?.finishedAt ?? null,
+        completionTimeStatus: review.slots.find(value => value.slotId === slot.slotId)!.completionTimeStatus,
+        ...elapsed(slot.run?.startedAt, slot.run?.finishedAt, slot.run?.status === 'completed'),
         attempts: slot.attempts.map(attempt => ({ attemptId: attempt.attemptId, archiveStatus: attempt.archiveStatus, outcomeRef: attempt.ref,
           failureKind: slot.run?.attempts.find(value => value.attemptId === attempt.attemptId)?.failure?.failureKind ?? null })),
         birth: slot.run?.entityAnalysis ? { analysisId: slot.run.entityAnalysis.analysisId, revisionId: slot.run.entityAnalysis.revision.revisionId,

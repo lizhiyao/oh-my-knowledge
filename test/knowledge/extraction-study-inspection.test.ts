@@ -27,7 +27,7 @@ describe('shared portable study inspection', () => {
       outputReceipt: f.outputReceipt, judgeReceipt: f.judgeReceipt };
     const before = JSON.stringify(input), saved = JSON.stringify(f.files.evidence(f.plan)), calls = f.effects.mock.calls.length;
     const value = inspectExtractionStudy(input), text = JSON.stringify(value);
-    expect(value).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v1', modelCallsByThisCommand: 0,
+    expect(value).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2', modelCallsByThisCommand: 0,
       plan: { planId: f.plan.planId, split: 'development', sampling: { unit: 'lineage-group' } },
       summary: { planned: 2, completed: 2, totalCostUSD: null }, review: { status: 'accepted_within_scope', reference: { goldReady: true } },
       calibration: { ready: true, judgeEvidence: { nativeVerification: 'not_performed', identity: { modelRevision: 'authored-model-r1' },
@@ -44,6 +44,23 @@ describe('shared portable study inspection', () => {
       '"run":', '"rawOutput":', '"outcome":', '"raw":', '"sourcePath":', '"proof":']) expect(text).not.toContain(secret);
     expect(value.calibration!.judgeEvidence.identity!.attempts[0].runEvidence).toEqual({ digest: judge.attempts[0].runEvidence.digest });
     expect(JSON.stringify(input)).toBe(before); expect(JSON.stringify(f.files.evidence(f.plan))).toBe(saved); expect(f.effects).toHaveBeenCalledTimes(calls);
+  });
+
+  it('projects v2 completion-time blockers without backfilling original completed run files', async () => {
+    const f = await nativeStudyEvidenceFixture(root(), { annotated: true, withoutCompletedFinish: true });
+    vi.spyOn(studyHost, 'extractionStudyHostIdentity').mockImplementation(f.ports.identity);
+    const before = JSON.stringify(f.files.evidence(f.plan)), input = { evidence: f.evidence, authorReceipt: f.authorReceipt,
+      referenceReceipt: f.referenceReceipt, outputReceipt: f.outputReceipt, judgeReceipt: f.judgeReceipt };
+    const value = inspectExtractionStudy(input);
+    expect(value).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2', modelCallsByThisCommand: 0,
+      summary: { completed: 2 }, review: { reportVersion: 'omk-extraction-study-review/v2', status: 'blocked', blockers: ['completion_time_unverified'], reference: { goldReady: true } },
+      analysis: { analysisVersion: 'omk-extraction-study-analysis/v2', studyStatus: 'blocked' },
+      calibration: { calibrationVersion: 'omk-extraction-study-judge-calibration/v2', ready: false, reasons: ['completion_time_unverified'] } });
+    expect(value.slots.every(slot => slot.finishedAt === null && slot.elapsedMs === null
+      && slot.elapsedStatus === 'completion_time_unverified' && slot.completionTimeStatus === 'completion_time_unverified')).toBe(true);
+    expect(value.analysis.overall.arms.every(arm => arm.groupErrorRate === null && arm.scopedMetrics.entities.f1 === null)).toBe(true);
+    expect(value.review.slots.every(slot => slot.metrics.mentions.f1 === null)).toBe(true);
+    expect(JSON.stringify(f.files.evidence(f.plan))).toBe(before); expect(f.effects).toHaveBeenCalledTimes(2);
   });
 
   it('keeps missing human evidence pending instead of promoting engineering success or zero cost', async () => {

@@ -40,6 +40,8 @@ describe('portable study HTTP inspection', () => {
       expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
       const body = await response.json();
       expect(body).toEqual(expected); expect(directories).not.toHaveBeenCalled();
+      expect(body).toMatchObject({ inspectionVersion: 'omk-extraction-study-inspection/v2',
+        review: { reportVersion: 'omk-extraction-study-review/v2' }, analysis: { analysisVersion: 'omk-extraction-study-analysis/v2' } });
       const serialized = JSON.stringify(body);
       expect(serialized).not.toContain(root); expect(serialized).not.toContain('rawOutput'); expect(serialized).not.toContain('maxOutcomeJsonBytes');
       expect(f.effects).toHaveBeenCalledTimes(2);

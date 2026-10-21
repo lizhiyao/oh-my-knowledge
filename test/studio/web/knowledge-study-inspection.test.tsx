@@ -97,6 +97,21 @@ describe('portable study inspection presentation', () => {
   });
 });
 
+it.each(['zh', 'en'] as const)('shows missing completion evidence without implying scoped acceptance (%s)', async lang => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-time-ui-')));
+  try {
+    const f = await nativeStudyEvidenceFixture(directory, { annotated: true, withoutCompletedFinish: true });
+    host.value = f.ports.identity();
+    const value = inspectExtractionStudy({ evidence: f.evidence, authorReceipt: f.authorReceipt, referenceReceipt: f.referenceReceipt,
+      outputReceipt: f.outputReceipt, judgeReceipt: f.judgeReceipt });
+    const html = renderToStaticMarkup(<KnowledgeStudyInspectionView inspection={value} lang={lang}/>);
+    expect(html).toContain(lang === 'zh' ? '完成时间未核实' : 'Completion time unverified');
+    expect(html).toContain(lang === 'zh' ? '不会补造时间' : 'No completion time is invented');
+    expect(html).not.toContain(lang === 'zh' ? '独立复核：仅在冻结范围内通过' : 'Independent review: accepted within the frozen scope');
+    expect(value.calibration!.ready).toBe(false); expect(f.effects).toHaveBeenCalledTimes(2);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 describe('temporary study upload session', () => {
   it('opens from More without any workspace, aborts on Escape and clears the session when reopened', async () => {
     // rc-util intentionally returns the same portal ID in test mode; use real React IDs for the multi-drawer Escape stack.

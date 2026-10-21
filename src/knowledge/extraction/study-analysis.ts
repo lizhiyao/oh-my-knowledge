@@ -50,6 +50,7 @@ export function analyzeExtractionStudy(input: ExtractionStudyReviewInput) {
     const armReasons = new Map(variantIds.map(variantId => {
       const reasons = [...commonReasons], armSlots = slots.filter(slot => slot.variantId === variantId);
       const armIds = new Set(armSlots.map(slot => slot.slotId));
+      if (armSlots.some(slot => slot.run?.status === 'completed' && !slot.run.finishedAt)) reasons.push('completion_time_unverified');
       if (armSlots.length !== selected.length * input.plan.repeats
         || armSlots.some(slot => !slot.nativeVerified || slot.run?.status !== 'completed')) reasons.push('native_outputs_incomplete_or_failed');
       if (targets.some(target => armIds.has(target.slotId) && !known(byTarget.get(canonicalJson(target))))) reasons.push('review_targets_missing_or_uncertain');
@@ -65,7 +66,7 @@ export function analyzeExtractionStudy(input: ExtractionStudyReviewInput) {
         const armTargets = targets.filter(target => armIds.has(target.slotId));
         const armDecisions = decisions.filter(decision => armIds.has(decision.target.slotId));
         const expectedSlots = groupCases.length * input.plan.repeats;
-        const complete = armSlots.length === expectedSlots && armSlots.every(slot => slot.nativeVerified && slot.run?.status === 'completed')
+        const complete = armSlots.length === expectedSlots && armSlots.every(slot => slot.nativeVerified && slot.run?.status === 'completed' && !!slot.run.finishedAt)
           && armTargets.every(target => known(byTarget.get(canonicalJson(target))));
         const eligible = review.reference.goldReady && review.outputReview.independentHuman && input.integrity.planVerified && input.integrity.outputVerified
           && groupCases.every(sample => sample.reference.annotationScope === 'full') && complete;
@@ -133,8 +134,8 @@ export function analyzeExtractionStudy(input: ExtractionStudyReviewInput) {
         confidenceInterval: null, confidenceIntervalReason: 'independent_exchangeable_group_sampling_not_established' },
     };
   };
-  return { analysisVersion: 'omk-extraction-study-analysis/v1' as const, planId: input.plan.planId, outputDigest: input.outputDigest,
-    reviewReportId: review.reportId,
+  return { analysisVersion: 'omk-extraction-study-analysis/v2' as const, planId: input.plan.planId, outputDigest: input.outputDigest,
+    reviewReportId: review.reportId, completionTime: review.completionTime,
     studyStatus: review.status, goldReady: review.reference.goldReady, independentHumanReview: review.outputReview.independentHuman,
     assessment: { engineering: { ...input.integrity, plannedSlots: input.plan.slots.length,
       completeNativeSlots: input.slots.filter(slot => slot.run?.status === 'completed' && slot.nativeVerified).length,
@@ -149,6 +150,7 @@ export function analyzeExtractionStudy(input: ExtractionStudyReviewInput) {
       reason: 'finite_selected_sources_do_not_establish_population_sampling' },
     limits: [
       'All planned cases, variants and repeats remain in scope. Missing, uncertain or unreviewed targets are not correct outcomes.',
+      'A completed run without finishedAt has unverified completion time; its scoped metrics, lineage-group eligibility and paired comparisons remain unavailable.',
       'Lineage groups are descriptive units, not asserted independent or exchangeable samples; no population confidence interval is estimated.',
       'A group has an error when any reviewed target is incorrect or required-missing; correlated decisions are not independent error incidents.',
       'A lineage can occur in several strata. Stratum summaries overlap and must not be added as independent groups.',
@@ -187,6 +189,7 @@ export function calibrateExtractionStudyJudge(input: ExtractionStudyCalibrationI
   if (!human.outputReview.independentHuman) reasons.push('independent_human_output_review_missing');
   if (input.corpus.cases.some(sample => input.plan.caseIds.includes(sample.caseId) && sample.reference.annotationScope !== 'full')) reasons.push('full_reference_annotations_missing');
   if (!input.integrity.planVerified || !input.integrity.outputVerified) reasons.push('unverified_frozen_evidence');
+  if (human.completionTime.unverifiedSlotIds.length) reasons.push('completion_time_unverified');
   if (input.slots.length !== input.plan.caseIds.length * input.plan.variants.length * input.plan.repeats
     || input.slots.some(slot => !slot.nativeVerified || slot.run?.status !== 'completed')) reasons.push('native_outputs_incomplete_or_failed');
   if (compared.length !== pairs.length) reasons.push('review_targets_missing_or_uncertain');
@@ -212,8 +215,8 @@ export function calibrateExtractionStudyJudge(input: ExtractionStudyCalibrationI
     return missedCodes.length ? [{ target: pair.target, errorCodes: missedCodes, judgeVerdict: pair.judge?.verdict ?? null,
       detectionStatus: known(pair.judge) ? 'known_miss' as const : 'judge_unknown' as const }] : [];
   });
-  return { calibrationVersion: 'omk-extraction-study-judge-calibration/v1' as const,
-    planId: input.plan.planId, outputDigest: input.outputDigest, ready, reasons,
+  return { calibrationVersion: 'omk-extraction-study-judge-calibration/v2' as const,
+    planId: input.plan.planId, outputDigest: input.outputDigest, ready, reasons, completionTime: human.completionTime,
     judgeReviewReportId: judge.reportId, humanReviewReportId: human.reportId,
     judgeEvidence: { identity: judgeIdentity, evidenceStatus: judgeIdentity ? 'reviewer_declared' as const : 'missing' as const,
       nativeVerification: 'not_performed' as const, declaredAttemptCount: judgeIdentity ? declaredAttempts.length : null,
@@ -226,6 +229,7 @@ export function calibrateExtractionStudyJudge(input: ExtractionStudyCalibrationI
     limits: [
       'These are multi-label detection counts over matched saved review targets, not independent error incidents or population estimates.',
       'Unknown or absent judgments are excluded from observed pairs and never imputed as correct; full metrics remain null until ready.',
+      'Missing completed-run finishedAt prevents calibration readiness and rates; observed saved judgment pairs remain visible and are not recast as missing judgments.',
       'Readiness validates evidence coverage and declared reviewer independence; it neither authenticates a human nor requires the candidate to pass quality acceptance.',
       'Judge identity, revisions, prompt/configuration digests, artifact references and usage are reviewer declarations; no judge executor or native artifact verification runs here.',
     ] };

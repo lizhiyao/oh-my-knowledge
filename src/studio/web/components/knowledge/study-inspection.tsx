@@ -122,6 +122,8 @@ export function KnowledgeStudyInspectionView({ inspection: value, lang }: { insp
       {value.judgeReview && <p>{t('AI 探索性复核：', 'AI exploratory review: ')}{status(value.judgeReview.status)} · {value.judgeReview.outputReview.reviewed}／{value.judgeReview.outputReview.expected} · {t('不确定：', 'Uncertain: ')}{value.judgeReview.outputReview.uncertain} · {t('缺项：', 'Missing: ')}{value.judgeReview.missingTargets.length}</p>}
       <p className="knowledge-study-limits">{t('结论仅限这份冻结研究集合。来源与真人独立性仍依赖声明；AI 评委材料未做原生验证。这里不评估总体准确率、版本发布资格或改造完成。', 'Conclusions apply only to this frozen study. Provenance and human independence remain attestations; AI judge artifacts are not native-verified. Population accuracy, release eligibility and project completion are not assessed here.')}</p>
     </div>
+    {!!value.review.completionTime.unverifiedSlotIds.length && <Alert type="warning" showIcon title={t('完成时间未核实', 'Completion time unverified')}
+      description={t('已完成记录缺少 finishedAt，不能取得完成后复核、匹配指标或校准就绪资格；不会补造时间。', 'Completed records lack finishedAt; post-completion review, matching metrics and calibration readiness are unavailable. No completion time is invented.')}/>}
     <div className="knowledge-study-filters">
       <label>{t('案例', 'Case')}<select value={caseId} onChange={event => { setCaseId(event.target.value); setRepeat(1); }}>{value.cases.map(item => <option value={item.caseId} key={item.caseId}>{item.caseId}</option>)}</select></label>
       <label>{t('版本', 'Arm')}<select value={arm} onChange={event => { setArm(event.target.value as typeof arm); setRepeat(1); }}>{value.plan.variants.map(item => <option value={item.variantId} key={item.variantId}>{item.variantId}</option>)}</select></label>

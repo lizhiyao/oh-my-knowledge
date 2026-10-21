@@ -141,7 +141,7 @@ export function nativeStudyFixture(root: string, reply?: (index: number, output:
 
 /** Saved production bytes plus fictional review receipts; never an actual human, model or quality study. */
 export async function nativeStudyEvidenceFixture(root: string, options: {
-  annotated?: boolean; runSlots?: number; reply?: Parameters<typeof nativeStudyFixture>[1];
+  annotated?: boolean; runSlots?: number; reply?: Parameters<typeof nativeStudyFixture>[1]; withoutCompletedFinish?: boolean;
 } = {}) {
   const f = nativeStudyFixture(root, options.reply), { corpusDigest: _digest, ...body } = f.corpus; void _digest;
   if (options.annotated) {
@@ -158,7 +158,13 @@ export async function nativeStudyEvidenceFixture(root: string, options: {
   f.files.create(plan, corpusRaw, f.configurationRaw);
   const reviewedBeforeOutputs = new Date(Date.now() - 60_000).toISOString();
   for (const slot of plan.slots.slice(0, options.runSlots ?? plan.slots.length)) await runExtractionStudySlot(f.ports, { plan, corpus, slotId: slot.slotId });
-  const evidence = f.files.evidence(plan), report = replayExtractionStudyEvidence(evidence, f.ports.identity());
+  const evidence = f.files.evidence(plan);
+  // An authored legacy-v5 portable fixture only: original production files remain unchanged.
+  if (options.withoutCompletedFinish) for (const record of evidence.records) {
+    const run = JSON.parse(record.raw);
+    if (run.status === 'completed') { delete run.finishedAt; record.raw = JSON.stringify(run); }
+  }
+  const report = replayExtractionStudyEvidence(evidence, f.ports.identity());
   const authorReceipt = { reviewVersion: 'omk-extraction-study-reference-review/v1', corpusDigest: corpus.corpusDigest,
     reviewer: { actorKind: 'agent', actorId: 'authored-author' }, reviewRole: 'author', independentHuman: false,
     reviewedBeforeOutputs: true, reviewedAt: reviewedBeforeOutputs,

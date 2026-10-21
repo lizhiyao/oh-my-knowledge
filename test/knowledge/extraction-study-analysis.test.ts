@@ -21,7 +21,7 @@ describe('finite extraction study analysis', () => {
         && ['entity-0', 'mention-0'].includes(decision.target.referenceId)) decision.verdict = 'required_missing';
     }
     const before = JSON.stringify(f.input), analysis = analyzeExtractionStudy(f.input);
-    expect(analysis).toMatchObject({ studyStatus: 'blocked', countingUnit: 'lineage-group', goldReady: true, independentHumanReview: true,
+    expect(analysis).toMatchObject({ analysisVersion: 'omk-extraction-study-analysis/v2', studyStatus: 'blocked', countingUnit: 'lineage-group', goldReady: true, independentHumanReview: true,
       assessment: { engineering: { plannedSlots: 2, completeNativeSlots: 2, structurallyRejectedSlots: 0 } } });
     expect(analysis.overall.arms[0]).toMatchObject({ variantId: 'baseline', plannedGroups: 1, errorGroups: 1, groupErrorRate: 1,
       scopedMetrics: { entities: { outputCount: 2, referenceCount: 2, truePositive: 1, falsePositive: 1, falseNegative: 1, precision: 0.5, recall: 0.5, f1: 0.5 } } });
@@ -71,6 +71,22 @@ describe('finite extraction study analysis', () => {
     expect(analysis.strata[0].arms[completeIndex]).toMatchObject({ groupErrorRate: 0, metricReasons: [], scopedMetrics: { mentions: { f1: 1 } } });
   });
 
+  it.each(['baseline', 'candidate'])('withholds the %s arm and paired metrics when completed-run time is unverified', variantId => {
+    const f = studyFixture(), index = variantId === 'baseline' ? 0 : 1;
+    delete f.input.slots[index].run!.finishedAt;
+    const before = JSON.stringify(f.input), analysis = analyzeExtractionStudy(f.input);
+    expect(analysis).toMatchObject({ analysisVersion: 'omk-extraction-study-analysis/v2', studyStatus: 'blocked', goldReady: true,
+      completionTime: { verifiedCompletedSlots: 1, unverifiedSlotIds: [f.input.slots[index].slotId] } });
+    const arm = analysis.overall.arms[index], other = analysis.overall.arms[1 - index];
+    expect(arm).toMatchObject({ completeGroups: 0, errorGroups: null, groupErrorRate: null, scopedMetrics: { entities: { eligible: false, f1: null } } });
+    expect(arm.metricReasons).toContain('completion_time_unverified');
+    expect(other).toMatchObject({ completeGroups: 1, groupErrorRate: 0, scopedMetrics: { mentions: { eligible: true, f1: 1 } } });
+    expect(analysis.overall.paired).toMatchObject({ completePairs: 0, unknownPairs: 1, transitions: null,
+      candidateMinusBaselineGroupErrorRate: null, scopedMetricDifferences: { entities: { f1: null }, mentions: { f1: null } } });
+    expect(analysis.strata[0].arms[index].metricReasons).toContain('completion_time_unverified');
+    expect(JSON.stringify(f.input)).toBe(before);
+  });
+
   it('preserves explicit zero denominators instead of reporting perfect precision for empty negative cases', () => {
     const analysis = analyzeExtractionStudy(studyFixture(true).input);
     expect(analysis.overall.arms[0]).toMatchObject({ errorGroups: 0, groupErrorRate: 0,
@@ -115,7 +131,7 @@ describe('saved AI judge calibration', () => {
     const judgeCandidate = judge.decisions.find(value => value.target.itemKind === 'case' && value.target.slotId.startsWith('candidate'))!;
     wrong(humanBaseline, ['identity']); wrong(humanCandidate, ['conditions']); wrong(judgeCandidate, ['conditions', 'scope']);
     const calibration = calibrateExtractionStudyJudge({ ...f.input, judgeReceipt: judge, humanReceipt: f.receipt });
-    expect(calibration).toMatchObject({ ready: true, status: 'ready', unknownOrMissingTargets: 0,
+    expect(calibration).toMatchObject({ calibrationVersion: 'omk-extraction-study-judge-calibration/v2', ready: true, status: 'ready', unknownOrMissingTargets: 0,
       judgeAcceptance: { status: 'not_assessed' }, confidenceInterval: null,
       judgeEvidence: { identity: { modelRevision: 'authored-model-r1', promptVersion: 'authored-judge-prompt/v1',
         evidenceScope: 'reviewer-declared;not-native-verified/v1', attempts: [{ attemptStatus: 'completed' }, { attemptStatus: 'failed' }] },
@@ -126,6 +142,19 @@ describe('saved AI judge calibration', () => {
     expect(calibration.byClass.find(row => row.errorCode === 'scope')).toMatchObject({ observed: { tp: 0, fp: 1, fn: 0 }, precision: 0, recall: null, recallReason: 'no_reference_positives' });
     expect(calibration.criticalMisses).toEqual([{ target: humanBaseline.target, errorCodes: ['identity'], judgeVerdict: 'correct', detectionStatus: 'known_miss' }]);
     expect(calibration.humanReviewReportId).toMatch(/^sha256:/); expect(calibration.judgeReviewReportId).not.toBe(calibration.humanReviewReportId);
+  });
+
+  it('keeps observed judgments but prevents calibration readiness and rates without completed-run time', () => {
+    const f = studyFixture(), judge = agentReceipt(f.receipt);
+    delete f.input.slots[0].run!.finishedAt;
+    const before = JSON.stringify(f.input), calibration = calibrateExtractionStudyJudge({ ...f.input, judgeReceipt: judge, humanReceipt: f.receipt });
+    expect(calibration).toMatchObject({ calibrationVersion: 'omk-extraction-study-judge-calibration/v2', ready: false, status: 'pending',
+      knownComparedTargets: f.receipt.decisions.length, unknownOrMissingTargets: 0,
+      completionTime: { unverifiedSlotIds: [f.input.slots[0].slotId] } });
+    expect(calibration.reasons).toContain('completion_time_unverified');
+    expect(calibration.byClass.every(row => row.observed !== null && row.precision === null && row.recall === null && row.f1 === null
+      && row.metricReasons.includes('completion_time_unverified'))).toBe(true);
+    expect(JSON.stringify(f.input)).toBe(before);
   });
 
   it('never treats missing human or uncertain AI judgments as correct and rejects substituted evidence', () => {

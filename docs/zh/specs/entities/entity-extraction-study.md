@@ -18,8 +18,11 @@ description: 冻结真实提取研究，回放生产原生结果，并区分工�
 | `omk-knowledge-extraction-study-evidence/v1` | 计划、原始语料／配置文本、原始生产 run／outcome JSON 文本。 |
 | `omk-extraction-study-reference-review/v1` | 分开的作者与独立参考复核声明。 |
 | `omk-extraction-study-output-review/v1` | 绑定 `planId` 和派生 `outputDigest` 的逐项判断。 |
-| `omk-extraction-study-review/v1` / `omk-extraction-study-analysis/v1` | 重算的门禁、逐臂与有限集合分析。 |
-| `omk-extraction-study-judge-calibration/v1` | 已保存的 agent 判断与独立人工判断的比较。 |
+| `omk-extraction-study-review/v2` / `omk-extraction-study-analysis/v2` | 重算的门禁、逐臂与有限集合分析。 |
+| `omk-extraction-study-judge-calibration/v2` | 已保存的 agent 判断与独立人工判断的比较。 |
+| `omk-extraction-study-inspection/v2` | 安装版 CLI／Studio 对 v2 复核、分析、校准和逐 slot 完成时间证据的投影。 |
+
+v2 派生报告的完成时间接受门槛及投影变化标记 **BREAKING-COMPARABILITY** 和 **BREAKING-SCHEMA**。参考／输出 receipt 仍为 v1；生产 run v5、plan／corpus／evidence v1 及其原始字节不迁移。现行工具只计算当前报告／投影版本，不另设并行 v1 报告 reader。旧报告及其原冻结工具保留为历史证据，新 v2 报告不能追溯认证旧研究的复核时序。新运行时字节须另冻宿主身份，不改变历史宿主或继承旧接受结论。
 
 既有合成语料 v13、标注指南 v11、检查器 v5 保持原身份与分母。当前默认 prompt-json v29、strict v30；[时间、引用语境、核心对象及整体／局部指引修正](./entity-extraction.md)标记 **BREAKING-COMPARABILITY**，生产 run v5 不变；人工封存单独引入质量投影 v4，将封存记录保留为执行状态未知，不改变 prompt／评分语义。显式研究 prompt profile 不改变两个默认值，已发布默认版本不得标识不同 prompt 字节。以后改变收录口径或评分时，仍须另行声明可比性影响。旧冻结研究仍绑定原 prompt、宿主与输出，不能用新默认值重算或继承质量结论。
 
@@ -178,7 +181,9 @@ expected host 来自固定安装适配器 `extractionStudyHostIdentity()`：实�
 
 `analyzeExtractionStudy` 输出整体和逐场景有限集合结果。完整独立复核的实体／提及参考可产生范围内匹配 precision／recall／F1，参考匹配须一一对应，部分或缺失参考不能产生这些指标。重复和相关目标不是独立样本。配对结果使用 lineage group，显示不完整配对、已知转移和符合条件的 candidate-minus-baseline 差异；指标差异对符合条件的 lineage group 等权。场景分层可重叠，不能相加当作独立样本。尚未建立有代表性、可交换的抽样，因此总体 precision／recall／F1 和置信区间保持 `null`。
 
-输出回执时间的现行 v1 下界为每个 run 的 `finishedAt ?? startedAt`，上界为明确传入的受检时刻，边界相等可接受。存在 `finishedAt` 时，开始后但完成前的回执被拒绝；缺少该字段时只验证不早于开始，不能证明完成后签署，现有 `accepted_within_scope` 状态也不补足这项保证。run 的未来开始时间和已提供的未来完成时间均拒绝。本说明不改变缺 `finishedAt` 时的既有接受门槛，不为旧 run 回填时间；更强保证需要另行版本化。时间／独立性声明不证明真人实际阅读、判断正确或来源主张真实。
+review v2 要求每个 completed run 有实际 `finishedAt`，该 slot 才能取得完成后复核、范围内实体／提及匹配指标及校准就绪资格。已完成但缺失该字段时，全局与受影响版本的 blockers 增加 `completion_time_unverified`，该 slot 的 `completionTimeStatus` 和耗时状态同步显式标记。`completionTime` 保留 `completedSlots`、`verifiedCompletedSlots` 及 `unverifiedSlotIds` 中的每个未核实 slot 身份。参考标注的 `goldReady` 继续单独表达参考准备度，参考复核齐全不能补足运行完成证据。另一完整版本仍可展示，依赖缺失版本的 lineage 资格和成对差异不可用。校准保留已观察的原始裁决对与关键漏检，但 `ready: false`、比率为 null，并明确时间原因。
+
+提供完成时间时，回执须满足 `finishedAt <= reviewedAt <= now`，边界相等允许；run 的未来时间和早于开始的完成时间均拒绝。缺完成时间时仍可检查已有开始时间及受检时刻上界，但不能取得范围内接受或依赖完成时序的指标资格。不以当前时间、文件 mtime、推测值或之后的复核者声明填补缺失完成时间。旧 [bench capture／review v1](./entity-extraction-semantic-review.md) 没有完成时间戳，仍只检查开始下界；本改动不升级其原协议、冻结字节或历史结论。时间／独立性声明不证明真人实际阅读、判断正确或来源主张真实。
 
 `calibrateExtractionStudyJudge` 是共享编程原语，下文的安装版 CLI 与 Studio 核对入口也使用它。它比较绑定同一证据的实际 agent 与独立人工 receipt，重算两份复核报告，提供逐错误类别检测计数、缺失／不确定目标和关键漏检。缺少真人证据时，校准保持 pending，指标不可用。完整校准覆盖不要求候选通过质量门禁，`ready` 也不认证评委：没有预声明校准验收标准时，`judgeAcceptance` 仍为 `not_assessed`。不会合成模型或真人复核。
 
