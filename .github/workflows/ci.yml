@@ -203,7 +203,7 @@ jobs:
       - run: yarn build
       # 平台风险边界测试：文件存储、目录发现、子进程、CLI 启动、Studio 服务生命周期
       # 选择依据：macOS 与 Linux 在这些边界存在实际差异（文件系统大小写、进程信号、路径解析等）
-      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 600000 --retry-on=unknown_signal yarn test --maxWorkers=1 test/evidence/storage/ test/cli/oclif-startup.test.ts test/cli/oclif-dispatch.test.ts test/cli/first-run-smoke.test.ts test/cli/studio-dev-spawn.test.ts test/studio/http/server-lifecycle.test.ts test/studio/http/next-studio.test.ts
+      - run: node scripts/ci/diagnostics.mjs run tests "$RUNNER_TEMP/ci-diagnostics" 600000 --retry-on=unknown_signal yarn test --maxWorkers=1 test/shared/atomic-json.test.ts test/shared/file-lock.test.ts test/evidence/storage/ test/cli/oclif-startup.test.ts test/cli/oclif-dispatch.test.ts test/cli/first-run-smoke.test.ts test/cli/studio-dev-spawn.test.ts test/studio/http/server-lifecycle.test.ts test/studio/http/next-studio.test.ts
         env:
           CI_DIAGNOSTICS_DIR: ${{ runner.temp }}/ci-diagnostics
       # 打包资源边界：复用发布链的同一脚本，验证 tarball 在 macOS 上可安装、可启动、资源齐全。
