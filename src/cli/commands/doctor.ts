@@ -10,6 +10,7 @@ import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defa
 import { projectDoctorsDir, globalDoctorsDir } from '../../evidence/storage/directories.js';
 import type { DoctorRule, DoctorRuleLike } from '../../knowledge/artifacts/doctor/contracts.js';
 import { persistDoctorReport } from '../../knowledge/artifacts/doctor/persistence.js';
+import { shellQuoteArg } from '../../shared/shell-quote.js';
 
 export default class Doctor extends BaseCommand {
   static description = bilingual({
@@ -162,7 +163,12 @@ export default class Doctor extends BaseCommand {
           }
         : resolveRuntimeSelection(
             { executor: flags.executor, model: flags.model },
-            { lang },
+            {
+              lang,
+              missingModelHint: tCli('cli.doctor.static_only_hint', lang, {
+                command: `omk doctor --static-only${target === null ? '' : ` -- ${shellQuoteArg(target)}`}`,
+              }),
+            },
           );
       const executorName = runtime.executor;
       const model = runtime.model;
