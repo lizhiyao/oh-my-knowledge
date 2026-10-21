@@ -31,7 +31,7 @@ describe('optional executor dependencies', () => {
     );
   });
 
-  it('keeps SDKs out of production and development dependency closures', () => {
+  it('keeps SDKs optional for consumers and pins the real development contract', () => {
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
@@ -44,7 +44,7 @@ describe('optional executor dependencies', () => {
       assert.equal(dependency.installSpec, `${dependency.packageName}@${peerRange}`);
       assert.equal(packageJson.peerDependenciesMeta?.[dependency.packageName]?.optional, true);
       assert.equal(packageJson.dependencies?.[dependency.packageName], undefined);
-      assert.equal(packageJson.devDependencies?.[dependency.packageName], undefined);
+      assert.match(packageJson.devDependencies?.[dependency.packageName] ?? '', /^\d+\.\d+\.\d+$/);
     }
   });
 });
