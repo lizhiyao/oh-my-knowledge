@@ -258,12 +258,15 @@ lint 缓存依据这棵树的文件签名决定要做什么，
 
 - `yarn test` 跑完整的 vitest 套件
 - `yarn ci:quality` 首先运行独立的 `scripts/ci/test-coverage.mjs` 门禁。每个测试都必须恰好进入一个分片，包括 Vitest 覆盖守卫自身；缺失、重复与已删除文件的条目会在构建前失败。Agent 探测／采集 smoke 默认使用临时主目录与真实文件系统 fixture。检查本机实际产品与日志时，显式运行 `OMK_AGENT_SMOKE=1 yarn test test/observability/agents/smoke.test.ts`；它会读取真实主目录，产物只写临时目录。Hosted CI 不启用这项 opt-in，也不证明某台机器的 Agent 安装情况。
-- `yarn test:profile` 把完整套件跑一遍并列出最慢的测试文件。用它定位优化目标；它不是性能基线，也不是 CI 门禁。传 `--top <n>` 控制列表长度。
+- `yarn test:profile` 构建后通过 hermetic 测试包装器跑一遍完整套件，再列出最慢文件。`--top <n>` 控制列表长度，`--workers <n>` 设置并记录 worker 上限。v1 profiler 默认一个 worker；旧版仅输出 stdout，继承 Vitest 的两个 worker 默认值。两者不是同条件观测，不能据此宣称优化收益。
+- 传 `--output <新文件.json>` 保存 `omk-test-profile/v1` 记录，绑定源码 commit 与 dirty 状态、实际 OS／架构／Node、归一化测试命令、worker 上限、逐文件状态／时长，以及四份分片清单的字节摘要和文件归属。时长沿用 Vitest JSON 的断言起止跨度，不含 transform／import；全跳过文件显式记为 `skipped`，时长保留 `null`。未知时长同样保留 `null`；缺失、失败或未归属结果不能算完整通过。分片 `observedFileDurationSumMs` 仅是本机已观测文件时长之和，不是 CI step／job 墙钟。规范化快照放在 `test/shards/profiles/`；不因单次运行重平衡清单或宣称 CI 变快。
+- `--raw-dir <新目录>` 在仓库外保留原始 JSON、runner 日志与进程退出诊断；省略时创建并打印外部 OS 临时证据目录。中断或失败仍保留诊断，并以非零状态退出。既有 JSON 输出或证据目录不会被覆盖；独立的运行临时根在成功和失败后都会清理。例如先创建仓库外父目录，再执行：`yarn test:profile --workers 1 --top 20 --output /ABS/NEW-PROFILE.json --raw-dir /ABS/NEW-PROFILE-RAW`。提交的 JSON 只含归一化仓库相对路径。这是排查证据，不是性能基线或 CI 门禁；若采集 Linux CI 墙钟，须另行绑定精确 run URL／head 与测试 step 起止时间。
+- 持续维护期间，每季度重跑 `yarn test:profile` 并保留一份规范化快照；调整分片清单、worker 上限或测试执行器条件后重新采集。只比较同条件测得的记录。规范化本机 profile 与实际 CI 测试 step 墙钟记录分别存入 `test/shards/profiles/`，各自绑定对应源码 commit（CI 记录还须绑定精确 run URL／head）；原始报告和诊断继续保留在仓库外。
 - `yarn typecheck` 跑两个 tsc 程序：根程序（Node16、不开 `--jsx`）收 `src`／`test`／`scripts` 下的 `.ts`；`tsconfig.studio-web.json` extends `src/studio/web/tsconfig.json`，收整个 Studio web 子树和 `test/studio/web` 的用例，`.ts` 与 `.tsx` 同权。归属由 `test/architecture/test-gate-coverage.test.ts` 守住，新增文件不必再靠文件名试探谁在检查它。
 - Studio 交互测试按文件使用 `// @vitest-environment jsdom`，通过 React Testing Library 挂载真实组件，以可见文字、可访问名称和用户操作断言状态与请求。只替换 HTTP 返回、宿主导航及 DOM 环境缺失的布局能力，不 mock 被测组件或保存／读取状态。卸载时清理组件、请求与全局替身。它们随 `yarn test` 和固定分片持续运行；布局、真实浏览器和安装验收仍按对应风险单独验证，SSR 和 DOM 交互都不替代它们。
 - 为你改动的行为补测试；缺陷修复强烈建议附带回归测试
 - CI 在 PR 和 `main` push 上对完整 event diff 做分类。`scripts/ci/scope.mjs` 列出的根规则文件与模块维护文档（`src/<area>/README.md`）使用治理测试和空白字符检查。普通的 `docs/**/*.md` 与根 README 改动额外运行运行时／文档契约检查和文档构建，不运行 Studio 或完整测试矩阵。
-- 源码、依赖、CI／构建／站点配置、skills、prompts、生成文档以及未知路径运行完整门禁：quality、四个 Node 24 分片，以及 `macos-latest` 上的 macOS 风险边界子集。Node 22 分片继续留给非 PR 事件（`main` push、发布、手动 dispatch）和打了 `dependencies` 标签的 PR，因为 issue #932 测得约 40 次运行里 Node 22/24 的测试结果没有差异。历史缺失、diff 为空或分类出错时选择完整门禁。改名同时计入新旧路径；混合改动使用最强的门禁。
+- 源码、依赖、CI／构建／站点配置、skills、prompts、生成文档以及未知路径运行完整门禁：quality、四个 Node 24 分片，以及 `macos-latest` 上的 macOS 风险边界子集，包含共享原子 JSON 与文件锁测试。Node 22 分片继续留给非 PR 事件（`main` push、发布、手动 dispatch）和打了 `dependencies` 标签的 PR，因为 issue #932 测得约 40 次运行里 Node 22/24 的测试结果没有差异。历史缺失、diff 为空或分类出错时选择完整门禁。改名同时计入新旧路径；混合改动使用最强的门禁。
 - 必需检查仍是 `test (22)` 和 `test (24)`。它们要求所选门禁成功；失败、被取消或意外跳过的门禁不能通过。分支保护以及必须与 `main` 保持同步的要求不变。
 - 按层归属测试契约：领域单元测试覆盖完整分支矩阵，command 集成测试覆盖参数到业务的接线和输出信封，真实 `node dist/cli/index.js` 只覆盖 dispatcher、startup、进程退出、模块加载时 cwd、打包资源等进程边界。
 - command 业务测试优先使用 `test/helpers/run-command.ts` 运行源码 Command 的完整 Oclif 生命周期，不要为每个 case 重复启动 Node。只有被测行为依赖 dispatcher、模块加载时环境或独立 `process` 时才使用真子进程，并统一走 `test/helpers/cli-process.ts` 的 `runCli`（期待 exit 0）／`runCliFailing`（期待非零退出码，必填），不在测试文件里手搓 `promisify(execFile)`；该边界在测试注释里说明。

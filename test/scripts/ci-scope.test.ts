@@ -90,6 +90,9 @@ describe('required CI checks', () => {
     // PR 非 dependabot 时 test_22_shard 跳过（PR 只跑 24）；main/release/dependabot 保留。
     expect(workflow.jobs.test_22_shard.if).toContain("github.event_name != 'pull_request'");
     expect(workflow.jobs.test_22_shard.if).toContain("dependencies");
+    const macosTests = workflow.jobs.test_macos.steps.find(step => step.run?.includes('yarn test --maxWorkers=1'))?.run;
+    expect(macosTests).toContain('test/shared/atomic-json.test.ts');
+    expect(macosTests).toContain('test/shared/file-lock.test.ts');
     for (const version of ['22', '24']) {
       const job = workflow.jobs[`test_${version}`];
       expect(job.name).toBe(`test (${version})`);
