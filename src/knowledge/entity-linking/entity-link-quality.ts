@@ -17,20 +17,21 @@ interface QualityGroup {
   reviews: { total: number; notDispatched: number; dispatched: number; reserved: number; resultRecorded: number; exceptionRecorded: number;
     outcomeUnrecorded: number; byStatus: Record<EntityLinkInvocationStatus, number> };
   admission: { recorded: number; admitted: number; rejected: number; unrecordedDispatched: number; admissionRate: number | null;
-    reasons: { reason: string; count: number }[] };
+    terminatedDispatched: number; reasons: { reason: string; count: number }[] };
   assessments: { assessment: Assessment; admitted: number; humanAccepted: number; humanRejected: number; humanUndecided: number }[];
   humanDecisions: { decided: number; accepted: number; rejected: number; undecidedAdmitted: number; undecidedRejected: number; acceptanceRate: number | null };
+  humanTerminations: { total: number; outcomeUnrecorded: number; lateOutcomeRecorded: number };
   organization: { applied: number; acceptedPending: number; acceptedConflict: number };
   executionFailures: { failureKind: string; count: number }[];
   usage: Record<UsageKey, UsageCount>;
 }
-interface QualityBody { projectionKind: 'entity-link-quality'; projectionVersion: 'omk.entity-link-quality/v1' }
+interface QualityBody { projectionKind: 'entity-link-quality'; projectionVersion: 'omk.entity-link-quality/v2' }
 export type EntityLinkQuality = QualityBody & (
   { readStatus: 'available'; reviewCount: number; groups: QualityGroup[] }
   | { readStatus: 'unreadable'; reviewCount: null; groups: [] }
 );
-const body: QualityBody = { projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v1' };
-const statuses: EntityLinkInvocationStatus[] = ['prepared', 'running', 'execution_unknown', 'awaiting_review', 'execution_failed',
+const body: QualityBody = { projectionKind: 'entity-link-quality', projectionVersion: 'omk.entity-link-quality/v2' };
+const statuses: EntityLinkInvocationStatus[] = ['prepared', 'running', 'execution_unknown', 'execution_terminated', 'awaiting_review', 'execution_failed',
   'cancelled_before_start', 'rejected', 'accepted_pending_application', 'accepted_conflict', 'applied'];
 const usageKeys: UsageKey[] = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens', 'costUSD'];
 const countReason = <K extends string>(rows: ({ count: number } & Record<K, string>)[], key: K, value: string) => {
@@ -64,9 +65,10 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
     if (!group) {
       group = { identity, reviews: { total: 0, notDispatched: 0, dispatched: 0, reserved: 0, resultRecorded: 0, exceptionRecorded: 0, outcomeUnrecorded: 0,
         byStatus: Object.fromEntries(statuses.map(status => [status, 0])) as Record<EntityLinkInvocationStatus, number> },
-      admission: { recorded: 0, admitted: 0, rejected: 0, unrecordedDispatched: 0, admissionRate: null, reasons: [] },
+      admission: { recorded: 0, admitted: 0, rejected: 0, unrecordedDispatched: 0, terminatedDispatched: 0, admissionRate: null, reasons: [] },
       assessments: (['same_object', 'different_objects', 'insufficient_evidence'] as const).map(assessment => ({ assessment, admitted: 0, humanAccepted: 0, humanRejected: 0, humanUndecided: 0 })),
       humanDecisions: { decided: 0, accepted: 0, rejected: 0, undecidedAdmitted: 0, undecidedRejected: 0, acceptanceRate: null },
+      humanTerminations: { total: 0, outcomeUnrecorded: 0, lateOutcomeRecorded: 0 },
       organization: { applied: 0, acceptedPending: 0, acceptedConflict: 0 }, executionFailures: [],
       usage: Object.fromEntries(usageKeys.map(key => [key, { knownReviewCount: 0, unknownReviewCount: 0, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: false }])) as Record<UsageKey, UsageCount> };
       groups.set(key, group);
@@ -81,6 +83,10 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
       group.reviews[recorded.outcome.outcomeKind === 'result' ? 'resultRecorded' : 'exceptionRecorded']++;
       if (recorded.outcome.outcomeKind === 'result' && recorded.outcome.result.failure) countReason(group.executionFailures, 'failureKind', recorded.outcome.result.failure.failureKind);
     } else if (dispatched) group.reviews.outcomeUnrecorded++;
+    if (projection.termination) {
+      group.humanTerminations.total++; group.humanTerminations[recorded ? 'lateOutcomeRecorded' : 'outcomeUnrecorded']++;
+      group.admission.terminatedDispatched++;
+    }
     const admission = projection.admission, decision = projection.decision;
     if (admission) {
       group.admission.recorded++; group.admission[admission.admissionKind === 'admitted' ? 'admitted' : 'rejected']++;
@@ -90,7 +96,7 @@ export function entityLinkQuality(histories: readonly EntityLinkInvocation[], in
         row.admitted++; row[!decision ? 'humanUndecided' : decision.decision === 'accept' ? 'humanAccepted' : 'humanRejected']++;
       }
       if (!decision) group.humanDecisions[admission.admissionKind === 'admitted' ? 'undecidedAdmitted' : 'undecidedRejected']++;
-    } else if (dispatched) group.admission.unrecordedDispatched++;
+    } else if (dispatched && !projection.termination) group.admission.unrecordedDispatched++;
     if (decision) { group.humanDecisions.decided++; group.humanDecisions[decision.decision === 'accept' ? 'accepted' : 'rejected']++; }
     if (projection.status === 'applied') group.organization.applied++;
     if (projection.status === 'accepted_pending_application') group.organization.acceptedPending++;

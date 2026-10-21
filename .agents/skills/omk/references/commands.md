@@ -469,7 +469,7 @@ omk observe entity-links <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；其余读取、人审或零调用恢复。
+- `operation`(必填):candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；terminate 人工终止已启动执行；其余读取、人审或零调用恢复。
 
 **Flags:**
 
@@ -478,24 +478,26 @@ omk observe entity-links <operation> [flags]
 - `--confirm-identity` `boolean`:accept 必填：人工核对后确认两侧所指同一对象，不以模型判断代替。
 - `--confirm-input` `option`:propose：人工核对内容、模型和 endpoint 后，显式填写计划顶层 confirmedDigest（含工作区）。
 - `--entity` `option`:左侧实体 UUID；原实体身份保持不变。
+- `--execution-id` `option`:terminate：show 中原执行的 executionId；仅终止这一已启动执行。
 - `--executor` `openai-api|codex`:preview：执行器；API 已具备容量证明，Codex 尚不允许启动。
-- `--generation` `option`:accept／reject／取消 prepared：show 读取的 generation。
-- `--id` `option`:show／accept／reject／resume：稳定 review UUID。
+- `--generation` `option`:accept／reject／terminate／取消 prepared：show 读取的 generation。
+- `--id` `option`:show／accept／reject／resume／terminate：稳定 review UUID。
 - `--input` `option`:preview：核对已有计划；propose：读取 preview --json 导出的同一普通 JSON 文件，最多 2 MiB。
 - `--json` `boolean`:输出完整机器 JSON；preview 的 JSON 可保存为 propose 计划。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--mention` `option`:preview：选中的左侧 mention UUID，可重复传旗标；省略时选该实体全部提及。
 - `--model` `option`:preview：明确模型，未提供时使用同执行器的已配置模型。
 - `--object-label` `option`:accept：新组织对象的完整名称，最多 256 字符；不截断原实体名。
-- `--reason` `option`:accept／reject／取消 prepared：明确人工理由。
+- `--owner-id` `option`:terminate：show 中原执行的 ownerId；不能用当前 PID 代替。
+- `--reason` `option`:accept／reject／terminate／取消 prepared：明确人工理由。
 - `--recover-unknown` `boolean`:resume：仅在可信本机 owner 已退出时明确记录 unknown，不退款、不重新调用。
-- `--request-id` `option`:accept／reject／resume 的明确恢复或取消：稳定操作 UUID，重放沿用原值。
+- `--request-id` `option`:accept／reject／terminate／resume 的明确恢复或取消：稳定操作 UUID，重放沿用原值。
 - `--retry-of` `option`:preview：明确核对过的旧 review UUID；失败或未知后重新确认调用时必填。
 - `--right-analysis` `option`:preview：右侧分析 UUID。
 - `--right-entity` `option`:preview：右侧实体 UUID。
 - `--right-mention` `option`:preview：选中的右侧 mention UUID，可重复传旗标。
 - `--start-prepared` `boolean`:propose：先 show 核对后，明确继续已持久 prepared 的同一次调用；已 started 时无效。
-- `--workspace` `option`:知识工作区；propose 默认沿用计划中的绝对目录，不得覆盖为其它目录。
+- `--workspace` `option`:知识工作区；terminate 必填；propose 默认沿用计划中的绝对目录，不得覆盖为其它目录。
 
 **示例:**
 
@@ -533,6 +535,10 @@ omk observe entity-links reject --workspace ./knowledge --id <review-id> --reque
 
 ```bash
 omk observe entity-links resume --workspace ./knowledge --id <review-id>
+```
+
+```bash
+omk observe entity-links terminate --workspace ./knowledge --id <review-id> --request-id <request-id> --generation <generation> --execution-id <execution-id> --owner-id <owner-id> --reason "人工核对后终止卡住的执行，不退款" --json
 ```
 
 ## omk observe inbox

@@ -46,6 +46,12 @@ export function formatEntityLinkInvocation(history: EntityLinkInvocation, projec
     `${t('调用额度', 'Invocation budget')}: reserved=${projection.invocationBudget.reserved}, consumed=${projection.invocationBudget.consumed}`,
     `${t('用量', 'Usage')}: input=${known(projection.usage.inputTokens)}, output=${known(projection.usage.outputTokens)}, cache-read=${known(projection.usage.cacheReadTokens)}, USD=${known(projection.usage.costUSD)}`,
     t('接纳结果（模型建议不代表人工同意）：', 'Admission (a model suggestion is not human acceptance):'), JSON.stringify(projection.admission, null, 2)];
+  if (projection.execution) lines.push(`executionId: ${projection.execution.executionId}`, `ownerId: ${projection.execution.owner.ownerId}`);
+  if (projection.termination) {
+    lines.push(t('人工终止记录：', 'Human termination:'), JSON.stringify(projection.termination, null, 2),
+      t('已解除关联阻塞；本次调用不退款，也不证明远端请求已取消。迟到结果仅作原始证据，不能接受或写入知识库。',
+        'The link reservation is released; no invocation refund or proof of remote cancellation. Late outcomes remain raw evidence and cannot be accepted or published.'));
+  }
   if (projection.status === 'awaiting_review') lines.push(ENTITY_SCOPE_REVIEW_GUIDANCE[lang]);
   const prepare = history.events[0].command;
   if (prepare.commandKind === 'prepare') lines.push(t('已发送／计划发送的选定内容：', 'Selected content sent/planned:'), prepare.input.request.prompt);
@@ -64,7 +70,8 @@ export function formatEntityLinkQuality(quality: EntityLinkQuality, workspace: s
   for (const group of quality.groups) {
     lines.push(JSON.stringify(group.identity),
       `${t('执行分母', 'Invocation denominator')}: ${group.reviews.total}; ${t('已派发', 'dispatched')}=${group.reviews.dispatched}; ${t('未派发', 'not dispatched')}=${group.reviews.notDispatched}; ${t('结果未归档', 'outcome unrecorded')}=${group.reviews.outcomeUnrecorded}`,
-      `${t('机器接纳分母', 'Admission denominator')}: ${group.admission.recorded}; admitted=${group.admission.admitted}; rejected=${group.admission.rejected}; ${t('已派发但未知', 'dispatched unknown')}=${group.admission.unrecordedDispatched}`,
+      `${t('人工终止', 'Human terminations')}: ${group.humanTerminations.total}; ${t('结果未归档', 'outcome unrecorded')}=${group.humanTerminations.outcomeUnrecorded}; ${t('迟到结果已归档', 'late outcome recorded')}=${group.humanTerminations.lateOutcomeRecorded}`,
+      `${t('机器接纳分母', 'Admission denominator')}: ${group.admission.recorded}; admitted=${group.admission.admitted}; rejected=${group.admission.rejected}; ${t('已派发但未知', 'dispatched unknown')}=${group.admission.unrecordedDispatched}; ${t('终止且不参与接纳', 'terminated outside admission')}=${group.admission.terminatedDispatched}`,
       `${t('人工决定分母', 'Human decision denominator')}: ${group.humanDecisions.decided}; accept=${group.humanDecisions.accepted}; reject=${group.humanDecisions.rejected}; ${t('接纳后待定', 'admitted undecided')}=${group.humanDecisions.undecidedAdmitted}`,
       `${t('状态、拒绝原因、三种建议及已知／未知用量', 'States, rejection reasons, three assessments, and known/unknown usage')}: ${JSON.stringify({ states: group.reviews.byStatus, reasons: group.admission.reasons, assessments: group.assessments, executionFailures: group.executionFailures, organization: group.organization, usage: group.usage })}`);
   }

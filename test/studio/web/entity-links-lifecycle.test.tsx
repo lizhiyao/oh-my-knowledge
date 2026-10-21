@@ -21,25 +21,28 @@ vi.mock('antd', () => {
     Alert: ({ title }: { title: ReactNode }) => createElement('div', { role: 'alert' }, title), Empty: ({ description }: { description: ReactNode }) => createElement('p', {}, description),
     Space: ({ children }: { children: ReactNode }) => createElement('div', {}, children), Spin: () => createElement('span', {}, 'loading'), Tag: ({ children }: { children: ReactNode }) => createElement('span', {}, children) };
 });
-let fixture: Awaited<ReturnType<typeof entityLinkFixture>>;
+let fixture: Awaited<ReturnType<typeof entityLinkFixture>>, terminatedFixture: Awaited<ReturnType<typeof entityLinkFixture>>;
 let quality: EntityLinkStudioQuality;
-beforeAll(async () => { fixture = await entityLinkFixture(); quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }); });
-afterAll(() => fixture?.cleanup());
+beforeAll(async () => { fixture = await entityLinkFixture(); terminatedFixture = await entityLinkFixture({ terminate: true }); quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }); });
+afterAll(() => { fixture?.cleanup(); terminatedFixture?.cleanup(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function harness(options: { failPropose?: boolean } = {}) {
+function harness(options: { failPropose?: boolean; terminated?: boolean } = {}) {
+  const current = options.terminated ? terminatedFixture : fixture;
+  const saved = options.terminated ? current.terminated! : current.saved;
+  const observation = options.terminated ? entityLinkQuality([saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }) : quality;
   const calls: Record<string, unknown>[] = [];
   const fetch = vi.fn(async (_url: unknown, init: RequestInit) => {
     const body = JSON.parse(init.body as string); calls.push(body);
     if (body.operation === 'propose' && options.failPropose) throw new Error('ack lost');
-    const value = body.operation === 'quality' ? quality : body.operation === 'candidates' ? fixture.candidates : body.operation === 'list' ? [] : body.operation === 'entity-detail' ? fixture.right
-      : body.operation === 'preview' ? fixture.preview : fixture.saved;
+    const value = body.operation === 'quality' ? observation : body.operation === 'candidates' ? current.candidates : body.operation === 'list' ? options.terminated ? [saved.projection] : [] : body.operation === 'entity-detail' ? current.right
+      : body.operation === 'preview' ? current.retryPreview ?? current.preview : saved;
     return new Response(JSON.stringify(value), { status: 200 });
   });
   vi.stubGlobal('fetch', fetch); return { calls, fetch };
 }
-async function selectPreview() {
+async function selectPreview(current = fixture) {
   await waitFor(() => expect(screen.getByLabelText('选择跨窗口候选')).toBeTruthy());
-  fireEvent.change(screen.getByLabelText('选择跨窗口候选'), { target: { value: `${fixture.right.history.analysisId}:${fixture.right.entity.entityId}` } });
+  fireEvent.change(screen.getByLabelText('选择跨窗口候选'), { target: { value: `${current.right.history.analysisId}:${current.right.entity.entityId}` } });
   await waitFor(() => expect(screen.getByLabelText('右侧选中提及')).toBeTruthy());
   fireEvent.change(screen.getByLabelText('API 模型（明确填写）'), { target: { value: 'fixture-model' } });
   fireEvent.click(screen.getByText('本地预览精确发送内容'));
@@ -72,6 +75,24 @@ describe('entity-link drawer lifecycle and explicit authorization', () => {
     expect((screen.getByLabelText('核对同一 review ID') as HTMLInputElement).value).toBe(fixture.preview.preview.reviewId);
     fireEvent.click(screen.getByText('读取同一 review（不发送）')); await waitFor(() => expect(screen.getByText('持久记录与原生证据')).toBeTruthy());
     expect(calls.filter(call => call.operation === 'propose')).toHaveLength(1); expect(calls.filter(call => call.operation === 'show')).toHaveLength(1);
+  });
+
+  it('reads a human-terminated review and binds a fresh retry preview without dispatch or identity-review actions', async () => {
+    const { calls } = harness({ terminated: true }), reviewId = terminatedFixture.terminated!.history.reviewId;
+    render(createElement(EntityLinksDrawer, { workspace: terminatedFixture.workspace, detail: terminatedFixture.left, lang: 'zh', onClose() {} }));
+    await waitFor(() => expect(screen.getByRole('button', { name: `${reviewId} · 人工已终止调用` })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: `${reviewId} · 人工已终止调用` }));
+    await waitFor(() => expect(screen.getByText('人工终止记录')).toBeTruthy());
+    expect(screen.getByText('人工终止理由 <script>unsafe</script>')).toBeTruthy();
+    expect(screen.queryByText('人工接受并组织知识库')).toBeNull(); expect(screen.queryByText('人工拒绝，保留历史')).toBeNull();
+    expect(screen.queryByText('核验原进程退出后记为未知')).toBeNull(); expect(screen.queryByText('确认继续已预约调用')).toBeNull();
+    fireEvent.click(screen.getByText('明确准备新尝试（需重新预览确认）'));
+    await selectPreview(terminatedFixture);
+    expect(calls.find(call => call.operation === 'preview')).toMatchObject({ workspace: terminatedFixture.workspace, retryOf: reviewId });
+    expect(terminatedFixture.retryPreview!.preview.reviewId).not.toBe(reviewId);
+    expect((screen.getByText('发送以上内容，生成关联建议') as HTMLButtonElement).disabled).toBe(true);
+    expect(calls.every(call => !['propose', 'continue', 'terminate'].includes(String(call.operation)))).toBe(true);
+    expect(terminatedFixture.invocationCount()).toBe(1);
   });
 
   it('keeps the review drawer and original snapshot mounted through real parent knowledge refresh', async () => {

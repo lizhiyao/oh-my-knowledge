@@ -18,7 +18,7 @@ const size = (value: unknown) => Buffer.byteLength(canonicalJson(value));
 const uuid = 'ffffffff-ffff-4fff-bfff-ffffffffffff', sha = `sha256:${'f'.repeat(64)}`;
 const text = '\0'.repeat(4096), actor = { actorKind: 'human', actorId: '\0'.repeat(256), executionRef: '\0'.repeat(256) };
 const member = { analysisId: uuid, entityId: uuid, entityRevisionId: uuid, mentionIds: Array(64).fill(uuid), rationale: text };
-// A conservative super-object containing every non-outcome event field. NUL attains
+// A conservative historical non-outcome super-object. NUL attains
 // the six-byte JSON expansion per allowed UTF-16 code unit. Host timestamps <=64.
 const maximalEvent = { command: { reviewId: uuid, requestId: uuid, eventId: uuid, at: '\0'.repeat(64), actor,
   expectedGeneration: Number.MAX_SAFE_INTEGER, commandKind: 'cancel_before_start', executionId: uuid,
@@ -32,17 +32,20 @@ const maximalEvent = { command: { reviewId: uuid, requestId: uuid, eventId: uuid
     admission: { admissionKind: 'admitted', suggestion: { responseKind: 'entity-link-suggestion', schemaVersion: 1,
       leftEntityId: uuid, rightEntityId: uuid, assessment: 'insufficient_evidence', leftMentionIds: Array(64).fill(uuid), rightMentionIds: Array(64).fill(uuid), rationale: text } },
     exit: { proofKind: 'local-process-exited', owner: { ownerId: uuid, hostname: '\0'.repeat(256), pid: Number.MAX_SAFE_INTEGER }, observedAt: '\0'.repeat(64) } } };
+// Keep the original v1 reservation unchanged: its maximal reviewed intent also
+// dominates termination owner/reason/version and late archival disposition fields.
 export const ENTITY_LINK_EVENT_RESERVE_BYTES = size(maximalEvent) + 1;
 const terminal = new Set(['cancelled_before_start', 'rejected', 'accepted_conflict', 'applied']);
 /** The original preparation owns all five future event slots before dispatch. */
 export function entityLinkAllocation(history: EntityLinkInvocation): number {
   const status = projectEntityLinkInvocation(history, integrity).status;
-  if (terminal.has(status)) return size(history);
+  const recorded = history.events.some(event => event.command.commandKind === 'execution_recorded');
+  // A terminated owner may still return: release its full producer reservation only after archival.
+  if (terminal.has(status) || status === 'execution_terminated' && recorded) return size(history);
   const first = history.events[0];
   const initial = { ...history, generation: 1, writeHeadEventId: first.command.eventId, events: [first] };
   const reservation = first.facts.reservation as { maxOutcomeJsonBytes: number };
   const preparedAllocation = size(initial) + reservation.maxOutcomeJsonBytes + 5 * ENTITY_LINK_EVENT_RESERVE_BYTES;
-  const recorded = history.events.some(event => event.command.commandKind === 'execution_recorded');
   const remaining = status === 'accepted_pending_application' ? 1 : 2;
   const allocation = recorded ? size(history) + remaining * ENTITY_LINK_EVENT_RESERVE_BYTES : preparedAllocation;
   if (!Number.isSafeInteger(allocation) || size(history) > preparedAllocation) throw new EntityLinkWriteCapacityError('Entity-link reservation proof was exceeded.');

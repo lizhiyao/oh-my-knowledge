@@ -12,7 +12,7 @@ const bytes = (value: string) => new TextEncoder().encode(value).byteLength;
 const equal = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right);
 type Integrity = Pick<EntityLinkInvocationPorts, 'hashJson' | 'hashText'>;
 export class EntityLinkInvocationConflictError extends Error {}
-export type EntityLinkInvocationStatus = 'prepared' | 'running' | 'execution_unknown' | 'awaiting_review' | 'execution_failed'
+export type EntityLinkInvocationStatus = 'prepared' | 'running' | 'execution_unknown' | 'execution_terminated' | 'awaiting_review' | 'execution_failed'
   | 'cancelled_before_start' | 'rejected' | 'accepted_pending_application' | 'accepted_conflict' | 'applied';
 export function entityLinkConfirmationDigest(reviewId: string, input: Omit<EntityLinkInvocationPlan, 'confirmedDigest'>, hash: Integrity['hashJson']): string {
   return hash({ reviewId, left: input.left, right: input.right, requestDigest: input.request.requestDigest, producerContextDigest: input.producerContextDigest, retryOf: input.retryOf, invocationBudget: 1 });
@@ -103,6 +103,10 @@ function factsFor(history: EntityLinkInvocation | undefined, command: EntityLink
   if (command.commandKind === 'execution_recorded') {
     const reservation = EntityLinkReservationSchema.parse(history!.events[0].facts.reservation);
     const outcomeBytes = bytes(canonicalJson(command.outcome)), overrun = outcomeBytes > reservation.maxOutcomeJsonBytes;
+    // Termination fences application, not the original producer's evidence archive.
+    if (history!.events.some(event => event.command.commandKind === 'execution_terminated')) {
+      return { outcomeBytes, reservationStatus: overrun ? 'overrun' : 'within', archiveDisposition: 'terminated' };
+    }
     // Never drop a completed response just because a producer violated its reservation.
     return { outcomeBytes, reservationStatus: overrun ? 'overrun' : 'within', admission: admit(prepared.input, command.outcome, overrun) };
   }
@@ -117,7 +121,7 @@ export function validateEntityLinkInvocation(value: EntityLinkInvocation, integr
     || new Set(history.events.map(event => event.command.requestId)).size !== history.events.length) throw new EntityLinkInvocationConflictError('Invalid invocation history identities.');
   let status: EntityLinkInvocationStatus | undefined; let prepared: Extract<EntityLinkInvocationCommand, { commandKind: 'prepare' }> | undefined;
   let started: Extract<EntityLinkInvocationCommand, { commandKind: 'start' }> | undefined;
-  let admission: EntityLinkInvocationAdmission | undefined; let decision: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }> | undefined;
+  let recorded = false; let admission: EntityLinkInvocationAdmission | undefined; let decision: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }> | undefined;
   for (const [index, event] of history.events.entries()) {
     const command = event.command; const { eventDigest, ...body } = event;
     if (command.reviewId !== history.reviewId || command.expectedGeneration !== index || event.commandDigest !== commandDigest(command, integrity.hashJson)
@@ -141,13 +145,22 @@ export function validateEntityLinkInvocation(value: EntityLinkInvocation, integr
       if (status !== 'running' || !started || command.executionId !== started.executionId || !equal(exit.owner, started.owner)
         || !equal(event.facts, { exit })) throw new EntityLinkInvocationConflictError('Unknown execution lacks matching owner-exit facts.');
       status = 'execution_unknown';
+    } else if (command.commandKind === 'execution_terminated') {
+      if (status !== 'running' || !started || command.executionId !== started.executionId || !equal(command.owner, started.owner)
+        || !equal(event.facts, {})) throw new EntityLinkInvocationConflictError('Termination requires the running execution and its original owner.');
+      status = 'execution_terminated';
     } else if (command.commandKind === 'execution_recorded') {
-      if (admission || !['running', 'execution_unknown'].includes(status!) || !started || command.executionId !== started.executionId) throw new EntityLinkInvocationConflictError('Execution receipt conflict.');
+      if (recorded || !['running', 'execution_unknown', 'execution_terminated'].includes(status!) || !started || command.executionId !== started.executionId) throw new EntityLinkInvocationConflictError('Execution receipt conflict.');
       const reservation = EntityLinkReservationSchema.parse(history.events[0].facts.reservation);
       const outcomeBytes = bytes(canonicalJson(command.outcome)), overrun = outcomeBytes > reservation.maxOutcomeJsonBytes;
-      admission = admit(prepared.input, command.outcome, overrun);
-      if (!equal(event.facts, { outcomeBytes, reservationStatus: overrun ? 'overrun' : 'within', admission })) throw new EntityLinkInvocationConflictError('Execution facts conflict.');
-      status = command.outcome.outcomeKind === 'exception' ? 'execution_unknown' : admission.admissionKind === 'admitted' ? 'awaiting_review' : 'execution_failed';
+      if (status === 'execution_terminated') {
+        if (!equal(event.facts, { outcomeBytes, reservationStatus: overrun ? 'overrun' : 'within', archiveDisposition: 'terminated' })) throw new EntityLinkInvocationConflictError('Terminated execution archive facts conflict.');
+      } else {
+        admission = admit(prepared.input, command.outcome, overrun);
+        if (!equal(event.facts, { outcomeBytes, reservationStatus: overrun ? 'overrun' : 'within', admission })) throw new EntityLinkInvocationConflictError('Execution facts conflict.');
+        status = command.outcome.outcomeKind === 'exception' ? 'execution_unknown' : admission.admissionKind === 'admitted' ? 'awaiting_review' : 'execution_failed';
+      }
+      recorded = true;
     } else if (command.commandKind === 'reviewed') {
       if (!admission || !['awaiting_review', 'execution_failed', 'execution_unknown'].includes(status!) || !equal(event.facts, {})) throw new EntityLinkInvocationConflictError('A saved response is required for human review.');
       if (command.decision === 'reject') {
@@ -205,7 +218,8 @@ export function projectEntityLinkInvocation(input: EntityLinkInvocation, integri
   const last = commands.at(-1)!; const started = commands.find(command => command.commandKind === 'start');
   const recorded = history.events.find(event => event.command.commandKind === 'execution_recorded');
   const reviewed = commands.find(command => command.commandKind === 'reviewed');
-  const status: EntityLinkInvocationStatus = last.commandKind === 'prepare' ? 'prepared' : last.commandKind === 'start' ? 'running'
+  const termination = commands.find(command => command.commandKind === 'execution_terminated');
+  const status: EntityLinkInvocationStatus = termination ? 'execution_terminated' : last.commandKind === 'prepare' ? 'prepared' : last.commandKind === 'start' ? 'running'
     : last.commandKind === 'cancel_before_start' ? 'cancelled_before_start' : last.commandKind === 'execution_unknown' ? 'execution_unknown'
       : last.commandKind === 'application_applied' ? 'applied' : last.commandKind === 'application_conflict' ? 'accepted_conflict'
         : last.commandKind === 'reviewed' ? last.decision === 'reject' ? 'rejected' : last.application?.applicationKind === 'conflict' ? 'accepted_conflict' : 'accepted_pending_application'
@@ -213,13 +227,16 @@ export function projectEntityLinkInvocation(input: EntityLinkInvocation, integri
           : EntityLinkInvocationAdmissionSchema.parse(recorded!.facts.admission).admissionKind === 'admitted' ? 'awaiting_review' : 'execution_failed';
   const outcome = recorded?.command.commandKind === 'execution_recorded' ? recorded.command.outcome : undefined;
   const result = outcome?.outcomeKind === 'result' ? outcome.result : undefined;
-  return { reviewId: history.reviewId, generation: history.generation, status, invocationBudget: { reserved: status === 'prepared' ? 1 : 0, consumed: started ? 1 : 0 },
+  return { projectionKind: 'entity-link-invocation' as const, projectionVersion: 'omk.entity-link-invocation-projection/v2' as const,
+    reviewId: history.reviewId, generation: history.generation, status,
+    execution: started?.commandKind === 'start' ? { executionId: started.executionId, owner: started.owner } : null, termination: termination ?? null,
+    invocationBudget: { reserved: status === 'prepared' ? 1 : 0, consumed: started ? 1 : 0 },
     executorAttemptCount: result ? result.attemptCount ?? 1 : null,
     usage: { inputTokens: result && result.tokenUsageReportedByExecutor !== false ? result.inputTokens : null,
       outputTokens: result && result.tokenUsageReportedByExecutor !== false ? result.outputTokens : null,
       cacheReadTokens: result && result.tokenUsageReportedByExecutor !== false ? result.cacheReadTokens : null,
       cacheCreationTokens: result && result.tokenUsageReportedByExecutor !== false ? result.cacheCreationTokens : null,
       costUSD: result && result.costReportedByExecutor !== false ? result.costUSD : null },
-    admission: recorded ? EntityLinkInvocationAdmissionSchema.parse(recorded.facts.admission) : null,
-    canStart: status === 'prepared', canResumeOrganization: status === 'accepted_pending_application', decision: reviewed ?? null };
+    admission: recorded && !termination ? EntityLinkInvocationAdmissionSchema.parse(recorded.facts.admission) : null,
+    canTerminateExecution: status === 'running', canStart: status === 'prepared', canResumeOrganization: status === 'accepted_pending_application', decision: reviewed ?? null };
 }

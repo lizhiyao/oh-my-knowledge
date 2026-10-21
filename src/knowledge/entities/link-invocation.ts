@@ -91,6 +91,8 @@ export const EntityLinkInvocationCommandSchema = z.discriminatedUnion('commandKi
   z.strictObject({ ...common, commandKind: z.literal('cancel_before_start'), reason }),
   z.strictObject({ ...common, commandKind: z.literal('execution_recorded'), executionId: id, outcome: EntityLinkExecutionOutcomeSchema }),
   z.strictObject({ ...common, commandKind: z.literal('execution_unknown'), executionId: id }),
+  z.strictObject({ ...common, commandKind: z.literal('execution_terminated'), terminationVersion: z.literal('omk.entity-link-termination/v1'),
+    actor: human, executionId: id, owner: EntityLinkExecutionOwnerSchema, reason }),
   z.strictObject({ ...common, commandKind: z.literal('reviewed'), actor: human, decision: z.enum(['accept', 'reject']), reason,
     identityConfirmed: z.boolean(), objectLabel: reason.max(256).nullable(), application: application.nullable() }),
   z.strictObject({ ...common, commandKind: z.literal('application_applied'), receipt: LibraryEnvelopeSchema.shape.receipts.element }),
