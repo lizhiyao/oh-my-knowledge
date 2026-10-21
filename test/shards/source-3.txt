@@ -114,3 +114,4 @@ test/studio/http/entity-links.test.ts
 test/studio/web/entity-links.test.tsx
 test/studio/web/entity-links-lifecycle.test.tsx
 test/scripts/entity-extraction-real-baseline.test.ts
+test/scripts/entity-historical-assets.test.ts
