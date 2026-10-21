@@ -177,6 +177,7 @@ export function evaluateSemanticReview(input: SemanticReviewContext) {
       transportBound: false as const },
     limits: ['Only the frozen synthetic critical regression scope is assessed; this is not real-population quality or release acceptance.',
       'Existing capture v1 does not bind the semantic plan at transport time; declaration time and reviewer independence are attestations.',
+      'Capture v1 has no completion timestamp: reviewedAt is checked against capture.startedAt and now, not verified output completion.',
       'Judgments are supplied by reviewers; deterministic validation does not establish semantic truth or authenticate a human identity.',
       'Counts are review decisions, not independent errors, causal incidents, or population precision/recall/F1.'],
   };

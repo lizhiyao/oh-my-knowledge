@@ -174,6 +174,8 @@ expected host 来自固定安装适配器 `extractionStudyHostIdentity()`：实�
 
 `analyzeExtractionStudy` 输出整体和逐场景有限集合结果。完整独立复核的实体／提及参考可产生范围内匹配 precision／recall／F1，参考匹配须一一对应，部分或缺失参考不能产生这些指标。重复和相关目标不是独立样本。配对结果使用 lineage group，显示不完整配对、已知转移和符合条件的 candidate-minus-baseline 差异；指标差异对符合条件的 lineage group 等权。场景分层可重叠，不能相加当作独立样本。尚未建立有代表性、可交换的抽样，因此总体 precision／recall／F1 和置信区间保持 `null`。
 
+输出回执时间的现行 v1 下界为每个 run 的 `finishedAt ?? startedAt`，上界为明确传入的受检时刻，边界相等可接受。存在 `finishedAt` 时，开始后但完成前的回执被拒绝；缺少该字段时只验证不早于开始，不能证明完成后签署，现有 `accepted_within_scope` 状态也不补足这项保证。run 的未来开始时间和已提供的未来完成时间均拒绝。本说明不改变缺 `finishedAt` 时的既有接受门槛，不为旧 run 回填时间；更强保证需要另行版本化。时间／独立性声明不证明真人实际阅读、判断正确或来源主张真实。
+
 `calibrateExtractionStudyJudge` 是共享编程原语，下文的安装版 CLI 与 Studio 核对入口也使用它。它比较绑定同一证据的实际 agent 与独立人工 receipt，重算两份复核报告，提供逐错误类别检测计数、缺失／不确定目标和关键漏检。缺少真人证据时，校准保持 pending，指标不可用。完整校准覆盖不要求候选通过质量门禁，`ready` 也不认证评委：没有预声明校准验收标准时，`judgeAcceptance` 仍为 `not_assessed`。不会合成模型或真人复核。
 
 agent 输出 receipt 必须提供 `judgeIdentity`，human receipt 禁止此字段。其 `identityVersion` 为 `omk-extraction-study-judge-identity/v1`，`evidenceScope: reviewer-declared;not-native-verified/v1`；声明 `executor`、`executorRevision`、`model`、`modelRevision`、`promptVersion`、精确 `promptDigest` 和 `configurationDigest`、`selectedAttemptId` 及全部声明 `attempts`。每个 attempt 含唯一 `attemptId`、`attemptStatus`（`completed`、`failed` 或 `unknown`）、`runEvidence: { reference, digest }`、可空 `outputEvidence: { reference, digest }`，以及各值明确可空的 `usage: { durationMs, inputTokens, outputTokens, costUSD }`。completed attempt 要求输出证据，选中 attempt 必须 completed。这些是单独范围的评委声明，不并入提取生成器成本。评估器不读取引用，不认证声明的版本、用量或原生执行，缺失金额不补零。

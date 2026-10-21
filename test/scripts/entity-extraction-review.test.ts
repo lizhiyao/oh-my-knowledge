@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';
 import { ENTITY_CHECK_VERSION, EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, reviewMentions, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview, reviewCapturedOutput } from '../../scripts/bench/entity-review-checks.js';
@@ -671,6 +671,24 @@ describe('entity extraction review with author evidence', () => {
       const failed = { ...artifact, records: [{ caseId: 'roles', repeat: 1, inputDigest: reviewDigest(JSON.stringify(entityReviewInput(sample))), result: { captureStatus: status, failure: 'Captured failure' } }] };
       expect(reviewCapture(JSON.stringify(failed), single, measurementId, checkWindowExtractionResponse).summary[status === 'call_failure' ? 'callFailures' : 'cancellations']).toBe(1);
     }
+  });
+
+  it('rejects future capture starts before admission while accepting equal and past times under a controlled clock', () => {
+    const now = Date.parse('2020-02-01T00:00:00Z'), clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const artifact = { captureVersion: 'omk-entity-captures/v1', measurementId, split: 'development', repeats: 1,
+        startedAt: '2020-02-01T00:00:00.001Z', executor: 'fixture', model: 'fixture',
+        records: [{ caseId: sample.caseId, repeat: 1, inputDigest: reviewDigest(JSON.stringify(entityReviewInput(sample))),
+          result: { captureStatus: 'output', output: JSON.stringify(packet()) } }] };
+      const admit = vi.fn(checkWindowExtractionResponse);
+      const review = () => reviewCapture(JSON.stringify(artifact), { ...corpus, cases: [sample] }, measurementId, admit);
+      expect(review).toThrow('start time is in the future'); expect(admit).not.toHaveBeenCalled();
+      for (const startedAt of ['2020-02-01T00:00:00Z', '2020-01-31T23:59:59.999Z']) {
+        artifact.startedAt = startedAt;
+        expect(review().summary).toMatchObject({ planned: 1, recorded: 1, notAttempted: 0, captureStatus: 'captured' });
+      }
+      expect(admit).toHaveBeenCalledTimes(2);
+    } finally { clock.mockRestore(); }
   });
 
   it('cannot mark draft gold reviewed without an independent complete receipt bound before outputs', () => {

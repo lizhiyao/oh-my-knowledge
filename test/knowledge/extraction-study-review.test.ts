@@ -142,6 +142,32 @@ describe('frozen real extraction study protocol', () => {
     expect(() => evaluateExtractionStudyReview(f.input)).toThrow(/reviewed entity identity|explicit reviewed output match/);
   });
 
+  it('checks output-review time against completion when available and preserves the v1 start-only fallback', () => {
+    const f = studyFixture();
+    // The fixture clock and both run intervals are fixed, independent of test execution speed.
+    f.receipt.reviewedAt = '2020-02-01T12:00:00Z';
+    expect(() => evaluateExtractionStudyReview(f.input)).toThrow('follow the captured outputs');
+    f.receipt.reviewedAt = '2020-02-02T00:00:00Z';
+    expect(evaluateExtractionStudyReview(f.input).status).toBe('accepted_within_scope');
+    f.receipt.reviewedAt = f.input.now;
+    expect(evaluateExtractionStudyReview(f.input).status).toBe('accepted_within_scope');
+    f.receipt.reviewedAt = '2020-04-01T00:00:00.001Z';
+    expect(() => evaluateExtractionStudyReview(f.input)).toThrow('follow the captured outputs');
+    for (const slot of f.input.slots) delete slot.run!.finishedAt;
+    f.receipt.reviewedAt = '2020-02-01T00:00:00Z';
+    const fallback = evaluateExtractionStudyReview(f.input);
+    expect(fallback.status).toBe('accepted_within_scope');
+    expect(fallback.limits).toContain('Output review time is checked against each run.finishedAt when present, otherwise only run.startedAt; a missing finish cannot establish post-completion review.');
+    f.receipt.reviewedAt = '2020-01-31T23:59:59.999Z';
+    expect(() => evaluateExtractionStudyReview(f.input)).toThrow('follow the captured outputs');
+  });
+
+  it.each(['startedAt', 'finishedAt'] as const)('rejects a future run %s against the supplied study clock', field => {
+    const f = studyFixture();
+    f.input.slots[0].run![field] = '2020-04-01T00:00:00.001Z';
+    expect(() => evaluateExtractionStudyReview(f.input)).toThrow('frozen source or slot');
+  });
+
   it('rejects receipt substitutions, late references, false human roles, duplicate and unknown targets', () => {
     const f = studyFixture();
     expect(() => evaluateExtractionStudyReview({ ...f.input, outputReceipt: { ...f.receipt, outputDigest: extractionStudyDigest('other') } })).toThrow('identity');

@@ -262,6 +262,7 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
     countingUnit: 'review-decision' as const, targets, decisions, missingTargets, forcedBlockingErrors, blockers, slots, variants,
     limits: ['Frozen real sources are a scoped study, not a representative population or release acceptance.',
       'Source provenance, prior exposure and human independence are attestations; digests only bind bytes.',
+      'Output review time is checked against each run.finishedAt when present, otherwise only run.startedAt; a missing finish cannot establish post-completion review.',
       'Agent judge model, revisions, prompt/configuration digests, attempts and usage are reviewer declarations; referenced artifacts are not loaded or native-verified.',
       'Partial or missing reference annotation cannot establish overall precision, recall or F1.',
       'Runs and birth revisions are never rewritten by semantic review; later corrections do not alter these denominators.'] };
