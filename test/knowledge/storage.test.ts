@@ -11,7 +11,7 @@ import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/kno
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
-import type { EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
+import { EntityAnalysisWriteCapacityError, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
 const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0 }));
 vi.mock('node:fs', async importOriginal => {
@@ -343,7 +343,7 @@ describe('current knowledge storage', () => {
     const candidate = applyEntityAnalysisWrite(store.read(command.analysisId), edit, actor, 'size-check');
     expect(Buffer.byteLength(JSON.stringify(candidate))).toBeLessThan(16 * 1024 * 1024);
     expect(Buffer.byteLength(JSON.stringify(candidate, null, 2))).toBeGreaterThan(16 * 1024 * 1024);
-    expect(() => store.write(edit, actor)).toThrow('Entity capacity exceeded');
+    expect(() => store.write(edit, actor)).toThrow(EntityAnalysisWriteCapacityError);
     expect(readFileSync(path, 'utf8')).toBe(before);
     expect(store.read(command.analysisId).generation).toBe(1);
     expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);

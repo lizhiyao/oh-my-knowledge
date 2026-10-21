@@ -14,6 +14,8 @@ import { runCommand } from '../helpers/run-command.js';
 import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
 import { createLocalKnowledgeApplication, createLocalEntityLinks, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import { KnowledgeApplication } from '../../src/knowledge/application/application.js';
+import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/contracts.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
@@ -224,6 +226,20 @@ describe('observe knowledge command wiring', () => {
     expect(revised.maintenance).toBeNull();
     expect(app.detail(old.revision.knowledgeId, applied.revision.revisionId).grounding).toEqual(applied.grounding);
     await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
+  });
+  it.each(['history', 'file'] as const)('reports a known entity %s capacity refusal instead of invalid draft fields', async scope => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-entity-capacity-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    const input = join(root, 'draft.json'); writeFileSync(input, JSON.stringify({ entities: [], mentions: [] }));
+    const correction = vi.spyOn(KnowledgeApplication.prototype, 'correctEntities').mockImplementation(() => { throw new EntityAnalysisWriteCapacityError(scope); });
+    try {
+      const failure = await runCommand(ObserveKnowledge, ['correct-entities', '--workspace', join(root, 'knowledge'), '--analysis', randomUUID(),
+        '--entity-revision', randomUUID(), '--generation', '1024', '--input', input, '--reason', '核对容量诊断', '--lang', 'zh'], { cwd: root })
+        .then(() => undefined, cause => cause);
+      expect(failure).toMatchObject({ code: 1, stderr: expect.stringContaining('knowledge_capacity_exceeded') });
+      expect(failure.stderr).toContain(scope === 'history' ? '1024' : '16 MiB');
+      expect(failure.stderr).not.toContain('草稿内容未通过校验');
+      expect(correction).toHaveBeenCalledOnce();
+    } finally { correction.mockRestore(); }
   });
   it('rejects unknown operations, invalid filter values and flags before touching the workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-current-cli-')); roots.push(root);

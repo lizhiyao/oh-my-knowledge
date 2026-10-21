@@ -97,6 +97,10 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 `entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变实体修订、来源绑定及写入回执。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；本提取流程生成的知识 grounding 绑定明确的实体分析修订。
 
+实体历史最多包含 1,024 个修订（含首次分析），单文件上限为 16 MiB。相同 `requestId` 与摘要的已提交回执先于历史／文件容量检查返回；历史已有 1,024 个修订时的新追加，或将超过文件上限的写入，均在发布前明确拒绝，CLI 与 Studio 使用已有的 `knowledge_capacity_exceeded` 诊断。文件超限可缩小本次内容后重试；历史已满不能通过缩小草稿解除，不会自动截断、删除或覆盖旧修订。未知读取／I/O 失败不因本改动成为已知未发布的容量拒绝。
+
+实体历史 v2 的 `commandDigest` 仍为非空的不透明幂等标记；文件 adapter 对规范化的 actor 与 command 生成 SHA-256。本改动不收紧存量读取格式、不重算摘要、不升级实体历史版本，也不把摘要格式校验视为对任意历史篡改的密码学认证。目录读取的文件数／总量限制与上述单记录写入限制分别适用，不新增全局写入配额。
+
 `extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5；不可变原生结果保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`。运行 metadata 绑定 sidecar 的身份／摘要、接纳事实与稳定的实体／知识写入意图。metadata 和 outcome 容量均须在发送前通过接纳。既有响应守卫按 JavaScript 字符串长度限制为 2 × 1024² 个 code unit；完整 outcome 先归档，再限制接纳，不截断原生证据。新 reader 校验现行格式及精确引用，不接受放入新目录的 v4 文件。
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。

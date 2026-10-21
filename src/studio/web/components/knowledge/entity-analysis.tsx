@@ -5,7 +5,7 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE, entityIdentityProblems, entityIdentityReferenceProblems } from '../../../../knowledge/entities/identity';
 import { displayTime } from '../../../application/display/format';
-import { requestKnowledge } from './request';
+import { KnowledgeRequestError, requestKnowledge } from './request';
 import { EntityRelationFields, identityProblemLabel } from './entity-relations';
 
 type Draft = Pick<KnowledgeEntityAnalysisDetail['revision'], 'entities' | 'mentions'>;
@@ -48,7 +48,9 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
     try { await action(active.signal); } catch (cause) {
       if (!active.signal.aborted) setError(cause instanceof Error && cause.message === 'knowledge_conflict'
         ? t('已有新的修订。草稿仍在这里；重新读取最新修订后再纠正。', 'A newer revision exists. Your draft is here; reload the current revision before correcting it.')
-        : t('未能完成。请核对必填内容、提及对应及来源是否可用；若保存确认丢失，先重新读取。', 'Could not complete. Check required fields, assignments, and source availability. Reload first if the save acknowledgement was lost.'));
+        : cause instanceof KnowledgeRequestError && cause.definiteRejection && cause.message === 'knowledge_capacity_exceeded'
+          ? 'knowledge_capacity_exceeded'
+          : t('未能完成。请核对必填内容、提及对应及来源是否可用；若保存确认丢失，先重新读取。', 'Could not complete. Check required fields, assignments, and source availability. Reload first if the save acknowledgement was lost.'));
     } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   function accept(value: KnowledgeEntityAnalysisDetail) {
@@ -85,7 +87,7 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
             qualifiers: savedLines(entity.qualifiers), uncertainties: savedLines(entity.uncertainties) })) }, reason: reason.trim() }, signal);
         if (!signal.aborted) { accept(saved); setNotice(t('已保存实体新修订。需要在知识中明确应用此修订。', 'Saved a new entity revision. Apply it explicitly from a knowledge candidate.')); onSaved?.(); }
       })}>{t('保存实体新修订', 'Save new entity revision')}</Button></Space>}>
-    {error && <Alert className="knowledge-operation-feedback" type="error" showIcon title={error}/>} {notice && <Alert type="success" title={notice}/>}
+    <EntityAnalysisFeedback error={error} lang={lang}/> {notice && <Alert type="success" title={notice}/>}
     {!detail ? busy ? <Spin/> : <Empty description={t('实体分析尚不可读。若运行未保存完成，请先恢复提炼运行。', 'Analysis is not readable yet. Resume an unfinished extraction first.')}/>
       : <><EntityAnalysisContext detail={detail} lang={lang}/>
         <label className="entity-history-label">{t('查看修订', 'Inspect revision')}<Select disabled={busy || changed} value={detail.revision.revisionId} style={{ width: '100%' }}
@@ -101,6 +103,14 @@ export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, i
           placeholder={t('说明哪些对象或对应关系需要纠正，以及原文依据。', 'Describe the correction and the original evidence.')} onChange={event => setReason(event.target.value)}/></label>
       </>}
   </Drawer>;
+}
+
+export function EntityAnalysisFeedback({ error, lang }: { error: string; lang: Language }) {
+  if (!error) return null;
+  const message = error === 'knowledge_capacity_exceeded' ? lang === 'zh'
+    ? '实体写入容量已达上限，草稿仍保留。请核对文件大小与修订数量；缩小内容只适用于文件超限，历史已满时不能继续追加。不会自动截断或删除旧修订。'
+    : 'Entity write capacity was reached; your draft is preserved. Check file size and revision count. Reducing content can address file size, but cannot free a full history. Old revisions are not truncated or deleted.' : error;
+  return <Alert className="knowledge-operation-feedback" type="error" showIcon title={message}/>;
 }
 
 export function EntityAnalysisContext({ detail, lang }: { detail: KnowledgeEntityAnalysisDetail; lang: Language }) {

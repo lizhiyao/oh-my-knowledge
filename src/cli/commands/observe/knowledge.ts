@@ -11,6 +11,7 @@ import { formatKnowledgeResult, knowledgeCommand } from '../../lib/knowledge-out
 import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
 import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
+import { EntityAnalysisWriteCapacityError } from '../../../knowledge/entities/contracts.js';
 import { KnowledgeCitationLocatorsSchema } from '../../../knowledge/application/citation-locators.js';
 import { ExtractionStudyInspectionError, inspectExtractionStudy } from '../../../knowledge/application/study-inspection.js';
 import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../../knowledge/extraction/study-capacity.js';
@@ -226,6 +227,9 @@ export default class ObserveKnowledge extends BaseCommand {
         if (code === 'knowledge_conflict') this.error(`${code} · ${t('记录已变化。先重读最新修订与 generation，再核对草稿后重试；不要覆盖他人的修改。', 'The record changed. Reload its latest revision and generation, review your draft, then retry without overwriting another edit.')}\n${reload}`);
         if (code === 'knowledge_workspace_busy') this.error(`${code} · ${t('工作区正在写入。等待当前操作结束后重试；不要删除仍在使用的锁。', 'The workspace is being written. Retry after the current operation finishes; do not remove a live lock.')}`);
         if (code === 'knowledge_storage_unsupported') this.error(`${code} · ${t('所选工作区含不支持的记录。请核对目录；如需重新提炼，选择新的空目录，不改写旧记录。', 'This workspace contains unsupported records. Check the directory; use a new empty workspace to extract again, preserving old records.')}`);
+        if (cause instanceof EntityAnalysisWriteCapacityError) this.error(`${code} · ${cause.capacityScope === 'history'
+          ? t('实体历史已达 1024 个修订，本次未追加。缩小草稿不能解除历史上限；请保留原记录并核对修订历史。', 'The entity history has reached 1024 revisions; nothing was appended. Reducing the draft cannot free history capacity. Preserve the saved record and inspect its history.')
+          : t('实体历史文件将超过 16 MiB，本次未保存。请缩小本次修订内容后重试；不会截断或删除旧修订。', 'The entity history file would exceed 16 MiB; this revision was not saved. Reduce this revision before retrying; old revisions are not truncated or deleted.')}\n${reload}`);
         if (code === 'knowledge_citations_invalid') this.error(`${code} · ${t('引用校验失败。请核对 --citations 中的 evidenceLinkId、同窗口 evidenceRef、精确 quote 及零基 occurrence，并为每条证据提供引用；原记录未改写。', 'Citation validation failed. Check evidenceLinkId, same-window evidenceRef, exact quote and zero-based occurrence in --citations, and cite every evidence link. Saved records were not changed.')}`);
         if (signal.aborted) this.error(t('操作已中断。先读取提炼运行；resume 只恢复已保存结果，不再次调用模型。', 'Operation interrupted. Inspect extraction runs first; resume restores saved results without another model call.') + `\n${knowledgeCommand(settings.workspace, 'runs')}`);
         if (cause instanceof z.ZodError) this.error(t('草稿内容未通过校验。核对以下字段后重试；原记录未改写。', 'Draft validation failed. Review the following fields and retry; saved records were not changed.') + '\n' + cause.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('\n'));

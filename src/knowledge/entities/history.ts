@@ -1,6 +1,6 @@
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { canonicalJson } from '../store.js';
-import { EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisWrite } from './contracts.js';
+import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisWrite } from './contracts.js';
 import { validateEntityAnalysis } from './validation.js';
 
 export function validateEntityAnalysisHistory(history: EntityAnalysisEnvelope): void {
@@ -44,6 +44,7 @@ export function applyEntityAnalysisWrite(existing: EntityAnalysisEnvelope | unde
   if ((existing?.generation ?? 0) !== command.expectedGeneration
     || (existing?.writeHeadRevisionId ?? null) !== command.expectedHeadRevisionId
     || (command.revision.parentRevisionId ?? null) !== command.expectedHeadRevisionId) throw new Error('Entity analysis conflict.');
+  if (existing && existing.revisions.length >= 1024) throw new EntityAnalysisWriteCapacityError('history');
   const next = EntityAnalysisEnvelopeSchema.parse({
     storeKind: 'entity-analysis-history', schemaVersion: 2,
     analysisId: command.analysisId, snapshotId: command.snapshotId, sourceVersion: command.sourceVersion,

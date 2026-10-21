@@ -47,6 +47,11 @@ export const EntityAnalysisWriteSchema = z.strictObject({
   revision: EntityAnalysisRevisionSchema,
 });
 export type EntityAnalysisWrite = z.infer<typeof EntityAnalysisWriteSchema>;
+/** A known refusal before publication, never a read or uncertain I/O outcome. */
+export class EntityAnalysisWriteCapacityError extends Error {
+  constructor(readonly capacityScope: 'history' | 'file') { super(`Entity ${capacityScope} write capacity exceeded.`); }
+}
+
 export interface EntityAnalysisStore {
   /** A corrupt analysis is reported separately; other saved analyses remain discoverable. */
   list(): { histories: EntityAnalysisEnvelope[]; unavailable: number };

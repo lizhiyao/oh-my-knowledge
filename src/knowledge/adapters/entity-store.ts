@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../entities/history.js';
-import { EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
+import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { canonicalJson } from '../store.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
@@ -47,7 +47,7 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
       const next = applyEntityAnalysisWrite(existing, command, actor, digest);
       if (next !== existing) {
         // Match the atomic writer's bytes so every successful write remains readable.
-        if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('Entity capacity exceeded.');
+        if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new EntityAnalysisWriteCapacityError('file');
         writeJsonFileAtomic(path, next);
       }
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;

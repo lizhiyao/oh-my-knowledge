@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
-import { EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
+import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 import { KnowledgeDraftSchema } from '../../src/knowledge/contracts.js';
+import { canonicalJson } from '../../src/knowledge/store.js';
 import { admitEntities, type EntityModel } from '../../src/knowledge/extraction/entities.js';
 import { WindowExtractionModelSchema, checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
@@ -216,6 +217,31 @@ describe('entity correction history', () => {
     expect(next.revisions[1].entities[0].label).toBe('构建服务 Echo');
     expect(() => applyEntityAnalysisWrite(next, { ...edit, requestId: '7bf2d5bd-7884-4d74-92c7-9793ff113189' }, actor, 'stale')).toThrow('conflict');
     expect(EntityAnalysisEnvelopeSchema.parse(next)).toEqual(next);
+  });
+  it('allows the 1024th revision, replays its receipts and refuses only a new append before mutation', () => {
+    const birth = command(), previous = applyEntityAnalysisWrite(undefined, birth, actor, 'birth');
+    while (previous.revisions.length < 1023) {
+      const parent = previous.revisions.at(-1)!, id = randomUUID();
+      previous.revisions.push({ ...parent, revisionId: id, parentRevisionId: parent.revisionId });
+      previous.receipts.push({ requestId: randomUUID(), commandDigest: `opaque-fixture:${previous.revisions.length}`,
+        committedGeneration: previous.revisions.length, revisionId: id });
+    }
+    previous.generation = 1023; previous.writeHeadRevisionId = previous.revisions.at(-1)!.revisionId;
+    const last = { ...birth, requestId: randomUUID(), expectedGeneration: 1023, expectedHeadRevisionId: previous.writeHeadRevisionId,
+      revision: { ...birth.revision, revisionId: randomUUID(), parentRevisionId: previous.writeHeadRevisionId } };
+    const full = applyEntityAnalysisWrite(previous, last, actor, 'last-opaque-digest');
+    expect(full.revisions).toHaveLength(1024);
+    const before = canonicalJson(full);
+    expect(applyEntityAnalysisWrite(full, birth, actor, 'birth')).toBe(full);
+    expect(applyEntityAnalysisWrite(full, last, actor, 'last-opaque-digest')).toBe(full);
+    expect(() => applyEntityAnalysisWrite(full, birth, actor, 'changed')).toThrow('idempotency');
+    const next = { ...birth, requestId: randomUUID(), expectedGeneration: 1024, expectedHeadRevisionId: full.writeHeadRevisionId,
+      revision: { ...birth.revision, revisionId: randomUUID(), parentRevisionId: full.writeHeadRevisionId } };
+    expect(() => applyEntityAnalysisWrite(full, { ...next, expectedGeneration: 1023 }, actor, 'stale')).toThrow('conflict');
+    let refusal: unknown;
+    try { applyEntityAnalysisWrite(full, next, actor, 'new-opaque-digest'); } catch (error) { refusal = error; }
+    expect(refusal).toBeInstanceOf(EntityAnalysisWriteCapacityError); expect(refusal).toMatchObject({ capacityScope: 'history' });
+    expect(canonicalJson(full)).toBe(before); expect(EntityAnalysisEnvelopeSchema.parse(full)).toEqual(full);
   });
   it('rejects author impersonation and moving a mention identity to another position', () => {
     expect(() => applyEntityAnalysisWrite(undefined, command(), { ...actor, actorId: 'other' }, 'birth')).toThrow('unauthorized');
