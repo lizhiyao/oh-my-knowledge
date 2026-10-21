@@ -12,7 +12,7 @@ OMK is for agent users and AI application developers. Extract candidates from re
 
 ## Start with local work records
 
-Requires **Node.js ≥22**. The library, artifact authoring, and change review described here require **1.0.0-beta.14 or later**, from the **`@next` channel**; npm `latest` is a separate stable channel. Beta.13 does not include this maintenance UI. Read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
+Requires **Node.js ≥22**. The library, artifact authoring, and change review described here require **1.0.0-beta.14 or later**, from the **`@next` channel**; npm `latest` is a separate stable channel. Beta.13 does not include this maintenance UI. Strict extraction, native outcome archives, bounded retries, model-assisted cross-window link review and study review belong to later main development; a Beta.14 version alone does not establish their availability. See the [capability tiers](docs/guides/knowledge/extract-knowledge.md#availability) for release and source boundaries. Read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
 
 ```bash
 npm i -g oh-my-knowledge@next

@@ -203,7 +203,7 @@ Studio 打开的是经过校验的 Core run，而不是第二套报告模型。R
 
 ## `omk observe`
 
-omk observe 提供两条工作流：默认的 skill 健康度报告，以及 observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。
+`omk observe` 默认生成 skill 健康度报告；子命令还提供观测收件箱（`ingest`／`inbox`／`show`）、知识维护（`knowledge`）及跨窗口实体关联复核（`entity-links`）。
 
 ### A. skill 健康度报告（默认）
 
@@ -276,6 +276,14 @@ omk observe show <inbox_id>
 落盘观察报告的口径版本是 `schemaVersion: 4`：时间线证据档新增 `observed_effect`——运行时观察到的文件变更独立成行，不并入触发它的工具调用，因为多数变更是命令的副作用而非模型发起的编辑。旧口径（如 `3`）的报告不再被读取：对它重跑一次 `omk observe` 即可刷新。人工评审状态独立存储、时间线行的 id 由证据内容派生，因此重跑后评审结果会接回同一批证据，不需要为旧报告保留双读分支。
 
 支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、Qoder session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+
+### C. 知识维护
+
+`omk observe knowledge` 在本地归档来源，用选定模型生成候选，并支持实体／知识核对、修订与来源检查。`schema`、`study` 是零模型调用的核对操作，`generate` 会发送选定内容。先阅读[知识维护指南](../guides/knowledge/extract-knowledge.md)及其[能力分档](../guides/knowledge/extract-knowledge.md#availability)，具体操作参数见 `omk observe knowledge --help`。
+
+### D. 跨窗口实体关联复核
+
+`omk observe entity-links` 先在本地预览原文与配置，再明确发送一次已确认的 `propose` 调用，并保存人工接受／拒绝决定。同名不自动归并，执行失败或未知不授权重发。派发前阅读[跨窗口复核步骤](../guides/knowledge/extract-knowledge.md)与 `omk observe entity-links --help`。
 
 ## `omk agents`
 
