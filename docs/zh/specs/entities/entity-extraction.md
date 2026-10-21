@@ -105,6 +105,14 @@ bounded 政策冻结 `maxInvocations`、`maxReasks`、`profileId`、`maxTotalTok
 
 自动提炼的既有 permission 字段仍为 Schema v1；缺少 policy 明确代表既有单调用授权。新权限可记录选定政策与 `conversation-invocations/v1` ledger 身份；派发前不可变逐次回执绑定 permission／run／attempt／request 身份及完整 token 预约。可变次数／token 计数按回执核对恢复，不退款。会话 `maxCalls` 与 bounded token 总额跨窗口累计，每次重试／重问另占一次额度。新政策须重新取得用户同意，不扩大或改写旧 grant。
 
+显式人工封存引入独立的 **BREAKING-SCHEMA** 边界：`knowledge-extraction-seal-intent` v1 与 `knowledge-extraction-seal-marker` v1 不升级或重新解释 run v5 及旧运行 Schema。先用 `omk observe knowledge sealed-runs --workspace /absolute/workspace --id <run-id> --json` 查询明确记录，取得 `expectedManifestDigest`、`expectedInventoryDigest` 及原始文件清单；`seal-run` 必须提供这两项 SHA-256 身份、稳定的 `--operation-id`、声明为人类的 `--operator` 及 `--reason`，必须显式指定工作区，不解析全局设置或构造 producer。`--storage-namespace legacy` 明确选择 `runs/`，不把它扫描为受支持的运行格式。opaque 旧 envelope 还必须提供 `--offline`，声明相关旧程序已停写／离线，但不认证进程退出。重入必须保持操作、actor、理由、命名空间及证据身份完全一致。参数错误退出 2，业务／未知 I/O 失败退出 1；封存获确认或查询成功退出 0，不代表语义通过。
+
+现行格式候选的每个 attempt 都须使用旧 strict wire，全部已登记 attempt（包括最后一次）都须有精确归档，且不得有未登记 sidecar。拒绝 prepared／completed、entity intent、knowledge intent、committed 写入，以及已存在的 `entities/<run-id>.json`；缺失／损坏归档及未知 I/O 同样拒绝。native 输出不经现行 decoder／admission 重新接纳。对不支持的 Schema 1～4，只识别 envelope 并保留 opaque manifest 原字节及选定命名空间现有 `outcomes/<run-id>/<attempt-id>.json` 清单，不解释或认证其内部状态、reservation、退出、调用或费用。清单限制为 16 MiB manifest 及最多 64 份 sidecar，每份沿用 outcome 字节上限；不证明这些路径外的未知外部／旧文件或未来返回完整。
+
+逐 run 事务保存在 `extraction-runs/seals/<current|legacy>/<run-id>/intent.json`，原字节副本为 `evidence/manifest.json` 与 `evidence/outcomes/<attempt-id>.json`。原 manifest 内的 reservation 字节一并保留，sidecar 不重新序列化。不可变 intent 先确立操作归属，再保存副本；全部副本及 intent 完成文件／目录耐久确认后，工作区写锁内重新核对原 manifest／清单精确身份，再原子替换原 manifest 路径为绑定 marker。原路径持续占位，原字节仍在证据中。没有 marker 的 pending intent 不算 sealed，并阻止普通执行／恢复；同一操作重入补齐或重新确认耐久性。失败保留已发布证据及原记录或 marker，不假装回滚未知发布。当前与旧 reader 都拒绝将 marker 当作可执行 manifest；不提供解封、迁移、兼容 reader、模型调用、实体／知识写入或自动新运行。该锁不能阻止未知旧进程使用内存中的 prepared 记录；offline 声明不能证明远端请求已停止，也不保证其迟到返回已归档。不支持文件／目录 fsync、排他发布或原子 rename 的文件系统明确失败；这些机制不是断电实验或多文件事务保证。
+
+提取质量投影显式升为 `omk.extraction-quality/v4`：current 命名空间已封存记录仍进入 `runCount`，可读取的原 manifest 在原分组中计为 `sealedUnknown`，接纳分母保持未知；不支持的原格式另计无法分组的封存。legacy 封存数量在 current 分母外单列，pending intent 单列且不算 sealed。CLI／Studio 明示人工处置与执行状态未知，不表示成功、费用已知或语义通过。封存清单只读 manifest／intent／marker，并标明 `evidenceIntegrity: not_checked`，不宣称重新校验了 native 归档；显式同操作封存重入才重新核对全部保留证据字节及耐久确认。安装本功能不会封存用户历史数据或重算研究结论。
+
 默认配置生成使用 strict `knowledge-extraction-v30`：strict 渲染包含八个经 AI 作者逐项审阅的合成完整输入／输出示例，以及单独标明的宿主部分接纳诊断。诊断复用发布门禁示例：原文 quote 不匹配的 sibling 被拒绝，合法 sibling 仍被接纳。故意错误的 sibling 是诊断材料，不是正确输出模板。这些答案已见的 demonstrations 不是评测 split，也不证明语义效果改善。唯一 wire Schema、nullable 占位解码及其后的既有宿主接纳检查均保持不变，领域响应仍为 Schema v4。当前作者 model port 使用 prompt-json `knowledge-extraction-v29`；历史 prompt-json v14 与 strict v18 的原始字节保持不变。存储 v5、prompt 版本、wire 身份、实际请求和 pipeline 策略分别记录来源。不支持的能力在发送前拒绝，不静默 fallback 到 prompt-only。不同内容或配置不能复用同一 runId。
 
 质量验收使用[当前指南、语料与检查身份](./entity-extraction-evaluation.md)。提示词、标注或工具字节改变须使用新的测量身份；旧报告、原始输出与分数不重算。不同版本的复现只在对应冻结版本执行，不混用现行运行时。
@@ -121,7 +129,7 @@ v27／v28 进一步明确受审整体与局部内容的对应，属于 **BREAKIN
 
 v29／v30 的来源断言指引与同一次调用内的输出自检属于 **BREAKING-COMPARABILITY**：description、qualifiers 和 mention rationale 分别需要来源依据，不机械地把整体或完整跨度措辞当成规范名称断言。八个 wire 示范与 v19 至 v28 已登记的原始字节摘要约束保持不变。指南 v11、检查器 v5、主语料 64 例／212 处关键提及、公共 Schema、wire、存储及 single 政策不变，不增加调用阶段。已见开发问题是本轮动因，不证明真实模型已服从或稳定改善。新 prompt 与指南页面字节须重新冻结测量身份并逐项复核；历史输出、分数与冻结包不改写。
 
-原 `runs/` v4 文件保持不变，不读取、迁移、改写或删除；新 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
+普通提取与现行 reader 保持原 `runs/` v4 文件不变，不解码、迁移、改写或删除。上述显式 opaque 封存是唯一例外：须声明旧 writer 离线，先完整保留原字节与清单，再以版本化 marker 替换原入口；不新增旧版语义 reader。旧运行详情、resume、对话／项目批次和现行质量统计仍不可用。同一工作区内现行 `sources/`、实体历史 v2 和知识历史 v2 及已有绑定仍可读取，不要求新建空工作区。实体历史 v1 仍不支持，与本次 run 升级分别说明。新提炼不会自动接管旧知识绑定。
 
 历史记载的完整 strict v16 system 原始 UTF-8 摘要为 `sha256:a8c353c0f9c05d1249c3414eaaba7bc7d85b0d34f98142413ba6550173bde6e7`。这是历史摘要声明：当前树没有对应的完整 v16 prompt 资产，`test/measurement-governance/prompt-registry.ts` 及其冻结测试也没有 v16 条目，因此不能为该值提供可复算的字节级锚点；仅有版本号或摘要不能还原原始 system 字节。该历史 prompt 变更属于 **BREAKING-COMPARABILITY**，不改变 wire／领域 Schema、run 存储或 pipeline 政策。历史无 few-shot strict v15 保留冻结摘要 `sha256:d5c14bb7809a2ccd57b5984bb39ff14ef709fd365db8df7792b697fac420736d`；原 prompt-json v14 保持 `sha256:e3acd05eca278b0e34f5d8b75767176c5ede7ce7fade561975eb1f4e4c417399`。旧冻结资产、实验臂、许可和结果继续绑定原身份，v16 不能复用旧 runId 或执行许可；存量数据不迁移、不重评分，不同身份不能合并统计或继承质量／Gold 结论。实际质量及执行证据由评测协议维护。
 

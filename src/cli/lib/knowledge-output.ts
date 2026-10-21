@@ -39,9 +39,9 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       else next.push(t('尚无可恢复的模型结果；先核对运行状态。resume 不重新提炼，也不启动第二次模型调用。', 'No saved model result is available to restore. Inspect the run first; resume neither re-extracts nor starts a second model call.'), command('runs'));
       break;
     }
-    case 'quality': next.push(command('runs', { json: true })); break;
+    case 'quality': next.push(command('runs', { json: true }), command('sealed-runs', { json: true })); break;
     case 'runs':
-      next.push(t('清单仅投影已保存记录，不校验当前归档完整性；恢复时会校验。', 'Listings project saved records without verifying current archive integrity; recovery validates the archive.'));
+      next.push(t('清单仅投影已保存记录，不校验当前归档完整性；恢复时会校验。人工封存另见 sealed-runs。', 'Listings project saved records without verifying current archive integrity; recovery validates the archive. Inspect human seals with sealed-runs.'));
       if (Array.isArray(value) && value.length) next.push(t('恢复只处理已保存结果，不调用模型。选择运行身份：', 'Recovery only handles saved results, without calling a model. Select a run identity:'), command('resume', { id: value[0].runId }));
       else next.push(command('capture', { source: './session.jsonl' }));
       break;
@@ -74,11 +74,13 @@ function formatBody(value: unknown, lang: 'zh' | 'en'): string {
     const quality = value as ReturnType<KnowledgeApplication['quality']>;
     const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
     const rate = (value: number | null) => value === null ? t('未知／无分母', 'unknown / no denominator') : `${(value * 100).toFixed(1)}%`;
-    return [t('提炼接纳统计（当前 v5 运行）', 'Extraction admission statistics (current v5 runs)'),
-      t('只读取 extraction-runs/；保留在 runs/ 的旧记录不参与统计。', 'Reads extraction-runs/ only; retained legacy runs/ records are excluded.'),
+    return [t('提炼接纳统计（当前 v5 运行及人工封存）', 'Extraction admission statistics (current v5 runs and human seals)'),
+      t('接纳分组读取 extraction-runs/ 中的现行 manifest；人工封存保持未知，runs/ 封存另列，不混入 current 分母。', 'Admission groups use current manifests in extraction-runs/; human seals stay unknown, with legacy runs/ seals separately reported outside current denominators.'),
       t('只汇总首次接纳意图，每个运行计一次；不调用模型，不重判历史，不反映后续人工修订。', 'Saved birth admission only, once per run; no model calls, historical rechecking, or later human edits.'),
       t('位置匹配不证明语义准确；引用／依赖拒绝不证明因果级联；零接纳不代表质量通过。', 'Position matches do not prove semantic accuracy; reference rejections do not prove causal cascades; zero admission is not a quality pass.'),
-      `${quality.runCount} ${t('次运行', 'runs')}`,
+      `${quality.runCount} ${t('次 current 运行（含人工封存）', 'current runs, including human seals')}`,
+      `${quality.sealedRunCount} ${t('次已人工封存／执行状态未知', 'human-sealed / execution unknown')}; ${quality.pendingSealCount} ${t('项封存 pending，未算 sealed', 'pending intents, not sealed')}; ${quality.ungroupedSealedRunCount} ${t('次旧 schema 无法分组', 'unsupported-schema runs without a group')}; ${quality.legacySealedRunCount} ${t('次 legacy 封存另列，不混入 current 分母', 'legacy seals reported separately from current denominators')}`,
+      ...quality.manualDispositions.map(value => `${value.request.storageNamespace} / ${value.request.runId} / ${value.state} / human_sealed / execution unknown`),
       ...quality.groups.flatMap(group => [
         `${group.identity.promptVersion} / ${group.identity.executor} / ${group.identity.model} / schema ${group.identity.schemaVersion}\n${group.identity.promptHash}`,
         `${group.identity.policyId} / ${group.identity.outputMode} / ${group.identity.wireId ?? '—'}\n${group.identity.producerId} / ${group.identity.producerRevision}`,

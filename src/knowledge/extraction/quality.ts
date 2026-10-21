@@ -1,3 +1,4 @@
+import type { ExtractionRunSealSummary } from './run-sealing.js';
 import type { ExtractionRun } from './runs.js';
 import { canonicalJson } from '../store.js';
 
@@ -12,7 +13,7 @@ interface QualityGroup {
     policyId: string; policy: ExtractionRun['policy']; outputMode: 'json-schema' | 'prompt-json'; wireId: string | null;
     timeoutMs: number; maxOutputTokens: number | null; producerId: string; producerRevision: string;
   };
-  runs: Record<ExtractionRun['status'], number> & { total: number; withAdmission: number; withoutAdmission: number; zeroAccepted: number; zeroKnowledge: number };
+  runs: Record<ExtractionRun['status'], number> & { total: number; withAdmission: number; withoutAdmission: number; zeroAccepted: number; zeroKnowledge: number; sealedUnknown: number };
   entities: AdmissionCounts; mentions: AdmissionCounts; proposals: AdmissionCounts;
   localization: LocalizationCounts;
   identifierFragmentRejections: number; identifierFragmentRejectionRate: number | null; referenceRejections: number;
@@ -35,9 +36,14 @@ const referenceRejected = new Set([
 const referencePathCodes = ['unknown_entity:', 'unknown_statement:', 'unknown_evidence:', 'uncovered_statement:'];
 
 /** Read saved admission facts only. Never replay today's checker against historical raw output. */
-export function extractionQuality(runs: readonly ExtractionRun[]) {
+export function extractionQuality(runs: readonly ExtractionRun[], dispositions: readonly ExtractionRunSealSummary[] = []) {
+  const sealed = dispositions.filter(value => value.state === 'sealed'), pending = dispositions.filter(value => value.state === 'pending');
+  const current = sealed.filter(value => value.request.storageNamespace === 'current');
+  const sealedIds = new Set(current.map(value => value.request.runId));
+  if (sealedIds.size !== current.length || runs.some(run => sealedIds.has(run.runId))) throw new Error('Duplicate extraction seal identity.');
+  const originals = current.flatMap(value => value.originalRun ? [value.originalRun] : []);
   const groups = new Map<string, QualityGroup>(); const seen = new Set<string>();
-  for (const run of runs) {
+  for (const run of [...runs, ...originals]) {
     if (seen.has(run.runId)) throw new Error('Duplicate extraction run identity.');
     seen.add(run.runId);
     const attempt = run.attempts[0];
@@ -49,13 +55,14 @@ export function extractionQuality(runs: readonly ExtractionRun[]) {
     let group = groups.get(key);
     if (!group) {
       group = { identity, runs: { total: 0, generating: 0, prepared: 0, completed: 0, failed: 0, cancelled: 0,
-        withAdmission: 0, withoutAdmission: 0, zeroAccepted: 0, zeroKnowledge: 0 },
+        withAdmission: 0, withoutAdmission: 0, zeroAccepted: 0, zeroKnowledge: 0, sealedUnknown: 0 },
         entities: admission(), mentions: admission(), proposals: admission(),
         localization: { passed: 0, rejected: 0, notChecked: 0, unknown: 0, unknownRuns: 0, passRate: null },
         identifierFragmentRejections: 0, identifierFragmentRejectionRate: null, referenceRejections: 0, reasons: [] };
       groups.set(key, group);
     }
-    group.runs.total++; group.runs[run.status]++;
+    group.runs.total++;
+    if (sealedIds.has(run.runId)) group.runs.sealedUnknown++; else group.runs[run.status]++;
     if (!run.entityAnalysis) {
       group.runs.withoutAdmission++;
       for (const counts of [group.entities, group.mentions, group.proposals, group.localization]) counts.unknownRuns++;
@@ -103,6 +110,9 @@ export function extractionQuality(runs: readonly ExtractionRun[]) {
       ? group.localization.passed / checked : null;
     group.reasons.sort((a, b) => a.component.localeCompare(b.component) || a.reason.localeCompare(b.reason));
   }
-  return { projectionKind: 'knowledge-extraction-quality' as const, projectionVersion: 'omk.extraction-quality/v3' as const,
-    runCount: runs.length, groups: [...groups.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, group]) => group) };
+  return { projectionKind: 'knowledge-extraction-quality' as const, projectionVersion: 'omk.extraction-quality/v4' as const,
+    runCount: runs.length + current.length, activeRunCount: runs.length, sealedRunCount: current.length, pendingSealCount: pending.length,
+    ungroupedSealedRunCount: current.filter(value => !value.originalRun).length,
+    legacySealedRunCount: sealed.length - current.length,
+    manualDispositions: dispositions.map(({ originalRun: _original, ...value }) => value), groups: [...groups.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, group]) => group) };
 }

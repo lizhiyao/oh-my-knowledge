@@ -1,3 +1,4 @@
+import type { ExtractionRunSealPreview, ExtractionRunSealRequest, ExtractionRunSealSummary } from './run-sealing.js';
 import { EvidenceWindowSchema } from './evidence.js';
 import { z } from 'zod';
 import { KnowledgeActorSchema } from '../contracts.js';
@@ -219,6 +220,10 @@ export const ExtractionRunSchema = z.strictObject({
 });
 export type ExtractionRun = z.infer<typeof ExtractionRunSchema>;
 export interface ExtractionRunStore {
+  /** Optional capabilities are absent only on narrow replay/authored stores. Production provides all three. */
+  inspectSeal?(runId: string, namespace?: 'current' | 'legacy'): ExtractionRunSealPreview | ExtractionRunSealSummary;
+  seal?(request: ExtractionRunSealRequest): ExtractionRunSealSummary;
+  listSeals?(): ExtractionRunSealSummary[];
   create(run: ExtractionRun): void;
   /** Validate the manifest and its referenced native archives before execution or recovery. */
   read(runId: string): ExtractionRun;

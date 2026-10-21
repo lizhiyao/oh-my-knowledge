@@ -20,7 +20,7 @@ function savedRun(policy: ExtractionGenerationPolicy, timeoutMs = 300_000, maxOu
   });
 }
 
-it('separates full budget/reask policies and request caps in quality v3 without treating key order or pending attempts as extra admission', () => {
+it('separates full budget/reask policies and request caps in quality v4 without treating key order or pending attempts as extra admission', () => {
   const policy = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, profileId: 'loopback-test/v1', maxTotalTokens: 2176, maxOutputTokens: 64 });
   const same = savedRun(policy);
   // Saved JSON property ordering does not create a new experimental condition.
@@ -29,7 +29,7 @@ it('separates full budget/reask policies and request caps in quality v3 without 
     savedRun(SINGLE_EXTRACTION_POLICY), savedRun(SINGLE_EXTRACTION_POLICY, 300_000, 8192), savedRun(SINGLE_EXTRACTION_POLICY, 1000)];
   const bytes = JSON.stringify(runs);
   const report = extractionQuality(runs);
-  expect(report.projectionVersion).toBe('omk.extraction-quality/v3'); expect(report.runCount).toBe(7); expect(report.groups).toHaveLength(6);
+  expect(report.projectionVersion).toBe('omk.extraction-quality/v4'); expect(report.runCount).toBe(7); expect(report.groups).toHaveLength(6);
   const paired = report.groups.find(group => group.runs.total === 2)!;
   expect(paired.identity).toMatchObject({ policyId: policy.policyId, policy, timeoutMs: 300_000, maxOutputTokens: 64 });
   expect(paired.runs).toMatchObject({ generating: 2, withAdmission: 0, withoutAdmission: 2 });

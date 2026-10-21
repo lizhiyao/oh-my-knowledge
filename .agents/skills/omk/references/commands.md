@@ -605,7 +605,7 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
+- `operation`(必填):schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
 
 **Flags:**
 
@@ -618,19 +618,24 @@ omk observe knowledge <operation> [flags]
 - `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
 - `--generation` `option`:修改前读取的 generation，用于检测并发冲突。
 - `--generation-policy` `option`:generate：完整生成策略 JSON；省略时仅调用一次。有界重试须明确模型、调用及 token 预算，输出上限取自策略。
-- `--id` `option`:知识身份；resume 时为运行身份。
+- `--id` `option`:知识身份；resume／seal-run／sealed-runs 时为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
 - `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
+- `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
 - `--json` `boolean`:输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
 - `--model` `option`:生成模型，沿用已配置模型。
+- `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
+- `--operation-id` `option`:seal-run：稳定的人工操作 UUID，重入必须复用。
+- `--operator` `option`:seal-run：显式声明的人类操作者身份，不认证真人。
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities：检索页码，从 1 开始。
 - `--page-size` `option`:entities：每页对象数，默认 20，最多 100。
 - `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
-- `--reason` `option`:保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。
+- `--reason` `option`:维护、修订或 seal-run 人工封存的理由；保留不代表已证实，纠正实体不自动改写知识，封存只记录人工处置。
 - `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。
@@ -638,12 +643,21 @@ omk observe knowledge <operation> [flags]
 - `--source` `option`:capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。
 - `--source-status` `all|available|unavailable`:entities：筛选原文可用状态。
 - `--start-record` `option`:从零开始的非空记录序号，包含。
-- `--workspace` `option`:本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。
+- `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
+- `--workspace` `option`:本地知识工作区，默认使用全局设置；seal-run／sealed-runs 必须显式提供且不读全局设置。CLI 与 Studio 共用。
 
 **示例:**
 
 ```bash
 omk observe knowledge schema --json
+```
+
+```bash
+omk observe knowledge sealed-runs --workspace ./knowledge --id <run-id> --json
+```
+
+```bash
+omk observe knowledge seal-run --workspace ./knowledge --id <run-id> --operation-id <uuid> --operator <human-id> --reason "reviewed offline disposition" --manifest-digest sha256:<digest> --inventory-digest sha256:<digest> --offline --json
 ```
 
 ```bash
