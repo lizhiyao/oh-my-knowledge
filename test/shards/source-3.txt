@@ -64,6 +64,7 @@ test/knowledge/quote-occurrence.test.ts
 test/knowledge/storage.test.ts
 test/knowledge/bounded-generation.test.ts
 test/knowledge/extraction-study-review.test.ts
+test/knowledge/extraction-study-panel.test.ts
 test/knowledge/extraction-study-analysis.test.ts
 test/knowledge/extraction-study-inspection.test.ts
 test/cli/knowledge-study.test.ts
@@ -71,6 +72,7 @@ test/studio/http/knowledge-study-server.test.ts
 test/studio/web/knowledge-study-inspection.test.tsx
 test/knowledge/extraction-study-runner.test.ts
 test/scripts/knowledge-study.test.ts
+test/scripts/knowledge-study-panel.test.ts
 test/knowledge/quality.test.ts
 test/knowledge/library.test.ts
 test/knowledge/entity-link-host.test.ts
