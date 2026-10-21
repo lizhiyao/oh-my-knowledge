@@ -1,17 +1,22 @@
 import { afterEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { globalLayout } from '../../../src/evidence/storage/layout.js';
-import { collectAgentLogs } from '../../../src/observability/agents/collect.js';
+import { AGENT_TRACE_ARTIFACT_VERSION, agentCollectionReportPath, collectAgentLogs, loadAgentCollectionReport, type AgentTraceArtifact } from '../../../src/observability/agents/collect.js';
 import { detectAgentInventory } from '../../../src/observability/agents/detect.js';
 import { resolveAgentCatalog } from '../../../src/observability/agents/local-catalog.js';
 import { KNOWN_AGENTS } from '../../../src/observability/agents/registry.js';
+import { AGENT_COLLECTION_VERSION } from '../../../src/observability/agents/contracts.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../../src/observability/trace/unknown-disposition.js';
 import type { AgentCollectionReport, AgentInventoryReport } from '../../../src/observability/agents/contracts.js';
+import { claudeTrace } from '../../helpers/claude-trace.js';
 
 /**
- * 真机 smoke：默认跳过，只有 `OMK_AGENT_SMOKE=1` 时才跑。
+ * 默认 smoke 使用临时 HOME、真实文件系统与生产登记表，不依赖本机 Agent 安装。
+ * 真实 HOME 的检查仅由 `OMK_AGENT_SMOKE=1` 显式启用，不属于 hosted CI 证据。
  *
  * 它不替代用例，只回答一个问题——登记表与扫描口径在真实机器上是否站得住：
  * 目录结构变了、格式判错了、容量口径不合理，都会在这里以数字暴露出来。
@@ -26,12 +31,6 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
   }
 });
-
-function agentOf(report: AgentInventoryReport, agentId: string) {
-  const agent = report.agents.find((entry) => entry.agentId === agentId);
-  assert.ok(agent, `登记表里应当有 ${agentId}`);
-  return agent;
-}
 
 function describeInventory(report: AgentInventoryReport): string {
   return report.agents
@@ -71,7 +70,95 @@ function listFiles(root: string): string[] {
   return out.sort();
 }
 
-describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（OMK_AGENT_SMOKE=1）', () => {
+describe('Agent 探测与采集 smoke（临时 HOME，默认执行）', () => {
+  // 从 collect.test.ts 迁入多格式产物与增量用例，复用真实接线而非新增重复覆盖。
+  it('从生产登记表发现多格式日志，归档证据后增量归零，并能补回丢失产物', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-agents-fixture-smoke-'));
+    tempRoots.push(root);
+    const home = join(root, 'home');
+    const layout = globalLayout(join(root, 'omk'));
+    const session = (path: string, content: string) => {
+      const target = join(home, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+      return target;
+    };
+    const claudeA = session('.claude/projects/-repo-a/session-a.jsonl', claudeTrace('sess-a')
+      .userText('解释这个仓库的分层').assistantText('结论在下面。').toJsonl());
+    const claudeB = session('.claude/projects/-repo-b/session-b.jsonl', claudeTrace('sess-b')
+      .userText('帮我修一个测试').assistantText('已经修复。').toJsonl());
+    const codexA = session('.codex/sessions/2026-05-18/rollout-a.jsonl', [
+      { type: 'session_meta', payload: { id: 'cx-a', session_id: 'cx-a', timestamp: '2026-05-18T09:00:00.000Z', cwd: '/repo-a' } },
+      { type: 'response_item', payload: { type: 'function_call', name: 'shell', arguments: '{"command":"ls"}', call_id: 'c1' } },
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: 'AGENTS.md\nsrc\n' } },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+    const originalBytes = [claudeA, claudeB, codexA].map((path) => readFileSync(path));
+    const detect = {
+      homeDirectory: home, pathDirectories: [],
+      descriptors: resolveAgentCatalog({ catalogPath: layout.agentCatalogPath }),
+      now: () => '2026-05-18T00:00:00.000Z',
+    };
+    const inventory = detectAgentInventory(detect);
+    assert.equal(inventory.homeDirectory, home);
+    assert.deepEqual(inventory.agents.filter((agent) => agent.installed).map((agent) => agent.agentId).sort(), ['claude-code', 'codex']);
+    assert.equal(inventory.summary.sessionFileCount, 3);
+    const collect = (now: string) => collectAgentLogs(inventory, { layout, detect, now: () => now });
+    const first = collect('2026-05-18T11:00:00.000Z');
+    assert.equal(first.schemaVersion, AGENT_COLLECTION_VERSION);
+    assert.equal(first.unknownDispositionRulesVersion, UNKNOWN_DISPOSITION_RULES_VERSION);
+    assert.equal(first.outputDir, layout.observeAgentsDir);
+    assert.equal(first.inventoryGeneratedAt, inventory.generatedAt);
+    assert.deepEqual(first.limitations, []);
+    assert.deepEqual([first.summary.discoveredCount, first.summary.collectedCount, first.summary.skippedCount, first.summary.failedCount], [3, 3, 0, 0]);
+    assert.deepEqual([first.summary.unknownEventCount, first.summary.duplicateViewCount, first.summary.unmappedEvidenceCount], [0, 0, 0]);
+    assert.equal(first.sessions.length, 3);
+    assert.deepEqual(first.agents.find((agent) => agent.agentId === 'claude-code')?.logRoots.map((logRoot) => [logRoot.rootId, logRoot.discoveredCount, logRoot.collectedCount]), [['claude-projects', 2, 2]]);
+    assert.deepEqual(first.agents.find((agent) => agent.agentId === 'codex')?.logRoots.map((logRoot) => logRoot.rootId), ['codex-sessions', 'codex-archived-sessions']);
+    for (const [sourcePath, sourceKind, runId] of [[claudeA, 'claude', 'sess-a'], [claudeB, 'claude', 'sess-b'], [codexA, 'codex', 'cx-a']] as const) {
+      const entry = first.sessions.find((value) => value.sourcePath === sourcePath)!;
+      assert.equal(entry.sourceKind, sourceKind);
+      assert.equal(entry.runId, runId);
+      assert.ok(entry.traceId.startsWith('trace:'));
+      assert.equal(entry.contentDigest, `sha256:${createHash('sha256').update(readFileSync(sourcePath)).digest('hex')}`);
+      assert.deepEqual([entry.unknownEventCount, entry.duplicateViewCount, entry.unmappedEvidenceCount], [0, 0, 0]);
+      assert.match(entry.artifactPath, /^traces\/.*trace_[0-9a-f]{32}\.json$/);
+      const artifact = JSON.parse(readFileSync(join(layout.observeAgentsDir, entry.artifactPath), 'utf8')) as AgentTraceArtifact;
+      assert.equal(artifact.schemaVersion, AGENT_TRACE_ARTIFACT_VERSION);
+      assert.equal(artifact.sourcePath, sourcePath);
+      assert.equal(artifact.contentDigest, entry.contentDigest);
+      assert.equal(artifact.sourceKind, sourceKind);
+      assert.equal(artifact.session.traceId, entry.traceId);
+      assert.equal(artifact.session.sourcePath, sourcePath);
+      assert.ok(artifact.session.events.length > 0);
+      assert.equal(artifact.session.events.length, entry.eventCount);
+    }
+    assert.equal(first.sessions.find((entry) => entry.sourcePath === claudeA)?.title, '解释这个仓库的分层');
+    assert.equal(existsSync(layout.observeAgentsInventoryPath), true);
+    const persistedInventory = JSON.parse(readFileSync(layout.observeAgentsInventoryPath, 'utf8')) as AgentInventoryReport;
+    assert.deepEqual(persistedInventory.agents.filter((agent) => agent.installed).map((agent) => agent.agentId).sort(), ['claude-code', 'codex']);
+    assert.equal(first.inventoryGeneratedAt, persistedInventory.generatedAt);
+    assert.equal(existsSync(agentCollectionReportPath(layout.observeAgentsDir)), true);
+    assert.deepEqual(loadAgentCollectionReport(layout.observeAgentsDir), first);
+    assert.equal(loadAgentCollectionReport(join(root, 'nowhere')), undefined);
+    const artifactPaths = first.sessions.map((entry) => join(layout.observeAgentsDir, entry.artifactPath));
+    const artifactBytes = artifactPaths.map((path) => readFileSync(path));
+    const second = collect('2026-05-18T12:00:00.000Z');
+    assert.deepEqual([second.summary.collectedCount, second.summary.skippedCount, second.summary.failedCount], [0, 3, 0]);
+    assert.equal(second.generatedAt, '2026-05-18T12:00:00.000Z');
+    assert.deepEqual(second.limitations, []);
+    assert.deepEqual(second.sessions, first.sessions);
+    assert.deepEqual(artifactPaths.map((path) => readFileSync(path)), artifactBytes);
+    rmSync(artifactPaths[0]);
+    const third = collect('2026-05-18T13:00:00.000Z');
+    assert.deepEqual([third.summary.collectedCount, third.summary.skippedCount], [1, 2]);
+    assert.equal(existsSync(artifactPaths[0]), true);
+    assert.deepEqual(third.sessions.map((entry) => entry.traceId).sort(), first.sessions.map((entry) => entry.traceId).sort());
+    assert.deepEqual([claudeA, claudeB, codexA].map((path) => readFileSync(path)), originalBytes);
+    assert.ok(listFiles(layout.root).every((path) => path.startsWith(layout.observeAgentsDir) && !path.endsWith('.tmp')));
+  });
+});
+
+describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（真实 HOME，OMK_AGENT_SMOKE=1）', () => {
   it('真实主目录探测：登记表内的产品按事实分类，会话计数可信', () => {
     const catalog = resolveAgentCatalog();
     const extensionIds = catalog
@@ -96,27 +183,19 @@ describe.skipIf(!ENABLED)('本机 Agent 探测与采集 smoke（OMK_AGENT_SMOKE=
     }
     assert.ok(report.summary.installedAgentCount > 0, '这台机器上至少要有已安装的 Agent');
 
-    // 内置表里本机真正在用的产品：安装事实 + 非零会话计数。
-    for (const agentId of ['codex', 'claude-code', 'qoder-cn']) {
-      const agent = agentOf(report, agentId);
-      assert.equal(agent.installed, true, `${agentId} 应当被判为已安装：${JSON.stringify(agent.evidence)}`);
+    // 只断言本机实际安装的产品，不把某一台机器的安装组合带给其他维护者。
+    for (const agent of report.agents.filter((entry) => entry.installed)) {
       assert.ok(agent.evidence.length > 0);
-      assert.ok(agent.sessionFileCount > 0, `${agentId} 的会话计数应大于 0，实际 ${agent.sessionFileCount}`);
       for (const root of agent.logRoots) {
         if (!root.exists) continue;
-        assert.equal(root.readable, true, `${agentId}/${root.rootId} 存在却读不了，要复查扫描口径`);
+        assert.equal(root.readable, true, `${agent.agentId}/${root.rootId} 存在却读不了，要复查扫描口径`);
         assert.equal(
           root.truncated,
           false,
-          `${agentId}/${root.rootId} 命中了默认扫描上限，说明每根 5000 个文件的默认值在本机不成立`,
+          `${agent.agentId}/${root.rootId} 命中了默认扫描上限，说明每根 5000 个文件的默认值在本机不成立`,
         );
       }
     }
-
-    // Qoder 国际版本机只留了 projects/memory，没有会话文件：只断言安装事实。
-    const qoder = agentOf(report, 'qoder');
-    assert.equal(qoder.installed, true);
-    console.info('[omk agents] qoder 会话计数 =', qoder.sessionFileCount, '（0 表示该产品本机没有会话日志，不是漏扫）');
 
     // 计数不能凭空而来：每个非零根至少能核对到一个真实文件。
     for (const agent of report.agents) {

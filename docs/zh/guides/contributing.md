@@ -257,6 +257,7 @@ lint 缓存依据这棵树的文件签名决定要做什么，
 否则请在这份检出内部自行安装。
 
 - `yarn test` 跑完整的 vitest 套件
+- `yarn ci:quality` 首先运行独立的 `scripts/ci/test-coverage.mjs` 门禁。每个测试都必须恰好进入一个分片，包括 Vitest 覆盖守卫自身；缺失、重复与已删除文件的条目会在构建前失败。Agent 探测／采集 smoke 默认使用临时主目录与真实文件系统 fixture。检查本机实际产品与日志时，显式运行 `OMK_AGENT_SMOKE=1 yarn test test/observability/agents/smoke.test.ts`；它会读取真实主目录，产物只写临时目录。Hosted CI 不启用这项 opt-in，也不证明某台机器的 Agent 安装情况。
 - `yarn test:profile` 把完整套件跑一遍并列出最慢的测试文件。用它定位优化目标；它不是性能基线，也不是 CI 门禁。传 `--top <n>` 控制列表长度。
 - `yarn typecheck` 跑两个 tsc 程序：根程序（Node16、不开 `--jsx`）收 `src`／`test`／`scripts` 下的 `.ts`；`tsconfig.studio-web.json` extends `src/studio/web/tsconfig.json`，收整个 Studio web 子树和 `test/studio/web` 的用例，`.ts` 与 `.tsx` 同权。归属由 `test/architecture/test-gate-coverage.test.ts` 守住，新增文件不必再靠文件名试探谁在检查它。
 - Studio 交互测试按文件使用 `// @vitest-environment jsdom`，通过 React Testing Library 挂载真实组件，以可见文字、可访问名称和用户操作断言状态与请求。只替换 HTTP 返回、宿主导航及 DOM 环境缺失的布局能力，不 mock 被测组件或保存／读取状态。卸载时清理组件、请求与全局替身。它们随 `yarn test` 和固定分片持续运行；布局、真实浏览器和安装验收仍按对应风险单独验证，SSR 和 DOM 交互都不替代它们。

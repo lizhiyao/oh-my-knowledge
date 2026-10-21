@@ -68,6 +68,15 @@ const workflow = load(readFileSync('.github/workflows/ci.yml', 'utf8')) as {
 };
 
 describe('required CI checks', () => {
+  it('runs shard coverage independently of shard discovery, and docs-only checks exercise the docs generator', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['ci:quality']).toMatch(/^node scripts\/ci\/test-coverage\.mjs && /);
+    expect(workflow.jobs.quality.steps.some((step) => step.run?.endsWith('yarn ci:quality'))).toBe(true);
+    const docs = workflow.jobs.lightweight.steps.find((step) => step.run?.includes('yarn build:docs:check'));
+    expect(docs?.run).toContain('yarn build:runtime');
+    expect(docs?.run).toMatch(/yarn test [^\n]*test\/scripts\/build-docs\.test\.ts(?: |\n)/);
+  });
+
   it('always emits both protected names and falls back to full jobs on missing classification', () => {
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request']);
     for (const job of ['quality', 'test_22_shard', 'test_24_shard']) {
