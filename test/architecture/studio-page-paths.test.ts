@@ -1,6 +1,6 @@
 /**
- * 架构边界守门：Studio 页面地址只有一个 owner（`src/studio/http/page-paths.ts`），且每个地址都
- * 对应 `web/app` 下真实存在的路由。
+ * 架构边界守门：Studio 公共页面地址只有一个 owner（`src/studio/http/page-paths.ts`），私有故障
+ * 渲染目的地只有 Next rewrite 配置一个 owner；每个地址都对应 `web/app` 下真实存在的路由。
  *
  * 起因是 #903 第三项：同一批页面地址此前有三类 owner 各写一遍字面量——`http/next-server.ts`
  * 判断宿主是否接管该路由组、`http/pages/*-page.ts` 判断装载哪个页面模型、`web/components/**`
@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { sourceFiles, parseSourceFile } from '../helpers/source-files.js';
 
@@ -157,9 +157,17 @@ describe('Studio 页面地址的单一 owner 守门', () => {
     }
   });
 
-  it('每个地址常量都对应 web/app 下真实存在的路由，每个路由都被某个常量覆盖', () => {
+  it('公共地址归常量所有，私有故障目的地归 Next rewrite 所有，均对应真实路由', async () => {
     const routes = routeAddresses();
     const constants = ownerConstants();
+    // The private rendering destination is never mounted by the host and has no link/loader owner.
+    // Its sole runtime owner is the JS Next config, also used by packaged installs without TypeScript.
+    const config = (await import(pathToFileURL(join(STUDIO_DIR, 'web', 'next.config.mjs')).href)).default;
+    expect(config.skipTrailingSlashRedirect).toBe(true);
+    const rewrites = (await config.rewrites()).beforeFiles;
+    expect(rewrites).toEqual([{ source: '/:path*', has: [{ type: 'header', key: 'x-omk-studio-page-fault', value: '1' }], destination: '/studio-fault' }]);
+    const privateDestinations: string[] = rewrites.map((rule: { destination: string }) => rule.destination);
+    for (const destination of privateDestinations) expect(routes).toContain(destination);
     expect(routes.length).toBeGreaterThan(0);
     expect(Object.keys(constants).length).toBeGreaterThan(0);
 
@@ -167,7 +175,7 @@ describe('Studio 页面地址的单一 owner 守门', () => {
       .filter(([, value]) => matchesRoute(value, routes) === undefined)
       .map(([name, value]) => `  ${name} = ${value} ⇒ web/app 下没有对应路由目录`);
     const unowned = routes
-      .filter((route) => !Object.values(constants).some((value) => matchesRoute(value, [route]) !== undefined))
+      .filter((route) => !privateDestinations.includes(route) && !Object.values(constants).some((value) => matchesRoute(value, [route]) !== undefined))
       .map((route) => `  ${route} ⇒ 没有 owner 常量，链接与装载器只能各抄一遍`);
 
     if (dangling.length > 0 || unowned.length > 0) {
