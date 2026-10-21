@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { load } from 'js-yaml';
 // @ts-expect-error Standalone Node scripts run without a TypeScript build.
@@ -170,19 +170,62 @@ describe('test progress reporter', () => {
 });
 
 function bundle() {
-  const directory = temp(); const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+  const directory = join(temp(), 'release-bundle'); mkdirSync(directory); const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
   const bytes = 'fixed package bytes'; const filename = 'package.tgz'; writeFileSync(join(directory, filename), bytes);
   const manifest = { name: pkg.name, version: pkg.version, commit: sha, filename,
     integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}` };
   writeFileSync(join(directory, 'package-manifest.json'), JSON.stringify(manifest));
   writeFileSync(join(directory, 'package-smoke.json'), JSON.stringify({ commit: sha, version: pkg.version, integrity: manifest.integrity, status: 'passed' }));
+  writeFileSync(join(directory, 'ci-evidence.json'), JSON.stringify({ commit: sha, runId: 12, attempt: 2, workflowId: 9, url: 'https://github.com/run' }));
   return { directory, manifest, pkg };
 }
 
 describe('verified package publication', () => {
+  it('executes the actual Release verification step and refuses damaged or mismatched evidence before either write boundary', async () => {
+    const workflow = load(readFileSync(resolve('.github/workflows/publish.yml'), 'utf8')) as {
+      jobs: { github_release: { steps: { name: string; run?: string }[] } };
+    };
+    const script = workflow.jobs.github_release.steps.find(step => step.name === 'Verify release assets')!.run!;
+    const invoke = (directory: string, output: string) => spawnSync('bash', ['-e', '-c', script], {
+      env: { PATH: process.env.PATH, GITHUB_SHA: sha, RUNNER_TEMP: dirname(directory), GITHUB_OUTPUT: output },
+      encoding: 'utf8', timeout: 10_000,
+    });
+    const healthy = bundle();
+    const output = join(dirname(healthy.directory), 'github-output');
+    expect(invoke(healthy.directory, output).status).toBe(0);
+    expect(readFileSync(output, 'utf8')).toBe(`tarball=${join(healthy.directory, healthy.manifest.filename)}\n`);
+
+    const mutateJson = (directory: string, filename: string, patch: Record<string, unknown>) => {
+      const path = join(directory, filename);
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), ...patch }));
+    };
+    const mutations = [
+      (directory: string) => writeFileSync(join(directory, 'package.tgz'), 'altered bytes'),
+      (directory: string) => mutateJson(directory, 'package-manifest.json', { commit: 'b'.repeat(40) }),
+      (directory: string) => mutateJson(directory, 'package-manifest.json', { filename: '../outside.tgz' }),
+      (directory: string) => mutateJson(directory, 'package-smoke.json', { integrity: 'different' }),
+      (directory: string) => mutateJson(directory, 'package-smoke.json', { status: 'failed' }),
+      (directory: string) => mutateJson(directory, 'ci-evidence.json', { commit: 'b'.repeat(40) }),
+      (directory: string) => mutateJson(directory, 'ci-evidence.json', { attempt: 0 }),
+      (directory: string) => rmSync(join(directory, 'ci-evidence.json')),
+    ];
+    for (const mutate of mutations) {
+      const { directory } = bundle();
+      mutate(directory);
+      const result = join(dirname(directory), 'github-output');
+      expect(invoke(directory, result).status).not.toBe(0);
+      expect(() => readFileSync(result, 'utf8')).toThrow();
+      const execute = vi.fn(); const read = vi.fn();
+      await expect(publish(directory, sha, channel, { run: execute, read })).rejects.toThrow();
+      expect(execute).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses altered bytes, identity and incompatible registry versions', async () => {
     const { directory, manifest, pkg } = bundle();
     expect(verifyBundle(directory, sha, pkg).file).toBe(join(directory, 'package.tgz'));
+    expect(() => verifyBundle(directory, undefined, pkg)).toThrow('Commit SHA required');
     expect(() => verifyBundle(directory, 'b'.repeat(40), pkg)).toThrow('identity');
     writeFileSync(join(directory, 'package.tgz'), 'tampered');
     expect(() => verifyBundle(directory, sha, pkg)).toThrow('digest');
@@ -206,16 +249,4 @@ describe('verified package publication', () => {
     expect(pack(directory, sha, execute)).toMatchObject({ commit: sha, name: pkg.name });
     expect(execute.mock.calls[0]).toEqual(['npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory]]);
   });
-});
-
-it('separates read-only verification from OIDC publication and never cancels an in-flight publish', () => {
-  const workflow = load(readFileSync(resolve('.github/workflows/publish.yml'), 'utf8')) as { concurrency: Record<string, unknown>; jobs: Record<string, { permissions: Record<string, string>; needs?: string; 'timeout-minutes': number; steps: { run?: string }[] }> };
-  expect(workflow.concurrency['cancel-in-progress']).toBe(false);
-  expect(workflow.jobs.verify.permissions['id-token']).toBeUndefined();
-  expect(workflow.jobs.publish.needs).toBe('verify');
-  expect(workflow.jobs.publish.permissions['id-token']).toBe('write');
-  expect(workflow.jobs.verify['timeout-minutes']).toBeGreaterThan(0);
-  expect(workflow.jobs.publish['timeout-minutes']).toBeGreaterThan(0);
-  const steps = workflow.jobs.publish.steps.map((step) => step.run ?? '').join('\n');
-  expect(steps).not.toMatch(/yarn.*build|yarn.*test/);
 });

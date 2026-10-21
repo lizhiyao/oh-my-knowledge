@@ -376,7 +376,13 @@ SHA-512 integrity、commit／版本身份、安装结果以及 CI run／attempt 
 OIDC 发布 job 下载该产物，再次校验它的身份与摘要，
 然后用 `--ignore-scripts` 发布这个 tarball。
 它不会重装依赖，也不会重新构建这个包。
-本地的 `prepublishOnly` 保持不变，仍用于手工从目录发布。
+npm job 只有 `contents: read` 与 `id-token: write`。独立的 GitHub Release job
+在 npm 成功后运行，只有 `contents: write`。两者都下载校验 job 返回的不可变
+artifact ID，缺 ID 或摘要不匹配即失败，并重新校验包、安装结果与 CI 记录的 commit 身份。
+Release 附加那份精确 tarball、manifest、安装结果和 CI 引用，不再次构建或安装。
+Actions 固定为官方 commit SHA；checkout 固定触发运行的精确 commit，不持久化凭证。
+本地的 `prepublishOnly` 保持不变，仍用于手工从目录发布。它会在本地重建；
+hook 本身不代表已经取得 CD 的 CI 和隔离安装证据。
 
 发布过程串行执行，且不会取消正在进行的上传。
 registry 上版本相同、包 integrity 也完全一致的，视为已经上传；
@@ -386,6 +392,8 @@ integrity 不同或缺失时 fail closed。测试、安装、构建和 npm 发�
 上传结果不确定时，要检查 registry，并用原始产物重跑失败的那个发布 job。
 重跑全部 job 可能构建出字节不同的产物，
 不能替代复用那一份既有产物。
+若 npm 已成功而只有 GitHub Release 失败，使用同一份已验证工件重跑失败的 Release job；
+不要重新构建包或重复 npm 上传。
 
 CI/CD 中有时限的命令会保留日志、定期的内存／进程采样，以及结构化的结果：
 成功、命令失败、进程超时、有证据支撑的 OOM、被取消、
