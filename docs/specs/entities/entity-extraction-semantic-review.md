@@ -4,7 +4,7 @@ description: Offline itemwise semantic review of frozen entity-extraction output
 
 # Entity extraction output semantic review
 
-This specification owns the responsibility matrix and the offline review of **generated outputs**. The [extraction evaluation protocol](./entity-extraction-evaluation.md) keeps its existing annotation, capture, checker and pre-output reference-review contracts. The [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md) remain the sources of domain meaning and execution invariants; this page does not redefine them.
+This specification owns the responsibility matrix and the offline review of **captured generated outputs**. The [extraction evaluation protocol](./entity-extraction-evaluation.md) keeps its existing annotation, capture, checker and pre-output reference-review contracts. The [identity rules](./entity-identity.md) and [extraction contract](./entity-extraction.md) remain the sources of domain meaning and execution invariants; this page does not redefine them.
 
 The first implementation covers already captured public synthetic regressions. It does not execute models, modify production runs or histories, change prompts, or establish independent real-world semantic acceptance. The original outputs, structural rejections and old conclusions remain intact. A new review is a separately identified analysis of that evidence.
 
@@ -69,6 +69,8 @@ Interpret phrases as a whole before classifying them. A source designation, comp
 | `case` | None; reviews the entire case/repeat |
 
 The verdict vocabulary is `correct`, `incorrect`, `uncertain`, `required_missing` and `optional_not_selected`; a verdict must be valid for its target rather than a shortcut to skipping output review. The protocol validates coverage and declarations, not a person's real identity or the correctness of their judgment. A reviewer declares their role explicitly. An AI review can identify defects and support exploration; it cannot supply independent human approval. Independent reviewer declarations and reference readiness do not establish the truth of a source claim. Unresolved disagreement and missing review stay explicit.
+
+Existing `omk-entity-captures/v1` has only `startedAt`, with no completion/archive timestamp. Capture checking rejects a start later than the checking clock; an output receipt is checked only against `capture.startedAt <= reviewedAt <= now`, which cannot establish review after every output completed. Output review here identifies the captured output being reviewed, not verified post-completion signing. Times and independence are attestations, not proof that a human read the evidence or judged correctly; never invent an old capture's completion from the current time, file mtime or an estimate. Changed checking-tool bytes produce new measurement/derived-report identities; old captures and readiness conclusions remain intact and require their original frozen build.
 
 ## 4. Conservative decisions
 

@@ -90,6 +90,7 @@ export function reviewCapture(raw: string, corpus: EntityReviewCorpus, measureme
   admit: (response: unknown, excerpts: ReturnType<typeof entityReviewInput>['excerpts']) => EntityReviewAdmission) {
   const capture = CaptureSchema.parse(JSON.parse(raw));
   if (capture.measurementId !== measurementId) throw new Error('Capture is for a different measurement identity.');
+  if (Date.parse(capture.startedAt) > Date.now()) throw new Error('Capture start time is in the future.');
   const cases = corpus.cases.filter(sample => sample.split === capture.split);
   const byId = new Map(cases.map(sample => [sample.caseId, sample]));
   const seen = new Set<string>();
