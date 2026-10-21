@@ -1,7 +1,7 @@
 /**
  * oclif 路径 install 命令验收。
  */
-import { describe, it } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import InstallCommand from '../../src/cli/commands/install.js';
+import * as installSources from '../../src/knowledge/artifacts/sources/install-source.js';
 import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
 
 
@@ -29,11 +30,15 @@ describe('oclif install', () => {
     const stdout = await renderCommandHelp('install');
     assert.ok(stdout.includes('安装 omk 官方 Agent Skill'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('omk-agent-skill'), 'stdout missing builtin id');
+    assert.ok(stdout.includes('--to codex'), 'help should show the supported explicit target');
+    assert.doesNotMatch(stdout, /--to all|skill\|prompt\|agent\|workflow/);
   });
 
   it('--help --lang en', async () => {
     const stdout = await renderCommandHelp('install', 'en');
     assert.ok(stdout.includes('Install the official omk Agent Skill'), 'stdout should contain en description');
+    assert.ok(stdout.includes('--to codex'));
+    assert.doesNotMatch(stdout, /--to all|skill\|prompt\|agent\|workflow/);
   });
 
   it('installs omk-agent-skill into a custom skill root', async () => {
@@ -100,12 +105,12 @@ describe('oclif install', () => {
     }
   });
 
-  it('supports --to all without detected targets', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-install-all-'));
+  it('supports --to codex and --kind skill without detected targets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-codex-'));
     try {
       const home = join(dir, 'home');
       await mkdir(home, { recursive: true });
-      const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'all'], {
+      const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', 'codex', '--kind', 'skill'], {
         env: cliEnv({ HOME: home }),
       });
       assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
@@ -115,46 +120,22 @@ describe('oclif install', () => {
     }
   });
 
-  it('supports explicit single targets', async () => {
-    for (const target of ['codex'] as const) {
-      const dir = await mkdtemp(join(tmpdir(), `omk-install-${target}-`));
-      try {
-        const home = join(dir, 'home');
-        await mkdir(home, { recursive: true });
-        const { stdout } = await runInstallCommand(['omk-agent-skill', '--to', target], {
-          env: cliEnv({ HOME: home }),
-        });
-        assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
-        const installed = join(home, '.agents', 'skills', 'omk', 'SKILL.md');
-        assert.ok(existsSync(installed), `${target} target not installed`);
-      } finally {
-        await rm(dir, { recursive: true, force: true });
-      }
-    }
-  });
-
-  it('rejects unknown install targets', async () => {
+  it.each(['all', 'auto,codex', 'codex,codex'])('rejects removed target %s before resolving any source or writing', async (to) => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-invalid-target-'));
+    const remote = vi.spyOn(installSources, 'resolveRemoteGitSource').mockImplementation(() => { throw new Error('unexpected source resolution'); });
     try {
-      await runInstallCommand(['omk-agent-skill', '--to', 'gemini']);
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as CommandRunError;
-      assert.notEqual(e.code, 0);
-      assert.ok((e.stdout + e.stderr).includes('未知安装目标'), 'error should mention unknown install target');
-    }
-  });
-
-  it('rejects mixed auto/all target combinations', async () => {
-    for (const to of ['auto,codex', 'all,codex']) {
-      try {
-        await runInstallCommand(['omk-agent-skill', '--to', to]);
-        assert.fail(`expected non-zero exit for --to ${to}`);
-      } catch (err) {
-        const e = err as CommandRunError;
-        assert.notEqual(e.code, 0);
-        const out = e.stdout + e.stderr;
-        assert.ok(out.includes('安装目标组合不合法'), `missing invalid combo message for ${to}:\n${out}`);
-      }
+      const dest = join(dir, 'dest');
+      await assert.rejects(
+        () => runInstallCommand(['skills/review', '--git-url', 'https://invalid.example/repo.git', '--to', to, '--dest', dest], {
+          cwd: dir, env: cliEnv({ HOME: dir, USERPROFILE: dir }),
+        }),
+        (error: unknown) => (error as CommandRunError).code === 2 && (error as CommandRunError).stderr.includes('--to'),
+      );
+      assert.equal(remote.mock.calls.length, 0, 'invalid flags must not fetch a remote repository');
+      assert.ok(!existsSync(dest) && !existsSync(join(dir, '.agents')) && !existsSync(join(dir, '.omk')));
+    } finally {
+      remote.mockRestore();
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
@@ -394,24 +375,29 @@ describe('oclif install', () => {
     }
   });
 
-  it('显式 --kind prompt 报友好错误且不登记', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-prompt-'));
+  it.each(['prompt', 'agent', 'workflow'])('rejects unsupported --kind %s for every source before side effects', async (kind) => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-unsupported-kind-'));
+    const local = vi.spyOn(installSources, 'resolveInstallSource').mockImplementation(() => { throw new Error('unexpected source resolution'); });
+    const remote = vi.spyOn(installSources, 'resolveRemoteGitSource').mockImplementation(() => { throw new Error('unexpected source resolution'); });
     try {
-      await makeDirSkill(dir, 'review');
-      const dest = join(dir, 'dist-skills');
-      try {
-        await runInstallCommand(['skills/review', '--kind', 'prompt', '--dest', dest], {
-          cwd: dir,
-          env: cliEnv(),
-        });
-        assert.fail('expected non-zero exit');
-      } catch (err) {
-        const e = err as CommandRunError;
-        assert.notEqual(e.code, 0);
-        assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
+      const dest = join(dir, 'dest');
+      for (const source of [
+        ['omk-agent-skill'], ['./missing.md'], ['git:HEAD:skills/review'],
+        ['skills/review', '--git-url', 'https://invalid.example/repo.git'],
+      ]) {
+        await assert.rejects(
+          () => runInstallCommand([...source, '--kind', kind, '--dest', dest], {
+            cwd: dir, env: cliEnv({ HOME: dir, USERPROFILE: dir }),
+          }),
+          (error: unknown) => (error as CommandRunError).code === 2 && (error as CommandRunError).stderr.includes('--kind'),
+        );
       }
-      assert.ok(!existsSync(join(dir, '.omk')), 'unsupported kind must not create metadata');
+      assert.equal(local.mock.calls.length, 0);
+      assert.equal(remote.mock.calls.length, 0, 'invalid kind must not fetch a remote repository');
+      assert.ok(!existsSync(dest) && !existsSync(join(dir, '.agents')) && !existsSync(join(dir, '.omk')));
     } finally {
+      local.mockRestore();
+      remote.mockRestore();
       await rm(dir, { recursive: true, force: true });
     }
   });

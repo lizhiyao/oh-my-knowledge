@@ -30,7 +30,7 @@ omk init [目录]
 
 ```bash
 omk install omk-agent-skill            # 内置 omk 官方 Agent Skill（onboarding）
-omk install omk-agent-skill --to all
+omk install omk-agent-skill --to codex
 omk install ./skills/review            # 安装本地 skill
 omk install git:main:skills/review     # 从当前仓库某个 ref 安装（SHA 不可变、分支随 ref 漂移）
 omk install ./skills/review --dest ~/.my-agent/skills
@@ -41,14 +41,14 @@ omk install ./skills/review --dest ~/.my-agent/skills
 **Flags:**
 
 ```text
-  --dest <value>                  自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
-  --dry-run                       只打印安装目标，不写文件。
-  --force                         覆盖目标位置已存在的 skill。
-  --git-ref <value>               远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
-  --git-url <value>               远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
-  --kind <skill|prompt|agent|workflow>用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
-  --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / all。
+  --dest <value>     自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
+  --dry-run          只打印安装目标，不写文件。
+  --force            覆盖目标位置已存在的 skill。
+  --git-ref <value>  远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
+  --git-url <value>  远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
+  --kind <skill>     安装的 Artifact.kind，可省略；仅支持 skill。
+  --lang <value>     输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+  --to <auto|codex>  安装目标：auto（默认，检测 Codex/AGENTS）或 codex（直接安装）。
 ```
 
 完整描述见 `omk install --help`。
@@ -57,7 +57,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+仅支持安装 `skill`，可省略 `--kind skill`。默认 `auto` 在 `~/.codex` 或 `~/.agents` 是目录时写入 Codex/AGENTS；无需提前检测时使用 `--to codex`，自定义 skill 根目录使用 `--dest`。不接受目标列表。更新旧脚本时请查阅[升级指南](../guides/maintenance/v1-preview-migration.md)。
 
 ## `omk doctor`
 

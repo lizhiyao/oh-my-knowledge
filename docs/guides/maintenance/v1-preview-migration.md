@@ -99,3 +99,11 @@ The migration preserves the frozen evaluator prompts, five scoring layers, compa
 The `list`, `promote`, and `rollback` commands, the `eval` option `--no-evidence`, and the `observe` options `--feedback` / `--no-feedback` have been removed without aliases or compatibility entry points. Remove these calls from scripts and use `doctor` and `eval` results and reports to decide subsequent actions. File restoration and deployment belong to your version-control and release workflows. `omk install` now only installs; it no longer registers a lifecycle. Studio managed-history pages and `/api/managed` have also been removed.
 
 Existing files under `.omk/governance/managed/` or `OMK_HOME/governance/managed/` remain on disk untouched. The new version does not read, rewrite, migrate, or automatically delete them. Archive the original JSON yourself if needed; installed skills do not need reinstalling. Core evaluation artifacts, content identities, and measurement semantics are unchanged.
+
+## Install command surface (BREAKING-CLI)
+
+`omk install` installs only skills. Omit `--kind` or use `--kind skill`; `prompt`, `agent`, and `workflow` are rejected with exit code 2 before source resolution or any installation, including for the built-in `omk-agent-skill`.
+
+Replace `--to all` with `--to codex`. The only target values are `auto` (the default, detects a Codex/AGENTS directory) and `codex` (installs there without prior detection). Comma-separated target lists are also rejected with exit code 2. Use `--dest <dir>` for a custom skill root. No alias for `all` or target lists is retained.
+
+Previously installed skills and historical metadata remain untouched and do not need reinstalling. Explicit installation still follows the existing `--force`, `--dry-run`, and source/target overlap protections. This changes CLI validation, not artifact formats or measurement semantics.

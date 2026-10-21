@@ -99,3 +99,11 @@ omk eval --dry-run --samples eval-samples.yaml \
 `list`、`promote`、`rollback` 命令，`eval` 的 `--no-evidence` 选项，以及 `observe` 的 `--feedback`／`--no-feedback` 选项已移除，不提供别名或兼容入口。脚本应删除这些调用，直接使用 `doctor`、`eval` 的结果与报告决定后续动作；文件恢复与部署由用户自己的版本控制和发布流程处理。`omk install` 只负责安装，不再登记生命周期。Studio 的受管决策史页面与 `/api/managed` 同时退出。
 
 已有 `.omk/governance/managed/` 或 `OMK_HOME/governance/managed/` 文件原样留在磁盘上，新版本不读取、改写、迁移或自动删除它们。需要归档时可自行保存这些原始 JSON；无需重新安装已有 skill。Core 评测产物、内容身份与测量口径不变。
+
+## 安装命令面收窄（BREAKING-CLI）
+
+`omk install` 只安装 skill。省略 `--kind` 或使用 `--kind skill`；`prompt`、`agent`、`workflow` 会在源解析和安装前以退出码 2 拒绝，内置 `omk-agent-skill` 也遵守同一规则。
+
+将 `--to all` 替换为 `--to codex`。目标值仅保留 `auto`（默认，检测 Codex/AGENTS 目录）和 `codex`（无需提前检测，直接安装）。逗号分隔的目标列表也以退出码 2 拒绝。自定义 skill 根目录使用 `--dest <dir>`，不为 `all` 或目标列表保留别名。
+
+已有 skill 和历史元数据原样保留，无需重新安装。显式安装仍遵守原有 `--force`、`--dry-run` 和源目标重叠保护。本次只改变 CLI 校验，不改变载体格式和测量口径。
