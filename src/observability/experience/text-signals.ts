@@ -2,8 +2,6 @@ import {
   isRuntimeProtocolPromptText,
   isUserInteractionMetricText,
 } from '../trace/message-classification.js';
-
-export const HARD_RULE_TEXT_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
 export const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断|停止任务|停一下|先别|别动|等一下|等下|等等|取消(?:任务|执行)?|先暂停|暂停一下/i;
 
 const ASSISTANT_DELIVERY_SIGNAL_RE =

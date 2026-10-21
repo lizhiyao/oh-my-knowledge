@@ -513,21 +513,10 @@ export function variantIdentity(expr: string, skillDir?: string, cwd?: string): 
   return cwd ? `${id}@${pathPhysicalId(resolve(cwd))}` : id;
 }
 
-/** 从已解析的 skill 路径取短名:`SKILL.md` 取其父目录名,否则取去掉 `.md` 后缀的 basename。
- *  `variantExprToSkillName`(expr → 短名)与 `resolveArtifacts` 的 file-path 命名共用这一处,
- *  避免两份各写一遍后悄悄发散——report 键就来自 resolveArtifacts 这一支。 */
+/** 从已解析的 skill 路径取短名：`SKILL.md` 取其父目录名，否则去掉 `.md` 后缀；report 键复用这一命名。 */
 export function skillNameFromPath(filePath: string): string {
   const base = basename(filePath);
   return base === 'SKILL.md' ? basename(dirname(filePath)) : base.replace(/\.md$/i, '');
-}
-
-/** 从 variant 表达式(纯 artifact 身份,可能是路径)取短名。 */
-export function variantExprToSkillName(expr: string): string {
-  if (expr.startsWith('git:')) return expr;
-  if (!expr.includes('/')) return expr;
-  // 先折叠 dir↔SKILL.md 再取短名,与 resolveArtifacts 的命名一致(否则 `weird.md/` 这类
-  // 以 .md 结尾的目录,两处会派生出不同短名)。
-  return skillNameFromPath(canonicalSkillAnchor(resolve(expr))) || expr;
 }
 
 /** variant 输入:纯 artifact 表达式字符串、结构化 `{expr, cwd?}`、或远端 git 结构化 `{git, cwd?, name}`

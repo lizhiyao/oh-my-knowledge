@@ -30,7 +30,6 @@ export const EntityAnalysisRevisionSchema = EntityAnalysisDraftSchema.extend({
   revisionId: uuid, parentRevisionId: uuid.optional(),
   revisedAt: z.iso.datetime({ offset: true }), revisedBy: KnowledgeActorSchema, revisionReason: text,
 });
-export type EntityAnalysisRevision = z.infer<typeof EntityAnalysisRevisionSchema>;
 export const EntityAnalysisEnvelopeSchema = z.strictObject({
   storeKind: z.literal('entity-analysis-history'), schemaVersion: z.literal(2),
   analysisId: uuid, snapshotId: uuid, sourceVersion,

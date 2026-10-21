@@ -277,7 +277,6 @@ export function evaluateExtractionStudyReview(input: ExtractionStudyReviewInput)
       'Runs and birth revisions are never rewritten by semantic review; later corrections do not alter these denominators.'] };
   return { ...report, reportId: extractionStudyDigest(report) };
 }
-export type ExtractionStudyReviewReport = ReturnType<typeof evaluateExtractionStudyReview>;
 
 function validateDecision(decision: ExtractionStudyDecision, decisions: ExtractionStudyDecision[], input: ExtractionStudyReviewInput, corpus: ExtractionStudyCorpus) {
   const target = decision.target, slot = input.slots.find(value => value.slotId === target.slotId)!;

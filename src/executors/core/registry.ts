@@ -111,7 +111,6 @@ type UniqueExecutorDescriptors<Entries extends readonly { readonly name: string 
 export type RegisteredExecutorDescriptor = UniqueExecutorDescriptors<
   typeof EXECUTOR_DESCRIPTORS
 >[number];
-export type RegisteredExecutorName = RegisteredExecutorDescriptor['name'];
 export type ExecutableExecutorName = Extract<
   RegisteredExecutorDescriptor,
   { execution: 'builtin' }

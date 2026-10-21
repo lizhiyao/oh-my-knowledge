@@ -7,24 +7,20 @@ import packageManifest from '../../package.json';
 /**
  * 公开 schema 子路径必须同时满足三件事：
  * ① 有一个声明它、并真的会产出它的构建步骤（`scripts/build/assets.cjs` 的目录拷贝清单）；
- * ② 与 Core／样本 resolver 的「模块同级」读法一致，不能让 exports 与运行时各指一处；
+ * ② 存在内部 resolver 时，与其「模块同级」读法一致，不能让 exports 与运行时各指一处；
  * ③ 真值源目录里对应版本的 schema 文件确实存在。
  * 少任何一环，`build:src` 之外的部分构建或新增子路径就会在用户侧悬空，而 CI 不会红。
  */
 const SCHEMA_EXPORTS: Readonly<Record<string, {
   truthSource: string;
-  resolverFile: string;
-  resolverTail: string;
+  resolver?: { file: string; tail: string };
 }>> = {
   './eval-core/schemas/*': {
     truthSource: 'schemas/eval-core',
-    resolverFile: 'src/eval-core/schema-url.ts',
-    resolverTail: './contracts/schemas/',
+    resolver: { file: 'src/eval-core/schema-url.ts', tail: './contracts/schemas/' },
   },
   './eval-samples/schemas/v3/*': {
     truthSource: 'schemas/eval-samples/v3',
-    resolverFile: 'src/eval-workflows/inputs/eval-samples.ts',
-    resolverTail: './contracts/schemas/v3/',
   },
 };
 
@@ -53,7 +49,7 @@ describe('公开 schema 子路径的生产者与读法必须同源', () => {
   });
 
   for (const [subpath, expected] of Object.entries(SCHEMA_EXPORTS)) {
-    it(`${subpath} 的目标目录由构建步骤产出，且与 resolver 同级读法一致`, () => {
+    it(`${subpath} 的目标目录由构建步骤产出，且内部读法存在时保持一致`, () => {
       const target = targets[subpath];
       expect(target, `缺少 ${subpath} 的 exports 目标`).toBeTruthy();
       expect(target.startsWith('./dist/'), `目标必须落在 dist 内：${target}`).toBe(true);
@@ -63,12 +59,14 @@ describe('公开 schema 子路径的生产者与读法必须同源', () => {
       const source = copies.get(targetDir);
       expect(source, `${targetDir} 没有任何构建步骤产出（assets.cjs 缺条目）`).toBe(expected.truthSource);
 
-      // ② 读法：resolver 以模块同级 URL 读取，其拼出的路径必须与 exports 目标同一处。
-      const resolverSource = readFileSync(expected.resolverFile, 'utf8');
-      expect(resolverSource).toContain(`new URL(\`${expected.resolverTail}`);
-      const moduleDir = expected.resolverFile.replace(/^src\//, '').replace(/\/[^/]+\.ts$/, '');
-      const sibling = resolve('dist', moduleDir, expected.resolverTail.slice(2).replace(/\/$/, ''));
-      expect(relative(process.cwd(), sibling).split(/[\\/]+/).join('/')).toBe(targetDir);
+      // ② 仍在使用的内部 resolver 不能与公开路径分叉；样本 schema 仅保留公开子路径。
+      if (expected.resolver) {
+        const resolverSource = readFileSync(expected.resolver.file, 'utf8');
+        expect(resolverSource).toContain(`new URL(\`${expected.resolver.tail}`);
+        const moduleDir = expected.resolver.file.replace(/^src\//, '').replace(/\/[^/]+\.ts$/, '');
+        const sibling = resolve('dist', moduleDir, expected.resolver.tail.slice(2).replace(/\/$/, ''));
+        expect(relative(process.cwd(), sibling).split(/[\\/]+/).join('/')).toBe(targetDir);
+      }
 
       // ③ 真值源存在且非空。
       expect(existsSync(expected.truthSource), `真值源缺失：${expected.truthSource}`).toBe(true);

@@ -12,14 +12,6 @@ import { globalLayout, OMK_HOME } from './layout.js';
 export { OMK_HOME };
 
 const GLOBAL_LAYOUT = globalLayout();
-
-/**
- * 耐久测量数据(要留、被 reportId 等引用,绝不自动删)的默认根目录。这几个是 cli 写、server(Studio)读
- * 的同一处,必须一致 —— 否则 cli 把产物写到一处、studio 从另一处读,页面就空。放在中立的 evidence/storage 层,
- * 让 cli/ 与 server/ 两个交付层都能合法 import 同一个常量,而不必让 server 反向 import cli
- * (那是 #242 清掉的分层倒挂)。
- */
-export const DEFAULT_KNOWLEDGE_DIR: string = GLOBAL_LAYOUT.knowledgeDir;
 export const DEFAULT_REPORTS_DIR: string = GLOBAL_LAYOUT.evalDir;
 export const DEFAULT_OBSERVE_HEALTH_DIR: string = GLOBAL_LAYOUT.observeHealthDir;
 export const DEFAULT_DOCTORS_DIR: string = GLOBAL_LAYOUT.doctorDir;

@@ -509,14 +509,6 @@ export function userTimelineEvents(
   return events;
 }
 
-export function safeRecordText(record: unknown): string {
-  try {
-    return JSON.stringify(record);
-  } catch {
-    return String(record ?? '');
-  }
-}
-
 export function hasAssistantTurnFailedText(value: string): boolean {
   return /\[assistant turn failed\]|assistant turn failed|assistant_turn_failed|turn failed/i.test(value);
 }
