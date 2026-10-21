@@ -122,25 +122,6 @@ export function loadObservationSourceRecordArchive(
   }
 }
 
-/**
- * Build the page-safe archive metadata without reading the potentially large
- * sidecar. The source-record endpoint resolves the same ref on demand.
- */
-export function summarizeObservationSourceRecordArchive(
-  ref: ObservationSourceRecordArchiveRef | undefined,
-): ObservationSourceRecordArchiveView {
-  if (!ref) return unavailableView('no_record_ranges');
-  return {
-    status: ref.status,
-    recordCount: ref.recordCount,
-    records: [],
-    omittedRecordCount: ref.omittedRecordCount,
-    byteCount: ref.byteCount,
-    truncated: ref.truncated,
-    ...(ref.reason ? { reason: ref.reason } : {}),
-  };
-}
-
 function collectSourceRecords(
   sourceTrace: string,
   targets: SourceArchiveTarget[],

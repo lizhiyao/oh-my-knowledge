@@ -212,8 +212,6 @@ export type CoreDecisionProjection =
     readonly decisionDigest: string;
   };
 
-export type CoreEvolutionDecisionEvidence = CoreDecisionProjection;
-
 export interface CoreEvolutionEvidence {
   readonly projectionKind: 'core-evolution-evidence';
   readonly schemaVersion: typeof CORE_EVOLUTION_EVIDENCE_SCHEMA_VERSION;

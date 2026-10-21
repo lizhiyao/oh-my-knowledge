@@ -222,10 +222,6 @@ export type ExperienceReviewIndicators = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceReviewIndicatorsSchema
 >;
 
-export type ExperienceInvocationMetrics = z.infer<
-  typeof import('./experience-evidence-schema.js').ExperienceInvocationMetricsSchema
->;
-
 export type ExperienceInvocation = z.infer<
   typeof import('./experience-evidence-schema.js').ExperienceInvocationSchema
 >;
