@@ -20,10 +20,24 @@ import { EntityLinkPreviewSchema, type EntityLinkInvocation, type EntityLinkInvo
 import { entityLinkDigest } from '../../src/knowledge/entity-linking/entity-link-hash.js';
 import { modelWindow } from './fixtures.js';
 
+const durabilityFault = vi.hoisted(() => ({ path: undefined as string | undefined, remaining: 0 }));
+vi.mock('node:fs', async importOriginal => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  return { ...fs, fsyncSync(fd: number) {
+    if (durabilityFault.path && durabilityFault.remaining > 0 && fs.existsSync(durabilityFault.path)) {
+      const opened = fs.fstatSync(fd), target = fs.lstatSync(durabilityFault.path);
+      if (opened.dev === target.dev && opened.ino === target.ino) {
+        durabilityFault.remaining--; throw new Error('domain durability confirmation interrupted');
+      }
+    }
+    fs.fsyncSync(fd);
+  } };
+});
+
 let root: string;
 const servers: Server[] = [];
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-link-host-')); });
-afterEach(async () => { vi.restoreAllMocks(); for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); } expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false); expect(readdirSync(root, { recursive: true }).filter(name => String(name).endsWith('.tmp'))).toEqual([]); rmSync(root, { recursive: true, force: true }); });
+afterEach(async () => { durabilityFault.path = undefined; durabilityFault.remaining = 0; vi.restoreAllMocks(); for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); } expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false); expect(readdirSync(root, { recursive: true }).filter(name => String(name).endsWith('.tmp'))).toEqual([]); rmSync(root, { recursive: true, force: true }); });
 const knowledge = () => createLocalKnowledgeApplication(root);
 async function window(name: string) {
   const source = knowledge().capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
@@ -245,17 +259,39 @@ describe('entity-link actual host/store/API flow', () => {
     expect(reopened.project(preview.reviewId)).toMatchObject({ status: 'execution_unknown', invocationBudget: { consumed: 1 }, canStart: false });
     expect((await start(reopened, preview.reviewId)).events).toHaveLength(3); expect(transport.count).toBe(0);
   });
-  it.each(['library_ack', 'review_ack'] as const)('restores accepted organization after %s with the stable receipt, preserving original entities/knowledge', async fault => {
+  it.each(['library_ack', 'review_ack', 'library_sync', 'review_sync'] as const)('restores accepted organization after %s with the stable receipt, preserving original entities/knowledge', async fault => {
     const a = await window('a'), b = await window('b');
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env, fault === 'review_ack' ? faultStore('application_applied', false) : undefined);
     const preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
     const entityFile = join(root, 'entities', `${a.run.runId}.json`), entitiesBefore = readFileSync(entityFile);
     if (fault === 'library_ack') { const original = KnowledgeLibraryApplication.prototype.applyLinkIntent; vi.spyOn(KnowledgeLibraryApplication.prototype, 'applyLinkIntent').mockImplementationOnce(function (this: KnowledgeLibraryApplication, ...args) { original.apply(this, args); throw new Error('lost library ack'); }); }
+    if (fault === 'library_sync' || fault === 'review_sync') {
+      durabilityFault.path = join(root, fault === 'library_sync' ? 'library' : 'entity-links'); durabilityFault.remaining = 1;
+    }
     expect(() => accept(app, completed)).toThrow(); expect(app.project(preview.reviewId).status).toBe('accepted_pending_application');
-    const prior = createLocalKnowledgeLibrary(root).catalog(); expect(prior.objectCount).toBe(1);
-    knowledge().deleteSource(a.source.snapshotId); // receipt-first recovery must precede current-source checks
+    const prior = createLocalKnowledgeLibrary(root).catalog(); expect(prior.objectCount).toBe(fault === 'review_sync' ? 0 : 1);
+    if (prior.objectCount) knowledge().deleteSource(a.source.snapshotId); // receipt-first recovery precedes current-source checks
     const applied = host(transport.env).resume(preview.reviewId); expect(projectEntityLinkInvocation(applied, { hashJson: entityLinkDigest, hashText: entityLinkTextHash }).status).toBe('applied');
-    expect(createLocalKnowledgeLibrary(root).detail(prior.rows[0].objectId).history.generation).toBe(1); expect(readFileSync(entityFile)).toEqual(entitiesBefore); expect(transport.count).toBe(1);
+    const after = createLocalKnowledgeLibrary(root).catalog(); expect(after.objectCount).toBe(1);
+    expect(createLocalKnowledgeLibrary(root).detail(after.rows[0].objectId).history.generation).toBe(1); expect(readFileSync(entityFile)).toEqual(entitiesBefore); expect(transport.count).toBe(1);
+  });
+  it('requires durability confirmation for exact prepare/start/decision/resume acknowledgements without rewriting receipts or dispatching again', async () => {
+    const a = await window('a'), b = await window('b');
+    const transport = await api(() => native(suggestion(preview))), app = host(transport.env), preview = app.preview(a.ref, b.ref, selection);
+    prepare(app, preview); const completed = await start(app, preview.reviewId);
+    const command = { reviewId: completed.reviewId, requestId: randomUUID(), expectedGeneration: completed.generation,
+      decision: 'accept' as const, identityConfirmed: true as const, reason: 'authored durability fixture', objectLabel: 'Alpha 对象' };
+    const applied = app.decide(command), file = join(root, 'entity-links', `${preview.reviewId}.json`), bytes = readFileSync(file);
+    knowledge().deleteSource(a.source.snapshotId);
+    const reopened = host({}), operations = [() => prepare(reopened, preview), () => start(reopened, preview.reviewId),
+      () => reopened.decide(command), () => reopened.resume(preview.reviewId)];
+    durabilityFault.path = file; durabilityFault.remaining = operations.length;
+    for (const operation of operations) await expect(Promise.resolve().then(operation)).rejects.toThrow('durability confirmation interrupted');
+    expect(durabilityFault.remaining).toBe(0); expect(readFileSync(file)).toEqual(bytes);
+    for (const operation of operations) expect(await operation()).toEqual(applied);
+    expect(readFileSync(file)).toEqual(bytes); expect(transport.count).toBe(1);
+    const catalog = createLocalKnowledgeLibrary(root).catalog(); expect(catalog.objectCount).toBe(1);
+    expect(createLocalKnowledgeLibrary(root).detail(catalog.rows[0].objectId).history.generation).toBe(1);
   });
   it('persists a human rejection, suppresses same revision after restart and retains a changed-source terminal conflict', async () => {
     const a = await window('a'), b = await window('b'); let preview!: ReturnType<EntityLinkApplication['preview']>;
