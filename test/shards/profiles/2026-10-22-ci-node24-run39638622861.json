@@ -1,0 +1,120 @@
+{
+  "evidenceVersion": "omk-ci-shard-step-observation/v1",
+  "source": "GitHub Actions job/step API; distinct from the local Vitest profile",
+  "run": {
+    "id": 39638622861,
+    "url": "https://github.com/lizhiyao/oh-my-knowledge/actions/runs/39638622861",
+    "headSha": "94fbbfe40cec3bdadea728a6a9f21a66badb30a3",
+    "conclusion": "success"
+  },
+  "observedAt": "2026-10-21T17:05:48.250Z",
+  "jobs": [
+    {
+      "id": 119356057528,
+      "url": "https://github.com/lizhiyao/oh-my-knowledge/actions/runs/39638622861/job/119356057528",
+      "name": "test shard (24, 1/4)",
+      "conclusion": "success",
+      "runnerLabels": [
+        "ubuntu-latest"
+      ],
+      "testSteps": [
+        {
+          "name": "Run xargs -a test/shards/source-1.txt node scripts/ci/diagnostics.mjs run tests \"$RUNNER_TEMP/ci-diagnostics\" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1",
+          "number": 7,
+          "conclusion": "success",
+          "startedAt": "2026-10-21T16:53:36Z",
+          "completedAt": "2026-10-21T16:56:41Z",
+          "wallTimeMs": 185000
+        }
+      ]
+    },
+    {
+      "id": 119356057238,
+      "url": "https://github.com/lizhiyao/oh-my-knowledge/actions/runs/39638622861/job/119356057238",
+      "name": "test shard (24, 2/4)",
+      "conclusion": "success",
+      "runnerLabels": [
+        "ubuntu-latest"
+      ],
+      "testSteps": [
+        {
+          "name": "Run xargs -a test/shards/source-2.txt node scripts/ci/diagnostics.mjs run tests \"$RUNNER_TEMP/ci-diagnostics\" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1",
+          "number": 7,
+          "conclusion": "success",
+          "startedAt": "2026-10-21T16:53:07Z",
+          "completedAt": "2026-10-21T16:54:35Z",
+          "wallTimeMs": 88000
+        }
+      ]
+    },
+    {
+      "id": 119356057064,
+      "url": "https://github.com/lizhiyao/oh-my-knowledge/actions/runs/39638622861/job/119356057064",
+      "name": "test shard (24, 3/4)",
+      "conclusion": "success",
+      "runnerLabels": [
+        "ubuntu-latest"
+      ],
+      "testSteps": [
+        {
+          "name": "Run xargs -a test/shards/source-3.txt node scripts/ci/diagnostics.mjs run tests \"$RUNNER_TEMP/ci-diagnostics\" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1",
+          "number": 7,
+          "conclusion": "success",
+          "startedAt": "2026-10-21T16:53:11Z",
+          "completedAt": "2026-10-21T16:56:30Z",
+          "wallTimeMs": 199000
+        }
+      ]
+    },
+    {
+      "id": 119356057042,
+      "url": "https://github.com/lizhiyao/oh-my-knowledge/actions/runs/39638622861/job/119356057042",
+      "name": "test shard (24, 4/4)",
+      "conclusion": "success",
+      "runnerLabels": [
+        "ubuntu-latest"
+      ],
+      "testSteps": [
+        {
+          "name": "Run xargs -a test/shards/source-4.txt node scripts/ci/diagnostics.mjs run tests \"$RUNNER_TEMP/ci-diagnostics\" 540000 --retry-on=unknown_signal yarn test --maxWorkers=1",
+          "number": 7,
+          "conclusion": "success",
+          "startedAt": "2026-10-21T16:53:11Z",
+          "completedAt": "2026-10-21T16:55:06Z",
+          "wallTimeMs": 115000
+        }
+      ]
+    }
+  ],
+  "limits": "These timestamps measure the diagnostics-wrapped test step including hermetic setup/cleanup and any retry; API precision is seconds. They exclude install/build and do not establish an optimization benefit or comparability with the local profile.",
+  "declaredRuntime": {
+    "nodeMajor": 24,
+    "maxWorkers": 1
+  },
+  "manifestsAtRunHead": [
+    {
+      "file": "test/shards/source-1.txt",
+      "sha256": "sha256:a65ee42e3a09f29dbc1a08ed2022c177cffa4d966ff69b01bf745dd7e42830e8",
+      "fileCount": 207
+    },
+    {
+      "file": "test/shards/source-2.txt",
+      "sha256": "sha256:7a30534c850be80b267e3282ac3a8ddfdf884b0bf5833bfdf2e2b4c9ad1db5a8",
+      "fileCount": 93
+    },
+    {
+      "file": "test/shards/source-3.txt",
+      "sha256": "sha256:8237dde463fd415893a89ec0456897edcea3c3de979b9b36b7e60e54e194a880",
+      "fileCount": 119
+    },
+    {
+      "file": "test/shards/source-4.txt",
+      "sha256": "sha256:01eb06f056cdfd7feca465239c5d710e0ed9f8851bbd3b338f8b58bcde4d35bb",
+      "fileCount": 107
+    }
+  ],
+  "workflowAtRunHead": {
+    "file": ".github/workflows/ci.yml",
+    "sha256": "sha256:d3d58a569fa1dd8aff5696ccc3b6fa3b904075ae70b6c01271248a6b090b75b8"
+  }
+}

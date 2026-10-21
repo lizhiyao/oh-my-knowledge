@@ -1,0 +1,3270 @@
+{
+  "profileVersion": "omk-test-profile/v1",
+  "source": {
+    "commit": "d86fffc2f54a4aec30f96dbb6d0b57de2636e48e",
+    "dirty": false,
+    "worktreeStatus": []
+  },
+  "sourceAfter": {
+    "commit": "d86fffc2f54a4aec30f96dbb6d0b57de2636e48e",
+    "dirty": false,
+    "worktreeStatus": []
+  },
+  "sourceMetadataChanged": false,
+  "environment": {
+    "os": "darwin",
+    "osRelease": "27.0.0",
+    "architecture": "arm64",
+    "nodeVersion": "v24.21.0",
+    "workers": 1
+  },
+  "command": [
+    "node",
+    "scripts/ci/test.mjs",
+    "--maxWorkers=1",
+    "--reporter=default",
+    "--reporter=json",
+    "--outputFile.json=<temporary>/vitest.json"
+  ],
+  "startedAt": "2026-10-21T17:44:13.200Z",
+  "finishedAt": "2026-10-21T17:49:58.439Z",
+  "wallTimeMs": 345236.794334,
+  "status": "passed",
+  "exit": {
+    "code": 0,
+    "signal": null,
+    "spawnError": false
+  },
+  "reportIssue": null,
+  "manifestBinding": "sha256:2836fcedb6a602fa4202260392cba39734da7f36a47fc22a3f87a0b4e688a262",
+  "manifests": [
+    {
+      "file": "test/shards/source-1.txt",
+      "sha256": "sha256:a65ee42e3a09f29dbc1a08ed2022c177cffa4d966ff69b01bf745dd7e42830e8",
+      "fileCount": 207
+    },
+    {
+      "file": "test/shards/source-2.txt",
+      "sha256": "sha256:7a30534c850be80b267e3282ac3a8ddfdf884b0bf5833bfdf2e2b4c9ad1db5a8",
+      "fileCount": 93
+    },
+    {
+      "file": "test/shards/source-3.txt",
+      "sha256": "sha256:8237dde463fd415893a89ec0456897edcea3c3de979b9b36b7e60e54e194a880",
+      "fileCount": 119
+    },
+    {
+      "file": "test/shards/source-4.txt",
+      "sha256": "sha256:01eb06f056cdfd7feca465239c5d710e0ed9f8851bbd3b338f8b58bcde4d35bb",
+      "fileCount": 107
+    }
+  ],
+  "files": [
+    {
+      "file": "test/architecture/architecture-docs.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 4.15234375
+    },
+    {
+      "file": "test/architecture/cli-process-owner.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 19.12890625
+    },
+    {
+      "file": "test/architecture/dependency-graph.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 12.63037109375
+    },
+    {
+      "file": "test/architecture/domain-contract-ownership.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 21.1669921875
+    },
+    {
+      "file": "test/architecture/eval-core-contract-layers.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 42.928466796875
+    },
+    {
+      "file": "test/architecture/eval-workflows-executors-layout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.27978515625
+    },
+    {
+      "file": "test/architecture/import-boundaries.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1869.615966796875
+    },
+    {
+      "file": "test/architecture/knowledge-layout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.15771484375
+    },
+    {
+      "file": "test/architecture/package-schema-assets.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.1943359375
+    },
+    {
+      "file": "test/architecture/production-reachability.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1351.754638671875
+    },
+    {
+      "file": "test/architecture/retired-evaluation-layout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 80.61181640625
+    },
+    {
+      "file": "test/architecture/src-root-layout.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 61.472412109375
+    },
+    {
+      "file": "test/architecture/studio-client-runtime-closure.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 118.28857421875
+    },
+    {
+      "file": "test/architecture/studio-color-tokens.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 62.0986328125
+    },
+    {
+      "file": "test/architecture/studio-export-consumers.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1238.907470703125
+    },
+    {
+      "file": "test/architecture/studio-internal-navigation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 90.90234375
+    },
+    {
+      "file": "test/architecture/studio-page-params.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 101.171630859375
+    },
+    {
+      "file": "test/architecture/studio-page-paths.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 112.263671875
+    },
+    {
+      "file": "test/architecture/studio-react-rendering.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 135.1435546875
+    },
+    {
+      "file": "test/architecture/studio-shell-utilities.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 81.244140625
+    },
+    {
+      "file": "test/architecture/studio-table-skin.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 112.1953125
+    },
+    {
+      "file": "test/architecture/studio-type-scale.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 13.087646484375
+    },
+    {
+      "file": "test/architecture/study-host-import-coverage.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 707.04248046875
+    },
+    {
+      "file": "test/architecture/subprocess-bounded-exec.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.29541015625
+    },
+    {
+      "file": "test/architecture/test-gate-coverage.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 127.062255859375
+    },
+    {
+      "file": "test/cli-i18n.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.574462890625
+    },
+    {
+      "file": "test/cli-progress.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.0751953125
+    },
+    {
+      "file": "test/cli/agents-catalog.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3387.785400390625
+    },
+    {
+      "file": "test/cli/cli-exit.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.178955078125
+    },
+    {
+      "file": "test/cli/codex-model-hint.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 4.736328125
+    },
+    {
+      "file": "test/cli/doctor-eval-embed.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 408.532470703125
+    },
+    {
+      "file": "test/cli/doctor-retention.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 28.912353515625
+    },
+    {
+      "file": "test/cli/doctor.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 607.7900390625
+    },
+    {
+      "file": "test/cli/eval-cancellation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 6943.941162109375
+    },
+    {
+      "file": "test/cli/eval-output.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.109130859375
+    },
+    {
+      "file": "test/cli/eval-preflight-hint.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.085693359375
+    },
+    {
+      "file": "test/cli/eval-task.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1158.417236328125
+    },
+    {
+      "file": "test/cli/evolve-autogen-guard.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 7.47314453125
+    },
+    {
+      "file": "test/cli/first-run-smoke.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2707.1025390625
+    },
+    {
+      "file": "test/cli/init-samples-i18n.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 280.47412109375
+    },
+    {
+      "file": "test/cli/init-scaffold-conformance.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 712.6728515625
+    },
+    {
+      "file": "test/cli/init-skill-md.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 5.072265625
+    },
+    {
+      "file": "test/cli/judge-models-validation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 238.84033203125
+    },
+    {
+      "file": "test/cli/knowledge-study.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1172.238525390625
+    },
+    {
+      "file": "test/cli/knowledge.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 26267.168212890625
+    },
+    {
+      "file": "test/cli/lib/evaluation-application.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1897.450927734375
+    },
+    {
+      "file": "test/cli/lib/evaluation-composition.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.10205078125
+    },
+    {
+      "file": "test/cli/observation-window.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 315.983642578125
+    },
+    {
+      "file": "test/cli/observe-inbox-global.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3166.318115234375
+    },
+    {
+      "file": "test/cli/observe-persist.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.522216796875
+    },
+    {
+      "file": "test/cli/observe.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 42.94189453125
+    },
+    {
+      "file": "test/cli/oclif-dispatch.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 4812.090576171875
+    },
+    {
+      "file": "test/cli/oclif-doctor.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1811.106201171875
+    },
+    {
+      "file": "test/cli/oclif-eval.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2128.789306640625
+    },
+    {
+      "file": "test/cli/oclif-evolve.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 629.782958984375
+    },
+    {
+      "file": "test/cli/oclif-i18n.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.05615234375
+    },
+    {
+      "file": "test/cli/oclif-init.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 306.351318359375
+    },
+    {
+      "file": "test/cli/oclif-install.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 730.98388671875
+    },
+    {
+      "file": "test/cli/oclif-observe.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1447.835205078125
+    },
+    {
+      "file": "test/cli/oclif-parsers.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.143310546875
+    },
+    {
+      "file": "test/cli/oclif-sample.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 675.049072265625
+    },
+    {
+      "file": "test/cli/oclif-startup.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2725.20263671875
+    },
+    {
+      "file": "test/cli/oclif-studio.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 627.632568359375
+    },
+    {
+      "file": "test/cli/prepare-evaluation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 6.971923828125
+    },
+    {
+      "file": "test/cli/removed-options.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1451.8154296875
+    },
+    {
+      "file": "test/cli/resolve-skill-input.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 8.6318359375
+    },
+    {
+      "file": "test/cli/runtime-defaults.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 434.02880859375
+    },
+    {
+      "file": "test/cli/sample-from-traces.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3.360595703125
+    },
+    {
+      "file": "test/cli/sample-next-eval-command.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.062255859375
+    },
+    {
+      "file": "test/cli/studio-dev-spawn.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 190.3876953125
+    },
+    {
+      "file": "test/cli/update-check.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.362548828125
+    },
+    {
+      "file": "test/cli/update-exit-latency.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3116.238037109375
+    },
+    {
+      "file": "test/cli/update-notify.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 7.344970703125
+    },
+    {
+      "file": "test/cli/update-worker.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 122.57421875
+    },
+    {
+      "file": "test/diagnosis/observe-mapper.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 7.12646484375
+    },
+    {
+      "file": "test/diagnosis/observe-producer.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 102.118408203125
+    },
+    {
+      "file": "test/diagnosis/schema.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 2.192626953125
+    },
+    {
+      "file": "test/dsh-plugin/core-adapter.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 5815.584716796875
+    },
+    {
+      "file": "test/dsh-plugin/core-protocol.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 4.591552734375
+    },
+    {
+      "file": "test/dsh-plugin/host-executor.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 325.334228515625
+    },
+    {
+      "file": "test/dsh-plugin/judge-runtime-identity.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3.545654296875
+    },
+    {
+      "file": "test/dsh-plugin/observe.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 358.08837890625
+    },
+    {
+      "file": "test/eval-config.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 23.28125
+    },
+    {
+      "file": "test/eval-core/analysis/bootstrap.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 29.43212890625
+    },
+    {
+      "file": "test/eval-core/analysis/builtins.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 27.081298828125
+    },
+    {
+      "file": "test/eval-core/analysis/composite-builtins.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 13.903076171875
+    },
+    {
+      "file": "test/eval-core/analysis/runtime.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 434.41162109375
+    },
+    {
+      "file": "test/eval-core/budget/runtime.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 145.58154296875
+    },
+    {
+      "file": "test/eval-core/compiler/capability-boundary.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 64.128173828125
+    },
+    {
+      "file": "test/eval-core/compiler/compiler.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 147.525146484375
+    },
+    {
+      "file": "test/eval-core/compiler/composite.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 113.22216796875
+    },
+    {
+      "file": "test/eval-core/compiler/digests.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 372.2998046875
+    },
+    {
+      "file": "test/eval-core/compiler/execution-bundle.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 277.16796875
+    },
+    {
+      "file": "test/eval-core/compiler/immutability.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.630126953125
+    },
+    {
+      "file": "test/eval-core/compiler/validation.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 440.119140625
+    },
+    {
+      "file": "test/eval-core/conformance/artifacts-cache.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 729.54638671875
+    },
+    {
+      "file": "test/eval-core/conformance/faults.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 597.78662109375
+    },
+    {
+      "file": "test/eval-core/conformance/generative-contracts.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 613.6572265625
+    },
+    {
+      "file": "test/eval-core/conformance/invariants.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 357.575439453125
+    },
+    {
+      "file": "test/eval-core/conformance/neutrality.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 317.13134765625
+    },
+    {
+      "file": "test/eval-core/conformance/statistics.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 8185.979736328125
+    },
+    {
+      "file": "test/eval-core/conformance/targets.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 355.65380859375
+    },
+    {
+      "file": "test/eval-core/contracts/budget.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.114013671875
+    },
+    {
+      "file": "test/eval-core/contracts/comparability.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 492.248046875
+    },
+    {
+      "file": "test/eval-core/contracts/digests.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 281.13916015625
+    },
+    {
+      "file": "test/eval-core/contracts/evaluator-measurement-identities.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.12255859375
+    },
+    {
+      "file": "test/eval-core/contracts/execution-bundle.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 15.638427734375
+    },
+    {
+      "file": "test/eval-core/contracts/execution-controls.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.894775390625
+    },
+    {
+      "file": "test/eval-core/contracts/execution-facts.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 13.533935546875
+    },
+    {
+      "file": "test/eval-core/contracts/execution-identities.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.30908203125
+    },
+    {
+      "file": "test/eval-core/contracts/json.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.07861328125
+    },
+    {
+      "file": "test/eval-core/contracts/schemas.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 317.244384765625
+    },
+    {
+      "file": "test/eval-core/embedded-package.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6681.248291015625
+    },
+    {
+      "file": "test/eval-core/engine/composite-runtime.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 195.429443359375
+    },
+    {
+      "file": "test/eval-core/engine/runtime.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 611.665771484375
+    },
+    {
+      "file": "test/eval-core/evaluation/runtime.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 812.534912109375
+    },
+    {
+      "file": "test/eval-core/execution/runtime.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 688.302001953125
+    },
+    {
+      "file": "test/eval-core/primitives.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.4130859375
+    },
+    {
+      "file": "test/eval-core/runtime-events.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.55419921875
+    },
+    {
+      "file": "test/eval-core/runtime-resources.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1.228759765625
+    },
+    {
+      "file": "test/eval-core/runtime-side-effects.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 110.2919921875
+    },
+    {
+      "file": "test/eval-core/series/builtins.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 4.333740234375
+    },
+    {
+      "file": "test/eval-core/series/runtime.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 578.893310546875
+    },
+    {
+      "file": "test/eval-runtime/abstention-evaluator.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 392.035400390625
+    },
+    {
+      "file": "test/eval-runtime/adapters/command-executor.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2846.146484375
+    },
+    {
+      "file": "test/eval-runtime/adapters/resource-lease.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 4.45703125
+    },
+    {
+      "file": "test/eval-runtime/adapters/same-process.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 9.81982421875
+    },
+    {
+      "file": "test/eval-runtime/cache.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 115.3671875
+    },
+    {
+      "file": "test/eval-runtime/content-infrastructure.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 576.087158203125
+    },
+    {
+      "file": "test/eval-runtime/content-store-conformance.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 5.511474609375
+    },
+    {
+      "file": "test/eval-runtime/custom-evaluator.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 618.3076171875
+    },
+    {
+      "file": "test/eval-runtime/evaluation/analysis.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 272.00048828125
+    },
+    {
+      "file": "test/eval-runtime/evaluation/comparison-families.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 253.233154296875
+    },
+    {
+      "file": "test/eval-runtime/evaluation/custom-evaluators.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 283.552001953125
+    },
+    {
+      "file": "test/eval-runtime/evaluation/events.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 426.86181640625
+    },
+    {
+      "file": "test/eval-runtime/evaluation/execution.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 427.48583984375
+    },
+    {
+      "file": "test/eval-runtime/evaluation/policies.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 350.56982421875
+    },
+    {
+      "file": "test/eval-runtime/evaluation/prepare.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 292.190185546875
+    },
+    {
+      "file": "test/eval-runtime/evaluation/reuse.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 458.0732421875
+    },
+    {
+      "file": "test/eval-runtime/evaluation/rubric-panels.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 191.78173828125
+    },
+    {
+      "file": "test/eval-runtime/evaluation/validation.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 62.7705078125
+    },
+    {
+      "file": "test/eval-runtime/execution.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 226.048828125
+    },
+    {
+      "file": "test/eval-runtime/formula-evaluator.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 100.12060546875
+    },
+    {
+      "file": "test/eval-runtime/foundation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 461.26904296875
+    },
+    {
+      "file": "test/eval-runtime/json-executor.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 329.526123046875
+    },
+    {
+      "file": "test/eval-runtime/mcp-config.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 296.236328125
+    },
+    {
+      "file": "test/eval-runtime/mock-interception.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 312.23583984375
+    },
+    {
+      "file": "test/eval-runtime/package-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 11.39892578125
+    },
+    {
+      "file": "test/eval-runtime/public-api-source.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 5.404052734375
+    },
+    {
+      "file": "test/eval-runtime/public-api.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 180.1162109375
+    },
+    {
+      "file": "test/eval-runtime/retrieval-evaluator.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 217.4482421875
+    },
+    {
+      "file": "test/eval-runtime/reuse-failure.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2.140625
+    },
+    {
+      "file": "test/eval-runtime/rubric-builder.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.827880859375
+    },
+    {
+      "file": "test/eval-runtime/rubric-debug.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 373.675537109375
+    },
+    {
+      "file": "test/eval-runtime/rubric-judge.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.621826171875
+    },
+    {
+      "file": "test/eval-runtime/rubric-kit-equivalence.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 157.23681640625
+    },
+    {
+      "file": "test/eval-runtime/rubric-multi-metric.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 363.847900390625
+    },
+    {
+      "file": "test/eval-runtime/rubric-prompt-isolation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.067138671875
+    },
+    {
+      "file": "test/eval-runtime/rubric-prompt-version.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.245849609375
+    },
+    {
+      "file": "test/eval-runtime/runner.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 182.314453125
+    },
+    {
+      "file": "test/eval-runtime/runtime-conformance.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 952.179443359375
+    },
+    {
+      "file": "test/eval-runtime/series.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 760.865234375
+    },
+    {
+      "file": "test/eval-runtime/session-executor.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 290.517822265625
+    },
+    {
+      "file": "test/eval-runtime/tool-policy.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 150.9345703125
+    },
+    {
+      "file": "test/eval-runtime/tool-trajectory-evaluator.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 189.65478515625
+    },
+    {
+      "file": "test/eval-runtime/workspace.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 312.9892578125
+    },
+    {
+      "file": "test/eval-workflows/analysis/binomial-confidence.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.353759765625
+    },
+    {
+      "file": "test/eval-workflows/analysis/sample-size.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.115234375
+    },
+    {
+      "file": "test/eval-workflows/artifact-store.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 794.214599609375
+    },
+    {
+      "file": "test/eval-workflows/batch-artifact-store.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 351.20068359375
+    },
+    {
+      "file": "test/eval-workflows/core-consumer-projections.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 349.107666015625
+    },
+    {
+      "file": "test/eval-workflows/cross-executor-input-production.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 981.310302734375
+    },
+    {
+      "file": "test/eval-workflows/gold/cli.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 5.52490234375
+    },
+    {
+      "file": "test/eval-workflows/gold/dataset.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 7.607666015625
+    },
+    {
+      "file": "test/eval-workflows/gold/human.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.242431640625
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/codex/cli.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2736.224609375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/codex/sdk.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 224.0234375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/custom/executor.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 1610.943603515625
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/openai/api.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 139.28271484375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/classified-environment.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.69287109375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/content-identity.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 7.005615234375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/readonly-map-snapshot.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.1318359375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/sample-input.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 28.56982421875
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/trial-lifecycle.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.532958984375
+    },
+    {
+      "file": "test/eval-workflows/hosts/adapters/shared/trial-workspace.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 6.01513671875
+    },
+    {
+      "file": "test/eval-workflows/hosts/carrier-measurement.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4134.729248046875
+    },
+    {
+      "file": "test/eval-workflows/hosts/composition/assembly.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 859.4482421875
+    },
+    {
+      "file": "test/eval-workflows/hosts/composition/judge-provider-identity.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.846923828125
+    },
+    {
+      "file": "test/eval-workflows/hosts/composition/runtime-registry.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.096435546875
+    },
+    {
+      "file": "test/eval-workflows/hosts/evaluators/executor-judge-invocation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 5.069580078125
+    },
+    {
+      "file": "test/eval-workflows/hosts/evaluators/rubric-judge.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 343.32568359375
+    },
+    {
+      "file": "test/eval-workflows/hosts/evolution-evaluation.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 2.218017578125
+    },
+    {
+      "file": "test/eval-workflows/hosts/input-resolution/content-materialization.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 9.9130859375
+    },
+    {
+      "file": "test/eval-workflows/hosts/input-resolution/node-cli-evaluation-resolver.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 205.4228515625
+    },
+    {
+      "file": "test/eval-workflows/hosts/input-resolution/node-cli-materialization-concurrency.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 11.1318359375
+    },
+    {
+      "file": "test/eval-workflows/hosts/local-task.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 8993.02783203125
+    },
+    {
+      "file": "test/eval-workflows/hosts/reference-executors.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4828.599365234375
+    },
+    {
+      "file": "test/eval-workflows/hosts/resource-leases/node.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 175.762451171875
+    },
+    {
+      "file": "test/eval-workflows/input-compilation/compile.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 105.3984375
+    },
+    {
+      "file": "test/eval-workflows/input-compilation/migration-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.246826171875
+    },
+    {
+      "file": "test/eval-workflows/input-compilation/parse.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 27.185546875
+    },
+    {
+      "file": "test/eval-workflows/input-compilation/registry.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 3.884521484375
+    },
+    {
+      "file": "test/eval-workflows/inputs/assertion-language.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 358.478515625
+    },
+    {
+      "file": "test/eval-workflows/inputs/batch-discovery.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 5.673095703125
+    },
+    {
+      "file": "test/eval-workflows/inputs/config-schema.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 14.028564453125
+    },
+    {
+      "file": "test/eval-workflows/inputs/eval-sample-schema.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 45.084228515625
+    },
+    {
+      "file": "test/eval-workflows/inputs/git-dash-ref.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 148.652587890625
+    },
+    {
+      "file": "test/eval-workflows/inputs/git-remote.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 342.56396484375
+    },
+    {
+      "file": "test/eval-workflows/inputs/judge-models.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.051513671875
+    },
+    {
+      "file": "test/eval-workflows/inputs/load-samples.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 23.342529296875
+    },
+    {
+      "file": "test/eval-workflows/inputs/sample-append.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 18.120361328125
+    },
+    {
+      "file": "test/eval-workflows/inputs/sample-input.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 5.072998046875
+    },
+    {
+      "file": "test/eval-workflows/inputs/sample-locator.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 7.8017578125
+    },
+    {
+      "file": "test/eval-workflows/inputs/sample-v3.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 68.5400390625
+    },
+    {
+      "file": "test/eval-workflows/inputs/yaml-parser.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.210693359375
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/agreement-node.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 11.42236328125
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/agreement-table.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 12.37744140625
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/assertion-layer-core.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 74.757568359375
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/assertion-layer-node.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 9.564453125
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/assertion-layer-parameters.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.2333984375
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/assertion-layer.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 11.512451171875
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/bootstrap-family-node.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 9.97509765625
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/bootstrap-family-table.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 42.36474609375
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/composite-node.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 15.042724609375
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/composite-parameters.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.2197265625
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/composite-source-adapter.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 7.293701171875
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/composite-table.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 8.15576171875
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/dimension-node.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 11.506103515625
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/dimension-parameters.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3.43408203125
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/dimension-table.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 7.39892578125
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/judge-aggregation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 93.9794921875
+    },
+    {
+      "file": "test/eval-workflows/measurement/analysis/release-decision.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 93.915283203125
+    },
+    {
+      "file": "test/eval-workflows/measurement/evaluators/execution-assertions.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 46.256103515625
+    },
+    {
+      "file": "test/eval-workflows/measurement/evaluators/llm-assertions.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 454.32470703125
+    },
+    {
+      "file": "test/eval-workflows/measurement/evaluators/output-assertions.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 146.39306640625
+    },
+    {
+      "file": "test/eval-workflows/orchestration/environment.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.0771484375
+    },
+    {
+      "file": "test/eval-workflows/orchestration/holdout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.143798828125
+    },
+    {
+      "file": "test/eval-workflows/orchestration/orchestration.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 224.712646484375
+    },
+    {
+      "file": "test/eval-workflows/orchestration/sample-content-resolution.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 16.0224609375
+    },
+    {
+      "file": "test/eval-workflows/orchestration/workflow.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 515.302001953125
+    },
+    {
+      "file": "test/eval-workflows/projections-boundary.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1.495361328125
+    },
+    {
+      "file": "test/eval-workflows/projections.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 312.41259765625
+    },
+    {
+      "file": "test/eval-workflows/projections/runtime-progress.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 57.206787109375
+    },
+    {
+      "file": "test/eval-workflows/resume-disposition.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 361.588134765625
+    },
+    {
+      "file": "test/eval-workflows/sample-generation/generator.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 14.05908203125
+    },
+    {
+      "file": "test/eval-workflows/sample-generation/sample-source-exists.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 5.293212890625
+    },
+    {
+      "file": "test/eval-workflows/sample-generation/skill-samples.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 17.9951171875
+    },
+    {
+      "file": "test/eval-workflows/sample-generation/trace-drafts.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 10.728271484375
+    },
+    {
+      "file": "test/eval-workflows/sample-v3-production.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1862.885498046875
+    },
+    {
+      "file": "test/evidence/graph/doctor-graph.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 28.930908203125
+    },
+    {
+      "file": "test/evidence/graph/schema.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.491943359375
+    },
+    {
+      "file": "test/evidence/storage/directories.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 6.07568359375
+    },
+    {
+      "file": "test/evidence/storage/directory-selection.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.299560546875
+    },
+    {
+      "file": "test/evidence/storage/discovery-index.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 20.6767578125
+    },
+    {
+      "file": "test/evidence/storage/file-names.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.911376953125
+    },
+    {
+      "file": "test/evidence/storage/home-isolation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.44970703125
+    },
+    {
+      "file": "test/evidence/storage/layout-guard.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 72.04541015625
+    },
+    {
+      "file": "test/evidence/storage/layout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.105224609375
+    },
+    {
+      "file": "test/evidence/storage/report-bundle.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.43994140625
+    },
+    {
+      "file": "test/evidence/storage/user-settings.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 4.8984375
+    },
+    {
+      "file": "test/examples/catalog.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 1049.82861328125
+    },
+    {
+      "file": "test/examples/codex-observe-router.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 915.36767578125
+    },
+    {
+      "file": "test/examples/codex-task-trajectory.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 71.787841796875
+    },
+    {
+      "file": "test/executor.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 933.50439453125
+    },
+    {
+      "file": "test/executors/capabilities.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.108154296875
+    },
+    {
+      "file": "test/executors/codex-cli-args.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 2.10498046875
+    },
+    {
+      "file": "test/executors/codex-cli-isolation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1465.508544921875
+    },
+    {
+      "file": "test/executors/codex-protocol.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.07568359375
+    },
+    {
+      "file": "test/executors/codex-sdk.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 6.113525390625
+    },
+    {
+      "file": "test/executors/codex-trace.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2.0478515625
+    },
+    {
+      "file": "test/executors/core/token-usage.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.0810546875
+    },
+    {
+      "file": "test/executors/core/tool-identity.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.07958984375
+    },
+    {
+      "file": "test/executors/create-executor-optional-dependencies.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.184814453125
+    },
+    {
+      "file": "test/executors/dsh-protocol.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.091552734375
+    },
+    {
+      "file": "test/executors/mock-runtime/runtime.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 207.74072265625
+    },
+    {
+      "file": "test/executors/openai-api.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 28.261474609375
+    },
+    {
+      "file": "test/executors/optional-dependencies.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.149658203125
+    },
+    {
+      "file": "test/executors/preflight/dependencies.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 20.287109375
+    },
+    {
+      "file": "test/executors/registry.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.06201171875
+    },
+    {
+      "file": "test/executors/result-validation.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.102294921875
+    },
+    {
+      "file": "test/executors/runtime-fingerprint.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 672.28173828125
+    },
+    {
+      "file": "test/executors/sigint-propagation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 4560.465087890625
+    },
+    {
+      "file": "test/executors/tool-call-status.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.137939453125
+    },
+    {
+      "file": "test/helpers/claude-trace.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 3.887451171875
+    },
+    {
+      "file": "test/helpers/cli-process.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 110.302734375
+    },
+    {
+      "file": "test/helpers/run-command.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 274.659912109375
+    },
+    {
+      "file": "test/helpers/source-files.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 13.586669921875
+    },
+    {
+      "file": "test/knowledge/application.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 5571.436767578125
+    },
+    {
+      "file": "test/knowledge/artifacts/authoring/carrier-library.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1547.766357421875
+    },
+    {
+      "file": "test/knowledge/artifacts/authoring/core-evolver-snapshot.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 23.62158203125
+    },
+    {
+      "file": "test/knowledge/artifacts/authoring/improvement.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.1650390625
+    },
+    {
+      "file": "test/knowledge/artifacts/authoring/scaffold.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 8.946044921875
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/endpoint-rule.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.363525390625
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/fixer.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 36.802734375
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/composer.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 5.11328125
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/consensus.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.07421875
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/load-custom-dimensions.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 15.029052734375
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/parser.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.095703125
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/prompt-builder.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.058837890625
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/health/registry.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.17041015625
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/index.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 13.19091796875
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/renderer.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.58203125
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/report-parser.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.15771484375
+    },
+    {
+      "file": "test/knowledge/artifacts/doctor/rules.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 18.55517578125
+    },
+    {
+      "file": "test/knowledge/artifacts/sources/artifact-resolution.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 696.3984375
+    },
+    {
+      "file": "test/knowledge/artifacts/sources/content-hash.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 7.4248046875
+    },
+    {
+      "file": "test/knowledge/artifacts/sources/deploy-artifact.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 10.444580078125
+    },
+    {
+      "file": "test/knowledge/artifacts/sources/install-source.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 768.0615234375
+    },
+    {
+      "file": "test/knowledge/artifacts/sources/materialize-copy.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 23.270751953125
+    },
+    {
+      "file": "test/knowledge/auto-extraction.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4474.244384765625
+    },
+    {
+      "file": "test/knowledge/bounded-generation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3022.871826171875
+    },
+    {
+      "file": "test/knowledge/entities.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 104.718017578125
+    },
+    {
+      "file": "test/knowledge/entity-identity.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3.18359375
+    },
+    {
+      "file": "test/knowledge/entity-link-host.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 8546.74072265625
+    },
+    {
+      "file": "test/knowledge/executor.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 48.533203125
+    },
+    {
+      "file": "test/knowledge/extraction-study-analysis.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 38.2392578125
+    },
+    {
+      "file": "test/knowledge/extraction-study-inspection.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 913.042724609375
+    },
+    {
+      "file": "test/knowledge/extraction-study-panel.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 102.05810546875
+    },
+    {
+      "file": "test/knowledge/extraction-study-review.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 46.920654296875
+    },
+    {
+      "file": "test/knowledge/extraction-study-runner.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2085.201416015625
+    },
+    {
+      "file": "test/knowledge/library.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 6341.06787109375
+    },
+    {
+      "file": "test/knowledge/link-invocation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 110.3505859375
+    },
+    {
+      "file": "test/knowledge/persistence.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 113.490234375
+    },
+    {
+      "file": "test/knowledge/quality.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 5.23681640625
+    },
+    {
+      "file": "test/knowledge/quote-occurrence.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1.468505859375
+    },
+    {
+      "file": "test/knowledge/storage.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2039.898193359375
+    },
+    {
+      "file": "test/knowledge/tags.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 9.608642578125
+    },
+    {
+      "file": "test/knowledge/trace-evidence-formats.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 9.75048828125
+    },
+    {
+      "file": "test/knowledge/validation.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 15.029052734375
+    },
+    {
+      "file": "test/mcp/capture-store.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 9.465576171875
+    },
+    {
+      "file": "test/mcp/http.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 99.690185546875
+    },
+    {
+      "file": "test/mcp/mcp-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 45.536865234375
+    },
+    {
+      "file": "test/mcp/principal.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.1904296875
+    },
+    {
+      "file": "test/mcp/review-component.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 11.322265625
+    },
+    {
+      "file": "test/mcp/tool-language.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 37.123046875
+    },
+    {
+      "file": "test/mcp/trigger-samples.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 5.753662109375
+    },
+    {
+      "file": "test/measurement-governance/prompt-registry-freeze.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.30126953125
+    },
+    {
+      "file": "test/observability/agents/collect.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 163.24169921875
+    },
+    {
+      "file": "test/observability/agents/detect.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 10.15576171875
+    },
+    {
+      "file": "test/observability/agents/local-catalog.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 5.406982421875
+    },
+    {
+      "file": "test/observability/agents/registry.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.115966796875
+    },
+    {
+      "file": "test/observability/agents/smoke.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "skipped",
+      "durationMs": null
+    },
+    {
+      "file": "test/observability/analysis/coverage-analyzer.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.34716796875
+    },
+    {
+      "file": "test/observability/analysis/gap-analyzer.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3.47607421875
+    },
+    {
+      "file": "test/observability/analysis/hedging-classifier.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.1787109375
+    },
+    {
+      "file": "test/observability/conversation-catalog.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 2183.560302734375
+    },
+    {
+      "file": "test/observability/conversation-project.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.72705078125
+    },
+    {
+      "file": "test/observability/conversation-semantic-projection.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2.193603515625
+    },
+    {
+      "file": "test/observability/conversation-turn-index.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 6.319580078125
+    },
+    {
+      "file": "test/observability/experience-enums.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 3.074462890625
+    },
+    {
+      "file": "test/observability/experience-evidence-schema.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3.85693359375
+    },
+    {
+      "file": "test/observability/experience-review-structures.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 5.111328125
+    },
+    {
+      "file": "test/observability/experience-session-story-episodes.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1.09326171875
+    },
+    {
+      "file": "test/observability/experience-session-story-feedback.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 8.1416015625
+    },
+    {
+      "file": "test/observability/experience-session-story-orchestration.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 8.14306640625
+    },
+    {
+      "file": "test/observability/inbox/aggregation.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 188.117431640625
+    },
+    {
+      "file": "test/observability/inbox/effective-review.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 434.265625
+    },
+    {
+      "file": "test/observability/inbox/experience-report.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 569.221923828125
+    },
+    {
+      "file": "test/observability/inbox/explicit-capture.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 10.84765625
+    },
+    {
+      "file": "test/observability/inbox/metric-semantics.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.51513671875
+    },
+    {
+      "file": "test/observability/inbox/paths.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 10.386962890625
+    },
+    {
+      "file": "test/observability/inbox/resolved-review.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.093017578125
+    },
+    {
+      "file": "test/observability/inbox/review-action-items.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.12109375
+    },
+    {
+      "file": "test/observability/inbox/review-semantics.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.108154296875
+    },
+    {
+      "file": "test/observability/inbox/review-state.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 124.9111328125
+    },
+    {
+      "file": "test/observability/inbox/session-time-range.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.119873046875
+    },
+    {
+      "file": "test/observability/inbox/signal-detection.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 195.654052734375
+    },
+    {
+      "file": "test/observability/inbox/signal-semantics.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.132568359375
+    },
+    {
+      "file": "test/observability/inbox/skill-chains.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 35.3232421875
+    },
+    {
+      "file": "test/observability/inbox/skill-rollups.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.10205078125
+    },
+    {
+      "file": "test/observability/inbox/source-record-archive.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 117.2646484375
+    },
+    {
+      "file": "test/observability/inbox/trace-ingestion.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 411.5673828125
+    },
+    {
+      "file": "test/observability/knowledge-debugger.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 170.720458984375
+    },
+    {
+      "file": "test/observability/llm-enhanced-review-prompt.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.9765625
+    },
+    {
+      "file": "test/observability/orchestration-contract.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 182.613037109375
+    },
+    {
+      "file": "test/observability/polling-subscription-hub.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 114.47412109375
+    },
+    {
+      "file": "test/observability/skill-health/analyzer.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 10.173583984375
+    },
+    {
+      "file": "test/observability/skill-health/effective-band.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.088623046875
+    },
+    {
+      "file": "test/observability/skill-health/report.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 4.28857421875
+    },
+    {
+      "file": "test/observability/skill-health/skill-chain.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 411.329345703125
+    },
+    {
+      "file": "test/observability/soft-standards.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.143310546875
+    },
+    {
+      "file": "test/observability/task-window.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 8.21728515625
+    },
+    {
+      "file": "test/observability/trace/dsh-adapter.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 4.831787109375
+    },
+    {
+      "file": "test/observability/trace/ingestion.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.192138671875
+    },
+    {
+      "file": "test/observability/trace/message-classification.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.083740234375
+    },
+    {
+      "file": "test/observability/trace/qoder-adapter.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 13.40185546875
+    },
+    {
+      "file": "test/observability/trace/session-index.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.471435546875
+    },
+    {
+      "file": "test/observability/trace/streamed-records.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 776.473388671875
+    },
+    {
+      "file": "test/observability/trace/tool-search.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.30029296875
+    },
+    {
+      "file": "test/observability/trace/trace-analysis.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 8.7255859375
+    },
+    {
+      "file": "test/observability/trace/trace-asset-paths.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 0.486572265625
+    },
+    {
+      "file": "test/observability/trace/trace-claude.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 9.512939453125
+    },
+    {
+      "file": "test/observability/trace/trace-codex.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 143.03369140625
+    },
+    {
+      "file": "test/observability/trace/trace-format-detection.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 8.5244140625
+    },
+    {
+      "file": "test/observability/trace/trace-ir.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 133.370361328125
+    },
+    {
+      "file": "test/observability/trace/trace-loading.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 189.61181640625
+    },
+    {
+      "file": "test/observability/trace/trace-markdown.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 171.939697265625
+    },
+    {
+      "file": "test/observability/trace/trace-openclaw.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 7.981201171875
+    },
+    {
+      "file": "test/observability/trace/trace-segmentation.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 114.199462890625
+    },
+    {
+      "file": "test/observability/trace/unknown-disposition.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 1.22998046875
+    },
+    {
+      "file": "test/observability/trace/zstd-frames.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 27.857421875
+    },
+    {
+      "file": "test/omk-layout/observation-layout.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 85.1826171875
+    },
+    {
+      "file": "test/scripts/build-docs.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 1768.299560546875
+    },
+    {
+      "file": "test/scripts/ci-quick.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2097.908935546875
+    },
+    {
+      "file": "test/scripts/ci-scope.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 356.453125
+    },
+    {
+      "file": "test/scripts/docs-i18n-mirror-links.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 14.365966796875
+    },
+    {
+      "file": "test/scripts/docs-i18n-mirror-structure.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 16.0869140625
+    },
+    {
+      "file": "test/scripts/docs-mermaid.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 53.753662109375
+    },
+    {
+      "file": "test/scripts/entity-atomic-statement.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 9.26904296875
+    },
+    {
+      "file": "test/scripts/entity-context-boundaries.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 19.642822265625
+    },
+    {
+      "file": "test/scripts/entity-extraction-real-baseline.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 418.26318359375
+    },
+    {
+      "file": "test/scripts/entity-extraction-review.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 8076.48486328125
+    },
+    {
+      "file": "test/scripts/entity-historical-assets.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 174.396484375
+    },
+    {
+      "file": "test/scripts/entity-link-live.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2267.033203125
+    },
+    {
+      "file": "test/scripts/entity-link-review.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 281.143798828125
+    },
+    {
+      "file": "test/scripts/entity-measurement-runtime.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 588.94482421875
+    },
+    {
+      "file": "test/scripts/entity-semantic-checks.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 20.263671875
+    },
+    {
+      "file": "test/scripts/entity-semantic-review.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 557.9423828125
+    },
+    {
+      "file": "test/scripts/entity-version-artifact.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 4.591552734375
+    },
+    {
+      "file": "test/scripts/eval-core-dependency-guard.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6.79345703125
+    },
+    {
+      "file": "test/scripts/eval-core-terminology-guard.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 378.5908203125
+    },
+    {
+      "file": "test/scripts/eval-runtime-facade-guard.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 142.89404296875
+    },
+    {
+      "file": "test/scripts/evaluation-docs-current-contract.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.30419921875
+    },
+    {
+      "file": "test/scripts/kind-semantics-guard.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 439.07861328125
+    },
+    {
+      "file": "test/scripts/knowledge-study-panel.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2690.594482421875
+    },
+    {
+      "file": "test/scripts/knowledge-study-workers.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 6875.42041015625
+    },
+    {
+      "file": "test/scripts/knowledge-study.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3294.836181640625
+    },
+    {
+      "file": "test/scripts/landing-clipboard.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.27001953125
+    },
+    {
+      "file": "test/scripts/legacy-evaluation-removal.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 32.3779296875
+    },
+    {
+      "file": "test/scripts/lint-coverage-guard.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 7.09130859375
+    },
+    {
+      "file": "test/scripts/markdown-cmd-refs.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 310.0986328125
+    },
+    {
+      "file": "test/scripts/publish-workflow-security.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.380615234375
+    },
+    {
+      "file": "test/scripts/release-reliability.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 599.666259765625
+    },
+    {
+      "file": "test/scripts/review-governance.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 2.2392578125
+    },
+    {
+      "file": "test/scripts/studio-baseline.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 20.13330078125
+    },
+    {
+      "file": "test/scripts/test-profile.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 860.581298828125
+    },
+    {
+      "file": "test/scripts/vitepress-config-links.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 171.296875
+    },
+    {
+      "file": "test/shared/atomic-json.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 12.775146484375
+    },
+    {
+      "file": "test/shared/file-lock.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 1231.521484375
+    },
+    {
+      "file": "test/shared/json-safe-truncation.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.0400390625
+    },
+    {
+      "file": "test/shared/keyed-mutex.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.108642578125
+    },
+    {
+      "file": "test/shared/language-preference.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.296142578125
+    },
+    {
+      "file": "test/shared/record-count.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.08447265625
+    },
+    {
+      "file": "test/shared/shell-quote.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.443115234375
+    },
+    {
+      "file": "test/shared/timestamp.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.26953125
+    },
+    {
+      "file": "test/studio/application/agents-view.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 6.80419921875
+    },
+    {
+      "file": "test/studio/application/assess-health.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.078857421875
+    },
+    {
+      "file": "test/studio/application/candidate-status.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.14990234375
+    },
+    {
+      "file": "test/studio/application/conversation-label.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.08984375
+    },
+    {
+      "file": "test/studio/application/core-run-catalog.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 444.113037109375
+    },
+    {
+      "file": "test/studio/application/core-run-format.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.2275390625
+    },
+    {
+      "file": "test/studio/application/cross-project-doctor-observe.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 31.664306640625
+    },
+    {
+      "file": "test/studio/application/directory-sources.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1.387939453125
+    },
+    {
+      "file": "test/studio/application/display-format.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.0703125
+    },
+    {
+      "file": "test/studio/application/doctor-format.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.109375
+    },
+    {
+      "file": "test/studio/application/inbox-cache.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 95.857177734375
+    },
+    {
+      "file": "test/studio/application/inline-markdown.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.052001953125
+    },
+    {
+      "file": "test/studio/application/knowledge-reports.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 7.435546875
+    },
+    {
+      "file": "test/studio/application/library-view.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 1.35205078125
+    },
+    {
+      "file": "test/studio/application/list-states.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.44580078125
+    },
+    {
+      "file": "test/studio/application/reader-states.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.085693359375
+    },
+    {
+      "file": "test/studio/application/reader-viewport.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.107177734375
+    },
+    {
+      "file": "test/studio/application/replay-projection.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 5.07080078125
+    },
+    {
+      "file": "test/studio/application/replay-routing.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 2.62939453125
+    },
+    {
+      "file": "test/studio/application/sidebar-window.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.02734375
+    },
+    {
+      "file": "test/studio/application/skill-index-cache.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 14.40478515625
+    },
+    {
+      "file": "test/studio/application/skill-insights.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.1494140625
+    },
+    {
+      "file": "test/studio/application/trajectory-evidence.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.65966796875
+    },
+    {
+      "file": "test/studio/conversation-reader.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 7.19775390625
+    },
+    {
+      "file": "test/studio/http/card-gate-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 33.949462890625
+    },
+    {
+      "file": "test/studio/http/conversation-activity-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 16.75439453125
+    },
+    {
+      "file": "test/studio/http/conversation-routes-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.134033203125
+    },
+    {
+      "file": "test/studio/http/core-runs.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 33.130859375
+    },
+    {
+      "file": "test/studio/http/entity-links.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 6847.228515625
+    },
+    {
+      "file": "test/studio/http/format-listen-error.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.14111328125
+    },
+    {
+      "file": "test/studio/http/inbox-page.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 2.359375
+    },
+    {
+      "file": "test/studio/http/knowledge-candidates.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 584.2255859375
+    },
+    {
+      "file": "test/studio/http/knowledge-routes-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.2119140625
+    },
+    {
+      "file": "test/studio/http/knowledge-routes-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 19.78955078125
+    },
+    {
+      "file": "test/studio/http/knowledge-study-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 3428.24560546875
+    },
+    {
+      "file": "test/studio/http/lifecycle-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.163330078125
+    },
+    {
+      "file": "test/studio/http/live-task-trajectory-server.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 154.5234375
+    },
+    {
+      "file": "test/studio/http/next-agents.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 303.052490234375
+    },
+    {
+      "file": "test/studio/http/next-context.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 32.934326171875
+    },
+    {
+      "file": "test/studio/http/next-health.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 3385.1708984375
+    },
+    {
+      "file": "test/studio/http/next-inbox.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 3498.428955078125
+    },
+    {
+      "file": "test/studio/http/next-studio.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3581.016357421875
+    },
+    {
+      "file": "test/studio/http/observation-routes-boundary.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.6533203125
+    },
+    {
+      "file": "test/studio/http/observation-routes-server.test.ts",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 22.96630859375
+    },
+    {
+      "file": "test/studio/http/observe-next.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 3479.865478515625
+    },
+    {
+      "file": "test/studio/http/page-params.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.140625
+    },
+    {
+      "file": "test/studio/http/router.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.206787109375
+    },
+    {
+      "file": "test/studio/http/server-lifecycle.test.ts",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 150.6689453125
+    },
+    {
+      "file": "test/studio/http/settings.test.ts",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 19.842529296875
+    },
+    {
+      "file": "test/studio/web/agents-view-render.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 95.349609375
+    },
+    {
+      "file": "test/studio/web/bilingual-copy.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 153.068359375
+    },
+    {
+      "file": "test/studio/web/conversation-link.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.55615234375
+    },
+    {
+      "file": "test/studio/web/entity-analysis.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 89.3291015625
+    },
+    {
+      "file": "test/studio/web/entity-links-lifecycle.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 281.74560546875
+    },
+    {
+      "file": "test/studio/web/entity-links.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 51.109375
+    },
+    {
+      "file": "test/studio/web/fallback-language.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 36.736572265625
+    },
+    {
+      "file": "test/studio/web/health-react.test.tsx",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 126.6376953125
+    },
+    {
+      "file": "test/studio/web/inbox-experience-review.test.tsx",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 182.54248046875
+    },
+    {
+      "file": "test/studio/web/inbox-react-safety.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 71.6318359375
+    },
+    {
+      "file": "test/studio/web/knowledge-candidate-decision.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 51.949462890625
+    },
+    {
+      "file": "test/studio/web/knowledge-candidates-start.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 80.318603515625
+    },
+    {
+      "file": "test/studio/web/knowledge-display.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 58.803466796875
+    },
+    {
+      "file": "test/studio/web/knowledge-doctor-tab.test.tsx",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 128.724609375
+    },
+    {
+      "file": "test/studio/web/knowledge-editors.test.tsx",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 4455.90283203125
+    },
+    {
+      "file": "test/studio/web/knowledge-library.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 26.6416015625
+    },
+    {
+      "file": "test/studio/web/knowledge-observe-guard.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 51.140625
+    },
+    {
+      "file": "test/studio/web/knowledge-reader.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 110.9521484375
+    },
+    {
+      "file": "test/studio/web/knowledge-study-inspection.test.tsx",
+      "shard": "test/shards/source-3.txt",
+      "status": "passed",
+      "durationMs": 1227.73046875
+    },
+    {
+      "file": "test/studio/web/knowledge-workspace.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 13.117431640625
+    },
+    {
+      "file": "test/studio/web/measure-react.test.tsx",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 269.250732421875
+    },
+    {
+      "file": "test/studio/web/observe-inbox-tabs.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 47.12890625
+    },
+    {
+      "file": "test/studio/web/observe-reader-states.test.tsx",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 38.042724609375
+    },
+    {
+      "file": "test/studio/web/observe-swimlane-lane.test.tsx",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 5.400634765625
+    },
+    {
+      "file": "test/studio/web/observe-trajectory-page.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 6.012451171875
+    },
+    {
+      "file": "test/studio/web/observe-workspace.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 88.840576171875
+    },
+    {
+      "file": "test/studio/web/run-report-link.test.tsx",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 0.533935546875
+    },
+    {
+      "file": "test/studio/web/settings-language.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 3.849609375
+    },
+    {
+      "file": "test/studio/web/shell-language-switch.test.tsx",
+      "shard": "test/shards/source-4.txt",
+      "status": "passed",
+      "durationMs": 23.353759765625
+    },
+    {
+      "file": "test/studio/web/shell-navigation.test.tsx",
+      "shard": "test/shards/source-2.txt",
+      "status": "passed",
+      "durationMs": 40.3330078125
+    },
+    {
+      "file": "test/studio/web/tab-url.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 1.156494140625
+    },
+    {
+      "file": "test/studio/web/terminology-guard.test.ts",
+      "shard": "test/shards/source-1.txt",
+      "status": "passed",
+      "durationMs": 176.177490234375
+    }
+  ],
+  "shards": [
+    {
+      "manifest": "test/shards/source-1.txt",
+      "fileCount": 207,
+      "measuredFiles": 206,
+      "unknownDurationFiles": 1,
+      "skippedFiles": 1,
+      "failedFiles": 0,
+      "observedFileDurationSumMs": 65500.933349609375
+    },
+    {
+      "manifest": "test/shards/source-2.txt",
+      "fileCount": 93,
+      "measuredFiles": 93,
+      "unknownDurationFiles": 0,
+      "skippedFiles": 0,
+      "failedFiles": 0,
+      "observedFileDurationSumMs": 39938.73291015625
+    },
+    {
+      "manifest": "test/shards/source-3.txt",
+      "fileCount": 119,
+      "measuredFiles": 119,
+      "unknownDurationFiles": 0,
+      "skippedFiles": 0,
+      "failedFiles": 0,
+      "observedFileDurationSumMs": 118825.8544921875
+    },
+    {
+      "manifest": "test/shards/source-4.txt",
+      "fileCount": 107,
+      "measuredFiles": 107,
+      "unknownDurationFiles": 0,
+      "skippedFiles": 0,
+      "failedFiles": 0,
+      "observedFileDurationSumMs": 52046.04736328125
+    }
+  ],
+  "durationMeaning": "Vitest JSON endTime minus startTime spans assertion execution, excluding transform/import. All-skipped files have no measured duration. Shard sums are local observed assertion-span sums, not CI step/job wall-clock times or optimization benefits.",
+  "rawEvidence": {
+    "report": {
+      "file": "vitest.json",
+      "sha256": "sha256:ecae12b8974c59c9a832e37038a9b7551598c8dd572a67e4a4cb788d8d128bd3"
+    },
+    "log": {
+      "file": "runner.log",
+      "sha256": "sha256:65c89809e95f2fa01d973c0eb0fc756f23f376a388e52b022ce86e3c478a4314"
+    },
+    "process": "process.json"
+  }
+}
