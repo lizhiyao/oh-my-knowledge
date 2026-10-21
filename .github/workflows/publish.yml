@@ -24,14 +24,16 @@ jobs:
     outputs:
       npm_tag: ${{ steps.release.outputs.npm_tag }}
       github_prerelease: ${{ steps.release.outputs.github_prerelease }}
-      artifact_name: release-${{ github.run_id }}-${{ github.run_attempt }}
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
         fetch-depth: 0
     - name: Setup Node.js
-      uses: actions/setup-node@v7
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
       with:
         node-version: '24.x'
         package-manager-cache: false
@@ -98,7 +100,8 @@ jobs:
     - name: Verify the package through an isolated installation
       run: node scripts/ci/diagnostics.mjs run package-smoke "$RUNNER_TEMP/release-diagnostics" 360000 node scripts/release/package.mjs smoke "$RUNNER_TEMP/release-bundle"
     - name: Save verified package and evidence
-      uses: actions/upload-artifact@v7
+      id: bundle
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: release-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ runner.temp }}/release-bundle
@@ -111,7 +114,7 @@ jobs:
       run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/release-diagnostics"
     - name: Save diagnostics
       if: ${{ always() }}
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: release-verify-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ runner.temp }}/release-diagnostics
@@ -122,13 +125,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
-      contents: write
+      contents: read
       id-token: write
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
     - name: Setup Node.js
-      uses: actions/setup-node@v7
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
       with:
         node-version: '24.x'
         registry-url: 'https://registry.npmjs.org'
@@ -137,20 +143,21 @@ jobs:
       run: |
         npm install --global 'npm@^11.5.1'
         node -e "const [major, minor, patch] = process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)" "$(npm --version)"
+    - name: Require verified artifact ID
+      env:
+        VERIFIED_ARTIFACT_ID: ${{ needs.verify.outputs.artifact_id }}
+      run: node -e "if (!/^[1-9][0-9]*$/.test(process.env.VERIFIED_ARTIFACT_ID || '')) throw new Error('Verified artifact ID is unavailable')"
     - name: Download verified package
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
       with:
-        name: ${{ needs.verify.outputs.artifact_name }}
+        artifact-ids: ${{ needs.verify.outputs.artifact_id }}
+        merge-multiple: true
+        digest-mismatch: error
         path: ${{ runner.temp }}/release-bundle
     - name: Publish to NPM
       env:
         NPM_DIST_TAG: ${{ needs.verify.outputs.npm_tag }}
       run: node scripts/ci/diagnostics.mjs run publish "$RUNNER_TEMP/release-diagnostics" 240000 node scripts/release/package.mjs publish "$RUNNER_TEMP/release-bundle" "$NPM_DIST_TAG"
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v3
-      with:
-        generate_release_notes: true
-        prerelease: ${{ needs.verify.outputs.github_prerelease }}
     - name: Summarize diagnostics
       if: ${{ always() }}
       env:
@@ -158,8 +165,55 @@ jobs:
       run: node scripts/ci/diagnostics.mjs report "$RUNNER_TEMP/release-diagnostics"
     - name: Save diagnostics
       if: ${{ always() }}
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
       with:
         name: release-publish-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ runner.temp }}/release-diagnostics
         retention-days: 14
+
+  github_release:
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout exact release commit
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Setup Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version: '24.x'
+        package-manager-cache: false
+    - name: Require verified artifact ID
+      env:
+        VERIFIED_ARTIFACT_ID: ${{ needs.verify.outputs.artifact_id }}
+      run: node -e "if (!/^[1-9][0-9]*$/.test(process.env.VERIFIED_ARTIFACT_ID || '')) throw new Error('Verified artifact ID is unavailable')"
+    - name: Download verified package
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+      with:
+        artifact-ids: ${{ needs.verify.outputs.artifact_id }}
+        merge-multiple: true
+        digest-mismatch: error
+        path: ${{ runner.temp }}/release-bundle
+    - name: Verify release assets
+      id: package
+      run: |
+        set -euo pipefail
+        tarball="$(node scripts/release/package.mjs verify "$RUNNER_TEMP/release-bundle")"
+        printf 'tarball=%s\n' "$tarball" >> "$GITHUB_OUTPUT"
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+      with:
+        generate_release_notes: true
+        prerelease: ${{ needs.verify.outputs.github_prerelease }}
+        target_commitish: ${{ github.sha }}
+        fail_on_unmatched_files: true
+        files: |
+          ${{ steps.package.outputs.tarball }}
+          ${{ runner.temp }}/release-bundle/package-manifest.json
+          ${{ runner.temp }}/release-bundle/package-smoke.json
+          ${{ runner.temp }}/release-bundle/ci-evidence.json

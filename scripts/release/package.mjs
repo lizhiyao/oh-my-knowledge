@@ -12,6 +12,7 @@ const execute = (command, args, options = {}) => execFileSync(command, args, {
 });
 
 export function verifyBundle(directory, sha, expected) {
+  if (!/^[a-f0-9]{40}$/.test(sha ?? '')) throw new Error('Commit SHA required');
   const manifest = JSON.parse(readFileSync(join(directory, 'package-manifest.json'), 'utf8'));
   if (manifest.commit !== sha || manifest.name !== expected.name || manifest.version !== expected.version
     || manifest.filename !== basename(manifest.filename) || !/^[\w.-]+\.tgz$/.test(manifest.filename)) throw new Error('Release package identity mismatch');
@@ -64,11 +65,20 @@ export function smoke(directory, sha, run = execute) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-export async function publish(directory, sha, tag, { run = execute, read = readJSON } = {}) {
+/** Revalidate transported evidence before either external publication boundary. */
+export function verifyPublicationBundle(directory, sha) {
   const expected = JSON.parse(readFileSync('package.json', 'utf8'));
   const { manifest, file } = verifyBundle(directory, sha, expected);
   const smokeResult = JSON.parse(readFileSync(join(directory, 'package-smoke.json'), 'utf8'));
   if (smokeResult.commit !== sha || smokeResult.version !== manifest.version || smokeResult.status !== 'passed' || smokeResult.integrity !== manifest.integrity) throw new Error('Package smoke evidence missing');
+  const evidence = JSON.parse(readFileSync(join(directory, 'ci-evidence.json'), 'utf8'));
+  if (evidence.commit !== sha || ![evidence.runId, evidence.attempt, evidence.workflowId].every(value => Number.isSafeInteger(value) && value > 0)
+    || typeof evidence.url !== 'string' || !evidence.url.startsWith('https://github.com/')) throw new Error('CI evidence identity mismatch');
+  return { manifest, file };
+}
+
+export async function publish(directory, sha, tag, { run = execute, read = readJSON } = {}) {
+  const { manifest, file } = verifyPublicationBundle(directory, sha);
   if (tag !== (manifest.version.includes('-') ? 'next' : 'latest')) throw new Error('Invalid release channel');
   if (await publicationState(manifest, read) === 'identical') {
     console.log('Registry already contains this exact package; skipping duplicate upload.'); return;
@@ -82,6 +92,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const directory = resolve(path); const sha = process.env.GITHUB_SHA;
   if (operation === 'pack') pack(directory, sha);
   else if (operation === 'smoke') smoke(directory, sha);
+  else if (operation === 'verify') console.log(verifyPublicationBundle(directory, sha).file);
   else if (operation === 'publish') await publish(directory, sha, tag);
   else throw new Error('Unknown package operation');
 }
