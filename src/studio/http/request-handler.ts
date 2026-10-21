@@ -57,7 +57,7 @@ export function createStudioRequestHandler({
     createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
-  const studyRoutes = createKnowledgeStudyRoutes();
+  const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;

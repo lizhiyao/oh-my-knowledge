@@ -26,6 +26,12 @@ it('distinguishes rejected writes from unknown outcomes without exposing raw ser
     });
   }
 });
+it.each(['knowledge_study_busy', 'knowledge_study_unavailable'])('preserves actionable study service code without claiming a definite rejection: %s', async code => {
+  for (const status of [503, 400]) {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: code }), { status })));
+    await expect(requestKnowledge('study', { evidence: {} })).rejects.toMatchObject({ message: code, status, definiteRejection: false });
+  }
+});
 it('keeps unreadable acknowledgements unknown and rejects late responses after cancellation', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('unreadable', { status: 200 })));
   await expect(requestKnowledge('artifacts', { operation: 'save' })).rejects.toMatchObject({ definiteRejection: false, message: 'knowledge_response_unreadable' });

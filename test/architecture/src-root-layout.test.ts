@@ -50,6 +50,7 @@ const EXPECTED_SHARED_FILES = [
   'shell-quote.ts',
   'time.ts',
   'timestamp.ts',
+  'worker-job.ts',
 ] as const;
 
 const RETIRED_TOP_LEVEL_DIRECTORIES = [

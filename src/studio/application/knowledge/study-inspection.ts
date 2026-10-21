@@ -1,6 +1,6 @@
-import { inspectExtractionStudy } from '../../../knowledge/application/study-inspection.js';
+import { reserveExtractionStudyInspection } from '../../../knowledge/application/study-inspection-service.js';
 
-/** Portable input is inspected independently of the active workspace and never persisted. */
-export function executeKnowledgeStudyInspection(input: unknown) {
-  return inspectExtractionStudy(input);
+/** Reserve before HTTP reads private bytes; the fixed worker owns parsing, hashing and replay. */
+export function reserveKnowledgeStudyInspection(signal?: AbortSignal) {
+  return reserveExtractionStudyInspection(signal);
 }

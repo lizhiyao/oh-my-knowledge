@@ -2,15 +2,23 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
 import * as studyHost from '../../src/knowledge/adapters/study-host.js';
 import * as studyInspection from '../../src/knowledge/application/study-inspection.js';
+import * as studyService from '../../src/knowledge/application/study-inspection-service.js';
+import { ExtractionStudyInspectionError } from '../../src/knowledge/adapters/study-inspection-errors.js';
+import { readExtractionStudyInspectionFiles } from '../../src/knowledge/adapters/study-inspection-input.js';
 import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../src/knowledge/extraction/study-capacity.js';
 import { nativeStudyEvidenceFixture, studyNativeResult } from '../knowledge/extraction-study-fixtures.js';
 import { runCommand } from '../helpers/run-command.js';
 
+// Command tests exercise the shared processor with authored hosts; built-worker tests cover real scheduling.
+beforeEach(() => {
+  vi.spyOn(studyService, 'inspectExtractionStudyFiles').mockImplementation(async files =>
+    studyInspection.inspectExtractionStudy(readExtractionStudyInspectionFiles(files)));
+});
 const roots: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals();
@@ -85,9 +93,15 @@ describe('observe knowledge study read-only wiring', () => {
     }
     expect(inspect).not.toHaveBeenCalled(); expect(readFileSync(malformed, 'utf8')).toBe('PRIVATE-CLI-STUDY-SENTINEL invalid JSON');
     // The wrapper can exceed capacity even when the selected raw file bytes fit.
-    inspect.mockImplementation(() => { throw new studyInspection.ExtractionStudyInspectionError('knowledge_study_capacity_exceeded'); });
+    inspect.mockImplementation(() => { throw new ExtractionStudyInspectionError('knowledge_study_capacity_exceeded'); });
     await expect(runCommand(ObserveKnowledge, ['study', '--evidence', valid, '--lang', 'en'], { cwd: directory }))
       .rejects.toMatchObject({ code: 2, stdout: '', stderr: expect.stringContaining('knowledge_study_capacity_exceeded') });
+  });
+  it.each(['knowledge_study_busy', 'knowledge_study_unavailable'] as const)('returns actionable service failure without leaking worker details: %s', async code => {
+    const directory = root();
+    vi.mocked(studyService.inspectExtractionStudyFiles).mockRejectedValue(new ExtractionStudyInspectionError(code));
+    await expect(runCommand(ObserveKnowledge, ['study', '--evidence', 'PRIVATE-PATH.json', '--lang', 'en'], { cwd: directory }))
+      .rejects.toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining(code === 'knowledge_study_busy' ? 'wait for it to finish' : 'worker failed or was cancelled') });
   });
   it('returns bounded evidence failures for changed native bytes, mismatched hosts and invalid review receipts', async () => {
     const f = await capturedFixture(), changed = structuredClone(f.evidence), invalid = join(f.directory, 'invalid-evidence.json');

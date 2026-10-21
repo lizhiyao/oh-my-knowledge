@@ -18,10 +18,11 @@ function codeFiles(root: string, prefix = ''): { path: string; digest: string }[
   });
 }
 
+export const EXTRACTION_STUDY_DEPENDENCY_SEEDS = Object.freeze(['zod', 'ajv', 'js-yaml', 'smol-toml'] as const);
+
 function dependencyFiles() {
-  const require = createRequire(import.meta.url), pending = [
-    { require, name: 'zod' }, { require, name: 'ajv' }, { require, name: 'js-yaml' }, { require, name: 'smol-toml' },
-  ];
+  const require = createRequire(import.meta.url), pending: { require: NodeJS.Require; name: string }[] =
+    EXTRACTION_STUDY_DEPENDENCY_SEEDS.map(name => ({ require, name }));
   const seen = new Set<string>(), result: { name: string; manifest: string; code: ReturnType<typeof codeFiles> }[] = [];
   for (const item of pending) {
     let manifestPath: string;

@@ -38,6 +38,8 @@ export type StudioApiErrorCode =
   | 'knowledge_study_capacity_exceeded'
   | 'knowledge_study_host_mismatch'
   | 'knowledge_study_evidence_invalid'
+  | 'knowledge_study_busy'
+  | 'knowledge_study_unavailable'
   | 'conversation_not_found'
   | 'task_trajectory_not_found'
   | 'core_run_not_found'

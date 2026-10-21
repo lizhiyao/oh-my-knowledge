@@ -159,11 +159,13 @@ describe('temporary study upload session', () => {
   it.each([
     ['knowledge_study_host_mismatch', 'installation differs'], ['knowledge_study_evidence_invalid', 'identities did not validate'],
     ['knowledge_study_input_invalid', 'not valid study JSON'], ['knowledge_study_capacity_exceeded', '128 MiB'],
+    ['knowledge_study_busy', 'wait for it to finish'], ['knowledge_study_unavailable', 'worker failed or was cancelled'],
     ['request_body_too_large', '128 MiB'], ['unsafe /private/path <script>', 'inspection is unavailable'],
   ])('keeps the selected files and provides bounded recovery for %s', async (code, copy) => {
-    const fetcher = vi.fn(async () => json({ error: code }, code.startsWith('unsafe') ? 500 : 400)); vi.stubGlobal('fetch', fetcher);
+    const status = code === 'knowledge_study_busy' || code === 'knowledge_study_unavailable' ? 503 : code.startsWith('unsafe') ? 500 : 400;
+    const fetcher = vi.fn(async () => json({ error: code }, status)); vi.stubGlobal('fetch', fetcher);
     render(<KnowledgeStudyInspectionDrawer lang="en" onClose={() => {}}/>, { wrapper }); select(file()); inspect();
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain(copy));
+    await waitFor(() => expect(screen.getByRole('alert').textContent?.toLowerCase()).toContain(copy.toLowerCase()));
     expect(screen.getByRole('button', { name: 'Inspect evidence' }).hasAttribute('disabled')).toBe(false);
     expect(screen.getByRole('alert').textContent).not.toContain('/private/path');
     expect(fetcher).toHaveBeenCalledTimes(1);

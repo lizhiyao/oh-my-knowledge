@@ -55,6 +55,10 @@ export function KnowledgeStudyInspectionDrawer({ lang, onClose }: { lang: Langua
       setError(code === 'knowledge_study_capacity_exceeded' || code === 'request_body_too_large' ? capacityMessage
         : code === 'study_file_json_invalid' || code === 'knowledge_study_input_invalid'
           ? t('文件不是可用的研究 JSON。请选择导出的 evidence.json，并核对各回执文件后重试。', 'A file is not valid study JSON. Choose the exported evidence.json and check each review receipt before retrying.')
+        : code === 'knowledge_study_busy'
+          ? t('另一个研究核对正在运行。请等待结束后重试；所选文件已保留。', 'Another study inspection is running. Wait for it to finish and retry; the selected files are preserved.')
+        : code === 'knowledge_study_unavailable'
+          ? t('核对工作进程异常或已取消。请重试；没有调用模型或改写工作区。', 'The inspection worker failed or was cancelled. Retry; no model was called and no workspace was changed.')
         : code === 'knowledge_study_host_mismatch'
           ? t('当前安装版本与冻结研究的运行环境不一致。请使用原研究构建核对；所选文件已保留。', 'This installation differs from the frozen study runtime. Inspect with the original study build; the selected files are preserved.')
         : code === 'knowledge_study_evidence_invalid'

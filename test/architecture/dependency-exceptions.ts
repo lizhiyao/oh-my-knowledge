@@ -17,6 +17,12 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
 // #1285 只移动既有依赖：按新子域观察后，原 Observability 聚合环显露为六域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
 const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
+  // #1304: fixed workers preserve the existing synchronous checker; only delivery scheduling changes.
+  'knowledge/application/study-inspection.ts → knowledge/adapters/study-inspection-errors.ts',
+  'knowledge/application/study-inspection-service.ts → knowledge/adapters/study-inspection-errors.ts',
+  'knowledge/application/study-inspection-worker.ts → knowledge/adapters/study-inspection-errors.ts',
+  'knowledge/application/study-inspection-worker.ts → knowledge/adapters/study-inspection-input.ts',
+  'knowledge/adapters/study-inspection-input.ts → knowledge/extraction/study-capacity.ts',
   'knowledge/application/study-inspection.ts → knowledge/adapters/study-host.ts',
   'knowledge/application/study-inspection.ts → knowledge/extraction/study-plan.ts',
   'knowledge/application/study-inspection.ts → knowledge/extraction/study-corpus.ts',
