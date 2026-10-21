@@ -35,7 +35,7 @@ export {
   projectTraceEvidence,
 } from '../knowledge/adapters/trace-evidence.js';
 export {
-  createLocalKnowledgeApplication,
+  createLocalKnowledgeApplication, knowledgeWorkspaceRefreshToken,
 } from '../knowledge/application/local.js';
 export { KnowledgeStorageStateError } from '../evidence/storage/knowledge-workspace.js';
 export { extractionRunSummary } from '../knowledge/extraction/runs.js';

@@ -81,7 +81,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
       const runs = app.runs().filter(run => request.threadId ? run.origin?.threadId === request.threadId
         : projectThreads ? Boolean(run.origin && projectThreads.has(run.origin.threadId)) : true);
       const ids = new Set(runs.flatMap(run => run.committed.map(ref => ref.knowledgeId)));
-      return { rows: app.list().filter(row => ids.has(row.knowledgeId)), runs: runs.map(extractionRunSummary) };
+      return { rows: app.list(ids), runs: runs.map(extractionRunSummary) };
     }
     case 'quality': return execute(request);
     case 'list': return execute(request);

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -64,6 +64,9 @@ const cooldownSchema = z.strictObject({ schemaVersion: z.literal(1), automationK
   }
 });
 type CooldownFact = z.infer<typeof cooldownSchema>;
+type AttemptReceipt = z.infer<typeof receiptSchema>;
+type ReceiptInventory = { entries: string[]; read(name: string): AttemptReceipt };
+const MAX_DURABLE_COOLDOWNS = 3000;
 type DispatchClaim = { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation };
 function readDocument(path: string) {
   const stat = lstatSync(path);
@@ -86,6 +89,7 @@ export class ConversationAutoExtraction {
   private readonly owner = randomUUID();
   private readonly roots = new Map<string, { root: string; threadId: string }>();
   private readonly stable = new Map<string, { version: string; since: number }>();
+  private readonly durableCooldowns = new Map<string, { dev: number; ino: number; ctimeMs: number; digest: string }>();
   private active?: { key: string; controller: AbortController };
   private ticking = false;
   private closed = false;
@@ -118,28 +122,73 @@ export class ConversationAutoExtraction {
     const { path } = this.location(root, state.threadId);
     writeJsonFileAtomic(path, schema.parse(state)); syncDocument(path);
   }
+  /** One locked reconciliation observes each selected receipt only once. */
+  private receiptInventory(root: string): ReceiptInventory {
+    const directory = join(root, 'auto-extraction'), entries = readdirSync(directory);
+    if (entries.length > 3000) throw new Error('Automation capacity exceeded.');
+    const receipts = new Map<string, AttemptReceipt>();
+    return { entries, read(name) {
+      let receipt = receipts.get(name);
+      if (!receipt) { receipt = receiptSchema.parse(readDocument(join(directory, name))); receipts.set(name, receipt); }
+      return receipt;
+    } };
+  }
+  /** Re-read and validate bytes on every observation; cache only successful durability confirmation. */
+  private readCooldown(path: string, receipt: AttemptReceipt): CooldownFact {
+    try {
+      const before = lstatSync(path);
+      if (!before.isFile() || before.isSymbolicLink() || before.size > 1024 * 1024) throw new Error('Invalid automation receipt.');
+      const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      try {
+        const opened = fstatSync(fd);
+        if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size) throw new Error('Automation cooldown changed before read.');
+        const read = () => {
+          const bytes = Buffer.allocUnsafe(opened.size + 1); let offset = 0;
+          while (offset < bytes.length) { const count = readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count; }
+          const after = fstatSync(fd);
+          if (offset !== opened.size || after.size !== opened.size || after.ctimeMs !== opened.ctimeMs || after.mtimeMs !== opened.mtimeMs) throw new Error('Automation cooldown changed during read.');
+          return bytes.subarray(0, offset);
+        };
+        const bytes = read(), fact = cooldownSchema.parse(JSON.parse(bytes.toString('utf8')));
+        if (fact.permissionId !== receipt.permissionId || fact.threadId !== receipt.threadId || fact.runId !== receipt.runId
+          || fact.attemptId !== receipt.attemptId || fact.requestDigest !== receipt.requestDigest
+          || fact.sourceVersion !== receipt.sourceVersion || fact.policyId !== receipt.policyId) throw new Error('Automation cooldown identity conflict.');
+        const fingerprint = { dev: opened.dev, ino: opened.ino, ctimeMs: opened.ctimeMs, digest: createHash('sha256').update(bytes).digest('hex') };
+        const previous = this.durableCooldowns.get(path);
+        if (!previous || previous.dev !== fingerprint.dev || previous.ino !== fingerprint.ino || previous.ctimeMs !== fingerprint.ctimeMs || previous.digest !== fingerprint.digest) {
+          this.durableCooldowns.delete(path);
+          fsyncSync(fd);
+          for (const directory of [dirname(path), dirname(dirname(path))]) {
+            const parent = openSync(directory, 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
+          }
+          if (createHash('sha256').update(read()).digest('hex') !== fingerprint.digest) throw new Error('Automation cooldown changed during durability confirmation.');
+        }
+        const current = lstatSync(path);
+        if (!current.isFile() || current.isSymbolicLink() || current.dev !== fingerprint.dev || current.ino !== fingerprint.ino || current.size !== opened.size || current.ctimeMs !== opened.ctimeMs || current.mtimeMs !== opened.mtimeMs) throw new Error('Automation cooldown changed after read.');
+        if (!this.closed) {
+          this.durableCooldowns.delete(path); this.durableCooldowns.set(path, fingerprint);
+          if (this.durableCooldowns.size > MAX_DURABLE_COOLDOWNS) this.durableCooldowns.delete(this.durableCooldowns.keys().next().value!);
+        }
+        return fact;
+      } finally { closeSync(fd); }
+    } catch (error) { this.durableCooldowns.delete(path); throw error; }
+  }
   /** Once per archived invocation, including sidecars whose manifest acknowledgement was lost. */
-  private cooldowns(root: string, threadId: string): CooldownFact[] {
+  private cooldowns(root: string, threadId: string, inventory = this.receiptInventory(root)): CooldownFact[] {
     const directory = join(root, 'auto-extraction'), cooldownRoot = join(directory, 'cooldowns');
     checkStorageDirectory(cooldownRoot);
-    const entries = readdirSync(directory);
-    if (entries.length > 3000 || existsSync(cooldownRoot) && readdirSync(cooldownRoot).length > 3000) throw new Error('Automation capacity exceeded.');
-    const receipts = entries.filter(name => /^attempt-[a-f0-9-]{36}-[a-f0-9-]{36}\.json$/i.test(name))
-      .map(name => ({ name, receipt: receiptSchema.parse(readDocument(join(directory, name))) }))
+    if (existsSync(cooldownRoot) && readdirSync(cooldownRoot).length > 3000) throw new Error('Automation capacity exceeded.');
+    const receipts = inventory.entries.filter(name => /^attempt-[a-f0-9-]{36}-[a-f0-9-]{36}\.json$/i.test(name))
+      .map(name => ({ name, receipt: inventory.read(name) }))
       .filter(({ receipt }) => receipt.threadId === threadId);
     const facts: CooldownFact[] = [];
     for (const { name, receipt } of receipts) {
       if (name !== `attempt-${receipt.permissionId}-${receipt.attemptId}.json`) throw new Error('Automation reservation conflict.');
       const path = join(cooldownRoot, `${digest(threadId)}-${receipt.runId}-${receipt.attemptId}.json`);
-      const existing = () => {
-        const fact = cooldownSchema.parse(readDocument(path));
-        if (fact.permissionId !== receipt.permissionId || fact.threadId !== receipt.threadId || fact.runId !== receipt.runId
-          || fact.attemptId !== receipt.attemptId || fact.requestDigest !== receipt.requestDigest
-          || fact.sourceVersion !== receipt.sourceVersion || fact.policyId !== receipt.policyId) throw new Error('Automation cooldown identity conflict.');
-        syncDocument(path); return fact;
-      };
+      const existing = () => this.readCooldown(path, receipt);
       if (existsSync(path)) { facts.push(existing()); continue; }
-      const store = new FileExtractionRunStore(join(root, 'extraction-runs'), root), run = store.read(receipt.runId);
+      this.durableCooldowns.delete(path);
+      const store = new FileExtractionRunStore(join(root, 'extraction-runs'), root), run = store.readManifest(receipt.runId);
       const attempt = run.attempts.find(value => value.attemptId === receipt.attemptId);
       if (!attempt || attempt.requestDigest !== receipt.requestDigest || run.sourceVersion !== receipt.sourceVersion
         || run.policy.policyId !== receipt.policyId) throw new Error('Automation outcome identity conflict.');
@@ -164,12 +213,12 @@ export class ConversationAutoExtraction {
         permissionId: receipt.permissionId, threadId, runId: receipt.runId, attemptId: receipt.attemptId,
         requestDigest: receipt.requestDigest, sourceVersion: receipt.sourceVersion, policyId: receipt.policyId,
         outcome: recorded.ref, observedAt, ...wait });
-      try { publishReceipt(path, fact); facts.push(fact); }
+      try { createJsonFileAtomic(path, fact); facts.push(existing()); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; facts.push(existing()); }
     }
     return facts;
   }
-  private reconcile(root: string, state: AutoExtractionState) {
+  private reconcile(root: string, state: AutoExtractionState, observed?: ReceiptInventory) {
     // Existing v1 permissions without this optional ledger retain their original single-call accounting.
     if (!state.ledgerVersion) return state;
     const directory = join(root, 'auto-extraction');
@@ -178,13 +227,14 @@ export class ConversationAutoExtraction {
       || permission.executor !== state.executor || permission.model !== state.model || permission.maxCalls !== state.maxCalls
       || permission.enabledAt !== state.enabledAt || permission.expiresAt !== state.expiresAt
       || digest(permission.policy ?? SINGLE_EXTRACTION_POLICY) !== digest(state.policy ?? SINGLE_EXTRACTION_POLICY)) throw new Error('Automation permission conflict.');
+    const inventory = observed ?? this.receiptInventory(root);
     const prefix = `attempt-${state.permissionId}-`;
-    const receipts = readdirSync(directory).filter(name => name.startsWith(prefix) && name.endsWith('.json'));
+    const receipts = inventory.entries.filter(name => name.startsWith(prefix) && name.endsWith('.json'));
     if (receipts.length > state.maxCalls) throw new Error('Automation reservation conflict.');
     const numbers = new Set<number>(); let tokens = 0;
     const policy = state.policy ?? SINGLE_EXTRACTION_POLICY;
     for (const name of receipts) {
-      const receipt = receiptSchema.parse(readDocument(join(directory, name)));
+      const receipt = inventory.read(name);
       if (name !== `${prefix}${receipt.attemptId}.json` || receipt.permissionId !== state.permissionId
         || receipt.threadId !== state.threadId || receipt.policyId !== policy.policyId || numbers.has(receipt.callNumber)
         || policy.policyId === 'knowledge-generation-bounded/v1' && (!receipt.budget || receipt.budget.profileId !== policy.profileId
@@ -195,7 +245,7 @@ export class ConversationAutoExtraction {
     if ([...numbers].some(number => number > receipts.length) || receipts.length < state.callsUsed
       || !Number.isSafeInteger(tokens) || tokens < (state.tokensReserved ?? 0)
       || policy.policyId === 'knowledge-generation-bounded/v1' && tokens > policy.maxTotalTokens) throw new Error('Automation reservation conflict.');
-    const facts = this.cooldowns(root, state.threadId);
+    const facts = this.cooldowns(root, state.threadId, inventory);
     const latest = facts.filter(fact => fact.decision === 'required').map(fact => fact.notBefore!).sort().at(-1);
     const invalid = facts.some(fact => fact.permissionId === state.permissionId && fact.decision === 'invalid');
     const changed = state.callsUsed !== receipts.length || state.tokensReserved !== tokens || latest !== undefined && (!state.notBefore || latest > state.notBefore)
@@ -213,7 +263,7 @@ export class ConversationAutoExtraction {
       const current = this.read(root, threadId);
       if (!current || current.permissionId !== expected.permissionId || current.owner !== this.owner || !current.enabled
         || current.lastRunId !== claim.runId || !current.attemptedVersions.includes(window.sourceVersion)) throw new Error('Automation permission conflict.');
-      this.reconcile(root, current);
+      const inventory = this.receiptInventory(root); this.reconcile(root, current, inventory);
       if (!current.enabled) throw new Error('Automation permission stopped.');
       if (this.now() >= Date.parse(current.expiresAt)) {
         current.enabled = false; current.reason = 'expired'; this.write(root, current); throw new Error('Automation permission expired.');
@@ -222,7 +272,7 @@ export class ConversationAutoExtraction {
       const policy = current.policy ?? SINGLE_EXTRACTION_POLICY;
       const path = join(root, 'auto-extraction', `attempt-${current.permissionId}-${claim.attemptId}.json`);
       if (existsSync(path)) {
-        const saved = receiptSchema.parse(readDocument(path));
+        const saved = inventory.read(`attempt-${current.permissionId}-${claim.attemptId}.json`);
         if (saved.runId !== claim.runId || saved.requestDigest !== claim.requestDigest || digest(saved.budget) !== digest(claim.budget)) throw new Error('Automation reservation conflict.');
         return; // The exact receipt has already consumed its slot; never debit twice.
       }
@@ -253,12 +303,13 @@ export class ConversationAutoExtraction {
     });
   }
   /** Only a fully checked, empty dispatch ledger proves a failed local start did not send this window. */
-  private releaseUnsentWindow(root: string, current: AutoExtractionState, scheduled: { runId: string; sourceVersion: string }) {
+  private releaseUnsentWindow(root: string, current: AutoExtractionState, scheduled: { runId: string; sourceVersion: string }, observed?: ReceiptInventory) {
     if (!current.ledgerVersion || current.lastRunId !== scheduled.runId) return;
-    this.reconcile(root, current);
-    const directory = join(root, 'auto-extraction'), prefix = `attempt-${current.permissionId}-`;
-    const receipts = readdirSync(directory).filter(name => name.startsWith(prefix) && name.endsWith('.json'))
-      .map(name => receiptSchema.parse(readDocument(join(directory, name))));
+    const inventory = observed ?? this.receiptInventory(root);
+    this.reconcile(root, current, inventory);
+    const prefix = `attempt-${current.permissionId}-`;
+    const receipts = inventory.entries.filter(name => name.startsWith(prefix) && name.endsWith('.json'))
+      .map(name => inventory.read(name));
     if (!receipts.some(receipt => receipt.runId === scheduled.runId)) {
       current.attemptedVersions = current.attemptedVersions.filter(version => version !== scheduled.sourceVersion);
     }
@@ -403,12 +454,12 @@ export class ConversationAutoExtraction {
           withWorkspaceWrite(root, () => {
             // Publish facts even when an old owner finishes after a new permission was granted.
             // The old task never mutates that new permission; its gate/status reconciles these facts.
-            this.cooldowns(root, threadId);
+            const inventory = this.receiptInventory(root); this.cooldowns(root, threadId, inventory);
             const current = this.read(root, threadId);
             if (!current || current.permissionId !== reserved.permissionId || current.owner !== this.owner
               || current.lastRunId !== reserved.lastRunId) return;
-            if (run.status !== 'completed') this.releaseUnsentWindow(root, current, scheduled!);
-            this.reconcile(root, current);
+            if (run.status !== 'completed') this.releaseUnsentWindow(root, current, scheduled!, inventory);
+            this.reconcile(root, current, inventory);
             if (!current.enabled) { this.write(root, current); return; }
             const last = run.attempts[run.attempts.length - 1];
             const transient = run.status === 'failed' && !!last.outcome
@@ -443,6 +494,6 @@ export class ConversationAutoExtraction {
         if (current?.enabled && current.owner === this.owner) { current.enabled = false; current.reason = 'interrupted'; this.write(root, current); }
       }); } catch { /* Preserve durable reservations on shutdown failures. */ }
     }
-    this.roots.clear(); this.stable.clear();
+    this.roots.clear(); this.stable.clear(); this.durableCooldowns.clear();
   }
 }

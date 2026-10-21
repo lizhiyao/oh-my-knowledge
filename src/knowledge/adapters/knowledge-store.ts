@@ -23,10 +23,12 @@ export class FileKnowledgeStore implements KnowledgeStore {
   private path(knowledgeId: string): string {
     return join(this.root, `${digest([this.namespace, knowledgeId]).slice(7)}.json`);
   }
-  list(): KnowledgeEnvelope[] {
+  list(knowledgeIds?: ReadonlySet<string>): KnowledgeEnvelope[] {
     checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     if (!existsSync(this.root)) return [];
-    return readdirSync(this.root).filter((name) => name.endsWith('.json')).sort().map((name) => {
+    const selected = knowledgeIds ? new Set([...knowledgeIds].map(id => this.path(id))) : undefined;
+    return readdirSync(this.root).filter((name) => name.endsWith('.json')).sort()
+      .filter(name => !selected || selected.has(join(this.root, name))).map((name) => {
       const entry = this.load(join(this.root, name));
       if (this.path(entry.knowledgeId) !== join(this.root, name)) throw new Error('Knowledge filename identity mismatch.');
       return entry;
