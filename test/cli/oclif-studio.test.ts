@@ -14,11 +14,13 @@ describe('oclif studio', () => {
     assert.ok(stdout.includes('--port'), 'stdout missing --port flag');
     assert.ok(stdout.includes('--no-open'), 'stdout missing --no-open flag');
     assert.ok(stdout.includes('--dev'), 'stdout missing --dev flag');
+    assert.match(stdout, /--takeover[\s\S]*默认端口占用时报错/);
   });
 
   it('--help --lang en', async () => {
     const stdout = await renderCommandHelp('studio', 'en');
     assert.ok(stdout.includes('Start omk Studio'), 'stdout should contain en description');
+    assert.match(stdout, /--takeover[\s\S]*by default, port conflicts fail/);
   });
 
   it('非法 --port → exit 2 + 中文 parser 错误', async () => {

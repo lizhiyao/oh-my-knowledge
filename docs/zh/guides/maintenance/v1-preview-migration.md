@@ -70,6 +70,7 @@ omk eval --dry-run --samples eval-samples.yaml \
 
 - `omk init` 仍默认生成 3 条低成本起步用例；较完整的官方起步集使用 `omk init --samples 20`。把它当发布证据前必须人工复核或替换。
 - `omk init` 不再覆盖已有脚手架文件，除非显式传入 `--force`。
+- Studio 与评测预览遇到端口冲突时不再关闭已有 OMK 监听者。请选择空闲端口或自行停止原服务。确需替换经验证的 OMK 服务时，运行 `omk studio --port <port> --takeover`，原来指定了 `--host` 时保持一致。启动输出区分实际监听地址、本机 URL 与同地址族的网卡候选；候选不保证网络可达。见 [Studio CLI 参考](../../reference/cli.md#omk-studio)。
 - `omk eval --resume` 接受 Core `runId`，不再接受报告路径。
 - `omk eval gold compare` 接受 Core `runId`，并要求显式提供 `--target`、`--evaluator` 与 `--metric`。只有领域已经选定可靠性阈值时才传入可选的 `--minimum-alpha`；事后 assessment 使用置信区间下界，绝不会改变 release verdict。
 - `omk evolve` 不再接受旧的 diagnostic、sample repair、report reuse、holdout、significance 与 test split 开关。候选接受和源文件写回由 Core decision 管理；独立发布验证集应放在 authoring loop 外运行。

@@ -39,6 +39,7 @@ export async function runStudio(
       '--port', flags.port,
       '--lang', lang,
       ...(flags.host ? ['--host', flags.host] : []),
+      ...(flags.takeover ? ['--takeover'] : []),
     ];
     if (flags['reports-dir']) {
       childArgs.push('--reports-dir', flags['reports-dir']);
@@ -92,6 +93,7 @@ export async function runStudio(
   const server: ReportServer = createNextStudioServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
+    takeover: flags.takeover ?? false,
     ...createStudioDirectorySources(
       {
         reports: { global: globalReportsDir, project: projectReportsDir },
@@ -119,6 +121,13 @@ export async function runStudio(
   try {
     const url = await server.start();
     console.log(tCli('cli.studio.started', lang, { url }));
+    const addresses = server.getAddresses();
+    if (addresses) {
+      console.log(tCli('cli.studio.binding', lang, { address: addresses.bindAddress }));
+      for (const networkUrl of addresses.networkUrls) {
+        console.log(tCli('cli.studio.network_candidate', lang, { url: networkUrl }));
+      }
+    }
     console.log(tCli('cli.studio.stop_hint', lang));
     if (!flags['no-open'] && process.stdout.isTTY) {
       await openWorkbench(url, lang);
@@ -152,6 +161,10 @@ export default class Studio extends BaseCommand {
       }),
       command: '<%= config.bin %> studio --port 8080 --no-open',
     },
+    {
+      description: bilingual({ zh: '显式替换同端口上已有的 OMK 服务', en: 'Explicitly replace the OMK service on the same port' }),
+      command: '<%= config.bin %> studio --port 7799 --takeover',
+    },
   ];
 
   static flags = {
@@ -166,8 +179,14 @@ export default class Studio extends BaseCommand {
     }),
     host: Flags.string({
       description: bilingual({
-        zh: '监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网',
-        en: 'Listen host, default localhost. Use 0.0.0.0 to expose to LAN',
+        zh: '监听地址，默认 127.0.0.1（或 OMK_REPORT_HOST）。0.0.0.0／:: 显式向网络开放',
+        en: 'Bind address, default 127.0.0.1 (or OMK_REPORT_HOST). 0.0.0.0 / :: explicitly exposes to the network',
+      }),
+    }),
+    takeover: Flags.boolean({
+      description: bilingual({
+        zh: '显式替换同地址／端口上经验证的 OMK 服务；默认端口占用时报错，不关闭现有服务',
+        en: 'Explicitly replace a verified OMK service on the same address/port; by default, port conflicts fail without stopping it',
       }),
     }),
     'reports-dir': Flags.string({

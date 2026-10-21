@@ -46,7 +46,7 @@ describe('formatListenError', () => {
     assert.match(out.message, /permission denied \(EPERM\)/);
   });
 
-  it('p=8080 + EADDRINUSE → null (caller should run omk-takeover flow)', () => {
+  it('p=8080 + EADDRINUSE → null (caller checks explicit takeover permission)', () => {
     const out = formatListenError(8080, nodeErr('EADDRINUSE'));
     assert.equal(out, null);
   });
@@ -60,9 +60,11 @@ describe('formatListenError', () => {
     assert.doesNotMatch(out.message, /permission denied/);
   });
 
-  it('p=8080 + no errno → null (fall through to takeover, surfaces unknown via takeover error path)', () => {
+  it('p=8080 + no errno → diagnostic error, never a takeover probe', () => {
     const out = formatListenError(8080, new Error('weird'));
-    assert.equal(out, null);
+    assert.ok(out);
+    assert.match(out.message, /unknown error/);
+    assert.match(out.message, /weird/);
   });
 
   it('error-message format includes a port-fix suggestion in every branch', () => {
