@@ -29,11 +29,14 @@ examples/**/.omk/*
 test/fixtures/**/.omk/*
 !test/fixtures/**/.omk/eval-samples.json
 !test/fixtures/**/.omk/eval-samples.yaml
-# Codex / 其它 agent CLI 的本地 hook / config 是个人偏好,不进仓库
-# —— 项目共享的 agent 入场清单走 AGENTS.md,skill 单一来源放 .claude/skills/,
-#    其它 agent 用户按 AGENTS.md「omk 自带 skill 安装」段引导自取
+# Agent 的个人 hook／配置不进仓库；项目共享规则走 AGENTS.md。
+# 官方 Skill 的单一来源是 .agents/skills/omk/，.claude/skills/omk 仅保存软链。
+# 逐层放开官方目录，新增参考与资产可被发现，其它个人 Agent 内容继续忽略。
 .codex/
-.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/omk/
 
 # impeccable 本地 checkout 与各 harness 软链（个人工具链，不进仓库）
 .impeccable/
