@@ -51,10 +51,3 @@ export type ExecutorFn = ((input: ExecutorInput) => Promise<ExecResult>) & {
   /** Same-process hosts can report the runtime that actually owns execution. */
   readonly runtimeFingerprint?: ExecutorRuntimeFingerprintResolver;
 };
-
-export interface ExecutorCache {
-  get(key: string): ExecResult | null;
-  set(key: string, value: ExecResult): void;
-  save(): void;
-  size(): number;
-}

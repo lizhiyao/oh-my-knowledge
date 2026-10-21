@@ -28,7 +28,6 @@ export const CoreResumeLocatorSchema = z.object({
 }).strict();
 
 export type CoreResumeDispositionPolicy = z.infer<typeof CoreResumeDispositionPolicySchema>;
-export type CoreResumeRejectionMode = CoreResumeDispositionPolicy['rejectionMode'];
 export type CoreResumeLocator = z.infer<typeof CoreResumeLocatorSchema>;
 
 export interface CoreResumeDispositionRequest {

@@ -140,15 +140,6 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
   };
 }
 
-export function loadExisting(path: string): SkillDerivedStandards | undefined {
-  if (!existsSync(path)) return undefined;
-  try {
-    return normalizeSkillDerivedStandards(JSON.parse(readFileSync(path, 'utf-8')));
-  } catch {
-    return undefined;
-  }
-}
-
 export function markStale(record: SkillDerivedStandards, generatedAt: string): SkillDerivedStandards {
   return {
     ...record,

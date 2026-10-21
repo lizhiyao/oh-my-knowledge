@@ -2,8 +2,6 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 export const REPORT_FILE_SUFFIX = '.report.json';
-export const GRAPH_FILE_SUFFIX = '.graph.json';
-export const CARD_FILE_SUFFIX = '.card.md';
 
 export function safeArtifactFileStem(id: string): string {
   return id.replaceAll(/[/\\:*?"<>|]/g, '_');

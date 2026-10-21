@@ -393,7 +393,3 @@ export const DSH_RECOGNIZED_FAMILIES: readonly string[] = [
   'approval/asked',
   'approval/decided',
 ];
-
-export function dshRecordFamilyOf(record: unknown): string | undefined {
-  return isRecord(record) ? stringValue(record.type) : undefined;
-}
