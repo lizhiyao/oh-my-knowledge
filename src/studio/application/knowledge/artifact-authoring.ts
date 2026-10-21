@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { createLocalKnowledgeApplication } from '../../../observability/application.js';
+import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { CarrierLibrary } from '../../../knowledge/artifacts/authoring/carrier-library.js';
 import { carrierMetadata, chooseCarrierDirectory, composeCarrierContent, renderCarrierKnowledge } from '../../../knowledge/artifacts/authoring/knowledge-content.js';
 import { reviewCarrierKnowledge } from '../../../knowledge/artifacts/authoring/knowledge-review.js';

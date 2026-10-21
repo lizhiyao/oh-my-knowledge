@@ -257,6 +257,7 @@ lint 缓存依据这棵树的文件签名决定要做什么，
 否则请在这份检出内部自行安装。
 
 - `yarn test` 跑完整的 vitest 套件
+- `yarn ci:quality` 首先运行独立的 `scripts/ci/test-coverage.mjs` 门禁。每个测试都必须恰好进入一个分片，包括 Vitest 覆盖守卫自身；缺失、重复与已删除文件的条目会在构建前失败。Agent 探测／采集 smoke 默认使用临时主目录与真实文件系统 fixture。检查本机实际产品与日志时，显式运行 `OMK_AGENT_SMOKE=1 yarn test test/observability/agents/smoke.test.ts`；它会读取真实主目录，产物只写临时目录。Hosted CI 不启用这项 opt-in，也不证明某台机器的 Agent 安装情况。
 - `yarn test:profile` 构建后通过 hermetic 测试包装器跑一遍完整套件，再列出最慢文件。`--top <n>` 控制列表长度，`--workers <n>` 设置并记录 worker 上限。v1 profiler 默认一个 worker；旧版仅输出 stdout，继承 Vitest 的两个 worker 默认值。两者不是同条件观测，不能据此宣称优化收益。
 - 传 `--output <新文件.json>` 保存 `omk-test-profile/v1` 记录，绑定源码 commit 与 dirty 状态、实际 OS／架构／Node、归一化测试命令、worker 上限、逐文件状态／时长，以及四份分片清单的字节摘要和文件归属。时长沿用 Vitest JSON 的断言起止跨度，不含 transform／import；全跳过文件显式记为 `skipped`，时长保留 `null`。未知时长同样保留 `null`；缺失、失败或未归属结果不能算完整通过。分片 `observedFileDurationSumMs` 仅是本机已观测文件时长之和，不是 CI step／job 墙钟。规范化快照放在 `test/shards/profiles/`；不因单次运行重平衡清单或宣称 CI 变快。
 - `--raw-dir <新目录>` 在仓库外保留原始 JSON、runner 日志与进程退出诊断；省略时创建并打印外部 OS 临时证据目录。中断或失败仍保留诊断，并以非零状态退出。既有 JSON 输出或证据目录不会被覆盖；独立的运行临时根在成功和失败后都会清理。例如先创建仓库外父目录，再执行：`yarn test:profile --workers 1 --top 20 --output /ABS/NEW-PROFILE.json --raw-dir /ABS/NEW-PROFILE-RAW`。提交的 JSON 只含归一化仓库相对路径。这是排查证据，不是性能基线或 CI 门禁；若采集 Linux CI 墙钟，须另行绑定精确 run URL／head 与测试 step 起止时间。

@@ -1,3 +1,4 @@
+import { assertPageFault } from '../_page-fault-assertions.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -86,7 +87,7 @@ describe('Observe Next production routes', () => {
     const server=createNextStudioServer({port:0,observationsDir:root,conversationCatalog:{listConversations:fail,getConversation:fail,loadTaskTrajectory:fail}});servers.push(server);
     const url=await server.start();
     for(const path of ['/observe','/observe/conversations/thread','/observe/conversations/thread/tasks/turn']){
-      const response=await fetch(url+path);assert.equal(response.status,503);assert.equal(await response.text(),'studio_source_unavailable');
+      const response=await fetch(url+path);assert.equal(response.status,503);await assertPageFault(response, 'studio_source_unavailable');
     }
   },15000);
   it('语言只看本机设置：地址里的 lang 不生效，页面链接不带语言参数',async()=>{

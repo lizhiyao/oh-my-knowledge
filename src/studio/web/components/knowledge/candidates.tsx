@@ -21,7 +21,7 @@ import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
-import type { ExtractionGenerationPolicy } from '../../../../observability/application';
+import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(rows: KnowledgeCandidateRow[]): void }) {
   const zh = lang === 'zh';

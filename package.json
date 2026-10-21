@@ -63,7 +63,7 @@
     "test": "node scripts/ci/test.mjs",
     "test:profile": "yarn build && node dist-scripts/bench/test-profile.js",
     "studio:baseline": "yarn build:src && yarn build:scripts && node dist-scripts/bench/studio-baseline.js",
-    "ci:quality": "run-p lint typecheck && run-s build && run-p build:docs:check docs:build",
+    "ci:quality": "node scripts/ci/test-coverage.mjs && run-p lint typecheck && run-s build && run-p build:docs:check docs:build",
     "ci": "run-s ci:quality test",
     "prepublishOnly": "run-s clean build",
     "prepare": "husky",

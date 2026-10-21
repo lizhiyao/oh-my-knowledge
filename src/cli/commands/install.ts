@@ -7,36 +7,16 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveInstallSource, resolveRemoteGitSource, usingInstallSource, SourceResolveError } from '../../knowledge/artifacts/sources/install-source.js';
-import type { ArtifactKind } from '../../knowledge/artifacts/contracts.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
 import { replaceDeployedArtifact } from '../../knowledge/artifacts/sources/deploy-artifact.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
-const INSTALLABLE_KINDS: ArtifactKind[] = ['skill', 'prompt', 'agent', 'workflow'];
-
-type AgentTarget = 'codex';
 
 interface InstallTarget {
   label: string;
   skillsDir: string;
 }
-
-interface AgentTargetSpec {
-  label: string;
-  skillsDir: (home: string) => string;
-  detectDirs: (home: string) => string[];
-}
-
-const TARGET_ORDER: AgentTarget[] = ['codex'];
-
-const TARGET_SPECS: Record<AgentTarget, AgentTargetSpec> = {
-  codex: {
-    label: 'Codex/AGENTS',
-    skillsDir: (home) => join(home, '.agents', 'skills'),
-    detectDirs: (home) => [join(home, '.agents'), join(home, '.codex')],
-  },
-};
 
 function packagedOmkAgentSkillDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -44,12 +24,6 @@ function packagedOmkAgentSkillDir(): string {
   if (existsSync(packaged)) return packaged;
   const workspace = resolve(here, '..', '..', '..', '.agents', 'skills', 'omk');
   return existsSync(workspace) ? workspace : packaged;
-}
-
-function knownTarget(target: AgentTarget): InstallTarget {
-  const home = homedir();
-  const spec = TARGET_SPECS[target];
-  return { label: spec.label, skillsDir: spec.skillsDir(home) };
 }
 
 function directoryExists(path: string): boolean {
@@ -60,50 +34,16 @@ function directoryExists(path: string): boolean {
   }
 }
 
-function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
-  const parts = [...new Set(raw.split(',').map((part) => part.trim()).filter(Boolean))];
-  if (parts.length === 0) return autoTargets();
-  if (parts.includes('auto')) {
-    if (parts.length > 1) throw new Errors.CLIError(tCli('cli.install.invalid_target_combo', lang, { target: raw }), { exit: 2 });
-    return autoTargets();
-  }
-  if (parts.includes('all')) {
-    if (parts.length > 1) throw new Errors.CLIError(tCli('cli.install.invalid_target_combo', lang, { target: raw }), { exit: 2 });
-    return TARGET_ORDER;
-  }
-  const out: AgentTarget[] = [];
-  for (const part of parts) {
-    if (part !== 'codex') {
-      throw new Errors.CLIError(tCli('cli.install.unknown_target', lang, { target: part }), { exit: 2 });
-    }
-    out.push(part);
-  }
-  return out;
-}
-
-function autoTargets(): AgentTarget[] {
-  const home = homedir();
-  return TARGET_ORDER.filter((target) => TARGET_SPECS[target].detectDirs(home).some(directoryExists));
-}
-
 function resolveInstallTargets(params: { to: string; dest?: string; lang: 'zh' | 'en' }): InstallTarget[] {
   if (params.dest) {
     return [{ label: 'custom', skillsDir: resolve(params.dest) }];
   }
 
-  const targets = parseTargets(params.to, params.lang);
-  if (targets.length === 0) {
+  const home = homedir();
+  if (params.to === 'auto' && ![join(home, '.agents'), join(home, '.codex')].some(directoryExists)) {
     throw new Error(tCli('cli.install.no_detected_targets', params.lang));
   }
-  const seen = new Set<string>();
-  return targets
-    .map(knownTarget)
-    .filter((target) => {
-      const key = resolve(target.skillsDir);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+  return [{ label: 'Codex/AGENTS', skillsDir: join(home, '.agents', 'skills') }];
 }
 
 /** 目标落点:目录-skill → {skillsDir}/{name};文件-skill → {skillsDir}/{name}.md。 */
@@ -259,10 +199,10 @@ export default class Install extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '强制安装到当前 omk 已知的所有目标',
-        en: 'Install into every target currently known to omk',
+        zh: '直接安装到 Codex/AGENTS，无需提前检测到目录',
+        en: 'Install to Codex/AGENTS even when its directories are not detected',
       }),
-      command: '<%= config.bin %> install omk-agent-skill --to all',
+      command: '<%= config.bin %> install omk-agent-skill --to codex',
     },
     {
       description: bilingual({
@@ -273,8 +213,8 @@ export default class Install extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '安装用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）',
-        en: 'Install your own skill (--kind optional; inferred from SKILL.md)',
+        zh: '安装用户自己的 skill（可省略 --kind skill）',
+        en: 'Install your own skill (--kind skill is optional)',
       }),
       command: '<%= config.bin %> install ./skills/review',
     },
@@ -308,16 +248,17 @@ export default class Install extends BaseCommand {
     lang: LANG_FLAG,
     kind: Flags.string({
       description: bilingual({
-        zh: '用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。',
-        en: 'Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.',
+        zh: '安装的 Artifact.kind，可省略；仅支持 skill。',
+        en: 'Artifact.kind to install. Optional; only skill is supported.',
       }),
-      options: INSTALLABLE_KINDS,
+      options: ['skill'],
     }),
     to: Flags.string({
       description: bilingual({
-        zh: '安装目标：auto（默认，本机已检测目标） / codex / all。',
-        en: 'Install target: auto (default, detected local targets) / codex / all.',
+        zh: '安装目标：auto（默认，检测 Codex/AGENTS）或 codex（直接安装）。',
+        en: 'Install target: auto (default, detect Codex/AGENTS) or codex (install directly).',
       }),
+      options: ['auto', 'codex'],
       default: 'auto',
     }),
     dest: Flags.string({
@@ -365,7 +306,7 @@ export default class Install extends BaseCommand {
       }
       // 远端 git:--git-url 在场时,位置参数是仓库内 spec(repo 相对路径),先于其它分支判定。
       if (flags['git-url']) {
-        this.installUserSkill(args.input, flags.kind, flags, lang, {
+        this.installUserSkill(args.input, flags, lang, {
           url: flags['git-url'],
           ref: flags['git-ref'] || 'HEAD',
         });
@@ -376,7 +317,7 @@ export default class Install extends BaseCommand {
         return;
       }
       if (args.input.startsWith('git:') || looksLikeArtifactPath(args.input)) {
-        this.installUserSkill(args.input, flags.kind, flags, lang);
+        this.installUserSkill(args.input, flags, lang);
         return;
       }
       throw new Error(tCli('cli.install.unknown_input', lang, { input: args.input }));
@@ -401,17 +342,10 @@ export default class Install extends BaseCommand {
 
   private installUserSkill(
     input: string,
-    kindFlag: string | undefined,
     flags: InstallFlags,
     lang: 'zh' | 'en',
     remote?: { url: string; ref: string },
   ): void {
-    // kind 推导:--kind 显式优先;否则缺省 skill(Phase 1 仅 skill)。
-    const kind: ArtifactKind = (kindFlag as ArtifactKind | undefined) ?? 'skill';
-    if (kind !== 'skill') {
-      throw new Error(tCli('cli.install.kind_unsupported', lang, { kind }));
-    }
-
     // 源解析委托给 source-resolver(file / 本地 git / 远端 git),install 主干源无关。
     // 远端走结构化 resolveRemoteGitSource(url/ref/spec 分字段,URL 不经任何字符串切分);
     // resolver 不依赖 CLI,错误以 SourceResolveError(messageKey) 抛出,这里映射成本地化文案。

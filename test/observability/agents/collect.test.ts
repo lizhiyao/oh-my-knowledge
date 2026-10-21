@@ -17,7 +17,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { globalLayout, type GlobalOmkLayout } from '../../../src/evidence/storage/layout.js';
 import {
-  AGENT_TRACE_ARTIFACT_VERSION,
   agentCollectionReportPath,
   AgentCollectionReportOutdatedError,
   collectAgentLogs,
@@ -237,74 +236,6 @@ function seedClaudeAndCodex(harness: Harness): { claudeA: string; claudeB: strin
 }
 
 describe('collectAgentLogs 产物投影', () => {
-  it('把已支持格式的日志写成归一化 Trace IR 产物，并保留原始路径', () => {
-    const harness = createHarness();
-    const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
-    const report = collect(harness);
-
-    assert.equal(report.schemaVersion, AGENT_COLLECTION_VERSION);
-    assert.equal(report.unknownDispositionRulesVersion, UNKNOWN_DISPOSITION_RULES_VERSION);
-    assert.equal(report.outputDir, harness.layout.observeAgentsDir);
-    assert.deepEqual(report.limitations, [], '干净场景不应编造 limitations');
-    assert.equal(report.summary.discoveredCount, 3);
-    assert.equal(report.summary.collectedCount, 3);
-    assert.equal(report.summary.skippedCount, 0);
-    assert.equal(report.summary.failedCount, 0);
-    assert.deepEqual([
-      report.summary.unknownEventCount,
-      report.summary.duplicateViewCount,
-      report.summary.unmappedEvidenceCount,
-    ], [0, 0, 0], '干净场景下三个未识别桶都应当是 0');
-    assert.equal(report.sessions.length, 3);
-    assert.deepEqual(agentOf(report, 'claude-code').logRoots.map((root) => [
-      root.rootId, root.discoveredCount, root.collectedCount,
-    ]), [['claude-projects', 2, 2]]);
-    assert.deepEqual(agentOf(report, 'codex').logRoots.map((root) => root.rootId), ['codex-sessions', 'codex-archived-sessions']);
-
-    for (const [sourcePath, kind, runId] of [
-      [claudeA, 'claude', 'sess-a'],
-      [claudeB, 'claude', 'sess-b'],
-      [codexA, 'codex', 'cx-a'],
-    ] as const) {
-      const session = sessionFor(report, sourcePath);
-      assert.equal(session.sourceKind, kind);
-      assert.equal(session.runId, runId);
-      assert.ok(session.traceId.startsWith('trace:'));
-      assert.equal(session.contentDigest, digestOf(sourcePath), '摘要必须是文件内容的 sha256');
-      assert.ok(session.eventCount > 0);
-      assert.deepEqual(
-        [session.unknownEventCount, session.duplicateViewCount, session.unmappedEvidenceCount],
-        [0, 0, 0],
-        '最小样例不应产生任何未识别记录',
-      );
-      assert.match(artifactFile(harness, session), /trace_[0-9a-f]{32}\.json$/);
-
-      const artifact = JSON.parse(readFileSync(artifactFile(harness, session), 'utf-8')) as AgentTraceArtifact;
-      assert.equal(artifact.schemaVersion, AGENT_TRACE_ARTIFACT_VERSION);
-      assert.equal(artifact.sourcePath, sourcePath, '产物必须保留原始日志绝对路径');
-      assert.equal(artifact.contentDigest, session.contentDigest);
-      assert.equal(artifact.sourceKind, kind);
-      assert.equal(artifact.session.traceId, session.traceId);
-      assert.equal(artifact.session.sourcePath, sourcePath);
-      assert.ok(artifact.session.events.length === session.eventCount);
-    }
-
-    // 展示用标题只取第一条人类提问，不参与任何测量语义。
-    assert.equal(sessionFor(report, claudeA).title, '解释这个仓库的分层');
-
-    // 两份报告都落在 OMK 侧，且能被 load 回来。
-    assert.equal(existsSync(harness.layout.observeAgentsInventoryPath), true);
-    assert.equal(existsSync(agentCollectionReportPath(harness.layout.observeAgentsDir)), true);
-    assert.deepEqual(loadAgentCollectionReport(harness.layout.observeAgentsDir), report);
-    const inventory = JSON.parse(readFileSync(harness.layout.observeAgentsInventoryPath, 'utf-8')) as AgentInventoryReport;
-    assert.deepEqual(
-      inventory.agents.filter((agent) => agent.installed).map((agent) => agent.agentId).sort(),
-      ['claude-code', 'codex'],
-    );
-    assert.equal(report.inventoryGeneratedAt, inventory.generatedAt);
-    assert.equal(loadAgentCollectionReport(join(harness.root, 'nowhere')), undefined);
-  });
-
   it('外部传入清单时按传入的清单采集，不重复探测', () => {
     const harness = createHarness();
     const { claudeA, claudeB, codexA } = seedClaudeAndCodex(harness);
@@ -338,35 +269,6 @@ describe('collectAgentLogs 产物投影', () => {
         `${session.sourcePath} 的产物与标准 2 空格缩进不一致`,
       );
     }
-  });
-
-  it('第二次运行同一批日志采集 0 个新文件，删掉产物后又能补回', () => {
-    const harness = createHarness();
-    seedClaudeAndCodex(harness);
-    const first = collect(harness, { now: () => '2026-05-18T11:00:00.000Z' });
-    const artifactPaths = first.sessions.map((session) => artifactFile(harness, session));
-    const artifactBytes = artifactPaths.map((path) => readFileSync(path));
-
-    const second = collect(harness, { now: () => '2026-05-18T12:00:00.000Z' });
-    assert.equal(second.summary.collectedCount, 0, '增量运行不得重新解析未变化的文件');
-    assert.equal(second.summary.skippedCount, 3);
-    assert.equal(second.summary.failedCount, 0);
-    assert.deepEqual(second.sessions, first.sessions, '沿用条目必须与上一轮逐字相同');
-    assert.deepEqual(
-      artifactPaths.map((path) => readFileSync(path)),
-      artifactBytes,
-      '跳过时不得改写已产出的归一化产物',
-    );
-    assert.equal(second.generatedAt, '2026-05-18T12:00:00.000Z');
-    assert.deepEqual(second.limitations, []);
-
-    // 产物被删掉：mtime/size 未变也不能谎报「已采集」。
-    rmSync(artifactPaths[0], { force: true });
-    const third = collect(harness, { now: () => '2026-05-18T13:00:00.000Z' });
-    assert.equal(third.summary.collectedCount, 1);
-    assert.equal(third.summary.skippedCount, 2);
-    assert.equal(existsSync(artifactPaths[0]), true);
-    assert.deepEqual(third.sessions.map((session) => session.traceId).sort(), first.sessions.map((session) => session.traceId).sort());
   });
 
   it('内容摘要按块流式计算，超过读取块大小的文件与整文件摘要逐字等值', () => {

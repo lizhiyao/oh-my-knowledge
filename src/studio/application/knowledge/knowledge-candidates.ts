@@ -1,13 +1,10 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
-import {
-  type ConversationCatalog,
-  createLocalKnowledgeApplication,
-  configuredExtractionModel,
-  extractionRunSummary,
-  type KnowledgeApplication,
-  type KnowledgeOperation,
-  executeKnowledgeOperation, knowledgeOperationSchemas,
-} from '../../../observability/application.js';
+import { type ConversationCatalog } from '../../../observability/application.js';
+import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
+import { configuredExtractionModel } from '../../../knowledge/adapters/executor.js';
+import { extractionRunSummary } from '../../../knowledge/extraction/runs.js';
+import { type KnowledgeApplication } from '../../../knowledge/application/application.js';
+import { type KnowledgeOperation, executeKnowledgeOperation, knowledgeOperationSchemas } from '../../../knowledge/application/operations.js';
 import { conversationExtractionSource } from '../conversations/conversation-extraction.js';
 import { z } from 'zod';
 import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail } from '../../view-models/knowledge/knowledge-candidates.js';

@@ -30,7 +30,7 @@ omk init [目录]
 
 ```bash
 omk install omk-agent-skill            # 内置 omk 官方 Agent Skill（onboarding）
-omk install omk-agent-skill --to all
+omk install omk-agent-skill --to codex
 omk install ./skills/review            # 安装本地 skill
 omk install git:main:skills/review     # 从当前仓库某个 ref 安装（SHA 不可变、分支随 ref 漂移）
 omk install ./skills/review --dest ~/.my-agent/skills
@@ -41,14 +41,14 @@ omk install ./skills/review --dest ~/.my-agent/skills
 **Flags:**
 
 ```text
-  --dest <value>                  自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
-  --dry-run                       只打印安装目标，不写文件。
-  --force                         覆盖目标位置已存在的 skill。
-  --git-ref <value>               远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
-  --git-url <value>               远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
-  --kind <skill|prompt|agent|workflow>用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
-  --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-  --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / all。
+  --dest <value>     自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
+  --dry-run          只打印安装目标，不写文件。
+  --force            覆盖目标位置已存在的 skill。
+  --git-ref <value>  远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
+  --git-url <value>  远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
+  --kind <skill>     安装的 Artifact.kind，可省略；仅支持 skill。
+  --lang <value>     输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+  --to <auto|codex>  安装目标：auto（默认，检测 Codex/AGENTS）或 codex（直接安装）。
 ```
 
 完整描述见 `omk install --help`。
@@ -57,7 +57,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+仅支持安装 `skill`，可省略 `--kind skill`。默认 `auto` 在 `~/.codex` 或 `~/.agents` 是目录时写入 Codex/AGENTS；无需提前检测时使用 `--to codex`，自定义 skill 根目录使用 `--dest`。不接受目标列表。更新旧脚本时请查阅[升级指南](../guides/maintenance/v1-preview-migration.md)。
 
 ## `omk doctor`
 
@@ -203,7 +203,7 @@ Studio 打开的是经过校验的 Core run，而不是第二套报告模型。R
 
 ## `omk observe`
 
-omk observe 提供两条工作流：默认的 skill 健康度报告，以及 observe inbox（`ingest` / `inbox` / `show`）走 reviewer 逐条复核。
+`omk observe` 默认生成 skill 健康度报告；子命令还提供观测收件箱（`ingest`／`inbox`／`show`）、知识维护（`knowledge`）及跨窗口实体关联复核（`entity-links`）。
 
 ### A. skill 健康度报告（默认）
 
@@ -276,6 +276,14 @@ omk observe show <inbox_id>
 落盘观察报告的口径版本是 `schemaVersion: 4`：时间线证据档新增 `observed_effect`——运行时观察到的文件变更独立成行，不并入触发它的工具调用，因为多数变更是命令的副作用而非模型发起的编辑。旧口径（如 `3`）的报告不再被读取：对它重跑一次 `omk observe` 即可刷新。人工评审状态独立存储、时间线行的 id 由证据内容派生，因此重跑后评审结果会接回同一批证据，不需要为旧报告保留双读分支。
 
 支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、Qoder session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+
+### C. 知识维护
+
+`omk observe knowledge` 在本地归档来源，用选定模型生成候选，并支持实体／知识核对、修订与来源检查。`schema`、`study` 是零模型调用的核对操作，`generate` 会发送选定内容。先阅读[知识维护指南](../guides/knowledge/extract-knowledge.md)及其[能力分档](../guides/knowledge/extract-knowledge.md#availability)，具体操作参数见 `omk observe knowledge --help`。
+
+### D. 跨窗口实体关联复核
+
+`omk observe entity-links` 先在本地预览原文与配置，再明确发送一次已确认的 `propose` 调用，并保存人工接受／拒绝决定。同名不自动归并，执行失败或未知不授权重发。派发前阅读[跨窗口复核步骤](../guides/knowledge/extract-knowledge.md)与 `omk observe entity-links --help`。
 
 ## `omk agents`
 

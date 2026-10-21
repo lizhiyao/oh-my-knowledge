@@ -6,6 +6,7 @@ Choose a page for your task; you do not need to read the whole documentation tre
 |---|---|
 | [From conversations to a library and carriers](extract-knowledge.md) | Select sources, review candidates, accumulate knowledge, revise it, and update carriers. |
 | [SDK maintenance case](sdk-maintenance-case.md) | Review historical statements, knowledge changes, and exact references in old and new artifacts. |
+| [Extraction evidence and semantic review](verify-extraction-study.md) | Inspect frozen evidence without model calls, arrange source/output reviews, and distinguish diagnostic results from acceptance. |
 
 Return to the [documentation start page](../../README.md).
 

@@ -20,10 +20,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { testDirectory } from '../helpers/temp-directory.js';
+// @ts-expect-error This standalone quality gate runs as plain Node before any build.
+import { checkTestShardCoverage } from '../../scripts/ci/test-coverage.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TEST_DIR = join(REPO_ROOT, 'test');
@@ -148,28 +152,32 @@ describe('测试门禁覆盖面自守', () => {
     expect(patterns.every((pattern) => pattern.startsWith('test/') && pattern.includes('**'))).toBe(true);
   });
 
-  it('每个测试文件都落在某个 CI 分片清单（覆盖不减），分片间不重叠', () => {
-    const readList = (path: string): Set<string> => new Set(
-      readFileSync(join(REPO_ROOT, path), 'utf-8')
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line !== '' && !line.startsWith('#')),
-    );
-    const shardFiles = [1, 2, 3, 4].map((index) => readList(`test/shards/source-${index}.txt`));
-    const covered = new Set<string>(shardFiles.flatMap((files) => [...files]));
-    const onDisk = listScriptFiles(TEST_DIR).filter((file) => TEST_FILE.test(basename(file)));
-    const missing = onDisk.filter((file) => !covered.has(file)).sort();
-    expect(missing, `这些测试文件不在任何 CI 分片清单：${missing.join('、')}`).toEqual([]);
-    // 分片之间不得重叠（重叠会让同一文件跑多遍，虚增覆盖且浪费 runner）。
-    const seen = new Set<string>();
-    const duplicated: string[] = [];
-    for (const files of shardFiles) {
-      for (const file of files) {
-        if (seen.has(file)) duplicated.push(file);
-        seen.add(file);
-      }
+  it('每个测试文件都恰好落在一个真实 CI 分片，并拒绝失效引用', () => {
+    expect(checkTestShardCoverage(REPO_ROOT)).toBeGreaterThan(0);
+  });
+
+  it('自身从分片清单消失时，独立 quality 入口仍然实际拒绝；重复与失效条目也不能假绿', () => {
+    const root = testDirectory('omk-test-coverage-gate-');
+    mkdirSync(join(root, 'scripts/ci'), { recursive: true });
+    mkdirSync(join(root, 'test/architecture'), { recursive: true });
+    mkdirSync(join(root, 'test/shards'), { recursive: true });
+    const script = join(root, 'scripts/ci/test-coverage.mjs');
+    copyFileSync(join(REPO_ROOT, 'scripts/ci/test-coverage.mjs'), script);
+    const self = 'test/architecture/test-gate-coverage.test.ts';
+    writeFileSync(join(root, self), '// fixture test\n');
+    const setShard = (content: string) => writeFileSync(join(root, 'test/shards/source-2.txt'), content);
+    for (const index of [1, 3, 4]) writeFileSync(join(root, `test/shards/source-${index}.txt`), '');
+    const run = () => spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+    setShard(`${self}\n`);
+    expect(run().status).toBe(0);
+    setShard('');
+    const missing = run();
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain(`未进入 CI 分片：\n  ${self}`);
+    for (const content of [`${self}\n${self}\n`, `${self}\ntest/deleted.test.ts\n`]) {
+      setShard(content);
+      expect(run().status).toBe(1);
     }
-    expect(duplicated, `这些文件落在多个分片：${[...new Set(duplicated)].join('、')}`).toEqual([]);
   });
 });
 

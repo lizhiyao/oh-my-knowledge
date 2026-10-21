@@ -4,7 +4,7 @@ import { tmpdir, hostname } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createLocalKnowledgeApplication } from '../../../../src/observability/application.js';
+import { createLocalKnowledgeApplication } from '../../../../src/knowledge/application/local.js';
 import { executeArtifactAuthoring } from '../../../../src/studio/application/knowledge/artifact-authoring.js';
 import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../../src/evidence/storage/knowledge-workspace.js';
 import { CarrierLibrary } from '../../../../src/knowledge/artifacts/authoring/carrier-library.js';

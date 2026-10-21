@@ -2,7 +2,17 @@
 
 从选定的工作记录形成候选，核对后保留到知识库，修订过时内容，再维护引用它的载体。保留、保存载体和验证效果各有自己的记录。第一次使用可以先走 Studio；命令行步骤在后面。
 
-知识库、载体生成与变化核对的核心流程需要 **1.0.0-beta.14 或更新版本**。本指南描述当前 main 实现；本轮 CLI 指引、读取重试和保存恢复修复尚未包含在已发布的 Beta.14 中，需等待后续 `@next` 发版或从当前源码构建。安装后先运行 `omk --version` 核对。升级前阅读[迁移指南](../maintenance/v1-preview-migration.md)。
+本指南描述当前 main。先区分能力所属版本，再选择安装包或源码构建；安装后运行 `omk --version`，升级前阅读[迁移指南](../maintenance/v1-preview-migration.md)。
+
+## 能力与版本 {#availability}
+
+| 能力 | 可用边界 |
+|---|---|
+| 知识库、载体生成、持续修订与变化核对的核心流程 | 从已发布的 `1.0.0-beta.14` 开始提供；Beta.13 不包含该维护界面。 |
+| strict 结构化提炼、完整原生结果归档、有界重试与 token 预约、模型辅助的跨窗口实体关联执行日志、研究证据核对与运行封存 | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
+| 读取重试、保存恢复与 CLI 操作指引的后续修复 | 同样以当前 main 为准；不把已发布 Beta.14 当作修复完成的证据。 |
+
+当前 prompt、Schema 和容量由[当前知识提炼契约](../../reference/shared/knowledge-contract.md)从运行时代码生成。该页描述构建身份，不代替[发行记录](https://github.com/lizhiyao/oh-my-knowledge/releases)；`@next` 是发行通道，不会自动包含未发布的 main 改动。
 
 ## Studio {#studio}
 
@@ -44,7 +54,7 @@ omk observe knowledge list --workspace ./knowledge --json
 
 可用 `--start-record`／`--end-record` 限定非空行范围（零起始、含首尾）；先读取快照核对范围和限制。支持的执行器与当前格式见[实体提取契约](../../specs/entities/entity-extraction.md)。生成只发送选定片段，仍须检查其中的私有内容。
 
-生成前会检查包含固定规则与所选片段的 system 加 input 文本，UTF-8 合计上限为 1 MiB；这不是 HTTP body、token、模型上下文或金额预算。超限时不调用模型、不创建提炼运行，也不消耗自动提炼的调用次数；原文不会被截断。请重新归档较小范围，或在 Studio 选择一轮中的较少消息。`omk agents extract` 同样支持 `--start-record`／`--end-record`，无需修改采集报告。
+生成前会检查包含固定规则与所选片段的 system＋input 文本，UTF-8 容量上限见[当前契约](../../reference/shared/knowledge-contract.md)。这不是 HTTP body、token、模型上下文或金额预算。超限时不调用模型、不创建提炼运行，也不消耗自动提炼的调用次数；原文不会被截断。请重新归档较小范围，或在 Studio 选择一轮中的较少消息。`omk agents extract` 同样支持 `--start-record`／`--end-record`，无需修改采集报告。
 
 可导出当前构建派生的 JSON Schema，检查或冻结默认生成使用的 strict 结构线协议；`--json` 同时包含协议身份和保留在宿主的检查。该操作不读取知识工作区，也不调用模型：
 
@@ -53,13 +63,13 @@ omk observe knowledge schema
 omk observe knowledge schema --json
 ```
 
-strict 结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。默认生成使用该协议，解码占位后再进入现有宿主接纳检查。默认配置生成使用无 few-shot strict prompt v15 并绑定其完整 system 摘要；领域响应 Schema v4 不变，作者 prompt-json 端口仍用原 v14。prompt、wire、完整请求与 pipeline 分别有自己的身份；本次不激活四正例候选，也不继承历史 prompt-json 质量结果，不宣称完成新的真实模型验收。不支持的执行器能力在派发前拒绝，不回退为仅靠 prompt 约束输出。逐字证据与语义检查仍由宿主负责。导出 Schema 不代表已验证具体 provider 的支持能力或模型质量。
+strict 结构线协议要求全部字段必填，仅对可选的 `object`、`occurrence` 使用 nullable 占位。默认配置生成使用 strict prompt，解码占位后进入宿主接纳检查；作者 prompt-json 端口具有独立身份。当前版本见[自动生成的契约参考](../../reference/shared/knowledge-contract.md)，行为与历史身份见[实体提取契约](../../specs/entities/entity-extraction.md)。prompt、wire、完整请求与 pipeline 分别有自己的身份，不继承历史质量结果，也不宣称完成新的真实模型验收。不支持的执行器能力在派发前拒绝，不回退为仅靠 prompt 约束输出。逐字证据与语义检查仍由宿主负责；导出 Schema 不代表已验证具体 provider 的支持能力或模型质量。
 
 默认文本摘要显示当前知识工作区和带同一 `--workspace` 的下一步命令；未配置模型时，`generate` 仍须显式传入 `--model`。`--json` 保持完整机器结果，提示不混入 JSON stdout。必要参数与 JSON 语法在读取设置或存储前检查；参数失败退出 `2`，业务失败退出 `1`，成功退出 `0`。修订冲突提示重读命令，工作区忙时等待当前写入结束再重试，不删除活跃锁。维护决定与效果验证分别呈现。
 
-生成默认使用 `knowledge-generation-single/v1`：一次 OMK invocation，不自动重试、校验重问或 fallback。Studio 高级配置与 CLI `--generation-policy '<完整政策 JSON>'` 显式启用 `knowledge-generation-bounded/v1`；`omk agents extract` 也支持同一参数。bounded 政策声明 `maxInvocations`（最多 3）、`maxReasks`（最多 2，计入总调用数）、`profileId`、`maxTotalTokens` 与 `maxOutputTokens`，并冻结 retry、accounting、selection、feedback 与 backoff 规则；须传完整政策，不能只给局部覆盖。Studio 默认关闭此开关，确认前显示实际上限。
+生成默认使用 `knowledge-generation-single/v1`：一次 OMK invocation，不自动重试、校验重问或 fallback。Studio 高级配置与 CLI `--generation-policy '<完整政策 JSON>'` 显式启用 `knowledge-generation-bounded/v1`；`omk agents extract` 也支持同一参数。bounded 政策声明 `maxInvocations`、`maxReasks`（计入总调用数）、`profileId`、`maxTotalTokens` 与 `maxOutputTokens`，并冻结 retry、accounting、selection、feedback 与 backoff 规则；须传完整政策，不能只给局部覆盖。调用、重问与输出 token 上限由[当前契约](../../reference/shared/knowledge-contract.md)派生。Studio 默认关闭此开关，确认前显示实际上限。
 
-生产 token 依据 `openai-gpt54-snapshot-context/v1` 仅接受 `openai-api`、请求快照 `gpt-5.4-2026-03-05` 与精确的官方 Chat Completions endpoint。每次预约文档规定的 1,050,000 token 上下文上界加所选输出上限，不按文本长度预测。Studio 初始启用值为最多 3 次调用、2 次重问、3,162,288 token 预约总额及每次 4096 输出 token；实际报告用量较低或未知也不退还全额预约。其他 endpoint／模型组合与 Codex 仍可使用 single 政策，但不会自动获得此 bounded 依据或 fallback 到其他 provider。次数只限制 OMK 调用，不等于 provider 内部请求数或美元金额上限。
+生产 token 依据 `openai-gpt54-snapshot-context/v1` 仅接受 `openai-api`、请求快照 `gpt-5.4-2026-03-05` 与精确的官方 Chat Completions endpoint。每次预约文档规定的 1,050,000 token 上下文上界加所选输出上限，不按文本长度预测。Studio 在确认前展示实际调用、重问、预约总额与每次输出上限；请核对预览，不假定固定界面初始值。实际报告用量较低或未知也不退还全额预约。其他 endpoint／模型组合与 Codex 仍可使用 single 政策，但不会自动获得此 bounded 依据或 fallback 到其他 provider。次数只限制 OMK 调用，不等于 provider 内部请求数或美元金额上限。
 
 bounded 政策仅重试已分类的限流／服务端／网络／超时失败，并可对 parse／envelope／wire 失败或无接纳项的结果重问；只要有接纳 sibling，即选定该部分结果，不额外调用。每份返回结果先归档再分类；未知执行、待归档、存储或提交失败均不授权再次派发。这项工程政策不声明新的真实模型质量或费用改善。
 

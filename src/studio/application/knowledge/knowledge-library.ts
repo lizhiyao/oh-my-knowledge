@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createLocalKnowledgeLibrary, LibrarySaveSchema } from '../../../observability/application.js';
+import { createLocalKnowledgeLibrary } from '../../../knowledge/application/local.js';
+import { LibrarySaveSchema } from '../../../knowledge/application/library.js';
 
 const common = { workspace: z.string().trim().min(1) };
 const requestSchema = z.discriminatedUnion('operation', [

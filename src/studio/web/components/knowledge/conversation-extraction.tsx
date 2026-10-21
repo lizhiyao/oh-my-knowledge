@@ -11,7 +11,7 @@ import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { GenerationPolicyFields } from './generation-policy-fields';
-import type { ExtractionGenerationPolicy } from '../../../../observability/application';
+import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 type Scope = { threadId: string; turnId?: string };
 

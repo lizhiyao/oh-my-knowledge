@@ -6,7 +6,7 @@ import type { AutoExtractionPreview, AutoExtractionState } from '../../../view-m
 import { requestKnowledge } from './request';
 import { resolveKnowledgeWorkspace } from './workspace';
 import { GenerationPolicyFields } from './generation-policy-fields';
-import type { ExtractionGenerationPolicy } from '../../../../observability/application';
+import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 /** Opening a preview does not grant permission or call a model. */
 export function AutoExtractConversation({ threadId, lang, onChanged }: { threadId: string; lang: Language; onChanged?(): void }) {

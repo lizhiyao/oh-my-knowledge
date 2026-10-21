@@ -17,12 +17,14 @@ omk --version
 
 1. **先备份**显式选定的知识目录、项目 `.omk/` 与机器 `~/.oh-my-knowledge/`。知识目录可能在这两个位置之外，不能只备份全局目录。
 2. **删除退场命令／字段**：`list`、`promote`、`rollback`、`eval --no-evidence`、`observe --feedback`／`--no-feedback`；现有受管记录不改写，但新版本不读取。具体边界见本文末节。
-3. **不要把旧提炼产物当成当前结构**：当前实体历史为 v2、提炼运行为 v4；旧实体历史 v1、运行 v3 等旧格式不读取、不恢复、不迁移。旧知识 v2 正文仍可读，但所绑定的旧实体分析会显示不可用。选择新的空知识目录，从原始日志重新提炼并人工核对；这会调用模型，需先确认发送范围与运行时。原始文件保留，新实体不会自动接管旧知识绑定。完整边界见[实体提炼契约](../../specs/entities/entity-extraction.md)。
-4. **新测量另建身份**：当前提炼提示词为 `knowledge-extraction-v14`；提示词字节、接纳语义与运行身份发生过变化，历史报告与分数不重算，不能把不兼容的新旧结果合并成同一比较。复现旧结果须使用冻结基线；现有质量报告不等于新版本整体质量已获验证。
+3. **不要把旧提炼产物当成当前结构**：Beta.14 的实体历史为 v2、提炼运行为 v4；旧实体历史 v1、运行 v3 等旧格式不读取、不恢复、不迁移。旧知识 v2 正文仍可读，但所绑定的旧实体分析会显示不可用。选择新的空知识目录，从原始日志重新提炼并人工核对；这会调用模型，需先确认发送范围与运行时。原始文件保留，新实体不会自动接管旧知识绑定。完整边界见[实体提炼契约](../../specs/entities/entity-extraction.md)。
+4. **新测量另建身份**：Beta.14 的提炼提示词为 `knowledge-extraction-v14`；提示词字节、接纳语义与运行身份发生过变化，历史报告与分数不重算，不能把不兼容的新旧结果合并成同一比较。复现旧结果须使用冻结基线；现有质量报告不等于新版本整体质量已获验证。
 
 新维护链路支持来源、精确修订和历史保留，不自动证明 SDK 动态效果、节省时间或跨 Agent 复用收益。
 
 **Gold 限制：** `omk eval gold init` 仍生成通用脚手架，真实 sample ID 需要人工对齐。Gold compare 提供人工标注与评委的一致性及事后可靠性评估，不改变已有 run 的发布判定。具体选择器见下方 CLI 迁移说明。
+
+上面的 Beta.14 身份描述该次已发布版本。当前 main 另有后续提炼与复核能力，其身份和存储边界不同；使用当前 main 命令前，先核对[能力分档](../knowledge/extract-knowledge.md#availability)与[当前生成契约](../../reference/shared/knowledge-contract.md)。合并 main 不等于发版，上述历史步骤也不提供后续格式的迁移。
 
 ## 一、重新建立证据历史
 
@@ -99,3 +101,11 @@ omk eval --dry-run --samples eval-samples.yaml \
 `list`、`promote`、`rollback` 命令，`eval` 的 `--no-evidence` 选项，以及 `observe` 的 `--feedback`／`--no-feedback` 选项已移除，不提供别名或兼容入口。脚本应删除这些调用，直接使用 `doctor`、`eval` 的结果与报告决定后续动作；文件恢复与部署由用户自己的版本控制和发布流程处理。`omk install` 只负责安装，不再登记生命周期。Studio 的受管决策史页面与 `/api/managed` 同时退出。
 
 已有 `.omk/governance/managed/` 或 `OMK_HOME/governance/managed/` 文件原样留在磁盘上，新版本不读取、改写、迁移或自动删除它们。需要归档时可自行保存这些原始 JSON；无需重新安装已有 skill。Core 评测产物、内容身份与测量口径不变。
+
+## 安装命令面收窄（BREAKING-CLI）
+
+`omk install` 只安装 skill。省略 `--kind` 或使用 `--kind skill`；`prompt`、`agent`、`workflow` 会在源解析和安装前以退出码 2 拒绝，内置 `omk-agent-skill` 也遵守同一规则。
+
+将 `--to all` 替换为 `--to codex`。目标值仅保留 `auto`（默认，检测 Codex/AGENTS 目录）和 `codex`（无需提前检测，直接安装）。逗号分隔的目标列表也以退出码 2 拒绝。自定义 skill 根目录使用 `--dest <dir>`，不为 `all` 或目标列表保留别名。
+
+已有 skill 和历史元数据原样保留，无需重新安装。显式安装仍遵守原有 `--force`、`--dry-run` 和源目标重叠保护。本次只改变 CLI 校验，不改变载体格式和测量口径。
