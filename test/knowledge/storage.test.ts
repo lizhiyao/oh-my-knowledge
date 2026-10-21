@@ -1,3 +1,6 @@
+import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
+import { extractionQuality } from '../../src/knowledge/extraction/quality.js';
+import type { ExtractionRunSealRequest } from '../../src/knowledge/extraction/run-sealing.js';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
@@ -16,7 +19,7 @@ import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOC
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisWriteCapacityError, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
-const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0, descriptors: new Map<number, string>(), durable: undefined as { events: string[]; failSync?: string; afterPublish?: boolean; shortWrite?: boolean; noProgress?: boolean; beforeOpen?: () => void } | undefined }));
+const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0, sealFailure: undefined as 'intent' | 'copy' | 'marker' | undefined, sealSync: false, afterSealCopy: undefined as (() => void) | undefined, order: [] as string[], descriptors: new Map<number, string>(), durable: undefined as { events: string[]; failSync?: string; afterPublish?: boolean; shortWrite?: boolean; noProgress?: boolean; beforeOpen?: () => void } | undefined }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, openSync: (path: string, flags: string | number, mode?: number) => {
@@ -29,10 +32,15 @@ vi.mock('node:fs', async importOriginal => {
     durable?.events.push(`open:${path}`); return fd;
   }, linkSync: (source: string, path: string) => {
     fs.linkSync(source, path); faults.durable?.events.push(`publish:${path}`);
+    if (path.includes('/seals/')) faults.order.push(`link:${path}`);
+    if (path.includes('/seals/') && (faults.sealFailure === 'intent' && path.endsWith('/intent.json') || faults.sealFailure === 'copy' && path.includes('/evidence/'))) { faults.sealFailure = undefined; throw new Error('seal acknowledgement interrupted'); }
+    if (path.includes('/seals/') && path.includes('/evidence/') && faults.afterSealCopy) { const mutate = faults.afterSealCopy; faults.afterSealCopy = undefined; mutate(); }
     if (faults.durable?.afterPublish) { faults.durable.afterPublish = false; throw new Error('domain publication acknowledgement interrupted'); }
     if (faults.afterOutcomeLink && path.includes('outcomes')) { faults.afterOutcomeLink = false; throw new Error('outcome acknowledgement interrupted'); }
   }, renameSync: (source: string, path: string) => {
     fs.renameSync(source, path); faults.durable?.events.push(`publish:${path}`);
+    faults.order.push(`rename:${path}`);
+    if (faults.sealFailure === 'marker' && path.includes('extraction-runs') && path.endsWith('.json')) { faults.sealFailure = undefined; throw new Error('seal acknowledgement interrupted'); }
     if (faults.durable?.afterPublish) { faults.durable.afterPublish = false; throw new Error('domain publication acknowledgement interrupted'); }
     if (faults.afterManifestRename && path.includes('extraction-runs') && path.endsWith('.json')) { faults.afterManifestRename = false; throw new Error('manifest acknowledgement interrupted'); }
   }, writeSync: (fd: number, buffer: Uint8Array, offset: number, length: number) => {
@@ -45,12 +53,13 @@ vi.mock('node:fs', async importOriginal => {
   }, fsyncSync: (fd: number) => {
     const path = faults.descriptors.get(fd); faults.durable?.events.push(`sync:${path}`);
     if (faults.durable?.failSync !== undefined && path === faults.durable.failSync) throw new Error('domain durability confirmation interrupted');
-    faults.syncs++; fs.fsyncSync(fd);
+    if (faults.sealSync) { faults.sealSync = false; throw new Error('seal sync unknown'); }
+    faults.syncs++; faults.order.push(`fsync:${path ?? 'unknown'}`); fs.fsyncSync(fd);
   } };
 });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storage-')); roots.push(path); return path; };
-afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; faults.durable = undefined; faults.descriptors.clear(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; faults.sealFailure = undefined; faults.sealSync = false; faults.afterSealCopy = undefined; faults.order.length = 0; faults.durable = undefined; faults.descriptors.clear(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 const sha = (digit = 'a') => `sha256:${digit.repeat(64)}`;
 function runFixture(): ExtractionRun {
@@ -90,7 +99,135 @@ function archiveBoundedAttempt(store: FileExtractionRunStore, run: ExtractionRun
   store.save(next, run.generation); return next;
 }
 
+function oldWireRun(store: FileExtractionRunStore): ExtractionRun {
+  const run = runFixture(); run.attempts[0].request = { ...run.attempts[0].request, outputMode: 'json-schema', wireId: sha('b') };
+  store.create(run); const attempt = run.attempts[0], outcome = store.writeOutcome(run.runId, attempt.attemptId, nativeOutcome(), attempt.producer.maxOutcomeJsonBytes);
+  const saved = { ...run, generation: 2, attempts: [{ ...attempt, outcome }] }; store.save(saved, 1); return saved;
+}
+function sealRequest(store: FileExtractionRunStore, runId: string, storageNamespace: 'current' | 'legacy' = 'current'): ExtractionRunSealRequest {
+  const preview = store.inspectSeal(runId, storageNamespace);
+  if (preview.state !== 'unsealed') throw new Error('Expected a new seal preview.');
+  return { runId, storageNamespace, operationId: randomUUID(), actor: { actorKind: 'human', actorId: 'fixture-human' }, reason: 'Explicit authored fixture disposition',
+    expectedManifestDigest: preview.expectedManifestDigest, expectedInventoryDigest: preview.expectedInventoryDigest, offlineDeclared: false };
+}
+
 describe('v5 extraction manifests and immutable native evidence', () => {
+  it('seals only fully archived old-wire unapplied runs, preserves every byte and keeps unknown quality denominators', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = oldWireRun(store), request = sealRequest(store, run.runId);
+    const manifest = join(directory, `${run.runId}.json`), native = join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`);
+    const original = readFileSync(manifest), outcome = readFileSync(native), before = extractionQuality(store.listManifests());
+    faults.order.length = 0;
+    const sealed = store.seal(request), evidence = join(directory, 'seals', 'current', run.runId, 'evidence');
+    expect(faults.order.indexOf(`rename:${manifest}`)).toBeGreaterThan(0);
+    const beforeMarker = faults.order.slice(0, faults.order.indexOf(`rename:${manifest}`));
+    expect(beforeMarker).toContain(`fsync:${workspace}`);
+    for (const name of ['manifest.json', `outcomes/${run.attempts[0].attemptId}.json`]) expect(beforeMarker).toContain(`fsync:${join(evidence, name)}`);
+    expect(beforeMarker.some(value => value.startsWith(`fsync:${join(directory, 'seals', 'current', run.runId, 'intent.json')}.`))).toBe(true);
+    expect(sealed).toMatchObject({ state: 'sealed', disposition: 'human_sealed', executionStatus: 'unknown', evidenceIntegrity: 'not_checked' });
+    expect(readFileSync(join(evidence, 'manifest.json'))).toEqual(original);
+    expect(readFileSync(join(evidence, 'outcomes', `${run.attempts[0].attemptId}.json`))).toEqual(outcome);
+    expect(readFileSync(native)).toEqual(outcome);
+    expect(JSON.parse(readFileSync(manifest, 'utf8'))).toMatchObject({ storeKind: 'knowledge-extraction-seal-marker', schemaVersion: 1, operationId: request.operationId });
+    expect(() => ExtractionRunSchema.parse(JSON.parse(readFileSync(manifest, 'utf8')))).toThrow(); // old reader rejects marker
+    expect(() => store.read(run.runId)).toThrow('run_sealed');
+    expect(() => store.save(run, run.generation - 1)).toThrow('run_sealed');
+    expect(() => store.writeOutcome(run.runId, run.attempts[0].attemptId, nativeOutcome(), run.attempts[0].producer.maxOutcomeJsonBytes)).toThrow('run_sealed');
+    expect(() => store.create(run)).toThrow(); expect(store.listManifests()).toEqual([]);
+    const marker = readFileSync(manifest), syncs = faults.syncs;
+    expect(store.seal(request)).toEqual(sealed); expect(faults.syncs).toBeGreaterThan(syncs); expect(readFileSync(manifest)).toEqual(marker);
+    for (const changed of [{ ...request, operationId: randomUUID() }, { ...request, reason: 'different' },
+      { ...request, actor: { ...request.actor, actorId: 'another human' } }, { ...request, expectedManifestDigest: sha('e') }]) {
+      expect(() => store.seal(changed)).toThrow('run_seal_conflict'); expect(readFileSync(manifest)).toEqual(marker);
+    }
+    const quality = extractionQuality(store.listManifests(), store.listSeals());
+    expect(quality).toMatchObject({ projectionVersion: 'omk.extraction-quality/v4', runCount: before.runCount, sealedRunCount: 1,
+      activeRunCount: 0, pendingSealCount: 0, groups: [{ runs: { total: 1, generating: 0, sealedUnknown: 1, withoutAdmission: 1 },
+        entities: { unknownRuns: 1, acceptanceRate: null }, mentions: { unknownRuns: 1, acceptanceRate: null } }] });
+    expect(quality.manualDispositions[0]).not.toHaveProperty('originalRun');
+    expect(existsSync(join(workspace, 'entities'))).toBe(false); expect(existsSync(join(workspace, 'items'))).toBe(false);
+    // Manifest-only quality does not reopen native evidence, and does not claim it just verified the archive.
+    writeFileSync(native, 'corrupt current native'); writeFileSync(join(evidence, 'outcomes', `${run.attempts[0].attemptId}.json`), 'corrupt copied native');
+    expect(extractionQuality(store.listManifests(), store.listSeals()).sealedRunCount).toBe(1);
+    expect(() => store.seal(request)).toThrow('run_seal_conflict');
+  });
+  it.each(['intent', 'copy', 'marker'] as const)('recovers only the exact operation after %s publication loses its acknowledgement', stage => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = oldWireRun(store), request = sealRequest(store, run.runId), path = join(directory, `${run.runId}.json`), bytes = readFileSync(path);
+    faults.sealFailure = stage;
+    expect(() => store.seal(request)).toThrow('seal acknowledgement interrupted');
+    const state = store.inspectSeal(run.runId);
+    expect(state.state).toBe(stage === 'marker' ? 'sealed' : 'pending');
+    if (stage !== 'marker') {
+      expect(readFileSync(path)).toEqual(bytes); expect(() => store.read(run.runId)).toThrow('run_seal_pending');
+      const quality = extractionQuality(store.listManifests(), store.listSeals());
+      expect(quality).toMatchObject({ runCount: 1, sealedRunCount: 0, pendingSealCount: 1 });
+    }
+    expect(() => store.seal({ ...request, operationId: randomUUID() })).toThrow('run_seal_conflict');
+    expect(store.seal(request).state).toBe('sealed');
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+  });
+  it('detects source drift after durable copies, preserves pending evidence, and never publishes a marker on unknown I/O', () => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+    const run = oldWireRun(store), request = sealRequest(store, run.runId), path = join(directory, `${run.runId}.json`), original = readFileSync(path);
+    faults.afterSealCopy = () => writeFileSync(path, JSON.stringify({ ...run, error: 'noncooperating external drift' }));
+    expect(() => store.seal(request)).toThrow('run_seal_conflict');
+    expect(JSON.parse(readFileSync(path, 'utf8')).runKind).toBe('knowledge-extraction-run');
+    expect(readFileSync(join(directory, 'seals', 'current', run.runId, 'evidence', 'manifest.json'))).toEqual(original);
+    expect(() => store.seal(request)).toThrow('run_seal_conflict');
+    const other = oldWireRun(store), otherRequest = sealRequest(store, other.runId), otherPath = join(directory, `${other.runId}.json`), otherBytes = readFileSync(otherPath);
+    faults.sealSync = true;
+    expect(() => store.seal(otherRequest)).toThrow('seal sync unknown');
+    expect(readFileSync(otherPath)).toEqual(otherBytes);
+    expect(store.seal(otherRequest).state).toBe('sealed');
+  });
+  it('refuses current wire, missing/extra archives, pending final attempts, applied intents and existing entity births', () => {
+    for (const defect of ['current-wire', 'missing', 'corrupt', 'symlink', 'extra', 'last-pending', 'prepared', 'completed', 'entity-intent', 'birth'] as const) {
+      const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
+      let run = oldWireRun(store);
+      const path = join(directory, `${run.runId}.json`);
+      if (defect === 'current-wire') run = { ...run, attempts: [{ ...run.attempts[0], request: { ...run.attempts[0].request, wireId: WINDOW_EXTRACTION_WIRE_ID } }] };
+      if (defect === 'last-pending') run = { ...run, policy: boundedRunFixture().policy,
+        attempts: [{ ...run.attempts[0], request: { ...run.attempts[0].request, maxOutputTokens: 64 }, budget: boundedRunFixture().attempts[0].budget,
+          accounting: accountExtractionOutcome(nativeOutcome(), boundedRunFixture().attempts[0].budget!) }] };
+      if (defect === 'last-pending') run = { ...run, attempts: [...run.attempts, followingAttempt(run)] };
+      if (['prepared', 'completed', 'entity-intent'].includes(defect)) {
+        run = { ...run, ...(defect === 'entity-intent' ? {} : { status: defect as 'prepared' | 'completed' }), rawOutput: nativeOutcome().result.output!, selectedAttemptId: run.attempts[0].attemptId,
+          entityAnalysis: { requestId: randomUUID(), analysisId: run.runId, snapshotId: run.snapshotId, sourceVersion: run.sourceVersion,
+            expectedGeneration: 0, expectedHeadRevisionId: null, revision: { revisionId: randomUUID(), revisedAt: run.startedAt,
+              revisedBy: { actorKind: 'agent', actorId: `extractor:${run.executor}`, executionRef: run.runId }, revisionReason: 'authored empty birth', entities: [], mentions: [], limitations: [] } } };
+      }
+      expect(ExtractionRunSchema.safeParse(run).success).toBe(true); writeFileSync(path, JSON.stringify(run));
+      if (defect === 'missing') rmSync(join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`));
+      if (defect === 'corrupt') writeFileSync(join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`), '{}');
+      if (defect === 'symlink') { const native = join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`); rmSync(native); symlinkSync(path, native); }
+      if (defect === 'extra') writeFileSync(join(directory, 'outcomes', run.runId, `${randomUUID()}.json`), '{}');
+      if (defect === 'birth') { mkdirSync(join(workspace, 'entities')); writeFileSync(join(workspace, 'entities', `${run.runId}.json`), '{}'); }
+      const bytes = readFileSync(path);
+      expect(() => store.inspectSeal(run.runId)).toThrow(); expect(readFileSync(path)).toEqual(bytes);
+      expect(existsSync(join(directory, 'seals'))).toBe(false);
+    }
+  });
+  it.each(['current', 'legacy'] as const)('seals unsupported %s schema as opaque bytes only after an offline declaration', namespace => {
+    const workspace = root(), directory = join(workspace, 'extraction-runs'), source = namespace === 'current' ? directory : join(workspace, 'runs');
+    mkdirSync(source, { recursive: true }); const store = new FileExtractionRunStore(directory, workspace), runId = randomUUID(), attemptId = randomUUID();
+    const path = join(source, `${runId}.json`), raw = Buffer.from(`{ "runKind":"knowledge-extraction-run", "schemaVersion":4, "runId":"${runId}", "unknownLegacyState":{"doNotInterpret":true} }\n`);
+    const outcomes = join(source, 'outcomes', runId); mkdirSync(outcomes, { recursive: true });
+    const archive = Buffer.from('opaque native bytes\0not current JSON'); writeFileSync(path, raw); writeFileSync(join(outcomes, `${attemptId}.json`), archive);
+    const request = sealRequest(store, runId, namespace);
+    expect(() => store.seal(request)).toThrow('run_seal_conflict'); expect(readFileSync(path)).toEqual(raw);
+    const sealed = store.seal({ ...request, offlineDeclared: true });
+    expect(sealed).toMatchObject({ state: 'sealed', evidenceScope: 'opaque-unsupported-schema', executionStatus: 'unknown' });
+    expect(sealed).not.toHaveProperty('originalRun');
+    const copied = join(directory, 'seals', namespace, runId, 'evidence');
+    expect(readFileSync(join(copied, 'manifest.json'))).toEqual(raw); expect(readFileSync(join(copied, 'outcomes', `${attemptId}.json`))).toEqual(archive);
+    expect(() => store.create({ ...runFixture(), runId })).toThrow();
+    const quality = extractionQuality(store.listManifests(), store.listSeals());
+    expect(quality).toMatchObject({ runCount: namespace === 'current' ? 1 : 0, sealedRunCount: namespace === 'current' ? 1 : 0,
+      legacySealedRunCount: namespace === 'legacy' ? 1 : 0, ungroupedSealedRunCount: namespace === 'current' ? 1 : 0, groups: [] });
+  });
+
+
   it('archives before metadata acknowledgement, preserves every JSON field and replays the same bytes before new capacity checks', () => {
     const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
     const run = runFixture(), attempt = run.attempts[0]; store.create(run);

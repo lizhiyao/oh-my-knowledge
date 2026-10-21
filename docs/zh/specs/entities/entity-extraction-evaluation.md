@@ -4,7 +4,7 @@ description: 实体提取标注、分层检查与独立复核契约。
 
 # 实体提取质量验收
 
-当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v29`、strict `knowledge-extraction-v30`、响应 Schema v4、run v5 与 quality 投影 v3 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v3 按完整政策与初始调用上限分组，相对 v2 属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。
+当前契约：指南 `omk-entity-annotation/v11`，语料 `omk-entity-quality/v13`，检查器 `omk-entity-critical-checks/v5`。生产 prompt-json `knowledge-extraction-v29`、strict `knowledge-extraction-v30`、响应 Schema v4、run v5 与 quality 投影 v4 分别保留身份，均不继承历史 v14／v18 的模型质量或 Gold 结论；独立身份的 bounded 重试／预算政策同样需要自己的固定测量。quality v4 保留 v3 按完整政策与初始调用上限分组，v2→v3 的变化仍属于 **BREAKING-COMPARABILITY**；每个 run 最终选定的出生接纳只计一次。独立版本的人工封存将 current 记录作为执行状态未知保留在分母中，不支持 schema 及 legacy 处置分别可见；它不补造接纳或语义通过。
 
 独立登记的[历史 v14 真实窗口基线](entity-extraction-real-v14-baseline.md)维护其原始证据及限制，不是当前 strict 双臂实验或独立质量验收。人工确认的跨窗口组织已通过[实体关联日志](entity-links.md)与知识库实现，不合并来源身份，其提案另行遵循[关联评测协议](entity-link-evaluation.md)。组织决定及历史提取证据均不证明自动跨 Agent 身份或复用收益。
 

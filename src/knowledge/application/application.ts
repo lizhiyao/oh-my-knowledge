@@ -1,3 +1,4 @@
+import type { ExtractionRunSealRequest } from '../extraction/run-sealing.js';
 import type { KnowledgeActor, KnowledgeDraft, KnowledgeRevision } from '../contracts.js';
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { z } from 'zod';
@@ -64,7 +65,19 @@ export class KnowledgeApplication {
   }
   // Listing and quality consume saved manifest facts; execution paths use the archive-validating read port.
   runs() { return this.ports.runs.listManifests(); }
-  quality(): ReturnType<typeof extractionQuality> { return extractionQuality(this.ports.runs.listManifests()); }
+  quality(): ReturnType<typeof extractionQuality> { return extractionQuality(this.ports.runs.listManifests(), this.ports.runs.listSeals?.() ?? []); }
+  sealedRuns(runId?: string, namespace: 'current' | 'legacy' = 'current') {
+    if (runId) {
+      if (!this.ports.runs.inspectSeal) throw new Error('Extraction run sealing unavailable.');
+      return this.ports.runs.inspectSeal(runId, namespace);
+    }
+    if (!this.ports.runs.listSeals) throw new Error('Extraction run sealing unavailable.');
+    return this.ports.runs.listSeals();
+  }
+  sealRun(request: ExtractionRunSealRequest) {
+    if (!this.ports.runs.seal) throw new Error('Extraction run sealing unavailable.');
+    return this.ports.runs.seal(request);
+  }
   source(snapshotId: string, version?: string) { return this.ports.evidence.read(snapshotId, version); }
   deleteSource(snapshotId: string): void { this.ports.evidence.delete(snapshotId); }
   entities(analysisId: string, revisionId?: string) {

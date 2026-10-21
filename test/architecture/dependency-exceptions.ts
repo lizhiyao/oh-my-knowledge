@@ -63,6 +63,9 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/executor.ts → knowledge/extraction/generation.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/model-wire.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/generation-policy.ts',
+  // #1304：仅比较当前 wire 身份及校验纯封存契约，不解码旧 wire，也不执行模型调用。
+  'knowledge/adapters/run-store.ts → knowledge/extraction/model-wire.ts',
+  'knowledge/adapters/run-store.ts → knowledge/extraction/run-sealing.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/runs.ts',
   'knowledge/adapters/trace-evidence.ts → knowledge/extraction/evidence.ts',
   'knowledge/adapters/trace-evidence.ts → observability/trace/source.ts',

@@ -1,3 +1,5 @@
+import { ExtractionRunSchema } from '../../src/knowledge/extraction/runs.js';
+import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync, cpSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -28,6 +30,54 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 describe('observe knowledge command wiring', () => {
+  it('seals/query old-wire runs through the real CLI with explicit workspace, no usable settings/producer, and exact replay identities', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omk-run-seal-cli-')); roots.push(directory);
+    const workspace = join(directory, 'workspace'), home = join(directory, 'home'); mkdirSync(home);
+    writeFileSync(join(home, 'settings.json'), '{invalid');
+    const env = { ...process.env, HOME: home, OMK_HOME: home, NODE_ENV: 'test', OMK_SKIP_UPDATE_CHECK: '1',
+      OPENAI_API_KEY: '', OPENAI_BASE_URL: 'not a valid endpoint', CODEX_HOME: join(directory, 'missing-codex-home') };
+    const digest = `sha256:${'a'.repeat(64)}`, runId = randomUUID(), attemptId = randomUUID(), at = '2026-10-21T00:00:00Z';
+    const run = ExtractionRunSchema.parse({ runKind: 'knowledge-extraction-run', schemaVersion: 5, runId, requestDigest: digest, generation: 1,
+      snapshotId: randomUUID(), sourceVersion: digest, executor: 'codex', model: 'authored-local-fixture', promptVersion: 'knowledge-extraction-v18',
+      promptHash: digest, inputDigest: digest, actor: { actorKind: 'human', actorId: 'fixture' }, startedAt: at, status: 'generating',
+      policy: { policyId: 'knowledge-generation-single/v1', maxInvocations: 1, retry: 'none', fallback: 'none' },
+      attempts: [{ attemptId, startedAt: at, requestDigest: digest, request: { systemDigest: digest, inputDigest: digest, outputMode: 'json-schema',
+        wireId: digest, timeoutMs: 300_000 }, producer: { producerId: 'authored-local-fixture', producerRevision: digest,
+        sourceChannels: [{ channel: 'fixture', maxBytes: 1024 }], maxOutcomeJsonBytes: 1024, proof: { scope: 'authored-not-real-execution' } } }],
+      intents: [], committed: [], rejections: [] });
+    const store = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace); store.create(run);
+    const outcome = { outcomeKind: 'model-port-projection' as const, scope: 'authored-model-port/v1' as const, result: { output: 'opaque old wire output', durationMs: 0 } };
+    const ref = store.writeOutcome(runId, attemptId, outcome, 1024); store.save({ ...run, generation: 2, attempts: [{ ...run.attempts[0], outcome: ref }] }, 1);
+    const path = join(workspace, 'extraction-runs', `${runId}.json`), original = readFileSync(path), options = { cwd: directory, env, timeout: 30_000 };
+    const base = ['--workspace', workspace, '--id', runId, '--json', '--lang', 'en'];
+    const preview = JSON.parse((await runCli(['observe', 'knowledge', 'sealed-runs', ...base], options)).stdout);
+    expect(preview).toMatchObject({ state: 'unsealed', evidenceScope: 'current-old-wire', executionStatus: 'unknown' });
+    const operation = randomUUID(), seal = ['observe', 'knowledge', 'seal-run', ...base, '--operation-id', operation, '--operator', 'human-fixture', '--reason', 'Explicit fixture disposition',
+      '--manifest-digest', preview.expectedManifestDigest, '--inventory-digest', preview.expectedInventoryDigest];
+    const first = JSON.parse((await runCli(seal, options)).stdout);
+    expect(first).toMatchObject({ state: 'sealed', disposition: 'human_sealed', executionStatus: 'unknown', request: { operationId: operation } });
+    expect(first).not.toHaveProperty('originalRun');
+    const marker = readFileSync(path); expect(JSON.parse((await runCli(seal, options)).stdout)).toEqual(first); expect(readFileSync(path)).toEqual(marker);
+    const conflict = [...seal]; conflict[conflict.indexOf('--operator') + 1] = 'different-human';
+    expect((await runCliFailing(conflict, 1, options)).stderr).toContain('run_seal_conflict'); expect(readFileSync(path)).toEqual(marker);
+    await runCliFailing(['observe', 'knowledge', 'seal-run', '--id', runId], 2, options);
+    const list = JSON.parse((await runCli(['observe', 'knowledge', 'sealed-runs', '--workspace', workspace, '--json'], options)).stdout);
+    expect(list).toMatchObject([{ state: 'sealed', executionStatus: 'unknown' }]);
+    expect(readFileSync(join(workspace, 'extraction-runs', 'seals', 'current', runId, 'evidence', 'manifest.json'))).toEqual(original);
+    expect(createLocalKnowledgeApplication(workspace).quality()).toMatchObject({ projectionVersion: 'omk.extraction-quality/v4', runCount: 1, sealedRunCount: 1 });
+    expect(() => createLocalKnowledgeApplication(workspace).resume(runId)).toThrow('run_sealed');
+    expect(existsSync(join(workspace, 'entities'))).toBe(false); expect(existsSync(join(workspace, 'items'))).toBe(false);
+    expect(readFileSync(join(home, 'settings.json'), 'utf8')).toBe('{invalid');
+    const legacy = join(workspace, 'runs'); mkdirSync(legacy); const oldId = randomUUID(), oldPath = join(legacy, `${oldId}.json`);
+    writeFileSync(oldPath, `{ "runKind":"knowledge-extraction-run", "schemaVersion":4, "runId":"${oldId}", "uninterpreted":"legacy bytes" }\n`);
+    const oldFlags = ['--workspace', workspace, '--id', oldId, '--storage-namespace', 'legacy', '--json'];
+    const old = JSON.parse((await runCli(['observe', 'knowledge', 'sealed-runs', ...oldFlags], options)).stdout);
+    const opaque = ['observe', 'knowledge', 'seal-run', ...oldFlags, '--operation-id', randomUUID(), '--operator', 'human-fixture', '--reason', 'Fixture old writer declared offline',
+      '--manifest-digest', old.expectedManifestDigest, '--inventory-digest', old.expectedInventoryDigest];
+    await runCliFailing(opaque, 1, options);
+    expect(JSON.parse((await runCli([...opaque, '--offline'], options)).stdout)).toMatchObject({ state: 'sealed', evidenceScope: 'opaque-unsupported-schema',
+      executionStatus: 'unknown', request: { offlineDeclared: true } });
+  }, 120_000);
   it('formats the selected or pending final attempt without promoting a previous failure to current status', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-output-')); roots.push(root);
     const source = join(root, 'source.jsonl'), workspace = join(root, 'workspace');

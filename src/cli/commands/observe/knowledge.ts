@@ -1,3 +1,4 @@
+import { ExtractionRunSealRequestSchema, ExtractionRunSealError } from '../../../knowledge/extraction/run-sealing.js';
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { lstatSync, readFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
@@ -22,22 +23,29 @@ const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-rev
 export default class ObserveKnowledge extends BaseCommand {
   static description = description(`从选定工作日志提炼、核对和维护候选知识。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Extract, inspect, and maintain candidate knowledge from selected work logs. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = {
-    operation: Args.string({ required: true, options: ['schema', 'study', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; study inspects portable study evidence and reviews without model calls; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; study inspects portable study evidence and reviews without model calls; seal-run records human sealing, sealed-runs inspects dispositions and exact evidence identities; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
+    'operation-id': Flags.string({ description: description('seal-run：稳定的人工操作 UUID，重入必须复用。', 'seal-run: stable human operation UUID; reuse it on replay.') }),
+    operator: Flags.string({ description: description('seal-run：显式声明的人类操作者身份，不认证真人。', 'seal-run: explicitly declared human actor identity; not authenticated human identity.') }),
+    'manifest-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的原 manifest SHA-256。', 'seal-run: original manifest SHA-256 from sealed-runs.') }),
+    'inventory-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。', 'seal-run: exact inventory SHA-256 from sealed-runs.') }),
+    'storage-namespace': Flags.string({ options: ['current', 'legacy'], description: description('封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。', 'Seal/query current extraction-runs/ or explicitly selected legacy runs/; current by default.') }),
+    offline: Flags.boolean({ description: description('seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。', 'seal-run: declare legacy writers stopped/offline, not proof of process exit; required for opaque sealing.') }),
+
     evidence: Flags.string({ description: description('study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。', 'study: evidence.json exported by the repository study tool; recompute original evidence read-only, with at most 128 MiB across all inputs and no knowledge workspace access.') }),
     'author-review': Flags.string({ description: description('study：输出前作者参考复核 JSON 文件。', 'study: pre-output author reference review JSON file.') }),
     'reference-review': Flags.string({ description: description('study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。', 'study: pre-output independent human reference review JSON file; absence cannot produce goldReady.') }),
     'output-review': Flags.string({ description: description('study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。', 'study: item review JSON file bound to the actual outputs; exploratory AI review is not independent human acceptance.') }),
     'judge-review': Flags.string({ description: description('study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。', 'study: model-judge review JSON with version identity and separate declared usage, compared with human judgments; does not execute the judge.') }),
-    workspace: Flags.string({ description: description('本地知识工作区，默认使用全局设置；CLI 与 Studio 共用。', 'Local knowledge workspace; defaults to global settings shared with Studio.') }),
+    workspace: Flags.string({ description: description('本地知识工作区，默认使用全局设置；seal-run／sealed-runs 必须显式提供且不读全局设置。CLI 与 Studio 共用。', 'Local knowledge workspace; defaults to global settings shared with Studio. seal-run/sealed-runs require an explicit value and bypass global settings.') }),
     source: Flags.string({ description: description('capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。', 'capture: one supported agent session log (Codex / Claude / Qoder / ...).') }),
     'start-record': Flags.integer({ min: 0, description: description('从零开始的非空记录序号，包含。', 'Zero-based nonempty record index, inclusive.') }),
     'end-record': Flags.integer({ min: 0, description: description('最后一条记录序号，包含。', 'Last record index, inclusive.') }),
     snapshot: Flags.string({ description: description('generate／source／delete-source：归档身份。', 'generate/source/delete-source: snapshot identity.') }),
-    id: Flags.string({ description: description('知识身份；resume 时为运行身份。', 'Knowledge identity; run identity for resume.') }),
+    id: Flags.string({ description: description('知识身份；resume／seal-run／sealed-runs 时为运行 UUID。', 'Knowledge identity; run UUID for resume/seal-run/sealed-runs.') }),
     revision: Flags.string({ description: description('查看或处理的明确修订身份。', 'Explicit revision to inspect or maintain.') }),
     analysis: Flags.string({ description: description('entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。', 'entities: inspect an analysis, or search the workspace if omitted; required for correction/application, equal to the extraction run identity.') }),
     query: Flags.string({ description: description('entities：搜索名称、原文提及、限定条件及来源。', 'entities: search names, source mentions, qualifiers, and origin.') }),
@@ -48,7 +56,7 @@ export default class ObserveKnowledge extends BaseCommand {
     'entity-revision': Flags.string({ description: description('实体分析的明确修订身份；纠正或应用时必填。', 'Explicit entity analysis revision; required for corrections or applying entities.') }),
     'identity-uncertainties': Flags.string({ description: description('apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。', 'apply-entities: reviewed additional identity uncertainties as a JSON array; omitted preserves prior notes, [] clears them, and current entity ambiguity is always retained.') }),
     generation: Flags.integer({ min: 1, description: description('修改前读取的 generation，用于检测并发冲突。', 'Previously read generation for conflict detection.') }),
-    reason: Flags.string({ description: description('保留、舍弃或修订的理由；保留不代表已证实，纠正实体不会自动改写知识。', 'Reason for maintenance or editing; retention does not verify truth, and entity corrections do not automatically rewrite knowledge.') }),
+    reason: Flags.string({ description: description('维护、修订或 seal-run 人工封存的理由；保留不代表已证实，纠正实体不自动改写知识，封存只记录人工处置。', 'Reason for maintenance, editing or seal-run human sealing; retention does not verify truth, entity corrections do not automatically rewrite knowledge, and sealing records human disposition only.') }),
     input: Flags.string({ description: description('revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。', 'revise/apply-entities: knowledge JSON draft; correct-entities: entities/mentions draft, using new: for new identities.') }),
     citations: Flags.string({ description: description('revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。', 'revise/apply-entities: JSON file with the full nonempty replacement citation locator array for the new revision, from the same archived window; omit to retain applicable prior citations. Each selection has evidenceRef, exact quote, and optional zero-based occurrence; repeated quotes require occurrence.') }),
     executor: Flags.string({ description: description('generate：生成执行器；只有该操作发送选定片段并调用模型。', 'generate: executor; only this operation sends selected excerpts and calls a model.') }),
@@ -59,6 +67,8 @@ export default class ObserveKnowledge extends BaseCommand {
   };
   static examples = [
     '<%= config.bin %> observe knowledge schema --json',
+    '<%= config.bin %> observe knowledge sealed-runs --workspace ./knowledge --id <run-id> --json',
+    '<%= config.bin %> observe knowledge seal-run --workspace ./knowledge --id <run-id> --operation-id <uuid> --operator <human-id> --reason "reviewed offline disposition" --manifest-digest sha256:<digest> --inventory-digest sha256:<digest> --offline --json',
     '<%= config.bin %> observe knowledge study --evidence ./evidence.json --json',
     '<%= config.bin %> observe knowledge study --evidence ./evidence.json --author-review ./reference-author.json --reference-review ./reference-independent.json --output-review ./output-review.json --judge-review ./judge-review.json',
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
@@ -82,7 +92,7 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     if (args.operation === 'study') {
       const allowed = new Set<string>([...studyFlags, 'lang', 'json']);
-      if (Object.entries(flags).some(([name, value]) => value !== undefined && !allowed.has(name))) {
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) {
         this.error(t('study 仅接受 --evidence、研究复核参数、--lang 和 --json，不接受工作区或生成参数。', 'study accepts only --evidence, study review flags, --lang and --json; workspace and generation flags are not allowed.'), { exit: 2 });
       }
       if (!flags.evidence?.trim()) this.error(t('study 必须提供 --evidence。', 'study requires --evidence.'), { exit: 2 });
@@ -110,6 +120,40 @@ export default class ObserveKnowledge extends BaseCommand {
           this.error(`${code} · ${t('研究证据未通过核对。请使用冻结时匹配的版本并检查完整导出与复核绑定；没有调用模型或改写工作区。', 'Study evidence could not be verified. Use its matching frozen version and check the complete export and review bindings; no model call or workspace change was made.')}`, { exit: 1 });
         }
       });
+      return;
+    }
+    const sealOperations = ['seal-run', 'sealed-runs'];
+    const sealFlags = ['operation-id', 'operator', 'manifest-digest', 'inventory-digest', 'storage-namespace', 'offline'];
+    if (!sealOperations.includes(args.operation) && sealFlags.some(name => flags[name as keyof typeof flags] !== undefined && flags[name as keyof typeof flags] !== false)) {
+      this.error(t('封存参数仅用于 seal-run／sealed-runs。', 'Seal flags are only valid for seal-run/sealed-runs.'), { exit: 2 });
+    }
+    if (sealOperations.includes(args.operation)) {
+      const allowed = new Set(['workspace', 'id', 'json', 'lang', 'storage-namespace', ...(args.operation === 'seal-run' ? [...sealFlags, 'reason'] : [])]);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) {
+        this.error(t('封存只接受工作区、运行及明确人工处置参数，不接受生成参数。', 'Sealing accepts only workspace, run and explicit human-disposition flags; generation flags are not accepted.'), { exit: 2 });
+      }
+      if (!flags.workspace?.trim()) this.error(t('封存操作必须显式提供 --workspace，不读取全局设置。', 'Sealing requires explicit --workspace and does not read global settings.'), { exit: 2 });
+      const namespace = flags['storage-namespace'] === 'legacy' ? 'legacy' as const : 'current' as const;
+      if (flags.id !== undefined && !z.string().uuid().safeParse(flags.id).success) this.error(t('--id 必须是运行 UUID。', '--id must be a run UUID.'), { exit: 2 });
+      let request: z.infer<typeof ExtractionRunSealRequestSchema> | undefined;
+      if (args.operation === 'seal-run') {
+        const checked = ExtractionRunSealRequestSchema.safeParse({ runId: flags.id, operationId: flags['operation-id'], storageNamespace: namespace,
+          actor: { actorKind: 'human', actorId: flags.operator }, reason: flags.reason, expectedManifestDigest: flags['manifest-digest'],
+          expectedInventoryDigest: flags['inventory-digest'], offlineDeclared: flags.offline === true });
+        if (!checked.success) this.error(t('请提供 --id、--operation-id、--operator、--reason 及预先查询到的 --manifest-digest／--inventory-digest。', 'Provide --id, --operation-id, --operator, --reason and the previously inspected --manifest-digest/--inventory-digest.'), { exit: 2 });
+        request = checked.data;
+      }
+      try {
+        const app = createLocalKnowledgeApplication(flags.workspace!);
+        const result = request ? app.sealRun(request) : app.sealedRuns(flags.id, namespace);
+        const safe = (value: unknown) => { if (!value || typeof value !== 'object') return value; const copy = { ...value } as Record<string, unknown>; delete copy.originalRun; return copy; };
+        const value = Array.isArray(result) ? result.filter(item => flags['storage-namespace'] === undefined || item.request.storageNamespace === namespace).map(safe) : safe(result);
+        if (flags.json) this.log(JSON.stringify(value, null, 2));
+        else this.log([t('人工封存／执行状态未知；不代表成功、费用已知、进程退出或语义通过。', 'Human disposition / execution unknown; this does not establish success, known costs, process exit or semantic acceptance.'), JSON.stringify(value, null, 2)].join('\n\n'));
+      } catch (cause) {
+        const code = cause instanceof ExtractionRunSealError ? cause.sealCode : 'run_seal_unconfirmed';
+        this.error(`${code} · ${t('封存未获确认。保留所有文件，先查询 sealed-runs；只用同一操作身份与原证据重入，不删除 marker／intent 或另起运行。', 'Sealing was not confirmed. Preserve all files and inspect sealed-runs; retry only the same operation and original evidence, without removing marker/intent or starting another run.')}`, { exit: 1 });
+      }
       return;
     }
     if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {

@@ -158,8 +158,8 @@ it('presents admission scope, unknown denominators and retry without claiming se
   const renderQuality = (overrides = {}) => renderToStaticMarkup(createElement(ExtractionQualityView, {
     quality: extractionQuality([]), loading: false, failed: false, lang: 'zh', onRetry() {}, ...overrides,
   }));
-  const empty = renderQuality(); expect(empty).toContain('仅统计当前工作区 extraction-runs/ 中的 v5 运行'); expect(empty).toContain('不采用后续人工修订');
-  expect(empty).toContain('旧 runs/ 记录不计入'); expect(empty).toContain('没有 v5 记录不代表工作区从未提炼');
+  const empty = renderQuality(); expect(empty).toContain('统计当前工作区 extraction-runs/ 中的 v5 运行及显式人工封存处置'); expect(empty).toContain('不采用后续人工修订');
+  expect(empty).toContain('旧 runs/ 记录不混入 current 分母，已封存数量另列'); expect(empty).toContain('没有 v5 记录不代表工作区从未提炼');
   expect(empty).toContain('分组不证明 endpoint 或完整运行条件相同');
   expect(empty).toContain('位置匹配不证明语义准确'); expect(empty).toContain('零接纳不代表质量通过'); expect(empty).toContain('尚无 v5 提炼运行');
   const failed = renderQuality({ failed: true }); expect(failed).toContain('统计暂不可读'); expect(failed).toContain('重新读取统计'); expect(failed).not.toContain('共 0 次运行');
@@ -167,7 +167,7 @@ it('presents admission scope, unknown denominators and retry without claiming se
   const group = { identity: { schemaVersion: 5, promptVersion: 'knowledge-extraction-v15', promptHash: '<unsafe>', executor: 'fixture', model: 'fixture',
     policyId: 'knowledge-generation-single/v1', policy: { policyId: 'knowledge-generation-single/v1' as const, maxInvocations: 1 as const, retry: 'none' as const, fallback: 'none' as const },
     timeoutMs: 300_000, maxOutputTokens: 4096, outputMode: 'json-schema' as const, wireId: '<wire>', producerId: '<producer>', producerRevision: '<revision>' },
-    runs: { total: 1, generating: 0, prepared: 0, completed: 0, failed: 1, cancelled: 0, withAdmission: 0, withoutAdmission: 1, zeroAccepted: 0, zeroKnowledge: 0 },
+    runs: { total: 1, generating: 0, prepared: 0, completed: 0, failed: 1, cancelled: 0, withAdmission: 0, withoutAdmission: 1, zeroAccepted: 0, zeroKnowledge: 0, sealedUnknown: 0 },
     entities: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
     mentions: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
     proposals: { accepted: 0, rejected: 0, recorded: 0, unknownRuns: 1, acceptanceRate: null },
@@ -179,7 +179,10 @@ it('presents admission scope, unknown denominators and retry without claiming se
   expect(html).toContain('&lt;unsafe&gt;'); expect(html).not.toContain('<unsafe>');
   expect(html).toContain('Schema 5'); expect(html).toContain('knowledge-extraction-v15');
   expect(html).toContain('knowledge-generation-single/v1'); expect(html).toContain('json-schema');
-  expect(html).toContain('omk.extraction-quality/v3'); expect(html).toContain('完整政策身份');
+  const sealed = renderQuality({ quality: { ...extractionQuality([]), runCount: 1, sealedRunCount: 1, ungroupedSealedRunCount: 1, pendingSealCount: 1 } });
+  expect(sealed).toContain('人工封存 1 次'); expect(sealed).toContain('执行状态未知'); expect(sealed).toContain('pending 1 项不算 sealed');
+  expect(sealed).not.toContain('尚无 v5 提炼运行');
+  expect(html).toContain('omk.extraction-quality/v4'); expect(html).toContain('完整政策身份');
   expect(html).toContain('初始调用超时（毫秒）：300000'); expect(html).toContain('初始输出 token 上限：4096');
   for (const value of ['wire', 'producer', 'revision']) { expect(html).toContain(`&lt;${value}&gt;`); expect(html).not.toContain(`<${value}>`); }
   const promptOnly = renderQuality({ lang: 'en', quality: { ...extractionQuality([]), runCount: 1,
