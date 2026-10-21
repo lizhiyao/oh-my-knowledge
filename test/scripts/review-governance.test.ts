@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { testDirectory } from '../helpers/temp-directory.js';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -71,6 +73,28 @@ describe('autonomous review governance', () => {
     ]) {
       expect(template).toContain(heading);
     }
+  });
+
+  it('discovers new official Skill files without exposing personal Agent data or ignored secrets', () => {
+    const directory = testDirectory('omk-official-skill-ignore-');
+    const env = { PATH: process.env.PATH, HOME: directory, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
+    writeFileSync(join(directory, '.gitignore'), read('.gitignore'));
+    execFileSync('git', ['init', '--quiet'], { cwd: directory, env });
+    const official = [
+      '.agents/skills/omk/SKILL.md', '.agents/skills/omk/references/new/deep/reference.md',
+      '.agents/skills/omk/assets/new-template.json', '.agents/skills/omk/.env.example',
+    ];
+    const privatePaths = [
+      '.agents/config.toml', '.agents/hooks/local.sh', '.agents/skills/private/SKILL.md',
+      '.agents/skills/omk-private/SKILL.md', '.codex/config.toml',
+      '.agents/skills/omk/.env', '.agents/skills/omk/assets/credentials.json',
+      '.agents/skills/omk/node_modules/local/index.js',
+    ];
+    const result = spawnSync('git', ['check-ignore', '--no-index', '-z', '--stdin'], {
+      cwd: directory, env, encoding: 'utf8', input: [...official, ...privatePaths].join('\0') + '\0',
+    });
+    expect(result.error).toBeUndefined(); expect(result.status).toBe(0); expect(result.stderr).toBe('');
+    expect(result.stdout.split('\0').filter(Boolean).sort()).toEqual([...privatePaths].sort());
   });
 
   it('keeps generated CR state outside the repository', () => {

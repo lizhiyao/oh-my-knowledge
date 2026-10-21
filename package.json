@@ -171,6 +171,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
+    "@openai/codex-sdk": "0.149.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/js-yaml": "^4.0.9",

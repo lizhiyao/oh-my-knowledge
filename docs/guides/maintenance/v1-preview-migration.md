@@ -70,6 +70,7 @@ Remove `--no-cache` from commands and `noCache` from `eval.yaml`. Product evalua
 
 - `omk init` still creates three low-cost starter cases. Use `omk init --samples 20` for the larger first-party starter set; review or replace it before treating it as release evidence.
 - `omk init` no longer overwrites scaffold files unless `--force` is explicit.
+- Studio and evaluation previews no longer stop an existing OMK listener on a port conflict. Choose a free port or stop the old service. To replace a verified OMK service deliberately, run `omk studio --port <port> --takeover` with the same `--host` when applicable. Startup distinguishes the bound address from the local URL and same-family network interface candidates; candidates do not guarantee network reachability. See the [Studio CLI reference](../../reference/cli.md#omk-studio).
 - `omk eval --resume` accepts a Core `runId`, not a report path.
 - `omk eval gold compare` accepts a Core `runId` and requires explicit `--target`, `--evaluator`, and `--metric` selectors. Pass an optional `--minimum-alpha` only when your domain has chosen a reliability threshold; the post-hoc assessment uses the confidence-interval lower bound and never changes the release verdict.
 - `omk evolve` no longer accepts the former diagnostic, sample-repair, report-reuse, holdout, significance, or test-split switches. Candidate acceptance and source write-back are governed by the Core decision; run an independent release validation set outside the authoring loop.

@@ -17,6 +17,8 @@ export type CommonMessageKey =
   | 'cli.update.box_silence_line'
   | 'cli.observe.view_hint'
   | 'cli.studio.started'
+  | 'cli.studio.binding'
+  | 'cli.studio.network_candidate'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
   | 'cli.doctor.no_skill_found'
@@ -88,6 +90,14 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
   'cli.studio.started': {
     zh: 'studio 已启动：{url}',
     en: 'Studio running at {url}',
+  },
+  'cli.studio.binding': {
+    zh: '实际监听：{address}',
+    en: 'Bound listener: {address}',
+  },
+  'cli.studio.network_candidate': {
+    zh: '网卡候选地址：{url}（访问取决于路由与防火墙）',
+    en: 'Network interface candidate: {url} (access depends on routing and firewall)',
   },
   'cli.studio.stop_hint': {
     zh: '按 Ctrl+C 停止服务',

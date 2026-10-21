@@ -802,12 +802,13 @@ omk studio [flags]
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--doctors-dir` `option`:体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
 - `--global` `boolean`:只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先
-- `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
+- `--host` `option`:监听地址，默认 127.0.0.1（或 OMK_REPORT_HOST）。0.0.0.0／:: 显式向网络开放
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测收件箱数据目录（可选，默认 .omk/observe/inbox）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配
 - `--reports-dir` `option`:只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
+- `--takeover` `boolean`:显式替换同地址／端口上经验证的 OMK 服务；默认端口占用时报错，不关闭现有服务
 
 **示例:**
 
@@ -821,6 +822,12 @@ omk studio
 
 ```bash
 omk studio --port 8080 --no-open
+```
+
+> 显式替换同端口上已有的 OMK 服务
+
+```bash
+omk studio --port 7799 --takeover
 ```
 <!-- omk:cli:end -->
 

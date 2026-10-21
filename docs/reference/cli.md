@@ -414,6 +414,7 @@ omk studio --host 0.0.0.0                          # LAN access (default: 127.0.
 omk studio --reports-dir ~/.oh-my-knowledge/eval
 omk studio --observations-dir .omk/observe/inbox    # observe inbox data directory
 omk studio --no-open
+omk studio --port 7799 --takeover                  # explicitly replace a verified OMK listener
 ```
 
 <!-- omk:cli:studio:flags:start -->
@@ -426,12 +427,13 @@ omk studio --no-open
   --dev                       Dev mode: child process with hot reload
   --doctors-dir <value>       Doctor reports dir (optional, default project .omk/doctor, falls back to global)
   --global                    View only global eval, observe/health, doctor, and observe/inbox directories under ~/.oh-my-knowledge/
-  --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
+  --host <value>              Bind address, default 127.0.0.1 (or OMK_REPORT_HOST). 0.0.0.0 / :: explicitly exposes to the network
   --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe/inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
   --reports-dir <value>       View only this Core reports dir (optional; default aggregates current project + global)
+  --takeover                  Explicitly replace a verified OMK service on the same address/port; by default, port conflicts fail without stopping it
 ```
 
 For full descriptions: `omk studio --help`.
@@ -443,3 +445,7 @@ Starts the local knowledge workbench. The homepage indexes local Codex conversat
 The primary navigation is **Observe → Measure → Knowledge**, with page routes `/observe`, `/measure`, and `/knowledge`. Observe lists conversations and task trajectories; Measure presents Core evaluations; Knowledge provides the library, candidate review, and carrier maintenance, with doctor and observation records available as needed. Visit `/observe/inbox` for the observation reviewer queue. Old page addresses are no longer served. CI gates use `omk eval`'s exit route, while automation should read the Core report artifacts.
 
 Studio defaults to loopback and has no built-in authentication. Choosing `--host 0.0.0.0` explicitly exposes its data and mutation APIs to the network; access control belongs to the deployment's trusted network or authenticated proxy. All responses set `nosniff`, `Referrer-Policy: no-referrer`, and a CSP that blocks base-URL changes and plugin objects while supporting Next scripts and host embedding. JSON APIs reject oversized bodies immediately with `413` and close unfinished request connections.
+
+**Port conflicts (`BREAKING-CLI`):** startup now fails without probing or stopping the existing listener, including another project's OMK service. Stop it yourself or choose another port. Only explicit `--takeover` permits replacement: the service at the same address and port must answer the OMK health check and acknowledge shutdown; neither request follows redirects. Unverified services are never stopped. This policy also applies to evaluation previews; they do not automatically take over a running Studio. Development mode forwards `--takeover` only when you pass it.
+
+The startup URL comes from `server.start()` and uses the actual bound port. The separately printed listener address may be a wildcard (`0.0.0.0` or `[::]`), which is not a browser destination. For wildcard listeners, Studio also prints non-internal interface candidates matching the bound address family, with bracketed IPv6 addresses. These are network interface candidates, not a claim of LAN or public reachability: routing, containers, NAT, and firewalls still determine access. Use the printed local URL on this machine; an explicit interface bind prints that interface's actual address.

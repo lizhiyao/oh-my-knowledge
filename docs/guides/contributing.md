@@ -383,7 +383,15 @@ contains the tarball, SHA-512 integrity, commit/version identity, installation
 result and CI run/attempt reference. The OIDC publishing job downloads that
 artifact and validates its identity and digest again, then publishes the tarball
 with `--ignore-scripts`. It does not reinstall dependencies or rebuild the package.
-Local `prepublishOnly` remains intact for manual folder publication.
+The npm job has only `contents: read` and `id-token: write`. A separate GitHub
+Release job runs after npm succeeds with only `contents: write`. Both download
+the immutable artifact ID returned by verification, reject missing IDs or digest
+mismatches, and recheck package, installation and CI commit identities. The Release
+attaches that exact tarball, its manifest, installation result and CI reference;
+it does not build or install again. Actions are pinned to official commit SHAs,
+and checkout uses the exact triggering commit without persisting credentials.
+Local `prepublishOnly` remains intact for manual folder publication. It rebuilds
+locally; the hook itself does not establish CD's CI and isolated-install evidence.
 
 Publication is serialized without cancelling an active upload. A registry
 version with the exact same package integrity is treated as already uploaded;
@@ -393,6 +401,8 @@ retry transient timeouts, selected network failures, HTTP 408/429/5xx (at most
 three attempts). An uncertain upload requires inspecting the registry and
 rerunning the failed publish job with the original artifact. Rerunning all jobs
 can rebuild different bytes and is not a substitute for reusing that artifact.
+If only GitHub Release fails after npm succeeds, rerun that failed job with the
+same verified artifact; do not rebuild the package or repeat the npm upload.
 
 CI/CD bounded commands preserve logs, periodic memory/process samples and a
 structured outcome: success, command failure, process timeout, evidence-backed

@@ -93,6 +93,12 @@ Core Codex 适配器目前只声明 `runtime-default` skill 发现。严格 `bas
 - **配置与会话隔离**：omk 只在启动前解析 Codex 配置里的模型（顶层 `profile` 选中时取该 profile 的模型），然后把它作为显式模型传入。`codex` 传 `--ephemeral` + `--ignore-user-config` + `--ignore-rules`。`codex-sdk` 为每次执行创建独立的 `$CODEX_HOME` 临时目录，复制 `auth.json`，并在子进程退出后删除；用户配置和历史 SDK 会话不会渗入评测。
 - **SDK execpolicy 限制**：当前 `@openai/codex-sdk` API 没有暴露 CLI 的 `--ignore-rules`。显式工作目录中的项目 execpolicy 仍可能影响 `codex-sdk`。需要隔离项目规则时优先使用 `codex`；否则必须固定执行器和 runtime context 后再比较结果。
 
+### Codex SDK 契约覆盖
+
+optional peer 范围允许安装，不代表其中每个版本都已经验证。仓库测试精确安装 `@openai/codex-sdk` 0.149.0，由 [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) 与 [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock) 固定。测试将 OMK 类型与真实 SDK 声明核对，解析已安装模块及其自带 native 包，并让真实 SDK 调用临时假可执行文件，验证选项、私有环境、事件以及 abort 后的子进程终止。进程 fixture 使用 POSIX 可执行文件，在 Windows 跳过；通过结果只覆盖实际运行的操作系统、架构和 Node 版本。这些检查不调用模型、不读取用户认证，不能证明线上认证、provider 行为或其他 SDK 版本兼容。参见[官方 SDK 指南](https://learn.chatgpt.com/docs/codex-sdk)。
+
+在这个受测 SDK 中，`runStreamed` 会把 `turn.completed.usage` 缺失的 `cache_write_input_tokens` 补为 `0`。OMK 目前将这个 SDK 归一化字段投影为 `cacheWriteInputTokens`；仅凭该值不能认定 provider 报告了零次缓存写入。契约测试显式展示 CLI 字段缺失与 SDK 生成零值的区别。本次保持既有 usage 和持久化证据格式，比较测量结果时须固定 SDK 版本。
+
 ## DeepSeek Harness：优先使用宿主插件
 
 已经在本机使用 DSH 时，推荐让现有 DSH profile 加载 OMK，而不是由 OMK 再启动一套 runtime：
