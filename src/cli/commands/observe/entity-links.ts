@@ -9,14 +9,15 @@ import { createOpenAiArchiveProducer } from '../../../executors/openai/archive.j
 import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../knowledge/application/local.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
 import type { EntityLinkInvocation } from '../../../knowledge/entities/link-invocation.js';
+import { EntityLinkConflictError } from '../../../knowledge/entities/links.js';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
-import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkPreview, formatEntityLinkQuality, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';
+import { EntityLinkCliPlanSchema, createEntityLinkCliPlan, formatEntityLinkInvocation, formatEntityLinkAcceptPreview, formatEntityLinkPreview, formatEntityLinkQuality, type EntityLinkCliPlan } from '../../lib/entity-link-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 export default class ObserveEntityLinks extends BaseCommand {
   static description = description(`跨窗口核对实体关联：本地预览、明确确认一次调用，再由人工接受或拒绝。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Review cross-window entity links: preview locally, confirm one invocation, then explicitly accept or reject. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
-  static args = { operation: Args.string({ required: true, options: ['candidates', 'preview', 'propose', 'list', 'show', 'quality', 'accept', 'reject', 'resume', 'terminate'],
-    description: description('candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；terminate 人工终止已启动执行；其余读取、人审或零调用恢复。', 'candidates recalls locally; preview freezes content/configuration; propose explicitly invokes; quality aggregates without invocation; terminate explicitly ends a started execution; other operations inspect, review, or recover without a model call.') }) };
+  static args = { operation: Args.string({ required: true, options: ['candidates', 'preview', 'propose', 'list', 'show', 'quality', 'accept-preview', 'accept', 'reject', 'resume', 'terminate'],
+    description: description('candidates 本地召回；preview 冻结内容与配置；propose 明确调用；quality 零调用聚合；accept-preview 零调用展示证据替换；terminate 人工终止已启动执行；其余读取、人审或零调用恢复。', 'candidates recalls locally; preview freezes content/configuration; propose explicitly invokes; quality aggregates without invocation; accept-preview shows evidence replacements without invocation; terminate explicitly ends a started execution; other operations inspect, review, or recover without a model call.') }) };
   static flags = {
     lang: LANG_FLAG,
     workspace: Flags.string({ description: description('知识工作区；terminate 必填；propose 默认沿用计划中的绝对目录，不得覆盖为其它目录。', 'Knowledge workspace; required for terminate; propose uses the plan’s absolute directory and rejects a different override.') }),
@@ -36,6 +37,7 @@ export default class ObserveEntityLinks extends BaseCommand {
     'request-id': Flags.string({ description: description('accept／reject／terminate／resume 的明确恢复或取消：稳定操作 UUID，重放沿用原值。', 'accept/reject/terminate/explicit resume recovery or cancellation: stable operation UUID; reuse it on replay.') }),
     generation: Flags.integer({ min: 1, max: Number.MAX_SAFE_INTEGER, description: description('accept／reject／terminate／取消 prepared：show 读取的 generation。', 'accept/reject/terminate/cancel prepared: generation read by show.') }),
     reason: Flags.string({ description: description('accept／reject／terminate／取消 prepared：明确人工理由。', 'accept/reject/terminate/cancel prepared: explicit human reason.') }),
+    'confirm-replacement': Flags.string({ description: description('accept：独立核对 accept-preview 的旧／新证据后，明确填写该预览 confirmationDigest；理由、名称或 head 变化须重新预览。', 'accept: after separately inspecting old/new evidence in accept-preview, explicitly supply its confirmationDigest; changed reasons, labels or heads require a new preview.') }),
     'confirm-identity': Flags.boolean({ default: false, description: description('accept 必填：人工核对后确认两侧所指同一对象，不以模型判断代替。', 'Required for accept: explicitly confirm both sides refer to the same object after human review.') }),
     'object-label': Flags.string({ description: description('accept：新组织对象的完整名称，最多 256 字符；不截断原实体名。', 'accept: complete new organization label, at most 256 characters; never truncate an entity name.') }),
     'execution-id': Flags.string({ description: description('terminate：show 中原执行的 executionId；仅终止这一已启动执行。', 'terminate: executionId from show; terminate only this started execution.') }),
@@ -51,6 +53,7 @@ export default class ObserveEntityLinks extends BaseCommand {
     '<%= config.bin %> observe entity-links propose --input ./link-plan.json --confirm-input <confirmedDigest> --json',
     '<%= config.bin %> observe entity-links show --workspace ./knowledge --id <review-id> --json',
     '<%= config.bin %> observe entity-links quality --workspace ./knowledge --json',
+    '<%= config.bin %> observe entity-links accept-preview --workspace ./knowledge --id <review-id> --generation <generation> --reason "已核对两侧原文与身份" --json',
     '<%= config.bin %> observe entity-links accept --workspace ./knowledge --id <review-id> --request-id <request-id> --generation <generation> --reason "已核对两侧原文与身份" --confirm-identity',
     '<%= config.bin %> observe entity-links reject --workspace ./knowledge --id <review-id> --request-id <request-id> --generation <generation> --reason "证据不足"',
     '<%= config.bin %> observe entity-links resume --workspace ./knowledge --id <review-id>',
@@ -88,9 +91,11 @@ export default class ObserveEntityLinks extends BaseCommand {
       ...(flags.mention ? { mentionIds: flags.mention.map(value => uuid(value, 'mention')) } : {}) } : undefined;
     const right = operation === 'preview' && !readingPreview ? { analysisId: uuid(flags['right-analysis'], 'right-analysis'), entityId: uuid(flags['right-entity'], 'right-entity'),
       ...(flags['right-mention'] ? { mentionIds: flags['right-mention'].map(value => uuid(value, 'right-mention')) } : {}) } : undefined;
-    const id = ['show', 'accept', 'reject', 'resume', 'terminate'].includes(operation) ? uuid(flags.id, 'id') : undefined;
+    const id = ['show', 'accept-preview', 'accept', 'reject', 'resume', 'terminate'].includes(operation) ? uuid(flags.id, 'id') : undefined;
     const requestId = ['accept', 'reject', 'terminate'].includes(operation) || flags['recover-unknown'] || flags['cancel-before-start'] ? uuid(flags['request-id'], 'request-id') : undefined;
-    if (['accept', 'reject', 'terminate'].includes(operation) || flags['cancel-before-start']) {
+    if (flags['confirm-replacement'] !== undefined && operation !== 'accept') this.error('--confirm-replacement: accept', { exit: 2 });
+    if (flags['confirm-replacement'] !== undefined && !/^sha256:[a-f0-9]{64}$/.test(flags['confirm-replacement'])) this.error('--confirm-replacement: sha256', { exit: 2 });
+    if (['accept-preview', 'accept', 'reject', 'terminate'].includes(operation) || flags['cancel-before-start']) {
       need(flags.reason, 'reason'); if (!flags.generation) this.error('--generation', { exit: 2 });
       if (operation === 'accept' && !flags['confirm-identity']) this.error('--confirm-identity', { exit: 2 });
     }
@@ -151,8 +156,13 @@ export default class ObserveEntityLinks extends BaseCommand {
           break;
         }
         case 'show': emit(app.inspect(id!).history); break;
+        case 'accept-preview': {
+          const preview = app.acceptPreview({ reviewId: id!, expectedGeneration: flags.generation!, reason: flags.reason!,
+            ...(flags['object-label'] === undefined ? {} : { objectLabel: flags['object-label'] }) });
+          this.log(flags.json ? JSON.stringify({ workspace, ...preview }, null, 2) : formatEntityLinkAcceptPreview(preview, workspace, this.lang)); break;
+        }
         case 'accept': emit(app.decide({ reviewId: id!, requestId: requestId!, expectedGeneration: flags.generation!, decision: 'accept', identityConfirmed: true,
-          reason: flags.reason!, ...(flags['object-label'] === undefined ? {} : { objectLabel: flags['object-label'] }) }), true); break;
+          reason: flags.reason!, ...(flags['confirm-replacement'] === undefined ? {} : { replacementConfirmed: true, replacementConfirmationDigest: flags['confirm-replacement'] }), ...(flags['object-label'] === undefined ? {} : { objectLabel: flags['object-label'] }) }), true); break;
         case 'reject': emit(app.decide({ reviewId: id!, requestId: requestId!, expectedGeneration: flags.generation!, decision: 'reject', reason: flags.reason! })); break;
         case 'terminate': emit(app.terminateExecution({ reviewId: id!, requestId: requestId!, expectedGeneration: flags.generation!,
           executionId: executionId!, ownerId: ownerId!, reason: flags.reason! })); break;
@@ -165,7 +175,11 @@ export default class ObserveEntityLinks extends BaseCommand {
     } catch (cause) {
       if (cause instanceof Errors.CLIError && cause.oclif.exit === 2) throw cause;
       const inspect = reviewId ? `omk observe entity-links show --id ${reviewId} --workspace ${shellQuoteArg(chosenWorkspace ?? '<workspace>')} --json` : 'omk observe entity-links --help';
-      this.error(`${cause instanceof Error ? cause.message : t('操作未完成。', 'Operation did not complete.')}\n${t('先核对已保存身份；不要盲目重新调用模型。', 'Inspect the saved identity before invoking again.')}\n${inspect}`, { exit: 1 });
+      const guidance = cause instanceof EntityLinkConflictError && cause.conflictCode === 'kind_mismatch'
+        ? t('所指层级不兼容。先核对并纠正来源中的对象、活动或实例层级；身份确认不能覆盖该冲突。', 'Referent kinds are incompatible. Inspect and correct the source object/activity/instance level; identity consent cannot override this conflict.')
+        : cause instanceof EntityLinkConflictError && cause.conflictCode === 'identity_unresolved'
+          ? t('身份尚未消歧。先核对来源实体及其身份不确定性，再建立新复核。', 'Identity is unresolved. Inspect the source entity and its identity uncertainties before a new review.') : '';
+      this.error(`${guidance ? `${guidance}\n` : ''}${cause instanceof Error ? cause.message : t('操作未完成。', 'Operation did not complete.')}\n${t('先核对已保存身份；不要盲目重新调用模型。', 'Inspect the saved identity before invoking again.')}\n${inspect}`, { exit: 1 });
     }
     if (failed) this.exit(1);
   }

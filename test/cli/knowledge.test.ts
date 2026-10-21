@@ -12,7 +12,7 @@ import ObserveEntityLinks from '../../src/cli/commands/observe/entity-links.js';
 import { createEntityLinkCliPlan, formatEntityLinkInvocation } from '../../src/cli/lib/entity-link-output.js';
 import { runCommand } from '../helpers/run-command.js';
 import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
-import { createLocalKnowledgeApplication, createLocalEntityLinks, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
+import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKnowledgeLibrary, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/contracts.js';
@@ -370,6 +370,26 @@ describe('observe entity-links confirmed CLI flow', () => {
     expect(listed.rows).toHaveLength(1); expect(listed.rows[0].status).toBe('applied');
     await runCli(command('resume', '--workspace', workspace, '--id', pending.history.reviewId, '--json'), { cwd: root, env }); expect(api.requests).toHaveLength(1);
   });
+  it('shows exact existing-member changes through accept-preview and requires its separate confirmation digest', async () => {
+    const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'replace-a'), b = await window(workspace, 'replace-b');
+    const app = createLocalKnowledgeApplication(workspace), left = a.ref(), detail = app.entities(left.analysisId);
+    const member = { ...left, entityRevisionId: detail.revision.revisionId, mentionIds: detail.revision.mentions.filter(m => m.entityId === left.entityId).map(m => m.mentionId), rationale: '旧证据理由' };
+    const library = createLocalKnowledgeLibrary(workspace), owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+      identityConfirmed: true, reason: '旧组织', draft: { label: 'Alpha 对象', description: '旧范围', referentKind: 'object', members: [member] } });
+    const api = await transport(), env = environment(root, api.endpoint), saved = await preview(root, workspace, a.ref(), b.ref(), env);
+    const pending = JSON.parse((await runCli(saved.args, { cwd: root, env })).stdout), reason = '单独批准理由替换';
+    const fields = ['--workspace', workspace, '--id', pending.history.reviewId, '--generation', String(pending.history.generation), '--reason', reason];
+    const evidence = JSON.parse((await runCli(command('accept-preview', ...fields, '--json'), { cwd: root, env })).stdout);
+    expect(evidence).toMatchObject({ previewVersion: 'omk.entity-link-accept-preview/v1', replacementRequired: true,
+      changes: [{ before: member, after: { ...member, rationale: reason } }] });
+    const acceptance = command('accept', ...fields, '--request-id', randomUUID(), '--confirm-identity', '--json');
+    const refused = await runCliFailing(acceptance, 1, { cwd: root, env }); expect(refused.stderr).toContain('replacement confirmation');
+    expect(library.detail(owner.objectId).history.generation).toBe(1);
+    const confirmed = [...acceptance, '--confirm-replacement', evidence.confirmationDigest];
+    expect(JSON.parse((await runCli(confirmed, { cwd: root, env })).stdout).projection.status).toBe('applied');
+    expect(JSON.parse((await runCli(confirmed, { cwd: root, env })).stdout).projection.status).toBe('applied');
+    expect(library.detail(owner.objectId).history.generation).toBe(2); expect(api.requests).toHaveLength(1);
+  });
   it('preserves a refusal and usage, requires a new confirmed retry and durably suppresses a rejected pair', async () => {
     const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b'); let refuse = true;
     const api = await transport(body => refuse ? { choices: [{ message: { content: '完整 content 原通道', refusal: '完整 refusal 原通道' }, finish_reason: 'stop' }], usage: { prompt_tokens: 13, completion_tokens: 5 } } : completion(body));
@@ -468,7 +488,7 @@ describe('observe entity-links confirmed CLI flow', () => {
       mkdirSync(env.OMK_HOME!, { recursive: true }); const settings = join(env.OMK_HOME!, 'settings.json'); writeFileSync(settings, '{broken-settings');
       const unavailable = { ...env, OPENAI_API_KEY: '', OPENAI_BASE_URL: 'not-a-provider-url' };
       const terminated = JSON.parse((await runCli(terminate, { cwd: root, env: unavailable })).stdout);
-      expect(terminated.projection).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v2', status: 'execution_terminated',
+      expect(terminated.projection).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v3', status: 'execution_terminated',
         invocationBudget: { reserved: 0, consumed: 1 }, canTerminateExecution: false, canStart: false, canResumeOrganization: false, admission: null, decision: null,
         termination: { commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1', actor: { actorKind: 'human' } },
         usage: { inputTokens: null, outputTokens: null, costUSD: null } });
@@ -477,7 +497,7 @@ describe('observe entity-links confirmed CLI flow', () => {
       expect(readFileSync(settings, 'utf8')).toBe('{broken-settings');
       const changedReason = [...terminate]; changedReason[changedReason.indexOf('--reason') + 1] = '不能重写已有终止理由';
       await runCliFailing(changedReason, 1, { cwd: root, env: unavailable });
-      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', groups: [{
+      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v3', groups: [{
         humanTerminations: { total: 1, outcomeUnrecorded: 1, lateOutcomeRecorded: 0 },
         admission: { recorded: 0, admitted: 0, rejected: 0, terminatedDispatched: 1 }, humanDecisions: { decided: 0 } }] });
       const zh = formatEntityLinkInvocation(terminated.history, terminated.projection, workspace, 'zh');

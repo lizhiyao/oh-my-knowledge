@@ -39,6 +39,15 @@ export function formatEntityLinkPreview(value: EntityLinkCliPlan, lang: Lang): s
   ].join('\n');
 }
 
+export function formatEntityLinkAcceptPreview(preview: ReturnType<EntityLinkApplication['acceptPreview']>, workspace: string, lang: Lang): string {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  return [`workspace: ${workspace}`, preview.previewVersion, `reviewId: ${preview.reviewId}`, `generation: ${preview.expectedGeneration}`,
+    t('零模型调用；尚未保存人工接受或组织修订。以下已有成员会被本次选择替换，旧修订保留。', 'No model call or saved acceptance/library revision. The selected evidence replaces changed existing members below; prior revisions remain.'),
+    JSON.stringify(preview, null, 2), preview.replacementRequired
+      ? t('请单独核对旧／新修订、提及增减及理由；同意替换后在 accept 添加 --confirm-replacement 和此 confirmationDigest。--confirm-identity 不能代替该确认。', 'Separately inspect old/new revisions, mention changes and reasons. To approve replacement, add --confirm-replacement with this confirmationDigest to accept; --confirm-identity does not substitute for it.')
+      : t('没有已有成员证据变化；accept 不需要 --confirm-replacement。', 'No existing member evidence changes; accept does not need --confirm-replacement.')].join('\n');
+}
+
 export function formatEntityLinkInvocation(history: EntityLinkInvocation, projection: Projection, workspace: string, lang: Lang): string {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const known = (value: number | null) => value === null ? t('未报告／未知', 'unreported/unknown') : String(value);
@@ -52,6 +61,9 @@ export function formatEntityLinkInvocation(history: EntityLinkInvocation, projec
       t('已解除关联阻塞；本次调用不退款，也不证明远端请求已取消。迟到结果仅作原始证据，不能接受或写入知识库。',
         'The link reservation is released; no invocation refund or proof of remote cancellation. Late outcomes remain raw evidence and cannot be accepted or published.'));
   }
+  if (projection.conflict) lines.push(`conflict-classification: ${projection.conflict.classificationVersion}`, `conflict: ${projection.conflict.conflictCode}`,
+    projection.conflict.conflictCode === 'kind_mismatch' ? t('所指层级不兼容；先核对对象／活动／实例等层级，不能用身份确认覆盖。', 'Referent kinds are incompatible; inspect object/activity/instance levels before linking. Identity consent cannot override this.')
+      : projection.conflict.conflictCode === 'identity_unresolved' ? t('身份尚未消歧；先核对实体及其身份不确定性。旧 legacy/v1 原因未进一步细分。', 'Identity is unresolved; inspect entity identity uncertainties first. A legacy/v1 reason remains unclassified.') : '');
   if (projection.status === 'awaiting_review') lines.push(ENTITY_SCOPE_REVIEW_GUIDANCE[lang]);
   const prepare = history.events[0].command;
   if (prepare.commandKind === 'prepare') lines.push(t('已发送／计划发送的选定内容：', 'Selected content sent/planned:'), prepare.input.request.prompt);
@@ -65,6 +77,7 @@ export function formatEntityLinkQuality(quality: EntityLinkQuality, workspace: s
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const lines = [`workspace: ${workspace}`, quality.projectionVersion,
     t('只读已保存记录；机器接纳与人工选择均不代表准确率。本次零模型调用。', 'Reads saved evidence only. Machine admission and human choices do not measure accuracy. No model invocation.')];
+  lines.push(t('冲突按分类版本分别汇总；legacy/v1 的 identity_unresolved 未细分，不与 v2 细分类直接比较，分类变化不代表准确率变化。', 'Conflicts are counted separately by classification version. Legacy/v1 identity_unresolved remains unclassified and cannot be compared directly with v2 categories; classification changes do not measure accuracy.'));
   if (quality.readStatus === 'unreadable') return [...lines, t('关联历史不可读；数量未知，不能据此判断为 0。请核对工作区权限和存储格式后重新读取。', 'Link history is unreadable; its count is unknown, not zero. Inspect workspace permissions and storage format, then reload.')].join('\n');
   lines.push(`${t('持久 review', 'Durable reviews')}: ${quality.reviewCount}; ${t('可比分组', 'Comparison groups')}: ${quality.groups.length}`);
   for (const group of quality.groups) {

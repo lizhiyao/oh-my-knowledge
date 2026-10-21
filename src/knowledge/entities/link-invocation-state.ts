@@ -17,6 +17,12 @@ export type EntityLinkInvocationStatus = 'prepared' | 'running' | 'execution_unk
 export function entityLinkConfirmationDigest(reviewId: string, input: Omit<EntityLinkInvocationPlan, 'confirmedDigest'>, hash: Integrity['hashJson']): string {
   return hash({ reviewId, left: input.left, right: input.right, requestDigest: input.request.requestDigest, producerContextDigest: input.producerContextDigest, retryOf: input.retryOf, invocationBudget: 1 });
 }
+/** Binds the separate replacement consent to the locked owner/head and exact reviewed selection. */
+export function entityLinkEvidenceReplacementDigest(reviewId: string, expectedGeneration: number, plan: EntityLinkInvocationPlan,
+  reason: string, objectLabel: string | null, organizationLabel: string, previousMembersDigest: string, actor: EntityLinkInvocationCommand['actor'], hash: Integrity['hashJson']) {
+  return hash({ confirmationVersion: 'omk.entity-link-evidence-replacement/v1', reviewId, expectedGeneration,
+    left: plan.left, right: plan.right, reason, objectLabel, organizationLabel, previousMembersDigest, actor });
+}
 function commandDigest(command: EntityLinkInvocationCommand, hash: Integrity['hashJson']) {
   const semantic: Partial<EntityLinkInvocationCommand> = { ...command };
   delete semantic.expectedGeneration; delete semantic.eventId; delete semantic.at;
@@ -63,9 +69,17 @@ function admit(input: EntityLinkInvocationPlan, outcome: EntityLinkExecutionOutc
     return { admissionKind: 'admitted', suggestion };
   } catch { return { admissionKind: 'rejected', reason: 'invalid_response' }; }
 }
-function validateIntent(plan: EntityLinkInvocationPlan, command: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }>, integrity: Integrity) {
+function validateIntent(plan: EntityLinkInvocationPlan, command: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' | 'reviewed_v2' }>, integrity: Integrity) {
   const application = command.application!;
-  if (application.applicationKind !== 'intent') return;
+  if (application.applicationKind !== 'intent') {
+    if (command.commandKind === 'reviewed_v2' && command.evidenceReplacement) throw new EntityLinkInvocationConflictError('Conflict cannot claim a replacement.');
+    return;
+  }
+  if (command.commandKind === 'reviewed_v2' && command.evidenceReplacement) {
+    const receipt = command.evidenceReplacement;
+    if (!(plan.left.owner ?? plan.right.owner) || receipt.confirmedDigest !== entityLinkEvidenceReplacementDigest(command.reviewId, command.expectedGeneration,
+      plan, command.reason, command.objectLabel, application.intent.revision.draft.label, receipt.previousMembersDigest, command.actor, integrity.hashJson)) throw new EntityLinkInvocationConflictError('Evidence replacement confirmation conflict.');
+  }
   const intent = application.intent; const endpoints = [plan.left, plan.right]; const owners = endpoints.flatMap(endpoint => endpoint.owner ? [endpoint.owner] : []);
   const input = verifyPlan(command.reviewId, plan, integrity);
   if (!equal(intent.revision.revisedBy, command.actor) || intent.revision.reason !== command.reason
@@ -121,7 +135,7 @@ export function validateEntityLinkInvocation(value: EntityLinkInvocation, integr
     || new Set(history.events.map(event => event.command.requestId)).size !== history.events.length) throw new EntityLinkInvocationConflictError('Invalid invocation history identities.');
   let status: EntityLinkInvocationStatus | undefined; let prepared: Extract<EntityLinkInvocationCommand, { commandKind: 'prepare' }> | undefined;
   let started: Extract<EntityLinkInvocationCommand, { commandKind: 'start' }> | undefined;
-  let recorded = false; let admission: EntityLinkInvocationAdmission | undefined; let decision: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }> | undefined;
+  let recorded = false; let admission: EntityLinkInvocationAdmission | undefined; let decision: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' | 'reviewed_v2' }> | undefined;
   for (const [index, event] of history.events.entries()) {
     const command = event.command; const { eventDigest, ...body } = event;
     if (command.reviewId !== history.reviewId || command.expectedGeneration !== index || event.commandDigest !== commandDigest(command, integrity.hashJson)
@@ -161,10 +175,10 @@ export function validateEntityLinkInvocation(value: EntityLinkInvocation, integr
         status = command.outcome.outcomeKind === 'exception' ? 'execution_unknown' : admission.admissionKind === 'admitted' ? 'awaiting_review' : 'execution_failed';
       }
       recorded = true;
-    } else if (command.commandKind === 'reviewed') {
+    } else if (command.commandKind === 'reviewed' || command.commandKind === 'reviewed_v2') {
       if (!admission || !['awaiting_review', 'execution_failed', 'execution_unknown'].includes(status!) || !equal(event.facts, {})) throw new EntityLinkInvocationConflictError('A saved response is required for human review.');
       if (command.decision === 'reject') {
-        if (command.application || command.identityConfirmed || command.objectLabel !== null) throw new EntityLinkInvocationConflictError('Rejected review cannot publish.');
+        if (command.application || command.identityConfirmed || command.objectLabel !== null || command.commandKind === 'reviewed_v2' && command.evidenceReplacement) throw new EntityLinkInvocationConflictError('Rejected review cannot publish.');
         status = 'rejected';
       } else {
         if (!command.identityConfirmed || !command.application || admission?.admissionKind !== 'admitted') throw new EntityLinkInvocationConflictError('Explicit human identity confirmation required.');
@@ -217,18 +231,25 @@ export function projectEntityLinkInvocation(input: EntityLinkInvocation, integri
   const history = validateEntityLinkInvocation(input, integrity), commands = history.events.map(event => event.command);
   const last = commands.at(-1)!; const started = commands.find(command => command.commandKind === 'start');
   const recorded = history.events.find(event => event.command.commandKind === 'execution_recorded');
-  const reviewed = commands.find(command => command.commandKind === 'reviewed');
+  const reviewed = commands.find((command): command is Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' | 'reviewed_v2' }> => command.commandKind === 'reviewed' || command.commandKind === 'reviewed_v2');
   const termination = commands.find(command => command.commandKind === 'execution_terminated');
   const status: EntityLinkInvocationStatus = termination ? 'execution_terminated' : last.commandKind === 'prepare' ? 'prepared' : last.commandKind === 'start' ? 'running'
     : last.commandKind === 'cancel_before_start' ? 'cancelled_before_start' : last.commandKind === 'execution_unknown' ? 'execution_unknown'
-      : last.commandKind === 'application_applied' ? 'applied' : last.commandKind === 'application_conflict' ? 'accepted_conflict'
-        : last.commandKind === 'reviewed' ? last.decision === 'reject' ? 'rejected' : last.application?.applicationKind === 'conflict' ? 'accepted_conflict' : 'accepted_pending_application'
+      : last.commandKind === 'application_applied' ? 'applied' : (last.commandKind === 'application_conflict' || last.commandKind === 'application_conflict_v2') ? 'accepted_conflict'
+        : (last.commandKind === 'reviewed' || last.commandKind === 'reviewed_v2') ? last.decision === 'reject' ? 'rejected' : last.application?.applicationKind === 'conflict' ? 'accepted_conflict' : 'accepted_pending_application'
           : last.commandKind === 'execution_recorded' && last.outcome.outcomeKind === 'exception' ? 'execution_unknown'
           : EntityLinkInvocationAdmissionSchema.parse(recorded!.facts.admission).admissionKind === 'admitted' ? 'awaiting_review' : 'execution_failed';
   const outcome = recorded?.command.commandKind === 'execution_recorded' ? recorded.command.outcome : undefined;
   const result = outcome?.outcomeKind === 'result' ? outcome.result : undefined;
-  return { projectionKind: 'entity-link-invocation' as const, projectionVersion: 'omk.entity-link-invocation-projection/v2' as const,
+  return { projectionKind: 'entity-link-invocation' as const, projectionVersion: 'omk.entity-link-invocation-projection/v3' as const,
     reviewId: history.reviewId, generation: history.generation, status,
+    reviewVersion: reviewed ? reviewed.commandKind === 'reviewed_v2' ? reviewed.reviewVersion : 'legacy/v1' as const : null,
+    conflict: (() => {
+      if (last.commandKind === 'application_conflict' || last.commandKind === 'application_conflict_v2') return { conflictCode: last.conflictCode,
+        classificationVersion: last.commandKind === 'application_conflict_v2' ? last.conflictVersion : 'legacy/v1' as const };
+      return reviewed?.application?.applicationKind === 'conflict' ? { conflictCode: reviewed.application.conflictCode,
+        classificationVersion: reviewed.commandKind === 'reviewed_v2' ? 'omk.entity-link-conflict/v2' as const : 'legacy/v1' as const } : null;
+    })(),
     execution: started?.commandKind === 'start' ? { executionId: started.executionId, owner: started.owner } : null, termination: termination ?? null,
     invocationBudget: { reserved: status === 'prepared' ? 1 : 0, consumed: started ? 1 : 0 },
     executorAttemptCount: result ? result.attemptCount ?? 1 : null,

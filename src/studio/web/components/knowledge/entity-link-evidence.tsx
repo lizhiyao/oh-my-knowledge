@@ -1,7 +1,7 @@
 'use client';
 import { Alert, Tag } from 'antd';
 import type { Language } from '../layout/shell';
-import type { EntityLinkPreview, EntityLinkStudioInspection, EntityLinkStudioPreview } from '../../../view-models/knowledge/entity-links';
+import type { EntityLinkPreview, EntityLinkAcceptPreview, EntityLinkStudioInspection, EntityLinkStudioPreview } from '../../../view-models/knowledge/entity-links';
 import { KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
 import Link from 'next/link';
 
@@ -44,6 +44,26 @@ export function EntityLinkPreviewEvidence({ value, lang }: { value: EntityLinkSt
     </section>)}</div><RequestEvidence plan={value.preview.plan} context={value.preview.producerContext} lang={lang}/></>;
 }
 
+export function EntityLinkAcceptPreviewEvidence({ value, lang }: { value: EntityLinkAcceptPreview; lang: Language }) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  return <section><h3>{t('接受前核对已有成员证据', 'Inspect existing-member evidence before acceptance')}</h3>
+    <p>{t('本次零模型调用，尚未保存接受或组织修订。旧组织修订仍保留；无关成员不变。', 'No model call or saved acceptance/library revision. Previous library revisions remain; unrelated members stay unchanged.')}</p>
+    <p><code>{value.previewVersion}</code> · generation {value.expectedGeneration}</p>
+    <p>{t('组织名称：', 'Organization label: ')}{value.organizationLabel}</p><p>{value.reason}</p>
+    <p>{t('已有 owner/head/generation：', 'Existing owner/head/generation: ')}{value.owner ? `${value.owner.objectId} / ${value.owner.headRevisionId} / ${value.owner.generation}` : t('没有已有归属', 'No existing owner')}</p>
+    {!value.replacementRequired && <p>{t('没有已有成员证据变化。', 'No existing-member evidence changes.')}</p>}
+    {value.changes.map(change => <section key={`${change.before.analysisId}:${change.before.entityId}`}>
+      <h4>{t('已有成员：', 'Existing member: ')}<code>{change.before.analysisId} / {change.before.entityId}</code></h4>
+      <p>{change.revisionChanged ? t('更新实体修订；两个修订的 mention 身份分开显示，不合并。', 'Entity revision changes; mention identities from the two revisions are displayed separately, never merged.') : t('同一实体修订内改变证据或理由。', 'Evidence or reason changes within the same entity revision.')}</p>
+      <p>{t('移除的提及：', 'Removed mentions: ')}{change.removedMentionIds.join(', ') || '—'}</p>
+      <p>{t('新增的提及：', 'Added mentions: ')}{change.addedMentionIds.join(', ') || '—'}</p>
+      <div className="entity-link-comparison"><div><h4>{t('原绑定（完整）', 'Previous binding (complete)')}</h4><pre>{JSON.stringify(change.before, null, 2)}</pre></div>
+        <div><h4>{t('拟写入绑定（完整）', 'Proposed binding (complete)')}</h4><pre>{JSON.stringify(change.after, null, 2)}</pre></div></div>
+    </section>)}
+    {value.confirmationDigest && <p className="candidate-help">confirmationDigest: <code>{value.confirmationDigest}</code></p>}
+  </section>;
+}
+
 export function EntityLinkSavedEvidence({ value, lang }: { value: EntityLinkStudioInspection; lang: Language }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const { history, projection } = value;
@@ -62,6 +82,9 @@ export function EntityLinkSavedEvidence({ value, lang }: { value: EntityLinkStud
       <p className="candidate-help">{t('终止不证明原进程或请求已停止；迟到结果只保留归档，不进入结构接纳、身份决定或知识库应用。', 'Termination does not prove the original process or request stopped. Late results are archived without admission, identity decisions, or library application.')}</p></>}
     {projection.admission && <><h4>{t('结构接纳', 'Structural admission')}</h4><pre>{JSON.stringify(projection.admission, null, 2)}</pre></>}
     {projection.decision && <><h4>{t('独立人工决定', 'Separate human decision')}</h4><p>{projection.decision.decision} · {projection.decision.actor.actorId}</p><p>{projection.decision.reason}</p></>}
+    {projection.conflict && <Alert type="warning" title={`${projection.conflict.classificationVersion} · ${projection.conflict.conflictCode}`} description={projection.conflict.conflictCode === 'kind_mismatch'
+      ? t('所指层级不兼容；先核对对象、活动、实例等层级，不能用身份确认覆盖。', 'Referent kinds are incompatible. Inspect object, activity or instance levels; identity consent cannot override this.')
+      : projection.conflict.conflictCode === 'identity_unresolved' ? t('先消歧实体身份。legacy/v1 旧原因没有进一步细分，不能据此断言具体层级冲突。', 'Resolve entity identity first. Legacy/v1 reasons remain unclassified and do not establish a specific kind mismatch.') : undefined}/>}
     {projection.status === 'running' || projection.status === 'execution_unknown' ? <Alert type="warning" title={t('先核对同一 review。读取与恢复不会重新发送；原进程仍存活时不能把运行强行判为未知。', 'Inspect this same review first. Reads and recovery never resend; a live owner cannot be forced into unknown.')}/> : null}
     {applied?.commandKind === 'application_applied' && objectId && <Link href={`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ workspace: value.workspace, object: objectId })}`}>{t('查看已保存的知识库对象', 'Open the saved library object')}</Link>}
     {preparation.commandKind === 'prepare' && <RequestEvidence plan={preparation.input} context={history.events[0].facts.reservation} lang={lang}/>}

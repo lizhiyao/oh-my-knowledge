@@ -5,8 +5,8 @@ import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { EntityLinkEndpointSchema, EntityLinkConflictError, entityLinkPairKey, type EntityLinkEndpoint } from '../entities/links.js';
 import { EntityLinkExecutionRequestSchema, type EntityLinkInvocation, type EntityLinkInvocationCommand, type EntityLinkInvocationPlan,
-  type EntityLinkInvocationPorts, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction, type EntityLinkExecutionOutcome } from '../entities/link-invocation.js';
-import { entityLinkConfirmationDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../entities/link-invocation-state.js';
+  type EntityLinkReviewCommand, type EntityLinkInvocationPorts, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction, type EntityLinkExecutionOutcome } from '../entities/link-invocation.js';
+import { entityLinkConfirmationDigest, entityLinkEvidenceReplacementDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../entities/link-invocation-state.js';
 import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../entity-library/contracts.js';
 import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../entity-library/write-errors.js';
 import { entityLinkDigest } from './entity-link-hash.js';
@@ -21,15 +21,18 @@ import { entityLinkQuality, unreadableEntityLinkQuality } from './entity-link-qu
 
 const reference = z.strictObject({ analysisId: z.string().uuid(), entityId: z.string().uuid(), mentionIds: z.array(z.string().uuid()).min(1).max(64).optional() });
 const decisionSchema = z.discriminatedUnion('decision', [
-  z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(), decision: z.literal('accept'), reason: z.string().trim().min(1).max(4096), identityConfirmed: z.literal(true), objectLabel: z.string().trim().min(1).max(256).optional() }),
+  z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(), decision: z.literal('accept'), reason: z.string().trim().min(1).max(4096), identityConfirmed: z.literal(true), objectLabel: z.string().trim().min(1).max(256).optional(), replacementConfirmed: z.boolean().optional(),
+    replacementConfirmationDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional() }),
   z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(), decision: z.literal('reject'), reason: z.string().trim().min(1).max(4096) }),
 ]);
+const acceptancePreviewSchema = z.strictObject({ reviewId: z.string().uuid(), expectedGeneration: z.number().int().positive(),
+  reason: z.string().trim().min(1).max(4096), objectLabel: z.string().trim().min(1).max(256).optional() });
 const terminationSchema = z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(),
   executionId: z.string().uuid(), ownerId: z.string().uuid(), reason: z.string().trim().min(1).max(4096) });
 const normalize = (value: string) => value.normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
 const equal = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right);
 const prepared = (review: EntityLinkInvocation) => { const command = review.events[0].command; if (command.commandKind !== 'prepare') throw new Error('Missing preparation.'); return command; };
-const decisionOf = (review: EntityLinkInvocation) => review.events.find(event => event.command.commandKind === 'reviewed')?.command;
+const decisionOf = (review: EntityLinkInvocation) => review.events.map(event => event.command).find((command): command is EntityLinkReviewCommand => command.commandKind === 'reviewed' || command.commandKind === 'reviewed_v2');
 const suppressesPair = (review: EntityLinkInvocation) => {
   const status = projectEntityLinkInvocation(review, { hashJson: entityLinkDigest, hashText: entityLinkTextHash }).status;
   return !['cancelled_before_start', 'accepted_conflict', 'applied', 'execution_failed', 'execution_unknown', 'execution_terminated'].includes(status);
@@ -124,9 +127,9 @@ export class EntityLinkApplication {
     const modelInput = this.input(plan.left, plan.right);
     if (canonicalJson(modelInput) !== plan.request.prompt) throw new EntityLinkConflictError('entity_changed');
     if (plan.left.owner && plan.right.owner) throw new EntityLinkConflictError('owner_conflict');
-    if (modelInput.left.entity.referentKind !== modelInput.right.entity.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+    if (modelInput.left.entity.referentKind !== modelInput.right.entity.referentKind) throw new EntityLinkConflictError('kind_mismatch');
     const owner = all.find(item => item.objectId === (plan.left.owner ?? plan.right.owner)?.objectId);
-    if (owner && owner.revisions[0].draft.referentKind !== modelInput.left.entity.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+    if (owner && owner.revisions[0].draft.referentKind !== modelInput.left.entity.referentKind) throw new EntityLinkConflictError('kind_mismatch');
     const pairKey = entityLinkPairKey(plan.left, plan.right, entityLinkDigest);
     const others = transaction.list().filter(item => item.reviewId !== reviewId);
     if (others.some(item => item.pairKey === pairKey && suppressesPair(item))) throw new EntityLinkConflictError('pair_already_reviewed');
@@ -231,32 +234,83 @@ export class EntityLinkApplication {
       return this.transition(transaction, current, this.command(reviewId, requestId, current.generation, { commandKind: 'execution_unknown', executionId: start.executionId })).history;
     });
   }
+  /** Read-only replacement preview. Both preview and acceptance hold the same workspace/library lock. */
+  acceptPreview(input: z.input<typeof acceptancePreviewSchema>) {
+    const request = acceptancePreviewSchema.parse(input);
+    return this.reviews.transaction(transaction => {
+      const review = transaction.read(request.reviewId);
+      if (review.generation !== request.expectedGeneration) throw new Error('Entity-link acceptance revision conflict.');
+      if (this.projectHistory(review).status !== 'awaiting_review') throw new Error('An admitted response awaiting review is required.');
+      return this.acceptance(review, transaction.library, request.reason, request.objectLabel ?? null).preview;
+    });
+  }
+  private acceptance(review: EntityLinkInvocation, library: LibraryStore, reason: string, objectLabel: string | null) {
+    const intent = this.intent(review, library, reason, objectLabel), plan = prepared(review).input;
+    const owner = plan.left.owner ?? plan.right.owner;
+    const previous = owner ? library.read(owner.objectId).revisions.at(-1)!.draft : undefined;
+    const endpoints = [plan.left, plan.right];
+    const before = endpoints.flatMap(endpoint => previous?.members.filter(member => memberKey(member) === memberKey(endpoint)) ?? []);
+    const changes = before.flatMap(member => {
+      const after = intent.revision.draft.members.find(value => memberKey(value) === memberKey(member))!;
+      if (equal(member, after)) return [];
+      const revisionChanged = member.entityRevisionId !== after.entityRevisionId;
+      return [{ before: member, after, revisionChanged,
+        mentionComparison: revisionChanged ? 'different-entity-revisions' as const : 'same-entity-revision' as const,
+        removedMentionIds: member.mentionIds.filter(id => revisionChanged || !after.mentionIds.includes(id)),
+        addedMentionIds: after.mentionIds.filter(id => revisionChanged || !member.mentionIds.includes(id)) }];
+    });
+    const previousMembersDigest = entityLinkDigest(before);
+    const confirmationDigest = changes.length ? entityLinkEvidenceReplacementDigest(review.reviewId, review.generation, plan, reason,
+      objectLabel, intent.revision.draft.label, previousMembersDigest, this.actor, entityLinkDigest) : null;
+    return { intent, previousMembersDigest, preview: { previewVersion: 'omk.entity-link-accept-preview/v1' as const,
+      reviewId: review.reviewId, expectedGeneration: review.generation, left: plan.left, right: plan.right, owner,
+      reason, objectLabel, organizationLabel: intent.revision.draft.label, changes, replacementRequired: changes.length > 0, confirmationDigest } };
+  }
   decide(input: z.input<typeof decisionSchema>) {
     const command = decisionSchema.parse(input), objectLabel = command.decision === 'accept' ? command.objectLabel ?? null : null;
     const saved = this.reviews.transaction(transaction => {
       const current = transaction.read(command.reviewId), previous = decisionOf(current);
-      if (previous?.commandKind === 'reviewed' && previous.requestId === command.requestId) {
-        if (previous.decision !== command.decision || previous.reason !== command.reason || previous.objectLabel !== objectLabel || !equal(previous.actor, this.actor)) throw new Error('Entity-link decision identity conflict.');
+      // An exact acknowledged request wins before source/capacity/CAS checks, including legacy pending recovery.
+      if (previous && previous.requestId === command.requestId) {
+        const receipt = previous.commandKind === 'reviewed_v2' ? previous.evidenceReplacement : null;
+        if (previous.decision !== command.decision || previous.reason !== command.reason || previous.objectLabel !== objectLabel || !equal(previous.actor, this.actor)
+          || command.decision === 'accept' && ((command.replacementConfirmationDigest ?? null) !== (receipt?.confirmedDigest ?? null)
+            || !!command.replacementConfirmed !== !!receipt)) throw new Error('Entity-link decision identity conflict.');
         return transaction.save(current, current.generation);
       }
-      let application: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }>['application'] = null;
+      if (current.generation !== command.expectedGeneration) throw new Error('Entity-link acceptance revision conflict.');
+      let application: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed_v2' }>['application'] = null;
+      let evidenceReplacement: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed_v2' }>['evidenceReplacement'] = null;
       if (command.decision === 'accept') {
-        try { application = { applicationKind: 'intent', intent: this.intent(current, transaction.library, command.reason, objectLabel) }; }
-        catch (error) { if (!(error instanceof EntityLinkConflictError)) throw error; application = { applicationKind: 'conflict', conflictCode: error.conflictCode }; }
+        try {
+          const checked = this.acceptance(current, transaction.library, command.reason, objectLabel);
+          if (checked.preview.replacementRequired) {
+            if (!command.replacementConfirmed || command.replacementConfirmationDigest !== checked.preview.confirmationDigest) throw new Error('Explicit evidence replacement confirmation required; read accept-preview again.');
+            evidenceReplacement = { confirmationVersion: 'omk.entity-link-evidence-replacement/v1', confirmedDigest: checked.preview.confirmationDigest!,
+              previousMembersDigest: checked.previousMembersDigest };
+          } else if (command.replacementConfirmed || command.replacementConfirmationDigest) throw new Error('Evidence replacement confirmation does not match this acceptance.');
+          application = { applicationKind: 'intent', intent: checked.intent };
+        } catch (error) {
+          if (!(error instanceof EntityLinkConflictError)) throw error;
+          if (command.replacementConfirmed || command.replacementConfirmationDigest) throw new Error('Evidence replacement preview is stale; read accept-preview again.');
+          application = { applicationKind: 'conflict', conflictCode: error.conflictCode };
+        }
       }
-      return this.transition(transaction, current, this.command(command.reviewId, command.requestId, command.expectedGeneration, { commandKind: 'reviewed', decision: command.decision,
-        reason: command.reason, objectLabel, identityConfirmed: command.decision === 'accept', application })).history;
+      return this.transition(transaction, current, this.command(command.reviewId, command.requestId, command.expectedGeneration,
+        { commandKind: 'reviewed_v2', reviewVersion: 'omk.entity-link-review/v2', decision: command.decision,
+          reason: command.reason, objectLabel, identityConfirmed: command.decision === 'accept', evidenceReplacement, application })).history;
     });
     return command.decision === 'accept' ? this.resume(saved.reviewId) : saved;
   }
   private intent(review: EntityLinkInvocation, library: LibraryStore, reason: string, objectLabel: string | null): LibraryWrite {
     const plan = prepared(review).input, endpoints = [plan.left, plan.right], all = library.list();
     const sources = endpoints.map(endpoint => currentEntityLinkSource(this.knowledge, endpoint));
-    if (sources.some(source => source.entity.identityStatus !== 'proposed' || source.entity.referentKind !== sources[0].entity.referentKind)) throw new EntityLinkConflictError('identity_unresolved');
+    if (sources.some(source => source.entity.identityStatus !== 'proposed')) throw new EntityLinkConflictError('identity_unresolved');
+    if (sources.some(source => source.entity.referentKind !== sources[0].entity.referentKind)) throw new EntityLinkConflictError('kind_mismatch');
     for (const endpoint of endpoints) if (!equal(ownerOf(all, endpoint), endpoint.owner)) throw new EntityLinkConflictError('owner_conflict');
     if (plan.left.owner && plan.right.owner) throw new EntityLinkConflictError('owner_conflict');
     const owner = all.find(item => item.objectId === (plan.left.owner ?? plan.right.owner)?.objectId), draft = owner?.revisions.at(-1)!.draft;
-    if (owner && owner.revisions[0].draft.referentKind !== sources[0].entity.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+    if (owner && owner.revisions[0].draft.referentKind !== sources[0].entity.referentKind) throw new EntityLinkConflictError('kind_mismatch');
     if (draft && objectLabel && objectLabel !== draft.label) throw new Error('Existing organization label must be maintained separately.');
     const label = objectLabel ?? draft?.label ?? sources[0].entity.label;
     if (label.length > 256) throw new Error('Choose an explicit organization label of at most 256 characters.');
@@ -271,7 +325,7 @@ export class EntityLinkApplication {
     if (this.held.has(reviewId)) this.archiveHeld(reviewId);
     return this.reviews.transaction(transaction => {
       const review = transaction.read(reviewId), decision = decisionOf(review);
-      if (projectEntityLinkInvocation(review, this.integrity).status !== 'accepted_pending_application' || decision?.commandKind !== 'reviewed' || decision.application?.applicationKind !== 'intent') return transaction.save(review, review.generation);
+      if (projectEntityLinkInvocation(review, this.integrity).status !== 'accepted_pending_application' || !decision || decision.application?.applicationKind !== 'intent') return transaction.save(review, review.generation);
       try {
         const library = new KnowledgeLibraryApplication(this.knowledge, transaction.library, decision.actor, this.id, this.now);
         const plan = prepared(review).input, applied = library.applyLinkIntent(decision.application.intent, [plan.left, plan.right]);
@@ -281,11 +335,11 @@ export class EntityLinkApplication {
       } catch (error) {
         const conflict = error instanceof EntityLinkConflictError ? error
           : error instanceof LibraryWriteCapacityError ? new EntityLinkConflictError('library_capacity')
-            : error instanceof LibraryReferentKindConflictError ? new EntityLinkConflictError('identity_unresolved')
+            : error instanceof LibraryReferentKindConflictError ? new EntityLinkConflictError('kind_mismatch')
               : error instanceof Error && ['Library revision conflict.', 'Library idempotency conflict.', 'Library change required.'].includes(error.message) ? new EntityLinkConflictError('library_changed') : undefined;
         if (!conflict) throw error;
         return this.transition(transaction, review, this.command(reviewId, decision.application.intent.requestId, review.generation,
-          { commandKind: 'application_conflict', conflictCode: conflict.conflictCode }, decision.actor)).history;
+          { commandKind: 'application_conflict_v2', conflictVersion: 'omk.entity-link-conflict/v2', conflictCode: conflict.conflictCode }, decision.actor)).history;
       }
     });
   }

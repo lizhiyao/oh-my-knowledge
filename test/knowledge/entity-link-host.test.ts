@@ -16,7 +16,10 @@ import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/knowled
 import { configureEntityLinkApiProducer, entityLinkTextHash } from '../../src/knowledge/adapters/entity-link-api-producer.js';
 import { KnowledgeLibraryApplication } from '../../src/knowledge/application/library.js';
 import { transitionEntityLinkInvocation, projectEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';
-import { EntityLinkPreviewSchema, type EntityLinkInvocation, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction } from '../../src/knowledge/entities/link-invocation.js';
+import { EntityLinkPreviewSchema, EntityLinkInvocationCommandSchema, type EntityLinkInvocation, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction } from '../../src/knowledge/entities/link-invocation.js';
+import { LibraryReferentKindConflictError } from '../../src/knowledge/entity-library/write-errors.js';
+import { EntityLinkConflictError } from '../../src/knowledge/entities/links.js';
+import { canonicalJson } from '../../src/knowledge/store.js';
 import { entityLinkDigest } from '../../src/knowledge/entity-linking/entity-link-hash.js';
 import { modelWindow } from './fixtures.js';
 
@@ -39,11 +42,16 @@ const servers: Server[] = [];
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-link-host-')); });
 afterEach(async () => { durabilityFault.path = undefined; durabilityFault.remaining = 0; vi.restoreAllMocks(); for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); } expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false); expect(readdirSync(root, { recursive: true }).filter(name => String(name).endsWith('.tmp'))).toEqual([]); rmSync(root, { recursive: true, force: true }); });
 const knowledge = () => createLocalKnowledgeApplication(root);
-async function window(name: string) {
+async function window(name: string, multiple = false) {
   const source = knowledge().capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
-    raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
+    raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: multiple ? 'Alpha 使用 Beta。Alpha' : 'Alpha 使用 Beta' }] } }) }] });
   const run = await knowledge().generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-model-call', generate: async (_system, input) => ({
-    output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
+    output: JSON.stringify((() => {
+      const packet = modelWindow();
+      if (multiple) { packet.mentions[0].selection.occurrence = 0; packet.mentions.push({ ...packet.mentions[0], mentionId: 'm3',
+        selection: { ...packet.mentions[0].selection, occurrence: 1 } }); }
+      return packet;
+    })()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
   const analysis = knowledge().entities(run.runId), entity = analysis.revision.entities[0];
   const ref = { analysisId: run.runId, entityId: entity.entityId };
   const member = { ...ref, entityRevisionId: analysis.revision.revisionId, mentionIds: analysis.revision.mentions.filter(m => m.entityId === entity.entityId).map(m => m.mentionId), rationale: '人工核对来源' };
@@ -67,8 +75,13 @@ async function api(handler: (body: unknown) => unknown | Promise<unknown>, statu
 const native = (output: string, finish = 'stop') => ({ choices: [{ message: { content: output }, finish_reason: finish }], usage: { prompt_tokens: 13, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 3 } } });
 const prepare = (app: EntityLinkApplication, preview: ReturnType<EntityLinkApplication['preview']>) => app.prepare({ reviewId: preview.reviewId, requestId: preview.requestId, plan: preview.plan, confirmDigest: preview.plan.confirmedDigest });
 const start = (app: EntityLinkApplication, reviewId: string) => app.start({ reviewId, requestId: randomUUID(), expectedGeneration: 1 });
-const accept = (app: EntityLinkApplication, review: EntityLinkInvocation) => app.decide({ reviewId: review.reviewId, requestId: randomUUID(), expectedGeneration: review.generation,
-  decision: 'accept', identityConfirmed: true, reason: '人工逐项核对两侧来源后确认', objectLabel: 'Alpha 对象' });
+const accept = (app: EntityLinkApplication, review: EntityLinkInvocation) => {
+  const fields = { reviewId: review.reviewId, expectedGeneration: review.generation, reason: '人工逐项核对两侧来源后确认', objectLabel: 'Alpha 对象' };
+  let replacement: { replacementConfirmed: true; replacementConfirmationDigest: string } | undefined;
+  try { const preview = app.acceptPreview(fields); if (preview.replacementRequired) replacement = { replacementConfirmed: true, replacementConfirmationDigest: preview.confirmationDigest! }; }
+  catch (error) { if (!(error instanceof EntityLinkConflictError)) throw error; }
+  return app.decide({ ...fields, requestId: randomUUID(), decision: 'accept', identityConfirmed: true, ...replacement });
+};
 function host(env: NodeJS.ProcessEnv, store: EntityLinkInvocationStore = new FileEntityLinkStore(join(root, 'entity-links'), root), create = createExecutor) {
   return new EntityLinkApplication(knowledge(), new FileEntityAnalysisStore(join(root, 'entities'), root), store, new FileLibraryStore(join(root, 'library'), root), createOpenAiArchiveProducer(env, create));
 }
@@ -191,7 +204,7 @@ describe('entity-link actual host/store/API flow', () => {
       expect(app.resume(preview.reviewId)).toEqual(archived); expect(existsSync(join(root, 'library'))).toBe(false);
       await start(app, next.reviewId); expect(app.project(next.reviewId).status).toBe('awaiting_review'); expect(transport.count).toBe(2);
       expect(create).not.toHaveBeenCalled();
-      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', groups: [{
+      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v3', groups: [{
         reviews: { dispatched: 2, resultRecorded: 2 }, admission: { recorded: 1, admitted: 1, terminatedDispatched: 1 },
         humanDecisions: { decided: 0 }, humanTerminations: { total: 1, outcomeUnrecorded: 0, lateOutcomeRecorded: 1 } }] });
     } finally { release(); await pending.catch(() => undefined); }
@@ -293,6 +306,41 @@ describe('entity-link actual host/store/API flow', () => {
     const catalog = createLocalKnowledgeLibrary(root).catalog(); expect(catalog.objectCount).toBe(1);
     expect(createLocalKnowledgeLibrary(root).detail(catalog.rows[0].objectId).history.generation).toBe(1);
   });
+  it('recovers a legacy accepted pending intent by its exact receipt without inventing replacement consent', async () => {
+    const a = await window('legacy-a', true), b = await window('legacy-b'), c = await window('legacy-c'), library = createLocalKnowledgeLibrary(root);
+    const owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null, identityConfirmed: true,
+      reason: '旧组织', draft: { label: 'Alpha 对象', description: '旧范围', referentKind: 'object', members: [a.member, c.member] } });
+    const transport = await api(() => native(suggestion(preview))), app = host(transport.env);
+    const preview = app.preview({ ...a.ref, mentionIds: [a.member.mentionIds[0]] }, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
+    const actor = { actorKind: 'human' as const, actorId: 'local-user' }, reason = '旧版本已接受的精确选择';
+    const intent = { requestId: randomUUID(), objectId: owner.objectId, expectedGeneration: owner.generation, expectedHeadRevisionId: owner.writeHeadRevisionId,
+      revision: { revisionId: randomUUID(), parentRevisionId: owner.writeHeadRevisionId, revisedAt: new Date().toISOString(), revisedBy: actor, reason,
+        draft: { ...owner.revisions[0].draft, members: [c.member, ...[preview.plan.left, preview.plan.right].map(endpoint => ({ analysisId: endpoint.analysisId,
+          entityId: endpoint.entityId, entityRevisionId: endpoint.entityRevisionId, mentionIds: endpoint.mentionIds, rationale: reason }))] } } };
+    const command = { reviewId: completed.reviewId, requestId: randomUUID(), eventId: randomUUID(), at: new Date().toISOString(), actor,
+      expectedGeneration: completed.generation, commandKind: 'reviewed' as const, decision: 'accept' as const, identityConfirmed: true, reason, objectLabel: null,
+      application: { applicationKind: 'intent' as const, intent } };
+    const ports = { hashJson: entityLinkDigest, hashText: entityLinkTextHash, reserve: () => undefined, reservationIsCurrent: () => false, proveOwnerExited: () => undefined };
+    const pending = transitionEntityLinkInvocation(completed, command, ports).history;
+    new FileEntityLinkStore(join(root, 'entity-links'), root).transaction(tx => tx.save(pending, completed.generation));
+    new KnowledgeLibraryApplication(knowledge(), new FileLibraryStore(join(root, 'library'), root)).applyLinkIntent(intent, [preview.plan.left, preview.plan.right]);
+    knowledge().deleteSource(a.source.snapshotId); knowledge().deleteSource(b.source.snapshotId);
+    const applied = app.decide({ reviewId: pending.reviewId, requestId: command.requestId, expectedGeneration: completed.generation, decision: 'accept', identityConfirmed: true, reason });
+    expect(applied.events.slice(0, pending.events.length)).toEqual(pending.events); expect(app.projectHistory(applied)).toMatchObject({ status: 'applied', reviewVersion: 'legacy/v1' });
+    expect(library.detail(owner.objectId).history.generation).toBe(2); expect(transport.count).toBe(1);
+  });
+  it('records the typed kind conflict on pending recovery without dispatching or publishing a library revision', async () => {
+    const a = await window('pending-kind-a'), b = await window('pending-kind-b');
+    const transport = await api(() => native(suggestion(preview))), app = host(transport.env);
+    const preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
+    const publish = vi.spyOn(KnowledgeLibraryApplication.prototype, 'applyLinkIntent').mockImplementationOnce(() => { throw new Error('unknown publication acknowledgement'); });
+    expect(() => accept(app, completed)).toThrow('unknown publication acknowledgement'); expect(app.project(preview.reviewId).status).toBe('accepted_pending_application');
+    publish.mockImplementationOnce(() => { throw new LibraryReferentKindConflictError(); });
+    const conflicted = app.resume(preview.reviewId); expect(conflicted.events.at(-1)!.command).toMatchObject({ commandKind: 'application_conflict_v2',
+      conflictVersion: 'omk.entity-link-conflict/v2', conflictCode: 'kind_mismatch' });
+    expect(app.project(preview.reviewId)).toMatchObject({ status: 'accepted_conflict', conflict: { classificationVersion: 'omk.entity-link-conflict/v2', conflictCode: 'kind_mismatch' } });
+    expect(app.resume(preview.reviewId)).toEqual(conflicted); expect(createLocalKnowledgeLibrary(root).catalog().objectCount).toBe(0); expect(transport.count).toBe(1);
+  });
   it('persists a human rejection, suppresses same revision after restart and retains a changed-source terminal conflict', async () => {
     const a = await window('a'), b = await window('b'); let preview!: ReturnType<EntityLinkApplication['preview']>;
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env); preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const complete = await start(app, preview.reviewId);
@@ -308,12 +356,29 @@ describe('entity-link actual host/store/API flow', () => {
     expect(transport.count).toBe(2); // Aggregation neither rereads deleted sources nor dispatches another request.
   });
   it('preserves an existing owner and unrelated members, and terminates known library history capacity', async () => {
-    const a = await window('a'), b = await window('b'), c = await window('c'); let preview!: ReturnType<EntityLinkApplication['preview']>;
+    const a = await window('a', true), b = await window('b'), c = await window('c'); let preview!: ReturnType<EntityLinkApplication['preview']>;
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env), library = createLocalKnowledgeLibrary(root);
     const owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null, identityConfirmed: true,
       reason: '人工组织', draft: { label: 'Alpha 对象', description: '有范围限定', referentKind: 'object', members: [a.member, c.member] } });
-    preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const result = await start(app, preview.reviewId); accept(app, result);
-    const saved = library.detail(owner.objectId).history; expect(saved.generation).toBe(2); expect(saved.revisions.at(-1)!.draft.members).toHaveLength(3);
+    preview = app.preview({ ...a.ref, mentionIds: [a.member.mentionIds[0]] }, b.ref, selection); prepare(app, preview); const result = await start(app, preview.reviewId);
+    const fields = { reviewId: result.reviewId, expectedGeneration: result.generation, reason: '只选择一条已核对提及', objectLabel: 'Alpha 对象' };
+    const evidence = app.acceptPreview(fields), beforeReview = readFileSync(join(root, 'entity-links', `${result.reviewId}.json`));
+    expect(evidence).toMatchObject({ replacementRequired: true, owner: { objectId: owner.objectId, generation: 1, headRevisionId: owner.writeHeadRevisionId },
+      changes: [{ before: a.member, after: { ...a.member, mentionIds: [a.member.mentionIds[0]], rationale: fields.reason },
+        revisionChanged: false, removedMentionIds: [a.member.mentionIds[1]], addedMentionIds: [] }] });
+    const command = { ...fields, requestId: randomUUID(), decision: 'accept' as const, identityConfirmed: true as const };
+    expect(() => app.decide(command)).toThrow('replacement confirmation');
+    expect(() => app.decide({ ...command, replacementConfirmed: false, replacementConfirmationDigest: evidence.confirmationDigest! })).toThrow('replacement confirmation');
+    expect(() => app.decide({ ...command, reason: '已改变的理由', replacementConfirmed: true, replacementConfirmationDigest: evidence.confirmationDigest! })).toThrow('replacement confirmation');
+    expect(readFileSync(join(root, 'entity-links', `${result.reviewId}.json`))).toEqual(beforeReview); expect(library.detail(owner.objectId).history.generation).toBe(1);
+    const confirmed = { ...command, replacementConfirmed: true, replacementConfirmationDigest: evidence.confirmationDigest! }, applied = app.decide(confirmed);
+    expect(applied.events.slice(0, result.events.length)).toEqual(result.events);
+    expect(applied.events.find(event => event.command.commandKind === 'reviewed_v2')!.command).toMatchObject({ reviewVersion: 'omk.entity-link-review/v2',
+      evidenceReplacement: { confirmationVersion: 'omk.entity-link-evidence-replacement/v1', confirmedDigest: evidence.confirmationDigest } });
+    knowledge().deleteSource(a.source.snapshotId); expect(app.decide(confirmed)).toEqual(applied);
+    expect(() => app.decide({ ...confirmed, replacementConfirmationDigest: `sha256:${'a'.repeat(64)}` })).toThrow('identity conflict');
+    expect(transport.count).toBe(1);
+    const saved = library.detail(owner.objectId).history; expect(saved.revisions[0]).toEqual(owner.revisions[0]); expect(saved.generation).toBe(2); expect(saved.revisions.at(-1)!.draft.members).toHaveLength(3);
     expect(saved.revisions.at(-1)!.draft.members.find(member => member.entityId === c.member.entityId)).toEqual(c.member);
     const d = await window('d'), e = await window('e'), full = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null, identityConfirmed: true,
       reason: '人工组织', draft: { label: 'Alpha 对象', description: '有范围限定', referentKind: 'object', members: [d.member] } });
@@ -323,6 +388,54 @@ describe('entity-link actual host/store/API flow', () => {
     preview = app.preview(d.ref, e.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId); accept(app, completed);
     expect(app.project(preview.reviewId).status).toBe('accepted_conflict'); expect(app.read(preview.reviewId).events.at(-1)!.command).toMatchObject({ conflictCode: 'library_capacity' });
     expect(library.detail(full.objectId).history.generation).toBe(256); expect(app.resume(preview.reviewId)).toEqual(app.read(preview.reviewId));
+  });
+  it('previews revision replacement separately and rejects a changed locked owner without writing acceptance', async () => {
+    const a = await window('revision-a', true), b = await window('revision-b'), c = await window('revision-c');
+    const library = createLocalKnowledgeLibrary(root), owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+      identityConfirmed: true, reason: '旧组织', draft: { label: 'Alpha 对象', description: '旧范围', referentKind: 'object', members: [a.member, c.member] } });
+    const revisedEntities = structuredClone(a.analysis.revision.entities); revisedEntities[0].description = '同一对象的新修订范围';
+    const updated = knowledge().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1,
+      { entities: revisedEntities, mentions: a.analysis.revision.mentions }, '生成明确的新实体修订');
+    const transport = await api(() => native(suggestion(preview))), app = host(transport.env);
+    const preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
+    const fields = { reviewId: completed.reviewId, expectedGeneration: completed.generation, reason: '核对新修订', objectLabel: 'Alpha 对象' };
+    const value = app.acceptPreview(fields); expect(value.changes[0]).toMatchObject({ revisionChanged: true, mentionComparison: 'different-entity-revisions',
+      before: { entityRevisionId: a.member.entityRevisionId }, after: { entityRevisionId: updated.revision.revisionId },
+      removedMentionIds: a.member.mentionIds, addedMentionIds: updated.revision.mentions.filter(m => m.entityId === a.ref.entityId).map(m => m.mentionId) });
+    expect(() => app.acceptPreview({ ...fields, expectedGeneration: 1 })).toThrow('revision conflict');
+    library.save({ objectId: owner.objectId, requestId: randomUUID(), generation: owner.generation, headRevisionId: owner.writeHeadRevisionId,
+      identityConfirmed: true, reason: '并发维护', draft: { ...owner.revisions[0].draft, description: '已改变范围' } });
+    expect(() => app.decide({ ...fields, requestId: randomUUID(), decision: 'accept', identityConfirmed: true,
+      replacementConfirmed: true, replacementConfirmationDigest: value.confirmationDigest! })).toThrow('preview is stale');
+    expect(app.read(completed.reviewId)).toEqual(completed); expect(library.detail(owner.objectId).history.generation).toBe(2); expect(transport.count).toBe(1);
+  });
+  it.each(['unresolved', 'different_kind', 'owner_kind'] as const)('classifies %s before dispatch without partial organization', async mode => {
+    const a = await window('kind-a'), b = await window('kind-b'), library = createLocalKnowledgeLibrary(root);
+    if (mode === 'owner_kind') library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+      identityConfirmed: true, reason: '旧对象归属', draft: { label: 'Alpha', description: '固定 object 层级', referentKind: 'object', members: [a.member] } });
+    for (const item of mode === 'owner_kind' ? [a, b] : [a]) {
+      const entities = structuredClone(item.analysis.revision.entities);
+      if (mode === 'unresolved') { entities[0].identityStatus = 'unresolved'; entities[0].uncertainties = ['来源身份未消歧']; }
+      else entities[0].referentKind = 'activity';
+      knowledge().correctEntities(item.run.runId, item.analysis.revision.revisionId, 1, { entities, mentions: item.analysis.revision.mentions }, '人工明确层级或未决身份');
+    }
+    const create = vi.fn(createExecutor), app = host({ OPENAI_API_KEY: 'local-preflight-only' }, undefined, create);
+    expect(() => app.preview(a.ref, b.ref, selection)).toThrow(mode === 'unresolved' ? 'identity_unresolved' : 'kind_mismatch');
+    expect(app.list()).toEqual([]); expect(create).not.toHaveBeenCalled(); expect(library.catalog().objectCount).toBe(mode === 'owner_kind' ? 1 : 0);
+  });
+  it('fits a maximal valid v2 review and its replacement receipt inside the unchanged historical event reserve', () => {
+    const text = '\0'.repeat(4096), actor = { actorKind: 'human' as const, actorId: '\0'.repeat(256) }, at = `2026-10-21T00:00:00.${'0'.repeat(43)}Z`;
+    const member = () => ({ analysisId: randomUUID(), entityId: randomUUID(), entityRevisionId: randomUUID(),
+      mentionIds: Array.from({ length: 64 }, () => randomUUID()), rationale: text });
+    const command = EntityLinkInvocationCommandSchema.parse({ reviewId: randomUUID(), requestId: randomUUID(), eventId: randomUUID(), at,
+      actor, expectedGeneration: Number.MAX_SAFE_INTEGER, commandKind: 'reviewed_v2', reviewVersion: 'omk.entity-link-review/v2',
+      decision: 'accept', identityConfirmed: true, reason: text, objectLabel: '\0'.repeat(256),
+      evidenceReplacement: { confirmationVersion: 'omk.entity-link-evidence-replacement/v1', confirmedDigest: entityLinkDigest('confirmed'), previousMembersDigest: entityLinkDigest('members') },
+      application: { applicationKind: 'intent', intent: { requestId: randomUUID(), objectId: randomUUID(), expectedGeneration: Number.MAX_SAFE_INTEGER,
+        expectedHeadRevisionId: randomUUID(), revision: { revisionId: randomUUID(), parentRevisionId: randomUUID(), revisedAt: at, revisedBy: actor,
+          reason: text, draft: { label: '\0'.repeat(256), description: text, referentKind: 'collection', members: Array.from({ length: 256 }, member) } } } } });
+    const event = { command, commandDigest: entityLinkDigest(command), eventDigest: entityLinkDigest('event'), facts: {} };
+    expect(Buffer.byteLength(canonicalJson(event)) + 1).toBeLessThan(ENTITY_LINK_EVENT_RESERVE_BYTES);
   });
   it('rejects changed production request context before start and checks exact bytes at dispatch', async () => {
     const a = await window('a'), b = await window('b'), transport = await api(() => native('unused')), app = host(transport.env);

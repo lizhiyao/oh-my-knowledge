@@ -21,13 +21,13 @@ vi.mock('antd', () => {
     Alert: ({ title }: { title: ReactNode }) => createElement('div', { role: 'alert' }, title), Empty: ({ description }: { description: ReactNode }) => createElement('p', {}, description),
     Space: ({ children }: { children: ReactNode }) => createElement('div', {}, children), Spin: () => createElement('span', {}, 'loading'), Tag: ({ children }: { children: ReactNode }) => createElement('span', {}, children) };
 });
-let fixture: Awaited<ReturnType<typeof entityLinkFixture>>, terminatedFixture: Awaited<ReturnType<typeof entityLinkFixture>>;
+let fixture: Awaited<ReturnType<typeof entityLinkFixture>>, replacementFixture: Awaited<ReturnType<typeof entityLinkFixture>>, terminatedFixture: Awaited<ReturnType<typeof entityLinkFixture>>;
 let quality: EntityLinkStudioQuality;
-beforeAll(async () => { fixture = await entityLinkFixture(); terminatedFixture = await entityLinkFixture({ terminate: true }); quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }); });
-afterAll(() => { fixture?.cleanup(); terminatedFixture?.cleanup(); });
+beforeAll(async () => { fixture = await entityLinkFixture(); replacementFixture = await entityLinkFixture({ existingMember: true }); terminatedFixture = await entityLinkFixture({ terminate: true }); quality = entityLinkQuality([fixture.saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }); });
+afterAll(() => { fixture?.cleanup(); replacementFixture?.cleanup(); terminatedFixture?.cleanup(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-function harness(options: { failPropose?: boolean; terminated?: boolean } = {}) {
-  const current = options.terminated ? terminatedFixture : fixture;
+function harness(options: { failPropose?: boolean; terminated?: boolean; replacement?: boolean } = {}) {
+  const current = options.terminated ? terminatedFixture : options.replacement ? replacementFixture : fixture;
   const saved = options.terminated ? current.terminated! : current.saved;
   const observation = options.terminated ? entityLinkQuality([saved.history], { hashJson: entityLinkDigest, hashText: entityLinkTextHash }) : quality;
   const calls: Record<string, unknown>[] = [];
@@ -35,7 +35,7 @@ function harness(options: { failPropose?: boolean; terminated?: boolean } = {}) 
     const body = JSON.parse(init.body as string); calls.push(body);
     if (body.operation === 'propose' && options.failPropose) throw new Error('ack lost');
     const value = body.operation === 'quality' ? observation : body.operation === 'candidates' ? current.candidates : body.operation === 'list' ? options.terminated ? [saved.projection] : [] : body.operation === 'entity-detail' ? current.right
-      : body.operation === 'preview' ? current.retryPreview ?? current.preview : saved;
+      : body.operation === 'accept-preview' ? current.acceptancePreview(body.reason, body.objectLabel) : body.operation === 'preview' ? current.retryPreview ?? current.preview : saved;
     return new Response(JSON.stringify(value), { status: 200 });
   });
   vi.stubGlobal('fetch', fetch); return { calls, fetch };
@@ -62,10 +62,28 @@ describe('entity-link drawer lifecycle and explicit authorization', () => {
     expect(scope.textContent).toContain('不要通过组织或改名将它变成概念'); expect(scope.textContent).toContain('其他有来源依据的具体实例仍可保留');
     const accept = screen.getByText('人工接受并组织知识库') as HTMLButtonElement; expect(accept.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('人工处理理由'), { target: { value: '核对两侧来源' } }); expect(accept.disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText('我已独立核对两侧来源与身份，确认是同一对象。')); fireEvent.click(accept);
+    fireEvent.click(screen.getByLabelText('我已独立核对两侧来源与身份，确认是同一对象。')); expect(accept.disabled).toBe(true);
+    fireEvent.click(screen.getByText('预览接受后的证据变化')); await waitFor(() => expect(screen.getByText('没有已有成员证据变化。')).toBeTruthy()); fireEvent.click(accept);
     await waitFor(() => expect(calls.filter(call => call.operation === 'accept')).toHaveLength(1));
     expect(calls.find(call => call.operation === 'propose')).toEqual({ workspace: fixture.workspace, operation: 'propose', previewToken: 'fixture-token', contentConfirmed: true });
     expect(calls.find(call => call.operation === 'accept')).toMatchObject({ identityConfirmed: true, reason: '核对两侧来源' });
+  });
+  it('requires separate evidence consent and invalidates its preview when the reason changes', async () => {
+    const { calls } = harness({ replacement: true }); render(createElement(EntityLinksDrawer, { workspace: replacementFixture.workspace, detail: replacementFixture.left, lang: 'zh', onClose() {} }));
+    await selectPreview(replacementFixture); fireEvent.click(screen.getByLabelText('我已核对当前工作区、完整发送内容、选中提及、模型与 endpoint，确认发送一次。'));
+    fireEvent.click(screen.getByText('发送以上内容，生成关联建议')); await waitFor(() => expect(screen.getByLabelText('人工处理理由')).toBeTruthy());
+    const accept = screen.getByText('人工接受并组织知识库') as HTMLButtonElement;
+    fireEvent.change(screen.getByLabelText('人工处理理由'), { target: { value: '替换理由一' } });
+    fireEvent.click(screen.getByLabelText('我已独立核对两侧来源与身份，确认是同一对象。')); fireEvent.click(screen.getByText('预览接受后的证据变化'));
+    const consent = '我已单独核对并同意上述已有成员的证据替换，包括修订、提及和理由。';
+    await waitFor(() => expect(screen.getByLabelText(consent)).toBeTruthy()); expect(accept.disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(consent)); expect(accept.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('人工处理理由'), { target: { value: '替换理由二' } }); expect(accept.disabled).toBe(true); expect(screen.queryByLabelText(consent)).toBeNull();
+    fireEvent.click(screen.getByText('预览接受后的证据变化')); await waitFor(() => expect(screen.getByLabelText(consent)).toBeTruthy());
+    expect((screen.getByLabelText(consent) as HTMLInputElement).checked).toBe(false); fireEvent.click(screen.getByLabelText(consent)); fireEvent.click(accept);
+    await waitFor(() => expect(calls.filter(call => call.operation === 'accept')).toHaveLength(1));
+    expect(calls.find(call => call.operation === 'accept')).toMatchObject({ replacementConfirmed: true,
+      replacementConfirmationDigest: replacementFixture.acceptancePreview('替换理由二').confirmationDigest, reason: '替换理由二' });
   });
   it('keeps unknown acknowledgement on the same review and requires inspection before any new send', async () => {
     const { calls } = harness({ failPropose: true }); render(createElement(EntityLinksDrawer, { workspace: fixture.workspace, detail: fixture.left, lang: 'zh', onClose() {} }));

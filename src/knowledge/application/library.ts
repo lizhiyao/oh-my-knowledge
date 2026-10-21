@@ -165,7 +165,7 @@ export class KnowledgeLibraryApplication {
     if (this.actor.actorKind !== 'human' || canonicalJson(command.revision.revisedBy) !== canonicalJson(this.actor)) throw new Error('Entity-link author mismatch.');
     return this.store.write(command, (existing, all) => {
       const draft = command.revision.draft;
-      if (existing && existing.revisions[0].draft.referentKind !== draft.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+      if (existing && existing.revisions[0].draft.referentKind !== draft.referentKind) throw new EntityLinkConflictError('kind_mismatch');
       const endpointKeys = new Set(endpoints.map(memberKey));
       const owners = new Map(all.filter(history => history.objectId !== command.objectId)
         .flatMap(history => history.revisions.at(-1)!.draft.members.map(member => [memberKey(member), history.objectId] as const)));
@@ -175,7 +175,8 @@ export class KnowledgeLibraryApplication {
         const identity = owner ? { objectId: owner.objectId, generation: owner.generation, headRevisionId: owner.writeHeadRevisionId } : null;
         if (ownersNow.length > 1 || canonicalJson(identity) !== canonicalJson(endpoint.owner)) throw new EntityLinkConflictError('owner_conflict');
         const detail = currentEntityLinkSource(this.knowledge, endpoint);
-        if (detail.entity.identityStatus !== 'proposed' || detail.entity.referentKind !== draft.referentKind) throw new EntityLinkConflictError('identity_unresolved');
+        if (detail.entity.identityStatus !== 'proposed') throw new EntityLinkConflictError('identity_unresolved');
+        if (detail.entity.referentKind !== draft.referentKind) throw new EntityLinkConflictError('kind_mismatch');
         const member = draft.members.find(member => memberKey(member) === memberKey(endpoint));
         if (!member || member.entityRevisionId !== endpoint.entityRevisionId || canonicalJson(member.mentionIds) !== canonicalJson(endpoint.mentionIds)) throw new Error('Entity-link intent endpoint mismatch.');
       }
