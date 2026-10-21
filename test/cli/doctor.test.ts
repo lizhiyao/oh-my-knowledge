@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,52 @@ async function runDoctorCommand(
 }
 
 describe('omk doctor command', () => {
+  it.each(['zh', 'en'] as const)('offers static-only checks when no model is configured (%s)', async (lang) => {
+    await assert.rejects(
+      () => runDoctorCommand(['--json', '--lang', lang], { env: {
+        HOME: isolatedCwd, USERPROFILE: isolatedCwd, CODEX_HOME: join(isolatedCwd, 'codex'),
+        OMK_EXECUTOR: '', OMK_MODEL: '',
+      } }),
+      (error: unknown) => {
+        const result = error as CommandRunError;
+        assert.equal(result.code, 2);
+        assert.equal(result.stdout, '', 'missing configuration must not produce a report');
+        assert.ok(result.stderr.includes('--model <model>') && result.stderr.includes('OMK_MODEL'));
+        assert.ok(result.stderr.includes('omk doctor --static-only'));
+        assert.ok(result.stderr.includes(lang === 'zh' ? '跳过 LLM 健康度审计' : 'skip the LLM health audit'));
+        return true;
+      },
+    );
+    assert.ok(!existsSync(join(isolatedCwd, '.omk')), 'missing configuration must not persist a report');
+  });
+
+  it('preserves and shell-quotes the target in the no-model hint, then accepts the static-only command', async () => {
+    const target = "-review's $skill.md";
+    writeFileSync(join(isolatedCwd, target), 'Review the supplied code and explain any concrete correctness issues.');
+    const env = {
+      HOME: isolatedCwd, USERPROFILE: isolatedCwd, CODEX_HOME: join(isolatedCwd, 'codex'),
+      OMK_EXECUTOR: '', OMK_MODEL: '',
+    };
+    await assert.rejects(
+      () => runDoctorCommand(['--executor', 'openai-api', '--lang', 'en', '--', target], { env }),
+      (error: unknown) => {
+        const result = error as CommandRunError;
+        assert.equal(result.code, 2);
+        assert.ok(result.stderr.includes("omk doctor --static-only -- '-review'\\''s $skill.md'"), result.stderr);
+        return true;
+      },
+    );
+    assert.ok(!existsSync(join(isolatedCwd, '.omk')));
+    const { stdout } = await runDoctorCommand(['--json', '--static-only', '--', target], { env });
+    const report = JSON.parse(stdout);
+    assert.equal(report.skills.length, 1);
+    const ids = (report.skills[0].results as Array<{ ruleId: string }>).map((result) => result.ruleId);
+    assert.ok(ids.includes('skill_readable') && ids.includes('skill_metadata') && ids.includes('dependencies_present'));
+    assert.ok(!ids.includes('samples_contract_aligned'), 'static-only must not load the samples contract');
+    assert.ok(!ids.some((id) => id.startsWith('skill_health')), 'static-only must not run LLM health checks');
+    assert.ok(existsSync(join(isolatedCwd, '.omk', 'doctor')));
+  });
+
   it('--fix reaches repair for failed advisory dimensions even when the overall gate does not fail', async () => {
     const repair = vi.spyOn(doctorFixer, 'runDoctorFix').mockResolvedValue(false);
     try {
@@ -72,17 +118,6 @@ describe('omk doctor command', () => {
       existsSync(join(isolatedCwd, '.omk', 'doctor')),
       'default doctor persistence should stay inside the isolated test project',
     );
-  });
-
-  it('--static-only runs offline (no executor) with static rules only, no LLM / samples-contract', async () => {
-    // 不给 --executor → 证明 --static-only 不需要 LLM
-    const { stdout } = await runDoctorCommand([EXAMPLE_SKILL, '--static-only', '--json']);
-    const ids = (JSON.parse(stdout).skills[0].results as Array<{ ruleId: string }>).map((r) => r.ruleId);
-    assert.ok(ids.includes('skill_readable'), `expected skill_readable, got: ${ids.join(',')}`);
-    assert.ok(ids.includes('skill_metadata'));
-    assert.ok(ids.includes('dependencies_present'));
-    assert.ok(!ids.includes('samples_contract_aligned'), 'samples-contract 不归 CLI static-only');
-    assert.ok(!ids.some((id) => id.startsWith('skill_health')), '不跑 LLM 健康审计');
   });
 
   it('--json on directory batches all skills', async () => {
