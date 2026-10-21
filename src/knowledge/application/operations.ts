@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ExtractionModel, KnowledgeApplication } from './application.js';
 import { KnowledgeCitationLocatorsSchema, KnowledgeCitationRevisionError } from './citation-locators.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../extraction/generation-policy.js';
 
 const text = z.string().trim().min(1);
@@ -79,6 +80,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
 
 export function knowledgeFailureCode(cause: unknown): 'knowledge_storage_unsupported' | 'knowledge_workspace_busy' | 'knowledge_conflict' | 'knowledge_tags_invalid' | 'knowledge_capacity_exceeded' | 'knowledge_citations_invalid' | 'knowledge_request_failed' {
   if (cause instanceof KnowledgeStorageStateError) return cause.stateCode;
+  if (cause instanceof EntityAnalysisWriteCapacityError) return 'knowledge_capacity_exceeded';
   if (cause instanceof KnowledgeCitationRevisionError
     || cause instanceof z.ZodError && cause.issues.length > 0 && cause.issues.every(issue => issue.path[0] === 'citationLocators')) {
     return 'knowledge_citations_invalid';

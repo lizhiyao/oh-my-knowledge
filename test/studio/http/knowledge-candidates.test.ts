@@ -8,6 +8,8 @@ import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../s
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
+import { KnowledgeApplication } from '../../../src/knowledge/application/application.js';
+import { EntityAnalysisWriteCapacityError } from '../../../src/knowledge/entities/contracts.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 import { boundedExtractionPolicy } from '../../../src/knowledge/extraction/generation-policy.js';
 
@@ -121,6 +123,16 @@ describe('Studio candidate action boundary', () => {
       archiveStatus: 'recorded', failureKind: 'network', limits: { maxInvocations: 1, maxReasks: 0 },
       budget: { reservedTokens: 0, observedTokens: null, unknownAttempts: 1 } } })]);
     for (const privateValue of ['private-native-', 'producerRevision', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
+  });
+  it.each(['history', 'file'] as const)('returns only the stable code for a known entity %s capacity refusal', async scope => {
+    const refusal = new EntityAnalysisWriteCapacityError(scope); refusal.message += ` private-context:${root}`;
+    const correction = vi.spyOn(KnowledgeApplication.prototype, 'correctEntities').mockImplementation(() => { throw refusal; });
+    try {
+      const response = await post({ operation: 'correct-entities', analysisId: randomUUID(), revision: randomUUID(), generation: 1024,
+        draft: { entities: [], mentions: [] }, reason: '核对容量诊断' });
+      expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: 'knowledge_capacity_exceeded' });
+      expect(correction).toHaveBeenCalledOnce();
+    } finally { correction.mockRestore(); }
   });
   it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {
     const entitySource = join(root, 'entity.jsonl');

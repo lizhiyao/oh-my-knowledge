@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { EntityAnalysisContext, EntityAnalysisEditor, EntityAnalysisSummary } from '../../../src/studio/web/components/knowledge/entity-analysis.js';
+import { EntityAnalysisContext, EntityAnalysisEditor, EntityAnalysisSummary, EntityAnalysisFeedback } from '../../../src/studio/web/components/knowledge/entity-analysis.js';
 import { EntityKnowledgeRoles } from '../../../src/studio/web/components/knowledge/apply-entities.js';
 import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { KnowledgeCandidateStart } from '../../../src/studio/web/components/knowledge/candidates.js';
@@ -124,4 +124,11 @@ describe('entity analysis user views', () => {
     const unknown = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, knowledge: [], knowledgeStatus: 'unavailable' }, workspace: '/workspace', lang: 'zh', onRevision() {} }));
     expect(unknown).toContain('无法判断是否存在关联'); expect(unknown).not.toContain('没有当前知识修订');
   });
+});
+
+it.each(['zh', 'en'] as const)('renders the entity capacity diagnosis without blaming draft validation (%s)', lang => {
+  const html = renderToStaticMarkup(createElement(EntityAnalysisFeedback, { error: 'knowledge_capacity_exceeded', lang }));
+  expect(html).toContain(lang === 'zh' ? '草稿仍保留' : 'your draft is preserved');
+  expect(html).toContain(lang === 'zh' ? '历史已满时不能继续追加' : 'cannot free a full history');
+  expect(html).not.toContain('knowledge_capacity_exceeded');
 });
