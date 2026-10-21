@@ -1,11 +1,12 @@
 import 'server-only';
-import { nextAgentsContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext } from '../http/next-context';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextKnowledgeContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextPageFaultContext } from '../http/next-context';
 import type { CoreStudioRunCard, CoreStudioRunDetail } from '../view-models/measure/core-runs';
 import type { AgentsPage } from '../http/pages/agents-page';
 import type { HealthPage } from '../http/pages/health-page';
 import type { InboxPage } from '../http/pages/inbox-page';
 import type { KnowledgePage } from '../http/pages/knowledge-page';
 import type { ObservePage } from '../http/pages/observe-page';
+import type { StudioPageFault } from '../view-models/page-fault';
 
 // 宿主按请求注入 AsyncLocalStorage store；两侧模块经 globalThis 上的 Symbol.for 键
 // 解析到同一个 ALS 实例。store 缺失是装配错误（StudioContextMissingError），
@@ -37,4 +38,8 @@ export function requestHealthPage(): HealthPage {
 
 export function requestAgentsPage(): AgentsPage {
   return nextAgentsContext.get();
+}
+
+export function requestPageFault(): StudioPageFault {
+  return nextPageFaultContext.get();
 }

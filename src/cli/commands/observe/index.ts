@@ -10,12 +10,12 @@ import { projectObserveHealthDir, globalObserveHealthDir } from '../../../eviden
 import { persistObserveHealthReport } from '../../../observability/skill-health/persistence.js';
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
-// 由 Studio 健康报告页按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show。
+// 由 Studio 健康报告页按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show；knowledge 与 entity-links 负责知识维护及跨窗口关联复核。
 
 export default class Observe extends BaseCommand {
   static description = bilingual({
-    zh: '把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。',
-    en: 'Normalize Codex, Claude Code, OpenClaw, or markdown traces into Trace IR and analyze skill invocation health (default). Subcommands: ingest / inbox / show.',
+    zh: '把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show / knowledge / entity-links。',
+    en: 'Normalize Codex, Claude Code, OpenClaw, or markdown traces into Trace IR and analyze skill invocation health (default). Subcommands: ingest / inbox / show / knowledge / entity-links.',
   });
 
   static examples = [

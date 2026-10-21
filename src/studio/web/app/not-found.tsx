@@ -7,7 +7,7 @@ import { useStudioLanguage } from '../components/layout/language';
 /**
  * Next 自己的路由失配边界（客户端导航走到没有匹配路由的地址时渲染），不是站点的服务端缺页机制：
  * 宿主只接管自己认得的地址，未知地址落回 HTTP adapter 得到纯文本 404；「有路由但记录不存在」
- * 也在 Next 开始流式输出之前由宿主用专属码回答，因为根 `loading.tsx` 一旦先刷出壳层，段内的
+ * 由宿主在 Next 流式输出前确定 404，再由 Next 以白名单投影渲染恢复页，因为根 `loading.tsx` 一旦先刷出壳层，段内的
  * `notFound()` 就改不掉 200 状态码（口径与实测见 #902 §三）。措辞不绑定某一分区，出口链接跟随宿主入口。
  */
 export default function NotFound() {

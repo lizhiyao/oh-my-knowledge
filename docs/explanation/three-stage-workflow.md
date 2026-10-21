@@ -14,7 +14,7 @@ See [How OMK understands knowledge](./knowledge.md) for the conceptual foundatio
 
 ## The trunk: can I ship this change?
 
-The first useful omk loop should feel like a release checklist:
+Knowledge forms and evolves through real work. When you need to decide whether to ship a carrier change, doctor → eval supplies the checks and measurements:
 
 ```text
 I changed a skill / prompt / agent artifact
@@ -36,7 +36,7 @@ It is also a **gate in front of eval**: `omk eval` runs the static doctor rules 
 
 ## eval — the measurement core
 
-`eval` is the heart of omk: an **offline A/B** that fixes the model and samples, varies only the artifact and its sealed runtime context, and asks "did the new version beat the old one, beyond noise?". It produces authenticated Execution／Evaluation／Analysis evidence, Bootstrap uncertainty, coverage and agreement diagnostics, and a registered **Decision** (`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`) that can route CI.
+`eval` provides controlled measurement for a specific knowledge-carrier change: an **offline A/B** that fixes the model and samples, varies only the artifact and its sealed runtime context, and asks "did the new version beat the old one, beyond noise?". It produces authenticated Execution／Evaluation／Analysis evidence, Bootstrap uncertainty, coverage and agreement diagnostics, and a registered **Decision** (`PROGRESS` / `REGRESSION` / `CAUTIOUS` / `NOISE` / `UNDERPOWERED` / `SOLO`) that can route CI.
 
 This is where omk's measurement rigor lives. Everything in [architecture](./architecture), [statistical rigor](./statistical-rigor), and the [scoring pipeline](../specs/evaluation/scoring) explains how decisions, coverage, uncertainty, and source evidence together support a ship/no-ship decision.
 

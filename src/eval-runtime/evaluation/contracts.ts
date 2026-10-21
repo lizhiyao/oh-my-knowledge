@@ -545,6 +545,7 @@ export type AnalysisRequest =
     }>;
 
 export interface Comparison {
+  /** Caller-declared identity, preserved by the facade; not a CLI-derived comparison ID. */
   readonly comparisonId: string;
   readonly controlVariantId: string;
   readonly treatmentVariantIds: readonly string[];
@@ -685,6 +686,7 @@ export interface EvaluationRunOptions {
 }
 
 export interface PreparedEvaluation {
+  /** Facade-derived Core contract; equal CLI labels or seeds do not imply equal measurement identity. */
   readonly definition: PreparedEvaluationPlan['definition'];
   readonly policy: PreparedEvaluationPlan['measurementPolicy'];
   readonly plan: PreparedEvaluationPlan;

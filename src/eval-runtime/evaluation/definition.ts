@@ -51,10 +51,15 @@ interface AnalysisBinding {
   readonly treatmentVariantId?: string;
 }
 
-function stableFacadeId(
-  identityKind: 'node' | 'decision' | 'slot',
+// These selector-derived IDs belong to the Runtime declaration facade, not the
+// product CLI compiler. Keep the derivation and serialized bytes stable.
+type FacadeBindingIdKind = 'node' | 'decision' | 'slot';
+type FacadeBindingId<Kind extends FacadeBindingIdKind> = `${Kind}:${string}`;
+
+function stableFacadeId<Kind extends FacadeBindingIdKind>(
+  identityKind: Kind,
   selector: Readonly<Record<string, JsonValue>>,
-): string {
+): FacadeBindingId<Kind> {
   return `${identityKind}:${digestCanonicalJson({
     derivation: 'omk.eval-runtime.definition-binding/v1',
     selector,

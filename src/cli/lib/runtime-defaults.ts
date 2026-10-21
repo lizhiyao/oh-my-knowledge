@@ -5,6 +5,8 @@ import { executorFamily, isRemovedBuiltinExecutor } from '../../executors/core/r
 export interface RuntimeResolutionOptions {
   env?: NodeJS.ProcessEnv;
   lang?: 'zh' | 'en';
+  /** Command-specific next step, used only when model configuration is missing. */
+  missingModelHint?: string;
 }
 
 export interface RuntimeSelection {
@@ -47,20 +49,21 @@ export function resolveCliModel(
 
   const envModel = nonEmpty(env.OMK_MODEL);
   if (envModel) return envModel;
+  const hint = options.missingModelHint ? `\n${options.missingModelHint}` : '';
 
   if (!isCodexExecutor(executor)) {
-    throw new Errors.CLIError(options.lang === 'en'
+    throw new Errors.CLIError((options.lang === 'en'
       ? `Executor ${executor} needs an explicit model. Pass --model <model> or set OMK_MODEL.`
-      : `执行器 ${executor} 需要明确模型。请用 --model <model> 或设置 OMK_MODEL。`, { exit: 2 });
+      : `执行器 ${executor} 需要明确模型。请用 --model <model> 或设置 OMK_MODEL。`) + hint, { exit: 2 });
   }
 
   const suggestion = getCodexModelSuggestion(env);
   if (suggestion.fromConfig) return suggestion.model;
 
   const lang = options.lang ?? 'zh';
-  throw new Errors.CLIError(lang === 'zh'
+  throw new Errors.CLIError((lang === 'zh'
     ? `Codex 执行器需要明确模型。请用 --model <model>、设置 OMK_MODEL，或在 ${suggestion.configPath} 配置 model 与 profile。`
-    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure model and profile in ${suggestion.configPath}.`, { exit: 2 });
+    : `The Codex executor needs an explicit model. Pass --model <model>, set OMK_MODEL, or configure model and profile in ${suggestion.configPath}.`) + hint, { exit: 2 });
 }
 
 export function resolveRuntimeSelection(

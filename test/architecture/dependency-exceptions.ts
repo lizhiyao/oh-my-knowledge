@@ -226,8 +226,14 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/docs.ts',
     expression: 'registryModuleUrl',
-    sourceSha256: '2919557f97657ed5ea4f6f4f4103f56c1f398aed39188ebf409ad74873ef7a55',
+    sourceSha256: '17b2f1b867dabb8bf97a3d5318ed3576c27cdd34746346f07c99e45f424684ea',
     rationale: 'Loads only the built input-compilation registry to derive CLI documentation; the sealed source fixes the file URL.',
+  },
+  {
+    importer: 'scripts/build/knowledge-contract.ts',
+    expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
+    sourceSha256: '8fcc021764390af3036d2eaecc2bbe31b9e4fec0a8df275adce5603bd6bd703f',
+    rationale: 'Documentation generation loads only eleven fixed compiled knowledge modules to derive current identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',
