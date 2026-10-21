@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLocalEntityLinks, createLocalKnowledgeApplication, createLocalKnowledgeLibrary } from '../../../src/observability/application.js';
+import { createLocalEntityLinks, createLocalKnowledgeApplication, createLocalKnowledgeLibrary } from '../../../src/knowledge/application/local.js';
 import { createOpenAiArchiveProducer } from '../../../src/executors/openai/archive.js';
 import type { ExecutorInput } from '../../../src/executors/contracts/ports.js';
 import type { ExecResult } from '../../../src/executors/contracts/result.js';

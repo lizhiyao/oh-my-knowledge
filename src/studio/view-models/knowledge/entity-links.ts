@@ -1,4 +1,4 @@
-import type { EntityLinkApplication } from '../../../observability/application.js';
+import type { EntityLinkApplication } from '../../../knowledge/entity-linking/entity-links.js';
 
 export type EntityLinkCandidates = ReturnType<EntityLinkApplication['recall']>;
 export type EntityLinkPreview = ReturnType<EntityLinkApplication['preview']>;
