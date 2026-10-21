@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportServerOptions, ReportServer } from './contracts.js';
 import { createReportServer } from './report-server.js';
-import { nextAgentsContext, nextHealthContext, nextInboxContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext } from './next-context.js';
+import { nextAgentsContext, nextHealthContext, nextInboxContext, nextMeasureRunContext, nextMeasureRunsContext, nextObserveContext, nextKnowledgeContext, nextPageFaultContext } from './next-context.js';
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import {
   createCodexConversationCatalog,
@@ -20,6 +20,8 @@ import { isHealthPath, loadHealthPage, type HealthPage } from './pages/health-pa
 import { isInboxPath, loadInboxPage, type InboxPage } from './pages/inbox-page.js';
 import { isAgentsPath, loadAgentsPage, type AgentsPage } from './pages/agents-page.js';
 import { studioHostLanguage } from './language.js';
+import { projectPageFault } from './page-fault.js';
+import type { StudioPageFault } from '../view-models/page-fault.js';
 
 /** Next owns every Studio page; JSON APIs and SSE keep their domain adapters. */
 export function createNextStudioServer(options: ReportServerOptions = {}): ReportServer {
@@ -42,6 +44,8 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       await prepared.prepare();
     },
     async handle(request, response) {
+      // A browser cannot opt itself into the private fault rewrite (including on assets).
+      delete request.headers['x-omk-studio-page-fault'];
       const path = (request.url ?? '/').split('?')[0];
       // 地址识别由各装载器给出，宿主只按开关决定接不接管这一组。measure 刻意不受 studioPages 影响：
       // 评测预览宿主（`cli/lib/core-report-service.ts`）传的正是 studioPages: false，而它要服务的就是 /measure。
@@ -61,6 +65,26 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
       // 一次请求只读一次：装载器与注入头用同一个值，设置文件在请求中途被改也不会半新半旧。
       const searchParams = new URL(request.url ?? '/', 'http://localhost').searchParams;
       const studioLanguage = studioHostLanguage();
+      request.headers['x-omk-studio-lang'] = studioLanguage;
+      // A Measure-only preview has no mounted sibling routes.
+      request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
+      // Next unconditionally redirects these separators before any rewrite. Reject malformed
+      // page requests at the protocol boundary instead: no source read, no redirect or URL change.
+      if ((measure || observe || knowledge || content || health || agents) && /[\\]|\/\//.test(path)) {
+        response.writeHead(404, TEXT_HEADERS);
+        response.end(measure ? 'core_run_not_found' : health ? 'analysis not found'
+          : knowledge || content ? 'skill_not_found' : 'conversation_or_task_not_found');
+        return true;
+      }
+      async function renderFault(code: StudioPageFault['faultCode'], returnTo: StudioPageFault['returnTo']): Promise<true> {
+        if (!app) throw new Error('Studio UI is not started');
+        const page = projectPageFault(code, returnTo, request.url ?? '/', pageRoutes);
+        response.statusCode = page.statusCode;
+        response.setHeader('Cache-Control', 'no-store');
+        request.headers['x-omk-studio-page-fault'] = '1';
+        await nextPageFaultContext.run(page, () => app!.getRequestHandler()(request, response));
+        return true;
+      }
       let healthPage: HealthPage | undefined;
       if (health) {
         try {
@@ -70,29 +94,24 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
             searchParams,
           );
           if (loaded.status === 'missing_query_params') {
-            response.writeHead(400, TEXT_HEADERS);
-            response.end('missing from/to query params'); return true;
+            return renderFault('missing from/to query params', 'health');
           }
           if (loaded.status === 'analysis_not_found') {
-            response.writeHead(404, TEXT_HEADERS);
-            response.end('analysis not found'); return true;
+            return renderFault('analysis not found', 'health');
           }
           healthPage = loaded.page;
         } catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
+          return renderFault(STUDIO_SOURCE_UNAVAILABLE, 'health');
         }
       }
       let knowledgePage: KnowledgePage | undefined;
       if (knowledge) {
         try { knowledgePage = loadKnowledgePage(knowledgeQuery, path, studioLanguage, searchParams.get('doctorRun')); }
         catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
+          return renderFault(STUDIO_SOURCE_UNAVAILABLE, 'knowledge');
         }
         if (!knowledgePage) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end('skill_not_found'); return true;
+          return renderFault('skill_not_found', 'knowledge');
         }
         const doctorRun = searchParams.get('doctorRun');
         // 显式点名的轮次不存在时不静默回落到当前那次：那会让 URL 与所见证据不一致，
@@ -100,28 +119,24 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
         if (knowledgePage.pageKind === 'detail' && doctorRun
           && doctorRun !== knowledgePage.row.doctor?.reportId
           && !knowledgePage.doctorRuns.some((run) => run.reportId === doctorRun)) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end('doctor_run_not_found'); return true;
+          return renderFault('doctor_run_not_found', 'knowledge');
         }
       }
       let inboxPage: InboxPage | undefined;
       if (inbox) {
         try { inboxPage = loadInboxPage(options.observationsDir, searchParams.get('skill') ?? undefined); }
         catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
+          return renderFault(STUDIO_SOURCE_UNAVAILABLE, 'inbox');
         }
       }
       let observePage: ObservePage | undefined;
       if (observe && !inbox) {
         try { observePage = await loadObservePage(conversationCatalog, path, studioLanguage); }
         catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(STUDIO_SOURCE_UNAVAILABLE); return true;
+          return renderFault(STUDIO_SOURCE_UNAVAILABLE, 'observe');
         }
         if (!observePage) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end('conversation_or_task_not_found'); return true;
+          return renderFault('conversation_or_task_not_found', 'observe');
         }
       }
       let agentsPage: AgentsPage | undefined;
@@ -138,18 +153,13 @@ export function createNextStudioServer(options: ReportServerOptions = {}): Repor
           if (!catalog) throw new Error('unavailable');
           measurePage = await loadMeasurePage(catalog, path, workspace ?? undefined);
         } catch {
-          response.writeHead(503, TEXT_HEADERS);
-          response.end(CORE_STUDIO_SOURCE_UNAVAILABLE); return true;
+          return renderFault(CORE_STUDIO_SOURCE_UNAVAILABLE, 'measure');
         }
         if (!measurePage) {
-          response.writeHead(404, TEXT_HEADERS);
-          response.end('core_run_not_found'); return true;
+          return renderFault('core_run_not_found', 'measure');
         }
       }
       if (!app) throw new Error('Studio UI is not started');
-      request.headers['x-omk-studio-lang'] = studioLanguage;
-      // 一级导航与页面组同源：裁掉兄弟路由的宿主不提供导航，否则链接指向自己没挂的页面。
-      request.headers['x-omk-studio-navigation'] = pageRoutes ? 'full' : 'none';
       const handler = app.getRequestHandler();
       if (inboxPage) await nextInboxContext.run(inboxPage, () => handler(request, response));
       else if (healthPage) await nextHealthContext.run(healthPage, () => handler(request, response));

@@ -1,3 +1,4 @@
+import { assertPageFault } from '../_page-fault-assertions.js';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -158,12 +159,12 @@ describe('Next 宿主的观测健康页面组', () => {
     // 契约：缺参是请求错，查不到是缺页，且都不带重定向。
     const noParams = await fetch(`${url}/observe/health-diff?from=obs-a`);
     assert.equal(noParams.status, 400);
-    assert.equal(await noParams.text(), 'missing from/to query params');
+    await assertPageFault(noParams, 'missing from/to query params');
     for (const path of ['/observe/health-diff?from=obs-a&to=ghost', '/observe/health/ghost', '/observe/health/%ZZ', '/observe/health/', '/observe/health/obs-a%2Fghost']) {
       const missing = await fetch(`${url}${path}`, { redirect: 'manual' });
       assert.equal(missing.status, 404, `${path} 应缺页`);
       assert.equal(missing.headers.get('location'), null, `${path} 不留重定向`);
-      assert.equal(await missing.text(), 'analysis not found');
+      await assertPageFault(missing, 'analysis not found');
     }
 
     const post = await fetch(`${url}/observe/health`, { method: 'POST' });
@@ -204,7 +205,7 @@ describe('Next 宿主的观测健康页面组', () => {
     for (const path of ['/observe/health', '/observe/health/obs-a', '/observe/skill-trend/audit', '/observe/health-diff?from=obs-a&to=obs-b']) {
       const response = await fetch(`${url}${path}`);
       assert.equal(response.status, 503, path);
-      assert.equal(await response.text(), 'studio_source_unavailable', path);
+      await assertPageFault(response, 'studio_source_unavailable');
     }
   }, 20000);
 });

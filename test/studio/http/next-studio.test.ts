@@ -1,4 +1,6 @@
+import { assertPageFault } from '../_page-fault-assertions.js';
 import assert from 'node:assert/strict';
+import { request } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,13 +68,11 @@ describe('Next Studio production boundary', () => {
     assert.ok(asset);
     assert.equal((await fetch(new URL(asset.replaceAll('&amp;','&'),urlA))).status,200);
     assert.equal((await fetch(`${urlA}/api/reports`)).status,200);
-    // 缺页只有一份用户可见结果（#902 §三），且两份都在 Next 开始流式输出之前定下来：
-    // 根 `loading.tsx` 一旦先刷出壳层，段内的 `notFound()` 就只改视图、改不掉状态码（实测 200 + Loading…），
-    // 所以带壳的 `not-found` 文档不能当服务端缺页用。地址有路由但记录不存在 → 宿主的专属码；
-    // 地址根本没有路由 → HTTP adapter 兜底，两种都是纯文本 404。
+    // The host still settles HTTP 404 before streaming, then Next renders its safe recovery projection.
+    // Unknown routes remain the HTTP adapter's text 404; Next's segment notFound() cannot decide this status.
     const missingRun = await fetch(`${urlA}/measure/missing`);
     assert.equal(missingRun.status, 404);
-    assert.equal(await missingRun.text(), 'core_run_not_found');
+    await assertPageFault(missingRun, 'core_run_not_found');
     assert.equal((await fetch(`${urlA}/measure/%ZZ`)).status, 404, '畸形身份按缺页回答，不拿去查数据源');
     assert.equal((await fetch(`${urlA}/measure/a/b`)).status, 404, '越段地址不冒充运行 id');
     const noRoute = await fetch(`${urlA}/definitely-not-a-page`);
@@ -118,7 +118,7 @@ describe('Next Studio production boundary', () => {
     // 点名一个不存在的轮次不静默回落到当前那次：URL 与所见证据必须一致。
     const staleRun = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=pruned-run`);
     assert.equal(staleRun.status, 404);
-    assert.equal(await staleRun.text(), 'doctor_run_not_found');
+    await assertPageFault(staleRun, 'doctor_run_not_found');
     const drilled = await fetch(`${urlA}/knowledge/skills/${encodeURIComponent(skillName)}?doctorRun=doctor-test`);
     assert.equal(drilled.status, 200);
     assert.match(await drilled.text(), /studio-utilities-trigger/);
@@ -173,7 +173,7 @@ describe('Next Studio production boundary', () => {
     const url=await server.start();
     for(const path of ['/measure','/measure/run']){
       const response=await fetch(url+path);assert.equal(response.status,503);
-      assert.equal(await response.text(),'core_studio_source_unavailable');
+      await assertPageFault(response, 'core_studio_source_unavailable');
     }
   },15000);
 
@@ -185,7 +185,69 @@ describe('Next Studio production boundary', () => {
     const url=await server.start();
     for(const path of ['/knowledge','/knowledge/skills/audit']){
       const response=await fetch(url+path);assert.equal(response.status,503,path);
-      assert.equal(await response.text(),'studio_source_unavailable',path);
+      await assertPageFault(response, 'studio_source_unavailable');
     }
   },15000);
+
+  it('preserves scoped recovery, rejects private rewrite spoofing, and keeps GET-only and preview boundaries', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omk-next-fault-recovery-')); roots.push(root);
+    let broken = false;
+    const catalog = {
+      async list() { if (broken) throw new Error('token=secret /private/catalog'); return []; },
+      async get() { return undefined; },
+      async inspect() { return undefined; },
+    };
+    const server = createNextStudioServer({ port: 0, observationsDir: join(root, 'observations'), doctorsDir: join(root, 'doctors'), analysesDir: join(root, 'analyses'), coreStudioCatalog: catalog });
+    const preview = createNextStudioServer({ port: 0, studioPages: false, coreStudioCatalog: catalog });
+    servers.push(server, preview);
+    const url = await server.start();
+    const spoofed = await fetch(`${url}/measure`, { headers: { 'x-omk-studio-page-fault': '1' } });
+    assert.equal(spoofed.status, 200);
+    assert.doesNotMatch(await spoofed.text(), /studio-page-fault-title/);
+    const direct = await fetch(`${url}/studio-fault`, { headers: { 'x-omk-studio-page-fault': '1' } });
+    assert.equal(direct.status, 404);
+    assert.equal(await direct.text(), 'Not Found');
+    const scope = new URLSearchParams({ workspace: root });
+    const target = `${url}/measure?${scope}`;
+    broken = true;
+    // fetch/new URL normalizes backslashes before sending. Send the exact request target over HTTP.
+    for (const rawPath of [`/measure//missing?${scope}`, `/measure/missing\\part?${scope}`]) {
+      const parsed = new URL(url);
+      const malformed = await new Promise<{ status?: number; location?: string; cache?: string; text: string }>((resolve, reject) => {
+        const pending = request({ hostname: parsed.hostname, port: parsed.port, path: rawPath }, response => {
+          const chunks: Buffer[] = [];
+          response.on('data', chunk => chunks.push(chunk));
+          response.once('error', reject);
+          response.once('end', () => resolve({ status: response.statusCode, location: response.headers.location, cache: response.headers['cache-control'], text: Buffer.concat(chunks).toString() }));
+        });
+        pending.once('error', reject);
+        pending.end();
+      });
+      assert.equal(malformed.status, 404, rawPath);
+      assert.equal(malformed.location, undefined);
+      assert.match(malformed.cache ?? '', /no-store/);
+      assert.equal(malformed.text, 'core_run_not_found', 'malformed requests are rejected before the unavailable source');
+    }
+    const failed = await fetch(target);
+    assert.equal(failed.status, 503);
+    const html = await assertPageFault(failed, 'core_studio_source_unavailable');
+    assert.ok(html.includes(`href="/measure?${scope}"`), 'recovery retains the workspace');
+    assert.equal(failed.headers.get('location'), null);
+    const head = await fetch(target, { method: 'HEAD' });
+    assert.equal(head.status, 405);
+    assert.equal(head.headers.get('allow'), 'GET');
+    assert.equal(await head.text(), '');
+    const previewUrl = await preview.start();
+    const previewFault = await fetch(`${previewUrl}/measure`);
+    assert.equal(previewFault.status, 503);
+    const previewHtml = await assertPageFault(previewFault, 'core_studio_source_unavailable');
+    assert.doesNotMatch(previewHtml, /href="\/(?:observe|knowledge|agents)(?:[/?"])/);
+    assert.doesNotMatch(previewHtml, /aria-label="Studio 一级导航"/);
+    assert.equal((await fetch(`${previewUrl}/observe`)).status, 404);
+    broken = false;
+    const recovered = await fetch(target);
+    assert.equal(recovered.status, 200);
+    assert.doesNotMatch(await recovered.text(), /studio-page-fault-title/);
+    assert.equal((await fetch(`${url}/health`)).status, 200);
+  }, 20000);
 });
