@@ -9,11 +9,7 @@ import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../extraction/study-capac
 
 const requestSchema = z.strictObject({ evidence: z.unknown(), authorReceipt: z.unknown().optional(),
   referenceReceipt: z.unknown().optional(), outputReceipt: z.unknown().optional(), judgeReceipt: z.unknown().optional() });
-type InspectionCode = 'knowledge_study_input_invalid' | 'knowledge_study_capacity_exceeded'
-  | 'knowledge_study_host_mismatch' | 'knowledge_study_evidence_invalid';
-export class ExtractionStudyInspectionError extends Error {
-  constructor(readonly code: InspectionCode) { super(code); this.name = 'ExtractionStudyInspectionError'; }
-}
+import { ExtractionStudyInspectionError } from '../adapters/study-inspection-errors.js';
 
 /** Model identity and accounting remain visible; local artifact references never enter product DTOs. */
 function judgeIdentity(identity: ExtractionStudyJudgeIdentity | null) {
@@ -45,7 +41,7 @@ function elapsed(startedAt?: string, finishedAt?: string) {
     : { elapsedMs: null, elapsedStatus: 'invalid_clock_interval' as const };
 }
 
-/** Read only portable bytes with this installed checker; no workspace, model, environment or caller trust flags. */
+/** Worker-internal CPU processor and unit-test boundary; product callers use study-inspection-service. */
 export function inspectExtractionStudy(input: unknown) {
   let request: z.infer<typeof requestSchema>;
   try {

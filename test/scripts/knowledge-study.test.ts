@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
+import { copyStudyRuntime } from '../helpers/study-runtime.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const script = join(repository, 'dist-scripts/bench/knowledge-study.js');
@@ -140,38 +140,35 @@ describe('built repository knowledge study entry', () => {
   });
   it('freezes shared runtime and installed validator code and schema bytes, beyond dependency versions', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-host-'))); roots.push(root);
-    cpSync(join(repository, 'dist'), join(root, 'dist'), { recursive: true,
-      filter: path => !path.startsWith(join(repository, 'dist/studio/web')) });
-    writeFileSync(join(root, 'package.json'), '{"type":"module"}');
-    const require = createRequire(import.meta.url), pending = ['zod', 'ajv', 'js-yaml', 'smol-toml'];
-    const copied = new Set<string>();
-    for (const name of pending) {
-      if (copied.has(name)) continue;
-      let directory = dirname(realpathSync(require.resolve(name)));
-      while (!existsSync(join(directory, 'package.json')) || JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).name !== name) directory = dirname(directory);
-      const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
-      cpSync(directory, join(root, 'node_modules', name), { recursive: true,
-        filter: path => !path.startsWith(join(directory, 'node_modules')) });
-      copied.add(name); pending.push(...Object.keys(manifest.dependencies ?? {}));
-    }
+    copyStudyRuntime(repository, root);
     // One real module-scope process exercises import.meta.url and physical installed dependency resolution.
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
-      import { appendFileSync, readdirSync } from 'node:fs';
+      import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
       import { extractionStudyHostIdentity as identity } from './dist/knowledge/adapters/study-host.js';
       const values = [identity()];
       appendFileSync('./dist/shared/atomic-json.js', '\\n// isolated shared runtime mutation\\n'); values.push(identity());
       appendFileSync('./node_modules/ajv/dist/2020.js', '\\n// isolated validator mutation\\n'); values.push(identity());
       const schema = './node_modules/ajv/dist/refs/' + readdirSync('./node_modules/ajv/dist/refs').find(name => name.endsWith('.json'));
       appendFileSync(schema, '\\n '); values.push(identity());
+      const manifest = './node_modules/zod/package.json', data = JSON.parse(readFileSync(manifest, 'utf8'));
+      data.dependencies = { ...data.dependencies, 'omk-authored-validator': '1.0.0' }; writeFileSync(manifest, JSON.stringify(data));
+      mkdirSync('./node_modules/omk-authored-validator');
+      writeFileSync('./node_modules/omk-authored-validator/package.json', '{"name":"omk-authored-validator","version":"1.0.0","main":"index.js"}');
+      writeFileSync('./node_modules/omk-authored-validator/index.js', 'module.exports = 1;'); values.push(identity());
+      appendFileSync('./node_modules/omk-authored-validator/index.js', '\\n// same-version validator drift\\n'); values.push(identity());
+      rmSync('./node_modules/omk-authored-validator', { recursive: true });
+      let missingRejected = false; try { identity(); } catch { missingRejected = true; } values.push({ missingRejected });
       process.stdout.write(JSON.stringify(values));
     `], { cwd: root, encoding: 'utf8', timeout: 60_000 });
     expect(result.error).toBeUndefined(); expect(result.status, result.stderr).toBe(0);
-    const [initial, shared, validator, schema] = JSON.parse(result.stdout);
+    const [initial, shared, validator, schema, added, changed, missing] = JSON.parse(result.stdout);
     expect(shared.runtimeDigest).not.toBe(initial.runtimeDigest);
     expect(shared.dependencyDigest).toBe(initial.dependencyDigest);
     expect(validator.dependencyDigest).not.toBe(shared.dependencyDigest);
     expect(schema.dependencyDigest).not.toBe(validator.dependencyDigest);
     expect(schema.nodeBinaryDigest).toBe(initial.nodeBinaryDigest);
+    expect(added.dependencyDigest).not.toBe(schema.dependencyDigest); expect(changed.dependencyDigest).not.toBe(added.dependencyDigest);
+    expect(changed.runtimeDigest).toBe(schema.runtimeDigest); expect(missing.missingRejected).toBe(true);
   });
   it('does not leak malformed private corpus bytes or paths in a bounded failure diagnostic', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-entry-'))); roots.push(root);

@@ -113,6 +113,8 @@ prepare 冻结选中 split 的全部案例，并为每个案例 × 重复 × 实
 
 所有效果均调用 `KnowledgeApplication.generate`，传入显式冻结 profile 和政策。派发前重验来源、宿主、请求、producer 与已保存 attempt 声明。已有 run 身份只允许 `resume`。未知或未完成的前置 slot 阻止后续派发，已记录失败输出保留在配对分母。遗留外部锁须先检查，不自动删除锁或改用新 run 身份。
 
+仓内 `prepare`／`run`／`report` 在固定 delivery worker 中执行完整应用流程，由 worker 构造具体 producer，knowledge application 继续只消费其端口。主线程异步等待；同步 CPU 内核留在 worker 内。每次既有 `ports.identity()` 及每次 `beforeDispatch` 仍重新读取、计算实际宿主字节身份，派发前仍重新读取冻结计划，不以请求开始时的成功结果代替后续核验，也不永久缓存 hash。运行期间代码或依赖字节变化、缺失或读取失败，必须在下次相应核验时观察并拒绝准入。取消传给既有执行器；最终 producer gate 前后还同步检查共享取消标志，使同步重哈希期间到达的取消不必等普通 worker 消息处理后才阻止派发，主线程不使用 `Atomics.wait`。生成 worker 协作等待执行器取消、归档及临时资源清理，不直接终止线程；取消不回滚已完成发布，也不授予新调用或自动重发权限。
+
 ## 4. 仓内命令与复核交接
 
 先构建当前 runtime。仓内入口加载固定的编译后生产装配入口，不执行证据指定的源码：
@@ -168,6 +170,8 @@ receipt 参数均可省略，缺失状态持续可见。`report` 模型调用为
 
 expected host 来自固定安装适配器 `extractionStudyHostIdentity()`：实际编译 runtime／runner 字节、解析到的依赖字节、Node 版本及 Node 二进制。宿主证据不同则拒绝，未独立提供当前宿主的回放保持 `outputVerified: false`。调用者提供的报告不能给自己签发信任。此身份冻结 OMK 及受检查的运行依赖，不认证外部供应商、Codex 二进制或用户配置；原 Codex producer 明确不证明二进制／配置／provider 调用。请求模型名和相同 OMK 字节不能证明外部模型行为未变。native outcome 是执行器观测，不是原始 HTTP／CLI 传输捕获，也不证明供应商内部请求次数。
 
+`runtimeDigest` 继续覆盖既有扫描范围内的全部实际编译 runtime 文件字节，包含固定 worker、bridge 和 processor；仍排除 `studio/web` 子树。`runnerDigest` 保留原 9 条路径的子集：`cli/runtime/knowledge-study.js`，`knowledge/application/study-runner.js`、`knowledge/application/study-local.js`，`knowledge/extraction/study-plan.js`、`knowledge/extraction/study-corpus.js`、`knowledge/extraction/study-review.js`、`knowledge/extraction/study-analysis.js`，以及 `knowledge/adapters/study-files.js`、`knowledge/adapters/study-host.js`。它不扩展为新的 worker 闭包；新增 worker 的实际字节由 `runtimeDigest` 绑定。两者的字节摘要、规范化及扫描范围规则不变；依赖身份仍从 `zod`、`ajv`、`js-yaml`、`smol-toml` 四种子展开实际依赖代码与资产，不改成版本清单。两个固定 worker 入口均登记为可达性根；源码 import 守护将其实际校验依赖闭包与上述已解析依赖 manifest 对照，拒绝不透明或未覆盖的加载，只对两处精确的具体执行器构造 import 截断，不据此证明外部执行器或供应商身份。代码字节变化会产生新的冻结 host，不代表摘要范围算法升级，也不使新旧宿主可混用。此调度改造不新增 host／plan／evidence Schema 版本，不重算历史研究；不同 host 的旧研究只在原冻结构建中核对，不能省略核验或继承旧研究结论来宣称可比。
+
 报告保留每个预声明 slot，包括失败、取消、generating、prepared、未知和未尝试，并保留所有已记录 attempt。token／cache／USD 和耗时取自所有 attempt 的原生观测；缺失或显式未报告时，总额保持 `null`。执行器归一零值不证明供应商显式报告零。attempt 耗时相加不是实测用户任务端到端耗时。OMK attempt、执行器报告 attempt 与额外复核调用属于不同记账范围。
 
 `evaluateExtractionStudyReview` 枚举全部输出实体、提及、陈述、预声明参考／知识义务、语义标准和案例目标。`identity`、`provenance` 或 `unsupported_fact` 关键错误始终阻断。缺失／不确定复核、结构／捕获失败持续可见。逐臂结果不会因为 baseline 失败而删除 candidate。状态为 `pending`、`blocked`、`exploratory_reviewed` 和 `accepted_within_scope`；最后一种要求独立参考及输出复核、完整证据及适用的预声明门禁，仅限冻结声明范围。
@@ -200,6 +204,10 @@ omk observe knowledge study --evidence /absolute/evidence.json \
 Studio 候选核对页的更多菜单提供“核对研究证据”，无工作区时也可打开。用户显式选择 `evidence.json`，按需添加作者、独立参考、输出和 AI 评委回执后执行核对。结果只留在本次抽屉中，关闭清空；换文件立即撤下旧结论，迟到响应不能覆盖新选择。逐例展示原文 excerpts、出生实体／提及／陈述、引用、判断理由及缺项，不把便携 ID 当作当前工作区可维护的身份。
 
 CLI 和 `/api/knowledge/study` 共用固定宿主、原始证据回放与分析。产品只返回明确选择的来源／出生输出和安全统计，不返回原始 transport、完整 run、sourcePath 或 producer proof。HTTP 保留同源保护，数据不落工作区。所有输入和回执合成后的 UTF-8 JSON 总容量为 128 MiB；转义后的请求超限也拒绝，不静默裁剪，其他 API 的既有限额保持不变。
+
+研究执行与 inspection 的两个固定 worker 服务各自在进程内最多持有一个活动任务，不设等待队列；这不是跨进程全局锁或新的模型预算。HTTP 在接收研究请求体前预留 inspection 槽位，随后只接收有界原始字节，由 worker 完成 JSON 解析、实际宿主重哈希、完整回放及分析；CLI 显式选择的普通 UTF-8 文件也在同一 inspection worker 中安全读取，证据里的路径不能选择文件或可执行代码。同步 inspection processor 只供 worker 和单元测试使用，真实 CLI／Studio 路径统一异步等待 worker。主线程仍处理字节接收、传输复制和结果序列化，不能据此宣称零 CPU／I/O 或减少完整身份核验次数。
+
+HTTP 断连或 Studio 停止会取消本次只读 inspection 并终止其 worker，CLI inspection 接入既有信号取消。worker 构造失败、异常或无结果退出均作为有限服务失败处理；已启动 worker 的槽位与监听器只在确认退出后释放。生成 worker 保留前述协作清理边界。inspection 繁忙返回 HTTP 503、`knowledge_study_busy`；工作进程不可用或已取消返回 HTTP 503、`knowledge_study_unavailable`，已断开的连接不再写响应。界面保留已选文件，提示等待当前核对结束或重试；CLI 将这两类服务失败报告为退出 1。有限错误码不暴露原始异常、私有路径或输入，也不被客户端当作写入已确定拒绝的回执。既有输入／容量与证据错误边界继续保留，成功响应仍使用现行 inspection 投影。
 
 宿主严格绑定实际构建、验证器依赖与 Node 字节。不同宿主的旧研究需要在其冻结环境中核对；不能省略宿主核验来显示通过，也不能将重新分析称为新的独立模型验证。正式参考交接应冻结最终运行环境，避免在真人复核期间继续改动其身份。逐 run 的起止时间差是本地墙钟耗时，包含生成、归档、写入与等待；未知保持空值，不推断人工主动核对／纠正负担。
 

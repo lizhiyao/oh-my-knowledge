@@ -44,56 +44,45 @@ function assertJsonContentType(request: IncomingMessage): void {
   throw new RequestBodyError('content-type must be application/json', 415, 'unsupported_media_type');
 }
 
-export function readJsonObjectBody(
-  request: IncomingMessage,
-  maxBytes = 1024 * 1024,
-): Promise<Record<string, unknown>> {
+/** Bounded byte intake; selected consumers parse JSON in a fixed worker. Own backing storage is transferable. */
+export function readJsonBodyBytes(request: IncomingMessage, maxBytes = 1024 * 1024, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
   assertJsonContentType(request);
   return new Promise((resolve, reject) => {
-    let size = 0;
-    let settled = false;
+    let size = 0, settled = false;
     const chunks: Buffer[] = [];
-    const finish = (error?: Error, value: Record<string, unknown> = {}): void => {
+    const finish = (error?: Error): void => {
       if (settled) return;
-      settled = true;
-      request.pause();
-      request.off('data', onData);
-      request.off('end', onEnd);
-      request.off('error', onError);
-      request.off('close', onClose);
-      chunks.length = 0;
-      if (error) reject(error);
-      else resolve(value);
+      settled = true; request.pause();
+      request.off('data', onData); request.off('end', onEnd); request.off('error', onError); request.off('close', onClose);
+      signal?.removeEventListener('abort', onAbort);
+      if (error) { chunks.length = 0; reject(error); }
+      else {
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+        chunks.length = 0; resolve(bytes);
+      }
     };
     const onData = (chunk: Buffer | string): void => {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      size += buffer.length;
-      if (size > maxBytes) {
-        finish(new RequestBodyError('request body too large', 413, 'request_body_too_large'));
-        return;
-      }
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); size += buffer.length;
+      if (size > maxBytes) { finish(new RequestBodyError('request body too large', 413, 'request_body_too_large')); return; }
       chunks.push(buffer);
     };
-    const onEnd = (): void => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf-8').trim();
-        const parsed = raw ? JSON.parse(raw) as unknown : {};
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          finish(new RequestBodyError('json body must be an object', 400, 'json_body_not_object'));
-          return;
-        }
-        finish(undefined, parsed as Record<string, unknown>);
-      } catch {
-        finish(new RequestBodyError('invalid json body', 400, 'invalid_json_body'));
-      }
-    };
+    const onEnd = (): void => finish();
     const onError = (): void => finish(new RequestBodyError('request body interrupted', 400, 'invalid_json_body'));
     const onClose = (): void => { if (!settled) onError(); };
-    request.on('data', onData);
-    request.once('end', onEnd);
-    request.once('error', onError);
-    request.once('close', onClose);
-    if (request.readableEnded) onEnd();
-    else if (request.destroyed) onError();
+    const onAbort = (): void => onError();
+    request.on('data', onData); request.once('end', onEnd); request.once('error', onError); request.once('close', onClose);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted || request.destroyed) onError();
+    else if (request.readableEnded) onEnd();
   });
+}
+
+export async function readJsonObjectBody(request: IncomingMessage, maxBytes = 1024 * 1024): Promise<Record<string, unknown>> {
+  const bytes = await readJsonBodyBytes(request, maxBytes);
+  let parsed: unknown;
+  try { const raw = Buffer.from(bytes.buffer).toString('utf8').trim(); parsed = raw ? JSON.parse(raw) as unknown : {}; }
+  catch { throw new RequestBodyError('invalid json body', 400, 'invalid_json_body'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new RequestBodyError('json body must be an object', 400, 'json_body_not_object');
+  return parsed as Record<string, unknown>;
 }

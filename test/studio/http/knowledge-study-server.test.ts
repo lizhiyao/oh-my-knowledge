@@ -1,17 +1,29 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { inspectExtractionStudy } from '../../../src/knowledge/application/study-inspection.js';
+import * as inspectionService from '../../../src/knowledge/application/study-inspection-service.js';
+import { parseExtractionStudyInspectionBody } from '../../../src/knowledge/adapters/study-inspection-input.js';
+import { ExtractionStudyInspectionError } from '../../../src/knowledge/adapters/study-inspection-errors.js';
 import { runExtractionStudySlot } from '../../../src/knowledge/application/study-runner.js';
 import { nativeStudyFixture } from '../../knowledge/extraction-study-fixtures.js';
 import { request } from '../../helpers/http-request.js';
 
 const trusted = vi.hoisted(() => ({ host: {} as Record<string, string> }));
 vi.mock('../../../src/knowledge/adapters/study-host.js', () => ({ extractionStudyHostIdentity: () => trusted.host }));
+// Source HTTP wiring uses an authored checker host; independent built tests exercise the fixed worker.
+beforeEach(() => {
+  vi.spyOn(inspectionService, 'reserveExtractionStudyInspection').mockImplementation(() => ({
+    inspect: async input => {
+      if (input.inputKind !== 'bytes') throw new Error('HTTP must supply bytes, never local paths.');
+      return inspectExtractionStudy(parseExtractionStudyInspectionBody(new Uint8Array(input.bytes)));
+    }, release: vi.fn(),
+  }));
+});
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('portable study HTTP inspection', () => {
   it('uses the shared native replay before workspace resolution and returns no raw transport or filesystem projection', async () => {
@@ -31,6 +43,39 @@ describe('portable study HTTP inspection', () => {
       const serialized = JSON.stringify(body);
       expect(serialized).not.toContain(root); expect(serialized).not.toContain('rawOutput'); expect(serialized).not.toContain('maxOutcomeJsonBytes');
       expect(f.effects).toHaveBeenCalledTimes(2);
+    } finally { await server.stop(); }
+  });
+
+  it('rejects busy before reading an unfinished body and cancels active inspection on disconnect and stop', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-http-worker-'))); roots.push(root);
+    const server = createReportServer({ port: 0, analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors'), observationsDir: join(root, 'observations') });
+    const base = await server.start();
+    try {
+      vi.mocked(inspectionService.reserveExtractionStudyInspection).mockImplementationOnce(() => { throw new ExtractionStudyInspectionError('knowledge_study_busy'); });
+      const busy = await request(`${base}/api/knowledge/study`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: 'PRIVATE-UNFINISHED-BODY', endBody: false });
+      expect(busy.status).toBe(503); expect(busy.requestEnded).toBe(false); expect(busy.headers.connection).toBe('close');
+      expect(JSON.parse(busy.body)).toMatchObject({ error: 'knowledge_study_busy', message: expect.stringMatching(/重试|retry/) });
+      expect(busy.body).not.toContain('PRIVATE-UNFINISHED-BODY');
+      let observed: AbortSignal | undefined;
+      const release = vi.fn();
+      vi.mocked(inspectionService.reserveExtractionStudyInspection).mockImplementationOnce(signal => {
+        observed = signal;
+        return { release, inspect: () => new Promise((_, reject) => signal!.addEventListener('abort', () => reject(new ExtractionStudyInspectionError('knowledge_study_unavailable')), { once: true })) };
+      });
+      const controller = new AbortController();
+      const pending = fetch(`${base}/api/knowledge/study`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: controller.signal });
+      const rejected = pending.catch(() => undefined);
+      await vi.waitFor(() => expect(observed).toBeDefined()); controller.abort();
+      await rejected; await vi.waitFor(() => expect((observed as AbortSignal | undefined)?.aborted).toBe(true)); await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+      observed = undefined;
+      vi.mocked(inspectionService.reserveExtractionStudyInspection).mockImplementationOnce(signal => {
+        observed = signal;
+        return { release, inspect: () => new Promise((_, reject) => signal!.addEventListener('abort', () => reject(new ExtractionStudyInspectionError('knowledge_study_unavailable')), { once: true })) };
+      });
+      const stopped = fetch(`${base}/api/knowledge/study`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).catch(() => undefined);
+      await vi.waitFor(() => expect(observed).toBeDefined()); await server.stop(); await stopped;
+      expect((observed as AbortSignal | undefined)?.aborted).toBe(true); expect(release).toHaveBeenCalledTimes(2);
     } finally { await server.stop(); }
   });
 

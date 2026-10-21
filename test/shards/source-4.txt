@@ -104,3 +104,6 @@ test/studio/web/shell-language-switch.test.tsx
 test/studio/web/knowledge-editors.test.tsx
 
 test/helpers/source-files.test.ts
+
+test/architecture/study-host-import-coverage.test.ts
+test/scripts/knowledge-study-workers.test.ts

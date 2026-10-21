@@ -77,6 +77,8 @@ const NON_STATIC_ENTRIES: Array<{
     reason: 'build-script',
     evidence: 'scripts/bench/knowledge-study.ts',
   },
+  { path: 'src/cli/runtime/knowledge-study-worker.ts', reason: 'subprocess', evidence: 'src/cli/runtime/knowledge-study.ts' },
+  { path: 'src/knowledge/application/study-inspection-worker.ts', reason: 'subprocess', evidence: 'src/knowledge/application/study-inspection-service.ts' },
   { path: 'src/eval-workflows/inputs/eval-samples.ts', reason: 'package-entrypoint' },
   { path: 'src/eval-workflows/projections/index.ts', reason: 'package-entrypoint' },
 ];

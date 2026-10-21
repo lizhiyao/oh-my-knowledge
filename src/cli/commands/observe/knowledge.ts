@@ -1,5 +1,5 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
@@ -13,8 +13,8 @@ import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../../knowledge/entities/identity.js';
 import { EntityAnalysisWriteCapacityError } from '../../../knowledge/entities/contracts.js';
 import { KnowledgeCitationLocatorsSchema } from '../../../knowledge/application/citation-locators.js';
-import { ExtractionStudyInspectionError, inspectExtractionStudy } from '../../../knowledge/application/study-inspection.js';
-import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../../knowledge/extraction/study-capacity.js';
+import { ExtractionStudyInspectionError, ExtractionStudyFileError } from '../../../knowledge/adapters/study-inspection-errors.js';
+import { inspectExtractionStudyFiles } from '../../../knowledge/application/study-inspection-service.js';
 import { formatKnowledgeStudy } from '../../lib/knowledge-study-output.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
@@ -86,43 +86,30 @@ export default class ObserveKnowledge extends BaseCommand {
         this.error(t('study 仅接受 --evidence、研究复核参数、--lang 和 --json，不接受工作区或生成参数。', 'study accepts only --evidence, study review flags, --lang and --json; workspace and generation flags are not allowed.'), { exit: 2 });
       }
       if (!flags.evidence?.trim()) this.error(t('study 必须提供 --evidence。', 'study requires --evidence.'), { exit: 2 });
-      let consumed = 0;
-      const file = (path: string, label: string): unknown => {
-        let fd: number | undefined;
+      await this.runWithCancellation(async studySignal => {
         try {
-          const stat = lstatSync(path), remaining = EXTRACTION_STUDY_INSPECTION_MAX_BYTES - consumed;
-          if (!stat.isFile() || stat.isSymbolicLink() || stat.size > remaining) throw new Error();
-          fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-          const opened = fstatSync(fd);
-          if (!opened.isFile() || opened.ino !== stat.ino || opened.dev !== stat.dev || opened.size !== stat.size) throw new Error();
-          const bytes = Buffer.allocUnsafe(stat.size + 1); let offset = 0;
-          while (offset < bytes.length) {
-            const count = readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count;
+          const result = await inspectExtractionStudyFiles({ evidence: flags.evidence!,
+            ...(flags['author-review'] === undefined ? {} : { authorReceipt: flags['author-review'] }),
+            ...(flags['reference-review'] === undefined ? {} : { referenceReceipt: flags['reference-review'] }),
+            ...(flags['output-review'] === undefined ? {} : { outputReceipt: flags['output-review'] }),
+            ...(flags['judge-review'] === undefined ? {} : { judgeReceipt: flags['judge-review'] }) }, studySignal);
+          this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeStudy(result, this.lang));
+        } catch (cause) {
+          if (cause instanceof ExtractionStudyFileError) {
+            this.error(t(`${cause.label} 不可读或格式无效；请使用普通 UTF-8 JSON 文件，所有研究输入合计不超过 128 MiB。`, `${cause.label} is unreadable or invalid; use regular UTF-8 JSON files totaling at most 128 MiB.`), { exit: 2 });
           }
-          if (offset !== stat.size || fstatSync(fd).size !== stat.size) throw new Error();
-          const raw = bytes.subarray(0, offset), text = raw.toString('utf8');
-          if (!Buffer.from(text).equals(raw)) throw new Error();
-          consumed += raw.length;
-          return JSON.parse(text) as unknown;
-        } catch {
-          this.error(t(`${label} 不可读或格式无效；请使用普通 UTF-8 JSON 文件，所有研究输入合计不超过 128 MiB。`, `${label} is unreadable or invalid; use regular UTF-8 JSON files totaling at most 128 MiB.`), { exit: 2 });
-        } finally { if (fd !== undefined) closeSync(fd); }
-      };
-      const input = { evidence: file(flags.evidence!, '--evidence'),
-        ...(flags['author-review'] === undefined ? {} : { authorReceipt: file(flags['author-review'], '--author-review') }),
-        ...(flags['reference-review'] === undefined ? {} : { referenceReceipt: file(flags['reference-review'], '--reference-review') }),
-        ...(flags['output-review'] === undefined ? {} : { outputReceipt: file(flags['output-review'], '--output-review') }),
-        ...(flags['judge-review'] === undefined ? {} : { judgeReceipt: file(flags['judge-review'], '--judge-review') }) };
-      try {
-        const result = inspectExtractionStudy(input);
-        this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeStudy(result, this.lang));
-      } catch (cause) {
-        const code = cause instanceof ExtractionStudyInspectionError ? cause.code : 'knowledge_study_evidence_invalid';
-        if (code === 'knowledge_study_capacity_exceeded') {
-          this.error(`${code} · ${t('所有研究输入封装后的 JSON 合计不得超过 128 MiB。', 'The complete serialized study input must not exceed 128 MiB.')}`, { exit: 2 });
+          const code = cause instanceof ExtractionStudyInspectionError ? cause.code : 'knowledge_study_evidence_invalid';
+          if (code === 'knowledge_study_busy' || code === 'knowledge_study_unavailable') {
+            this.error(`${code} · ${code === 'knowledge_study_busy'
+              ? t('另一个研究核对正在运行，请等待结束后重试。', 'Another study inspection is running; wait for it to finish and retry.')
+              : t('核对工作进程异常或已取消，请重试；没有调用模型或改写工作区。', 'The inspection worker failed or was cancelled; retry. No model was called and no workspace was changed.')}`, { exit: 1 });
+          }
+          if (code === 'knowledge_study_capacity_exceeded') {
+            this.error(`${code} · ${t('所有研究输入封装后的 JSON 合计不得超过 128 MiB。', 'The complete serialized study input must not exceed 128 MiB.')}`, { exit: 2 });
+          }
+          this.error(`${code} · ${t('研究证据未通过核对。请使用冻结时匹配的版本并检查完整导出与复核绑定；没有调用模型或改写工作区。', 'Study evidence could not be verified. Use its matching frozen version and check the complete export and review bindings; no model call or workspace change was made.')}`, { exit: 1 });
         }
-        this.error(`${code} · ${t('研究证据未通过核对。请使用冻结时匹配的版本并检查完整导出与复核绑定；没有调用模型或改写工作区。', 'Study evidence could not be verified. Use its matching frozen version and check the complete export and review bindings; no model call or workspace change was made.')}`, { exit: 1 });
-      }
+      });
       return;
     }
     if (flags['generation-policy'] !== undefined && args.operation !== 'generate') {
