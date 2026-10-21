@@ -27,7 +27,9 @@ function trustedHost(request: IncomingMessage, listenHost: string, boundHost: st
     // Explicit network exposure still accepts literal LAN IPs, never arbitrary DNS names.
     if (wildcard) return isIP(hostname.replace(/^\[|\]$/g, '')) !== 0;
     const configured = new URL(`http://${listenHost.includes(':') ? `[${listenHost}]` : listenHost}`).hostname;
-    return hostname === configured || isIP(boundHost) !== 0 && hostname.replace(/^\[|\]$/g, '') === boundHost;
+    const bound = isIP(boundHost) !== 0
+      ? new URL(`http://${boundHost.includes(':') ? `[${boundHost}]` : boundHost}`).hostname : undefined;
+    return hostname === configured || hostname === bound;
   } catch {
     return false;
   }

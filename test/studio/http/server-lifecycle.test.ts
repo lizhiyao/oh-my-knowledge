@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { isIP, type AddressInfo } from 'node:net';
 import { afterEach, describe, it, vi } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { projectServerAddresses } from '../../../src/studio/http/server-addresses.js';
@@ -24,7 +24,7 @@ vi.mock('node:http', async () => {
       // A controlled non-loopback bind result while retaining real local TCP/HTTP delivery.
       if (override) server.address = () => {
         const bound = address();
-        return bound && typeof bound === 'object' ? { ...bound, address: override } : bound;
+        return bound && typeof bound === 'object' ? { ...bound, address: override, family: isIP(override) === 6 ? 'IPv6' : 'IPv4' } : bound;
       };
       return server;
     },
@@ -57,21 +57,27 @@ describe('Studio server lifecycle', () => {
   it('accepts the actual address projected from a hostname bind without accepting arbitrary DNS', async () => {
     const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-bound-host-'));
     temporaryDirectories.push(observationsDir);
-    projectedBoundHost = '192.0.2.8';
-    const server = createReportServer({ port: 0, host: 'localhost', observationsDir });
-    runningServers.push(server);
-    const url = await server.start();
-    assert.equal(new URL(url).hostname, '192.0.2.8');
-    const send = (host: string) => new Promise<number>((resolve, reject) => {
-      const req = request({ hostname: 'localhost', port: new URL(url).port, path: '/health', headers: { Host: host } }, response => {
-        response.resume(); response.on('end', () => resolve(response.statusCode!));
+    for (const [boundHost, canonicalHostname, otherHost] of [
+      ['192.0.2.8', '192.0.2.8', '192.0.2.9'],
+      ['::ffff:192.0.2.8', '[::ffff:c000:208]', '[::ffff:192.0.2.9]'],
+    ]) {
+      projectedBoundHost = boundHost;
+      const server = createReportServer({ port: 0, host: 'localhost', observationsDir });
+      runningServers.push(server);
+      const url = await server.start();
+      assert.equal(new URL(url).hostname, canonicalHostname);
+      const send = (host: string) => new Promise<number>((resolve, reject) => {
+        const req = request({ hostname: 'localhost', port: new URL(url).port, path: '/health', headers: { Host: host } }, response => {
+          response.resume(); response.on('end', () => resolve(response.statusCode!));
+        });
+        req.on('error', reject); req.end();
       });
-      req.on('error', reject); req.end();
-    });
-    assert.equal(await send(new URL(url).host), 200, 'the startup URL must pass the HTTP Host guard');
-    assert.equal(await send('localhost'), 200, 'the explicitly configured hostname remains usable');
-    assert.equal(await send('evil.example'), 403, 'binding to a hostname must not allow arbitrary DNS authorities');
-    assert.equal(await send('192.0.2.9'), 403, 'only the actual bound address is added');
+      assert.equal(await send(new URL(url).host), 200, 'the canonical startup URL must pass the HTTP Host guard');
+      assert.equal(await send(isIP(boundHost) === 6 ? `[${boundHost}]` : boundHost), 200, 'equivalent IP spellings identify the same listener');
+      assert.equal(await send('localhost'), 200, 'the explicitly configured hostname remains usable');
+      assert.equal(await send('evil.example'), 403, 'binding to a hostname must not allow arbitrary DNS authorities');
+      assert.equal(await send(otherHost), 403, 'only the actual bound address is added');
+    }
   });
 
   it('requires explicit takeover before probing or stopping an occupied OMK listener', async () => {
