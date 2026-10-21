@@ -1,8 +1,6 @@
-import type {
-  KnowledgeApplication,
-  EvidenceWindow,
-  ExtractionRunSummary,
-} from '../../../observability/application.js';
+import type { KnowledgeApplication } from '../../../knowledge/application/application.js';
+import type { EvidenceWindow } from '../../../knowledge/extraction/evidence.js';
+import type { ExtractionRunSummary } from '../../../knowledge/extraction/runs.js';
 
 type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
 export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> & {
@@ -17,7 +15,7 @@ export type KnowledgeEntityCatalog = ReturnType<KnowledgeApplication['queryEntit
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source'> & Pick<KnowledgeEntityAnalysisDetail, 'source'>;
 export type KnowledgeCandidateRun = Omit<ExtractionRunSummary, 'startedAt'> & { startedAt?: string };
 export interface KnowledgeCandidateQueue { rows: KnowledgeCandidateRow[]; runs: KnowledgeCandidateRun[] }
-export type { AutoExtractionState, AutoExtractionPreview } from '../../../observability/application.js';
+export type { AutoExtractionState, AutoExtractionPreview } from '../../../knowledge/application/auto-extraction.js';
 type EntityDetail = ReturnType<KnowledgeApplication['entities']>;
 export type KnowledgeEntityAnalysisDetail = Omit<EntityDetail, 'source'> & {
   source: { status: 'available'; excerpts: EvidenceWindow['excerpts']; limitations: EvidenceWindow['limitations'] }

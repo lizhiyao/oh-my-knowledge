@@ -1,6 +1,6 @@
 'use client';
 import { Checkbox, InputNumber, Select } from 'antd';
-import type { ExtractionBoundedPolicy, ExtractionGenerationPolicy } from '../../../../observability/application';
+import type { ExtractionBoundedPolicy, ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 import type { Language } from '../layout/shell';
 
 /** A missing policy preserves the existing, single-invocation authorization. */

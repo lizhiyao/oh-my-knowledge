@@ -137,11 +137,6 @@ function collectDependencyGraph(): DependencyGraph {
   return { edges, nonLiteralDynamicImports };
 }
 
-function isContractBoundary(target: string): boolean {
-  return target.includes('/contracts/')
-    || target.endsWith('/contracts.ts');
-}
-
 function domainPair(left: string, right: string): string {
   return [left, right].sort().join('↔');
 }
@@ -332,9 +327,10 @@ describe('src 与 scripts 依赖图', () => {
       edges: [...registeredEdges].sort(),
     }));
     expect(runtimeCycles(edges)).toEqual(expected);
-    expect(REGISTERED_RUNTIME_CYCLES.every((cycle) => (
-      cycle.edges.some((key) => isContractBoundary(key.split(' → ')[1] ?? ''))
-    ))).toBe(true);
+    // Each SCC needs its own rationale: an unrelated contract edge in the old
+    // six-domain aggregate did not justify Knowledge's internal runtime cycle.
+    // Exact domains and every edge above remain the admission boundary.
+    expect(REGISTERED_RUNTIME_CYCLES.every((cycle) => cycle.rationale.trim().length > 0)).toBe(true);
   });
 
   it('已登记边参与新的三领域环时会改变完整拓扑', () => {

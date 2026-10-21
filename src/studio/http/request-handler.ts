@@ -6,12 +6,9 @@ import { carrierMeasureCatalog } from '../application/measure/carrier-measuremen
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import {
-  createCodexConversationCatalog,
-  ObservationReviewStateValidationError,
-  ConversationAutoExtraction,
-  configuredExtractionModel,
-} from '../../observability/application.js';
+import { createCodexConversationCatalog, ObservationReviewStateValidationError } from '../../observability/application.js';
+import { ConversationAutoExtraction } from '../../knowledge/application/auto-extraction.js';
+import { configuredExtractionModel } from '../../knowledge/adapters/executor.js';
 
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
