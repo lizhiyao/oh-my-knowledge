@@ -52,7 +52,7 @@ function fixture(options: { model?: string; system?: string; endpoint?: string }
   const result = (patch: Partial<EntityLinkExecutionResult> = {}): EntityLinkExecutionResult => ({ ok: true, output, durationMs: 100, durationApiMs: 80,
     inputTokens: 11, outputTokens: 5, cacheReadTokens: 3, cacheCreationTokens: 2, costUSD: 0, costReportedByExecutor: false, stopReason: 'stop', numTurns: 1, ...patch });
   const archive = (outcome: EntityLinkExecutionOutcome) => apply(command({ commandKind: 'execution_recorded', executionId, outcome }));
-  return { reviewId, plan, ports, command, apply, prepare, start, result, archive, executionId,
+  return { reviewId, plan, ports, command, apply, prepare, start, result, archive, executionId, owner,
     get history() { return history!; }, setAlive(value: boolean) { alive = value; }, setCurrent(value: boolean) { producerCurrent = value; },
     setAvailable(value: boolean) { reservationAvailable = value; }, setBytes(value: number) { reservationBytes = value; plan.producerContextDigest = ports.reserve(plan.request)!.reservationDigest; plan.confirmedDigest = entityLinkConfirmationDigest(reviewId, plan, hash); } };
 }
@@ -76,6 +76,56 @@ describe('entity-link invocation pure production flow', () => {
       usage: { inputTokens: null, costUSD: null } });
     const restored = JSON.parse(JSON.stringify(f.history)); expect(validateEntityLinkInvocation(restored, f.ports)).toEqual(f.history);
     f.archive({ outcomeKind: 'result', result: f.result() }); expect(projectEntityLinkInvocation(f.history, f.ports).status).toBe('awaiting_review');
+  });
+  it('fences a live or unverifiable owner with a versioned human command, preserving late evidence without admission', () => {
+    const f = fixture(); f.prepare(); f.start(); const runningBytes = canonicalJson(f.history);
+    const body = { commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1', executionId: f.executionId,
+      owner: f.owner, reason: '原进程状态不能确认，人工封存本次调用' };
+    expect(() => f.apply(f.command(body))).toThrow('human');
+    for (const owner of [{ ...f.owner, ownerId: randomUUID() }, { ...f.owner, hostname: 'forged-host' }, { ...f.owner, pid: 99999 }]) {
+      expect(() => f.apply(f.command({ ...body, owner }, human))).toThrow('original owner');
+    }
+    expect(() => f.apply(f.command({ ...body, executionId: randomUUID() }, human))).toThrow('original owner');
+    expect(() => f.apply({ ...f.command(body, human), expectedGeneration: 1 })).toThrow('revision conflict');
+    const command = f.command(body, human);
+    if (command.commandKind !== 'execution_terminated') throw new Error('Missing termination command.');
+    f.ports.reserve = () => { throw new Error('Termination must not inspect a producer.'); };
+    f.ports.reservationIsCurrent = () => { throw new Error('Termination must not configure a producer.'); };
+    f.ports.proveOwnerExited = () => { throw new Error('Termination must not assert owner exit.'); };
+    expect(f.apply(command).effect).toBe('none');
+    expect(canonicalJson({ ...f.history, generation: 2, writeHeadEventId: f.history.events[1].command.eventId, events: f.history.events.slice(0, 2) })).toBe(runningBytes);
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v2',
+      status: 'execution_terminated', execution: { executionId: f.executionId, owner: f.owner }, termination: command,
+      admission: null, decision: null, canStart: false, canResumeOrganization: false, canTerminateExecution: false,
+      invocationBudget: { reserved: 0, consumed: 1 }, executorAttemptCount: null, usage: { inputTokens: null, costUSD: null } });
+    const outcome = { outcomeKind: 'result' as const, result: f.result({ tokenUsageReportedByExecutor: true, costReportedByExecutor: false }) };
+    f.archive(outcome);
+    expect(f.history.events.at(-1)).toMatchObject({ command: { outcome }, facts: { archiveDisposition: 'terminated', reservationStatus: 'within' } });
+    expect(f.history.events.at(-1)!.facts).not.toHaveProperty('admission');
+    expect(projectEntityLinkInvocation(f.history, f.ports)).toMatchObject({ status: 'execution_terminated', admission: null, decision: null,
+      invocationBudget: { consumed: 1 }, executorAttemptCount: 1, usage: { inputTokens: 11, costUSD: null } });
+    const archived = f.history;
+    expect(f.apply(command)).toEqual({ history: archived, effect: 'none' });
+    expect(f.archive(outcome)).toEqual({ history: archived, effect: 'none' });
+    expect(() => f.apply({ ...command, reason: '改变终止原因' })).toThrow('request identity');
+    expect(() => f.apply({ ...command, actor: { ...human, actorId: 'other-human' } })).toThrow('request identity');
+    expect(() => f.archive({ outcomeKind: 'result', result: f.result({ output: 'changed late bytes' }) })).toThrow('outcome identity');
+    for (const decision of ['accept', 'reject'] as const) expect(() => f.apply(f.command({ commandKind: 'reviewed', decision,
+      identityConfirmed: false, reason: '不能复活已封存调用', objectLabel: null, application: null }, human))).toThrow('saved response');
+    expect(canonicalJson(f.history)).toBe(canonicalJson(archived)); expect(validateEntityLinkInvocation(JSON.parse(JSON.stringify(archived)), f.ports)).toEqual(archived);
+  });
+  it('permits termination only while running and lets an archived response win a stale termination race', () => {
+    const f = fixture(); f.prepare();
+    const terminate = () => f.command({ commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1',
+      executionId: f.executionId, owner: f.owner, reason: '仅封存仍在运行的调用' }, human);
+    expect(() => f.apply(terminate())).toThrow('running execution');
+    f.start(); const stale = terminate(); f.archive({ outcomeKind: 'result', result: f.result() });
+    expect(() => f.apply(stale)).toThrow('revision conflict'); expect(() => f.apply(terminate())).toThrow('running execution');
+    expect(projectEntityLinkInvocation(f.history, f.ports).status).toBe('awaiting_review');
+    const unknown = fixture(); unknown.prepare(); unknown.start(); unknown.setAlive(false);
+    unknown.apply(unknown.command({ commandKind: 'execution_unknown', executionId: unknown.executionId }));
+    expect(() => unknown.apply(unknown.command({ commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1',
+      executionId: unknown.executionId, owner: unknown.owner, reason: 'unknown 不冒充 running' }, human))).toThrow('running execution');
   });
   it('cancels only an unstarted reservation and cannot start it after restart', () => {
     const f = fixture(); f.prepare(); f.apply(f.command({ commandKind: 'cancel_before_start', reason: '取消发送' }));
@@ -176,18 +226,23 @@ describe('entity-link quality saved-fact projection', () => {
     failed.apply(failed.command({ commandKind: 'reviewed', decision: 'reject', identityConfirmed: false, reason: '拒绝失败结果', objectLabel: null, application: null }, human));
     const exception = fixture(); exception.prepare(); exception.start(); exception.archive({ outcomeKind: 'exception', error: {
       representationKind: 'exception-diagnostic/v1', sourceType: 'undefined', name: null, message: 'unknown thrown result', truncated: true, accessorsSkipped: true } });
-    const histories = [prepared, cancelled, running, unknown, admitted, accepted, rejected, failed, exception].map(f => f.history), before = canonicalJson(histories);
+    const terminated = fixture(), late = fixture();
+    for (const f of [terminated, late]) { f.prepare(); f.start(); f.apply(f.command({ commandKind: 'execution_terminated',
+      terminationVersion: 'omk.entity-link-termination/v1', executionId: f.executionId, owner: f.owner, reason: '人工封存不等于身份拒绝' }, human)); }
+    late.archive({ outcomeKind: 'result', result: late.result() });
+    const histories = [prepared, cancelled, running, unknown, admitted, accepted, rejected, failed, exception, terminated, late].map(f => f.history), before = canonicalJson(histories);
     const result = entityLinkQuality(histories, prepared.ports);
-    expect(result).toMatchObject({ readStatus: 'available', reviewCount: 9 }); expect(result.groups).toHaveLength(1);
+    expect(result).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', readStatus: 'available', reviewCount: 11 }); expect(result.groups).toHaveLength(1);
     const group = result.groups[0];
-    expect(group.reviews).toMatchObject({ total: 9, notDispatched: 2, dispatched: 7, reserved: 1, resultRecorded: 4, exceptionRecorded: 1, outcomeUnrecorded: 2 });
-    expect(group.admission).toEqual({ recorded: 5, admitted: 3, rejected: 2, unrecordedDispatched: 2, admissionRate: 0.6, reasons: [{ reason: 'exception', count: 1 }, { reason: 'failed_execution', count: 1 }] });
+    expect(group.reviews).toMatchObject({ total: 11, notDispatched: 2, dispatched: 9, reserved: 1, resultRecorded: 5, exceptionRecorded: 1, outcomeUnrecorded: 3, byStatus: { execution_terminated: 2 } });
+    expect(group.admission).toEqual({ recorded: 5, admitted: 3, rejected: 2, unrecordedDispatched: 2, terminatedDispatched: 2, admissionRate: 0.6, reasons: [{ reason: 'exception', count: 1 }, { reason: 'failed_execution', count: 1 }] });
+    expect(group.humanTerminations).toEqual({ total: 2, outcomeUnrecorded: 1, lateOutcomeRecorded: 1 });
     expect(group.humanDecisions).toEqual({ decided: 3, accepted: 1, rejected: 2, undecidedAdmitted: 1, undecidedRejected: 1, acceptanceRate: 1 / 3 });
     expect(group.assessments).toEqual([{ assessment: 'different_objects', admitted: 1, humanAccepted: 1, humanRejected: 0, humanUndecided: 0 },
       { assessment: 'insufficient_evidence', admitted: 1, humanAccepted: 0, humanRejected: 1, humanUndecided: 0 },
       { assessment: 'same_object', admitted: 1, humanAccepted: 0, humanRejected: 0, humanUndecided: 1 }]);
-    expect(group.usage.inputTokens).toEqual({ knownReviewCount: 3, unknownReviewCount: 4, reportingUnspecifiedReviewCount: 3, knownTotal: 33, overflow: false });
-    expect(group.usage.costUSD).toEqual({ knownReviewCount: 0, unknownReviewCount: 7, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: false });
+    expect(group.usage.inputTokens).toEqual({ knownReviewCount: 4, unknownReviewCount: 5, reportingUnspecifiedReviewCount: 4, knownTotal: 44, overflow: false });
+    expect(group.usage.costUSD).toEqual({ knownReviewCount: 0, unknownReviewCount: 9, reportingUnspecifiedReviewCount: 0, knownTotal: null, overflow: false });
     expect(group.executionFailures).toEqual([{ failureKind: 'refusal', count: 1 }]); expect(group.organization.acceptedConflict).toBe(1);
     expect(canonicalJson(histories)).toBe(before); expect(entityLinkQuality([...histories].reverse(), prepared.ports)).toEqual(result);
   });

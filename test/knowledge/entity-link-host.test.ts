@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createOpenAiArchiveProducer, openAiArchiveDiagnosticGrowth } from '../../src/executors/openai/archive.js';
 import { createExecutor } from '../../src/executors/index.js';
 import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKnowledgeLibrary, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
-import { FileEntityLinkStore, entityLinkAllocation, ENTITY_LINK_NAMESPACE_BYTES } from '../../src/knowledge/adapters/entity-link-store.js';
+import { FileEntityLinkStore, entityLinkAllocation, ENTITY_LINK_NAMESPACE_BYTES, ENTITY_LINK_EVENT_RESERVE_BYTES } from '../../src/knowledge/adapters/entity-link-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileLibraryStore } from '../../src/knowledge/adapters/library-store.js';
 import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/knowledge/entity-linking/entity-links.js';
@@ -138,6 +138,66 @@ describe('entity-link actual host/store/API flow', () => {
     expect(() => other.recoverUnknown(preview.reviewId, randomUUID())).toThrow('live or unverifiable'); release(); await pending;
     expect(controller.signal.aborted).toBe(true); expect(app.project(preview.reviewId).status).toBe('awaiting_review'); expect(transport.count).toBe(1);
   });
+  it('terminates a live owner without credentials or source reads, releases the workspace and seals its late result', async () => {
+    const a = await window('a'), b = await window('b'), c = await window('c'), d = await window('d');
+    let release!: () => void, received!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), arrived = new Promise<void>(resolve => { received = resolve; });
+    const transport = await api(async () => { if (transport.count === 1) { received(); await gate; return native(suggestion(preview)); } return native(suggestion(next)); });
+    const app = host(transport.env), preview = app.preview(a.ref, b.ref, selection), next = app.preview(c.ref, d.ref, selection);
+    prepare(app, preview); const pending = start(app, preview.reviewId); await arrived;
+    try {
+      const create = vi.fn(createExecutor), offline = host({}, undefined, create), running = offline.inspect(preview.reviewId);
+      if (!running.projection.execution) throw new Error('Missing running owner.');
+      const { executionId, owner } = running.projection.execution, reservation = entityLinkAllocation(running.history);
+      const request = { reviewId: preview.reviewId, requestId: randomUUID(), expectedGeneration: running.history.generation, executionId, ownerId: owner.ownerId, reason: '人工封存，未声称进程已退出' };
+      expect(() => offline.terminateExecution({ ...request, ownerId: randomUUID() })).toThrow('owner conflict');
+      expect(() => offline.terminateExecution({ ...request, expectedGeneration: 1 })).toThrow('revision conflict');
+      // Sources and producer configuration may be unavailable when administrative recovery is needed.
+      knowledge().deleteSource(a.source.snapshotId); knowledge().deleteSource(b.source.snapshotId);
+      const terminated = offline.terminateExecution(request);
+      expect(terminated.events.slice(0, 2)).toEqual(running.history.events);
+      expect(entityLinkAllocation(terminated)).toBe(reservation);
+      expect(offline.project(preview.reviewId)).toMatchObject({ status: 'execution_terminated', admission: null, decision: null,
+        termination: { actor: { actorKind: 'human' }, reason: request.reason, owner }, invocationBudget: { consumed: 1 }, usage: { inputTokens: null, costUSD: null } });
+      expect(offline.terminateExecution(request)).toEqual(terminated); expect(offline.resume(preview.reviewId)).toEqual(terminated);
+      expect(await start(offline, preview.reviewId)).toEqual(terminated); expect(create).not.toHaveBeenCalled();
+      // The new unrelated invocation can reserve the workspace while the old native call is still in flight.
+      prepare(app, next); expect(app.project(next.reviewId).status).toBe('prepared'); expect(transport.count).toBe(1);
+      release(); const archived = await pending;
+      expect(archived.events.filter(event => event.command.commandKind === 'execution_recorded')).toHaveLength(1);
+      expect(archived.events.at(-1)).toMatchObject({ command: { executionId, outcome: { outcomeKind: 'result', result: { output: suggestion(preview) } } },
+        facts: { archiveDisposition: 'terminated' } });
+      expect(app.project(preview.reviewId)).toMatchObject({ status: 'execution_terminated', admission: null, decision: null,
+        canStart: false, canResumeOrganization: false, usage: { inputTokens: 10, outputTokens: 5, costUSD: null } });
+      expect(entityLinkAllocation(archived)).toBe(Buffer.byteLength(JSON.stringify(archived)));
+      expect(offline.terminateExecution(request)).toEqual(archived);
+      expect(() => offline.terminateExecution({ ...request, reason: '不同语义' })).toThrow('request identity');
+      expect(() => app.decide({ reviewId: preview.reviewId, requestId: randomUUID(), expectedGeneration: archived.generation,
+        decision: 'reject', reason: '封存后不能伪造身份拒绝' })).toThrow('saved response');
+      expect(app.resume(preview.reviewId)).toEqual(archived); expect(existsSync(join(root, 'library'))).toBe(false);
+      await start(app, next.reviewId); expect(app.project(next.reviewId).status).toBe('awaiting_review'); expect(transport.count).toBe(2);
+      expect(create).not.toHaveBeenCalled();
+      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', groups: [{
+        reviews: { dispatched: 2, resultRecorded: 2 }, admission: { recorded: 1, admitted: 1, terminatedDispatched: 1 },
+        humanDecisions: { decided: 0 }, humanTerminations: { total: 1, outcomeUnrecorded: 0, lateOutcomeRecorded: 1 } }] });
+    } finally { release(); await pending.catch(() => undefined); }
+  });
+  it('requires retryOf and renewed confirmation for the same pair after human termination', async () => {
+    const a = await window('a'), b = await window('b'), transport = await api(() => native('unused'));
+    const app = host(transport.env), preview = app.preview(a.ref, b.ref, selection), saved = prepare(app, preview);
+    const configuration = configureEntityLinkApiProducer(preview.plan.request, createOpenAiArchiveProducer(transport.env));
+    const owner = { ownerId: randomUUID(), hostname: 'unverifiable-original-host', pid: process.pid }, executionId = randomUUID();
+    const started = transitionEntityLinkInvocation(saved, { commandKind: 'start', reviewId: preview.reviewId, requestId: randomUUID(), eventId: randomUUID(),
+      expectedGeneration: 1, at: new Date().toISOString(), actor: { actorKind: 'agent', actorId: 'original-owner', executionRef: preview.reviewId }, executionId, owner },
+    { hashJson: entityLinkDigest, hashText: entityLinkTextHash, reserve: () => configuration.reservation, reservationIsCurrent: () => true, proveOwnerExited: () => undefined }).history;
+    const store = new FileEntityLinkStore(join(root, 'entity-links'), root); store.transaction(tx => tx.save(started, 1));
+    app.terminateExecution({ reviewId: preview.reviewId, requestId: randomUUID(), expectedGeneration: 2, executionId, ownerId: owner.ownerId, reason: '人工封存不可核实的运行' });
+    expect(() => app.preview(a.ref, b.ref, selection)).toThrow('retryOf');
+    const retry = app.preview(a.ref, b.ref, selection, preview.reviewId);
+    expect(retry.plan.retryOf).toBe(preview.reviewId); expect(retry.plan.confirmedDigest).not.toBe(preview.plan.confirmedDigest);
+    prepare(app, retry); expect(app.project(retry.reviewId).status).toBe('prepared'); expect(transport.count).toBe(0);
+    expect(existsSync(join(root, 'library'))).toBe(false);
+  });
   it.each(['rate_limit', 'refusal', 'truncation', 'invalid_json', 'usage_overflow'] as const)('archives real API %s raw/failure/refusal/usage without retry', async mode => {
     const a = await window('a'), b = await window('b');
     const transport = await api(() => ({ ...native(mode === 'invalid_json' ? '{bad' : '完整原始部分输出', mode === 'truncation' ? 'length' : 'stop'),
@@ -248,8 +308,23 @@ describe('entity-link actual host/store/API flow', () => {
           reserve: () => config.reservation, reservationIsCurrent: () => true, proveOwnerExited: () => undefined }).history; });
     expect(entityLinkAllocation(histories[0]) * 2).toBeLessThan(ENTITY_LINK_NAMESPACE_BYTES); expect(entityLinkAllocation(histories[0]) * 3).toBeGreaterThan(ENTITY_LINK_NAMESPACE_BYTES);
     store.transaction(tx => tx.save(histories[0], 0)); store.transaction(tx => tx.save(histories[1], 0));
+    const executionId = randomUUID(), owner = { ownerId: randomUUID(), hostname: '\0'.repeat(256), pid: Number.MAX_SAFE_INTEGER };
+    const ports = { hashJson: entityLinkDigest, hashText: entityLinkTextHash, reserve: () => undefined, reservationIsCurrent: () => true, proveOwnerExited: () => undefined };
+    const common = { reviewId: histories[0].reviewId, at: `2026-10-21T00:00:00.${'0'.repeat(43)}Z`, actor: { actorKind: 'human' as const, actorId: '\0'.repeat(256) } };
+    const started = transitionEntityLinkInvocation(histories[0], { ...common, commandKind: 'start', requestId: randomUUID(), eventId: randomUUID(), expectedGeneration: 1, executionId, owner }, ports).history;
+    store.transaction(tx => tx.save(started, 1));
+    const terminated = transitionEntityLinkInvocation(started, { ...common, commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1',
+      requestId: randomUUID(), eventId: randomUUID(), expectedGeneration: 2, executionId, owner, reason: '\0'.repeat(4096) }, ports).history;
+    // Maximal valid human/owner/reason/timestamp fields fit the unchanged historical event reserve.
+    expect(Buffer.byteLength(JSON.stringify(terminated.events.at(-1)!))).toBeLessThan(ENTITY_LINK_EVENT_RESERVE_BYTES);
+    store.transaction(tx => tx.save(terminated, 2)); expect(entityLinkAllocation(terminated)).toBe(entityLinkAllocation(histories[0]));
     expect(() => store.transaction(tx => tx.save(histories[2], 0))).toThrow('capacity'); expect(store.list()).toHaveLength(2);
     expect(existsSync(join(root, 'entity-links', `${histories[2].reviewId}.json`))).toBe(false);
+    const archived = transitionEntityLinkInvocation(terminated, { ...common, commandKind: 'execution_recorded', requestId: randomUUID(), eventId: randomUUID(),
+      expectedGeneration: 3, executionId, outcome: { outcomeKind: 'exception', error: { representationKind: 'exception-diagnostic/v1', sourceType: 'undefined',
+        name: null, message: '迟到的原执行异常', truncated: false, accessorsSkipped: true } } }, ports).history;
+    store.transaction(tx => tx.save(archived, 3)); expect(entityLinkAllocation(archived)).toBe(Buffer.byteLength(JSON.stringify(archived)));
+    store.transaction(tx => tx.save(histories[2], 0)); expect(store.list()).toHaveLength(3);
   });
   it('reserves UTF-8 replacement and duplicate refusal channels at the real 4 MiB transport boundary', async () => {
     const a = await window('a'), b = await window('b');

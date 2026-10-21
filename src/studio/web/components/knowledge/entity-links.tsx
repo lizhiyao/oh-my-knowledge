@@ -139,7 +139,7 @@ export function EntityLinksDrawer({ workspace, detail, lang, onClose }: {
           {status === 'awaiting_review' && <><Button type="primary" disabled={busy || uncertain || !identityConfirmed || !reason.trim()} onClick={() => mutation('accept')}>{t('人工接受并组织知识库', 'Accept and organize the library')}</Button><Button disabled={busy || uncertain || !reason.trim()} onClick={() => mutation('reject')}>{t('人工拒绝，保留历史', 'Reject and preserve history')}</Button></>}
           {saved && <Button disabled={busy} onClick={() => void action(async signal => { const value = await api<EntityLinkStudioInspection>('resume', { reviewId: saved.history.reviewId }, signal); accept(value, signal); })}>{t('恢复归档／组织（不发送）', 'Resume archive / organization (no sending)')}</Button>}
           {status === 'running' && <Button disabled={busy || uncertain} onClick={() => mutation('recover-unknown')}>{t('核验原进程退出后记为未知', 'Verify exited owner and record unknown')}</Button>}
-          {(status === 'execution_unknown' || status === 'execution_failed') && <Button disabled={busy || uncertain} onClick={() => { setRetryOf(saved!.history.reviewId); setSaved(undefined); invalidate(); }}>{t('明确准备新尝试（需重新预览确认）', 'Prepare a new attempt (renew preview and consent)')}</Button>}
+          {(status === 'execution_unknown' || status === 'execution_failed' || status === 'execution_terminated') && <Button disabled={busy || uncertain} onClick={() => { setRetryOf(saved!.history.reviewId); setSaved(undefined); invalidate(); }}>{t('明确准备新尝试（需重新预览确认）', 'Prepare a new attempt (renew preview and consent)')}</Button>}
         </Space>
       </footer>
     </div>

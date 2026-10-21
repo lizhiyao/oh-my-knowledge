@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -5,9 +6,10 @@ import { createLocalEntityLinks, createLocalKnowledgeApplication } from '../../.
 import type { ExecutorArchiveProducer } from '../../../src/executors/contracts/archive.js';
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { KnowledgeEntityLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
+import type { EntityLinkStudioInspection } from '../../../src/studio/view-models/knowledge/entity-links.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 
-export async function entityLinkFixture() {
+export async function entityLinkFixture(options: { terminate?: boolean } = {}) {
   const workspace = mkdtempSync(join(tmpdir(), 'omk-studio-link-view-'));
   const knowledge = createLocalKnowledgeApplication(workspace);
   async function window(name: string) {
@@ -19,7 +21,11 @@ export async function entityLinkFixture() {
     return { ...detail, source: sourceView } satisfies KnowledgeEntityLibraryDetail;
   }
   const left = await window('left'), right = await window('right');
+  let release!: () => void, invocationCount = 0;
+  const held = options.terminate ? new Promise<void>(resolve => { release = resolve; }) : undefined;
   const execute: ExecutorFn = async input => {
+    invocationCount++;
+    if (held) await held;
     const pair = JSON.parse(input.prompt);
     return { ok: true, output: JSON.stringify({ responseKind: 'entity-link-suggestion', schemaVersion: 1, leftEntityId: pair.left.binding.entityId,
       rightEntityId: pair.right.binding.entityId, assessment: 'insufficient_evidence', leftMentionIds: pair.left.binding.mentionIds, rightMentionIds: pair.right.binding.mentionIds,
@@ -32,7 +38,20 @@ export async function entityLinkFixture() {
   const preview = app.preview({ analysisId: left.history.analysisId, entityId: left.entity.entityId }, { analysisId: right.history.analysisId, entityId: right.entity.entityId }, { executor: 'openai-api', model: 'fixture-model' });
   const prepared = app.prepare({ ...preview, confirmDigest: preview.plan.confirmedDigest });
   const preparedInspection = { workspace, history: prepared, projection: app.projectHistory(prepared), startToken: 'fixture-start' };
-  const completed = await app.start({ reviewId: preview.reviewId, requestId: preview.startRequestId, expectedGeneration: prepared.generation });
+  const pending = app.start({ reviewId: preview.reviewId, requestId: preview.startRequestId, expectedGeneration: prepared.generation });
+  let terminated: EntityLinkStudioInspection | undefined;
+  if (options.terminate) {
+    try {
+      const running = app.inspect(preview.reviewId), execution = running.projection.execution!;
+      const history = app.terminateExecution({ reviewId: preview.reviewId, requestId: randomUUID(), expectedGeneration: running.history.generation,
+        executionId: execution.executionId, ownerId: execution.owner.ownerId, reason: '人工终止理由 <script>unsafe</script>' });
+      terminated = { workspace, history, projection: app.projectHistory(history) };
+    } finally { release(); }
+  }
+  const completed = await pending;
+  const retryPreview = options.terminate ? { workspace, previewToken: 'fixture-retry-token', preview: app.preview(
+    { analysisId: left.history.analysisId, entityId: left.entity.entityId }, { analysisId: right.history.analysisId, entityId: right.entity.entityId },
+    { executor: 'openai-api', model: 'fixture-model' }, preview.reviewId) } : undefined;
   return { workspace, left, right, candidates, preview: { workspace, previewToken: 'fixture-token', preview }, prepared: preparedInspection,
-    saved: { workspace, history: completed, projection: app.projectHistory(completed) }, cleanup: () => rmSync(workspace, { recursive: true, force: true }) };
+    saved: { workspace, history: completed, projection: app.projectHistory(completed) }, terminated, retryPreview, invocationCount: () => invocationCount, cleanup: () => rmSync(workspace, { recursive: true, force: true }) };
 }

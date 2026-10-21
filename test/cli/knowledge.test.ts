@@ -281,6 +281,23 @@ describe('observe entity-links confirmed CLI flow', () => {
       ['resume', '--id', randomUUID(), '--recover-unknown', '--cancel-before-start'], ['unknown']]) {
       await expect(runCommand(ObserveEntityLinks, [...args, '--workspace', workspace], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
+    const terminate = ['terminate', '--workspace', workspace, '--id', randomUUID(), '--request-id', randomUUID(),
+      '--generation', '2', '--execution-id', randomUUID(), '--owner-id', randomUUID(), '--reason', '人工核对后终止'];
+    for (const required of ['workspace', 'id', 'request-id', 'generation', 'execution-id', 'owner-id', 'reason']) {
+      const args = [...terminate], index = args.indexOf(`--${required}`); args.splice(index, 2);
+      await expect(runCommand(ObserveEntityLinks, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    for (const name of ['id', 'request-id', 'execution-id', 'owner-id']) {
+      const args = [...terminate]; args[args.indexOf(`--${name}`) + 1] = 'not-a-uuid';
+      await expect(runCommand(ObserveEntityLinks, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    const overlongReason = [...terminate]; overlongReason[overlongReason.indexOf('--reason') + 1] = 'x'.repeat(4097);
+    await expect(runCommand(ObserveEntityLinks, overlongReason, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    for (const extra of [['--confirm-identity'], ['--model', 'ignored'], ['--input', '/must-not-read']]) {
+      await expect(runCommand(ObserveEntityLinks, [...terminate, ...extra], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    await expect(runCommand(ObserveEntityLinks, ['show', '--id', randomUUID(), '--owner-id', randomUUID(), '--workspace', workspace], { cwd: root }))
+      .rejects.toMatchObject({ code: 2 });
     expect(existsSync(workspace)).toBe(false);
   });
   it('reads the shared link-quality projection without credentials or model dispatch, and reports unreadable rather than zero', async () => {
@@ -405,6 +422,77 @@ describe('observe entity-links confirmed CLI flow', () => {
     expect(cancelled.projection).toMatchObject({ status: 'cancelled_before_start', invocationBudget: { consumed: 0 } });
     expect(JSON.parse((await runCli(cancel, { cwd: root, env })).stdout).history).toEqual(cancelled.history);
     await preview(root, workspace, a.ref(1), b.ref(1), env); expect(api.requests).toHaveLength(1);
+  });
+  it('terminates a live owner without configuration or sources and fences the late result through the real CLI', async () => {
+    const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b');
+    let release!: () => void, arrived!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; }), received = new Promise<void>(resolve => { arrived = resolve; });
+    const api = await transport(async body => { arrived(); await pending; return completion(body); });
+    const env = environment(root, api.endpoint), saved = await preview(root, workspace, a.ref(), b.ref(), env);
+    const app = createLocalEntityLinks(workspace, createOpenAiArchiveProducer(env));
+    const child = spawn(process.execPath, [CLI_ENTRY, ...saved.args], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = ''; child.stdout.on('data', chunk => { stdout += chunk.toString(); }); child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    const exited = once(child, 'exit');
+    try {
+      await Promise.race([received, exited.then(() => { throw new Error(`CLI exited before dispatch: ${stderr}`); })]);
+      const show = command('show', '--workspace', workspace, '--id', saved.plan.preview.reviewId, '--json');
+      const running = JSON.parse((await runCli(show, { cwd: root, env })).stdout);
+      expect(running.projection).toMatchObject({ status: 'running', canTerminateExecution: true });
+      expect(running.projection.execution.owner.pid).toBe(child.pid);
+      const path = join(workspace, 'entity-links', `${saved.plan.preview.reviewId}.json`), original = readFileSync(path);
+      const terminate = command('terminate', '--workspace', workspace, '--id', running.history.reviewId, '--request-id', randomUUID(),
+        '--generation', String(running.projection.generation), '--execution-id', running.projection.execution.executionId,
+        '--owner-id', running.projection.execution.owner.ownerId, '--reason', '人工核对该执行后终止，不推断远端取消', '--json');
+      for (const [name, value] of [['execution-id', randomUUID()], ['owner-id', randomUUID()], ['generation', '1']]) {
+        const args = [...terminate]; args[args.indexOf(`--${name}`) + 1] = value;
+        await runCliFailing(args, 1, { cwd: root, env }); expect(readFileSync(path)).toEqual(original);
+      }
+      // Administrative recovery must depend only on the saved start, even when all sources and settings are unavailable.
+      rmSync(join(workspace, 'sources'), { recursive: true }); rmSync(join(workspace, 'entities'), { recursive: true });
+      mkdirSync(env.OMK_HOME!, { recursive: true }); const settings = join(env.OMK_HOME!, 'settings.json'); writeFileSync(settings, '{broken-settings');
+      const unavailable = { ...env, OPENAI_API_KEY: '', OPENAI_BASE_URL: 'not-a-provider-url' };
+      const terminated = JSON.parse((await runCli(terminate, { cwd: root, env: unavailable })).stdout);
+      expect(terminated.projection).toMatchObject({ projectionVersion: 'omk.entity-link-invocation-projection/v2', status: 'execution_terminated',
+        invocationBudget: { reserved: 0, consumed: 1 }, canTerminateExecution: false, canStart: false, canResumeOrganization: false, admission: null, decision: null,
+        termination: { commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1', actor: { actorKind: 'human' } },
+        usage: { inputTokens: null, outputTokens: null, costUSD: null } });
+      expect(terminated.history.events.slice(0, 2)).toEqual(running.history.events);
+      expect(JSON.parse((await runCli(terminate, { cwd: root, env: unavailable })).stdout).history).toEqual(terminated.history);
+      expect(readFileSync(settings, 'utf8')).toBe('{broken-settings');
+      const changedReason = [...terminate]; changedReason[changedReason.indexOf('--reason') + 1] = '不能重写已有终止理由';
+      await runCliFailing(changedReason, 1, { cwd: root, env: unavailable });
+      expect(app.quality()).toMatchObject({ projectionVersion: 'omk.entity-link-quality/v2', groups: [{
+        humanTerminations: { total: 1, outcomeUnrecorded: 1, lateOutcomeRecorded: 0 },
+        admission: { recorded: 0, admitted: 0, rejected: 0, terminatedDispatched: 1 }, humanDecisions: { decided: 0 } }] });
+      const zh = formatEntityLinkInvocation(terminated.history, terminated.projection, workspace, 'zh');
+      const en = formatEntityLinkInvocation(terminated.history, terminated.projection, workspace, 'en');
+      expect(zh).toContain('人工终止记录'); expect(zh).toContain('不证明远端请求已取消'); expect(zh).toContain(running.projection.execution.executionId);
+      expect(en).toContain('Human termination'); expect(en).toContain('no invocation refund');
+      release(); const [code, signal] = await exited;
+      expect({ code, signal }).toEqual({ code: 1, signal: null });
+      const late = JSON.parse(stdout);
+      expect(late.projection).toMatchObject({ status: 'execution_terminated', admission: null, decision: null, canStart: false, canResumeOrganization: false,
+        invocationBudget: { consumed: 1 }, usage: { inputTokens: 10, outputTokens: 5, costUSD: null } });
+      expect(late.history.events).toHaveLength(4); expect(late.history.events.slice(0, 3)).toEqual(terminated.history.events);
+      const raw = late.history.events[3]; expect(raw.command.commandKind).toBe('execution_recorded');
+      expect(raw.command.outcome.result.output).toContain('insufficient_evidence'); expect(raw.facts.archiveDisposition).toBe('terminated');
+      expect(JSON.parse((await runCli(terminate, { cwd: root, env: unavailable })).stdout).history).toEqual(late.history);
+      rmSync(settings); // Normal reads may use saved preferences; they still must not dispatch or revisit removed source data.
+      for (const args of [saved.args, [...saved.args, '--start-prepared'], command('resume', '--workspace', workspace, '--id', running.history.reviewId, '--json')]) {
+        const result = JSON.parse((await runCliFailing(args, 1, { cwd: root, env })).stdout);
+        expect(result.projection.status).toBe('execution_terminated'); expect(result.history.events).toHaveLength(4);
+      }
+      const quality = JSON.parse((await runCli(command('quality', '--workspace', workspace, '--json'), { cwd: root, env: unavailable })).stdout);
+      expect(quality.groups[0]).toMatchObject({ humanTerminations: { total: 1, outcomeUnrecorded: 0, lateOutcomeRecorded: 1 },
+        admission: { recorded: 0, terminatedDispatched: 1, unrecordedDispatched: 0 }, humanDecisions: { decided: 0 } });
+      const report = await runCli(command('quality', '--workspace', workspace, '--lang', 'zh'), { cwd: root, env: unavailable });
+      expect(report.stdout).toContain('人工终止: 1'); expect(report.stdout).toContain('迟到结果已归档=1'); expect(report.stdout).toContain('终止且不参与接纳=1');
+      await runCliFailing(command('reject', '--workspace', workspace, '--id', running.history.reviewId, '--request-id', randomUUID(),
+        '--generation', String(late.history.generation), '--reason', '终止不能变成人工拒绝', '--json'), 1, { cwd: root, env });
+      expect(existsSync(join(workspace, 'library'))).toBe(false); expect(api.requests).toHaveLength(1);
+    } finally {
+      release(); if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; }
+    }
   });
   it.each(['SIGTERM', 'SIGKILL'] as const)('handles real process %s without retrying the started slot and resumes with zero model calls', async termination => {
     const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b');

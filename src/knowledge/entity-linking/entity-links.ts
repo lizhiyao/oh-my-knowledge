@@ -24,13 +24,15 @@ const decisionSchema = z.discriminatedUnion('decision', [
   z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(), decision: z.literal('accept'), reason: z.string().trim().min(1).max(4096), identityConfirmed: z.literal(true), objectLabel: z.string().trim().min(1).max(256).optional() }),
   z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(), decision: z.literal('reject'), reason: z.string().trim().min(1).max(4096) }),
 ]);
+const terminationSchema = z.strictObject({ reviewId: z.string().uuid(), requestId: z.string().uuid(), expectedGeneration: z.number().int().positive(),
+  executionId: z.string().uuid(), ownerId: z.string().uuid(), reason: z.string().trim().min(1).max(4096) });
 const normalize = (value: string) => value.normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
 const equal = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right);
 const prepared = (review: EntityLinkInvocation) => { const command = review.events[0].command; if (command.commandKind !== 'prepare') throw new Error('Missing preparation.'); return command; };
 const decisionOf = (review: EntityLinkInvocation) => review.events.find(event => event.command.commandKind === 'reviewed')?.command;
 const suppressesPair = (review: EntityLinkInvocation) => {
   const status = projectEntityLinkInvocation(review, { hashJson: entityLinkDigest, hashText: entityLinkTextHash }).status;
-  return !['cancelled_before_start', 'accepted_conflict', 'applied', 'execution_failed', 'execution_unknown'].includes(status);
+  return !['cancelled_before_start', 'accepted_conflict', 'applied', 'execution_failed', 'execution_unknown', 'execution_terminated'].includes(status);
 };
 const ownerOf = (all: readonly LibraryEnvelope[], entity: Pick<EntityLinkEndpoint, 'analysisId' | 'entityId'>): EntityLinkEndpoint['owner'] => {
   const owners = all.filter(history => history.revisions.at(-1)!.draft.members.some(member => memberKey(member) === memberKey(entity)));
@@ -129,7 +131,7 @@ export class EntityLinkApplication {
     const others = transaction.list().filter(item => item.reviewId !== reviewId);
     if (others.some(item => item.pairKey === pairKey && suppressesPair(item))) throw new EntityLinkConflictError('pair_already_reviewed');
     const samePair = others.filter(item => item.pairKey === pairKey);
-    if (!plan.retryOf && samePair.some(item => ['execution_failed', 'execution_unknown'].includes(projectEntityLinkInvocation(item, this.integrity).status))) throw new Error('Explicit retryOf and renewed confirmation are required for a failed or unknown invocation.');
+    if (!plan.retryOf && samePair.some(item => ['execution_failed', 'execution_unknown', 'execution_terminated'].includes(projectEntityLinkInvocation(item, this.integrity).status))) throw new Error('Explicit retryOf and renewed confirmation are required for a failed or unknown invocation.');
     const prior = plan.retryOf ? others.find(item => item.reviewId === plan.retryOf) : undefined;
     if (plan.retryOf && (!prior || prior.pairKey !== pairKey || ['prepared', 'running'].includes(projectEntityLinkInvocation(prior, this.integrity).status))) throw new Error('Entity-link retry predecessor conflict.');
     if (others.some(item => ['prepared', 'running'].includes(projectEntityLinkInvocation(item, this.integrity).status))) throw new Error('Another entity-link invocation owns the workspace reservation.');
@@ -206,6 +208,19 @@ export class EntityLinkApplication {
   cancelBeforeStart(input: { reviewId: string; requestId: string; expectedGeneration: number; reason: string }) {
     return this.reviews.transaction(transaction => this.transition(transaction, transaction.read(input.reviewId),
       this.command(input.reviewId, input.requestId, input.expectedGeneration, { commandKind: 'cancel_before_start', reason: input.reason })).history);
+  }
+  /** Human administrative fence; no source, producer configuration, or process-exit proof is consulted. */
+  terminateExecution(input: z.input<typeof terminationSchema>): EntityLinkInvocation {
+    const request = terminationSchema.parse(input);
+    return this.reviews.transaction(transaction => {
+      const current = transaction.read(request.reviewId), started = current.events.find(event => event.command.commandKind === 'start')?.command;
+      if (started?.commandKind !== 'start' || started.executionId !== request.executionId || started.owner.ownerId !== request.ownerId) {
+        throw new Error('Entity-link termination execution/owner conflict.');
+      }
+      return this.transition(transaction, current, this.command(request.reviewId, request.requestId, request.expectedGeneration, {
+        commandKind: 'execution_terminated', terminationVersion: 'omk.entity-link-termination/v1', executionId: request.executionId, owner: started.owner, reason: request.reason,
+      })).history;
+    });
   }
   recoverUnknown(reviewId: string, requestId: string) {
     return this.reviews.transaction(transaction => {

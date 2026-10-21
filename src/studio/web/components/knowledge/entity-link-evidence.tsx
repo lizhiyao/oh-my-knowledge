@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 export function entityLinkStatusLabel(status: EntityLinkStudioInspection['projection']['status'], lang: Language) {
   const names = { prepared: ['已预约，尚未发送', 'Prepared, not sent'], running: ['已开始，等待归档', 'Started, awaiting archive'],
-    execution_unknown: ['调用结果未知', 'Execution outcome unknown'], execution_failed: ['结果未接纳', 'Result not admitted'], awaiting_review: ['等待人工核对', 'Awaiting human review'],
+    execution_unknown: ['调用结果未知', 'Execution outcome unknown'], execution_terminated: ['人工已终止调用', 'Execution terminated by human'], execution_failed: ['结果未接纳', 'Result not admitted'], awaiting_review: ['等待人工核对', 'Awaiting human review'],
     rejected: ['人工已拒绝', 'Rejected by human'], accepted_pending_application: ['已接受，组织待恢复', 'Accepted, organization pending'],
     applied: ['知识库组织已保存', 'Library organization saved'], accepted_conflict: ['已接受，组织冲突', 'Accepted, organization conflict'],
     cancelled_before_start: ['发送前已取消', 'Cancelled before sending'] };
@@ -57,6 +57,9 @@ export function EntityLinkSavedEvidence({ value, lang }: { value: EntityLinkStud
     <p>{t('预约调用：', 'Reserved invocations: ')}{projection.invocationBudget.reserved} · {t('已消耗调用：', 'Consumed invocations: ')}{projection.invocationBudget.consumed} · {t('执行器尝试数：', 'Executor attempts: ')}{projection.executorAttemptCount ?? t('未知', 'Unknown')}</p>
     <p>{t('输入／输出／缓存读取／缓存创建 token：', 'Input / output / cache read / cache creation tokens: ')}{[projection.usage.inputTokens, projection.usage.outputTokens, projection.usage.cacheReadTokens, projection.usage.cacheCreationTokens].map(value => value ?? t('未知', 'Unknown')).join(' / ')} · {t('费用 USD：', 'Cost USD: ')}{projection.usage.costUSD ?? t('未知', 'Unknown')}</p>
     <p className="candidate-help">{t('用量为执行器标准化计数；缓存为 0 不证明提供方明确报告了 0。未知调用不退还预算，也不会自动重新发送。', 'Usage is normalized by the executor; cache zero does not prove a provider explicitly reported zero. Unknown execution does not refund budget or trigger resending.')}</p>
+    {projection.termination && <><h4>{t('人工终止记录', 'Human termination record')}</h4>
+      <p>{t('处理人：', 'Terminated by: ')}{projection.termination.actor.actorId}</p><p>{projection.termination.reason}</p>
+      <p className="candidate-help">{t('终止不证明原进程或请求已停止；迟到结果只保留归档，不进入结构接纳、身份决定或知识库应用。', 'Termination does not prove the original process or request stopped. Late results are archived without admission, identity decisions, or library application.')}</p></>}
     {projection.admission && <><h4>{t('结构接纳', 'Structural admission')}</h4><pre>{JSON.stringify(projection.admission, null, 2)}</pre></>}
     {projection.decision && <><h4>{t('独立人工决定', 'Separate human decision')}</h4><p>{projection.decision.decision} · {projection.decision.actor.actorId}</p><p>{projection.decision.reason}</p></>}
     {projection.status === 'running' || projection.status === 'execution_unknown' ? <Alert type="warning" title={t('先核对同一 review。读取与恢复不会重新发送；原进程仍存活时不能把运行强行判为未知。', 'Inspect this same review first. Reads and recovery never resend; a live owner cannot be forced into unknown.')}/> : null}
