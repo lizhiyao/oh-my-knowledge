@@ -476,6 +476,7 @@ export interface StaticEvaluationRunOptions {
 }
 
 export interface CliEvaluationCompileResult {
+  /** CLI-derived Core contract; not identity-interchangeable with Runtime facade declarations. */
   readonly definition: EvaluationDefinition;
   readonly policy: MeasurementPolicy;
   readonly runtimeBinding: RuntimeBindingRequest;

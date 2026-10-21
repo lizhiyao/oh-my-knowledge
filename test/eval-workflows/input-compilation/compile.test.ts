@@ -3,7 +3,10 @@ import {
   EvaluationDefinitionSchema,
   MeasurementPolicySchema,
   canonicalizeJson,
+  computeRandomizationDesignDigest,
+  deriveAssignmentMemberships,
   deriveExecutionCoordinateDigest,
+  deriveTrialSeed,
   digestCanonicalJson,
   projectAnalysisInputs,
   projectEvaluationInputs,
@@ -11,6 +14,8 @@ import {
   resolveEffectiveExecutionControl,
 } from '../../../src/eval-core/contracts/index.js';
 import { createInvokeExecutorIdentity } from '../../../src/eval-runtime/identity.js';
+import { prepareEvaluation } from '../../../src/eval-runtime/index.js';
+import { pairedInput } from '../../eval-runtime/fixtures/evaluation.js';
 import {
   CliEvaluationInputError,
   compileCliEvaluationInput,
@@ -77,6 +82,74 @@ describe('compileCliEvaluationInput', () => {
       executionMode: 'disabled',
       evaluationMode: 'disabled',
     });
+  });
+
+  it('keeps CLI and Runtime facade identities distinct even for equal labels and root seeds', async () => {
+    const cli = compileCliEvaluationInput(validResolvedCliInput());
+    const declaration = pairedInput();
+    const facade = await prepareEvaluation({
+      ...declaration,
+      variants: declaration.variants.map((variant, index) => ({
+        ...variant, variantId: index === 0 ? 'control' : 'treatment',
+      })),
+      comparisons: [{
+        ...declaration.comparisons[0], controlVariantId: 'control', treatmentVariantIds: ['treatment'],
+      }],
+      analyses: [{ ...declaration.analyses[0], treatmentVariantId: 'treatment' }],
+      experiment: { ...declaration.experiment, seed: cli.definition.experiment.seed },
+    });
+
+    expect(cli.definition.schemaVersion).toBe(facade.definition.schemaVersion);
+    expect(cli.definition.targets.map((target) => target.targetId))
+      .toEqual(facade.definition.targets.map((target) => target.targetId));
+    expect(cli.definition.experiment.seed).toBe(facade.definition.experiment.seed);
+    // Literal goldens pin the existing serialized identities of both real entry points.
+    expect(cli.definition.experiment.randomizationSlots).toEqual([
+      { targetId: 'control', randomizationSlotId: 'slot-control' },
+      { targetId: 'treatment', randomizationSlotId: 'slot-treatment' },
+    ]);
+    expect(facade.definition.experiment.randomizationSlots).toEqual([
+      { targetId: 'treatment', randomizationSlotId: 'slot:2a9499ebc1fbffa495e5b6150030530a9d0047e65c0392d563dc19da019d86dc' },
+      { targetId: 'control', randomizationSlotId: 'slot:afa301ba74e03925902a684e3b97b4c21bf9f235ea38a1ed7686dfd70444e954' },
+    ]);
+    expect(cli.definition.comparisons.map((comparison) => comparison.comparisonId))
+      .toEqual(['control-vs-treatment']);
+    expect(facade.definition.comparisons.map((comparison) => comparison.comparisonId))
+      .toEqual(['baseline-vs-candidate']);
+
+    // Hold data, seed and every other design fact fixed, then substitute only the
+    // actual entry-point slot mappings. This proves a measurement consequence,
+    // rather than comparing two otherwise unrelated fixture Definition digests.
+    const samples = projectExecutionInputs(deepClone(facade.definition.dataset));
+    const executionInputDigest = digestCanonicalJson(samples);
+    const identityForSlots = (slots: readonly { targetId: string; randomizationSlotId: string }[]) => {
+      const experiment = {
+        ...facade.definition.experiment,
+        assignment: {
+          assignmentKind: 'complete-block' as const,
+          algorithmId: 'assignment.complete-block/v1' as const,
+          randomizationSlotIds: slots.map((slot) => slot.randomizationSlotId),
+        },
+        randomizationSlots: slots.map((slot) => ({ ...slot })),
+      };
+      const randomizationDesignDigest = computeRandomizationDesignDigest({
+        executionInputDigest, samples, experiment,
+        schedulingTargetGroups: [['control', 'treatment']],
+        assignments: deriveAssignmentMemberships({ samples, experiment }),
+      });
+      const randomizationSlotId = slots.find((slot) => slot.targetId === 'control')!.randomizationSlotId;
+      return {
+        randomizationDesignDigest,
+        trialSeed: deriveTrialSeed({
+          randomizationDesignDigest, seedCoupling: 'uncontrolled',
+          trialIndex: 0, sampleId: samples[0].sampleId, randomizationSlotId,
+        }),
+      };
+    };
+    const cliIdentity = identityForSlots(cli.definition.experiment.randomizationSlots);
+    const facadeIdentity = identityForSlots(facade.definition.experiment.randomizationSlots);
+    expect(cliIdentity.randomizationDesignDigest).not.toBe(facadeIdentity.randomizationDesignDigest);
+    expect(cliIdentity.trialSeed).not.toBe(facadeIdentity.trialSeed);
   });
 
   it('keeps execution replay and evaluation reuse independent and host-sourced', () => {
