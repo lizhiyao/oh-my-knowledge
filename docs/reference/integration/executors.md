@@ -92,6 +92,12 @@ Auxiliary Codex CLI/SDK calls likewise reject explicit `allowedSkills`, includin
 - **Config and session isolation**: before launch, omk resolves only the model from the local Codex config (the profile model when top-level `profile` selects one) and passes it explicitly. `codex` passes `--ephemeral` + `--ignore-user-config` + `--ignore-rules`. `codex-sdk` redirects `$CODEX_HOME` to a fresh tmp dir for every execution, copies `auth.json`, and removes the directory after the child exits; user config and prior SDK sessions therefore do not leak into the run.
 - **SDK execpolicy limitation**: the current `@openai/codex-sdk` API does not expose the CLI's `--ignore-rules` switch. Project execpolicy discovered from an explicitly selected working directory can therefore still affect `codex-sdk`. Keep the executor and runtime context fixed, or prefer `codex` when project-rule isolation is required.
 
+### Codex SDK contract coverage
+
+The optional peer range permits installation; it does not certify every version in that range. Repository tests install exactly `@openai/codex-sdk` 0.149.0, pinned in [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) and [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock). Tests check OMK's types against the real SDK declarations, resolve its installed module and bundled native package, and drive the actual SDK through a temporary fake executable to verify options, private environment, events and child termination after abort. The process fixture uses a POSIX executable and skips Windows; a passing run covers only its actual OS, architecture and Node version. These checks make no model calls and read no user authentication; they do not establish live authentication, provider behavior or compatibility with other SDK versions. See the [official SDK guide](https://learn.chatgpt.com/docs/codex-sdk).
+
+In this tested SDK, `runStreamed` fills a missing `cache_write_input_tokens` field in `turn.completed.usage` with `0`. OMK currently projects that normalized SDK field into `cacheWriteInputTokens`; that value alone does not prove the provider reported zero cache writes. The contract test makes the absent CLI field and SDK-generated zero explicit. Existing usage and persisted evidence formats are unchanged; keep the SDK version fixed when comparing measurements.
+
 ## DeepSeek Harness: prefer the host plugin
 
 If DSH is already your local harness, load OMK into the existing profile instead of making OMK start another runtime:

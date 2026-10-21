@@ -4,9 +4,10 @@ import { CODEX_WORKSPACE_WRITE_SANDBOX_ID } from '../../../../../src/eval-workfl
 import {
   executeRunPlan,
 } from '../../../../helpers/core-runs.js';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   digestCanonicalJson,
@@ -32,6 +33,7 @@ import {
   type CodexSdkEnvironmentEntry,
 } from '../../../../../src/eval-workflows/hosts/adapters/codex/sdk.js';
 import {
+  resolveInstalledCodexSdkRuntime,
   type CodexSdkClientOptions,
   type CodexSdkThreadOptions,
   type ResolvedCodexSdkRuntime,
@@ -49,6 +51,27 @@ import {
   validDefinition,
   validPolicy,
 } from '../../../../eval-core/compiler/fixtures.js';
+
+it('resolves the exact installed SDK, bundled native files and lazy client without starting Codex', async () => {
+  const manifest = JSON.parse(await readFile(fileURLToPath(new URL('../../../../../package.json', import.meta.url)), 'utf8'));
+  const version = manifest.devDependencies['@openai/codex-sdk'];
+  expect(manifest.peerDependenciesMeta['@openai/codex-sdk'].optional).toBe(true);
+  const runtime = await resolveInstalledCodexSdkRuntime();
+  expect(runtime.sdkVersion).toBe(version);
+  expect(runtime.codexVersion).toBe(version);
+  const mandatoryFacets = [
+    'codex-sdk.package-manifest', 'codex-sdk.entrypoint', 'codex.package-manifest',
+    'codex-native.package-manifest', 'codex-native.executable',
+  ];
+  for (const facetId of mandatoryFacets) {
+    const file = runtime.contentIdentityFiles.find((candidate) => candidate.facetId === facetId);
+    expect(file, facetId).toBeDefined();
+    expect((await stat(file!.path)).isFile(), facetId).toBe(true);
+  }
+  const root = testDirectory('omk-codex-sdk-resolver-');
+  const client = await runtime.createClient({ env: { HOME: root, CODEX_HOME: root, PATH: '' } });
+  expect(typeof client.startThread({ sandboxMode: 'read-only' }).runStreamed).toBe('function');
+});
 
 function digest(value: JsonValue): Sha256Digest {
   return digestCanonicalJson(value);
