@@ -170,7 +170,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     const getter = vi.fn(() => 'must not run'); const unsafe = nativeOutcome(); Object.defineProperty(unsafe.result, 'secret', { enumerable: true, get: getter });
     expect(ExtractionOutcomeSchema.safeParse(unsafe).success).toBe(false); expect(getter).not.toHaveBeenCalled();
   });
-  it('preserves failure/refusal/cleanup evidence and explicitly labels authored projections', () => {
+  it('preserves failure/refusal/cleanup evidence, failed terminal states and authored projections', () => {
     const workspace = root(), store = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace);
     const outcomes: ExtractionOutcome[] = [
       { ...nativeOutcome('partial output'), result: { ...nativeOutcome().result, ok: false, output: 'partial output', refusal: 'original refusal', failure: { failureKind: 'refusal' } }, cleanupFailure: { diagnostic: 'cleanup did not finish' } },
@@ -183,9 +183,21 @@ describe('v5 extraction manifests and immutable native evidence', () => {
       const ref = store.writeOutcome(run.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
       expect(store.readOutcome(run.runId, attempt.attemptId, ref).outcome).toEqual(outcome);
       if (outcome.outcomeKind === 'exception') expect(() => store.save({ ...run, generation: 2, runtime: { durationMs: 0 }, attempts: [{ ...attempt, outcome: ref }] }, 1)).toThrow('no returned result archive');
-      const failed: ExtractionRun = { ...run, generation: 2, status: 'failed', attempts: [{ ...attempt, outcome: ref, failure: { failureKind: 'fixture_failure', diagnostic: 'final failure' } }] };
-      store.save(failed, 1);
-      expect(() => store.save({ ...failed, generation: 3, attempts: [{ ...failed.attempts[0], failure: { failureKind: 'different', diagnostic: 'changed' } }] }, 2)).toThrow('attempt conflict');
+      const unacknowledged: ExtractionRun = { ...run, generation: 2, status: 'failed', attempts: [{ ...attempt, failure: { failureKind: 'fixture_failure', diagnostic: 'final failure' } }] };
+      store.save(unacknowledged, 1);
+      // Failure is terminal, while acknowledgement of the same archived attempt remains possible.
+      const failed: ExtractionRun = { ...unacknowledged, generation: 3, attempts: [{ ...unacknowledged.attempts[0], outcome: ref }] };
+      store.save(failed, 2);
+      const manifest = join(workspace, 'extraction-runs', `${run.runId}.json`);
+      const sidecar = join(workspace, 'extraction-runs', 'outcomes', run.runId, `${attempt.attemptId}.json`);
+      const manifestBytes = readFileSync(manifest), outcomeBytes = readFileSync(sidecar);
+      store.save(failed, 2); // An identical acknowledgement wins before the generation check.
+      for (const status of ['generating', 'cancelled'] as const) {
+        expect(() => store.save({ ...failed, generation: 4, status }, 3)).toThrow('terminal');
+      }
+      expect(() => store.save({ ...failed, generation: 4, attempts: [{ ...failed.attempts[0], failure: { failureKind: 'different', diagnostic: 'changed' } }] }, 3)).toThrow('attempt conflict');
+      expect(store.read(run.runId)).toEqual(failed);
+      expect(readFileSync(manifest)).toEqual(manifestBytes); expect(readFileSync(sidecar)).toEqual(outcomeBytes);
     }
   });
   it('keeps prepared UUIDs, rejections and intents immutable and never rolls a completed run back', () => {
@@ -264,6 +276,16 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     expect(ExtractionRunSchema.safeParse({ ...single, attempts: [...single.attempts, single.attempts[0]] }).success).toBe(false);
     expect(ExtractionRunSchema.safeParse({ ...single, attempts: [{ ...single.attempts[0], budget: run.attempts[0].budget }] }).success).toBe(false);
     expect(readFileSync(singlePath, 'utf8')).toBe(singleBytes);
+    const failedBase = boundedRunFixture(); store.create(failedBase);
+    const archived = archiveBoundedAttempt(store, failedBase, firstOutcome, { failureKind: 'server_error', diagnostic: 'terminal native failure' });
+    const failed: ExtractionRun = { ...archived, generation: archived.generation + 1, status: 'failed' };
+    store.save(failed, archived.generation);
+    const failedPath = join(directory, `${failed.runId}.json`), failedBytes = readFileSync(failedPath);
+    const failedSidecar = join(directory, 'outcomes', failed.runId, `${failed.attempts[0].attemptId}.json`), failedOutcomeBytes = readFileSync(failedSidecar);
+    expect(() => store.save({ ...failed, generation: failed.generation + 1,
+      attempts: [...failed.attempts, followingAttempt(failed)] }, failed.generation)).toThrow('cannot append another attempt');
+    expect(store.read(failed.runId)).toEqual(failed);
+    expect(readFileSync(failedPath)).toEqual(failedBytes); expect(readFileSync(failedSidecar)).toEqual(failedOutcomeBytes);
   });
   it('verifies accounting against every native archive and binds the single birth to the selected final attempt', () => {
     const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
