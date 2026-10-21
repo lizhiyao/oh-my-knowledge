@@ -47,6 +47,10 @@ EvaluationPresentationOptions + static RunOptions metadata
 
 ## 3. Identity, lineage, and resource safety
 
+The product CLI compiler and the Runtime declaration facade (`prepareEvaluation()` / `evaluate()`) share the Core `EvaluationDefinition` schema, not an interchangeable identity mapping. The CLI requires exactly one control and at least one treatment, derives `slot-${targetId}` slots and one `control-vs-${targetId}` comparison per treatment, and compiles product behavior config. The facade derives selector-addressed `slot:<digest>` slots, preserves caller-declared comparison IDs, and captures its own Variant config envelope; it also supports solo and independent designs. These are separate input contracts, rather than two serializers of the same declaration.
+
+Equal sample labels, Target / Variant labels, model names, or root seeds therefore do not imply equal Definition, Plan, randomization, or Trial identities. Slot identity enters assignment, randomization and scheduling; comparison identity enters analysis. Do not rename these fields to force equality, reuse a sealed Plan or cache entry across the entry points, or infer comparability from labels. Core's explicit identity checks and comparability assessment remain authoritative. This clarification preserves all existing identity bytes, schema versions, seeds and measurement semantics; no migration or compatibility mapping is introduced.
+
 Behavior identity and source lineage are separate axes:
 
 - Target config contains Target-wide behavior facts such as artifact, mock, sandbox, model, and effort. Canonical `executionControls` separately holds Target defaults and sample overrides for workspace and tool authority; its workspace descriptors contain no locator.

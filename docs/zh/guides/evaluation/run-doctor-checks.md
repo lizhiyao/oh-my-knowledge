@@ -27,6 +27,8 @@ omk doctor skills/ --repeat 3 --concurrency 1  # 串行（降低瞬时并发）
 
 ## 静态检测（无 LLM）
 
+未配置模型时，默认 doctor 以退出码 2 结束，同时给出模型配置方法和检查同一目标的 `--static-only` 命令，不会静默跳过 LLM 健康度审计。
+
 ```bash
 omk doctor skills/ --static-only
 ```

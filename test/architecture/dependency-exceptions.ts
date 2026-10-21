@@ -14,7 +14,7 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
   'observability/skill-health/advisories.ts',
   'observability/skill-health/skill-chain.ts',
 ]);
-// #1285 只移动既有依赖：按新子域观察后，原 Observability 聚合环显露为六域 SCC。
+// #1299 移除观测入口对知识用例的聚合后，仅登记知识内部的四域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
 const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   // #1304: fixed workers preserve the existing synchronous checker; only delivery scheduling changes.
@@ -68,7 +68,6 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/run-store.ts → knowledge/extraction/run-sealing.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/runs.ts',
   'knowledge/adapters/trace-evidence.ts → knowledge/extraction/evidence.ts',
-  'knowledge/adapters/trace-evidence.ts → observability/trace/source.ts',
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation.ts',
@@ -100,15 +99,6 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-executor.ts',
   'knowledge/entity-linking/entity-links.ts → knowledge/application/library.ts',
-  'observability/application.ts → knowledge/adapters/executor.ts',
-  'observability/application.ts → knowledge/adapters/trace-evidence.ts',
-  'observability/application.ts → knowledge/application/auto-extraction.ts',
-  'observability/application.ts → knowledge/application/library.ts',
-  'observability/application.ts → knowledge/application/local.ts',
-  'observability/application.ts → knowledge/application/operations.ts',
-  'observability/application.ts → knowledge/extraction/conversation-source.ts',
-  'observability/application.ts → knowledge/extraction/generation-policy.ts',
-  'observability/application.ts → knowledge/extraction/runs.ts',
 ] as const;
 
 const KNOWLEDGE_AGGREGATE_TYPE_EDGES = [
@@ -116,18 +106,8 @@ const KNOWLEDGE_AGGREGATE_TYPE_EDGES = [
   'knowledge/application/study-runner.ts → knowledge/extraction/study-plan.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/generation.ts',
   'knowledge/adapters/executor.ts → knowledge/extraction/runs.ts',
-  'knowledge/adapters/trace-evidence.ts → observability/trace/trace-ir.ts',
-  'knowledge/application/auto-extraction.ts → observability/conversation/catalog.ts',
-  'knowledge/extraction/conversation-source.ts → observability/conversation/catalog.ts',
   'knowledge/entity-linking/entity-link-source.ts → knowledge/application/application.ts',
   'knowledge/entity-linking/entity-links.ts → knowledge/application/application.ts',
-  'observability/application.ts → knowledge/application/application.ts',
-  'observability/application.ts → knowledge/application/auto-extraction.ts',
-  'observability/application.ts → knowledge/application/library.ts',
-  'observability/application.ts → knowledge/application/operations.ts',
-  'observability/application.ts → knowledge/extraction/evidence.ts',
-  'observability/application.ts → knowledge/extraction/generation-policy.ts',
-  'observability/application.ts → knowledge/extraction/runs.ts',
 ] as const;
 
 function isRegisteredKnowledgeBoundary(edge: BoundaryEdge): boolean {
@@ -138,13 +118,17 @@ function isRegisteredKnowledgeBoundary(edge: BoundaryEdge): boolean {
 
 export const REGISTERED_RUNTIME_CYCLES = [
   {
-    domains: ['diagnosis', 'knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction', 'observability'],
+    domains: ['diagnosis', 'observability'],
     edges: [
       'diagnosis/observe-producer.ts → observability/skill-health/advisories.ts',
-      ...KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
       'observability/inbox/report-store.ts → diagnosis/contracts/parser.ts',
     ],
-    rationale: '迁移前 Observability 内的提取、关联、应用与适配器聚合关系原样保留；新知识子域消费 Trace，观测应用继续向交付层装配知识能力。Diagnosis 与 Observability 的 producer／wire contract 边界未变。',
+    rationale: 'Diagnosis producer 消费观测建议，观测只消费 Diagnosis wire parser；知识用例不再经过观测入口。',
+  },
+  {
+    domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
+    edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
+    rationale: '保留知识内部既有的生产生成、关联与纯证据校验边界；Trace 仍由知识适配器单向消费，不再形成经过观测装配入口的反向边。',
   },
 ] as const;
 
@@ -242,8 +226,14 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/docs.ts',
     expression: 'registryModuleUrl',
-    sourceSha256: '2919557f97657ed5ea4f6f4f4103f56c1f398aed39188ebf409ad74873ef7a55',
+    sourceSha256: '17b2f1b867dabb8bf97a3d5318ed3576c27cdd34746346f07c99e45f424684ea',
     rationale: 'Loads only the built input-compilation registry to derive CLI documentation; the sealed source fixes the file URL.',
+  },
+  {
+    importer: 'scripts/build/knowledge-contract.ts',
+    expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
+    sourceSha256: '8fcc021764390af3036d2eaecc2bbe31b9e4fec0a8df275adce5603bd6bd703f',
+    rationale: 'Documentation generation loads only eleven fixed compiled knowledge modules to derive current identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',
@@ -256,10 +246,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
 export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => boolean> = {
   'knowledge/adapters↔knowledge/extraction': isRegisteredKnowledgeBoundary,
   'knowledge/adapters↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
-  'knowledge/adapters↔observability': isRegisteredKnowledgeBoundary,
   'knowledge/application↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
-  'knowledge/application↔observability': isRegisteredKnowledgeBoundary,
-  'knowledge/extraction↔observability': isRegisteredKnowledgeBoundary,
   'evidence/graph↔knowledge/artifacts/doctor': (edge) => {
     // Doctor owns report persistence; the graph producer consumes only its wire types.
     // This is not a runtime back-edge, and no other doctor/graph imports are admitted.

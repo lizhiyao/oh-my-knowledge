@@ -17,12 +17,14 @@ This release includes `BREAKING-CLI`, `BREAKING-SCHEMA`, and `BREAKING-COMPARABI
 
 1. **Back up** the explicitly selected knowledge directory, project `.omk/`, and machine `~/.oh-my-knowledge/`. The knowledge directory may be elsewhere; backing up only global state is insufficient.
 2. **Remove retired commands and fields**: `list`, `promote`, `rollback`, `eval --no-evidence`, and `observe --feedback` / `--no-feedback`. Existing managed records are preserved but not read; see the final section of this guide.
-3. **Do not treat old extraction output as the current structure**: current entity history is v2 and extraction runs are v4. Old entity history v1, run v3, and other old formats are not read, resumed, or migrated. Old knowledge v2 content remains readable, but its old entity-analysis binding is unavailable. Choose a new empty knowledge directory, extract again from original logs, and review manually. Extraction calls a model; review transmission scope and runtime first. Original files remain, and new entities do not take over old knowledge bindings automatically. See the [entity extraction contracts](../../specs/entities/entity-extraction.md).
-4. **Give new measurements a new identity**: current extraction uses `knowledge-extraction-v14`. Prompt bytes, admission semantics, and run identities changed; historical reports and scores are not recomputed, and incompatible old and new results cannot form one comparison. Reproduce historical results with their frozen baseline. Existing quality reports do not establish overall quality for the new version.
+3. **Do not treat old extraction output as the current structure**: Beta.14 entity history is v2 and extraction runs are v4. Old entity history v1, run v3, and other old formats are not read, resumed, or migrated. Old knowledge v2 content remains readable, but its old entity-analysis binding is unavailable. Choose a new empty knowledge directory, extract again from original logs, and review manually. Extraction calls a model; review transmission scope and runtime first. Original files remain, and new entities do not take over old knowledge bindings automatically. See the [entity extraction contracts](../../specs/entities/entity-extraction.md).
+4. **Give new measurements a new identity**: Beta.14 extraction uses `knowledge-extraction-v14`. Prompt bytes, admission semantics, and run identities changed; historical reports and scores are not recomputed, and incompatible old and new results cannot form one comparison. Reproduce historical results with their frozen baseline. Existing quality reports do not establish overall quality for the new version.
 
 The maintenance path supports sources, precise revisions, and retained history. It does not automatically prove dynamic SDK effects, time saved, or cross-agent reuse benefits.
 
 **Gold limitation:** `omk eval gold init` still creates a generic scaffold; align real sample IDs manually. Gold comparison reports human/judge agreement and post-hoc reliability without changing an existing run’s release decision. See the CLI migration selectors below.
+
+The Beta.14 identities above describe that published release. Current main has later extraction and review capabilities with different identities and storage boundaries; use the [capability tiers](../knowledge/extract-knowledge.md#availability) and [current generated contract](../../reference/shared/knowledge-contract.md) before following current-main commands. A main merge is not a release, and the historical instructions above do not supply a migration for later formats.
 
 ## 1. Start a new evidence history
 
@@ -99,3 +101,11 @@ The migration preserves the frozen evaluator prompts, five scoring layers, compa
 The `list`, `promote`, and `rollback` commands, the `eval` option `--no-evidence`, and the `observe` options `--feedback` / `--no-feedback` have been removed without aliases or compatibility entry points. Remove these calls from scripts and use `doctor` and `eval` results and reports to decide subsequent actions. File restoration and deployment belong to your version-control and release workflows. `omk install` now only installs; it no longer registers a lifecycle. Studio managed-history pages and `/api/managed` have also been removed.
 
 Existing files under `.omk/governance/managed/` or `OMK_HOME/governance/managed/` remain on disk untouched. The new version does not read, rewrite, migrate, or automatically delete them. Archive the original JSON yourself if needed; installed skills do not need reinstalling. Core evaluation artifacts, content identities, and measurement semantics are unchanged.
+
+## Install command surface (BREAKING-CLI)
+
+`omk install` installs only skills. Omit `--kind` or use `--kind skill`; `prompt`, `agent`, and `workflow` are rejected with exit code 2 before source resolution or any installation, including for the built-in `omk-agent-skill`.
+
+Replace `--to all` with `--to codex`. The only target values are `auto` (the default, detects a Codex/AGENTS directory) and `codex` (installs there without prior detection). Comma-separated target lists are also rejected with exit code 2. Use `--dest <dir>` for a custom skill root. No alias for `all` or target lists is retained.
+
+Previously installed skills and historical metadata remain untouched and do not need reinstalling. Explicit installation still follows the existing `--force`, `--dry-run`, and source/target overlap protections. This changes CLI validation, not artifact formats or measurement semantics.

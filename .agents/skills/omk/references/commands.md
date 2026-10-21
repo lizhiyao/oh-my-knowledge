@@ -382,9 +382,9 @@ omk install <input> [flags]
 - `--force` `boolean`:覆盖目标位置已存在的 skill。
 - `--git-ref` `option`:远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。
 - `--git-url` `option`:远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。
-- `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
+- `--kind` `skill`:安装的 Artifact.kind，可省略；仅支持 skill。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / all。
+- `--to` `auto|codex` (默认 `auto`):安装目标：auto（默认，检测 Codex/AGENTS）或 codex（直接安装）。
 
 **示例:**
 
@@ -394,10 +394,10 @@ omk install <input> [flags]
 omk install omk-agent-skill
 ```
 
-> 强制安装到当前 omk 已知的所有目标
+> 直接安装到 Codex/AGENTS，无需提前检测到目录
 
 ```bash
-omk install omk-agent-skill --to all
+omk install omk-agent-skill --to codex
 ```
 
 > 安装到自定义 skill 根目录
@@ -406,7 +406,7 @@ omk install omk-agent-skill --to all
 omk install omk-agent-skill --dest ~/.my-agent/skills
 ```
 
-> 安装用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）
+> 安装用户自己的 skill（可省略 --kind skill）
 
 ```bash
 omk install ./skills/review
@@ -426,7 +426,7 @@ omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/re
 
 ## omk observe
 
-把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show。
+把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show / knowledge / entity-links。
 
 **用法:**
 

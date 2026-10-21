@@ -728,6 +728,11 @@ function compileEvaluators(input: ResolvedCliEvaluationInput): EvaluatorDefiniti
   return evaluators.sort((left, right) => compareStrings(left.evaluatorId, right.evaluatorId));
 }
 
+// CLI-derived identities are local to this compiler. Runtime's declaration facade
+// shares the Core schema, but derives its own slots and accepts caller comparison IDs.
+type CliRandomizationSlotId = `slot-${string}`;
+type CliComparisonId = `control-vs-${string}`;
+
 function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinition {
   assertUnique(input.dataset.samples.map((sample) => sample.sampleId), 'dataset.samples[].sampleId');
   assertUnique(input.targets.map((target) => target.targetId), 'targets[].targetId');
@@ -806,12 +811,12 @@ function compileDefinition(input: ResolvedCliEvaluationInput): EvaluationDefinit
       ...input.experiment,
       randomizationSlots: targets.map((target) => ({
         targetId: target.targetId,
-        randomizationSlotId: `slot-${target.targetId}`,
+        randomizationSlotId: `slot-${target.targetId}` satisfies CliRandomizationSlotId,
       })),
     },
     analysisGraph: { analysisMode: input.analysisGraph.analysisMode, nodes: analysisNodes },
     comparisons: treatments.map((target) => ({
-      comparisonId: `control-vs-${target.targetId}`,
+      comparisonId: `control-vs-${target.targetId}` satisfies CliComparisonId,
       controlTargetId: controls[0].targetId,
       treatmentTargetIds: [target.targetId],
       metricIds: input.metrics.map((metric) => metric.metricId).sort(compareStrings),

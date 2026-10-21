@@ -7,11 +7,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Config } from '@oclif/core';
+import Observe from '../../src/cli/commands/observe/index.js';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import ObserveShow from '../../src/cli/commands/observe/show.js';
 import { renderCommandHelp, runCommand, type CommandRunError } from '../helpers/run-command.js';
-import { runCli } from '../helpers/cli-process.js';
+import { PROJECT_ROOT, runCli } from '../helpers/cli-process.js';
 
 function makeIngestTrace(dir: string): string {
   mkdirSync(dir, { recursive: true });
@@ -57,6 +59,17 @@ describe('oclif observe', () => {
     assert.ok(stdout.includes('统一为 Trace IR'), `default observe --help missing source-neutral description:\n${stdout}`);
     assert.ok(stdout.includes('SESSIONSDIR'), 'should list positional');
     assert.ok(stdout.includes('--kb'), 'should list --kb flag');
+    const config = await Config.load(PROJECT_ROOT);
+    const children = config.commands.map(command => command.id).filter(id => /^observe:[^:]+$/.test(id));
+    for (const language of ['zh', 'en'] as const) {
+      const description = Observe.description.split('\n')[language === 'zh' ? 0 : 1];
+      const help = await renderCommandHelp('observe', language);
+      for (const id of children) {
+        const child = id.slice('observe:'.length);
+        assert.ok(description.includes(child), `${language} description omits routed ${id}`);
+        assert.ok(help.includes(child), `${language} help omits routed ${id}`);
+      }
+    }
   });
 
   it('observe ingest --help', async () => {

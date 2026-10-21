@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { ExtractionGenerationPolicySchema } from '../../../observability/application.js';
-import { knowledgeWorkspaceRefreshToken, type ConversationAutoExtraction } from '../../../observability/application.js';
+import { ExtractionGenerationPolicySchema } from '../../../knowledge/extraction/generation-policy.js';
+import { knowledgeWorkspaceRefreshToken } from '../../../knowledge/application/local.js';
+import { type ConversationAutoExtraction } from '../../../knowledge/application/auto-extraction.js';
 const text = z.string().trim().min(1).max(4096);
 const request = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('preview'), threadId: text }),

@@ -1,3 +1,4 @@
+import { assertPageFault } from '../_page-fault-assertions.js';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -126,7 +127,7 @@ describe('Next-hosted observation inbox route', () => {
     const url = await startInboxHost(dir);
     const response = await fetch(`${url}/observe/inbox`);
     assert.equal(response.status, 503);
-    assert.equal(await response.text(), 'studio_source_unavailable');
+    await assertPageFault(response, 'studio_source_unavailable');
   }, 20000);
 
   it('serves the conversation thread that the review card links to', async () => {

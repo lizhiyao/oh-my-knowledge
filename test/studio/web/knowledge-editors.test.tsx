@@ -95,6 +95,7 @@ function confirmOrganization() {
 }
 const writes = (calls: Call[], resource: string) => calls.filter(call => call.resource === resource && call.operation === 'save');
 beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   push.mockReset();
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }));
@@ -105,7 +106,6 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('conversation automation consent lifecycle', () => {
   it('requires fresh reviewed consent, ignores cancelled previews, and disposes an in-flight status poll on unmount', async () => {
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const calls: Call[] = [], previews = [deferred<Response>(), deferred<Response>(), deferred<Response>()], settings = deferred<Response>();
     const poll = deferred<Response>(), onChanged = vi.fn();
     const intervals = vi.spyOn(globalThis, 'setInterval'), clear = vi.spyOn(globalThis, 'clearInterval');
@@ -285,6 +285,8 @@ describe('conversation automation consent lifecycle', () => {
     }));
     const view = render(<AutoExtractConversation threadId="old-thread" lang="en" onChanged={changed}/>, { wrapper });
     await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    // The initial status callback precedes the effect that installs polling.
+    await waitFor(() => expect(intervals.mock.calls.some(([, delay]) => delay === 5000)).toBe(true));
     const callback = intervals.mock.calls.find(([, delay]) => delay === 5000)![0];
     if (typeof callback !== 'function') throw new Error('Expected polling callback');
     await act(async () => { callback(); callback(); });
