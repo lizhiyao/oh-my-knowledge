@@ -12,7 +12,7 @@ OMK 面向 Agent 使用者和 AI 应用开发者。从真实工作记录中提�
 
 ## 从本地工作记录开始
 
-需要 **Node.js ≥22**。本页的知识库、载体生成与变化核对需要 **1.0.0-beta.14 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.13 不包含这里的维护界面。旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
+需要 **Node.js ≥22**。本页的知识库、载体生成与变化核对需要 **1.0.0-beta.14 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.13 不包含这里的维护界面。严格结构化提炼、原生结果归档、有界重试、模型辅助的跨窗口关联复核与研究复核属于后续 main 能力，不能仅凭 Beta.14 版本号视为可用；对应发行与源码能力见[能力分档](docs/zh/guides/knowledge/extract-knowledge.md#availability)。旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
 
 ```bash
 npm i -g oh-my-knowledge@next
