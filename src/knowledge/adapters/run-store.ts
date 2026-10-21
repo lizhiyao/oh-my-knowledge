@@ -199,6 +199,7 @@ export class FileExtractionRunStore implements ExtractionRunStore {
         if (canonicalJson([run[field] ?? null]) !== canonicalJson([current[field] ?? null])) throw new Error('Extraction run identity conflict.');
       }
       if (current.status === 'completed' && run.status !== 'completed') throw new Error('Completed extraction run is terminal.');
+      if (current.status === 'failed' && run.status !== 'failed') throw new Error('Failed extraction run is terminal.');
       for (const field of ['rawOutput', 'runtime'] as const) {
         if (current[field] !== undefined && canonicalJson(run[field] ?? null) !== canonicalJson(current[field])) throw new Error(`Extraction ${field === 'runtime' ? 'runtime' : 'output'} differs from its persisted projection.`);
       }
@@ -210,6 +211,7 @@ export class FileExtractionRunStore implements ExtractionRunStore {
       if (run.committed.length < current.committed.length || canonicalJson(run.committed.slice(0, current.committed.length)) !== canonicalJson(current.committed)) throw new Error('Committed extraction prefix is immutable.');
       if (run.attempts.length < current.attempts.length || run.attempts.length > current.attempts.length + 1) throw new Error('Extraction attempt prefix conflict.');
       const appended = run.attempts.length > current.attempts.length;
+      if (appended && current.status === 'failed') throw new Error('Failed extraction run cannot append another attempt.');
       if (appended && (current.policy.policyId === 'knowledge-generation-single/v1' || current.selectedAttemptId
         || current.entityAnalysis || ['prepared', 'completed'].includes(current.status))) throw new Error('Selected extraction run cannot append another attempt.');
       if (appended && (!current.attempts[current.attempts.length - 1].outcome || !current.attempts[current.attempts.length - 1].accounting)) throw new Error('Extraction predecessor is not archived and accounted.');

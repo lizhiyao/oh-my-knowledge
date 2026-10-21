@@ -18,6 +18,7 @@ import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { extractionRunSummary, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
+import * as windowProposals from '../../src/knowledge/extraction/window-proposals.js';
 import { extractionModelInput, EXTRACTION_INPUT_MAX_BYTES } from '../../src/knowledge/extraction/model-input.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
 
@@ -176,19 +177,53 @@ describe('bounded extraction generation', () => {
     expect(extractionRunSummary(run).invocation.budget).toEqual({ reservedTokens: 3264, observedTokens: null, unknownAttempts: 1, maxTotalTokens: 3264 });
   });
 
-  it('bounds validation reasks and allocates only one empty birth when the final envelope remains structurally admissible', async () => {
-    for (const invalidJson of [true, false]) {
-      const f = setup((_input, index) => native(invalidJson ? `invalid JSON ${index}`
-        : JSON.stringify({ ...wireModelWindow(), entities: [{ entityId: 'invalid-item' }], mentions: [], proposals: [] })));
+  it('bounds validation reasks, preserves strict failure feedback and allocates one admissible empty birth', async () => {
+    for (const failureCode of ['parse_error', 'wire_error', 'empty_validation'] as const) {
+      const f = setup((_input, index) => native(failureCode === 'parse_error' ? `invalid JSON ${index}`
+        : JSON.stringify(failureCode === 'wire_error' ? {} : { ...wireModelWindow(), entities: [{ entityId: 'invalid-item' }], mentions: [], proposals: [] })));
       const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
       const run = await f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { policy: policy() });
-      expect(run.status).toBe(invalidJson ? 'failed' : 'completed'); expect(run.attempts).toHaveLength(3); expect(f.effects).toHaveBeenCalledTimes(3);
-      expect(run.attempts.slice(1).every(attempt => attempt.trigger?.triggerKind === 'validation')).toBe(true);
+      const admissibleEnvelope = failureCode === 'empty_validation';
+      expect(run.status).toBe(admissibleEnvelope ? 'completed' : 'failed'); expect(run.attempts).toHaveLength(3); expect(f.effects).toHaveBeenCalledTimes(3);
+      // A syntactically valid but invalid strict envelope is a wire_error, before the admission checker.
+      if (!admissibleEnvelope) expect(run.attempts.every(attempt => attempt.failure?.failureKind === failureCode)).toBe(true);
+      for (const [index, attempt] of run.attempts.slice(1).entries()) {
+        expect(attempt.trigger?.triggerKind).toBe('validation');
+        const feedback = JSON.parse(attempt.trigger!.feedback!.body);
+        expect(feedback.failureCode).toBe(failureCode);
+        expect(JSON.parse(f.effects.mock.calls[index + 1][0].prompt).feedback).toEqual({
+          feedbackVersion: attempt.trigger!.feedback!.feedbackVersion, ...feedback });
+      }
       expect(archived(run, f.runs)).toHaveLength(3); expect(run.committed).toEqual([]);
-      expect(entityWrite).toHaveBeenCalledTimes(invalidJson ? 0 : 1); expect(knowledgeWrite).not.toHaveBeenCalled();
+      expect(entityWrite).toHaveBeenCalledTimes(admissibleEnvelope ? 1 : 0); expect(knowledgeWrite).not.toHaveBeenCalled();
       expect(extractionRunSummary(run).invocation.budget.reservedTokens).toBe(3264);
-      expect(f.app.quality().groups[0].runs).toMatchObject({ total: 1, withAdmission: invalidJson ? 0 : 1 });
+      expect(f.app.quality().groups[0].runs).toMatchObject({ total: 1, withAdmission: admissibleEnvelope ? 1 : 0 });
     }
+  });
+
+  it('includes a defensive envelope_error in reask feedback without changing native evidence (fault injection)', async () => {
+    const f = setup(), entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+    const check = windowProposals.checkWindowExtractionResponse;
+    // The strict decoder already validates the native envelope. Inject a downstream
+    // checker rejection once to exercise the defensive catch, not a naturally bad strict response.
+    const rejection = vi.spyOn(windowProposals, 'checkWindowExtractionResponse').mockImplementationOnce((_input, excerpts) => check({}, excerpts));
+    try {
+      const run = await f.app.generate(f.snapshot.snapshotId, f.model, randomUUID(), undefined, { policy: policy() });
+      expect(run.status).toBe('completed'); expect(run.attempts).toHaveLength(2); expect(f.effects).toHaveBeenCalledTimes(2);
+      expect(rejection).toHaveBeenCalledTimes(2);
+      expect(run.attempts[0].failure?.failureKind).toBe('envelope_error'); expect(run.attempts[0].admission).toBeUndefined();
+      expect(run.attempts[1].failure).toBeUndefined(); expect(run.attempts[1].trigger?.triggerKind).toBe('validation');
+      const feedback = JSON.parse(run.attempts[1].trigger!.feedback!.body);
+      expect(feedback).toMatchObject({ failureCode: 'envelope_error', diagnostics: [] });
+      expect(JSON.parse(f.effects.mock.calls[1][0].prompt).feedback).toEqual({
+        feedbackVersion: run.attempts[1].trigger!.feedback!.feedbackVersion, ...feedback });
+      const outcomes = archived(run, f.runs);
+      expect(outcomes[0]).toMatchObject({ outcomeKind: 'result', result: native(validOutput(f.snapshot.excerpts[0].evidenceRef)) });
+      expect(entityWrite).toHaveBeenCalledTimes(1); expect(knowledgeWrite).toHaveBeenCalledTimes(1);
+      expect(extractionRunSummary(run).invocation.budget.reservedTokens).toBe(2176);
+      const path = join(f.root, 'extraction-runs', 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`), before = readFileSync(path);
+      expect(f.app.resume(run.runId)).toEqual(run); expect(f.effects).toHaveBeenCalledTimes(2); expect(readFileSync(path)).toEqual(before);
+    } finally { rejection.mockRestore(); }
   });
 
   it('does not retry hard failures, unbounded Retry-After, invalid usage or hidden multiple-attempt results', async () => {
