@@ -12,6 +12,8 @@ export interface ReportServerOptions {
   /** 监听 host。默认 '127.0.0.1'（只允许本机访问，容器／远程场景看不到）。
    * 暴露到容器外／局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */
   host?: string;
+  /** 仅显式允许时，经 /health 验证后关闭占用同一地址／端口的 OMK 服务。默认不接管。 */
+  takeover?: boolean;
   /** observe-health 报告目录，或一个按请求动态解析它的函数。 */
   analysesDir?: string | (() => string);
   /** 体检报告目录，或一个按请求动态解析它的函数。 */
@@ -47,8 +49,18 @@ export interface ReportServerOptions {
   studioPages?: boolean;
 }
 
+export interface ReportServerAddresses {
+  /** 实际监听地址；通配地址不是浏览器访问地址。 */
+  bindAddress: string;
+  /** 本机可打开的地址，与 start() / getUrl() 同源。 */
+  url: string;
+  /** 与绑定 family 一致的网卡候选；不证明防火墙、路由或公网可达性。 */
+  networkUrls: readonly string[];
+}
+
 export interface ReportServer {
   start(): Promise<string>;
   stop(): Promise<void>;
   getUrl(): string | null;
+  getAddresses(): ReportServerAddresses | null;
 }

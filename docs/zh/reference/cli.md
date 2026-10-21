@@ -414,6 +414,7 @@ omk studio --host 0.0.0.0                          # 局域网访问（默认 12
 omk studio --reports-dir ~/.oh-my-knowledge/eval
 omk studio --observations-dir .omk/observe/inbox    # observe inbox 数据目录
 omk studio --no-open
+omk studio --port 7799 --takeover                  # 显式替换经验证的 OMK 服务
 ```
 
 <!-- omk:cli:studio:flags:start -->
@@ -426,12 +427,13 @@ omk studio --no-open
   --dev                       dev 模式：子进程启动 + 热更新
   --doctors-dir <value>       体检报告目录（可选，默认项目级 .omk/doctor，空则全局兜底）
   --global                    只看全局 eval / observe/health / doctor / observe/inbox 目录（~/.oh-my-knowledge/），而非机器级聚合 / 项目优先
-  --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
+  --host <value>              监听地址，默认 127.0.0.1（或 OMK_REPORT_HOST）。0.0.0.0／:: 显式向网络开放
   --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe/inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
   --reports-dir <value>       只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
+  --takeover                  显式替换同地址／端口上经验证的 OMK 服务；默认端口占用时报错，不关闭现有服务
 ```
 
 完整描述见 `omk studio --help`。
@@ -443,3 +445,7 @@ omk studio --no-open
 一级导航为「观测 → 评测 → 知识」，页面路径对应 `/observe`、`/measure`、`/knowledge`。观测展示对话与任务轨迹，评测展示 Core 测量结果，知识区提供知识库、候选核对和知识载体维护；体检与观测记录按需查看。访问 `/observe/inbox` 可查看观测审阅队列。旧页面地址不再提供服务。CI gate 使用 `omk eval` 的退出码，自动化应读取 Core report 产物。
 
 Studio 默认只监听回环地址，没有内置认证。选择 `--host 0.0.0.0` 会显式向网络暴露数据与变更 API，访问控制由部署方的可信网络或认证代理提供。全部响应设置 `nosniff`、`Referrer-Policy: no-referrer`，以及阻止修改 base URL 和加载插件对象、同时支持 Next 脚本及宿主嵌入的 CSP。JSON API 对超限请求体立即返回 `413`，并关闭尚未结束的请求连接。
+
+**端口冲突（`BREAKING-CLI`）：** 启动默认报错，不探测或关闭已有监听者，包括其他项目的 OMK 服务。请自行停止原服务或改用其他端口。只有显式 `--takeover` 才允许替换：同地址、同端口的服务必须通过 OMK 健康检查并确认关闭，两次请求均不跟随重定向；未验证的服务不会被关闭。评测预览也遵循此策略，不会自动接管正在运行的 Studio。开发模式仅在显式传入时转发 `--takeover`。
+
+启动访问 URL 取自 `server.start()`，使用实际绑定端口。单独打印的监听地址可能是通配地址（`0.0.0.0` 或 `[::]`），不能把它当作浏览器访问目标。通配监听时，Studio 还会列出与绑定地址族一致的非内部网卡候选，IPv6 地址带方括号。这些只是网卡候选，不代表已证明局域网或公网可达；访问仍取决于路由、容器、NAT 与防火墙。本机访问使用打印的本机 URL；显式绑定网卡时则使用该网卡的实际地址。

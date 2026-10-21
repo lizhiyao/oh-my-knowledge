@@ -24,7 +24,7 @@ import { createKnowledgeStudyRoutes } from './routes/knowledge-study.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
 
-type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host'> & {
+type RequestHandlerOptions = Omit<ReportServerOptions, 'port' | 'host' | 'takeover'> & {
   requestShutdown(): void;
 };
 

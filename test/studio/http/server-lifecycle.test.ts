@@ -2,16 +2,40 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { request } from 'node:http';
+import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { isIP, type AddressInfo } from 'node:net';
 import { afterEach, describe, it, vi } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
+import { projectServerAddresses } from '../../../src/studio/http/server-addresses.js';
 
 const temporaryDirectories: string[] = [];
 const runningServers: Array<ReturnType<typeof createReportServer>> = [];
+const foreignServers: Server[] = [];
+let projectedBoundHost: string | undefined;
+
+vi.mock('node:http', async () => {
+  const actual = await vi.importActual<typeof import('node:http')>('node:http');
+  return {
+    ...actual,
+    createServer: (handler: (req: IncomingMessage, res: ServerResponse) => void) => {
+      const server = actual.createServer(handler);
+      const address = server.address.bind(server);
+      const override = projectedBoundHost;
+      // A controlled non-loopback bind result while retaining real local TCP/HTTP delivery.
+      if (override) server.address = () => {
+        const bound = address();
+        return bound && typeof bound === 'object' ? { ...bound, address: override, family: isIP(override) === 6 ? 'IPv6' : 'IPv4' } : bound;
+      };
+      return server;
+    },
+  };
+});
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  projectedBoundHost = undefined;
   await Promise.all(runningServers.splice(0).map((server) => server.stop()));
+  await Promise.all(foreignServers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -30,6 +54,98 @@ async function waitUntilUnavailable(url: string): Promise<void> {
 }
 
 describe('Studio server lifecycle', () => {
+  it('accepts the actual address projected from a hostname bind without accepting arbitrary DNS', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-bound-host-'));
+    temporaryDirectories.push(observationsDir);
+    for (const [boundHost, canonicalHostname, otherHost] of [
+      ['192.0.2.8', '192.0.2.8', '192.0.2.9'],
+      ['::ffff:192.0.2.8', '[::ffff:c000:208]', '[::ffff:192.0.2.9]'],
+    ]) {
+      projectedBoundHost = boundHost;
+      const server = createReportServer({ port: 0, host: 'localhost', observationsDir });
+      runningServers.push(server);
+      const url = await server.start();
+      assert.equal(new URL(url).hostname, canonicalHostname);
+      const send = (host: string) => new Promise<number>((resolve, reject) => {
+        const req = request({ hostname: 'localhost', port: new URL(url).port, path: '/health', headers: { Host: host } }, response => {
+          response.resume(); response.on('end', () => resolve(response.statusCode!));
+        });
+        req.on('error', reject); req.end();
+      });
+      assert.equal(await send(new URL(url).host), 200, 'the canonical startup URL must pass the HTTP Host guard');
+      assert.equal(await send(isIP(boundHost) === 6 ? `[${boundHost}]` : boundHost), 200, 'equivalent IP spellings identify the same listener');
+      assert.equal(await send('localhost'), 200, 'the explicitly configured hostname remains usable');
+      assert.equal(await send('evil.example'), 403, 'binding to a hostname must not allow arbitrary DNS authorities');
+      assert.equal(await send(otherHost), 403, 'only the actual bound address is added');
+    }
+  });
+
+  it('requires explicit takeover before probing or stopping an occupied OMK listener', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-takeover-'));
+    temporaryDirectories.push(observationsDir);
+    const original = createReportServer({ port: 0, observationsDir });
+    runningServers.push(original);
+    const url = await original.start();
+    const port = Number(new URL(url).port);
+    const rejected = createReportServer({ port, observationsDir });
+    runningServers.push(rejected);
+    await assert.rejects(rejected.start(), /already in use[\s\S]*--takeover/);
+    assert.equal(original.getUrl(), url);
+    assert.deepEqual(await (await fetch(`${url}/health`)).json(), { ok: true, service: 'omk' });
+
+    const replacement = createReportServer({ port, observationsDir, takeover: true });
+    runningServers.push(replacement);
+    assert.equal(await replacement.start(), url);
+    assert.equal(original.getUrl(), null, 'only the explicit takeover may stop the original service');
+    assert.deepEqual(await (await fetch(`${url}/health`)).json(), { ok: true, service: 'omk' });
+  });
+
+  it('never sends shutdown by default and fails closed for unverifiable or redirecting listeners', async () => {
+    const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-no-takeover-'));
+    temporaryDirectories.push(observationsDir);
+    for (const mode of ['default', 'other', 'health-redirect', 'health-error', 'shutdown-redirect', 'shutdown-error'] as const) {
+      const requests: string[] = [];
+      const existing = createServer((req, res) => {
+        requests.push(`${req.method} ${req.url}`);
+        if ((mode === 'health-redirect' && req.url === '/health') || (mode === 'shutdown-redirect' && req.url === '/api/shutdown')) {
+          res.writeHead(302, { Location: '/redirect-target' }); res.end(); return;
+        }
+        res.writeHead(mode === 'health-error' || mode === 'shutdown-error' && req.url === '/api/shutdown' ? 503 : 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(req.url === '/health' ? { ok: true, service: mode === 'other' ? 'other' : 'omk' } : { ok: true }));
+      });
+      foreignServers.push(existing);
+      await new Promise<void>((resolve) => existing.listen(0, '127.0.0.1', resolve));
+      const port = (existing.address() as AddressInfo).port;
+      const incoming = createReportServer({ port, observationsDir, takeover: mode !== 'default' });
+      runningServers.push(incoming);
+      await assert.rejects(incoming.start(), mode.startsWith('shutdown-') ? /did not acknowledge shutdown/ : /already in use/);
+      assert.equal(incoming.getUrl(), null);
+      assert.deepEqual(requests, mode === 'default' ? [] : mode.startsWith('shutdown-')
+        ? ['GET /health', 'POST /api/shutdown'] : ['GET /health'], mode);
+      assert.equal(existing.listening, true, mode);
+    }
+  });
+
+  it('projects the actual bound family/port and only usable same-family network candidates', () => {
+    const interfaces = {
+      lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true, netmask: '255.0.0.0', cidr: '127.0.0.1/8', mac: '00:00:00:00:00:00' } as const],
+      en0: [
+        { address: '192.0.2.8', family: 'IPv4', internal: false, netmask: '255.255.255.0', cidr: '192.0.2.8/24', mac: '00:00:00:00:00:00' } as const,
+        { address: '2001:db8::8', family: 'IPv6', internal: false, netmask: 'ffff:ffff:ffff:ffff::', cidr: '2001:db8::8/64', mac: '00:00:00:00:00:00', scopeid: 0 } as const,
+        { address: 'fe80::8', family: 'IPv6', internal: false, netmask: 'ffff:ffff:ffff:ffff::', cidr: 'fe80::8/64', mac: '00:00:00:00:00:00', scopeid: 4 } as const,
+      ],
+    };
+    assert.deepEqual(projectServerAddresses({ address: '0.0.0.0', family: 'IPv4', port: 58123 }, interfaces), {
+      bindAddress: '0.0.0.0:58123', url: 'http://127.0.0.1:58123', networkUrls: ['http://192.0.2.8:58123'],
+    });
+    assert.deepEqual(projectServerAddresses({ address: '::', family: 'IPv6', port: 58124 }, interfaces), {
+      bindAddress: '[::]:58124', url: 'http://[::1]:58124', networkUrls: ['http://[2001:db8::8]:58124'],
+    });
+    assert.deepEqual(projectServerAddresses({ address: '127.0.0.1', family: 'IPv4', port: 58125 }, interfaces), {
+      bindAddress: '127.0.0.1:58125', url: 'http://127.0.0.1:58125', networkUrls: [],
+    });
+  });
+
   it('rejects rebinding before pages or API handlers while preserving loopback and explicit LAN access', async () => {
     const observationsDir = mkdtempSync(join(tmpdir(), 'omk-studio-host-'));
     temporaryDirectories.push(observationsDir);
@@ -47,6 +163,10 @@ describe('Studio server lifecycle', () => {
       });
       runningServers.push(server);
       const url = await server.start();
+      const addresses = server.getAddresses();
+      assert.equal(addresses?.url, url);
+      assert.equal(addresses?.bindAddress, `${host}:${new URL(url).port}`);
+      if (host === '127.0.0.1') assert.deepEqual(addresses.networkUrls, []);
       const send = (path: string, authority: string | string[], method = 'GET') => new Promise<number>((resolve, reject) => {
         const req = request(`${url}${path}`, {
           method, headers: [
@@ -135,6 +255,7 @@ describe('Studio server lifecycle', () => {
     vi.stubEnv('OMK_REPORT_PORT', '0');
     const url = await server.start();
     assert.match(url, /^http:\/\/\[::1\]:\d+$/);
+    assert.equal(server.getAddresses()?.bindAddress, `[::1]:${new URL(url).port}`);
     assert.equal((await fetch(`${url}/health`)).status, 200);
   });
 
@@ -154,6 +275,7 @@ describe('Studio server lifecycle', () => {
     assert.deepEqual(await shutdown.json(), { ok: true });
     await waitUntilUnavailable(url);
     assert.equal(server.getUrl(), null);
+    assert.equal(server.getAddresses(), null);
     const restarted = await server.start();
     assert.equal((await fetch(`${restarted}/health`)).status, 200);
   });
