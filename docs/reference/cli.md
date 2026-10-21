@@ -30,7 +30,7 @@ Initializes an **omk project** in the target directory: knowledge artifacts to m
 
 ```bash
 omk install omk-agent-skill            # built-in official omk Agent Skill (onboarding)
-omk install omk-agent-skill --to all
+omk install omk-agent-skill --to codex
 omk install ./skills/review            # install a local skill
 omk install git:main:skills/review     # install from a ref of the current repo (SHA is immutable, a branch drifts)
 omk install ./skills/review --dest ~/.my-agent/skills
@@ -41,14 +41,14 @@ omk install ./skills/review --dest ~/.my-agent/skills
 **Flags:**
 
 ```text
-  --dest <value>                  Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).
-  --dry-run                       Print install targets without writing files.
-  --force                         Overwrite an existing skill at the target location.
-  --git-ref <value>               Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.
-  --git-url <value>               Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
-  --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
-  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
-  --to <value>                    Install target: auto (default, detected local targets) / codex / all.
+  --dest <value>     Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).
+  --dry-run          Print install targets without writing files.
+  --force            Overwrite an existing skill at the target location.
+  --git-ref <value>  Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.
+  --git-url <value>  Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
+  --kind <skill>     Artifact.kind to install. Optional; only skill is supported.
+  --lang <value>     Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
+  --to <auto|codex>  Install target: auto (default, detect Codex/AGENTS) or codex (install directly).
 ```
 
 For full descriptions: `omk install --help`.
@@ -57,7 +57,7 @@ For full descriptions: `omk install --help`.
 
 Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
 
-The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+Only `skill` is installable; `--kind skill` is optional. The default `auto` target writes to Codex/AGENTS when `~/.codex` or `~/.agents` is a directory. Use `--to codex` to install there without prior detection, or `--dest` for a custom skill root. Target lists are not accepted. See the [upgrade guide](../guides/maintenance/v1-preview-migration.md) when updating older scripts.
 
 ## `omk doctor`
 
