@@ -116,6 +116,20 @@ one current responsibility; an independent top-level entity lifecycle is not req
 This source reorganization changes no public exports, model invocations, prompt bytes, Schema
 identity or persisted workspace paths, and adds no aggregate entrypoint or compatibility shim.
 
+### Extraction study responsibilities
+
+Keep extraction studies within the existing responsibility layers, with `study-*` module names. A study freezes and compares use of production capture, generation and replay; it does not own another extraction engine. A new aggregate `knowledge/study/` directory would mix deterministic review with host I/O unless it recreated the same layer boundaries. The current implementation already shares production generation and run storage, so relocation alone would not remove a dependency or a second implementation.
+
+| Responsibility | Current owner | Boundary |
+|---|---|---|
+| Corpus, frozen plan and capacity | `extraction/study-corpus.ts`, `study-plan.ts`, `study-capacity.ts` | Validate explicit inputs and identities; do not read sources or dispatch models. |
+| Semantic review, analysis and panel decisions | `extraction/study-review.ts`, `study-analysis.ts`, `study-panel.ts` | Derive conclusions from frozen evidence and declared receipts; AI review cannot become independent human acceptance. |
+| Execution and inspection use cases | `application/study-runner.ts`, `study-local.ts`, `study-inspection*.ts` | Assemble existing production ports, persist attempts and coordinate inspection workers; do not duplicate generation or rewrite evidence. |
+| Files, host identity and worker input | `adapters/study-files.ts`, `study-host.ts`, `study-inspection-*.ts` | Own filesystem reads, build fingerprints and bounded input preparation; keep these effects outside review calculations. |
+| CLI and Studio delivery | `cli/runtime/knowledge-study*.ts`, `studio/application/knowledge/study-inspection.ts` | Expose the shared use cases and project safe results; delivery does not define semantic acceptance. |
+
+This is a source ownership decision, not a new public study API. Keep the named modules discoverable through the [study specification](../specs/entities/entity-extraction-study.md); do not add a convenience barrel that restores cross-layer aggregation. Revisit a separate subdomain when an actual independent consumer or lifecycle requires a narrower contract. Any later move must preserve prompt bytes, frozen identities and historical evidence, and must audit runtime and type-only edges separately.
+
 Knowledge artifact lifecycle capabilities share one ownership boundary:
 
 ```text

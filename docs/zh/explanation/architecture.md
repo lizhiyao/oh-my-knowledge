@@ -114,6 +114,20 @@ knowledge/
 本次源码组织调整不改变公开 exports、模型调用、prompt 字节、Schema 身份或工作区持久化路径，
 不增加统一聚合入口或兼容 shim。
 
+### 提炼研究的职责归属
+
+提炼研究继续保留现有职责分层，使用 `study-*` 模块名前缀。研究冻结和比较的是生产捕获、生成与回放的使用过程，不另建提取引擎。新增聚合式 `knowledge/study/` 目录若不重建相同层次，就会混合确定性复核与宿主 I/O。当前实现已经复用生产生成和运行存储，仅搬目录不会消除依赖或第二份实现。
+
+| 职责 | 当前所有者 | 边界 |
+|---|---|---|
+| 语料、冻结计划与容量 | `extraction/study-corpus.ts`、`study-plan.ts`、`study-capacity.ts` | 校验显式输入与身份，不读取来源、不派发模型。 |
+| 语义复核、分析与面板裁决 | `extraction/study-review.ts`、`study-analysis.ts`、`study-panel.ts` | 从冻结证据和声明回执派生结论，AI 复核不能变成独立真人验收。 |
+| 执行与核对用例 | `application/study-runner.ts`、`study-local.ts`、`study-inspection*.ts` | 装配既有生产端口、保存尝试并协调核对 worker，不复制生成、不改写证据。 |
+| 文件、宿主身份与 worker 输入 | `adapters/study-files.ts`、`study-host.ts`、`study-inspection-*.ts` | 负责文件读取、构建指纹及有界输入准备，副作用留在复核计算之外。 |
+| CLI 与 Studio 交付 | `cli/runtime/knowledge-study*.ts`、`studio/application/knowledge/study-inspection.ts` | 暴露共用用例并投影安全结果，交付层不定义语义验收。 |
+
+这是源码归属决定，不是新增公开 study API。通过[研究规范](../specs/entities/entity-extraction-study.md)定位这些具名模块，不增加重新聚合跨层依赖的便利 barrel。实际出现独立消费方或生命周期、需要更窄契约时，再评估单独子域；任何后续移动都应保留 prompt 字节、冻结身份及历史证据，分别审计运行时和仅类型依赖。
+
 知识载体生命周期能力归入同一个所有权边界：
 
 ```text
