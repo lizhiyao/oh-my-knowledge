@@ -1,6 +1,5 @@
-import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, writeFileSync, linkSync, renameSync, rmSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { EntityLinkWriteCapacityError, type EntityLinkInvocation, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction } from '../entities/link-invocation.js';
 import { validateEntityLinkInvocation, projectEntityLinkInvocation } from '../entities/link-invocation-state.js';
@@ -9,6 +8,7 @@ import { checkStorageDirectory, KnowledgeStorageStateError } from '../../evidenc
 import { entityLinkDigest } from '../entity-linking/entity-link-hash.js';
 import { createHash } from 'node:crypto';
 import { FileLibraryStore } from './library-store.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 
 const integrity = { hashJson: entityLinkDigest, hashText: (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}` };
 /** Product storage quota, not a claim about the executor's output bound. */
@@ -85,7 +85,7 @@ export class FileEntityLinkStore implements EntityLinkInvocationStore {
   private publish(next: EntityLinkInvocation, expectedGeneration: number): EntityLinkInvocation {
     validateEntityLinkInvocation(next, integrity); const all = this.list(), existing = all.find(value => value.reviewId === next.reviewId);
     // A lost acknowledgement is checked before quota or generation guards.
-    if (existing && canonicalJson(existing) === canonicalJson(next)) return existing;
+    if (existing && canonicalJson(existing) === canonicalJson(next)) { confirmKnowledgePublication(this.path(next.reviewId), this.workspaceRoot); return existing; }
     if ((existing?.generation ?? 0) !== expectedGeneration || (existing && (next.generation <= existing.generation
       || canonicalJson(next.events.slice(0, existing.events.length)) !== canonicalJson(existing.events)))) throw new Error('Entity-link revision conflict.');
     const bytes = size(next), allocation = entityLinkAllocation(next);
@@ -93,10 +93,7 @@ export class FileEntityLinkStore implements EntityLinkInvocationStore {
       || all.reduce((sum, item) => sum + entityLinkAllocation(item), 0) - (existing ? entityLinkAllocation(existing) : 0) + allocation > ENTITY_LINK_NAMESPACE_BYTES) {
       throw new EntityLinkWriteCapacityError('Entity-link capacity exceeded before publication.');
     }
-    const path = this.path(next.reviewId); mkdirSync(dirname(path), { recursive: true });
-    const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-    try { writeFileSync(temp, canonicalJson(next)); if (existing) renameSync(temp, path); else linkSync(temp, path); }
-    finally { if (existsSync(temp)) rmSync(temp, { force: true }); }
+    publishKnowledgeBytes(this.path(next.reviewId), canonicalJson(next), this.workspaceRoot, !existing);
     return next;
   }
   transaction<T>(operation: (transaction: EntityLinkInvocationTransaction) => T): T {

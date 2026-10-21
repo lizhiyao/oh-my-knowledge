@@ -5,7 +5,7 @@ import { LibraryEnvelopeSchema, LibraryWriteSchema, type LibraryEnvelope, type L
 import { applyLibraryWrite, validateLibraryHistory } from '../entity-library/history.js';
 import { LibraryWriteCapacityError } from '../entity-library/write-errors.js';
 import { canonicalJson } from '../store.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -58,13 +58,13 @@ export class FileLibraryStore implements LibraryStore {
     checkStorageDirectory(this.root); const all = this.list();
     const existing = all.find(value => value.objectId === command.objectId);
     const next = applyLibraryWrite(existing, command, digest);
-    if (next === existing) return next;
+    if (next === existing) { confirmKnowledgePublication(this.path(command.objectId), this.workspaceRoot); return next; }
     if (!existing && all.length >= 4096) throw new LibraryWriteCapacityError('workspace');
     validate(existing, all);
     const bytes = Buffer.byteLength(JSON.stringify(next, null, 2));
     if (bytes > MAX_BYTES) throw new LibraryWriteCapacityError('file');
     if (all.reduce((sum, item) => sum + Buffer.byteLength(JSON.stringify(item, null, 2)), 0)
       - (existing ? Buffer.byteLength(JSON.stringify(existing, null, 2)) : 0) + bytes > 64 * 1024 * 1024) throw new LibraryWriteCapacityError('workspace');
-    writeJsonFileAtomic(this.path(command.objectId), next); return next;
+    publishKnowledgeBytes(this.path(command.objectId), JSON.stringify(next, null, 2), this.workspaceRoot, !existing); return next;
   }
 }

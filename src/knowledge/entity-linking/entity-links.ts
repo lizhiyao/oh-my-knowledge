@@ -86,7 +86,7 @@ export class EntityLinkApplication {
   }
   private transition(transaction: EntityLinkInvocationTransaction, previous: EntityLinkInvocation | undefined, command: EntityLinkInvocationCommand, ports = this.ports()) {
     const next = transitionEntityLinkInvocation(previous, command, ports);
-    if (next.history !== previous) transaction.save(next.history, previous?.generation ?? 0);
+    transaction.save(next.history, previous?.generation ?? 0);
     return next;
   }
   recall(input: z.input<typeof reference>) {
@@ -173,11 +173,13 @@ export class EntityLinkApplication {
   }
   async start(input: { reviewId: string; requestId: string; expectedGeneration: number }, signal?: AbortSignal): Promise<EntityLinkInvocation> {
     const snapshot = this.read(input.reviewId), plan = prepared(snapshot).input;
-    if (projectEntityLinkInvocation(snapshot, this.integrity).status !== 'prepared') return snapshot;
+    if (projectEntityLinkInvocation(snapshot, this.integrity).status !== 'prepared') return this.reviews.transaction(transaction => {
+      const current = transaction.read(input.reviewId); return transaction.save(current, current.generation);
+    });
     const configuration = configureEntityLinkApiProducer(plan.request, this.execution);
     const claimed = this.reviews.transaction(transaction => {
       const current = transaction.read(input.reviewId);
-      if (projectEntityLinkInvocation(current, this.integrity).status !== 'prepared') return { history: current, effect: 'none' as const };
+      if (projectEntityLinkInvocation(current, this.integrity).status !== 'prepared') return { history: transaction.save(current, current.generation), effect: 'none' as const };
       this.checkPair(transaction, plan, input.reviewId);
       const command = this.command(input.reviewId, input.requestId, input.expectedGeneration, { commandKind: 'start', executionId: this.id(), owner: { ownerId: this.id(), hostname: hostname(), pid: process.pid } },
         { actorKind: 'agent', actorId: 'local-entity-link-host', executionRef: input.reviewId });
@@ -225,7 +227,7 @@ export class EntityLinkApplication {
   recoverUnknown(reviewId: string, requestId: string) {
     return this.reviews.transaction(transaction => {
       const current = transaction.read(reviewId), start = current.events.find(event => event.command.commandKind === 'start')?.command;
-      if (projectEntityLinkInvocation(current, this.integrity).status !== 'running' || start?.commandKind !== 'start') return current;
+      if (projectEntityLinkInvocation(current, this.integrity).status !== 'running' || start?.commandKind !== 'start') return transaction.save(current, current.generation);
       return this.transition(transaction, current, this.command(reviewId, requestId, current.generation, { commandKind: 'execution_unknown', executionId: start.executionId })).history;
     });
   }
@@ -235,7 +237,7 @@ export class EntityLinkApplication {
       const current = transaction.read(command.reviewId), previous = decisionOf(current);
       if (previous?.commandKind === 'reviewed' && previous.requestId === command.requestId) {
         if (previous.decision !== command.decision || previous.reason !== command.reason || previous.objectLabel !== objectLabel || !equal(previous.actor, this.actor)) throw new Error('Entity-link decision identity conflict.');
-        return current;
+        return transaction.save(current, current.generation);
       }
       let application: Extract<EntityLinkInvocationCommand, { commandKind: 'reviewed' }>['application'] = null;
       if (command.decision === 'accept') {
@@ -269,7 +271,7 @@ export class EntityLinkApplication {
     if (this.held.has(reviewId)) this.archiveHeld(reviewId);
     return this.reviews.transaction(transaction => {
       const review = transaction.read(reviewId), decision = decisionOf(review);
-      if (projectEntityLinkInvocation(review, this.integrity).status !== 'accepted_pending_application' || decision?.commandKind !== 'reviewed' || decision.application?.applicationKind !== 'intent') return review;
+      if (projectEntityLinkInvocation(review, this.integrity).status !== 'accepted_pending_application' || decision?.commandKind !== 'reviewed' || decision.application?.applicationKind !== 'intent') return transaction.save(review, review.generation);
       try {
         const library = new KnowledgeLibraryApplication(this.knowledge, transaction.library, decision.actor, this.id, this.now);
         const plan = prepared(review).input, applied = library.applyLinkIntent(decision.application.intent, [plan.left, plan.right]);

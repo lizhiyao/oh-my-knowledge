@@ -9,31 +9,48 @@ import { EXTRACTION_OUTCOME_MAX_BYTES, EXTRACTION_RUN_MAX_BYTES, FileExtractionR
 import { ExtractionOutcomeSchema, ExtractionRunSchema, extractionRunSummary, type ExtractionAttempt, type ExtractionJson, type ExtractionOutcome, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import { accountExtractionOutcome, boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
+import { FileLibraryStore } from '../../src/knowledge/adapters/library-store.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes } from '../../src/knowledge/adapters/durable-publication.js';
+import type { LibraryWrite } from '../../src/knowledge/entity-library/contracts.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisWriteCapacityError, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
-const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0 }));
+const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0, descriptors: new Map<number, string>(), durable: undefined as { events: string[]; failSync?: string; afterPublish?: boolean; shortWrite?: boolean; noProgress?: boolean; beforeOpen?: () => void } | undefined }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, openSync: (path: string, flags: string | number, mode?: number) => {
     if (path.includes('.recovery-') && faults.beforeRecovery) {
       const operation = faults.beforeRecovery; faults.beforeRecovery = undefined; operation();
     }
-    return fs.openSync(path, flags, mode);
+    const durable = faults.durable;
+    if (durable?.beforeOpen && !String(path).endsWith('.lock')) { const before = durable.beforeOpen; durable.beforeOpen = undefined; before(); }
+    const fd = fs.openSync(path, flags, mode); faults.descriptors.set(fd, String(path));
+    durable?.events.push(`open:${path}`); return fd;
   }, linkSync: (source: string, path: string) => {
-    fs.linkSync(source, path);
+    fs.linkSync(source, path); faults.durable?.events.push(`publish:${path}`);
+    if (faults.durable?.afterPublish) { faults.durable.afterPublish = false; throw new Error('domain publication acknowledgement interrupted'); }
     if (faults.afterOutcomeLink && path.includes('outcomes')) { faults.afterOutcomeLink = false; throw new Error('outcome acknowledgement interrupted'); }
   }, renameSync: (source: string, path: string) => {
-    fs.renameSync(source, path);
+    fs.renameSync(source, path); faults.durable?.events.push(`publish:${path}`);
+    if (faults.durable?.afterPublish) { faults.durable.afterPublish = false; throw new Error('domain publication acknowledgement interrupted'); }
     if (faults.afterManifestRename && path.includes('extraction-runs') && path.endsWith('.json')) { faults.afterManifestRename = false; throw new Error('manifest acknowledgement interrupted'); }
+  }, writeSync: (fd: number, buffer: Uint8Array, offset: number, length: number) => {
+    const durable = faults.durable;
+    if (durable?.noProgress) return 0;
+    const count = fs.writeSync(fd, buffer, offset, durable?.shortWrite ? Math.min(7, length) : length);
+    durable?.events.push(`write:${faults.descriptors.get(fd)}:${count}`); return count;
+  }, closeSync: (fd: number) => {
+    faults.durable?.events.push(`close:${faults.descriptors.get(fd)}`); faults.descriptors.delete(fd); fs.closeSync(fd);
   }, fsyncSync: (fd: number) => {
+    const path = faults.descriptors.get(fd); faults.durable?.events.push(`sync:${path}`);
+    if (faults.durable?.failSync !== undefined && path === faults.durable.failSync) throw new Error('domain durability confirmation interrupted');
     faults.syncs++; fs.fsyncSync(fd);
   } };
 });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storage-')); roots.push(path); return path; };
-afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; faults.durable = undefined; faults.descriptors.clear(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 const sha = (digit = 'a') => `sha256:${digit.repeat(64)}`;
 function runFixture(): ExtractionRun {
@@ -318,6 +335,60 @@ describe('v5 extraction manifests and immutable native evidence', () => {
 });
 
 describe('current knowledge storage', () => {
+  it('publishes exact bytes only after complete short writes, file sync and every directory sync, and closes on failures', () => {
+    const workspace = root(), parent = join(workspace, 'entities', 'nested'), path = join(parent, 'fixture.json');
+    const bytes = '{"fixture":"中文短写"}'; const events: string[] = []; faults.durable = { events, shortWrite: true };
+    publishKnowledgeBytes(path, bytes, workspace, true); expect(readFileSync(path, 'utf8')).toBe(bytes);
+    const publication = events.indexOf(`publish:${path}`), fileSync = events.findIndex(value => value.startsWith('sync:') && value.endsWith('.tmp'));
+    expect(fileSync).toBeGreaterThan(0); expect(publication).toBeGreaterThan(fileSync);
+    expect(events.filter(value => value.startsWith('write:')).length).toBeGreaterThan(1);
+    expect(events.slice(publication + 1).filter(value => value.startsWith('sync:'))).toEqual([`sync:${parent}`, `sync:${join(workspace, 'entities')}`, `sync:${workspace}`]);
+    expect(faults.descriptors.size).toBe(0); expect(readdirSync(parent)).toEqual(['fixture.json']);
+    events.length = 0; confirmKnowledgePublication(path, workspace);
+    expect(events.filter(value => value.startsWith('sync:'))).toEqual([`sync:${path}`, `sync:${parent}`, `sync:${join(workspace, 'entities')}`, `sync:${workspace}`]);
+    faults.durable.noProgress = true;
+    expect(() => publishKnowledgeBytes(path, '{"changed":true}', workspace, false)).toThrow('did not progress');
+    expect(readFileSync(path, 'utf8')).toBe(bytes); expect(faults.descriptors.size).toBe(0); expect(readdirSync(parent)).toEqual(['fixture.json']);
+    faults.durable.noProgress = false; faults.durable.beforeOpen = () => { rmSync(path); symlinkSync(join(workspace, 'untouched.json'), path); };
+    writeFileSync(join(workspace, 'untouched.json'), 'private-fixture');
+    expect(() => confirmKnowledgePublication(path, workspace)).toThrow();
+    expect(readFileSync(join(workspace, 'untouched.json'), 'utf8')).toBe('private-fixture'); expect(faults.descriptors.size).toBe(0);
+    expect(() => publishKnowledgeBytes(join(workspace, '..', 'outside.json'), '{}', workspace, true)).toThrow('inside its workspace');
+    const redirected = root(); symlinkSync(redirected, join(workspace, 'redirect'));
+    expect(() => publishKnowledgeBytes(join(workspace, 'redirect', 'must-not-create', 'fixture.json'), '{}', workspace, true)).toThrow('Invalid knowledge storage directory');
+    expect(readdirSync(redirected)).toEqual([]);
+  });
+
+  it.each(['entity', 'library'] as const)('confirms %s exact replay after lost publication or directory-sync acknowledgement without rewriting bytes', domain => {
+    const workspace = root(), directory = join(workspace, domain === 'entity' ? 'entities' : 'library'), id = randomUUID();
+    const path = join(directory, `${id}.json`), actor = { actorKind: 'human' as const, actorId: 'durability-reviewer' };
+    const entity = new FileEntityAnalysisStore(directory, workspace), library = new FileLibraryStore(directory, workspace);
+    const entityCommand: EntityAnalysisWrite = { requestId: randomUUID(), analysisId: id, snapshotId: randomUUID(), sourceVersion: sha(), expectedGeneration: 0, expectedHeadRevisionId: null,
+      revision: { revisionId: randomUUID(), revisedAt: '2026-10-21T00:00:00Z', revisedBy: actor, revisionReason: 'durability fixture', entities: [], mentions: [], limitations: [] } };
+    const libraryCommand: LibraryWrite = { requestId: randomUUID(), objectId: id, expectedGeneration: 0, expectedHeadRevisionId: null,
+      revision: { revisionId: randomUUID(), revisedAt: '2026-10-21T00:00:00Z', revisedBy: actor, reason: 'durability fixture', draft: { label: 'fixture', description: 'authored storage fixture', referentKind: 'object', members: [] } } };
+    const write = () => domain === 'entity' ? entity.write(entityCommand, actor) : library.write(libraryCommand, () => {});
+    const read = () => domain === 'entity' ? entity.read(id) : library.read(id);
+    const events: string[] = []; faults.durable = { events, afterPublish: true };
+    expect(write).toThrow('publication acknowledgement interrupted'); expect(read().generation).toBe(1);
+    // Existing valid envelopes may use a different whitespace encoding; an exact replay must retain it.
+    const original = readFileSync(path, 'utf8') + '\n'; writeFileSync(path, original);
+    faults.durable.failSync = path; expect(write).toThrow('durability confirmation interrupted'); expect(readFileSync(path, 'utf8')).toBe(original);
+    faults.durable.failSync = undefined; events.length = 0; write();
+    expect(read().generation).toBe(1); expect(readFileSync(path, 'utf8')).toBe(original);
+    expect(events.filter(value => value.startsWith('sync:'))).toEqual([`sync:${path}`, `sync:${directory}`, `sync:${workspace}`]);
+    expect(events.some(value => value.startsWith('publish:') || value.startsWith('write:'))).toBe(false);
+    const head = read().writeHeadRevisionId;
+    Object.assign(entityCommand, { requestId: randomUUID(), expectedGeneration: 1, expectedHeadRevisionId: head });
+    entityCommand.revision = { ...entityCommand.revision, revisionId: randomUUID(), parentRevisionId: head, limitations: ['explicit second fixture revision'] };
+    Object.assign(libraryCommand, { requestId: randomUUID(), expectedGeneration: 1, expectedHeadRevisionId: head });
+    libraryCommand.revision = { ...libraryCommand.revision, revisionId: randomUUID(), parentRevisionId: head, draft: { ...libraryCommand.revision.draft, label: 'fixture 2' } };
+    faults.durable.failSync = directory; expect(write).toThrow('durability confirmation interrupted'); expect(read().generation).toBe(2);
+    const visible = readFileSync(path); faults.durable.failSync = undefined; write();
+    expect(read().generation).toBe(2); expect(readFileSync(path)).toEqual(visible);
+    expect(faults.descriptors.size).toBe(0); expect(readdirSync(directory).some(name => name.endsWith('.lock') || name.endsWith('.tmp'))).toBe(false);
+  });
+
   it('rejects an entity revision that exceeds readable disk capacity, preserving the previous history and releasing locks', () => {
     const workspace = root(); const directory = join(workspace, 'entities');
     const store = new FileEntityAnalysisStore(directory, workspace);

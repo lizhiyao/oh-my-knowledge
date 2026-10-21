@@ -5,7 +5,7 @@ import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../entities/history.js';
 import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { canonicalJson } from '../store.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -48,8 +48,8 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
       if (next !== existing) {
         // Match the atomic writer's bytes so every successful write remains readable.
         if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new EntityAnalysisWriteCapacityError('file');
-        writeJsonFileAtomic(path, next);
-      }
+        publishKnowledgeBytes(path, JSON.stringify(next, null, 2), this.workspaceRoot, !existing);
+      } else confirmKnowledgePublication(path, this.workspaceRoot);
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;
     });
   }
