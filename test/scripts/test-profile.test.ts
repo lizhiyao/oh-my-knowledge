@@ -10,7 +10,7 @@ function fixture() {
   const base = testDirectory('omk-profile-fixture-'), root = join(base, 'repository'), temporaryParent = join(base, 'temporary');
   mkdirSync(join(root, 'test/shards'), { recursive: true }); mkdirSync(temporaryParent);
   for (let i = 1; i <= 4; i++) writeFileSync(join(root, `test/shards/source-${i}.txt`), i === 1 ? 'test/fast.test.ts\n' : i === 2 ? 'test/slow.test.ts\n' : '');
-  const git = (...args: string[]) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: root, encoding: 'utf8' });
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', ...args], { cwd: root, encoding: 'utf8' });
   git('init', '-q', '-b', 'main'); git('add', '.');
   git('-c', 'user.name=Profile fixture', '-c', 'user.email=profile@example.invalid', 'commit', '-qm', 'fixture');
   const options = { top: 1, workers: 1, output: join(base, 'profile.json'), rawDir: join(base, 'raw') };
