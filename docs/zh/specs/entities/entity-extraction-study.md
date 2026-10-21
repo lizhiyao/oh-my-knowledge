@@ -217,3 +217,51 @@ HTTP 断连或 Studio 停止会取消本次只读 inspection 并终止其 worker
 宿主严格绑定实际构建、验证器依赖与 Node 字节。不同宿主的旧研究需要在其冻结环境中核对；不能省略宿主核验来显示通过，也不能将重新分析称为新的独立模型验证。正式参考交接应冻结最终运行环境，避免在真人复核期间继续改动其身份。逐 run 的起止时间差是本地墙钟耗时，包含生成、归档、写入与等待；未知保持空值，不推断人工主动核对／纠正负担。
 
 生产质量投影 v4 表达已保存的工程接纳及执行状态未知的显式人工封存，不代表此独立语义裁决。合成／作者编写的执行器 fixture 验证工程行为，不能提供真实来源质量证据、人工批准、总体结论、发布资格或父质量议题完成证据。在另行安排的真人复核及所需真实证据齐备前，正式语义验收持续未完成。
+
+## 7. 独立多人输出复核组
+
+独立仓内 panel 工具比较已保存的研究输出复核，不生成模型输出、不代签真人回执、不修改 run／参考、不改变 `goldReady`，也不替代现有单人复核接受门槛。其 `qualityAcceptance` 始终为 `not_assessed`。一致性只描述明确声明的有限目标集；多人也可能同意一个错误主张。
+
+| 身份 | 绑定内容 |
+|---|---|
+| `omk-extraction-study-panel/v1` | `panelId`、声明时间／模式、精确 `planId`、`corpusDigest`、原始便携证据 `evidenceDigest`、`outputDigest`、有序完整 targets／`targetSetDigest`、全体名单、另一位裁决者及固定指标／缺失／不确定规则。 |
+| `omk-extraction-study-panel-submission/v1` | `panelId` 与完整提交回执清单：`reviewerId`、`receiptFile`、原始 UTF-8 `receiptDigest`；名单中未提交者仍记缺失。 |
+| `omk-extraction-study-panel-report/v1` | 完整初始集身份、逐人覆盖、实际人际一致性、两两结果、初始分歧、可选裁决及明确限制；`reportId` 摘要绑定完整报告正文。 |
+| `omk-extraction-study-panel-adjudication/v1` | `panelId`、完整 `initialSetDigest`、`disputedTargetsDigest`、第三位真人的 `reviewReceiptFile` 与原始 `reviewReceiptDigest`。 |
+| `omk-extraction-study-panel-package/v1` | 输出文件名／角色、原始回执与复核者映射、字节数及精确 UTF-8 摘要；这是本地审计清单，不是新增工作区存储。 |
+
+名单包含 `raters` 和 `adjudicator`，每人声明 `reviewer: { actorKind, actorId }`、`independentHuman`、`authorRelationship: author|non_author` 及 `independenceRationale`。所有身份（含裁决者）按不区分大小写保持不同。作者关系依据冻结语料的 authors 核对。agent 或作者不得声称独立真人；裁决者必须是另一位独立、非作者的 human。这些是声明，不是真实身份认证或实际独立阅读的证明。工具不补填任何人或声明。
+
+准备时绑定已冻结输出集；前瞻模式要求在判断前声明。`prospective` 要求 `declaredAt` 严格早于每份初始回执的 `reviewedAt`；任何判断已经存在后才声明的组必须使用 `retrospective`。准备入口记录当前核对时间，没有回填过去时间的参数。程序只能比较声明时间，不能证明真人何时开始形成判断。回顾性报告保留实际比较，完整 `fullIAA` 明确不可用。当前宿主回放核对原始 corpus／configuration／run／native 字节及固定安装运行时；旧冻结宿主不能重新绑定今天的代码。历史证据使用其原工具，或在当前宿主下另行冻结新研究，不改写旧研究。
+
+有序目标集精确复用 `extractionStudyReviewTargets`：每个 slot 的全部已接纳输出实体／提及／陈述、参考实体／提及、知识义务、语义检查和 case 判断。参考遗漏（`required_missing`）及整体 case 分歧进入主分母，不能因两人对输出匹配都同意就被丢弃。不改变现有单人回执格式。全部回执复用当前 v2 研究复核规则核对，包括目标唯一性、参考匹配、证据身份以及已有完成／时间边界。
+
+固定规则为 `metric: exact-verdict-error-categories-reference/v1`、`missing: retain-in-planned-denominator;no-agreement`、`uncertain: retain-separately;exclude-observed-definite-agreement`、`targetScope: all-output-reference-obligation-check-case`。精确一致比较 verdict、错误类别集合及匹配 `referenceId`；理由文字原样保留，不参与一致性评分。逐类错误结果在相同共同明确目标上比较各类别出现／未出现。类别统计使用 incorrect 判断所声明的错误类别，并将 `required_missing` 计入 `coverage`，与既有研究分析一致；原始回执中的空错误类别数组保持不变。另列仅 verdict 一致性。参考匹配结果分别统计 entity、mention、statement，包含每个 slot／reference 的匹配出现一致性和逐人匹配数；null 是明确未匹配，另列全部正向匹配覆盖。非输出目标不计作参考匹配。这些都是一致性统计，不是准确率、错误检出效果、kappa、置信区间或总体估计。
+
+只有已提交、独立、非作者的 human 进入 IAA。报告保留计划／实际提交人数、human／agent／非独立真人数、逐人缺失／不确定／required_missing 目标、实际已提交合格真人的共同明确覆盖、逐目标类别结果、两两覆盖及逐错误类别／参考一致性。AI 和非独立真人判断保留在原始清单与初始分歧记录中。`observed`、`pairwise` 保留实际可比较的明确子集；缺失和 uncertain 不计同意，没有可比较目标时比率为 null。仅当至少两名合格真人、所有已声明 rater 均提交完整明确覆盖、native／完成证据核实且声明为前瞻性时，`fullIAA` 才是精确全体一致率；否则为 `null` 并列 `fullIAAUnavailableReasons`，即便已观测子集完全一致。该保守完整清单条件也保留 agent 的缺失／不确定；添加 agent 不会增加真人数。有完整数值的 IAA 仍不构成语义质量验收。
+
+提交清单列全已提交的原始回执，没有选择复核者或挑最佳回执的参数。未知／重复 rater、同一物理回执的重复别名、未知／重复目标、错误版本和字节／证据替换均拒绝。`initialSetDigest` 绑定 panel、精确原始提交清单字节，以及名单顺序中每位成员的原始回执摘要或缺失值。改理由、换回执或改提交清单都会产生新集合身份。程序不能证明未声明的外部回执没有被隐瞒；作者和复核者须核查完整声明清单。
+
+裁决可选，前提是名单所有回执均已提交。预声明的第三位真人提供普通的原始单人输出回执，签署时间不早于 `panel.declaredAt`、严格晚于所有初始回执且不晚于核对时钟。回顾性模式仅放宽初始判断与声明的时间关系，不能把更早的第三人判断追认为预先任命的裁决。其 envelope 绑定完整初始集与精确争议清单。仅争议目标计作裁决；该普通回执中的非争议条目仅供既有规则核对上下文，绝不替换初始判断。缺失／不确定的争议裁决仍未解决。每个已裁决目标保留规范化解析 decision 摘要和原始整份回执摘要；不将规范化摘要描述为原始 JSON 子串摘要。原始 envelope 和第三人回执均保留。初始分歧、覆盖和 IAA 不随裁决改写。
+
+按贡献流程构建当前仓库运行时／脚本后，使用以下零模型命令。路径和真实复核者身份必须明确提供；示例是模板，不是已签署复核：
+
+```sh
+node dist-scripts/bench/knowledge-study-panel.js prepare \
+  --evidence /ABS/STUDY-REPORT/evidence.json --roster /ABS/roster.json \
+  --mode prospective --output /ABS/NEW-PANEL
+node dist-scripts/bench/knowledge-study-panel.js report \
+  --evidence /ABS/STUDY-REPORT/evidence.json --panel /ABS/NEW-PANEL/panel.json \
+  --submission /ABS/submission.json --output /ABS/NEW-PANEL-REPORT
+# 预声明的第三位真人提供原始回执及 envelope 后：
+node dist-scripts/bench/knowledge-study-panel.js report \
+  --evidence /ABS/STUDY-REPORT/evidence.json --panel /ABS/NEW-PANEL/panel.json \
+  --submission /ABS/submission.json --adjudication /ABS/adjudication.json \
+  --output /ABS/NEW-ADJUDICATED-REPORT
+```
+
+提交正文形状为 `{ "submissionVersion": "omk-extraction-study-panel-submission/v1", "panelId": "sha256:…", "receipts": [{ "reviewerId": "REAL_DECLARED_REVIEWER_ID", "receiptFile": "original-review.json", "receiptDigest": "sha256:…" }] }`。回执路径相对明确选择的 submission 文件解析；裁决者路径相对明确选择的 adjudication 文件解析。可从 `dist/knowledge/extraction/study-panel.js` 使用 `extractionStudyPanelBytesDigest(readFileSync(path, 'utf8'))` 取得原始 UTF-8 精确摘要，不能先重新序列化原文。将初始 panel 报告的 `initialSetDigest`、`disputedTargetsDigest` 复制到裁决 envelope；初始集变化必须重新复核并绑定。
+
+`prepare` 写原始 evidence／roster、`panel.json`、`targets.json` 和 `package-manifest.json`；`report` 写原始 evidence／panel／submission、按提交顺序命名为 `initial-NNN.json` 的全部原始回执、完整 targets／report 和清单；带裁决时另保留 `adjudication.json`、`adjudication-review.json`。清单将每份复制的初始回执映射到声明复核者；原始 manifest 保留原路径字符串供审计，移动输出包不静默改写路径或集合身份。所有读取输入必须为有界普通 UTF-8 文件。输出为检出外独占新目录（`0700`，文件 `0600`），不覆写已有目录；发布中断／失败可能留下部分目录，须明确检查。仅写明确选择的新输出目录，不扫描便携证据中的来源路径，不改写原始来源／run／用户配置记录，也不调用模型服务。
+
+参数错误退出 2；数据／身份／I/O 错误退出 1，有限诊断不暴露私人来源／回执原文。成功 prepare／report 退出 0，stdout JSON 含 `modelCallsByThisCommand: 0` 和 `qualityAcceptance: not_assessed`，包括 IAA 为 null 的不完整报告。退出 0 只证明所请求的离线核算已保存，绝非真人批准或质量验收。原始清单、声明或报告变化取得新派生身份。既有 prompt、指南／检查器、run v5 和单人回执保留字节与版本；独立 panel 协议不重评历史测量，也不将 development 夹具追认为真实独立验证集。

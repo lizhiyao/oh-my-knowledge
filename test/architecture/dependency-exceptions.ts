@@ -150,6 +150,12 @@ export const REGISTERED_RUNTIME_CYCLES = [
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
+    importer: 'scripts/bench/knowledge-study-panel.ts',
+    expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/knowledge-study-panel.js')).href",
+    sourceSha256: 'c2e54d4e0afd607f58613fa06af07d6fb41ed464b742073c67883e5164548d7e',
+    rationale: '多人复核只加载固定构建的离线组合根，原始研究和回执不能选择代码；没有模型调用入口。',
+  },
+  {
     importer: 'scripts/bench/knowledge-study.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/knowledge-study.js')).href",
     sourceSha256: 'd9ea717f5db9c3fead48476c29a146d85044bdb52f3c22b456121bd97d525235',
