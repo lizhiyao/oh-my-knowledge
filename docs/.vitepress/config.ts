@@ -71,6 +71,7 @@ export default defineConfig({
             items: [
               { text: "Knowledge maintenance workflow", link: "/guides/extract-knowledge" },
               { text: "SDK maintenance case", link: "/guides/sdk-maintenance-case" },
+              { text: "Extraction evidence and semantic review", link: "/guides/verify-extraction-study" },
               { text: "Knowledge principles", link: "/explanation/knowledge" },
               { text: "Knowledge specifications", link: "/specs/knowledge/" },
             ],
@@ -188,6 +189,7 @@ export default defineConfig({
             items: [
               { text: "知识维护完整动线", link: "/zh/guides/extract-knowledge" },
               { text: "SDK 维护案例", link: "/zh/guides/sdk-maintenance-case" },
+              { text: "提炼证据与语义复核", link: "/zh/guides/verify-extraction-study" },
               { text: "知识原理", link: "/zh/explanation/knowledge" },
               { text: "知识领域规范", link: "/zh/specs/knowledge/" },
             ],
