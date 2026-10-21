@@ -11,6 +11,7 @@ import type { ConversationCatalog } from '../../src/observability/conversation/c
 import type { ExtractionModel } from '../../src/knowledge/application/application.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
 import { boundedExtractionPolicy, type ExtractionGenerationPolicy } from '../../src/knowledge/extraction/generation-policy.js';
+import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { buildOpenAiChatRequest } from '../../src/executors/openai/request.js';
@@ -150,6 +151,111 @@ describe('authorized conversation auto extraction', () => {
     expect(required.value.retryAfterMs).toBe(20); expect(dispatched[1]).toBeGreaterThanOrEqual(Date.parse(required.value.notBefore));
     const bytes = readFileSync(required.path); f.service.status(f.workspace, 'thread'); f.service.status(f.workspace, 'thread');
     expect(readFileSync(required.path)).toEqual(bytes);
+    const receiptPaths = readdirSync(join(f.workspace, 'auto-extraction')).filter(name => name.startsWith('attempt-'))
+      .map(name => join(f.workspace, 'auto-extraction', name)).sort();
+    const reads = vi.spyOn(fs, 'readFileSync'), syncs = vi.spyOn(fs, 'fsyncSync');
+    const manifests = vi.spyOn(FileExtractionRunStore.prototype, 'readManifest'), outcomes = vi.spyOn(FileExtractionRunStore.prototype, 'readOutcome');
+    try {
+      syncBuiltinESMExports();
+      for (let repeat = 0; repeat < 2; repeat++) {
+        for (const poll of [() => f.service.status(f.workspace, 'thread'), () => f.service.tick()]) {
+          reads.mockClear(); syncs.mockClear(); manifests.mockClear(); outcomes.mockClear(); await poll();
+          expect(reads.mock.calls.map(([path]) => path).filter(path => typeof path === 'string' && receiptPaths.includes(path)).sort()).toEqual(receiptPaths);
+          expect(syncs).not.toHaveBeenCalled(); expect(manifests).not.toHaveBeenCalled(); expect(outcomes).not.toHaveBeenCalled();
+        }
+      }
+      // A new lifetime confirms each existing fact once; close also clears the old lifetime's cache.
+      const next = f.create(); syncs.mockClear(); next.status(f.workspace, 'thread');
+      expect(syncs).toHaveBeenCalledTimes(facts.length * 3);
+      syncs.mockClear(); next.status(f.workspace, 'thread'); expect(syncs).not.toHaveBeenCalled();
+      next.close(); syncs.mockClear(); next.status(f.workspace, 'thread');
+      expect(syncs).toHaveBeenCalledTimes(facts.length * 3);
+    } finally { reads.mockRestore(); syncs.mockRestore(); manifests.mockRestore(); outcomes.mockRestore(); syncBuiltinESMExports(); }
+    expect(calls).toBe(2); expect(readFileSync(required.path)).toEqual(bytes);
+  });
+  it('revalidates cooldown bytes and file identity instead of trusting unchanged size and timestamps', async () => {
+    const f = fixture(); await f.enable(1); await f.tick();
+    const directory = join(f.workspace, 'auto-extraction', 'cooldowns'), path = join(directory, readdirSync(directory)[0]);
+    const pinnedTime = new Date('2026-10-10T00:00:00Z'); fs.utimesSync(path, pinnedTime, pinnedTime);
+    f.service.status(f.workspace, 'thread');
+    const original = readFileSync(path), before = fs.lstatSync(path);
+    const changed = Buffer.from(original.toString().replace('  "', '\t "'));
+    expect(changed.equals(original)).toBe(false); expect(changed.length).toBe(original.length);
+    const syncs = vi.spyOn(fs, 'fsyncSync');
+    try {
+      syncBuiltinESMExports();
+      writeFileSync(path, changed); fs.utimesSync(path, pinnedTime, pinnedTime);
+      expect(fs.lstatSync(path)).toMatchObject({ dev: before.dev, ino: before.ino, size: before.size, mtimeMs: before.mtimeMs });
+      f.service.status(f.workspace, 'thread'); expect(syncs).toHaveBeenCalledTimes(3);
+      syncs.mockClear(); f.service.status(f.workspace, 'thread'); expect(syncs).not.toHaveBeenCalled();
+      const replacement = join(directory, 'owned-replacement.tmp'); writeFileSync(replacement, changed); fs.utimesSync(replacement, pinnedTime, pinnedTime);
+      fs.renameSync(replacement, path); expect(fs.lstatSync(path).ino).not.toBe(before.ino);
+      expect(fs.lstatSync(path)).toMatchObject({ dev: before.dev, size: before.size, mtimeMs: before.mtimeMs });
+      f.service.status(f.workspace, 'thread'); expect(syncs).toHaveBeenCalledTimes(3);
+      const invalid = JSON.parse(changed.toString()); invalid.requestDigest = `sha256:${'f'.repeat(64)}`;
+      writeFileSync(path, JSON.stringify(invalid, null, 2)); syncs.mockClear();
+      expect(() => f.service.status(f.workspace, 'thread')).toThrow('Automation cooldown identity conflict');
+      expect(syncs).not.toHaveBeenCalled();
+      writeFileSync(path, changed); fs.utimesSync(path, pinnedTime, pinnedTime);
+      f.service.status(f.workspace, 'thread'); expect(syncs).toHaveBeenCalledTimes(3);
+      expect(readFileSync(path)).toEqual(changed); expect(f.inputs).toHaveLength(1);
+    } finally { syncs.mockRestore(); syncBuiltinESMExports(); }
+  });
+  it('recovers a lost cooldown acknowledgement with one native read and keeps resume archive validation complete', async () => {
+    const f = fixture(); let beforeArchive!: Buffer, manifestPath!: string;
+    f.setModel(async (_system, input) => {
+      f.inputs.push(input);
+      const run = createLocalKnowledgeApplication(f.workspace).runs()[0];
+      manifestPath = join(f.workspace, 'extraction-runs', `${run.runId}.json`); beforeArchive = readFileSync(manifestPath);
+      return { output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 };
+    });
+    await f.enable(1); await f.tick();
+    const directory = join(f.workspace, 'auto-extraction', 'cooldowns'), path = join(directory, readdirSync(directory)[0]);
+    const originalFact = readFileSync(path), fact = JSON.parse(originalFact.toString());
+    const outcomePath = join(f.workspace, 'extraction-runs', 'outcomes', fact.runId, `${fact.attemptId}.json`), native = readFileSync(outcomePath);
+    const reads = vi.spyOn(FileExtractionRunStore.prototype, 'read'), manifests = vi.spyOn(FileExtractionRunStore.prototype, 'readManifest');
+    const outcomes = vi.spyOn(FileExtractionRunStore.prototype, 'readOutcome'), originalSync = fs.fsyncSync;
+    let loseAcknowledgement = true;
+    const syncs = vi.spyOn(fs, 'fsyncSync').mockImplementation(fd => {
+      if (loseAcknowledgement && fs.fstatSync(fd).isFile()) {
+        let value: { automationKind?: string } | undefined;
+        try { value = JSON.parse(fs.readFileSync(fd, 'utf8')); } catch { /* Not a cooldown JSON document. */ }
+        if (value?.automationKind === 'conversation-knowledge-cooldown') {
+          loseAcknowledgement = false; throw new Error('Synthetic cooldown acknowledgement lost.');
+        }
+      }
+      originalSync(fd);
+    });
+    try {
+      syncBuiltinESMExports(); rmSync(path);
+      expect(() => f.service.status(f.workspace, 'thread')).toThrow('Synthetic cooldown acknowledgement lost');
+      expect(reads).not.toHaveBeenCalled(); expect(manifests).toHaveBeenCalledTimes(1); expect(outcomes).toHaveBeenCalledTimes(1);
+      expect(readFileSync(path)).toEqual(originalFact); expect(readFileSync(outcomePath)).toEqual(native);
+      reads.mockClear(); manifests.mockClear(); outcomes.mockClear(); syncs.mockClear();
+      expect(f.service.status(f.workspace, 'thread')).toMatchObject({ reason: 'quota', callsUsed: 1 });
+      expect(syncs).toHaveBeenCalledTimes(3); expect(reads).not.toHaveBeenCalled(); expect(manifests).not.toHaveBeenCalled(); expect(outcomes).not.toHaveBeenCalled();
+      syncs.mockClear(); f.service.status(f.workspace, 'thread'); expect(syncs).not.toHaveBeenCalled();
+      // Status observes the immutable fact. A real resume still verifies the native bytes.
+      const alteredNative = Buffer.concat([native, Buffer.from(' ')]); writeFileSync(outcomePath, alteredNative);
+      expect(() => createLocalKnowledgeApplication(f.workspace).resume(fact.runId)).toThrow('integrity mismatch');
+      expect(reads).toHaveBeenCalledTimes(1);
+      reads.mockClear(); manifests.mockClear(); outcomes.mockClear(); syncs.mockClear(); rmSync(path);
+      expect(() => f.service.status(f.workspace, 'thread')).toThrow('integrity mismatch');
+      expect(reads).not.toHaveBeenCalled(); expect(manifests).toHaveBeenCalledTimes(1); expect(outcomes).toHaveBeenCalledTimes(1);
+      expect(existsSync(path)).toBe(false); expect(syncs).not.toHaveBeenCalled(); expect(readFileSync(outcomePath)).toEqual(alteredNative);
+      writeFileSync(outcomePath, native); f.service.status(f.workspace, 'thread'); expect(syncs).toHaveBeenCalledTimes(3);
+      expect(readFileSync(path)).toEqual(originalFact); expect(f.inputs).toHaveLength(1);
+      // Recreate an actual saved pre-outcome manifest: its native sidecar outlived the lost manifest acknowledgement.
+      const completedManifest = readFileSync(manifestPath); writeFileSync(manifestPath, beforeArchive); rmSync(path);
+      reads.mockClear(); manifests.mockClear(); outcomes.mockClear(); syncs.mockClear();
+      f.service.status(f.workspace, 'thread');
+      expect(reads).not.toHaveBeenCalled(); expect(manifests).toHaveBeenCalledTimes(1); expect(outcomes).toHaveBeenCalledTimes(1);
+      expect(outcomes).toHaveBeenCalledWith(fact.runId, fact.attemptId, undefined);
+      expect(syncs).toHaveBeenCalledTimes(8); // Native file + its four parent directories, then cooldown file + two directories.
+      expect(readFileSync(manifestPath)).toEqual(beforeArchive); expect(readFileSync(outcomePath)).toEqual(native);
+      expect(readFileSync(path)).toEqual(originalFact); expect(f.inputs).toHaveLength(1);
+      writeFileSync(manifestPath, completedManifest);
+    } finally { reads.mockRestore(); manifests.mockRestore(); outcomes.mockRestore(); syncs.mockRestore(); syncBuiltinESMExports(); }
   });
   it('preserves an already-archived rate limit when stopped during retry backoff before reapproval', async () => {
     const f = fixture(); let calls = 0;

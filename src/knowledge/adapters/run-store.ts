@@ -178,7 +178,7 @@ export class FileExtractionRunStore implements ExtractionRunStore {
       this.checkAllocation(run); this.checkArchived(run); this.publish(path, [JSON.stringify(run, null, 2)], true);
     });
   }
-  private readManifest(runId: string): ExtractionRun {
+  readManifest(runId: string): ExtractionRun {
     this.checkRoot(); const raw = parse(readBounded(this.path(runId), EXTRACTION_RUN_MAX_BYTES)); assertCurrentStorage(raw, 'run');
     const run = this.check(raw); if (run.runId !== runId) throw new Error('Extraction run identity mismatch.');
     return run;

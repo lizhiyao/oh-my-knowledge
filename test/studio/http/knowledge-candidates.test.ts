@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,7 @@ import { KnowledgeApplication } from '../../../src/knowledge/application/applica
 import { EntityAnalysisWriteCapacityError } from '../../../src/knowledge/entities/contracts.js';
 import { modelWindow } from '../../knowledge/fixtures.js';
 import { boundedExtractionPolicy } from '../../../src/knowledge/extraction/generation-policy.js';
+import { writeJsonFileAtomic } from '../../../src/shared/atomic-json.js';
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
@@ -60,6 +61,76 @@ describe('Studio candidate action boundary', () => {
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
     expect(createLocalKnowledgeApplication(workspace).runs()).toHaveLength(0);
   });
+  it('adds only ephemeral status tags and observes external atomic JSON heads without trusting a client revision', async () => {
+    const selected = join(root, 'status-heads');
+    const status = (tag?: string) => fetch(`${url}/api/knowledge/auto-extraction`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(tag ? { 'if-none-match': tag } : {}) },
+      body: JSON.stringify({ operation: 'status', workspace: selected, threadId: 'head-thread' }),
+    });
+    const initial = await status(); expect(initial.status).toBe(200); expect(await initial.text()).toBe('null');
+    expect(initial.headers.get('cache-control')).toBe('no-store');
+    let previous = initial.headers.get('etag')!; expect(previous).toMatch(/^W\/"omk-ui-[a-f0-9]{64}"$/);
+    const unchanged = await status(previous); expect(unchanged.status).toBe(200); expect(await unchanged.text()).toBe('null');
+    expect(unchanged.headers.get('etag')).toBe(previous);
+    const normalized = await fetch(`${url}/api/knowledge/auto-extraction`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'status', workspace: ` ${selected} `, threadId: ' head-thread ' }) });
+    expect(normalized.status).toBe(200); expect(normalized.headers.get('etag')).toBe(previous);
+    for (const folder of ['items', 'extraction-runs', 'tags', 'entities']) {
+      const name = ['items', 'tags'].includes(folder) ? 'a'.repeat(64) : randomUUID();
+      const path = join(selected, folder, `${name}.json`);
+      // Authored UI-head fixtures are never admitted as knowledge/run evidence.
+      writeJsonFileAtomic(path, { value: 'aaaa' }); utimesSync(path, 1_600_000_000, 1_600_000_000);
+      const added = await status(previous); expect(added.status).toBe(200); expect(await added.text()).toBe('null');
+      expect(added.headers.get('etag')).not.toBe(previous); previous = added.headers.get('etag')!;
+      const before = statSync(path);
+      writeJsonFileAtomic(path, { value: 'bbbb' }); utimesSync(path, 1_600_000_000, 1_600_000_000);
+      expect(statSync(path).size).toBe(before.size); expect(statSync(path).mtimeMs).toBe(before.mtimeMs);
+      expect(statSync(path).ino).not.toBe(before.ino); // Same length and restored mtime still cannot hide atomic replacement.
+      const replaced = await status('W/"untrusted-client-hint"'); expect(replaced.status).toBe(200); expect(await replaced.text()).toBe('null');
+      expect(replaced.headers.get('etag')).not.toBe(previous); previous = replaced.headers.get('etag')!;
+    }
+    const invalid = await fetch(`${url}/api/knowledge/auto-extraction`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'status', workspace: selected, threadId: 'head-thread', revision: previous }) });
+    expect(invalid.status).toBe(400);
+    const head = join(selected, 'items', `${'f'.repeat(64)}.json`), target = join(root, 'private-ui-head.json');
+    writeJsonFileAtomic(target, { privateValue: 'not-a-knowledge-record' }); symlinkSync(target, head);
+    const noHint = await status(previous); expect(noHint.status).toBe(200); expect(await noHint.text()).toBe('null');
+    expect(noHint.headers.get('etag')).toBeNull(); expect(noHint.headers.get('cache-control')).toBe('no-store');
+    unlinkSync(head);
+    expect((await status()).headers.get('etag')).toBe(previous);
+  });
+
+  it('loads only scoped committed knowledge while preserving queue order, tags, missing rows and selected corruption failures', async () => {
+    const selected = join(root, 'scoped-queue'), app = createLocalKnowledgeApplication(selected);
+    const generate = async (threadId: string, multiple = false) => {
+      const snapshot = app.capture({ path: join(root, `${threadId}.jsonl`), origin: { threadId, title: threadId },
+        records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
+      return app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => {
+        const output = modelWindow();
+        if (multiple) output.proposals.push({ ...structuredClone(output.proposals[0]), proposalId: 'second-candidate' });
+        return { output: JSON.stringify(output).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 };
+      } });
+    };
+    const chosen = await generate('chosen-thread', true), other = await generate('other-thread');
+    const id = chosen.committed[0].knowledgeId, detail = app.detail(id);
+    app.tag(id, 0, ['候选/待核对']); app.maintain(id, detail.revision.revisionId, 'retain', 'Authored queue fixture', detail.history.generation);
+    const ids = new Set(chosen.committed.map(value => value.knowledgeId)), expected = app.list().filter(row => ids.has(row.knowledgeId));
+    const itemPath = (knowledgeId: string) => readdirSync(join(selected, 'items')).map(name => join(selected, 'items', name))
+      .find(path => (JSON.parse(readFileSync(path, 'utf8')) as { knowledgeId: string }).knowledgeId === knowledgeId)!;
+    const chosenPath = itemPath(id), otherPath = itemPath(other.committed[0].knowledgeId), chosenBytes = readFileSync(chosenPath);
+    writeFileSync(otherPath, '{unrelated corrupt item');
+    const queue = () => post({ workspace: selected, operation: 'queue', threadId: 'chosen-thread' });
+    const scoped = await queue(); expect(scoped.status).toBe(200);
+    const result = await scoped.json(); expect(result.rows).toHaveLength(2); expect(result.rows).toEqual(expected);
+    expect(result.rows.find((row: { knowledgeId: string }) => row.knowledgeId === id)).toMatchObject({ choice: 'retain', tags: ['候选/待核对'] });
+    expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual([chosen.runId]);
+    expect((await post({ workspace: selected, operation: 'list' })).status).toBe(400); // Unscoped reads remain fail-closed.
+    unlinkSync(chosenPath); const missing = await queue(); expect(missing.status).toBe(200); expect((await missing.json()).rows).toEqual(expected.filter(row => row.knowledgeId !== id));
+    writeFileSync(chosenPath, chosenBytes); writeFileSync(chosenPath, '{selected corrupt item');
+    const corrupt = await queue(); expect(corrupt.status).toBe(400); const diagnostic = await corrupt.text();
+    expect(diagnostic).not.toContain(selected); expect(diagnostic).not.toContain('selected corrupt item');
+  });
+
   it('uses the selected local workspace and shared capture operation', async () => {
     expect(await (await post({ operation: 'list' })).json()).toEqual([]);
     const captured = await post({ operation: 'capture', source });

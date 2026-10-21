@@ -19,42 +19,55 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
   const [policy, setPolicy] = useState<ExtractionGenerationPolicy>();
   const [preview, setPreview] = useState<AutoExtractionPreview>();
   const controller = useRef<AbortController | null>(null);
-  const polling = useRef(false);
+  const statusRevision = useRef<{ scope: string; etag: string | null } | null>(null);
+  const statusEpoch = useRef(0);
+  const changed = useRef(onChanged); changed.current = onChanged;
+  async function readStatus(root: string, signal: AbortSignal) {
+    const epoch = statusEpoch.current;
+    let etag: string | null = null;
+    const next = await requestKnowledge<AutoExtractionState | null>('auto-extraction', { operation: 'status', workspace: root, threadId }, signal, metadata => { etag = metadata.etag; });
+    if (signal.aborted || controller.current || epoch !== statusEpoch.current) return;
+    const scope = JSON.stringify([root, threadId]), previous = statusRevision.current;
+    statusRevision.current = { scope, etag }; setState(next);
+    // Refresh once on initialization (queue/token race), on actual changes, or when metadata is unavailable.
+    if (!previous || previous.scope !== scope || !etag || previous.etag !== etag) changed.current?.();
+  }
   async function api<T>(operation: string, fields: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
     return requestKnowledge<T>('auto-extraction', { operation, ...fields }, signal);
   }
   useEffect(() => {
     const active = new AbortController();
-    setSettingsReady(false); setConfirmed(false); setOpen(false); setPreview(undefined);
+    setSettingsReady(false); setConfirmed(false); setOpen(false); setPreview(undefined); setState(null); statusRevision.current = null;
     void resolveKnowledgeWorkspace(new URLSearchParams(window.location.search).get('workspace') || '', active.signal)
       .then(async settings => {
         if (active.signal.aborted) return;
         setWorkspace(settings.workspace); setExecutor(settings.executor); setModel(settings.model);
-        const value = await api<AutoExtractionState | null>('status', { workspace: settings.workspace, threadId }, active.signal);
-        if (!active.signal.aborted) setState(value);
+        await readStatus(settings.workspace, active.signal);
       }).catch(() => { if (!active.signal.aborted) setError(t('自动提炼状态暂不可读。', 'Automation status unavailable.')); })
       .finally(() => { if (!active.signal.aborted) setSettingsReady(true); });
     return () => { active.abort(); controller.current?.abort(); };
   }, [threadId]);
   useEffect(() => {
-    if (!state?.enabled || !workspace) return;
+    if (!settingsReady || !workspace) return;
     const active = new AbortController();
+    let polling = false;
     const timer = setInterval(() => {
-      if (polling.current) return; polling.current = true;
-      void api<AutoExtractionState | null>('status', { workspace, threadId }, active.signal).then(next => {
-        if (!active.signal.aborted) { setState(next); onChanged?.(); }
-      }).catch(() => { if (!active.signal.aborted) setError(t('状态更新失败，请重新读取。', 'Status update failed. Reload.')); }).finally(() => { polling.current = false; });
+      if (active.signal.aborted || polling || controller.current) return; polling = true;
+      const epoch = statusEpoch.current;
+      void readStatus(workspace, active.signal).catch(() => {
+        if (!active.signal.aborted && !controller.current && epoch === statusEpoch.current) setError(t('状态更新失败，请重新读取。', 'Status update failed. Reload.'));
+      }).finally(() => { polling = false; });
     }, 5000);
     return () => { clearInterval(timer); active.abort(); };
-  }, [state?.enabled, workspace, threadId]);
+  }, [settingsReady, workspace, threadId]);
   async function work(action: (signal: AbortSignal) => Promise<void>) {
     if (controller.current) return;
-    const active = new AbortController(); controller.current = active; setBusy(true); setError('');
+    const active = new AbortController(); controller.current = active; statusEpoch.current++; setBusy(true); setError('');
     try { await action(active.signal); }
     catch (cause) { if (!active.signal.aborted) setError(cause instanceof Error && cause.message === 'knowledge_conflict'
       ? t('来源或运行状态有变化，请关闭后重新预览。', 'Source or run state changed. Close and preview again.')
       : t('未能完成，请检查来源、保存目录及模型配置后重试。', 'Could not complete. Check source, folder and model configuration.')); }
-    finally { controller.current = null; setBusy(false); }
+    finally { statusEpoch.current++; controller.current = null; setBusy(false); }
   }
   const reason = state ? ({ waiting: t('等待新轮次', 'Waiting for turns'), generating: t('正在提炼', 'Extracting'), stopped: t('已停止', 'Stopped'),
     quota: t('额度已用完', 'Call limit reached'), expired: t('授权已到期', 'Permission expired'), failed: t('失败，已停止', 'Failed; stopped'),

@@ -49,8 +49,9 @@ export class KnowledgeApplication {
   private invocationInFlight?: string;
   constructor(private readonly ports: KnowledgeApplicationPorts) {}
   capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow { return this.ports.evidence.capture(selection, signal); }
-  list() {
-    return this.ports.knowledge.list().map((history) => {
+  list(knowledgeIds?: ReadonlySet<string>) {
+    const histories = knowledgeIds ? this.ports.knowledge.list(knowledgeIds) : this.ports.knowledge.list();
+    return histories.filter(history => !knowledgeIds || knowledgeIds.has(history.knowledgeId)).map((history) => {
       const tags = this.ports.tags.read(history.knowledgeId).tags;
       return {
       knowledgeId: history.knowledgeId, revisionId: history.writeHeadRevisionId,

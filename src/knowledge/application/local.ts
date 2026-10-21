@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { lstatSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { canonicalJson } from '../store.js';
 import { KnowledgeApplication } from './application.js';
@@ -51,4 +52,35 @@ export function createLocalEntityLinks(root: string, execution: ExecutorArchiveP
 /** Parse a portable confirmation plan without touching a workspace or executor. */
 export function parseEntityLinkPreview(value: unknown) {
   return validateEntityLinkPreview(value, { hashJson: entityLinkDigest, hashText: entityLinkTextHash });
+}
+
+/** Ephemeral UI invalidation hint only; never an evidence digest, admission check or persisted identity. */
+export function knowledgeWorkspaceRefreshToken(root: string, scope: string, state: unknown): string | undefined {
+  try {
+    if (!root.trim() || !scope.trim()) return undefined;
+    const workspace = resolve(root.trim());
+    try {
+      const stat = lstatSync(workspace);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return undefined;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined; }
+    const heads = ['items', 'extraction-runs', 'tags', 'entities'].map(name => {
+      const directory = join(workspace, name);
+      try {
+        const stat = lstatSync(directory);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid knowledge head directory.');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [name, null];
+        throw error;
+      }
+      // Match the existing readers' published JSON heads; ignore temporary files and native-outcome subdirectories.
+      return [name, readdirSync(directory).filter(file => file.endsWith('.json')).sort().map(file => {
+        const stat = lstatSync(join(directory, file), { bigint: true });
+        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Invalid knowledge head file.');
+        return [file, stat.dev.toString(), stat.ino.toString(), stat.size.toString(), stat.mtimeNs.toString(), stat.ctimeNs.toString()];
+      })];
+    });
+    // Include the response state and request scope; this weak tag is not a byte-integrity promise.
+    const value = createHash('sha256').update(JSON.stringify([workspace, scope.trim(), state, heads])).digest('hex');
+    return `W/"omk-ui-${value}"`;
+  } catch { return undefined; } // A missing hint means conservative UI refresh, never a cached acceptance.
 }

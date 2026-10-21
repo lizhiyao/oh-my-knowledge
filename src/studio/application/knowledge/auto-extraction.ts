@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ExtractionGenerationPolicySchema } from '../../../observability/application.js';
-import type { ConversationAutoExtraction } from '../../../observability/application.js';
+import { knowledgeWorkspaceRefreshToken, type ConversationAutoExtraction } from '../../../observability/application.js';
 const text = z.string().trim().min(1).max(4096);
 const request = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('preview'), threadId: text }),
@@ -17,4 +17,9 @@ export function executeAutoExtractionAction(input: unknown, service: Conversatio
     case 'stop': return service.stop(value.workspace, value.threadId);
     case 'enable': return service.enable(value.workspace, value.threadId, value, signal);
   }
+}
+
+/** HTTP-only presentation metadata; the action result and persistent contracts stay unchanged. */
+export function autoExtractionStatusEtag(workspace: string, threadId: string, state: unknown) {
+  return knowledgeWorkspaceRefreshToken(workspace, threadId, state);
 }

@@ -1,5 +1,5 @@
 import type { ConversationCatalog, ConversationAutoExtraction } from '../../../observability/application.js';
-import { executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
+import { autoExtractionStatusEtag, executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
 import { knowledgeFailureCode } from '../../../observability/application.js';
 import { executeKnowledgeCandidateAction } from '../../application/knowledge/knowledge-candidates.js';
 import { executeKnowledgeLibraryAction } from '../../application/knowledge/knowledge-library.js';
@@ -22,7 +22,13 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
           : resource === 'auto-extraction' && automation
             ? await executeAutoExtractionAction(input, automation, controller.signal)
             : await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
-        if (!response.destroyed) { response.writeHead(200, JSON_HEADERS); response.end(JSON.stringify(result)); }
+        if (!response.destroyed) {
+          const status = resource === 'auto-extraction' && input.operation === 'status';
+          const etag = status && typeof input.workspace === 'string' && typeof input.threadId === 'string'
+            ? autoExtractionStatusEtag(input.workspace, input.threadId, result) : undefined;
+          response.writeHead(200, { ...JSON_HEADERS, ...(status ? { 'Cache-Control': 'no-store' } : {}), ...(etag ? { ETag: etag } : {}) });
+          response.end(JSON.stringify(result));
+        }
       } catch (error) {
         if (response.destroyed) return;
         const code = knowledgeFailureCode(error);

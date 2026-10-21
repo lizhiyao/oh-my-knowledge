@@ -16,7 +16,7 @@ export class KnowledgeRequestError extends Error {
 }
 
 export async function requestKnowledge<T>(resource: 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links' | 'study',
-  payload: object, signal?: AbortSignal): Promise<T> {
+  payload: object, signal?: AbortSignal, onResponse?: (metadata: { etag: string | null }) => void): Promise<T> {
   signal?.throwIfAborted();
   const response = await fetch(`/api/knowledge/${resource}`, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload), signal });
@@ -29,5 +29,6 @@ export async function requestKnowledge<T>(resource: 'candidates' | 'library' | '
       ? data.error : 'knowledge_request_failed';
     throw new KnowledgeRequestError(code, response.status);
   }
+  onResponse?.({ etag: response.headers.get('etag') });
   return data as T;
 }

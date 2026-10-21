@@ -34,7 +34,7 @@ export type KnowledgeWrite = {
   | { commandKind: 'record_maintenance'; maintenance: MaintenanceChoice }
 );
 export interface KnowledgeStore {
-  list(): KnowledgeEnvelope[];
+  list(knowledgeIds?: ReadonlySet<string>): KnowledgeEnvelope[];
   read(knowledgeId: string): KnowledgeEnvelope;
   write(command: KnowledgeWrite, actor: KnowledgeActor): KnowledgeEnvelope['receipts'][number];
 }
