@@ -179,17 +179,23 @@ describe('window entity admission', () => {
     expect(duplicate.rejected.filter(value => value.component === 'mention')).toHaveLength(2);
     expect(admitEntities([{ ...entity('a'), identityStatus: 'unresolved' }], [], excerpts).rejected[0].reasons).toEqual(['invalid_structure']);
   });
-  it('keeps a known partial group distinct from unknown identity and requires candidates at the same level', () => {
+  it('keeps known groups with partial or unknown membership distinct from unknown identity and requires same-level candidates', () => {
     const group: EntityModel = { ...entity('group'), referentKind: 'collection', uncertainties: ['其它成员未列出'],
       collection: { memberEntityIds: ['a'], completeness: 'partial', mentionIds: ['m2'], rationale: '明确的集合及一个成员' } };
     const uncertain: EntityModel = { ...entity('unknown'), referentKind: 'collection', identityStatus: 'unresolved',
       possibleEntityIds: ['group'], uncertainties: ['不确定指哪个集合'],
       collection: { memberEntityIds: [], completeness: 'unknown', mentionIds: ['m3'], rationale: '未消解集合指代' } };
-    const source = [{ evidenceRef: 'r', text: 'Echo 和其它成员；它们还在；那些失败了。' }];
-    const mentions = [mention('a', 'm1'), mention('group', 'm2', '它们'), mention('unknown', 'm3', '那些')];
-    expect(admitEntities([entity('a'), group, uncertain], mentions, source).rejected).toEqual([]);
+    const knownSubject: EntityModel = { ...entity('batch'), referentKind: 'collection', uncertainties: ['集合主体已知，成员未列出'],
+      collection: { memberEntityIds: [], completeness: 'unknown', mentionIds: ['m4'], rationale: '共同统计这批部署文件，但未提供文件成员。' } };
+    const source = [{ evidenceRef: 'r', text: 'Echo 和其它成员；它们还在；那些失败了。这批部署文件整体统计，成员未列出。' }];
+    const mentions = [mention('a', 'm1'), mention('group', 'm2', '它们'), mention('unknown', 'm3', '那些'), mention('batch', 'm4', '这批部署文件')];
+    const input = [entity('a'), group, uncertain, knownSubject], before = structuredClone(input);
+    const accepted = admitEntities(input, mentions, source);
+    expect(accepted.rejected).toEqual([]);
+    expect(accepted.entities.find(value => value.entityId === 'batch')).toEqual(knownSubject);
+    expect(input).toEqual(before);
     uncertain.possibleEntityIds = ['a'];
-    expect(admitEntities([entity('a'), group, uncertain], mentions, source).rejected).toEqual(expect.arrayContaining([
+    expect(admitEntities(input, mentions, source).rejected).toEqual(expect.arrayContaining([
       expect.objectContaining({ component: 'entity', index: 2, reasons: ['possible_entity_level_mismatch'] }),
     ]));
   });

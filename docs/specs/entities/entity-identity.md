@@ -165,6 +165,14 @@ When release status or artifact correspondence is unknown, the known tested obje
 
 Current extraction prompts implement this rule. Structural admission checks references and positions, not artifact identity; beta keywords do not trigger automatic splitting, merging, or output rewriting. Explicit correction of recorded output verifies representation, persistence, and knowledge revisions, not automatic extraction improvements. The [extraction specification](./entity-extraction.md) owns prompt and response versions.
 
+### 3.1 Standard interfaces, implementations, and entry points
+
+**Implementing an interface, matching its behavior, or providing an alternative entry point does not establish identity with the interface or another implementation.** Retain separate interfaces and implementations when the source independently discusses them; bind aliases or entry-point mentions to one implementation only with source-supported correspondence. Do not mechanically create interface, implementation, and entry-point layers for every name, or invent canonical names, authorship, or self-written attribution.
+
+For example, a source explicitly stating “RouteLedger defines the reading contract, module PebbleLedger implements it, and ./ledger-entry is only another import entry for PebbleLedger” supports separate interface and implementation identities; the path mention follows the explicit correspondence without inventing another implementation. A source comparing ClayReader and ./route-reader separately without establishing correspondence or entry-point authorship does not support binding the path to the former or calling it self-written. Do not infer an independently undiscussed interface from the path.
+
+Assess each actual referent rather than substitute a standard interface for an explicit implementation or count an implementation's name as the interface concept. Keep known objects with specific unknown authorship, type, or correspondence; when a particular mention's target is genuinely unresolved, retain a local `unresolved` identity and supported candidates. Existing source and same-level constraints still apply to types and candidates; `componentRef` does not express “implements an interface.” Models and semantic reviewers make these judgments; programs do not classify or repair outputs using API names, paths, or words such as “self-written.”
+
 ## 4. Collections, unresolved identities, and mention positions
 
 **A collection is one jointly referenced object; an unresolved identity means the target is unknown.** A generic “unknown” label cannot substitute for both.
@@ -177,6 +185,10 @@ Current extraction prompts implement this rule. Structural admission checks refe
 | A truncated window contains only “They are still unconfirmed.” | Preserve the unresolved plural reference, unknown members, and window limits. | Invent members or treat it as a known individual. |
 
 A known collection may retain known members and membership gaps; an incomplete list is not the complete set. Candidates must have the same referential level: when “they” could mean different combinations, individual A and B cannot become interchangeable singleton candidates. If candidate combinations cannot be represented with evidence, preserve an explanation and uncertainty rather than invent collection identities without supported mentions.
+
+**Assess collection identity separately from membership completeness.** When the source independently identifies a group but does not enumerate its members, retain a `proposed` collection with `completeness=unknown`, empty `memberEntityIds`, and a membership-gap reason. Unknown members do not justify changing it to `object`, deleting it, or inventing members from a count. Use `partial` for only the source-supported known members; an unresolved collection means that the group itself cannot be identified.
+
+For example, “The seven specimen cards sealed in this batch are checked as one group; individual card identifiers were not recorded” supports a known collection with unknown members. “Specimen cards are a category of record carrier; only its definition is discussed” describes an abstract category that may be `object`. “Sandgrain Register is one register whose cover instructions are being checked” describes a single artifact that may also be `object`. A category's possible instances or an artifact's multiple pages do not automatically form a collection; plural forms, counts, and type words cannot replace source evidence of a shared scope.
 
 Each admitted source position corresponds to one mention. Collection mentions, membership relations, and individual claims supported by “both” must be represented separately, not through duplicated positions. The existing duplicate-position rejection stays in place. Section 8 defines membership, plural ambiguity and evidence bindings. Structural tests do not establish their model extraction quality.
 
@@ -200,6 +212,10 @@ Time and version changes alone do not determine a new identity. Preserve identit
 
 When the source says “Correction: production Quartz failed, not Cedar,” the analysis should reinterpret relevant references according to that explicit correction while retaining the earlier claim and correction evidence. Correcting an object's name or attribution does not verify failure, repair, or success. Conflicting speakers do not automatically make the last claim authoritative; preserve unresolved conflicts and their sources.
 
+**Unconfirmed identity candidates differ from explicitly withdrawn guesses.** `possibleEntityIds` expresses supported possible correspondences; lack of confirmation does not mean exclusion. Shared names, co-occurrence, or the assistant's choice of an answer target do not automatically establish correspondence. Inspect each candidate's whole-window basis and the scope of any withdrawal. If its only correspondence evidence is explicitly withdrawn and no support remains, retain the original ambiguous object as `unresolved` with the gap reason instead of retaining an unsupported candidate link. A guessed object that still meets entity-scope rules may retain its explicit name mention and speculative context without restoring that link.
+
+For example, an initially ambiguous “Lampbridge” guessed as “Lampbridge Retriever” solely from its name, followed by an explicit withdrawal with no other evidence, retains an empty candidate list and the withdrawal reason. If the source explicitly limits it to “Lampbridge Retriever or Lampbridge Indexer” and later only says it is still unconfirmed, retain both supported candidates. Withdrawing a guess that selected one of them leaves the independent two-candidate scope intact, rather than clearing all candidates. Conflicting speakers asserting those two correspondences without adjudicating evidence leave a conflict and unresolved identity; neither time nor role automatically decides it. Programs verify candidate references and levels, not whether a source supports or withdraws a semantic correspondence.
+
 Subsequent storage and presentation must:
 
 - Distinguish object labels, referential levels, identity evidence, qualifiers, members/related objects, and unknowns instead of relying on one description for everything.
@@ -213,6 +229,8 @@ These requirements supplement the [revision and storage boundaries](./entity-ext
 ## 7. From rules to implementation and acceptance
 
 These examples specify rules; they are neither independently adjudicated gold nor evidence of improved extraction. The [evaluation protocol](./entity-extraction-evaluation.md) owns annotation, regression and independent-review gates and their current evidence.
+
+Clarifications about collection identity and correspondence evidence are first validated through a separate research candidate; they do not switch the production default or change wire, Schema, admission, or storage contracts. Freeze the actual candidate prompt bytes before a controlled comparison on real conversations. Passing rules and synthetic regressions does not establish model compliance or rewrite old candidates and historical research conclusions.
 
 Acceptance cannot compare entity counts alone. Check referential levels, required identity separations, coreference rationale, collection/unknown representations, knowledge subjects/objects and conditions, and revision bindings after correction. Annotate critical mentions and required identities before output; do not inspect only returned objects or let the model omit instances to avoid false merges.
 
