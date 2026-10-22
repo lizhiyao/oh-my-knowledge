@@ -77,6 +77,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/application.ts → knowledge/extraction/model-wire.ts',
   'knowledge/application/application.ts → knowledge/extraction/quality.ts',
   'knowledge/application/application.ts → knowledge/extraction/runs.ts',
+  'knowledge/application/application.ts → knowledge/extraction/source-plan-evidence.ts',
+  'knowledge/application/application.ts → knowledge/extraction/source-plan-input.ts',
   'knowledge/application/application.ts → knowledge/extraction/strict-prompt.ts',
   'knowledge/application/application.ts → knowledge/extraction/window-proposals.ts',
   'knowledge/application/auto-extraction.ts → knowledge/adapters/executor.ts',
