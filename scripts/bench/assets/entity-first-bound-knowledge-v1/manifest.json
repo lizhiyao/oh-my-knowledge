@@ -1,0 +1,34 @@
+{
+  "assetVersion": "omk-entity-first-bound-knowledge/v1",
+  "stageKind": "entity-analysis-only",
+  "composition": "unchanged-strict30-then-raw-evidence-rules-then-raw-entity-task-suffix/v1",
+  "wireId": "sha256:63e1a6668343df71cc33584c1b5d5f6d6c318c7e3b4e03ec9bf4bb69d7b126fe",
+  "baseline": {
+    "promptVersion": "knowledge-extraction-v30",
+    "systemDigest": "sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085",
+    "systemBytes": 63430
+  },
+  "candidate": {
+    "promptVersion": "knowledge-extraction-v35",
+    "systemDigest": "sha256:39d852f41281743340feae6785037abfcd34e4e5d3ca0f499b1ac4dd5fac61a5",
+    "systemBytes": 71685
+  },
+  "rules": {
+    "file": "../entity-evidence-semantics-v1/rules.txt",
+    "digest": "sha256:d13d6a3d92ff3698c103851a32efd4fe60a14566f6ae13652f1d23c9fc3a7b4a",
+    "bytes": 7912
+  },
+  "suffix": {
+    "file": "../entity-task-only-ablation-v1/task-suffix.txt",
+    "digest": "sha256:019627e19a09bced18c710534b10d8e3e98f26ff424cc7dc22b5a3f9b0f6c696",
+    "bytes": 343
+  },
+  "scope": "research-entity-stage;not-production-default-or-quality-acceptance/v1",
+  "limitations": [
+    "按原始字节顺序组合 strict30、既有 v34 身份与集合规则、既有 v33 实体任务后缀；不插入分隔符、改写旧资产或新增示例，不含真实来源或参考答案。",
+    "本 profile 只定义实体与原文提及阶段，仍沿用 v4 wire，要求模型原生返回 proposals=[]。非空 proposals 必须保留为任务失败证据，不能由宿主清空。",
+    "供可信研究 composition root 与后续绑定不可变实体修订的知识阶段组合使用；本资产不实现该接线，也不证明两阶段行为、成本或质量改善。",
+    "E 阶段的 prompt 版本为 v35；完整实体优先 workflow 的任务、输入、绑定与资源边界须另行冻结，不能称为单变量 prompt 消融或复用旧候选得分。",
+    "生产 strict30 默认、旧 v33/v34 资产、接纳规则、wire、公共 registry 和存储契约均不因本资产改变；模型生成、真实来源验证与独立真人验收尚未完成。"
+  ]
+}

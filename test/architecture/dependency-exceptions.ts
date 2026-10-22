@@ -68,7 +68,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/run-store.ts → knowledge/extraction/run-sealing.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/runs.ts',
   'knowledge/adapters/trace-evidence.ts → knowledge/extraction/evidence.ts',
-  // #1321：显式研究任务只消费纯输入构造与 strict30／wire 身份，不扩展允许领域或反向依赖。
+  // #1321：显式研究任务只消费输入／原生证据校验与 prompt／wire 身份，不扩展允许领域或反向依赖。
+  'knowledge/application/application.ts → knowledge/extraction/bound-knowledge-evidence.ts',
   'knowledge/application/application.ts → knowledge/extraction/coverage-review-input.ts',
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation-policy.ts',
@@ -89,6 +90,12 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
   'knowledge/application/citation-locators.ts → knowledge/extraction/quote-occurrence.ts',
+  // E-first 只重放已归档的原文 E 任务并对应真实初始修订，不经 extraction 反向调用应用或存储。
+  'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation-policy.ts',
+  'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation.ts',
+  'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/model-input.ts',
+  'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/model-wire.ts',
+  'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/window-proposals.ts',
   'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-store.ts',

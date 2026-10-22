@@ -172,3 +172,19 @@ node dist-scripts/bench/entity-extraction-review.js \
 最终请求使用 `knowledge-extraction-source-plan-input/v2`、不变的 strict30 及当前 v4 输出 wire，实际输入进入普通请求摘要；继续原生归档、接纳和修订链。清单锚点正确不能修复最终错引，仅出现在清单中的材料不算最终知识保留。该选项与覆盖复核互斥，仅允许单次调用 run，不经重试、CLI 或默认行为自动启用。没有公共存储迁移或通用任务平台，私有清单回执也不是失败的提取 run。
 
 与“原文完整提取 → 现有覆盖复核”比较时，两臂从新的第一阶段开始，最终端点须事前确定。首次输出前冻结构造器、任务、来源／配置、阶段依赖、顺序、调用机会和停止规则；各第二阶段在首阶段归档后、派发前物化并封存实际输入，不能声称未知的未来输出字节已事前冻结。中间质量门禁的差异须明示：被拒绝的清单阻断其最终调用，现有覆盖复核则可能继续复核完整但格式错误的首次提取；不拿跳过的机会补替代调用。报告两个阶段的实际用量、失败／未知／跳过及最终原始／接纳／拒绝结果。这改变多项流程任务，不是单一提示词变量；机会相同不代表 token、费用或耗时相同，也不证明稳定改善或独立语义验收。
+
+### 5.3 实体优先、修订绑定的知识研究流程
+
+该内部候选先提取实体与提及，持久化初始 `EntityAnalysis` 修订，再针对这一不可变修订请求知识。实体阶段研究 profile `knowledge-extraction-v35` 按顺序组合原始 strict30 字节、既有 v34 `entity-evidence-semantics-v1/rules.txt` 与既有 v33 `entity-task-only-ablation-v1/task-suffix.txt`，不新增示例或来源答案。它保留 prompt-profile v1 与普通 v4 提取 wire，要求原生响应 `proposals: []`。冻结 profile 是工程身份，不是提取质量成绩；宿主不能清空意外返回的 proposals。
+
+`boundKnowledgeContext(entityRunId, model, profile)` 通过实际的原文单次 E run 及完整原生归档认证实体阶段：核对冻结 profile、来源／输入／请求／producer 身份和执行配置，要求 E/M 已接纳且无知识或拒绝项，再把原生接纳结果与真实持久化的初始修订逐项对应。即使实体分析后来已有新 head，也只选 E run 记录的该修订。任意目录投影或同名标签不是持久化证据；读取 context 不调用模型，也不修改 E 修订。
+
+仅知识 K 任务使用独立的 `knowledge-bound-knowledge-system/v1`、`knowledge-bound-knowledge-input/v1`、`knowledge-bound-knowledge-wire/v1` 身份和输出名称 `bound_knowledge_v1`；receipt kind 为 `knowledge-bound-knowledge-receipt`，archive kind 为 `knowledge-bound-knowledge-native`，两者均为 `schemaVersion: 1`。实际输入含完整选定 excerpts、limitations 和只读实体／提及目录，以来源及修订摘要绑定。它返回 `bound-knowledge`／`schemaVersion: 1`、`proposals` 和 `catalogGaps`；不能重写 E/M、伪造 v4 提取响应或 raw 提取 run、拼接目录或修补引文。目录不是语义真值；gap 理由及精确来源锚点仍是未复核的模型声明，不授权扩充目录或自动追加调用，没有 gap 也不证明目录完整。
+
+`importBoundKnowledge` 通过可选的可信只读 `boundKnowledgeArchive` 端口重新读取完整 receipt／native 字节，并重建当前 K 任务供同请求 producer 检查。验证来源／修订绑定、请求／配置及完整原生返回后，才使用既有 proposal 接纳与 `KnowledgeStore` 写入，将 grounding 绑定到 `entityAnalysisRef`。其它项被拒绝或仍有 gap 时，独立有效的 proposal 仍可接纳；`partial` 或 `admitted` 是结构／局部接纳，不等于完整业务成功或语义验收。导入器不创建公共提取 run 或质量框架，也不把 K 计为第二个实体 run。
+
+E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt ID、proposal ID 与 role 导出相同的私有 `knowledge-bound-import-ids/v1` 知识、修订和存储 request 身份。既有存储幂等性允许重放相同内容；同一组 ID 下改变内容不能覆盖先前写入。重放继续读取同一初始 E 修订与 K 归档，不增加模型调用、不跟随更新的实体 head，也不修改原始 native 证据。
+
+普通 strict30 默认、v4 wire、`knowledge-generation-single/v1` 生成策略和公共存量数据保持不变；普通宿主不安装该研究归档端口，也不默认选择 v35。复用 v33 后缀不意味着该流程是 v33 前驱，更不授权绕过既有覆盖复核前驱契约。K 使用自己的任务和回执，不把响应伪装为失败或空知识的 v4 提取。
+
+新的前瞻诊断仍须冻结完整 E+K 流程：实际来源／profile／配置、初始修订及原生引用、依赖 K 输入、顺序、调用机会、停止规则和最终端点。复核全部 E/M 与知识、来源支持的信息保留、gap、部分／失败效果及两阶段实际 token／cache／费用／耗时，未知用量保持未知。不复用旧分数，也不因来源未变而声称新独立证据。任务和绑定变化不是单一提示词变量对比；E 阶段空知识、编写的回归或 CI 绿色不能证明业务质量、生产采用、泛化能力或 #1322 要求的独立真人验收。
