@@ -188,7 +188,8 @@ export class KnowledgeApplication {
       ref: { analysisId: catalog.analysisId, revisionId: catalog.revisionId } };
     const common = { evidence, entityRunId, entityAnalysisRef: shared.ref, semanticStatus: 'not_reviewed' as const };
     const checked = evidence.checked;
-    if (checked.status === 'rejected') return { ...common, admissionStatus: 'rejected' as const, committed: [] };
+    if (checked.status === 'rejected') return { ...common, admissionStatus: 'rejected' as const,
+      proposalAdmissionStatus: 'rejected' as const, coverageStatus: 'unavailable' as const, committed: [] };
     const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${evidence.receipt.request.executor}`,
       executionRef: evidence.receipt.receiptId };
     const intents = checked.accepted.map(proposal => {
@@ -205,8 +206,15 @@ export class KnowledgeApplication {
         expectedGeneration: 0, commandKind: 'append_revision', expectedHeadRevisionId: null,
         revision: intent.revision, grounding: intent.grounding }, actor);
     }
-    return { ...common, admissionStatus: checked.rejected.length || checked.catalogGaps.length ? 'partial' as const : 'admitted' as const,
-      committed: intents.map(intent => ({ knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) };
+    // Closed model declarations are not source coverage or semantic acceptance.
+    const coverageStatus = checked.accounting.status === 'has_issues' || checked.accounting.unresolvedMaterialIds.length
+      || checked.accounting.unresolvedCatalogGapIds.length ? 'unresolved' as const : 'declared_only' as const;
+    const proposalAdmissionStatus = checked.rejected.length
+      ? checked.accepted.length ? 'partial' as const : 'rejected' as const : 'admitted' as const;
+    return { ...common, proposalAdmissionStatus, coverageStatus,
+      admissionStatus: checked.rejected.length || coverageStatus === 'unresolved' ? 'partial' as const : 'admitted' as const,
+      committed: intents.map((intent, index) => ({ proposalId: checked.accepted[index].proposalId,
+        knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) };
   }
   async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal,
     options?: ExtractionGenerationOptions): Promise<ExtractionRun> {

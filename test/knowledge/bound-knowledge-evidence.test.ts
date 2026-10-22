@@ -31,8 +31,13 @@ function setup(executor: 'codex' | 'openai-api' = 'codex') {
     sourceVersion: source.sourceVersion, entities: analysis.entities, mentions: analysis.mentions, limitations: [] };
   const model = { executor, model: 'authored-model', timeoutMs: 2000, maxOutputTokens: 1024 };
   const execution = boundKnowledgeExecution(source, catalog, model);
-  const response = { responseKind: 'bound-knowledge', schemaVersion: 1, binding: JSON.parse(execution.request.input).binding,
-    proposals: wireModelWindow(packet).proposals, catalogGaps: [] };
+  const response = { responseKind: 'bound-knowledge', schemaVersion: 2, binding: JSON.parse(execution.request.input).binding,
+    proposals: wireModelWindow(packet).proposals, catalogGaps: [],
+    materialAccounting: [{ materialId: 'material-1', meaning: 'Authored use claim, not independent verification.',
+      anchors: [{ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', occurrence: null }],
+      dispositionKind: 'expressed', statementRefs: [{ proposalId: packet.proposals[0].proposalId, statementId: 'usage' }],
+      reason: null, catalogGapIds: [] }],
+    excerptAccounting: [{ evidenceRef: 'record-1', materialIds: ['material-1'], noMaterialReason: null }] };
   const receiptId = uid(8), attemptId = uid(9);
   const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1, receiptId, attemptId,
     outcome: ExtractionOutcomeSchema.parse({ outcomeKind: 'result', result: studyNativeResult(` \n${JSON.stringify(response)}\r\n`, {
@@ -42,7 +47,7 @@ function setup(executor: 'codex' | 'openai-api' = 'codex') {
   const producer = (name: string, input: ExecutorInput) => ({ producerId: 'authored-bound-knowledge/v1', producerRevision: hash('authored producer'),
     sourceChannels: [{ channel: 'authored-native-result', maxBytes: 1024 * 1024 }], maxOutcomeJsonBytes: 2 * 1024 * 1024,
     proof: { requestDigest: hash(JSON.stringify({ executor: name, input })), scope: 'authored-test-only' } });
-  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 1,
+  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 2,
     receiptId, attemptId, binding: response.binding, request: execution.request,
     producer: producer(executor, execution.input), requestDigest: '', nativeRef: ref(bytes(native)),
     startedAt: '2026-10-23T00:00:00Z', finishedAt: '2026-10-23T00:00:01Z' };
@@ -183,8 +188,9 @@ describe('bound knowledge native archive evidence', () => {
       expect(f.nativeBytes()).toEqual(original);
     });
 
-  it('does not accept source-plan framing or aliases as the private K task receipt', () => {
-    const f = setup(), receiptBytes = bytes({ ...f.receipt, receiptKind: 'knowledge-source-plan-receipt' });
+  it.each(['alias', 'v1'] as const)('does not accept %s framing as the current private K task receipt', mode => {
+    const f = setup(), receiptBytes = bytes({ ...f.receipt,
+      ...(mode === 'alias' ? { receiptKind: 'knowledge-source-plan-receipt' } : { schemaVersion: 1 }) });
     expect(BoundKnowledgeReceiptSchema.safeParse(JSON.parse(receiptBytes.toString('utf8'))).success).toBe(false);
     expect(() => readBoundKnowledgeEvidence(f.source, f.catalog, f.model,
       { ...f.reference, receiptRef: ref(receiptBytes) }, { ...f.archive, read: () => ({ receiptBytes, outcomeBytes: f.nativeBytes() }) })).toThrow();

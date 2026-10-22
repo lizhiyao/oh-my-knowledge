@@ -66,14 +66,19 @@ function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (respons
   }
   for (const link of proposal.draft.evidence) link.evidenceRef = context.window.excerpts[0].evidenceRef;
   for (const citation of proposal.citations) citation.selection.evidenceRef = context.window.excerpts[0].evidenceRef;
-  const response: Record<string, unknown> = { responseKind: 'bound-knowledge', schemaVersion: 1,
-    binding: JSON.parse(execution.request.input).binding, proposals: [proposal], catalogGaps: [] };
+  const response: Record<string, unknown> = { responseKind: 'bound-knowledge', schemaVersion: 2,
+    binding: JSON.parse(execution.request.input).binding, proposals: [proposal], catalogGaps: [],
+    materialAccounting: [{ materialId: 'material-1', meaning: 'Authored use claim, not independent verification.',
+      anchors: [{ evidenceRef: context.window.excerpts[0].evidenceRef, quote: 'Alpha 使用 Beta', occurrence: null }],
+      dispositionKind: 'expressed', statementRefs: [{ proposalId: proposal.proposalId, statementId: 'usage' }],
+      reason: null, catalogGapIds: [] }],
+    excerptAccounting: [{ evidenceRef: context.window.excerpts[0].evidenceRef, materialIds: ['material-1'], noMaterialReason: null }] };
   change?.(response);
   const receiptId = randomUUID(), attemptId = randomUUID();
   const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1, receiptId, attemptId,
     outcome: { outcomeKind: 'result', result: studyNativeResult(JSON.stringify(response)) } };
   const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' });
-  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 1,
+  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 2,
     receiptId, attemptId, binding: JSON.parse(execution.request.input).binding, request: execution.request,
     producer: BoundKnowledgeReceiptSchema.shape.producer.parse(producer.inspect(f.model.executor, execution.input)),
     requestDigest: '', nativeRef: ref(bytes(native)), startedAt: '2020-02-01T00:00:01Z', finishedAt: '2020-02-01T00:00:02Z' };
@@ -97,7 +102,9 @@ describe('entity-first / bound knowledge application (authored native returns)',
     const beforeEntities = f.ports.entities.read(f.runId), receiptBytes = k.receiptBytes(), nativeBytes = k.nativeBytes();
     const result = k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference);
     expect(result.admissionStatus).toBe('admitted'); expect(result.semanticStatus).toBe('not_reviewed');
+    expect(result).toMatchObject({ proposalAdmissionStatus: 'admitted', coverageStatus: 'declared_only' });
     expect(result.committed).toHaveLength(1);
+    expect(result.committed[0].proposalId).toBe('candidate-1');
     const { knowledgeId, revisionId } = result.committed[0];
     const detail = k.app.detail(knowledgeId, revisionId);
     expect(detail.grounding.entityAnalysisRef).toEqual({ analysisId: f.runId, revisionId: beforeEntities.revisions[0].revisionId });
@@ -162,7 +169,7 @@ describe('entity-first / bound knowledge application (authored native returns)',
     const f = await setup(), k = knowledgeReturn(f, response => {
       const proposal = (response.proposals as ReturnType<typeof wireModelWindow>['proposals'])[0];
       proposal.citations[0].selection.quote = 'not in this authored source';
-      response.catalogGaps = [{ gapId: 'missing-object', reason: 'Authored unreviewed model gap, not a host classification.',
+      response.catalogGaps = [{ gapId: 'missing-object', gapKind: 'catalog_blocker', reason: 'Authored unreviewed model gap, not a host classification.',
         anchors: [{ evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }] }];
     });
     const result = k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference);
@@ -171,6 +178,54 @@ describe('entity-first / bound knowledge application (authored native returns)',
     expect(result.evidence.checked).toMatchObject({ status: 'checked', catalogGaps: [{ gapId: 'missing-object' }] });
     expect(k.app.list()).toEqual([]); expect(f.ports.entities.read(f.runId).revisions).toHaveLength(1);
     expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['bad-anchor', 'missing-statement', 'unexpressed', 'missing-excerpt'] as const)(
+    'commits valid knowledge with %s accounting while preserving unresolved claims and raw evidence', async mode => {
+      const f = await setup(), k = knowledgeReturn(f, response => {
+        const materials = response.materialAccounting as { anchors: { quote: string }[]; dispositionKind: string;
+          statementRefs: { proposalId: string; statementId: string }[]; reason: string | null }[];
+        if (mode === 'bad-anchor') materials[0].anchors[0].quote = 'authored quote absent from the source';
+        if (mode === 'missing-statement') materials[0].statementRefs[0].statementId = 'not-returned';
+        if (mode === 'unexpressed') {
+          materials[0].dispositionKind = 'not_expressed'; materials[0].statementRefs = [];
+          materials[0].reason = 'Authored unresolved material, not a host finding of missing knowledge.';
+        }
+        if (mode === 'missing-excerpt') response.excerptAccounting = [];
+      });
+      const beforeNative = k.nativeBytes(), beforeReceipt = k.receiptBytes();
+      const result = k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference);
+      expect(result).toMatchObject({ admissionStatus: 'partial', proposalAdmissionStatus: 'admitted',
+        coverageStatus: 'unresolved', semanticStatus: 'not_reviewed' });
+      expect(result.committed).toHaveLength(1); expect(result.committed[0].proposalId).toBe('candidate-1');
+      expect(result.evidence.rawOutput).toBe(k.native.outcome.result.output);
+      expect(k.nativeBytes()).toEqual(beforeNative); expect(k.receiptBytes()).toEqual(beforeReceipt);
+      expect(f.effects).toHaveBeenCalledTimes(1); expect(f.ports.entities.read(f.runId).revisions).toHaveLength(1);
+      expect(k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference).committed).toEqual(result.committed);
+      expect(k.app.list()).toHaveLength(1);
+    });
+
+  it('keeps invalid gap metadata separate from proposal admission without promoting its scope claim', async () => {
+    const f = await setup(), k = knowledgeReturn(f, response => {
+      response.catalogGaps = [{ gapId: 'scope', gapKind: 'scope_excluded', reason: 'Authored scope claim, unreviewed.',
+        anchors: [{ evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'absent quote', occurrence: null }] }];
+    });
+    const result = k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference);
+    expect(result).toMatchObject({ admissionStatus: 'partial', proposalAdmissionStatus: 'admitted',
+      coverageStatus: 'unresolved', semanticStatus: 'not_reviewed' });
+    expect(result.committed).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
+    expect(result.evidence.rawOutput).toContain('absent quote');
+  });
+
+  it('reports a closed scope declaration without declaring semantic coverage or a catalog blocker', async () => {
+    const f = await setup(), k = knowledgeReturn(f, response => {
+      response.catalogGaps = [{ gapId: 'context', gapKind: 'scope_excluded', reason: 'Authored scope declaration awaiting review.',
+        anchors: [{ evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }] }];
+    });
+    const result = k.app.importBoundKnowledge(f.runId, f.model, profile, k.reference);
+    expect(result).toMatchObject({ admissionStatus: 'admitted', proposalAdmissionStatus: 'admitted',
+      coverageStatus: 'declared_only', semanticStatus: 'not_reviewed' });
+    expect(result.committed).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a conflicting replay instead of generating duplicate knowledge identities', async () => {
