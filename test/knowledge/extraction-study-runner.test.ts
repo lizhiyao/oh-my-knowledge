@@ -14,6 +14,9 @@ import { parseExtractionStudyPlan } from '../../src/knowledge/extraction/study-p
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
+import { buildEntityTaskOnlyAblation, type EntityTaskOnlyAblationManifest } from '../../scripts/bench/assets/entity-task-only-ablation-v1/profile.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -21,6 +24,12 @@ const hash = (value: string) => `sha256:${createHash('sha256').update(value).dig
 function setup(reply?: (index: number, output: string) => ExecResult) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-runner-'))); roots.push(root);
   return nativeStudyFixture(root, reply);
+}
+function taskAblation() {
+  const asset = new URL('../../scripts/bench/assets/entity-task-only-ablation-v1/', import.meta.url);
+  const manifest: EntityTaskOnlyAblationManifest = JSON.parse(readFileSync(new URL('manifest.json', asset), 'utf8'));
+  const suffix = readFileSync(new URL('task-suffix.txt', asset), 'utf8');
+  return { baselineSystem: STRICT_EXTRACTION_PROMPT, suffix, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
 }
 
 describe('production extraction study runner (authored executor, zero model access)', () => {
@@ -136,18 +145,56 @@ describe('production extraction study runner (authored executor, zero model acce
     const { planId: _oldRootId, ...rootBody } = rootChanged; void _oldRootId; rootChanged.planId = extractionStudyDigest(rootBody);
     expect(() => parseExtractionStudyPlan(rootChanged)).toThrow('slot request identity');
   });
-  it('binds an explicit prompt-only candidate to the actual production dispatch and keeps a policy-only contrast separate', async () => {
-    const f = setup(), plan = f.prepare({ changedVariable: 'prompt', variants: [
-      { variantId: 'baseline', model: f.model(), policy: SINGLE_EXTRACTION_POLICY },
+  it('keeps the entity-task asset byte-bound and rejects drift without discovering a model or source', () => {
+    const input = taskAblation(), profiles = buildEntityTaskOnlyAblation(input);
+    expect(input.manifest.baseline.systemDigest).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
+    expect(input.manifest.candidate.systemDigest).toBe('sha256:d282562d720653a31894190e4102dda57125ddcd7d8d5fc2e9196c1c5301a53e');
+    expect(profiles.baseline.system).toBe(STRICT_EXTRACTION_PROMPT);
+    expect(profiles.candidate.system).toBe(STRICT_EXTRACTION_PROMPT + input.suffix);
+    for (const changed of [
+      { ...input, baselineSystem: input.baselineSystem + '\n' },
+      { ...input, suffix: input.suffix.trim() },
+      { ...input, wireId: hash('different wire') },
+      { ...input, manifest: { ...input.manifest, candidate: { ...input.manifest.candidate, promptVersion: 'knowledge-extraction-v30' } } },
+      { ...input, manifest: { ...input.manifest, candidate: { ...input.manifest.candidate, systemDigest: hash('different candidate') } } },
+    ]) expect(() => buildEntityTaskOnlyAblation(changed)).toThrow(/frozen/);
+  });
+  it('dispatches frozen task-only bytes, persists entities without knowledge and keeps a policy contrast separate', async () => {
+    const profiles = buildEntityTaskOnlyAblation(taskAblation());
+    const f = setup((index, output) => {
+      if (index === 0) return native(output);
+      const response = JSON.parse(output); response.proposals = [];
+      return native(JSON.stringify(response));
+    });
+    const plan = f.prepare({ changedVariable: 'prompt', variants: [
+      { variantId: 'baseline', model: f.model(), policy: SINGLE_EXTRACTION_POLICY, promptProfile: profiles.baseline },
       { variantId: 'candidate', model: f.model(), policy: SINGLE_EXTRACTION_POLICY,
-        promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v9001', system: 'Authored candidate rules; exercise bytes only, no quality claim.' } },
+        promptProfile: profiles.candidate },
     ] });
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
     for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
+    for (const [index, profile] of [profiles.baseline, profiles.candidate].entries()) {
+      expect(f.effects).toHaveBeenNthCalledWith(index + 1, expect.objectContaining({ system: profile.system, prompt: plan.cases[0].input }));
+      expect(plan.slots[index].request.systemDigest).toBe(hash(profile.system));
+    }
     const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(report.slots[0].run?.promptHash).not.toBe(report.slots[1].run?.promptHash);
-    expect(report.slots[1].run?.promptVersion).toBe('knowledge-extraction-v9001');
+    expect(report.slots[1].run?.promptVersion).toBe('knowledge-extraction-v33');
     expect(report.slots[0].run?.policy).toEqual(report.slots[1].run?.policy);
+    const candidate = report.slots[1].run!;
+    expect(candidate.status).toBe('completed'); expect(candidate.intents).toEqual([]); expect(candidate.committed).toEqual([]);
+    expect(candidate.entityRejections).toEqual([]); expect(candidate.rejections).toEqual([]);
+    expect(candidate.entityAnalysis?.revision.entities.map(entity => entity.label)).toEqual(['Alpha', 'Beta']);
+    expect(candidate.entityAnalysis?.revision.mentions).toHaveLength(2);
+    expect(f.ports.application.entities(candidate.runId).revision).toEqual(candidate.entityAnalysis?.revision);
+    const candidateNative = report.slots[1].attempts[0].outcome;
+    expect(candidateNative?.outcomeKind).toBe('result');
+    if (candidateNative?.outcomeKind !== 'result') throw new Error('Authored native result is missing.');
+    expect(JSON.parse(candidateNative.result.output as string).proposals).toEqual([]);
+    expect(candidate.rawOutput).toBe(candidateNative.result.output);
+    await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[1].slotId });
+    expect(f.effects).toHaveBeenCalledTimes(2);
+    expect(report.goldReady).toBe(false); expect(report.qualityConclusion).toBe('not_evaluated');
     const create = vi.fn(() => { throw new Error('Preparation must not configure an executor.'); });
     const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' }, create);
     const selected = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2304, maxOutputTokens: 128, profileId: 'loopback-test/v1' });
