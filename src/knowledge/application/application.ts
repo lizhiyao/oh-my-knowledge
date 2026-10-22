@@ -30,6 +30,8 @@ import type { ExtractionModel, ExtractionPromptProfile } from '../extraction/gen
 import { buildExtractionCoverageReviewInput } from '../extraction/coverage-review-input.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../extraction/strict-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';
+import { readSourcePlanEvidence, type SourcePlanArchivePort, type SourcePlanReference } from '../extraction/source-plan-evidence.js';
+import { buildSourcePlannedExtractionInput } from '../extraction/source-plan-input.js';
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -38,6 +40,8 @@ export interface KnowledgeApplicationPorts {
   id(): string; now(): string; hash(value: unknown): string;
   actor: KnowledgeActor;
   generationTiming?: { now(): number; random(): number; wait(ms: number, signal?: AbortSignal): Promise<void> };
+  /** Optional readonly research evidence; ordinary hosts do not install a source-plan archive. */
+  sourcePlanArchive?: SourcePlanArchivePort;
 }
 export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
@@ -45,6 +49,8 @@ export interface ExtractionGenerationOptions {
   promptProfile?: ExtractionPromptProfile;
   /** Internal research task: a new single call, never a retry or an automatic default. */
   coverageReview?: { previousRunId: string };
+  /** Internal two-stage study only. Callers provide an archive identity, never raw plan text. */
+  sourceSemanticPlan?: SourcePlanReference;
   beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation }) => void;
   /** Durable returned facts, outside the run-store lock and before admission or another invocation. */
   onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
@@ -161,8 +167,9 @@ export class KnowledgeApplication {
   async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal,
     options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
     const policy = ExtractionGenerationPolicySchema.parse(options?.policy ?? SINGLE_EXTRACTION_POLICY);
-    if (options?.coverageReview && policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId) {
-      throw new Error('Coverage review requires a separate single-invocation research run.');
+    if (options?.coverageReview && options.sourceSemanticPlan) throw new Error('Extraction research input tasks are mutually exclusive.');
+    if ((options?.coverageReview || options?.sourceSemanticPlan) && policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId) {
+      throw new Error('Extraction research inputs require a separate single-invocation research run.');
     }
     if (policy.policyId === 'knowledge-generation-bounded/v1') return this.generateBounded(snapshotId, model, runId, policy, signal, options);
     signal?.throwIfAborted();
@@ -173,7 +180,8 @@ export class KnowledgeApplication {
     // Review is an explicit, versioned input task. Previous output never becomes source evidence.
     const input = options?.coverageReview
       ? this.coverageReviewInput(window, model, system, promptVersion, options.coverageReview.previousRunId, runId)
-      : extractionModelInput(window);
+      : options?.sourceSemanticPlan ? this.sourcePlannedInput(window, model, system, promptVersion, options.sourceSemanticPlan)
+        : extractionModelInput(window);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
       policy: SINGLE_EXTRACTION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
@@ -218,6 +226,16 @@ export class KnowledgeApplication {
       this.heldOutcome = { runId, attemptId, outcome, maxBytes: producer.maxOutcomeJsonBytes };
       return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     } finally { this.invocationInFlight = undefined; }
+  }
+  private sourcePlannedInput(window: EvidenceWindow, model: ExtractionModel, system: string, promptVersion: string,
+    reference: SourcePlanReference): string {
+    if (model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID
+      || system !== STRICT_EXTRACTION_PROMPT || promptVersion !== 'knowledge-extraction-v30'
+      || promptVersion !== STRICT_EXTRACTION_PROMPT_VERSION) {
+      throw new Error('Source-planned extraction requires the unchanged strict30 structured task.');
+    }
+    if (!this.ports.sourcePlanArchive) throw new Error('Source semantic plan archive is unavailable.');
+    return buildSourcePlannedExtractionInput(window, readSourcePlanEvidence(window, model, reference, this.ports.sourcePlanArchive));
   }
   private coverageReviewInput(window: EvidenceWindow, model: ExtractionModel, system: string, promptVersion: string,
     previousRunId: string, runId: string): string {

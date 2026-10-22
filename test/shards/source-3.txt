@@ -65,6 +65,8 @@ test/knowledge/storage.test.ts
 test/knowledge/bounded-generation.test.ts
 test/knowledge/coverage-review-input.test.ts
 test/knowledge/coverage-review-application.test.ts
+test/knowledge/source-plan.test.ts
+test/knowledge/source-plan-application.test.ts
 test/knowledge/extraction-study-review.test.ts
 test/knowledge/extraction-study-panel.test.ts
 test/knowledge/extraction-study-analysis.test.ts
