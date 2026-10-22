@@ -32,6 +32,9 @@ import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../e
 import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';
 import { readSourcePlanEvidence, type SourcePlanArchivePort, type SourcePlanReference } from '../extraction/source-plan-evidence.js';
 import { buildSourcePlannedExtractionInput } from '../extraction/source-plan-input.js';
+import { readBoundKnowledgeEvidence, type BoundKnowledgeArchivePort,
+  type BoundKnowledgeReference } from '../extraction/bound-knowledge-evidence.js';
+import { boundKnowledgeIntentIds, readEntityFirstKnowledgeContext } from './entity-first-knowledge.js';
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -42,6 +45,8 @@ export interface KnowledgeApplicationPorts {
   generationTiming?: { now(): number; random(): number; wait(ms: number, signal?: AbortSignal): Promise<void> };
   /** Optional readonly research evidence; ordinary hosts do not install a source-plan archive. */
   sourcePlanArchive?: SourcePlanArchivePort;
+  /** Private E-first research only; ordinary hosts do not install a K-only native archive. */
+  boundKnowledgeArchive?: BoundKnowledgeArchivePort;
 }
 export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
@@ -163,6 +168,45 @@ export class KnowledgeApplication {
   tag(knowledgeId: string, generation: number, tags: unknown) {
     this.ports.knowledge.read(knowledgeId);
     return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
+  }
+  /** Reads the authentic immutable E revision for a separate K invocation; this method never invokes a model. */
+  boundKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile) {
+    return readEntityFirstKnowledgeContext(this.ports, entityRunId, model, profile);
+  }
+  /** Import an archived K-only return. Replaying after interruption reuses store request IDs, without another native call. */
+  importBoundKnowledge(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile,
+    reference: BoundKnowledgeReference, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!this.ports.boundKnowledgeArchive) throw new Error('Bound knowledge archive unavailable.');
+    const { window, catalog, entityFinishedAt } = this.boundKnowledgeContext(entityRunId, model, profile);
+    const evidence = readBoundKnowledgeEvidence(window, catalog, model, reference, this.ports.boundKnowledgeArchive);
+    if (Date.parse(evidence.receipt.startedAt) < Date.parse(entityFinishedAt)) {
+      throw new Error('Bound knowledge native task predates entity-task completion.');
+    }
+    const shared = { entityIds: new Map(catalog.entities.map(entity => [entity.entityId, entity.entityId])),
+      mentionIds: new Map(catalog.mentions.map(mention => [mention.mentionId, mention.mentionId])),
+      ref: { analysisId: catalog.analysisId, revisionId: catalog.revisionId } };
+    const common = { evidence, entityRunId, entityAnalysisRef: shared.ref, semanticStatus: 'not_reviewed' as const };
+    const checked = evidence.checked;
+    if (checked.status === 'rejected') return { ...common, admissionStatus: 'rejected' as const, committed: [] };
+    const actor: KnowledgeActor = { actorKind: 'agent', actorId: `extractor:${evidence.receipt.request.executor}`,
+      executionRef: evidence.receipt.receiptId };
+    const intents = checked.accepted.map(proposal => {
+      const ids = boundKnowledgeIntentIds(evidence.receipt.receiptId, proposal.proposalId);
+      let next = 0;
+      return this.intent(proposal, window, actor, shared, { id: () => {
+        if (next >= ids.length) throw new Error('Bound knowledge import identity contract changed.');
+        return ids[next++];
+      }, now: () => evidence.receipt.finishedAt });
+    });
+    for (const intent of intents) {
+      signal?.throwIfAborted();
+      this.ports.knowledge.write({ requestId: intent.requestId, knowledgeId: intent.revision.knowledgeId,
+        expectedGeneration: 0, commandKind: 'append_revision', expectedHeadRevisionId: null,
+        revision: intent.revision, grounding: intent.grounding }, actor);
+    }
+    return { ...common, admissionStatus: checked.rejected.length || checked.catalogGaps.length ? 'partial' as const : 'admitted' as const,
+      committed: intents.map(intent => ({ knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) };
   }
   async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal,
     options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
@@ -672,7 +716,8 @@ export class KnowledgeApplication {
     return next;
   }
   private intent(proposal: ExtractionProposal, window: EvidenceWindow, actor: KnowledgeActor,
-    shared: { entityIds: Map<string, string>; mentionIds: Map<string, string>; ref: NonNullable<KnowledgeGrounding['entityAnalysisRef']> }): ExtractionRun['intents'][number] {
+    shared: { entityIds: Map<string, string>; mentionIds: Map<string, string>; ref: NonNullable<KnowledgeGrounding['entityAnalysisRef']> },
+    identity?: { id(): string; now(): string }): ExtractionRun['intents'][number] {
     const entityIds = shared.entityIds;
     const draft: KnowledgeDraft = {
       ...proposal.draft,
@@ -682,10 +727,11 @@ export class KnowledgeApplication {
         ...(statement.object ? { object: { entityId: entityIds.get(statement.object.entityId)! } } : {}),
       })) },
     };
-    const now = this.ports.now();
-    const revision: KnowledgeRevision = { ...draft, knowledgeId: this.ports.id(), revisionId: this.ports.id(),
+    const now = identity ? identity.now() : this.ports.now();
+    const id = identity ? () => identity.id() : () => this.ports.id();
+    const revision: KnowledgeRevision = { ...draft, knowledgeId: id(), revisionId: id(),
       observationRefs: [], derivations: [], createdAt: now, revisedAt: now, createdBy: actor, revisedBy: actor, revisionReason: '从选定工作日志提炼，等待人工复核' };
-    return { requestId: this.ports.id(), revision, grounding: {
+    return { requestId: id(), revision, grounding: {
       revisionId: revision.revisionId,
       mentions: proposal.mentions.map((mention) => ({ ...mention, mentionId: shared.mentionIds.get(mention.mentionId)!, entityId: entityIds.get(mention.entityId)! })),
       citations: proposal.citations, reuseRationale: proposal.reuseRationale, identityUncertainties: proposal.identityUncertainties,
