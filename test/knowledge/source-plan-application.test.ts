@@ -14,7 +14,7 @@ import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourcePlanExecution, sourcePlanRequestDigest, type SourcePlanReceipt,
   type SourcePlanArchivePort, SourcePlanValidationError, SourcePlanReceiptSchema, readSourcePlanEvidence } from '../../src/knowledge/extraction/source-plan-evidence.js';
 import { SOURCE_PLAN_FINAL_INPUT_VERSION, buildSourcePlannedExtractionInput } from '../../src/knowledge/extraction/source-plan-input.js';
-import { SOURCE_PLAN_SYSTEM, SOURCE_PLAN_WIRE_SCHEMA_JSON } from '../../src/knowledge/extraction/source-plan.js';
+import { SOURCE_PLAN_SYSTEM, SOURCE_PLAN_WIRE_SCHEMA_JSON, SOURCE_PLAN_OUTPUT_NAME } from '../../src/knowledge/extraction/source-plan.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
@@ -31,11 +31,15 @@ function setup(reply?: Parameters<typeof nativeStudyFixture>[1]) {
   const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' });
   const execution = sourcePlanExecution(window, model), receiptId = randomUUID(), attemptId = randomUUID();
   const anchor = (quote: string) => ({ evidenceRef: window.excerpts[0].evidenceRef, quote, occurrence: null });
-  const plan = { responseKind: 'knowledge-source-plan', schemaVersion: 1, snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
-    objects: ['Alpha', 'Beta'].map((meaning, index) => ({ objectId: `o${index}`, meaning, referentKind: 'object', identityStatus: 'proposed',
+  // Intentionally wrong context roles must remain untrusted; the final authored return still admits both source objects and their knowledge.
+  const plan = { responseKind: 'knowledge-source-plan', schemaVersion: 2, snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
+    objects: ['Alpha', 'Beta'].map((meaning, index) => ({ objectId: `o${index}`, meaning,
+      planningRole: index === 0 ? 'context_only' : 'entity_candidate', qualificationBasis: 'Authored unreviewed role claim, not semantic truth.',
+      referentKind: 'object', identityStatus: 'proposed',
       identityBasis: 'Explicit local object in this authored source.', typeBasis: 'No finer role is specified.',
       anchors: [anchor(meaning)], uncertainties: [], sharedScope: null })),
-    materials: [{ materialId: 'u0', objectIds: ['o0', 'o1'], meaning: 'Source asserts that Alpha uses Beta.', conditions: [], limits: [],
+    materials: [{ materialId: 'u0', retentionIntent: 'context_only', reuseBasis: 'Intentionally incorrect authored role claim.',
+      participantObjectIds: ['o0', 'o1'], contextObjectIds: [], meaning: 'Source asserts that Alpha uses Beta.', conditions: [], limits: [],
       unknowns: ['Authored source assertion; no independently verified fact or fact-time.'], anchors: [anchor('Alpha 使用 Beta')] }] };
   const native = { archiveKind: 'knowledge-source-plan-native', schemaVersion: 1, receiptId, attemptId,
     outcome: { outcomeKind: 'result', result: studyNativeResult(` \n${JSON.stringify(plan)}\n `) } };
@@ -63,17 +67,18 @@ function setup(reply?: Parameters<typeof nativeStudyFixture>[1]) {
 }
 
 describe('source semantic plan to real application admission (authored native evidence)', () => {
-  it('authenticates the separate task and preserves the complete untrusted original while keeping final strict30/native admission', async () => {
+  it('authenticates the separate task and preserves untrusted roles without filtering final strict30/native admission', async () => {
     const f = setup(), app = f.app(), id = randomUUID(), options = { sourceSemanticPlan: f.reference };
     const nativeOriginal = bytes(f.native), receiptOriginal = f.receiptBytes();
     const run = await app.generate(f.window.snapshotId, f.model, id, undefined, options);
     const actual = f.effects.mock.calls[0][0], input = JSON.parse(actual.prompt);
+    expect(SOURCE_PLAN_FINAL_INPUT_VERSION).toBe('knowledge-extraction-source-plan-input/v2');
     expect(input).toMatchObject({ taskKind: 'source_planned_extraction', taskVersion: SOURCE_PLAN_FINAL_INPUT_VERSION,
       excerpts: f.window.excerpts, limitations: f.window.limitations,
       sourcePlanResponse: { receiptRef: f.reference.receiptRef, rawOutput: f.native.outcome.result.output, semanticStatus: 'not_reviewed' } });
     expect(input).not.toHaveProperty('sourcePath');
     expect(f.inspect.mock.calls[0][1]).toMatchObject({ system: SOURCE_PLAN_SYSTEM,
-      outputFormat: { name: 'knowledge_source_plan_v1', schema: SOURCE_PLAN_WIRE_SCHEMA_JSON } });
+      outputFormat: { name: SOURCE_PLAN_OUTPUT_NAME, schema: SOURCE_PLAN_WIRE_SCHEMA_JSON } });
     expect(run.status).toBe('completed'); expect(run.attempts).toHaveLength(1);
     expect(run.promptVersion).toBe('knowledge-extraction-v30');
     expect(run.committed).toHaveLength(1); expect(run.entityAnalysis?.revision.entities).toHaveLength(2);

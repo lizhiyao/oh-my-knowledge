@@ -5,11 +5,12 @@ import type { EvidenceWindow } from '../../src/knowledge/extraction/evidence.js'
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import {
   buildKnowledgeSourcePlanInput, checkKnowledgeSourcePlan, type KnowledgeSourcePlan,
-  SOURCE_PLAN_SYSTEM, SOURCE_PLAN_SYSTEM_VERSION, SOURCE_PLAN_INPUT_VERSION, SOURCE_PLAN_OUTPUT_NAME,
+  SOURCE_PLAN_SYSTEM, SOURCE_PLAN_SYSTEM_VERSION, SOURCE_PLAN_INPUT_VERSION, SOURCE_PLAN_WIRE_VERSION, SOURCE_PLAN_OUTPUT_NAME,
   SOURCE_PLAN_OUTPUT_MAX_BYTES, SOURCE_PLAN_WIRE_SCHEMA_JSON, SOURCE_PLAN_WIRE_CANONICAL_JSON, SOURCE_PLAN_WIRE_ID,
 } from '../../src/knowledge/extraction/source-plan.js';
 
 const digest = (value: string) => `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
+// Authored data exercises the contract and wiring; it is not evidence of model quality.
 function fixture() {
   const window: EvidenceWindow = {
     snapshotId: '11111111-1111-4111-8111-111111111111', sourceVersion: digest('authored source bytes'),
@@ -18,21 +19,37 @@ function fixture() {
     origin: { threadId: 'private-thread', title: 'private-title', cwd: '/private/project' },
     records: [{ recordIndex: 1, raw: 'private native envelope' }], limitations: ['  仅此选定窗口。\n'],
     excerpts: [{ evidenceRef: 'r1', recordIndex: 1, eventKind: 'message', role: 'assistant', timestamp: 'source time only',
-      text: '😀 苔签 与 苔签 被分别命名；本轮共同核验的卡组，成员未记录。\n  必须保留回退，但尚未执行；来源称耗时约两秒。' }],
+      text: '😀 苔签 与 苔签 被分别命名；本轮共同核验的卡组，成员未记录。\n  必须保留回退，但尚未执行；来源称耗时约两秒。回退策略由核验流程单独审查；本次记录 R-7 已归档。' }],
   };
   const plan: KnowledgeSourcePlan = {
-    responseKind: 'knowledge-source-plan', schemaVersion: 1, snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
-    objects: [{ objectId: 'cards', meaning: '  本轮共同核验的卡组\n', referentKind: 'collection', identityStatus: 'proposed',
+    responseKind: 'knowledge-source-plan', schemaVersion: 2, snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
+    objects: [{ objectId: 'cards', meaning: '  本轮共同核验的卡组\n', planningRole: 'entity_candidate',
+      qualificationBasis: '原文把这批对象作为独立共同范围核验。', referentKind: 'collection', identityStatus: 'proposed',
       identityBasis: '原文明确共同核验范围。', typeBasis: '有界卡组，不凭数量补成员。',
       anchors: [{ evidenceRef: 'r1', quote: '本轮共同核验的卡组', occurrence: null }],
       uncertainties: ['具体成员未记录。'], sharedScope: { memberObjectIds: [], completeness: 'unknown', rationale: '已知组，未知成员。' } },
-    { objectId: 'named', meaning: '原文第一个苔签所指对象。', referentKind: 'unknown', identityStatus: 'proposed',
+    { objectId: 'named', meaning: '原文第一个苔签所指对象。', planningRole: 'qualification_unknown',
+      qualificationBasis: '明确被命名，但是否得到独立讨论尚不足。', referentKind: 'unknown', identityStatus: 'proposed',
       identityBasis: '已知被分别命名的对象。', typeBasis: '没有层次依据。',
-      anchors: [{ evidenceRef: 'r1', quote: '苔签', occurrence: 0 }], uncertainties: ['所指层次未知。'], sharedScope: null }],
-    materials: [{ materialId: 'retain-fallback', objectIds: ['cards'], meaning: '保留回退是规范要求，不表示已执行。',
+      anchors: [{ evidenceRef: 'r1', quote: '苔签', occurrence: 0 }], uncertainties: ['所指层次和提炼资格未知。'], sharedScope: null },
+    { objectId: 'policy', meaning: '被单独审查的回退策略。', planningRole: 'entity_candidate',
+      qualificationBasis: '原文独立讨论其审查和保留要求。', referentKind: 'object', identityStatus: 'proposed',
+      identityBasis: '明确被审查的策略内容。', typeBasis: '没有具体实现的层次依据，保留为普通规则对象。',
+      anchors: [{ evidenceRef: 'r1', quote: '回退策略', occurrence: null }], uncertainties: [], sharedScope: null },
+    { objectId: 'record', meaning: '本次已归档的记录 R-7。', planningRole: 'context_only',
+      qualificationBasis: '只给出本次完成背景，没有独立概念或可复用对象讨论。', referentKind: 'object', identityStatus: 'proposed',
+      identityBasis: '原文以本次记录明确指代。', typeBasis: '单一记录提供事件上下文。',
+      anchors: [{ evidenceRef: 'r1', quote: '本次记录 R-7', occurrence: null }], uncertainties: [], sharedScope: null }],
+    materials: [{ materialId: 'retain-fallback', retentionIntent: 'reusable_candidate',
+      reuseBasis: '保留要求是有适用范围的规范，不是完成声明。', participantObjectIds: ['cards', 'policy'], contextObjectIds: ['record'],
+      meaning: '保留回退是规范要求，不表示已执行。',
       conditions: ['仅此轮来源讨论。'], limits: ['不能把来源自述提升为独立执行证明。'],
       unknowns: ['事实发生时间和适用时间分别未知。'],
-      anchors: [{ evidenceRef: 'r1', quote: '必须保留回退，但尚未执行', occurrence: null }] }],
+      anchors: [{ evidenceRef: 'r1', quote: '必须保留回退，但尚未执行', occurrence: null }] },
+    { materialId: 'archive-note', retentionIntent: 'context_only', reuseBasis: '只报告本次归档状态，不给出可复用判据。',
+      participantObjectIds: [], contextObjectIds: ['record'], meaning: '来源报告本次记录已经归档。',
+      conditions: [], limits: ['仅本次完成背景。'], unknowns: ['没有独立归档证据。'],
+      anchors: [{ evidenceRef: 'r1', quote: '本次记录 R-7 已归档', occurrence: null }] }],
   };
   return { window, plan };
 }
@@ -57,7 +74,10 @@ describe('source-only semantic planning', () => {
     if (result.status === 'validated') {
       expect(result.plan).toEqual(f.plan);
       expect(result.plan.objects[0].sharedScope).toEqual({ memberObjectIds: [], completeness: 'unknown', rationale: '已知组，未知成员。' });
-      expect(result.plan.objects[1]).toMatchObject({ identityStatus: 'proposed', referentKind: 'unknown' });
+      expect(result.plan.objects[1]).toMatchObject({ identityStatus: 'proposed', referentKind: 'unknown', planningRole: 'qualification_unknown' });
+      expect(result.plan.objects[3].planningRole).toBe('context_only');
+      expect(result.plan.materials[0]).toMatchObject({ retentionIntent: 'reusable_candidate', participantObjectIds: ['cards', 'policy'], contextObjectIds: ['record'] });
+      expect(result.plan.materials[1]).toMatchObject({ retentionIntent: 'context_only', participantObjectIds: [], contextObjectIds: ['record'] });
       expect(result.groundedAnchors.find(value => value.path.join('.') === 'objects.1.anchors.0')?.selection)
         .toEqual({ evidenceRef: 'r1', quote: '苔签', start: 3, end: 5 });
     }
@@ -70,15 +90,20 @@ describe('source-only semantic planning', () => {
       .toMatchObject({ status: 'validated', semanticStatus: 'not_reviewed' });
     // Authored counterexample: exact grounding does not decide whether the source group was mislabeled.
     f.plan.objects[0].referentKind = 'object'; f.plan.objects[0].sharedScope = null;
+    f.plan.objects[2].planningRole = 'context_only'; f.plan.materials[0].retentionIntent = 'context_only';
+    f.plan.materials[1].retentionIntent = 'undetermined';
+    f.plan.materials[1].contextObjectIds = []; // No forced carrier when both reference groups are empty.
     const result = checkKnowledgeSourcePlan(JSON.stringify(f.plan), f.window);
     expect(result).toMatchObject({ status: 'validated', semanticStatus: 'not_reviewed' });
+    if (result.status === 'validated') expect(result.plan).toEqual(f.plan); // No role-based filtering or semantic repair.
     expect(result).not.toHaveProperty('goldReady'); expect(result).not.toHaveProperty('formalReceipt');
   });
 
   it('counts overlapping occurrences in UTF16 and permits shared evidence across different plan items', () => {
     const f = fixture(); f.window.excerpts[0].text = '😀 aaaa';
     f.plan.objects = [{ ...f.plan.objects[1], anchors: [{ evidenceRef: 'r1', quote: 'aa', occurrence: 2 }] }];
-    f.plan.materials[0].objectIds = ['named']; f.plan.materials[0].anchors = structuredClone(f.plan.objects[0].anchors);
+    f.plan.materials = [{ ...f.plan.materials[0], participantObjectIds: ['named'], contextObjectIds: [],
+      anchors: structuredClone(f.plan.objects[0].anchors) }];
     const result = checkKnowledgeSourcePlan(JSON.stringify(f.plan), f.window);
     expect(result.status).toBe('validated');
     if (result.status === 'validated') expect(result.groundedAnchors.map(value => value.selection))
@@ -94,8 +119,16 @@ describe('source-only semantic planning', () => {
     { label: 'duplicate anchor', code: 'duplicate_anchor', change: p => { p.objects[0].anchors.push(structuredClone(p.objects[0].anchors[0])); } },
     { label: 'duplicate object', code: 'duplicate_object_id', change: p => { p.objects[1].objectId = 'cards'; } },
     { label: 'duplicate material', code: 'duplicate_material_id', change: p => { p.materials.push(structuredClone(p.materials[0])); } },
-    { label: 'dangling material object', code: 'unknown_object_reference', change: p => { p.materials[0].objectIds = ['missing']; } },
-    { label: 'duplicate object reference', code: 'duplicate_reference', change: p => { p.materials[0].objectIds = ['cards', 'cards']; } },
+    { label: 'dangling participant', code: 'unknown_object_reference', change: p => { p.materials[0].participantObjectIds = ['missing']; } },
+    { label: 'duplicate participant', code: 'duplicate_reference', change: p => { p.materials[0].participantObjectIds = ['cards', 'cards']; } },
+    { label: 'dangling context', code: 'unknown_object_reference', change: p => { p.materials[0].contextObjectIds = ['missing']; } },
+    { label: 'duplicate context', code: 'duplicate_reference', change: p => { p.materials[0].contextObjectIds = ['record', 'record']; } },
+    { label: 'unknown qualification with no reason', code: 'unknown_requires_reason', change: p => {
+      p.objects[2].planningRole = 'qualification_unknown'; p.objects[2].uncertainties = [];
+    } },
+    { label: 'undetermined reuse with no reason', code: 'unknown_requires_reason', change: p => {
+      p.materials[0].retentionIntent = 'undetermined'; p.materials[0].unknowns = [];
+    } },
     { label: 'unknown with no reason', code: 'unknown_requires_reason', change: p => { p.objects[1].uncertainties = []; } },
     { label: 'collection without shared scope', code: 'shared_scope_shape', change: p => { p.objects[0].sharedScope = null; } },
     { label: 'noncollection with shared scope', code: 'shared_scope_shape', change: p => { p.objects[0].referentKind = 'object'; } },
@@ -136,6 +169,20 @@ describe('source-only semantic planning', () => {
     expect(validate(f.plan)).toBe(true);
     expect(validate({ ...f.plan, entities: [] })).toBe(false);
     expect(rejectedCodes({ ...f.plan, entities: [] } as KnowledgeSourcePlan, f.window)).toContain('invalid_structure');
+    const legacy = { ...structuredClone(f.plan), schemaVersion: 1 } as unknown as KnowledgeSourcePlan;
+    expect(validate(legacy)).toBe(false);
+    expect(rejectedCodes(legacy, f.window)).toContain('invalid_structure');
+    const oldReferences = structuredClone(f.plan) as unknown as { materials: Record<string, unknown>[] };
+    oldReferences.materials[0].objectIds = ['cards'];
+    delete oldReferences.materials[0].participantObjectIds; delete oldReferences.materials[0].contextObjectIds;
+    expect(validate(oldReferences)).toBe(false);
+    expect(rejectedCodes(oldReferences as unknown as KnowledgeSourcePlan, f.window)).toContain('invalid_structure');
+    const badGrounds = structuredClone(f.plan);
+    badGrounds.objects[0].qualificationBasis = ' '; badGrounds.materials[0].reuseBasis = ' ';
+    const groundsResult = checkKnowledgeSourcePlan(JSON.stringify(badGrounds), f.window);
+    expect(groundsResult.status).toBe('rejected');
+    if (groundsResult.status === 'rejected') expect(groundsResult.issues.map(issue => issue.path.join('.')))
+      .toEqual(expect.arrayContaining(['objects.0.qualificationBasis', 'materials.0.reuseBasis']));
     const noOccurrence = structuredClone(f.plan) as unknown as { objects: { anchors: Record<string, unknown>[] }[] };
     delete noOccurrence.objects[0].anchors[0].occurrence;
     expect(validate(noOccurrence)).toBe(false);
@@ -184,13 +231,14 @@ describe('source-only semantic planning', () => {
   });
 
   it('pins independent system, source input and wire identities without claiming semantic improvement', () => {
-    expect(SOURCE_PLAN_SYSTEM_VERSION).toBe('knowledge-source-plan-system/v1');
-    expect(SOURCE_PLAN_INPUT_VERSION).toBe('knowledge-source-plan-input/v1');
-    expect(SOURCE_PLAN_OUTPUT_NAME).toBe('knowledge_source_plan_v1');
+    expect(SOURCE_PLAN_SYSTEM_VERSION).toBe('knowledge-source-plan-system/v2');
+    expect(SOURCE_PLAN_INPUT_VERSION).toBe('knowledge-source-plan-input/v2');
+    expect(SOURCE_PLAN_OUTPUT_NAME).toBe('knowledge_source_plan_v2');
+    expect(SOURCE_PLAN_WIRE_VERSION).toBe('knowledge-source-plan-wire/v2');
     expect(JSON.stringify(SOURCE_PLAN_WIRE_SCHEMA_JSON)).toBe(SOURCE_PLAN_WIRE_CANONICAL_JSON);
     expect({ system: digest(SOURCE_PLAN_SYSTEM), input: digest(buildKnowledgeSourcePlanInput(fixture().window)), wire: SOURCE_PLAN_WIRE_ID })
-      .toEqual({ system: 'sha256:60a2b7b1728470056231787e688d95f6de1bbfd027e7895563b44d5552d26205',
-        input: 'sha256:291cbbeaa39843e6a5f9a1d59ef78fd7641f7bc2c4d4993da469dd27fd809701',
-        wire: 'sha256:9e1515a5c3f35d07ec6187c68e6c696322f7d97acc16978c540a571a34c7b760' });
+      .toEqual({ system: 'sha256:20875decf8aa1cb2d99d4edaaaf3aa71032419c78633f5a907021a5c6868dec6',
+        input: 'sha256:741694557106a0ecb477a9e4ba9a23e2ebe74df14dd6289f07c3a5935bd490bd',
+        wire: 'sha256:54a52f15ecfe2700e0f1a27ac570e06e6a4d0198eb1884337bfff7ad496095f5' });
   });
 });
