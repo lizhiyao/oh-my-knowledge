@@ -1,0 +1,3 @@
+
+
+本次调用的任务限定：只执行上述实体与原文提及识别，不执行知识候选生成。仍按上述同一 wire Schema 返回 knowledge-extraction／schemaVersion=4 的完整对象，其中 proposals 必须直接输出为空数组 []。上述实体与提及的范围、身份、定位、证据和不确定性规则不变。

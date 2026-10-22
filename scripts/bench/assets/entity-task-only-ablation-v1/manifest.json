@@ -1,0 +1,28 @@
+{
+  "assetVersion": "omk-entity-task-only-ablation/v1",
+  "changedVariable": "prompt",
+  "composition": "unchanged-strict30-then-raw-task-suffix/v1",
+  "wireId": "sha256:63e1a6668343df71cc33584c1b5d5f6d6c318c7e3b4e03ec9bf4bb69d7b126fe",
+  "baseline": {
+    "promptVersion": "knowledge-extraction-v30",
+    "systemDigest": "sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085",
+    "systemBytes": 63430
+  },
+  "candidate": {
+    "promptVersion": "knowledge-extraction-v33",
+    "systemDigest": "sha256:d282562d720653a31894190e4102dda57125ddcd7d8d5fc2e9196c1c5301a53e",
+    "systemBytes": 63773
+  },
+  "suffix": {
+    "file": "task-suffix.txt",
+    "digest": "sha256:019627e19a09bced18c710534b10d8e3e98f26ff424cc7dc22b5a3f9b0f6c696",
+    "bytes": 343
+  },
+  "scope": "development-task-ablation;not-production-default-or-quality-acceptance/v1",
+  "limitations": [
+    "保留 strict30 全部原始字节，包括原输出规则、few-shot 和 wire Schema，再追加任务限定；不缩减结构协议。",
+    "候选仅改变知识候选生成的任务范围；非空 proposals 是任务不遵守，必须保留原生输出，不能由宿主清空。",
+    "实体、提及及知识输出仍由原生产入口接纳与归档；本资产不改变接纳规则、评分或历史研究。",
+    "本消融不单独区分生成预算、注意力或其它内部机制，不证明两阶段生产链可行，也不提供独立语义验收。"
+  ]
+}
