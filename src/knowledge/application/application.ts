@@ -1,4 +1,5 @@
 import type { ExtractionRunSealRequest } from '../extraction/run-sealing.js';
+import { createHash } from 'node:crypto';
 import type { KnowledgeActor, KnowledgeDraft, KnowledgeRevision } from '../contracts.js';
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { z } from 'zod';
@@ -26,6 +27,9 @@ import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ac
   type ExtractionGenerationPolicy, type ExtractionBoundedPolicy, type ExtractionBudgetReservation } from '../extraction/generation-policy.js';
 import { extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from '../extraction/generation.js';
 import type { ExtractionModel, ExtractionPromptProfile } from '../extraction/generation.js';
+import { buildExtractionCoverageReviewInput } from '../extraction/coverage-review-input.js';
+import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../extraction/strict-prompt.js';
+import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -39,6 +43,8 @@ export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
   /** Internal controlled studies bind an explicit version and the exact dispatched system bytes. */
   promptProfile?: ExtractionPromptProfile;
+  /** Internal research task: a new single call, never a retry or an automatic default. */
+  coverageReview?: { previousRunId: string };
   beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation }) => void;
   /** Durable returned facts, outside the run-store lock and before admission or another invocation. */
   onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
@@ -155,14 +161,19 @@ export class KnowledgeApplication {
   async generate(snapshotId: string, model: ExtractionModel, runId = this.ports.id(), signal?: AbortSignal,
     options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
     const policy = ExtractionGenerationPolicySchema.parse(options?.policy ?? SINGLE_EXTRACTION_POLICY);
+    if (options?.coverageReview && policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId) {
+      throw new Error('Coverage review requires a separate single-invocation research run.');
+    }
     if (policy.policyId === 'knowledge-generation-bounded/v1') return this.generateBounded(snapshotId, model, runId, policy, signal, options);
     signal?.throwIfAborted();
     const source = this.source(snapshotId);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const window = source.window;
-    // Native paths/raw envelopes stay local. The model receives only registered excerpts and scope notices.
-    const input = extractionModelInput(window);
     const { system, promptVersion } = extractionPrompt(model, options?.promptProfile);
+    // Review is an explicit, versioned input task. Previous output never becomes source evidence.
+    const input = options?.coverageReview
+      ? this.coverageReviewInput(window, model, system, promptVersion, options.coverageReview.previousRunId, runId)
+      : extractionModelInput(window);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
       policy: SINGLE_EXTRACTION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
@@ -207,6 +218,40 @@ export class KnowledgeApplication {
       this.heldOutcome = { runId, attemptId, outcome, maxBytes: producer.maxOutcomeJsonBytes };
       return this.settleRun(runId, signal, false, options?.onOutcomeArchived);
     } finally { this.invocationInFlight = undefined; }
+  }
+  private coverageReviewInput(window: EvidenceWindow, model: ExtractionModel, system: string, promptVersion: string,
+    previousRunId: string, runId: string): string {
+    if (previousRunId === runId || model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID
+      || system !== STRICT_EXTRACTION_PROMPT || promptVersion !== 'knowledge-extraction-v30'
+      || promptVersion !== STRICT_EXTRACTION_PROMPT_VERSION) {
+      throw new Error('Coverage review requires the unchanged strict30 structured task and a distinct predecessor.');
+    }
+    // Read through the archive-validating store, rather than accepting caller-supplied raw or a manifest projection.
+    const previous = this.ports.runs.read(previousRunId);
+    const attempt = previous.attempts[0];
+    if (!['completed', 'failed'].includes(previous.status) || previous.policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId
+      || previous.snapshotId !== window.snapshotId || previous.sourceVersion !== window.sourceVersion
+      || previous.inputDigest !== this.ports.hash(extractionModelInput(window))
+      || attempt.request.inputDigest !== `sha256:${createHash('sha256').update(extractionModelInput(window), 'utf8').digest('hex')}`
+      || previous.promptHash !== this.ports.hash(system) || previous.promptVersion !== promptVersion
+      || attempt.request.systemDigest !== `sha256:${createHash('sha256').update(system, 'utf8').digest('hex')}`
+      || previous.executor !== model.executor || previous.model !== model.model
+      || attempt.request.outputMode !== model.outputMode || attempt.request.wireId !== model.wireId
+      || attempt.request.timeoutMs !== (model.timeoutMs ?? 300_000)
+      || attempt.request.maxOutputTokens !== model.maxOutputTokens
+      || previous.selectedAttemptId !== attempt.attemptId || !attempt.outcome) {
+      throw new Error('Coverage review predecessor differs from the frozen source-only first task or execution configuration.');
+    }
+    const archived = this.ports.runs.readOutcome(previous.runId, attempt.attemptId, attempt.outcome);
+    const outcome = archived.outcome;
+    if (outcome.outcomeKind !== 'result' || outcome.cleanupFailure || outcome.result.ok !== true || typeof outcome.result.output !== 'string'
+      || outcome.result.output !== previous.rawOutput || outcome.result.refusal !== undefined
+      || Array.isArray(outcome.result.toolCalls) && outcome.result.toolCalls.length > 0) {
+      throw new Error('Coverage review requires the complete archived native assistant output.');
+    }
+    return buildExtractionCoverageReviewInput(window, { runId: previous.runId, attemptId: attempt.attemptId,
+      outcomeRef: archived.ref, snapshotId: previous.snapshotId, sourceVersion: previous.sourceVersion,
+      rawOutput: outcome.result.output });
   }
   resume(runId: string, signal?: AbortSignal): ExtractionRun {
     return this.settleRun(runId, signal);
