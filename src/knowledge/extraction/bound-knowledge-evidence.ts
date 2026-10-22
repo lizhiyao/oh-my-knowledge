@@ -22,7 +22,7 @@ const requestSchema = z.strictObject({
   maxOutputTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
 });
 export const BoundKnowledgeReceiptSchema = z.strictObject({
-  receiptKind: z.literal('knowledge-bound-knowledge-receipt'), schemaVersion: z.literal(1),
+  receiptKind: z.literal('knowledge-bound-knowledge-receipt'), schemaVersion: z.literal(2),
   receiptId: z.string().uuid(), attemptId: z.string().uuid(), binding: BoundKnowledgeResponseSchema.shape.binding,
   request: requestSchema, producer: ExtractionAttemptSchema.shape.producer,
   requestDigest: ExtractionOutcomeRefSchema.shape.digest, nativeRef: ExtractionOutcomeRefSchema,
