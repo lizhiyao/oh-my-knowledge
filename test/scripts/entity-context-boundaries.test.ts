@@ -4,7 +4,7 @@ import { checkWindowExtractionResponse } from '../../src/knowledge/extraction/wi
 import { EntityReviewCorpusSchema, entityReviewInput, parseEntityReviewCorpus, type EntityReviewCase } from '../../scripts/bench/entity-review-corpus.js';
 import { checkEntityReview } from '../../scripts/bench/entity-review-checks.js';
 import { reviewCapture, reviewDigest } from '../../scripts/bench/entity-extraction-review.js';
-import { createSemanticPlan, evaluateSemanticReview, semanticReviewTargets } from '../../scripts/bench/entity-semantic-checks.js';
+import { createSemanticPlan, evaluateSemanticReview, semanticReviewTargets, type SemanticOutputReview } from '../../scripts/bench/entity-semantic-checks.js';
 import { modelWindow } from '../knowledge/fixtures.js';
 
 const fixtureText = readFileSync(new URL('../fixtures/entity-context-boundaries-v1.json', import.meta.url), 'utf8');
@@ -27,9 +27,12 @@ function authored(sample: EntityReviewCase) {
       ? entity.entityKey === 'unresolved-prompt' ? ['记录内当前版本 r14'] : []
       : [entity.entityKey === 'example-prompt' ? '示例内当前版本 r14' : '本轮审查当前版本 r17'],
     identityStatus: entity.identityStatus, possibleEntityIds: entity.possibleEntities,
-    uncertainties: entity.identityStatus === 'unresolved' ? [entity.rationale]
+    uncertainties: entity.identityStatus === 'unresolved' || (entity.collection && entity.collection.completeness !== 'complete') ? [entity.rationale]
       : sample.caseId === 'dev-unconfirmed-context-correspondence' ? ['来源未给此对象的版本'] : [],
-    componentRef: null, collection: null }));
+    componentRef: entity.component ? { entityId: entity.component,
+      mentionIds: sample.mentions.filter(mention => mention.entity === entity.entityKey).map(mention => mention.mentionKey), rationale: entity.rationale } : null,
+    collection: entity.collection ? { memberEntityIds: entity.collection.members, completeness: entity.collection.completeness,
+      mentionIds: sample.mentions.filter(mention => mention.entity === entity.entityKey).map(mention => mention.mentionKey), rationale: entity.rationale } : null }));
   output.mentions = sample.mentions.map(mention => ({ mentionId: mention.mentionKey, entityId: mention.entity,
     basis: 'explicit', rationale: mention.rationale,
     selection: { evidenceRef: `${sample.caseId}:${mention.messageIndex}`, ...mention.alternatives[0] } }));
@@ -309,5 +312,147 @@ describe('source-claim fields remain semantic review obligations (isolated synth
     expect(evaluateSemanticReview({ ...context, receipt })).toMatchObject({ status: 'exploratory_reviewed',
       reference: { goldReady: false }, outputReview: { confirmedErrors: 0, requiredGaps: 0, uncertain: 0, independentHuman: false } });
     // This demonstrates that no deterministic keyword filter rejects the faithful response, not model success or Gold.
+  });
+});
+
+/** Synthetic identity graphs and test-authored judgments; no natural-language classifier or model execution. */
+describe('collective subjects and source-grounded identity candidates (authored development)', () => {
+  type ReferenceEntity = EntityReviewCase['entities'][number];
+  const reference = (entityKey: string, rationale: string, identity: Partial<ReferenceEntity> = {}): ReferenceEntity => ({
+    entityKey, rationale, referentKinds: ['object'], identityStatus: 'proposed', possibleEntities: [], component: null, collection: null, ...identity,
+  });
+  const anchor = (entity: string, messageIndex: number, quote: string, occurrence = 0, mentionKey = entity): EntityReviewCase['mentions'][number] => ({
+    mentionKey, entity, messageIndex, alternatives: [{ quote, occurrence }], rationale: '合成来源中的精确锚点；身份由显式参考关系约束。',
+  });
+  const sample = (caseId: string, messages: string[], entities: ReferenceEntity[], mentions: EntityReviewCase['mentions'], policy: string): EntityReviewCase => ({
+    caseId, projectGroup: caseId, conversationGroup: caseId, split: 'development', messages: messages.map(text => ({ role: 'user', text })),
+    entities, mentions, roles: [], knowledgePolicy: 'optional', tags: ['identity-grounding'],
+    limitations: ['合成开发诊断，无私人来源或模型调用；不进入既有关键集分母，也不证明模型能够理解自然语言。'], semanticChecks: [policy],
+  });
+  const collectionCases = [
+    sample('dev-known-collective-unknown-members', ['请一起审查这批新增测试；成员清单没有列出。'],
+      [reference('tests', '本轮共同审查的测试集合已确定，具体成员未列出。',
+        { referentKinds: ['collection'], collection: { members: [], completeness: 'unknown' } })],
+      [anchor('tests', 0, '这批新增测试')], '共同审查的集合主体确定；成员未知不等于主体身份未消解，不得退回 object/null。'),
+    sample('dev-single-suite-artifact', ['海湾测试套件是一个有固定发布编号的单一制品；本条只讨论这个制品，没有逐项讨论内部测试。'],
+      [reference('suite', '被单独讨论的一个测试套件制品，不是其内部测试的共同集合。')], [anchor('suite', 0, '海湾测试套件')],
+      '保留单一制品对象；名称含测试不构成强制 collection 的依据。'),
+    sample('dev-abstract-test-category', ['这里把回归测试作为方法类别讨论，不指任何本轮测试集合或单一实现。'],
+      [reference('category', '抽象的方法类别，不指本轮某批测试。')], [anchor('category', 0, '回归测试')],
+      '抽象类别可为 object；不能因名称看似复数而制造集合及成员。'),
+  ];
+  const distinct = sample('dev-same-name-api-implementation', ['同名 QueryBag 标准接口与 QueryBag 自写实现是两个对象；后者实现前者。'],
+    [reference('api', '独立命名的标准接口。'), reference('implementation', '来源明确区别于标准接口的自写实现。')],
+    [anchor('api', 0, 'QueryBag', 0), anchor('implementation', 0, 'QueryBag', 1)],
+    '同名接口和实现按来源明确区分；名称相同不支持合并，也不要求额外发明宿主或入口层。');
+  const alias = sample('dev-api-explicit-file-alias', ['Harbor 是 QueryBag 模块的另一个名字；这里明确两者指同一份源文件。'],
+    [reference('module', '同一份源文件有两个明确别名，不额外拆出接口和实现。')],
+    [anchor('module', 0, 'Harbor', 0, 'first-name'), anchor('module', 0, 'QueryBag 模块', 0, 'second-name')],
+    '明确同一对象的别名不应机械拆成接口和实现。');
+  const candidateCases = [
+    { caseId: 'dev-current-candidate-support', text: '待识别模块可能是 Cedar，尚未确认。', candidates: ['cedar'] },
+    { caseId: 'dev-sole-candidate-evidence-withdrawn', text: '先前把待识别模块认成 Cedar 的唯一依据是猜测；现明确撤回，未保留其它对应证据。', candidates: [] },
+    { caseId: 'dev-independent-candidate-support-remains', text: '照片猜测已撤回；独立构建标识仍支持待识别模块可能是 Cedar，尚未确认。', candidates: ['cedar'] },
+  ].map(value => sample(value.caseId, ['Cedar 是已登记模块。', value.text],
+    [reference('cedar', '有明确名称的模块。'), reference('unknown', '所指尚未消解；当前候选仅取仍有效的来源依据。',
+      { identityStatus: 'unresolved', possibleEntities: value.candidates })],
+    [anchor('cedar', 0, 'Cedar'), anchor('unknown', 1, '待识别模块')],
+    '候选边是当前可能同一性的断言：唯一依据撤回则不保留；明确的当前或独立剩余依据可以保留，均不能冒充已确认身份。'));
+  const ambiguousCases = [
+    sample('dev-module-reference-ambiguous', ['Cedar 是自写实现，Maple 是备选依赖入口；两者并不相同。', '记录只写查询模块，没有说明指向 Cedar 还是 Maple。'],
+      [reference('cedar', '自写实现。'), reference('maple', '备选依赖入口。'), reference('unknown', '模块指向尚未说明，两个同层次候选保留。',
+        { identityStatus: 'unresolved', possibleEntities: ['cedar', 'maple'] })],
+      [anchor('cedar', 0, 'Cedar'), anchor('maple', 0, 'Maple'), anchor('unknown', 1, '查询模块')],
+      '精确 module 字符锚点不能证明归属；不按名称接近、上下文邻近或后来副作用自动指定自写实现或替代入口。'),
+    sample('dev-conflicting-identity-with-later-record', ['Cedar 和 Maple 是两个不同模块。', '记录甲称查询模块就是 Cedar。', '较晚的记录乙称查询模块就是 Maple；记录互相冲突，没有澄清。'],
+      [reference('cedar', '明确命名的一个模块。'), reference('maple', '明确命名的另一个模块。'), reference('unknown', '两条身份记录冲突且未澄清，不能按最新时间消解。',
+        { identityStatus: 'unresolved', possibleEntities: ['cedar', 'maple'] })],
+      [anchor('cedar', 0, 'Cedar'), anchor('maple', 0, 'Maple'), anchor('unknown', 1, '查询模块', 0, 'earlier'), anchor('unknown', 2, '查询模块', 0, 'later')],
+      '冲突记录保留来源和 unresolved 身份；latest 不构成获胜规则。'),
+  ];
+  const scopedCases = [...collectionCases, distinct, alias, ...candidateCases, ...ambiguousCases];
+  const source = { raw: JSON.stringify({ provenance: 'synthetic', cases: scopedCases }), authors: ['identity-grounding-fixture-author'] };
+  const inspectImmutable = (sample: EntityReviewCase, output: ReturnType<typeof authored>) => {
+    const before = structuredClone(output), result = inspect(sample, output);
+    expect(output).toEqual(before);
+    expect(result.checked.analysis.rejected).toEqual([]); expect(result.checked.rejected).toEqual([]);
+    expect(result.review.criticalMentionRecall.value).toBe(1);
+    return result;
+  };
+  const scopedReview = (sample: EntityReviewCase, output: ReturnType<typeof authored>) => {
+    const context = semanticContext(sample, output, source);
+    // Judgments below are supplied by the test author; the engine only validates coverage and gate wiring.
+    const receipt: SemanticOutputReview = { reviewVersion: 'omk-entity-output-review/v1', planId: context.plan.planId, capturesDigest: context.capturesDigest,
+      reviewer: { actorKind: 'agent', actorId: source.authors[0] }, independentHuman: false, reviewedAt: '2020-03-01T00:00:00Z',
+      decisions: semanticReviewTargets(context).map(target => ({ target, verdict: target.itemKind === 'semantic_check' ? 'uncertain' : 'correct',
+        errorCodes: [], rationale: '测试作者提供的局部判据见证；新身份政策的语义义务尚待明确裁决，结构接纳不替代该判断。' })) };
+    return { context, receipt };
+  };
+
+  it('preserves the authored graphs and keeps every new policy target uncertain rather than semantically passing', () => {
+    expect(baseline.cases).toHaveLength(64);
+    expect(baseline.cases.reduce((total, value) => total + value.mentions.length, 0)).toBe(212);
+    for (const sample of scopedCases) {
+      expect(baseline.cases.some(value => value.caseId === sample.caseId)).toBe(false);
+      const output = authored(sample), { checked, review } = inspectImmutable(sample, output);
+      expect(checked.analysis.entities).toEqual(output.entities);
+      expect(review.identities.every(value => value.status === 'matched')).toBe(true);
+      expect(review.identityPairs.every(value => value.status === 'matched')).toBe(true);
+      const { context, receipt } = scopedReview(sample, output);
+      expect(receipt.decisions.filter(value => value.verdict === 'uncertain').map(value => value.target))
+        .toEqual([{ caseId: sample.caseId, repeat: 1, itemKind: 'semantic_check', checkIndex: 0 }]);
+      expect(evaluateSemanticReview({ ...context, receipt })).toMatchObject({ status: 'pending', reference: { goldReady: false },
+        outputReview: { uncertain: 1, independentHuman: false } });
+    }
+  });
+
+  it.each(collectionCases)('detects the wrong collective/object graph despite valid shape and exact mentions ($caseId)', sample => {
+    const output = authored(sample), entity = output.entities[0];
+    if (entity.referentKind === 'collection') { entity.referentKind = 'object'; entity.collection = null; }
+    else { entity.referentKind = 'collection'; entity.uncertainties = ['合成错误响应没有列出任何成员'];
+      entity.collection = { memberEntityIds: [], completeness: 'unknown', mentionIds: [output.mentions[0].mentionId], rationale: '合成错误响应将单一制品或类别当成集合。' }; }
+    const { review } = inspectImmutable(sample, output);
+    expect(review.identities[0]).toMatchObject({ status: 'mismatched', problems: ['referent_kind', 'membership'] });
+  });
+
+  it.each([distinct, alias])('does not use a shared API name as an automatic merge or split rule ($caseId)', sample => {
+    const output = authored(sample);
+    if (sample.caseId === distinct.caseId) { output.entities.pop(); output.mentions[1].entityId = 'api'; }
+    else { output.entities.push({ ...output.entities[0], entityId: 'separate-implementation' }); output.mentions[1].entityId = 'separate-implementation'; }
+    const { review } = inspectImmutable(sample, output);
+    expect(review.identityPairs).toMatchObject([{ status: sample.caseId === distinct.caseId ? 'wrong_merge' : 'wrong_split' }]);
+  });
+
+  it.each(candidateCases)('checks current candidate edges independently of unresolved status ($caseId)', sample => {
+    const output = authored(sample), unresolved = output.entities.find(value => value.entityId === 'unknown')!;
+    unresolved.possibleEntityIds = unresolved.possibleEntityIds.length ? [] : ['cedar'];
+    const { review } = inspectImmutable(sample, output);
+    expect(review.identities.find(value => value.entity === 'unknown')).toMatchObject({ status: 'mismatched', problems: ['candidate_identities'] });
+  });
+
+  it.each(ambiguousCases)('detects an unsupported choice of one module, including a later conflicting record ($caseId)', sample => {
+    const output = authored(sample);
+    output.entities = output.entities.filter(value => value.entityId !== 'unknown');
+    output.mentions.filter(value => value.entityId === 'unknown').forEach(value => { value.entityId = 'maple'; });
+    const { review } = inspectImmutable(sample, output);
+    expect(review.identityPairs.some(value => value.status === 'wrong_merge')).toBe(true);
+    expect(review.identities.find(value => value.entity === 'unknown')!.problems).toContain('identity_status');
+  });
+
+  it.each(['referent_kind', 'identity'] as const)('routes an explicit %s policy judgment to the existing semantic gate', errorCode => {
+    const sample = errorCode === 'referent_kind' ? collectionCases[0] : candidateCases[1];
+    const output = authored(sample), entity = output.entities.find(value => value.entityId === (errorCode === 'referent_kind' ? 'tests' : 'unknown'))!;
+    if (errorCode === 'referent_kind') { entity.referentKind = 'object'; entity.collection = null; }
+    else entity.possibleEntityIds = ['cedar'];
+    inspectImmutable(sample, output);
+    const { context, receipt } = scopedReview(sample, output);
+    const judgment = receipt.decisions.find(value => value.target.itemKind === 'entity' && value.target.entityId === entity.entityId)!;
+    judgment.verdict = 'incorrect'; judgment.errorCodes = [errorCode];
+    judgment.rationale = '测试作者对该已构造字段错误显式提供裁决；仅验证既有语义门禁接线，不是规则引擎自主理解来源的证据。';
+    const report = evaluateSemanticReview({ ...context, receipt });
+    expect(report).toMatchObject({ status: 'blocked', reference: { goldReady: false }, outputReview: { confirmedErrors: 1, independentHuman: false } });
+    expect(report.blockers).toContain(errorCode === 'identity' ? 'critical_semantic_error' : 'confirmed_error_threshold');
+    expect(report.blockers).not.toContain('structural_rejection');
+    expect(report.blockers).toContain('critical_regression_failure');
   });
 });

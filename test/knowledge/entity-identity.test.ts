@@ -40,6 +40,11 @@ describe('entity identity policy', () => {
     const partial = { ...collection(['a'], 'partial'), uncertainties: ['还有一个成员未识别'] };
     expect(entityIdentityProblems(partial)).toEqual([]);
     expect(partial.identityStatus).toBe('proposed');
+    const knownSubject = { ...collection([], 'unknown'), uncertainties: ['共同统计的集合已知，但来源没有列出成员'] };
+    expect(entityIdentityProblems(knownSubject)).toEqual([]);
+    expect(references(knownSubject)).toEqual([]);
+    expect(knownSubject).toMatchObject({ identityStatus: 'proposed', possibleEntityIds: [],
+      collection: { memberEntityIds: [], completeness: 'unknown' } });
     const unresolved = { ...collection([], 'unknown'), identityStatus: 'unresolved' as const,
       uncertainties: ['窗口缺少复数指代的先行项'], possibleEntityIds: ['other-group'] };
     expect(entityIdentityProblems(unresolved)).toEqual([]);
