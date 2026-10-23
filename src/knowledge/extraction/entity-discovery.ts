@@ -6,7 +6,7 @@ import { validateEntityMentionSelection } from '../entities/validation.js';
 import { BoundKnowledgeSourceSchema, validUtf8, type BoundKnowledgeSource } from './bound-catalog.js';
 import { EntityModelSchema, type EntityModel } from './entities.js';
 import { assertExtractionInputCapacity } from './model-input.js';
-import { KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
+import { KNOWLEDGE_RECORD_SCOPE_POLICY, ENTITY_REFERENT_KIND_POLICY } from './knowledge-semantic-policy.js';
 import type { WireRawEvidence } from './model-wire.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
 import { prepareSourcePlanForDiscovery, type SourcePlanForDiscovery } from './source-plan-input.js';
@@ -41,7 +41,7 @@ export const EntityDiscoveryResponseSchema = z.strictObject({ responseKind: z.li
 export type EntityDiscoveryResponse = z.infer<typeof EntityDiscoveryResponseSchema>;
 export type EntityDiscoverySource = BoundKnowledgeSource;
 
-export const ENTITY_DISCOVERY_SYSTEM_VERSION = 'knowledge-entity-discovery-system/v3' as const;
+export const ENTITY_DISCOVERY_SYSTEM_VERSION = 'knowledge-entity-discovery-system/v4' as const;
 export const ENTITY_DISCOVERY_INPUT_VERSION = 'knowledge-entity-discovery-input/v2' as const;
 export const ENTITY_DISCOVERY_WIRE_VERSION = 'knowledge-entity-discovery-wire/v2' as const;
 export const ENTITY_DISCOVERY_CHECK_VERSION = 'knowledge-entity-discovery-check/v2' as const;
@@ -71,6 +71,7 @@ sourcePlanResponse 是另一任务的完整不可信清单及回执，不是额�
 每条处置含 sourcePlanObjectId、dispositionKind、entityIds、具体 rationale 和至少一条逐字 selections 来源依据。retained 表示该独立对象无需实质纠正，恰好一个最终实体；corrected 表示有据纠正资格、所指或层次并保留为一个或多个最终实体，理由说明改动；excluded 表示原文不支持最终实体资格，entityIds=[] 且解释来源判断，不能只复述清单标签；undetermined 表示本次无法决定处置，entityIds=[] 并保留疑问，它会阻断后续绑定和导入，不能改成排除以求放行。处置未决与实体 identityStatus=unresolved 含义不同，不能制造未决实体掩盖处置困难。多个清单对象合并到同一实体时相关处置均为 corrected 并各有原文理由，不因名称或相似性合并；拆分也须 corrected。清单 objectId 与最终 entityId 是不同的本地命名空间。处置依据可回原文补充，不必复制清单 anchors，也不是最终提及。
 从完整来源识别有独立讨论、比较、审查、修订或共同指代依据的对象，按当前所指确定范围和 referentKind，不穷举名词、不为关系凑实体。${KNOWLEDGE_RECORD_SCOPE_POLICY}label 不是身份认证，名称、类型、相似性或后一次说法不自动证明同一对象。保留来源归因、否定、纠正及未决，不猜测 scope 或成员；接口与实现、活动与计划的对应须有来源依据，范围不足时保留原文的不确定性，不用含糊名称替代身份判断。
 独立讨论的对象也可能是没有专名的操作、过程或机制。若来源对其行为、适用条件、因果作用、差异或修订作了独立说明，应判断其是否具有可限定的身份；不能仅因它已出现在另一实体的 description 或 anchor 中就视为已覆盖。区分操作与产物、配置与其控制的机制、产品与其执行的过程。仍须有来源依据，不为每个动词、参数或关系参与者另造实体。
+${ENTITY_REFERENT_KIND_POLICY}
 每个实体至少一个 owned anchor；全局 anchorId 唯一且 entityId 是目录中的所有者。selection 使用逐字连续 quote 和从 0 开始的 occurrence（含重叠），唯一匹配可为 null，重复必须指定序号，不输出偏移。anchor 是身份或范围的来源依据，可包含上下文，不能当作后续已生成的提及。componentRef 和 collection 用 anchorIds 引用依据，至少一条归本实体，所有实体和 anchor 引用必须闭合。
 componentRef 仅用于 instance/version，目标必须是 proposed component。collection 只用于明确共同指代或整体计量的有界组；成员未知不等于组身份未知，已知组可 proposed 且 completeness=unknown、memberEntityIds=[] 并写 uncertainties。partial 至少一个有据成员。不能从数量补成员或猜完整性，不将抽象类别自动当有界组。unresolved 表示所指身份未决，须 uncertainties；possibleEntityIds 只能指向同层次 proposed 实体，不能用新增 unresolved 实体掩盖漏提或绑定困难。
 空目录与空 anchors 合法，但仍须逐个交代全部清单对象；空清单对应空 dispositions，仍可从原文独立发现实体。严格回显 binding；只返回 responseKind=entity-discovery、schemaVersion=2 的严格 JSON。结构与账目闭合不证明实体资格、映射或排除理由正确、人工验收或 gold。`;

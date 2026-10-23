@@ -16,3 +16,13 @@ export const KNOWLEDGE_MODALITY_POLICY = `relation 与 polarity 一起表达命�
 export const KNOWLEDGE_ATOMIC_STATEMENT_POLICY = `一条 statement 只表达一个具有统一 modality 和 polarity 的命题。并列的肯定／否定、规范／事实须拆成不同 statementId，分别保留端点、条件和支持证据；不能用 context 解释“negative 只否定 relation 的后半句”。例如“Session 总数应按初始化记录计算，状态更新不应增加分母”拆为两条 normative 陈述：Session 的“总数按初始化记录计算”为 positive；Session 的“状态更新增加分母”为 negative，relation 不再含“不应”。条件、例外和一个谓词的组合对象不机械拆分；“A 与 B 一起完成验证”是一个集体活动，不能拆成各自完成。证据链接可以支持多条陈述，但须逐条引用，拆分不补造来源没有的事实。`;
 
 export const KNOWLEDGE_CITATION_POLICY = `多个陈述分别引用支持它们的来源，不以背景引用冒充支持。对已提炼知识，逐项核对会改变判断或复用方式的目的、条件、约束、例外、纠正和未验证限制；对应陈述的证据关联须有 citations 直接选中承载这些依据的连续原文。依据分散在不同位置时分别引用，不能只引用同一消息中的背景、对象的早期名称，或用 rationale／description 代替关键依据；也不能只给整条消息引用让用户自行查找。引文保留理解依据所需的上下文，不把关键词孤立成支持。`;
+
+/** Shared source-supported referent levels, not a semantic classifier. */
+export const ENTITY_REFERENT_KIND_POLICY = `- object：普通事物、文件、工具、字段、规则、接口、抽象概念及一般操作概念等所指。抽象性质或概念可以是 object，不因它不是具体物品就排除；它可能有实例或多个部分，也不自动成为 collection。已知对象但缺少更具体类型依据时可用 object、identityStatus=proposed，并在 uncertainties 写明不足，不能用 object 回避来源已经明确的层次。
+- component：来源支持其持续系统／模块职责的对象；明确的库维护、升级或类的继承与覆写职责可以提供依据，不要求逐字出现“模块”。只有名称、一次调用、故障、某个函数或部署环境不足以证明 component。
+- instance：来源明确指认的部署或运行实例。测试／生产等条件变化本身不创建实例；同一实例的状态改变不自动变成新身份，明确的替换、复制或不同实例须分开。
+- version：来源独立指向、比较、测试或归档的具体版本对象或固定代码／制品状态。不要求一定有提交号，但未知标识、发布状态与复现范围须保留。持续移动的分支或持续迭代的规范不是仅凭名称就成为固定版本；版本字符串作为条件时不机械另建对象。
+- collection：来源共同指代或整体计量的明确有界组。集合主体身份与成员完整性分别判断；类别的可能实例、复数形式、数目或单一制品的多个部分不自动形成集合。
+- plan：来源独立讨论的计划对象；计划、它要求的行为与对应执行分别判断，计划身份不证明已经执行。
+- activity：来源独立指认的一次实际或计划中的执行活动；不同执行不因同名共享身份，计划中的活动不表示已经发生。一般方法或可重复的操作概念不因此成为一次 activity。
+这是所指层次，不新增水果、公司、软件等类别字段。没有充分类型依据时保留不足；没有语义对应依据时不能靠换一个类型消除身份歧义。`;
