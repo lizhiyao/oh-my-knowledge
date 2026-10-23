@@ -46,7 +46,7 @@ describe('independent discovery and mention-binding archive evidence (authored o
   });
 
   for (const stage of stages) {
-    it.each(['receipt-id', 'native-receipt-id', 'native-attempt-id', 'source', 'source-content', 'input', 'system', 'wire',
+    it.each(['receipt-id', 'native-receipt-id', 'native-attempt-id', 'source', 'source-content', 'input', 'system', 'system-version', 'wire',
       'model', 'executor', 'timeout', 'tokens', 'producer', 'request-digest', 'finish-time'] as const)(
       `${stage} rejects conflicting %s even when resealed`, mode => {
         const f = discoveredEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
@@ -57,6 +57,8 @@ describe('independent discovery and mention-binding archive evidence (authored o
         if (mode === 'source-content') f.source.excerpts[0].text += '；来源不同';
         if (mode === 'input') receipt.request.input += ' ';
         if (mode === 'system') receipt.request.system += ' ';
+        if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'discovery'
+          ? 'knowledge-entity-discovery-system/v1' : 'knowledge-mention-binding-system/v1' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('other wire') });
         if (mode === 'model') receipt.request.model = 'other-model';
         if (mode === 'executor') receipt.request.executor = 'openai-api';
