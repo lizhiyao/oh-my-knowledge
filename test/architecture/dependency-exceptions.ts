@@ -95,6 +95,9 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
   'knowledge/application/citation-locators.ts → knowledge/extraction/quote-occurrence.ts',
+  // A/B 独立原件只读认证与现有实体写入，不改变普通单 E run 或反向依赖。
+  'knowledge/application/discovered-entities.ts → knowledge/extraction/bound-catalog.ts',
+  'knowledge/application/discovered-entities.ts → knowledge/extraction/discovered-entities-evidence.ts',
   // E-first 只重放已归档的原文 E 任务并对应真实初始修订，不经 extraction 反向调用应用或存储。
   'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation.ts',
