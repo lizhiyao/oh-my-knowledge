@@ -13,6 +13,7 @@ import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { ENTITY_ONLY_EXTRACTION_PROFILE, ENTITY_ONLY_EXTRACTION_PROMPT,
   ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/entity-only-prompt.js';
+import { ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { OCCURRENCE_GUIDED_EXTRACTION_PROFILE, OCCURRENCE_GUIDED_EXTRACTION_PROMPT,
   OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/occurrence-guided-prompt.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
@@ -46,9 +47,11 @@ const profile = buildEntityFirstBoundKnowledge({
 const githubBody = 'Alpha 使用 Beta\nAlpha Alpha';
 const fixedTasks = [
   { name: 'E36', promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, system: ENTITY_ONLY_EXTRACTION_PROMPT,
-    systemDigest: ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST, body: undefined },
+    systemDigest: ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST,
+    frozenSystemDigest: 'sha256:8e8d93d11cf2bf6b4cfc2e419d95bfe61043c5ecf92282446482e9bb39436e4c', body: undefined },
   { name: 'E37', promptProfile: OCCURRENCE_GUIDED_EXTRACTION_PROFILE, system: OCCURRENCE_GUIDED_EXTRACTION_PROMPT,
-    systemDigest: OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST, body: githubBody },
+    systemDigest: OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST,
+    frozenSystemDigest: 'sha256:06568758fa41d4763c7c5f819c93cc5859f8a70aa661f3b4bd38499d52feba79', body: githubBody },
 ];
 
 /** Explicit authored projection, not a GitHub capture or a relabelled trace digest. */
@@ -143,7 +146,7 @@ function unexpectedKnowledgeIntent(f: Awaited<ReturnType<typeof preparedEntityOn
     sourceBindings: [{ snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion, evidenceRefs: [evidenceRef] }] } };
 }
 
-describe.each(fixedTasks)('$name fixed entity-only extraction task (authored native returns)', ({ promptProfile, system, systemDigest, body }) => {
+describe.each(fixedTasks)('$name fixed entity-only extraction task (authored native returns)', ({ promptProfile, system, systemDigest, frozenSystemDigest, body }) => {
   const fixture = (change?: Parameters<typeof entityFixture>[0], entityOnly = true) => entityFixture(change, entityOnly, body);
   it('binds the dispatched input to inspect and the saved E-only revision, then replays K without another E call', async () => {
     const f = await setup(undefined, true, promptProfile), initial = f.ports.entities.read(f.runId);
@@ -151,6 +154,8 @@ describe.each(fixedTasks)('$name fixed entity-only extraction task (authored nat
     const input = extractionTaskInput(f.window, promptProfile.promptVersion);
     expect(f.run).toMatchObject({ status: 'completed', promptVersion: promptProfile.promptVersion, intents: [], committed: [] });
     expect(f.run.attempts).toHaveLength(1); expect(f.run.attempts[0].request.systemDigest).toBe(systemDigest);
+    expect(systemDigest).toBe(frozenSystemDigest); expect(hash(system)).toBe(frozenSystemDigest);
+    expect(system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.run.promptHash).toBe(f.ports.hash(system)); expect(f.run.inputDigest).toBe(f.ports.hash(input));
     expect(f.run.attempts[0].request.inputDigest).toBe(hash(input));
     expect(f.inspect).toHaveBeenCalledWith(system, input);

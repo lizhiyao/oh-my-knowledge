@@ -221,7 +221,9 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 
 ### 5.6 来源清单、实体发现与提及绑定
 
-这一私有研究入口组合三份分别归档的原生任务：当前 source-plan v2、A（`entity-discovery`）与 B（`mention-binding`）。A／B system 各为 v3，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan system／input／wire／schema v2 及其 prompt 字节保持不变。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
+这一私有研究入口组合三份分别归档的原生任务：当前 source-plan v2、A（`entity-discovery`）与 B（`mention-binding`）。A system 为 v4，B system 为 v3，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan system／input／wire／schema v2 及其 prompt 字节保持不变。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
+
+A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，带入既有含义和依据门槛，包括一般操作概念与某次实际或计划执行、配置对象与有来源系统／模块组件的区别，以及缺少细层次依据时用 proposed `object` 并明确保留类型未知。Schema 枚举本身不提供这些语义。v36／v37 及生产提示词字节继续冻结；本次 A system v3→v4 构成 **BREAKING-COMPARABILITY**，v2 wire 与持久化 Schema 不变。规则完整传递不证明模型类型判断正确。
 
 A 必须在 `dispositions` 中通过 `sourcePlanObjectId` 恰好处理每个清单 `objectId` 一次：`retained` 对应恰好一个 A 实体，`corrected` 对应一个或多个，`excluded` 或 `undetermined` 不对应实体。每行提供理由和精确来源选择；重复、遗漏或未知 object ID、非法目标和非法选择均拒绝。拆分或多个清单对象映射到同一实体时，必须使用 `corrected` 处置并给出来源依据。A 仍可依完整原文独立发现并增补对象，清单不是封闭候选集。清单的 `planningRole`、资格／层次依据与不确定性仍是不可信模型判断：候选标签不强制保留，上下文标签不授予删除许可。须依来源区分操作与产物、配置与其控制的机制、产品与其执行的过程，不为每个名词或动词造实体。
 
@@ -233,6 +235,6 @@ B 收到同一完整来源及 A 的完整已认证回执、原始响应，其中
 
 接纳继续采用全有或全无：每个 A 实体必须有位于自身来源锚点内的实际 bound 提及；每个组件／集合声明恰好对应一项支持映射，只引用位于对应锚点内的 bound 提及，且至少一条归属于该实体。未决处理项、歧义或未绑定提及、支持缺失、非法引用及既有实体接纳检查中的任何拒绝，都会阻止整个初始分析，不用合法子集替代 A。可接纳时原样复制 A 元数据，将支持引用映射到 B 提及 ID，再一次写入既有 `EntityAnalysis` schema v2。同一 B 回执的逻辑 ID 保持稳定；写入身份显式绑定清单、A、B 三份回执的字节引用及导入者 actor。重导入重新认证三份原件，不调用模型，复用原修订时间，由存储检测证据变化或命令冲突。
 
-本次替换私有 A／B 协议，构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**。沿用既定的当前版本 reader 策略：现行 reader 只接受新私有协议，不提供旧 reader、别名或迁移。历史原件、回执、冻结运行时、输出分数和已写入的实体／知识历史保持不变；历史包使用匹配的冻结代码核查，不由现行 reader 重新解释。该边界仅作用于私有研究证据，不迁移公共工作区存储，也不改变既有落盘实体身份。
+含清单绑定的 A／B input／wire／response v1→v2 替换构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**。当前任务身份继续沿用既定的当前版本 reader 策略，不提供旧 reader、别名或迁移。历史原件、回执、冻结运行时、输出分数和已写入的实体／知识历史保持不变；历史包（包括 A system v3 证据）使用匹配的冻结代码核查，不由现行 reader 重新解释。该边界仅作用于私有研究证据，不迁移公共工作区存储，也不改变既有落盘实体身份。
 
 普通宿主不安装这两类研究归档端口。生产 strict30、v4 提取 wire、既有 run／存储格式与 CLI／Studio 路径保持原样。既有单 E 前驱契约不接受这份三原件分析进入 E→R/K，正式 extraction study/v1 也不表达此流程。后续诊断须在解释结果前冻结三任务、来源、运行时、实际依赖输入、调用机会、停止规则和最终端点，分别报告每阶段的实际用量、缓存、费用、耗时、失败与未知。增加清单同时改变任务输入和总执行成本，不是仅改变 A 的提示词对照，不能继承旧分数或证明历史遗漏发生在哪个环节。工程检查不证明语义正确、召回率、稳定改善、泛化或独立真人验收通过，全部检查保留 `semanticStatus: not_reviewed`，真人复核仍单独进行。

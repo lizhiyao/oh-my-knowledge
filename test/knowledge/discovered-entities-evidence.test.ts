@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { ENTITY_DISCOVERY_OUTPUT_NAME, ENTITY_DISCOVERY_WIRE_SCHEMA } from '../../src/knowledge/extraction/entity-discovery.js';
+import { ENTITY_DISCOVERY_OUTPUT_NAME, ENTITY_DISCOVERY_SYSTEM, ENTITY_DISCOVERY_WIRE_SCHEMA } from '../../src/knowledge/extraction/entity-discovery.js';
 import { MENTION_BINDING_OUTPUT_NAME, MENTION_BINDING_WIRE_SCHEMA } from '../../src/knowledge/extraction/mention-binding.js';
+import { ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { EXTRACTION_OUTCOME_MAX_BYTES } from '../../src/knowledge/extraction/generation.js';
 import { DiscoveredEntitiesNativeError, EntityDiscoveryValidationError, ENTITY_DISCOVERY_RECEIPT_MAX_BYTES,
   MENTION_BINDING_RECEIPT_MAX_BYTES, readEntityDiscoveryEvidence, readMentionBindingEvidence,
@@ -34,6 +35,13 @@ describe('independent discovery and mention-binding archive evidence (authored o
     expect(f.discoveryReceipt.request.input).not.toContain('sourcePath');
     expect(JSON.parse(f.discoveryReceipt.request.input).sourcePlanResponse).toEqual(f.planPredecessor);
     expect(bInput.binding.sourcePlanRawDigest).toBe(discoveryHash(f.sourcePlan.rawOutput));
+    expect(f.discoveryExecution.request).toMatchObject({ systemVersion: 'knowledge-entity-discovery-system/v4',
+      system: ENTITY_DISCOVERY_SYSTEM, inputVersion: 'knowledge-entity-discovery-input/v2',
+      wireId: 'sha256:045467320d5c8e96245a7b1a11861853cf8f0820ba729e254d2dd7f3b4e0e052' });
+    expect(f.discoveryExecution.input.system).toBe(ENTITY_DISCOVERY_SYSTEM);
+    expect(f.discoveryExecution.input.system?.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
+    expect(f.bindingExecution.request).toMatchObject({ systemVersion: 'knowledge-mention-binding-system/v3',
+      wireId: 'sha256:d87d80b385152ee34cdfc117f35983380725dfef77dfd02db2e6f9ae23e93317' });
     expect(f.discoveryExecution.input.outputFormat).toMatchObject({ mode: 'json-schema', name: ENTITY_DISCOVERY_OUTPUT_NAME });
     expect(f.discoveryExecution.input.outputFormat?.mode === 'json-schema' && f.discoveryExecution.input.outputFormat.schema).toBe(ENTITY_DISCOVERY_WIRE_SCHEMA);
     expect(f.bindingExecution.input.outputFormat).toMatchObject({ mode: 'json-schema', name: MENTION_BINDING_OUTPUT_NAME });
@@ -60,7 +68,7 @@ describe('independent discovery and mention-binding archive evidence (authored o
         if (mode === 'input') receipt.request.input += ' ';
         if (mode === 'system') receipt.request.system += ' ';
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'discovery'
-          ? 'knowledge-entity-discovery-system/v2' : 'knowledge-mention-binding-system/v2' });
+          ? 'knowledge-entity-discovery-system/v3' : 'knowledge-mention-binding-system/v2' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('other wire') });
         if (mode === 'model') receipt.request.model = 'other-model';
         if (mode === 'executor') receipt.request.executor = 'openai-api';

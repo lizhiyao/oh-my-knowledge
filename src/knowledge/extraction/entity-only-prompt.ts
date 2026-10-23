@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ExtractionPromptProfile } from './generation.js';
-import { KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
+import { KNOWLEDGE_RECORD_SCOPE_POLICY, ENTITY_REFERENT_KIND_POLICY } from './knowledge-semantic-policy.js';
 
 export const ENTITY_ONLY_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v36' as const;
 
@@ -20,14 +20,7 @@ label 是窗口内便于辨认的名称，description 简洁说明实际所指�
 不同来源语境分别判断：引用、示例、假设、反例中的同名对象不自动成为当前对象，也不继承当前对象的版本、环境或发布状态；来源明确说是同一对象时再按该对应绑定。已发布制品与后来测试的构建、规范接口与实现、工具与输出文件不能仅凭同名或先后顺序等同。缺少作者、版本、类型或对应关系时保留具体未知，不擅自补归属或已发布身份。
 
 三、完整使用七种 referentKind，按来源层次而非词形分类。
-- object：普通事物、文件、工具、字段、规则、接口、抽象概念及一般操作概念等所指。抽象性质或概念可以是 object，不因它不是具体物品就排除；它可能有实例或多个部分，也不自动成为 collection。已知对象但缺少更具体类型依据时可用 object、identityStatus=proposed，并在 uncertainties 写明不足，不能用 object 回避来源已经明确的层次。
-- component：来源支持其持续系统／模块职责的对象；明确的库维护、升级或类的继承与覆写职责可以提供依据，不要求逐字出现“模块”。只有名称、一次调用、故障、某个函数或部署环境不足以证明 component。
-- instance：来源明确指认的部署或运行实例。测试／生产等条件变化本身不创建实例；同一实例的状态改变不自动变成新身份，明确的替换、复制或不同实例须分开。
-- version：来源独立指向、比较、测试或归档的具体版本对象或固定代码／制品状态。不要求一定有提交号，但未知标识、发布状态与复现范围须保留。持续移动的分支或持续迭代的规范不是仅凭名称就成为固定版本；版本字符串作为条件时不机械另建对象。
-- collection：来源共同指代或整体计量的明确有界组。集合主体身份与成员完整性分别判断；类别的可能实例、复数形式、数目或单一制品的多个部分不自动形成集合。
-- plan：来源独立讨论的计划对象；计划、它要求的行为与对应执行分别判断，计划身份不证明已经执行。
-- activity：来源独立指认的一次实际或计划中的执行活动；不同执行不因同名共享身份，计划中的活动不表示已经发生。一般方法或可重复的操作概念不因此成为一次 activity。
-这是所指层次，不新增水果、公司、软件等类别字段。没有充分类型依据时保留不足；没有语义对应依据时不能靠换一个类型消除身份歧义。
+${ENTITY_REFERENT_KIND_POLICY}
 
 四、保留窗口内身份及来源支持的关系。
 整个窗口只建立一份目录。同一对象的全称、有据别名及可确定指代共用 entityId，各次保留的原文提及各有 mentionId。名称、路径、类型、字符串或向量相似度都不能证明同一对象；同名可不同，明确改名可延续身份，复制或替换须按来源区分。时间先后、版本变化与环境变化不单独决定身份。
