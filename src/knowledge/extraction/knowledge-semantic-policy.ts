@@ -17,6 +17,9 @@ export const KNOWLEDGE_ATOMIC_STATEMENT_POLICY = `一条 statement 只表达一�
 
 export const KNOWLEDGE_CITATION_POLICY = `多个陈述分别引用支持它们的来源，不以背景引用冒充支持。对已提炼知识，逐项核对会改变判断或复用方式的目的、条件、约束、例外、纠正和未验证限制；对应陈述的证据关联须有 citations 直接选中承载这些依据的连续原文。依据分散在不同位置时分别引用，不能只引用同一消息中的背景、对象的早期名称，或用 rationale／description 代替关键依据；也不能只给整条消息引用让用户自行查找。引文保留理解依据所需的上下文，不把关键词孤立成支持。`;
 
+/** Shared semantic mention boundaries, not a span-shortening rule. */
+export const ENTITY_MENTION_BOUNDARY_POLICY = `提及边界按对象含义选择，不按字符越短越好。可用独立指向该对象的完整名称或限定描述，例如“当前 main 的被测代码”指本轮代码状态，“enabled 字段”指该字段；限定不能包含无关的谓词、结果或整条知识陈述。名称加类型词仍指同一事物时，不因比短名长就丢弃，不能机械删除“字段”等后缀。属性归属短语则须区分所谈属性与所属对象：“main 上的改造还未发布”中，代码状态的提及选择“main”，不把“main 上的改造”整个属性短语当代码版本的别名；“这把键盘的重量为 800 克”中，键盘提及选“这把键盘”，不是整个重量短语。属性被独立讨论时按独立对象规则处理，不机械裁剪所有含“的”或“上的”的名称。重复短名收窄后仍按实际原文位置重新确定 occurrence，不沿用长引文的序号。不要改写原文、自动规范化引文或增加重复跨度。`;
+
 /** Shared source-supported referent levels, not a semantic classifier. */
 export const ENTITY_REFERENT_KIND_POLICY = `- object：普通事物、文件、工具、字段、规则、接口、抽象概念及一般操作概念等所指。抽象性质或概念可以是 object，不因它不是具体物品就排除；它可能有实例或多个部分，也不自动成为 collection。已知对象但缺少更具体类型依据时可用 object、identityStatus=proposed，并在 uncertainties 写明不足，不能用 object 回避来源已经明确的层次。
 - component：来源支持其持续系统／模块职责的对象；明确的库维护、升级或类的继承与覆写职责可以提供依据，不要求逐字出现“模块”。只有名称、一次调用、故障、某个函数或部署环境不足以证明 component。

@@ -221,7 +221,7 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 
 ### 5.6 来源清单、实体发现与提及绑定
 
-这一私有研究入口组合三份分别归档的原生任务：当前 source-plan v2、A（`entity-discovery`）与 B（`mention-binding`）。A system 为 v4，B system 为 v3，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan system／input／wire／schema v2 及其 prompt 字节保持不变。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
+这一私有研究入口组合三份分别归档的原生任务：当前 source-plan v2、A（`entity-discovery`）与 B（`mention-binding`）。A／B system 各为 v4，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan system／input／wire／schema v2 及其 prompt 字节保持不变。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
 
 A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，带入既有含义和依据门槛，包括一般操作概念与某次实际或计划执行、配置对象与有来源系统／模块组件的区别，以及缺少细层次依据时用 proposed `object` 并明确保留类型未知。Schema 枚举本身不提供这些语义。v36／v37 及生产提示词字节继续冻结；本次 A system v3→v4 构成 **BREAKING-COMPARABILITY**，v2 wire 与持久化 Schema 不变。规则完整传递不证明模型类型判断正确。
 
@@ -231,10 +231,12 @@ A 必须在 `dispositions` 中通过 `sourcePlanObjectId` 恰好处理每个清�
 
 B 收到同一完整来源及 A 的完整已认证回执、原始响应，其中包含绑定的清单身份与处理账目。输出只能含提及及身份支持映射，不能新增、删除、合并、改名、改类型或以其他方式编辑 A 实体。它重建含清单的精确 A 输入，不接受仅含原文的前驱。先判断提及资格，再判断目标：有独立资格依据、但被 A 遗漏或保留未决的所指提及仍为显式缺口；普通符号、参与者、结果或泛称不因目录缺项自动获得资格。歧义和未绑定提及继续显式保留；宿主用精确 quote／occurrence 计算 UTF-16 位置，不从 A 锚点补造提及。
 
+B 还完整接收与生产提示词逐字共享的提及边界规则。有来源的完整名称或限定描述可以指向对象，无关谓词、结果或属性归属短语不因此成为对象的别名；须区分对象的实际指代与关于它的陈述，不追求最短字符串，也不机械裁剪后缀。按选中原文跨度重新计算 occurrence。本次 B system v3→v4 构成 **BREAKING-COMPARABILITY**；生产、v36／v37、A 提示词字节及全部 v2 协议／存储 Schema 保持不变。宿主继续检查位置与引用闭合，不判断自然语言提及资格或修补跨度。
+
 读取 A 之前，应用先通过既有只读 `sourcePlanArchive` 端口认证固定的清单引用。缺少清单访问能力、来源不可用或不匹配、清单证据无效，均在读取 A／B 之前停止。随后发现归档边界按该清单认证 A；完整前驱链认证通过且没有未决处理项后，才能构造 B。三阶段使用相同 executor、model、timeout 与输出 token 设置，receipt／attempt 身份各自不同，要求完整单轮、无工具、无内部重试或子代理的原生返回，并按先清单、再 A、再 B 的顺序执行。每个完整原生 outcome 都先归档、后认证或解释。失败、拒绝、cleanup 失败、证据缺失或结构拒绝不预留修复调用。三份原件分别保留，不伪装成复合 `ExtractionRun`。
 
 接纳继续采用全有或全无：每个 A 实体必须有位于自身来源锚点内的实际 bound 提及；每个组件／集合声明恰好对应一项支持映射，只引用位于对应锚点内的 bound 提及，且至少一条归属于该实体。未决处理项、歧义或未绑定提及、支持缺失、非法引用及既有实体接纳检查中的任何拒绝，都会阻止整个初始分析，不用合法子集替代 A。可接纳时原样复制 A 元数据，将支持引用映射到 B 提及 ID，再一次写入既有 `EntityAnalysis` schema v2。同一 B 回执的逻辑 ID 保持稳定；写入身份显式绑定清单、A、B 三份回执的字节引用及导入者 actor。重导入重新认证三份原件，不调用模型，复用原修订时间，由存储检测证据变化或命令冲突。
 
-含清单绑定的 A／B input／wire／response v1→v2 替换构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**。当前任务身份继续沿用既定的当前版本 reader 策略，不提供旧 reader、别名或迁移。历史原件、回执、冻结运行时、输出分数和已写入的实体／知识历史保持不变；历史包（包括 A system v3 证据）使用匹配的冻结代码核查，不由现行 reader 重新解释。该边界仅作用于私有研究证据，不迁移公共工作区存储，也不改变既有落盘实体身份。
+含清单绑定的 A／B input／wire／response v1→v2 替换构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**。当前任务身份继续沿用既定的当前版本 reader 策略，不提供旧 reader、别名或迁移。历史原件、回执、冻结运行时、输出分数和已写入的实体／知识历史保持不变；历史包（包括 A／B system v3 证据）使用匹配的冻结代码核查，不由现行 reader 重新解释。该边界仅作用于私有研究证据，不迁移公共工作区存储，也不改变既有落盘实体身份。
 
 普通宿主不安装这两类研究归档端口。生产 strict30、v4 提取 wire、既有 run／存储格式与 CLI／Studio 路径保持原样。既有单 E 前驱契约不接受这份三原件分析进入 E→R/K，正式 extraction study/v1 也不表达此流程。后续诊断须在解释结果前冻结三任务、来源、运行时、实际依赖输入、调用机会、停止规则和最终端点，分别报告每阶段的实际用量、缓存、费用、耗时、失败与未知。增加清单同时改变任务输入和总执行成本，不是仅改变 A 的提示词对照，不能继承旧分数或证明历史遗漏发生在哪个环节。工程检查不证明语义正确、召回率、稳定改善、泛化或独立真人验收通过，全部检查保留 `semanticStatus: not_reviewed`，真人复核仍单独进行。
