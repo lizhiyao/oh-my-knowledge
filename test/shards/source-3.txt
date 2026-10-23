@@ -71,6 +71,7 @@ test/knowledge/bound-knowledge.test.ts
 test/knowledge/bound-knowledge-evidence.test.ts
 test/knowledge/entity-first-bound-knowledge-profile.test.ts
 test/knowledge/entity-first-knowledge-application.test.ts
+test/knowledge/body-occurrence-guide.test.ts
 test/knowledge/extraction-study-review.test.ts
 test/knowledge/extraction-study-panel.test.ts
 test/knowledge/extraction-study-analysis.test.ts

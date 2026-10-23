@@ -8,7 +8,7 @@ import type { EvidenceStore } from '../extraction/evidence.js';
 import { extractionExecution, extractionPrompt, extractionRequestDigest, extractionResponse,
   type ExtractionModel, type ExtractionPromptProfile } from '../extraction/generation.js';
 import { SINGLE_EXTRACTION_POLICY } from '../extraction/generation-policy.js';
-import { extractionModelInput } from '../extraction/model-input.js';
+import { extractionTaskInput } from '../extraction/model-input.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';
 import type { ExtractionRunStore } from '../extraction/runs.js';
 import { checkWindowExtractionResponse } from '../extraction/window-proposals.js';
@@ -34,8 +34,9 @@ export function readEntityFirstKnowledgeContext(ports: EntityFirstContextPorts, 
   }
   const source = ports.evidence.read(run.snapshotId, run.sourceVersion);
   if (source.status !== 'available') throw new Error('Entity-first source unavailable.');
-  const window = source.window, input = extractionModelInput(window);
+  const window = source.window;
   const { system, promptVersion } = extractionPrompt(model, profile);
+  const input = extractionTaskInput(window, promptVersion);
   const { producer, ...request } = extractionExecution(model, system, input);
   const rootRequestDigest = ports.hash({ snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
     executor: model.executor, model: model.model, promptHash: ports.hash(system), inputDigest: ports.hash(input),

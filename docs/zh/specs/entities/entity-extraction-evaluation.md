@@ -208,3 +208,13 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 恢复 prepared 状态的 v36 run 时，重新读取同一份已归档 native outcome，将其 raw 输出与已保存 run 核对，并在继续写入实体或知识前重新执行任务／身份检查。prepared 状态不能凭看似为空或被编辑的 proposal 投影绕过拦截。该恢复检查保留原始返回，不迁移或重新解释历史任务，也不撤销此前已持久化的证据。
 
 重写 system 与任务接纳边界对该候选构成 **BREAKING-COMPARABILITY**。真实诊断前须独立冻结来源／模型／输入／runtime、调用机会、停止规则及费用统计口径；执行后记录实际 token／cache／费用／耗时，未知费用保持未知。v36 不继承 v35 或此前 E/R/K 诊断的分数。拦截仅证明任务范围受限，不证明漏提、类型判断、提及 rationale、语义错误率或独立真人验收已改善。历史输出、冻结包和分数保持不变。
+
+### 5.5 来源派生的提及定位目录候选
+
+显式选择的内部 `knowledge-extraction-v37` profile 保留 E36 的实体语义，增加 `knowledge-body-occurrence-guide/v1` 使用说明。完整 system 的原始 UTF-8 SHA-256 为 `06568758fa41d4763c7c5f819c93cc5859f8a70aa661f3b4bd38499d52feba79`。固定输入保留全部原始 excerpts、元数据与 limitations，并增加 `occurrenceGuide`；派发、接纳、prepared 恢复和 E 到 K 的前驱检查都重建同一份输入。v36 的空 proposals 拦截也适用于 v37。普通宿主不选择这两个 profile；strict30 默认、原始 v36 字节、v4 wire 和公开存储／CLI 契约保持不变。
+
+目录仅覆盖 `github_issue_body` 与 `github_issue_comment_body`。候选词形是完整的最大 `[A-Za-z0-9_$-]+` 连续段，首字符须为 `[A-Za-z_$]`，长度为 2～64 个 UTF-16 code unit；仅保留在该选段内有多处精确匹配的引文。匹配包含重叠及其它标识内部的同形子串，不声称这些位置都是语义提及。每个位置为 `[occurrence, start, end]`，序号在整个选段内从零连续计数。逐字上下文向两侧各延伸最多 24 个 code unit；重叠或相邻区间共享原文面板。面板可包含比单个位置更多的上下文。原始证据仍是依据，未收录引文仍可选择，模型 selection 仍仅含 `evidenceRef`、`quote`、`occurrence`。
+
+构建必须完整成功。固定窗口上限为 1,024 条选段、1,048,576 个来源文本 code unit、512 对候选词形／选段、256 行重复引文、4,096 个位置、65,536 字节目录 UTF-8 序列化结果及 4,194,304 个逻辑工作单位。输入检查、扫描、比较、匹配、面板构建和序列化都计量；拒绝时不返回局部目录。应用在检查 producer、创建 run 或派发模型之前抛出 `ExtractionOccurrenceGuideError`，不截断也不回退。逻辑工作与分配计数仅是诊断边界，不保证 CPU、堆内存、耗时或模型上下文；原生辅助函数内部及外层输入构建不在该计数内。原有 system 加 input 字节容量检查仍然生效。
+
+正式 extraction study/v1 每个 case 仅有一份两臂共享输入，明确拒绝 v37，恢复计划时也同样检查。私有诊断须使用真实应用任务，事前分别冻结两臂的不同输入。这构成 **BREAKING-COMPARABILITY**：说明与输入同时改变，不能单独推断目录的因果效果，也不能继承旧分数。比早期离线目录更小的输入、精确位置检查和工程门禁通过，都不证明漏提减少、rationale 正确、模型可用性、泛化或独立真人语义验收通过。
