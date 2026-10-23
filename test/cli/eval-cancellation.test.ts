@@ -4,7 +4,41 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+
+function safeExecutorPid(pid: number | undefined, excluded: readonly (number | undefined)[]): pid is number {
+  return typeof pid === 'number' && Number.isSafeInteger(pid) && pid > 1 && !excluded.includes(pid);
+}
+
+function executorPidFromMarker(raw: string, excluded: readonly (number | undefined)[]): number | undefined {
+  if (!/^[1-9]\d*$/.test(raw)) return undefined;
+  const pid = Number(raw);
+  return safeExecutorPid(pid, excluded) ? pid : undefined;
+}
+
+function signalExecutor(pid: number | undefined, signal: NodeJS.Signals | 0, excluded: readonly (number | undefined)[],
+  kill: (pid: number, signal: NodeJS.Signals | 0) => boolean = process.kill): boolean {
+  if (!safeExecutorPid(pid, excluded)) throw new Error('Refusing to signal an unsafe executor PID.');
+  return kill(pid, signal);
+}
+
+it.each([
+  { label: 'empty or process-group markers', markers: ['', ' ', '\n', '0', '1'], pids: [undefined, 0, 1] },
+  { label: 'nondecimal markers', markers: ['-42', '+42', '4.2', '4e2', 'NaN', 'Infinity'], pids: [-42, 4.2, NaN, Infinity] },
+  { label: 'unsafe or owner markers', markers: ['9007199254740992', '123', '456'], pids: [Number.MAX_SAFE_INTEGER + 1, 123, 456] },
+])('rejects $label before any signal dispatch', ({ markers, pids }) => {
+  const excluded = [123, 456], kill = vi.fn(() => true);
+  for (const raw of markers) expect(executorPidFromMarker(raw, excluded)).toBeUndefined();
+  for (const pid of pids) expect(() => signalExecutor(pid, 'SIGKILL', excluded, kill)).toThrow('unsafe executor PID');
+  expect(kill).not.toHaveBeenCalled();
+});
+
+it('dispatches only an independently validated executor PID through the guarded signal boundary', () => {
+  const excluded = [123, 456], kill = vi.fn(() => true);
+  const pid = executorPidFromMarker('42', excluded);
+  expect(pid).toBe(42); expect(signalExecutor(pid, 'SIGKILL', excluded, kill)).toBe(true);
+  expect(kill).toHaveBeenCalledExactlyOnceWith(42, 'SIGKILL');
+});
 
 // A real process is required: the subprocess coordinator re-raises SIGINT,
 // which must reach the CLI's cancellation handler instead of terminating it.
@@ -21,11 +55,13 @@ it.each(['eval', 'sample', 'evolve', 'doctor'].flatMap((command) => (['SIGINT', 
 { sampleId: 'answer', input: { inputKind: 'text', text: 'Answer.' }, evaluationContext: { assertions: [{ type: 'contains', value: 'answer' }] } }
 ] }));
   await writeFile(executor, `#!/usr/bin/env node
-import { writeFile } from 'node:fs/promises';
+import { writeFile, rename } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 for await (const line of createInterface({ input: process.stdin })) {
   JSON.parse(line);
-  await writeFile(${JSON.stringify(marker)}, String(process.pid));
+  const pendingMarker = ${JSON.stringify(marker)} + '.' + process.pid + '.tmp';
+  await writeFile(pendingMarker, String(process.pid), { flag: 'wx' });
+  await rename(pendingMarker, ${JSON.stringify(marker)});
   setInterval(() => {}, 1000);
   break;
 }
@@ -49,10 +85,11 @@ for await (const line of createInterface({ input: process.stdin })) {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
   });
+  const excludedPids = [process.pid, child.pid];
   let executorPid: number | undefined;
   try {
     await expect.poll(async () => {
-      executorPid = await readFile(marker, 'utf8').then(Number, () => undefined);
+      executorPid = await readFile(marker, 'utf8').then(raw => executorPidFromMarker(raw, excludedPids), () => undefined);
       return executorPid;
     }, { timeout: 15_000 }).toBeDefined();
     expect(child.kill(signal)).toBe(true);
@@ -71,14 +108,17 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toBe('# Answer\nAnswer the question.\n');
     expect(await readFile(join(skill, '.omk', 'eval-samples.json'), 'utf8').catch(() => undefined)).toBeUndefined();
-    expect(() => process.kill(executorPid!, 0)).toThrow();
+    expect(() => signalExecutor(executorPid, 0, excludedPids)).toThrow();
   } finally {
-    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-    await closed;
     if (executorPid !== undefined) {
-      try { process.kill(executorPid, 'SIGKILL'); } catch { /* Already reaped. */ }
+      try { signalExecutor(executorPid, 'SIGKILL', excludedPids); } catch { /* Unsafe or already reaped; never signal another process. */ }
     }
-    await rm(root, { recursive: true, force: true });
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    try {
+      await closed;
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   }
 });
 
