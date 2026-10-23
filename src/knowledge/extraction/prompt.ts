@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { WindowExtractionModelSchema } from './window-proposals.js';
-import { KNOWLEDGE_RECORD_SCOPE_POLICY, KNOWLEDGE_RECORD_CONTEXT_POLICY, KNOWLEDGE_SOURCE_AND_TIME_POLICY, KNOWLEDGE_MODALITY_POLICY, KNOWLEDGE_ATOMIC_STATEMENT_POLICY, KNOWLEDGE_CITATION_POLICY } from './knowledge-semantic-policy.js';
+import { KNOWLEDGE_RECORD_SCOPE_POLICY, KNOWLEDGE_RECORD_CONTEXT_POLICY, KNOWLEDGE_SOURCE_AND_TIME_POLICY, KNOWLEDGE_MODALITY_POLICY, KNOWLEDGE_ATOMIC_STATEMENT_POLICY, KNOWLEDGE_CITATION_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from './knowledge-semantic-policy.js';
 
 export const EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v29' as const;
 export const EXTRACTION_PROMPT = `你是工作日志知识整理助手。只分析用户选定的证据窗口，先识别它谈到的对象及原文提及，再提炼少量值得未来复用的事实、案例或方法。同一次调用返回独立 entities、mentions 和 proposals，任一结果允许为空；没有值得复用的知识时仍返回可识别的对象。
@@ -31,7 +31,7 @@ collection 仅在 referentKind 为 collection 时填写，其它实体为 null�
 后续明确纠正指代时，结合纠正分析先前提及，不把助手猜测当成身份依据；不超出选定窗口判断。无法消解的指代建立独立的局部未知实体，identityStatus 为 unresolved，uncertainties 必须解释原因；possibleEntityIds 只列同一 referentKind 且 proposed 的有据候选。无法确定所指层次时用 object、空候选及明确理由，不能以抽象对象替代已知实例。身份已知但环境、版本或工具结果缺失时保留已知对象，在陈述中说明条件／结果未知。其它实体 identityStatus 为 proposed、possibleEntityIds 为空；这不表示由人确认。
 逐处判断提及身份，不让助手选择的回答对象自动确证用户原先的含糊提及。例如用户问“Memory 的默认开关”，助手列出 Atlas Memory 与 Beacon Memory 两种可能，然后自行选择回答 Atlas Memory，但用户未确认：最初“Memory”仍归入独立 unresolved 对象，uncertainties 说明未获消歧依据，possibleEntityIds 仅列层次一致的有据候选；助手明确命名的两种功能各自保留 proposed 身份，关于 Atlas Memory 的来源说法可引用该明确对象。不能只在 mention.rationale 写“用户未确认”却把最初提及绑定到单一候选。用户后续明确说明“我指 Atlas Memory”，才可据该澄清重新判断先前提及；独立的新话题、助手猜测或回答更多次都不充当澄清。候选层次不一致时保留未知及理由，不为列候选而改已明确层次。
 每个实体至少有一个原文提及；名称提及 basis 为 explicit，推断的指代对应 basis 为 inference。basis 只说明所选位置的词语或指代如何识别，不为其它字段的额外事实背书。mention.rationale 解释此处为何指向该对象，不无据升级其角色、完整规范名称或组件身份。原文内的完整跨度或整体范围可以是正常指代；描述这处完整提及不等于主张完整规范身份，按语境判断，真正不明时保留未知。mention.selection.quote 选择对象名称、代词或描述本身，保留能完整指向该对象的提及，不把整条陈述当对象名。每条证据关联另有 citations。所有 selection 只提供 evidenceRef、quote 及可选 occurrence，不提供 start/end、prefix 或 suffix。quote 与指定 excerpt.text 中连续原文逐字一致，不修改空白、标点或字符。occurrence 是该 quote 在这条消息中从 0 开始的精确出现序号，包括重叠出现；重复 quote 必须提供序号，唯一出现可省略。例如“😀 Echo 调用 Echo”中的两个 Echo 分别为 0、1。宿主计算 UTF-16 起止位置；缺序号的重复引用、越界或错误原文会被拒绝，不自动选第一处。每个来源跨度只对应一条 mention。
-提及边界按对象含义选择，不按字符越短越好。可用独立指向该对象的完整名称或限定描述，例如“当前 main 的被测代码”指本轮代码状态，“enabled 字段”指该字段；限定不能包含无关的谓词、结果或整条知识陈述。名称加类型词仍指同一事物时，不因比短名长就丢弃，不能机械删除“字段”等后缀。属性归属短语则须区分所谈属性与所属对象：“main 上的改造还未发布”中，代码状态的提及选择“main”，不把“main 上的改造”整个属性短语当代码版本的别名；“这把键盘的重量为 800 克”中，键盘提及选“这把键盘”，不是整个重量短语。属性被独立讨论时按独立对象规则处理，不机械裁剪所有含“的”或“上的”的名称。重复短名收窄后仍按实际原文位置重新确定 occurrence，不沿用长引文的序号。不要改写原文、自动规范化引文或增加重复跨度。
+${ENTITY_MENTION_BOUNDARY_POLICY}
 提及的字符匹配与语义绑定分别核对：不能从字段、方法或产品标识内部截出字符作为另一个概念的提及。例如“_pendingTaskStatus；固定 Task；迟到事件不影响新 Task”中，Task 的 occurrence=0 在字段标识内部，不是 Task 概念提及；概念提及选择 occurrence=1 或 2。精确序号仍包含字段中的匹配，不能跳过后重新编号。字段本身可用完整标识；引证陈述可以包含字段或更长上下文。输出前逐条将 quote 与 occurrence 定位回实际那处原文，mention.rationale 只解释这一处的指代依据，不描述另一处同名文字；需要两处就建两条提及，不用一条理由偷换位置。中文相邻词、完整限定名与独立复合对象的重叠提及按语义判断，不靠最短字符或自动剪裁。
 每条知识候选用 entityIds、mentionIds 引用该共享目录，draft 不再另建 entities。陈述 subject／object 引用同一目录的 entityId；实体的身份不确定性须保留在候选 identityUncertainties 和受影响陈述 context.unknowns 中。候选需引用它涉及的每个对象至少一个提及，不引用另一对象的提及补数。
 ${KNOWLEDGE_MODALITY_POLICY}
