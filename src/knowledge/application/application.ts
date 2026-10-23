@@ -40,6 +40,9 @@ import { readReviewedKnowledgeEvidence, type ReviewedKnowledgeArchivePort, type 
 import type { BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
 import type { CheckedBoundKnowledge } from '../extraction/bound-knowledge.js';
 import { entityOnlyTaskViolation, isEntityOnlyTask } from '../extraction/entity-only-task.js';
+import { readDiscoveredEntitiesContext, importDiscoveredEntityAnalysis,
+  type DiscoveredEntitiesSource, type DiscoveredEntitiesReferences } from './discovered-entities.js';
+import type { EntityDiscoveryArchivePort, EntityDiscoveryModel, EntityDiscoveryReference } from '../extraction/discovered-entities-evidence.js';
 
 export type { ExtractionModel } from '../extraction/generation.js';
 
@@ -56,6 +59,8 @@ export interface KnowledgeApplicationPorts {
   /** Explicit E→R→K research only; no ordinary host enables either archive. */
   entityReviewArchive?: EntityReviewArchivePort;
   reviewedKnowledgeArchive?: ReviewedKnowledgeArchivePort;
+  /** Private discovery→binding research only; ordinary delivery hosts do not install this archive. */
+  discoveredEntitiesArchive?: EntityDiscoveryArchivePort;
 }
 export interface EntityReviewSelection {
   reference: EntityReviewReference;
@@ -181,6 +186,15 @@ export class KnowledgeApplication {
   tag(knowledgeId: string, generation: number, tags: unknown) {
     this.ports.knowledge.read(knowledgeId);
     return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
+  }
+  /** A is authenticated independently before the private driver constructs and reserves B. */
+  discoveredEntitiesContext(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel, reference: EntityDiscoveryReference) {
+    return readDiscoveredEntitiesContext(this.ports, source, model, reference);
+  }
+  /** Two originals produce one initial analysis; neither task is represented as an ordinary extraction run. */
+  importDiscoveredEntities(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel,
+    references: DiscoveredEntitiesReferences, signal?: AbortSignal) {
+    return importDiscoveredEntityAnalysis(this.ports, source, model, references, signal);
   }
   /** Reads the authentic immutable E revision for a separate K invocation; this method never invokes a model. */
   boundKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile) {
