@@ -18,7 +18,7 @@ import { entityKnowledgeLinks, queryEntityRows, type EntitySearchRow, type Entit
 import { KnowledgeCitationRevisionError, resolveKnowledgeCitationLocators } from './citation-locators.js';
 import type { KnowledgeEnvelope } from '../store.js';
 import { mapEntityIdentity } from '../entities/identity.js';
-import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from '../extraction/model-input.js';
+import { assertExtractionInputCapacity, extractionModelInput, extractionTaskInput, ExtractionInputCapacityError } from '../extraction/model-input.js';
 import { extractionQuality } from '../extraction/quality.js';
 import { setTimeout as wait } from 'node:timers/promises';
 import { resolveTokenBudgetProfile } from '../../executors/contracts/token-budget.js';
@@ -39,8 +39,7 @@ import { readEntityReviewEvidence, type EntityReviewArchivePort, type EntityRevi
 import { readReviewedKnowledgeEvidence, type ReviewedKnowledgeArchivePort, type ReviewedKnowledgeReference } from '../extraction/reviewed-knowledge-evidence.js';
 import type { BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
 import type { CheckedBoundKnowledge } from '../extraction/bound-knowledge.js';
-import { ENTITY_ONLY_EXTRACTION_PROMPT_VERSION } from '../extraction/entity-only-prompt.js';
-import { entityOnlyTaskViolation } from '../extraction/entity-only-task.js';
+import { entityOnlyTaskViolation, isEntityOnlyTask } from '../extraction/entity-only-task.js';
 
 export type { ExtractionModel } from '../extraction/generation.js';
 
@@ -269,7 +268,7 @@ export class KnowledgeApplication {
     if ((options?.coverageReview || options?.sourceSemanticPlan) && policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId) {
       throw new Error('Extraction research inputs require a separate single-invocation research run.');
     }
-    if (options?.promptProfile?.promptVersion === ENTITY_ONLY_EXTRACTION_PROMPT_VERSION) {
+    if (options?.promptProfile && isEntityOnlyTask(options.promptProfile.promptVersion)) {
       extractionPrompt(model, options.promptProfile);
       if (policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId || options.coverageReview || options.sourceSemanticPlan
         || model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID) {
@@ -286,7 +285,7 @@ export class KnowledgeApplication {
     const input = options?.coverageReview
       ? this.coverageReviewInput(window, model, system, promptVersion, options.coverageReview.previousRunId, runId)
       : options?.sourceSemanticPlan ? this.sourcePlannedInput(window, model, system, promptVersion, options.sourceSemanticPlan)
-        : extractionModelInput(window);
+        : extractionTaskInput(window, promptVersion);
     const requestDigest = this.ports.hash({ snapshotId, sourceVersion: window.sourceVersion, executor: model.executor, model: model.model,
       promptHash: this.ports.hash(system), inputDigest: this.ports.hash(input), actor: this.ports.actor,
       policy: SINGLE_EXTRACTION_POLICY, outputMode: model.outputMode ?? 'prompt-json', wireId: model.wireId ?? null,
@@ -469,7 +468,7 @@ export class KnowledgeApplication {
         ? { ...attempt, failure: { failureKind: 'entity_only_task_violation', diagnostic } } : attempt) });
   }
   private entityOnlyCommitViolation(run: ExtractionRun): string | undefined {
-    if (run.promptVersion !== ENTITY_ONLY_EXTRACTION_PROMPT_VERSION) return;
+    if (!isEntityOnlyTask(run.promptVersion)) return;
     const source = this.source(run.snapshotId, run.sourceVersion);
     if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
     const attempt = run.attempts[0];

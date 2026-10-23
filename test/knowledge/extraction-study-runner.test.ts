@@ -11,10 +11,13 @@ import { boundedExtractionPolicy, SINGLE_EXTRACTION_POLICY } from '../../src/kno
 import { nativeStudyFixture, studyNativeResult as native } from './extraction-study-fixtures.js';
 import { parseKnowledgeStudyArguments } from '../../scripts/bench/knowledge-study.js';
 import { parseExtractionStudyPlan } from '../../src/knowledge/extraction/study-plan.js';
+import { ExtractionAttemptSchema } from '../../src/knowledge/extraction/runs.js';
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { ENTITY_ONLY_EXTRACTION_PROFILE } from '../../src/knowledge/extraction/entity-only-prompt.js';
+import { OCCURRENCE_GUIDED_EXTRACTION_PROFILE } from '../../src/knowledge/extraction/occurrence-guided-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { buildEntityTaskOnlyAblation, type EntityTaskOnlyAblationManifest } from '../../scripts/bench/assets/entity-task-only-ablation-v1/profile.js';
 import { buildEntityEvidenceSemantics, type EntityEvidenceSemanticsManifest } from '../../scripts/bench/assets/entity-evidence-semantics-v1/profile.js';
@@ -41,6 +44,47 @@ function evidenceSemantics() {
 }
 
 describe('production extraction study runner (authored executor, zero model access)', () => {
+  it.each(['baseline', 'candidate'] as const)('rejects a guided %s before inspecting or reserving a shared-input study', selected => {
+    const f = setup(), baseline = f.model(), candidate = f.model();
+    const baselineInspect = vi.spyOn(baseline, 'inspect'), candidateInspect = vi.spyOn(candidate, 'inspect');
+    const create = vi.spyOn(f.ports.runs, 'create');
+    expect(() => f.prepare({ changedVariable: 'prompt', variants: [
+      { variantId: 'baseline', model: baseline, policy: SINGLE_EXTRACTION_POLICY,
+        promptProfile: selected === 'baseline' ? OCCURRENCE_GUIDED_EXTRACTION_PROFILE : ENTITY_ONLY_EXTRACTION_PROFILE },
+      { variantId: 'candidate', model: candidate, policy: SINGLE_EXTRACTION_POLICY,
+        promptProfile: selected === 'candidate' ? OCCURRENCE_GUIDED_EXTRACTION_PROFILE : ENTITY_ONLY_EXTRACTION_PROFILE },
+    ] })).toThrow(/shared.*input|input.*shared/i);
+    expect(baselineInspect).not.toHaveBeenCalled(); expect(candidateInspect).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.application.runs()).toEqual([]);
+  });
+
+  it('rejects a restored, internally byte-consistent guided plan at report, replay and run boundaries', async () => {
+    const f = setup(), plan = f.prepare(), model = f.model();
+    // Authored legacy-plan state: its digests and native request proof are real, but v1's shared source-only input is incompatible with v37.
+    for (const variant of plan.variants) variant.promptProfile = { ...OCCURRENCE_GUIDED_EXTRACTION_PROFILE };
+    for (const slot of plan.slots) {
+      const sample = plan.cases.find(value => value.caseId === slot.caseId)!, variant = plan.variants.find(value => value.variantId === slot.variantId)!;
+      slot.request.systemDigest = hash(variant.promptProfile.system);
+      slot.producer = ExtractionAttemptSchema.shape.producer.parse(model.inspect!(variant.promptProfile.system, sample.input));
+      slot.requestDigest = f.ports.hash({ snapshotId: sample.snapshotId, sourceVersion: sample.sourceVersion,
+        executor: variant.executor, model: variant.model, promptHash: f.ports.hash(variant.promptProfile.system),
+        inputDigest: f.ports.hash(sample.input), actor: plan.actor, policy: variant.policy, outputMode: variant.outputMode,
+        wireId: variant.wireId, timeoutMs: variant.timeoutMs, maxOutputTokens: variant.maxOutputTokens });
+    }
+    const { planId: originalPlanId, ...body } = plan;
+    plan.planId = extractionStudyDigest(body); expect(plan.planId).not.toBe(originalPlanId);
+    const restored = parseExtractionStudyPlan(plan);
+    f.files.create(restored, f.corpusRaw, f.configurationRaw);
+    const evidence = f.files.evidence(restored), create = vi.spyOn(f.ports.runs, 'create');
+    const actualModel = vi.spyOn(f.ports, 'model'), generate = vi.spyOn(f.ports.application, 'generate');
+    expect(() => reportExtractionStudy(f.ports, restored, f.corpus)).toThrow(/shared.*input|input.*shared/i);
+    expect(() => replayExtractionStudyEvidence(evidence)).toThrow(/shared.*input|input.*shared/i);
+    await expect(runExtractionStudySlot(f.ports, { plan: restored, corpus: f.corpus, slotId: restored.slots[0].slotId }))
+      .rejects.toThrow(/shared.*input|input.*shared/i);
+    expect(actualModel).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+    expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.application.runs()).toEqual([]);
+  });
+
   it('freezes complete paired order before effects, advances production births and replays byte-bound evidence without dispatch', async () => {
     const f = setup((_index, output) => native(output, { attemptCount: 2 })), plan = f.prepare({ repeats: 2 });
     f.files.create(plan, f.corpusRaw, f.configurationRaw);

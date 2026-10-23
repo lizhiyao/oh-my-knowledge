@@ -7,6 +7,7 @@ import { WINDOW_EXTRACTION_WIRE_ID, decodeWindowExtractionWire } from './model-w
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from './prompt.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from './strict-prompt.js';
 import { ENTITY_ONLY_EXTRACTION_PROMPT_VERSION, ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from './entity-only-prompt.js';
+import { OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION, OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST } from './occurrence-guided-prompt.js';
 
 export const EXTRACTION_OUTCOME_MAX_BYTES = 512 * 1024 * 1024 - 64 * 1024;
 const digest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
@@ -50,6 +51,7 @@ const publishedPromptDigests: Readonly<Record<string, string>> = Object.freeze({
   'knowledge-extraction-v29': 'sha256:ad1dc989b54427edfeb6b8e771a1f5204ac007d93b616dd7bcc10d2fa4fbac91',
   'knowledge-extraction-v30': 'sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085',
   [ENTITY_ONLY_EXTRACTION_PROMPT_VERSION]: ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST,
+  [OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION]: OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST,
 });
 for (const current of [{ promptVersion: EXTRACTION_PROMPT_VERSION, system: EXTRACTION_PROMPT },
   { promptVersion: STRICT_EXTRACTION_PROMPT_VERSION, system: STRICT_EXTRACTION_PROMPT }]) {

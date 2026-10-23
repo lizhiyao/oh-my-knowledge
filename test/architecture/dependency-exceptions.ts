@@ -51,6 +51,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/study-runner.ts → knowledge/extraction/generation.ts',
   'knowledge/application/study-runner.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/study-runner.ts → knowledge/extraction/model-wire.ts',
+  // #1321：共享输入的 study/v1 只读取固定任务身份以拒绝 v37，不派发不同输入。
+  'knowledge/application/study-runner.ts → knowledge/extraction/occurrence-guided-prompt.ts',
   'knowledge/application/study-runner.ts → knowledge/extraction/runs.ts',
   'knowledge/application/study-runner.ts → knowledge/extraction/study-corpus.ts',
   'knowledge/application/study-runner.ts → knowledge/extraction/study-plan.ts',
@@ -74,7 +76,6 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/application.ts → knowledge/extraction/reviewed-knowledge-evidence.ts',
   'knowledge/application/application.ts → knowledge/extraction/coverage-review-input.ts',
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
-  'knowledge/application/application.ts → knowledge/extraction/entity-only-prompt.ts',
   'knowledge/application/application.ts → knowledge/extraction/entity-only-task.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation.ts',

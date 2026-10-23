@@ -8,6 +8,7 @@ import { ExtractionGenerationPolicySchema, accountExtractionOutcome, EXTRACTION_
 import { resolveTokenBudgetProfile } from '../../executors/contracts/token-budget.js';
 import { serializeOpenAiChatBody } from '../../executors/contracts/openai-chat.js';
 import { assertExtractionInputCapacity, extractionModelInput } from '../extraction/model-input.js';
+import { OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION } from '../extraction/occurrence-guided-prompt.js';
 import { extractionExecution, extractionPrompt, extractionRequestDigest, extractionResponse, type ExtractionModel } from '../extraction/generation.js';
 import { checkWindowExtractionResponse } from '../extraction/window-proposals.js';
 import { WINDOW_EXTRACTION_WIRE_SCHEMA } from '../extraction/model-wire.js';
@@ -58,6 +59,7 @@ export function prepareExtractionStudy(ports: ExtractionStudyRunnerPorts, input:
   const corpus = parseExtractionStudyCorpus(input.corpus);
   const variants = input.variants.map(value => {
     const selected = extractionPrompt(value.model, value.promptProfile);
+    assertSharedStudyInputTask(selected.promptVersion);
     return Variant.parse({ variantId: value.variantId, executor: value.model.executor, model: value.model.model,
       policy: ExtractionGenerationPolicySchema.parse(value.policy), promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: selected.promptVersion, system: selected.system },
       outputMode: value.model.outputMode ?? 'prompt-json', wireId: value.model.wireId ?? null,
@@ -109,6 +111,7 @@ export function prepareExtractionStudy(ports: ExtractionStudyRunnerPorts, input:
 }
 
 function assertContext(ports: ExtractionStudyRunnerPorts, plan: ExtractionStudyPlan, corpusInput: ExtractionStudyCorpus) {
+  for (const variant of plan.variants) assertSharedStudyInputTask(variant.promptProfile.promptVersion);
   const corpus = parseExtractionStudyCorpus(corpusInput);
   if (plan.corpusDigest !== corpus.corpusDigest || !equal(ports.identity(), plan.host) || !equal(ports.actor, plan.actor)
     || !equal(plan.caseIds, corpus.cases.filter(value => value.split === plan.split).map(value => value.caseId))) throw new Error('Study corpus, host or actor identity changed.');
@@ -119,6 +122,12 @@ function assertContext(ports: ExtractionStudyRunnerPorts, plan: ExtractionStudyP
     const resolved = ports.application.source(sample.snapshotId, sample.sourceVersion);
     if (frozenHash(original.window) !== sample.windowDigest || resolved.status !== 'available'
       || frozenHash(resolved.window) !== sample.windowDigest || extractionModelInput(resolved.window) !== sample.input) throw new Error('Frozen study source is unavailable or changed.');
+  }
+}
+
+function assertSharedStudyInputTask(promptVersion: string): void {
+  if (promptVersion === OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION) {
+    throw new Error('The v37 occurrence-guided task requires a distinct input; extraction study/v1 supports only one shared source input per case.');
   }
 }
 

@@ -12,11 +12,14 @@ import { canonicalJson } from '../../src/knowledge/store.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { ENTITY_ONLY_EXTRACTION_PROFILE, ENTITY_ONLY_EXTRACTION_PROMPT,
-  ENTITY_ONLY_EXTRACTION_PROMPT_VERSION, ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/entity-only-prompt.js';
+  ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/entity-only-prompt.js';
+import { OCCURRENCE_GUIDED_EXTRACTION_PROFILE, OCCURRENCE_GUIDED_EXTRACTION_PROMPT,
+  OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/occurrence-guided-prompt.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { ExtractionRunSchema, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import type { ExtractionPromptProfile } from '../../src/knowledge/extraction/generation.js';
-import { extractionModelInput } from '../../src/knowledge/extraction/model-input.js';
+import { extractionModelInput, extractionTaskInput, ExtractionOccurrenceGuideError } from '../../src/knowledge/extraction/model-input.js';
+import type { EvidenceStore, EvidenceWindow } from '../../src/knowledge/extraction/evidence.js';
 import { boundKnowledgeExecution, boundKnowledgeRequestDigest, BoundKnowledgeReceiptSchema,
   type BoundKnowledgeReceipt, type BoundKnowledgeArchivePort } from '../../src/knowledge/extraction/bound-knowledge-evidence.js';
 import { entityReviewExecution, entityReviewRequestDigest, EntityReviewReceiptSchema,
@@ -40,37 +43,77 @@ const profile = buildEntityFirstBoundKnowledge({
   manifest: JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-first-bound-knowledge-v1/manifest.json', import.meta.url), 'utf8')),
 }).candidate;
 
-function entityFixture(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true) {
+const githubBody = 'Alpha 使用 Beta\nAlpha Alpha';
+const fixedTasks = [
+  { name: 'E36', promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, system: ENTITY_ONLY_EXTRACTION_PROMPT,
+    systemDigest: ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST, body: undefined },
+  { name: 'E37', promptProfile: OCCURRENCE_GUIDED_EXTRACTION_PROFILE, system: OCCURRENCE_GUIDED_EXTRACTION_PROMPT,
+    systemDigest: OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST, body: githubBody },
+];
+
+/** Explicit authored projection, not a GitHub capture or a relabelled trace digest. */
+function githubEvidence(root: string, original: EvidenceWindow, text: string) {
+  const records = [{ recordIndex: 0, raw: JSON.stringify({ fixtureKind: 'authored-github-body', text }) },
+    { recordIndex: 1, raw: JSON.stringify({ fixtureKind: 'authored-github-metadata', text: 'Authored metadata remains source data.' }) }];
+  const raw = records.map(record => record.raw).join('\n'), snapshotId = randomUUID(), sourcePath = join(root, 'github-body.authored.jsonl');
+  writeFileSync(sourcePath, raw);
+  const window: EvidenceWindow = { ...original, snapshotId, sourcePath, sourceVersion: hash(raw), startRecord: 0, endRecord: 1, records,
+    limitations: ['Authored GitHub body projection for unit tests; not external GitHub or native capture evidence.'],
+    excerpts: [{ evidenceRef: `${snapshotId}:authored-body:0`, recordIndex: 0, eventKind: 'github_issue_body', text },
+      { evidenceRef: `${snapshotId}:authored-metadata:1`, recordIndex: 1, eventKind: 'github_public_message_metadata', text: 'Authored metadata remains source data.' }] };
+  let deleted = false;
+  const evidence: EvidenceStore = {
+    capture: selection => {
+      if (selection.path !== sourcePath) throw new Error('Unknown authored source.');
+      return structuredClone(window);
+    },
+    read: (selected, expectedVersion) => selected !== snapshotId
+      ? { status: 'unavailable', reason: 'missing', detail: 'Unknown authored snapshot.' }
+      : deleted ? { status: 'unavailable', reason: 'deleted', detail: 'Authored source deleted.' }
+        : expectedVersion !== undefined && expectedVersion !== window.sourceVersion
+          ? { status: 'unavailable', reason: 'version_mismatch', detail: 'Authored source version differs.' }
+          : { status: 'available', window: structuredClone(window) },
+    delete: selected => { if (selected === snapshotId) deleted = true; },
+  };
+  return { window, evidence };
+}
+
+function entityFixture(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true, body?: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-entity-first-'))); roots.push(root);
   const f = nativeStudyFixture(root, (_index, original) => {
     const output = JSON.parse(original) as ReturnType<typeof wireModelWindow>;
     if (entityOnly) output.proposals = [];
+    if (body !== undefined) output.mentions[0].selection.occurrence = 0;
     entityChange?.(output);
     return studyNativeResult(JSON.stringify(output));
   });
+  const authored = body === undefined ? undefined : githubEvidence(root, f.corpus.cases[0].window, body);
   const ports: KnowledgeApplicationPorts = {
     runs: f.ports.runs, actor: f.ports.actor, hash: value => hash(canonicalJson(value)), id: randomUUID,
     now: () => '2020-02-01T00:00:00Z',
-    evidence: new TraceEvidenceStore(join(f.workspace, 'sources'), f.workspace),
+    evidence: authored?.evidence ?? new TraceEvidenceStore(join(f.workspace, 'sources'), f.workspace),
     entities: new FileEntityAnalysisStore(join(f.workspace, 'entities'), f.workspace),
     knowledge: new FileKnowledgeStore(join(f.workspace, 'items'), 'local', f.workspace),
     tags: new FileKnowledgeTags(join(f.workspace, 'tags'), 'local', f.workspace),
   };
-  const app = new KnowledgeApplication(ports), model = f.model(), window = f.corpus.cases[0].window, runId = randomUUID();
+  const app = new KnowledgeApplication(ports), model = f.model(), window = authored?.window ?? f.corpus.cases[0].window, runId = randomUUID();
   return { ...f, app, ports, model, window, runId };
 }
 async function setup(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true,
   promptProfile: ExtractionPromptProfile = profile) {
-  const f = entityFixture(entityChange, entityOnly);
+  const f = entityFixture(entityChange, entityOnly,
+    promptProfile.promptVersion === OCCURRENCE_GUIDED_EXTRACTION_PROFILE.promptVersion ? githubBody : undefined);
+  const inspect = vi.spyOn(f.model, 'inspect');
   const run = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, { promptProfile });
-  return { ...f, run };
+  return { ...f, run, inspect };
 }
 
-async function preparedEntityOnlyFixture() {
-  const f = entityFixture();
+async function preparedEntityOnlyFixture(promptProfile: ExtractionPromptProfile = ENTITY_ONLY_EXTRACTION_PROFILE) {
+  const f = entityFixture(undefined, true,
+    promptProfile.promptVersion === OCCURRENCE_GUIDED_EXTRACTION_PROFILE.promptVersion ? githubBody : undefined);
   const write = vi.spyOn(f.ports.entities, 'write').mockImplementationOnce(() => { throw new Error('Authored interrupted entity publication.'); });
   await expect(f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, {
-    promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE,
+    promptProfile,
   })).rejects.toThrow('Authored interrupted entity publication.');
   write.mockRestore();
   const run = f.ports.runs.read(f.runId);
@@ -100,15 +143,32 @@ function unexpectedKnowledgeIntent(f: Awaited<ReturnType<typeof preparedEntityOn
     sourceBindings: [{ snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion, evidenceRefs: [evidenceRef] }] } };
 }
 
-describe('fixed entity-only extraction task (authored native returns)', () => {
-  it('publishes the actual E-only revision and exposes it to the subsequent bound-knowledge task', async () => {
-    const f = await setup(undefined, true, ENTITY_ONLY_EXTRACTION_PROFILE), initial = f.ports.entities.read(f.runId);
-    const context = f.app.boundKnowledgeContext(f.runId, f.model, ENTITY_ONLY_EXTRACTION_PROFILE);
-    expect(f.run).toMatchObject({ status: 'completed', promptVersion: ENTITY_ONLY_EXTRACTION_PROMPT_VERSION, intents: [], committed: [] });
-    expect(f.run.attempts).toHaveLength(1); expect(f.run.attempts[0].request.systemDigest).toBe(ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST);
+describe.each(fixedTasks)('$name fixed entity-only extraction task (authored native returns)', ({ promptProfile, system, systemDigest, body }) => {
+  const fixture = (change?: Parameters<typeof entityFixture>[0], entityOnly = true) => entityFixture(change, entityOnly, body);
+  it('binds the dispatched input to inspect and the saved E-only revision, then replays K without another E call', async () => {
+    const f = await setup(undefined, true, promptProfile), initial = f.ports.entities.read(f.runId);
+    const context = f.app.boundKnowledgeContext(f.runId, f.model, promptProfile);
+    const input = extractionTaskInput(f.window, promptProfile.promptVersion);
+    expect(f.run).toMatchObject({ status: 'completed', promptVersion: promptProfile.promptVersion, intents: [], committed: [] });
+    expect(f.run.attempts).toHaveLength(1); expect(f.run.attempts[0].request.systemDigest).toBe(systemDigest);
+    expect(f.run.promptHash).toBe(f.ports.hash(system)); expect(f.run.inputDigest).toBe(f.ports.hash(input));
+    expect(f.run.attempts[0].request.inputDigest).toBe(hash(input));
+    expect(f.inspect).toHaveBeenCalledWith(system, input);
+    expect(f.run.attempts[0].producer).toEqual(f.inspect.mock.results[0].value);
     expect(f.effects).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      system: ENTITY_ONLY_EXTRACTION_PROMPT, prompt: extractionModelInput(f.window),
+      system, prompt: input,
     }));
+    if (body === undefined) expect(input).toBe(extractionModelInput(f.window));
+    else {
+      const actual = JSON.parse(input);
+      expect(actual).toMatchObject({ excerpts: f.window.excerpts, limitations: f.window.limitations,
+        occurrenceGuide: { guideKind: 'knowledge-body-occurrence-guide/v1', groups: [{ evidenceRef: f.window.excerpts[0].evidenceRef,
+          eventKind: 'github_issue_body', panels: [{ text: githubBody, terms: [['Alpha', [[0, 0, 5], [1, 14, 19], [2, 20, 25]]]] }] }] } });
+      expect(actual.excerpts).toHaveLength(2); expect(actual).not.toHaveProperty('sourcePath');
+      expect(input).not.toBe(extractionModelInput(f.window));
+      expect(JSON.parse(f.run.rawOutput!).mentions[0].selection.occurrence).toBe(0);
+      expect(context.catalog.mentions[0].selection).toMatchObject({ quote: 'Alpha', start: 0, end: 5 });
+    }
     expect(initial.revisions).toHaveLength(1); expect(initial.revisions[0].entities).toHaveLength(2);
     expect(initial.revisions[0].mentions).toHaveLength(2);
     expect(context.catalog.entities).toEqual(initial.revisions[0].entities);
@@ -117,18 +177,26 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
     expect(f.app.list()).toEqual([]); expect(JSON.parse(f.run.rawOutput!).proposals).toEqual([]);
     expect(f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome).outcome)
       .toMatchObject({ outcomeKind: 'result', result: { output: f.run.rawOutput } });
+    const k = knowledgeReturn(f, undefined, promptProfile), native = k.nativeBytes(), receipt = k.receiptBytes();
+    const result = k.app.importBoundKnowledge(f.runId, f.model, promptProfile, k.reference);
+    expect(result.proposalAdmissionStatus).toBe('admitted'); expect(result.committed).toHaveLength(1);
+    const restarted = new KnowledgeApplication({ ...f.ports, boundKnowledgeArchive: k.archive });
+    expect(restarted.importBoundKnowledge(f.runId, f.model, promptProfile, k.reference).committed).toEqual(result.committed);
+    expect(f.ports.knowledge.read(result.committed[0].knowledgeId).generation).toBe(1);
+    expect(f.ports.entities.read(f.runId)).toEqual(initial); expect(f.ports.runs.read(f.runId)).toEqual(f.run);
+    expect(k.nativeBytes()).toEqual(native); expect(k.receiptBytes()).toEqual(receipt); expect(f.effects).toHaveBeenCalledTimes(1);
   });
 
   it.each(['valid-proposal', 'invalid-proposal'] as const)(
     'archives %s unchanged but rejects the task before preparing or publishing anything', async mode => {
-      const f = entityFixture(output => { if (mode === 'invalid-proposal') output.proposals = [null] as never; }, false);
+      const f = fixture(output => { if (mode === 'invalid-proposal') output.proposals = [null] as never; }, false);
       const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
       const archived = vi.fn((event: Parameters<NonNullable<ExtractionGenerationOptions['onOutcomeArchived']>>[0]) => {
         expect(f.ports.runs.readOutcome(event.runId, event.attemptId, event.ref).outcome).toEqual(event.outcome);
         expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
       });
       const run = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, {
-        promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, onOutcomeArchived: archived,
+        promptProfile, onOutcomeArchived: archived,
       });
       expect(archived).toHaveBeenCalledTimes(1);
       expect(run).toMatchObject({ status: 'failed', intents: [], committed: [],
@@ -139,7 +207,7 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
       const restarted = new KnowledgeApplication(f.ports);
       expect(restarted.resume(f.runId)).toEqual(run);
       expect(await restarted.generate(f.window.snapshotId, f.model, f.runId, undefined, {
-        promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE,
+        promptProfile,
       })).toEqual(run);
       expect(f.ports.runs.readOutcome(f.runId, attempt.attemptId, attempt.outcome)).toEqual(original);
       expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
@@ -148,10 +216,10 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
     });
 
   it.each([false, true])('resumes an archived cancellation without another invocation (nonempty proposals: %s)', async nonempty => {
-    const f = entityFixture(undefined, !nonempty), controller = new AbortController();
+    const f = fixture(undefined, !nonempty), controller = new AbortController();
     const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
     const cancelled = await f.app.generate(f.window.snapshotId, f.model, f.runId, controller.signal, {
-      promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, onOutcomeArchived: () => controller.abort(),
+      promptProfile, onOutcomeArchived: () => controller.abort(),
     });
     expect(cancelled.status).toBe('cancelled'); expect(cancelled.entityAnalysis).toBeUndefined();
     expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
@@ -162,7 +230,7 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
       expect(entityWrite).not.toHaveBeenCalled(); expect(f.ports.entities.list().histories).toEqual([]);
     } else {
       expect(resumed.status).toBe('completed'); expect(entityWrite).toHaveBeenCalledTimes(1);
-      expect(f.app.boundKnowledgeContext(f.runId, f.model, ENTITY_ONLY_EXTRACTION_PROFILE).catalog.entities).toHaveLength(2);
+      expect(f.app.boundKnowledgeContext(f.runId, f.model, promptProfile).catalog.entities).toHaveLength(2);
     }
     expect(knowledgeWrite).not.toHaveBeenCalled(); expect(f.app.list()).toEqual([]);
     expect(resumed.rawOutput).toBe(cancelled.rawOutput); expect(resumed.attempts[0].outcome).toEqual(attempt.outcome);
@@ -172,9 +240,9 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
 
   it.each(['prompt-bytes', 'prompt-json', 'missing-mode', 'wrong-wire', 'bounded-policy', 'coverage-review', 'semantic-plan'] as const)(
     'rejects %s before creating a run or dispatching the fixed task', async mode => {
-      const f = entityFixture(), model = { ...f.model };
-      const options: ExtractionGenerationOptions = { promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE };
-      if (mode === 'prompt-bytes') options.promptProfile = { ...ENTITY_ONLY_EXTRACTION_PROFILE, system: ENTITY_ONLY_EXTRACTION_PROMPT + '\n' };
+      const f = fixture(), model = { ...f.model };
+      const options: ExtractionGenerationOptions = { promptProfile };
+      if (mode === 'prompt-bytes') options.promptProfile = { ...promptProfile, system: system + '\n' };
       if (mode === 'prompt-json') model.outputMode = 'prompt-json';
       if (mode === 'missing-mode') delete model.outputMode;
       if (mode === 'wrong-wire') model.wireId = hash('authored wrong wire');
@@ -185,14 +253,16 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
       if (mode === 'semantic-plan') options.sourceSemanticPlan = { receiptId: randomUUID(), receiptRef: ref(bytes({ authored: true })) };
       const create = vi.spyOn(f.ports.runs, 'create'), entityWrite = vi.spyOn(f.ports.entities, 'write');
       const knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+      const inspect = vi.spyOn(model, 'inspect'), generate = vi.spyOn(model, 'generate');
       await expect(f.app.generate(f.window.snapshotId, model, f.runId, undefined, options)).rejects.toThrow(
         mode === 'prompt-bytes' ? 'A known extraction prompt version cannot identify different bytes.' : 'Entity-only extraction requires');
       expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled(); expect(f.app.runs()).toEqual([]);
+      expect(inspect).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled();
       expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
     });
 
   it('recovers the genuine prepared empty-proposal outcome without allocating another invocation or revision', async () => {
-    const f = await preparedEntityOnlyFixture(), original = f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome);
+    const f = await preparedEntityOnlyFixture(promptProfile), original = f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome);
     const restarted = new KnowledgeApplication(f.ports), result = restarted.resume(f.runId);
     expect(result.status).toBe('completed'); expect(result.entityAnalysis).toEqual(f.run.entityAnalysis);
     expect(result.rawOutput).toBe(f.run.rawOutput); expect(result.intents).toEqual([]); expect(result.committed).toEqual([]);
@@ -202,9 +272,9 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
     expect(f.effects).toHaveBeenCalledTimes(1); expect(f.app.list()).toEqual([]);
   });
 
-  it.each(['native-proposals', 'knowledge-intent', 'prompt-hash'] as const)(
+  it.each(['native-proposals', 'knowledge-intent', 'prompt-hash', 'input-digest'] as const)(
     'rechecks %s in an authored prepared state before the first E or K write', async mode => {
-      const f = await preparedEntityOnlyFixture();
+      const f = await preparedEntityOnlyFixture(promptProfile);
       const originalAttempt = f.run.attempts[0];
       const original = f.ports.runs.readOutcome(f.runId, originalAttempt.attemptId, originalAttempt.outcome);
       let prepared = structuredClone(f.run);
@@ -224,6 +294,7 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
       }
       if (mode === 'knowledge-intent') prepared.intents = [unexpectedKnowledgeIntent(f)];
       if (mode === 'prompt-hash') prepared.promptHash = hash('authored wrong prompt hash');
+      if (mode === 'input-digest') prepared.inputDigest = hash('authored wrong input digest');
       const admittedFixture = writePreparedFixture(f, prepared);
       if (mode === 'native-proposals') {
         expect(admittedFixture.intents).toEqual([]); expect(JSON.parse(admittedFixture.rawOutput!).proposals).toHaveLength(1);
@@ -244,7 +315,36 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
       expect(f.ports.runs.readOutcome(f.runId, originalAttempt.attemptId, originalAttempt.outcome)).toEqual(original);
       expect(f.effects).toHaveBeenCalledTimes(1);
     });
+});
 
+describe('occurrence-guided dispatch boundary', () => {
+  it.each(['candidate-limit', 'source-limit', 'guide-byte-limit'] as const)(
+    'refuses %s before inspect, run creation, native invocation or writes', async mode => {
+      const text = mode === 'candidate-limit'
+        ? Array.from({ length: 513 }, (_, index) => `u${String(index).padStart(3, '0')}`).join(' ')
+        : mode === 'source-limit' ? 'x'.repeat(1_048_577) : 'Echo '.repeat(3000);
+      const f = entityFixture(undefined, true, text), inspect = vi.spyOn(f.model, 'inspect'), generate = vi.spyOn(f.model, 'generate');
+      const create = vi.spyOn(f.ports.runs, 'create'), entityWrite = vi.spyOn(f.ports.entities, 'write');
+      const knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+      await expect(f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, {
+        promptProfile: OCCURRENCE_GUIDED_EXTRACTION_PROFILE,
+      })).rejects.toBeInstanceOf(ExtractionOccurrenceGuideError);
+      expect(inspect).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled(); expect(f.app.runs()).toEqual([]);
+      expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+      expect(f.ports.entities.list().histories).toEqual([]); expect(f.app.list()).toEqual([]);
+      expect(f.app.source(f.window.snapshotId)).toEqual({ status: 'available', window: f.window });
+    });
+
+  it('rejects a completed guided predecessor presented with the old source-only task identity before reading K', async () => {
+    const f = await setup(undefined, true, OCCURRENCE_GUIDED_EXTRACTION_PROFILE);
+    const k = knowledgeReturn(f, undefined, OCCURRENCE_GUIDED_EXTRACTION_PROFILE);
+    expect(() => k.app.importBoundKnowledge(f.runId, f.model, ENTITY_ONLY_EXTRACTION_PROFILE, k.reference)).toThrow();
+    expect(k.read).not.toHaveBeenCalled(); expect(k.app.list()).toEqual([]); expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('unchanged prior extraction tasks', () => {
   it.each(['default-strict30', 'prior-E35'] as const)('does not reinterpret the %s task as entity-only', async mode => {
     const f = entityFixture(undefined, false);
     const result = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined,
@@ -253,11 +353,15 @@ describe('fixed entity-only extraction task (authored native returns)', () => {
     expect(result.intents).toHaveLength(1); expect(result.committed).toHaveLength(1); expect(f.app.list()).toHaveLength(1);
     expect(f.ports.entities.read(f.runId).revisions[0].entities).toHaveLength(2);
     expect(JSON.parse(result.rawOutput!).proposals).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
+    expect(f.effects).toHaveBeenCalledWith(expect.objectContaining({
+      system: mode === 'prior-E35' ? profile.system : STRICT_EXTRACTION_PROMPT, prompt: extractionModelInput(f.window),
+    }));
   });
 });
 
-function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (response: Record<string, unknown>) => void) {
-  const context = f.app.boundKnowledgeContext(f.runId, f.model, profile);
+function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (response: Record<string, unknown>) => void,
+  promptProfile: ExtractionPromptProfile = profile) {
+  const context = f.app.boundKnowledgeContext(f.runId, f.model, promptProfile);
   const execution = boundKnowledgeExecution(context.window, context.catalog, f.model);
   // Authored K data, not a generated answer or semantic acceptance result.
   const proposal = structuredClone(wireModelWindow().proposals[0]);
@@ -277,7 +381,8 @@ function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (respons
       anchors: [{ evidenceRef: context.window.excerpts[0].evidenceRef, quote: 'Alpha 使用 Beta', occurrence: null }],
       dispositionKind: 'expressed', statementRefs: [{ proposalId: proposal.proposalId, statementId: 'usage' }],
       reason: null, catalogGapIds: [] }],
-    excerptAccounting: [{ evidenceRef: context.window.excerpts[0].evidenceRef, materialIds: ['material-1'], noMaterialReason: null }] };
+    excerptAccounting: context.window.excerpts.map((excerpt, index) => ({ evidenceRef: excerpt.evidenceRef,
+      materialIds: index ? [] : ['material-1'], noMaterialReason: index ? 'Authored metadata adds no knowledge claim.' : null })) };
   change?.(response);
   const receiptId = randomUUID(), attemptId = randomUUID();
   const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1, receiptId, attemptId,

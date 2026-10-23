@@ -3,29 +3,38 @@ import { canonicalJson } from '../store.js';
 import type { EvidenceWindow } from './evidence.js';
 import { ENTITY_ONLY_EXTRACTION_PROMPT, ENTITY_ONLY_EXTRACTION_PROMPT_VERSION,
   ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from './entity-only-prompt.js';
+import { OCCURRENCE_GUIDED_EXTRACTION_PROMPT, OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION,
+  OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST } from './occurrence-guided-prompt.js';
 import { SINGLE_EXTRACTION_POLICY } from './generation-policy.js';
-import { extractionModelInput } from './model-input.js';
+import { extractionTaskInput } from './model-input.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from './model-wire.js';
 import type { ExtractionRun } from './runs.js';
 import { WindowExtractionEnvelopeSchema } from './window-proposals.js';
 
 const rawDigest = (value: string) => `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
 
+export function isEntityOnlyTask(promptVersion: string): boolean {
+  return promptVersion === ENTITY_ONLY_EXTRACTION_PROMPT_VERSION || promptVersion === OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION;
+}
+
 /** New fixed task only. No legacy task, response or stored revision is reinterpreted. */
 export function entityOnlyTaskViolation(run: ExtractionRun, window: EvidenceWindow, response: unknown,
   hash: (value: unknown) => string): string | undefined {
-  if (run.promptVersion !== ENTITY_ONLY_EXTRACTION_PROMPT_VERSION) return;
-  const attempt = run.attempts[0], input = extractionModelInput(window);
+  if (!isEntityOnlyTask(run.promptVersion)) return;
+  const guided = run.promptVersion === OCCURRENCE_GUIDED_EXTRACTION_PROMPT_VERSION;
+  const system = guided ? OCCURRENCE_GUIDED_EXTRACTION_PROMPT : ENTITY_ONLY_EXTRACTION_PROMPT;
+  const systemDigest = guided ? OCCURRENCE_GUIDED_EXTRACTION_SYSTEM_DIGEST : ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST;
+  const attempt = run.attempts[0], input = extractionTaskInput(window, run.promptVersion);
   if (run.attempts.length !== 1 || canonicalJson(run.policy) !== canonicalJson(SINGLE_EXTRACTION_POLICY)
     || run.snapshotId !== window.snapshotId || run.sourceVersion !== window.sourceVersion
-    || run.promptHash !== hash(ENTITY_ONLY_EXTRACTION_PROMPT) || run.inputDigest !== hash(input)
+    || run.promptHash !== hash(system) || run.inputDigest !== hash(input)
     || attempt.request.outputMode !== 'json-schema' || attempt.request.wireId !== WINDOW_EXTRACTION_WIRE_ID
-    || attempt.request.systemDigest !== ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST
+    || attempt.request.systemDigest !== systemDigest
     || attempt.request.inputDigest !== rawDigest(input)) {
     return 'Entity-only extraction task identity differs from the fixed structured source-only profile; no entity or knowledge admission is allowed.';
   }
   const requestDigest = hash({ snapshotId: run.snapshotId, sourceVersion: run.sourceVersion,
-    executor: run.executor, model: run.model, promptHash: hash(ENTITY_ONLY_EXTRACTION_PROMPT), inputDigest: hash(input),
+    executor: run.executor, model: run.model, promptHash: hash(system), inputDigest: hash(input),
     actor: run.actor, policy: SINGLE_EXTRACTION_POLICY, outputMode: attempt.request.outputMode,
     wireId: attempt.request.wireId, timeoutMs: attempt.request.timeoutMs, maxOutputTokens: attempt.request.maxOutputTokens ?? null });
   if (run.requestDigest !== requestDigest || run.selectedAttemptId !== attempt.attemptId || !attempt.outcome
