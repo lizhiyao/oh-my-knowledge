@@ -6,26 +6,18 @@ import { BoundKnowledgeCatalogGapSchema, BoundKnowledgeMaterialAccountingSchema,
   checkBoundKnowledgeAccounting, type BoundKnowledgeAccounting } from './bound-knowledge-accounting.js';
 import { KNOWLEDGE_RECORD_SCOPE_POLICY, KNOWLEDGE_RECORD_CONTEXT_POLICY, KNOWLEDGE_SOURCE_AND_TIME_POLICY,
   KNOWLEDGE_MODALITY_POLICY, KNOWLEDGE_ATOMIC_STATEMENT_POLICY, KNOWLEDGE_CITATION_POLICY } from './knowledge-semantic-policy.js';
-import { EntityAnalysisDraftSchema } from '../entities/contracts.js';
-import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
 import { canonicalJson } from '../store.js';
-import { EvidenceWindowSchema } from './evidence.js';
 import { assertExtractionInputCapacity } from './model-input.js';
 import { WINDOW_EXTRACTION_WIRE_SCHEMA, type WireRawEvidence } from './model-wire.js';
 import { checkCatalogProposals, WindowExtractionProposalSchema } from './window-proposals.js';
 import type { CheckedProposals } from './proposals.js';
 
+import { BoundKnowledgeSourceSchema as sourceSchema, BoundKnowledgeCatalogSchema as catalogSchema,
+  BoundKnowledgeBindingSchema as bindingSchema, projectBoundCatalog as project, validUtf8 as utf8,
+  type BoundKnowledgeSource, type BoundKnowledgeCatalog, type BoundKnowledgeBinding } from './bound-catalog.js';
+export type { BoundKnowledgeSource, BoundKnowledgeCatalog, BoundKnowledgeBinding } from './bound-catalog.js';
+
 const hash = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
-const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-const sourceSchema = EvidenceWindowSchema.pick({ snapshotId: true, sourceVersion: true, excerpts: true, limitations: true });
-const catalogSchema = EntityAnalysisDraftSchema.extend({ analysisId: uuid, revisionId: uuid,
-  snapshotId: uuid, sourceVersion: digest });
-export type BoundKnowledgeSource = z.infer<typeof sourceSchema>;
-/** A projection of a persisted revision, not a receipt or proof that it was persisted. */
-export type BoundKnowledgeCatalog = z.infer<typeof catalogSchema>;
-const bindingSchema = z.strictObject({ snapshotId: uuid, sourceVersion: digest, analysisId: uuid, revisionId: uuid,
-  sourceProjectionDigest: digest, entityAnalysisDigest: digest });
-export type BoundKnowledgeBinding = z.infer<typeof bindingSchema>;
 // Metadata rows are independently diagnosed after root validation; they cannot discard valid proposals.
 const envelopeSchema = z.strictObject({ responseKind: z.literal('bound-knowledge'), schemaVersion: z.literal(2),
   binding: bindingSchema, proposals: z.array(z.unknown()).max(12), catalogGaps: z.array(z.unknown()).max(64),
@@ -134,37 +126,6 @@ materialAccounting 逐项给出 materialId、简短 meaning 和精确 anchors，
 excerptAccounting 对输入每个 evidenceRef 恰好一项。materialIds 列出在该 excerpt 有 anchor 的所有材料，每个材料在其每个 anchor 来源都列出；有材料时 noMaterialReason=null，无材料时 materialIds=[] 并给出 noMaterialReason。不要按角色、关键词或出现次数自动排除来源，也不机械把每句变成知识。此对账只记录模型声明及位置对应；没有 gap、全部来源有处理项或结构闭合都不证明语义覆盖。
 证据 basis 区分 direct_observation、source_assertion、inference。selection 使用 evidenceRef、quote、occurrence，不提供 start/end；quote 保持所有原字符，重复 quote 必须给包含重叠的从零序号，唯一出现使用 null。无二元对象的 statement 使用 object:null；宿主只移除声明为 optional 的两类 null 占位，其它内容原样受检。
 binding 必须逐字段回显输入 binding。这是内容绑定，不是签名、归档认证或真人复核。只返回 responseKind=bound-knowledge、schemaVersion=2 的 JSON，遵守独立 wire Schema。可空 proposals，但仍给出完整来源处理账目。reuseRationale 说明未来什么任务会参考，不承诺已经验证收益。`;
-
-function utf8(value: unknown): boolean {
-  const pending = [value];
-  while (pending.length) {
-    const current = pending.pop();
-    if (typeof current === 'string') {
-      if (Buffer.from(current, 'utf8').toString('utf8') !== current) return false;
-    } else if (current && typeof current === 'object') {
-      for (const [key, child] of Object.entries(current)) pending.push(key, child);
-    }
-  }
-  return true;
-}
-function project(sourceInput: BoundKnowledgeSource, catalogInput: BoundKnowledgeCatalog) {
-  const source = sourceSchema.parse({ snapshotId: sourceInput.snapshotId, sourceVersion: sourceInput.sourceVersion,
-    excerpts: sourceInput.excerpts, limitations: sourceInput.limitations });
-  const projection = { analysisId: catalogInput.analysisId, revisionId: catalogInput.revisionId,
-    snapshotId: catalogInput.snapshotId, sourceVersion: catalogInput.sourceVersion,
-    entities: catalogInput.entities, mentions: catalogInput.mentions, limitations: catalogInput.limitations };
-  if (!utf8(source) || !utf8(projection)) throw new Error('Bound knowledge source/catalog is not valid UTF-8.');
-  const catalog = catalogSchema.parse(projection);
-  if (canonicalJson(catalog) !== canonicalJson(projection)) throw new Error('Catalog projection would require normalization.');
-  if (source.snapshotId !== catalog.snapshotId || source.sourceVersion !== catalog.sourceVersion) throw new Error('Entity analysis source binding mismatch.');
-  if (new Set(source.excerpts.map(value => value.evidenceRef)).size !== source.excerpts.length) throw new Error('Ambiguous evidence window.');
-  const problems = [...validateEntityAnalysis(catalog), ...catalog.mentions.flatMap(mention => validateEntityMentionSelection(mention.selection, source.excerpts))];
-  if (problems.length) throw new Error(`Invalid bound entity analysis: ${[...new Set(problems)].join(',')}`);
-  const binding: BoundKnowledgeBinding = { snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
-    analysisId: catalog.analysisId, revisionId: catalog.revisionId,
-    sourceProjectionDigest: hash(canonicalJson(source)), entityAnalysisDigest: hash(canonicalJson(catalog)) };
-  return { source, catalog, binding };
-}
 
 /** Caller must authenticate provenance/persistence separately. This pure builder only checks the supplied projection. */
 export function buildBoundKnowledgeInput(source: BoundKnowledgeSource, catalog: BoundKnowledgeCatalog): string {

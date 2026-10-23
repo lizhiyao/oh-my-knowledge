@@ -32,6 +32,20 @@ v29／v30 的来源断言规则及同次调用自检变化标记 **BREAKING-COMP
 
 准备阶段用同一请求核对两臂归档器的固定条件，避免把提示词变化引起的请求摘要与归档容量差异误判为环境漂移。每个实际 slot 仍保存各自完整请求与归档证明，并在运行和派发前逐臂重新核对；共同请求的检查不替代实际请求证据。
 
+### 1.1. 实体受限审查研究链
+
+内部 `E→R→K` 研究链显式声明 **BREAKING-COMPARABILITY**：增加逐实体 AI 审查和知识 ID 使用政策，调用数、输入与成本均需重新冻结。原 `E＋K-v2` 保留为明确的研究对照，不作为兼容读取器或自动回退；生产 strict30、公共 Entity v4、存量实体／知识历史和普通提取 wire 不变。
+
+E 必须是真实完成、无拒绝的单次实体专项任务，R 绑定其已持久化初始修订及完整来源／目录摘要。`entity-review/v1` 不输出实体、提及、替代类型或修订补丁；每个原 entityId 恰好一项，分别判断资格、实际所指和类型，完整引用该实体原 mentionId 集。三轴全 supported 才派生 retain；有 unsupported 则 exclude，其余 uncertain。原始目录、提及的 UTF-16 位置、成员与候选关系不变，排除资格不证明对象不存在。
+
+`knowledge-entity-review-usage/v1` 采用保守使用政策：retain 项的 componentRef、possibleEntityIds、已声明 collection 成员或身份证据提及依赖不可用时，迭代标记 host usage blocker。该阻塞不修改 AI 裁决，也不表示集合主体身份错误；保守策略可能损失可用覆盖，须在研究中单独检查。后续 `reviewed-knowledge/v1` 接收完整原目录、R 判断和允许使用的 ID，原生 binding 另钉 R receiptRef、nativeRef、raw 输出摘要、R wire 与使用政策版本。
+
+知识接纳复用现有 K-v2 的提案与 citation 检查，再由宿主拒绝引用不可用 entityId／mentionId 或 subject／object 的整份提案；不删端点、不重写原提及，独立有效提案仍可保存。材料账目按实际保留的提案重算，保留 raw 拒绝和未表达声明。实际知识仍引用真实 E 初始 entityAnalysisRef，不制造“已审查实体修订”；中断后的显式重放沿用相同写入身份，不新增调用或重复知识。
+
+R 和受限 K 各有独立的 system／input／wire／check、receipt 与 native 身份；只通过显式私有 archive port 认证原始字节、完整请求和当前同任务 producer。R 开始不得早于 E 完成，K 开始不得早于 R 完成；新阶段要求报告单回合，不接受工具、重试、子代理或失败清理。缺失／损坏证据或错误绑定拒绝后继处理，不回退到未审查目录。该内部链不新增 CLI、Studio 或默认宿主装配，不迁移旧回执。
+
+R 判断和 retain 都是 AI 主张；`semanticStatus` 仍为 `not_reviewed`，知识仍 pending，不产生真人确认或 gold。工程测试仅验证约束、认证、接纳和恢复，不能证明实体识别改善；真实来源、输出前义务、调用与成本政策、语义复核和独立真人验收仍按各自协议另行完成，旧结果不改判。
+
 ## 2. 来源分组与参考范围
 
 `freezeExtractionStudyCorpus(input)` 生成语料身份；`parseExtractionStudyCorpus(input)` 要求并重算它。每个案例包含 `caseId`、`split`、`exposure`、`projectGroup`、`conversationGroup`、`lineageGroup`、`ancestorLineageIds`、`stratumId`、`originDigest`、`transformation`、`sourceRecords`、完整捕获 `window` 和 `reference`。原始记录声明稳定 `recordId`、`recordIndex` 和 `originalDigest`。window 是已有生产证据快照，包含选中的原始记录、excerpts 和 limitations。
