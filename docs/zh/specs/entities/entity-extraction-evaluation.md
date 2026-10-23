@@ -198,3 +198,13 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 普通 strict30 默认、v4 wire、`knowledge-generation-single/v1` 生成策略及公共存量格式／数据保持不变；普通宿主不安装该研究归档端口，也不默认选择 v35。复用 v33 后缀不意味着该流程是 v33 前驱，更不授权绕过既有覆盖复核前驱契约。K 使用自己的任务和回执，不把响应伪装为失败或空知识的 v4 提取。
 
 新的前瞻诊断仍须冻结完整 E+K 流程：实际来源／profile／配置、初始修订及原生引用、依赖 K 输入、顺序、调用机会、停止规则和最终端点。复核全部 E/M 与知识、来源支持的信息保留、每项 gap／账目声明、部分／失败效果及两阶段实际 token／cache／费用／耗时，未知用量保持未知。不复用旧分数，也不因来源未变而声称新独立证据。任务和绑定变化不是单一提示词变量对比；E 阶段空知识、编写的回归或 CI 绿色不能证明业务质量、生产采用、泛化能力或 #1322 要求的独立真人验收。本契约说明不代表 v2 真实模型诊断已经运行或通过。
+
+### 5.4 独立实体任务与接纳边界
+
+显式选择的 `knowledge-extraction-v36` profile 独立重写 E-only system，不拼接 strict30／E35、知识生成要求或完整 Schema。执行器仍提供不变的 v4 structured wire；prompt-profile v1、已持久化策略／Schema 契约及生产 strict30 默认保留原有身份与字节。完整 system 的原始 UTF-8 SHA-256 为 `8e8d93d11cf2bf6b4cfc2e419d95bfe61043c5ecf92282446482e9bb39436e4c`，已登记的 v36 不能标识其它字节。运行时 `run.promptHash` 使用 canonical JSON 哈希，与该原始摘要分别检查。任务还绑定精确的 source-only 输入、当前 structured wire 与 `knowledge-generation-single/v1`，不接收覆盖复核或来源清单输入。
+
+原始 native 返回归档并保留 raw 输出后，宿主在准备接纳或首次写入实体／知识修订前，检查任务身份及显式 `proposals: []` 要求。非空 proposals 数组即违反任务，即使其中各项无效或原本会被拒绝。任务越界使 run 以 `entity_only_task_violation` 失败；宿主不删除 proposal、不修补实体，也不再次调用模型。原始 run 与 native 证据仍可查阅。普通解码／原生失败沿用各自的既有失败路径。
+
+恢复 prepared 状态的 v36 run 时，重新读取同一份已归档 native outcome，将其 raw 输出与已保存 run 核对，并在继续写入实体或知识前重新执行任务／身份检查。prepared 状态不能凭看似为空或被编辑的 proposal 投影绕过拦截。该恢复检查保留原始返回，不迁移或重新解释历史任务，也不撤销此前已持久化的证据。
+
+重写 system 与任务接纳边界对该候选构成 **BREAKING-COMPARABILITY**。真实诊断前须独立冻结来源／模型／输入／runtime、调用机会、停止规则及费用统计口径；执行后记录实际 token／cache／费用／耗时，未知费用保持未知。v36 尚未完成真实模型验证，不继承 v35 或此前 E/R/K 诊断的分数。拦截仅证明任务范围受限，不证明漏提、类型判断、提及 rationale、语义错误率或独立真人验收已改善。历史输出、冻结包和分数保持不变。

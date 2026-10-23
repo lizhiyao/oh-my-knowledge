@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KnowledgeApplication, type KnowledgeApplicationPorts } from '../../src/knowledge/application/application.js';
+import { KnowledgeApplication, type ExtractionGenerationOptions, type KnowledgeApplicationPorts } from '../../src/knowledge/application/application.js';
 import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
@@ -11,6 +11,12 @@ import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.j
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
+import { ENTITY_ONLY_EXTRACTION_PROFILE, ENTITY_ONLY_EXTRACTION_PROMPT,
+  ENTITY_ONLY_EXTRACTION_PROMPT_VERSION, ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/entity-only-prompt.js';
+import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
+import { ExtractionRunSchema, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
+import type { ExtractionPromptProfile } from '../../src/knowledge/extraction/generation.js';
+import { extractionModelInput } from '../../src/knowledge/extraction/model-input.js';
 import { boundKnowledgeExecution, boundKnowledgeRequestDigest, BoundKnowledgeReceiptSchema,
   type BoundKnowledgeReceipt, type BoundKnowledgeArchivePort } from '../../src/knowledge/extraction/bound-knowledge-evidence.js';
 import { entityReviewExecution, entityReviewRequestDigest, EntityReviewReceiptSchema,
@@ -20,7 +26,7 @@ import { reviewedKnowledgeExecution, reviewedKnowledgeRequestDigest, ReviewedKno
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { buildEntityFirstBoundKnowledge } from '../../scripts/bench/assets/entity-first-bound-knowledge-v1/profile.js';
 import { nativeStudyFixture, studyNativeResult } from './extraction-study-fixtures.js';
-import { wireModelWindow } from './fixtures.js';
+import { draft, wireModelWindow } from './fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -34,7 +40,7 @@ const profile = buildEntityFirstBoundKnowledge({
   manifest: JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-first-bound-knowledge-v1/manifest.json', import.meta.url), 'utf8')),
 }).candidate;
 
-async function setup(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true) {
+function entityFixture(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-entity-first-'))); roots.push(root);
   const f = nativeStudyFixture(root, (_index, original) => {
     const output = JSON.parse(original) as ReturnType<typeof wireModelWindow>;
@@ -51,9 +57,204 @@ async function setup(entityChange?: (value: ReturnType<typeof wireModelWindow>) 
     tags: new FileKnowledgeTags(join(f.workspace, 'tags'), 'local', f.workspace),
   };
   const app = new KnowledgeApplication(ports), model = f.model(), window = f.corpus.cases[0].window, runId = randomUUID();
-  const run = await app.generate(window.snapshotId, model, runId, undefined, { promptProfile: profile });
-  return { ...f, app, ports, model, window, runId, run };
+  return { ...f, app, ports, model, window, runId };
 }
+async function setup(entityChange?: (value: ReturnType<typeof wireModelWindow>) => void, entityOnly = true,
+  promptProfile: ExtractionPromptProfile = profile) {
+  const f = entityFixture(entityChange, entityOnly);
+  const run = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, { promptProfile });
+  return { ...f, run };
+}
+
+async function preparedEntityOnlyFixture() {
+  const f = entityFixture();
+  const write = vi.spyOn(f.ports.entities, 'write').mockImplementationOnce(() => { throw new Error('Authored interrupted entity publication.'); });
+  await expect(f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, {
+    promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE,
+  })).rejects.toThrow('Authored interrupted entity publication.');
+  write.mockRestore();
+  const run = f.ports.runs.read(f.runId);
+  expect(run.status).toBe('prepared'); expect(run.intents).toEqual([]);
+  expect(f.ports.entities.list().histories).toEqual([]); expect(f.app.list()).toEqual([]);
+  return { ...f, run };
+}
+
+/** Authored prior-bug states bypass manifest publication only; schema and archive readers remain real. */
+function writePreparedFixture(f: ReturnType<typeof entityFixture>, run: ExtractionRun) {
+  writeFileSync(join(f.workspace, 'extraction-runs', `${f.runId}.json`), JSON.stringify(ExtractionRunSchema.parse(run)));
+  return f.ports.runs.read(f.runId);
+}
+
+function unexpectedKnowledgeIntent(f: Awaited<ReturnType<typeof preparedEntityOnlyFixture>>): ExtractionRun['intents'][number] {
+  const analysis = f.run.entityAnalysis!.revision, actor = analysis.revisedBy, evidenceRef = f.window.excerpts[0].evidenceRef;
+  const candidate = JSON.parse(JSON.stringify(draft())
+    .replaceAll('"project"', JSON.stringify(analysis.entities[0].entityId))
+    .replaceAll('"tool"', JSON.stringify(analysis.entities[1].entityId)).replaceAll('record-1', evidenceRef)) as ReturnType<typeof draft>;
+  const revisionId = randomUUID();
+  return { requestId: randomUUID(), revision: { ...candidate, knowledgeId: randomUUID(), revisionId,
+    observationRefs: [], derivations: [], createdAt: analysis.revisedAt, revisedAt: analysis.revisedAt,
+    createdBy: actor, revisedBy: actor, revisionReason: 'Authored unexpected prepared intent, not model evidence.' },
+  grounding: { revisionId, mentions: analysis.mentions, identityUncertainties: [], reuseRationale: 'Authored unexpected intent.',
+    citations: [{ evidenceLinkId: 'link', selection: { evidenceRef, start: 0, end: 13, quote: 'Alpha 使用 Beta' } }],
+    entityAnalysisRef: { analysisId: f.runId, revisionId: analysis.revisionId },
+    sourceBindings: [{ snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion, evidenceRefs: [evidenceRef] }] } };
+}
+
+describe('fixed entity-only extraction task (authored native returns)', () => {
+  it('publishes the actual E-only revision and exposes it to the subsequent bound-knowledge task', async () => {
+    const f = await setup(undefined, true, ENTITY_ONLY_EXTRACTION_PROFILE), initial = f.ports.entities.read(f.runId);
+    const context = f.app.boundKnowledgeContext(f.runId, f.model, ENTITY_ONLY_EXTRACTION_PROFILE);
+    expect(f.run).toMatchObject({ status: 'completed', promptVersion: ENTITY_ONLY_EXTRACTION_PROMPT_VERSION, intents: [], committed: [] });
+    expect(f.run.attempts).toHaveLength(1); expect(f.run.attempts[0].request.systemDigest).toBe(ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST);
+    expect(f.effects).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      system: ENTITY_ONLY_EXTRACTION_PROMPT, prompt: extractionModelInput(f.window),
+    }));
+    expect(initial.revisions).toHaveLength(1); expect(initial.revisions[0].entities).toHaveLength(2);
+    expect(initial.revisions[0].mentions).toHaveLength(2);
+    expect(context.catalog.entities).toEqual(initial.revisions[0].entities);
+    expect(context.catalog.mentions).toEqual(initial.revisions[0].mentions);
+    expect(context.catalog).toMatchObject({ analysisId: f.runId, revisionId: initial.revisions[0].revisionId });
+    expect(f.app.list()).toEqual([]); expect(JSON.parse(f.run.rawOutput!).proposals).toEqual([]);
+    expect(f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome).outcome)
+      .toMatchObject({ outcomeKind: 'result', result: { output: f.run.rawOutput } });
+  });
+
+  it.each(['valid-proposal', 'invalid-proposal'] as const)(
+    'archives %s unchanged but rejects the task before preparing or publishing anything', async mode => {
+      const f = entityFixture(output => { if (mode === 'invalid-proposal') output.proposals = [null] as never; }, false);
+      const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+      const archived = vi.fn((event: Parameters<NonNullable<ExtractionGenerationOptions['onOutcomeArchived']>>[0]) => {
+        expect(f.ports.runs.readOutcome(event.runId, event.attemptId, event.ref).outcome).toEqual(event.outcome);
+        expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+      });
+      const run = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined, {
+        promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, onOutcomeArchived: archived,
+      });
+      expect(archived).toHaveBeenCalledTimes(1);
+      expect(run).toMatchObject({ status: 'failed', intents: [], committed: [],
+        attempts: [{ failure: { failureKind: 'entity_only_task_violation', diagnostic: expect.stringContaining('empty proposals') } }] });
+      expect(run.entityAnalysis).toBeUndefined(); expect(JSON.parse(run.rawOutput!).proposals).toHaveLength(1);
+      const attempt = run.attempts[0], original = f.ports.runs.readOutcome(f.runId, attempt.attemptId, attempt.outcome);
+      expect(original.outcome).toMatchObject({ outcomeKind: 'result', result: { output: run.rawOutput } });
+      const restarted = new KnowledgeApplication(f.ports);
+      expect(restarted.resume(f.runId)).toEqual(run);
+      expect(await restarted.generate(f.window.snapshotId, f.model, f.runId, undefined, {
+        promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE,
+      })).toEqual(run);
+      expect(f.ports.runs.readOutcome(f.runId, attempt.attemptId, attempt.outcome)).toEqual(original);
+      expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+      expect(f.ports.entities.list().histories).toEqual([]); expect(f.app.list()).toEqual([]);
+      expect(f.effects).toHaveBeenCalledTimes(1);
+    });
+
+  it.each([false, true])('resumes an archived cancellation without another invocation (nonempty proposals: %s)', async nonempty => {
+    const f = entityFixture(undefined, !nonempty), controller = new AbortController();
+    const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+    const cancelled = await f.app.generate(f.window.snapshotId, f.model, f.runId, controller.signal, {
+      promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE, onOutcomeArchived: () => controller.abort(),
+    });
+    expect(cancelled.status).toBe('cancelled'); expect(cancelled.entityAnalysis).toBeUndefined();
+    expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+    const attempt = cancelled.attempts[0], original = f.ports.runs.readOutcome(f.runId, attempt.attemptId, attempt.outcome);
+    const resumed = new KnowledgeApplication(f.ports).resume(f.runId);
+    if (nonempty) {
+      expect(resumed).toMatchObject({ status: 'failed', attempts: [{ failure: { failureKind: 'entity_only_task_violation' } }] });
+      expect(entityWrite).not.toHaveBeenCalled(); expect(f.ports.entities.list().histories).toEqual([]);
+    } else {
+      expect(resumed.status).toBe('completed'); expect(entityWrite).toHaveBeenCalledTimes(1);
+      expect(f.app.boundKnowledgeContext(f.runId, f.model, ENTITY_ONLY_EXTRACTION_PROFILE).catalog.entities).toHaveLength(2);
+    }
+    expect(knowledgeWrite).not.toHaveBeenCalled(); expect(f.app.list()).toEqual([]);
+    expect(resumed.rawOutput).toBe(cancelled.rawOutput); expect(resumed.attempts[0].outcome).toEqual(attempt.outcome);
+    expect(f.ports.runs.readOutcome(f.runId, attempt.attemptId, attempt.outcome)).toEqual(original);
+    expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['prompt-bytes', 'prompt-json', 'missing-mode', 'wrong-wire', 'bounded-policy', 'coverage-review', 'semantic-plan'] as const)(
+    'rejects %s before creating a run or dispatching the fixed task', async mode => {
+      const f = entityFixture(), model = { ...f.model };
+      const options: ExtractionGenerationOptions = { promptProfile: ENTITY_ONLY_EXTRACTION_PROFILE };
+      if (mode === 'prompt-bytes') options.promptProfile = { ...ENTITY_ONLY_EXTRACTION_PROFILE, system: ENTITY_ONLY_EXTRACTION_PROMPT + '\n' };
+      if (mode === 'prompt-json') model.outputMode = 'prompt-json';
+      if (mode === 'missing-mode') delete model.outputMode;
+      if (mode === 'wrong-wire') model.wireId = hash('authored wrong wire');
+      if (mode === 'bounded-policy') options.policy = boundedExtractionPolicy({
+        maxInvocations: 2, maxReasks: 1, profileId: 'loopback-test/v1', maxTotalTokens: 2176, maxOutputTokens: 64,
+      });
+      if (mode === 'coverage-review') options.coverageReview = { previousRunId: randomUUID() };
+      if (mode === 'semantic-plan') options.sourceSemanticPlan = { receiptId: randomUUID(), receiptRef: ref(bytes({ authored: true })) };
+      const create = vi.spyOn(f.ports.runs, 'create'), entityWrite = vi.spyOn(f.ports.entities, 'write');
+      const knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+      await expect(f.app.generate(f.window.snapshotId, model, f.runId, undefined, options)).rejects.toThrow(
+        mode === 'prompt-bytes' ? 'A known extraction prompt version cannot identify different bytes.' : 'Entity-only extraction requires');
+      expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled(); expect(f.app.runs()).toEqual([]);
+      expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+    });
+
+  it('recovers the genuine prepared empty-proposal outcome without allocating another invocation or revision', async () => {
+    const f = await preparedEntityOnlyFixture(), original = f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome);
+    const restarted = new KnowledgeApplication(f.ports), result = restarted.resume(f.runId);
+    expect(result.status).toBe('completed'); expect(result.entityAnalysis).toEqual(f.run.entityAnalysis);
+    expect(result.rawOutput).toBe(f.run.rawOutput); expect(result.intents).toEqual([]); expect(result.committed).toEqual([]);
+    expect(f.ports.entities.read(f.runId).revisions).toEqual([f.run.entityAnalysis!.revision]);
+    expect(restarted.resume(f.runId)).toEqual(result); expect(f.ports.entities.read(f.runId).generation).toBe(1);
+    expect(f.ports.runs.readOutcome(f.runId, f.run.attempts[0].attemptId, f.run.attempts[0].outcome)).toEqual(original);
+    expect(f.effects).toHaveBeenCalledTimes(1); expect(f.app.list()).toEqual([]);
+  });
+
+  it.each(['native-proposals', 'knowledge-intent', 'prompt-hash'] as const)(
+    'rechecks %s in an authored prepared state before the first E or K write', async mode => {
+      const f = await preparedEntityOnlyFixture();
+      const originalAttempt = f.run.attempts[0];
+      const original = f.ports.runs.readOutcome(f.runId, originalAttempt.attemptId, originalAttempt.outcome);
+      let prepared = structuredClone(f.run);
+      if (mode === 'native-proposals') {
+        // Reserve another authored sidecar, preserving the actual fixed task request/producer digests.
+        // The first native archive remains intact; this fixture does not dispatch a second invocation.
+        const attempt = { ...originalAttempt, attemptId: randomUUID() }; delete attempt.outcome; delete attempt.wireDiagnostic;
+        const staging = { ...prepared, status: 'generating' as const, attempts: [attempt], selectedAttemptId: undefined,
+          rawOutput: undefined, runtime: undefined, entityAnalysis: undefined };
+        writePreparedFixture(f, staging);
+        const rawOutput = JSON.stringify(wireModelWindow()).replaceAll('record-1', f.window.excerpts[0].evidenceRef);
+        const outcome = structuredClone(original.outcome);
+        if (outcome.outcomeKind !== 'result') throw new Error('Authored fixture expected a native result.');
+        outcome.result.output = rawOutput;
+        const outcomeRef = f.ports.runs.writeOutcome(f.runId, attempt.attemptId, outcome, attempt.producer.maxOutcomeJsonBytes);
+        prepared = { ...prepared, attempts: [{ ...attempt, outcome: outcomeRef }], selectedAttemptId: attempt.attemptId, rawOutput };
+      }
+      if (mode === 'knowledge-intent') prepared.intents = [unexpectedKnowledgeIntent(f)];
+      if (mode === 'prompt-hash') prepared.promptHash = hash('authored wrong prompt hash');
+      const admittedFixture = writePreparedFixture(f, prepared);
+      if (mode === 'native-proposals') {
+        expect(admittedFixture.intents).toEqual([]); expect(JSON.parse(admittedFixture.rawOutput!).proposals).toHaveLength(1);
+        expect(admittedFixture.requestDigest).toBe(f.run.requestDigest);
+        expect(admittedFixture.attempts[0].requestDigest).toBe(originalAttempt.requestDigest);
+        expect(admittedFixture.attempts[0].request).toEqual(originalAttempt.request);
+        expect(admittedFixture.attempts[0].producer).toEqual(originalAttempt.producer);
+      }
+      if (mode === 'knowledge-intent') expect(JSON.parse(admittedFixture.rawOutput!).proposals).toEqual([]);
+      const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+      const result = new KnowledgeApplication(f.ports).resume(f.runId);
+      expect(result).toMatchObject({ status: 'failed', committed: [], attempts: [{ failure: { failureKind: 'entity_only_task_violation',
+        diagnostic: expect.stringContaining(mode === 'native-proposals' ? 'empty proposals' : mode === 'knowledge-intent' ? 'knowledge intents' : 'task identity') } }] });
+      expect(result.rawOutput).toBe(admittedFixture.rawOutput); expect(result.intents).toEqual(admittedFixture.intents);
+      expect(result.entityAnalysis).toEqual(admittedFixture.entityAnalysis);
+      expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+      expect(f.ports.entities.list().histories).toEqual([]); expect(f.app.list()).toEqual([]);
+      expect(f.ports.runs.readOutcome(f.runId, originalAttempt.attemptId, originalAttempt.outcome)).toEqual(original);
+      expect(f.effects).toHaveBeenCalledTimes(1);
+    });
+
+  it.each(['default-strict30', 'prior-E35'] as const)('does not reinterpret the %s task as entity-only', async mode => {
+    const f = entityFixture(undefined, false);
+    const result = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined,
+      mode === 'prior-E35' ? { promptProfile: profile } : undefined);
+    expect(result.status).toBe('completed'); expect(result.promptVersion).toBe(mode === 'prior-E35' ? profile.promptVersion : 'knowledge-extraction-v30');
+    expect(result.intents).toHaveLength(1); expect(result.committed).toHaveLength(1); expect(f.app.list()).toHaveLength(1);
+    expect(f.ports.entities.read(f.runId).revisions[0].entities).toHaveLength(2);
+    expect(JSON.parse(result.rawOutput!).proposals).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+});
 
 function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (response: Record<string, unknown>) => void) {
   const context = f.app.boundKnowledgeContext(f.runId, f.model, profile);

@@ -74,6 +74,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/application.ts → knowledge/extraction/reviewed-knowledge-evidence.ts',
   'knowledge/application/application.ts → knowledge/extraction/coverage-review-input.ts',
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
+  'knowledge/application/application.ts → knowledge/extraction/entity-only-prompt.ts',
+  'knowledge/application/application.ts → knowledge/extraction/entity-only-task.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation.ts',
   'knowledge/application/application.ts → knowledge/extraction/model-input.ts',
@@ -143,7 +145,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
   {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
-    rationale: '保留知识内部既有的生产生成、关联与纯证据校验边界；Trace 仍由知识适配器单向消费，不再形成经过观测装配入口的反向边。',
+    rationale: '保留知识内部既有的生产生成、关联与纯证据校验边界；实体专项任务仅消费固定 prompt 身份和纯接纳校验，不引入新宿主或跨域反向边。Trace 仍由知识适配器单向消费，不再形成经过观测装配入口的反向边。',
   },
 ] as const;
 
