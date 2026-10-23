@@ -5,6 +5,7 @@ import { buildEntityDiscoveryInput, type EntityDiscoveryResponse, type EntityDis
 import { buildMentionBindingInput, checkMentionBindingResponse, MENTION_BINDING_INPUT_VERSION,
   MENTION_BINDING_OUTPUT_MAX_BYTES, MENTION_BINDING_WIRE_SCHEMA, MENTION_BINDING_WIRE_SCHEMA_JSON, MENTION_BINDING_WIRE_ID,
   type DiscoveryForBinding, type MentionBindingResponse } from '../../src/knowledge/extraction/mention-binding.js';
+import { authoredDiscoverySourcePlan } from './discovered-entities-fixtures.js';
 import { ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 
 const hash = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
@@ -17,8 +18,12 @@ function fixture() {
   const entity = (entityId: string, label: string): EntityDiscoveryResponse['entities'][number] => ({ entityId, label,
     description: `${label} 是被讨论的对象。`, qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
     referentKind: 'object', componentRef: null, collection: null });
-  const a: EntityDiscoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 1,
-    binding: JSON.parse(buildEntityDiscoveryInput(source)).binding,
+  const { planPredecessor } = authoredDiscoverySourcePlan(source, undefined, [{ objectId: 'source-object', quote: 'Alpha', occurrence: 0 }]);
+  const a: EntityDiscoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 2,
+    binding: JSON.parse(buildEntityDiscoveryInput(source, planPredecessor)).binding,
+    dispositions: [{ sourcePlanObjectId: 'source-object', dispositionKind: 'retained', entityIds: ['c'],
+      rationale: 'Authored mapping judgment; other independently grounded objects remain source-only discoveries.',
+      selections: [{ evidenceRef: 'r1', quote: 'Alpha', occurrence: 0 }] }],
     entities: [entity('c', 'Alpha'), entity('i', 'Alpha v1'), entity('g', '该组')],
     anchors: [{ anchorId: 'ac', entityId: 'c', selection: { evidenceRef: 'r1', quote: 'Alpha 组件', occurrence: null } },
       { anchorId: 'ai', entityId: 'i', selection: { evidenceRef: 'r1', quote: 'Alpha v1 实例', occurrence: null } },
@@ -31,22 +36,22 @@ function fixture() {
     receiptRef: ref('temporary'), nativeRef: ref('authored native archive; authenticated by evidence layer'),
     requestDigest: hash('full request owned by evidence layer'), rawOutput: ` \n${JSON.stringify(a)}\n` };
   const refreshReceipt = () => {
-    discovery.receiptRaw = JSON.stringify({ receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 1,
+    discovery.receiptRaw = JSON.stringify({ receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 2,
       receiptId: discovery.receiptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
       nativeRef: discovery.nativeRef, requestDigest: discovery.requestDigest,
-      request: { input: buildEntityDiscoveryInput(source) } });
+      request: { input: buildEntityDiscoveryInput(source, planPredecessor) } });
     discovery.receiptRef = ref(discovery.receiptRaw);
   };
   refreshReceipt();
   const mention = (mentionId: string, entityId: string, quote: string, occurrence: number | null): MentionBindingResponse['mentions'][number] => ({
     mentionId, entityId, selection: { evidenceRef: 'r1', quote, occurrence }, basis: 'explicit', rationale: '来源直接提及。',
     bindingStatus: 'bound', candidateEntityIds: [], reason: null });
-  const response: MentionBindingResponse = { responseKind: 'mention-binding', schemaVersion: 1,
+  const response: MentionBindingResponse = { responseKind: 'mention-binding', schemaVersion: 2,
     binding: JSON.parse(buildMentionBindingInput(source, discovery)).binding,
     mentions: [mention('mc', 'c', 'Alpha', 0), mention('mi', 'i', 'Alpha v1', null), mention('mg', 'g', '该组', null)],
     identitySupports: [{ entityId: 'i', supportKind: 'componentRef', mentionIds: ['mi'] },
       { entityId: 'g', supportKind: 'collection', mentionIds: ['mg'] }] };
-  return { source, a, discovery, response, refreshReceipt, mention };
+  return { source, a, discovery, response, refreshReceipt, mention, planPredecessor };
 }
 function check(f: ReturnType<typeof fixture>) { return checkMentionBindingResponse(JSON.stringify(f.response), f.source, f.discovery); }
 function reject(f: ReturnType<typeof fixture>, code: string) {
@@ -162,8 +167,32 @@ describe('private immutable-catalog mention binding B', () => {
     }
   });
 
+  it('blocks a complete but undecided A disposition before producing a B task, with A raw intact', () => {
+    const f = fixture(); Object.assign(f.a.dispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+    f.discovery.rawOutput = ` \n${JSON.stringify(f.a)}\r\n`;
+    const before = f.discovery.rawOutput;
+    expect(() => buildMentionBindingInput(f.source, f.discovery)).toThrow('undetermined');
+    expect(() => check(f)).toThrow('undetermined');
+    expect(f.discovery.rawOutput).toBe(before); expect(f.a.entities).toHaveLength(3);
+  });
+
+  it('rechecks the exact plan predecessor in A input instead of accepting matching catalog objects', () => {
+    for (const mode of ['raw', 'receipt-ref', 'source'] as const) {
+      const f = fixture(), receipt = JSON.parse(f.discovery.receiptRaw);
+      if (mode === 'raw') receipt.request.input = JSON.stringify({ ...JSON.parse(receipt.request.input),
+        sourcePlanResponse: { ...f.planPredecessor, rawOutput: `${f.planPredecessor.rawOutput} ` } });
+      if (mode === 'receipt-ref') receipt.request.input = JSON.stringify({ ...JSON.parse(receipt.request.input),
+        sourcePlanResponse: { ...f.planPredecessor, receiptRef: ref('other plan receipt') } });
+      if (mode === 'source') receipt.request.input = JSON.stringify({ ...JSON.parse(receipt.request.input), sourceVersion: hash('other source') });
+      f.discovery.receiptRaw = JSON.stringify(receipt); f.discovery.receiptRef = ref(f.discovery.receiptRaw);
+      expect(() => buildMentionBindingInput(f.source, f.discovery)).toThrow();
+    }
+  });
+
   it('accepts an empty catalog only with zero mentions and zero support declarations', () => {
-    const f = fixture(); f.a.entities = []; f.a.anchors = []; f.discovery.rawOutput = JSON.stringify(f.a);
+    const f = fixture(); f.a.entities = []; f.a.anchors = [];
+    Object.assign(f.a.dispositions[0], { dispositionKind: 'excluded', entityIds: [] });
+    f.discovery.rawOutput = JSON.stringify(f.a);
     f.response.binding = JSON.parse(buildMentionBindingInput(f.source, f.discovery)).binding;
     f.response.mentions = []; f.response.identitySupports = [];
     expect(ready(f)).toEqual({ entities: [], mentions: [] });

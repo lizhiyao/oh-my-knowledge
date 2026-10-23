@@ -10,6 +10,7 @@ import { buildEntityDiscoveryInput, checkEntityDiscoveryResponse, EntityDiscover
 import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
+import { SourcePlanForDiscoverySchema } from './source-plan-input.js';
 
 const digest = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const id = z.string().min(1).max(256), byteDigest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -22,7 +23,7 @@ export type DiscoveryForBinding = z.infer<typeof predecessorSchema>;
 export const MentionBindingBindingSchema = EntityDiscoveryBindingSchema.extend({ discoveryReceiptId: z.string().uuid(),
   discoveryReceiptRef: byteRef, discoveryNativeRef: byteRef, discoveryRequestDigest: byteDigest,
   discoveryRawDigest: byteDigest, discoveryCatalogDigest: byteDigest });
-export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-binding'), schemaVersion: z.literal(1),
+export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-binding'), schemaVersion: z.literal(2),
   binding: MentionBindingBindingSchema,
   mentions: z.array(z.strictObject({ mentionId: id,
     selection: z.strictObject({ evidenceRef: id, quote: text,
@@ -34,11 +35,11 @@ export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.lit
     mentionIds: z.array(id).min(1).max(64) })).max(256),
 });
 export type MentionBindingResponse = z.infer<typeof MentionBindingResponseSchema>;
-export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v2' as const;
-export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v1' as const;
-export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v1' as const;
-export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v1' as const;
-export const MENTION_BINDING_OUTPUT_NAME = 'mention_binding_v1' as const;
+export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v3' as const;
+export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v2' as const;
+export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v2' as const;
+export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v2' as const;
+export const MENTION_BINDING_OUTPUT_NAME = 'mention_binding_v2' as const;
 export const MENTION_BINDING_OUTPUT_MAX_BYTES = 1024 * 1024;
 const domainSchema = z.toJSONSchema(MentionBindingResponseSchema, { target: 'draft-2020-12', io: 'input', unrepresentable: 'throw' });
 const hostKeywords = new Set(['$schema', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'format', 'pattern']);
@@ -64,7 +65,7 @@ export const MENTION_BINDING_SYSTEM = `你执行私有 B 提及绑定任务。�
 先判断文本是否构成合格提及，再判断绑定。候选包括有据指向 A 对象的提及，以及按 A 相同的独立讨论、比较、审查、修订或共同指代标准应保留、但 A 遗漏或身份仍不确定的对象提及。普通局部符号、操作参与者、结果或泛称，若没有独立的实体资格依据，不因目录没有对应项就自动成为目录缺口，也不能改绑到相邻层级。真正合格而缺项或未决的提及必须保留并继续阻断；不能以减少阻断为目标忽略真实缺口。专名、代词和泛称都不能单独决定纳入或排除。
 bound 必须只填一个目录中 entityId、candidateEntityIds=[]、reason=null。无法确定绑定的原始提及仍保留：ambiguous 使用 entityId=null、至少两个不同且已知的候选和非空 reason；unbound 使用 entityId=null、0或1个已知候选和非空 reason，目录缺口在 reason 用原文表达。不为缺口新增 unresolved 实体、不猜 scope 或强绑；未决会阻断最终接纳。
 identitySupports 必须恰好覆盖 A 每个非空 componentRef/collection 声明，各一条相应 supportKind，只列实际返回且 bound 的 mentionIds。每条支持提及须完全落在该 A 声明 anchorIds 之一的同 evidenceRef 区间内，且至少一条提及归该声明的实体。每个 A 实体至少一条 bound 提及位于它的 owned anchor 内。没有实质提及时保留缺口，不从 anchor 自动补提及，不改写 A 来绕过阻断。
-所有 mentionId 唯一，同一来源位置不得重复占用；空 A 目录仅允许空 mentions 和 identitySupports。严格回显 binding，只返回 responseKind=mention-binding、schemaVersion=1 的严格 JSON。结构通过不代表语义正确、已复核、真人验收或 gold。`;
+所有 mentionId 唯一，同一来源位置不得重复占用；空 A 目录仅允许空 mentions 和 identitySupports。严格回显 binding，只返回 responseKind=mention-binding、schemaVersion=2 的严格 JSON。结构通过不代表语义正确、已复核、真人验收或 gold。`;
 
 function prepare(source: BoundKnowledgeSource, supplied: DiscoveryForBinding) {
   if (!validUtf8(supplied)) throw new Error('Mention binding predecessor is not valid UTF-8.');
@@ -72,11 +73,17 @@ function prepare(source: BoundKnowledgeSource, supplied: DiscoveryForBinding) {
   if (receiptBytes.length !== discovery.receiptRef.bytes || digest(receiptBytes) !== discovery.receiptRef.digest) {
     throw new Error('Discovery receipt byte reference mismatch.');
   }
-  const input = buildEntityDiscoveryInput(source);
-  const sourceInput = JSON.parse(input) as BoundKnowledgeSource;
   const receipt = JSON.parse(discovery.receiptRaw) as Record<string, unknown>;
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || !receipt.request
+    || typeof receipt.request !== 'object' || typeof (receipt.request as Record<string, unknown>).input !== 'string') {
+    throw new Error('Discovery receipt predecessor/source binding mismatch.');
+  }
+  const recordedInput = JSON.parse((receipt.request as Record<string, string>).input) as Record<string, unknown>;
+  const plan = SourcePlanForDiscoverySchema.parse(recordedInput?.sourcePlanResponse);
+  const input = buildEntityDiscoveryInput(source, plan);
+  const sourceInput = JSON.parse(input) as BoundKnowledgeSource;
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)
-    || receipt.receiptKind !== 'knowledge-entity-discovery-receipt' || receipt.schemaVersion !== 1
+    || receipt.receiptKind !== 'knowledge-entity-discovery-receipt' || receipt.schemaVersion !== 2
     || receipt.receiptId !== discovery.receiptId || receipt.snapshotId !== sourceInput.snapshotId
     || receipt.sourceVersion !== sourceInput.sourceVersion || receipt.requestDigest !== discovery.requestDigest
     || canonicalJson(receipt.nativeRef) !== canonicalJson(discovery.nativeRef)
@@ -84,8 +91,9 @@ function prepare(source: BoundKnowledgeSource, supplied: DiscoveryForBinding) {
     || (receipt.request as Record<string, unknown>).input !== input) {
     throw new Error('Discovery receipt predecessor/source binding mismatch.');
   }
-  const checked = checkEntityDiscoveryResponse(discovery.rawOutput, source);
+  const checked = checkEntityDiscoveryResponse(discovery.rawOutput, source, plan);
   if (checked.status !== 'checked') throw new Error(`Discovery predecessor rejected: ${checked.issues.join(',')}`);
+  if (checked.dispositionIssues.length) throw new Error(`Discovery dispositions block binding: ${checked.dispositionIssues.join(',')}`);
   const response = checked.response;
   const binding: z.infer<typeof MentionBindingBindingSchema> = { ...response.binding,
     discoveryReceiptId: discovery.receiptId, discoveryReceiptRef: discovery.receiptRef,

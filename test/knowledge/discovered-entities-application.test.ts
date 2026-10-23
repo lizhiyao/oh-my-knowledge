@@ -35,9 +35,9 @@ function setup() {
     hash: (value: unknown) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
     id: vi.fn(() => { throw new Error('Import must not allocate random IDs.'); }),
     now: vi.fn(() => { throw new Error('Import must not replace the native completion time.'); }),
-    discoveredEntitiesArchive: f.archive };
+    discoveredEntitiesArchive: f.archive, sourcePlanArchive: f.sourcePlanArchive };
   const selection = { snapshotId: f.source.snapshotId, sourceVersion: f.source.sourceVersion };
-  const references = () => ({ discovery: f.discoveryRef, binding: f.bindingRef });
+  const references = () => ({ sourcePlan: f.sourcePlanRef, discovery: f.discoveryRef, binding: f.bindingRef });
   const app = (store: EntityAnalysisStore = entities) => new KnowledgeApplication({ ...ports, entities: store });
   return { ...f, root, window, entities, knowledge, runs, ports, selection, references, app };
 }
@@ -45,7 +45,7 @@ function setup() {
 describe('separate discovery/binding import through the real entity store (authored evidence only)', () => {
   it('authenticates A independently and creates exactly one initial analysis without an extraction run or knowledge', () => {
     const f = setup(), app = f.app();
-    const context = app.discoveredEntitiesContext(f.selection, f.model, f.discoveryRef);
+    const context = app.discoveredEntitiesContext(f.selection, f.model, { sourcePlan: f.sourcePlanRef, discovery: f.discoveryRef });
     expect(context.source).toEqual(f.source);
     expect(context.source).not.toHaveProperty('sourcePath'); expect(context.source).not.toHaveProperty('origin');
     expect(f.entities.list().histories).toEqual([]);
@@ -114,7 +114,32 @@ describe('separate discovery/binding import through the real entity store (autho
     if (result.status !== 'blocked') throw new Error('Expected blocked authored analysis.');
     expect(result.issues.length).toBeGreaterThan(0); expect(result.semanticStatus).toBe('not_reviewed');
     expect(f.entities.list().histories).toEqual([]); expect(f.runs.listManifests()).toEqual([]);
+    if (!('binding' in result) || !result.binding) throw new Error('Expected authenticated B result.');
     expect(result.binding.rawOutput).toContain('mention-binding');
+  });
+
+  it('retains undecided A for inspection and blocks import before B archive read or any entity write', () => {
+    const f = setup(); Object.assign(f.discoveryResponse.dispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+    f.result('discovery').output = ` \n${JSON.stringify(f.discoveryResponse)}\r\n`; f.resealA();
+    const context = f.app().discoveredEntitiesContext(f.selection, f.model, f.references());
+    expect(context.discovery.checked).toMatchObject({ status: 'checked', dispositionIssues: ['disposition:source-object:undetermined'] });
+    f.read.mockClear();
+    const result = f.app().importDiscoveredEntities(f.selection, f.model, f.references());
+    expect(result).toMatchObject({ status: 'blocked', semanticStatus: 'not_reviewed',
+      issues: ['disposition:source-object:undetermined'], discovery: { rawOutput: f.result('discovery').output } });
+    expect(result).not.toHaveProperty('binding');
+    expect(f.read.mock.calls.map(call => call[0])).toEqual(['discovery']);
+    expect(f.entities.list().histories).toEqual([]); expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
+  });
+
+  it('requires the exact authenticated source plan before reading A or importing a catalog', () => {
+    const f = setup(); f.read.mockClear();
+    const ordinary = new KnowledgeApplication({ ...f.ports, sourcePlanArchive: undefined });
+    expect(() => ordinary.importDiscoveredEntities(f.selection, f.model, f.references())).toThrow('archive unavailable');
+    expect(f.read).not.toHaveBeenCalled();
+    expect(() => f.app().importDiscoveredEntities(f.selection, f.model,
+      { ...f.references(), sourcePlan: { ...f.sourcePlanRef, receiptRef: { ...f.sourcePlanRef.receiptRef, digest: `sha256:${'0'.repeat(64)}` } } })).toThrow();
+    expect(f.read).not.toHaveBeenCalled(); expect(f.entities.list().histories).toEqual([]);
   });
 
   it('requires the explicit research archive and exact available source, and respects cancellation before publication', () => {
