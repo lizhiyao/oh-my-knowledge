@@ -35,6 +35,11 @@ import { buildSourcePlannedExtractionInput } from '../extraction/source-plan-inp
 import { readBoundKnowledgeEvidence, type BoundKnowledgeArchivePort,
   type BoundKnowledgeReference } from '../extraction/bound-knowledge-evidence.js';
 import { boundKnowledgeIntentIds, readEntityFirstKnowledgeContext } from './entity-first-knowledge.js';
+import { readEntityReviewEvidence, type EntityReviewArchivePort, type EntityReviewReference } from '../extraction/entity-review-evidence.js';
+import { readReviewedKnowledgeEvidence, type ReviewedKnowledgeArchivePort, type ReviewedKnowledgeReference } from '../extraction/reviewed-knowledge-evidence.js';
+import type { BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
+import type { CheckedBoundKnowledge } from '../extraction/bound-knowledge.js';
+
 export type { ExtractionModel } from '../extraction/generation.js';
 
 export interface KnowledgeApplicationPorts {
@@ -47,6 +52,13 @@ export interface KnowledgeApplicationPorts {
   sourcePlanArchive?: SourcePlanArchivePort;
   /** Private E-first research only; ordinary hosts do not install a K-only native archive. */
   boundKnowledgeArchive?: BoundKnowledgeArchivePort;
+  /** Explicit E→R→K research only; no ordinary host enables either archive. */
+  entityReviewArchive?: EntityReviewArchivePort;
+  reviewedKnowledgeArchive?: ReviewedKnowledgeArchivePort;
+}
+export interface EntityReviewSelection {
+  reference: EntityReviewReference;
+  model: Pick<ExtractionModel, 'executor' | 'model' | 'timeoutMs' | 'maxOutputTokens'>;
 }
 export interface ExtractionGenerationOptions {
   policy?: ExtractionGenerationPolicy;
@@ -183,6 +195,38 @@ export class KnowledgeApplication {
     if (Date.parse(evidence.receipt.startedAt) < Date.parse(entityFinishedAt)) {
       throw new Error('Bound knowledge native task predates entity-task completion.');
     }
+    return this.publishBoundKnowledge(entityRunId, window, catalog, evidence, signal);
+  }
+  /** Authenticate R against the complete immutable E revision; uncertain remains an AI claim, never human confirmation. */
+  reviewedKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile, review: EntityReviewSelection) {
+    const context = this.boundKnowledgeContext(entityRunId, model, profile);
+    if (!this.ports.entityReviewArchive) throw new Error('Entity review archive unavailable.');
+    const evidence = readEntityReviewEvidence(context.window, context.catalog, review.model,
+      review.reference, this.ports.entityReviewArchive);
+    if (Date.parse(evidence.receipt.startedAt) < Date.parse(context.entityFinishedAt)) {
+      throw new Error('Entity review native task predates entity-task completion.');
+    }
+    if (evidence.checked.status !== 'checked') throw new Error('Entity review failed structure or binding; no knowledge context is available.');
+    return { ...context, entityReviewEvidence: evidence, entityReview: { receiptId: evidence.receipt.receiptId,
+      receiptRef: evidence.receiptRef, nativeRef: evidence.receipt.nativeRef, rawOutput: evidence.rawOutput } };
+  }
+  /** The actual import authenticates both stages and applies the ID policy before the existing knowledge writer. */
+  importReviewedKnowledge(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile,
+    review: EntityReviewSelection, reference: ReviewedKnowledgeReference, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!this.ports.reviewedKnowledgeArchive) throw new Error('Reviewed knowledge archive unavailable.');
+    const context = this.reviewedKnowledgeContext(entityRunId, model, profile, review);
+    const evidence = readReviewedKnowledgeEvidence(context.window, context.catalog, context.entityReview, model,
+      reference, this.ports.reviewedKnowledgeArchive);
+    if (Date.parse(evidence.receipt.startedAt) < Date.parse(context.entityReviewEvidence.receipt.finishedAt)) {
+      throw new Error('Reviewed knowledge native task predates entity-review completion.');
+    }
+    return { ...this.publishBoundKnowledge(entityRunId, context.window, context.catalog, evidence, signal),
+      entityReviewEvidence: context.entityReviewEvidence };
+  }
+  private publishBoundKnowledge<T extends { checked: CheckedBoundKnowledge;
+    receipt: { receiptId: string; request: { executor: string }; finishedAt: string } }>(entityRunId: string,
+    window: EvidenceWindow, catalog: BoundKnowledgeCatalog, evidence: T, signal?: AbortSignal) {
     const shared = { entityIds: new Map(catalog.entities.map(entity => [entity.entityId, entity.entityId])),
       mentionIds: new Map(catalog.mentions.map(mention => [mention.mentionId, mention.mentionId])),
       ref: { analysisId: catalog.analysisId, revisionId: catalog.revisionId } };

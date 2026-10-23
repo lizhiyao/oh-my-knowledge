@@ -70,6 +70,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/trace-evidence.ts → knowledge/extraction/evidence.ts',
   // #1321：显式研究任务只消费输入／原生证据校验与 prompt／wire 身份，不扩展允许领域或反向依赖。
   'knowledge/application/application.ts → knowledge/extraction/bound-knowledge-evidence.ts',
+  'knowledge/application/application.ts → knowledge/extraction/entity-review-evidence.ts',
+  'knowledge/application/application.ts → knowledge/extraction/reviewed-knowledge-evidence.ts',
   'knowledge/application/application.ts → knowledge/extraction/coverage-review-input.ts',
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
   'knowledge/application/application.ts → knowledge/extraction/generation-policy.ts',

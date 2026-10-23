@@ -13,6 +13,10 @@ import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { boundKnowledgeExecution, boundKnowledgeRequestDigest, BoundKnowledgeReceiptSchema,
   type BoundKnowledgeReceipt, type BoundKnowledgeArchivePort } from '../../src/knowledge/extraction/bound-knowledge-evidence.js';
+import { entityReviewExecution, entityReviewRequestDigest, EntityReviewReceiptSchema,
+  type EntityReviewReceipt, type EntityReviewArchivePort } from '../../src/knowledge/extraction/entity-review-evidence.js';
+import { reviewedKnowledgeExecution, reviewedKnowledgeRequestDigest, ReviewedKnowledgeReceiptSchema,
+  type ReviewedKnowledgeReceipt, type ReviewedKnowledgeArchivePort } from '../../src/knowledge/extraction/reviewed-knowledge-evidence.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { buildEntityFirstBoundKnowledge } from '../../scripts/bench/assets/entity-first-bound-knowledge-v1/profile.js';
 import { nativeStudyFixture, studyNativeResult } from './extraction-study-fixtures.js';
@@ -269,5 +273,114 @@ describe('entity-first / bound knowledge application (authored native returns)',
     const full = await setup(undefined, false);
     expect(() => full.app.boundKnowledgeContext(full.runId, full.model, profile)).toThrow('entity-only predecessor');
     expect(f.effects).toHaveBeenCalledTimes(1); expect(invalid.effects).toHaveBeenCalledTimes(1); expect(full.effects).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+function entityReviewReturn(f: Awaited<ReturnType<typeof setup>>, betaStatus: 'supported' | 'unsupported' | 'undetermined' = 'supported') {
+  const context = f.app.boundKnowledgeContext(f.runId, f.model, profile), execution = entityReviewExecution(context.window, context.catalog, f.model);
+  const response = { responseKind: 'entity-review', schemaVersion: 1, binding: JSON.parse(execution.request.input).binding,
+    decisions: context.catalog.entities.map((entity, index) => ({ entityId: entity.entityId,
+      qualification: { status: index ? betaStatus : 'supported', reason: 'Authored judgment, not independent acceptance.' },
+      referent: { status: 'supported', reason: 'Authored current referent judgment.' }, type: { status: 'supported', reason: 'Authored current type judgment.' },
+      mentionIds: context.catalog.mentions.filter(mention => mention.entityId === entity.entityId).map(mention => mention.mentionId),
+      evidenceRefs: [context.window.excerpts[0].evidenceRef] })) };
+  const receiptId = randomUUID(), attemptId = randomUUID();
+  const native = { archiveKind: 'knowledge-entity-review-native', schemaVersion: 1, receiptId, attemptId,
+    outcome: { outcomeKind: 'result', result: studyNativeResult(JSON.stringify(response)) } };
+  const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' });
+  const receipt: EntityReviewReceipt = { receiptKind: 'knowledge-entity-review-receipt', schemaVersion: 1, receiptId, attemptId,
+    binding: response.binding, request: execution.request,
+    producer: EntityReviewReceiptSchema.shape.producer.parse(producer.inspect(f.model.executor, execution.input)),
+    requestDigest: '', nativeRef: ref(bytes(native)), startedAt: '2020-02-01T00:00:01Z', finishedAt: '2020-02-01T00:00:02Z' };
+  let nativeBytes: Buffer, receiptBytes: Buffer;
+  const reseal = () => { nativeBytes = bytes(native); receipt.nativeRef = ref(nativeBytes);
+    receipt.requestDigest = entityReviewRequestDigest(receipt); receiptBytes = bytes(receipt); return { receiptId, receiptRef: ref(receiptBytes) }; };
+  const reference = reseal();
+  const archive: EntityReviewArchivePort = { read: () => ({ receiptBytes: Buffer.from(receiptBytes), outcomeBytes: Buffer.from(nativeBytes) }),
+    inspect: (...args) => producer.inspect(...args) };
+  const app = new KnowledgeApplication({ ...f.ports, entityReviewArchive: archive });
+  return { response, native, receipt, reference, reseal, archive, app, selection: { reference, model: f.model },
+    receiptBytes: () => Buffer.from(receiptBytes), nativeBytes: () => Buffer.from(nativeBytes) };
+}
+function reviewedReturn(f: Awaited<ReturnType<typeof setup>>, review: ReturnType<typeof entityReviewReturn>, twoProposals = false) {
+  const context = review.app.reviewedKnowledgeContext(f.runId, f.model, profile, review.selection);
+  const execution = reviewedKnowledgeExecution(context.window, context.catalog, context.entityReview, f.model);
+  const response: Record<string, unknown> = { ...knowledgeReturn(f).response, responseKind: 'reviewed-knowledge', schemaVersion: 1,
+    binding: JSON.parse(execution.request.input).binding };
+  if (twoProposals) {
+    const proposals = response.proposals as ReturnType<typeof wireModelWindow>['proposals'];
+    const sibling = structuredClone(proposals[0]); sibling.proposalId = 'alpha-only';
+    sibling.entityIds = [context.catalog.entities[0].entityId]; sibling.mentionIds = [context.catalog.mentions[0].mentionId];
+    sibling.draft.content.statements[0].object = null; sibling.draft.content.statements[0].relation = '在来源中被提及'; proposals.push(sibling);
+  }
+  const receiptId = randomUUID(), attemptId = randomUUID();
+  const native = { archiveKind: 'knowledge-reviewed-knowledge-native', schemaVersion: 1, receiptId, attemptId,
+    outcome: { outcomeKind: 'result', result: studyNativeResult(JSON.stringify(response)) } };
+  const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' });
+  const receipt: ReviewedKnowledgeReceipt = { receiptKind: 'knowledge-reviewed-knowledge-receipt', schemaVersion: 1, receiptId, attemptId,
+    binding: JSON.parse(execution.request.input).binding, request: execution.request,
+    producer: ReviewedKnowledgeReceiptSchema.shape.producer.parse(producer.inspect(f.model.executor, execution.input)),
+    requestDigest: '', nativeRef: ref(bytes(native)), startedAt: '2020-02-01T00:00:03Z', finishedAt: '2020-02-01T00:00:04Z' };
+  let nativeBytes: Buffer, receiptBytes: Buffer;
+  const reseal = () => { nativeBytes = bytes(native); receipt.nativeRef = ref(nativeBytes);
+    receipt.requestDigest = reviewedKnowledgeRequestDigest(receipt); receiptBytes = bytes(receipt); return { receiptId, receiptRef: ref(receiptBytes) }; };
+  const reference = reseal();
+  const archive: ReviewedKnowledgeArchivePort = { read: () => ({ receiptBytes: Buffer.from(receiptBytes), outcomeBytes: Buffer.from(nativeBytes) }),
+    inspect: (...args) => producer.inspect(...args) };
+  const app = new KnowledgeApplication({ ...f.ports, entityReviewArchive: review.archive, reviewedKnowledgeArchive: archive });
+  return { response, native, receipt, reference, reseal, app, archive };
+}
+
+describe('entity review constrained knowledge application (authored native returns)', () => {
+  it.each(['unsupported', 'undetermined'] as const)('enforces %s entity usage in actual writes and keeps the authentic E revision and R evidence intact', async status => {
+    const f = await setup(), review = entityReviewReturn(f, status), k = reviewedReturn(f, review, true);
+    const before = f.ports.entities.read(f.runId), native = review.nativeBytes(), receipt = review.receiptBytes();
+    const result = k.app.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference);
+    expect(result.committed.map(item => item.proposalId)).toEqual(['alpha-only']);
+    expect(result.proposalAdmissionStatus).toBe('partial'); expect(result.semanticStatus).toBe('not_reviewed');
+    const saved = k.app.detail(result.committed[0].knowledgeId);
+    expect(saved.revision.entities.map(entity => entity.entityId)).toEqual([before.revisions[0].entities[0].entityId]);
+    expect(saved.grounding.entityAnalysisRef).toEqual({ analysisId: f.runId, revisionId: before.revisions[0].revisionId });
+    expect(saved.reviewStatus).toBe('pending'); expect(f.ports.entities.read(f.runId)).toEqual(before);
+    expect(review.nativeBytes()).toEqual(native); expect(review.receiptBytes()).toEqual(receipt);
+    expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['lost-ack', 'abort'] as const)('restarts after %s without redispatch, duplicate knowledge or a rewritten E revision', async mode => {
+    const f = await setup(), review = entityReviewReturn(f), k = reviewedReturn(f, review, true), before = f.ports.entities.read(f.runId);
+    const controller = new AbortController(), write = f.ports.knowledge.write.bind(f.ports.knowledge); let interrupted = false;
+    vi.spyOn(f.ports.knowledge, 'write').mockImplementation((...args) => {
+      const result = write(...args);
+      if (!interrupted) { interrupted = true; if (mode === 'lost-ack') throw new Error('Authored lost acknowledgement.'); controller.abort(); }
+      return result;
+    });
+    expect(() => k.app.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference, controller.signal)).toThrow();
+    const restarted = new KnowledgeApplication({ ...f.ports, entityReviewArchive: review.archive, reviewedKnowledgeArchive: k.archive });
+    const result = restarted.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference);
+    expect(result.committed).toHaveLength(2); expect(restarted.list()).toHaveLength(2);
+    for (const item of result.committed) expect(f.ports.knowledge.read(item.knowledgeId).generation).toBe(1);
+    expect(f.ports.entities.read(f.runId)).toEqual(before); expect(f.effects).toHaveBeenCalledTimes(1);
+  });
+
+  it('pins the initial revision despite a later correction and never activates without the explicit archive ports', async () => {
+    const f = await setup(), review = entityReviewReturn(f), k = reviewedReturn(f, review), initial = f.app.entities(f.runId);
+    const correction = structuredClone({ entities: initial.revision.entities, mentions: initial.revision.mentions });
+    correction.entities[0].description = 'Authored later revision.';
+    f.app.correctEntities(f.runId, initial.revision.revisionId, initial.history.generation, correction, 'Authored correction.');
+    const result = k.app.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference);
+    expect(result.entityAnalysisRef.revisionId).toBe(initial.revision.revisionId);
+    expect(f.app.entities(f.runId).history.revisions).toHaveLength(2);
+    expect(() => f.app.reviewedKnowledgeContext(f.runId, f.model, profile, review.selection)).toThrow('archive unavailable');
+    expect(() => f.app.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference)).toThrow('archive unavailable');
+  });
+
+  it.each(['early-review', 'early-knowledge', 'invalid-review'] as const)('blocks %s before any knowledge write and retains the original E evidence', async mode => {
+    const f = await setup(), review = entityReviewReturn(f), k = reviewedReturn(f, review), before = f.ports.entities.read(f.runId);
+    if (mode === 'early-review') { review.receipt.startedAt = '2020-01-31T23:59:59Z'; review.selection.reference = review.reseal(); }
+    if (mode === 'early-knowledge') { k.receipt.startedAt = '2020-02-01T00:00:01Z'; k.reference = k.reseal(); }
+    if (mode === 'invalid-review') { review.response.decisions.pop(); review.native.outcome.result.output = JSON.stringify(review.response); review.selection.reference = review.reseal(); }
+    expect(() => k.app.importReviewedKnowledge(f.runId, f.model, profile, review.selection, k.reference)).toThrow();
+    expect(k.app.list()).toEqual([]); expect(f.ports.entities.read(f.runId)).toEqual(before); expect(f.effects).toHaveBeenCalledTimes(1);
   });
 });
