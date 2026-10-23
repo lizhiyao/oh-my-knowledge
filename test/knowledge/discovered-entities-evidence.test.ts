@@ -12,7 +12,7 @@ const stages = ['discovery', 'binding'] as const;
 type Stage = typeof stages[number];
 function fixtureRead(f: ReturnType<typeof discoveredEntitiesFixture>, stage: Stage, archive = f.archive,
   reference = stage === 'discovery' ? f.discoveryRef : f.bindingRef) {
-  return stage === 'discovery' ? readEntityDiscoveryEvidence(f.source, f.model, reference, archive)
+  return stage === 'discovery' ? readEntityDiscoveryEvidence(f.source, f.model, reference, archive, f.sourcePlan)
     : readMentionBindingEvidence(f.source, f.readA(), f.model, reference, archive);
 }
 const receiptFor = (f: ReturnType<typeof discoveredEntitiesFixture>, stage: Stage) => stage === 'discovery' ? f.discoveryReceipt : f.bindingReceipt;
@@ -23,8 +23,8 @@ describe('independent discovery and mention-binding archive evidence (authored o
   it.each(['codex', 'openai-api'] as const)('authenticates both %s originals and includes A full receipt/raw in exact B input', executor => {
     const f = discoveredEntitiesFixture(executor), before = f.canonicalSnapshot(), bytesA = f.bytesA(), bytesB = f.bytesB();
     const a = f.readA(), b = readMentionBindingEvidence(f.source, a, f.model, f.bindingRef, f.archive);
-    expect(a).toMatchObject({ receipt: f.discoveryReceipt, receiptRef: f.discoveryRef.receiptRef,
-      receiptRaw: bytesA.receiptBytes.toString('utf8'), rawOutput: f.result('discovery').output, checked: { status: 'checked' } });
+    expect(a).toMatchObject({ checked: { status: 'checked', dispositionIssues: [] }, receipt: f.discoveryReceipt, receiptRef: f.discoveryRef.receiptRef,
+      receiptRaw: bytesA.receiptBytes.toString('utf8'), rawOutput: f.result('discovery').output });
     expect(a.predecessor).toEqual({ receiptId: f.discoveryRef.receiptId, receiptRef: f.discoveryRef.receiptRef,
       nativeRef: f.discoveryReceipt.nativeRef, requestDigest: f.discoveryReceipt.requestDigest,
       receiptRaw: bytesA.receiptBytes.toString('utf8'), rawOutput: f.result('discovery').output });
@@ -32,6 +32,8 @@ describe('independent discovery and mention-binding archive evidence (authored o
     expect(JSON.stringify(bInput)).toContain(JSON.stringify(a.receiptRaw).slice(1, -1));
     expect(JSON.stringify(bInput)).toContain(JSON.stringify(a.rawOutput).slice(1, -1));
     expect(f.discoveryReceipt.request.input).not.toContain('sourcePath');
+    expect(JSON.parse(f.discoveryReceipt.request.input).sourcePlanResponse).toEqual(f.planPredecessor);
+    expect(bInput.binding.sourcePlanRawDigest).toBe(discoveryHash(f.sourcePlan.rawOutput));
     expect(f.discoveryExecution.input.outputFormat).toMatchObject({ mode: 'json-schema', name: ENTITY_DISCOVERY_OUTPUT_NAME });
     expect(f.discoveryExecution.input.outputFormat?.mode === 'json-schema' && f.discoveryExecution.input.outputFormat.schema).toBe(ENTITY_DISCOVERY_WIRE_SCHEMA);
     expect(f.bindingExecution.input.outputFormat).toMatchObject({ mode: 'json-schema', name: MENTION_BINDING_OUTPUT_NAME });
@@ -58,7 +60,7 @@ describe('independent discovery and mention-binding archive evidence (authored o
         if (mode === 'input') receipt.request.input += ' ';
         if (mode === 'system') receipt.request.system += ' ';
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'discovery'
-          ? 'knowledge-entity-discovery-system/v1' : 'knowledge-mention-binding-system/v1' });
+          ? 'knowledge-entity-discovery-system/v2' : 'knowledge-mention-binding-system/v2' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('other wire') });
         if (mode === 'model') receipt.request.model = 'other-model';
         if (mode === 'executor') receipt.request.executor = 'openai-api';
@@ -132,7 +134,7 @@ describe('independent discovery and mention-binding archive evidence (authored o
       `${stage} rejects %s framing rather than relabeling another task`, mode => {
         const f = discoveredEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
         if (mode === 'receipt-alias') Object.assign(receipt, { receiptKind: 'knowledge-source-plan-receipt' });
-        if (mode === 'receipt-version') Object.assign(receipt, { schemaVersion: 2 });
+        if (mode === 'receipt-version') Object.assign(receipt, { schemaVersion: 1 });
         if (mode === 'native-alias') native.archiveKind = 'knowledge-source-plan-native';
         if (mode === 'native-version') native.schemaVersion = 2;
         const reference = reseal(f, stage);
@@ -165,6 +167,50 @@ describe('independent discovery and mention-binding archive evidence (authored o
     f.result('discovery').output += ' '; f.resealA();
     expect(f.readA().checked.status).toBe('checked');
     expect(() => f.readB()).toThrow('frozen predecessor');
+  });
+
+  it('binds full plan bytes and dispositions even when the entity catalog and anchors remain unchanged', () => {
+    const f = discoveredEntitiesFixture(), priorCatalog = JSON.stringify({ entities: f.discoveryResponse.entities, anchors: f.discoveryResponse.anchors });
+    f.discoveryResponse.dispositions[0].rationale += ' Authored clarification.';
+    f.result('discovery').output = JSON.stringify(f.discoveryResponse); f.resealA();
+    expect(f.readA().checked.status).toBe('checked');
+    expect(JSON.stringify({ entities: f.discoveryResponse.entities, anchors: f.discoveryResponse.anchors })).toBe(priorCatalog);
+    expect(() => f.readB()).toThrow('frozen predecessor');
+    const changedPlan = { ...f.sourcePlan, rawOutput: `${f.sourcePlan.rawOutput} ` };
+    expect(() => readEntityDiscoveryEvidence(f.source, f.model, f.discoveryRef, f.archive, changedPlan)).toThrow();
+    const otherPlanReceipt = { ...f.sourcePlan, receiptRef: discoveryRef(Buffer.from('other plan receipt')) };
+    expect(() => readEntityDiscoveryEvidence(f.source, f.model, f.discoveryRef, f.archive, otherPlanReceipt)).toThrow();
+  });
+
+  it('rejects an authenticated but multi-turn source-plan native before reading an A archive', () => {
+    const f = discoveredEntitiesFixture(), outcome = f.plan.sourcePlanNative.outcome;
+    if (outcome.outcomeKind !== 'result') throw new Error('Expected authored native result.');
+    outcome.result.numTurns = 2; f.plan.resealSourcePlan();
+    const sourcePlan = f.plan.readPlan(); f.read.mockClear();
+    let error: unknown;
+    try { readEntityDiscoveryEvidence(f.source, f.model, f.discoveryRef, f.archive, sourcePlan); } catch (caught) { error = caught; }
+    expect(error).toBeInstanceOf(DiscoveredEntitiesNativeError);
+    expect(error).toMatchObject({ stage: 'source-plan', outcome: sourcePlan.outcome, assessment: { status: 'rejected' } });
+    expect(f.read).not.toHaveBeenCalled(); expect(outcome.result.numTurns).toBe(2);
+  });
+
+  it.each(['receipt', 'attempt', 'chronology'] as const)('requires independent A %s identity and plan chronology', mode => {
+    const f = discoveredEntitiesFixture();
+    if (mode === 'receipt') f.discoveryReceipt.receiptId = f.sourcePlan.receipt.receiptId;
+    if (mode === 'attempt') f.discoveryReceipt.attemptId = f.sourcePlan.receipt.attemptId;
+    if (mode === 'chronology') f.discoveryReceipt.startedAt = '2026-10-23T23:59:58Z';
+    f.resealA(); expect(() => f.readA()).toThrow();
+  });
+
+  it('retains an undecided authenticated A original but blocks B dispatch before reading any B archive', () => {
+    const f = discoveredEntitiesFixture(); Object.assign(f.discoveryResponse.dispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+    f.result('discovery').output = ` \n${JSON.stringify(f.discoveryResponse)}\r\n`; f.resealA();
+    const discovery = f.readA(), raw = discovery.rawOutput; f.read.mockClear();
+    expect(discovery.checked).toMatchObject({ status: 'checked', dispositionIssues: ['disposition:source-object:undetermined'],
+      raw: { text: raw }, semanticStatus: 'not_reviewed' });
+    expect(() => mentionBindingExecution(f.source, discovery, f.model)).toThrow('undetermined');
+    expect(() => readMentionBindingEvidence(f.source, discovery, f.model, f.bindingRef, f.archive)).toThrow('undetermined');
+    expect(f.read).not.toHaveBeenCalled(); expect(f.result('discovery').output).toBe(raw);
   });
 
   it('keeps A quality rejection distinct from corrupt archives and exposes no B context', () => {

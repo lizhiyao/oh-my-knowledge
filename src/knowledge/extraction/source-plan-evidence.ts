@@ -61,14 +61,15 @@ export function sourcePlanRequestDigest(receipt: Pick<SourcePlanReceipt,
     snapshotId: receipt.snapshotId, sourceVersion: receipt.sourceVersion, request: receipt.request, producer: receipt.producer }));
 }
 
-function readJson(bytes: Uint8Array, ref: ExtractionOutcomeRef, maximum: number): unknown {
+function readJson(bytes: Uint8Array, ref: ExtractionOutcomeRef, maximum: number) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength > maximum || bytes.byteLength !== ref.bytes) {
     throw new Error('Source plan archive byte identity or capacity conflict.');
   }
   const owned = Buffer.from(bytes);
   if (digest(owned) !== ref.digest) throw new Error('Source plan archive byte identity or capacity conflict.');
   // Hash and parse one owned snapshot. Invalid UTF-8/BOM is never replacement-decoded or repaired.
-  return JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(owned)) as unknown;
+  const raw = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(owned);
+  return { value: JSON.parse(raw) as unknown, raw };
 }
 
 /** Failures are quality failures with intact raw, rather than missing/corrupt-archive observations. */
@@ -83,7 +84,8 @@ export class SourcePlanValidationError extends Error {
 export function readSourcePlanEvidence(window: SourcePlanSource, model: Selection, reference: SourcePlanReference, archive: SourcePlanArchivePort) {
   const receiptId = z.string().uuid().parse(reference.receiptId), receiptRef = ExtractionOutcomeRefSchema.parse(reference.receiptRef);
   const bytes = archive.read(receiptId, receiptRef);
-  const receipt = SourcePlanReceiptSchema.parse(readJson(bytes.receiptBytes, receiptRef, SOURCE_PLAN_RECEIPT_MAX_BYTES));
+  const receiptJson = readJson(bytes.receiptBytes, receiptRef, SOURCE_PLAN_RECEIPT_MAX_BYTES);
+  const receipt = SourcePlanReceiptSchema.parse(receiptJson.value);
   const expected = sourcePlanExecution(window, model);
   if (receipt.receiptId !== receiptId || receipt.snapshotId !== window.snapshotId || receipt.sourceVersion !== window.sourceVersion
     || canonicalJson(receipt.request) !== canonicalJson(expected.request) || sourcePlanRequestDigest(receipt) !== receipt.requestDigest) {
@@ -94,7 +96,7 @@ export function readSourcePlanEvidence(window: SourcePlanSource, model: Selectio
     throw new Error('Source plan producer differs from its current same-task archive witness.');
   }
   const native = SourcePlanNativeArchiveSchema.parse(readJson(bytes.outcomeBytes, receipt.nativeRef,
-    Math.min(receipt.producer.maxOutcomeJsonBytes + FRAME_OVERHEAD_BYTES, EXTRACTION_OUTCOME_MAX_BYTES)));
+    Math.min(receipt.producer.maxOutcomeJsonBytes + FRAME_OVERHEAD_BYTES, EXTRACTION_OUTCOME_MAX_BYTES)).value);
   if (native.receiptId !== receiptId || native.attemptId !== receipt.attemptId) throw new Error('Source plan native archive identity conflict.');
   const outcome = native.outcome;
   if (outcome.outcomeKind !== 'result' || outcome.cleanupFailure || !outcome.result.ok || typeof outcome.result.output !== 'string'
@@ -104,6 +106,7 @@ export function readSourcePlanEvidence(window: SourcePlanSource, model: Selectio
   }
   const assessment = checkKnowledgeSourcePlan(outcome.result.output, window);
   if (assessment.status !== 'validated') throw new SourcePlanValidationError(assessment);
-  return { receipt, receiptRef, rawOutput: outcome.result.output, rawOutputDigest: digest(outcome.result.output),
+  return { receipt, receiptRef, receiptRaw: receiptJson.raw, outcome,
+    rawOutput: outcome.result.output, rawOutputDigest: digest(outcome.result.output),
     semanticStatus: assessment.semanticStatus };
 }
