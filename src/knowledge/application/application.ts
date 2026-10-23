@@ -39,6 +39,8 @@ import { readEntityReviewEvidence, type EntityReviewArchivePort, type EntityRevi
 import { readReviewedKnowledgeEvidence, type ReviewedKnowledgeArchivePort, type ReviewedKnowledgeReference } from '../extraction/reviewed-knowledge-evidence.js';
 import type { BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
 import type { CheckedBoundKnowledge } from '../extraction/bound-knowledge.js';
+import { ENTITY_ONLY_EXTRACTION_PROMPT_VERSION } from '../extraction/entity-only-prompt.js';
+import { entityOnlyTaskViolation } from '../extraction/entity-only-task.js';
 
 export type { ExtractionModel } from '../extraction/generation.js';
 
@@ -267,6 +269,13 @@ export class KnowledgeApplication {
     if ((options?.coverageReview || options?.sourceSemanticPlan) && policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId) {
       throw new Error('Extraction research inputs require a separate single-invocation research run.');
     }
+    if (options?.promptProfile?.promptVersion === ENTITY_ONLY_EXTRACTION_PROMPT_VERSION) {
+      extractionPrompt(model, options.promptProfile);
+      if (policy.policyId !== SINGLE_EXTRACTION_POLICY.policyId || options.coverageReview || options.sourceSemanticPlan
+        || model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID) {
+        throw new Error('Entity-only extraction requires its fixed structured source-only single-invocation task.');
+      }
+    }
     if (policy.policyId === 'knowledge-generation-bounded/v1') return this.generateBounded(snapshotId, model, runId, policy, signal, options);
     signal?.throwIfAborted();
     const source = this.source(snapshotId);
@@ -422,6 +431,8 @@ export class KnowledgeApplication {
       if (signal?.aborted) return run.status === 'cancelled' ? run : this.saveRun(run, { status: 'cancelled', finishedAt: this.ports.now(), error: 'Extraction cancelled after outcome archive.' });
       const source = this.source(run.snapshotId, run.sourceVersion);
       if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
+      const taskViolation = entityOnlyTaskViolation(run, source.window, decoded.response, value => this.ports.hash(value));
+      if (taskViolation) return this.failEntityOnlyTask(run, taskViolation);
       try { run = this.prepare(run, source.window, decoded.response,
         decoded.wireDiagnostic ? { wireId: decoded.wireDiagnostic.wireId, wireStatus: decoded.wireDiagnostic.wireStatus,
           itemFailureCount: decoded.wireDiagnostic.itemFailures.length } : undefined); } catch (error) {
@@ -438,6 +449,8 @@ export class KnowledgeApplication {
     }
     if (run.status !== 'prepared') return run;
     signal?.throwIfAborted();
+    const taskViolation = this.entityOnlyCommitViolation(run);
+    if (taskViolation) return this.failEntityOnlyTask(run, taskViolation);
     this.ports.entities.write(run.entityAnalysis!, run.entityAnalysis!.revision.revisedBy);
     for (const intent of run.intents) {
       signal?.throwIfAborted();
@@ -449,6 +462,22 @@ export class KnowledgeApplication {
     run = this.saveRun(run, { status: 'completed', finishedAt: this.ports.now(),
       committed: run.intents.map((intent) => ({ knowledgeId: intent.revision.knowledgeId, revisionId: intent.revision.revisionId })) });
     return run;
+  }
+  private failEntityOnlyTask(run: ExtractionRun, diagnostic: string): ExtractionRun {
+    return this.saveRun(run, { status: 'failed', finishedAt: this.ports.now(), error: diagnostic,
+      attempts: run.attempts.map((attempt, index) => index === 0
+        ? { ...attempt, failure: { failureKind: 'entity_only_task_violation', diagnostic } } : attempt) });
+  }
+  private entityOnlyCommitViolation(run: ExtractionRun): string | undefined {
+    if (run.promptVersion !== ENTITY_ONLY_EXTRACTION_PROMPT_VERSION) return;
+    const source = this.source(run.snapshotId, run.sourceVersion);
+    if (source.status !== 'available') throw new Error(`Source unavailable: ${source.reason}`);
+    const attempt = run.attempts[0];
+    const { outcome } = this.ports.runs.readOutcome(run.runId, attempt.attemptId, attempt.outcome);
+    const decoded = extractionResponse(outcome, attempt.request.outputMode, attempt.request.wireId);
+    if (decoded.status === 'failed') return 'Entity-only extraction prepared state has no valid archived task response; no entity or knowledge admission is allowed.';
+    if (run.rawOutput !== decoded.rawOutput) return 'Entity-only extraction prepared state differs from its original archived output; no entity or knowledge admission is allowed.';
+    return entityOnlyTaskViolation(run, source.window, decoded.response, value => this.ports.hash(value));
   }
   private async generateBounded(snapshotId: string, model: ExtractionModel, runId: string, policy: ExtractionBoundedPolicy,
     signal?: AbortSignal, options?: ExtractionGenerationOptions): Promise<ExtractionRun> {
@@ -637,6 +666,8 @@ export class KnowledgeApplication {
   }
   private commitPrepared(run: ExtractionRun, signal?: AbortSignal): ExtractionRun {
     signal?.throwIfAborted();
+    const taskViolation = this.entityOnlyCommitViolation(run);
+    if (taskViolation) return this.failEntityOnlyTask(run, taskViolation);
     this.ports.entities.write(run.entityAnalysis!, run.entityAnalysis!.revision.revisedBy);
     for (const intent of run.intents) {
       signal?.throwIfAborted();
