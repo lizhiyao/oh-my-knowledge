@@ -4,7 +4,7 @@ import { buildEntityRefinementInput, checkEntityRefinementResponse, ENTITY_REFIN
   ENTITY_REFINEMENT_CHECK_VERSION } from '../../src/knowledge/extraction/entity-refinement.js';
 import { entityRefinementExecution, mentionRebindingExecution } from '../../src/knowledge/extraction/refined-entities-evidence.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
-import { ENTITY_CODE_REFERENT_POLICY, ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { discoveryHash } from './discovered-entities-fixtures.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
 
@@ -37,16 +37,17 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v3', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
+      .toEqual(['knowledge-entity-refinement-system/v4', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
     expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
+    expect(f.refinementExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([f.old.plan.sourcePlanReceipt.request.systemVersion, f.old.discoveryReceipt.request.systemVersion, f.old.bindingReceipt.request.systemVersion])
-      .toEqual(['knowledge-source-plan-system/v4', 'knowledge-entity-discovery-system/v5', 'knowledge-mention-binding-system/v5']);
+      .toEqual(['knowledge-source-plan-system/v5', 'knowledge-entity-discovery-system/v6', 'knowledge-mention-binding-system/v6']);
     expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system].map(discoveryHash))
-      .toEqual(['sha256:1d48bfa88c2db0e7c1e5f652f44fea7da50eb534cd7afd61d31eed11098d1b09',
-        'sha256:6184f32ecc8b817e604b94f8102d6690702e314999111668a4e6983525bf87a3',
-        'sha256:e72be90277e1ffb20d31b0b9a406598c3a3feaf12fd703fa08eef715ea514695']);
+      .toEqual(['sha256:cc6611be737c8b8536f32760d9241efc1ce7fc9a3d801d32ea0768315984ce0c',
+        'sha256:65e149bf90e7668e8566b6310c051b1181da1c9faf07782d5b9b9a5d80b62cbf',
+        'sha256:c3963c89093099d1b05101660fdc3d367d9c95a81ceb1f174f5058e9da21e1df']);
     expect(checkEntityRefinementResponse(JSON.stringify(f.refinementResponse), f.source, base.predecessor).status).toBe('checked');
   });
 

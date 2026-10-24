@@ -11,7 +11,7 @@ import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
 import { SourcePlanForDiscoverySchema } from './source-plan-input.js';
-import { ENTITY_CODE_REFERENT_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from './knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from './knowledge-semantic-policy.js';
 
 const digest = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const id = z.string().min(1).max(256), byteDigest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -36,7 +36,7 @@ export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.lit
     mentionIds: z.array(id).min(1).max(64) })).max(256),
 });
 export type MentionBindingResponse = z.infer<typeof MentionBindingResponseSchema>;
-export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v5' as const;
+export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v6' as const;
 export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v2' as const;
 export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v2' as const;
 export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v2' as const;
@@ -65,6 +65,7 @@ export const MENTION_BINDING_SYSTEM = `你执行私有 B 提及绑定任务。�
 固定 A 目录是待绑定的模型主张，并非语义真值。逐条读完整原文，找到实际指向目录对象的连续逐字提及，保留否定、归因、纠正和不确定性，不把同名、类型或一条正确引文当作其他位置的身份依据。selection 只给 evidenceRef、quote 与从0开始含重叠的 occurrence；唯一匹配可为 null，不输出偏移、不裁切标识符。anchor 是可包含上下文的身份依据，不能自动复制或补生成提及。
 ${ENTITY_MENTION_BOUNDARY_POLICY}
 ${ENTITY_CODE_REFERENT_POLICY}
+${ENTITY_COLLECTIVE_REFERENCE_POLICY}
 先判断文本是否构成合格提及，再判断绑定。候选包括有据指向 A 对象的提及，以及按 A 相同的独立讨论、比较、审查、修订或共同指代标准应保留、但 A 遗漏或身份仍不确定的对象提及。普通局部符号、操作参与者、结果或泛称，若没有独立的实体资格依据，不因目录没有对应项就自动成为目录缺口，也不能改绑到相邻层级。真正合格而缺项或未决的提及必须保留并继续阻断；不能以减少阻断为目标忽略真实缺口。专名、代词和泛称都不能单独决定纳入或排除。
 bound 必须只填一个目录中 entityId、candidateEntityIds=[]、reason=null。无法确定绑定的原始提及仍保留：ambiguous 使用 entityId=null、至少两个不同且已知的候选和非空 reason；unbound 使用 entityId=null、0或1个已知候选和非空 reason，目录缺口在 reason 用原文表达。不为缺口新增 unresolved 实体、不猜 scope 或强绑；未决会阻断最终接纳。
 identitySupports 必须恰好覆盖 A 每个非空 componentRef/collection 声明，各一条相应 supportKind，只列实际返回且 bound 的 mentionIds。每条支持提及须完全落在该 A 声明 anchorIds 之一的同 evidenceRef 区间内，且至少一条提及归该声明的实体。每个 A 实体至少一条 bound 提及位于它的 owned anchor 内。没有实质提及时保留缺口，不从 anchor 自动补提及，不改写 A 来绕过阻断。

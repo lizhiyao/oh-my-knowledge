@@ -10,7 +10,7 @@ import { buildEntityRefinementInput, checkEntityRefinementResponse, checkRefinem
   ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_WIRE_ID, flatRefinementPredecessor, freezeRefinement,
   prepareEntityRefinementBase, refinementDigest, refinementRawEvidence, refinementSelectionsProblems, refinementSelectionPosition as located,
   refinementStageReference, refinementWireSchema, type EntityRefinementBase, type RefinementPredecessor } from './entity-refinement.js';
-import { ENTITY_CODE_REFERENT_POLICY, ENTITY_MENTION_BOUNDARY_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_MENTION_BOUNDARY_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
 import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
 
@@ -27,7 +27,7 @@ export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.l
   supportDispositions: z.array(z.strictObject({ previousSupport: supportKey, dispositionKind: RefinementDispositionKindSchema,
     supports: z.array(supportKey).max(256), rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(256) });
 export type MentionRebindingResponse = z.infer<typeof MentionRebindingResponseSchema>;
-export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v3' as const;
+export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v4' as const;
 export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v2' as const;
 export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v2' as const;
 export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v2' as const;
@@ -46,6 +46,7 @@ ${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${ENTITY_MENTION_BOUNDARY_POLICY}
 ${ENTITY_CODE_REFERENT_POLICY}
+${ENTITY_COLLECTIVE_REFERENCE_POLICY}
 先判断来源是否构成合格提及，再按固定 A′ 目录绑定。bound 仅有一个已知 entityId、candidateEntityIds=[]、reason=null；ambiguous 用 entityId=null、至少两个不同已知候选及非空 reason；unbound 用 entityId=null、0或1个已知候选及非空 reason。任何非 bound 继续阻断。若来源确实支持一个身份未决的独立对象，且 A′ 有该对象自己的依据、uncertainties 和同层候选，可绑定到该真实 unresolved 对象；不能因旧 B 绑定失败就假定占位对象具备资格，也不能把没有共同指代依据的不同位置合并。普通符号或关系参与者没有独立讨论依据时不自动成为目录缺口。
 每个旧 B mentionId，包括全部旧 bound 项，恰好一条 mentionDispositions。retained 恰好映射到一条实际输出提及，宿主定位的原区间、basis/rationale、绑定状态及按 A′ 实体账唯一重映射的目标或候选均保持不变，仅可重命名 mentionId。边界、目标、状态或内容变化须 corrected，至少一条实际输出目标；边界修订须同 evidenceRef 且新旧区间相交。移到另一独立位置时旧项 excluded，新位置作为新增，不能拿另一处重复引文代替。多旧项合并同一新项时相关账项均 corrected。excluded/undetermined 的 mentionIds=[]；前者须有来源资格理由，后者保存无法决定的问题并阻断。每条账给具体 rationale、覆盖旧位置的逐字 selections，corrected 的依据也覆盖目标位置。新增提及合法但不能代替漏账。
 A′ bindingGapDispositions 是待独立核对的缺口处理意图，不是提及、身份或资格真值。mapped 对应旧项须 corrected，实际返回的 bound 提及与 targets 按显式相同 entityId、同 evidenceRef 相交位置双向唯一对应；可独立修订提及边界，无需逐字沿用意图跨度。复合旧跨度可拆成不同实际位置的多个目标；不能把同一共同指代复制给多个成员，也不能用一条实际提及抵扣多个意图位置。多旧项有据合并时分别交 corrected 账。excluded 对应旧项须 excluded，不能同时将与旧区间相交的位置作为新增提及返回；边界变化须按 corrected 交账，独立不相交位置仍可新增。若独立判断不支持 A′ 意图，保留实际 excluded、undetermined 或非 bound 判断并整体阻断，不照抄、强绑、补提及或把真实 unknown 改成已知身份。
