@@ -163,7 +163,11 @@ node dist-scripts/bench/entity-extraction-review.js \
 
 ### 5.2 来源语义清单研究流程
 
-另一内部候选先从原文生成语义清单，再根据原文及完整、未修改的清单生成完整实体、提及和知识。当前清单使用独立的 `knowledge-source-plan-system/v2`、`knowledge-source-plan-input/v2` 和 `knowledge-source-plan-wire/v2` 身份，输出名称为 `knowledge_source_plan_v2`，`schemaVersion: 2`；不提供 v1 reader 或别名。它表达被讨论的对象与有界组、分开的身份／层次依据、精确来源锚点、成员未知及带条件和限制的材料。检查器只验证结构、来源绑定、精确位置和局部引用闭合，始终明确保留 `semanticStatus: not_reviewed`。有效清单仍是不可信候选数据，不是新增来源证据或已接纳知识。
+另一内部候选先从原文生成语义清单，再根据原文及完整、未修改的清单生成完整实体、提及和知识。当前清单使用独立的 `knowledge-source-plan-system/v3`、`knowledge-source-plan-input/v2` 和 `knowledge-source-plan-wire/v2` 身份，输出名称为 `knowledge_source_plan_v2`，`schemaVersion: 2`；不提供 v1 reader 或别名。它表达被讨论的对象与有界组、分开的身份／层次依据、精确来源锚点、成员未知及带条件和限制的材料。检查器只验证结构、来源绑定、精确位置和局部引用闭合，始终明确保留 `semanticStatus: not_reviewed`。有效清单仍是不可信候选数据，不是新增来源证据或已接纳知识。
+
+source-plan system v3 完整逐字接收 `ENTITY_REFERENT_KIND_POLICY`，与 A system v4、独立 v36 实体任务共享既有七种所指层次的含义和依据门槛。Schema 枚举本身不提供这些语义。私有规划词汇另允许在规划阶段层次依据不足时使用 `referentKind: unknown`，通过 `typeBasis` 与 `uncertainties` 保留该不足，与身份 `unresolved` 分轴，因此已知身份仍可为 `proposed`。共享政策中的一般 `object` 及有据兜底继续有效，但不要求把明确的规划层次未知替换为 `object`。
+
+此次 source-plan system v2→v3 构成 **BREAKING-COMPARABILITY**。input、wire、响应 Schema 与检查器保持 v2；共享政策、A system v4、B system v4、v36／v37 及生产默认的字节与身份不变。新的 source-plan 请求须重新冻结任务／请求。依赖任务绑定完整 source-plan 回执，因此实际输入绑定也随之变化，须依据新的已认证前驱链物化并在派发前封存；旧执行许可或分数不能复用。历史原件、回执、冻结运行时及分数保持原样，使用各自匹配的冻结代码，不重新解释或重评分。规则传递不证明模型质量改善，也不增加 B→A 修订闭环。
 
 对象通过 `planningRole` 与 `qualificationBasis` 区分 `entity_candidate`、`context_only`、`qualification_unknown`，与身份、类型、成员未知分轴。有独立讨论依据的概念、过程或门槛即使出现在条件中也可成为参与者；具体来源记录不能替代它们，词汇本身不决定资格。材料通过 `retentionIntent` 与 `reuseBasis` 区分 `reusable_candidate`、`context_only`、`undetermined`，并分开 `participantObjectIds` 与 `contextObjectIds`。完成报告中不同复用角色的内容须拆为材料单元，但不机械把每个条件变成新节点；一次诊断案例或数值语境仍可能具有复用价值。角色未知须有明确理由；这些角色仍是模型主张，不是宿主筛选、补齐或合并对象与知识的许可。最终阶段须回原文独立核对，不能凭上下文标签免除来源支持的可复用信息保留。
 
@@ -221,7 +225,7 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 
 ### 5.6 来源清单、实体发现与提及绑定
 
-这一私有研究入口组合三份分别归档的原生任务：当前 source-plan v2、A（`entity-discovery`）与 B（`mention-binding`）。A／B system 各为 v4，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan system／input／wire／schema v2 及其 prompt 字节保持不变。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
+这一私有研究入口组合三份分别归档的原生任务：当前 source-plan（system v3）、A（`entity-discovery`）与 B（`mention-binding`）。A／B system 各为 v4，input、wire、check、response 与 receipt 各为 v2，输出名称为 `entity_discovery_v2` 与 `mention_binding_v2`；原生归档外层容器仍为 schema v1。source-plan 保留 input／wire／schema v2 与不变的检查器；其 system 变化和下游请求绑定边界见 §5.2。A 接收完整选定来源及完整、已认证的清单，再固定实体目录、指代范围和身份假设。精确 quote／occurrence 锚点提供来源依据，不是最终提及；组件和集合的证据先引用这些锚点，等待 B 创建实际提及。
 
 A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，带入既有含义和依据门槛，包括一般操作概念与某次实际或计划执行、配置对象与有来源系统／模块组件的区别，以及缺少细层次依据时用 proposed `object` 并明确保留类型未知。Schema 枚举本身不提供这些语义。v36／v37 及生产提示词字节继续冻结；本次 A system v3→v4 构成 **BREAKING-COMPARABILITY**，v2 wire 与持久化 Schema 不变。规则完整传递不证明模型类型判断正确。
 
