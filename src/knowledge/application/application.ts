@@ -43,7 +43,7 @@ import { entityOnlyTaskViolation, isEntityOnlyTask } from '../extraction/entity-
 import { readDiscoveredEntitiesContext, importDiscoveredEntityAnalysis,
   type DiscoveredEntitiesSource, type DiscoveredEntitiesContextReferences, type DiscoveredEntitiesReferences } from './discovered-entities.js';
 import type { EntityDiscoveryArchivePort, EntityDiscoveryModel } from '../extraction/discovered-entities-evidence.js';
-import { readRefinedEntitiesContext, readRefinedEntitiesRebindingContext, importRefinedEntityAnalysis,
+import { readRefinedEntitiesContext, readRefinedEntitiesRebindingContext, readRefinedEntitiesKnowledgeContext, importRefinedEntityAnalysis,
   type RefinedEntitiesSource, type RefinedEntitiesContextReferences, type RefinedEntitiesReferences } from './refined-entities.js';
 import type { RefinedEntitiesArchivePort, RefinedEntitiesBaseReferences, RefinedEntitiesModel } from '../extraction/refined-entities-evidence.js';
 
@@ -218,6 +218,20 @@ export class KnowledgeApplication {
   boundKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile) {
     return readEntityFirstKnowledgeContext(this.ports, entityRunId, model, profile);
   }
+  /** Five originals authenticate the persisted initial revision; no extraction run or native call is created. */
+  refinedBoundKnowledgeContext(source: RefinedEntitiesSource, model: RefinedEntitiesModel, references: RefinedEntitiesReferences) {
+    return readRefinedEntitiesKnowledgeContext(this.ports, source, model, references);
+  }
+  /** Explicit private K handoff from a complete catalog revision, with the existing per-proposal writer. */
+  importRefinedBoundKnowledge(source: RefinedEntitiesSource, model: RefinedEntitiesModel,
+    references: RefinedEntitiesReferences, reference: BoundKnowledgeReference, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!this.ports.boundKnowledgeArchive) throw new Error('Bound knowledge archive unavailable.');
+    const context = this.refinedBoundKnowledgeContext(source, model, references);
+    const evidence = readBoundKnowledgeEvidence(context.window, context.catalog, model, reference, this.ports.boundKnowledgeArchive);
+    this.assertRefinedSuccessor(context, evidence.receipt);
+    return this.publishBoundKnowledge({ entityChainDigest: context.chainDigest }, context.window, context.catalog, evidence, signal);
+  }
   /** Import an archived K-only return. Replaying after interruption reuses store request IDs, without another native call. */
   importBoundKnowledge(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile,
     reference: BoundKnowledgeReference, signal?: AbortSignal) {
@@ -228,11 +242,23 @@ export class KnowledgeApplication {
     if (Date.parse(evidence.receipt.startedAt) < Date.parse(entityFinishedAt)) {
       throw new Error('Bound knowledge native task predates entity-task completion.');
     }
-    return this.publishBoundKnowledge(entityRunId, window, catalog, evidence, signal);
+    return this.publishBoundKnowledge({ entityRunId }, window, catalog, evidence, signal);
   }
   /** Authenticate R against the complete immutable E revision; uncertain remains an AI claim, never human confirmation. */
   reviewedKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile, review: EntityReviewSelection) {
     const context = this.boundKnowledgeContext(entityRunId, model, profile);
+    return this.readEntityReview(context, review);
+  }
+  /** The review consumes the final persisted catalog; all five original task identities remain authenticated. */
+  refinedReviewedKnowledgeContext(source: RefinedEntitiesSource, model: RefinedEntitiesModel,
+    references: RefinedEntitiesReferences, review: EntityReviewSelection) {
+    const context = this.refinedBoundKnowledgeContext(source, model, references);
+    const reviewed = this.readEntityReview(context, review);
+    this.assertRefinedSuccessor(context, reviewed.entityReviewEvidence.receipt);
+    return reviewed;
+  }
+  private readEntityReview<T extends { window: EvidenceWindow; catalog: BoundKnowledgeCatalog; entityFinishedAt: string }>(
+    context: T, review: EntityReviewSelection) {
     if (!this.ports.entityReviewArchive) throw new Error('Entity review archive unavailable.');
     const evidence = readEntityReviewEvidence(context.window, context.catalog, review.model,
       review.reference, this.ports.entityReviewArchive);
@@ -254,16 +280,42 @@ export class KnowledgeApplication {
     if (Date.parse(evidence.receipt.startedAt) < Date.parse(context.entityReviewEvidence.receipt.finishedAt)) {
       throw new Error('Reviewed knowledge native task predates entity-review completion.');
     }
-    return { ...this.publishBoundKnowledge(entityRunId, context.window, context.catalog, evidence, signal),
+    return { ...this.publishBoundKnowledge({ entityRunId }, context.window, context.catalog, evidence, signal),
       entityReviewEvidence: context.entityReviewEvidence };
   }
+  /** Re-authenticate the complete chain, review and K before publishing; replay never invokes a model. */
+  importRefinedReviewedKnowledge(source: RefinedEntitiesSource, model: RefinedEntitiesModel, references: RefinedEntitiesReferences,
+    review: EntityReviewSelection, reference: ReviewedKnowledgeReference, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!this.ports.reviewedKnowledgeArchive) throw new Error('Reviewed knowledge archive unavailable.');
+    const context = this.refinedReviewedKnowledgeContext(source, model, references, review);
+    const evidence = readReviewedKnowledgeEvidence(context.window, context.catalog, context.entityReview, model,
+      reference, this.ports.reviewedKnowledgeArchive);
+    this.assertRefinedSuccessor(context, evidence.receipt, context.entityReviewEvidence.receipt);
+    return { ...this.publishBoundKnowledge({ entityChainDigest: context.chainDigest }, context.window, context.catalog, evidence, signal),
+      entityReviewEvidence: context.entityReviewEvidence };
+  }
+  private assertRefinedSuccessor(context: ReturnType<typeof readRefinedEntitiesKnowledgeContext>,
+    receipt: { receiptId: string; attemptId: string; startedAt: string },
+    review?: { receiptId: string; attemptId: string; finishedAt: string }) {
+    const predecessors = [context.base.sourcePlan.receipt, context.base.discovery.receipt, context.base.binding.receipt,
+      context.refinement.receipt, context.rebinding.receipt, ...(review ? [review] : [])];
+    const ids = [...predecessors, receipt].flatMap(value => [value.receiptId, value.attemptId]);
+    if (new Set(ids).size !== ids.length) {
+      throw new Error('Refined knowledge successor reuses a predecessor receipt or attempt identity.');
+    }
+    if (Date.parse(receipt.startedAt) < Date.parse(review?.finishedAt ?? context.entityFinishedAt)) {
+      throw new Error('Refined knowledge successor predates predecessor completion.');
+    }
+  }
   private publishBoundKnowledge<T extends { checked: CheckedBoundKnowledge;
-    receipt: { receiptId: string; request: { executor: string }; finishedAt: string } }>(entityRunId: string,
+    receipt: { receiptId: string; request: { executor: string }; finishedAt: string } },
+    P extends { entityRunId: string } | { entityChainDigest: string }>(predecessor: P,
     window: EvidenceWindow, catalog: BoundKnowledgeCatalog, evidence: T, signal?: AbortSignal) {
     const shared = { entityIds: new Map(catalog.entities.map(entity => [entity.entityId, entity.entityId])),
       mentionIds: new Map(catalog.mentions.map(mention => [mention.mentionId, mention.mentionId])),
       ref: { analysisId: catalog.analysisId, revisionId: catalog.revisionId } };
-    const common = { evidence, entityRunId, entityAnalysisRef: shared.ref, semanticStatus: 'not_reviewed' as const };
+    const common = { evidence, ...predecessor, entityAnalysisRef: shared.ref, semanticStatus: 'not_reviewed' as const };
     const checked = evidence.checked;
     if (checked.status === 'rejected') return { ...common, admissionStatus: 'rejected' as const,
       proposalAdmissionStatus: 'rejected' as const, coverageStatus: 'unavailable' as const, committed: [] };

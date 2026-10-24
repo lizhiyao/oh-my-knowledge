@@ -257,6 +257,18 @@ B′ 向固定 A′ 目录绑定实际提及与身份支持，并完整交代每
 
 driver 在执行前固定机会和停止规则：最多各一次 A′、B′，不隐式调用模型、重试、替补或无限修补。依赖输入由已认证的归档前驱物化，并在各自 claim 前固定。每个完整原生 outcome 都先归档、后解释，失败或 blocked 原件也保留。初始链与中间 A′ 结果均不写分析。只有最终 B′ 组合 ready 时，才一次写入初始 `EntityAnalysis` schema v2，使用新 ID namespace，并从 B′ 回执派生稳定身份。command／actor 身份绑定完整五原件链摘要。重新导入认证同一链并复用相同写入意图，证据变化不能覆盖原写入。
 
-历史原件、冻结运行时、结果及既有实体／知识历史保持不变。生产默认、public exports、公共存储契约与 CLI／Studio 路径不改变。既有单 E→R/K 入口不接收三原件或五原件分析；此流程不建立知识交接入口。没有 K 时，不能提供知识保全验收证据。
+历史原件、冻结运行时、结果及既有实体／知识历史保持不变。生产默认、public exports、公共存储契约与 CLI／Studio 路径不改变。既有单 E→R/K 入口不接收三原件或五原件分析；五原件流程另有 §5.8 中显式选择的独立认证交接入口。没有 K 时，不能提供知识保全验收证据。
 
 完整账目、精确位置和来源选择让决定可复核，不证明保留、纠正、排除、资格、身份或类型语义正确，也不证明原文没有遗漏。新的前瞻诊断须冻结五任务构造、实际依赖输入、来源／运行时／配置、机会、停止规则和最终端点，分阶段报告实际用量、费用、失败与未知。有限修订改变流程和总成本，不证明稳定改善或单一提示词因素效果。全部结构结果保留 `semanticStatus: not_reviewed`；#1322 的独立真人验收仍单独进行，满足其要求前保持 `goldReady=false`、`formalReceipt=false`。
+
+### 5.8 修订后的可选认证知识交接
+
+私有 `refinedBoundKnowledgeContext` 与 `importRefinedBoundKnowledge` 入口支持五原件→K；`refinedReviewedKnowledgeContext` 与 `importRefinedReviewedKnowledge` 支持五原件→R→K。它们是单 E 前驱契约之外显式选择的独立路径，不扩展该契约可接受的输入。context 准备与 import 只认证归档证据，不调用模型，也不伪造 `ExtractionRun`；独立执行的 R、K 任务各自保留归档原生 outcome 和回执。
+
+每次读取 context 和 import 都重新认证 source-plan、A、B、A′、B′，要求最终组合 ready，且已作为初始实体修订落盘。该修订及写入回执的完整规范化字节必须与重建的写入意图一致，包括原始来源、完整链、导入者 actor，以及稳定的 analysis／revision／entity／mention 身份。较新的实体 head 不能替代初始修订。证据缺失、blocked、变化或不匹配即停止交接，不接纳子集，也不复用此前返回的 context 绕过检查。
+
+R、K 保留既有 prompt 字节、Schema 与接纳规则。输入通过既有投影使用完整原始来源和最终已存实体／提及目录，不将此前清单、目录响应或 AI 复核主张提升为来源证据。R 开始时间不得早于 B′ 完成；经过 R 的 K 不得早于 R 完成，直接 K 不得早于 B′ 完成。五原件及所选 R／K 阶段的全部 receipt、attempt 身份必须各自不同。每次 import 都在知识写入前重新读取并认证完整前驱链及所选 R／K 证据。
+
+知识导入沿用既有逐 proposal writer，以及从 K 回执、proposal 和 role 派生的 `knowledge-bound-import-ids/v1` 身份。同级 proposal 被拒绝或覆盖账目未决时，已接受 proposal 仍可写入；整个响应被拒绝时不写入。这不是批量原子操作：中断时，较早 proposal 的写入可能已提交。重放同一归档证据时重新认证链，并复用相同 store request ID，不产生新原生调用；内容冲突不能覆盖原写入。K 失败不撤销初始实体修订或已提交知识。
+
+增加 R／K 改变流程拓扑、依赖输入、调用机会和总成本，构成 **BREAKING-COMPARABILITY**。前瞻诊断须冻结所选完整路径及端点，分别报告每阶段实际用量、费用、失败与未知；不继承旧分数，也不重判历史研究。认证、接纳、重放和保存成功不证明真实模型质量或知识保全验收通过。结果继续为 `semanticStatus: not_reviewed`；#1322 的独立真人验收仍单独进行，满足其要求前保持 `goldReady=false`、`formalReceipt=false`。生产默认、public exports、既有存储契约及数据保持不变。
