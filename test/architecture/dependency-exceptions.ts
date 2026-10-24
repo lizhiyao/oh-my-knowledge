@@ -100,6 +100,9 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/discovered-entities.ts → knowledge/extraction/discovered-entities-evidence.ts',
   // 清单→A→B 只重放固定来源清单原件，未决处置在 B 读取前阻断，不执行模型或扩大反向依赖。
   'knowledge/application/discovered-entities.ts → knowledge/extraction/source-plan-evidence.ts',
+  // 一轮目录修订仅消费五份原件的纯认证与最终接纳，不创建执行器或反向依赖。
+  'knowledge/application/refined-entities.ts → knowledge/extraction/bound-catalog.ts',
+  'knowledge/application/refined-entities.ts → knowledge/extraction/refined-entities-evidence.ts',
   // E-first 只重放已归档的原文 E 任务并对应真实初始修订，不经 extraction 反向调用应用或存储。
   'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/application/entity-first-knowledge.ts → knowledge/extraction/generation.ts',

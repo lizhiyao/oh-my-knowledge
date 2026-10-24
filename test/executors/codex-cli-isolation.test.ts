@@ -41,15 +41,21 @@ const fs = require('node:fs');
 const args = process.argv.slice(2);
 const schemaPath = args[args.indexOf('--output-schema') + 1];
 const capture = { schemaPath, schema: JSON.parse(fs.readFileSync(schemaPath, 'utf8')), mode: fs.statSync(schemaPath).mode & 0o777, args };
+// The parent may cancel as soon as capture exists; publish only a complete snapshot.
+const publishCapture = () => {
+  const temporary = process.env.OMK_SCHEMA_FIXTURE_CAPTURE + '.pending';
+  fs.writeFileSync(temporary, JSON.stringify(capture));
+  fs.renameSync(temporary, process.env.OMK_SCHEMA_FIXTURE_CAPTURE);
+};
 if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'amplify') {
   process.stdout.write(Buffer.concat([Buffer.from('{"type":"item.completed","item":{"id":"x","type":"mcp__'), Buffer.alloc(1024, 0xff), Buffer.from('__x"}}\\n')]));
   process.stderr.write(Buffer.concat([Buffer.alloc(1024), Buffer.from(' Bearer a Basic b ' + process.env.EXAMPLE_API_KEY)]));
-  fs.writeFileSync(process.env.OMK_SCHEMA_FIXTURE_CAPTURE, JSON.stringify(capture));
+  publishCapture();
   process.exit(2);
 }
 console.log(JSON.stringify({type:'item.completed',item:{id:'answer',type:'agent_message',text:'original partial answer'}}));
 console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:12,cached_input_tokens:2,output_tokens:3}}));
-fs.writeFileSync(process.env.OMK_SCHEMA_FIXTURE_CAPTURE, JSON.stringify(capture));
+publishCapture();
 if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'success') process.exit(0);
 if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'failure') process.exit(2);
 process.on('SIGTERM', () => process.exit(0));

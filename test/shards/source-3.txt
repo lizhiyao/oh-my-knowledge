@@ -71,6 +71,10 @@ test/knowledge/entity-discovery.test.ts
 test/knowledge/mention-binding.test.ts
 test/knowledge/discovered-entities-evidence.test.ts
 test/knowledge/discovered-entities-application.test.ts
+test/knowledge/entity-refinement.test.ts
+test/knowledge/mention-rebinding.test.ts
+test/knowledge/refined-entities-evidence.test.ts
+test/knowledge/refined-entities-application.test.ts
 test/knowledge/bound-knowledge.test.ts
 test/knowledge/bound-knowledge-evidence.test.ts
 test/knowledge/entity-first-bound-knowledge-profile.test.ts
