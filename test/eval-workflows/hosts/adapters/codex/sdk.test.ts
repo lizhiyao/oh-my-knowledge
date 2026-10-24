@@ -81,6 +81,7 @@ type SdkMode =
   | 'success'
   | 'usage'
   | 'failed-usage'
+  | 'reconnect-unknown'
   | 'invalid'
   | 'runtime-error'
   | 'create-error'
@@ -91,6 +92,7 @@ type SdkMode =
 
 interface SdkObservations {
   mode: SdkMode;
+  reconnectNotice?: string;
   resolverCalls: number;
   clientOptions: CodexSdkClientOptions[];
   threadOptions: CodexSdkThreadOptions[];
@@ -252,6 +254,12 @@ async function adapterFixture(options: Readonly<{
       }
       yield { type: 'thread.started', thread_id: 'thread-test' };
       yield { type: 'turn.started' };
+      if (observations.reconnectNotice !== undefined) {
+        yield { type: 'error', message: observations.reconnectNotice };
+      }
+      if (observations.mode === 'reconnect-unknown') {
+        yield { type: 'error', message: 'Reconnecting... waiting for network (sensitive provider failure)' };
+      }
       if (observations.mode === 'wait') {
         observations.started = true;
         await new Promise<void>((_resolve, reject) => {
@@ -395,6 +403,12 @@ describe('Codex SDK Core Executor adapter', () => {
       version: '0.149.0',
       fingerprintBasis: 'content-derived',
       assuranceLevel: 'declared',
+      implementationManifest: {
+        facets: expect.arrayContaining([{
+          facetId: 'adapter.composition',
+          value: expect.objectContaining({ adapterVersion: '2.0.2' }),
+        }]),
+      },
     });
     expect(JSON.stringify(first.identity)).not.toContain('first-secret');
     expect(JSON.stringify(first.identity)).not.toContain('OMK_TEST_SECRET');
@@ -530,6 +544,7 @@ describe('Codex SDK Core Executor adapter', () => {
 
   it.each([
     ['invalid', 'OMK_CODEX_SDK_PROTOCOL_INVALID'],
+    ['reconnect-unknown', 'OMK_CODEX_SDK_PROTOCOL_INVALID'],
     ['runtime-error', 'OMK_CODEX_SDK_EXECUTION_FAILED'],
     ['create-error', 'OMK_CODEX_SDK_SESSION_FAILED'],
     ['start-error', 'OMK_CODEX_SDK_SESSION_FAILED'],
@@ -544,9 +559,10 @@ describe('Codex SDK Core Executor adapter', () => {
     await expect(promise).rejects.not.toThrow(/sensitive provider failure/);
   });
 
-  it('keeps trustworthy usage on a redacted failed turn', async () => {
+  it('keeps trustworthy usage when a reconnect is followed by a redacted failed turn', async () => {
     const fixture = await adapterFixture();
     fixture.observations.mode = 'failed-usage';
+    fixture.observations.reconnectNotice = 'Reconnecting... waiting for network (Connection failed: error sending request)';
     await expect(execute(
       await createAdapter(fixture),
       fixture.target.config as JsonValue,
@@ -557,6 +573,19 @@ describe('Codex SDK Core Executor adapter', () => {
       },
       usage: { inputTokens: 8, outputTokens: 5, totalTokens: 13 },
     });
+  });
+
+  it.each([
+    'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)',
+    'Reconnecting... waiting for network (Connection failed: error sending request)',
+    'Reconnecting... 2/5 (Connection failed: error sending request)',
+  ])('accepts a completed response after a provider transport notice: %s', async (notice) => {
+    const fixture = await adapterFixture();
+    fixture.observations.reconnectNotice = notice;
+    const result = await execute(await createAdapter(fixture), fixture.target.config as JsonValue);
+    expect(result.output?.value).toBe('fixture answer');
+    expect(fixture.observations.threadOptions).toHaveLength(1);
+    expect(fixture.observations.streamClosed).toBe(1);
   });
 
   it('bounds streamed events and closes the underlying SDK generator', async () => {

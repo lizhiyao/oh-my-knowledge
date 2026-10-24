@@ -138,12 +138,18 @@ export function extractCodexFinalOutput(events: CodexEvent[]): string {
   return '';
 }
 
-/** Codex reports recoverable transport reconnects as error events before its final turn result. */
+/** Codex reports retry progress as JSONL error events, independently from the final turn result.
+ * The 0.163.0 responses_retry.rs templates carry an arbitrary retryable CodexErr display.
+ * https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core/src/responses_retry.rs
+ */
 export function isCodexReconnectNotice(event: CodexEvent): boolean {
   if (event.type !== 'error' || typeof event.message !== 'string') return false;
-  const match = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \((?:stream disconnected before completion: .+|request timed out)\)$/.exec(event.message);
+  const waiting = /^Reconnecting\.\.\. waiting for network \(Connection failed: ([\s\S]+)\)$/.exec(event.message);
+  if (waiting) return waiting[1].trim().length > 0;
+  const match = /^Reconnecting\.\.\. ([1-9]\d*)\/([1-9]\d*) \(([\s\S]+)\)$/.exec(event.message);
   return match !== null && Number.isSafeInteger(Number(match[1]))
-    && Number.isSafeInteger(Number(match[2])) && Number(match[1]) <= Number(match[2]);
+    && Number.isSafeInteger(Number(match[2])) && Number(match[1]) <= Number(match[2])
+    && match[3].trim().length > 0;
 }
 
 export function extractCodexProtocolError(events: CodexEvent[]): string | undefined {

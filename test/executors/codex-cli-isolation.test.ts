@@ -29,7 +29,7 @@ it('rejects unsupported output capabilities on direct SDK and custom adapters be
   }
 });
 
-it('keeps a private schema available to the actual child and cleans it after success, failure, cancellation and timeout', async () => {
+it('retains real process and terminal diagnostics with partial evidence and schema cleanup', async () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-codex-schema-fixture-'));
   const bin = join(root, 'bin'); mkdirSync(bin);
   const cwd = join(root, 'empty'); mkdirSync(cwd);
@@ -39,6 +39,7 @@ it('keeps a private schema available to the actual child and cleans it after suc
   writeFileSync(join(bin, 'codex'), `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2);
+const outcome = process.env.OMK_SCHEMA_FIXTURE_OUTCOME;
 const schemaPath = args[args.indexOf('--output-schema') + 1];
 const capture = { schemaPath, schema: JSON.parse(fs.readFileSync(schemaPath, 'utf8')), mode: fs.statSync(schemaPath).mode & 0o777, args };
 // The parent may cancel as soon as capture exists; publish only a complete snapshot.
@@ -47,18 +48,21 @@ const publishCapture = () => {
   fs.writeFileSync(temporary, JSON.stringify(capture));
   fs.renameSync(temporary, process.env.OMK_SCHEMA_FIXTURE_CAPTURE);
 };
-if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'amplify') {
+if (outcome === 'amplify') {
   process.stdout.write(Buffer.concat([Buffer.from('{"type":"item.completed","item":{"id":"x","type":"mcp__'), Buffer.alloc(1024, 0xff), Buffer.from('__x"}}\\n')]));
   process.stderr.write(Buffer.concat([Buffer.alloc(1024), Buffer.from(' Bearer a Basic b ' + process.env.EXAMPLE_API_KEY)]));
   publishCapture();
   process.exit(2);
 }
-console.log(JSON.stringify({type:'item.completed',item:{id:'answer',type:'agent_message',text:'original partial answer'}}));
-console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:12,cached_input_tokens:2,output_tokens:3}}));
-publishCapture();
-if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'success') process.exit(0);
-if (process.env.OMK_SCHEMA_FIXTURE_OUTCOME === 'failure') process.exit(2);
 process.on('SIGTERM', () => process.exit(0));
+if (outcome === 'reconnect') console.log(JSON.stringify({type:'error',message:'Reconnecting... waiting for network (Connection failed: error sending request)'}));
+console.log(JSON.stringify({type:'item.completed',item:{id:'answer',type:'agent_message',text:'original partial answer'}}));
+if (outcome !== 'missing-terminal') console.log(JSON.stringify({type:outcome === 'failed-turn' ? 'turn.failed' : 'turn.completed',
+  ...(outcome === 'failed-turn' ? {error:{message:'terminal provider failure'}} : {}),
+  usage:{input_tokens:12,cached_input_tokens:2,output_tokens:3}}));
+publishCapture();
+if (outcome === 'failure') { console.error('fixture process stderr'); process.exit(2); }
+if (outcome !== 'cancel' && outcome !== 'timeout') process.exit(0);
 setInterval(() => {}, 1000);
 `, { mode: 0o700 });
   try {
@@ -68,10 +72,11 @@ setInterval(() => {}, 1000);
         outputFormat: { mode: 'json-schema', name: 'fixture', schema } },
       { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`, OMK_SCHEMA_FIXTURE_CAPTURE: capture });
       assert.equal(result.ok, false); assert.equal(result.failure?.failureKind, 'cancelled');
+      assert.ok(result.error?.endsWith('[codex-cli terminalType=none; terminalCount=0; processCode=unknown; processSignal=unknown; processFailure=unknown; killedByTimeout=unknown; killedBySignal=unknown]'));
       assert.equal(existsSync(capture), false);
       assert.deepEqual(readdirSync(cwd), []);
     }
-    for (const outcome of ['success', 'failure', 'cancel', 'timeout', 'amplify']) {
+    for (const outcome of ['success', 'reconnect', 'failure', 'failed-turn', 'missing-terminal', 'cancel', 'timeout', 'amplify']) {
       rmSync(capture, { force: true });
       const controller = new AbortController();
       const request = { model: 'fixture', prompt: '-JSON input', timeoutMs: outcome === 'timeout' ? 1000 : 5000,
@@ -106,7 +111,23 @@ setInterval(() => {}, 1000);
         assert.equal(existsSync(dirname(observed.schemaPath)), false);
         assert.deepEqual(readdirSync(cwd), []);
         assert.deepEqual(readdirSync(privateCwd), []);
-        assert.equal(result.ok, outcome === 'success');
+        const successful = outcome === 'success' || outcome === 'reconnect';
+        assert.equal(result.ok, successful);
+        if (successful) {
+          assert.equal(result.error, undefined);
+          assert.equal(result.stopReason, 'end_turn');
+        } else {
+          const diagnostic = result.error?.match(/\[codex-cli [^\]]+\]$/)?.[0];
+          assert.ok(diagnostic);
+          assert.ok(Buffer.byteLength(diagnostic) <= 512);
+          const terminalType = outcome === 'missing-terminal' || outcome === 'amplify' ? 'none'
+            : outcome === 'failed-turn' ? 'turn.failed' : 'turn.completed';
+          const processFailure = outcome === 'failure' || outcome === 'amplify' ? 'nonzero-exit'
+            : outcome === 'cancel' ? 'abort' : outcome === 'timeout' ? 'timeout' : 'none';
+          assert.equal(diagnostic, `[codex-cli terminalType=${terminalType}; terminalCount=${terminalType === 'none' ? 0 : 1}; `
+            + `processCode=${outcome === 'failure' || outcome === 'amplify' ? 2 : 0}; processSignal=null; `
+            + `processFailure=${processFailure}; killedByTimeout=${outcome === 'timeout'}; killedBySignal=${outcome === 'cancel' ? 'SIGTERM' : 'null'}]`);
+        }
         assert.ok(Buffer.byteLength(JSON.stringify({ outcomeKind: 'result', result })) < configured.evidence.maxOutcomeJsonBytes);
         if (outcome === 'amplify') {
           assert.equal(result.failure?.failureKind, 'invalid_response');
@@ -120,9 +141,12 @@ setInterval(() => {}, 1000);
           continue;
         }
         assert.equal(result.output, 'original partial answer');
-        assert.equal(result.inputTokens, 10);
-        assert.equal(result.cacheReadTokens, 2);
-        assert.equal(result.outputTokens, 3);
+        assert.equal(result.inputTokens, outcome === 'missing-terminal' ? 0 : 10);
+        assert.equal(result.cacheReadTokens, outcome === 'missing-terminal' ? 0 : 2);
+        assert.equal(result.outputTokens, outcome === 'missing-terminal' ? 0 : 3);
+        if (outcome === 'failure') assert.match(result.error ?? '', /^fixture process stderr;/);
+        if (outcome === 'failed-turn') assert.match(result.error ?? '', /terminal provider failure/);
+        if (outcome === 'missing-terminal') assert.match(result.error ?? '', /no turn.completed\/turn.failed event/);
         if (outcome === 'cancel') assert.equal(result.failure?.failureKind, 'cancelled');
         if (outcome === 'timeout') assert.equal(result.failure?.failureKind, 'timeout');
       } finally {
