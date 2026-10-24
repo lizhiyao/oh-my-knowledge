@@ -80,7 +80,7 @@ describe('source semantic plan to real application admission (authored native ev
     expect(input).not.toHaveProperty('sourcePath');
     expect(f.inspect.mock.calls[0][1]).toMatchObject({ system: SOURCE_PLAN_SYSTEM,
       outputFormat: { name: SOURCE_PLAN_OUTPUT_NAME, schema: SOURCE_PLAN_WIRE_SCHEMA_JSON } });
-    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-source-plan-system/v3', system: SOURCE_PLAN_SYSTEM });
+    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-source-plan-system/v4', system: SOURCE_PLAN_SYSTEM });
     expect(f.receipt.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(run.status).toBe('completed'); expect(run.attempts).toHaveLength(1);
     expect(run.promptVersion).toBe('knowledge-extraction-v30');
@@ -140,7 +140,7 @@ describe('source semantic plan to real application admission (authored native ev
       if (mode === 'source') f.receipt.sourceVersion = hash('different source');
       if (mode === 'input') f.receipt.request.input += ' ';
       if (mode === 'system') f.receipt.request.system += ' ';
-      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-source-plan-system/v2' });
+      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-source-plan-system/v3' });
       if (mode === 'wire') f.receipt.request.wireId = hash('different wire');
       if (mode === 'model') f.receipt.request.model = 'other';
       if (mode === 'timeout') f.receipt.request.timeoutMs++;

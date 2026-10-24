@@ -77,7 +77,7 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     expect(JSON.parse(execution.request.input).predecessors.binding.rawOutput).toBe(f.old.result('binding').output);
   });
 
-  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v2', 'A-v3', 'B-v3'] as const)(
+  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v3', 'A-v4', 'B-v4'] as const)(
     'rejects ineligible current base %s before any new-stage archive read', mode => {
       const f = refinedEntitiesFixture();
       if (mode === 'A-undetermined') {
@@ -86,12 +86,12 @@ describe('finite entity refinement archive evidence (authored originals only)', 
       }
       if (mode === 'B-rejected') { f.old.result('binding').output = '{bad json'; f.old.resealB(); }
       if (mode === 'B-native-failure') { f.old.result('binding').numTurns = 2; f.old.resealB(); }
-      if (mode === 'plan-v2') {
-        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v2' });
+      if (mode === 'plan-v3') {
+        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v3' });
         f.old.plan.resealSourcePlan();
       }
-      if (mode === 'A-v3') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v3' }); f.old.resealA(); }
-      if (mode === 'B-v3') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v3' }); f.old.resealB(); }
+      if (mode === 'A-v4') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v4' }); f.old.resealA(); }
+      if (mode === 'B-v4') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v4' }); f.old.resealB(); }
       expect(() => f.readBase()).toThrow(); expect(f.refinedRead).not.toHaveBeenCalled();
       expect(f.refinedInspect).not.toHaveBeenCalled();
     });
@@ -106,7 +106,8 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         if (mode === 'source') receipt.sourceVersion = discoveryHash('another source');
         if (mode === 'input') receipt.request.input += ' ';
         if (mode === 'system') receipt.request.system += ' ';
-        if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: 'another-system/v1' });
+        if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'refinement'
+          ? 'knowledge-entity-refinement-system/v1' : 'knowledge-mention-rebinding-system/v1' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('another wire') });
         if (mode === 'producer') receipt.producer.producerRevision = discoveryHash('another producer');
         if (mode === 'producer-proof') receipt.producer.proof = { scope: 'another same-task witness' };

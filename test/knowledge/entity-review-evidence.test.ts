@@ -11,6 +11,7 @@ import { ENTITY_REVIEW_RECEIPT_MAX_BYTES, EntityReviewReceiptSchema,
   type EntityReviewArchivePort, type EntityReviewReceipt } from '../../src/knowledge/extraction/entity-review-evidence.js';
 import { ENTITY_REVIEW_SYSTEM, ENTITY_REVIEW_WIRE_ID, ENTITY_REVIEW_WIRE_SCHEMA,
   ENTITY_REVIEW_OUTPUT_NAME, buildEntityReviewInput } from '../../src/knowledge/extraction/entity-review.js';
+import { ENTITY_CODE_REFERENT_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { modelWindow } from './fixtures.js';
 import { studyNativeResult } from './extraction-study-fixtures.js';
 
@@ -75,6 +76,8 @@ describe('entity review native archive evidence', () => {
     expect(f.read).toHaveBeenCalledExactlyOnceWith(f.reference.receiptId, f.reference.receiptRef);
     const input = f.inspect.mock.calls[0][1];
     expect(input).toEqual(f.execution.input); expect(input.system).toBe(ENTITY_REVIEW_SYSTEM);
+    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-entity-review-system/v2' });
+    expect(f.receipt.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(input.outputFormat).toMatchObject({ mode: 'json-schema', name: ENTITY_REVIEW_OUTPUT_NAME });
     expect(input.outputFormat?.mode === 'json-schema' && input.outputFormat.schema).toBe(ENTITY_REVIEW_WIRE_SCHEMA);
     expect(f.receipt.request.wireId).toBe(ENTITY_REVIEW_WIRE_ID);
@@ -85,7 +88,7 @@ describe('entity review native archive evidence', () => {
   });
 
   it.each(['receipt-id', 'native-receipt-id', 'native-attempt-id', 'source', 'analysis', 'revision', 'catalog-digest',
-    'input', 'system', 'wire', 'model', 'executor', 'timeout', 'tokens', 'producer', 'request-digest', 'finish-time'] as const)(
+    'input', 'system', 'system-version', 'wire', 'model', 'executor', 'timeout', 'tokens', 'producer', 'request-digest', 'finish-time'] as const)(
     'rejects a resealed but conflicting %s rather than trusting a matching ID alone', mode => {
       const f = setup();
       if (mode === 'receipt-id') f.receipt.receiptId = uid(80);
@@ -97,6 +100,7 @@ describe('entity review native archive evidence', () => {
       if (mode === 'catalog-digest') f.receipt.binding.entityAnalysisDigest = hash('different catalog');
       if (mode === 'input') f.receipt.request.input += ' ';
       if (mode === 'system') f.receipt.request.system += ' ';
+      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-entity-review-system/v1' });
       if (mode === 'wire') f.receipt.request.wireId = hash('different wire');
       if (mode === 'model') f.receipt.request.model = 'other-model';
       if (mode === 'executor') f.receipt.request.executor = 'openai-api';
