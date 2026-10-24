@@ -75,6 +75,7 @@ test/knowledge/entity-refinement.test.ts
 test/knowledge/mention-rebinding.test.ts
 test/knowledge/refined-entities-evidence.test.ts
 test/knowledge/refined-entities-application.test.ts
+test/knowledge/refined-entities-knowledge-application.test.ts
 test/knowledge/bound-knowledge.test.ts
 test/knowledge/bound-knowledge-evidence.test.ts
 test/knowledge/entity-first-bound-knowledge-profile.test.ts

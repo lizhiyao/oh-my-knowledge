@@ -11,6 +11,7 @@ import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.j
 import type { EntityAnalysisStore } from '../../src/knowledge/entities/contracts.js';
 import type { EvidenceStore, EvidenceWindow } from '../../src/knowledge/extraction/evidence.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
+import { readRefinedEntitiesKnowledgeContext } from '../../src/knowledge/application/refined-entities.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
 
 const roots: string[] = [];
@@ -38,12 +39,14 @@ function setup(executor: 'codex' | 'openai-api' = 'codex', options: Parameters<t
     now: vi.fn(() => { throw new Error('Import must preserve native completion time.'); }) };
   const selection = { snapshotId: f.source.snapshotId, sourceVersion: f.source.sourceVersion };
   const app = (store: EntityAnalysisStore = entities) => new KnowledgeApplication({ ...ports, entities: store });
+  const knowledgeContext = (store: EntityAnalysisStore = entities) => readRefinedEntitiesKnowledgeContext(
+    { ...ports, entities: store }, selection, f.model, f.references());
   const noWrites = () => {
     expect(entities.list().histories).toEqual([]);
     expect(runs.listManifests()).toEqual([]); expect(knowledge.list()).toEqual([]);
     expect(ports.id).not.toHaveBeenCalled(); expect(ports.now).not.toHaveBeenCalled();
   };
-  return { ...f, root, window, evidence, entities, knowledge, runs, ports, selection, app, noWrites };
+  return { ...f, root, window, evidence, entities, knowledge, runs, ports, selection, app, knowledgeContext, noWrites };
 }
 
 describe('one bounded refinement through real entity storage (authored originals only)', () => {
@@ -83,11 +86,69 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(group.collection?.memberEntityIds).toHaveLength(2);
     expect(group.collection?.mentionIds.every(id => revision.mentions.some(mention => mention.mentionId === id))).toBe(true);
     expect(revision.limitations).toEqual(f.source.limitations);
+    const beforeRead = f.entities.list(), writeSpy = vi.spyOn(f.entities, 'write');
+    const context = f.knowledgeContext();
+    expect(context.window).toEqual(f.window);
+    expect(context).toMatchObject({ analysisId: result.analysisId, revisionId: result.revisionId,
+      chainDigest: result.chainDigest, entityFinishedAt: f.rebindingReceipt.finishedAt, semanticStatus: 'not_reviewed' });
+    expect(context.write).toEqual(result.write);
+    expect([context.base, context.refinement, context.rebinding]).toEqual([result.base, result.refinement, result.rebinding]);
+    expect(context.catalog).toEqual({ analysisId: result.analysisId, revisionId: result.revisionId,
+      snapshotId: f.source.snapshotId, sourceVersion: f.source.sourceVersion,
+      entities: revision.entities, mentions: revision.mentions, limitations: revision.limitations });
+    expect(context).not.toHaveProperty('entityRunId'); expect(context).not.toHaveProperty('extractionRun');
+    context.window.excerpts[0].text = 'Caller changed its own context.';
+    context.catalog.entities[0].description = 'Caller changed its own catalog.';
+    expect(f.entities.list()).toEqual(beforeRead); expect(f.window.excerpts).toEqual(f.source.excerpts);
+    expect(writeSpy).not.toHaveBeenCalled(); expect(f.evidence.delete).not.toHaveBeenCalled();
     expect([f.old.bytesA(), f.old.bytesB(), f.bytesRefinement(), f.bytesRebinding()]).toEqual(originalBytes);
     expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
     expect(f.entities.list().histories).toHaveLength(1);
     expect(f.ports.id).not.toHaveBeenCalled(); expect(f.ports.now).not.toHaveBeenCalled();
   });
+
+  it('requires a persisted initial revision and keeps it fixed after a legitimate later revision', () => {
+    const f = setup();
+    expect(() => f.knowledgeContext()).toThrow(); f.noWrites();
+    const imported = f.app().importRefinedEntities(f.selection, f.model, f.references());
+    if (imported.status !== 'committed') throw new Error('Expected authored final import.');
+    f.entities.write({ ...imported.write, requestId: '00000000-0000-4000-8000-000000000098',
+      expectedGeneration: 1, expectedHeadRevisionId: imported.revisionId,
+      revision: { ...imported.write.revision, revisionId: '00000000-0000-4000-8000-000000000099',
+        parentRevisionId: imported.revisionId, revisedBy: f.ports.actor, revisedAt: '2026-10-24T00:00:08Z',
+        revisionReason: 'Authored later revision, independent from the immutable initial handoff.',
+        entities: imported.write.revision.entities.map(entity => ({ ...entity, description: 'Authored subsequent description.' })) } }, f.ports.actor);
+    const beforeRead = f.entities.read(imported.analysisId), writeSpy = vi.spyOn(f.entities, 'write');
+    const context = f.knowledgeContext();
+    expect(context.catalog.revisionId).toBe(imported.revisionId);
+    expect(context.catalog.entities).toEqual(imported.write.revision.entities);
+    expect(context.entityFinishedAt).toBe(f.rebindingReceipt.finishedAt);
+    expect(f.entities.read(imported.analysisId)).toEqual(beforeRead); expect(beforeRead.revisions).toHaveLength(2);
+    expect(writeSpy).not.toHaveBeenCalled(); expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
+  });
+
+  it.each(['analysis-id', 'source-snapshot', 'source-version', 'missing-initial', 'revision-content', 'revision-actor', 'write-intent'] as const)(
+    'refuses a persisted initial handoff changed at %s without producing effects', mode => {
+      const f = setup();
+      expect(f.app().importRefinedEntities(f.selection, f.model, f.references()).status).toBe('committed');
+      const beforeRead = f.entities.list();
+      const write = vi.fn(() => { throw new Error('Read-only context must not write.'); });
+      const changed: EntityAnalysisStore = { list: () => f.entities.list(), write, read: id => {
+        const history = f.entities.read(id);
+        if (mode === 'analysis-id') history.analysisId = '00000000-0000-4000-8000-000000000099';
+        if (mode === 'source-snapshot') history.snapshotId = '00000000-0000-4000-8000-000000000099';
+        if (mode === 'source-version') history.sourceVersion = `sha256:${'f'.repeat(64)}`;
+        if (mode === 'missing-initial') history.revisions = [];
+        if (mode === 'revision-content') history.revisions[0].entities[0].description = 'Changed persisted initial content.';
+        if (mode === 'revision-actor') history.revisions[0].revisedBy = f.ports.actor;
+        if (mode === 'write-intent') history.receipts[0].commandDigest = `sha256:${'f'.repeat(64)}`;
+        return history;
+      } };
+      expect(() => f.knowledgeContext(changed)).toThrow('differs from the persisted initial revision or write intent');
+      expect(write).not.toHaveBeenCalled(); expect(f.entities.list()).toEqual(beforeRead);
+      expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
+    },
+  );
 
   it('replays after a lost durable acknowledgement with the same write intent and without another revision', () => {
     const f = setup(), writes: unknown[] = []; let lose = true;
@@ -123,6 +184,9 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(f.app().importRefinedEntities(f.selection, f.model, f.references()).status).toBe('committed');
     const otherActor = new KnowledgeApplication({ ...f.ports, actor: { actorKind: 'agent', actorId: 'different-author', executionRef: 'another-authored-invocation' } });
     expect(() => otherActor.importRefinedEntities(f.selection, f.model, f.references())).toThrow();
+    expect(() => readRefinedEntitiesKnowledgeContext({ ...f.ports,
+      actor: { actorKind: 'agent', actorId: 'different-author', executionRef: 'another-authored-invocation' } },
+    f.selection, f.model, f.references())).toThrow('differs from the persisted initial revision or write intent');
     expect(f.entities.list().histories).toHaveLength(1);
   });
 
@@ -135,6 +199,7 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(context.status).toBe('blocked'); expect(context).not.toHaveProperty('execution');
     const result = f.app().importRefinedEntities(f.selection, f.model, f.references());
     expect(result.status).toBe('blocked');
+    expect(() => f.knowledgeContext()).toThrow('requires a ready final analysis');
     expect(f.refinedRead.mock.calls.every(call => call[0] === 'refinement')).toBe(true);
     f.noWrites();
   });
@@ -153,6 +218,7 @@ describe('one bounded refinement through real entity storage (authored originals
     f.result('rebinding').output = JSON.stringify(f.rebindingResponse); f.resealRebinding();
     const result = f.app().importRefinedEntities(f.selection, f.model, f.references());
     expect(result.status).toBe('blocked'); expect(result.semanticStatus).toBe('not_reviewed'); f.noWrites();
+    expect(() => f.knowledgeContext()).toThrow('requires a ready final analysis'); f.noWrites();
   });
 
   it('reauthenticates original predecessors even after a successful import', () => {
@@ -160,6 +226,8 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(f.app().importRefinedEntities(f.selection, f.model, f.references()).status).toBe('committed');
     f.old.bindingReceipt.producer.producerRevision = `sha256:${'f'.repeat(64)}`; f.old.resealB();
     expect(() => f.app().importRefinedEntities(f.selection, f.model, f.references())).toThrow();
+    const readSpy = vi.spyOn(f.entities, 'read');
+    expect(() => f.knowledgeContext()).toThrow(); expect(readSpy).not.toHaveBeenCalled();
     expect(f.entities.list().histories).toHaveLength(1);
   });
 
@@ -171,6 +239,8 @@ describe('one bounded refinement through real entity storage (authored originals
   it('rejects a changed source or unavailable source and never falls back to stale context', () => {
     const f = setup(); f.window.excerpts[0].text += ' Changed.';
     expect(() => f.app().importRefinedEntities(f.selection, f.model, f.references())).toThrow(); f.noWrites();
+    const readSpy = vi.spyOn(f.entities, 'read');
+    expect(() => f.knowledgeContext()).toThrow(); expect(readSpy).not.toHaveBeenCalled(); f.noWrites();
     const app = new KnowledgeApplication({ ...f.ports, evidence: { ...f.evidence,
       read: () => ({ status: 'unavailable' as const, reason: 'missing' as const, detail: 'Authored unavailable source.' }) } });
     expect(() => app.refinedEntitiesContext(f.selection, f.model, f.references())).toThrow('source unavailable'); f.noWrites();

@@ -4,7 +4,7 @@ import { EntityAnalysisDraftSchema, type EntityAnalysisStore, type EntityAnalysi
 import { mapEntityIdentity } from '../entities/identity.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
 import { canonicalJson } from '../store.js';
-import { BoundKnowledgeSourceSchema } from '../extraction/bound-catalog.js';
+import { BoundKnowledgeSourceSchema, type BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
 import type { EvidenceStore } from '../extraction/evidence.js';
 import type { SourcePlanArchivePort } from '../extraction/source-plan-evidence.js';
 import type { EntityDiscoveryArchivePort } from '../extraction/discovered-entities-evidence.js';
@@ -50,7 +50,7 @@ function readBase(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
   }
   const base = readRefinedEntitiesBaseEvidence(source, model, references, {
     sourcePlanArchive: ports.sourcePlanArchive, discoveredEntitiesArchive: ports.discoveredEntitiesArchive });
-  return { source, base, archive: ports.refinedEntitiesArchive };
+  return { window, source, base, archive: ports.refinedEntitiesArchive };
 }
 
 /** Authenticate current plan→A→B and materialize the actual A′ factory input without constructing an executor. */
@@ -74,11 +74,10 @@ export function readRefinedEntitiesRebindingContext(ports: RefinedEntitiesPorts,
   return structuredClone({ status: 'ready' as const, semanticStatus: 'not_reviewed' as const, source, base, refinement, execution });
 }
 
-/** Re-authenticate all five originals and write only the complete final analysis, with no extraction run or K effects. */
-export function importRefinedEntityAnalysis(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
-  model: RefinedEntitiesModel, references: RefinedEntitiesReferences, signal?: AbortSignal) {
-  signal?.throwIfAborted();
-  const { source, base, archive } = readBase(ports, selection, model, references);
+/** Both publication and the read-only handoff derive exactly the same initial write intent. */
+function prepareRefinedEntityAnalysis(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
+  model: RefinedEntitiesModel, references: RefinedEntitiesReferences) {
+  const { window, source, base, archive } = readBase(ports, selection, model, references);
   const refinement = readEntityRefinementEvidence(source, model, references.refinement, archive, base);
   if (refinement.checked.dispositionIssues.length) {
     return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, base, refinement,
@@ -119,6 +118,36 @@ export function importRefinedEntityAnalysis(ports: RefinedEntitiesPorts, selecti
     expectedGeneration: 0, expectedHeadRevisionId: null,
     revision: { ...draft, revisionId, revisedAt: rebinding.receipt.finishedAt, revisedBy: actor,
       revisionReason: '从来源清单、实体发现、绑定与一次目录修订原件合成，等待核对' } };
+  return { status: 'ready' as const, window, source, chainDigest, analysisId, revisionId, actor, write, base, refinement, rebinding };
+}
+
+/** Authenticate all five originals against their persisted initial analysis, without generating or writing anything. */
+export function readRefinedEntitiesKnowledgeContext(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
+  model: RefinedEntitiesModel, references: RefinedEntitiesReferences) {
+  const prepared = prepareRefinedEntityAnalysis(ports, selection, model, references);
+  if (prepared.status !== 'ready') throw new Error('Refined entities knowledge requires a ready final analysis.');
+  const { window, source, chainDigest, analysisId, revisionId, actor, write, base, refinement, rebinding } = prepared;
+  const history = ports.entities.read(analysisId), revision = history.revisions[0], receipt = history.receipts[0];
+  const expectedReceipt = { requestId: write.requestId, commandDigest: digest({ actor, command: write }),
+    committedGeneration: 1, revisionId };
+  if (history.analysisId !== analysisId || history.snapshotId !== source.snapshotId || history.sourceVersion !== source.sourceVersion
+    || !revision || canonicalJson(revision) !== canonicalJson(write.revision)
+    || !receipt || canonicalJson(receipt) !== canonicalJson(expectedReceipt)) {
+    throw new Error('Refined entities analysis differs from the persisted initial revision or write intent.');
+  }
+  const catalog: BoundKnowledgeCatalog = { analysisId, revisionId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
+    entities: revision.entities, mentions: revision.mentions, limitations: revision.limitations };
+  return structuredClone({ window, catalog, chainDigest, entityFinishedAt: rebinding.receipt.finishedAt,
+    analysisId, revisionId, write, base, refinement, rebinding, semanticStatus: 'not_reviewed' as const });
+}
+
+/** Re-authenticate all five originals and write only the complete final analysis, with no extraction run or K effects. */
+export function importRefinedEntityAnalysis(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
+  model: RefinedEntitiesModel, references: RefinedEntitiesReferences, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const prepared = prepareRefinedEntityAnalysis(ports, selection, model, references);
+  if (prepared.status !== 'ready') return prepared;
+  const { chainDigest, analysisId, revisionId, actor, write, base, refinement, rebinding } = prepared;
   signal?.throwIfAborted();
   const receipt = ports.entities.write(write, actor);
   return { status: 'committed' as const, semanticStatus: 'not_reviewed' as const, chainDigest,
