@@ -123,6 +123,18 @@ Architectural responsibilities in the source can support component identity with
 | “Quartz passed, but the record does not say in which environment.” | Retain Quartz when the discussed component is known; environment is unknown and the success claim has limited scope. | Invent an “unknown Quartz instance” for the unknown environment, or apply success to production. |
 | “T and P are both called Quartz. It failed; which one is still unknown.” | Keep T and P separate; “it” is one unresolved instance with T and P as candidates. | Select the nearest mention P, or hide instance ambiguity in the abstract component. |
 
+**A function or method, a fixed state of its implementation, and one execution are distinct referents.** Apply the independent-discussion test in §2.1 first. A function or method discussed through its general purpose, interface or behavior can be `object`; displaying its definition, a code block or an example does not by itself establish `version`. A separately referable implementation state can be `version`, and an independently identified execution can be `activity`. A known function with an unknown version does not automatically become an `unresolved` identity.
+
+The following are synthetic contrasts, not annotations for a research source:
+
+| Source expression | Identity to use | Handling to reject |
+|---|---|---|
+| “Function F groups entries by key; this example shows how to call it.” | F as an ordinary `object`, with its source-supported purpose and example context. | Treating the displayed definition or example alone as a fixed version. |
+| “Compare the implementations of F before and after the change; archive each separately.” | Two source-distinguished implementation states as `version`; preserve unknown identifiers or release status. | Merging the states because both are named F, or inventing commit or release facts. |
+| “Execution C of F has started; no result is available yet.” | C as an `activity`; retain F separately only when it has independent discussion grounds. | Turning every call expression into an activity entity, or attributing C's eventual result to every execution of F. |
+
+Judge each mention by its actual referent in context. An anchor interval supporting an implementation's identity does not by itself establish that a function identifier inside it denotes that whole implementation state; the same name cannot substitute for a source-supported correspondence. Preserve genuine referential ambiguity rather than changing the type to force a binding. These distinctions clarify existing meanings without adding types, link fields or a storage migration.
+
 **Frozen, archived artifacts are version objects too, not only code states.** A dataset, corpus, schema or build that the source freezes, archives or registers with a version identifier and digest takes `version` identity, and its version may appear in its name; the continuing specification, prompt or tool it belongs to stays `object`/`component`, with the current version only in qualifiers or statements. Do not type an archived artifact as a plain `object` merely because it is not code, and do not split a living thing into version identities merely because a current version is mentioned.
 
 | Source expression | Required identity and claims | Disallowed treatment |

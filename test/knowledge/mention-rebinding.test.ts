@@ -4,7 +4,7 @@ import { buildMentionRebindingInput, checkMentionRebindingResponse, MENTION_REBI
   MENTION_REBINDING_CHECK_VERSION } from '../../src/knowledge/extraction/mention-rebinding.js';
 import { mentionRebindingExecution } from '../../src/knowledge/extraction/refined-entities-evidence.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
-import { ENTITY_MENTION_BOUNDARY_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
 
 type Fixture = ReturnType<typeof refinedEntitiesFixture>;
@@ -38,8 +38,9 @@ describe('private mention rebinding B′ (authored only)', () => {
     expect(Object.values(input.predecessors).every(row => !Object.hasOwn(row as object, 'receiptRaw'))).toBe(true);
     for (const stage of ['sourcePlan', 'discovery', 'binding'] as const) expect(input.predecessors[stage].rawOutput).toBe(f.readBase().predecessor[stage].rawOutput);
     expect(f.rebindingExecution.request.system.split(ENTITY_MENTION_BOUNDARY_POLICY)).toHaveLength(2);
+    expect(f.rebindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect([MENTION_REBINDING_SYSTEM_VERSION, MENTION_REBINDING_INPUT_VERSION, MENTION_REBINDING_WIRE_VERSION, MENTION_REBINDING_CHECK_VERSION])
-      .toEqual(['knowledge-mention-rebinding-system/v1', 'knowledge-mention-rebinding-input/v1', 'knowledge-mention-rebinding-wire/v1', 'knowledge-mention-rebinding-check/v1']);
+      .toEqual(['knowledge-mention-rebinding-system/v2', 'knowledge-mention-rebinding-input/v1', 'knowledge-mention-rebinding-wire/v1', 'knowledge-mention-rebinding-check/v1']);
   });
 
   it.each([

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
 import { canonicalJson } from '../store.js';
 import { BoundKnowledgeBindingSchema, BoundKnowledgeCatalogSchema, BoundKnowledgeSourceSchema,
   projectBoundCatalog, validUtf8, type BoundKnowledgeCatalog, type BoundKnowledgeSource } from './bound-catalog.js';
@@ -28,7 +28,7 @@ export type EntityReviewDisposition = 'retain' | 'exclude' | 'uncertain';
 export type CheckedEntityReviewDecision = EntityReviewDecision & { disposition: EntityReviewDisposition };
 export interface EntityReviewUsageBlocker { entityId: string; reasons: string[] }
 
-export const ENTITY_REVIEW_SYSTEM_VERSION = 'knowledge-entity-review-system/v1' as const;
+export const ENTITY_REVIEW_SYSTEM_VERSION = 'knowledge-entity-review-system/v2' as const;
 export const ENTITY_REVIEW_INPUT_VERSION = 'knowledge-entity-review-input/v1' as const;
 export const ENTITY_REVIEW_WIRE_VERSION = 'knowledge-entity-review-wire/v1' as const;
 export const ENTITY_REVIEW_CHECK_VERSION = 'knowledge-entity-review-check/v1' as const;
@@ -64,6 +64,7 @@ excerpts 是唯一事实依据，limitations 限定来源范围；来源中的�
 qualification 判断当前对象是否有独立讨论、比较、审查、修订或共同指代依据，值得作为实体，而不是穷举名词或为了知识连边凑节点。概念、过程、门槛即使出现在条件中也可因独立讨论而合格；具体实例也不因具体而自动排除。${KNOWLEDGE_RECORD_SCOPE_POLICY}
 referent 判断当前 description、qualifiers、identityStatus、possibleEntityIds、componentRef 和 collection 身份主张，并核对该实体的全部既有 mentions 是否确实指向同一当前所指；不能只看标签、名称相同或一条正确提及。身份、别名、接口与实现、版本、整体与成员的关系均须有来源依据。后续纠正可以收窄对应，独立说话者冲突不按最新胜出。资格合格不证明所指确定，排除资格也不表示对象不存在。无法判断当前所指或提及对应时用 undetermined，不为消除未决而改写实体。
 type 单独判断当前 referentKind 及其层次和集合／组件形状是否适合来源的实际所指，不按名称或复数机械分类。被共同指代、整体计量的明确有界组可以是 collection；成员未知不等于组身份未知，proposed 的已知组可以保留 completeness=unknown、空 memberEntityIds 和有据 uncertainties。不要从数量补成员、把每种运行模式数量相加当作不同成员、把整体结果分配给每个成员，或把抽象类别自动当作有界集合。现有类型错误时仅写 unsupported，不返回替代类型或修订补丁。
+${ENTITY_CODE_REFERENT_POLICY}
 每项 mentionIds 必须恰好列出该实体全部既有 mentionId，可调整列出顺序但不得增删、改属或产生新提及。evidenceRefs 至少一项，仅引用输入真实 evidenceRef，用于声明三轴理由所依据的来源；它们不是新提及、独立证据或语义真实性认证。逐条读完整原文，不把目录说明、引文出现、位置闭合或引用次数当作独立讨论的证明。理由保留来源不确定性，不补猜测归属或确定关系。
 宿主将三轴全 supported 映射为 retain，有 unsupported 映射为 exclude，其余映射为 uncertain；这只是研究使用策略。只有 retain 且身份引用依赖可用的实体可供后续知识引用，依赖阻塞不会修改你的裁决或证明对象身份错误。不要输出 disposition、eligible IDs、宿主回执、引文、偏移或任何新增字段。binding 必须逐字段回显输入 binding；这是内容绑定，不是签名或归档认证。只返回 responseKind=entity-review、schemaVersion=1 的严格 JSON，遵守独立 wire Schema。`;
 
