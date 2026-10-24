@@ -12,7 +12,7 @@ import { discoveredEntitiesFixture, discoveryBytes, discoveryHash, discoveryRef,
 
 /** Authored five-original fixtures only; no provider execution, semantic-quality evidence or human review. */
 export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex',
-  options: { collection?: boolean; unresolved?: boolean; wideGap?: boolean } = {}) {
+  options: { collection?: boolean; unresolved?: boolean; wideGap?: boolean; ambiguousGap?: boolean; overlappingGap?: boolean } = {}) {
   const old = discoveredEntitiesFixture(executor, '😀 Alpha 使用 Beta；Gamma 与 Gamma；该组指前两者；它身份未明。');
   const { source, model, sourcePlanArchive } = old;
   const a = old.discoveryResponse as unknown as EntityDiscoveryResponse;
@@ -36,7 +36,9 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
       bindingStatus: 'bound', entityId: 'u', candidateEntityIds: [], reason: null });
   }
   b.mentions.push({ mentionId: 'gap', selection: options.wideGap ? selection('Gamma 与 Gamma') : selection('Gamma', 0), basis: 'explicit', rationale: 'Authored missing source object.',
-    bindingStatus: 'unbound', entityId: null, candidateEntityIds: [], reason: 'Authored catalog omits Gamma.' });
+    bindingStatus: options.ambiguousGap ? 'ambiguous' : 'unbound', entityId: null,
+    candidateEntityIds: options.ambiguousGap ? ['e0', 'e1'] : [], reason: 'Authored unresolved catalog binding.' });
+  if (options.overlappingGap) b.mentions.push({ ...structuredClone(b.mentions.at(-1)!), mentionId: 'gap-peer', selection: selection('Gamma 与 Gamma') });
   old.result('discovery').output = ` \n${JSON.stringify(a)}\r\n`; old.resealA();
   const originalBindingExecution = mentionBindingExecution(source, old.readA(), model);
   old.bindingReceipt.request = originalBindingExecution.request;
@@ -58,7 +60,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const readBase = () => readRefinedEntitiesBaseEvidence(source, model, references(), { sourcePlanArchive, discoveredEntitiesArchive });
   const base = readBase(), refinementExecution = entityRefinementExecution(source, model, base, refinedEntitiesArchive);
   const mapEntity = (entityId: string) => `next-${entityId}`;
-  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 1,
+  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 2,
     binding: JSON.parse(buildEntityRefinementInput(source, base.predecessor)).binding,
     entities: a.entities.map(entity => ({ ...structuredClone(entity), entityId: mapEntity(entity.entityId),
       possibleEntityIds: entity.possibleEntityIds.map(mapEntity),
@@ -70,7 +72,10 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
     dispositions: a.dispositions.map(row => ({ ...structuredClone(row), entityIds: row.entityIds.map(mapEntity) })),
     entityDispositions: a.entities.map(entity => ({ previousEntityId: entity.entityId, dispositionKind: 'retained',
       entityIds: [mapEntity(entity.entityId)], rationale: 'Authored retained mapping, not source truth.',
-      selections: [structuredClone(a.anchors.find(anchor => anchor.entityId === entity.entityId)!.selection)] })) };
+      selections: [structuredClone(a.anchors.find(anchor => anchor.entityId === entity.entityId)!.selection)] })),
+    bindingGapDispositions: b.mentions.filter(mention => mention.bindingStatus !== 'bound').map(mention => ({ previousMentionId: mention.mentionId, resolutionKind: 'mapped',
+      targets: [{ entityId: 'next-gamma', selection: selection('Gamma', 0) }],
+      rationale: 'Authored gap mapping intent, not a semantic conclusion.', selections: [structuredClone(mention.selection)] })) };
   refinementResponse.entities.push({ entityId: 'next-gamma', label: 'Gamma', description: 'Authored newly discovered Gamma object.', qualifiers: [],
     identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null });
   refinementResponse.anchors.push({ anchorId: 'next-agamma', entityId: 'next-gamma', selection: selection('Gamma', 0) });
@@ -94,12 +99,12 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const mapMention = (mentionId: string) => `next-${mentionId}`;
   const rebindingResponse: MentionRebindingResponse = { responseKind: 'mention-rebinding', schemaVersion: 1,
     binding: JSON.parse(buildMentionRebindingInput(source, base.predecessor, refinement.predecessor)).binding,
-    mentions: b.mentions.map(mention => ({ ...structuredClone(mention), mentionId: mapMention(mention.mentionId),
+    mentions: b.mentions.filter(mention => mention.mentionId !== 'gap-peer').map(mention => ({ ...structuredClone(mention), mentionId: mapMention(mention.mentionId),
       selection: mention.mentionId === 'gap' ? selection('Gamma', 0) : structuredClone(mention.selection),
       bindingStatus: 'bound', entityId: mention.entityId ? mapEntity(mention.entityId) : 'next-gamma', candidateEntityIds: [], reason: null })),
     identitySupports: b.identitySupports.map(support => ({ ...support, entityId: mapEntity(support.entityId), mentionIds: support.mentionIds.map(mapMention) })),
     mentionDispositions: b.mentions.map(mention => ({ previousMentionId: mention.mentionId,
-      dispositionKind: mention.bindingStatus === 'bound' ? 'retained' : 'corrected', mentionIds: [mapMention(mention.mentionId)],
+      dispositionKind: mention.bindingStatus === 'bound' ? 'retained' : 'corrected', mentionIds: [mapMention(mention.mentionId === 'gap-peer' ? 'gap' : mention.mentionId)],
       rationale: 'Authored mapping of an old mention.', selections: [structuredClone(mention.selection)] })),
     supportDispositions: b.identitySupports.map(support => ({ previousSupport: { entityId: support.entityId, supportKind: support.supportKind },
       dispositionKind: 'retained', supports: [{ entityId: mapEntity(support.entityId), supportKind: support.supportKind }],

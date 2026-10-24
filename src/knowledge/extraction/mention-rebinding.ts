@@ -8,12 +8,11 @@ import { buildEntityRefinementInput, checkEntityRefinementResponse, checkRefinem
   EntityRefinementBindingSchema, RefinementDispositionKindSchema, RefinementSelectionSchema, RefinementStageReferenceSchema,
   ENTITY_REFINEMENT_CHECK_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_SYSTEM,
   ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_WIRE_ID, flatRefinementPredecessor, freezeRefinement,
-  prepareEntityRefinementBase, refinementDigest, refinementRawEvidence, refinementSelectionsProblems,
+  prepareEntityRefinementBase, refinementDigest, refinementRawEvidence, refinementSelectionsProblems, refinementSelectionPosition as located,
   refinementStageReference, refinementWireSchema, type EntityRefinementBase, type RefinementPredecessor } from './entity-refinement.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_MENTION_BOUNDARY_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
 import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
-import { locateQuoteOccurrence } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256), byteDigest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const text = z.string().min(1).max(4096).refine(value => value.trim().length > 0);
@@ -28,10 +27,10 @@ export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.l
   supportDispositions: z.array(z.strictObject({ previousSupport: supportKey, dispositionKind: RefinementDispositionKindSchema,
     supports: z.array(supportKey).max(256), rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(256) });
 export type MentionRebindingResponse = z.infer<typeof MentionRebindingResponseSchema>;
-export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v2' as const;
-export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v1' as const;
-export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v1' as const;
-export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v1' as const;
+export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v3' as const;
+export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v2' as const;
+export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v2' as const;
+export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v2' as const;
 export const MENTION_REBINDING_OUTPUT_NAME = 'mention_rebinding_v1' as const;
 export const MENTION_REBINDING_OUTPUT_MAX_BYTES = 1024 * 1024;
 const domainSchema = z.toJSONSchema(MentionRebindingResponseSchema, { target: 'draft-2020-12', io: 'input', unrepresentable: 'throw' });
@@ -49,6 +48,7 @@ ${ENTITY_MENTION_BOUNDARY_POLICY}
 ${ENTITY_CODE_REFERENT_POLICY}
 先判断来源是否构成合格提及，再按固定 A′ 目录绑定。bound 仅有一个已知 entityId、candidateEntityIds=[]、reason=null；ambiguous 用 entityId=null、至少两个不同已知候选及非空 reason；unbound 用 entityId=null、0或1个已知候选及非空 reason。任何非 bound 继续阻断。若来源确实支持一个身份未决的独立对象，且 A′ 有该对象自己的依据、uncertainties 和同层候选，可绑定到该真实 unresolved 对象；不能因旧 B 绑定失败就假定占位对象具备资格，也不能把没有共同指代依据的不同位置合并。普通符号或关系参与者没有独立讨论依据时不自动成为目录缺口。
 每个旧 B mentionId，包括全部旧 bound 项，恰好一条 mentionDispositions。retained 恰好映射到一条实际输出提及，宿主定位的原区间、basis/rationale、绑定状态及按 A′ 实体账唯一重映射的目标或候选均保持不变，仅可重命名 mentionId。边界、目标、状态或内容变化须 corrected，至少一条实际输出目标；边界修订须同 evidenceRef 且新旧区间相交。移到另一独立位置时旧项 excluded，新位置作为新增，不能拿另一处重复引文代替。多旧项合并同一新项时相关账项均 corrected。excluded/undetermined 的 mentionIds=[]；前者须有来源资格理由，后者保存无法决定的问题并阻断。每条账给具体 rationale、覆盖旧位置的逐字 selections，corrected 的依据也覆盖目标位置。新增提及合法但不能代替漏账。
+A′ bindingGapDispositions 是待独立核对的缺口处理意图，不是提及、身份或资格真值。mapped 对应旧项须 corrected，实际返回的 bound 提及与 targets 按显式相同 entityId、同 evidenceRef 相交位置双向唯一对应；可独立修订提及边界，无需逐字沿用意图跨度。复合旧跨度可拆成不同实际位置的多个目标；不能把同一共同指代复制给多个成员，也不能用一条实际提及抵扣多个意图位置。多旧项有据合并时分别交 corrected 账。excluded 对应旧项须 excluded，不能同时将与旧区间相交的位置作为新增提及返回；边界变化须按 corrected 交账，独立不相交位置仍可新增。若独立判断不支持 A′ 意图，保留实际 excluded、undetermined 或非 bound 判断并整体阻断，不照抄、强绑、补提及或把真实 unknown 改成已知身份。
 每个旧 B identitySupports 以 previousSupport={entityId,supportKind} 恰好一条 supportDispositions。retained 恰好一条实际新支持，声明所有者须在 A′ entityDispositions 中 retained，supportKind 不变，支持提及须恰好是旧支持全部 mentionIds 经 retained 提及账得到的映射。声明、支持提及或拆合变化用 corrected，至少一个实际新支持；所有新支持目标的 entityId 均须属于 A′ 对旧声明所有者的显式 entityIds 映射，不能挪到无关新增对象。合并均 corrected。excluded/undetermined 的 supports=[]；只要旧声明所有者经 A′ 映射后仍有同类声明，就不能 excluded 后无账重建，须 corrected。undetermined 阻断。每条支持账给具体来源 rationale 和逐字 selections。
 最终 identitySupports 恰好覆盖 A′ 每个非空 componentRef/collection 声明；只能引用实际 bound mentionIds，每条须落在声明 anchorIds 的同 evidenceRef 区间内，至少一条归声明实体。每个 A′ 实体至少有一条 owned anchor 内实际 bound 提及；不从 anchor 自动补提及。同一来源位置不得重复占用，引用只能指向 A′。任何未决、缺失、丢弃或规范化都整份阻断，不能部分接纳。空目录仅允许空提及及支持，但旧项仍须完整交账。
 严格回显 binding，仅返回 responseKind=mention-rebinding、schemaVersion=1 的严格 JSON。完整账目只证明没有静默丢项，不证明排除理由、身份或语义正确，也不代表人工验收或 gold。`;
@@ -87,14 +87,10 @@ export type MentionRebindingCheck = { raw: WireRawEvidence; semanticStatus: 'not
     | { status: 'ready'; analysis: { entities: EntityModel[]; mentions: EntityMention[] } }
     | { status: 'blocked'; issues: string[] } });
 const supportId = (support: { entityId: string; supportKind: string }) => canonicalJson([support.entityId, support.supportKind]);
-function located(source: BoundKnowledgeSource, selection: z.infer<typeof RefinementSelectionSchema>): EvidenceSelection {
-  const result = locateQuoteOccurrence({ evidenceRef: selection.evidenceRef, quote: selection.quote,
-    ...(selection.occurrence === null ? {} : { occurrence: selection.occurrence }) }, source.excerpts);
-  if (typeof result === 'string') throw new Error('Checked rebinding selection lost its source binding.');
-  return result;
-}
 const inside = (selection: EvidenceSelection, context: EvidenceSelection) => selection.evidenceRef === context.evidenceRef
   && selection.start >= context.start && selection.end <= context.end;
+const overlaps = (left: EvidenceSelection, right: EvidenceSelection) => left.evidenceRef === right.evidenceRef
+  && left.start < right.end && right.start < left.end;
 
 export function checkMentionRebindingResponse(input: string | Uint8Array, source: BoundKnowledgeSource,
   base: EntityRefinementBase, refinement: RefinementPredecessor): MentionRebindingCheck {
@@ -147,6 +143,37 @@ export function checkMentionRebindingResponse(input: string | Uint8Array, source
   }
   for (const id of oldMentions.keys()) if (!seenMentions.has(id)) issues.push(`mention-disposition:${id}:missing_mention`);
   for (const [id, rows] of mentionTargets) if (rows.length > 1 && rows.some(row => row.dispositionKind !== 'corrected')) issues.push(`mention-disposition-target:${id}:merge_requires_correction`);
+  for (const gap of prepared.catalog.bindingGapDispositions) {
+    const prefix = `binding-gap:${gap.previousMentionId}`;
+    const row = response.mentionDispositions.find(value => value.previousMentionId === gap.previousMentionId);
+    if (!row || row.dispositionKind === 'undetermined') continue;
+    if (gap.resolutionKind === 'excluded') {
+      if (row.dispositionKind !== 'excluded') blockers.push(`${prefix}:resolution_mismatch`);
+      const original = located(prepared.source, oldMentions.get(gap.previousMentionId)!.selection);
+      if (response.mentions.some(mention => overlaps(located(prepared.source, mention.selection), original))) blockers.push(`${prefix}:excluded_position_returned`);
+      continue;
+    }
+    if (row.dispositionKind !== 'corrected') { blockers.push(`${prefix}:resolution_mismatch`); continue; }
+    const actual = row.mentionIds.flatMap(id => {
+      const mention = mentions.get(id);
+      return mention ? [{ mention, position: located(prepared.source, mention.selection) }] : [];
+    });
+    const actualMatchCounts = actual.map(() => 0);
+    let correspondenceMismatch = false;
+    for (const target of gap.targets) {
+      const position = located(prepared.source, target.selection);
+      let targetMatchCount = 0;
+      actual.forEach((value, index) => {
+        if (value.mention.bindingStatus === 'bound' && value.mention.entityId === target.entityId && overlaps(value.position, position)) {
+          targetMatchCount++; actualMatchCounts[index]!++;
+        }
+      });
+      if (targetMatchCount !== 1) correspondenceMismatch = true;
+    }
+    if (correspondenceMismatch || actualMatchCounts.some(count => count !== 1)) {
+      blockers.push(`${prefix}:target_correspondence_mismatch`);
+    }
+  }
   const oldSupports = new Map(prepared.binding.identitySupports.map(value => [supportId(value), value]));
   const supports = new Map(response.identitySupports.map(value => [supportId(value), value]));
   const seenSupports = new Set<string>(), supportTargets = new Map<string, typeof response.supportDispositions>();

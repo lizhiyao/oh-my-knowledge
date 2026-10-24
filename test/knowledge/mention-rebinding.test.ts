@@ -14,6 +14,15 @@ function rejected(f: Fixture, code: string) {
   const result = check(f); expect(result.status).toBe('rejected');
   if (result.status === 'rejected') expect(result.issues.some(issue => issue.includes(code))).toBe(true);
 }
+function resealCatalog(f: Fixture) {
+  f.result('refinement').output = JSON.stringify(f.refinementResponse); f.resealRefinement();
+  f.rebindingResponse.binding = JSON.parse(buildMentionRebindingInput(f.source, f.readBase().predecessor, f.readRefinement().predecessor)).binding;
+}
+function blocked(f: Fixture, code: string) {
+  const result = check(f);
+  expect(result).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed', admission: { status: 'blocked' }, raw: { text: JSON.stringify(f.rebindingResponse) } });
+  if (result.status === 'checked' && result.admission.status === 'blocked') expect(result.admission.issues.some(issue => issue.includes(code))).toBe(true);
+}
 
 describe('private mention rebinding B′ (authored only)', () => {
   it.each(['codex', 'openai-api'] as const)('composes %s only after complete old mention accounting and a source-supported addition', executor => {
@@ -40,7 +49,7 @@ describe('private mention rebinding B′ (authored only)', () => {
     expect(f.rebindingExecution.request.system.split(ENTITY_MENTION_BOUNDARY_POLICY)).toHaveLength(2);
     expect(f.rebindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect([MENTION_REBINDING_SYSTEM_VERSION, MENTION_REBINDING_INPUT_VERSION, MENTION_REBINDING_WIRE_VERSION, MENTION_REBINDING_CHECK_VERSION])
-      .toEqual(['knowledge-mention-rebinding-system/v2', 'knowledge-mention-rebinding-input/v1', 'knowledge-mention-rebinding-wire/v1', 'knowledge-mention-rebinding-check/v1']);
+      .toEqual(['knowledge-mention-rebinding-system/v3', 'knowledge-mention-rebinding-input/v2', 'knowledge-mention-rebinding-wire/v2', 'knowledge-mention-rebinding-check/v2']);
   });
 
   it.each([
@@ -66,10 +75,88 @@ describe('private mention rebinding B′ (authored only)', () => {
 
   it('allows an explicit corrected boundary only at the overlapping original position', () => {
     const f = refinedEntitiesFixture('codex', { wideGap: true });
+    f.refinementResponse.bindingGapDispositions[0].targets[0].selection = structuredClone(f.old.bindingResponse.mentions.at(-1)!.selection);
+    resealCatalog(f);
     expect(f.old.bindingResponse.mentions.at(-1)?.selection.quote).toBe('Gamma 与 Gamma');
     expect(f.rebindingResponse.mentions.at(-1)?.selection).toEqual({ evidenceRef: 'record-1', quote: 'Gamma', occurrence: 0 });
     expect(check(f)).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed', admission: { status: 'ready' } });
   });
+
+  it('closes a compound old gap through distinct positions and entities without forcing a composite object', () => {
+    const f = refinedEntitiesFixture('codex', { wideGap: true });
+    const entity = structuredClone(f.refinementResponse.entities.find(row => row.entityId === 'next-gamma')!);
+    entity.entityId = 'second-object'; entity.description = 'Authored separate source referent.';
+    const selection = { evidenceRef: 'record-1', quote: 'Gamma', occurrence: 1 };
+    f.refinementResponse.entities.push(entity);
+    f.refinementResponse.anchors.push({ anchorId: 'second-anchor', entityId: entity.entityId, selection });
+    f.refinementResponse.bindingGapDispositions[0].targets.push({ entityId: entity.entityId, selection });
+    const mention = { ...structuredClone(f.rebindingResponse.mentions.at(-1)!), mentionId: 'second-mention', entityId: entity.entityId, selection };
+    f.rebindingResponse.mentions.push(mention); f.rebindingResponse.mentionDispositions.at(-1)!.mentionIds.push(mention.mentionId);
+    resealCatalog(f);
+    expect(check(f)).toMatchObject({ status: 'checked', admission: { status: 'ready' }, semanticStatus: 'not_reviewed' });
+    f.rebindingResponse.mentionDispositions.at(-1)!.mentionIds.pop();
+    blocked(f, 'target_correspondence_mismatch');
+    f.rebindingResponse.mentionDispositions.at(-1)!.mentionIds.push(mention.mentionId);
+    mention.selection = { ...selection, occurrence: 0 };
+    rejected(f, 'duplicate_mention_position');
+  });
+
+  it('accounts for multiple old gaps corrected into one actual mention without losing either old item', () => {
+    const f = refinedEntitiesFixture('codex', { overlappingGap: true });
+    expect(f.refinementResponse.bindingGapDispositions.map(row => row.previousMentionId)).toEqual(['gap', 'gap-peer']);
+    expect(check(f)).toMatchObject({ status: 'checked', admission: { status: 'ready' } });
+    f.rebindingResponse.mentionDispositions.find(row => row.previousMentionId === 'gap-peer')!.dispositionKind = 'retained';
+    rejected(f, 'merge_requires_correction');
+  });
+
+  it('does not debit two intended positions against one broader actual mention of the same entity', () => {
+    const f = refinedEntitiesFixture('codex', { wideGap: true });
+    f.refinementResponse.bindingGapDispositions[0].targets.push({ entityId: 'next-gamma',
+      selection: { evidenceRef: 'record-1', quote: 'Gamma', occurrence: 1 } });
+    const mention = { ...structuredClone(f.rebindingResponse.mentions.at(-1)!), mentionId: 'second-mention',
+      selection: { evidenceRef: 'record-1', quote: 'Gamma', occurrence: 1 } };
+    f.rebindingResponse.mentions.push(mention); f.rebindingResponse.mentionDispositions.at(-1)!.mentionIds.push(mention.mentionId);
+    const original = f.old.bindingResponse.mentions.at(-1)!.selection;
+    f.refinementResponse.anchors.push({ anchorId: 'wide-anchor', entityId: 'next-gamma', selection: structuredClone(original) });
+    resealCatalog(f);
+    expect(check(f)).toMatchObject({ status: 'checked', admission: { status: 'ready' } });
+    f.rebindingResponse.mentions.pop(); f.rebindingResponse.mentionDispositions.at(-1)!.mentionIds.pop();
+    f.rebindingResponse.mentions.at(-1)!.selection = structuredClone(original);
+    blocked(f, 'target_correspondence_mismatch');
+  });
+
+  it('permits a gap to bind to a source-authored unresolved object while preserving identity uncertainty', () => {
+    const f = refinedEntitiesFixture('codex', { ambiguousGap: true });
+    Object.assign(f.refinementResponse.entities.find(row => row.entityId === 'next-gamma')!, {
+      identityStatus: 'unresolved', possibleEntityIds: ['next-e0', 'next-e1'], uncertainties: ['Authored identity remains unknown.'] });
+    resealCatalog(f);
+    expect(check(f)).toMatchObject({ status: 'checked', admission: { status: 'ready' }, semanticStatus: 'not_reviewed' });
+    expect(f.old.bindingResponse.mentions.at(-1)).toMatchObject({ bindingStatus: 'ambiguous', entityId: null });
+  });
+
+  it.each(['independent-exclusion', 'wrong-entity', 'excluded-reintroduced', 'excluded-narrowed', 'excluded-expanded', 'excluded-independent', 'excluded-agrees'] as const)(
+    'preserves independent B-prime judgment and closes gap intent: %s', mode => {
+      const f = refinedEntitiesFixture('codex', { wideGap: mode === 'excluded-narrowed' }), row = f.rebindingResponse.mentionDispositions.at(-1)!;
+      if (mode === 'wrong-entity') f.rebindingResponse.mentions.at(-1)!.entityId = 'next-e0';
+      else Object.assign(row, { dispositionKind: 'excluded', mentionIds: [] });
+      if (mode.startsWith('excluded-')) {
+        Object.assign(f.refinementResponse.bindingGapDispositions[0], { resolutionKind: 'excluded', targets: [] });
+        if (mode === 'excluded-expanded' || mode === 'excluded-independent') {
+          const selection = mode === 'excluded-expanded' ? { evidenceRef: 'record-1', quote: 'Gamma 与 Gamma', occurrence: null }
+            : { evidenceRef: 'record-1', quote: 'Gamma', occurrence: 1 };
+          f.rebindingResponse.mentions.at(-1)!.selection = selection;
+          f.refinementResponse.anchors.find(anchor => anchor.entityId === 'next-gamma')!.selection = structuredClone(selection);
+        }
+        if (mode === 'excluded-agrees') {
+          f.refinementResponse.entities = f.refinementResponse.entities.filter(entity => entity.entityId !== 'next-gamma');
+          f.refinementResponse.anchors = f.refinementResponse.anchors.filter(anchor => anchor.entityId !== 'next-gamma');
+          f.rebindingResponse.mentions = f.rebindingResponse.mentions.filter(mention => mention.mentionId !== 'next-gap');
+        }
+        resealCatalog(f);
+      }
+      if (mode === 'excluded-agrees' || mode === 'excluded-independent') expect(check(f)).toMatchObject({ status: 'checked', admission: { status: 'ready' }, semanticStatus: 'not_reviewed' });
+      else blocked(f, mode === 'wrong-entity' ? 'target_correspondence_mismatch' : mode.startsWith('excluded-') ? 'excluded_position_returned' : 'resolution_mismatch');
+    });
 
   it.each([
     ['missing old support', (f: Fixture) => { f.rebindingResponse.supportDispositions = []; }, 'missing_support'],
@@ -109,7 +196,7 @@ describe('private mention rebinding B′ (authored only)', () => {
   });
 
   it.each(['undetermined-mention', 'undetermined-support', 'unbound', 'ambiguous'] as const)('keeps %s as a whole-analysis blocker', mode => {
-    const f = refinedEntitiesFixture('codex', { collection: true });
+    const f = refinedEntitiesFixture('codex', { collection: true, ambiguousGap: mode === 'ambiguous' });
     if (mode === 'undetermined-mention') Object.assign(f.rebindingResponse.mentionDispositions.at(-1)!, { dispositionKind: 'undetermined', mentionIds: [] });
     else if (mode === 'undetermined-support') Object.assign(f.rebindingResponse.supportDispositions[0], { dispositionKind: 'undetermined', supports: [] });
     else Object.assign(f.rebindingResponse.mentions.at(-1)!, { bindingStatus: mode, entityId: null,

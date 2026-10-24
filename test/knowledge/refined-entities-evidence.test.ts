@@ -72,6 +72,7 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     const execution = entityRefinementExecution(f.source, f.model, base, f.refinedEntitiesArchive);
     f.refinementReceipt.request = execution.request; f.refinementReceipt.producer = execution.producer;
     f.refinementResponse.binding = JSON.parse(execution.request.input).binding;
+    f.refinementResponse.bindingGapDispositions = [];
     f.result('refinement').output = ` \n${JSON.stringify(f.refinementResponse)}\r\n`; f.resealRefinement();
     expect(f.readRefinement().checked).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed' });
     expect(JSON.parse(execution.request.input).predecessors.binding.rawOutput).toBe(f.old.result('binding').output);
@@ -97,7 +98,7 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     });
 
   for (const stage of stages) {
-    it.each(['reference-id', 'native-receipt', 'native-attempt', 'source', 'input', 'system', 'system-version', 'wire',
+    it.each(['reference-id', 'native-receipt', 'native-attempt', 'source', 'input', 'input-version', 'system', 'system-version', 'wire',
       'producer', 'producer-proof', 'request-digest', 'chronology', 'reversed-time'] as const)(
       `${stage} rejects a resealed %s conflict`, mode => {
         const f = refinedEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
@@ -105,9 +106,11 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         if (mode === 'native-attempt') native.attemptId = discoveryUid(90);
         if (mode === 'source') receipt.sourceVersion = discoveryHash('another source');
         if (mode === 'input') receipt.request.input += ' ';
+        if (mode === 'input-version') Object.assign(receipt.request, { inputVersion: stage === 'refinement'
+          ? 'knowledge-entity-refinement-input/v1' : 'knowledge-mention-rebinding-input/v1' });
         if (mode === 'system') receipt.request.system += ' ';
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'refinement'
-          ? 'knowledge-entity-refinement-system/v1' : 'knowledge-mention-rebinding-system/v1' });
+          ? 'knowledge-entity-refinement-system/v2' : 'knowledge-mention-rebinding-system/v2' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('another wire') });
         if (mode === 'producer') receipt.producer.producerRevision = discoveryHash('another producer');
         if (mode === 'producer-proof') receipt.producer.proof = { scope: 'another same-task witness' };
@@ -241,14 +244,14 @@ describe('finite entity refinement archive evidence (authored originals only)', 
       expect(() => f.readBase()).toThrow('independent'); expect(f.refinedRead).not.toHaveBeenCalled();
     });
 
-  it.each(['posterior-receipt', 'raw-whitespace', 'disposition-only'] as const)(
+  it.each(['posterior-receipt', 'raw-whitespace', 'binding-gap-only'] as const)(
     'authenticates changed A-prime %s locally but rejects stale B-prime full predecessor binding', mode => {
       const f = refinedEntitiesFixture(), catalog = discoveryBytes({ entities: f.refinementResponse.entities, anchors: f.refinementResponse.anchors });
       const dispatchDigest = entityRefinementRequestDigest(f.refinementReceipt);
       if (mode === 'posterior-receipt') f.refinementReceipt.finishedAt = '2026-10-24T00:00:05.500Z';
       if (mode === 'raw-whitespace') f.result('refinement').output += ' ';
-      if (mode === 'disposition-only') {
-        f.refinementResponse.entityDispositions[0].rationale += ' Authored clarification.';
+      if (mode === 'binding-gap-only') {
+        f.refinementResponse.bindingGapDispositions[0].rationale += ' Authored clarification.';
         f.result('refinement').output = JSON.stringify(f.refinementResponse);
       }
       f.resealRefinement();
@@ -258,12 +261,14 @@ describe('finite entity refinement archive evidence (authored originals only)', 
       expect(() => f.readRebinding()).toThrow('frozen source');
     });
 
-  it('preserves a checked A-prime undetermined original but refuses B-prime before inspect or archive read', () => {
+  it.each(['entity', 'binding-gap'] as const)('preserves a checked A-prime undetermined %s but refuses B-prime before inspect or archive read', which => {
     const f = refinedEntitiesFixture();
-    Object.assign(f.refinementResponse.entityDispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+    if (which === 'binding-gap') Object.assign(f.refinementResponse.bindingGapDispositions[0], { resolutionKind: 'undetermined', targets: [] });
+    else Object.assign(f.refinementResponse.entityDispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
     f.result('refinement').output = ` \n${JSON.stringify(f.refinementResponse)}\r\n`; f.resealRefinement();
     const refinement = f.readRefinement(), before = originalBytes(f);
-    expect(refinement.checked).toMatchObject({ status: 'checked', dispositionIssues: ['entity-disposition:e0:undetermined'], semanticStatus: 'not_reviewed' });
+    expect(refinement.checked).toMatchObject({ status: 'checked',
+      dispositionIssues: [which === 'binding-gap' ? 'binding-gap:gap:undetermined' : 'entity-disposition:e0:undetermined'], semanticStatus: 'not_reviewed' });
     f.refinedRead.mockClear(); f.refinedInspect.mockClear();
     expect(() => mentionRebindingExecution(f.source, f.model, refinement, f.refinedEntitiesArchive)).toThrow(RefinedEntitiesValidationError);
     expect(() => readMentionRebindingEvidence(f.source, f.model, f.rebindingRef, f.refinedEntitiesArchive, refinement)).toThrow(RefinedEntitiesValidationError);
