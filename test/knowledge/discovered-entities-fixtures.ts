@@ -66,9 +66,9 @@ export function authoredDiscoverySourcePlan(source: KnowledgeSourcePlanSource, m
 }
 
 /** In-memory authored originals only: no real producer, invocation, filesystem, network or semantic evidence. */
-export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex') {
+export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex', text = 'Alpha 使用 Beta') {
   const source = { snapshotId: discoveryUid(1), sourceVersion: discoveryHash('authored discovery source'),
-    excerpts: [{ evidenceRef: 'record-1', recordIndex: 1, eventKind: 'message' as const, role: 'assistant' as const, text: 'Alpha 使用 Beta' }],
+    excerpts: [{ evidenceRef: 'record-1', recordIndex: 1, eventKind: 'message' as const, role: 'assistant' as const, text }],
     limitations: ['Authored source assertion; not independently verified.'] };
   const model = { ...authoredModel, executor }, plan = authoredDiscoverySourcePlan(source, model,
     [{ objectId: 'source-object', quote: 'Alpha', occurrence: null }]);

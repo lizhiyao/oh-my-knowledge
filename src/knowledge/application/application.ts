@@ -43,6 +43,9 @@ import { entityOnlyTaskViolation, isEntityOnlyTask } from '../extraction/entity-
 import { readDiscoveredEntitiesContext, importDiscoveredEntityAnalysis,
   type DiscoveredEntitiesSource, type DiscoveredEntitiesContextReferences, type DiscoveredEntitiesReferences } from './discovered-entities.js';
 import type { EntityDiscoveryArchivePort, EntityDiscoveryModel } from '../extraction/discovered-entities-evidence.js';
+import { readRefinedEntitiesContext, readRefinedEntitiesRebindingContext, importRefinedEntityAnalysis,
+  type RefinedEntitiesSource, type RefinedEntitiesContextReferences, type RefinedEntitiesReferences } from './refined-entities.js';
+import type { RefinedEntitiesArchivePort, RefinedEntitiesBaseReferences, RefinedEntitiesModel } from '../extraction/refined-entities-evidence.js';
 
 export type { ExtractionModel } from '../extraction/generation.js';
 
@@ -61,6 +64,8 @@ export interface KnowledgeApplicationPorts {
   reviewedKnowledgeArchive?: ReviewedKnowledgeArchivePort;
   /** Private source-plan→discovery→binding research only; ordinary delivery hosts do not install this archive. */
   discoveredEntitiesArchive?: EntityDiscoveryArchivePort;
+  /** Explicit one-round catalog revision only; ordinary hosts do not install either new-stage archive. */
+  refinedEntitiesArchive?: RefinedEntitiesArchivePort;
 }
 export interface EntityReviewSelection {
   reference: EntityReviewReference;
@@ -195,6 +200,19 @@ export class KnowledgeApplication {
   importDiscoveredEntities(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel,
     references: DiscoveredEntitiesReferences, signal?: AbortSignal) {
     return importDiscoveredEntityAnalysis(this.ports, source, model, references, signal);
+  }
+  /** Read the authentic current plan/A/B chain and prepare one private A′ task, without invoking it. */
+  refinedEntitiesContext(source: RefinedEntitiesSource, model: RefinedEntitiesModel, references: RefinedEntitiesBaseReferences) {
+    return readRefinedEntitiesContext(this.ports, source, model, references);
+  }
+  /** Re-authenticate the base and A′ before the private driver reserves B′. */
+  refinedEntitiesRebindingContext(source: RefinedEntitiesSource, model: RefinedEntitiesModel, references: RefinedEntitiesContextReferences) {
+    return readRefinedEntitiesRebindingContext(this.ports, source, model, references);
+  }
+  /** Five originals produce one independent initial analysis, never a revision of the original B result. */
+  importRefinedEntities(source: RefinedEntitiesSource, model: RefinedEntitiesModel,
+    references: RefinedEntitiesReferences, signal?: AbortSignal) {
+    return importRefinedEntityAnalysis(this.ports, source, model, references, signal);
   }
   /** Reads the authentic immutable E revision for a separate K invocation; this method never invokes a model. */
   boundKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile) {

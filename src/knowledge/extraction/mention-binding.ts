@@ -151,7 +151,18 @@ export function checkMentionBindingResponse(input: string | Uint8Array, source: 
   if (!result.success) return reject(...result.error.issues.map(issue => `invalid_structure:${issue.path.join('.')}`));
   const response = result.data;
   if (canonicalJson(response.binding) !== canonicalJson(prepared.binding)) return reject('binding_mismatch');
-  const issues: string[] = [], blockers: string[] = [], entities = new Map(prepared.response.entities.map(entity => [entity.entityId, entity]));
+  const checked = checkMentionBindingBody(prepared.source, prepared.response, response);
+  return checked.status === 'rejected' ? { ...base, ...checked }
+    : { ...base, status: 'checked', response, admission: checked.admission };
+}
+
+/** Actual mention/identity-support admission, independent of any receipt or task binding. */
+export type MentionBindingBodyCheck = { status: 'rejected'; issues: string[] }
+  | { status: 'checked'; admission: Extract<MentionBindingCheck, { status: 'checked' }>['admission'] };
+export function checkMentionBindingBody(source: BoundKnowledgeSource,
+  catalog: Pick<EntityDiscoveryResponse, 'entities' | 'anchors'>,
+  response: Pick<MentionBindingResponse, 'mentions' | 'identitySupports'>): MentionBindingBodyCheck {
+  const issues: string[] = [], blockers: string[] = [], entities = new Map(catalog.entities.map(entity => [entity.entityId, entity]));
   const mentions = new Map<string, MentionBindingResponse['mentions'][number]>(), grounded = new Map<string, EvidenceSelection>();
   const positions = new Set<string>();
   for (const mention of response.mentions) {
@@ -171,22 +182,22 @@ export function checkMentionBindingResponse(input: string | Uint8Array, source: 
       blockers.push(`${prefix}:${mention.bindingStatus}`);
     }
     const located = locateQuoteOccurrence({ evidenceRef: mention.selection.evidenceRef, quote: mention.selection.quote,
-      ...(mention.selection.occurrence === null ? {} : { occurrence: mention.selection.occurrence }) }, prepared.source.excerpts);
+      ...(mention.selection.occurrence === null ? {} : { occurrence: mention.selection.occurrence }) }, source.excerpts);
     if (typeof located === 'string') { issues.push(`${prefix}:${located}`); continue; }
     grounded.set(mention.mentionId, located);
-    issues.push(...validateEntityMentionSelection(located, prepared.source.excerpts).map(issue => `${prefix}:${issue}`));
+    issues.push(...validateEntityMentionSelection(located, source.excerpts).map(issue => `${prefix}:${issue}`));
     const position = canonicalJson([located.evidenceRef, located.start, located.end]);
     if (positions.has(position)) issues.push(`${prefix}:duplicate_mention_position`);
     positions.add(position);
   }
   if (!entities.size && response.mentions.length) issues.push('empty_catalog_has_mentions');
-  const anchorSelections = new Map(prepared.response.anchors.map(anchor => {
+  const anchorSelections = new Map(catalog.anchors.map(anchor => {
     const selection = locateQuoteOccurrence({ evidenceRef: anchor.selection.evidenceRef, quote: anchor.selection.quote,
-      ...(anchor.selection.occurrence === null ? {} : { occurrence: anchor.selection.occurrence }) }, prepared.source.excerpts);
+      ...(anchor.selection.occurrence === null ? {} : { occurrence: anchor.selection.occurrence }) }, source.excerpts);
     if (typeof selection === 'string') throw new Error('Checked discovery anchor lost its source binding.');
     return [anchor.anchorId, selection] as const;
   }));
-  const expected = new Set(prepared.response.entities.flatMap(entity => (['componentRef', 'collection'] as const)
+  const expected = new Set(catalog.entities.flatMap(entity => (['componentRef', 'collection'] as const)
     .filter(key => entity[key] !== null).map(key => `${entity.entityId}:${key}`)));
   const seen = new Set<string>();
   for (const support of response.identitySupports) {
@@ -208,21 +219,21 @@ export function checkMentionBindingResponse(input: string | Uint8Array, source: 
   }
   for (const key of expected) if (!seen.has(key)) issues.push(`support:${key}:missing_support`);
   for (const entity of entities.values()) {
-    const owned = prepared.response.anchors.filter(anchor => anchor.entityId === entity.entityId).map(anchor => anchorSelections.get(anchor.anchorId)!);
+    const owned = catalog.anchors.filter(anchor => anchor.entityId === entity.entityId).map(anchor => anchorSelections.get(anchor.anchorId)!);
     if (!response.mentions.some(mention => mention.bindingStatus === 'bound' && mention.entityId === entity.entityId
       && grounded.has(mention.mentionId) && owned.some(anchor => inside(grounded.get(mention.mentionId)!, anchor)))) {
       blockers.push(`entity:${entity.entityId}:missing_bound_anchor_mention`);
     }
   }
-  if (issues.length) return reject(...issues);
-  const checked = { ...base, status: 'checked' as const, response };
+  if (issues.length) return { status: 'rejected' as const, issues: [...new Set(issues)] };
+  const checked = { status: 'checked' as const };
   if (blockers.length) return { ...checked, admission: { status: 'blocked', issues: [...new Set(blockers)] } };
-  const candidates = prepared.response.entities.map(entity => materializeEntity(entity, response.identitySupports));
+  const candidates = catalog.entities.map(entity => materializeEntity(entity, response.identitySupports));
   const rawMentions = response.mentions.map(mention => ({ mentionId: mention.mentionId, entityId: mention.entityId!,
     selection: { evidenceRef: mention.selection.evidenceRef, quote: mention.selection.quote,
       ...(mention.selection.occurrence === null ? {} : { occurrence: mention.selection.occurrence }) },
     basis: mention.basis, rationale: mention.rationale }));
-  const admitted = admitEntities(candidates, rawMentions, prepared.source.excerpts);
+  const admitted = admitEntities(candidates, rawMentions, source.excerpts);
   blockers.push(...admitted.rejected.flatMap(rejection => rejection.reasons.map(reason => `${rejection.component}:${rejection.index}:${reason}`)));
   if (admitted.entities.length !== candidates.length || admitted.mentions.length !== response.mentions.length) blockers.push('admission_dropped_output');
   if (canonicalJson(admitted.entities) !== canonicalJson(candidates)) blockers.push('entity_normalization_required');

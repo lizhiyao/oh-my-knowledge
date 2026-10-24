@@ -117,6 +117,14 @@ export function checkEntityDiscoveryResponse(input: string | Uint8Array, source:
   if (!result.success) return reject(...result.error.issues.map(issue => `invalid_structure:${issue.path.join('.')}`));
   const response = result.data;
   if (canonicalJson(response.binding) !== canonicalJson({ ...projected.binding, ...prepared.binding })) return reject('binding_mismatch');
+  const { issues, dispositionIssues } = checkEntityDiscoveryBody(projected.source, response, prepared.plan.objects.map(object => object.objectId));
+  return issues.length ? reject(...issues) : { ...base, status: 'checked', response, dispositionIssues };
+}
+
+/** Pure catalog/plan-ledger checks shared by the current A and the separately versioned refinement protocol. */
+export function checkEntityDiscoveryBody(source: EntityDiscoverySource,
+  response: Pick<EntityDiscoveryResponse, 'entities' | 'anchors' | 'dispositions'>, sourcePlanObjectIds: readonly string[]) {
+  const projected = projectSource(source);
   const issues: string[] = [], entities = new Map<string, EntityModel>(), anchors = new Set<string>();
   for (const value of response.entities) {
     const { componentRef, collection, ...metadata } = value;
@@ -155,7 +163,7 @@ export function checkEntityDiscoveryResponse(input: string | Uint8Array, source:
     if (value.possibleEntityIds.some(target => entities.get(target)?.identityStatus === 'unresolved')) issues.push(`${prefix}:unresolved_possible_entity`);
     issues.push(...entityIdentityReferenceProblems(value, entities, structuralReferences).map(issue => `${prefix}:${issue}`));
   }
-  const objectIds = new Set(prepared.plan.objects.map(object => object.objectId)), seen = new Set<string>();
+  const objectIds = new Set(sourcePlanObjectIds), seen = new Set<string>();
   const targets = new Map<string, typeof response.dispositions>();
   const dispositionIssues: string[] = [];
   for (const disposition of response.dispositions) {
@@ -185,5 +193,5 @@ export function checkEntityDiscoveryResponse(input: string | Uint8Array, source:
   for (const [id, mappings] of targets) if (mappings.length > 1 && mappings.some(value => value.dispositionKind !== 'corrected')) {
     issues.push(`disposition-target:${id}:merge_requires_correction`);
   }
-  return issues.length ? reject(...issues) : { ...base, status: 'checked', response, dispositionIssues };
+  return { issues, dispositionIssues };
 }
