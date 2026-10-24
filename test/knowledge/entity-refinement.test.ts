@@ -22,6 +22,8 @@ describe('private entity refinement A′ (authored only)', () => {
     expect(refined.checked).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed', response: f.refinementResponse });
     expect(refined.checked.response.entityDispositions.map(row => [row.previousEntityId, row.dispositionKind, row.entityIds]))
       .toEqual([['e0', 'retained', ['next-e0']], ['e1', 'retained', ['next-e1']]]);
+    expect(refined.checked.response.bindingGapDispositions).toMatchObject([{ previousMentionId: 'gap', resolutionKind: 'mapped',
+      targets: [{ entityId: 'next-gamma', selection: { quote: 'Gamma', occurrence: 0 } }] }]);
     expect(refined.rawOutput).toBe(f.result('refinement').output);
     expect(f.old.readB().checked).toMatchObject({ admission: { status: 'blocked' } });
   });
@@ -35,7 +37,7 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v2', 'knowledge-entity-refinement-input/v1', 'knowledge-entity-refinement-wire/v1', 'knowledge-entity-refinement-check/v1']);
+      .toEqual(['knowledge-entity-refinement-system/v3', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
     expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
@@ -60,6 +62,27 @@ describe('private entity refinement A′ (authored only)', () => {
     ['missing plan disposition', (f: Fixture) => { f.refinementResponse.dispositions = []; }, 'missing_object'],
     ['duplicate plan disposition', (f: Fixture) => { f.refinementResponse.dispositions.push(structuredClone(f.refinementResponse.dispositions[0])); }, 'duplicate_object'],
     ['invented source evidence', (f: Fixture) => { f.refinementResponse.entityDispositions[0].selections[0].quote = 'not in source'; }, 'quote_mismatch'],
+    ['old A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 1 }); }, 'invalid_structure:schemaVersion'],
+    ['missing gap ledger', (f: Fixture) => { Object.assign(f.refinementResponse, { bindingGapDispositions: undefined }); }, 'invalid_structure:bindingGapDispositions'],
+    ['missing gap', (f: Fixture) => { f.refinementResponse.bindingGapDispositions = []; }, 'binding-gap:gap:missing_mention'],
+    ['duplicate gap', (f: Fixture) => { f.refinementResponse.bindingGapDispositions.push(structuredClone(f.refinementResponse.bindingGapDispositions[0])); }, 'duplicate_mention'],
+    ['old bound item used as gap', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].previousMentionId = 'm0'; }, 'unknown_mention'],
+    ['unknown gap target', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].targets[0].entityId = 'missing'; }, 'unknown_entity'],
+    ['empty mapped gap', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].targets = []; }, 'invalid_targets'],
+    ['excluded gap with targets', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].resolutionKind = 'excluded'; }, 'invalid_targets'],
+    ['undetermined gap with targets', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].resolutionKind = 'undetermined'; }, 'invalid_targets'],
+    ['missing old gap evidence', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].selections[0].occurrence = 1; }, 'missing_previous_position_evidence'],
+    ['gap target at another occurrence', (f: Fixture) => {
+      f.refinementResponse.bindingGapDispositions[0].targets[0].selection.occurrence = 1;
+      f.refinementResponse.bindingGapDispositions[0].selections[0] = { evidenceRef: 'record-1', quote: 'Gamma 与 Gamma', occurrence: null };
+    }, 'target_position_disjoint'],
+    ['gap target outside its evidence', (f: Fixture) => {
+      f.refinementResponse.bindingGapDispositions[0].targets[0].selection = { evidenceRef: 'record-1', quote: 'Gamma 与 Gamma', occurrence: null };
+    }, 'missing_target_position_evidence'],
+    ['same gap position assigned to two entities', (f: Fixture) => {
+      const row = f.refinementResponse.bindingGapDispositions[0]; row.targets.push({ ...structuredClone(row.targets[0]), entityId: 'next-e0' });
+    }, 'duplicate_target_position'],
+    ['invented gap target quote', (f: Fixture) => { f.refinementResponse.bindingGapDispositions[0].targets[0].selection.quote = 'not in source'; }, 'quote_mismatch'],
   ])('rejects %s without losing the original', (_name, mutate, code) => {
     const f = refinedEntitiesFixture(), before = f.result('refinement').output;
     mutate(f); rejected(f, code); expect(f.result('refinement').output).toBe(before);
@@ -71,9 +94,11 @@ describe('private entity refinement A′ (authored only)', () => {
     expect(check(f)).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed' });
   });
 
-  it.each(['entity', 'plan'] as const)('retains legal undetermined %s accounting and blocks the B′ factory', which => {
-    const f = refinedEntitiesFixture(), row = which === 'entity' ? f.refinementResponse.entityDispositions[0] : f.refinementResponse.dispositions[0];
-    Object.assign(row, { dispositionKind: 'undetermined', entityIds: [] });
+  it.each(['entity', 'plan', 'ambiguous-gap'] as const)('retains legal undetermined %s accounting and blocks the B′ factory', which => {
+    const f = refinedEntitiesFixture('codex', { ambiguousGap: which === 'ambiguous-gap' });
+    if (which === 'ambiguous-gap') Object.assign(f.refinementResponse.bindingGapDispositions[0], { resolutionKind: 'undetermined', targets: [] });
+    else Object.assign(which === 'entity' ? f.refinementResponse.entityDispositions[0] : f.refinementResponse.dispositions[0],
+      { dispositionKind: 'undetermined', entityIds: [] });
     expect(check(f)).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed' });
     f.result('refinement').output = JSON.stringify(f.refinementResponse); f.resealRefinement();
     const refined = f.readRefinement(); expect(refined.checked.dispositionIssues).toHaveLength(1);
@@ -82,11 +107,13 @@ describe('private entity refinement A′ (authored only)', () => {
     expect(f.refinedInspect).not.toHaveBeenCalled();
   });
 
-  it.each(['no-uncertainty', 'wrong-layer-candidate'] as const)('rejects malformed unresolved identity: %s', mode => {
-    const f = refinedEntitiesFixture('codex', { collection: true, unresolved: true }), unresolved = f.refinementResponse.entities.find(row => row.entityId === 'next-u')!;
-    f.refinementResponse.entityDispositions.find(row => row.previousEntityId === 'u')!.dispositionKind = 'corrected';
-    if (mode === 'no-uncertainty') unresolved.uncertainties = []; else unresolved.possibleEntityIds = ['next-g'];
-    expect(check(f).status).toBe('rejected');
+  it.each(['valid', 'no-uncertainty', 'wrong-layer-candidate'] as const)('checks an ambiguous gap mapped to an explicit unresolved object: %s', mode => {
+    const f = refinedEntitiesFixture('codex', { collection: true, ambiguousGap: true }), unresolved = f.refinementResponse.entities.find(row => row.entityId === 'next-gamma')!;
+    Object.assign(unresolved, { identityStatus: 'unresolved', possibleEntityIds: ['next-e0', 'next-e1'], uncertainties: ['Authored identity remains unknown.'] });
+    if (mode === 'no-uncertainty') unresolved.uncertainties = [];
+    if (mode === 'wrong-layer-candidate') unresolved.possibleEntityIds = ['next-g'];
+    expect(check(f)).toMatchObject({ status: mode === 'valid' ? 'checked' : 'rejected', semanticStatus: 'not_reviewed' });
+    expect(f.old.bindingResponse.mentions.at(-1)).toMatchObject({ bindingStatus: 'ambiguous', entityId: null });
   });
 
   it('accepts exactly 1 MiB of actual system/input bytes and refuses one more before producer inspection', () => {

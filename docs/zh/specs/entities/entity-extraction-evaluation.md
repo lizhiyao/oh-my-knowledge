@@ -229,7 +229,7 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 
 A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，带入既有含义和依据门槛，包括一般操作概念与某次实际或计划执行、配置对象与有来源系统／模块组件的区别，以及缺少细层次依据时用 proposed `object` 并明确保留类型未知。Schema 枚举本身不提供这些语义。v36／v37 及生产提示词字节继续冻结，v2 wire 与持久化 Schema 不变。规则完整传递不证明模型类型判断正确。
 
-六个私有任务另共享 `ENTITY_CODE_REFERENT_POLICY`：source-plan system v4、A／B system v5、A′／B′ system v2、R system v2。它区分被独立讨论的一般函数／方法、可分别指向的实现状态与有独立边界的执行，要求每处提及对应来源实际支持的所指。展示定义或代码示例本身不证明固定版本，anchor 包含标识符也不证明该标识符指向整份实现。该变化构成 **BREAKING-COMPARABILITY**，不改变 input、wire、check、response 或 receipt 形状。新请求及依赖输入须重新冻结，现行 reader 只接受当前 system 身份。历史原件与已关闭研究保留匹配的冻结运行时，不重开或重评分。本轮不替换生产 v29／v30 或冻结的 v36／v37 profile，也不引入公共存储迁移。
+六个私有任务另共享 `ENTITY_CODE_REFERENT_POLICY`：source-plan system v4、A／B system v5、A′／B′ system v3、R system v2。它区分被独立讨论的一般函数／方法、可分别指向的实现状态与有独立边界的执行，要求每处提及对应来源实际支持的所指。展示定义或代码示例本身不证明固定版本，anchor 包含标识符也不证明该标识符指向整份实现。共享政策构成 **BREAKING-COMPARABILITY** 边界；A′／B′ 的额外契约修订见 §5.7。新请求及依赖输入须重新冻结，现行 reader 只接受当前 system 身份。历史原件与已关闭研究保留匹配的冻结运行时，不重开或重评分。本轮不替换生产 v29／v30 或冻结的 v36／v37 profile，也不引入公共存储迁移。
 
 A 必须在 `dispositions` 中通过 `sourcePlanObjectId` 恰好处理每个清单 `objectId` 一次：`retained` 对应恰好一个 A 实体，`corrected` 对应一个或多个，`excluded` 或 `undetermined` 不对应实体。每行提供理由和精确来源选择；重复、遗漏或未知 object ID、非法目标和非法选择均拒绝。拆分或多个清单对象映射到同一实体时，必须使用 `corrected` 处置并给出来源依据。A 仍可依完整原文独立发现并增补对象，清单不是封闭候选集。清单的 `planningRole`、资格／层次依据与不确定性仍是不可信模型判断：候选标签不强制保留，上下文标签不授予删除许可。须依来源区分操作与产物、配置与其控制的机制、产品与其执行的过程，不为每个名词或动词造实体。
 
@@ -249,19 +249,28 @@ B 还完整接收与生产提示词逐字共享的提及边界规则。有来源
 
 ### 5.7 有限目录修订与提及重绑定
 
-这一显式选择的私有流程在当前 base3 链——source-plan system v4、A system v5 与 B system v5——之后增加 A′（`entity-refinement`）和 B′（`mention-rebinding`）。两个任务的 system 为 v2，input、wire、check、response 与 receipt 分别保留独立 v1 身份。只接受当前 base3 身份，不为历史初始链提供兼容 reader 或迁移。该变化构成 **BREAKING-COMPARABILITY**，不继承 base3 或此前分数。初始 B 只要结构 checked，无论接纳 ready 或 blocked 均可进入修订：ready 不证明语义正确。原生或结构失败不构成修订机会。
+这一显式选择的私有流程在当前 base3 链——source-plan system v4、A system v5 与 B system v5——之后增加 A′（`entity-refinement`）和 B′（`mention-rebinding`）。初始 B 只要结构 checked，无论接纳 ready 或 blocked 均可进入修订：ready 不证明语义正确。原生或结构失败不构成修订机会。
+
+| 任务 | System | Input／wire／check | Response／输出名称 | Receipt／native envelope |
+|---|---|---|---|---|
+| A′ | v3 | v2 | schema v2／`entity_refinement_v2` | schema v1 |
+| B′ | v3 | v2 | schema v1／`mention_rebinding_v1` | schema v1 |
+
+必填的绑定缺口账替换此前的私有 A′ 响应契约，并改变两个任务的请求身份，构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**。B′ 保留响应及 envelope 形状，其 wire 身份也绑定修订后的 A′ 前驱与检查器。现行 reader 只接受当前私有任务身份，不加兼容 reader 或迁移。历史原件使用匹配的冻结运行时；base3 或此前修订的得分都不能证明新流程的效果。
 
 模型输入是完整选定来源与所需原始响应的平坦投影。A′ 完整接收未修改的 source-plan、A 和 B `rawOutput` 各一次；B′ 另外完整接收 A′ `rawOutput`，同样各一次。输入不递归嵌套 `receiptRaw`，完整回执、原生 outcome 与请求仍分别归档。构造依赖任务前，宿主认证全部已有前驱；最终导入和重放重新认证五份原件，包括精确请求、来源、配置、producer 见证、时间顺序及各自不同的 receipt／attempt 身份。缩小模型投影不放宽这些认证。容量须在 claim 前检查，不截断、不提供局部输入或静默回退。
 
 A′ 返回完整替换目录与 anchors、全部 source-plan 对象的处置，以及每个旧 A 实体的完整账目。每个旧项均有明确的 retained、corrected、excluded 或 undetermined 处置，并在适用时给出目标映射；遗漏不等于排除。纠正和排除须有理由与逐字来源依据。新增对象须有独立来源支持。来源中真实存在的未消解所指仍可按实体身份契约表达；仅为让绑定成功而创建占位对象，不证明对象存在或未知已消除。
 
-B′ 向固定 A′ 目录绑定实际提及与身份支持，并完整交代每个旧 B 提及和支持的去向。retained 提及保留实际原文跨度和到新结果的显式映射；corrected 或 excluded 项须有逐字来源依据，不能静默删除。支持映射须引用实际返回的提及。未决处置、未绑定或歧义提及、账目缺项、非法映射或任意接纳拒绝，继续阻断整个最终分析。宿主不裁剪跨度、不从 anchors 补造提及、不强绑，也不接纳合法子集。
+A′ 还必须返回 `bindingGapDispositions`，恰好覆盖初始 checked B 中每个 `bindingStatus` 不为 `bound` 的 mention ID，不接受其他 ID。每项包含 `previousMentionId`、`resolutionKind`（`mapped`、`excluded` 或 `undetermined`）、`targets`（`{entityId, selection}`）、`rationale` 及覆盖旧位置和目标位置的逐字来源 `selections`。`mapped` 至少指向一个实际 A′ 目录实体和与旧提及同 excerpt 相交的来源选择；可以按不同真实位置把一项旧提及拆成多个目标，但同一位置不可重复分给不同成员。`excluded` 与 `undetermined` 的 targets 必须为空。未决处置在 B′ producer inspect 前阻断；排除标签或来源支持的 unresolved 实体都不授权猜测身份、制造占位或强行绑定。
+
+B′ 根据完整来源及固定 A′ 目录，独立判断实际提及资格和身份。A′ targets 表达意图，不是最终绑定。既有 `mentionDispositions` 须闭合此前每项缺口处置：`mapped` 对应项须为 `corrected`，实际 bound 提及与 targets 按相同 entity ID、同 excerpt 相交位置双向唯一对应，最终提及无需逐字沿用 A′ 的目标跨度；`excluded` 对应项须为 `excluded`，且不能把与旧区间相交的位置作为新增提及返回；边界变化须按 `corrected` 交账，独立不相交位置仍可新增。B′ 仍完整交代每个旧 B 提及和支持的去向。retained 提及保留实际原文跨度和到新结果的显式映射；corrected 或 excluded 项须有逐字来源依据，不能静默删除。支持映射须引用实际返回的提及。未决处置、未绑定或歧义提及、账目缺项、处置冲突、非法映射或任意接纳拒绝，继续整份拒绝或阻断最终分析。宿主不裁剪跨度、不从 anchors 补造提及、不强绑，也不接纳合法子集。
 
 driver 在执行前固定机会和停止规则：最多各一次 A′、B′，不隐式调用模型、重试、替补或无限修补。依赖输入由已认证的归档前驱物化，并在各自 claim 前固定。每个完整原生 outcome 都先归档、后解释，失败或 blocked 原件也保留。初始链与中间 A′ 结果均不写分析。只有最终 B′ 组合 ready 时，才一次写入初始 `EntityAnalysis` schema v2，使用新 ID namespace，并从 B′ 回执派生稳定身份。command／actor 身份绑定完整五原件链摘要。重新导入认证同一链并复用相同写入意图，证据变化不能覆盖原写入。
 
 历史原件、冻结运行时、结果及既有实体／知识历史保持不变。生产默认、public exports、公共存储契约与 CLI／Studio 路径不改变。既有单 E→R/K 入口不接收三原件或五原件分析；五原件流程另有 §5.8 中显式选择的独立认证交接入口。没有 K 时，不能提供知识保全验收证据。
 
-完整账目、精确位置和来源选择让决定可复核，不证明保留、纠正、排除、资格、身份或类型语义正确，也不证明原文没有遗漏。新的前瞻诊断须冻结五任务构造、实际依赖输入、来源／运行时／配置、机会、停止规则和最终端点，分阶段报告实际用量、费用、失败与未知。有限修订改变流程和总成本，不证明稳定改善或单一提示词因素效果。全部结构结果保留 `semanticStatus: not_reviewed`；#1322 的独立真人验收仍单独进行，满足其要求前保持 `goldReady=false`、`formalReceipt=false`。
+完整账目、精确位置和来源选择让决定可复核、结构可执行，不证明保留、纠正、排除、资格、身份或类型语义正确，也不证明原文没有遗漏或知识已保全。新的前瞻诊断须冻结五任务构造、实际依赖输入、来源／运行时／配置、机会、停止规则和最终端点，分阶段报告实际用量、费用、失败与未知。有限修订改变流程和总成本，不证明稳定改善或单一提示词因素效果。全部结构结果保留 `semanticStatus: not_reviewed`；#1322 的独立真人验收仍单独进行，满足其要求前保持 `goldReady=false`、`formalReceipt=false`。
 
 ### 5.8 修订后的可选认证知识交接
 

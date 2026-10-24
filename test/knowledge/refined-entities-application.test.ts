@@ -190,9 +190,10 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(f.entities.list().histories).toHaveLength(1);
   });
 
-  it('retains an undetermined catalog disposition and blocks B-prime construction and final storage', () => {
+  it.each(['entity', 'binding-gap'] as const)('retains an undetermined %s disposition and blocks B-prime construction and final storage', which => {
     const f = setup();
-    Object.assign(f.refinementResponse.entityDispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+    if (which === 'binding-gap') Object.assign(f.refinementResponse.bindingGapDispositions[0], { resolutionKind: 'undetermined', targets: [] });
+    else Object.assign(f.refinementResponse.entityDispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
     f.result('refinement').output = JSON.stringify(f.refinementResponse); f.resealRefinement();
     f.refinedRead.mockClear();
     const context = f.app().refinedEntitiesRebindingContext(f.selection, f.model, f.references());
