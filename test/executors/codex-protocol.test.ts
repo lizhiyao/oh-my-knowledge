@@ -8,23 +8,68 @@ import {
 import type { CodexEvent } from '../../src/executors/openai/codex/protocol.js';
 
 describe('Codex protocol normalization', () => {
-  it.each(['stream disconnected before completion: tls handshake eof', 'request timed out'])('accepts a recovered reconnect (%s) without erasing the event, but still rejects failed or incomplete turns', (reason) => {
+  it.each([
+    'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)',
+    'Reconnecting... 2/5 (request timed out)',
+    'Reconnecting... 1/5 (Connection failed: error sending request)',
+    'Reconnecting... 1/5 (unexpected status 503: service unavailable\nretry later)',
+    'Reconnecting... waiting for network (Connection failed: error sending request)',
+    'Reconnecting... waiting for network (Connection failed: transport (temporarily) unavailable)',
+  ])('accepts an official retry notice followed by a valid completed turn: %s', (message) => {
     const events: CodexEvent[] = [
       { type: 'turn.started' },
-      { type: 'error', message: `Reconnecting... 2/5 (${reason})` },
+      { type: 'error', message },
       { type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'ALLOW' } },
       { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } },
     ];
-    const build = (events: CodexEvent[], forcedError?: string) => buildCodexResult({
-      events, forcedError, wallClockDurationMs: 100, source: 'codex --json',
+    const original = structuredClone(events);
+    assert.equal(buildCodexResult({ events, wallClockDurationMs: 100, source: 'codex --json' }).ok, true);
+    assert.deepEqual(events, original);
+  });
+
+  it.each([
+    'provider failed',
+    'Reconnecting... 6/5 (stream disconnected before completion: eof)',
+    'Reconnecting... 0/5 (request timed out)',
+    'Reconnecting... 1/9007199254740992 (request timed out)',
+    'Reconnecting... 1/5 ()',
+    'Reconnecting... 1/5 (   )',
+    'Reconnecting... waiting for network',
+    'Reconnecting... waiting for network (provider failed)',
+    'Reconnecting... waiting for network (Connection failed: )',
+    'Reconnecting... waiting for network (Connection failed: eof) fatal',
+  ])('keeps unknown or malformed retry-looking errors fatal: %s', (message) => {
+    const result = buildCodexResult({
+      events: [
+        { type: 'turn.started' },
+        { type: 'error', message },
+        { type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'partial' } },
+        { type: 'turn.completed' },
+      ],
+      wallClockDurationMs: 100, source: 'codex --json',
     });
-    assert.equal(build(events).ok, true);
-    assert.equal(events[1].type, 'error');
-    assert.equal(build(events.slice(0, -1)).ok, false);
-    assert.equal(build([...events.slice(0, -1), { type: 'turn.failed' }]).ok, false);
-    assert.equal(build(events, 'process failed').ok, false);
-    assert.equal(build([events[0], { type: 'error', message: 'provider failed' }, ...events.slice(2)]).ok, false);
-    assert.equal(build([events[0], { type: 'error', message: 'Reconnecting... 6/5 (stream disconnected before completion: eof)' }, ...events.slice(2)]).ok, false);
+    assert.equal(result.ok, false);
+    assert.equal(result.output, 'partial');
+    assert.ok(result.error?.includes(message));
+  });
+
+  it('does not let a known retry notice override a failed or missing terminal or process failure', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'error', message: 'Reconnecting... waiting for network (Connection failed: error sending request)' },
+      { type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'partial' } },
+    ];
+    for (const [terminal, forcedError] of [
+      [undefined, undefined],
+      [{ type: 'turn.failed' }, undefined],
+      [{ type: 'turn.completed', error: { message: 'provider failed' } }, undefined],
+      [{ type: 'turn.completed' }, 'process failed'],
+    ] as const) {
+      const result = buildCodexResult({ events: [...events, ...(terminal ? [terminal] : [])],
+        forcedError, wallClockDurationMs: 100, source: 'codex --json' });
+      assert.equal(result.ok, false);
+      assert.equal(result.output, 'partial');
+    }
   });
 
   it('keeps an item-level error non-fatal when the turn still completes with an answer', () => {

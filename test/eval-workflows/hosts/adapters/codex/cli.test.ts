@@ -305,6 +305,12 @@ describe('Codex CLI Core Executor adapter', () => {
       version: '0.146.0',
       fingerprintBasis: 'content-derived',
       assuranceLevel: 'declared',
+      implementationManifest: {
+        facets: expect.arrayContaining([{
+          facetId: 'adapter.composition',
+          value: expect.objectContaining({ adapterVersion: '2.0.2' }),
+        }]),
+      },
     });
     expect(JSON.stringify(first.identity)).not.toContain('first-secret');
     expect(JSON.stringify(first.identity)).not.toContain('OMK_TEST_SECRET');
@@ -532,6 +538,7 @@ describe('Codex CLI Core Executor adapter', () => {
     ['upgrade-required', 'OMK_CODEX_CLI_UPGRADE_REQUIRED'],
     ['upgrade-decoy', 'OMK_CODEX_CLI_EXIT_NONZERO'],
     ['reconnect-failed', 'OMK_CODEX_CLI_TURN_FAILED'],
+    ['reconnect-unknown', 'OMK_CODEX_CLI_PROTOCOL_INVALID'],
   ])('redacts %s provider failures behind a stable boundary', async (mode, code) => {
     const fixture = await adapterFixture();
     const promise = execute(
@@ -564,10 +571,14 @@ describe('Codex CLI Core Executor adapter', () => {
     });
   });
 
-  it('accepts a completed response after a provider transport reconnect', async () => {
+  it.each([
+    'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)',
+    'Reconnecting... waiting for network (Connection failed: error sending request)',
+    'Reconnecting... 2/5 (Connection failed: error sending request)',
+  ])('accepts a completed response after a provider transport notice: %s', async (notice) => {
     const fixture = await adapterFixture();
     const result = await execute(
-      await createAdapter(fixture, { OMK_TEST_MODE: 'reconnect' }),
+      await createAdapter(fixture, { OMK_TEST_MODE: 'reconnect', OMK_TEST_RECONNECT_NOTICE: notice }),
       fixture.target.config as JsonValue,
     );
     expect(result.output?.value).toBe('fixture answer');

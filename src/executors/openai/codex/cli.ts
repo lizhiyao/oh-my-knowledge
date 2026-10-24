@@ -15,7 +15,7 @@ import {
   errorMessage,
   interruptedExecResult,
 } from '../../core/runtime.js';
-import { spawnWithSigintPropagation, type SpawnHelperError } from '../../core/subprocess.js';
+import { spawnWithSigintPropagation, type SpawnHelperError, type SpawnHelperResult } from '../../core/subprocess.js';
 import { assertExecutorInputCapabilities } from '../../core/capabilities.js';
 
 export {
@@ -97,7 +97,7 @@ export function buildCodexArgs({ model, cwd, prompt, effort, outputSchemaPath }:
 
 // codex 看到 stdin 是 pipe 就当作 `<stdin>` 块读,会卡到 timeout。spawn 后立刻
 // child.stdin.end() 发 EOF。SIGINT 传播 / timeout / maxBuffer / kill 由 helper 统一处理。
-function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number; abortSignal?: AbortSignal }): Promise<{ stdout: string; stderr: string }> {
+function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number; abortSignal?: AbortSignal }): Promise<SpawnHelperResult> {
   const { child, done } = spawnWithSigintPropagation('codex', args, {
     env: options.env,
     cwd: options.cwd,
@@ -106,7 +106,34 @@ function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: s
     abortSignal: options.abortSignal,
   });
   child.stdin?.end();
-  return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
+  return done;
+}
+
+type CodexProcessObservation = Partial<Pick<SpawnHelperResult, 'code' | 'signal' | 'killedByTimeout' | 'killedBySignal'>> & {
+  failureKind?: SpawnHelperError['failureKind'] | 'none';
+};
+
+/** Fixed metadata only: the appended diagnostic is at most 512 ASCII bytes. */
+function withCodexFailureDiagnostics(result: ExecResult, events: CodexEvent[], observation: CodexProcessObservation = {}): ExecResult {
+  if (result.ok) return result;
+  let terminalType = 'none';
+  let terminalCount = 0;
+  for (const event of events) {
+    if (event.type === 'turn.completed' || event.type === 'turn.failed') {
+      terminalType = event.type;
+      terminalCount += 1;
+    }
+  }
+  const signal = (value: unknown): string => value === null ? 'null'
+    : typeof value === 'string' && /^SIG[A-Z0-9]{1,16}$/.test(value) ? value : 'unknown';
+  const code = observation.code === null ? 'null' : Number.isSafeInteger(observation.code) ? String(observation.code) : 'unknown';
+  const failureKind = ['none', 'spawn', 'buffer-limit', 'timeout', 'abort', 'nonzero-exit'].includes(observation.failureKind ?? '')
+    ? observation.failureKind : 'unknown';
+  const timeout = typeof observation.killedByTimeout === 'boolean' ? String(observation.killedByTimeout) : 'unknown';
+  const diagnostic = `[codex-cli terminalType=${terminalType}; terminalCount=${terminalCount}; processCode=${code}; `
+    + `processSignal=${signal(observation.signal)}; processFailure=${failureKind}; killedByTimeout=${timeout}; `
+    + `killedBySignal=${signal(observation.killedBySignal)}]`;
+  return { ...result, error: `${result.error ?? 'codex execution failed'}; ${diagnostic}` };
 }
 
 export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose, abortSignal, effort, outputFormat, maxOutputTokens }: ExecutorInput, environment: NodeJS.ProcessEnv = process.env): Promise<ExecResult> {
@@ -140,7 +167,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     }
     const args = buildCodexArgs({ model, cwd, prompt: finalPrompt, effort, outputSchemaPath });
     invocationStarted = true;
-    const { stdout } = await runCodexExec(args, {
+    const completedProcess = await runCodexExec(args, {
       maxBuffer: MAX_BUFFER,
       timeout: timeoutMs,
       env,
@@ -148,22 +175,22 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       ...(cwd && { cwd }),
     });
     const durationMs = Date.now() - start;
-    const parsed = parseCodexJsonl(stdout);
-    return buildCodexResult({
+    const parsed = parseCodexJsonl(completedProcess.stdout);
+    return withCodexFailureDiagnostics(buildCodexResult({
       events: parsed.events,
       wallClockDurationMs: durationMs,
       source: 'codex --json',
       malformedLineCount: parsed.malformedLineCount,
-    });
+    }), parsed.events, { ...completedProcess, failureKind: 'none' });
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     if (!invocationStarted && abortSignal?.aborted) {
-      return { ...interruptedExecResult(durationMs), failure: { failureKind: 'cancelled' } };
+      return withCodexFailureDiagnostics({ ...interruptedExecResult(durationMs), failure: { failureKind: 'cancelled' } }, []);
     }
     const details = err && typeof err === 'object' ? err as Partial<SpawnHelperError> : {};
     // 失败路径仍保留已完成的事件、用量与 trace，但不能反转为成功。
     const parsed = parseCodexJsonl(typeof details.stdout === 'string' ? details.stdout : '');
-    const result = buildCodexResult({
+    let result = buildCodexResult({
       events: parsed.events,
       wallClockDurationMs: durationMs,
       source: 'codex --json',
@@ -171,12 +198,12 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       forcedError: details.failureKind === 'buffer-limit' && typeof details.message === 'string' ? details.message
         : (typeof details.stderr === 'string' ? details.stderr.trim() : '') || errorMessage(err),
     });
-    if (details.failureKind === 'buffer-limit') return { ...result, failure: { failureKind: 'capacity' } };
-    if (details.killedByTimeout) return { ...result, stopReason: 'timeout',
+    if (details.failureKind === 'buffer-limit') result = { ...result, failure: { failureKind: 'capacity' } };
+    else if (details.killedByTimeout) result = { ...result, stopReason: 'timeout',
       error: `execution timed out after ${timeoutMs / 1000}s`, failure: { failureKind: 'timeout' } };
-    if (details.killedBySignal || abortSignal?.aborted) return { ...result, stopReason: 'interrupted',
+    else if (details.killedBySignal || abortSignal?.aborted) result = { ...result, stopReason: 'interrupted',
       error: 'execution interrupted', failure: { failureKind: 'cancelled' } };
-    return result;
+    return withCodexFailureDiagnostics(result, parsed.events, details);
   } finally {
     if (schemaDirectory) rmSync(schemaDirectory, { recursive: true, force: true });
   }

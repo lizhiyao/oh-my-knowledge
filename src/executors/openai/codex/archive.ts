@@ -23,8 +23,8 @@ const CWD_PREFIX = 'omk-knowledge-text-';
 // These implementations are the premises of the bound. The real-runtime fixture
 // checks their frozen source identities; changing one requires re-auditing proof.
 const SOURCE_DIGESTS = Object.freeze({
-  'src/executors/openai/codex/cli.ts': '4d76d15d64ccca5e113824492f4715458c68cc09f6cbac94ee68a7859bd37c85',
-  'src/executors/openai/codex/protocol.ts': '198f8c52bcf6b8d4ebdd9665c5e3bdb8bd70fd407a5c1d28d277831d4d224eaa',
+  'src/executors/openai/codex/cli.ts': 'd6315988bc1900b76c580cb91132de3ffe4142b8a1eb0d251745e4c0149a973e',
+  'src/executors/openai/codex/protocol.ts': 'a7749b7d17dd04a348ed46eec8a9c0342c418a3fd9b6a2410463676768ce83e7',
   'src/executors/openai/codex/trace.ts': '3a522c0c743e97f40e9f00bde534d735b6c0fdf62fc346329c65b8fd152b4596',
   'src/executors/contracts/tool-identity.ts': '2933cf286744c8caa8e904616f2778e8b228cdf477c5389267da67baf3f6fdc6',
   'src/executors/core/subprocess.ts': 'd6f50765168a17437d2d4567e38b36ad94bdcdb04ed4e338f124f6dea2be87bc',
@@ -164,7 +164,7 @@ export function createCodexArchiveProducer(environment: NodeJS.ProcessEnv, creat
     // enough of its 6x JSON unit allowance for the ten-byte replacement. Thus 6S,
     // NOT a multiply-by-ten redactor estimate. Local fs/spawn diagnostics can quote
     // the bounded invocation context; arbitrary thrown JS uses a bounded exception
-    // observation at the workflow. 64KiB also covers global keys/numerics/cleanup.
+    // observation at the workflow. 64KiB also covers global keys/numerics/cleanup and the <=512-byte ASCII failure-context suffix.
     // An iterative JSON writer is required; this is not a JSON.stringify depth proof.
     const bound = 44 * MAX_BUFFER + 6 * MAX_BUFFER + 6 * localContextBytes + FIXED_JSON_BYTES;
     if (!Number.isSafeInteger(bound) || bound > OUTCOME_QUOTA_BYTES) throw new Error('Codex archive proof exceeds its 512 MiB outcome quota; no invocation was started.');

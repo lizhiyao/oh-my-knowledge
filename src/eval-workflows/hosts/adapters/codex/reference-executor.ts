@@ -52,7 +52,7 @@ import { probeCodexCliVersion } from './version.js';
 import { resolveCodexReferenceModel } from './reference-model.js';
 
 /** Revision of this published reference implementation, independent from the vendor version. */
-export const CODEX_CLI_REFERENCE_ADAPTER_VERSION = '1.1.0' as const;
+export const CODEX_CLI_REFERENCE_ADAPTER_VERSION = '1.1.1' as const;
 
 /**
  * Lowest vendor CLI version whose `codex exec --json` event shape is frozen by this repository's

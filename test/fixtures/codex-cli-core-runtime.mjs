@@ -108,7 +108,13 @@ const event = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 if (mode !== 'missing-thread') event({ type: 'thread.started', thread_id: 'thread-test' });
 event({ type: 'turn.started' });
 if (mode === 'reconnect' || mode === 'reconnect-failed') {
-  event({ type: 'error', message: 'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)' });
+  event({ type: 'error', message: process.env.OMK_TEST_RECONNECT_NOTICE
+    ?? (mode === 'reconnect-failed'
+      ? 'Reconnecting... waiting for network (Connection failed: error sending request)'
+      : 'Reconnecting... 2/5 (stream disconnected before completion: tls handshake eof)') });
+}
+if (mode === 'reconnect-unknown') {
+  event({ type: 'error', message: 'Reconnecting... waiting for network (sensitive provider failure)' });
 }
 event({
   type: 'item.completed',

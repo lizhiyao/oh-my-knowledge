@@ -60,7 +60,7 @@ import {
   withTrialSlot,
 } from '../shared/trial-lifecycle.js';
 
-export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.1' as const;
+export const CODEX_CLI_CORE_ADAPTER_IMPLEMENTATION_VERSION = '2.0.2' as const;
 export const DEFAULT_CODEX_CLI_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_MAX_PROMPT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_CODEX_CLI_IDENTITY_PROBE_TIMEOUT_MS = 5_000;
