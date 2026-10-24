@@ -8,7 +8,7 @@ import { buildEntityDiscoveryInput, checkEntityDiscoveryBody, checkEntityDiscove
   ENTITY_DISCOVERY_INPUT_VERSION, ENTITY_DISCOVERY_WIRE_ID, type EntityDiscoveryResponse } from './entity-discovery.js';
 import { buildMentionBindingInput, checkMentionBindingResponse, MENTION_BINDING_SYSTEM,
   MENTION_BINDING_SYSTEM_VERSION, MENTION_BINDING_INPUT_VERSION, MENTION_BINDING_WIRE_ID } from './mention-binding.js';
-import { ENTITY_CODE_REFERENT_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
 import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
@@ -44,7 +44,7 @@ export const EntityRefinementResponseSchema = z.strictObject({ responseKind: z.l
     rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(512) });
 export type EntityRefinementResponse = z.infer<typeof EntityRefinementResponseSchema>;
 export type EntityRefinementSource = BoundKnowledgeSource;
-export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v3' as const;
+export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v4' as const;
 export const ENTITY_REFINEMENT_INPUT_VERSION = 'knowledge-entity-refinement-input/v2' as const;
 export const ENTITY_REFINEMENT_WIRE_VERSION = 'knowledge-entity-refinement-wire/v2' as const;
 export const ENTITY_REFINEMENT_CHECK_VERSION = 'knowledge-entity-refinement-check/v2' as const;
@@ -74,6 +74,7 @@ predecessors 分别含完整未改的 sourcePlan、discovery、binding 原始模
 ${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${ENTITY_CODE_REFERENT_POLICY}
+${ENTITY_COLLECTIVE_REFERENCE_POLICY}
 完整新目录沿用实体及 anchors 的字段：每个实体至少一条 owned anchor，逐字连续 quote，occurrence 从0开始含重叠，重复引文须给序号；不输出偏移。所有实体、候选、组件、成员和 anchor 引用必须闭合。componentRef 仅用于 instance/version，目标是 proposed component；collection 仅用于来源支持的有界共同指代或整体计量，不能从数量猜成员。组成员未知与身份未知不同。
 identityStatus=unresolved 只表达来源确实支持一个独立对象但身份未决，须有自己的来源身份依据、uncertainties，possibleEntityIds 只能指向同层 proposed 对象；多个位置视为同一对象也须有共同指代依据。不能因为 B 难以绑定、目录缺项或需要交账，就制造“未知对象”占位吞掉提及；资格或处置不能决定时用 undetermined 并继续阻断。
 dispositions 恰好覆盖每个 sourcePlan objectId，包括先前排除或未决者；entityDispositions 恰好覆盖每个旧 discovery entityId。两份账均给具体 rationale 和逐字 selections。retained 恰好一个最终实体，实体字段、身份声明和依据位置仅允许显式 ID 重映射；实质变化或拆分、合并用 corrected，至少一个最终实体。多个旧对象映射同一新实体时相关账项均用 corrected。excluded/undetermined 的 entityIds=[]；前者须解释来源为何不支持，后者保存无法裁定的问题并阻断，不能为放行改成 excluded。新目录可以有新增实体，但不能用新增项抵消遗漏账项；两类旧 ID 与新 entityId 是各自 receipt 内的命名空间。

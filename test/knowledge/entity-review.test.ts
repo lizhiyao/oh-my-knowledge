@@ -9,7 +9,7 @@ import { buildEntityReviewInput, checkEntityReviewResponse, EntityReviewResponse
   type EntityReviewResponse } from '../../src/knowledge/extraction/entity-review.js';
 import { modelWindow, identityWindow } from './fixtures.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
-import { ENTITY_CODE_REFERENT_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
+import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 
 const hash = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const uid = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
@@ -191,9 +191,10 @@ describe('fixed entity review and explicit downstream usage policy', () => {
     expect(ajv.compile(ENTITY_REVIEW_WIRE_SCHEMA)(f.response)).toBe(true);
     expect(EntityReviewResponseSchema.safeParse(f.response).success).toBe(true);
     expect(ENTITY_REVIEW_WIRE_SCHEMA_JSON).toBe(JSON.stringify(ENTITY_REVIEW_WIRE_SCHEMA));
-    expect(ENTITY_REVIEW_SYSTEM_VERSION).toBe('knowledge-entity-review-system/v2');
+    expect(ENTITY_REVIEW_SYSTEM_VERSION).toBe('knowledge-entity-review-system/v3');
     expect(ENTITY_REVIEW_SYSTEM.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
-    expect(hash(ENTITY_REVIEW_SYSTEM)).toBe('sha256:b1d20a9c39d6b5f552b328afda8973a58e111687a63a8d17853dc8cff3aad718');
+    expect(ENTITY_REVIEW_SYSTEM.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
+    expect(hash(ENTITY_REVIEW_SYSTEM)).toBe('sha256:e2e21984ced35d3e4cd182070b4035f068de9a5ec952f17a1858bda7fd3440e8');
     expect(hash(ENTITY_REVIEW_WIRE_SCHEMA_JSON)).toBe('sha256:658dab325cf4a0648404f42b23c3c7621ca4027cf7881778235892150e310b20');
     expect(ENTITY_REVIEW_WIRE_ID).toBe('sha256:b466259a6e04c95bc4581d9bb224e774af681a8e512174601f8f22f81b675d0f');
     expect(Object.isFrozen(ENTITY_REVIEW_WIRE_SCHEMA)).toBe(true);

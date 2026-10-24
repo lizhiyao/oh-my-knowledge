@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ENTITY_COLLECTIVE_REFERENCE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { ENTITY_REFINEMENT_OUTPUT_NAME, ENTITY_REFINEMENT_SYSTEM, ENTITY_REFINEMENT_WIRE_SCHEMA } from '../../src/knowledge/extraction/entity-refinement.js';
 import { MENTION_REBINDING_OUTPUT_NAME, MENTION_REBINDING_SYSTEM, MENTION_REBINDING_WIRE_SCHEMA } from '../../src/knowledge/extraction/mention-rebinding.js';
 import { EXTRACTION_OUTCOME_MAX_BYTES } from '../../src/knowledge/extraction/generation.js';
@@ -78,7 +79,7 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     expect(JSON.parse(execution.request.input).predecessors.binding.rawOutput).toBe(f.old.result('binding').output);
   });
 
-  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v3', 'A-v4', 'B-v4'] as const)(
+  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v4', 'A-v5', 'B-v5'] as const)(
     'rejects ineligible current base %s before any new-stage archive read', mode => {
       const f = refinedEntitiesFixture();
       if (mode === 'A-undetermined') {
@@ -87,18 +88,18 @@ describe('finite entity refinement archive evidence (authored originals only)', 
       }
       if (mode === 'B-rejected') { f.old.result('binding').output = '{bad json'; f.old.resealB(); }
       if (mode === 'B-native-failure') { f.old.result('binding').numTurns = 2; f.old.resealB(); }
-      if (mode === 'plan-v3') {
-        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v3' });
+      if (mode === 'plan-v4') {
+        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v4' });
         f.old.plan.resealSourcePlan();
       }
-      if (mode === 'A-v4') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v4' }); f.old.resealA(); }
-      if (mode === 'B-v4') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v4' }); f.old.resealB(); }
+      if (mode === 'A-v5') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v5' }); f.old.resealA(); }
+      if (mode === 'B-v5') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v5' }); f.old.resealB(); }
       expect(() => f.readBase()).toThrow(); expect(f.refinedRead).not.toHaveBeenCalled();
       expect(f.refinedInspect).not.toHaveBeenCalled();
     });
 
   for (const stage of stages) {
-    it.each(['reference-id', 'native-receipt', 'native-attempt', 'source', 'input', 'input-version', 'system', 'system-version', 'wire',
+    it.each(['reference-id', 'native-receipt', 'native-attempt', 'source', 'input', 'input-version', 'system', 'previous-system', 'system-version', 'wire',
       'producer', 'producer-proof', 'request-digest', 'chronology', 'reversed-time'] as const)(
       `${stage} rejects a resealed %s conflict`, mode => {
         const f = refinedEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
@@ -109,8 +110,9 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         if (mode === 'input-version') Object.assign(receipt.request, { inputVersion: stage === 'refinement'
           ? 'knowledge-entity-refinement-input/v1' : 'knowledge-mention-rebinding-input/v1' });
         if (mode === 'system') receipt.request.system += ' ';
+        if (mode === 'previous-system') receipt.request.system = receipt.request.system.replace(`${ENTITY_COLLECTIVE_REFERENCE_POLICY}\n`, '');
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'refinement'
-          ? 'knowledge-entity-refinement-system/v2' : 'knowledge-mention-rebinding-system/v2' });
+          ? 'knowledge-entity-refinement-system/v3' : 'knowledge-mention-rebinding-system/v3' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('another wire') });
         if (mode === 'producer') receipt.producer.producerRevision = discoveryHash('another producer');
         if (mode === 'producer-proof') receipt.producer.proof = { scope: 'another same-task witness' };

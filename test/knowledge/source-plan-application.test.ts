@@ -15,7 +15,7 @@ import { sourcePlanExecution, sourcePlanRequestDigest, type SourcePlanReceipt,
   type SourcePlanArchivePort, SourcePlanValidationError, SourcePlanReceiptSchema, readSourcePlanEvidence } from '../../src/knowledge/extraction/source-plan-evidence.js';
 import { SOURCE_PLAN_FINAL_INPUT_VERSION, buildSourcePlannedExtractionInput } from '../../src/knowledge/extraction/source-plan-input.js';
 import { SOURCE_PLAN_SYSTEM, SOURCE_PLAN_WIRE_SCHEMA_JSON, SOURCE_PLAN_OUTPUT_NAME } from '../../src/knowledge/extraction/source-plan.js';
-import { ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
+import { ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
@@ -80,7 +80,7 @@ describe('source semantic plan to real application admission (authored native ev
     expect(input).not.toHaveProperty('sourcePath');
     expect(f.inspect.mock.calls[0][1]).toMatchObject({ system: SOURCE_PLAN_SYSTEM,
       outputFormat: { name: SOURCE_PLAN_OUTPUT_NAME, schema: SOURCE_PLAN_WIRE_SCHEMA_JSON } });
-    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-source-plan-system/v4', system: SOURCE_PLAN_SYSTEM });
+    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-source-plan-system/v5', system: SOURCE_PLAN_SYSTEM });
     expect(f.receipt.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(run.status).toBe('completed'); expect(run.attempts).toHaveLength(1);
     expect(run.promptVersion).toBe('knowledge-extraction-v30');
@@ -132,7 +132,7 @@ describe('source semantic plan to real application admission (authored native ev
     expect(f.effects).not.toHaveBeenCalled();
   });
 
-  it.each(['receipt-ref', 'native-bytes', 'receipt-id', 'attempt-id', 'source', 'input', 'system', 'system-version', 'wire', 'model', 'timeout', 'tokens', 'producer', 'request-digest', 'finish-time'] as const)(
+  it.each(['receipt-ref', 'native-bytes', 'receipt-id', 'attempt-id', 'source', 'input', 'system', 'previous-system', 'system-version', 'wire', 'model', 'timeout', 'tokens', 'producer', 'request-digest', 'finish-time'] as const)(
     'rejects %s binding before any final reservation', async mode => {
       const f = setup();
       if (mode === 'receipt-id') f.receipt.receiptId = randomUUID();
@@ -140,7 +140,8 @@ describe('source semantic plan to real application admission (authored native ev
       if (mode === 'source') f.receipt.sourceVersion = hash('different source');
       if (mode === 'input') f.receipt.request.input += ' ';
       if (mode === 'system') f.receipt.request.system += ' ';
-      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-source-plan-system/v3' });
+      if (mode === 'previous-system') f.receipt.request.system = f.receipt.request.system.replace(`${ENTITY_COLLECTIVE_REFERENCE_POLICY}\n`, '');
+      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-source-plan-system/v4' });
       if (mode === 'wire') f.receipt.request.wireId = hash('different wire');
       if (mode === 'model') f.receipt.request.model = 'other';
       if (mode === 'timeout') f.receipt.request.timeoutMs++;
