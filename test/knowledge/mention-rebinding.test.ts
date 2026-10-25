@@ -6,6 +6,7 @@ import { mentionRebindingExecution } from '../../src/knowledge/extraction/refine
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
+import { discoveryRef, discoveryUid } from './discovered-entities-fixtures.js';
 
 type Fixture = ReturnType<typeof refinedEntitiesFixture>;
 const check = (f: Fixture) => checkMentionRebindingResponse(JSON.stringify(f.rebindingResponse), f.source,
@@ -50,7 +51,7 @@ describe('private mention rebinding B′ (authored only)', () => {
     expect(f.rebindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.rebindingExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([MENTION_REBINDING_SYSTEM_VERSION, MENTION_REBINDING_INPUT_VERSION, MENTION_REBINDING_WIRE_VERSION, MENTION_REBINDING_CHECK_VERSION])
-      .toEqual(['knowledge-mention-rebinding-system/v5', 'knowledge-mention-rebinding-input/v2', 'knowledge-mention-rebinding-wire/v2', 'knowledge-mention-rebinding-check/v2']);
+      .toEqual(['knowledge-mention-rebinding-system/v6', 'knowledge-mention-rebinding-input/v3', 'knowledge-mention-rebinding-wire/v3', 'knowledge-mention-rebinding-check/v3']);
   });
 
   it.each([
@@ -209,8 +210,21 @@ describe('private mention rebinding B′ (authored only)', () => {
 
   it('rejects directory edits and an old task response instead of interpreting them as B′', () => {
     const f = refinedEntitiesFixture(), base = f.readBase().predecessor, refinement = f.readRefinement().predecessor;
-    for (const extra of [{ entities: f.refinementResponse.entities }, { responseKind: 'mention-binding', schemaVersion: 2 }]) {
+    for (const extra of [{ entities: f.refinementResponse.entities }, { responseKind: 'mention-binding', schemaVersion: 3 }, { schemaVersion: 1 }, { schemaVersion: 2 }]) {
       expect(checkMentionRebindingResponse(JSON.stringify({ ...f.rebindingResponse, ...extra }), f.source, base, refinement).status).toBe('rejected');
+    }
+  });
+
+  it('rejects an old A′ receipt or a different A′ association with the same catalog', () => {
+    for (const mode of ['old-receipt', 'other-association'] as const) {
+      const f = refinedEntitiesFixture(), base = f.readBase().predecessor;
+      const refinement = structuredClone(f.readRefinement().predecessor), receipt = JSON.parse(refinement.receiptRaw);
+      if (mode === 'old-receipt') receipt.schemaVersion = 1;
+      else receipt.receiptId = refinement.receiptId = discoveryUid(99);
+      refinement.receiptRaw = JSON.stringify(receipt); refinement.receiptRef = discoveryRef(Buffer.from(refinement.receiptRaw));
+      const run = () => checkMentionRebindingResponse(JSON.stringify(f.rebindingResponse), f.source, base, refinement);
+      if (mode === 'old-receipt') expect(run).toThrow('receipt/source binding mismatch');
+      else expect(run()).toMatchObject({ status: 'rejected', issues: ['binding_mismatch'] });
     }
   });
 

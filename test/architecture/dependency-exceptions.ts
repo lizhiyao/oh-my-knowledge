@@ -95,11 +95,9 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/auto-extraction.ts → knowledge/extraction/model-input.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/runs.ts',
   'knowledge/application/citation-locators.ts → knowledge/extraction/quote-occurrence.ts',
-  // A/B 独立原件只读认证与现有实体写入，不改变普通单 E run 或反向依赖。
+  // source-only A/B 只认证自身原件与现有实体写入；SP 在 A′ 联合边界认证，不扩大反向依赖。
   'knowledge/application/discovered-entities.ts → knowledge/extraction/bound-catalog.ts',
   'knowledge/application/discovered-entities.ts → knowledge/extraction/discovered-entities-evidence.ts',
-  // 清单→A→B 只重放固定来源清单原件，未决处置在 B 读取前阻断，不执行模型或扩大反向依赖。
-  'knowledge/application/discovered-entities.ts → knowledge/extraction/source-plan-evidence.ts',
   // 一轮目录修订仅消费五份原件的纯认证与最终接纳，不创建执行器或反向依赖。
   'knowledge/application/refined-entities.ts → knowledge/extraction/bound-catalog.ts',
   'knowledge/application/refined-entities.ts → knowledge/extraction/refined-entities-evidence.ts',

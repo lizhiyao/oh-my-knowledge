@@ -60,7 +60,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const readBase = () => readRefinedEntitiesBaseEvidence(source, model, references(), { sourcePlanArchive, discoveredEntitiesArchive });
   const base = readBase(), refinementExecution = entityRefinementExecution(source, model, base, refinedEntitiesArchive);
   const mapEntity = (entityId: string) => `next-${entityId}`;
-  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 2,
+  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 3,
     binding: JSON.parse(buildEntityRefinementInput(source, base.predecessor)).binding,
     entities: a.entities.map(entity => ({ ...structuredClone(entity), entityId: mapEntity(entity.entityId),
       possibleEntityIds: entity.possibleEntityIds.map(mapEntity),
@@ -69,7 +69,9 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
       collection: entity.collection ? { ...entity.collection, memberEntityIds: entity.collection.memberEntityIds.map(mapEntity),
         anchorIds: entity.collection.anchorIds.map(id => `next-${id}`) } : null })),
     anchors: a.anchors.map(anchor => ({ ...structuredClone(anchor), anchorId: `next-${anchor.anchorId}`, entityId: mapEntity(anchor.entityId) })),
-    dispositions: a.dispositions.map(row => ({ ...structuredClone(row), entityIds: row.entityIds.map(mapEntity) })),
+    dispositions: old.plan.sourcePlanResponse.objects.map(object => ({ sourcePlanObjectId: object.objectId, dispositionKind: 'retained',
+      entityIds: ['next-e0'], rationale: 'Authored first coordination of an independent plan object with a source-only catalog.',
+      selections: structuredClone(object.anchors) })),
     entityDispositions: a.entities.map(entity => ({ previousEntityId: entity.entityId, dispositionKind: 'retained',
       entityIds: [mapEntity(entity.entityId)], rationale: 'Authored retained mapping, not source truth.',
       selections: [structuredClone(a.anchors.find(anchor => anchor.entityId === entity.entityId)!.selection)] })),
@@ -84,7 +86,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const refinementNative = { archiveKind: 'knowledge-entity-refinement-native', schemaVersion: 1,
     receiptId: discoveryUid(8), attemptId: discoveryUid(9), outcome: { outcomeKind: 'result',
       result: nativeResult(` \n${JSON.stringify(refinementResponse)}\r\n`) } as ExtractionOutcome };
-  const refinementReceipt: EntityRefinementReceipt = { receiptKind: 'knowledge-entity-refinement-receipt', schemaVersion: 1,
+  const refinementReceipt: EntityRefinementReceipt = { receiptKind: 'knowledge-entity-refinement-receipt', schemaVersion: 3,
     receiptId: refinementNative.receiptId, attemptId: refinementNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: refinementExecution.request, producer: refinementExecution.producer, requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(refinementNative)), startedAt: '2026-10-24T00:00:04Z', finishedAt: '2026-10-24T00:00:05Z' };
@@ -97,7 +99,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const readRefinement = () => readEntityRefinementEvidence(source, model, refinementReference, refinedEntitiesArchive, readBase());
   const refinement = readRefinement(), rebindingExecution = mentionRebindingExecution(source, model, refinement, refinedEntitiesArchive);
   const mapMention = (mentionId: string) => `next-${mentionId}`;
-  const rebindingResponse: MentionRebindingResponse = { responseKind: 'mention-rebinding', schemaVersion: 1,
+  const rebindingResponse: MentionRebindingResponse = { responseKind: 'mention-rebinding', schemaVersion: 3,
     binding: JSON.parse(buildMentionRebindingInput(source, base.predecessor, refinement.predecessor)).binding,
     mentions: b.mentions.filter(mention => mention.mentionId !== 'gap-peer').map(mention => ({ ...structuredClone(mention), mentionId: mapMention(mention.mentionId),
       selection: mention.mentionId === 'gap' ? selection('Gamma', 0) : structuredClone(mention.selection),
@@ -112,7 +114,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const rebindingNative = { archiveKind: 'knowledge-mention-rebinding-native', schemaVersion: 1,
     receiptId: discoveryUid(10), attemptId: discoveryUid(11), outcome: { outcomeKind: 'result',
       result: nativeResult(` \n${JSON.stringify(rebindingResponse)}\r\n`) } as ExtractionOutcome };
-  const rebindingReceipt: MentionRebindingReceipt = { receiptKind: 'knowledge-mention-rebinding-receipt', schemaVersion: 1,
+  const rebindingReceipt: MentionRebindingReceipt = { receiptKind: 'knowledge-mention-rebinding-receipt', schemaVersion: 3,
     receiptId: rebindingNative.receiptId, attemptId: rebindingNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: rebindingExecution.request, producer: rebindingExecution.producer, requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(rebindingNative)), startedAt: '2026-10-24T00:00:06Z', finishedAt: '2026-10-24T00:00:07Z' };

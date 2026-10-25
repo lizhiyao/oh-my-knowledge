@@ -53,7 +53,7 @@ function readBase(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
   return { window, source, base, archive: ports.refinedEntitiesArchive };
 }
 
-/** Authenticate current plan→A→B and materialize the actual A′ factory input without constructing an executor. */
+/** Authenticate independent SP/A and the A→B chain, then materialize the actual A′ factory input without constructing an executor. */
 export function readRefinedEntitiesContext(ports: RefinedEntitiesPorts, selection: RefinedEntitiesSource,
   model: RefinedEntitiesModel, references: RefinedEntitiesBaseReferences) {
   const { source, base, archive } = readBase(ports, selection, model, references);

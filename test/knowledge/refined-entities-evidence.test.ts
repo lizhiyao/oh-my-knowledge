@@ -64,6 +64,67 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     expect(rebinding).not.toHaveProperty('entityAnalysis'); expect(rebinding).not.toHaveProperty('extractionRun');
   });
 
+  it.each(['codex', 'openai-api'] as const)('accepts complete independent %s SP with empty tools and permitted absent optional counters', executor => {
+    for (const optionalCounters of ['present', 'absent'] as const) {
+      const f = refinedEntitiesFixture(executor), outcome = f.old.plan.sourcePlanNative.outcome;
+      if (outcome.outcomeKind !== 'result') throw new Error('Authored SP is not a result.');
+      outcome.result.toolCalls = [];
+      if (optionalCounters === 'absent') {
+        delete outcome.result.attemptCount; delete outcome.result.numSubAgents; delete outcome.result.fullNumTurns;
+      }
+      f.old.plan.resealSourcePlan();
+      const before = originalBytes(f), base = f.readBase();
+      expect(base.sourcePlan.outcome).toEqual(outcome);
+      expect(entityRefinementExecution(f.source, f.model, base, f.refinedEntitiesArchive).request.input)
+        .toContain(JSON.stringify(base.sourcePlan.rawOutput).slice(1, -1));
+      expect(originalBytes(f)).toEqual(before);
+    }
+  });
+
+  it.each(['turns', 'missing-turns', 'full-turns', 'retry', 'subagents', 'malformed-tools', 'null-tools'] as const)(
+    'restores the strict SP %s gate at first coordination and preserves its failed original', mode => {
+      const f = refinedEntitiesFixture(), outcome = f.old.plan.sourcePlanNative.outcome;
+      if (outcome.outcomeKind !== 'result') throw new Error('Authored SP is not a result.');
+      if (mode === 'turns') outcome.result.numTurns = 2;
+      if (mode === 'missing-turns') delete outcome.result.numTurns;
+      if (mode === 'full-turns') outcome.result.fullNumTurns = 2;
+      if (mode === 'retry') outcome.result.attemptCount = 2;
+      if (mode === 'subagents') outcome.result.numSubAgents = 1;
+      if (mode === 'malformed-tools') outcome.result.toolCalls = 'unknown-shape';
+      if (mode === 'null-tools') outcome.result.toolCalls = null;
+      f.old.plan.resealSourcePlan(); const before = originalBytes(f); let error: unknown;
+      expect(f.old.plan.readPlan().rawOutput).toBe(outcome.result.output); // The global SP reader intentionally has a wider contract.
+      f.old.read.mockClear();
+      try { f.readBase(); } catch (caught) { error = caught; }
+      expect(error).toBeInstanceOf(RefinedEntitiesNativeError);
+      expect(error).toMatchObject({ stage: 'source-plan', outcome,
+        assessment: { status: 'rejected', issues: ['incomplete_native_return'] } });
+      expect(f.old.read).not.toHaveBeenCalled(); expect(f.refinedRead).not.toHaveBeenCalled(); expect(f.refinedInspect).not.toHaveBeenCalled();
+      expect(originalBytes(f)).toEqual(before);
+    });
+
+  it.each(['unsuccessful', 'cancelled', 'missing-stop', 'missing-output', 'refusal', 'tools', 'cleanup', 'exception', 'projection', 'unencodable-output'] as const)(
+    'retains the existing global SP rejection of %s without reading A or reserving A′', mode => {
+      const f = refinedEntitiesFixture(), native = f.old.plan.sourcePlanNative, outcome = native.outcome;
+      if (outcome.outcomeKind !== 'result') throw new Error('Authored SP is not a result.');
+      const result = outcome.result;
+      if (mode === 'unsuccessful') result.ok = false;
+      if (mode === 'cancelled') result.stopReason = 'cancelled';
+      if (mode === 'missing-stop') delete result.stopReason;
+      if (mode === 'missing-output') result.output = null;
+      if (mode === 'refusal') result.refusal = 'authored SP refusal';
+      if (mode === 'tools') result.toolCalls = [{ tool: 'authored-tool' }];
+      if (mode === 'cleanup') native.outcome = { outcomeKind: 'result', result, cleanupFailure: { diagnostic: 'authored SP cleanup failure' } };
+      if (mode === 'exception') native.outcome = { outcomeKind: 'exception', error: { representationKind: 'exception-diagnostic/v1',
+        sourceType: 'string', name: null, message: 'authored SP exception', truncated: false, accessorsSkipped: false } };
+      if (mode === 'projection') native.outcome = { outcomeKind: 'model-port-projection', scope: 'authored-model-port/v1', result: { output: '{}', durationMs: 1 } };
+      if (mode === 'unencodable-output') result.output = String.fromCharCode(0xd800);
+      f.old.plan.resealSourcePlan(); const before = originalBytes(f); f.old.read.mockClear();
+      expect(() => f.readBase()).toThrow();
+      expect(f.old.read).not.toHaveBeenCalled(); expect(f.refinedRead).not.toHaveBeenCalled(); expect(f.refinedInspect).not.toHaveBeenCalled();
+      expect(originalBytes(f)).toEqual(before);
+    });
+
   it('allows a checked ready original B to enter refinement without claiming its catalog is correct', () => {
     const f = refinedEntitiesFixture();
     f.old.bindingResponse.mentions = f.old.bindingResponse.mentions.filter(mention => mention.mentionId !== 'gap');
@@ -79,11 +140,25 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     expect(JSON.parse(execution.request.input).predecessors.binding.rawOutput).toBe(f.old.result('binding').output);
   });
 
-  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v5', 'A-v6', 'B-v6'] as const)(
+  it.each(['before-coordination', 'after-coordination-start'] as const)('authenticates independent SP completion %s without imposing SP→A order', mode => {
+    const f = refinedEntitiesFixture(), beforeA = f.old.bytesA(), beforeB = f.old.bytesB();
+    f.old.plan.sourcePlanReceipt.finishedAt = mode === 'before-coordination' ? '2026-10-24T00:00:03.500Z' : '2026-10-24T00:00:04.500Z';
+    f.old.plan.resealSourcePlan();
+    const base = f.readBase(), execution = entityRefinementExecution(f.source, f.model, base, f.refinedEntitiesArchive);
+    expect(base.binding.checked.status).toBe('checked');
+    f.refinementReceipt.request = execution.request; f.refinementReceipt.producer = execution.producer;
+    f.refinementResponse.binding = JSON.parse(execution.request.input).binding;
+    f.result('refinement').output = JSON.stringify(f.refinementResponse); f.resealRefinement();
+    if (mode === 'before-coordination') expect(f.readRefinement().checked.status).toBe('checked');
+    else expect(() => f.readRefinement()).toThrow('chronology');
+    expect(f.old.bytesA()).toEqual(beforeA); expect(f.old.bytesB()).toEqual(beforeB);
+  });
+
+  it.each(['A-old-ledger', 'B-rejected', 'B-native-failure', 'plan-v5', 'A-v7', 'B-v7'] as const)(
     'rejects ineligible current base %s before any new-stage archive read', mode => {
       const f = refinedEntitiesFixture();
-      if (mode === 'A-undetermined') {
-        Object.assign(f.old.discoveryResponse.dispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
+      if (mode === 'A-old-ledger') {
+        Object.assign(f.old.discoveryResponse, { dispositions: [] });
         f.old.result('discovery').output = JSON.stringify(f.old.discoveryResponse); f.old.resealA();
       }
       if (mode === 'B-rejected') { f.old.result('binding').output = '{bad json'; f.old.resealB(); }
@@ -92,8 +167,8 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v5' });
         f.old.plan.resealSourcePlan();
       }
-      if (mode === 'A-v6') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v6' }); f.old.resealA(); }
-      if (mode === 'B-v6') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v6' }); f.old.resealB(); }
+      if (mode === 'A-v7') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v7' }); f.old.resealA(); }
+      if (mode === 'B-v7') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v7' }); f.old.resealB(); }
       expect(() => f.readBase()).toThrow(); expect(f.refinedRead).not.toHaveBeenCalled();
       expect(f.refinedInspect).not.toHaveBeenCalled();
     });
