@@ -28,7 +28,7 @@ export type EntityReviewDisposition = 'retain' | 'exclude' | 'uncertain';
 export type CheckedEntityReviewDecision = EntityReviewDecision & { disposition: EntityReviewDisposition };
 export interface EntityReviewUsageBlocker { entityId: string; reasons: string[] }
 
-export const ENTITY_REVIEW_SYSTEM_VERSION = 'knowledge-entity-review-system/v3' as const;
+export const ENTITY_REVIEW_SYSTEM_VERSION = 'knowledge-entity-review-system/v4' as const;
 export const ENTITY_REVIEW_INPUT_VERSION = 'knowledge-entity-review-input/v1' as const;
 export const ENTITY_REVIEW_WIRE_VERSION = 'knowledge-entity-review-wire/v1' as const;
 export const ENTITY_REVIEW_CHECK_VERSION = 'knowledge-entity-review-check/v1' as const;

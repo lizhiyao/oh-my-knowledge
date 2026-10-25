@@ -232,7 +232,7 @@ describe('source-only semantic planning', () => {
   });
 
   it('pins independent system, source input and wire identities without claiming semantic improvement', () => {
-    expect(SOURCE_PLAN_SYSTEM_VERSION).toBe('knowledge-source-plan-system/v5');
+    expect(SOURCE_PLAN_SYSTEM_VERSION).toBe('knowledge-source-plan-system/v6');
     expect(SOURCE_PLAN_SYSTEM.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(SOURCE_PLAN_SYSTEM.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect(SOURCE_PLAN_INPUT_VERSION).toBe('knowledge-source-plan-input/v2');
@@ -240,7 +240,7 @@ describe('source-only semantic planning', () => {
     expect(SOURCE_PLAN_WIRE_VERSION).toBe('knowledge-source-plan-wire/v2');
     expect(JSON.stringify(SOURCE_PLAN_WIRE_SCHEMA_JSON)).toBe(SOURCE_PLAN_WIRE_CANONICAL_JSON);
     expect({ system: digest(SOURCE_PLAN_SYSTEM), input: digest(buildKnowledgeSourcePlanInput(fixture().window)), wire: SOURCE_PLAN_WIRE_ID })
-      .toEqual({ system: 'sha256:cc6611be737c8b8536f32760d9241efc1ce7fc9a3d801d32ea0768315984ce0c',
+      .toEqual({ system: 'sha256:06628cf3f3c8c58b98b488f72d7bb9b004beccc8f7f31d39c788024ec9f99436',
         input: 'sha256:741694557106a0ecb477a9e4ba9a23e2ebe74df14dd6289f07c3a5935bd490bd',
         wire: 'sha256:54a52f15ecfe2700e0f1a27ac570e06e6a4d0198eb1884337bfff7ad496095f5' });
   });

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ENTITY_COLLECTIVE_REFERENCE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { ENTITY_REFINEMENT_OUTPUT_NAME, ENTITY_REFINEMENT_SYSTEM, ENTITY_REFINEMENT_WIRE_SCHEMA } from '../../src/knowledge/extraction/entity-refinement.js';
 import { MENTION_REBINDING_OUTPUT_NAME, MENTION_REBINDING_SYSTEM, MENTION_REBINDING_WIRE_SCHEMA } from '../../src/knowledge/extraction/mention-rebinding.js';
 import { EXTRACTION_OUTCOME_MAX_BYTES } from '../../src/knowledge/extraction/generation.js';
@@ -9,6 +8,7 @@ import { ENTITY_REFINEMENT_RECEIPT_MAX_BYTES, MENTION_REBINDING_RECEIPT_MAX_BYTE
   type RefinedEntitiesArchivePort } from '../../src/knowledge/extraction/refined-entities-evidence.js';
 import { discoveryBytes, discoveryHash, discoveryRef, discoveryUid } from './discovered-entities-fixtures.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
+import { withImmediatePriorCollectivePolicy } from './collective-reference-policy-fixtures.js';
 
 const stages = ['refinement', 'rebinding'] as const;
 type Stage = typeof stages[number];
@@ -79,7 +79,7 @@ describe('finite entity refinement archive evidence (authored originals only)', 
     expect(JSON.parse(execution.request.input).predecessors.binding.rawOutput).toBe(f.old.result('binding').output);
   });
 
-  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v4', 'A-v5', 'B-v5'] as const)(
+  it.each(['A-undetermined', 'B-rejected', 'B-native-failure', 'plan-v5', 'A-v6', 'B-v6'] as const)(
     'rejects ineligible current base %s before any new-stage archive read', mode => {
       const f = refinedEntitiesFixture();
       if (mode === 'A-undetermined') {
@@ -88,12 +88,12 @@ describe('finite entity refinement archive evidence (authored originals only)', 
       }
       if (mode === 'B-rejected') { f.old.result('binding').output = '{bad json'; f.old.resealB(); }
       if (mode === 'B-native-failure') { f.old.result('binding').numTurns = 2; f.old.resealB(); }
-      if (mode === 'plan-v4') {
-        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v4' });
+      if (mode === 'plan-v5') {
+        Object.assign(f.old.plan.sourcePlanReceipt.request, { systemVersion: 'knowledge-source-plan-system/v5' });
         f.old.plan.resealSourcePlan();
       }
-      if (mode === 'A-v5') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v5' }); f.old.resealA(); }
-      if (mode === 'B-v5') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v5' }); f.old.resealB(); }
+      if (mode === 'A-v6') { Object.assign(f.old.discoveryReceipt.request, { systemVersion: 'knowledge-entity-discovery-system/v6' }); f.old.resealA(); }
+      if (mode === 'B-v6') { Object.assign(f.old.bindingReceipt.request, { systemVersion: 'knowledge-mention-binding-system/v6' }); f.old.resealB(); }
       expect(() => f.readBase()).toThrow(); expect(f.refinedRead).not.toHaveBeenCalled();
       expect(f.refinedInspect).not.toHaveBeenCalled();
     });
@@ -110,9 +110,9 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         if (mode === 'input-version') Object.assign(receipt.request, { inputVersion: stage === 'refinement'
           ? 'knowledge-entity-refinement-input/v1' : 'knowledge-mention-rebinding-input/v1' });
         if (mode === 'system') receipt.request.system += ' ';
-        if (mode === 'previous-system') receipt.request.system = receipt.request.system.replace(`${ENTITY_COLLECTIVE_REFERENCE_POLICY}\n`, '');
+        if (mode === 'previous-system') receipt.request.system = withImmediatePriorCollectivePolicy(receipt.request.system);
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'refinement'
-          ? 'knowledge-entity-refinement-system/v3' : 'knowledge-mention-rebinding-system/v3' });
+          ? 'knowledge-entity-refinement-system/v4' : 'knowledge-mention-rebinding-system/v4' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('another wire') });
         if (mode === 'producer') receipt.producer.producerRevision = discoveryHash('another producer');
         if (mode === 'producer-proof') receipt.producer.proof = { scope: 'another same-task witness' };

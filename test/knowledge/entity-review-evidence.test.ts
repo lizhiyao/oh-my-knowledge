@@ -14,6 +14,7 @@ import { ENTITY_REVIEW_SYSTEM, ENTITY_REVIEW_WIRE_ID, ENTITY_REVIEW_WIRE_SCHEMA,
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { modelWindow } from './fixtures.js';
 import { studyNativeResult } from './extraction-study-fixtures.js';
+import { withImmediatePriorCollectivePolicy } from './collective-reference-policy-fixtures.js';
 
 const hash = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const bytes = (value: unknown) => Buffer.from(canonicalJson(value));
@@ -76,7 +77,7 @@ describe('entity review native archive evidence', () => {
     expect(f.read).toHaveBeenCalledExactlyOnceWith(f.reference.receiptId, f.reference.receiptRef);
     const input = f.inspect.mock.calls[0][1];
     expect(input).toEqual(f.execution.input); expect(input.system).toBe(ENTITY_REVIEW_SYSTEM);
-    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-entity-review-system/v3' });
+    expect(f.receipt.request).toMatchObject({ systemVersion: 'knowledge-entity-review-system/v4' });
     expect(f.receipt.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.receipt.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect(input.outputFormat).toMatchObject({ mode: 'json-schema', name: ENTITY_REVIEW_OUTPUT_NAME });
@@ -101,8 +102,8 @@ describe('entity review native archive evidence', () => {
       if (mode === 'catalog-digest') f.receipt.binding.entityAnalysisDigest = hash('different catalog');
       if (mode === 'input') f.receipt.request.input += ' ';
       if (mode === 'system') f.receipt.request.system += ' ';
-      if (mode === 'previous-system') f.receipt.request.system = f.receipt.request.system.replace(`${ENTITY_COLLECTIVE_REFERENCE_POLICY}\n`, '');
-      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-entity-review-system/v2' });
+      if (mode === 'previous-system') f.receipt.request.system = withImmediatePriorCollectivePolicy(f.receipt.request.system);
+      if (mode === 'system-version') Object.assign(f.receipt.request, { systemVersion: 'knowledge-entity-review-system/v3' });
       if (mode === 'wire') f.receipt.request.wireId = hash('different wire');
       if (mode === 'model') f.receipt.request.model = 'other-model';
       if (mode === 'executor') f.receipt.request.executor = 'openai-api';

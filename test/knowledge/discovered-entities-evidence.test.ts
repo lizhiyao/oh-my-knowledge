@@ -8,6 +8,7 @@ import { DiscoveredEntitiesNativeError, EntityDiscoveryValidationError, ENTITY_D
   mentionBindingExecution, entityDiscoveryRequestDigest, mentionBindingRequestDigest,
   type EntityDiscoveryArchivePort } from '../../src/knowledge/extraction/discovered-entities-evidence.js';
 import { discoveredEntitiesFixture, discoveryBytes, discoveryHash, discoveryRef, discoveryUid } from './discovered-entities-fixtures.js';
+import { withImmediatePriorCollectivePolicy } from './collective-reference-policy-fixtures.js';
 
 const stages = ['discovery', 'binding'] as const;
 type Stage = typeof stages[number];
@@ -49,14 +50,14 @@ describe('independent discovery and mention-binding archive evidence (authored o
     expect(f.discoveryReceipt.request.input).not.toContain('sourcePath');
     expect(JSON.parse(f.discoveryReceipt.request.input).sourcePlanResponse).toEqual(f.planPredecessor);
     expect(bInput.binding.sourcePlanRawDigest).toBe(discoveryHash(f.sourcePlan.rawOutput));
-    expect(f.discoveryExecution.request).toMatchObject({ systemVersion: 'knowledge-entity-discovery-system/v6',
+    expect(f.discoveryExecution.request).toMatchObject({ systemVersion: 'knowledge-entity-discovery-system/v7',
       system: ENTITY_DISCOVERY_SYSTEM, inputVersion: 'knowledge-entity-discovery-input/v2',
       wireId: 'sha256:045467320d5c8e96245a7b1a11861853cf8f0820ba729e254d2dd7f3b4e0e052' });
     expect(f.discoveryExecution.input.system).toBe(ENTITY_DISCOVERY_SYSTEM);
     expect(f.discoveryExecution.input.system?.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.discoveryExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.discoveryExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
-    expect(f.bindingExecution.request).toMatchObject({ systemVersion: 'knowledge-mention-binding-system/v6',
+    expect(f.bindingExecution.request).toMatchObject({ systemVersion: 'knowledge-mention-binding-system/v7',
       system: MENTION_BINDING_SYSTEM,
       wireId: 'sha256:d87d80b385152ee34cdfc117f35983380725dfef77dfd02db2e6f9ae23e93317' });
     expect(f.bindingExecution.input.system).toBe(MENTION_BINDING_SYSTEM);
@@ -94,9 +95,9 @@ describe('independent discovery and mention-binding archive evidence (authored o
         if (mode === 'source-content') f.source.excerpts[0].text += '；来源不同';
         if (mode === 'input') receipt.request.input += ' ';
         if (mode === 'system') receipt.request.system += ' ';
-        if (mode === 'previous-system') receipt.request.system = receipt.request.system.replace(`${ENTITY_COLLECTIVE_REFERENCE_POLICY}\n`, '');
+        if (mode === 'previous-system') receipt.request.system = withImmediatePriorCollectivePolicy(receipt.request.system);
         if (mode === 'system-version') Object.assign(receipt.request, { systemVersion: stage === 'discovery'
-          ? 'knowledge-entity-discovery-system/v5' : 'knowledge-mention-binding-system/v5' });
+          ? 'knowledge-entity-discovery-system/v6' : 'knowledge-mention-binding-system/v6' });
         if (mode === 'wire') Object.assign(receipt.request, { wireId: discoveryHash('other wire') });
         if (mode === 'model') receipt.request.model = 'other-model';
         if (mode === 'executor') receipt.request.executor = 'openai-api';

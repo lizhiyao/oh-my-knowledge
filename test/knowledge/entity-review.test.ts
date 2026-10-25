@@ -191,10 +191,10 @@ describe('fixed entity review and explicit downstream usage policy', () => {
     expect(ajv.compile(ENTITY_REVIEW_WIRE_SCHEMA)(f.response)).toBe(true);
     expect(EntityReviewResponseSchema.safeParse(f.response).success).toBe(true);
     expect(ENTITY_REVIEW_WIRE_SCHEMA_JSON).toBe(JSON.stringify(ENTITY_REVIEW_WIRE_SCHEMA));
-    expect(ENTITY_REVIEW_SYSTEM_VERSION).toBe('knowledge-entity-review-system/v3');
+    expect(ENTITY_REVIEW_SYSTEM_VERSION).toBe('knowledge-entity-review-system/v4');
     expect(ENTITY_REVIEW_SYSTEM.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(ENTITY_REVIEW_SYSTEM.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
-    expect(hash(ENTITY_REVIEW_SYSTEM)).toBe('sha256:e2e21984ced35d3e4cd182070b4035f068de9a5ec952f17a1858bda7fd3440e8');
+    expect(hash(ENTITY_REVIEW_SYSTEM)).toBe('sha256:3e7c17cd0fc8260681467f3c59390cf60c519217a2f7837d5085fe614ff92eb8');
     expect(hash(ENTITY_REVIEW_WIRE_SCHEMA_JSON)).toBe('sha256:658dab325cf4a0648404f42b23c3c7621ca4027cf7881778235892150e310b20');
     expect(ENTITY_REVIEW_WIRE_ID).toBe('sha256:b466259a6e04c95bc4581d9bb224e774af681a8e512174601f8f22f81b675d0f');
     expect(Object.isFrozen(ENTITY_REVIEW_WIRE_SCHEMA)).toBe(true);

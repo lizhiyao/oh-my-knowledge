@@ -41,7 +41,7 @@ export const EntityDiscoveryResponseSchema = z.strictObject({ responseKind: z.li
 export type EntityDiscoveryResponse = z.infer<typeof EntityDiscoveryResponseSchema>;
 export type EntityDiscoverySource = BoundKnowledgeSource;
 
-export const ENTITY_DISCOVERY_SYSTEM_VERSION = 'knowledge-entity-discovery-system/v6' as const;
+export const ENTITY_DISCOVERY_SYSTEM_VERSION = 'knowledge-entity-discovery-system/v7' as const;
 export const ENTITY_DISCOVERY_INPUT_VERSION = 'knowledge-entity-discovery-input/v2' as const;
 export const ENTITY_DISCOVERY_WIRE_VERSION = 'knowledge-entity-discovery-wire/v2' as const;
 export const ENTITY_DISCOVERY_CHECK_VERSION = 'knowledge-entity-discovery-check/v2' as const;

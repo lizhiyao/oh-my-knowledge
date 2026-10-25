@@ -6,7 +6,7 @@ import { assertExtractionInputCapacity } from './model-input.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY } from './knowledge-semantic-policy.js';
 
-export const SOURCE_PLAN_SYSTEM_VERSION = 'knowledge-source-plan-system/v5' as const;
+export const SOURCE_PLAN_SYSTEM_VERSION = 'knowledge-source-plan-system/v6' as const;
 export const SOURCE_PLAN_INPUT_VERSION = 'knowledge-source-plan-input/v2' as const;
 export const SOURCE_PLAN_WIRE_VERSION = 'knowledge-source-plan-wire/v2' as const;
 export const SOURCE_PLAN_OUTPUT_NAME = 'knowledge_source_plan_v2' as const;
