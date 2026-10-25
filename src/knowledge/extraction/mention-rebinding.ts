@@ -27,7 +27,7 @@ export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.l
   supportDispositions: z.array(z.strictObject({ previousSupport: supportKey, dispositionKind: RefinementDispositionKindSchema,
     supports: z.array(supportKey).max(256), rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(256) });
 export type MentionRebindingResponse = z.infer<typeof MentionRebindingResponseSchema>;
-export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v4' as const;
+export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v5' as const;
 export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v2' as const;
 export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v2' as const;
 export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v2' as const;

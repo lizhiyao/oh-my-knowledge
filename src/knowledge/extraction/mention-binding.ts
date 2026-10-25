@@ -36,7 +36,7 @@ export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.lit
     mentionIds: z.array(id).min(1).max(64) })).max(256),
 });
 export type MentionBindingResponse = z.infer<typeof MentionBindingResponseSchema>;
-export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v6' as const;
+export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v7' as const;
 export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v2' as const;
 export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v2' as const;
 export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v2' as const;

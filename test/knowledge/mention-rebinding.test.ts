@@ -50,7 +50,7 @@ describe('private mention rebinding B′ (authored only)', () => {
     expect(f.rebindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.rebindingExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([MENTION_REBINDING_SYSTEM_VERSION, MENTION_REBINDING_INPUT_VERSION, MENTION_REBINDING_WIRE_VERSION, MENTION_REBINDING_CHECK_VERSION])
-      .toEqual(['knowledge-mention-rebinding-system/v4', 'knowledge-mention-rebinding-input/v2', 'knowledge-mention-rebinding-wire/v2', 'knowledge-mention-rebinding-check/v2']);
+      .toEqual(['knowledge-mention-rebinding-system/v5', 'knowledge-mention-rebinding-input/v2', 'knowledge-mention-rebinding-wire/v2', 'knowledge-mention-rebinding-check/v2']);
   });
 
   it.each([

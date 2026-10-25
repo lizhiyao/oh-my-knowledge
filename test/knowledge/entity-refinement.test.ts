@@ -37,17 +37,17 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v4', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
+      .toEqual(['knowledge-entity-refinement-system/v5', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
     expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([f.old.plan.sourcePlanReceipt.request.systemVersion, f.old.discoveryReceipt.request.systemVersion, f.old.bindingReceipt.request.systemVersion])
-      .toEqual(['knowledge-source-plan-system/v5', 'knowledge-entity-discovery-system/v6', 'knowledge-mention-binding-system/v6']);
+      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v7', 'knowledge-mention-binding-system/v7']);
     expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system].map(discoveryHash))
-      .toEqual(['sha256:cc6611be737c8b8536f32760d9241efc1ce7fc9a3d801d32ea0768315984ce0c',
-        'sha256:65e149bf90e7668e8566b6310c051b1181da1c9faf07782d5b9b9a5d80b62cbf',
-        'sha256:c3963c89093099d1b05101660fdc3d367d9c95a81ceb1f174f5058e9da21e1df']);
+      .toEqual(['sha256:06628cf3f3c8c58b98b488f72d7bb9b004beccc8f7f31d39c788024ec9f99436',
+        'sha256:9e1b45a6a0042d32456726488e9abaa6d424b3b78ead039c3184c4583c274a94',
+        'sha256:c50e510f685041eecd986a36768dd1049206fb9f47e9d86ad29aed79f8207a41']);
     expect(checkEntityRefinementResponse(JSON.stringify(f.refinementResponse), f.source, base.predecessor).status).toBe('checked');
   });
 

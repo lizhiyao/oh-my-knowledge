@@ -44,7 +44,7 @@ export const EntityRefinementResponseSchema = z.strictObject({ responseKind: z.l
     rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(512) });
 export type EntityRefinementResponse = z.infer<typeof EntityRefinementResponseSchema>;
 export type EntityRefinementSource = BoundKnowledgeSource;
-export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v4' as const;
+export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v5' as const;
 export const ENTITY_REFINEMENT_INPUT_VERSION = 'knowledge-entity-refinement-input/v2' as const;
 export const ENTITY_REFINEMENT_WIRE_VERSION = 'knowledge-entity-refinement-wire/v2' as const;
 export const ENTITY_REFINEMENT_CHECK_VERSION = 'knowledge-entity-refinement-check/v2' as const;
