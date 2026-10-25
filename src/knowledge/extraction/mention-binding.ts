@@ -5,7 +5,7 @@ import { validateEntityMentionSelection } from '../entities/validation.js';
 import { canonicalJson } from '../store.js';
 import { BoundKnowledgeSourceSchema, validUtf8, type BoundKnowledgeSource } from './bound-catalog.js';
 import { admitEntities, type EntityModel } from './entities.js';
-import { buildEntityDiscoveryInput, checkEntityDiscoveryResponse, EntityDiscoveryBindingSchema,
+import { buildEntityDiscoveryInput, checkEntityCatalogBody, checkEntityDiscoveryResponse, EntityDiscoveryBindingSchema,
   ENTITY_DISCOVERY_CHECK_VERSION, ENTITY_DISCOVERY_WIRE_ID, type EntityDiscoveryResponse } from './entity-discovery.js';
 import { assertExtractionInputCapacity } from './model-input.js';
 import type { WireRawEvidence } from './model-wire.js';
@@ -23,7 +23,7 @@ export type DiscoveryForBinding = z.infer<typeof predecessorSchema>;
 export const MentionBindingBindingSchema = EntityDiscoveryBindingSchema.extend({ discoveryReceiptId: z.string().uuid(),
   discoveryReceiptRef: byteRef, discoveryNativeRef: byteRef, discoveryRequestDigest: byteDigest,
   discoveryRawDigest: byteDigest, discoveryCatalogDigest: byteDigest });
-export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-binding'), schemaVersion: z.literal(3),
+export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-binding'), schemaVersion: z.literal(4),
   binding: MentionBindingBindingSchema,
   mentions: z.array(z.strictObject({ mentionId: id,
     selection: z.strictObject({ evidenceRef: id, quote: text,
@@ -35,11 +35,11 @@ export const MentionBindingResponseSchema = z.strictObject({ responseKind: z.lit
     mentionIds: z.array(id).min(1).max(64) })).max(256),
 });
 export type MentionBindingResponse = z.infer<typeof MentionBindingResponseSchema>;
-export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v8' as const;
-export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v3' as const;
-export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v3' as const;
-export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v3' as const;
-export const MENTION_BINDING_OUTPUT_NAME = 'mention_binding_v3' as const;
+export const MENTION_BINDING_SYSTEM_VERSION = 'knowledge-mention-binding-system/v9' as const;
+export const MENTION_BINDING_INPUT_VERSION = 'knowledge-mention-binding-input/v4' as const;
+export const MENTION_BINDING_WIRE_VERSION = 'knowledge-mention-binding-wire/v4' as const;
+export const MENTION_BINDING_CHECK_VERSION = 'knowledge-mention-binding-check/v4' as const;
+export const MENTION_BINDING_OUTPUT_NAME = 'mention_binding_v4' as const;
 export const MENTION_BINDING_OUTPUT_MAX_BYTES = 1024 * 1024;
 const domainSchema = z.toJSONSchema(MentionBindingResponseSchema, { target: 'draft-2020-12', io: 'input', unrepresentable: 'throw' });
 const hostKeywords = new Set(['$schema', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'format', 'pattern']);
@@ -68,7 +68,7 @@ ${ENTITY_COLLECTIVE_REFERENCE_POLICY}
 先判断文本是否构成合格提及，再判断绑定。候选包括有据指向 A 对象的提及，以及按 A 相同的独立讨论、比较、审查、修订或共同指代标准应保留、但 A 遗漏或身份仍不确定的对象提及。普通局部符号、操作参与者、结果或泛称，若没有独立的实体资格依据，不因目录没有对应项就自动成为目录缺口，也不能改绑到相邻层级。真正合格而缺项或未决的提及必须保留并继续阻断；不能以减少阻断为目标忽略真实缺口。专名、代词和泛称都不能单独决定纳入或排除。
 bound 必须只填一个目录中 entityId、candidateEntityIds=[]、reason=null。无法确定绑定的原始提及仍保留：ambiguous 使用 entityId=null、至少两个不同且已知的候选和非空 reason；unbound 使用 entityId=null、0或1个已知候选和非空 reason，目录缺口在 reason 用原文表达。不为缺口新增 unresolved 实体、不猜 scope 或强绑；未决会阻断最终接纳。
 identitySupports 必须恰好覆盖 A 每个非空 componentRef/collection 声明，各一条相应 supportKind，只列实际返回且 bound 的 mentionIds。每条支持提及须完全落在该 A 声明 anchorIds 之一的同 evidenceRef 区间内，且至少一条提及归该声明的实体。每个 A 实体至少一条 bound 提及位于它的 owned anchor 内。没有实质提及时保留缺口，不从 anchor 自动补提及，不改写 A 来绕过阻断。
-所有 mentionId 唯一，同一来源位置不得重复占用；空 A 目录仅允许空 mentions 和 identitySupports。严格回显 binding，只返回 responseKind=mention-binding、schemaVersion=3 的严格 JSON。结构通过不代表语义正确、已复核、真人验收或 gold。`;
+所有 mentionId 唯一，同一来源位置不得重复占用；空 A 目录仅允许空 mentions 和 identitySupports。严格回显 binding，只返回 responseKind=mention-binding、schemaVersion=4 的严格 JSON。结构通过不代表语义正确、已复核、真人验收或 gold。`;
 
 function prepare(source: BoundKnowledgeSource, supplied: DiscoveryForBinding) {
   if (!validUtf8(supplied)) throw new Error('Mention binding predecessor is not valid UTF-8.');
@@ -84,7 +84,7 @@ function prepare(source: BoundKnowledgeSource, supplied: DiscoveryForBinding) {
   const input = buildEntityDiscoveryInput(source);
   const sourceInput = JSON.parse(input) as BoundKnowledgeSource;
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)
-    || receipt.receiptKind !== 'knowledge-entity-discovery-receipt' || receipt.schemaVersion !== 3
+    || receipt.receiptKind !== 'knowledge-entity-discovery-receipt' || receipt.schemaVersion !== 4
     || receipt.receiptId !== discovery.receiptId || receipt.snapshotId !== sourceInput.snapshotId
     || receipt.sourceVersion !== sourceInput.sourceVersion || receipt.requestDigest !== discovery.requestDigest
     || canonicalJson(receipt.nativeRef) !== canonicalJson(discovery.nativeRef)
@@ -121,10 +121,12 @@ function inside(mention: EvidenceSelection, anchor: EvidenceSelection): boolean 
   return mention.evidenceRef === anchor.evidenceRef && mention.start >= anchor.start && mention.end <= anchor.end;
 }
 function materializeEntity(entity: EntityDiscoveryResponse['entities'][number], supports: MentionBindingResponse['identitySupports']): EntityModel {
-  const { componentRef, collection, ...metadata } = entity;
+  const { componentRef, collection } = entity;
   const ids = (supportKind: 'componentRef' | 'collection') => supports.find(value => value.entityId === entity.entityId
     && value.supportKind === supportKind)!.mentionIds;
-  return { ...metadata,
+  return { entityId: entity.entityId, label: entity.label, description: entity.description, qualifiers: entity.qualifiers,
+    identityStatus: entity.identityStatus, possibleEntityIds: entity.possibleEntityIds, uncertainties: entity.uncertainties,
+    referentKind: entity.referentKind,
     componentRef: componentRef ? { entityId: componentRef.entityId, rationale: componentRef.rationale, mentionIds: ids('componentRef') } : null,
     collection: collection ? { memberEntityIds: collection.memberEntityIds, completeness: collection.completeness,
       rationale: collection.rationale, mentionIds: ids('collection') } : null };
@@ -160,6 +162,8 @@ export type MentionBindingBodyCheck = { status: 'rejected'; issues: string[] }
 export function checkMentionBindingBody(source: BoundKnowledgeSource,
   catalog: Pick<EntityDiscoveryResponse, 'entities' | 'anchors'>,
   response: Pick<MentionBindingResponse, 'mentions' | 'identitySupports'>): MentionBindingBodyCheck {
+  const catalogCheck = checkEntityCatalogBody(source, catalog);
+  if (catalogCheck.issues.length) return { status: 'rejected', issues: catalogCheck.issues };
   const issues: string[] = [], blockers: string[] = [], entities = new Map(catalog.entities.map(entity => [entity.entityId, entity]));
   const mentions = new Map<string, MentionBindingResponse['mentions'][number]>(), grounded = new Map<string, EvidenceSelection>();
   const positions = new Set<string>();

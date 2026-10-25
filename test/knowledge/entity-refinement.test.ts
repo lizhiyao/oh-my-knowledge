@@ -39,13 +39,13 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v6', 'knowledge-entity-refinement-input/v3', 'knowledge-entity-refinement-wire/v3', 'knowledge-entity-refinement-check/v3']);
+      .toEqual(['knowledge-entity-refinement-system/v7', 'knowledge-entity-refinement-input/v4', 'knowledge-entity-refinement-wire/v4', 'knowledge-entity-refinement-check/v4']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
     expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([f.old.plan.sourcePlanReceipt.request.systemVersion, f.old.discoveryReceipt.request.systemVersion, f.old.bindingReceipt.request.systemVersion])
-      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v8', 'knowledge-mention-binding-system/v8']);
+      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v9', 'knowledge-mention-binding-system/v9']);
     expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system])
       .toEqual([SOURCE_PLAN_SYSTEM, ENTITY_DISCOVERY_SYSTEM, MENTION_BINDING_SYSTEM]);
     expect(checkEntityRefinementResponse(JSON.stringify(f.refinementResponse), f.source, base.predecessor).status).toBe('checked');
@@ -58,6 +58,10 @@ describe('private entity refinement A′ (authored only)', () => {
     ['unknown final target', (f: Fixture) => { f.refinementResponse.entityDispositions[0].entityIds = ['missing']; }, 'unknown_target'],
     ['duplicate final target', (f: Fixture) => { f.refinementResponse.entityDispositions[0].entityIds.push('next-e0'); }, 'duplicate_target'],
     ['changed retained metadata', (f: Fixture) => { f.refinementResponse.entities[0].description += ' changed'; }, 'retained_entity_changed'],
+    ['changed retained qualification reason', (f: Fixture) => { f.refinementResponse.entities[0].qualificationEvidence.rationale += ' changed'; }, 'retained_entity_changed'],
+    ['changed retained qualification role', (f: Fixture) => {
+      Object.assign(f.refinementResponse.entities[0].qualificationEvidence, { basisKind: 'operation_rule', operationRole: 'action_prerequisite' });
+    }, 'retained_entity_changed'],
     ['changed retained source span', (f: Fixture) => { f.refinementResponse.anchors[0].selection.quote = 'Alpha 使用 Beta'; }, 'retained_entity_changed'],
     ['merge disguised as retention', (f: Fixture) => { f.refinementResponse.entityDispositions[1].entityIds = ['next-e0']; }, 'merge_requires_correction'],
     ['missing plan disposition', (f: Fixture) => { f.refinementResponse.dispositions = []; }, 'missing_object'],
@@ -71,6 +75,7 @@ describe('private entity refinement A′ (authored only)', () => {
     ['invented plan evidence', (f: Fixture) => { f.refinementResponse.dispositions[0].selections[0].quote = 'not in source'; }, 'quote_mismatch'],
     ['duplicate plan evidence', (f: Fixture) => { f.refinementResponse.dispositions[0].selections.push(structuredClone(f.refinementResponse.dispositions[0].selections[0])); }, 'duplicate_selection'],
     ['previous SP-conditioned A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 2 }); }, 'invalid_structure:schemaVersion'],
+    ['previous source-only A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 3 }); }, 'invalid_structure:schemaVersion'],
     ['invented source evidence', (f: Fixture) => { f.refinementResponse.entityDispositions[0].selections[0].quote = 'not in source'; }, 'quote_mismatch'],
     ['old A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 1 }); }, 'invalid_structure:schemaVersion'],
     ['missing gap ledger', (f: Fixture) => { Object.assign(f.refinementResponse, { bindingGapDispositions: undefined }); }, 'invalid_structure:bindingGapDispositions'],
@@ -133,6 +138,20 @@ describe('private entity refinement A′ (authored only)', () => {
     const f = refinedEntitiesFixture(); f.refinementResponse.entities[0].description += ' corrected authored description';
     f.refinementResponse.entityDispositions[0].dispositionKind = 'corrected';
     expect(check(f)).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed' });
+  });
+
+  it('compares qualification through owned source positions across renamed ID namespaces', () => {
+    const f = refinedEntitiesFixture('codex', { qualificationContext: true }), entity = f.refinementResponse.entities[0];
+    const anchor = f.refinementResponse.anchors.find(anchor => anchor.anchorId === 'next-a0')!;
+    anchor.anchorId = 'renamed-anchor'; entity.qualificationEvidence.anchorIds = ['renamed-anchor'];
+    expect(check(f)).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed' });
+    // Both owned source positions remain unchanged; selecting different evidence changes the qualification.
+    entity.qualificationEvidence.anchorIds = ['next-a0-context'];
+    rejected(f, 'retained_entity_changed');
+    f.refinementResponse.entityDispositions[0].dispositionKind = 'corrected';
+    expect(check(f)).toMatchObject({ status: 'checked', dispositionIssues: [], semanticStatus: 'not_reviewed' });
+    entity.qualificationEvidence.rationale += ' An authored revised justification.';
+    expect(check(f).status).toBe('checked');
   });
 
   it.each(['entity', 'plan', 'ambiguous-gap'] as const)('retains legal undetermined %s accounting and blocks the B′ factory', which => {

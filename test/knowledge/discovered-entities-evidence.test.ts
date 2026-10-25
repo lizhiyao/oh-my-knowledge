@@ -51,16 +51,16 @@ describe('independent discovery and mention-binding archive evidence (authored o
     expect(JSON.parse(f.discoveryReceipt.request.input)).not.toHaveProperty('sourcePlanResponse');
     expect(a).not.toHaveProperty('sourcePlan');
     expect(bInput.binding).not.toHaveProperty('sourcePlanRawDigest');
-    expect(f.discoveryExecution.request).toMatchObject({ systemVersion: 'knowledge-entity-discovery-system/v8',
-      system: ENTITY_DISCOVERY_SYSTEM, inputVersion: 'knowledge-entity-discovery-input/v3',
+    expect(f.discoveryExecution.request).toMatchObject({ systemVersion: 'knowledge-entity-discovery-system/v9',
+      system: ENTITY_DISCOVERY_SYSTEM, inputVersion: 'knowledge-entity-discovery-input/v4',
       wireId: ENTITY_DISCOVERY_WIRE_ID });
     expect(f.discoveryExecution.input.system).toBe(ENTITY_DISCOVERY_SYSTEM);
     expect(f.discoveryExecution.input.system?.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.discoveryExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.discoveryExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
-    expect(f.bindingExecution.request).toMatchObject({ systemVersion: 'knowledge-mention-binding-system/v8',
+    expect(f.bindingExecution.request).toMatchObject({ systemVersion: 'knowledge-mention-binding-system/v9',
       system: MENTION_BINDING_SYSTEM,
-      inputVersion: 'knowledge-mention-binding-input/v3', wireId: MENTION_BINDING_WIRE_ID });
+      inputVersion: 'knowledge-mention-binding-input/v4', wireId: MENTION_BINDING_WIRE_ID });
     expect(f.bindingExecution.input.system).toBe(MENTION_BINDING_SYSTEM);
     expect(f.bindingExecution.request.system.split(ENTITY_MENTION_BOUNDARY_POLICY)).toHaveLength(2);
     expect(f.bindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
@@ -168,12 +168,13 @@ describe('independent discovery and mention-binding archive evidence (authored o
       expect(stage === 'discovery' ? f.bytesA().outcomeBytes : f.bytesB().outcomeBytes).toEqual(original.outcomeBytes);
     });
 
-    it.each(['receipt-alias', 'receipt-version', 'previous-receipt-version', 'native-alias', 'native-version'] as const)(
+    it.each(['receipt-alias', 'receipt-version', 'previous-receipt-version', 'qualification-free-receipt', 'native-alias', 'native-version'] as const)(
       `${stage} rejects %s framing rather than relabeling another task`, mode => {
         const f = discoveredEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
         if (mode === 'receipt-alias') Object.assign(receipt, { receiptKind: 'knowledge-source-plan-receipt' });
         if (mode === 'receipt-version') Object.assign(receipt, { schemaVersion: 1 });
         if (mode === 'previous-receipt-version') Object.assign(receipt, { schemaVersion: 2 });
+        if (mode === 'qualification-free-receipt') Object.assign(receipt, { schemaVersion: 3 });
         if (mode === 'native-alias') native.archiveKind = 'knowledge-source-plan-native';
         if (mode === 'native-version') native.schemaVersion = 2;
         const reference = reseal(f, stage);

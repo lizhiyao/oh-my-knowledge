@@ -263,11 +263,12 @@ describe('finite entity refinement archive evidence (authored originals only)', 
         expect(originalBytes(f)).toEqual(before);
       });
 
-    it.each(['receipt-alias', 'receipt-version', 'native-alias', 'native-version'] as const)(
+    it.each(['receipt-alias', 'receipt-version', 'qualification-free-receipt', 'native-alias', 'native-version'] as const)(
       `${stage} rejects %s instead of relabeling an existing task`, mode => {
         const f = refinedEntitiesFixture(), receipt = receiptFor(f, stage), native = nativeFor(f, stage);
         if (mode === 'receipt-alias') Object.assign(receipt, { receiptKind: 'knowledge-entity-discovery-receipt' });
         if (mode === 'receipt-version') Object.assign(receipt, { schemaVersion: 2 });
+        if (mode === 'qualification-free-receipt') Object.assign(receipt, { schemaVersion: 3 });
         if (mode === 'native-alias') native.archiveKind = 'knowledge-entity-discovery-native';
         if (mode === 'native-version') native.schemaVersion = 2;
         reseal(f, stage); expect(() => readStage(f, stage)).toThrow();

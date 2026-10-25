@@ -5,7 +5,7 @@ import { validateEntityMentionSelection } from '../entities/validation.js';
 import { BoundKnowledgeSourceSchema, validUtf8, type BoundKnowledgeSource } from './bound-catalog.js';
 import { buildEntityDiscoveryInput, checkEntityCatalogBody, checkEntityDiscoveryResponse,
   EntityDiscoveryResponseSchema, ENTITY_DISCOVERY_SYSTEM, ENTITY_DISCOVERY_SYSTEM_VERSION,
-  ENTITY_DISCOVERY_INPUT_VERSION, ENTITY_DISCOVERY_WIRE_ID, type EntityDiscoveryResponse } from './entity-discovery.js';
+  ENTITY_DISCOVERY_INPUT_VERSION, ENTITY_DISCOVERY_WIRE_ID, ENTITY_QUALIFICATION_EVIDENCE_POLICY, type EntityDiscoveryResponse } from './entity-discovery.js';
 import { buildMentionBindingInput, checkMentionBindingResponse, MENTION_BINDING_SYSTEM,
   MENTION_BINDING_SYSTEM_VERSION, MENTION_BINDING_INPUT_VERSION, MENTION_BINDING_WIRE_ID } from './mention-binding.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
@@ -36,7 +36,7 @@ export type EntityRefinementBase = z.infer<typeof EntityRefinementBaseSchema>;
 export const EntityRefinementBindingSchema = z.strictObject({ snapshotId: z.string().uuid(), sourceVersion: byteDigest,
   sourceProjectionDigest: byteDigest, sourcePlan: RefinementStageReferenceSchema,
   discovery: RefinementStageReferenceSchema, binding: RefinementStageReferenceSchema });
-export const EntityRefinementResponseSchema = z.strictObject({ responseKind: z.literal('entity-refinement'), schemaVersion: z.literal(3),
+export const EntityRefinementResponseSchema = z.strictObject({ responseKind: z.literal('entity-refinement'), schemaVersion: z.literal(4),
   binding: EntityRefinementBindingSchema, entities: EntityDiscoveryResponseSchema.shape.entities,
   anchors: EntityDiscoveryResponseSchema.shape.anchors, dispositions: z.array(SourcePlanDispositionSchema).max(256),
   entityDispositions: z.array(z.strictObject({ previousEntityId: id, dispositionKind: RefinementDispositionKindSchema,
@@ -47,11 +47,11 @@ export const EntityRefinementResponseSchema = z.strictObject({ responseKind: z.l
     rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(512) });
 export type EntityRefinementResponse = z.infer<typeof EntityRefinementResponseSchema>;
 export type EntityRefinementSource = BoundKnowledgeSource;
-export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v6' as const;
-export const ENTITY_REFINEMENT_INPUT_VERSION = 'knowledge-entity-refinement-input/v3' as const;
-export const ENTITY_REFINEMENT_WIRE_VERSION = 'knowledge-entity-refinement-wire/v3' as const;
-export const ENTITY_REFINEMENT_CHECK_VERSION = 'knowledge-entity-refinement-check/v3' as const;
-export const ENTITY_REFINEMENT_OUTPUT_NAME = 'entity_refinement_v3' as const;
+export const ENTITY_REFINEMENT_SYSTEM_VERSION = 'knowledge-entity-refinement-system/v7' as const;
+export const ENTITY_REFINEMENT_INPUT_VERSION = 'knowledge-entity-refinement-input/v4' as const;
+export const ENTITY_REFINEMENT_WIRE_VERSION = 'knowledge-entity-refinement-wire/v4' as const;
+export const ENTITY_REFINEMENT_CHECK_VERSION = 'knowledge-entity-refinement-check/v4' as const;
+export const ENTITY_REFINEMENT_OUTPUT_NAME = 'entity_refinement_v4' as const;
 export const ENTITY_REFINEMENT_OUTPUT_MAX_BYTES = 1024 * 1024;
 const domainSchema = z.toJSONSchema(EntityRefinementResponseSchema, { target: 'draft-2020-12', io: 'input', unrepresentable: 'throw' });
 const hostKeywords = new Set(['$schema', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'format', 'pattern']);
@@ -79,11 +79,12 @@ ${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${ENTITY_CODE_REFERENT_POLICY}
 ${ENTITY_COLLECTIVE_REFERENCE_POLICY}
+${ENTITY_QUALIFICATION_EVIDENCE_POLICY}
 完整新目录沿用实体及 anchors 的字段：每个实体至少一条 owned anchor，逐字连续 quote，occurrence 从0开始含重叠，重复引文须给序号；不输出偏移。所有实体、候选、组件、成员和 anchor 引用必须闭合。componentRef 仅用于 instance/version，目标是 proposed component；collection 仅用于来源支持的有界共同指代或整体计量，不能从数量猜成员。组成员未知与身份未知不同。
 identityStatus=unresolved 只表达来源确实支持一个独立对象但身份未决，须有自己的来源身份依据、uncertainties，possibleEntityIds 只能指向同层 proposed 对象；多个位置视为同一对象也须有共同指代依据。不能因为 B 难以绑定、目录缺项或需要交账，就制造“未知对象”占位吞掉提及；资格或处置不能决定时用 undetermined 并继续阻断。
 dispositions 恰好覆盖每个 sourcePlan objectId，包括先前排除或未决者；entityDispositions 恰好覆盖每个旧 discovery entityId。两份账均给具体 rationale 和逐字 selections。retained 恰好一个最终实体，实体字段、身份声明和依据位置仅允许显式 ID 重映射；实质变化或拆分、合并用 corrected，至少一个最终实体。多个旧对象映射同一新实体时相关账项均用 corrected。excluded/undetermined 的 entityIds=[]；前者须解释来源为何不支持，后者保存无法裁定的问题并阻断，不能为放行改成 excluded。新目录可以有新增实体，但不能用新增项抵消遗漏账项；两类旧 ID 与新 entityId 是各自 receipt 内的命名空间。
 bindingGapDispositions 恰好覆盖旧 B 每个 bindingStatus=unbound 或 ambiguous 的 mentionId，不包含旧 bound 项。每条给 previousMentionId、resolutionKind、targets、具体 rationale 和覆盖旧提及位置的逐字 selections。mapped 的 targets 至少一项，每项为实际新目录 entityId 与逐字 selection 的处理意图；目标位置须与旧提及同 evidenceRef 且相交，selections 也须覆盖目标位置。复合旧跨度可有据拆成不同位置的多个目标；不能把同一位置复制给多个候选或成员。多个旧项可以有据映射到同一目标。真实独立对象身份未决时可映射到合法 unresolved 实体，不能为了交账强造复合实体、已知身份或未知占位。excluded/undetermined 的 targets=[]；前者解释来源为何不支持提及资格，后者保存真实未决并阻断。候选列表不是多个实际目标，也不能用新增目录项代替缺口账。targets 只是待 B′ 独立判断的意图，不是最终 mentions 或语义结论。
-不为每个符号或关系参与者另造实体。保留来源归因、否定、条件、纠正、未知及未实现边界，不用消息时间推断事实时间。严格回显 binding，仅返回 responseKind=entity-refinement、schemaVersion=3 的严格 JSON。结构闭合不证明语义正确、已验收或 gold。`;
+不为每个符号或关系参与者另造实体。保留来源归因、否定、条件、纠正、未知及未实现边界，不用消息时间推断事实时间。严格回显 binding，仅返回 responseKind=entity-refinement、schemaVersion=4 的严格 JSON。结构闭合不证明语义正确、已验收或 gold。`;
 
 export function refinementRawEvidence(input: string | Uint8Array): WireRawEvidence {
   if (typeof input === 'string' && !validUtf8(input)) throw new Error('Refinement raw string is not valid UTF-8; no byte identity computed.');
@@ -122,8 +123,8 @@ export function prepareEntityRefinementBase(sourceInput: BoundKnowledgeSource, s
   if (new Set(source.excerpts.map(value => value.evidenceRef)).size !== source.excerpts.length) throw new Error('Ambiguous evidence window.');
   const receipts = {
     sourcePlan: checkRefinementPredecessor(source, base.sourcePlan, 'knowledge-source-plan-receipt', 1),
-    discovery: checkRefinementPredecessor(source, base.discovery, 'knowledge-entity-discovery-receipt', 3),
-    binding: checkRefinementPredecessor(source, base.binding, 'knowledge-mention-binding-receipt', 3),
+    discovery: checkRefinementPredecessor(source, base.discovery, 'knowledge-entity-discovery-receipt', 4),
+    binding: checkRefinementPredecessor(source, base.binding, 'knowledge-mention-binding-receipt', 4),
   };
   const ids = Object.values(receipts).flatMap(receipt => [receipt.receiptId, receipt.attemptId]);
   if (ids.some(value => typeof value !== 'string') || new Set(ids).size !== ids.length) throw new Error('Refinement base task identities overlap.');
@@ -195,6 +196,7 @@ function entityComparison(source: BoundKnowledgeSource, catalog: Pick<EntityDisc
     return canonicalJson([mapId(anchor.entityId), located.evidenceRef, located.start, located.end]);
   }).sort();
   return { ...entity, entityId: mapId(entity.entityId), possibleEntityIds: entity.possibleEntityIds.map(mapId),
+    qualificationEvidence: { ...entity.qualificationEvidence, anchorIds: positions(entity.qualificationEvidence.anchorIds) },
     componentRef: entity.componentRef ? { ...entity.componentRef, entityId: mapId(entity.componentRef.entityId), anchorIds: positions(entity.componentRef.anchorIds) } : null,
     collection: entity.collection ? { ...entity.collection, memberEntityIds: entity.collection.memberEntityIds.map(mapId), anchorIds: positions(entity.collection.anchorIds) } : null,
     ownedAnchors: positions(catalog.anchors.filter(anchor => anchor.entityId === entity.entityId).map(anchor => anchor.anchorId)) };
