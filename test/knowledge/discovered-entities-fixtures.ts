@@ -38,7 +38,7 @@ export function authoredDiscoverySourcePlan(source: KnowledgeSourcePlanSource, m
       referentKind: 'object', identityStatus: 'proposed', identityBasis: 'Authored local source identity claim.',
       typeBasis: 'Authored type claim, not semantic truth.',
       anchors: [{ evidenceRef: source.excerpts[0].evidenceRef, quote: object.quote, occurrence: object.occurrence }],
-      uncertainties: [], sharedScope: null })), materials: [] };
+      uncertainties: [] as string[], sharedScope: null })), materials: [] };
   const sourcePlanNative = { archiveKind: 'knowledge-source-plan-native', schemaVersion: 1,
     receiptId: discoveryUid(6), attemptId: discoveryUid(7), outcome: { outcomeKind: 'result',
       result: authoredNativeResult(` \n${JSON.stringify(sourcePlanResponse)}\r\n`, model.executor) } as ExtractionOutcome };
@@ -75,20 +75,17 @@ export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'co
   const { sourcePlan, sourcePlanRef, sourcePlanArchive, planPredecessor } = plan;
   const producer = authoredProducer, inspect = vi.fn(producer);
   const nativeResult = (output: string) => authoredNativeResult(output, executor);
-  const discoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 2,
-    binding: JSON.parse(buildEntityDiscoveryInput(source, planPredecessor)).binding as Record<string, unknown>,
+  const discoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 3,
+    binding: JSON.parse(buildEntityDiscoveryInput(source)).binding as Record<string, unknown>,
     entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: `e${index}`, label, description: `Authored object ${label}`,
       qualifiers: [] as string[], identityStatus: 'proposed' as 'proposed' | 'unresolved', possibleEntityIds: [] as string[], uncertainties: [] as string[],
       referentKind: 'object' as const, componentRef: null, collection: null })),
-    dispositions: [{ sourcePlanObjectId: 'source-object', dispositionKind: 'retained' as 'retained' | 'corrected' | 'excluded' | 'undetermined',
-      entityIds: ['e0'], rationale: 'Authored disposition; source-only Beta remains independently discovered.',
-      selections: [{ evidenceRef: 'record-1', quote: 'Alpha', occurrence: null as number | null }] }],
     anchors: ['Alpha', 'Beta'].map((quote, index) => ({ anchorId: `a${index}`, entityId: `e${index}`,
       selection: { evidenceRef: 'record-1', quote, occurrence: null as number | null } })) };
-  const discoveryExecution = entityDiscoveryExecution(source, model, sourcePlan);
+  const discoveryExecution = entityDiscoveryExecution(source, model);
   const discoveryNative = { archiveKind: 'knowledge-entity-discovery-native', schemaVersion: 1, receiptId: discoveryUid(2), attemptId: discoveryUid(3),
     outcome: { outcomeKind: 'result', result: nativeResult(` \n${JSON.stringify(discoveryResponse)}\r\n`) } as ExtractionOutcome };
-  const discoveryReceipt: EntityDiscoveryReceipt = { receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 2,
+  const discoveryReceipt: EntityDiscoveryReceipt = { receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 3,
     receiptId: discoveryNative.receiptId, attemptId: discoveryNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: discoveryExecution.request, producer: producer(executor, discoveryExecution.input), requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(discoveryNative)), startedAt: '2026-10-24T00:00:00Z', finishedAt: '2026-10-24T00:00:01Z' };
@@ -104,16 +101,16 @@ export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'co
     ? { receiptBytes: Buffer.from(discoveryReceiptBytes), outcomeBytes: Buffer.from(discoveryOutcomeBytes) }
     : { receiptBytes: Buffer.from(bindingReceiptBytes), outcomeBytes: Buffer.from(bindingOutcomeBytes) });
   const archive: EntityDiscoveryArchivePort = { read, inspect };
-  const readA = () => readEntityDiscoveryEvidence(source, model, discoveryReference, archive, sourcePlan);
+  const readA = () => readEntityDiscoveryEvidence(source, model, discoveryReference, archive);
   const discovery = readA(), bindingExecution = mentionBindingExecution(source, discovery, model);
-  const bindingResponse = { responseKind: 'mention-binding', schemaVersion: 2,
+  const bindingResponse = { responseKind: 'mention-binding', schemaVersion: 3,
     binding: JSON.parse(buildMentionBindingInput(source, discovery.predecessor)).binding as Record<string, unknown>,
     mentions: ['Alpha', 'Beta'].map((quote, index) => ({ mentionId: `m${index}`, selection: { evidenceRef: 'record-1', quote, occurrence: null as number | null },
       basis: 'explicit' as const, rationale: 'Authored explicit mention.', bindingStatus: 'bound' as 'bound' | 'ambiguous' | 'unbound',
       entityId: `e${index}` as string | null, candidateEntityIds: [] as string[], reason: null as string | null })), identitySupports: [] };
   const bindingNative = { archiveKind: 'knowledge-mention-binding-native', schemaVersion: 1, receiptId: discoveryUid(4), attemptId: discoveryUid(5),
     outcome: { outcomeKind: 'result', result: nativeResult(` \n${JSON.stringify(bindingResponse)}\r\n`) } as ExtractionOutcome };
-  const bindingReceipt: MentionBindingReceipt = { receiptKind: 'knowledge-mention-binding-receipt', schemaVersion: 2,
+  const bindingReceipt: MentionBindingReceipt = { receiptKind: 'knowledge-mention-binding-receipt', schemaVersion: 3,
     receiptId: bindingNative.receiptId, attemptId: bindingNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: bindingExecution.request, producer: producer(executor, bindingExecution.input), requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(bindingNative)), startedAt: '2026-10-24T00:00:02Z', finishedAt: '2026-10-24T00:00:03Z' };

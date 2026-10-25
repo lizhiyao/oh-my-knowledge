@@ -6,7 +6,6 @@ import { validateEntityAnalysis, validateEntityMentionSelection } from '../entit
 import { canonicalJson } from '../store.js';
 import { BoundKnowledgeSourceSchema } from '../extraction/bound-catalog.js';
 import type { EvidenceStore } from '../extraction/evidence.js';
-import { readSourcePlanEvidence, type SourcePlanArchivePort, type SourcePlanReference } from '../extraction/source-plan-evidence.js';
 import { readEntityDiscoveryEvidence, readMentionBindingEvidence, type EntityDiscoveryArchivePort,
   type EntityDiscoveryModel, type EntityDiscoveryReference, type MentionBindingReference } from '../extraction/discovered-entities-evidence.js';
 
@@ -14,11 +13,10 @@ interface DiscoveredEntitiesPorts {
   evidence: EvidenceStore;
   entities: EntityAnalysisStore;
   actor: KnowledgeActor;
-  sourcePlanArchive?: SourcePlanArchivePort;
   discoveredEntitiesArchive?: EntityDiscoveryArchivePort;
 }
 export interface DiscoveredEntitiesSource { snapshotId: string; sourceVersion: string }
-export interface DiscoveredEntitiesContextReferences { sourcePlan: SourcePlanReference; discovery: EntityDiscoveryReference }
+export interface DiscoveredEntitiesContextReferences { discovery: EntityDiscoveryReference }
 export interface DiscoveredEntitiesReferences extends DiscoveredEntitiesContextReferences { binding: MentionBindingReference }
 const digest = (value: unknown) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
 
@@ -31,10 +29,9 @@ function importId(receiptId: string, role: string, localId: string | null = null
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/** Authenticate the plan before A, and A before reserving B; this only reads existing originals. */
+/** Authenticate source-only A before reserving B; this only reads existing originals. */
 export function readDiscoveredEntitiesContext(ports: DiscoveredEntitiesPorts, selection: DiscoveredEntitiesSource,
   model: EntityDiscoveryModel, references: DiscoveredEntitiesContextReferences) {
-  if (!ports.sourcePlanArchive) throw new Error('Source plan archive unavailable.');
   if (!ports.discoveredEntitiesArchive) throw new Error('Discovered entities archive unavailable.');
   const saved = ports.evidence.read(selection.snapshotId, selection.sourceVersion);
   if (saved.status !== 'available') throw new Error('Discovered entities source unavailable.');
@@ -44,37 +41,31 @@ export function readDiscoveredEntitiesContext(ports: DiscoveredEntitiesPorts, se
   if (source.snapshotId !== selection.snapshotId || source.sourceVersion !== selection.sourceVersion) {
     throw new Error('Discovered entities source binding mismatch.');
   }
-  const sourcePlan = readSourcePlanEvidence(source, model, references.sourcePlan, ports.sourcePlanArchive);
-  const discovery = readEntityDiscoveryEvidence(source, model, references.discovery, ports.discoveredEntitiesArchive, sourcePlan);
-  return structuredClone({ source, sourcePlan, discovery });
+  const discovery = readEntityDiscoveryEvidence(source, model, references.discovery, ports.discoveredEntitiesArchive);
+  return structuredClone({ source, discovery });
 }
 
 /**
- * Import plan→A→B into one initial analysis, without an ExtractionRun.
- * Every retry re-authenticates all three originals and reuses the same write intent; it never invokes a model.
+ * Import source-only A→B into one initial analysis, without an ExtractionRun.
+ * Every retry re-authenticates both originals and reuses the same write intent; it never invokes a model.
  */
 export function importDiscoveredEntityAnalysis(ports: DiscoveredEntitiesPorts, selection: DiscoveredEntitiesSource,
   model: EntityDiscoveryModel, references: DiscoveredEntitiesReferences, signal?: AbortSignal) {
   signal?.throwIfAborted();
-  const { source, sourcePlan, discovery } = readDiscoveredEntitiesContext(ports, selection, model, references);
-  if (discovery.checked.dispositionIssues.length) {
-    return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, sourcePlan, discovery,
-      issues: discovery.checked.dispositionIssues };
-  }
+  const { source, discovery } = readDiscoveredEntitiesContext(ports, selection, model, references);
   const binding = readMentionBindingEvidence(source, discovery, model, references.binding, ports.discoveredEntitiesArchive!);
   if (binding.checked.status !== 'checked') {
-    return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, sourcePlan, discovery, binding, issues: binding.checked.issues };
+    return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, discovery, binding, issues: binding.checked.issues };
   }
   const admission = binding.checked.admission;
   if (admission.status !== 'ready') {
-    return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, sourcePlan, discovery, binding, issues: admission.issues };
+    return { status: 'blocked' as const, semanticStatus: 'not_reviewed' as const, discovery, binding, issues: admission.issues };
   }
   const receiptId = binding.receipt.receiptId;
   // Stable logical IDs make changed bytes under an existing receipt conflict instead of creating a new history.
   const analysisId = importId(receiptId, 'analysis'), revisionId = importId(receiptId, 'revision');
   const requestId = importId(receiptId, 'request');
-  const chainDigest = digest({ importVersion: 'knowledge-discovered-entities-import/v2', actor: ports.actor,
-    sourcePlan: { receiptId: sourcePlan.receipt.receiptId, receiptRef: sourcePlan.receiptRef },
+  const chainDigest = digest({ importVersion: 'knowledge-discovered-entities-import/v3', actor: ports.actor,
     discovery: { receiptId: discovery.receipt.receiptId, receiptRef: discovery.receiptRef },
     binding: { receiptId, receiptRef: binding.receiptRef } });
   const entityIds = new Map(admission.analysis.entities.map(entity => [entity.entityId, importId(receiptId, 'entity', entity.entityId)]));
@@ -92,10 +83,10 @@ export function importDiscoveredEntityAnalysis(ports: DiscoveredEntitiesPorts, s
   const write: EntityAnalysisWrite = { requestId, analysisId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     expectedGeneration: 0, expectedHeadRevisionId: null,
     revision: { ...draft, revisionId, revisedAt: binding.receipt.finishedAt, revisedBy: actor,
-      revisionReason: '从来源清单、独立实体发现与提及绑定原件合成，等待核对' } };
+      revisionReason: '从独立实体发现与提及绑定原件合成，等待核对' } };
   signal?.throwIfAborted();
   const receipt = ports.entities.write(write, actor);
   // The private driver archives this returned proof alongside its native receipts; no new storage schema is introduced.
   return { status: 'committed' as const, semanticStatus: 'not_reviewed' as const, chainDigest,
-    analysisId, revisionId, receipt, write, sourcePlan, discovery, binding };
+    analysisId, revisionId, receipt, write, discovery, binding };
 }

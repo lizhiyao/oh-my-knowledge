@@ -13,8 +13,6 @@ import { ENTITY_DISCOVERY_SYSTEM_VERSION, ENTITY_DISCOVERY_INPUT_VERSION, ENTITY
 import { MENTION_BINDING_SYSTEM_VERSION, MENTION_BINDING_INPUT_VERSION, MENTION_BINDING_WIRE_ID,
   MENTION_BINDING_OUTPUT_NAME, MENTION_BINDING_SYSTEM, MENTION_BINDING_WIRE_SCHEMA,
   buildMentionBindingInput, checkMentionBindingResponse, type DiscoveryForBinding } from './mention-binding.js';
-import { sourcePlanExecution, type readSourcePlanEvidence } from './source-plan-evidence.js';
-import { prepareSourcePlanForDiscovery, type SourcePlanForDiscovery } from './source-plan-input.js';
 
 const digest = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 export const ENTITY_DISCOVERY_RECEIPT_MAX_BYTES = 2 * 1024 * 1024;
@@ -33,7 +31,7 @@ const bindingRequestSchema = z.strictObject({ ...requestFields,
   systemVersion: z.literal(MENTION_BINDING_SYSTEM_VERSION), inputVersion: z.literal(MENTION_BINDING_INPUT_VERSION),
   wireId: z.literal(MENTION_BINDING_WIRE_ID) });
 const receiptFields = {
-  schemaVersion: z.literal(2), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
+  schemaVersion: z.literal(3), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
   snapshotId: EvidenceWindowSchema.shape.snapshotId, sourceVersion: EvidenceWindowSchema.shape.sourceVersion,
   producer: ExtractionAttemptSchema.shape.producer, requestDigest: ExtractionOutcomeRefSchema.shape.digest,
   nativeRef: ExtractionOutcomeRefSchema,
@@ -65,21 +63,6 @@ export interface EntityDiscoveryReference { receiptId: string; receiptRef: Extra
 export interface MentionBindingReference { receiptId: string; receiptRef: ExtractionOutcomeRef }
 export type EntityDiscoveryModel = Pick<ExtractionModel, 'executor' | 'model' | 'timeoutMs' | 'maxOutputTokens'>;
 type Source = Parameters<typeof buildEntityDiscoveryInput>[0];
-type AuthenticatedSourcePlan = ReturnType<typeof readSourcePlanEvidence>;
-
-/** The composition root has authenticated the native archive through readSourcePlanEvidence. */
-function planPredecessor(source: Source, model: EntityDiscoveryModel, plan: AuthenticatedSourcePlan): SourcePlanForDiscovery {
-  const raw = nativeOutput('source-plan', plan.outcome, model.executor);
-  if (raw !== plan.rawOutput || digest(raw) !== plan.rawOutputDigest) throw new Error('Discovery source plan raw identity conflict.');
-  const prepared = prepareSourcePlanForDiscovery(source, { receiptId: plan.receipt.receiptId,
-    receiptRef: plan.receiptRef, receiptRaw: plan.receiptRaw, rawOutput: plan.rawOutput });
-  if (canonicalJson(prepared.receipt) !== canonicalJson(plan.receipt)
-    || canonicalJson(prepared.receipt.request) !== canonicalJson(sourcePlanExecution(source, model).request)) {
-    throw new Error('Discovery source plan differs from its authenticated receipt or execution configuration.');
-  }
-  return prepared.predecessor;
-}
-
 function executorInput(request: EntityDiscoveryReceipt['request'] | MentionBindingReceipt['request'],
   name: string, schema: Readonly<Record<string, unknown>>): ExecutorInput {
   return { model: request.model, system: request.system, prompt: request.input,
@@ -87,11 +70,10 @@ function executorInput(request: EntityDiscoveryReceipt['request'] | MentionBindi
     ...(request.maxOutputTokens === null ? {} : { maxOutputTokens: request.maxOutputTokens }) };
 }
 
-export function entityDiscoveryExecution(source: Source, model: EntityDiscoveryModel, plan: AuthenticatedSourcePlan) {
-  const predecessor = planPredecessor(source, model, plan);
+export function entityDiscoveryExecution(source: Source, model: EntityDiscoveryModel) {
   const request = discoveryRequestSchema.parse({ executor: model.executor, model: model.model,
     systemVersion: ENTITY_DISCOVERY_SYSTEM_VERSION, inputVersion: ENTITY_DISCOVERY_INPUT_VERSION,
-    system: ENTITY_DISCOVERY_SYSTEM, input: buildEntityDiscoveryInput(source, predecessor), outputMode: 'json-schema', wireId: ENTITY_DISCOVERY_WIRE_ID,
+    system: ENTITY_DISCOVERY_SYSTEM, input: buildEntityDiscoveryInput(source), outputMode: 'json-schema', wireId: ENTITY_DISCOVERY_WIRE_ID,
     timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
   return { request, input: executorInput(request, ENTITY_DISCOVERY_OUTPUT_NAME, ENTITY_DISCOVERY_WIRE_SCHEMA) };
 }
@@ -99,14 +81,13 @@ export function entityDiscoveryExecution(source: Source, model: EntityDiscoveryM
 export interface AuthenticatedEntityDiscovery {
   receipt: EntityDiscoveryReceipt; receiptRef: ExtractionOutcomeRef; receiptRaw: string; rawOutput: string;
   checked: Extract<ReturnType<typeof checkEntityDiscoveryResponse>, { status: 'checked' }>; predecessor: DiscoveryForBinding;
-  sourcePlan: AuthenticatedSourcePlan;
 }
 
 function assertSameSelection(discovery: AuthenticatedEntityDiscovery, model: EntityDiscoveryModel): void {
   const request = discovery.receipt.request;
   if (request.executor !== model.executor || request.model !== model.model || request.timeoutMs !== (model.timeoutMs ?? 300_000)
     || request.maxOutputTokens !== (model.maxOutputTokens ?? null)) {
-    throw new Error('Mention binding v2 requires the same discovery model and execution configuration.');
+    throw new Error('Mention binding v3 requires the same discovery model and execution configuration.');
   }
 }
 
@@ -143,12 +124,12 @@ function readJson(bytes: Uint8Array, reference: ExtractionOutcomeRef, maximum: n
 /** The complete failed native original remains in the caller's archive and on this error. */
 export class DiscoveredEntitiesNativeError extends Error {
   readonly assessment = { status: 'rejected' as const, issues: ['incomplete_native_return'] };
-  constructor(readonly stage: 'source-plan' | 'discovery' | 'binding', readonly outcome: ExtractionOutcome) {
+  constructor(readonly stage: 'discovery' | 'binding', readonly outcome: ExtractionOutcome) {
     super(`${stage} requires a complete successful native assistant return without tools, retries or extra turns.`);
     this.name = 'DiscoveredEntitiesNativeError';
   }
 }
-function nativeOutput(stage: 'source-plan' | 'discovery' | 'binding', outcome: ExtractionOutcome, executor: string): string {
+function nativeOutput(stage: 'discovery' | 'binding', outcome: ExtractionOutcome, executor: string): string {
   if (outcome.outcomeKind !== 'result' || outcome.cleanupFailure || outcome.result.ok !== true || typeof outcome.result.output !== 'string'
     || outcome.result.refusal !== undefined
     || outcome.result.toolCalls !== undefined && (!Array.isArray(outcome.result.toolCalls) || outcome.result.toolCalls.length > 0)
@@ -171,19 +152,16 @@ export class EntityDiscoveryValidationError extends Error {
 
 /** Authenticate A before any B context exists. There is no model, I/O or entity write here. */
 export function readEntityDiscoveryEvidence(source: Source, model: EntityDiscoveryModel,
-  reference: EntityDiscoveryReference, archive: EntityDiscoveryArchivePort, plan: AuthenticatedSourcePlan): AuthenticatedEntityDiscovery {
-  const expected = entityDiscoveryExecution(source, model, plan);
+  reference: EntityDiscoveryReference, archive: EntityDiscoveryArchivePort): AuthenticatedEntityDiscovery {
+  const expected = entityDiscoveryExecution(source, model);
   const receiptId = z.string().uuid().parse(reference.receiptId), receiptRef = ExtractionOutcomeRefSchema.parse(reference.receiptRef);
-  if (receiptId === plan.receipt.receiptId) throw new Error('Source plan and discovery require independent receipt identities.');
   const bytes = archive.read('discovery', receiptId, receiptRef);
   const receiptJson = readJson(bytes.receiptBytes, receiptRef, ENTITY_DISCOVERY_RECEIPT_MAX_BYTES);
   const receipt = EntityDiscoveryReceiptSchema.parse(receiptJson.value);
-  if (receipt.receiptId !== receiptId || receipt.attemptId === plan.receipt.attemptId
-    || receipt.snapshotId !== source.snapshotId || receipt.sourceVersion !== source.sourceVersion
+  if (receipt.receiptId !== receiptId || receipt.snapshotId !== source.snapshotId || receipt.sourceVersion !== source.sourceVersion
     || canonicalJson(receipt.request) !== canonicalJson(expected.request) || entityDiscoveryRequestDigest(receipt) !== receipt.requestDigest) {
     throw new Error('Entity discovery receipt differs from its frozen source or execution configuration.');
   }
-  if (Date.parse(receipt.startedAt) < Date.parse(plan.receipt.finishedAt)) throw new Error('Discovery precedes its source plan.');
   const inspected = ExtractionAttemptSchema.shape.producer.parse(archive.inspect(expected.request.executor, expected.input));
   if (canonicalJson(inspected) !== canonicalJson(receipt.producer) || receipt.producer.maxOutcomeJsonBytes > EXTRACTION_OUTCOME_MAX_BYTES) {
     throw new Error('Entity discovery producer differs from its same-task archive witness.');
@@ -192,11 +170,11 @@ export function readEntityDiscoveryEvidence(source: Source, model: EntityDiscove
     Math.min(receipt.producer.maxOutcomeJsonBytes + FRAME_OVERHEAD_BYTES, EXTRACTION_OUTCOME_MAX_BYTES)).value);
   if (native.receiptId !== receiptId || native.attemptId !== receipt.attemptId) throw new Error('Entity discovery native archive identity conflict.');
   const rawOutput = nativeOutput('discovery', native.outcome, expected.request.executor);
-  const checked = checkEntityDiscoveryResponse(rawOutput, source, planPredecessor(source, model, plan));
+  const checked = checkEntityDiscoveryResponse(rawOutput, source);
   if (checked.status !== 'checked') throw new EntityDiscoveryValidationError(checked);
   const predecessor: DiscoveryForBinding = { receiptId, receiptRef, nativeRef: receipt.nativeRef, requestDigest: receipt.requestDigest,
     receiptRaw: receiptJson.raw, rawOutput };
-  return { receipt, receiptRef, receiptRaw: receiptJson.raw, rawOutput, checked, predecessor, sourcePlan: plan };
+  return { receipt, receiptRef, receiptRaw: receiptJson.raw, rawOutput, checked, predecessor };
 }
 
 /** Authenticate B independently and retain its quality/admission rejection without publishing an analysis. */
@@ -204,14 +182,13 @@ export function readMentionBindingEvidence(source: Source, discovery: Authentica
   reference: MentionBindingReference, archive: EntityDiscoveryArchivePort) {
   const expected = mentionBindingExecution(source, discovery, model);
   const receiptId = z.string().uuid().parse(reference.receiptId), receiptRef = ExtractionOutcomeRefSchema.parse(reference.receiptRef);
-  if (receiptId === discovery.receipt.receiptId || receiptId === discovery.sourcePlan.receipt.receiptId) {
-    throw new Error('Source plan, discovery and binding require independent receipt identities.');
+  if (receiptId === discovery.receipt.receiptId) {
+    throw new Error('Discovery and binding require independent receipt identities.');
   }
   const bytes = archive.read('binding', receiptId, receiptRef);
   const receiptJson = readJson(bytes.receiptBytes, receiptRef, MENTION_BINDING_RECEIPT_MAX_BYTES);
   const receipt = MentionBindingReceiptSchema.parse(receiptJson.value);
   if (receipt.receiptId !== receiptId || receipt.attemptId === discovery.receipt.attemptId
-    || receipt.attemptId === discovery.sourcePlan.receipt.attemptId
     || receipt.snapshotId !== source.snapshotId || receipt.sourceVersion !== source.sourceVersion
     || canonicalJson(receipt.request) !== canonicalJson(expected.request) || mentionBindingRequestDigest(receipt) !== receipt.requestDigest
     || Date.parse(receipt.startedAt) < Date.parse(discovery.receipt.finishedAt)) {

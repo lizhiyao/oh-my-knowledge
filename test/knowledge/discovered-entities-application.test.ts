@@ -9,6 +9,7 @@ import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
 import type { EvidenceStore, EvidenceWindow } from '../../src/knowledge/extraction/evidence.js';
+import { EntityDiscoveryValidationError, mentionBindingExecution } from '../../src/knowledge/extraction/discovered-entities-evidence.js';
 import type { EntityAnalysisStore } from '../../src/knowledge/entities/contracts.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { discoveredEntitiesFixture } from './discovered-entities-fixtures.js';
@@ -35,9 +36,9 @@ function setup() {
     hash: (value: unknown) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
     id: vi.fn(() => { throw new Error('Import must not allocate random IDs.'); }),
     now: vi.fn(() => { throw new Error('Import must not replace the native completion time.'); }),
-    discoveredEntitiesArchive: f.archive, sourcePlanArchive: f.sourcePlanArchive };
+    discoveredEntitiesArchive: f.archive };
   const selection = { snapshotId: f.source.snapshotId, sourceVersion: f.source.sourceVersion };
-  const references = () => ({ sourcePlan: f.sourcePlanRef, discovery: f.discoveryRef, binding: f.bindingRef });
+  const references = () => ({ discovery: f.discoveryRef, binding: f.bindingRef });
   const app = (store: EntityAnalysisStore = entities) => new KnowledgeApplication({ ...ports, entities: store });
   return { ...f, root, window, entities, knowledge, runs, ports, selection, references, app };
 }
@@ -45,14 +46,17 @@ function setup() {
 describe('separate discovery/binding import through the real entity store (authored evidence only)', () => {
   it('authenticates A independently and creates exactly one initial analysis without an extraction run or knowledge', () => {
     const f = setup(), app = f.app();
-    const context = app.discoveredEntitiesContext(f.selection, f.model, { sourcePlan: f.sourcePlanRef, discovery: f.discoveryRef });
-    expect(context.source).toEqual(f.source);
+    const context = app.discoveredEntitiesContext(f.selection, f.model, { discovery: f.discoveryRef });
+    expect(context.source).toEqual(f.source); expect(context).not.toHaveProperty('sourcePlan');
     expect(context.source).not.toHaveProperty('sourcePath'); expect(context.source).not.toHaveProperty('origin');
     expect(f.entities.list().histories).toEqual([]);
     const result = app.importDiscoveredEntities(f.selection, f.model, f.references());
     expect(result.status).toBe('committed');
     if (result.status !== 'committed') throw new Error('Expected authored import.');
-    expect(result.semanticStatus).toBe('not_reviewed');
+    expect(result.semanticStatus).toBe('not_reviewed'); expect(result).not.toHaveProperty('sourcePlan');
+    expect(result.chainDigest).toBe(f.ports.hash({ importVersion: 'knowledge-discovered-entities-import/v3', actor: f.ports.actor,
+      discovery: { receiptId: f.discoveryReceipt.receiptId, receiptRef: f.discoveryRef.receiptRef },
+      binding: { receiptId: f.bindingReceipt.receiptId, receiptRef: f.bindingRef.receiptRef } }));
     const history = f.entities.read(result.analysisId), revision = history.revisions[0];
     expect(history.generation).toBe(1); expect(history.revisions).toHaveLength(1);
     expect(revision.revisedAt).toBe(f.bindingReceipt.finishedAt);
@@ -114,32 +118,55 @@ describe('separate discovery/binding import through the real entity store (autho
     if (result.status !== 'blocked') throw new Error('Expected blocked authored analysis.');
     expect(result.issues.length).toBeGreaterThan(0); expect(result.semanticStatus).toBe('not_reviewed');
     expect(f.entities.list().histories).toEqual([]); expect(f.runs.listManifests()).toEqual([]);
-    if (!('binding' in result) || !result.binding) throw new Error('Expected authenticated B result.');
     expect(result.binding.rawOutput).toContain('mention-binding');
   });
 
-  it('retains undecided A for inspection and blocks import before B archive read or any entity write', () => {
-    const f = setup(); Object.assign(f.discoveryResponse.dispositions[0], { dispositionKind: 'undetermined', entityIds: [] });
-    f.result('discovery').output = ` \n${JSON.stringify(f.discoveryResponse)}\r\n`; f.resealA();
-    const context = f.app().discoveredEntitiesContext(f.selection, f.model, f.references());
-    expect(context.discovery.checked).toMatchObject({ status: 'checked', dispositionIssues: ['disposition:source-object:undetermined'] });
-    f.read.mockClear();
+  it('preserves a valid unresolved A identity and its mapped candidate instead of silently dropping or resolving it', () => {
+    const f = setup();
+    Object.assign(f.discoveryResponse.entities[0], { identityStatus: 'unresolved', possibleEntityIds: ['e1'], uncertainties: ['Authored unresolved identity.'] });
+    f.result('discovery').output = JSON.stringify(f.discoveryResponse); f.resealA();
+    const execution = mentionBindingExecution(f.source, f.readA(), f.model);
+    f.bindingReceipt.request = execution.request; f.bindingReceipt.producer = f.inspect(f.model.executor, execution.input);
+    f.bindingResponse.binding = JSON.parse(execution.request.input).binding;
+    f.result('binding').output = JSON.stringify(f.bindingResponse); f.resealB();
     const result = f.app().importDiscoveredEntities(f.selection, f.model, f.references());
-    expect(result).toMatchObject({ status: 'blocked', semanticStatus: 'not_reviewed',
-      issues: ['disposition:source-object:undetermined'], discovery: { rawOutput: f.result('discovery').output } });
-    expect(result).not.toHaveProperty('binding');
+    if (result.status !== 'committed') throw new Error('Expected structurally valid authored unknown identity.');
+    const revision = f.entities.read(result.analysisId).revisions[0];
+    expect(revision.entities[0]).toMatchObject({ identityStatus: 'unresolved',
+      possibleEntityIds: [revision.entities[1].entityId], uncertainties: ['Authored unresolved identity.'] });
+    expect(result.semanticStatus).toBe('not_reviewed');
+  });
+
+  it.each(['missing-uncertainty', 'unknown-candidate'] as const)('rejects A %s before reading B or writing entities', mode => {
+    const f = setup();
+    Object.assign(f.discoveryResponse.entities[0], { identityStatus: 'unresolved', possibleEntityIds: ['e1'], uncertainties: ['Authored unresolved identity.'] });
+    if (mode === 'missing-uncertainty') f.discoveryResponse.entities[0].uncertainties = [];
+    else f.discoveryResponse.entities[0].possibleEntityIds = ['missing'];
+    f.result('discovery').output = JSON.stringify(f.discoveryResponse); f.resealA(); f.read.mockClear();
+    expect(() => f.app().importDiscoveredEntities(f.selection, f.model, f.references())).toThrow(EntityDiscoveryValidationError);
     expect(f.read.mock.calls.map(call => call[0])).toEqual(['discovery']);
     expect(f.entities.list().histories).toEqual([]); expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
   });
 
-  it('requires the exact authenticated source plan before reading A or importing a catalog', () => {
-    const f = setup(); f.read.mockClear();
-    const ordinary = new KnowledgeApplication({ ...f.ports, sourcePlanArchive: undefined });
-    expect(() => ordinary.importDiscoveredEntities(f.selection, f.model, f.references())).toThrow('archive unavailable');
-    expect(f.read).not.toHaveBeenCalled();
-    expect(() => f.app().importDiscoveredEntities(f.selection, f.model,
-      { ...f.references(), sourcePlan: { ...f.sourcePlanRef, receiptRef: { ...f.sourcePlanRef.receiptRef, digest: `sha256:${'0'.repeat(64)}` } } })).toThrow();
-    expect(f.read).not.toHaveBeenCalled(); expect(f.entities.list().histories).toEqual([]);
+  it.each(['unavailable', 'changed-unreadable'] as const)('keeps an %s independent source plan outside A/B context and import', mode => {
+    const f = setup();
+    const unreadableArchive = { read: vi.fn(() => { throw new Error('A/B import read SP.'); }),
+      inspect: vi.fn(() => { throw new Error('A/B import inspected SP.'); }) };
+    if (mode === 'changed-unreadable') {
+      f.plan.sourcePlanReceipt.request.input += ' changed unrelated SP';
+      const outcome = f.plan.sourcePlanNative.outcome;
+      if (outcome.outcomeKind !== 'result') throw new Error('Expected authored plan result.');
+      outcome.result.output = 'not a valid plan'; outcome.result.numTurns = 2; f.plan.resealSourcePlan();
+    }
+    const app = new KnowledgeApplication({ ...f.ports, sourcePlanArchive: mode === 'unavailable' ? undefined : unreadableArchive });
+    const otherTask = new Proxy({}, { get() { throw new Error('A/B import read SP reference.'); } });
+    const references = { ...f.references(), sourcePlan: otherTask };
+    const context = app.discoveredEntitiesContext(f.selection, f.model, references);
+    expect(context.discovery.rawOutput).toBe(f.result('discovery').output); expect(context).not.toHaveProperty('sourcePlan');
+    const result = app.importDiscoveredEntities(f.selection, f.model, references);
+    expect(result.status).toBe('committed'); expect(result).not.toHaveProperty('sourcePlan');
+    expect(unreadableArchive.read).not.toHaveBeenCalled(); expect(unreadableArchive.inspect).not.toHaveBeenCalled();
+    expect(f.entities.list().histories).toHaveLength(1); expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
   });
 
   it('requires the explicit research archive and exact available source, and respects cancellation before publication', () => {

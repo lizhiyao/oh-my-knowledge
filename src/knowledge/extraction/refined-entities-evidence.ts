@@ -37,7 +37,7 @@ const rebindingRequestSchema = z.strictObject({ ...requestFields,
   systemVersion: z.literal(MENTION_REBINDING_SYSTEM_VERSION), inputVersion: z.literal(MENTION_REBINDING_INPUT_VERSION),
   wireId: z.literal(MENTION_REBINDING_WIRE_ID) });
 const receiptFields = {
-  schemaVersion: z.literal(1), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
+  schemaVersion: z.literal(3), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
   snapshotId: EvidenceWindowSchema.shape.snapshotId, sourceVersion: EvidenceWindowSchema.shape.sourceVersion,
   producer: ExtractionAttemptSchema.shape.producer, requestDigest: ExtractionOutcomeRefSchema.shape.digest,
   nativeRef: ExtractionOutcomeRefSchema,
@@ -94,8 +94,11 @@ function sameSelection(request: { executor: string; model: string; timeoutMs: nu
 export function readRefinedEntitiesBaseEvidence(source: Source, model: RefinedEntitiesModel,
   references: RefinedEntitiesBaseReferences, archives: RefinedEntitiesBaseArchives) {
   const sourcePlan = readSourcePlanEvidence(source, model, references.sourcePlan, archives.sourcePlanArchive);
-  const discovery = readEntityDiscoveryEvidence(source, model, references.discovery, archives.discoveredEntitiesArchive, sourcePlan);
-  if (discovery.checked.dispositionIssues.length) throw new RefinedEntitiesValidationError('base-discovery', discovery.checked);
+  const planRaw = nativeOutput('source-plan', sourcePlan.outcome, model.executor);
+  if (planRaw !== sourcePlan.rawOutput || digest(planRaw) !== sourcePlan.rawOutputDigest) {
+    throw new Error('Refinement source plan raw identity conflict.');
+  }
+  const discovery = readEntityDiscoveryEvidence(source, model, references.discovery, archives.discoveredEntitiesArchive);
   const binding = readMentionBindingEvidence(source, discovery, model, references.binding, archives.discoveredEntitiesArchive);
   if (binding.checked.status !== 'checked') throw new RefinedEntitiesValidationError('base-binding', binding.checked);
   independent([sourcePlan.receipt, discovery.receipt, binding.receipt]);
@@ -195,12 +198,12 @@ function readJson(bytes: Uint8Array, reference: ExtractionOutcomeRef, maximum: n
 /** The archived native failure remains available to the caller; there is no repair or retry here. */
 export class RefinedEntitiesNativeError extends Error {
   readonly assessment = { status: 'rejected' as const, issues: ['incomplete_native_return'] };
-  constructor(readonly stage: 'refinement' | 'rebinding', readonly outcome: ExtractionOutcome) {
+  constructor(readonly stage: 'source-plan' | 'refinement' | 'rebinding', readonly outcome: ExtractionOutcome) {
     super(`${stage} requires a complete successful native assistant return without tools, retries or extra turns.`);
     this.name = 'RefinedEntitiesNativeError';
   }
 }
-function nativeOutput(stage: 'refinement' | 'rebinding', outcome: ExtractionOutcome, executor: string): string {
+function nativeOutput(stage: 'source-plan' | 'refinement' | 'rebinding', outcome: ExtractionOutcome, executor: string): string {
   if (outcome.outcomeKind !== 'result' || outcome.cleanupFailure || outcome.result.ok !== true || typeof outcome.result.output !== 'string'
     || outcome.result.refusal !== undefined
     || outcome.result.toolCalls !== undefined && (!Array.isArray(outcome.result.toolCalls) || outcome.result.toolCalls.length > 0)
@@ -232,7 +235,7 @@ export function readEntityRefinementEvidence(source: Source, model: RefinedEntit
   independent([base.sourcePlan.receipt, base.discovery.receipt, base.binding.receipt, receipt]);
   if (receipt.receiptId !== receiptId || receipt.snapshotId !== source.snapshotId || receipt.sourceVersion !== source.sourceVersion
     || canonicalJson(receipt.request) !== canonicalJson(expected.request) || entityRefinementRequestDigest(receipt) !== receipt.requestDigest
-    || Date.parse(receipt.startedAt) < Date.parse(base.binding.receipt.finishedAt)) {
+    || [base.sourcePlan, base.discovery, base.binding].some(previous => Date.parse(receipt.startedAt) < Date.parse(previous.receipt.finishedAt))) {
     throw new Error('Entity refinement receipt differs from its frozen source, predecessors, chronology or execution configuration.');
   }
   if (canonicalJson(expected.producer) !== canonicalJson(receipt.producer)) throw new Error('Entity refinement producer differs from its same-task archive witness.');

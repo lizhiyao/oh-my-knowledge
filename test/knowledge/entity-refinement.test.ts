@@ -5,7 +5,9 @@ import { buildEntityRefinementInput, checkEntityRefinementResponse, ENTITY_REFIN
 import { entityRefinementExecution, mentionRebindingExecution } from '../../src/knowledge/extraction/refined-entities-evidence.js';
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
-import { discoveryHash } from './discovered-entities-fixtures.js';
+import { SOURCE_PLAN_SYSTEM } from '../../src/knowledge/extraction/source-plan.js';
+import { ENTITY_DISCOVERY_SYSTEM } from '../../src/knowledge/extraction/entity-discovery.js';
+import { MENTION_BINDING_SYSTEM } from '../../src/knowledge/extraction/mention-binding.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
 
 type Fixture = ReturnType<typeof refinedEntitiesFixture>;
@@ -37,17 +39,15 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v5', 'knowledge-entity-refinement-input/v2', 'knowledge-entity-refinement-wire/v2', 'knowledge-entity-refinement-check/v2']);
+      .toEqual(['knowledge-entity-refinement-system/v6', 'knowledge-entity-refinement-input/v3', 'knowledge-entity-refinement-wire/v3', 'knowledge-entity-refinement-check/v3']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
     expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.refinementExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([f.old.plan.sourcePlanReceipt.request.systemVersion, f.old.discoveryReceipt.request.systemVersion, f.old.bindingReceipt.request.systemVersion])
-      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v7', 'knowledge-mention-binding-system/v7']);
-    expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system].map(discoveryHash))
-      .toEqual(['sha256:06628cf3f3c8c58b98b488f72d7bb9b004beccc8f7f31d39c788024ec9f99436',
-        'sha256:9e1b45a6a0042d32456726488e9abaa6d424b3b78ead039c3184c4583c274a94',
-        'sha256:c50e510f685041eecd986a36768dd1049206fb9f47e9d86ad29aed79f8207a41']);
+      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v8', 'knowledge-mention-binding-system/v8']);
+    expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system])
+      .toEqual([SOURCE_PLAN_SYSTEM, ENTITY_DISCOVERY_SYSTEM, MENTION_BINDING_SYSTEM]);
     expect(checkEntityRefinementResponse(JSON.stringify(f.refinementResponse), f.source, base.predecessor).status).toBe('checked');
   });
 
@@ -62,6 +62,15 @@ describe('private entity refinement A′ (authored only)', () => {
     ['merge disguised as retention', (f: Fixture) => { f.refinementResponse.entityDispositions[1].entityIds = ['next-e0']; }, 'merge_requires_correction'],
     ['missing plan disposition', (f: Fixture) => { f.refinementResponse.dispositions = []; }, 'missing_object'],
     ['duplicate plan disposition', (f: Fixture) => { f.refinementResponse.dispositions.push(structuredClone(f.refinementResponse.dispositions[0])); }, 'duplicate_object'],
+    ['unknown plan object', (f: Fixture) => { f.refinementResponse.dispositions[0].sourcePlanObjectId = 'unknown'; }, 'unknown_object'],
+    ['unknown plan target', (f: Fixture) => { f.refinementResponse.dispositions[0].entityIds = ['unknown']; }, 'unknown_entity'],
+    ['duplicate plan target', (f: Fixture) => { f.refinementResponse.dispositions[0].entityIds.push('next-e0'); }, 'duplicate_entity'],
+    ['empty retained plan target', (f: Fixture) => { f.refinementResponse.dispositions[0].entityIds = []; }, 'invalid_targets'],
+    ['empty corrected plan target', (f: Fixture) => { Object.assign(f.refinementResponse.dispositions[0], { dispositionKind: 'corrected', entityIds: [] }); }, 'invalid_targets'],
+    ['excluded plan with target', (f: Fixture) => { f.refinementResponse.dispositions[0].dispositionKind = 'excluded'; }, 'invalid_targets'],
+    ['invented plan evidence', (f: Fixture) => { f.refinementResponse.dispositions[0].selections[0].quote = 'not in source'; }, 'quote_mismatch'],
+    ['duplicate plan evidence', (f: Fixture) => { f.refinementResponse.dispositions[0].selections.push(structuredClone(f.refinementResponse.dispositions[0].selections[0])); }, 'duplicate_selection'],
+    ['previous SP-conditioned A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 2 }); }, 'invalid_structure:schemaVersion'],
     ['invented source evidence', (f: Fixture) => { f.refinementResponse.entityDispositions[0].selections[0].quote = 'not in source'; }, 'quote_mismatch'],
     ['old A-prime response', (f: Fixture) => { Object.assign(f.refinementResponse, { schemaVersion: 1 }); }, 'invalid_structure:schemaVersion'],
     ['missing gap ledger', (f: Fixture) => { Object.assign(f.refinementResponse, { bindingGapDispositions: undefined }); }, 'invalid_structure:bindingGapDispositions'],
@@ -87,6 +96,37 @@ describe('private entity refinement A′ (authored only)', () => {
   ])('rejects %s without losing the original', (_name, mutate, code) => {
     const f = refinedEntitiesFixture(), before = f.result('refinement').output;
     mutate(f); rejected(f, code); expect(f.result('refinement').output).toBe(before);
+  });
+
+  it.each(['context_only', 'qualification_unknown'] as const)('keeps independent SP %s objects in the first coordination account', planningRole => {
+    const f = refinedEntitiesFixture(), beforeA = f.old.bytesA(), beforeB = f.old.bytesB();
+    f.old.plan.sourcePlanResponse.objects[0].planningRole = planningRole;
+    if (planningRole === 'qualification_unknown') f.old.plan.sourcePlanResponse.objects[0].uncertainties = ['Authored qualification remains undecided.'];
+    const outcome = f.old.plan.sourcePlanNative.outcome;
+    if (outcome.outcomeKind !== 'result') throw new Error('Authored plan fixture is not a result.');
+    outcome.result.output = JSON.stringify(f.old.plan.sourcePlanResponse);
+    f.old.plan.resealSourcePlan();
+    const base = f.readBase();
+    f.refinementResponse.binding = JSON.parse(buildEntityRefinementInput(f.source, base.predecessor)).binding;
+    expect(check(f)).toMatchObject({ status: 'checked', dispositionIssues: [] });
+    f.refinementResponse.dispositions = []; rejected(f, 'missing_object');
+    expect(f.old.bytesA()).toEqual(beforeA); expect(f.old.bytesB()).toEqual(beforeB);
+  });
+
+  it('requires corrected SP merges and permits explicit splits, without treating either as semantic truth', () => {
+    const f = refinedEntitiesFixture(), plan = f.old.plan;
+    plan.sourcePlanResponse.objects.push({ ...structuredClone(plan.sourcePlanResponse.objects[0]), objectId: 'second-object' });
+    const outcome = plan.sourcePlanNative.outcome;
+    if (outcome.outcomeKind !== 'result') throw new Error('Authored plan fixture is not a result.');
+    outcome.result.output = JSON.stringify(plan.sourcePlanResponse);
+    plan.resealSourcePlan(); f.refinementResponse.binding = JSON.parse(buildEntityRefinementInput(f.source, f.readBase().predecessor)).binding;
+    f.refinementResponse.dispositions.push({ ...structuredClone(f.refinementResponse.dispositions[0]), sourcePlanObjectId: 'second-object' });
+    rejected(f, 'merge_requires_correction');
+    f.refinementResponse.dispositions.forEach(row => { row.dispositionKind = 'corrected'; });
+    expect(check(f)).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed' });
+    f.refinementResponse.dispositions[0].entityIds = ['next-e0', 'next-e1'];
+    Object.assign(f.refinementResponse.dispositions[1], { dispositionKind: 'excluded', entityIds: [] });
+    expect(check(f)).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed' });
   });
 
   it('permits explicitly accounted corrections while preserving the not-reviewed boundary', () => {

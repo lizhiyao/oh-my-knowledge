@@ -19,7 +19,7 @@ const text = z.string().min(1).max(4096).refine(value => value.trim().length > 0
 const supportKey = z.strictObject({ entityId: id, supportKind: z.enum(['componentRef', 'collection']) });
 export const MentionRebindingBindingSchema = EntityRefinementBindingSchema.extend({ refinement: RefinementStageReferenceSchema,
   refinementCatalogDigest: byteDigest });
-export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-rebinding'), schemaVersion: z.literal(1),
+export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.literal('mention-rebinding'), schemaVersion: z.literal(3),
   binding: MentionRebindingBindingSchema, mentions: MentionBindingResponseSchema.shape.mentions,
   identitySupports: MentionBindingResponseSchema.shape.identitySupports,
   mentionDispositions: z.array(z.strictObject({ previousMentionId: id, dispositionKind: RefinementDispositionKindSchema,
@@ -27,11 +27,11 @@ export const MentionRebindingResponseSchema = z.strictObject({ responseKind: z.l
   supportDispositions: z.array(z.strictObject({ previousSupport: supportKey, dispositionKind: RefinementDispositionKindSchema,
     supports: z.array(supportKey).max(256), rationale: text, selections: z.array(RefinementSelectionSchema).min(1).max(32) })).max(256) });
 export type MentionRebindingResponse = z.infer<typeof MentionRebindingResponseSchema>;
-export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v5' as const;
-export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v2' as const;
-export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v2' as const;
-export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v2' as const;
-export const MENTION_REBINDING_OUTPUT_NAME = 'mention_rebinding_v1' as const;
+export const MENTION_REBINDING_SYSTEM_VERSION = 'knowledge-mention-rebinding-system/v6' as const;
+export const MENTION_REBINDING_INPUT_VERSION = 'knowledge-mention-rebinding-input/v3' as const;
+export const MENTION_REBINDING_WIRE_VERSION = 'knowledge-mention-rebinding-wire/v3' as const;
+export const MENTION_REBINDING_CHECK_VERSION = 'knowledge-mention-rebinding-check/v3' as const;
+export const MENTION_REBINDING_OUTPUT_NAME = 'mention_rebinding_v3' as const;
 export const MENTION_REBINDING_OUTPUT_MAX_BYTES = 1024 * 1024;
 const domainSchema = z.toJSONSchema(MentionRebindingResponseSchema, { target: 'draft-2020-12', io: 'input', unrepresentable: 'throw' });
 export const MENTION_REBINDING_WIRE_SCHEMA = freezeRefinement(refinementWireSchema(domainSchema) as Record<string, unknown>);
@@ -52,11 +52,11 @@ ${ENTITY_COLLECTIVE_REFERENCE_POLICY}
 A′ bindingGapDispositions 是待独立核对的缺口处理意图，不是提及、身份或资格真值。mapped 对应旧项须 corrected，实际返回的 bound 提及与 targets 按显式相同 entityId、同 evidenceRef 相交位置双向唯一对应；可独立修订提及边界，无需逐字沿用意图跨度。复合旧跨度可拆成不同实际位置的多个目标；不能把同一共同指代复制给多个成员，也不能用一条实际提及抵扣多个意图位置。多旧项有据合并时分别交 corrected 账。excluded 对应旧项须 excluded，不能同时将与旧区间相交的位置作为新增提及返回；边界变化须按 corrected 交账，独立不相交位置仍可新增。若独立判断不支持 A′ 意图，保留实际 excluded、undetermined 或非 bound 判断并整体阻断，不照抄、强绑、补提及或把真实 unknown 改成已知身份。
 每个旧 B identitySupports 以 previousSupport={entityId,supportKind} 恰好一条 supportDispositions。retained 恰好一条实际新支持，声明所有者须在 A′ entityDispositions 中 retained，supportKind 不变，支持提及须恰好是旧支持全部 mentionIds 经 retained 提及账得到的映射。声明、支持提及或拆合变化用 corrected，至少一个实际新支持；所有新支持目标的 entityId 均须属于 A′ 对旧声明所有者的显式 entityIds 映射，不能挪到无关新增对象。合并均 corrected。excluded/undetermined 的 supports=[]；只要旧声明所有者经 A′ 映射后仍有同类声明，就不能 excluded 后无账重建，须 corrected。undetermined 阻断。每条支持账给具体来源 rationale 和逐字 selections。
 最终 identitySupports 恰好覆盖 A′ 每个非空 componentRef/collection 声明；只能引用实际 bound mentionIds，每条须落在声明 anchorIds 的同 evidenceRef 区间内，至少一条归声明实体。每个 A′ 实体至少有一条 owned anchor 内实际 bound 提及；不从 anchor 自动补提及。同一来源位置不得重复占用，引用只能指向 A′。任何未决、缺失、丢弃或规范化都整份阻断，不能部分接纳。空目录仅允许空提及及支持，但旧项仍须完整交账。
-严格回显 binding，仅返回 responseKind=mention-rebinding、schemaVersion=1 的严格 JSON。完整账目只证明没有静默丢项，不证明排除理由、身份或语义正确，也不代表人工验收或 gold。`;
+严格回显 binding，仅返回 responseKind=mention-rebinding、schemaVersion=3 的严格 JSON。完整账目只证明没有静默丢项，不证明排除理由、身份或语义正确，也不代表人工验收或 gold。`;
 
 export function prepareMentionRebinding(source: BoundKnowledgeSource, base: EntityRefinementBase, refinement: RefinementPredecessor) {
   const prepared = prepareEntityRefinementBase(source, base);
-  const receipt = checkRefinementPredecessor(prepared.source, refinement, 'knowledge-entity-refinement-receipt', 1);
+  const receipt = checkRefinementPredecessor(prepared.source, refinement, 'knowledge-entity-refinement-receipt', 3);
   const request = receipt.request as Record<string, unknown> | undefined;
   if (!request || request.systemVersion !== ENTITY_REFINEMENT_SYSTEM_VERSION || request.inputVersion !== ENTITY_REFINEMENT_INPUT_VERSION
     || request.wireId !== ENTITY_REFINEMENT_WIRE_ID || request.system !== ENTITY_REFINEMENT_SYSTEM
