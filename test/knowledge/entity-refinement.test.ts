@@ -6,8 +6,9 @@ import { entityRefinementExecution, mentionRebindingExecution } from '../../src/
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY, ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { SOURCE_PLAN_SYSTEM } from '../../src/knowledge/extraction/source-plan.js';
-import { ENTITY_DISCOVERY_SYSTEM } from '../../src/knowledge/extraction/entity-discovery.js';
+import { ENTITY_DISCOVERY_SYSTEM, ENTITY_QUALIFICATION_EVIDENCE_POLICY } from '../../src/knowledge/extraction/entity-discovery.js';
 import { MENTION_BINDING_SYSTEM } from '../../src/knowledge/extraction/mention-binding.js';
+import { MENTION_REBINDING_SYSTEM } from '../../src/knowledge/extraction/mention-rebinding.js';
 import { refinedEntitiesFixture } from './refined-entities-fixtures.js';
 
 type Fixture = ReturnType<typeof refinedEntitiesFixture>;
@@ -39,13 +40,18 @@ describe('private entity refinement A′ (authored only)', () => {
     }
     expect(input.excerpts).toEqual(f.source.excerpts); expect(input.limitations).toEqual(f.source.limitations);
     expect([ENTITY_REFINEMENT_SYSTEM_VERSION, ENTITY_REFINEMENT_INPUT_VERSION, ENTITY_REFINEMENT_WIRE_VERSION, ENTITY_REFINEMENT_CHECK_VERSION])
-      .toEqual(['knowledge-entity-refinement-system/v7', 'knowledge-entity-refinement-input/v4', 'knowledge-entity-refinement-wire/v4', 'knowledge-entity-refinement-check/v4']);
+      .toEqual(['knowledge-entity-refinement-system/v8', 'knowledge-entity-refinement-input/v4', 'knowledge-entity-refinement-wire/v4', 'knowledge-entity-refinement-check/v4']);
     expect(f.refinementExecution.request.system).toBe(ENTITY_REFINEMENT_SYSTEM);
-    expect(f.refinementExecution.request.system.split(ENTITY_REFERENT_KIND_POLICY)).toHaveLength(2);
-    expect(f.refinementExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
-    expect(f.refinementExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
+    for (const policy of [ENTITY_REFERENT_KIND_POLICY, ENTITY_CODE_REFERENT_POLICY, ENTITY_COLLECTIVE_REFERENCE_POLICY,
+      ENTITY_QUALIFICATION_EVIDENCE_POLICY]) expect(f.refinementExecution.request.system.split(policy)).toHaveLength(2);
+    for (const system of [SOURCE_PLAN_SYSTEM, MENTION_BINDING_SYSTEM, MENTION_REBINDING_SYSTEM]) {
+      expect(system).not.toContain(ENTITY_QUALIFICATION_EVIDENCE_POLICY);
+    }
+    expect(ENTITY_QUALIFICATION_EVIDENCE_POLICY).toContain('门槛可按来源作为规则或合并的准入条件表达，仅出现门槛不要求另建操作');
+    expect(f.refinementExecution.request.system).toContain('回源审读全部旧 bound、unbound、ambiguous 提及及原文独立所指，不能只处理缺口账');
+    expect(f.refinementExecution.request.system).toContain('SP/A/B 及已有台账不是穷尽目录、来源真值或资格证明');
     expect([f.old.plan.sourcePlanReceipt.request.systemVersion, f.old.discoveryReceipt.request.systemVersion, f.old.bindingReceipt.request.systemVersion])
-      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v9', 'knowledge-mention-binding-system/v9']);
+      .toEqual(['knowledge-source-plan-system/v6', 'knowledge-entity-discovery-system/v10', 'knowledge-mention-binding-system/v9']);
     expect([f.old.plan.sourcePlanReceipt.request.system, f.old.discoveryReceipt.request.system, f.old.bindingReceipt.request.system])
       .toEqual([SOURCE_PLAN_SYSTEM, ENTITY_DISCOVERY_SYSTEM, MENTION_BINDING_SYSTEM]);
     expect(checkEntityRefinementResponse(JSON.stringify(f.refinementResponse), f.source, base.predecessor).status).toBe('checked');

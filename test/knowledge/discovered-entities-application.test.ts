@@ -62,7 +62,12 @@ describe('separate discovery/binding import through the real entity store (autho
     expect(revision.revisedAt).toBe(f.bindingReceipt.finishedAt);
     expect(revision.entities.map(entity => entity.label)).toEqual(f.discoveryResponse.entities.map(entity => entity.label));
     expect(revision.entities).toHaveLength(f.discoveryResponse.entities.length);
-    for (const entity of revision.entities) expect(entity).not.toHaveProperty('qualificationEvidence');
+    for (const [index, entity] of revision.entities.entries()) {
+      expect(entity).not.toHaveProperty('qualificationEvidence');
+      const declared = f.discoveryResponse.entities[index];
+      expect(entity).toMatchObject({ description: declared.description, qualifiers: declared.qualifiers,
+        uncertainties: declared.uncertainties, referentKind: declared.referentKind, identityStatus: declared.identityStatus });
+    }
     expect(context.discovery.checked.response.entities[0].qualificationEvidence).toEqual(f.discoveryResponse.entities[0].qualificationEvidence);
     expect(revision.mentions).toHaveLength(f.bindingResponse.mentions.length);
     for (const mention of revision.mentions) {

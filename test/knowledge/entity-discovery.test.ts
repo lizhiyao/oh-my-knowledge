@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { buildEntityDiscoveryInput, checkEntityCatalogBody, checkEntityDiscoveryResponse, ENTITY_DISCOVERY_INPUT_VERSION,
   ENTITY_DISCOVERY_SYSTEM_VERSION, ENTITY_DISCOVERY_WIRE_VERSION, ENTITY_DISCOVERY_CHECK_VERSION, ENTITY_DISCOVERY_OUTPUT_NAME,
   ENTITY_DISCOVERY_OUTPUT_MAX_BYTES, ENTITY_DISCOVERY_WIRE_ID, ENTITY_DISCOVERY_WIRE_SCHEMA,
+  ENTITY_DISCOVERY_SYSTEM, ENTITY_QUALIFICATION_EVIDENCE_POLICY,
   ENTITY_DISCOVERY_WIRE_SCHEMA_JSON, type EntityDiscoveryResponse, type EntityDiscoverySource } from '../../src/knowledge/extraction/entity-discovery.js';
 import { ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { authoredQualification } from './discovered-entities-fixtures.js';
@@ -216,7 +217,8 @@ describe('private entity discovery A', () => {
     const f = fixture(), validate = new Ajv2020({ strict: true }).compile(ENTITY_DISCOVERY_WIRE_SCHEMA);
     expect(validate(f.response)).toBe(true);
     expect(validate({ ...f.response, proposals: [] })).toBe(false);
-    expect(ENTITY_DISCOVERY_SYSTEM_VERSION).toBe('knowledge-entity-discovery-system/v9');
+    expect(ENTITY_DISCOVERY_SYSTEM_VERSION).toBe('knowledge-entity-discovery-system/v10');
+    expect(ENTITY_DISCOVERY_SYSTEM.split(ENTITY_QUALIFICATION_EVIDENCE_POLICY)).toHaveLength(2);
     expect(ENTITY_DISCOVERY_INPUT_VERSION).toBe('knowledge-entity-discovery-input/v4');
     expect(ENTITY_DISCOVERY_WIRE_VERSION).toBe('knowledge-entity-discovery-wire/v4');
     expect(ENTITY_DISCOVERY_CHECK_VERSION).toBe('knowledge-entity-discovery-check/v4');

@@ -165,7 +165,7 @@ node dist-scripts/bench/entity-extraction-review.js \
 
 另一内部候选先从原文生成语义清单，再根据原文及完整、未修改的清单生成完整实体、提及和知识。当前清单使用独立的 `knowledge-source-plan-system/v6`、`knowledge-source-plan-input/v2` 和 `knowledge-source-plan-wire/v2` 身份，输出名称为 `knowledge_source_plan_v2`，`schemaVersion: 2`；不提供 v1 reader 或别名。它表达被讨论的对象与有界组、分开的身份／层次依据、精确来源锚点、成员未知及带条件和限制的材料。检查器只验证结构、来源绑定、精确位置和局部引用闭合，始终明确保留 `semanticStatus: not_reviewed`。有效清单仍是不可信候选数据，不是新增来源证据或已接纳知识。
 
-source-plan system v6 完整逐字接收 `ENTITY_REFERENT_KIND_POLICY`，与 A system v9、独立 v36 实体任务共享既有七种所指层次的含义和依据门槛。Schema 枚举本身不提供这些语义。私有规划词汇另允许在规划阶段层次依据不足时使用 `referentKind: unknown`，通过 `typeBasis` 与 `uncertainties` 保留该不足，与身份 `unresolved` 分轴，因此已知身份仍可为 `proposed`。共享政策中的一般 `object` 及有据兜底继续有效，但不要求把明确的规划层次未知替换为 `object`。
+source-plan system v6 完整逐字接收 `ENTITY_REFERENT_KIND_POLICY`，与 A system v10、独立 v36 实体任务共享既有七种所指层次的含义和依据门槛。Schema 枚举本身不提供这些语义。私有规划词汇另允许在规划阶段层次依据不足时使用 `referentKind: unknown`，通过 `typeBasis` 与 `uncertainties` 保留该不足，与身份 `unresolved` 分轴，因此已知身份仍可为 `proposed`。共享政策中的一般 `object` 及有据兜底继续有效，但不要求把明确的规划层次未知替换为 `object`。
 
 当前私有 system 修订及其 **BREAKING-COMPARABILITY** 边界见 §5.9。source-plan 的 input、wire、响应 Schema 与检查器保持 v2；原有共享所指层次政策、v36／v37 及生产默认的字节与身份不变。新的 source-plan 请求须重新冻结任务／请求。消费清单的任务绑定其完整回执，因此实际输入绑定也随之变化，须依据新的已认证前驱链物化并在派发前封存；旧执行许可或分数不能复用。§5.6 的 source-only A 与初始 B 不消费或认证清单，首次联合认证边界在 §5.7 的 A′。历史原件、回执、冻结运行时及分数保持原样，使用各自匹配的冻结代码，不重新解释或重评分。规则传递不证明模型质量改善，也不增加 B→A 修订闭环。
 
@@ -229,9 +229,9 @@ E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt 
 
 ### 5.6 来源清单、实体发现与提及绑定
 
-私有任务将 source-plan（SP）与 A（`entity-discovery`）作为针对同一完整选定来源投影的两份独立首轮任务；投影含 `snapshotId`、`sourceVersion`、`excerpts` 与 `limitations`。SP 保留 system v6、input／wire／check／response v2、输出名称 `knowledge_source_plan_v2` 与 receipt schema v1。A 与 B（`mention-binding`）使用 system v9，input、wire、check、response 与 receipt 身份均为 v4，输出名称为 `entity_discovery_v4` 与 `mention_binding_v4`；原生归档外层容器仍为 schema v1。A 仅接收该来源投影，不接收清单、清单回执、清单对象处置账或其他前驱输出。它返回完整实体目录、所指范围、身份假设及精确 quote／occurrence 锚点。这些锚点提供来源依据，不是最终提及；组件和集合声明先引用锚点，等待 B 创建实际提及。
+私有任务将 source-plan（SP）与 A（`entity-discovery`）作为针对同一完整选定来源投影的两份独立首轮任务；投影含 `snapshotId`、`sourceVersion`、`excerpts` 与 `limitations`。SP 保留 system v6、input／wire／check／response v2、输出名称 `knowledge_source_plan_v2` 与 receipt schema v1。A 使用 system v10，B（`mention-binding`）使用 system v9；input、wire、check、response 与 receipt 身份仍为 v4，输出名称为 `entity_discovery_v4` 与 `mention_binding_v4`；原生归档外层容器仍为 schema v1。A 仅接收该来源投影，不接收清单、清单回执、清单对象处置账或其他前驱输出。它返回完整实体目录、所指范围、身份假设及精确 quote／occurrence 锚点。这些锚点提供来源依据，不是最终提及；组件和集合声明先引用锚点，等待 B 创建实际提及。
 
-A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，包括一般操作与特定执行、配置对象与组件，以及在细层次依据不足时使用 proposed `object` 并保留类型未知的依据门槛。六个私有任务另共享 `ENTITY_CODE_REFERENT_POLICY` 与 `ENTITY_COLLECTIVE_REFERENCE_POLICY`，当前 system 为 SP v6、A／B v9、A′／B′ v7、R v4。代码指称政策区分独立讨论的一般函数／方法、可分别指向的实现状态及有独立边界的执行，要求每处提及对应来源实际支持的所指。展示定义或代码示例本身不证明固定版本，anchor 包含标识符也不证明该标识符指向整份实现。须依来源区分操作与产物、配置与其机制、产品与其过程，不为每个名词或动词造实体。Schema 枚举及规则完整传递不证明模型遵守规则。生产 strict30 与冻结的 E36／E37 任务字节保持不变。
+A 完整接收与独立 v36 实体任务逐字共享的七种所指层次规则，包括一般操作与特定执行、配置对象与组件，以及在细层次依据不足时使用 proposed `object` 并保留类型未知的依据门槛。六个私有任务另共享 `ENTITY_CODE_REFERENT_POLICY` 与 `ENTITY_COLLECTIVE_REFERENCE_POLICY`，当前 system 为 SP v6、A v10、B v9、A′ v8、B′ v7、R v4。代码指称政策区分独立讨论的一般函数／方法、可分别指向的实现状态及有独立边界的执行，要求每处提及对应来源实际支持的所指。展示定义或代码示例本身不证明固定版本，anchor 包含标识符也不证明该标识符指向整份实现。须依来源区分操作与产物、配置与其机制、产品与其过程，不为每个名词或动词造实体。Schema 枚举及规则完整传递不证明模型遵守规则。生产 strict30 与冻结的 E36／E37 任务字节保持不变。
 
 source-only A 不含 source-plan `dispositions` 或 `dispositionIssues`，不负责协调另一份独立生成的清单。宿主检查来源绑定、目录引用和精确锚点，不判断语义资格、身份、层次或遗漏覆盖。已知有界集合可以保留未知成员，不因此把组身份改成未决。清单的 `planningRole`、资格／层次依据和不确定性仍是不可信模型判断，首次在 §5.7 的 A′ 与 A、B 联合协调，不用于筛选、补齐或 union A 目录。
 
@@ -246,11 +246,11 @@ A 与 A′ 每个实体都须给出私有 `qualificationEvidence`，将独立资
 | `activityStatus` | activity 必须使用 `bounded_activity`，值为 `planned`、`source_reported_actual` 或 `undetermined`；其余为 null。 |
 | `memberRole` | collection 必须使用 `collective_scope`，值为 `operation_concepts`、`execution_occurrences`、`work_targets`、`mixed` 或 `undetermined`；其余为 null。 |
 
-作为行动可重复准入前提的一般操作，已有用途或规则依据，不因只出现在条件分句或另一项描述中就排除。个案结果谓词不自动产生一般操作或一次执行。集合须有对组自身的共同指代或整体范围依据；多个工作目标不证明存在多个执行，计划也不自动对应后来报告的执行。对已列成员，操作概念组仅允许 object，执行活动组仅允许 activity；未知成员不补造，类型相容不证明组含义成立。`undetermined` 角色／状态须保留非空 uncertainties，不能冒充身份已确认或用虚构 unresolved 对象消除资格疑问。其它普通对象与计划对象使用 `independent_referent`。这些字段均为待复核主张，结构接纳不证明原文支持其资格。
+A 与 A′ 另遵守 §5.9 的私有主体／视图及操作／活动边界。资格字段不能替代公共描述：私有依据投影移除后，有来源支持的时期、计数口径及其它必要限定仍须保留在 `description`、`qualifiers` 或 `uncertainties`。对已列成员，操作概念组仅允许 object，执行活动组仅允许 activity；未知成员不补造，类型相容不证明组含义成立。`undetermined` 角色／状态须保留非空 uncertainties，不能冒充身份已确认或用虚构 unresolved 对象消除资格疑问。其它普通对象与计划对象使用 `independent_referent`。这些仍是待复核主张，不是语义接纳。
 
 不新增穷尽候选的排除账。未进入 A、SP 或 B 的候选仍无法保证完整交账；对已有前驱项的资格待定，A′ 使用既有 `undetermined` 处置并阻断。完整字段、账目闭合与没有缺口声明都不证明没有漏提。
 
-B 接收同一完整来源及 A 的完整已认证回执与原始响应。它认证精确的 source-only A system v9 及各项 v4 任务身份，不接受历史含清单绑定的 A 回执作为前驱。B 只输出提及与身份支持映射，不能编辑 A 实体。有独立资格依据、但被 A 遗漏或保留未决的对象提及仍为显式缺口；符号、参与者、结果或泛称不因目录缺项自动获得资格。歧义与未绑定提及继续显式保留。宿主按精确 quote／occurrence 解析 UTF-16 位置，不从 A 锚点补造提及。
+B 接收同一完整来源及 A 的完整已认证回执与原始响应。它认证精确的 source-only A system v10 及各项 v4 任务身份，不接受历史含清单绑定的 A 回执作为前驱。B 只输出提及与身份支持映射，不能编辑 A 实体。有独立资格依据、但被 A 遗漏或保留未决的对象提及仍为显式缺口；符号、参与者、结果或泛称不因目录缺项自动获得资格。歧义与未绑定提及继续显式保留。宿主按精确 quote／occurrence 解析 UTF-16 位置，不从 A 锚点补造提及。
 
 B 还完整接收与生产提示词逐字共享的提及边界规则。有来源的完整名称或限定描述可以指向对象，无关谓词、结果和属性归属短语不因此成为别名；不追求最短字符串，也不机械裁剪后缀。宿主检查位置与闭合，不判断自然语言资格或修补跨度。
 
@@ -258,24 +258,24 @@ B 之前的 context 准备通过只读发现归档认证 A，不要求 `sourcePl
 
 单独选定的 source-only A→B 诊断可通过 `importDiscoveredEntityAnalysis` 真实写入一份初始 `EntityAnalysis` schema v2。接纳继续全有或全无：每个 A 实体须有位于自身锚点内的实际 bound 提及；每个组件／集合声明须恰好有一项支持映射，引用位于对应锚点内的 bound 提及，且至少一条归属于该实体。歧义、未绑定提及、支持缺失、非法引用或既有实体接纳拒绝均阻止整个分析，不用合法子集替代 A。ready import 严格验证私有资格依据后显式投影移除该字段，原样复制公共实体元数据，把支持映射到 B 提及 ID，写入来源链绑定 A/B 回执的字节引用与导入者 actor，不含清单。由 B 回执派生逻辑 ID 的算法不变。重导入重新认证两份原件，不调用模型，复用相同写入意图及原修订时间。该独立 A/B 端点不是 §5.7—§5.8 六调用路径的最终 E 端点。
 
-source-only 拓扑保持独立，新增资格证据及下游前驱身份改变，对私有任务证据构成 **BREAKING-SCHEMA**，对流程构成 **BREAKING-COMPARABILITY**。v4 reader 直接替换此前 v3 私有契约，不提供旧回执 reader、别名或迁移。历史原件、回执、冻结运行时、分数及已写入历史保留原身份，使用匹配的冻结代码，不重新解释或重评分。即使公共持久化 Schema 与 stable-ID 算法不变，来源链变化也须显式记录。
+source-only 拓扑保持独立。资格证据修订对私有任务证据引入 **BREAKING-SCHEMA**，对流程引入 **BREAKING-COMPARABILITY**。当前 A／A′ 主体／视图澄清仅按 §5.9 修改 system 字节。v4 reader 直接替换此前 v3 私有契约，不提供旧回执 reader、别名或迁移。历史原件、回执、冻结运行时、分数及已写入历史保留原身份，使用匹配的冻结代码，不重新解释或重评分。即使公共持久化 Schema 与 stable-ID 算法不变，来源链变化也须显式记录。
 
 普通宿主不安装这些研究归档端口。生产 strict30、v4 提取 wire、既有 run／存储格式、public exports 与 CLI／Studio 路径保持不变。单 E→R/K 契约不接收 A/B 组合；选定修订路径使用独立认证交接。前瞻诊断须在解释结果前冻结任务构造器、实际来源／配置、依赖、调用机会、停止规则与最终端点；实际依赖输入在前驱存在后、派发前封存。分阶段报告实际用量、缓存、费用、耗时、失败与未知。source-only 发现改变任务输入及整个来源链，既不保证 SP 与 A 的错误独立，也不证明召回、语义收益、稳定改善、泛化或独立真人验收通过。所有结构检查保留 `semanticStatus: not_reviewed`。
 
 ### 5.7 有限目录修订与提及重绑定
 
-这一显式选择的私有流程在 A′（`entity-refinement`）联合独立 SP system v6 与 source-only A system v9→B system v9 分支，再使用 B′（`mention-rebinding`）。A′ 是三份原件首次联合认证与协调的边界。初始 B 只要结构 checked，无论接纳 ready 或 blocked 均可进入修订：ready 不证明语义正确。原生或结构失败不构成修订机会。
+这一显式选择的私有流程在 A′（`entity-refinement`）联合独立 SP system v6 与 source-only A system v10→B system v9 分支，再使用 B′（`mention-rebinding`）。A′ 是三份原件首次联合认证与协调的边界。初始 B 只要结构 checked，无论接纳 ready 或 blocked 均可进入修订：ready 不证明语义正确。原生或结构失败不构成修订机会。
 
 | 任务 | System | Input／wire／check | Response／输出名称 | Receipt／native envelope |
 |---|---|---|---|---|
-| A′ | v7 | v4 | schema v4／`entity_refinement_v4` | receipt v4／native v1 |
+| A′ | v8 | v4 | schema v4／`entity_refinement_v4` | receipt v4／native v1 |
 | B′ | v7 | v4 | schema v4／`mention_rebinding_v4` | receipt v4／native v1 |
 
-v4 契约继续绑定独立 SP、source-only A 与初始 B，并在 A′ 目录及前驱证据中加入资格依据。SP 对象账、旧 A 实体账与 B 缺口账继续分别处理；`retained` 的比较也包含资格字段，anchor ID 先映射到真实来源位置，再按显式实体 ID 映射核对，不能把改写依据称为原样保留。system、请求、响应、receipt 和前驱 wire 身份显式升版，对私有证据构成 **BREAKING-SCHEMA**，并构成 **BREAKING-COMPARABILITY**；native envelope 保持 v1。只接受当前私有身份，不加兼容 reader 或迁移。历史原件使用匹配的冻结运行时，旧流程分数不证明该流程效果。
+v4 契约继续绑定独立 SP、source-only A 与初始 B，并在 A′ 目录及前驱证据中加入资格依据。SP 对象账、旧 A 实体账与 B 缺口账继续分别处理；`retained` 的比较也包含资格字段，anchor ID 先映射到真实来源位置，再按显式实体 ID 映射核对，不能把改写依据称为原样保留。引入 v4 时，私有响应、receipt 及前驱 wire 契约显式升版，构成 **BREAKING-SCHEMA** 与 **BREAKING-COMPARABILITY**；本次仅修订 system 的澄清保留这些 v4 契约，native envelope 保持 v1。只接受当前私有身份，不加兼容 reader 或迁移。历史原件使用匹配的冻结运行时，旧流程分数不证明该流程效果。
 
 模型输入是完整选定来源与所需原始响应的平坦投影。A′ 完整接收未修改的 source-plan、A 和 B `rawOutput` 各一次；B′ 另外完整接收 A′ `rawOutput`，同样各一次。输入不递归嵌套 `receiptRaw`，完整回执、原生 outcome 与请求仍分别归档。构造依赖任务前，宿主认证全部已有前驱；最终导入和重放重新认证五份原件，包括精确请求、来源、配置、producer 见证、时间顺序及各自不同的 receipt／attempt 身份。缩小模型投影不放宽这些认证。容量须在 claim 前检查，不截断、不提供局部输入或静默回退。联合边界要求同一来源投影、相同 executor／model／timeout／输出 token 配置，以及全链各自不同的 receipt／attempt 身份；检查 B 在 A 之后、A′ 在 SP／A／B 之后、B′ 在 A′ 之后，不要求 SP 早于 A 或 B。这些独立输入是模型主张，不是新证据，也不自动 union 目录。
 
-A′ 回原文独立重读，返回完整替换目录与 anchors、全部 source-plan 对象的 `dispositions`，以及每个旧 A 实体的 `entityDispositions`。SP 的 `planningRole`、资格／层次依据及未知均不可信：候选标签不强制保留，上下文标签不授予删除许可。SP 账通过 `sourcePlanObjectId` 恰好覆盖每个清单对象一次；`retained` 恰好一个目标，`corrected` 一个或多个，`excluded`／`undetermined` 无目标。拆分和合并须有显式 `corrected` 账目与来源依据。宿主拒绝遗漏、重复或未知旧 ID、非法目标和非法选择；合法 `undetermined` 处置仍可检查，但阻断 B′ 与最终导入。每个旧项均有明确的 retained、corrected、excluded 或 undetermined 处置，并在适用时给出目标映射；遗漏不等于排除。纠正和排除须有理由与逐字来源依据。新增对象须有独立来源支持。来源中真实存在的未消解所指仍可按实体身份契约表达；仅为让绑定成功而创建占位对象，不证明对象存在或未知已消除。
+A′ 回完整来源重读，重新核对已有全部 bound、unbound 与 ambiguous 的 B 提及及其独立讨论的所指。SP、A、B 和缺口账既非穷尽候选目录，也非身份真值。A′ 先修正目录主体与层次，再交给 B′，不能另造上位主体吸收真实歧义；它返回完整替换目录与 anchors、全部 source-plan 对象的 `dispositions`，以及每个旧 A 实体的 `entityDispositions`。SP 的 `planningRole`、资格／层次依据及未知均不可信：候选标签不强制保留，上下文标签不授予删除许可。SP 账通过 `sourcePlanObjectId` 恰好覆盖每个清单对象一次；`retained` 恰好一个目标，`corrected` 一个或多个，`excluded`／`undetermined` 无目标。拆分和合并须有显式 `corrected` 账目与来源依据。宿主拒绝遗漏、重复或未知旧 ID、非法目标和非法选择；合法 `undetermined` 处置仍可检查，但阻断 B′ 与最终导入。每个旧项均有明确的 retained、corrected、excluded 或 undetermined 处置，并在适用时给出目标映射；遗漏不等于排除。纠正和排除须有理由与逐字来源依据。新增对象须有独立来源支持。来源中真实存在的未消解所指仍可按实体身份契约表达；仅为让绑定成功而创建占位对象，不证明对象存在或未知已消除。
 
 A′ 还必须返回 `bindingGapDispositions`，恰好覆盖初始 checked B 中每个 `bindingStatus` 不为 `bound` 的 mention ID，不接受其他 ID。每项包含 `previousMentionId`、`resolutionKind`（`mapped`、`excluded` 或 `undetermined`）、`targets`（`{entityId, selection}`）、`rationale` 及覆盖旧位置和目标位置的逐字来源 `selections`。`mapped` 至少指向一个实际 A′ 目录实体和与旧提及同 excerpt 相交的来源选择；可以按不同真实位置把一项旧提及拆成多个目标，但同一位置不可重复分给不同成员。`excluded` 与 `undetermined` 的 targets 必须为空。未决处置在 B′ producer inspect 前阻断；排除标签或来源支持的 unresolved 实体都不授权猜测身份、制造占位或强行绑定。
 
@@ -303,7 +303,9 @@ R 使用 §5.6 与 §5.9 所述当前 system v4、共享代码指称与共同指
 
 六个私有任务共享 `ENTITY_COLLECTIVE_REFERENCE_POLICY`。这是 OMK 对哪些来源所指获得实体身份的显式产品政策，不是声称文献能唯一决定自然语言解释。仅有可分别适用于各成员的共同属性或结果，不额外建立检查范围、执行组或其他集合。组需要独立的共同指代，或来源支持的整体审查、比较、计量，不要求特定触发词。反过来，已有独立身份依据的组，也不因后续谓词可分别适用于成员而被删除。已知组身份与成员未知继续分开。所指范围已有明确的来源依据时，计量单位、表示层次或展开方式未知，不自动使该范围成为身份未决；范围身份与这些未知分别记录。不能由此断言不同层次的成员相同；来源未证明同一范围时仍保留真实指代歧义，不另造上位对象吸收分歧。
 
-被独立讨论的一般操作、验收门槛与某次实际或计划执行，分别判断其所指。结果报告本身不要求新增活动实体，也不使一般操作与某次执行成为同一身份。缺少时间戳或执行日志，不否定来源中已有独立身份依据的活动。诊断例与案例语境仍须保留有来源支持的可复用材料、条件及限制；不新增实体不授权丢失这些信息。来源中真实未消解的身份，与提取资格、粒度或复核者政策判断未知不同。后者须明确保留为资格或复核不确定性，不能转换成虚构的 unresolved 对象或强行绑定。
+A system v10 与 A′ system v8 另加私有主体／视图指令，不修改六任务共享政策。有据的持续主体不能被不同阶段的成员表、计数或统计口径视图替代；固定版本与有据子范围须保持边界，不在缺少身份依据时制造 union 或上位主体。必要的时期或计数口径未知保留在公共 `description`、`qualifiers` 或 `uncertainties`。列出几个工作目标、由各自行为或共有结果修饰的名词短语，不能仅改名为执行范围、补写 rationale 或标为成员未知就成为组；有独立依据的整体计量、进度或保全范围仍可有资格，活动与集合各自都须有来源依据。
+
+对 A 与 A′，来源独立讨论、具有用途或规则依据的一般操作，不能仅因出现于条件分句或另一项描述而遗漏，也不能被布尔门槛对象替代。门槛可以依来源表达为规则或合并的准入条件；仅出现门槛不机械强制额外一般操作节点，也不要求操作与门槛总是两个实体。独立指明的处理对象及先后或进行中的工作可支持 `bounded_activity`，不能仅因它出现在工作记录中就作为 context 丢弃；产物或验收检查不代替产生它的整合／处理活动，结果本身也不自动产生该活动。缺少时间戳或执行日志，不否定已有独立身份依据的活动，计划也不自动对应报告的执行。有据可复用材料、条件及限制仍须保留，即使没有额外实体满足资格。真实来源身份未知与资格、粒度或审读未知继续分开；两者都不授权虚构 unresolved 或上位对象、强行绑定。
 
 以下原创合成短例用于说明政策，既不是 gold 标注，也不是新盲测；表中边界以完整例子没有其他身份依据为前提。
 
@@ -324,4 +326,4 @@ R 使用 §5.6 与 §5.9 所述当前 system v4、共享代码指称与共同指
 
 所指范围身份澄清仅修订 system，属于 **BREAKING-COMPARABILITY**：source-plan v5→v6、A／B v6→v7、A′／B′ v4→v5、R v3→v4。input、wire、check、response 与 receipt Schema 身份、原生外层容器、持久化、生产 v29／v30 及冻结 v36／v37 的字节保持不变。新的 system 字节及实际前驱绑定请求要求重新冻结完整链和复核包，其中包含更新后的双语页面字节与 `guideDigest`。历史原件、已关闭研究及分数保留原身份，不重新解释或重评分。澄清本身不证明模型已遵守、效果已改善或验收通过。
 
-§5.6—§5.8 此前的 source-only A 修订保留 SP system v6 与 R system v4，将 A／B 升为 system v8、A′／B′ 升为 system v6，并采用 v3 私有证据契约。当前资格证据修订保留该拓扑，将 A／B 升为 system v9、A′／B′ 升为 system v7，采用 v4 私有证据契约；两次变更均须按 **BREAKING-COMPARABILITY** 显式重新冻结。生产 strict30／默认、E36／E37、stable-ID 算法、公共持久化及现有正式人工复核门禁保持不变。独立首轮输入及资格字段是可执行、可复核的边界，不是错误独立或模型质量改善的测量证据。
+§5.6—§5.8 此前的 source-only A 修订保留 SP system v6 与 R system v4，将 A／B 升为 system v8、A′／B′ 升为 system v6，并采用 v3 私有证据契约；资格证据随后将 A／B 升为 system v9、A′／B′ 升为 system v7，采用 v4 私有证据契约。当前主体／视图澄清仅将 A v9→v10、A′ v7→v8，B v9、B′ v7、SP v6、R v4 及已合并的 K 协议保持不变。A／B／A′／B′ 的 input、wire、check、response 与 receipt 契约仍为 v4，不新增 Schema、历史 reader 或别名。每次修订均须按 **BREAKING-COMPARABILITY** 重新冻结完整链：下游 system 版本不变，也不代表实际前驱绑定请求及双语页面字节／`guideDigest` 不变。历史原件使用匹配的冻结运行时，不重新解释或重评分。生产 strict30／默认、E36／E37、stable-ID 算法、公共持久化及现有正式人工复核门禁保持不变。这些指令与工程检查不证明错误独立、模型遵守或质量改善。

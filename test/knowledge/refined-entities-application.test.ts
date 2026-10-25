@@ -74,7 +74,12 @@ describe('one bounded refinement through real entity storage (authored originals
     expect(revision.revisedAt).toBe(f.rebindingReceipt.finishedAt);
     expect(revision.revisedBy).toMatchObject({ actorKind: 'agent', executionRef: result.chainDigest });
     expect(revision.entities.map(entity => entity.label)).toEqual(f.refinementResponse.entities.map(entity => entity.label));
-    for (const entity of revision.entities) expect(entity).not.toHaveProperty('qualificationEvidence');
+    for (const [index, entity] of revision.entities.entries()) {
+      expect(entity).not.toHaveProperty('qualificationEvidence');
+      const declared = f.refinementResponse.entities[index];
+      expect(entity).toMatchObject({ description: declared.description, qualifiers: declared.qualifiers,
+        uncertainties: declared.uncertainties, referentKind: declared.referentKind, identityStatus: declared.identityStatus });
+    }
     expect(result.refinement.checked.response.entities[0].qualificationEvidence).toEqual(f.refinementResponse.entities[0].qualificationEvidence);
     expect(revision.mentions).toHaveLength(f.rebindingResponse.mentions.length);
     for (const mention of revision.mentions) {
