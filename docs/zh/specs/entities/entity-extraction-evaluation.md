@@ -183,7 +183,11 @@ source-plan system v6 完整逐字接收 `ENTITY_REFERENT_KIND_POLICY`，与 A s
 
 `boundKnowledgeContext(entityRunId, model, profile)` 通过实际的原文单次 E run 及完整原生归档认证实体阶段：核对冻结 profile、来源／输入／请求／producer 身份和执行配置，要求 E/M 已接纳且无知识或拒绝项，再把原生接纳结果与真实持久化的初始修订逐项对应。即使实体分析后来已有新 head，也只选 E run 记录的该修订。任意目录投影或同名标签不是持久化证据；读取 context 不调用模型，也不修改 E 修订。该单 E 契约与 §5.6 的 source-only A/B 入口及 §5.8 的五原件交接分开。选定六调用路径时，只有最终 B′ 组合提供持久化初始 E 修订给直接 K，中间 A/B 目录或 context 不能替代。
 
-仅知识 K 任务使用独立的 `knowledge-bound-knowledge-system/v2`、`knowledge-bound-knowledge-input/v2`、`knowledge-bound-knowledge-wire/v2` 和 `knowledge-bound-knowledge-check/v2` 身份，输出名称为 `bound_knowledge_v2`。响应为 `bound-knowledge`／`schemaVersion: 2`，私有 receipt kind `knowledge-bound-knowledge-receipt` 也使用 `schemaVersion: 2`，原生外层容器 kind `knowledge-bound-knowledge-native` 仍为 `schemaVersion: 1`。实际输入含完整选定 excerpts、limitations 和只读实体／提及目录，以来源及不可变修订摘要绑定。本次直接替换私有 K v1，不提供 v1 reader、别名或迁移；历史包须使用各自冻结代码核查。任务、Schema 和请求身份变化要求重新冻结比较，不能复用旧结果或 receipt。
+仅知识 K 任务保留 `knowledge-bound-knowledge-system/v2`、`knowledge-bound-knowledge-input/v2`、`knowledge-bound-knowledge-wire/v2` 静态模板及 `knowledge-bound-knowledge-check/v2` 身份；响应仍为 `bound-knowledge`／`schemaVersion: 2`。实际执行采用 `knowledge-bound-knowledge-execution-wire/v1`，输出名称为 `bound_knowledge_execution_v1`，私有 receipt kind `knowledge-bound-knowledge-receipt` 升为 `schemaVersion: 3`；原生外层容器 kind `knowledge-bound-knowledge-native` 仍为 `schemaVersion: 1`。实际输入含完整选定 excerpts、limitations 和只读实体／提及目录，以来源及不可变修订摘要绑定。
+
+执行工厂按本次请求的六个固定 binding 值（`snapshotId`、`sourceVersion`、`analysisId`、`revisionId`、`sourceProjectionDigest`、`entityAnalysisDigest`）生成独立、深冻结的输出 Schema，以单元素 `enum` 约束原样返回；不让模型自由复制这些身份值，也不计算或修补返回摘要。请求 wire 身份绑定静态模板身份、特化规则版本及实际 Schema 摘要；证据读取器重建同一 Schema，并认证同请求 producer 的实际输入。错 binding、拒绝、未完整返回及原生证据异常仍按既有规则拒绝或停止，原始输出完整保留，不作重试、字段替换或提案抢救。输出约束和宿主认证不证明语义完整或来源主张真实。
+
+该变更声明 **BREAKING-COMPARABILITY**：直接替换私有 K v2 执行回执，不提供旧 reader、别名或迁移；历史原件须使用各自冻结代码核查，不能重写失败回执或复用旧测量结论。静态 K v2 提案模板、system／input／check 和独立的 `reviewed-knowledge` 协议不变；公共实体／知识存储、稳定 ID 算法及正式人工验收契约也不变。新执行身份要求重新冻结比较；本地合成测试只验证约束和传输，不能声称 provider 已执行或提取质量已通过。
 
 K v2 system 共享通用知识语义政策：具体工作记录仍仅作上下文，其中有据且值得复用的结论用实际主题对象表达；可独立取真的肯／否命题或语气不同的命题须分别表达。条件和例外留在其限定的命题中，不机械拆成独立陈述。保留来源支持的材料及关键条件、限制、归因、证据等级和事实时间未知，包括完成报告中仍可复用的诊断或定量案例。来源消息时间不是事实时间，助手报告也不是独立执行证据。这些政策要求不改变 strict30 或 E35 的冻结 runtime 字节，不是关键词过滤或宿主语义修补。
 
@@ -197,11 +201,11 @@ K v2 system 共享通用知识语义政策：具体工作记录仍仅作上下�
 
 导入器通过 `proposalAdmissionStatus` 单列 proposal 接纳轴，并报告 `coverageStatus: declared_only | unresolved | unavailable`。材料为 `not_expressed`／`undetermined`、存在前三类 gap，或 gap／账目结构、位置、引用有问题时，coverage 为 `unresolved`，组合结果为 `partial`，即使全部 proposal 已接纳。有效的 `context_only`／`scope_excluded` 声明本身不阻断；被拒绝的响应无法提供可用覆盖账目，报告 `unavailable`。`declared_only` 仅表示声明及位置对账没有未决诊断，绝不是覆盖通过。返回的 `committed` 项保留原生 `proposalId` 到实际知识／修订身份的对应。proposal 接纳及这些覆盖状态都不代表完整业务成功或语义验收；不创建公共提取 run 或质量框架，也不把 K 计为第二个实体 run。
 
-E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt ID、proposal ID 与 role 导出相同的私有 `knowledge-bound-import-ids/v1` 知识、修订和存储 request 身份。既有存储幂等性允许重放相同内容；同一组 ID 下改变内容不能覆盖先前写入。重放继续读取同一初始 E 修订与 K 归档，不增加模型调用、不跟随更新的实体 head，也不修改原始 native 证据。K v2 不迁移已写入的 `KnowledgeStore` 内容或 E 修订。
+E 成功、K 失败时保留 E。导入中断后重放原 receipt，按 receipt ID、proposal ID 与 role 导出相同的私有 `knowledge-bound-import-ids/v1` 知识、修订和存储 request 身份。既有存储幂等性允许重放相同内容；同一组 ID 下改变内容不能覆盖先前写入。重放继续读取同一初始 E 修订与 K 归档，不增加模型调用、不跟随更新的实体 head，也不修改原始 native 证据。执行 wire 特化不迁移已写入的 `KnowledgeStore` 内容或 E 修订。
 
 普通 strict30 默认、v4 wire、`knowledge-generation-single/v1` 生成策略及公共存量格式／数据保持不变；普通宿主不安装该研究归档端口，也不默认选择 v35。复用 v33 后缀不意味着该流程是 v33 前驱，更不授权绕过既有覆盖复核前驱契约。K 使用自己的任务和回执，不把响应伪装为失败或空知识的 v4 提取。
 
-新的前瞻诊断仍须冻结完整 E+K 流程：实际来源／profile／配置、初始修订及原生引用、依赖 K 输入、顺序、调用机会、停止规则和最终端点。复核全部 E/M 与知识、来源支持的信息保留、每项 gap／账目声明、部分／失败效果及两阶段实际 token／cache／费用／耗时，未知用量保持未知。不复用旧分数，也不因来源未变而声称新独立证据。任务和绑定变化不是单一提示词变量对比；E 阶段空知识、编写的回归或 CI 绿色不能证明业务质量、生产采用、泛化能力或 #1322 要求的独立真人验收。本契约说明不代表 v2 真实模型诊断已经运行或通过。
+新的前瞻诊断仍须冻结完整 E+K 流程：实际来源／profile／配置、初始修订及原生引用、依赖 K 输入、顺序、调用机会、停止规则和最终端点。复核全部 E/M 与知识、来源支持的信息保留、每项 gap／账目声明、部分／失败效果及两阶段实际 token／cache／费用／耗时，未知用量保持未知。不复用旧分数，也不因来源未变而声称新独立证据。任务和绑定变化不是单一提示词变量对比；E 阶段空知识、编写的回归或 CI 绿色不能证明业务质量、生产采用、泛化能力或 #1322 要求的独立真人验收。本契约说明不代表新执行 wire 的真实模型诊断已经运行或通过。
 
 ### 5.4 独立实体任务与接纳边界
 
@@ -270,7 +274,7 @@ driver 在执行前固定机会和停止规则：最多各一次 A′、B′，�
 
 ### 5.8 修订后的可选认证知识交接
 
-私有 `refinedBoundKnowledgeContext` 与 `importRefinedBoundKnowledge` 入口支持五原件→K；`refinedReviewedKnowledgeContext` 与 `importRefinedReviewedKnowledge` 支持五原件→R→K。选定直接路径恰为六次原生调用：SP、source-only A、B、A′、B′ 及不变的直接 K v2。SP 可与 A→B 并行，A′ 汇合三份原件后，由 B′ 固定最终 E/M 修订供 K 使用；不增加阶段、不自动 union，也不追加修复机会。可选 R 路径须另外事前选定拓扑与预算。它们是单 E 前驱契约之外显式选择的独立路径，不扩展该契约可接受的输入。context 准备与 import 只认证归档证据，不调用模型，也不伪造 `ExtractionRun`；独立执行的 R、K 任务各自保留归档原生 outcome 和回执。
+私有 `refinedBoundKnowledgeContext` 与 `importRefinedBoundKnowledge` 入口支持五原件→K；`refinedReviewedKnowledgeContext` 与 `importRefinedReviewedKnowledge` 支持五原件→R→K。选定直接路径恰为六次原生调用：SP、source-only A、B、A′、B′ 及直接 K（v2 响应与按请求特化的执行 wire）。SP 可与 A→B 并行，A′ 汇合三份原件后，由 B′ 固定最终 E/M 修订供 K 使用；不增加阶段、不自动 union，也不追加修复机会。可选 R 路径须另外事前选定拓扑与预算。它们是单 E 前驱契约之外显式选择的独立路径，不扩展该契约可接受的输入。context 准备与 import 只认证归档证据，不调用模型，也不伪造 `ExtractionRun`；独立执行的 R、K 任务各自保留归档原生 outcome 和回执。
 
 每次读取 context 和 import 都重新认证 source-plan、A、B、A′、B′，要求最终组合 ready，且已作为初始实体修订落盘。该修订及写入回执的完整规范化字节必须与重建的写入意图一致，包括原始来源、完整链、导入者 actor，以及稳定的 analysis／revision／entity／mention 身份。较新的实体 head 不能替代初始修订。证据缺失、blocked、变化或不匹配即停止交接，不接纳子集，也不复用此前返回的 context 绕过检查。
 

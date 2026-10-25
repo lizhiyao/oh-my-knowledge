@@ -80,7 +80,7 @@ function bound(f: ReturnType<typeof setup>) {
   f.response.binding = JSON.parse(execution.request.input).binding;
   const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1, receiptId: randomUUID(), attemptId: randomUUID(),
     outcome: { outcomeKind: 'result', result: f.nativeResult(JSON.stringify(f.response)) } };
-  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 2,
+  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 3,
     receiptId: native.receiptId, attemptId: native.attemptId, binding: JSON.parse(execution.request.input).binding,
     request: execution.request, producer: f.old.inspect(f.model.executor, execution.input), requestDigest: '',
     nativeRef: discoveryRef(discoveryBytes(native)), startedAt: at(8), finishedAt: at(9) };

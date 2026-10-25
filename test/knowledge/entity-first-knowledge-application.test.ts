@@ -393,7 +393,7 @@ function knowledgeReturn(f: Awaited<ReturnType<typeof setup>>, change?: (respons
   const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1, receiptId, attemptId,
     outcome: { outcomeKind: 'result', result: studyNativeResult(JSON.stringify(response)) } };
   const producer = createOpenAiArchiveProducer({ NODE_ENV: 'test', OPENAI_API_KEY: 'authored-test-key', OPENAI_BASE_URL: 'http://127.0.0.1:1' });
-  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 2,
+  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 3,
     receiptId, attemptId, binding: JSON.parse(execution.request.input).binding, request: execution.request,
     producer: BoundKnowledgeReceiptSchema.shape.producer.parse(producer.inspect(f.model.executor, execution.input)),
     requestDigest: '', nativeRef: ref(bytes(native)), startedAt: '2020-02-01T00:00:01Z', finishedAt: '2020-02-01T00:00:02Z' };
