@@ -6,8 +6,8 @@ import { canonicalJson } from '../store.js';
 import { EXTRACTION_OUTCOME_MAX_BYTES, type ExtractionModel } from './generation.js';
 import { ExtractionAttemptSchema, ExtractionOutcomeRefSchema, ExtractionOutcomeSchema,
   type ExtractionOutcomeRef } from './runs.js';
-import { BOUND_KNOWLEDGE_INPUT_VERSION, BOUND_KNOWLEDGE_OUTPUT_NAME, BOUND_KNOWLEDGE_SYSTEM,
-  BOUND_KNOWLEDGE_SYSTEM_VERSION, BOUND_KNOWLEDGE_WIRE_ID, BOUND_KNOWLEDGE_WIRE_SCHEMA,
+import { BOUND_KNOWLEDGE_INPUT_VERSION, BOUND_KNOWLEDGE_EXECUTION_OUTPUT_NAME, BOUND_KNOWLEDGE_SYSTEM,
+  BOUND_KNOWLEDGE_SYSTEM_VERSION, buildBoundKnowledgeExecutionWire,
   BoundKnowledgeResponseSchema, buildBoundKnowledgeInput, checkBoundKnowledgeResponse,
   type BoundKnowledgeCatalog, type BoundKnowledgeSource } from './bound-knowledge.js';
 
@@ -17,12 +17,12 @@ const FRAME_OVERHEAD_BYTES = 512;
 const requestSchema = z.strictObject({
   executor: z.enum(['codex', 'openai-api']), model: z.string().min(1).max(4096),
   systemVersion: z.literal(BOUND_KNOWLEDGE_SYSTEM_VERSION), inputVersion: z.literal(BOUND_KNOWLEDGE_INPUT_VERSION),
-  system: z.string(), input: z.string(), outputMode: z.literal('json-schema'), wireId: z.literal(BOUND_KNOWLEDGE_WIRE_ID),
+  system: z.string(), input: z.string(), outputMode: z.literal('json-schema'), wireId: ExtractionOutcomeRefSchema.shape.digest,
   timeoutMs: z.number().int().positive().max(2_147_483_647),
   maxOutputTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
 });
 export const BoundKnowledgeReceiptSchema = z.strictObject({
-  receiptKind: z.literal('knowledge-bound-knowledge-receipt'), schemaVersion: z.literal(2),
+  receiptKind: z.literal('knowledge-bound-knowledge-receipt'), schemaVersion: z.literal(3),
   receiptId: z.string().uuid(), attemptId: z.string().uuid(), binding: BoundKnowledgeResponseSchema.shape.binding,
   request: requestSchema, producer: ExtractionAttemptSchema.shape.producer,
   requestDigest: ExtractionOutcomeRefSchema.shape.digest, nativeRef: ExtractionOutcomeRefSchema,
@@ -44,12 +44,14 @@ type Selection = Pick<ExtractionModel, 'executor' | 'model' | 'timeoutMs' | 'max
 
 /** Reconstruct from the current pure builder, including the original schema property's order. */
 export function boundKnowledgeExecution(source: BoundKnowledgeSource, catalog: BoundKnowledgeCatalog, model: Selection) {
+  const prompt = buildBoundKnowledgeInput(source, catalog);
+  const wire = buildBoundKnowledgeExecutionWire(JSON.parse(prompt).binding);
   const request = requestSchema.parse({ executor: model.executor, model: model.model,
     systemVersion: BOUND_KNOWLEDGE_SYSTEM_VERSION, inputVersion: BOUND_KNOWLEDGE_INPUT_VERSION,
-    system: BOUND_KNOWLEDGE_SYSTEM, input: buildBoundKnowledgeInput(source, catalog), outputMode: 'json-schema',
-    wireId: BOUND_KNOWLEDGE_WIRE_ID, timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
+    system: BOUND_KNOWLEDGE_SYSTEM, input: prompt, outputMode: 'json-schema',
+    wireId: wire.wireId, timeoutMs: model.timeoutMs ?? 300_000, maxOutputTokens: model.maxOutputTokens ?? null });
   const input: ExecutorInput = { model: request.model, system: request.system, prompt: request.input,
-    outputFormat: { mode: 'json-schema', name: BOUND_KNOWLEDGE_OUTPUT_NAME, schema: BOUND_KNOWLEDGE_WIRE_SCHEMA },
+    outputFormat: { mode: 'json-schema', name: BOUND_KNOWLEDGE_EXECUTION_OUTPUT_NAME, schema: wire.schema },
     timeoutMs: request.timeoutMs, ...(request.maxOutputTokens === null ? {} : { maxOutputTokens: request.maxOutputTokens }) };
   return { request, input };
 }

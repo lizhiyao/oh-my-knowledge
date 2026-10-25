@@ -89,6 +89,19 @@ export const BOUND_KNOWLEDGE_WIRE_IDENTITY = freeze({ wireVersion: BOUND_KNOWLED
 });
 export const BOUND_KNOWLEDGE_WIRE_ID = hash(JSON.stringify(BOUND_KNOWLEDGE_WIRE_IDENTITY));
 
+/** Per-request transport specialization; the shared K2 and reviewed-knowledge templates stay unchanged. */
+export const BOUND_KNOWLEDGE_EXECUTION_WIRE_VERSION = 'knowledge-bound-knowledge-execution-wire/v1' as const;
+export const BOUND_KNOWLEDGE_EXECUTION_OUTPUT_NAME = 'bound_knowledge_execution_v1' as const;
+export function buildBoundKnowledgeExecutionWire(binding: BoundKnowledgeBinding) {
+  const owned = bindingSchema.parse(binding), schema = structuredClone(BOUND_KNOWLEDGE_WIRE_SCHEMA);
+  const properties = object(object(object(schema.properties).binding).properties);
+  for (const [key, value] of Object.entries(owned)) object(properties[key]).enum = [value];
+  const identity = { executionWireVersion: BOUND_KNOWLEDGE_EXECUTION_WIRE_VERSION,
+    templateWireId: BOUND_KNOWLEDGE_WIRE_ID, specializationPolicy: 'binding-six-host-values-singleton-enum/v1',
+    schemaDigest: hash(JSON.stringify(schema)) };
+  return freeze({ schema, identity, wireId: hash(JSON.stringify(identity)) });
+}
+
 // Refuse domain drift rather than silently treating another semantic null as omission.
 const proposalDomain = object(z.toJSONSchema(WindowExtractionProposalSchema, { target: 'draft-2020-12', io: 'input' }));
 const optionalPaths: string[] = [];
