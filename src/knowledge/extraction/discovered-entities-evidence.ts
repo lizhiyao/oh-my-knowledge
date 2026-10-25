@@ -31,7 +31,7 @@ const bindingRequestSchema = z.strictObject({ ...requestFields,
   systemVersion: z.literal(MENTION_BINDING_SYSTEM_VERSION), inputVersion: z.literal(MENTION_BINDING_INPUT_VERSION),
   wireId: z.literal(MENTION_BINDING_WIRE_ID) });
 const receiptFields = {
-  schemaVersion: z.literal(3), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
+  schemaVersion: z.literal(4), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
   snapshotId: EvidenceWindowSchema.shape.snapshotId, sourceVersion: EvidenceWindowSchema.shape.sourceVersion,
   producer: ExtractionAttemptSchema.shape.producer, requestDigest: ExtractionOutcomeRefSchema.shape.digest,
   nativeRef: ExtractionOutcomeRefSchema,
@@ -87,7 +87,7 @@ function assertSameSelection(discovery: AuthenticatedEntityDiscovery, model: Ent
   const request = discovery.receipt.request;
   if (request.executor !== model.executor || request.model !== model.model || request.timeoutMs !== (model.timeoutMs ?? 300_000)
     || request.maxOutputTokens !== (model.maxOutputTokens ?? null)) {
-    throw new Error('Mention binding v3 requires the same discovery model and execution configuration.');
+    throw new Error('Mention binding v4 requires the same discovery model and execution configuration.');
   }
 }
 

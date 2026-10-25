@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { buildEntityDiscoveryInput, type EntityDiscoveryResponse, type EntityDiscoverySource } from '../../src/knowledge/extraction/entity-discovery.js';
-import { buildMentionBindingInput, checkMentionBindingResponse, MENTION_BINDING_INPUT_VERSION,
+import { buildMentionBindingInput, checkMentionBindingBody, checkMentionBindingResponse, MENTION_BINDING_INPUT_VERSION,
   MENTION_BINDING_OUTPUT_MAX_BYTES, MENTION_BINDING_WIRE_SCHEMA, MENTION_BINDING_WIRE_SCHEMA_JSON, MENTION_BINDING_WIRE_ID,
   type DiscoveryForBinding, type MentionBindingResponse } from '../../src/knowledge/extraction/mention-binding.js';
 import { ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
+import { authoredQualification } from './discovered-entities-fixtures.js';
 
 const hash = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const ref = (value: string) => ({ bytes: Buffer.byteLength(value), digest: hash(value) });
@@ -16,8 +17,8 @@ function fixture() {
       text: '😀 Alpha 组件；Alpha v1 实例；该组成员未知。Alpha 后续情况未知。它与未入目录对象待辨。' }] };
   const entity = (entityId: string, label: string): EntityDiscoveryResponse['entities'][number] => ({ entityId, label,
     description: `${label} 是被讨论的对象。`, qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
-    referentKind: 'object', componentRef: null, collection: null });
-  const a: EntityDiscoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 3,
+    referentKind: 'object', componentRef: null, collection: null, qualificationEvidence: authoredQualification(`a${entityId}`) });
+  const a: EntityDiscoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 4,
     binding: JSON.parse(buildEntityDiscoveryInput(source)).binding,
     entities: [entity('c', 'Alpha'), entity('i', 'Alpha v1'), entity('g', '该组')],
     anchors: [{ anchorId: 'ac', entityId: 'c', selection: { evidenceRef: 'r1', quote: 'Alpha 组件', occurrence: null } },
@@ -26,12 +27,13 @@ function fixture() {
   a.entities[0].referentKind = 'component'; a.entities[1].referentKind = 'instance';
   a.entities[1].componentRef = { entityId: 'c', anchorIds: ['ai'], rationale: '当前实例属于该组件。' };
   a.entities[2].referentKind = 'collection'; a.entities[2].uncertainties = ['组的成员未知。'];
+  a.entities[2].qualificationEvidence = authoredQualification('ag', { basisKind: 'collective_scope', memberRole: 'work_targets' });
   a.entities[2].collection = { memberEntityIds: [], completeness: 'unknown', anchorIds: ['ag'], rationale: '共同指代这一个组。' };
   const discovery: DiscoveryForBinding = { receiptId: '00000000-0000-4000-8000-000000000002', receiptRaw: '',
     receiptRef: ref('temporary'), nativeRef: ref('authored native archive; authenticated by evidence layer'),
     requestDigest: hash('full request owned by evidence layer'), rawOutput: ` \n${JSON.stringify(a)}\n` };
   const refreshReceipt = () => {
-    discovery.receiptRaw = JSON.stringify({ receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 3,
+    discovery.receiptRaw = JSON.stringify({ receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 4,
       receiptId: discovery.receiptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
       nativeRef: discovery.nativeRef, requestDigest: discovery.requestDigest,
       request: { input: buildEntityDiscoveryInput(source) } });
@@ -41,7 +43,7 @@ function fixture() {
   const mention = (mentionId: string, entityId: string, quote: string, occurrence: number | null): MentionBindingResponse['mentions'][number] => ({
     mentionId, entityId, selection: { evidenceRef: 'r1', quote, occurrence }, basis: 'explicit', rationale: '来源直接提及。',
     bindingStatus: 'bound', candidateEntityIds: [], reason: null });
-  const response: MentionBindingResponse = { responseKind: 'mention-binding', schemaVersion: 3,
+  const response: MentionBindingResponse = { responseKind: 'mention-binding', schemaVersion: 4,
     binding: JSON.parse(buildMentionBindingInput(source, discovery)).binding,
     mentions: [mention('mc', 'c', 'Alpha', 0), mention('mi', 'i', 'Alpha v1', null), mention('mg', 'g', '该组', null)],
     identitySupports: [{ entityId: 'i', supportKind: 'componentRef', mentionIds: ['mi'] },
@@ -71,6 +73,7 @@ describe('private immutable-catalog mention binding B', () => {
     expect(JSON.parse(input.discovery.receiptRaw).request.input).toBe(buildEntityDiscoveryInput(f.source));
     expect(input.discovery.receiptRaw).not.toContain('sourcePlanResponse');
     const analysis = ready(f);
+    for (const entity of analysis.entities) expect(entity).not.toHaveProperty('qualificationEvidence');
     expect(analysis.entities[1].componentRef).toEqual({ entityId: 'c', rationale: f.a.entities[1].componentRef!.rationale, mentionIds: ['mi'] });
     expect(analysis.entities[2].collection).toEqual({ completeness: 'unknown', memberEntityIds: [], rationale: f.a.entities[2].collection!.rationale, mentionIds: ['mg'] });
     expect(analysis.entities[2].identityStatus).toBe('proposed');
@@ -80,6 +83,16 @@ describe('private immutable-catalog mention binding B', () => {
     const raw = ` \n${JSON.stringify(f.response)}\r\n`, bytes = Buffer.from(raw);
     const result = checkMentionBindingResponse(bytes, f.source, f.discovery); bytes.fill(0);
     expect(result).toMatchObject({ status: 'checked', semanticStatus: 'not_reviewed', raw: { text: raw, digest: hash(raw), byteLength: Buffer.byteLength(raw) } });
+  });
+
+  it('validates private qualification before the exported body boundary can project it into public entities', () => {
+    const f = fixture();
+    f.a.entities[0].qualificationEvidence.anchorIds = ['ai'];
+    expect(checkMentionBindingBody(f.source, f.a, f.response)).toEqual({ status: 'rejected', issues: ['entity:c:qualification:foreign_anchor'] });
+    Reflect.deleteProperty(f.a.entities[0], 'qualificationEvidence');
+    expect(checkMentionBindingBody(f.source, f.a, f.response)).toMatchObject({ status: 'rejected', issues: ['invalid_structure:entities.0.qualificationEvidence'] });
+    f.a.entities[0].qualificationEvidence = authoredQualification('ac', { rationale: '\ud800' });
+    expect(checkMentionBindingBody(f.source, f.a, f.response)).toEqual({ status: 'rejected', issues: ['invalid_utf8'] });
   });
 
   it('preserves ambiguous and unbound source mentions as checked blockers without synthesizing unresolved entities', () => {
@@ -166,9 +179,10 @@ describe('private immutable-catalog mention binding B', () => {
   });
 
   it('rejects old A receipts and SP-conditioned input even when the catalog is unchanged', () => {
-    for (const mode of ['old-receipt', 'plan-in-input', 'source'] as const) {
+    for (const mode of ['old-receipt', 'qualification-free-receipt', 'plan-in-input', 'source'] as const) {
       const f = fixture(), receipt = JSON.parse(f.discovery.receiptRaw);
       if (mode === 'old-receipt') receipt.schemaVersion = 2;
+      if (mode === 'qualification-free-receipt') receipt.schemaVersion = 3;
       if (mode === 'plan-in-input') receipt.request.input = JSON.stringify({ ...JSON.parse(receipt.request.input),
         sourcePlanResponse: { rawOutput: 'An untrusted plan must never condition source-only A.' } });
       if (mode === 'source') receipt.request.input = JSON.stringify({ ...JSON.parse(receipt.request.input), sourceVersion: hash('other source') });
@@ -198,7 +212,7 @@ describe('private immutable-catalog mention binding B', () => {
   it('rejects foreign directory fields, invalid raw bytes/Unicode/JSON and oversized output', () => {
     const f = fixture();
     expect(checkMentionBindingResponse(JSON.stringify({ ...f.response, entities: f.a.entities }), f.source, f.discovery).status).toBe('rejected');
-    expect(checkMentionBindingResponse(JSON.stringify({ ...f.response, schemaVersion: 2 }), f.source, f.discovery).status).toBe('rejected');
+    for (const schemaVersion of [2, 3]) expect(checkMentionBindingResponse(JSON.stringify({ ...f.response, schemaVersion }), f.source, f.discovery).status).toBe('rejected');
     const bytes = Buffer.from([0xff]);
     expect(checkMentionBindingResponse(bytes, f.source, f.discovery)).toMatchObject({ status: 'rejected', issues: ['invalid_utf8'], raw: { text: null, digest: hash(bytes) } });
     expect(checkMentionBindingResponse('{', f.source, f.discovery)).toMatchObject({ status: 'rejected', issues: ['invalid_json'] });

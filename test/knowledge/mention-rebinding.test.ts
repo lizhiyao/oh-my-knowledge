@@ -51,7 +51,7 @@ describe('private mention rebinding B′ (authored only)', () => {
     expect(f.rebindingExecution.request.system.split(ENTITY_CODE_REFERENT_POLICY)).toHaveLength(2);
     expect(f.rebindingExecution.request.system.split(ENTITY_COLLECTIVE_REFERENCE_POLICY)).toHaveLength(2);
     expect([MENTION_REBINDING_SYSTEM_VERSION, MENTION_REBINDING_INPUT_VERSION, MENTION_REBINDING_WIRE_VERSION, MENTION_REBINDING_CHECK_VERSION])
-      .toEqual(['knowledge-mention-rebinding-system/v6', 'knowledge-mention-rebinding-input/v3', 'knowledge-mention-rebinding-wire/v3', 'knowledge-mention-rebinding-check/v3']);
+      .toEqual(['knowledge-mention-rebinding-system/v7', 'knowledge-mention-rebinding-input/v4', 'knowledge-mention-rebinding-wire/v4', 'knowledge-mention-rebinding-check/v4']);
   });
 
   it.each([
@@ -88,6 +88,7 @@ describe('private mention rebinding B′ (authored only)', () => {
     const f = refinedEntitiesFixture('codex', { wideGap: true });
     const entity = structuredClone(f.refinementResponse.entities.find(row => row.entityId === 'next-gamma')!);
     entity.entityId = 'second-object'; entity.description = 'Authored separate source referent.';
+    entity.qualificationEvidence.anchorIds = ['second-anchor'];
     const selection = { evidenceRef: 'record-1', quote: 'Gamma', occurrence: 1 };
     f.refinementResponse.entities.push(entity);
     f.refinementResponse.anchors.push({ anchorId: 'second-anchor', entityId: entity.entityId, selection });
@@ -184,6 +185,7 @@ describe('private mention rebinding B′ (authored only)', () => {
   it('does not move a corrected old support to an independently added collection owner', () => {
     const f = refinedEntitiesFixture('codex', { collection: true }), group = structuredClone(f.refinementResponse.entities.find(row => row.entityId === 'next-g')!);
     group.entityId = 'next-h'; group.label = '前两者'; group.description = 'Authored separately added collection.';
+    group.qualificationEvidence.anchorIds = ['next-ah'];
     group.collection!.anchorIds = ['next-ah']; f.refinementResponse.entities.push(group);
     f.refinementResponse.anchors.push({ anchorId: 'next-ah', entityId: 'next-h', selection: { evidenceRef: 'record-1', quote: '前两者', occurrence: null } });
     f.result('refinement').output = JSON.stringify(f.refinementResponse); f.resealRefinement();
@@ -210,7 +212,7 @@ describe('private mention rebinding B′ (authored only)', () => {
 
   it('rejects directory edits and an old task response instead of interpreting them as B′', () => {
     const f = refinedEntitiesFixture(), base = f.readBase().predecessor, refinement = f.readRefinement().predecessor;
-    for (const extra of [{ entities: f.refinementResponse.entities }, { responseKind: 'mention-binding', schemaVersion: 3 }, { schemaVersion: 1 }, { schemaVersion: 2 }]) {
+    for (const extra of [{ entities: f.refinementResponse.entities }, { responseKind: 'mention-binding', schemaVersion: 4 }, { schemaVersion: 1 }, { schemaVersion: 2 }, { schemaVersion: 3 }]) {
       expect(checkMentionRebindingResponse(JSON.stringify({ ...f.rebindingResponse, ...extra }), f.source, base, refinement).status).toBe('rejected');
     }
   });

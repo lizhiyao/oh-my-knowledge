@@ -5,7 +5,7 @@ import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourcePlanExecution, sourcePlanRequestDigest, readSourcePlanEvidence, type SourcePlanArchivePort,
   type SourcePlanReceipt } from '../../src/knowledge/extraction/source-plan-evidence.js';
 import type { KnowledgeSourcePlanSource } from '../../src/knowledge/extraction/source-plan.js';
-import { buildEntityDiscoveryInput } from '../../src/knowledge/extraction/entity-discovery.js';
+import { buildEntityDiscoveryInput, type EntityDiscoveryResponse } from '../../src/knowledge/extraction/entity-discovery.js';
 import { buildMentionBindingInput } from '../../src/knowledge/extraction/mention-binding.js';
 import type { ExtractionNativeResult, ExtractionOutcome } from '../../src/knowledge/extraction/runs.js';
 import { entityDiscoveryExecution, mentionBindingExecution, entityDiscoveryRequestDigest, mentionBindingRequestDigest,
@@ -16,6 +16,11 @@ export const discoveryHash = (value: string | Uint8Array) => `sha256:${createHas
 export const discoveryBytes = (value: unknown) => Buffer.from(JSON.stringify(value));
 export const discoveryRef = (value: Uint8Array) => ({ bytes: value.byteLength, digest: discoveryHash(value) });
 export const discoveryUid = (n: number) => `00000000-0000-4000-8000-${n.toString().padStart(12, '0')}`;
+type Qualification = EntityDiscoveryResponse['entities'][number]['qualificationEvidence'];
+export const authoredQualification = (anchorId: string, overrides: Partial<Qualification> = {}): Qualification => ({
+  basisKind: 'independent_referent', anchorIds: [anchorId], rationale: 'Authored source qualification claim; not semantic proof.',
+  operationRole: null, activityStatus: null, memberRole: null, ...overrides,
+});
 
 const authoredModel = { executor: 'codex' as const, model: 'authored-model', timeoutMs: 2000, maxOutputTokens: 1024 };
 const authoredProducer = (executor: string, input: ExecutorInput) => ({ producerId: 'authored-discovered-entities/v1',
@@ -75,17 +80,17 @@ export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'co
   const { sourcePlan, sourcePlanRef, sourcePlanArchive, planPredecessor } = plan;
   const producer = authoredProducer, inspect = vi.fn(producer);
   const nativeResult = (output: string) => authoredNativeResult(output, executor);
-  const discoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 3,
+  const discoveryResponse = { responseKind: 'entity-discovery', schemaVersion: 4,
     binding: JSON.parse(buildEntityDiscoveryInput(source)).binding as Record<string, unknown>,
     entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: `e${index}`, label, description: `Authored object ${label}`,
       qualifiers: [] as string[], identityStatus: 'proposed' as 'proposed' | 'unresolved', possibleEntityIds: [] as string[], uncertainties: [] as string[],
-      referentKind: 'object' as const, componentRef: null, collection: null })),
+      referentKind: 'object' as const, componentRef: null, collection: null, qualificationEvidence: authoredQualification(`a${index}`) })),
     anchors: ['Alpha', 'Beta'].map((quote, index) => ({ anchorId: `a${index}`, entityId: `e${index}`,
       selection: { evidenceRef: 'record-1', quote, occurrence: null as number | null } })) };
   const discoveryExecution = entityDiscoveryExecution(source, model);
   const discoveryNative = { archiveKind: 'knowledge-entity-discovery-native', schemaVersion: 1, receiptId: discoveryUid(2), attemptId: discoveryUid(3),
     outcome: { outcomeKind: 'result', result: nativeResult(` \n${JSON.stringify(discoveryResponse)}\r\n`) } as ExtractionOutcome };
-  const discoveryReceipt: EntityDiscoveryReceipt = { receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 3,
+  const discoveryReceipt: EntityDiscoveryReceipt = { receiptKind: 'knowledge-entity-discovery-receipt', schemaVersion: 4,
     receiptId: discoveryNative.receiptId, attemptId: discoveryNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: discoveryExecution.request, producer: producer(executor, discoveryExecution.input), requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(discoveryNative)), startedAt: '2026-10-24T00:00:00Z', finishedAt: '2026-10-24T00:00:01Z' };
@@ -103,14 +108,14 @@ export function discoveredEntitiesFixture(executor: 'codex' | 'openai-api' = 'co
   const archive: EntityDiscoveryArchivePort = { read, inspect };
   const readA = () => readEntityDiscoveryEvidence(source, model, discoveryReference, archive);
   const discovery = readA(), bindingExecution = mentionBindingExecution(source, discovery, model);
-  const bindingResponse = { responseKind: 'mention-binding', schemaVersion: 3,
+  const bindingResponse = { responseKind: 'mention-binding', schemaVersion: 4,
     binding: JSON.parse(buildMentionBindingInput(source, discovery.predecessor)).binding as Record<string, unknown>,
     mentions: ['Alpha', 'Beta'].map((quote, index) => ({ mentionId: `m${index}`, selection: { evidenceRef: 'record-1', quote, occurrence: null as number | null },
       basis: 'explicit' as const, rationale: 'Authored explicit mention.', bindingStatus: 'bound' as 'bound' | 'ambiguous' | 'unbound',
       entityId: `e${index}` as string | null, candidateEntityIds: [] as string[], reason: null as string | null })), identitySupports: [] };
   const bindingNative = { archiveKind: 'knowledge-mention-binding-native', schemaVersion: 1, receiptId: discoveryUid(4), attemptId: discoveryUid(5),
     outcome: { outcomeKind: 'result', result: nativeResult(` \n${JSON.stringify(bindingResponse)}\r\n`) } as ExtractionOutcome };
-  const bindingReceipt: MentionBindingReceipt = { receiptKind: 'knowledge-mention-binding-receipt', schemaVersion: 3,
+  const bindingReceipt: MentionBindingReceipt = { receiptKind: 'knowledge-mention-binding-receipt', schemaVersion: 4,
     receiptId: bindingNative.receiptId, attemptId: bindingNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: bindingExecution.request, producer: producer(executor, bindingExecution.input), requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(bindingNative)), startedAt: '2026-10-24T00:00:02Z', finishedAt: '2026-10-24T00:00:03Z' };

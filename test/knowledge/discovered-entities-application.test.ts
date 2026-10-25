@@ -62,6 +62,8 @@ describe('separate discovery/binding import through the real entity store (autho
     expect(revision.revisedAt).toBe(f.bindingReceipt.finishedAt);
     expect(revision.entities.map(entity => entity.label)).toEqual(f.discoveryResponse.entities.map(entity => entity.label));
     expect(revision.entities).toHaveLength(f.discoveryResponse.entities.length);
+    for (const entity of revision.entities) expect(entity).not.toHaveProperty('qualificationEvidence');
+    expect(context.discovery.checked.response.entities[0].qualificationEvidence).toEqual(f.discoveryResponse.entities[0].qualificationEvidence);
     expect(revision.mentions).toHaveLength(f.bindingResponse.mentions.length);
     for (const mention of revision.mentions) {
       const excerpt = f.source.excerpts.find(value => value.evidenceRef === mention.selection.evidenceRef)!;
@@ -70,6 +72,24 @@ describe('separate discovery/binding import through the real entity store (autho
     expect(revision.limitations).toEqual(f.source.limitations);
     expect(f.runs.listManifests()).toEqual([]); expect(f.knowledge.list()).toEqual([]);
     expect(f.ports.id).not.toHaveBeenCalled(); expect(f.ports.now).not.toHaveBeenCalled();
+  });
+
+  it('changes private qualification evidence without changing the public E shape or stable logical identities', () => {
+    const first = setup(), second = setup();
+    second.discoveryResponse.entities[0].qualificationEvidence.rationale += ' Authored alternate source reasoning.';
+    second.result('discovery').output = JSON.stringify(second.discoveryResponse); second.resealA();
+    const execution = mentionBindingExecution(second.source, second.readA(), second.model);
+    second.bindingReceipt.request = execution.request;
+    second.bindingReceipt.producer = second.inspect(second.model.executor, execution.input);
+    second.bindingResponse.binding = JSON.parse(execution.request.input).binding;
+    second.result('binding').output = JSON.stringify(second.bindingResponse); second.resealB();
+    const one = first.app().importDiscoveredEntities(first.selection, first.model, first.references());
+    const two = second.app().importDiscoveredEntities(second.selection, second.model, second.references());
+    if (one.status !== 'committed' || two.status !== 'committed') throw new Error('Expected authored imports.');
+    expect(one.chainDigest).not.toBe(two.chainDigest);
+    expect([one.analysisId, one.revisionId, one.write.requestId]).toEqual([two.analysisId, two.revisionId, two.write.requestId]);
+    expect(one.write.revision.entities).toEqual(two.write.revision.entities);
+    expect(one.write.revision.mentions).toEqual(two.write.revision.mentions);
   });
 
   it('replays the same originals after acknowledgement loss without a second revision or another model call', () => {

@@ -37,7 +37,7 @@ const rebindingRequestSchema = z.strictObject({ ...requestFields,
   systemVersion: z.literal(MENTION_REBINDING_SYSTEM_VERSION), inputVersion: z.literal(MENTION_REBINDING_INPUT_VERSION),
   wireId: z.literal(MENTION_REBINDING_WIRE_ID) });
 const receiptFields = {
-  schemaVersion: z.literal(3), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
+  schemaVersion: z.literal(4), receiptId: z.string().uuid(), attemptId: z.string().uuid(),
   snapshotId: EvidenceWindowSchema.shape.snapshotId, sourceVersion: EvidenceWindowSchema.shape.sourceVersion,
   producer: ExtractionAttemptSchema.shape.producer, requestDigest: ExtractionOutcomeRefSchema.shape.digest,
   nativeRef: ExtractionOutcomeRefSchema,

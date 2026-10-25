@@ -8,19 +8,21 @@ import { buildMentionRebindingInput, type MentionRebindingResponse } from '../..
 import { readRefinedEntitiesBaseEvidence, entityRefinementExecution, mentionRebindingExecution,
   readEntityRefinementEvidence, readMentionRebindingEvidence, entityRefinementRequestDigest, mentionRebindingRequestDigest,
   type EntityRefinementReceipt, type MentionRebindingReceipt, type RefinedEntitiesArchivePort } from '../../src/knowledge/extraction/refined-entities-evidence.js';
-import { discoveredEntitiesFixture, discoveryBytes, discoveryHash, discoveryRef, discoveryUid } from './discovered-entities-fixtures.js';
+import { authoredQualification, discoveredEntitiesFixture, discoveryBytes, discoveryHash, discoveryRef, discoveryUid } from './discovered-entities-fixtures.js';
 
 /** Authored five-original fixtures only; no provider execution, semantic-quality evidence or human review. */
 export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex',
-  options: { collection?: boolean; unresolved?: boolean; wideGap?: boolean; ambiguousGap?: boolean; overlappingGap?: boolean } = {}) {
+  options: { collection?: boolean; unresolved?: boolean; wideGap?: boolean; ambiguousGap?: boolean; overlappingGap?: boolean; qualificationContext?: boolean } = {}) {
   const old = discoveredEntitiesFixture(executor, '😀 Alpha 使用 Beta；Gamma 与 Gamma；该组指前两者；它身份未明。');
   const { source, model, sourcePlanArchive } = old;
   const a = old.discoveryResponse as unknown as EntityDiscoveryResponse;
   const b = old.bindingResponse as unknown as MentionBindingResponse;
   const selection = (quote: string, occurrence: number | null = null) => ({ evidenceRef: 'record-1', quote, occurrence });
+  if (options.qualificationContext) a.anchors.push({ anchorId: 'a0-context', entityId: 'e0', selection: selection('Alpha 使用 Beta') });
   if (options.collection) {
     a.entities.push({ entityId: 'g', label: '该组', description: 'Authored bounded group.', qualifiers: [], identityStatus: 'proposed',
       possibleEntityIds: [], uncertainties: [], referentKind: 'collection', componentRef: null,
+      qualificationEvidence: authoredQualification('ag', { basisKind: 'collective_scope', memberRole: 'work_targets' }),
       collection: { memberEntityIds: ['e0', 'e1'], completeness: 'complete', anchorIds: ['ag'], rationale: 'Authored joint reference.' } });
     a.anchors.push({ anchorId: 'ag', entityId: 'g', selection: selection('该组') });
     b.mentions.push({ mentionId: 'mg', selection: selection('该组'), basis: 'explicit', rationale: 'Authored group mention.',
@@ -30,7 +32,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   if (options.unresolved) {
     a.entities.push({ entityId: 'u', label: '它', description: 'Authored unresolved referent, not a semantic verdict.', qualifiers: [],
       identityStatus: 'unresolved', possibleEntityIds: ['e0', 'e1'], uncertainties: ['Authored unresolved identity.'],
-      referentKind: 'object', componentRef: null, collection: null });
+      referentKind: 'object', componentRef: null, collection: null, qualificationEvidence: authoredQualification('au') });
     a.anchors.push({ anchorId: 'au', entityId: 'u', selection: selection('它') });
     b.mentions.push({ mentionId: 'mu', selection: selection('它'), basis: 'inference', rationale: 'Authored unresolved reference.',
       bindingStatus: 'bound', entityId: 'u', candidateEntityIds: [], reason: null });
@@ -60,10 +62,11 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const readBase = () => readRefinedEntitiesBaseEvidence(source, model, references(), { sourcePlanArchive, discoveredEntitiesArchive });
   const base = readBase(), refinementExecution = entityRefinementExecution(source, model, base, refinedEntitiesArchive);
   const mapEntity = (entityId: string) => `next-${entityId}`;
-  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 3,
+  const refinementResponse: EntityRefinementResponse = { responseKind: 'entity-refinement', schemaVersion: 4,
     binding: JSON.parse(buildEntityRefinementInput(source, base.predecessor)).binding,
     entities: a.entities.map(entity => ({ ...structuredClone(entity), entityId: mapEntity(entity.entityId),
       possibleEntityIds: entity.possibleEntityIds.map(mapEntity),
+      qualificationEvidence: { ...entity.qualificationEvidence, anchorIds: entity.qualificationEvidence.anchorIds.map(id => `next-${id}`) },
       componentRef: entity.componentRef ? { ...entity.componentRef, entityId: mapEntity(entity.componentRef.entityId),
         anchorIds: entity.componentRef.anchorIds.map(id => `next-${id}`) } : null,
       collection: entity.collection ? { ...entity.collection, memberEntityIds: entity.collection.memberEntityIds.map(mapEntity),
@@ -79,14 +82,15 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
       targets: [{ entityId: 'next-gamma', selection: selection('Gamma', 0) }],
       rationale: 'Authored gap mapping intent, not a semantic conclusion.', selections: [structuredClone(mention.selection)] })) };
   refinementResponse.entities.push({ entityId: 'next-gamma', label: 'Gamma', description: 'Authored newly discovered Gamma object.', qualifiers: [],
-    identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null });
+    identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null,
+    qualificationEvidence: authoredQualification('next-agamma') });
   refinementResponse.anchors.push({ anchorId: 'next-agamma', entityId: 'next-gamma', selection: selection('Gamma', 0) });
   const nativeResult = (output: string) => ({ ok: true, output, durationMs: 5, numTurns: 1, fullNumTurns: 1,
     numSubAgents: 0, attemptCount: 1, stopReason: executor === 'codex' ? 'end_turn' : 'stop', retainedTrace: { authored: true } });
   const refinementNative = { archiveKind: 'knowledge-entity-refinement-native', schemaVersion: 1,
     receiptId: discoveryUid(8), attemptId: discoveryUid(9), outcome: { outcomeKind: 'result',
       result: nativeResult(` \n${JSON.stringify(refinementResponse)}\r\n`) } as ExtractionOutcome };
-  const refinementReceipt: EntityRefinementReceipt = { receiptKind: 'knowledge-entity-refinement-receipt', schemaVersion: 3,
+  const refinementReceipt: EntityRefinementReceipt = { receiptKind: 'knowledge-entity-refinement-receipt', schemaVersion: 4,
     receiptId: refinementNative.receiptId, attemptId: refinementNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: refinementExecution.request, producer: refinementExecution.producer, requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(refinementNative)), startedAt: '2026-10-24T00:00:04Z', finishedAt: '2026-10-24T00:00:05Z' };
@@ -99,7 +103,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const readRefinement = () => readEntityRefinementEvidence(source, model, refinementReference, refinedEntitiesArchive, readBase());
   const refinement = readRefinement(), rebindingExecution = mentionRebindingExecution(source, model, refinement, refinedEntitiesArchive);
   const mapMention = (mentionId: string) => `next-${mentionId}`;
-  const rebindingResponse: MentionRebindingResponse = { responseKind: 'mention-rebinding', schemaVersion: 3,
+  const rebindingResponse: MentionRebindingResponse = { responseKind: 'mention-rebinding', schemaVersion: 4,
     binding: JSON.parse(buildMentionRebindingInput(source, base.predecessor, refinement.predecessor)).binding,
     mentions: b.mentions.filter(mention => mention.mentionId !== 'gap-peer').map(mention => ({ ...structuredClone(mention), mentionId: mapMention(mention.mentionId),
       selection: mention.mentionId === 'gap' ? selection('Gamma', 0) : structuredClone(mention.selection),
@@ -114,7 +118,7 @@ export function refinedEntitiesFixture(executor: 'codex' | 'openai-api' = 'codex
   const rebindingNative = { archiveKind: 'knowledge-mention-rebinding-native', schemaVersion: 1,
     receiptId: discoveryUid(10), attemptId: discoveryUid(11), outcome: { outcomeKind: 'result',
       result: nativeResult(` \n${JSON.stringify(rebindingResponse)}\r\n`) } as ExtractionOutcome };
-  const rebindingReceipt: MentionRebindingReceipt = { receiptKind: 'knowledge-mention-rebinding-receipt', schemaVersion: 3,
+  const rebindingReceipt: MentionRebindingReceipt = { receiptKind: 'knowledge-mention-rebinding-receipt', schemaVersion: 4,
     receiptId: rebindingNative.receiptId, attemptId: rebindingNative.attemptId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
     request: rebindingExecution.request, producer: rebindingExecution.producer, requestDigest: discoveryHash('pending'),
     nativeRef: discoveryRef(discoveryBytes(rebindingNative)), startedAt: '2026-10-24T00:00:06Z', finishedAt: '2026-10-24T00:00:07Z' };
