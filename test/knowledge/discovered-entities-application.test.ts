@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,13 +12,17 @@ import type { EvidenceStore, EvidenceWindow } from '../../src/knowledge/extracti
 import { EntityDiscoveryValidationError, mentionBindingExecution } from '../../src/knowledge/extraction/discovered-entities-evidence.js';
 import type { EntityAnalysisStore } from '../../src/knowledge/entities/contracts.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { discoveredEntitiesFixture } from './discovered-entities-fixtures.js';
+import { boundKnowledgeExecution, boundKnowledgeRequestDigest, type BoundKnowledgeReceipt }
+  from '../../src/knowledge/extraction/bound-knowledge-evidence.js';
+import { discoveredEntitiesFixture, discoveryBytes, discoveryHash, discoveryRef, discoveryUid }
+  from './discovered-entities-fixtures.js';
+import { wireModelWindow } from './fixtures.js';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-function setup() {
-  const f = discoveredEntitiesFixture();
+function setup(executor: 'codex' | 'openai-api' = 'codex') {
+  const f = discoveredEntitiesFixture(executor);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-discovered-entities-'))); roots.push(root);
   const window: EvidenceWindow = { ...f.source, sourceKind: 'codex', sourcePath: '/authored/private-source.jsonl',
     projectionVersion: 'knowledge-window-v2', capturedAt: '2020-01-01T00:00:00Z', startRecord: 0, endRecord: 0,
@@ -203,5 +207,215 @@ describe('separate discovery/binding import through the real entity store (autho
     const app = new KnowledgeApplication({ ...f.ports, discoveredEntitiesArchive: abortingArchive });
     expect(() => app.importDiscoveredEntities(f.selection, f.model, f.references(), late.signal)).toThrow('late cancellation');
     expect(f.entities.list().histories).toEqual([]);
+  });
+});
+
+const at = (second: number) => `2026-10-24T00:00:${second.toString().padStart(2, '0')}Z`;
+
+/** Reuse the A/B stores and authored originals; SP/refinement must remain unread. */
+function handoffSetup(executor: 'codex' | 'openai-api' = 'codex') {
+  const f = setup(executor);
+  const forbiddenArchive = { read: vi.fn(() => { throw new Error('No source plan or refinement dependency.'); }),
+    inspect: vi.fn(() => { throw new Error('No source plan or refinement dependency.'); }) };
+  const ports = { ...f.ports, sourcePlanArchive: forbiddenArchive, refinedEntitiesArchive: forbiddenArchive };
+  return { ...f, ports, forbiddenArchive, app: new KnowledgeApplication(ports) };
+}
+function ready(executor: 'codex' | 'openai-api' = 'codex') {
+  const f = handoffSetup(executor), imported = f.app.importDiscoveredEntities(f.selection, f.model, f.references());
+  if (imported.status !== 'committed') throw new Error('Authored A/B catalog must be ready.');
+  return { ...f, imported, context: f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references()) };
+}
+function bound(f: ReturnType<typeof ready>, two = false) {
+  const execution = boundKnowledgeExecution(f.context.window, f.context.catalog, f.model);
+  const proposal = structuredClone(wireModelWindow().proposals[0]);
+  const ids = f.context.catalog.entities.map(entity => entity.entityId);
+  proposal.entityIds = ids; proposal.mentionIds = f.context.catalog.mentions.map(mention => mention.mentionId);
+  proposal.draft.content.statements[0].subject.entityId = ids[0]; proposal.draft.content.statements[0].object!.entityId = ids[1];
+  const response = { responseKind: 'bound-knowledge', schemaVersion: 2, binding: JSON.parse(execution.request.input).binding,
+    proposals: [proposal], catalogGaps: [], materialAccounting: [{ materialId: 'use', meaning: 'Authored use claim.',
+      anchors: [{ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', occurrence: null }], dispositionKind: 'expressed',
+      statementRefs: [{ proposalId: proposal.proposalId, statementId: 'usage' }], reason: null, catalogGapIds: [] }],
+    excerptAccounting: [{ evidenceRef: 'record-1', materialIds: ['use'], noMaterialReason: null }] };
+  if (two) {
+    const sibling = structuredClone(proposal); sibling.proposalId = 'alpha-only'; sibling.entityIds = [ids[0]];
+    sibling.mentionIds = [f.context.catalog.mentions[0].mentionId]; sibling.draft.content.statements[0].object = null;
+    response.proposals.push(sibling);
+  }
+  const native = { archiveKind: 'knowledge-bound-knowledge-native', schemaVersion: 1,
+    receiptId: discoveryUid(20), attemptId: discoveryUid(21), outcome: { outcomeKind: 'result',
+      result: { ...structuredClone(f.result('binding')), output: JSON.stringify(response) } } };
+  const receipt: BoundKnowledgeReceipt = { receiptKind: 'knowledge-bound-knowledge-receipt', schemaVersion: 3,
+    receiptId: native.receiptId, attemptId: native.attemptId, binding: structuredClone(response.binding), request: execution.request,
+    producer: f.inspect(f.model.executor, execution.input), requestDigest: '', nativeRef: discoveryRef(discoveryBytes(native)),
+    startedAt: at(4), finishedAt: at(5) };
+  let receiptBytes: Buffer, nativeBytes: Buffer;
+  const reseal = () => { nativeBytes = discoveryBytes(native); receipt.nativeRef = discoveryRef(nativeBytes);
+    receipt.requestDigest = boundKnowledgeRequestDigest(receipt); receiptBytes = discoveryBytes(receipt); };
+  reseal();
+  const read = vi.fn(() => ({ receiptBytes: Buffer.from(receiptBytes), outcomeBytes: Buffer.from(nativeBytes) }));
+  const archive = { read, inspect: f.inspect };
+  return { execution, response, receipt, native, reseal, read, archive,
+    get reference() { return { receiptId: receipt.receiptId, receiptRef: discoveryRef(receiptBytes) }; },
+    bytes: () => [Buffer.from(receiptBytes), Buffer.from(nativeBytes)],
+    app: new KnowledgeApplication({ ...f.ports, boundKnowledgeArchive: archive }) };
+}
+const publish = (f: ReturnType<typeof ready>, k: ReturnType<typeof bound>, signal?: AbortSignal) =>
+  k.app.importDiscoveredBoundKnowledge(f.selection, f.model, f.references(), k.reference, signal);
+
+describe('explicit A/B initial catalog to bound knowledge handoff (authored returns)', () => {
+  it.each(['codex', 'openai-api'] as const)('reads without writes and publishes/replays %s K without an extraction run or SP', executor => {
+    const f = ready(executor), initial = f.ports.entities.read(f.imported.analysisId), originals = f.canonicalSnapshot();
+    const entityWrite = vi.spyOn(f.ports.entities, 'write'), knowledgeWrite = vi.spyOn(f.ports.knowledge, 'write');
+    const context = f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references());
+    expect(context.catalog).toEqual({ analysisId: f.imported.analysisId, revisionId: f.imported.revisionId,
+      snapshotId: initial.snapshotId, sourceVersion: initial.sourceVersion, entities: initial.revisions[0].entities,
+      mentions: initial.revisions[0].mentions, limitations: initial.revisions[0].limitations });
+    expect(context.write).toEqual(f.imported.write); expect(context.chainDigest).toBe(f.imported.chainDigest);
+    expect(entityWrite).not.toHaveBeenCalled(); expect(knowledgeWrite).not.toHaveBeenCalled();
+    context.catalog.entities[0].label = 'Changed caller copy';
+    expect(f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references()).catalog).toEqual(f.context.catalog);
+    const k = bound(f), bytes = k.bytes(), result = publish(f, k);
+    expect(result).toMatchObject({ admissionStatus: 'admitted', semanticStatus: 'not_reviewed', entityChainDigest: f.imported.chainDigest,
+      entityAnalysisRef: { analysisId: f.imported.analysisId, revisionId: f.imported.revisionId } });
+    expect(result).not.toHaveProperty('entityRunId'); expect(result).not.toHaveProperty('formalReceipt');
+    expect(result.committed).toHaveLength(1); expect(publish(f, k).committed).toEqual(result.committed);
+    const saved = k.app.detail(result.committed[0].knowledgeId);
+    expect(saved.history.generation).toBe(1); expect(saved.grounding.entityAnalysisRef).toEqual(result.entityAnalysisRef);
+    expect(saved.revision.content.statements[0].subject.entityId).toBe(f.context.catalog.entities[0].entityId);
+    expect(f.ports.entities.read(f.imported.analysisId)).toEqual(initial); expect(f.ports.runs.listManifests()).toEqual([]);
+    expect(f.canonicalSnapshot()).toBe(originals); expect(k.bytes()).toEqual(bytes);
+    expect(f.ports.id).not.toHaveBeenCalled(); expect(f.ports.now).not.toHaveBeenCalled();
+    expect(f.forbiddenArchive.read).not.toHaveBeenCalled(); expect(f.forbiddenArchive.inspect).not.toHaveBeenCalled();
+    const input = JSON.parse(k.receipt.request.input);
+    expect(input.entityAnalysis).toEqual(f.context.catalog); expect(input.excerpts).toEqual(f.source.excerpts);
+    expect(k.receipt.request.input).not.toContain('/authored/private'); expect(input).not.toHaveProperty('predecessors');
+  });
+
+  it('requires a real persisted initial analysis instead of accepting authenticated A/B alone', () => {
+    const f = handoffSetup();
+    expect(() => f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references())).toThrow();
+    expect(f.ports.entities.list().histories).toEqual([]); expect(f.ports.knowledge.list()).toEqual([]);
+  });
+
+  it.each(['revision-content', 'revision-actor', 'receipt-command', 'receipt-request', 'source'] as const)(
+    'rejects changed initial storage %s before reading K', mode => {
+      const f = ready(), k = bound(f), originalRead = f.ports.entities.read.bind(f.ports.entities);
+      vi.spyOn(f.ports.entities, 'read').mockImplementation(id => {
+        const history = structuredClone(originalRead(id));
+        if (mode === 'revision-content') history.revisions[0].entities[0].description += ' changed';
+        if (mode === 'revision-actor') history.revisions[0].revisedBy.actorId += '-changed';
+        if (mode === 'receipt-command') history.receipts[0].commandDigest = discoveryHash('other write');
+        if (mode === 'receipt-request') history.receipts[0].requestId = randomUUID();
+        if (mode === 'source') history.sourceVersion = discoveryHash('other source');
+        return history;
+      });
+      expect(() => publish(f, k)).toThrow('persisted initial revision');
+      expect(k.read).not.toHaveBeenCalled(); expect(f.ports.knowledge.list()).toEqual([]);
+    });
+
+  it('authenticates the immutable initial revision rather than substituting a later head', () => {
+    const f = ready(), first = f.ports.entities.read(f.imported.analysisId).revisions[0];
+    const revision = { ...structuredClone(first), revisionId: randomUUID(), parentRevisionId: first.revisionId,
+      revisedAt: at(4), revisedBy: f.ports.actor, revisionReason: 'Authored later edit.' };
+    revision.entities[0].description = 'A later head is not the initial extraction.';
+    f.ports.entities.write({ requestId: randomUUID(), analysisId: f.imported.analysisId,
+      snapshotId: f.selection.snapshotId, sourceVersion: f.selection.sourceVersion,
+      expectedGeneration: 1, expectedHeadRevisionId: first.revisionId, revision }, f.ports.actor);
+    const context = f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references());
+    expect(context.catalog.entities).toEqual(first.entities); expect(context.catalog.revisionId).toBe(first.revisionId);
+    expect(f.ports.entities.read(f.imported.analysisId).generation).toBe(2);
+  });
+
+  it('reauthenticates B and its write intent after context construction, before reading K', () => {
+    const f = ready(), k = bound(f);
+    f.bindingReceipt.finishedAt = at(4); f.resealB();
+    expect(() => publish(f, k)).toThrow('persisted initial revision');
+    expect(k.read).not.toHaveBeenCalled(); expect(f.ports.knowledge.list()).toEqual([]);
+    expect(f.ports.entities.read(f.imported.analysisId).generation).toBe(1);
+  });
+
+  it.each([
+    ['receiptId', 'A-receipt'], ['receiptId', 'A-attempt'], ['receiptId', 'B-receipt'], ['receiptId', 'B-attempt'],
+    ['attemptId', 'A-receipt'], ['attemptId', 'A-attempt'], ['attemptId', 'B-receipt'], ['attemptId', 'B-attempt'],
+    ['attemptId', 'K-receipt'],
+  ] as const)('rejects resealed K %s reusing %s without writing knowledge', (field, target) => {
+    const f = ready(), k = bound(f), ids = { 'A-receipt': f.discoveryReceipt.receiptId, 'A-attempt': f.discoveryReceipt.attemptId,
+      'B-receipt': f.bindingReceipt.receiptId, 'B-attempt': f.bindingReceipt.attemptId, 'K-receipt': k.receipt.receiptId };
+    k.receipt[field] = k.native[field] = ids[target]; k.reseal();
+    expect(() => publish(f, k)).toThrow('reuses'); expect(f.ports.knowledge.list()).toEqual([]);
+  });
+
+  it.each([
+    ['A-receipt', 'A-attempt', false], ['B-receipt', 'A-receipt', true], ['B-attempt', 'A-receipt', false],
+    ['B-receipt', 'A-attempt', false], ['B-attempt', 'A-attempt', true], ['B-attempt', 'B-receipt', false],
+  ] as const)('rejects predecessor role collision %s=%s before constructing K', (field, target, readerRejects) => {
+    const f = handoffSetup(), ids = { 'A-receipt': f.discoveryReceipt.receiptId, 'A-attempt': f.discoveryReceipt.attemptId,
+      'B-receipt': f.bindingReceipt.receiptId };
+    if (field === 'A-receipt') {
+      f.discoveryReceipt.receiptId = f.discoveryNative.receiptId = ids[target]; f.resealA();
+      const execution = mentionBindingExecution(f.source, f.readA(), f.model);
+      f.bindingReceipt.request = execution.request; f.bindingReceipt.producer = f.inspect(f.model.executor, execution.input);
+      f.bindingResponse.binding = JSON.parse(execution.request.input).binding;
+      f.result('binding').output = JSON.stringify(f.bindingResponse);
+    } else if (field === 'B-receipt') f.bindingReceipt.receiptId = f.bindingNative.receiptId = ids[target];
+    else f.bindingReceipt.attemptId = f.bindingNative.attemptId = ids[target];
+    f.resealB();
+    const importEntities = () => f.app.importDiscoveredEntities(f.selection, f.model, f.references());
+    const error = field === 'B-attempt' && target === 'A-attempt' ? 'frozen predecessor' : 'independent';
+    if (readerRejects) expect(importEntities).toThrow(error);
+    else expect(importEntities().status).toBe('committed');
+    expect(() => f.app.discoveredBoundKnowledgeContext(f.selection, f.model, f.references())).toThrow(error);
+    expect(f.ports.knowledge.list()).toEqual([]); expect(f.ports.runs.listManifests()).toEqual([]);
+  });
+
+  it.each(['before', 'equal'] as const)('requires K start %s the B completion boundary', mode => {
+    const f = ready(), k = bound(f); k.receipt.startedAt = mode === 'before' ? at(2) : f.bindingReceipt.finishedAt; k.reseal();
+    if (mode === 'before') {
+      expect(() => publish(f, k)).toThrow('predates'); expect(f.ports.knowledge.list()).toEqual([]);
+    } else expect(publish(f, k).committed).toHaveLength(1);
+  });
+
+  it('preserves failed native K and root-rejected output without knowledge writes or repair', () => {
+    const f = ready(), k = bound(f); k.native.outcome.result.ok = false; k.reseal();
+    const failed = k.bytes(); expect(() => publish(f, k)).toThrow('complete successful native');
+    expect(k.bytes()).toEqual(failed); expect(f.ports.knowledge.list()).toEqual([]);
+    k.native.outcome.result.ok = true;
+    k.response.binding.sourceProjectionDigest = discoveryHash('another projection');
+    k.native.outcome.result.output = JSON.stringify(k.response); k.reseal();
+    const rejected = k.bytes(), result = publish(f, k);
+    expect(result).toMatchObject({ admissionStatus: 'rejected', committed: [], semanticStatus: 'not_reviewed',
+      evidence: { rawOutput: k.native.outcome.result.output } });
+    expect(k.bytes()).toEqual(rejected); expect(f.ports.knowledge.list()).toEqual([]);
+  });
+
+  it.each(['before-archive', 'after-authentication'] as const)('honors cancellation %s without knowledge writes', mode => {
+    const f = ready(), k = bound(f), controller = new AbortController(); f.read.mockClear();
+    if (mode === 'before-archive') controller.abort(new Error('Authored cancellation.'));
+    else k.read.mockImplementationOnce(() => {
+      controller.abort(new Error('Authored cancellation.'));
+      const [receiptBytes, outcomeBytes] = k.bytes(); return { receiptBytes, outcomeBytes };
+    });
+    expect(() => publish(f, k, controller.signal)).toThrow('cancellation');
+    if (mode === 'before-archive') { expect(f.read).not.toHaveBeenCalled(); expect(k.read).not.toHaveBeenCalled(); }
+    expect(f.ports.knowledge.list()).toEqual([]);
+  });
+
+  it.each(['cancel-after-write', 'lost-acknowledgement'] as const)('replays the same per-proposal commands after %s', mode => {
+    const f = ready(), k = bound(f, true), controller = new AbortController();
+    const originalWrite = f.ports.knowledge.write.bind(f.ports.knowledge);
+    const write = vi.spyOn(f.ports.knowledge, 'write').mockImplementationOnce((command, actor) => {
+      const receipt = originalWrite(command, actor);
+      if (mode === 'lost-acknowledgement') throw new Error('Authored lost acknowledgement.');
+      controller.abort(new Error('Authored cancellation after commit.')); return receipt;
+    });
+    expect(() => publish(f, k, controller.signal)).toThrow('Authored');
+    expect(f.ports.knowledge.list()).toHaveLength(1);
+    const firstCommand = structuredClone(write.mock.calls[0]); write.mockRestore();
+    const replay = vi.spyOn(f.ports.knowledge, 'write');
+    const app = new KnowledgeApplication({ ...f.ports, boundKnowledgeArchive: k.archive });
+    const result = app.importDiscoveredBoundKnowledge(f.selection, f.model, f.references(), k.reference);
+    expect(replay.mock.calls[0]).toEqual(firstCommand);
+    expect(result.committed).toHaveLength(2); expect(f.ports.knowledge.list().map(h => h.generation)).toEqual([1, 1]);
+    expect(f.ports.entities.read(f.imported.analysisId).generation).toBe(1); expect(f.ports.runs.listManifests()).toEqual([]);
   });
 });
