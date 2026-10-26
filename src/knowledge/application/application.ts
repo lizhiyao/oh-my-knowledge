@@ -40,7 +40,7 @@ import { readReviewedKnowledgeEvidence, type ReviewedKnowledgeArchivePort, type 
 import type { BoundKnowledgeCatalog } from '../extraction/bound-catalog.js';
 import type { CheckedBoundKnowledge } from '../extraction/bound-knowledge.js';
 import { entityOnlyTaskViolation, isEntityOnlyTask } from '../extraction/entity-only-task.js';
-import { readDiscoveredEntitiesContext, importDiscoveredEntityAnalysis,
+import { readDiscoveredEntitiesContext, readDiscoveredEntitiesKnowledgeContext, importDiscoveredEntityAnalysis,
   type DiscoveredEntitiesSource, type DiscoveredEntitiesContextReferences, type DiscoveredEntitiesReferences } from './discovered-entities.js';
 import type { EntityDiscoveryArchivePort, EntityDiscoveryModel } from '../extraction/discovered-entities-evidence.js';
 import { readRefinedEntitiesContext, readRefinedEntitiesRebindingContext, readRefinedEntitiesKnowledgeContext, importRefinedEntityAnalysis,
@@ -62,7 +62,7 @@ export interface KnowledgeApplicationPorts {
   /** Explicit E→R→K research only; no ordinary host enables either archive. */
   entityReviewArchive?: EntityReviewArchivePort;
   reviewedKnowledgeArchive?: ReviewedKnowledgeArchivePort;
-  /** Private source-plan→discovery→binding research only; ordinary delivery hosts do not install this archive. */
+  /** Private source-only discovery→binding research only; ordinary delivery hosts do not install this archive. */
   discoveredEntitiesArchive?: EntityDiscoveryArchivePort;
   /** Explicit one-round catalog revision only; ordinary hosts do not install either new-stage archive. */
   refinedEntitiesArchive?: RefinedEntitiesArchivePort;
@@ -192,11 +192,11 @@ export class KnowledgeApplication {
     this.ports.knowledge.read(knowledgeId);
     return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
   }
-  /** Authenticate the plan and A before the private driver constructs and reserves B. */
+  /** Authenticate source-only A before the private driver constructs and reserves B. */
   discoveredEntitiesContext(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel, references: DiscoveredEntitiesContextReferences) {
     return readDiscoveredEntitiesContext(this.ports, source, model, references);
   }
-  /** Three originals produce one initial analysis; no stage is an ordinary extraction run. */
+  /** Two originals produce one initial analysis; neither stage is an ordinary extraction run. */
   importDiscoveredEntities(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel,
     references: DiscoveredEntitiesReferences, signal?: AbortSignal) {
     return importDiscoveredEntityAnalysis(this.ports, source, model, references, signal);
@@ -217,6 +217,25 @@ export class KnowledgeApplication {
   /** Reads the authentic immutable E revision for a separate K invocation; this method never invokes a model. */
   boundKnowledgeContext(entityRunId: string, model: ExtractionModel, profile: ExtractionPromptProfile) {
     return readEntityFirstKnowledgeContext(this.ports, entityRunId, model, profile);
+  }
+  /** Two originals authenticate the persisted initial revision; no extraction run, SP or native call is created. */
+  discoveredBoundKnowledgeContext(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel, references: DiscoveredEntitiesReferences) {
+    return readDiscoveredEntitiesKnowledgeContext(this.ports, source, model, references);
+  }
+  /** Explicit A→B→actual E→K handoff with the unchanged per-proposal publisher. */
+  importDiscoveredBoundKnowledge(source: DiscoveredEntitiesSource, model: EntityDiscoveryModel,
+    references: DiscoveredEntitiesReferences, reference: BoundKnowledgeReference, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (!this.ports.boundKnowledgeArchive) throw new Error('Bound knowledge archive unavailable.');
+    const context = this.discoveredBoundKnowledgeContext(source, model, references);
+    const evidence = readBoundKnowledgeEvidence(context.window, context.catalog, model, reference, this.ports.boundKnowledgeArchive);
+    const ids = [context.discovery.receipt, context.binding.receipt, evidence.receipt]
+      .flatMap(receipt => [receipt.receiptId, receipt.attemptId]);
+    if (new Set(ids).size !== ids.length) throw new Error('Discovered knowledge successor reuses a predecessor receipt or attempt identity.');
+    if (Date.parse(evidence.receipt.startedAt) < Date.parse(context.entityFinishedAt)) {
+      throw new Error('Discovered knowledge successor predates predecessor completion.');
+    }
+    return this.publishBoundKnowledge({ entityChainDigest: context.chainDigest }, context.window, context.catalog, evidence, signal);
   }
   /** Five originals authenticate the persisted initial revision; no extraction run or native call is created. */
   refinedBoundKnowledgeContext(source: RefinedEntitiesSource, model: RefinedEntitiesModel, references: RefinedEntitiesReferences) {
