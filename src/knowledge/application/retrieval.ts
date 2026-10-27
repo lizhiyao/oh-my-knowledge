@@ -155,6 +155,8 @@ function stableOrder(a: Unit, b: Unit): number {
 /** Current revisions, no filesystem writes, executor calls, raw-source fallback or name merging. */
 export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest): KnowledgeRetrievalResult {
   const request = KnowledgeRetrievalRequestSchema.parse(input), terms = knowledgeRetrievalTerms(request.query);
+  const fullHanRuns = new Set([...request.query.normalize('NFKC').toLowerCase().matchAll(/\p{Script=Han}+/gu)].map(match => match[0]));
+  const derivedBigrams = new Set(terms.filter(term => /^\p{Script=Han}{2}$/u.test(term) && !fullHanRuns.has(term)));
   const source = request.snapshot ? app.source(request.snapshot, request.sourceVersion) : undefined;
   let entityMatched = false; const candidates: Unit[] = [];
   for (const row of app.list()) {
@@ -187,10 +189,12 @@ export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'deta
     for (const unit of remaining) {
       const next = projected([...chosen, unit]), nextBytes = measure(next);
       if (nextBytes > request.maxBytes) continue;
-      const novel = [...unit.hits].filter(term => !covered.has(term)).length;
+      const novelTerms = [...unit.hits].filter(term => !covered.has(term)), novel = novelTerms.length;
+      // Overlapping Han bigrams retain literal recall but get less novelty weight than identifiers or complete query runs.
+      const novelty = novelTerms.reduce((gain, term) => gain + (derivedBigrams.has(term) ? 1 : 4), 0);
       const documentNovel = [...unit.documentHits].filter(term => !coveredDocuments.has(term)).length;
       // Document fields recall a revision; only fresh document coverage is rewarded, never copied into every statement score.
-      const gain = Math.max(1, 4 * novel + unit.hits.size + documentNovel), cost = Math.max(1, nextBytes - currentBytes);
+      const gain = Math.max(1, novelty + unit.hits.size + documentNovel), cost = Math.max(1, nextBytes - currentBytes);
       if (!best || gain * best.cost > best.gain * cost
         || (gain * best.cost === best.gain * cost && (novel > best.novel
           || (novel === best.novel && (unit.hits.size > best.unit.hits.size

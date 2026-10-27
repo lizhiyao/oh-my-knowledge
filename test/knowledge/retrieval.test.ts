@@ -177,6 +177,39 @@ describe('read-only task knowledge retrieval', () => {
     expect(result.items[0].statement.statementId).not.toBe('a-document-only');
     expect(result.items).toHaveLength(4); expect(result.knowledge).toHaveLength(1); expect(result.evidence).toHaveLength(1);
   });
+  it('weights derived Han bigram novelty below explicit identifiers while preserving whole two-character runs and new topics', async () => {
+    const fixture = async (labels: string[], definitions: [string, number, string][]) => {
+      const text = [...labels, ...definitions.map(([, , relation]) => relation)].join('\n');
+      return setup(packet => {
+        const template = structuredClone(packet.entities[0]), evidenceRef = packet.mentions[0].selection.evidenceRef;
+        packet.entities = labels.map((label, index) => ({ ...structuredClone(template), entityId: `object-${index}`, label,
+          description: `Synthetic object ${index}.` }));
+        packet.mentions = labels.map((label, index) => ({ mentionId: `mention-${index}`, entityId: `object-${index}`,
+          basis: 'explicit', rationale: 'Authored synthetic identity.', selection: { evidenceRef, quote: label } }));
+        const proposal = packet.proposals[0], draft = proposal.draft, base = structuredClone(draft.content.statements[0]);
+        proposal.entityIds = packet.entities.map(entity => entity.entityId); proposal.mentionIds = packet.mentions.map(mention => mention.mentionId);
+        draft.title = 'Synthetic lexical selection fixture';
+        draft.content.statements = definitions.map(([statementId, subject, relation]) => {
+          const statement = { ...structuredClone(base), statementId, subject: { entityId: `object-${subject}` }, relation,
+            context: { scenario: 'Synthetic boundary example.', conditions: [], exceptions: [], unknowns: ['Authored data, not a technical claim.'],
+              occurredDuring: { timeKind: 'unknown' as const, reason: 'Synthetic event time unspecified.' },
+              validDuring: { timeKind: 'unknown' as const, reason: 'Synthetic applicability unspecified.' } } };
+          delete statement.object; return statement;
+        });
+        draft.evidence[0].statementIds = definitions.map(([id]) => id);
+        proposal.citations[0].selection = { evidenceRef, quote: text };
+      }, text);
+    };
+    const definitions: [string, number, string][] = [['initial', 0, '支持配置条件。'], ['object-detail', 0, '保留附加适用条件。']];
+    const first = await fixture(['CobaltToken', 'JuniperLedger'], [...definitions, ['grammar-overlap', 1, '没有执行记录。']]);
+    const order = (app: typeof first.app, query: string) => retrieveKnowledge(app, { query, includeCandidates: true }).items.map(item => item.statement.statementId);
+    expect(order(first.app, 'CobaltToken 的记录有哪些条件？')).toEqual(['initial', 'object-detail', 'grammar-overlap']);
+    // Both Han fragments also occur as complete query runs: neither is downgraded merely for being two characters.
+    expect(order(first.app, 'CobaltToken 的记录有哪些条件？ 记录 条件')).toEqual(['initial', 'grammar-overlap', 'object-detail']);
+    const second = await fixture(['CobaltToken', 'AmberRoute', 'JuniperLedger'], [...definitions,
+      ['new-topic', 1, '提供另一组条件。'], ['grammar-overlap', 2, '没有执行记录。']]);
+    expect(order(second.app, 'CobaltToken AmberRoute 的条件和记录是什么？')).toEqual(['initial', 'new-topic', 'object-detail', 'grammar-overlap']);
+  });
   it('reports oversized units without shortening conditions and can still pack a later complete smaller statement', async () => {
     const f = await setup(packet => {
       const content = packet.proposals[0].draft.content, small = structuredClone(content.statements[0]);
