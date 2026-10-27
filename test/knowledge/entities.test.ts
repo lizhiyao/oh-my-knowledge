@@ -67,7 +67,7 @@ describe('window entity admission', () => {
     expect(unsupported.entities).toEqual([]);
     expect(unsupported.rejected).toContainEqual({ component: 'entity', index: 0, reasons: ['entity_without_mention'] });
   });
-  it.each(['TaskBoard', '_pendingTaskStatus', 'task_Task', 'Task_status', 'pre$Task', 'Task42'])('rejects a partial ASCII identifier in %s', text => {
+  it.each(['TaskBoard', '_pendingTaskStatus', 'task_Task', 'Task_status', 'pre$Task', 'Task42', 'Task4.2', '/pkg/TaskBoard/config'])('rejects a partial ASCII identifier in %s', text => {
     const result = admitEntities([entity('task')], [mention('task', 'm', 'Task')], [{ evidenceRef: 'r', text }]);
     expect(result.rejected).toContainEqual({ component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] });
   });
@@ -83,6 +83,41 @@ describe('window entity admission', () => {
     expect(result.rejected).toEqual([]);
     expect(result.entities[1].componentRef).toEqual(version.componentRef);
     expect(result.mentions.map(item => [item.selection.start, item.selection.end])).toEqual([[0, 7], [0, 11], [15, 33]]);
+  });
+  it.each([
+    { text: '# ALPHA\n版本 alpha4.2；ALPHA 使用 Beta。', label: 'Alpha', quote: 'ALPHA', citation: 'ALPHA 使用 Beta', start: 2 },
+    { text: '版本 alpha4.2；alpha4.2 使用 Beta。', label: 'alpha4.2', quote: 'alpha4.2', citation: 'alpha4.2 使用 Beta', start: 3 },
+  ])('admits authored independent or qualified anchors without changing knowledge in $text', ({ text, label, quote, citation, start }) => {
+    const packet = modelWindow();
+    packet.entities[0] = { ...packet.entities[0], label, description: '选段中被讨论的原始称谓',
+      uncertainties: ['未确定规范身份、对象层次或版本归属。'] };
+    packet.mentions[0].selection = { evidenceRef: 'record-1', quote: 'alpha', occurrence: 0 };
+    packet.proposals[0].draft.title = '选定称谓使用工具的来源说法';
+    packet.proposals[0].citations[0].selection = { evidenceRef: 'record-1', quote: citation, occurrence: 0 };
+    packet.proposals.push({ ...structuredClone(packet.proposals[0]), proposalId: 'second-candidate' });
+    const before = structuredClone(packet), source = [{ evidenceRef: 'record-1', text }];
+    const rejected = checkWindowExtractionResponse(packet, source);
+    expect(rejected.analysis.rejected).toEqual([
+      { component: 'entity', index: 0, reasons: ['entity_without_mention'] },
+      { component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] },
+    ]);
+    expect(rejected.accepted).toEqual([]);
+    expect(rejected.rejected).toHaveLength(2);
+    expect(packet).toEqual(before); // Rejection never substitutes another anchor.
+
+    const anchored = structuredClone(packet);
+    anchored.mentions[0].selection = { evidenceRef: 'record-1', quote, occurrence: 0 };
+    const anchoredBefore = structuredClone(anchored), admitted = checkWindowExtractionResponse(anchored, source);
+    expect(admitted.analysis.rejected).toEqual([]); expect(admitted.rejected).toEqual([]);
+    expect(admitted.analysis.entities[0].label).toBe(label);
+    expect(admitted.analysis.entities[0].uncertainties).toEqual(packet.entities[0].uncertainties);
+    expect(admitted.analysis.entities[0].componentRef).toBeNull();
+    expect(admitted.analysis.mentions[0].selection).toEqual({ evidenceRef: 'record-1', quote, start, end: start + quote.length });
+    expect(admitted.accepted.map(item => item.proposalId)).toEqual(packet.proposals.map(item => item.proposalId));
+    expect(admitted.accepted.map(item => item.draft.content)).toEqual(packet.proposals.map(item => item.draft.content));
+    expect(anchored.proposals).toEqual(packet.proposals); expect(anchored.entities).toEqual(packet.entities);
+    expect(anchored).toEqual(anchoredBefore);
+    // Authored variants prove unchanged host admission and content, not model compliance or semantic identity.
   });
   it('rejects invalid analysis references without repairing them or losing valid knowledge siblings', () => {
     const packet = identityWindow();
@@ -273,13 +308,15 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('versions discussion contrasts while preserving frozen controls and all eight demonstration bytes', () => {
+  it('versions literal mention anchors while preserving frozen controls and all eight demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v32');
-    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('488c21d07419befc6750456bb7d1ac1ebac62454a403e781c86cfd23ddc2ccda');
-    expect(() => extractionPrompt({ outputMode: 'json-schema' }, { profileVersion: 'knowledge-extraction-prompt-profile/v1',
-      promptVersion: 'knowledge-extraction-v31', system: STRICT_EXTRACTION_PROMPT })).toThrow('known extraction prompt version cannot identify different bytes');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v38');
+    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('b877f6f169241ceaba02fc7f4c4b5f66bb10c699746c2294997edc0bd92e380f');
+    for (const promptVersion of ['knowledge-extraction-v31', 'knowledge-extraction-v32']) {
+      expect(() => extractionPrompt({ outputMode: 'json-schema' }, { profileVersion: 'knowledge-extraction-prompt-profile/v1',
+        promptVersion, system: STRICT_EXTRACTION_PROMPT })).toThrow('known extraction prompt version cannot identify different bytes');
+    }
     expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
     expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
       .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');

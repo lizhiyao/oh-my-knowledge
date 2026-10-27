@@ -8,7 +8,7 @@ This page is generated from the current source build’s runtime constants and S
 | Current contract | Value |
 |---|---|
 | Authored prompt-json | `knowledge-extraction-v29` |
-| Configured strict prompt | `knowledge-extraction-v32` |
+| Configured strict prompt | `knowledge-extraction-v38` |
 | Structural wire | `omk-knowledge-extraction-wire/v1` |
 | Domain response Schema | `4` |
 | Extraction run Schema | `5` |

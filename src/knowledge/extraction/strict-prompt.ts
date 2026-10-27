@@ -3,7 +3,7 @@ import { WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from './model-wire.js';
 import { STRICT_EXTRACTION_FEWSHOT_BLOCK } from './strict-fewshot.js';
 
 /** Scope rules and few-shot rendering have their own identity; historical assets retain their frozen bytes. */
-export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v32' as const;
+export const STRICT_EXTRACTION_PROMPT_VERSION = 'knowledge-extraction-v38' as const;
 const finalOutputRule = '输出纯 JSON 对象，responseKind 为 knowledge-extraction，schemaVersion 为 4，不要 Markdown 围栏。整个响应严格遵守以下 JSON Schema：\n';
 const boundary = EXTRACTION_PROMPT.indexOf(finalOutputRule);
 if (boundary < 0 || EXTRACTION_PROMPT.lastIndexOf(finalOutputRule) !== boundary) throw new Error('Extraction prompt final output rule changed; re-audit strict prompt rendering.');
@@ -27,5 +27,9 @@ const knowledgeSelection = `
 沿用 fact／case／method 组织，不为保存提议、问题或未执行要求补造案例行动和结果。fact 也可组织“某参与者报告问题、提出方案或反驳”的描述性来源主张，不代表该说法已核实。试探性、请求与建议保留原语气、说话者和条件，不能提升为可用配置、已实现、已接受、已发布或已验证方法；实现、性能、有效时间和最终结果没有来源依据时保持未知。
 输出前在本次响应内回看所选主题：上述会影响判断的信息是否确实由 statements 表达并有直接原文支持，是否把提议当实现、把绕行当支持或把无证据当否定事实。只修正本响应，不增加调用、不返回清单或复核结论，也不声称语义完整性已获验证。
 `;
-export const STRICT_EXTRACTION_PROMPT = semantics.replace(selectionAnchor, '再提炼值得未来复用的事实、案例或方法。') + knowledgeSelection + wireInstructions
+const mentionAnchors = `
+实体展示 label 可以规范化，mention.selection.quote 必须取原文表面，两者不要求字节相等。先核对整个已选窗口，包括标题、版本说明和配置段，寻找独立指向该对象的字面提及；按原文大小写与完整边界选择，不能为贴合短 label 从连续版本写法、路径或长标识符内部机械截出子串。若只有限定称谓，可选择能完整指向该对象的原文表面并保留限定；这不确认其版本、组件或路径归属，身份关系不明仍保留未知，不强绑未消解对象。
+输出前逐处回到实际 evidenceRef 的文本，确认所选位置确实指向该对象，并按精确 quote 计算实际 occurrence；大小写或长短 quote 不同就重新核对，序号仍计入前面的标识符内匹配，不能跳过后编号、沿用另一种表面的序号或改写原文。错误锚点与依赖在本响应内修正并保持引用闭合；宿主不会自动改选另一处锚点，定位有效也不证明语义身份正确。不增加调用或输出自检过程。
+`;
+export const STRICT_EXTRACTION_PROMPT = semantics.replace(selectionAnchor, '再提炼值得未来复用的事实、案例或方法。') + knowledgeSelection + mentionAnchors + wireInstructions
   + STRICT_EXTRACTION_FEWSHOT_BLOCK + '\n' + finalOutputRule + WINDOW_EXTRACTION_WIRE_SCHEMA_JSON;

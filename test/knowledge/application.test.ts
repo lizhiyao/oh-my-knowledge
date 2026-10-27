@@ -208,7 +208,7 @@ describe('shared knowledge application', () => {
     expect(generate).toHaveBeenCalledTimes(1);
     // The callback supplies an authored response. This verifies persistence, not model behavior or semantic acceptance.
   });
-  it('preserves authored public discussion problems, contrasts, objections and support through one strict32 birth and reopen', async () => {
+  it('preserves authored public discussion problems, contrasts, objections and support through one strict birth and reopen', async () => {
     const { app, model, ports, root, source } = setup();
     // Constructed local carrier with literal public fragments; no live source/model invocation.
     writeFileSync(source, technicalDiscussionSources.map(row => JSON.stringify({ type: 'response_item', payload: {
@@ -218,7 +218,7 @@ describe('shared knowledge application', () => {
       content: { ...p.draft.content, statements: p.draft.content.statements.map(s => ({ ...s, object: null })) } } })) };
     const raw = JSON.stringify(packet), generate = vi.fn(async (_system: string) => ({ output: raw, durationMs: 1 }));
     const run = await app.generate(snapshot.snapshotId, { ...model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, generate });
-    expect(run.status).toBe('completed'); expect(run.promptVersion).toBe('knowledge-extraction-v32');
+    expect(run.status).toBe('completed'); expect(run.promptVersion).toBe('knowledge-extraction-v38');
     expect(run.rawOutput).toBe(raw); expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
     expect(generate).toHaveBeenCalledTimes(1); expect(generate.mock.calls[0][0]).toBe(STRICT_EXTRACTION_PROMPT);
     const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
