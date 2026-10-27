@@ -11,6 +11,7 @@ import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
 import { decodeWindowExtractionWire, WINDOW_EXTRACTION_WIRE_HOST_ONLY, WINDOW_EXTRACTION_WIRE_ID, WINDOW_EXTRACTION_WIRE_IDENTITY, WINDOW_EXTRACTION_WIRE_SCHEMA, WINDOW_EXTRACTION_WIRE_SCHEMA_JSON } from '../../src/knowledge/extraction/model-wire.js';
 import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/prompt.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
+import { extractionPrompt } from '../../src/knowledge/extraction/generation.js';
 import { STRICT_EXTRACTION_FEWSHOT_BLOCK, STRICT_EXTRACTION_FEWSHOT_EXAMPLES, STRICT_EXTRACTION_PARTIAL_ADMISSION_DIAGNOSTIC, renderStrictExtractionFewshotBlock } from '../../src/knowledge/extraction/strict-fewshot.js';
 
 const entityId = 'cf13bba6-6385-455b-b0c0-c4d4e4931b10';
@@ -272,11 +273,13 @@ describe('derived strict structural wire with original itemwise admission', () =
   const wirePacket = wireModelWindow;
   const decode = (value: unknown) => decodeWindowExtractionWire(Buffer.from(JSON.stringify(value, null, 2) + '\n', 'utf8'));
 
-  it('versions discussion completeness while preserving frozen controls and all eight demonstration bytes', () => {
+  it('versions discussion contrasts while preserving frozen controls and all eight demonstration bytes', () => {
     const control = readFileSync(new URL('../../scripts/bench/assets/entity-extraction-four-positive-strict-v1/v14-derived-strict.prompt.txt', import.meta.url));
     const frozenExamples = JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-extraction-five-positive-strict-v4/strict-positive-examples.json', import.meta.url), 'utf8')) as { examples: unknown[] };
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v31');
-    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('dbe367bf49eb5c4dd9a2d94eec8ecfacbda761d9d4904737f1b417a20ae8c37e');
+    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v32');
+    expect(createHash('sha256').update(STRICT_EXTRACTION_PROMPT).digest('hex')).toBe('488c21d07419befc6750456bb7d1ac1ebac62454a403e781c86cfd23ddc2ccda');
+    expect(() => extractionPrompt({ outputMode: 'json-schema' }, { profileVersion: 'knowledge-extraction-prompt-profile/v1',
+      promptVersion: 'knowledge-extraction-v31', system: STRICT_EXTRACTION_PROMPT })).toThrow('known extraction prompt version cannot identify different bytes');
     expect(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 5))).toBe(JSON.stringify(frozenExamples.examples));
     expect(createHash('sha256').update(JSON.stringify(STRICT_EXTRACTION_FEWSHOT_EXAMPLES.slice(0, 6))).digest('hex'))
       .toBe('abb7b76e4e2e6a7bb5d54a8445646ec068f1df1a650a9f890a6d240323a4e02a');

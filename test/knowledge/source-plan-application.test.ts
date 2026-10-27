@@ -70,7 +70,7 @@ function setup(reply?: Parameters<typeof nativeStudyFixture>[1]) {
 }
 
 describe('source semantic plan to real application admission (authored native evidence)', () => {
-  it('rejects the v31 default before creating a frozen-v30 private task or dispatching', async () => {
+  it('rejects the current strict default before creating a frozen-v30 private task or dispatching', async () => {
     const f = setup(), app = f.app(), model = f.model, snapshotId = f.window.snapshotId;
     await expect(app.generate(snapshotId, model, randomUUID(), undefined, { sourceSemanticPlan: f.reference })).rejects.toThrow('unchanged strict30');
     expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);

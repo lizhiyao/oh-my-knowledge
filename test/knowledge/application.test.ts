@@ -208,7 +208,7 @@ describe('shared knowledge application', () => {
     expect(generate).toHaveBeenCalledTimes(1);
     // The callback supplies an authored response. This verifies persistence, not model behavior or semantic acceptance.
   });
-  it('preserves authored public discussion problems, objections, proposals and negative support through one strict31 birth and reopen', async () => {
+  it('preserves authored public discussion problems, contrasts, objections and support through one strict32 birth and reopen', async () => {
     const { app, model, ports, root, source } = setup();
     // Constructed local carrier with literal public fragments; no live source/model invocation.
     writeFileSync(source, technicalDiscussionSources.map(row => JSON.stringify({ type: 'response_item', payload: {
@@ -218,13 +218,13 @@ describe('shared knowledge application', () => {
       content: { ...p.draft.content, statements: p.draft.content.statements.map(s => ({ ...s, object: null })) } } })) };
     const raw = JSON.stringify(packet), generate = vi.fn(async (_system: string) => ({ output: raw, durationMs: 1 }));
     const run = await app.generate(snapshot.snapshotId, { ...model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, generate });
-    expect(run.status).toBe('completed'); expect(run.promptVersion).toBe('knowledge-extraction-v31');
+    expect(run.status).toBe('completed'); expect(run.promptVersion).toBe('knowledge-extraction-v32');
     expect(run.rawOutput).toBe(raw); expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
     expect(generate).toHaveBeenCalledTimes(1); expect(generate.mock.calls[0][0]).toBe(STRICT_EXTRACTION_PROMPT);
     const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
       runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root), entities: new FileEntityAnalysisStore(join(root, 'entities')),
       evidence: new TraceEvidenceStore(join(root, 'sources')) });
-    expect(reopened.resume(run.runId).rawOutput).toBe(raw); expect(run.committed).toHaveLength(2);
+    expect(reopened.resume(run.runId).rawOutput).toBe(raw); expect(run.committed).toHaveLength(3);
     const saved = run.committed.map(({ knowledgeId }) => reopened.detail(knowledgeId));
     for (const proposal of authored.proposals) {
       const actual = saved.find(k => k.revision.title === proposal.draft.title)!;
@@ -237,7 +237,13 @@ describe('shared knowledge application', () => {
       expect(actual.grounding!.citations.map(c => ({ evidenceLinkId: c.evidenceLinkId, quote: c.selection.quote })))
         .toEqual(proposal.citations.map(c => ({ evidenceLinkId: c.evidenceLinkId, quote: c.selection.quote })));
     }
-    expect(saved.flatMap(k => k.revision.content.statements)).toHaveLength(8);
+    expect(saved.flatMap(k => k.revision.content.statements)).toHaveLength(13);
+    const contrasts = saved.find(k => k.revision.content.statements.some(s => s.statementId === 'environment-followup'))!;
+    const continuation = contrasts.revision.content.statements.find(s => s.statementId === 'environment-followup')!;
+    expect(continuation.context.conditions).toEqual(['报告者称也在 Vue playground 试过，回复为“结果确实如此”']);
+    expect(continuation.context.unknowns).toEqual(['具体 console 结果未包含在选段中，不能确定该环境下的属性值或与其他条件相同／不同。']);
+    expect(contrasts.revision.evidence.find(e => e.statementIds.includes('environment-followup'))?.evidenceRef).toBe(snapshot.excerpts[7].evidenceRef);
+    expect(contrasts.revision.evidence.find(e => e.statementIds.includes('configuration-explanation'))?.evidenceRef).toBe(snapshot.excerpts[8].evidenceRef);
     // Authored returns verify representability/persistence, not the model's completeness.
   });
   it('uses one window identity for entities and mentions across candidates', async () => {

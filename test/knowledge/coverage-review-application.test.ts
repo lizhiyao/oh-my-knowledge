@@ -16,7 +16,7 @@ function setup(reply?: Parameters<typeof nativeStudyFixture>[1]) {
 }
 
 describe('explicit coverage review through the production application (authored native returns)', () => {
-  it('rejects the v31 default before creating a frozen-v30 private task or dispatching', async () => {
+  it('rejects the current strict default before creating a frozen-v30 private task or dispatching', async () => {
     const f = setup(), app = f.ports.application, model = f.model(), snapshotId = f.corpus.cases[0].window.snapshotId;
     await expect(app.generate(snapshotId, model, randomUUID(), undefined, { coverageReview: { previousRunId: randomUUID() } })).rejects.toThrow('unchanged strict30');
     expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);

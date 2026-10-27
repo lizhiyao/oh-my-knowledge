@@ -8,7 +8,7 @@
 | 当前契约 | 值 |
 |---|---|
 | 作者 prompt-json | `knowledge-extraction-v29` |
-| 配置生成的 strict prompt | `knowledge-extraction-v31` |
+| 配置生成的 strict prompt | `knowledge-extraction-v32` |
 | 结构线协议 | `omk-knowledge-extraction-wire/v1` |
 | 领域响应 Schema | `4` |
 | 提炼运行 Schema | `5` |
