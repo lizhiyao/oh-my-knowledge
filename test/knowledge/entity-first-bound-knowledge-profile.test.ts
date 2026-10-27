@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildEntityFirstBoundKnowledge, type EntityFirstBoundKnowledgeManifest } from '../../scripts/bench/assets/entity-first-bound-knowledge-v1/profile.js';
-import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
+import { FROZEN_STRICT30_SYSTEM, FROZEN_STRICT30_PROFILE } from './fixtures/frozen-strict30.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 
 const asset = new URL('../../scripts/bench/assets/entity-first-bound-knowledge-v1/', import.meta.url);
 const hash = (value: string) => `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`;
 function input() {
   const manifest: EntityFirstBoundKnowledgeManifest = JSON.parse(readFileSync(new URL('manifest.json', asset), 'utf8'));
-  return { baselineSystem: STRICT_EXTRACTION_PROMPT, rules: readFileSync(new URL(manifest.rules.file, asset), 'utf8'),
+  return { baselineSystem: FROZEN_STRICT30_SYSTEM, rules: readFileSync(new URL(manifest.rules.file, asset), 'utf8'),
     suffix: readFileSync(new URL(manifest.suffix.file, asset), 'utf8'), wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
 }
 
@@ -18,14 +18,14 @@ describe('frozen entity-first research profile (no model or quality fixture)', (
     const value = input(), profiles = buildEntityFirstBoundKnowledge(value);
     const semantics = JSON.parse(readFileSync(new URL('../entity-evidence-semantics-v1/manifest.json', asset), 'utf8'));
     const task = JSON.parse(readFileSync(new URL('../entity-task-only-ablation-v1/manifest.json', asset), 'utf8'));
-    expect(STRICT_EXTRACTION_PROMPT_VERSION).toBe('knowledge-extraction-v30');
-    expect(hash(STRICT_EXTRACTION_PROMPT)).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
+    expect(FROZEN_STRICT30_PROFILE.promptVersion).toBe('knowledge-extraction-v30');
+    expect(hash(FROZEN_STRICT30_SYSTEM)).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
     expect(WINDOW_EXTRACTION_WIRE_ID).toBe('sha256:63e1a6668343df71cc33584c1b5d5f6d6c318c7e3b4e03ec9bf4bb69d7b126fe');
     expect(value.manifest.rules).toEqual({ ...semantics.rules, file: '../entity-evidence-semantics-v1/rules.txt' });
     expect(value.manifest.suffix).toEqual({ ...task.suffix, file: '../entity-task-only-ablation-v1/task-suffix.txt' });
     expect(hash(value.baselineSystem + value.rules)).toBe(semantics.candidate.systemDigest);
     expect(hash(value.baselineSystem + value.suffix)).toBe(task.candidate.systemDigest);
-    expect(profiles.baseline).toEqual({ profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v30', system: STRICT_EXTRACTION_PROMPT });
+    expect(profiles.baseline).toEqual({ profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v30', system: FROZEN_STRICT30_SYSTEM });
     expect(profiles.candidate).toEqual({ profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v35', system: value.baselineSystem + value.rules + value.suffix });
     expect(Buffer.byteLength(profiles.candidate.system, 'utf8')).toBe(71685);
     expect(hash(profiles.candidate.system)).toBe('sha256:39d852f41281743340feae6785037abfcd34e4e5d3ca0f499b1ac4dd5fac61a5');

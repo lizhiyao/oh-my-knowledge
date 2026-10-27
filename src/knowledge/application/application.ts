@@ -28,7 +28,6 @@ import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ac
 import { extractionExecution, extractionOutcomeResult, extractionPrompt, extractionRequestDigest, extractionResponse, invokeExtractionModel, serializeExtractionObservation } from '../extraction/generation.js';
 import type { ExtractionModel, ExtractionPromptProfile } from '../extraction/generation.js';
 import { buildExtractionCoverageReviewInput } from '../extraction/coverage-review-input.js';
-import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../extraction/strict-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';
 import { readSourcePlanEvidence, type SourcePlanArchivePort, type SourcePlanReference } from '../extraction/source-plan-evidence.js';
 import { buildSourcePlannedExtractionInput } from '../extraction/source-plan-input.js';
@@ -437,18 +436,18 @@ export class KnowledgeApplication {
   private sourcePlannedInput(window: EvidenceWindow, model: ExtractionModel, system: string, promptVersion: string,
     reference: SourcePlanReference): string {
     if (model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID
-      || system !== STRICT_EXTRACTION_PROMPT || promptVersion !== 'knowledge-extraction-v30'
-      || promptVersion !== STRICT_EXTRACTION_PROMPT_VERSION) {
+      || promptVersion !== 'knowledge-extraction-v30'
+      || createHash('sha256').update(system, 'utf8').digest('hex') !== '45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085') {
       throw new Error('Source-planned extraction requires the unchanged strict30 structured task.');
     }
     if (!this.ports.sourcePlanArchive) throw new Error('Source semantic plan archive is unavailable.');
-    return buildSourcePlannedExtractionInput(window, readSourcePlanEvidence(window, model, reference, this.ports.sourcePlanArchive));
+    return buildSourcePlannedExtractionInput(window, readSourcePlanEvidence(window, model, reference, this.ports.sourcePlanArchive), system);
   }
   private coverageReviewInput(window: EvidenceWindow, model: ExtractionModel, system: string, promptVersion: string,
     previousRunId: string, runId: string): string {
     if (previousRunId === runId || model.outputMode !== 'json-schema' || model.wireId !== WINDOW_EXTRACTION_WIRE_ID
-      || system !== STRICT_EXTRACTION_PROMPT || promptVersion !== 'knowledge-extraction-v30'
-      || promptVersion !== STRICT_EXTRACTION_PROMPT_VERSION) {
+      || promptVersion !== 'knowledge-extraction-v30'
+      || createHash('sha256').update(system, 'utf8').digest('hex') !== '45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085') {
       throw new Error('Coverage review requires the unchanged strict30 structured task and a distinct predecessor.');
     }
     // Read through the archive-validating store, rather than accepting caller-supplied raw or a manifest projection.
@@ -476,7 +475,7 @@ export class KnowledgeApplication {
     }
     return buildExtractionCoverageReviewInput(window, { runId: previous.runId, attemptId: attempt.attemptId,
       outcomeRef: archived.ref, snapshotId: previous.snapshotId, sourceVersion: previous.sourceVersion,
-      rawOutput: outcome.result.output });
+      rawOutput: outcome.result.output }, system);
   }
   resume(runId: string, signal?: AbortSignal): ExtractionRun {
     return this.settleRun(runId, signal);

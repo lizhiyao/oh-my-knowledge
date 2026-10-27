@@ -4,7 +4,6 @@ import { canonicalJson } from '../store.js';
 import { validUtf8 } from './bound-catalog.js';
 import type { EvidenceWindow } from './evidence.js';
 import { assertExtractionInputCapacity } from './model-input.js';
-import { STRICT_EXTRACTION_PROMPT } from './strict-prompt.js';
 import { SourcePlanReceiptSchema, sourcePlanExecution, sourcePlanRequestDigest, SOURCE_PLAN_RECEIPT_MAX_BYTES,
   type readSourcePlanEvidence } from './source-plan-evidence.js';
 import { ExtractionOutcomeRefSchema } from './runs.js';
@@ -48,7 +47,7 @@ const instruction = '本次任务根据原文及来源语义清单生成完整�
 
 /** The caller authenticates this evidence through readSourcePlanEvidence before constructing a new application request. */
 export function buildSourcePlannedExtractionInput(window: Pick<EvidenceWindow, 'snapshotId' | 'sourceVersion' | 'excerpts' | 'limitations'>,
-  plan: ReturnType<typeof readSourcePlanEvidence>): string {
+  plan: ReturnType<typeof readSourcePlanEvidence>, system: string): string {
   buildKnowledgeSourcePlanInput(window); // Preserve the same bounded UTF-8 source projection in both stages.
   if (plan.receipt.snapshotId !== window.snapshotId || plan.receipt.sourceVersion !== window.sourceVersion) {
     throw new Error('Source semantic plan belongs to a different evidence source.');
@@ -60,6 +59,6 @@ export function buildSourcePlannedExtractionInput(window: Pick<EvidenceWindow, '
       receiptRef: plan.receiptRef, nativeRef: plan.receipt.nativeRef, requestDigest: plan.receipt.requestDigest,
       systemVersion: plan.receipt.request.systemVersion, inputVersion: plan.receipt.request.inputVersion, wireId: plan.receipt.request.wireId,
       rawOutput: plan.rawOutput, rawOutputDigest: plan.rawOutputDigest, semanticStatus: plan.semanticStatus } });
-  assertExtractionInputCapacity(input, STRICT_EXTRACTION_PROMPT);
+  assertExtractionInputCapacity(input, system);
   return input;
 }

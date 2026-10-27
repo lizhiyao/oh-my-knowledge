@@ -20,6 +20,7 @@ import { ENTITY_REFERENT_KIND_POLICY } from '../../src/knowledge/extraction/know
 import { EXTRACTION_INPUT_MAX_BYTES, ExtractionInputCapacityError } from '../../src/knowledge/extraction/model-input.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { FROZEN_STRICT30_SYSTEM, generateFrozenStrict30 } from './fixtures/frozen-strict30.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -69,10 +70,16 @@ function setup(reply?: Parameters<typeof nativeStudyFixture>[1]) {
 }
 
 describe('source semantic plan to real application admission (authored native evidence)', () => {
+  it('rejects the v31 default before creating a frozen-v30 private task or dispatching', async () => {
+    const f = setup(), app = f.app(), model = f.model, snapshotId = f.window.snapshotId;
+    await expect(app.generate(snapshotId, model, randomUUID(), undefined, { sourceSemanticPlan: f.reference })).rejects.toThrow('unchanged strict30');
+    expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
+  });
+
   it('authenticates the separate task and preserves untrusted roles without filtering final strict30/native admission', async () => {
     const f = setup(), app = f.app(), id = randomUUID(), options = { sourceSemanticPlan: f.reference };
     const nativeOriginal = bytes(f.native), receiptOriginal = f.receiptBytes();
-    const run = await app.generate(f.window.snapshotId, f.model, id, undefined, options);
+    const run = await generateFrozenStrict30(app, f.window.snapshotId, f.model, id, undefined, options);
     const actual = f.effects.mock.calls[0][0], input = JSON.parse(actual.prompt);
     expect(SOURCE_PLAN_FINAL_INPUT_VERSION).toBe('knowledge-extraction-source-plan-input/v2');
     expect(input).toMatchObject({ taskKind: 'source_planned_extraction', taskVersion: SOURCE_PLAN_FINAL_INPUT_VERSION,
@@ -89,15 +96,15 @@ describe('source semantic plan to real application admission (authored native ev
     const outcome = f.ports.runs.readOutcome(id, run.attempts[0].attemptId).outcome;
     expect(outcome).toMatchObject({ outcomeKind: 'result', result: { output: run.rawOutput } });
     expect(f.receiptBytes()).toEqual(receiptOriginal); expect(bytes(f.native)).toEqual(nativeOriginal);
-    await app.generate(f.window.snapshotId, f.model, id, undefined, options);
+    await generateFrozenStrict30(app, f.window.snapshotId, f.model, id, undefined, options);
     expect(f.effects).toHaveBeenCalledTimes(1);
     f.receipt.finishedAt = '2020-01-01T00:00:02Z';
     const changedReceipt = f.reseal();
-    await expect(app.generate(f.window.snapshotId, f.model, id, undefined,
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, id, undefined,
       { sourceSemanticPlan: changedReceipt })).rejects.toThrow('identity conflict');
     expect(f.effects).toHaveBeenCalledTimes(1);
-    await expect(app.generate(f.window.snapshotId, f.model, id)).rejects.toThrow('identity conflict');
-    await expect(app.generate(f.window.snapshotId, f.model, randomUUID(), undefined,
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, id)).rejects.toThrow('identity conflict');
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, randomUUID(), undefined,
       { coverageReview: { previousRunId: id } })).rejects.toThrow('source-only first task');
   });
 
@@ -106,7 +113,7 @@ describe('source semantic plan to real application admission (authored native ev
       const result = JSON.parse(output); result.mentions[0].selection.quote = 'not in this source';
       return studyNativeResult(JSON.stringify(result));
     });
-    const run = await f.app().generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: f.reference });
+    const run = await generateFrozenStrict30(f.app(), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: f.reference });
     expect(run.rawOutput).toContain('not in this source');
     expect(run.entityRejections?.some(value => value.reasons.includes('quote_mismatch'))).toBe(true);
     expect(run.rejections.length).toBeGreaterThan(0); expect(run.committed).toEqual([]);
@@ -117,19 +124,19 @@ describe('source semantic plan to real application admission (authored native ev
   it('preserves the complete plan and source at the final strict30 capacity boundary', () => {
     const f = setup(), plan = readSourcePlanEvidence(f.window, f.model, f.reference, f.archive);
     const window = { ...f.window, limitations: [''] };
-    const baseline = buildSourcePlannedExtractionInput(window, plan);
-    const available = EXTRACTION_INPUT_MAX_BYTES - Buffer.byteLength(STRICT_EXTRACTION_PROMPT) - Buffer.byteLength(baseline);
+    const baseline = buildSourcePlannedExtractionInput(window, plan, FROZEN_STRICT30_SYSTEM);
+    const available = EXTRACTION_INPUT_MAX_BYTES - Buffer.byteLength(FROZEN_STRICT30_SYSTEM) - Buffer.byteLength(baseline);
     window.limitations[0] = 'x'.repeat(available);
-    const input = buildSourcePlannedExtractionInput(window, plan);
-    expect(Buffer.byteLength(input) + Buffer.byteLength(STRICT_EXTRACTION_PROMPT)).toBe(EXTRACTION_INPUT_MAX_BYTES);
+    const input = buildSourcePlannedExtractionInput(window, plan, FROZEN_STRICT30_SYSTEM);
+    expect(Buffer.byteLength(input) + Buffer.byteLength(FROZEN_STRICT30_SYSTEM)).toBe(EXTRACTION_INPUT_MAX_BYTES);
     expect(JSON.parse(input).sourcePlanResponse.rawOutput).toBe(f.native.outcome.result.output);
     expect(JSON.parse(input).limitations).toEqual(window.limitations);
     window.limitations[0] += 'x';
     const original = structuredClone({ window, plan });
-    expect(() => buildSourcePlannedExtractionInput(window, plan)).toThrow(ExtractionInputCapacityError);
+    expect(() => buildSourcePlannedExtractionInput(window, plan, FROZEN_STRICT30_SYSTEM)).toThrow(ExtractionInputCapacityError);
     expect({ window, plan }).toEqual(original);
     window.limitations[0] = '\ud800';
-    expect(() => buildSourcePlannedExtractionInput(window, plan)).toThrow('UTF-8');
+    expect(() => buildSourcePlannedExtractionInput(window, plan, FROZEN_STRICT30_SYSTEM)).toThrow('UTF-8');
     expect(f.effects).not.toHaveBeenCalled();
   });
 
@@ -153,14 +160,14 @@ describe('source semantic plan to real application admission (authored native ev
       if (mode === 'receipt-ref') reference = { ...reference, receiptRef: { ...reference.receiptRef, digest: hash('wrong receipt') } };
       if (mode === 'native-bytes') { f.native.outcome.result.output += ' '; /* deliberately do not update nativeRef */
         const port: SourcePlanArchivePort = { ...f.archive, read: () => ({ receiptBytes: f.receiptBytes(), outcomeBytes: bytes(f.native) }) };
-        await expect(f.app(port).generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
+        await expect(generateFrozenStrict30(f.app(port), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
       } else if (mode === 'request-digest') {
         f.receipt.requestDigest = hash('wrong request');
         const wrongBytes = bytes(f.receipt), port: SourcePlanArchivePort = { ...f.archive,
           read: () => ({ receiptBytes: wrongBytes, outcomeBytes: bytes(f.native) }) };
         reference = { ...reference, receiptRef: ref(wrongBytes) };
-        await expect(f.app(port).generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
-      } else await expect(f.app().generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
+        await expect(generateFrozenStrict30(f.app(port), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
+      } else await expect(generateFrozenStrict30(f.app(), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow();
       expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
     });
 
@@ -177,29 +184,29 @@ describe('source semantic plan to real application admission (authored native ev
             message: 'authored', truncated: false, accessorsSkipped: false } } : f.native.outcome;
       f.setOutcomeBytes(bytes({ ...f.native, outcome }));
       const reference = { receiptId: f.receipt.receiptId, receiptRef: ref(f.receiptBytes()) };
-      await expect(f.app().generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow('complete successful native');
+      await expect(generateFrozenStrict30(f.app(), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference })).rejects.toThrow('complete successful native');
       expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
     });
 
   it('distinguishes source-plan quality rejection from corrupt UTF-8 without hiding either raw return', async () => {
     const f = setup(); f.plan.objects[0].anchors[0].quote = 'missing quote';
     f.native.outcome.result.output = JSON.stringify(f.plan); const reference = f.reseal();
-    try { await f.app().generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference }); throw new Error('Expected source plan validation failure.'); }
+    try { await generateFrozenStrict30(f.app(), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: reference }); throw new Error('Expected source plan validation failure.'); }
     catch (error) { expect(error).toBeInstanceOf(SourcePlanValidationError);
       expect((error as SourcePlanValidationError).assessment).toMatchObject({ status: 'rejected', rawOutput: f.native.outcome.result.output }); }
     f.setOutcomeBytes(Buffer.from([0xff]));
     const bad = { receiptId: reference.receiptId, receiptRef: ref(f.receiptBytes()) };
-    await expect(f.app().generate(f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: bad })).rejects.not.toBeInstanceOf(SourcePlanValidationError);
+    await expect(generateFrozenStrict30(f.app(), f.window.snapshotId, f.model, randomUUID(), undefined, { sourceSemanticPlan: bad })).rejects.not.toBeInstanceOf(SourcePlanValidationError);
     expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
   });
 
   it('keeps the research entry opt-in, exclusive, strict30-only and outside bounded retry', async () => {
     const f = setup(), options = { sourceSemanticPlan: f.reference }, app = f.app();
     const policy = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2176, maxOutputTokens: 64, profileId: 'loopback-test/v1' });
-    await expect(f.app(null).generate(f.window.snapshotId, f.model, randomUUID(), undefined, options)).rejects.toThrow('archive is unavailable');
-    await expect(app.generate(f.window.snapshotId, f.model, randomUUID(), undefined, { ...options, coverageReview: { previousRunId: randomUUID() } })).rejects.toThrow('mutually exclusive');
-    await expect(app.generate(f.window.snapshotId, f.model, randomUUID(), undefined, { ...options, policy })).rejects.toThrow('single-invocation');
-    await expect(app.generate(f.window.snapshotId, f.model, randomUUID(), undefined, { ...options,
+    await expect(generateFrozenStrict30(f.app(null), f.window.snapshotId, f.model, randomUUID(), undefined, options)).rejects.toThrow('archive is unavailable');
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, randomUUID(), undefined, { ...options, coverageReview: { previousRunId: randomUUID() } })).rejects.toThrow('mutually exclusive');
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, randomUUID(), undefined, { ...options, policy })).rejects.toThrow('single-invocation');
+    await expect(generateFrozenStrict30(app, f.window.snapshotId, f.model, randomUUID(), undefined, { ...options,
       promptProfile: { profileVersion: 'knowledge-extraction-prompt-profile/v1', promptVersion: 'knowledge-extraction-v35', system: STRICT_EXTRACTION_PROMPT } })).rejects.toThrow('unchanged strict30');
     const normal = await app.generate(f.window.snapshotId, f.model);
     expect(JSON.parse(f.effects.mock.calls.at(-1)![0].prompt)).not.toHaveProperty('sourcePlanResponse');

@@ -15,7 +15,7 @@ import { ExtractionAttemptSchema } from '../../src/knowledge/extraction/runs.js'
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { FROZEN_STRICT30_SYSTEM } from './fixtures/frozen-strict30.js';
 import { ENTITY_ONLY_EXTRACTION_PROFILE } from '../../src/knowledge/extraction/entity-only-prompt.js';
 import { OCCURRENCE_GUIDED_EXTRACTION_PROFILE } from '../../src/knowledge/extraction/occurrence-guided-prompt.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
@@ -33,14 +33,14 @@ function taskAblation() {
   const asset = new URL('../../scripts/bench/assets/entity-task-only-ablation-v1/', import.meta.url);
   const manifest: EntityTaskOnlyAblationManifest = JSON.parse(readFileSync(new URL('manifest.json', asset), 'utf8'));
   const suffix = readFileSync(new URL('task-suffix.txt', asset), 'utf8');
-  return { baselineSystem: STRICT_EXTRACTION_PROMPT, suffix, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
+  return { baselineSystem: FROZEN_STRICT30_SYSTEM, suffix, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
 }
 
 function evidenceSemantics() {
   const asset = new URL('../../scripts/bench/assets/entity-evidence-semantics-v1/', import.meta.url);
   const manifest: EntityEvidenceSemanticsManifest = JSON.parse(readFileSync(new URL('manifest.json', asset), 'utf8'));
   const rules = readFileSync(new URL('rules.txt', asset), 'utf8');
-  return { baselineSystem: STRICT_EXTRACTION_PROMPT, rules, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
+  return { baselineSystem: FROZEN_STRICT30_SYSTEM, rules, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
 }
 
 describe('production extraction study runner (authored executor, zero model access)', () => {
@@ -201,8 +201,8 @@ describe('production extraction study runner (authored executor, zero model acce
     const input = taskAblation(), profiles = buildEntityTaskOnlyAblation(input);
     expect(input.manifest.baseline.systemDigest).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
     expect(input.manifest.candidate.systemDigest).toBe('sha256:d282562d720653a31894190e4102dda57125ddcd7d8d5fc2e9196c1c5301a53e');
-    expect(profiles.baseline.system).toBe(STRICT_EXTRACTION_PROMPT);
-    expect(profiles.candidate.system).toBe(STRICT_EXTRACTION_PROMPT + input.suffix);
+    expect(profiles.baseline.system).toBe(FROZEN_STRICT30_SYSTEM);
+    expect(profiles.candidate.system).toBe(FROZEN_STRICT30_SYSTEM + input.suffix);
     for (const changed of [
       { ...input, baselineSystem: input.baselineSystem + '\n' },
       { ...input, suffix: input.suffix.trim() },
@@ -216,8 +216,8 @@ describe('production extraction study runner (authored executor, zero model acce
     expect(input.manifest.baseline.systemDigest).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
     expect(input.manifest.rules.digest).toBe('sha256:d13d6a3d92ff3698c103851a32efd4fe60a14566f6ae13652f1d23c9fc3a7b4a');
     expect(input.manifest.candidate.systemDigest).toBe('sha256:670b31774d288d0fa03687d7e87ffcaf2721dccbd914e484b43cc8e3701a3ac9');
-    expect(profiles.baseline.system).toBe(STRICT_EXTRACTION_PROMPT);
-    expect(profiles.candidate.system).toBe(STRICT_EXTRACTION_PROMPT + input.rules);
+    expect(profiles.baseline.system).toBe(FROZEN_STRICT30_SYSTEM);
+    expect(profiles.candidate.system).toBe(FROZEN_STRICT30_SYSTEM + input.rules);
     expect(profiles.candidate.promptVersion).toBe('knowledge-extraction-v34');
     for (const changed of [
       { ...input, baselineSystem: input.baselineSystem + '\n' },

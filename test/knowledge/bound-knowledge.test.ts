@@ -16,6 +16,7 @@ import { modelWindow, wireModelWindow } from './fixtures.js';
 import type { BoundKnowledgeCatalogGap, BoundKnowledgeMaterialAccounting, BoundKnowledgeExcerptAccounting }
   from '../../src/knowledge/extraction/bound-knowledge-accounting.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { FROZEN_STRICT30_SYSTEM } from './fixtures/frozen-strict30.js';
 import { KNOWLEDGE_RECORD_SCOPE_POLICY, KNOWLEDGE_RECORD_CONTEXT_POLICY, KNOWLEDGE_SOURCE_AND_TIME_POLICY,
   KNOWLEDGE_MODALITY_POLICY, KNOWLEDGE_ATOMIC_STATEMENT_POLICY, KNOWLEDGE_CITATION_POLICY }
   from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
@@ -272,7 +273,7 @@ describe('knowledge bound to one immutable entity analysis revision', () => {
       wire: 'sha256:51a169608e6f92a712d68dceeb6af9bb0e4d28663273a48ef3540eb5f426bfed',
       schema: 'sha256:e13e900f09a33a6ee2340eb0d3e7304d54301524907f8f37d7b4f5111b3f60e8',
     });
-    expect(hash(STRICT_EXTRACTION_PROMPT)).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
+    expect(hash(FROZEN_STRICT30_SYSTEM)).toBe('sha256:45ccb3821a6ec2c0ee1bc5f8f6ab4f2e3590724e2d4453cd39d77f46d4fb0085');
     for (const policy of [KNOWLEDGE_RECORD_SCOPE_POLICY, KNOWLEDGE_RECORD_CONTEXT_POLICY, KNOWLEDGE_SOURCE_AND_TIME_POLICY,
       KNOWLEDGE_MODALITY_POLICY, KNOWLEDGE_ATOMIC_STATEMENT_POLICY, KNOWLEDGE_CITATION_POLICY]) {
       expect(STRICT_EXTRACTION_PROMPT).toContain(policy); expect(BOUND_KNOWLEDGE_SYSTEM).toContain(policy);

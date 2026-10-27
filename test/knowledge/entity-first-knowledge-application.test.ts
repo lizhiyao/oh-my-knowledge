@@ -9,7 +9,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
+import { FROZEN_STRICT30_SYSTEM, FROZEN_STRICT30_PROFILE } from './fixtures/frozen-strict30.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { ENTITY_ONLY_EXTRACTION_PROFILE, ENTITY_ONLY_EXTRACTION_PROMPT,
   ENTITY_ONLY_EXTRACTION_SYSTEM_DIGEST } from '../../src/knowledge/extraction/entity-only-prompt.js';
@@ -38,7 +38,7 @@ const hash = (value: string | Uint8Array) => 'sha256:' + createHash('sha256').up
 const bytes = (value: unknown) => Buffer.from(JSON.stringify(value), 'utf8');
 const ref = (value: Uint8Array) => ({ bytes: value.byteLength, digest: hash(value) });
 const profile = buildEntityFirstBoundKnowledge({
-  baselineSystem: STRICT_EXTRACTION_PROMPT, wireId: WINDOW_EXTRACTION_WIRE_ID,
+  baselineSystem: FROZEN_STRICT30_SYSTEM, wireId: WINDOW_EXTRACTION_WIRE_ID,
   rules: readFileSync(new URL('../../scripts/bench/assets/entity-evidence-semantics-v1/rules.txt', import.meta.url), 'utf8'),
   suffix: readFileSync(new URL('../../scripts/bench/assets/entity-task-only-ablation-v1/task-suffix.txt', import.meta.url), 'utf8'),
   manifest: JSON.parse(readFileSync(new URL('../../scripts/bench/assets/entity-first-bound-knowledge-v1/manifest.json', import.meta.url), 'utf8')),
@@ -350,16 +350,16 @@ describe('occurrence-guided dispatch boundary', () => {
 });
 
 describe('unchanged prior extraction tasks', () => {
-  it.each(['default-strict30', 'prior-E35'] as const)('does not reinterpret the %s task as entity-only', async mode => {
+  it.each(['frozen-strict30', 'prior-E35'] as const)('does not reinterpret the %s task as entity-only', async mode => {
     const f = entityFixture(undefined, false);
     const result = await f.app.generate(f.window.snapshotId, f.model, f.runId, undefined,
-      mode === 'prior-E35' ? { promptProfile: profile } : undefined);
+      { promptProfile: mode === 'prior-E35' ? profile : FROZEN_STRICT30_PROFILE });
     expect(result.status).toBe('completed'); expect(result.promptVersion).toBe(mode === 'prior-E35' ? profile.promptVersion : 'knowledge-extraction-v30');
     expect(result.intents).toHaveLength(1); expect(result.committed).toHaveLength(1); expect(f.app.list()).toHaveLength(1);
     expect(f.ports.entities.read(f.runId).revisions[0].entities).toHaveLength(2);
     expect(JSON.parse(result.rawOutput!).proposals).toHaveLength(1); expect(f.effects).toHaveBeenCalledTimes(1);
     expect(f.effects).toHaveBeenCalledWith(expect.objectContaining({
-      system: mode === 'prior-E35' ? profile.system : STRICT_EXTRACTION_PROMPT, prompt: extractionModelInput(f.window),
+      system: mode === 'prior-E35' ? profile.system : FROZEN_STRICT30_SYSTEM, prompt: extractionModelInput(f.window),
     }));
   });
 });

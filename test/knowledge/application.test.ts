@@ -18,6 +18,7 @@ import { EXTRACTION_PROMPT, EXTRACTION_PROMPT_VERSION } from '../../src/knowledg
 import { EXTRACTION_INPUT_MAX_BYTES } from '../../src/knowledge/extraction/model-input.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { identityWindow, modelWindow, wireModelWindow } from './fixtures.js';
+import { authoredTechnicalDiscussion, technicalDiscussionSources } from './fixtures/technical-discussion.js';
 import { STRICT_EXTRACTION_PROMPT, STRICT_EXTRACTION_PROMPT_VERSION } from '../../src/knowledge/extraction/strict-prompt.js';
 import { STRICT_EXTRACTION_FEWSHOT_EXAMPLES } from '../../src/knowledge/extraction/strict-fewshot.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
@@ -206,6 +207,38 @@ describe('shared knowledge application', () => {
     expect(run.attempts[0].wireDiagnostic).toMatchObject({ wireStatus: 'valid', itemFailureCount: 0 });
     expect(generate).toHaveBeenCalledTimes(1);
     // The callback supplies an authored response. This verifies persistence, not model behavior or semantic acceptance.
+  });
+  it('preserves authored public discussion problems, objections, proposals and negative support through one strict31 birth and reopen', async () => {
+    const { app, model, ports, root, source } = setup();
+    // Constructed local carrier with literal public fragments; no live source/model invocation.
+    writeFileSync(source, technicalDiscussionSources.map(row => JSON.stringify({ type: 'response_item', payload: {
+      type: 'message', role: 'user', content: [{ type: 'input_text', text: row.text }] } })).join('\n'));
+    const snapshot = app.capture({ path: source }), authored = authoredTechnicalDiscussion(snapshot.excerpts);
+    const packet = { ...authored, proposals: authored.proposals.map(p => ({ ...p, draft: { ...p.draft,
+      content: { ...p.draft.content, statements: p.draft.content.statements.map(s => ({ ...s, object: null })) } } })) };
+    const raw = JSON.stringify(packet), generate = vi.fn(async (_system: string) => ({ output: raw, durationMs: 1 }));
+    const run = await app.generate(snapshot.snapshotId, { ...model, outputMode: 'json-schema', wireId: WINDOW_EXTRACTION_WIRE_ID, generate });
+    expect(run.status).toBe('completed'); expect(run.promptVersion).toBe('knowledge-extraction-v31');
+    expect(run.rawOutput).toBe(raw); expect(run.rejections).toEqual([]); expect(run.entityRejections).toEqual([]);
+    expect(generate).toHaveBeenCalledTimes(1); expect(generate.mock.calls[0][0]).toBe(STRICT_EXTRACTION_PROMPT);
+    const reopened = new KnowledgeApplication({ ...ports, knowledge: new FileKnowledgeStore(join(root, 'items'), 'test'),
+      runs: new FileExtractionRunStore(join(root, 'extraction-runs'), root), entities: new FileEntityAnalysisStore(join(root, 'entities')),
+      evidence: new TraceEvidenceStore(join(root, 'sources')) });
+    expect(reopened.resume(run.runId).rawOutput).toBe(raw); expect(run.committed).toHaveLength(2);
+    const saved = run.committed.map(({ knowledgeId }) => reopened.detail(knowledgeId));
+    for (const proposal of authored.proposals) {
+      const actual = saved.find(k => k.revision.title === proposal.draft.title)!;
+      expect(actual.reviewStatus).toBe('pending'); expect(actual.revision.content.organization).toEqual({ knowledgeKind: 'fact' });
+      expect(actual.revision.evidence).toEqual(proposal.draft.evidence);
+      for (const expected of proposal.draft.content.statements) {
+        const statement = actual.revision.content.statements.find(s => s.statementId === expected.statementId)!;
+        expect({ ...statement, subject: expected.subject }).toEqual(expected);
+      }
+      expect(actual.grounding!.citations.map(c => ({ evidenceLinkId: c.evidenceLinkId, quote: c.selection.quote })))
+        .toEqual(proposal.citations.map(c => ({ evidenceLinkId: c.evidenceLinkId, quote: c.selection.quote })));
+    }
+    expect(saved.flatMap(k => k.revision.content.statements)).toHaveLength(8);
+    // Authored returns verify representability/persistence, not the model's completeness.
   });
   it('uses one window identity for entities and mentions across candidates', async () => {
     const { app, snapshot, model, generate } = setup();
