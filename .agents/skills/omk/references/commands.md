@@ -629,7 +629,7 @@ omk observe knowledge <operation> [flags]
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
-- `--max-bytes` `option`:retrieve：完整单行 JSON（含换行）的 UTF-8 上限，默认 8192；完整陈述装不下时报告省略，不截断条件。
+- `--max-bytes` `option`:retrieve：可逆列式 JSON（含列定义、精确字符串池和换行）的 UTF-8 上限，默认 8192；完整陈述装不下时报告省略，不截断条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
 - `--operation-id` `option`:seal-run：稳定的人工操作 UUID，重入必须复用。
@@ -681,7 +681,7 @@ omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> 
 ```
 
 ```bash
-omk observe knowledge retrieve --workspace ./knowledge --query "为什么初始化时v-model没有生效？" --max-bytes 3000 --json
+omk observe knowledge retrieve --workspace ./knowledge --query "为什么初始化时v-model没有生效？" --max-bytes 8192 --json
 ```
 
 ```bash

@@ -21,6 +21,7 @@ import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/c
 import { modelWindow } from '../knowledge/fixtures.js';
 import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
+import { decodeKnowledgeContext, retrieveKnowledge } from '../../src/knowledge/application/retrieval.js';
 
 const roots: string[] = [];
 const linkServers: Server[] = [];
@@ -36,7 +37,8 @@ describe('observe knowledge command wiring', () => {
     const options = { env: { OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1' } };
     const result = await runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, '--query', '初始化 v-model', '--max-bytes', '3000', '--json'], options);
     const parsed = JSON.parse(result.stdout);
-    expect(parsed).toMatchObject({ projectionKind: 'knowledge-task-context', items: [] });
+    expect(parsed).toMatchObject({ projectionKind: 'knowledge-task-context', schemaVersion: 2, encoding: 'typed-columns/v1', items: [] });
+    expect(decodeKnowledgeContext(parsed).items).toEqual([]);
     expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(3000);
     expect(existsSync(workspace)).toBe(false); expect(existsSync(home)).toBe(false);
     for (const flags of [[], ['--query', ' '], ['--query', 'x', '--max-bytes', '100'], ['--query', 'x', '--snapshot', 'invalid'], ['--query', 'x', '--executor', 'codex']]) {
@@ -44,6 +46,22 @@ describe('observe knowledge command wiring', () => {
       expect(existsSync(workspace)).toBe(false); expect(existsSync(home)).toBe(false);
     }
     await expect(runCommand(ObserveKnowledge, ['list', '--workspace', workspace, '--max-bytes', '3000'], options)).rejects.toMatchObject({ code: 2 });
+    const populated = join(directory, 'populated'), source = join(directory, 'source.jsonl'), app = createLocalKnowledgeApplication(populated);
+    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha \u4f7f\u7528 Beta' }] } }));
+    const window = app.capture({ path: source }), packet = modelWindow();
+    packet.mentions.forEach(mention => { mention.selection.evidenceRef = window.excerpts[0].evidenceRef; });
+    packet.proposals[0].draft.evidence[0].evidenceRef = window.excerpts[0].evidenceRef;
+    packet.proposals[0].citations[0].selection.evidenceRef = window.excerpts[0].evidenceRef;
+    const run = await app.generate(window.snapshotId, { executor: 'authored-fixture', model: 'no-native-call', generate: async () => ({ output: JSON.stringify(packet), durationMs: 0 }) });
+    const committed = run.committed[0], detail = app.detail(committed.knowledgeId);
+    app.maintain(committed.knowledgeId, committed.revisionId, 'retain', 'fixture retention', detail.history.generation);
+    const actual = await runCli(['observe', 'knowledge', 'retrieve', '--workspace', populated, '--query', 'Alpha'],
+      { cwd: directory, env: { ...process.env, OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1' } });
+    expect(actual.stdout).toBe(JSON.stringify(retrieveKnowledge(app, { query: 'Alpha' })) + '\n');
+    expect(Buffer.byteLength(actual.stdout)).toBeLessThanOrEqual(8192);
+    expect(decodeKnowledgeContext(JSON.parse(actual.stdout)).items[0].statement).toEqual(app.detail(committed.knowledgeId).revision.content.statements[0]);
+    expect(existsSync(home)).toBe(false);
+
   });
 
   it('seals/query old-wire runs through the real CLI with explicit workspace, no usable settings/producer, and exact replay identities', async () => {

@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { KnowledgeDraft } from '../contracts.js';
 import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
+import { encodeKnowledgeContext, type KnowledgeRetrievalResult } from './retrieval-codec.js';
+export { decodeKnowledgeContext, encodeKnowledgeContext, type KnowledgeRetrievalResult } from './retrieval-codec.js';
 
 export const KNOWLEDGE_RETRIEVAL_MIN_BYTES = 1024;
 export const KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES = 8192;
@@ -15,7 +17,7 @@ export const KnowledgeRetrievalRequestSchema = z.strictObject({
 export type KnowledgeRetrievalRequest = z.input<typeof KnowledgeRetrievalRequestSchema>;
 type Detail = ReturnType<KnowledgeApplication['detail']>;
 type Statement = KnowledgeDraft['content']['statements'][number];
-type Unit = { detail: Detail; statement: Statement; score: number; costBytes: number; scopeEntityId?: string };
+type Unit = { detail: Detail; statement: Statement; hits: Set<string>; documentHits: Set<string>; costBytes: number; scopeEntityId?: string };
 type ScopeDiagnostics = { source?: { status: 'available' | 'unavailable'; reason?: string }; entity?: 'matched_knowledge' | 'no_eligible_knowledge' };
 export class KnowledgeRetrievalBudgetError extends Error {
   constructor(readonly minimumBytes: number) { super(`Knowledge retrieval metadata requires at least ${minimumBytes} UTF-8 bytes.`); this.name = 'KnowledgeRetrievalBudgetError'; }
@@ -77,8 +79,8 @@ type Locator = { source: number | null; evidenceRef: string; start: number; end:
   positionStatus: 'matched' | 'mismatch' | 'unavailable'; sourceRole?: string; sourceTimestamp?: string };
 type Evidence = { knowledge: number; evidenceLinkId: string; relation: 'supports' | 'opposes' | 'background';
   basis: 'direct_observation' | 'source_assertion' | 'inference'; locators: Locator[] };
-export interface KnowledgeRetrievalResult {
-  projectionKind: 'knowledge-task-context'; schemaVersion: 1;
+export interface KnowledgeRetrievalProjection {
+  projectionKind: 'knowledge-task-context'; schemaVersion: 2;
   omitted: { oversizedUnits: number; budgetUnits: number; identityRelations: true }; scopeDiagnostics?: ScopeDiagnostics;
   knowledge: (ReturnType<typeof knowledgeContext> & { scopeEntities?: number[] })[]; entities: ReturnType<typeof entityContext>[]; sources: ReturnType<typeof sourceContext>[]; evidence: Evidence[];
   items: { knowledge: number; statement: Statement; organizationRole?: ReturnType<typeof statementRole>; entities: number[]; evidence: number[] }[];
@@ -90,7 +92,7 @@ function insert<T>(pool: T[], indices: Map<string, number>, key: string, create:
 }
 function measure(result: KnowledgeRetrievalResult): number { return Buffer.byteLength(JSON.stringify(result), 'utf8') + 1; }
 function project(units: Unit[], matchedUnits: number, oversizedUnits: number, scopeDiagnostics: ScopeDiagnostics): KnowledgeRetrievalResult {
-  const result: KnowledgeRetrievalResult = { projectionKind: 'knowledge-task-context', schemaVersion: 1,
+  const result: KnowledgeRetrievalProjection = { projectionKind: 'knowledge-task-context', schemaVersion: 2,
     omitted: { oversizedUnits, budgetUnits: matchedUnits - oversizedUnits - units.length, identityRelations: true },
     ...(Object.keys(scopeDiagnostics).length ? { scopeDiagnostics } : {}),
     knowledge: [], entities: [], sources: [], evidence: [], items: [] };
@@ -125,18 +127,30 @@ function project(units: Unit[], matchedUnits: number, oversizedUnits: number, sc
     })));
     result.items.push({ knowledge: knowledgeIndex, statement, ...(statementRole(detail, statement.statementId) ? { organizationRole: statementRole(detail, statement.statementId) } : {}), entities: entityIndices, evidence: evidenceIndices });
   }
-  return result;
+  return encodeKnowledgeContext(result);
 }
-function literalScore(detail: Detail, statement: Statement, terms: string[]): number {
-  const related = new Set(detail.revision.entities.map(entity => entity.entityId));
-  const qualifiers = detail.entityAnalysis?.status === 'available'
-    ? detail.entityAnalysis.revision.entities.filter(entity => related.has(entity.entityId)).flatMap(entity => entity.qualifiers.filter(Boolean)) : [];
-  const fields = [detail.revision.title, ...detail.tagging.tags, statement.relation, ...textValues(statement.context),
-    ...detail.revision.entities.flatMap(entity => [entity.label, entity.description]), ...qualifiers,
-    ...textValues(organizationContext(detail, new Set([statement.statementId])))]
-    .map(value => value.normalize('NFKC').toLowerCase());
-  const score = terms.filter(term => fields.some(value => value.includes(term))).length;
-  return score;
+function literalHits(fields: string[], terms: string[]): Set<string> {
+  const normalized = fields.map(value => value.normalize('NFKC').toLowerCase());
+  return new Set(terms.filter(term => normalized.some(value => value.includes(term))));
+}
+function entityFields(detail: Detail, ids: Set<string>): string[] {
+  const fields = detail.revision.entities.filter(entity => ids.has(entity.entityId)).flatMap(entity => [entity.label, entity.description]);
+  if (detail.entityAnalysis?.status === 'available') fields.push(...detail.entityAnalysis.revision.entities
+    .filter(entity => ids.has(entity.entityId)).flatMap(entity => entity.qualifiers.filter(Boolean)));
+  return fields;
+}
+function documentHits(detail: Detail, terms: string[]): Set<string> {
+  return literalHits([detail.revision.title, ...detail.tagging.tags,
+    ...entityFields(detail, new Set(detail.revision.entities.map(entity => entity.entityId))),
+    ...textValues(organizationContext(detail, new Set()))], terms);
+}
+function statementHits(detail: Detail, statement: Statement, terms: string[]): Set<string> {
+  return literalHits([statement.relation, ...textValues(statement.context), ...entityFields(detail,
+    new Set([statement.subject.entityId, ...(statement.object ? [statement.object.entityId] : [])]))], terms);
+}
+function stableOrder(a: Unit, b: Unit): number {
+  return Date.parse(b.detail.revision.revisedAt) - Date.parse(a.detail.revision.revisedAt)
+    || compareId(a.detail.revision.knowledgeId, b.detail.revision.knowledgeId) || compareId(a.statement.statementId, b.statement.statementId);
 }
 /** Current revisions, no filesystem writes, executor calls, raw-source fallback or name merging. */
 export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest): KnowledgeRetrievalResult {
@@ -151,26 +165,40 @@ export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'deta
     if (request.snapshot && !detail.grounding.sourceBindings.some(binding => binding.snapshotId === request.snapshot && (!request.sourceVersion || binding.sourceVersion === request.sourceVersion))) continue;
     if (request.entityId && !detail.revision.entities.some(entity => entity.entityId === request.entityId)) continue;
     if (request.entityId) entityMatched = true;
+    const recalled = documentHits(detail, terms);
     for (const statement of detail.revision.content.statements) {
-      const score = literalScore(detail, statement, terms);
-      if (score) candidates.push({ detail, statement, score, costBytes: 0, ...(request.entityId ? { scopeEntityId: request.entityId } : {}) });
+      const hits = statementHits(detail, statement, terms);
+      if (hits.size || recalled.size) candidates.push({ detail, statement, hits, documentHits: recalled, costBytes: 0,
+        ...(request.entityId ? { scopeEntityId: request.entityId } : {}) });
     }
   }
   const scopeDiagnostics: ScopeDiagnostics = { ...(source ? { source: source.status === 'available' ? { status: 'available' as const } : { status: 'unavailable' as const, reason: source.reason } } : {}),
     ...(request.entityId ? { entity: entityMatched ? 'matched_knowledge' as const : 'no_eligible_knowledge' as const } : {}) };
+  candidates.sort(stableOrder);
   for (const candidate of candidates) candidate.costBytes = measure(project([candidate], 1, 0, scopeDiagnostics));
-  candidates.sort((a, b) => b.score * a.costBytes - a.score * b.costBytes || b.score - a.score
-    || Date.parse(b.detail.revision.revisedAt) - Date.parse(a.detail.revision.revisedAt)
-    || compareId(a.detail.revision.knowledgeId, b.detail.revision.knowledgeId) || compareId(a.statement.statementId, b.statement.statementId));
-  let result = project([], candidates.length, 0, scopeDiagnostics);
-  if (measure(result) > request.maxBytes) throw new KnowledgeRetrievalBudgetError(measure(result));
   const oversized = new Set(candidates.filter(candidate => candidate.costBytes > request.maxBytes));
-  const chosen: Unit[] = [];
-  result = project(chosen, candidates.length, oversized.size, scopeDiagnostics);
-  for (const candidate of candidates) {
-    if (oversized.has(candidate)) continue;
-    const next = project([...chosen, candidate], candidates.length, oversized.size, scopeDiagnostics);
-    if (measure(next) <= request.maxBytes) { chosen.push(candidate); result = next; }
+  const chosen: Unit[] = [], remaining = new Set(candidates), covered = new Set<string>(), coveredDocuments = new Set<string>();
+  const projected = (units: Unit[]) => project(units, candidates.length, [...oversized].filter(unit => !units.includes(unit)).length, scopeDiagnostics);
+  let result = projected(chosen);
+  if (measure(result) > request.maxBytes) throw new KnowledgeRetrievalBudgetError(measure(result));
+  while (remaining.size) {
+    let best: { unit: Unit; result: KnowledgeRetrievalResult; gain: number; cost: number; novel: number } | undefined;
+    const currentBytes = measure(result);
+    for (const unit of remaining) {
+      const next = projected([...chosen, unit]), nextBytes = measure(next);
+      if (nextBytes > request.maxBytes) continue;
+      const novel = [...unit.hits].filter(term => !covered.has(term)).length;
+      const documentNovel = [...unit.documentHits].filter(term => !coveredDocuments.has(term)).length;
+      // Document fields recall a revision; only fresh document coverage is rewarded, never copied into every statement score.
+      const gain = Math.max(1, 4 * novel + unit.hits.size + documentNovel), cost = Math.max(1, nextBytes - currentBytes);
+      if (!best || gain * best.cost > best.gain * cost
+        || (gain * best.cost === best.gain * cost && (novel > best.novel
+          || (novel === best.novel && (unit.hits.size > best.unit.hits.size
+            || (unit.hits.size === best.unit.hits.size && stableOrder(unit, best.unit) < 0)))))) best = { unit, result: next, gain, cost, novel };
+    }
+    if (!best) break;
+    chosen.push(best.unit); remaining.delete(best.unit); result = best.result;
+    best.unit.hits.forEach(term => covered.add(term)); best.unit.documentHits.forEach(term => coveredDocuments.add(term));
   }
   return result;
 }
