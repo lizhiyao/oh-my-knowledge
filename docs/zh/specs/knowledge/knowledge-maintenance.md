@@ -29,6 +29,20 @@ Studio 每 5 秒继续读取实际状态，即使自动提炼尚未开启或已�
 标签历史单独保存到知识目录的 `tags/<identity-digest>.json`，使用 `omk-knowledge-tags/v1`，绑定知识身份，记录标签、修改时间与操作者。标签保存不改动知识、来源或运行记录。未设置标签时为空；并发修改拒绝旧 generation，读取后核对再保存。标签属于知识的组织信息，知识修订后仍保留，需核对它们是否仍适用。
 
 
+## 从 CLI 读取任务知识 {#task-knowledge-retrieval}
+
+`omk observe knowledge retrieve --workspace ./knowledge --query "为什么初始化时v-model没有生效？" --max-bytes 3000 --json` 只读当前已保留修订，不调用模型、不写工作区。`--include-candidates` 另行纳入尚无维护决定的候选，已舍弃修订仍排除。保留与候选知识都保留 `reviewStatus: pending`：保留决定、来源断言都不证明真实或人工验收通过。`--snapshot` 限定关联指定来源归档的知识，可用 `--source-version` 再限定精确版本；`--entity-id` 限定知识显式关联的精确身份，不按名称合并。
+
+任务检索采用字面策略：以 NFKC 和不依赖 locale 的小写规范化，提取 ASCII／代码标识符、连续中文及重叠双字片段，不做词干或语义推断。在标题、标签、陈述关系与适用上下文、显式关联实体名称／描述及绑定分析中的非空限定条件、组织上下文中统计命中的不同片段，至少命中一项才纳入。按命中数除以独立完整序列化投影字节的比值，再按命中数、修订时间、知识身份、陈述身份排序，以该稳定顺序装入完整单元并共享元数据。此预算启发式不保证语义相关性，也不求最优组合。
+
+新增 `knowledge-task-context`、Schema 版本 1 响应含共享 `knowledge`、`entities`、`sources`、`evidence` 数组。`items` 以零基索引引用这些数组，每项保留完整原始 `statement` 及模态、否定、场景、条件、例外、未知与事实时间。消费单项时必须保留共享池；稳定身份为所引用的 knowledgeId/revisionId 加 statementId，数组位置仅在本响应内有效。知识池保留维护选择、pending、精确实体分析绑定、组织 purpose 或 situation/gaps、身份不确定性和返回／总陈述数；省略的指令／动作／结果数针对整个返回子集，不把它称作完整流程。
+
+实体池保留精确身份、名称、描述、referent kind、identity status、限定条件和不确定性。空 qualifiers/uncertainties 可省略，仅在身份详情可读时表示空数组；`identityDetails: unavailable` 保持缺失信息未知。`omitted.identityRelations: true` 明示 component/collection/possible-identity 关系未投影，不产生悬空关系 ID 或按名称合并；需要这些关系时读取精确绑定的实体分析。默认仅投影陈述必要端点；显式实体范围若指向非端点关联，会在知识池的 `scopeEntities` 返回对应实体池索引，不把范围关联冒充陈述端点。
+
+证据保留 basis、supports/opposes/background 分类和来源定位：精确 snapshot/version、evidenceRef、UTF-16 start/end、可读时的来源角色／时间，以及 matched/mismatch/unavailable 位置状态。本定位投影省略派生的 evidence interpretation 和内联 quote；用 `show --id <knowledge-id> --revision <revision-id>` 读取原解释，用 `source --snapshot <snapshot-id>` 读取原摘录，核对返回的 sourceVersion 后按区间取原文。来源时间不是事实时间，位置匹配不是支持性证明；来源缺失／位置不匹配或实体绑定过期会明确披露。此证据导航不是用原文补齐缺失知识的回退。
+
+retrieve 始终输出单行紧凑 JSON，包括未传 `--json` 时。`--max-bytes` 限制整个响应的 UTF-8 字节，包括共享池、元数据、省略信息和末尾换行：默认 8192，最低 1024，最多 1048576。以外部实际输出计字节，不回显请求参数或协议调试信息。不为装入预算裁短陈述条件、未知、时间或实体核心含义。完整单元独立装不下时计入 `omitted.oversizedUnits`，其它预算未能容纳的单元计入 `omitted.budgetUnits`；非法或低于最低值的预算直接拒绝。items 为空且预算省略为零表示没有适格字面命中，范围诊断区分来源不可用和没有适格实体知识。新增读取契约不改存量历史、提炼 prompt、维护决定或来源字节，也不证明下游任务效果。
+
 ## 生成并保存知识载体
 
 

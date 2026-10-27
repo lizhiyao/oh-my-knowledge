@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { KnowledgeRetrievalRequestSchema, retrieveKnowledge } from './retrieval.js';
 import type { ExtractionModel, KnowledgeApplication } from './application.js';
 import { KnowledgeCitationLocatorsSchema, KnowledgeCitationRevisionError } from './citation-locators.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
@@ -9,6 +10,10 @@ const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
 /** Host-independent use-case inputs. Hosts own workspace selection and presentation. */
 export const knowledgeOperationSchemas = {
+  retrieve: z.strictObject({ ...KnowledgeRetrievalRequestSchema.shape, operation: z.literal('retrieve'),
+    maxBytes: KnowledgeRetrievalRequestSchema.shape.maxBytes.unwrap().optional(),
+    includeCandidates: KnowledgeRetrievalRequestSchema.shape.includeCandidates.unwrap().optional(),
+  }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' }),
   list: z.strictObject({ operation: z.literal('list') }),
   tag: z.strictObject({ operation: z.literal('tag'), id: text, generation: z.number().int().nonnegative(), tags: z.array(z.string()).max(32) }),
   runs: z.strictObject({ operation: z.literal('runs') }),
@@ -28,7 +33,7 @@ export const knowledgeOperationSchemas = {
   revise: z.strictObject({ operation: z.literal('revise'), id: text, revision: text, generation: z.number().int().positive(), draft: z.unknown(), reason: text, citationLocators: KnowledgeCitationLocatorsSchema.optional() }),
 };
 export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
-  knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
+  knowledgeOperationSchemas.retrieve, knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
   knowledgeOperationSchemas.show, knowledgeOperationSchemas.entities, knowledgeOperationSchemas['entity-catalog'],
   knowledgeOperationSchemas['entity-detail'], knowledgeOperationSchemas['correct-entities'], knowledgeOperationSchemas['apply-entities'],
   knowledgeOperationSchemas.capture, knowledgeOperationSchemas.generate, knowledgeOperationSchemas.resume,
@@ -36,6 +41,7 @@ export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
 ]);
 export type KnowledgeOperation = z.infer<typeof KnowledgeOperationSchema>;
 type Results = {
+  retrieve: ReturnType<typeof retrieveKnowledge>;
   list: ReturnType<KnowledgeApplication['list']>; tag: ReturnType<KnowledgeApplication['tag']>;
   quality: ReturnType<KnowledgeApplication['quality']>; runs: ReturnType<KnowledgeApplication['runs']>; show: ReturnType<KnowledgeApplication['detail']>;
   entities: ReturnType<KnowledgeApplication['entities']>; 'entity-catalog': ReturnType<KnowledgeApplication['queryEntities']>;
@@ -51,6 +57,8 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
   signal?.throwIfAborted();
   const execute = () => {
     switch (request.operation) {
+      case 'retrieve': return retrieveKnowledge(app, { query: request.query, maxBytes: request.maxBytes, includeCandidates: request.includeCandidates,
+        snapshot: request.snapshot, sourceVersion: request.sourceVersion, entityId: request.entityId });
       case 'list': return app.list();
       case 'tag': return app.tag(request.id, request.generation, request.tags);
       case 'runs': return app.runs();

@@ -18,13 +18,15 @@ import { ExtractionStudyInspectionError, ExtractionStudyFileError } from '../../
 import { inspectExtractionStudyFiles } from '../../../knowledge/application/study-inspection-service.js';
 import { formatKnowledgeStudy } from '../../lib/knowledge-study-output.js';
 
+import { KnowledgeRetrievalBudgetError } from '../../../knowledge/application/retrieval.js';
+
 const description = (zh: string, en: string) => bilingual({ zh, en });
 const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 export default class ObserveKnowledge extends BaseCommand {
   static description = description(`从选定工作日志提炼、核对和维护候选知识。 ${ENTITY_SCOPE_REVIEW_GUIDANCE.zh}`, `Extract, inspect, and maintain candidate knowledge from selected work logs. ${ENTITY_SCOPE_REVIEW_GUIDANCE.en}`);
   static args = {
-    operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'capture', 'generate', 'runs', 'quality', 'resume', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
-      description: description('schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'schema exports the response contract; study inspects portable study evidence and reviews without model calls; seal-run records human sealing, sealed-runs inspects dispositions and exact evidence identities; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
+    operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'capture', 'generate', 'runs', 'quality', 'resume', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-entities'],
+      description: description('retrieve 只读输出按字节预算组织的任务知识；schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。', 'retrieve reads a byte-budgeted task knowledge context; schema exports the response contract; study inspects portable study evidence and reviews without model calls; seal-run records human sealing, sealed-runs inspects dispositions and exact evidence identities; capture, extract, inspect, and maintain knowledge; quality reads admission statistics; entities inspects entities, correct-entities corrects them, apply-entities creates a bound knowledge revision.') }),
   };
   static flags = {
     lang: LANG_FLAG,
@@ -44,11 +46,15 @@ export default class ObserveKnowledge extends BaseCommand {
     source: Flags.string({ description: description('capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。', 'capture: one supported agent session log (Codex / Claude / Qoder / ...).') }),
     'start-record': Flags.integer({ min: 0, description: description('从零开始的非空记录序号，包含。', 'Zero-based nonempty record index, inclusive.') }),
     'end-record': Flags.integer({ min: 0, description: description('最后一条记录序号，包含。', 'Last record index, inclusive.') }),
-    snapshot: Flags.string({ description: description('generate／source／delete-source：归档身份。', 'generate/source/delete-source: snapshot identity.') }),
+    snapshot: Flags.string({ description: description('generate／source／delete-source：归档身份；retrieve：限定来源归档。', 'generate/source/delete-source: snapshot identity; retrieve: restrict to a source snapshot.') }),
     id: Flags.string({ description: description('知识身份；resume／seal-run／sealed-runs 时为运行 UUID。', 'Knowledge identity; run UUID for resume/seal-run/sealed-runs.') }),
     revision: Flags.string({ description: description('查看或处理的明确修订身份。', 'Explicit revision to inspect or maintain.') }),
     analysis: Flags.string({ description: description('entities：读取指定分析，省略时检索工作区实体；纠正或应用时必填，与提炼运行身份一致。', 'entities: inspect an analysis, or search the workspace if omitted; required for correction/application, equal to the extraction run identity.') }),
-    query: Flags.string({ description: description('entities：搜索名称、原文提及、限定条件及来源。', 'entities: search names, source mentions, qualifiers, and origin.') }),
+    query: Flags.string({ description: description('entities：检索对象；retrieve：必填任务问题，按 ASCII／代码标识符和中文连续／双字片段做字面召回，不作语义推断。', 'entities: search entities; retrieve: required task question, using literal ASCII/code identifiers and Han runs/bigrams, without semantic inference.') }),
+    'max-bytes': Flags.integer({ min: 1024, max: 1048576, description: description('retrieve：完整单行 JSON（含换行）的 UTF-8 上限，默认 8192；完整陈述装不下时报告省略，不截断条件。', 'retrieve: UTF-8 limit for the complete single-line JSON including newline, default 8192; oversized complete statements are reported, never condition-truncated.') }),
+    'include-candidates': Flags.boolean({ description: description('retrieve：同时纳入未保留候选；仍为 pending，来源断言不表示真实确认；不纳入已舍弃修订。', 'retrieve: also include unretained candidates, still pending; source assertions are not verified truth. Discarded revisions stay excluded.') }),
+    'source-version': Flags.string({ description: description('retrieve：与 --snapshot 配合限定精确 sha256 来源版本。', 'retrieve: exact sha256 source version, requiring --snapshot.') }),
+    'entity-id': Flags.string({ description: description('retrieve：按精确实体 ID 限定显式关联的知识修订范围，不按名称合并身份。', 'retrieve: scope knowledge revisions explicitly associated with this exact entity ID; no name-based identity merging.') }),
     'identity-status': Flags.string({ options: ['all', 'proposed', 'unresolved'], description: description('entities：筛选身份对应状态。', 'entities: filter identity assignment status.') }),
     'source-status': Flags.string({ options: ['all', 'available', 'unavailable'], description: description('entities：筛选原文可用状态。', 'entities: filter source availability.') }),
     page: Flags.integer({ min: 1, description: description('entities：检索页码，从 1 开始。', 'entities: search page, starting at 1.') }),
@@ -63,7 +69,7 @@ export default class ObserveKnowledge extends BaseCommand {
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, using the configured model.') }),
     'run-id': Flags.string({ description: description('generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。', 'generate: stable UUID; repeated requests only restore archived results without another model call.') }),
     'generation-policy': Flags.string({ description: description('generate：完整生成策略 JSON；省略时仅调用一次。有界重试须明确模型、调用及 token 预算，输出上限取自策略。', 'generate: complete generation-policy JSON; omitted means one invocation. Bounded retries require explicit model, invocation and token budgets; the policy sets the output cap.') }),
-    json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。', 'Print complete JSON instead of a readable summary; schema defaults to the JSON Schema alone.') }),
+    json: Flags.boolean({ default: false, description: description('输出完整 JSON；默认输出可读摘要，retrieve 始终输出预算内单行 JSON，schema 默认仅输出 JSON Schema。', 'Print complete JSON instead of a readable summary; retrieve always emits budgeted single-line JSON, schema defaults to the JSON Schema alone.') }),
   };
   static examples = [
     '<%= config.bin %> observe knowledge schema --json',
@@ -73,6 +79,8 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge study --evidence ./evidence.json --author-review ./reference-author.json --reference-review ./reference-independent.json --output-review ./output-review.json --judge-review ./judge-review.json',
     '<%= config.bin %> observe knowledge capture --workspace ./knowledge --source ./session.jsonl',
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>',
+    '<%= config.bin %> observe knowledge retrieve --workspace ./knowledge --query "为什么初始化时v-model没有生效？" --max-bytes 3000 --json',
+    '<%= config.bin %> observe knowledge retrieve --workspace ./knowledge --query Vue --include-candidates --snapshot <snapshot-id> --entity-id <entity-id> --json',
     '<%= config.bin %> observe knowledge list --workspace ./knowledge',
     '<%= config.bin %> observe knowledge quality --workspace ./knowledge --json',
     '<%= config.bin %> observe knowledge entities --workspace ./knowledge --analysis <run-id>',
@@ -87,6 +95,15 @@ export default class ObserveKnowledge extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge);
     const t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
+    if (args.operation !== 'retrieve' && (flags['max-bytes'] !== undefined || flags['include-candidates'] || flags['source-version'] !== undefined || flags['entity-id'] !== undefined)) {
+      this.error(t('任务检索参数仅用于 retrieve。', 'Task retrieval flags are only valid for retrieve.'), { exit: 2 });
+    }
+    if (args.operation === 'retrieve') {
+      const allowed = new Set(['lang', 'json', 'workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) {
+        this.error(t('retrieve 仅接受只读检索参数，不接受生成或维护参数。', 'retrieve accepts only read-only retrieval flags, not generation or maintenance flags.'), { exit: 2 });
+      }
+    }
     if (args.operation !== 'study' && studyFlags.some(name => flags[name] !== undefined)) {
       this.error(t('--evidence 及研究复核参数仅用于 study。', '--evidence and study review flags are only valid for study.'), { exit: 2 });
     }
@@ -211,6 +228,8 @@ export default class ObserveKnowledge extends BaseCommand {
     // Required arguments and draft syntax are checked before settings or storage access.
     let operation: KnowledgeOperation;
     switch (args.operation) {
+      case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'],
+        snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'] }; break;
       case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
       case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'],
         ...(policy?.success ? { policy: policy.data } : {}) }; break;
@@ -251,6 +270,7 @@ export default class ObserveKnowledge extends BaseCommand {
       try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model, policy) => configuredExtractionModel(executor, model,
         createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined)); }
       catch (cause) {
+        if (cause instanceof KnowledgeRetrievalBudgetError) this.error(t(`检索元数据至少需要 ${cause.minimumBytes} UTF-8 字节；增大 --max-bytes。`, `Retrieval metadata requires at least ${cause.minimumBytes} UTF-8 bytes; increase --max-bytes.`), { exit: 2 });
         const code = knowledgeFailureCode(cause);
         const reload = operation.operation === 'correct-entities' ? knowledgeCommand(settings.workspace, 'entities', { analysis: operation.analysisId })
           : 'id' in operation && operation.operation !== 'resume' ? knowledgeCommand(settings.workspace, 'show', { id: operation.id })
@@ -268,7 +288,7 @@ export default class ObserveKnowledge extends BaseCommand {
         if (operation.operation === 'generate' || operation.operation === 'resume') this.error(t('提炼或恢复未完成。先核对已保存运行；有持久化结果时使用 resume，不要盲目启动新的模型调用。', 'Extraction or recovery did not finish. Inspect saved runs first; use resume when output was persisted instead of blindly starting another model call.') + '\n' + (cause instanceof Error ? cause.message : String(cause)) + `\n${knowledgeCommand(settings.workspace, 'runs', { json: true })}`);
         throw cause;
       }
-      this.log(flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
+      this.log(operation.operation === 'retrieve' ? JSON.stringify(result) : flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
       if (result && typeof result === 'object' && 'status' in result && ['failed', 'cancelled'].includes(String(result.status))) this.exit(1);
     });
   }

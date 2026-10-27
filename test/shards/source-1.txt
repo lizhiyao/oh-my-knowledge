@@ -117,6 +117,7 @@ test/knowledge/artifacts/doctor/renderer.test.ts
 test/knowledge/artifacts/sources/artifact-resolution.test.ts
 test/knowledge/artifacts/sources/content-hash.test.ts
 test/knowledge/application.test.ts
+test/knowledge/retrieval.test.ts
 test/knowledge/persistence.test.ts
 test/knowledge/tags.test.ts
 test/knowledge/trace-evidence-formats.test.ts

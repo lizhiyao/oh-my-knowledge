@@ -30,6 +30,22 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 describe('observe knowledge command wiring', () => {
+  it('retrieves complete bounded JSON through the shared read-only operation without creating missing state', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omk-retrieve-cli-')); roots.push(directory);
+    const workspace = join(directory, 'absent-workspace'), home = join(directory, 'absent-home');
+    const options = { env: { OMK_HOME: home, OMK_SKIP_UPDATE_CHECK: '1' } };
+    const result = await runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, '--query', '初始化 v-model', '--max-bytes', '3000', '--json'], options);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed).toMatchObject({ projectionKind: 'knowledge-task-context', items: [] });
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(3000);
+    expect(existsSync(workspace)).toBe(false); expect(existsSync(home)).toBe(false);
+    for (const flags of [[], ['--query', ' '], ['--query', 'x', '--max-bytes', '100'], ['--query', 'x', '--snapshot', 'invalid'], ['--query', 'x', '--executor', 'codex']]) {
+      await expect(runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, ...flags], options)).rejects.toMatchObject({ code: 2 });
+      expect(existsSync(workspace)).toBe(false); expect(existsSync(home)).toBe(false);
+    }
+    await expect(runCommand(ObserveKnowledge, ['list', '--workspace', workspace, '--max-bytes', '3000'], options)).rejects.toMatchObject({ code: 2 });
+  });
+
   it('seals/query old-wire runs through the real CLI with explicit workspace, no usable settings/producer, and exact replay identities', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omk-run-seal-cli-')); roots.push(directory);
     const workspace = join(directory, 'workspace'), home = join(directory, 'home'); mkdirSync(home);

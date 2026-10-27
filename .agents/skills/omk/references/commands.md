@@ -605,7 +605,7 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
+- `operation`(必填):retrieve 只读输出按字节预算组织的任务知识；schema 导出响应协议；study 零调用核对可携带研究证据与复核记录；seal-run 人工封存，sealed-runs 查询封存及精确证据身份；归档、提炼、核对与维护知识；quality 查看结构接纳统计；entities 核对实体，correct-entities 纠正实体，apply-entities 创建绑定实体的知识修订。
 
 **Flags:**
 
@@ -613,6 +613,7 @@ omk observe knowledge <operation> [flags]
 - `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
 - `--citations` `option`:revise／apply-entities：同一归档窗口的引用定位器 JSON 文件，提供完整非空数组以替换新修订的全部引用；省略时沿用适用的原引用。selection 含 evidenceRef、精确 quote 和可选的零基 occurrence；重复原文必须指定 occurrence。
 - `--end-record` `option`:最后一条记录序号，包含。
+- `--entity-id` `option`:retrieve：按精确实体 ID 限定显式关联的知识修订范围，不按名称合并身份。
 - `--entity-revision` `option`:实体分析的明确修订身份；纠正或应用时必填。
 - `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
 - `--executor` `option`:generate：生成执行器；只有该操作发送选定片段并调用模型。
@@ -621,12 +622,14 @@ omk observe knowledge <operation> [flags]
 - `--id` `option`:知识身份；resume／seal-run／sealed-runs 时为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities：筛选身份对应状态。
 - `--identity-uncertainties` `option`:apply-entities：显式核对后的附加身份不确定性 JSON 数组；省略时保留原说明，[] 清除原说明，当前实体歧义仍自动保留。
+- `--include-candidates` `boolean`:retrieve：同时纳入未保留候选；仍为 pending，来源断言不表示真实确认；不纳入已舍弃修订。
 - `--input` `option`:revise／apply-entities：知识 JSON 草稿；correct-entities：entities、mentions 草稿，新身份使用 new: 前缀。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
-- `--json` `boolean`:输出完整 JSON；默认输出可读摘要，schema 默认仅输出 JSON Schema。
+- `--json` `boolean`:输出完整 JSON；默认输出可读摘要，retrieve 始终输出预算内单行 JSON，schema 默认仅输出 JSON Schema。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
+- `--max-bytes` `option`:retrieve：完整单行 JSON（含换行）的 UTF-8 上限，默认 8192；完整陈述装不下时报告省略，不截断条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
 - `--operation-id` `option`:seal-run：稳定的人工操作 UUID，重入必须复用。
@@ -634,14 +637,15 @@ omk observe knowledge <operation> [flags]
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities：检索页码，从 1 开始。
 - `--page-size` `option`:entities：每页对象数，默认 20，最多 100。
-- `--query` `option`:entities：搜索名称、原文提及、限定条件及来源。
+- `--query` `option`:entities：检索对象；retrieve：必填任务问题，按 ASCII／代码标识符和中文连续／双字片段做字面召回，不作语义推断。
 - `--reason` `option`:维护、修订或 seal-run 人工封存的理由；保留不代表已证实，纠正实体不自动改写知识，封存只记录人工处置。
 - `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
 - `--revision` `option`:查看或处理的明确修订身份。
 - `--run-id` `option`:generate：稳定 UUID；重复请求只恢复已归档结果，不再次调用模型。
-- `--snapshot` `option`:generate／source／delete-source：归档身份。
+- `--snapshot` `option`:generate／source／delete-source：归档身份；retrieve：限定来源归档。
 - `--source` `option`:capture：一份已支持格式的 Agent 会话日志（Codex／Claude／Qoder 等）。
 - `--source-status` `all|available|unavailable`:entities：筛选原文可用状态。
+- `--source-version` `option`:retrieve：与 --snapshot 配合限定精确 sha256 来源版本。
 - `--start-record` `option`:从零开始的非空记录序号，包含。
 - `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
 - `--workspace` `option`:本地知识工作区，默认使用全局设置；seal-run／sealed-runs 必须显式提供且不读全局设置。CLI 与 Studio 共用。
@@ -674,6 +678,14 @@ omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl
 
 ```bash
 omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model>
+```
+
+```bash
+omk observe knowledge retrieve --workspace ./knowledge --query "为什么初始化时v-model没有生效？" --max-bytes 3000 --json
+```
+
+```bash
+omk observe knowledge retrieve --workspace ./knowledge --query Vue --include-candidates --snapshot <snapshot-id> --entity-id <entity-id> --json
 ```
 
 ```bash
