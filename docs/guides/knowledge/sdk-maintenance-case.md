@@ -3,9 +3,9 @@ description: Review accumulated knowledge, historical revisions, change notices,
 ---
 # SDK case: review artifacts when their knowledge changes
 
-This case demonstrates implemented maintenance behavior: associate later sources, limit old statements to their historical context, revise or discard knowledge, then review and update an artifact. It uses the existing sentry-miniapp SDK acceptance materials. On 2026-10-14, the current OMK implementation read an independent copy, and Studio opened v4 and v5 for review.
+This frozen case demonstrates maintenance behavior accepted on 2026-10-14: associate later sources, limit old statements to their historical context, revise or discard knowledge, then review and update an artifact. It uses the existing sentry-miniapp SDK materials. The OMK implementation at that time read an independent copy, and Studio opened v4 and v5 for review.
 
-The screenshots and frozen record come from the main-source acceptance run, not the published Beta.13. Reproducing this maintenance UI from npm requires **1.0.0-beta.14 or later**; check `omk --version` after installing `@next`.
+The screenshots and v4/v5 identities belong to that earlier knowledge contract. The current canonical-body reader does not read an old workspace in place. Follow the [knowledge maintenance workflow](extract-knowledge.md) to migrate explicitly into a new directory, review the new pending bodies, and make new retain decisions. Old artifact and library references are archived rather than automatically redirected. These frozen identities and screenshots do not prove that the current body workflow has been verified; a package version number alone does not establish data compatibility.
 
 For first use, create your own workspace with the [knowledge maintenance workflow](extract-knowledge.md). This page explains concrete results; it requires neither installing the SDK nor calling a model.
 
@@ -40,7 +40,9 @@ The [frozen readback record](../../public/sdk-maintenance-evidence.json) records
 
 These are frozen case facts, not live SDK status. The record omits local workspace paths and raw conversations; linked acceptance issues own provenance and limitations. Use full identities from the JSON when checking the underlying material, rather than matching titles alone.
 
-## Review in Studio
+## Historical Studio review
+
+The following steps record the 2026-10-14 acceptance under the earlier contract. They do not replay those identities in a newly migrated workspace; review new bodies and create new artifacts explicitly there.
 
 1. Open the knowledge library, inspect an object’s source members, then follow an item back to its original text. Review candidate conditions and evidence before retaining or discarding it with a reason.
 2. Open the saved artifact, choose historical v4, and open “Review changes”. Its two notices come from a knowledge revision and an item that is no longer retained.
@@ -48,9 +50,9 @@ These are frozen case facts, not live SDK status. The record omits local workspa
 4. Return to the current version, choose “Generate new version”, review the kept, replaced, and removed references, then save explicitly. Only the selected knowledge region is rebuilt; manual content and dependency assets remain.
 5. Reload the latest artifact and inspect content and “Knowledge references”. Switch back to the historical version to verify readability. Enter evaluation from an explicit version only when task-effect evidence is needed.
 
-![Historical SDK v4 changes in the current Studio reader, captured from the Chinese case](../../public/sdk-maintenance-review.png)
+![SDK v4 change review under the historical 2026-10-14 knowledge contract](../../public/sdk-maintenance-review.png)
 
-The screenshot shows the real reader for the existing Chinese case, comparing historical references and current knowledge. It is not a new model extraction result. Its versions and timestamps belong to this case.
+The screenshot records the real reader used for that Chinese case, comparing its historical references with the then-current knowledge. It is neither a new model extraction result nor acceptance of the current canonical-body contract. Its versions and timestamps belong to the frozen case.
 
 When sources are missing, reads fail, or a file changes externally, inspect the notice and reload. A failure is not evidence of no changes. Checks cover knowledge referenced by this version and exclude unreferenced new items. See the [maintenance contracts](../../specs/knowledge/knowledge-maintenance.md) for complete behavior boundaries.
 
