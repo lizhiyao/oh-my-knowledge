@@ -219,7 +219,7 @@ The base OMK install omits the optional Agent SDK packages and their large platf
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
 - **openai-api**: set the `OPENAI_API_KEY` env var
 
-If an existing installation still has an older optional Codex SDK, run the matching local or global SDK command above to upgrade it. This dependency upgrade requires no stored-data migration. Historical measurements retain their recorded Runtime identity; measurements taken with different SDK versions must not be combined as a comparison with a fixed runtime.
+If an existing installation still has an older optional Codex SDK, select an OMK build whose manifest declares `@openai/codex-sdk` as `^0.165.0` in `peerDependencies`, then upgrade that OMK build and the SDK together in one install command in the same local or global scope. Published packages and `main` source can differ; check the actual OMK package's `peerDependencies` instead of inferring SDK compatibility from the OMK version alone. This dependency upgrade requires no stored-data migration. Historical measurements retain their recorded Runtime identity; measurements taken with different SDK versions must not be combined as a comparison with a fixed runtime.
 
 ## Related
 

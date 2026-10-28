@@ -220,7 +220,7 @@ OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。`code
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 
-已有安装如果仍使用旧版可选 Codex SDK，请按上面的本地或全局 SDK 命令升级。此次依赖升级不需要迁移存量数据；历史测量保留各自记录的 Runtime identity，使用不同 SDK 版本的测量不能合并为固定 runtime 的比较。
+已有安装如果仍使用旧版可选 Codex SDK，请选择 manifest 的 `peerDependencies` 已将 `@openai/codex-sdk` 声明为 `^0.165.0` 的 OMK 构建，再在同一条安装命令中、同一本地或全局安装作用域同时升级该 OMK 构建与 SDK。发布包与 `main` 源码可能不同，应核对实际 OMK 包的 `peerDependencies`，不能只按 OMK 版本号推断 SDK 兼容。此次依赖升级不需要迁移存量数据；历史测量保留各自记录的 Runtime identity，使用不同 SDK 版本的测量不能合并为固定 runtime 的比较。
 
 ## 相关
 
