@@ -5,11 +5,29 @@ description: Review accumulated knowledge, historical revisions, change notices,
 
 This frozen case demonstrates maintenance behavior accepted on 2026-10-14: associate later sources, limit old statements to their historical context, revise or discard knowledge, then review and update an artifact. It uses the existing sentry-miniapp SDK materials. The OMK implementation at that time read an independent copy, and Studio opened v4 and v5 for review.
 
-The screenshots and v4/v5 identities belong to that earlier knowledge contract. The current canonical-body reader does not read an old workspace in place. Follow the [knowledge maintenance workflow](extract-knowledge.md) to migrate explicitly into a new directory, review the new pending bodies, and make new retain decisions. Old artifact and library references are archived rather than automatically redirected. These frozen identities and screenshots do not prove that the current body workflow has been verified; a package version number alone does not establish data compatibility.
+The screenshots and v4/v5 identities belong to that earlier knowledge contract. The current canonical-body reader does not read an old workspace in place. Follow the [knowledge maintenance workflow](extract-knowledge.md) to migrate explicitly into a new directory, review the new pending bodies, and make new retain decisions. Old artifact and library references are archived rather than automatically redirected. Those identities and screenshots alone do not verify the current body workflow; a package version number alone does not establish data compatibility. The next section records a separate readback under the current contract.
 
 For first use, create your own workspace with the [knowledge maintenance workflow](extract-knowledge.md). This page explains concrete results; it requires neither installing the SDK nor calling a model.
 
-## Materials and scope
+## Closure under the current canonical-body contract (2026-10-29)
+
+[#1174](https://github.com/lizhiyao/oh-my-knowledge/issues/1174) ran the production knowledge application, storage adapters, and Codex generation flow in a new local workspace. Inputs were two faithfully recovered selected and deidentified historical windows, a manual static observation, and an actual test-tool record from this run. Complete original conversations were not recovered, and lost historical artifact-task identities were not resumed. Three generation sources produced six complete bodies, with one body and one association model invocation per source. Source review preserved historical reports, unknown versions, and static-evidence limits.
+
+An Agent explicitly retained five items for the first artifact v1; the #428 business-acceptance item remains pending. A later revision added actual test results from the fixed SDK snapshot: 52 passing tests across four existing files, limited to Node and an in-memory transport. The new revision first returned to pending while the old retain decision remained bound to its old revision; the Agent then explicitly retained the new revision. Agent maintenance is not human Gold; the artifact verification status remains `not_assessed`.
+
+| Readback | Actual result |
+|---|---|
+| New artifact v2 | Three kept, one replaced, one removed; the removed historical repair report remains retained in the knowledge store. |
+| Precise references | v1 keeps the old revision and reports one change; v2 references the selected current revisions and reports zero changes. |
+| Content and assets | Every v1 file remains byte-identical; manual content, custom metadata values, and four distributable assets are preserved. |
+
+The [current-contract readback record](../../public/sdk-body-closure-evidence.json) provides both artifact identities, body digests, exact knowledge references, and a separate task comparison. Complete knowledge text, raw returns, and execution diagnostics remain local. The two primary Markdown files contain 43,077 and 39,659 bytes; they were not clipped to 8KB.
+
+The task comparison preserves the two SDK review questions, their original Boolean/path verifier, and seven fixed source files, with one run per question and version. It measures consumption of the provided primary Markdown. Asset preservation was checked separately; native Skill discovery and asset reading are outside this comparison. v2 both adds runtime evidence and removes a superseded report, so results cannot be attributed to one knowledge item. The readback record owns actual outcomes and costs. A small set of previously exposed questions cannot establish general knowledge benefits; [#1115](https://github.com/lizhiyao/oh-my-knowledge/issues/1115) continues that research independently.
+
+All four model executions and four local acceptance checks succeeded without retries. Both v1 and v2 passed both questions; no acceptance-rate gain was observed. The batch took about 9 minutes 12 seconds, reporting 904,770 input tokens (including 771,712 cached) and 2,538 output tokens. These are cumulative Agent-interaction totals, not a single prompt length. USD cost was unreported and remains unknown. The separate six body/association generation invocations took about six minutes, reporting 123,821 input and 24,485 output tokens. Maintenance and artifact saving made no additional model calls.
+
+## Historical materials and scope (2026-10-14)
 
 - The object is this project’s `@sentry/core` component. A version is an observation condition and does not automatically become a separate component identity.
 - Historical windows discuss protected overrides and Session isolation. Old statements remain historical records and cannot establish unresolved problems today.
@@ -56,7 +74,7 @@ The screenshot records the real reader used for that Chinese case, comparing its
 
 When sources are missing, reads fail, or a file changes externally, inspect the notice and reload. A failure is not evidence of no changes. Checks cover knowledge referenced by this version and exclude unreferenced new items. See the [maintenance contracts](../../specs/knowledge/knowledge-maintenance.md) for complete behavior boundaries.
 
-## What this evidence supports
+## What the historical evidence supports
 
 A traceable maintenance and revision path: v4 keeps its three historical references; v5 references only the two selected current revisions, with content matching the saved manifest.
 

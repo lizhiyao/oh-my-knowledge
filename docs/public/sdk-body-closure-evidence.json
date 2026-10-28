@@ -1,0 +1,571 @@
+{
+  "recordKind": "sdk-canonical-body-closure-observation",
+  "observedAt": "2026-10-28T21:27:07.421705+00:00",
+  "observationTimeZone": "Asia/Shanghai",
+  "scope": "Production application and storage adapters with actual native Codex generation, explicit Agent maintenance and saved current-contract carriers. Author-reviewed selected replay/static sources, not complete original conversations or human Gold.",
+  "sources": [
+    "https://github.com/lizhiyao/oh-my-knowledge/issues/1174",
+    "https://github.com/lizhiyao/sentry-miniapp/commit/30ffb0030376e63a943f5d69beced539c7810171"
+  ],
+  "runtime": {
+    "knowledgeSchemaVersion": 3,
+    "carrierSchemaVersion": "omk-carrier-v1",
+    "knowledgeMetadataSchema": "omk-knowledge-metadata/v2",
+    "bodyPrompt": "knowledge-body-generation/v2",
+    "associationPrompt": "knowledge-association-generation/v1",
+    "codexVersion": "0.163.0",
+    "model": "gpt-6.1-sol"
+  },
+  "sourceWindowCount": 4,
+  "generationSourceCount": 3,
+  "generatedBodyCount": 6,
+  "maintenanceActorKind": "agent",
+  "verificationStatus": "not_assessed",
+  "nativeGeneration": {
+    "successfulInvocations": 6,
+    "executorDurationMs": 359894,
+    "inputTokens": 123821,
+    "outputTokens": 24485,
+    "usd": null,
+    "providerInternalRequestCount": null
+  },
+  "sdkValidation": {
+    "frozenCommit": "30ffb0030376e63a943f5d69beced539c7810171",
+    "coreVersion": "11.6.0",
+    "nodeVersion": "24.21.0",
+    "yarnVersion": "4.16.0",
+    "vitestVersion": "4.1.11",
+    "command": "yarn run test test/client-capture.realcore.test.ts test/session.realcore.test.ts test/client.test.ts test/session.test.ts",
+    "exitCode": 0,
+    "testFiles": 4,
+    "passed": 52,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Node/in-memory capturing transport; no real device, Sentry service, backend or all-platform proof.",
+    "summarySHA256": "11700750c41e67adb82074783b64bee9e9e913e04867b41290336902997a4a09",
+    "receiptSHA256": "f1005027282c16d8d03b73a7422e5faa0c59f83a809c73b1b157696d2c87aca6"
+  },
+  "newRevision": {
+    "knowledgeId": "87ba5653-7bf7-42cb-895d-6a35c2a59e35",
+    "revisionId": "048ce7d5-acb5-4741-815c-ffb0b3f9c689",
+    "bodyDigest": "sha256:428f994ddebf17ccde9c91c03f23a962add0683dccbaa278721a55da3ca0b6b3",
+    "generation": 4,
+    "oldSegmentsPreserved": true,
+    "pendingReadbackBeforeRetain": true,
+    "oldRetainPreserved": true,
+    "newChoice": "retain"
+  },
+  "versions": [
+    {
+      "version": 1,
+      "artifactId": "89fcf439-1923-45f2-9782-f9f53dcce9b2",
+      "revisionId": "800b331b-eb23-44d0-bd8d-2a6b570c5715",
+      "mainMarkdown": {
+        "bytes": 43077,
+        "sha256": "fabbb3b6fe4105d264a2d98ad511594c2d1651a51aef967c8c24c7ff4db29853"
+      },
+      "distributableContentHash": "55e28ef43c4e0fd07f52022090cc24e3044e6fd4568ff5cd14aae9d833abc6dd",
+      "knowledgeRefs": [
+        {
+          "knowledgeId": "dc4e07b9-871f-4daa-9568-747fdc52c3e8",
+          "revisionId": "f8b69f11-d580-492e-8284-86ecc32fb27d",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "81fab707-6aee-4d67-9623-ccbdb9db63c6",
+          "revisionId": "4bce2468-67d6-47bc-947e-3668942ea0de",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "7dd853df-edb2-48a2-b2c9-079ddbd11903",
+          "revisionId": "3b4b97c4-a563-4385-9ac6-538b67fa9828",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "585f961c-4218-4d87-b853-ed54afcd5729",
+          "revisionId": "306e6d58-d15d-4c5d-a9e7-0445d0c6538e",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "87ba5653-7bf7-42cb-895d-6a35c2a59e35",
+          "revisionId": "e22d4d2c-06fc-43f2-a6ee-93e5c9e60df3",
+          "generation": 2
+        }
+      ],
+      "needsReviewCountAfterUpdate": 1
+    },
+    {
+      "version": 2,
+      "artifactId": "89fcf439-1923-45f2-9782-f9f53dcce9b2",
+      "revisionId": "8935dcec-3037-4819-a435-ff8225d543e2",
+      "mainMarkdown": {
+        "bytes": 39659,
+        "sha256": "af45288683c11598eebd2a02fa85998dea0ab4fe76cf44301540a43a2c98e499"
+      },
+      "distributableContentHash": "e864122e0351811b2db323b4de73fd3d844552f50ffb31179a5bb1a90833c455",
+      "knowledgeRefs": [
+        {
+          "knowledgeId": "dc4e07b9-871f-4daa-9568-747fdc52c3e8",
+          "revisionId": "f8b69f11-d580-492e-8284-86ecc32fb27d",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "7dd853df-edb2-48a2-b2c9-079ddbd11903",
+          "revisionId": "3b4b97c4-a563-4385-9ac6-538b67fa9828",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "585f961c-4218-4d87-b853-ed54afcd5729",
+          "revisionId": "306e6d58-d15d-4c5d-a9e7-0445d0c6538e",
+          "generation": 2
+        },
+        {
+          "knowledgeId": "87ba5653-7bf7-42cb-895d-6a35c2a59e35",
+          "revisionId": "048ce7d5-acb5-4741-815c-ffb0b3f9c689",
+          "generation": 4
+        }
+      ],
+      "needsReviewCountAfterUpdate": 0
+    }
+  ],
+  "selectionChanges": [
+    {
+      "knowledgeId": "dc4e07b9-871f-4daa-9568-747fdc52c3e8",
+      "previousRevisionIds": [
+        "f8b69f11-d580-492e-8284-86ecc32fb27d"
+      ],
+      "selectedRevisionId": "f8b69f11-d580-492e-8284-86ecc32fb27d",
+      "changeKind": "kept"
+    },
+    {
+      "knowledgeId": "81fab707-6aee-4d67-9623-ccbdb9db63c6",
+      "previousRevisionIds": [
+        "4bce2468-67d6-47bc-947e-3668942ea0de"
+      ],
+      "selectedRevisionId": null,
+      "changeKind": "removed"
+    },
+    {
+      "knowledgeId": "7dd853df-edb2-48a2-b2c9-079ddbd11903",
+      "previousRevisionIds": [
+        "3b4b97c4-a563-4385-9ac6-538b67fa9828"
+      ],
+      "selectedRevisionId": "3b4b97c4-a563-4385-9ac6-538b67fa9828",
+      "changeKind": "kept"
+    },
+    {
+      "knowledgeId": "585f961c-4218-4d87-b853-ed54afcd5729",
+      "previousRevisionIds": [
+        "306e6d58-d15d-4c5d-a9e7-0445d0c6538e"
+      ],
+      "selectedRevisionId": "306e6d58-d15d-4c5d-a9e7-0445d0c6538e",
+      "changeKind": "kept"
+    },
+    {
+      "knowledgeId": "87ba5653-7bf7-42cb-895d-6a35c2a59e35",
+      "previousRevisionIds": [
+        "e22d4d2c-06fc-43f2-a6ee-93e5c9e60df3"
+      ],
+      "selectedRevisionId": "048ce7d5-acb5-4741-815c-ffb0b3f9c689",
+      "changeKind": "replaced"
+    }
+  ],
+  "preservedAssets": [
+    {
+      "relativePath": "references/error-monitoring.md",
+      "bytes": 3299,
+      "sha256": "e4048905fe52cfcd063893951947e96a0d539eeeddaff8d59b995564bb74bcec"
+    },
+    {
+      "relativePath": "references/offline-cache.md",
+      "bytes": 2478,
+      "sha256": "6f52140ef50c9b4ab81874546620d9961a2ec628f6ef9962c875b3123ab48fbf"
+    },
+    {
+      "relativePath": "references/sourcemap.md",
+      "bytes": 3559,
+      "sha256": "4fea1908aa6fdc9510e66743b6305ab39d32368b9e91009ec0d0235fe8412beb"
+    },
+    {
+      "relativePath": "references/tracing.md",
+      "bytes": 2751,
+      "sha256": "a1f7d65ca9c77272dd7a77a4d4f63782dc08cfa226c83315a954b6ac57a7948c"
+    }
+  ],
+  "checks": {
+    "sourceSnapshotsAndOriginalFlowPinsUnchanged": true,
+    "allOldKnowledgeRevisionsAndReceiptPrefixesUnchanged": true,
+    "sdkBaselineAndFourAssetsUnchanged": true,
+    "manualBodyAndCustomHeaderValuesPreserved": true,
+    "historicalCarrierV1AllFilesUnchanged": true,
+    "v1ShowsRevisionChangedAfterV2": true,
+    "v2NeedsReviewCountZero": true,
+    "removedReportStillRetainedInKnowledge": true,
+    "excluded428StillPending": true,
+    "carrierVerificationStatusNotAssessed": true
+  },
+  "comparison": {
+    "status": "completed",
+    "taskId": "sdk-knowledge-body-closure-20261029",
+    "taskDefinitionSHA256": "a81b883e1aa52b8679920f29cbb6969a7c3ff2a3930ccb1121e9312471f19e87",
+    "runId": "run-75b9e3d5-ef6a-4543-8faa-791204260505",
+    "runContractDigest": "sha256:9b871e8af85e7c918224c078139045e3fbd4cd7811f78eb0f5d9a29e28a1a904",
+    "resultReference": {
+      "mediaType": "application/vnd.omk.evaluation-result+json;version=1",
+      "digest": "sha256:9a0a8ccd50f8d28bd2bcffbc0b59eced92c3676b8e484a0d93116ad18ab4b321",
+      "size": 199265,
+      "uri": "omk-content:b1922838e08498042736b05c1da713a656d49476c3f9c738b7319c2e7262ce15"
+    },
+    "coreArtifactReadback": "verified",
+    "executionCoverage": {
+      "planned": 4,
+      "started": 4,
+      "succeeded": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "budgetCensored": 0,
+      "notStarted": 0
+    },
+    "evaluationCoverage": {
+      "planned": 4,
+      "eligible": 4,
+      "sourceUnavailable": 0,
+      "started": 4,
+      "completed": 4,
+      "failed": 0,
+      "cancelled": 0,
+      "notStarted": 0
+    },
+    "nativeExecutionInvocations": 4,
+    "localVerifierInvocations": 4,
+    "retryInvocations": 0,
+    "wallClockMs": 551790,
+    "usage": {
+      "inputTokens": 904770,
+      "outputTokens": 2538,
+      "cachedInputTokens": 771712,
+      "meaning": "Executor-reported totals across native agent turns, including cached/repeated input; not a single-prompt token count.",
+      "usd": null,
+      "providerInternalRequestCount": null
+    },
+    "outcomesByVariant": {
+      "control": {
+        "accepted": 2,
+        "total": 2
+      },
+      "treatment": {
+        "accepted": 2,
+        "total": 2
+      }
+    },
+    "observedAcceptanceRateImprovement": false,
+    "interpretation": "Both versions passed the original weak Boolean/path checks. No observed acceptance-rate gain; this does not establish equivalence or general knowledge benefit.",
+    "coordinates": [
+      {
+        "sampleId": "event-id",
+        "variantId": "control",
+        "trialIndex": 0,
+        "executionStatus": "completed",
+        "attemptCount": 1,
+        "processOutcome": {
+          "exitCode": 0,
+          "signal": null,
+          "failureKind": null
+        },
+        "timing": {
+          "startedAt": "2026-10-28T21:19:22.735Z",
+          "completedAt": "2026-10-28T21:21:48.695Z",
+          "durationMs": 145959.07424999998
+        },
+        "usage": {
+          "inputTokens": 236939,
+          "outputTokens": 647,
+          "totalTokens": 237586,
+          "details": {
+            "cachedInputTokens": 200064,
+            "cacheWriteInputTokens": 0,
+            "reasoningOutputTokens": 47
+          }
+        },
+        "review": {
+          "bytes": 275,
+          "digest": "sha256:5551f034d45fd329e76974393ac7b6a00bb201cf235f11fe6377cef99173143e",
+          "json": {
+            "currentLastEventIdBroken": false,
+            "testsOnlyCheckReturnType": false,
+            "allPlatformsVerified": false,
+            "generalKnowledgeBenefitProven": false,
+            "evidence": [
+              "src/client.ts",
+              "src/index.ts",
+              "src/sdk.ts",
+              "test/client-capture.realcore.test.ts"
+            ]
+          }
+        },
+        "acceptance": {
+          "passed": true,
+          "checks": [
+            {
+              "checkId": "currentLastEventIdBroken",
+              "passed": true
+            },
+            {
+              "checkId": "testsOnlyCheckReturnType",
+              "passed": true
+            },
+            {
+              "checkId": "bounded-conclusion",
+              "passed": true
+            },
+            {
+              "checkId": "source-citations",
+              "passed": true
+            }
+          ]
+        },
+        "nativeDiagnosticReference": {
+          "mediaType": "application/json",
+          "digest": "sha256:dba5cd6a322d25c2bee4c242dc72687d98dc4cdb1cd0612c49afe74964c686c1",
+          "size": 191124,
+          "uri": "omk-content:2f131ea7d0061679992a140273fe9fc00fe7297b7293961908dd26e17f0cb285"
+        },
+        "nativeStdoutDigest": "sha256:9585d4b98766a690f375efb0a6fe8eab9449e85409220b9024ca68e9b3ae06ee",
+        "nativeStderrDigest": "sha256:1aa26269eb1cc57f86b235a03cda53c004edb5b1e9fc99d4da4f00843293d721",
+        "missing": [],
+        "collectionErrors": []
+      },
+      {
+        "sampleId": "event-id",
+        "variantId": "treatment",
+        "trialIndex": 0,
+        "executionStatus": "completed",
+        "attemptCount": 1,
+        "processOutcome": {
+          "exitCode": 0,
+          "signal": null,
+          "failureKind": null
+        },
+        "timing": {
+          "startedAt": "2026-10-28T21:16:59.947Z",
+          "completedAt": "2026-10-28T21:19:22.735Z",
+          "durationMs": 142787.953959
+        },
+        "usage": {
+          "inputTokens": 249251,
+          "outputTokens": 735,
+          "totalTokens": 249986,
+          "details": {
+            "cachedInputTokens": 217216,
+            "cacheWriteInputTokens": 0,
+            "reasoningOutputTokens": 14
+          }
+        },
+        "review": {
+          "bytes": 304,
+          "digest": "sha256:be223ff724b23d866c908d2a60c7d2e35f3b319fc9f6556be7774ec72fe9516d",
+          "json": {
+            "currentLastEventIdBroken": false,
+            "testsOnlyCheckReturnType": false,
+            "allPlatformsVerified": false,
+            "generalKnowledgeBenefitProven": false,
+            "evidence": [
+              "src/client.ts",
+              "src/index.ts",
+              "src/sdk.ts",
+              "src/sessionCapture.ts",
+              "test/client-capture.realcore.test.ts"
+            ]
+          }
+        },
+        "acceptance": {
+          "passed": true,
+          "checks": [
+            {
+              "checkId": "currentLastEventIdBroken",
+              "passed": true
+            },
+            {
+              "checkId": "testsOnlyCheckReturnType",
+              "passed": true
+            },
+            {
+              "checkId": "bounded-conclusion",
+              "passed": true
+            },
+            {
+              "checkId": "source-citations",
+              "passed": true
+            }
+          ]
+        },
+        "nativeDiagnosticReference": {
+          "mediaType": "application/json",
+          "digest": "sha256:d9d2941ea374f4a23e8c0ff283a7a6789785e3bb2b8034af066e3740f1b67de6",
+          "size": 89625,
+          "uri": "omk-content:bdf999cceb5c3b2cf5d06cb87d8711022f697f089b187b1ffc82535f31bf530a"
+        },
+        "nativeStdoutDigest": "sha256:5be2fdb3fc630a4a1ede653a191cfb6a97276fbefdf19b69a23e6b132bc44a93",
+        "nativeStderrDigest": "sha256:1aa26269eb1cc57f86b235a03cda53c004edb5b1e9fc99d4da4f00843293d721",
+        "missing": [],
+        "collectionErrors": []
+      },
+      {
+        "sampleId": "session",
+        "variantId": "control",
+        "trialIndex": 0,
+        "executionStatus": "completed",
+        "attemptCount": 1,
+        "processOutcome": {
+          "exitCode": 0,
+          "signal": null,
+          "failureKind": null
+        },
+        "timing": {
+          "startedAt": "2026-10-28T21:21:48.695Z",
+          "completedAt": "2026-10-28T21:24:05.357Z",
+          "durationMs": 136657.230583
+        },
+        "usage": {
+          "inputTokens": 216096,
+          "outputTokens": 553,
+          "totalTokens": 216649,
+          "details": {
+            "cachedInputTokens": 182144,
+            "cacheWriteInputTokens": 0,
+            "reasoningOutputTokens": 0
+          }
+        },
+        "review": {
+          "bytes": 292,
+          "digest": "sha256:b49ebc4434074fccbe1d251876c5d8a3a0109ba30c794c73242b98c0a3a0bb5a",
+          "json": {
+            "capturedUndefinedCanFallBack": false,
+            "lateErrorCanMutateNewSession": false,
+            "allPlatformsVerified": false,
+            "generalKnowledgeBenefitProven": false,
+            "evidence": [
+              "src/sessionCapture.ts",
+              "src/client.ts",
+              "src/sdk.ts",
+              "test/client-capture.realcore.test.ts"
+            ]
+          }
+        },
+        "acceptance": {
+          "passed": true,
+          "checks": [
+            {
+              "checkId": "capturedUndefinedCanFallBack",
+              "passed": true
+            },
+            {
+              "checkId": "lateErrorCanMutateNewSession",
+              "passed": true
+            },
+            {
+              "checkId": "bounded-conclusion",
+              "passed": true
+            },
+            {
+              "checkId": "source-citations",
+              "passed": true
+            }
+          ]
+        },
+        "nativeDiagnosticReference": {
+          "mediaType": "application/json",
+          "digest": "sha256:2117b404dfba9354e61f2636856c9e0f024bc9d41185df282c95c9555321a43b",
+          "size": 114633,
+          "uri": "omk-content:79eece06e40d5bbafa71bbc294588b06b907d8d508e288c8ee9d68906127d86f"
+        },
+        "nativeStdoutDigest": "sha256:4961008c1493cb45895e620c8657cc629a9743e9731ce8a47f3e4062116acba0",
+        "nativeStderrDigest": "sha256:1aa26269eb1cc57f86b235a03cda53c004edb5b1e9fc99d4da4f00843293d721",
+        "missing": [],
+        "collectionErrors": []
+      },
+      {
+        "sampleId": "session",
+        "variantId": "treatment",
+        "trialIndex": 0,
+        "executionStatus": "completed",
+        "attemptCount": 1,
+        "processOutcome": {
+          "exitCode": 0,
+          "signal": null,
+          "failureKind": null
+        },
+        "timing": {
+          "startedAt": "2026-10-28T21:24:05.357Z",
+          "completedAt": "2026-10-28T21:26:10.795Z",
+          "durationMs": 125437.174459
+        },
+        "usage": {
+          "inputTokens": 202484,
+          "outputTokens": 603,
+          "totalTokens": 203087,
+          "details": {
+            "cachedInputTokens": 172288,
+            "cacheWriteInputTokens": 0,
+            "reasoningOutputTokens": 15
+          }
+        },
+        "review": {
+          "bytes": 292,
+          "digest": "sha256:b49ebc4434074fccbe1d251876c5d8a3a0109ba30c794c73242b98c0a3a0bb5a",
+          "json": {
+            "capturedUndefinedCanFallBack": false,
+            "lateErrorCanMutateNewSession": false,
+            "allPlatformsVerified": false,
+            "generalKnowledgeBenefitProven": false,
+            "evidence": [
+              "src/sessionCapture.ts",
+              "src/client.ts",
+              "src/sdk.ts",
+              "test/client-capture.realcore.test.ts"
+            ]
+          }
+        },
+        "acceptance": {
+          "passed": true,
+          "checks": [
+            {
+              "checkId": "capturedUndefinedCanFallBack",
+              "passed": true
+            },
+            {
+              "checkId": "lateErrorCanMutateNewSession",
+              "passed": true
+            },
+            {
+              "checkId": "bounded-conclusion",
+              "passed": true
+            },
+            {
+              "checkId": "source-citations",
+              "passed": true
+            }
+          ]
+        },
+        "nativeDiagnosticReference": {
+          "mediaType": "application/json",
+          "digest": "sha256:e3589c64f51fc5eabf4535e2b2f3956af1556afe1edca49dfa7bf4d8b5ef93c8",
+          "size": 81311,
+          "uri": "omk-content:4095222949b7d0ca68c60b21c515444d111190bae8b40bc7576a334057917587"
+        },
+        "nativeStdoutDigest": "sha256:33c15ec1244409703f8048a3bbf3e109043de94ee4fd7cf270bf948b59d97d97",
+        "nativeStderrDigest": "sha256:e10f1e4879199a33108357466912cf36dc1b02b5f288cbb50923bb097640b158",
+        "missing": [],
+        "collectionErrors": []
+      }
+    ]
+  },
+  "limits": [
+    "Knowledge review is author source QA, not independent human Gold or general extraction accuracy.",
+    "Old artifact-task identities were not resumed; this is a new current-contract comparison.",
+    "Carrier v2 adds runtime evidence and removes a report; no single-item causal attribution.",
+    "Provided-content task consumption does not measure native Skill discovery or asset reading.",
+    "The original Boolean/path verifier and two exposed samples do not prove general benefits; issue1115 remains independent.",
+    "Complete raw conversation text, knowledge bodies and native outputs stay local; provider USD and internal request counts are unknown."
+  ]
+}
