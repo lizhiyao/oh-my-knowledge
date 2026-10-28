@@ -4,31 +4,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
-import type { KnowledgeWrite } from '../../src/knowledge/store.js';
+import { knowledgeBodyDigest } from '../../src/knowledge/adapters/body-digest.js';
 import type { SourceSelection } from '../../src/knowledge/extraction/evidence.js';
-import { draft, proposal } from './fixtures.js';
+import { bodyWrite as command, bodyActor as actor } from './body-fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function temp(): string { const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-')); roots.push(root); return root; }
-const actor = { actorKind: 'human' as const, actorId: 'local-user' };
-function command(): KnowledgeWrite & { commandKind: 'append_revision' } {
-  return {
-    requestId: 'request-1', knowledgeId: 'knowledge-1', expectedGeneration: 0,
-    commandKind: 'append_revision', expectedHeadRevisionId: null,
-    revision: {
-      ...draft(), knowledgeId: 'knowledge-1', revisionId: 'revision-1',
-      observationRefs: [], derivations: [], createdAt: '2026-09-14T00:00:00Z', revisedAt: '2026-09-14T00:00:00Z',
-      createdBy: actor, revisedBy: actor, revisionReason: '首次提炼',
-    },
-    grounding: {
-      revisionId: 'revision-1', mentions: proposal().mentions, citations: proposal().citations,
-      sourceBindings: [{ snapshotId: 'b4165dab-60b1-4f34-a9ea-e73bfa32c35d', sourceVersion: `sha256:${'a'.repeat(64)}`, evidenceRefs: ['record-1'] }],
-      reuseRationale: '未来任务参考', identityUncertainties: [],
-    },
-  };
-}
-
 describe('knowledge file transactions', () => {
   it('replays retries before generation checks and rejects changed content under the same request', () => {
     const root = temp();
@@ -50,28 +32,31 @@ describe('knowledge file transactions', () => {
     const edit = command();
     edit.requestId = 'edit'; edit.expectedGeneration = 2; edit.expectedHeadRevisionId = 'revision-1';
     edit.revision.revisionId = 'revision-2'; edit.revision.parentRevision = { knowledgeId: 'knowledge-1', revisionId: 'revision-1' };
-    edit.revision.title = '修订条件'; edit.grounding.revisionId = 'revision-2';
+    edit.revision.title = '修订条件'; edit.revision.bodyDigest = knowledgeBodyDigest(edit.revision);
     store.write(edit, actor);
     expect(store.read('knowledge-1').revisions[0]).toEqual(input.revision);
     expect(store.read('knowledge-1').maintenance).toHaveLength(1);
     expect(store.read('knowledge-1').revisions[1]).not.toHaveProperty('reviewStatus');
     expect(() => store.write({ ...edit, requestId: 'stale-editor' }, actor)).toThrow('conflict');
   });
-  it.each(['entity', 'citation', 'source'] as const)('rejects corrupted %s grounding on write and read', (target) => {
-    const root = temp(); const store = new FileKnowledgeStore(root, 'project');
-    const invalid = command();
-    const corrupt = (grounding: typeof invalid.grounding) => {
-      if (target === 'entity') grounding.mentions[0].entityId = 'nonexistent';
-      if (target === 'citation') grounding.citations[0].evidenceLinkId = 'nonexistent';
-      if (target === 'source') grounding.mentions[0].selection.evidenceRef = 'unbound-record';
+  it.each(['digest', 'selection', 'duplicate'] as const)('rejects corrupted %s body data on write and read', (target) => {
+    const root = temp(); const store = new FileKnowledgeStore(root, 'project'); const invalid = command();
+    const corrupt = (revision: typeof invalid.revision) => {
+      if (target === 'digest') revision.content.segments[0].text = '被改写的正文';
+      if (target === 'selection') revision.content.segments[0].evidence[0].selection.end += 1;
+      if (target === 'duplicate') revision.content.segments.push(revision.content.segments[0]);
     };
-    corrupt(invalid.grounding);
-    expect(() => store.write(invalid, actor)).toThrow('Invalid revision references');
-    store.write(command(), actor);
-    const path = join(root, readdirSync(root)[0]);
-    const stored = JSON.parse(readFileSync(path, 'utf8')); corrupt(stored.grounding[0]);
-    writeFileSync(path, JSON.stringify(stored));
-    expect(() => store.read('knowledge-1')).toThrow('Invalid revision references');
+    corrupt(invalid.revision); expect(() => store.write(invalid, actor)).toThrow();
+    store.write(command(), actor); const path = join(root, readdirSync(root)[0]);
+    const stored = JSON.parse(readFileSync(path, 'utf8')); corrupt(stored.revisions[0]);
+    writeFileSync(path, JSON.stringify(stored)); expect(() => store.read('knowledge-1')).toThrow();
+  });
+  it('rejects old v2 through the current reader and keeps source loss independent of body availability', () => {
+    const root = temp(), store = new FileKnowledgeStore(root, 'project'); store.write(command(), actor);
+    expect(store.read('knowledge-1').schemaVersion).toBe(3);
+    expect(store.read('knowledge-1').revisions[0].content.segments[0].evidence[0].source.snapshotId).toBeTruthy();
+    const path = join(root, readdirSync(root)[0]), raw = JSON.parse(readFileSync(path, 'utf8')); raw.schemaVersion = 2;
+    writeFileSync(path, JSON.stringify(raw)); expect(() => store.read('knowledge-1')).toThrow('knowledge_storage_unsupported');
   });
   it('never overwrites damaged storage or accepts an impersonated author', () => {
     const root = temp();

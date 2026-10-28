@@ -93,6 +93,7 @@ eval-core ← eval-runtime ← 产品编排
 ```text
 knowledge/
 ├── contracts.ts  # 知识内容与证据契约
+├── associations.ts # 独立派生关联契约与复核
 ├── history.ts    # 不可变修订规则
 ├── store.ts      # 存储端口与规范身份
 ├── tags.ts       # 标签契约
@@ -100,9 +101,11 @@ knowledge/
 ├── entities/     # 纯窗口身份、关联复核与调用契约
 ├── entity-library/      # 纯跨窗组织契约与修订
 ├── extraction/   # 选定窗口、模型协议与输出接纳
+├── measurement/  # 冻结的 typed 测量 DTO
 ├── entity-linking/      # 跨窗候选与复核执行
 ├── application/  # 共用用例与本地应用装配
 ├── adapters/     # 模型传输、来源读取与文件持久化
+├── migration/    # 显式旧工作区转换契约
 └── artifacts/    # 知识载体生命周期
 ```
 

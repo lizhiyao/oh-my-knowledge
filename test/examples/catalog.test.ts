@@ -66,7 +66,7 @@ describe('public examples catalog', () => {
     }
   });
 
-  it('round-trips one authored extraction through source-bound knowledge and entity search without model calls', async () => {
+  it('round-trips authored body/association phases through source-bound storage and entity search without model calls', async () => {
     const { stdout, stderr } = await runCli([], {
       entry: resolve(examplesRoot, 'knowledge-extraction/run.mjs'),
       cwd: resolve('.'),
@@ -74,10 +74,10 @@ describe('public examples catalog', () => {
     });
     assert.equal(stderr, '');
     assert.deepEqual(JSON.parse(stdout), {
-      fixtureInvocations: 1, modelCalls: 0, runStatus: 'completed',
+      fixtureInvocations: 2, modelCalls: 0, workflowId: 'knowledge-body-first/v1', phaseKinds: ['body', 'association'], runStatus: 'completed',
       candidateCount: 1, entityCount: 2, reopened: true, sourceBindingVerified: true,
       entitySearchMatches: 1, linkedKnowledgeCount: 1, reviewStatus: 'pending',
-      humanReview: 'pending', independentReview: 'pending', usageReported: false,
+      humanReview: 'pending', independentReview: 'pending', associationReview: 'pending', usageReported: false,
       temporaryWorkspaceRemoved: true,
     });
   });

@@ -21,7 +21,6 @@ import { LibraryReferentKindConflictError } from '../../src/knowledge/entity-lib
 import { EntityLinkConflictError } from '../../src/knowledge/entities/links.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { entityLinkDigest } from '../../src/knowledge/entity-linking/entity-link-hash.js';
-import { modelWindow } from './fixtures.js';
 
 const durabilityFault = vi.hoisted(() => ({ path: undefined as string | undefined, remaining: 0 }));
 vi.mock('node:fs', async importOriginal => {
@@ -45,17 +44,20 @@ const knowledge = () => createLocalKnowledgeApplication(root);
 async function window(name: string, multiple = false) {
   const source = knowledge().capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
     raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: multiple ? 'Alpha 使用 Beta。Alpha' : 'Alpha 使用 Beta' }] } }) }] });
-  const run = await knowledge().generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-model-call', generate: async (_system, input) => ({
-    output: JSON.stringify((() => {
-      const packet = modelWindow();
-      if (multiple) { packet.mentions[0].selection.occurrence = 0; packet.mentions.push({ ...packet.mentions[0], mentionId: 'm3',
-        selection: { ...packet.mentions[0].selection, occurrence: 1 } }); }
-      return packet;
-    })()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
-  const analysis = knowledge().entities(run.runId), entity = analysis.revision.entities[0];
-  const ref = { analysisId: run.runId, entityId: entity.entityId };
+  const analysisId = randomUUID(), revisionId = randomUUID(), actor = { actorKind: 'human' as const, actorId: 'authored-fixture' };
+  const entityIds = [randomUUID(), randomUUID()], evidenceRef = source.excerpts[0].evidenceRef;
+  const entities = ['Alpha', 'Beta'].map((label, index) => ({ entityId: entityIds[index], label, description: `本窗口中的${label}`,
+    qualifiers: [], identityStatus: 'proposed' as const, possibleEntityIds: [], uncertainties: [], referentKind: 'object' as const, componentRef: null, collection: null }));
+  const mentions = ['Alpha', 'Beta', ...(multiple ? ['Alpha'] : [])].map((quote, index) => ({ mentionId: randomUUID(), entityId: entityIds[index === 1 ? 1 : 0],
+    selection: { evidenceRef, start: index === 1 ? 9 : index === 2 ? 14 : 0, end: index === 1 ? 13 : index === 2 ? 19 : 5, quote },
+    basis: 'explicit' as const, rationale: '作者夹具的精确来源提及' }));
+  new FileEntityAnalysisStore(join(root, 'entities'), root).write({ analysisId, requestId: randomUUID(), snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
+    expectedGeneration: 0, expectedHeadRevisionId: null, revision: { entities, mentions, limitations: [], revisionId,
+      revisedAt: '2026-10-28T00:00:00Z', revisedBy: actor, revisionReason: '独立实体端口夹具；没有提取模型调用或伪造run' } }, actor);
+  const analysis = knowledge().entities(analysisId), entity = analysis.revision.entities[0];
+  const ref = { analysisId, entityId: entity.entityId };
   const member = { ...ref, entityRevisionId: analysis.revision.revisionId, mentionIds: analysis.revision.mentions.filter(m => m.entityId === entity.entityId).map(m => m.mentionId), rationale: '人工核对来源' };
-  return { source, run, analysis, ref, member };
+  return { source, analysis, ref, member };
 }
 const selection = { executor: 'openai-api', model: 'fixture-compatible-model' };
 function suggestion(preview: ReturnType<EntityLinkApplication['preview']>) {
@@ -129,7 +131,7 @@ describe('entity-link actual host/store/API flow', () => {
     expect(() => prepare(app, preview)).toThrow('owner_conflict'); expect(app.list()).toEqual([]);
     const updated = app.preview(a.ref, b.ref, selection); prepare(app, updated);
     const corrected = structuredClone(a.analysis.revision.entities); corrected[0].description = '新限定';
-    knowledge().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1, { entities: corrected, mentions: a.analysis.revision.mentions }, '人工纠正');
+    knowledge().correctEntities(a.ref.analysisId, a.analysis.revision.revisionId, 1, { entities: corrected, mentions: a.analysis.revision.mentions }, '人工纠正');
     await expect(start(app, updated.reviewId)).rejects.toThrow('entity_changed'); expect(app.project(updated.reviewId).invocationBudget.consumed).toBe(0);
     expect(app.read(updated.reviewId).events).toHaveLength(1);
   });
@@ -276,7 +278,7 @@ describe('entity-link actual host/store/API flow', () => {
     const a = await window('a'), b = await window('b');
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env, fault === 'review_ack' ? faultStore('application_applied', false) : undefined);
     const preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
-    const entityFile = join(root, 'entities', `${a.run.runId}.json`), entitiesBefore = readFileSync(entityFile);
+    const entityFile = join(root, 'entities', `${a.ref.analysisId}.json`), entitiesBefore = readFileSync(entityFile);
     if (fault === 'library_ack') { const original = KnowledgeLibraryApplication.prototype.applyLinkIntent; vi.spyOn(KnowledgeLibraryApplication.prototype, 'applyLinkIntent').mockImplementationOnce(function (this: KnowledgeLibraryApplication, ...args) { original.apply(this, args); throw new Error('lost library ack'); }); }
     if (fault === 'library_sync' || fault === 'review_sync') {
       durabilityFault.path = join(root, fault === 'library_sync' ? 'library' : 'entity-links'); durabilityFault.remaining = 1;
@@ -394,7 +396,7 @@ describe('entity-link actual host/store/API flow', () => {
     const library = createLocalKnowledgeLibrary(root), owner = library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
       identityConfirmed: true, reason: '旧组织', draft: { label: 'Alpha 对象', description: '旧范围', referentKind: 'object', members: [a.member, c.member] } });
     const revisedEntities = structuredClone(a.analysis.revision.entities); revisedEntities[0].description = '同一对象的新修订范围';
-    const updated = knowledge().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1,
+    const updated = knowledge().correctEntities(a.ref.analysisId, a.analysis.revision.revisionId, 1,
       { entities: revisedEntities, mentions: a.analysis.revision.mentions }, '生成明确的新实体修订');
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env);
     const preview = app.preview(a.ref, b.ref, selection); prepare(app, preview); const completed = await start(app, preview.reviewId);
@@ -417,7 +419,7 @@ describe('entity-link actual host/store/API flow', () => {
       const entities = structuredClone(item.analysis.revision.entities);
       if (mode === 'unresolved') { entities[0].identityStatus = 'unresolved'; entities[0].uncertainties = ['来源身份未消歧']; }
       else entities[0].referentKind = 'activity';
-      knowledge().correctEntities(item.run.runId, item.analysis.revision.revisionId, 1, { entities, mentions: item.analysis.revision.mentions }, '人工明确层级或未决身份');
+      knowledge().correctEntities(item.ref.analysisId, item.analysis.revision.revisionId, 1, { entities, mentions: item.analysis.revision.mentions }, '人工明确层级或未决身份');
     }
     const create = vi.fn(createExecutor), app = host({ OPENAI_API_KEY: 'local-preflight-only' }, undefined, create);
     expect(() => app.preview(a.ref, b.ref, selection)).toThrow(mode === 'unresolved' ? 'identity_unresolved' : 'kind_mismatch');
@@ -499,18 +501,18 @@ describe('entity-link actual host/store/API flow', () => {
     vi.spyOn(FileLibraryStore.prototype, 'list').mockImplementationOnce(() => { throw new Error('Library capacity exceeded.'); });
     expect(() => app.resume(preview.reviewId)).toThrow('Library capacity exceeded.'); expect(app.project(preview.reviewId).status).toBe('accepted_pending_application');
     const entities = structuredClone(a.analysis.revision.entities); entities[0].description = '人工重新限定原有owner成员';
-    knowledge().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '更正原有anchor');
+    knowledge().correctEntities(a.ref.analysisId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '更正原有anchor');
     const resumed = app.resume(preview.reviewId); expect(resumed.events.at(-1)!.command).toMatchObject({ conflictCode: 'entity_changed' });
     expect(library.detail(owner.objectId).history.generation).toBe(1); expect(transport.count).toBe(1);
   });
   it('allows explicit organization naming without truncating a long extracted label or persisting an unusable decision', async () => {
     const a = await window('a'), b = await window('b'); const entities = structuredClone(a.analysis.revision.entities); entities[0].label = 'A'.repeat(257);
-    knowledge().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '保留完整名称');
+    knowledge().correctEntities(a.ref.analysisId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '保留完整名称');
     const transport = await api(() => native(suggestion(preview))), app = host(transport.env), preview = app.preview(a.ref, b.ref, selection);
     prepare(app, preview); const completed = await start(app, preview.reviewId);
     expect(() => app.decide({ reviewId: preview.reviewId, requestId: randomUUID(), expectedGeneration: completed.generation, decision: 'accept', identityConfirmed: true, reason: '人工确认' })).toThrow('explicit organization label');
     expect(app.project(preview.reviewId).status).toBe('awaiting_review'); accept(app, completed); expect(app.project(preview.reviewId).status).toBe('applied');
-    expect(knowledge().entities(a.run.runId).revision.entities[0].label).toHaveLength(257); expect(transport.count).toBe(1);
+    expect(knowledge().entities(a.ref.analysisId).revision.entities[0].label).toHaveLength(257); expect(transport.count).toBe(1);
   });
   it('fails closed on corrupt/unsupported/symlink files, releases atomic temps/locks, and rejects escaped transactions', async () => {
     const a = await window('a'), b = await window('b'), app = host({ OPENAI_API_KEY: 'fixture-key-long' });
@@ -522,6 +524,6 @@ describe('entity-link actual host/store/API flow', () => {
     let escaped!: EntityLinkInvocationTransaction; new FileEntityLinkStore(join(root, 'entity-links'), root).transaction(tx => { escaped = tx; });
     expect(() => escaped.save(saved, 1)).toThrow('expired'); expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false);
     app.cancelBeforeStart({ reviewId: saved.reviewId, requestId: randomUUID(), expectedGeneration: 1, reason: '明确取消发送' }); expect(app.project(saved.reviewId).invocationBudget).toEqual({ reserved: 0, consumed: 0 });
-    rmSync(file); symlinkSync(join(root, 'entities', `${a.run.runId}.json`), file); expect(() => app.list()).toThrow('Invalid entity-link file');
+    rmSync(file); symlinkSync(join(root, 'entities', `${a.ref.analysisId}.json`), file); expect(() => app.list()).toThrow('Invalid entity-link file');
   });
 });

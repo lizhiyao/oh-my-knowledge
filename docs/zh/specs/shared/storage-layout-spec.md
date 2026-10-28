@@ -103,17 +103,29 @@ JSON 排他发布要求同目录硬链接能力，替换要求原子 rename。�
 
 v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存储根，不提供针对这棵目录的迁移命令，也不会自动搬动或删除旧数据。已有旧 `.omk` 数据保持原样，但不会被 v2 读侧发现；用户可以先备份，再显式删除。Evaluation Core bundle 只支持 manifest v2 与 `report.json`。下面由用户明确选择的知识工作区使用独立的当前版本契约。
 
-## 明确选择的知识工作区
+## 明确选择的知识工作区 {#explicit-knowledge-workspace}
 
-用户通过设置或 `--workspace` 选择知识工作区，与上面的项目运行目录分开。`items/<identity-digest>.json` 使用 `knowledge-item-history` v2；`entities/<analysis-id>.json` 使用 `entity-analysis-history` v2，保存不可变修订、精确来源绑定与写入回执。`extraction-runs/<run-id>.json` 使用 `knowledge-extraction-run` v5，保存每次 invocation 的 system／input 摘要与来源绑定、接纳事实及稳定写入意图。完整执行器返回 JSON 结果以不可变 sidecar 保存在 `extraction-runs/outcomes/<run-id>/<attempt-id>.json`，通过身份与摘要引用；失败／refusal 原文和用量标志均保留。`library/<object-id>.json` 使用 `knowledge-library-object-history` v1，保存已确认的跨窗口来源关联与组织历史，不复制知识正文，详见[知识库契约](../knowledge/knowledge-library.md)。来源、主题标签及载体版本沿用各自契约。`entity-links/<review-id>.json` 独立使用 `entity-link-invocation-history` v1，保存已确认请求与调用生命周期、完整执行器返回结果及失败证据、不可变人工决定及可恢复的 library intent/receipt；见[跨窗口复核日志](../entities/entity-links.md)。
+工作区由设置或 `--workspace` 显式选择，独立于项目 `.omk`。当前格式为：
 
-人工运行封存属于独立版本的处置，不是旧 reader 或迁移。`extraction-runs/seals/<current|legacy>/<run-id>/intent.json` 使用 `knowledge-extraction-seal-intent` v1，绑定声明的操作／actor／理由、原 manifest 字节 SHA-256 及精确 sidecar 原字节清单；`evidence/manifest.json` 与 `evidence/outcomes/<attempt-id>.json` 保留未经规范化的字节序列。intent／副本先获耐久确认，再在 `.knowledge-write.lock` 内最终核对身份并将 `knowledge-extraction-seal-marker` v1 原子发布到原 manifest 路径，原路径持续占位。pending intent 不算 sealed，未知确认保留磁盘事实并要求完全相同操作重入；执行／恢复拒绝 pending／sealed 记录，manifest 投影仍披露 pending 处置。显式 `sealed-runs` 查询与质量 v4 显示人工处置／执行状态未知，清单不重新认证 native 完整性或耐久性。准入、offline 声明、容量及旧进程限制见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。不自动解封、调用、退款、重判历史或迁移用户数据。
+| 路径 | 当前契约 |
+|---|---|
+| `items/<identity-digest>.json` | `knowledge-item-history` Schema 3：不可变正文修订、inline evidence、`bodyDigest`、维护及收据 |
+| `associations/<identity-digest>.json` | `knowledge-association-history` Schema 1：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
+| `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
+| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 1、流程 `knowledge-body-first/v1`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
+| `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变正文或关联原生完整返回，分别绑定请求与摘要 |
+| `library/<object-id>.json` | 既有 `knowledge-library-object-history` Schema 1，明确确认的跨窗组织 |
+| `entity-links/<review-id>.json` | 既有 `entity-link-invocation-history` Schema 1，独立跨窗建议／决定／应用日志 |
 
-新的自动提炼 permission 可在既有 Schema v1 中记录显式生成政策与 `conversation-invocations/v1` ledger 身份。不可变 `auto-extraction/attempt-<permission-id>-<attempt-id>.json` 回执绑定 permission／run／attempt／request 身份及 token 预约，派发前独占发布并 fsync；可变次数／token 计数按 ledger 核对恢复，不退款。未发布的原子暂存文件不算回执。每份已发布 invocation 可对应一份不可变处理事实 `auto-extraction/cooldowns/<thread-digest>-<run-id>-<attempt-id>.json`，绑定 permission／run／attempt／request／source／policy 身份及原生 outcome 引用，记录 no-cooldown、required 或 invalid；该目录受 invocation 回执数量及 3000 条上限约束。归档后 hook 在退避前记录首次观测截止时间；status、enable 和派发从原归档补齐缺失事实，回执丢失后不延长已有事实的时间。已知合法等待跨权限生效，非法值只停止原权限，不永久封锁新的明确授权。状态持久派生冷却截止时间，本地调度和实际派发均须遵守。迟到结果只发布原调用事实，不改写其他 owner，由新 owner 的 gate 核对已知等待。持久预约后再次检查取消及到期；fsync 期间跨越截止时间会阻止执行，但不退款。上限在同一 24 小时 grant 内跨窗口累计。无 policy 的既有权限仍仅有单调用授权，不因新默认值而扩大。
+来源、标签和载体版本各有契约。读取已存正文不以实体目录或投影成功为前提。投影绑定 `{knowledgeId, revisionId, bodyDigest}`，修改／重建／审查投影不改正文、不继承正文 retain。损坏／过期／被拒投影明确显示。
 
-来源归档／删除、run metadata／outcome、实体与知识历史、主题标签、知识库关联、自动提炼状态及载体发布共用 `.knowledge-write.lock`。载体的最终选择校验与发布持续持有该边界；完整生成树在发布前通过容量检查，失败暂存内容被清理。锁等待失败报告 `knowledge_workspace_busy`。只恢复已证明退出的本机 owner，拒绝存储目录的软链跳转。文件 Schema 版本与 prompt／wire／pipeline 来源身份分开；当前领域响应、strict 与作者 prompt-json 身份见[从运行时代码生成的当前契约](../../reference/shared/knowledge-contract.md)。不同 prompt 与 wire 身份不共用质量结论。读取或幂等恢复受支持的运行保留原始证据，不发送模型或升级结果，边界见[当前实体存储契约](../entities/entity-extraction.md#_6-当前存储契约)。
+Generate 先归档正文原件、把接纳正文保存待审，再尝试关联。每个原生阶段派发前 claim、接纳前归档；宿主组合不冒充原生原件。`resume` 只挂接原证据并重放精确写入意图／收据。已 claim 而无原件的阶段保持未知，禁止自动重发；从未 claim 的关联可显式继续，完全相同的 completed 运行重放零调用。流程完成不证明关联成功、来源保真或真值。
 
-原 `runs/` v4 文件不按受支持运行读取，不迁移或删除；仅显式 opaque 人工封存会保留其原字节并将原路径替换为上述独立 marker；v5 reader 中旧运行详情、resume、对话／项目批次和质量统计不可用。同一工作区内现行来源快照、实体历史 v2、知识历史 v2 和已有绑定仍可读取，不要求替换为空工作区。实体历史 v1 和不支持的运行格式仍被拒绝，不添加兼容 reader。新提炼的实体不会自动接管旧知识绑定。存储文件可能含私有片段，属于用户本地数据，不是仓库源码资产。
+**BREAKING-SCHEMA/API/COMPARABILITY：**当前正文 reader 拒绝 typed 知识 Schema 2，当前日志恢复拒绝 run5；旧 `extraction-runs/` 清单明确 unsupported，原文件不动。[显式迁入独立新工作区](../knowledge/knowledge-domain-model.md#body-migration)把所有原字节保存在 `migration/<migrationId>/original/<relative-path>.base64`，保留原字节摘要、固定 `plan.json`、精确修订／段落映射与 `complete.json`。复制支持的 source／entity 记录，机械渲染的新正文待审、不隐式保留。Library／carrier／既有跨窗引用只归档、不改指向。旧目录与匹配旧 binary 用于回退，不提供永久双 canonical reader，也不虚构迁移 CLI。
+
+自动提炼使用许可 Schema 2 与 `conversation-phase-invocations/v2`。`auto-extraction/<thread-hash>.json` 保存可变状态；不可变 `permission-<id>.json`、`schedule-<permission-id>-<run-id>.json`、`phase-<permission-id>-<invocation-id>.json`、`outcome-<permission-id>-<invocation-id>.json` 分别绑定同意、来源窗口计划、各付费阶段预约与观测 cooldown。正文／关联分别消耗一次调用；关联前因额度／过期拒绝时保留已存正文。旧 Schema 1 许可明确不支持，须重新批准，不自动扩大为两阶段授权。读取与恢复不派发。
+
+所有写入共享 `.knowledge-write.lock` 及适用的 CAS／幂等收据；争用报告 `knowledge_workspace_busy`，只恢复证实本机退出的 owner，拒绝存储目录软链。可调的检索默认 65536 UTF-8 字节计算整个响应及换行，不是存储、正文、模型上下文或金额上限；producer 与 store 容量仍分别显式检查。运行身份来自[生成契约](../../reference/shared/knowledge-contract.md)；历史 typed study 核对／重放保留冻结身份与结论，当前构建零调用拒绝旧 typed 生成计划。工作区记录可能包含私有来源与输出。
 
 ## 为什么这样命名
 

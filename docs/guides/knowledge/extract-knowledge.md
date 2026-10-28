@@ -9,7 +9,7 @@ This guide describes current main. Check the capability’s version boundary bef
 | Capability | Availability boundary |
 |---|---|
 | Core library, artifact authoring, ongoing revision and change review | Available since published `1.0.0-beta.14`; Beta.13 does not include this maintenance UI. |
-| Strict structural extraction, complete native outcome archives, bounded retries and token reservations, model-assisted cross-window entity-link execution journals, study inspection and run sealing | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
+| Canonical body-first generation, independent derived associations, current journals, complete native archives, task retrieval and explicit migration adapters | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
 | Later read-retry, save-recovery and CLI-guidance fixes | Also described against current main; the published Beta.14 version is not evidence that these fixes are present. |
 
 The [current knowledge extraction contract](../../reference/shared/knowledge-contract.md) generates prompt, Schema and capacity values from runtime code. It identifies the build rather than replacing [release records](https://github.com/lizhiyao/oh-my-knowledge/releases). `@next` is a release channel and does not automatically contain unpublished main changes.
@@ -23,8 +23,8 @@ omk studio
 Use the returned address and check the current knowledge location first. Changing the default directory does not move saved data.
 
 1. **Select a source**: Open a conversation and choose extraction for a turn, or select a conversation from the knowledge page. Review messages, location, executor, and model before confirming. Only then is a model called, potentially incurring cost.
-2. **Review candidates**: Read statements, conditions, exceptions, and unknowns; open source evidence. Record a reason to retain, discard, or revise. New revisions require review again.
-3. **Review entities as needed**: Check names, references, levels, and original text from a candidate or entity list. Entity corrections do not rewrite knowledge; explicitly apply the exact revision after review.
+2. **Review candidates**: Read complete body segments, conditions, attribution, exceptions and unknowns; open source evidence. Record a reason to retain, discard, or revise. New revisions require review again.
+3. **Review entities as needed**: Check names, references, levels, and original text from a candidate or entity list. Entity corrections do not rewrite body; independently apply and review exact segment/entity associations.
 4. **Accumulate across records**: Create an object in the knowledge library, check whether source entities from different windows refer to the same object, and confirm with reasons. Equal names do not merge identities; resolve ambiguity and missing sources first.
 5. **Revise and update**: Carrier details show items requiring review after knowledge changes. Inspect revisions, retention changes, and sources item by item before selecting update content; old versions remain available.
 6. **Generate and save a carrier**: Select matching retained knowledge, choose skill/prompt, check text and exact sources, and save a version. Generation organizes existing content without another model call. Updates rebuild the selected knowledge section while preserving manual content outside it and dependent assets.
@@ -32,7 +32,7 @@ Use the returned address and check the current knowledge location first. Changin
 
 Candidate pages switch between content and source evidence; entity/library lists support narrow-screen switching. Failure, zero candidates, cancellation, and missing sources have explicit states. Extraction records and knowledge todos reopen saved content.
 
-Library, entity, and artifact pages show the selected knowledge directory; reading an explicit directory does not require model settings. Retry failed reads in place while preserving organization entries. Entity application conflicts retain roles and reasons; reload knowledge before explicitly applying again. Generic server failures or unreadable acknowledgements do not prove no write occurred. Choose “Check saved version”: organization checks the request receipt, while artifacts check content and exact references, avoiding duplicate saves. Pending content stays read-only and copyable; saving and checking make no extra model calls.
+Library, entity, and artifact pages show the selected knowledge directory; reading an explicit directory does not require model settings. Retry failed reads in place while preserving organization entries. Association conflicts preserve the body and draft; reread exact body/catalog/projection heads before applying again. Generic server failures or unreadable acknowledgements do not prove no write occurred. Choose “Check saved version”: organization checks the request receipt, while artifacts check content and exact references, avoiding duplicate saves. Pending content stays read-only and copyable; saving and checking make no extra model calls.
 
 ### Automatic conversation extraction and project todos
 
@@ -40,74 +40,45 @@ Automatic extraction is optional. Preview the selected conversation's messages, 
 
 ## Select and generate a source
 
-CLI and Studio share a knowledge workspace. Declare source scope first: capture archives locally, while generate calls the selected model. Replace paths, identities, and models below with real values.
+CLI and Studio use the same explicitly selected workspace. Capture archives selected records locally; generate sends only the selected excerpts, limitations and explicit source attribution to the configured model.
 
 ```bash
 omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl --json
-```
-
-```bash
 omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --json
-omk observe knowledge list --workspace ./knowledge --json
+omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --run-id <uuid> --json
 ```
 
-Use `--start-record`/`--end-record` to bound non-empty records (zero-based and inclusive); inspect the snapshot scope and limits first. See [extraction contracts](../../specs/entities/entity-extraction.md) for supported executors and current formats. Generation sends selected excerpts, whose private content still needs review.
+Use `--start-record`/`--end-record` for zero-based inclusive record ranges. Review privacy and scope before generating. Unsupported capabilities or unarchivable requests fail before dispatch; source text is not truncated. The host source file path is not sent as semantic metadata.
 
-Before generation, the combined system and input text, including fixed rules and selected excerpts, is checked against the UTF-8 capacity in the [current contract](../../reference/shared/knowledge-contract.md). This is not an HTTP-body, token, model-context or spending budget. Oversized requests make no model call, create no extraction run, and consume no automatic extraction calls; source text is never truncated. Capture a smaller range, or select fewer messages from one turn in Studio. `omk agents extract` also accepts `--start-record`/`--end-record` without changing the collection report.
+The current `knowledge-body-first/v1` workflow first calls the body model, archives its complete returned outcome, checks exact evidence and saves admitted complete body revisions **pending and unretained**. Only then does a separate association call propose entities and optional typed relations. Each phase defaults to 300 seconds and has its own request/profile/wire/producer/original outcome. A failed or unresolved projection does not remove the saved body. There is no automatic model retry, validation reask or provider fallback; old `--generation-policy` flags are no longer current generation contracts.
 
-Export the current build's derived JSON Schema to inspect or freeze the strict structural wire used by default generation; `--json` includes its identity and the checks retained by the host. This reads no knowledge workspace and calls no model:
+Export either current structural wire without accessing a workspace or invoking a model:
 
 ```bash
-omk observe knowledge schema
-omk observe knowledge schema --json
+omk observe knowledge schema --stage body --json
+omk observe knowledge schema --stage association --json
 ```
 
-The strict structural wire requires every field, with nullable placeholders for optional `object` and `occurrence`. Default configured generation uses the strict prompt and decodes placeholders before host admission checks; authored prompt-json ports have a separate identity. See the [generated contract reference](../../reference/shared/knowledge-contract.md) for current versions and the [entity extraction contract](../../specs/entities/entity-extraction.md) for behavior and historical identities. Prompt, wire, rendered request and pipeline have separate identities; they inherit no historical quality result and establish no new real-model acceptance. Unsupported executor capabilities fail before dispatch, with no prompt-only fallback. Exact evidence and semantic checks remain host responsibilities; exporting a Schema does not verify a provider’s support or model quality.
+The result includes profile/prompt/wire identities and Schema. Models return exact quotes and zero-based occurrences; the host computes UTF-16 positions. Quotes, titles and catalogs cannot replace missing body meaning. Wire validity and quote matching do not establish source fidelity or truth. See the [generated contract](../../reference/shared/knowledge-contract.md) and [extraction specification](../../specs/entities/entity-extraction.md).
 
-Generation defaults to `knowledge-generation-single/v1`: one OMK invocation, no automatic retry, validation reask or fallback. Studio's advanced configuration and CLI `--generation-policy '<complete policy JSON>'` explicitly opt into `knowledge-generation-bounded/v1`; the same flag is available on `omk agents extract`. A bounded policy declares `maxInvocations`, `maxReasks` (included in that total), `profileId`, `maxTotalTokens` and `maxOutputTokens`. It also freezes retry, accounting, selection, feedback and backoff rules; pass the complete policy rather than a partial override. Invocation, reask and output-token ceilings are derived in the [current contract](../../reference/shared/knowledge-contract.md). Studio starts with that opt-in disabled and shows the effective limits before confirmation.
-
-The production token profile `openai-gpt54-snapshot-context/v1` accepts only `openai-api`, requested snapshot `gpt-5.4-2026-03-05` and the exact official Chat Completions endpoint. It reserves the documented 1,050,000-token context upper bound plus the selected output cap for every invocation, not a prediction from text length. Studio shows the effective invocation, reask, total reservation and per-invocation output limits before confirmation; inspect that preview instead of assuming fixed UI defaults. Full reservations are charged without refund even when reported use is lower or unknown. Other endpoint/model combinations and Codex remain available under single policy but do not silently acquire this bounded profile or fall back to another provider. Invocation limits are OMK calls, not internal provider request counts or a dollar limit.
-
-The bounded policy retries only classified rate-limit/server/network/timeout failures and can reask after parse/envelope/wire failures or an admission with no accepted items. Any admitted sibling selects that partial result without another call. Each returned outcome is archived before classification; unknown execution, pending archival and storage/commit failures do not authorize another dispatch. No new real-model quality or cost improvement is claimed by this engineering policy.
-
-Default text summaries show the selected knowledge workspace and next commands carrying the same `--workspace`; without a configured model, `generate` still requires `--model`. `--json` preserves the complete machine result without mixing guidance into JSON stdout. Required parameters and JSON syntax are checked before settings or storage access: parameter failures exit `2`, business failures exit `1`, and success exits `0`. Revision conflicts include a reload command. Retry a busy workspace after its current write ends without removing live locks. Maintenance choices remain separate from effectiveness verification.
+Required parameters and JSON syntax are checked before settings/storage access. Parameter errors exit 2, business failures exit 1 and success exits 0. `--json` emits machine output without prose guidance. Inspect saved state after an unknown acknowledgement rather than blindly invoking again.
 
 ## Inspect and maintain {#inspect-and-maintain}
 
-
 ```bash
 omk observe knowledge show --workspace ./knowledge --id <knowledge-id> --json
-omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --reason 'Useful for later work on this project'
+omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation <read-generation> --reason 'Reviewed source and applicability'
 ```
 
-Read the revision identity and `history.generation` from the latest detail. `discard` uses the same arguments and records a reason without deleting history. On conflicts, reread and inspect changes before retrying.
+Use the actual revision and `history.generation` from the latest detail; `discard` records the same exact-revision decision without deleting history. Retention is not truth verification.
 
-For edits, copy only `title`, `content`, `entities` and `evidence` from the returned `revision` into a JSON draft. Edit titles, statements, context, or evidence interpretations. Change labels or assignments in bound analyses through the next section:
+For a revision draft copy only `title`, `content` and `reuseRationale`. Preserve every segment's stable `segmentId`, complete `text` and inline `evidence`. Evidence includes exact `source: {snapshotId, sourceVersion}`, `selection: {evidenceRef, start, end, quote}`, `basis` and optional `interpretation`. Positions are zero-based UTF-16 into the exact excerpt. Read the source before changing them; the host independently rereads each source/version and rejects mismatches.
 
 ```bash
-omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 2 --input ./draft.json --reason 'Clarify the applicable conditions'
+omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation <read-generation> --input ./body.json --reason 'Preserve the changed condition'
 ```
 
-Use the actual generation, not the example number. Edits create a new revision without inheriting the previous retention choice. Source positions remain bound. Correct new mentions/entities against the same analysis source; never invent references. New source windows require new extraction. Read old revisions using `show --revision <old-revision-id>`.
-
-To add later conditions, correct a quote or add an evidence link, save **all citations needed by the new revision** in `citations.json`, then add `--citations ./citations.json` to `revise` or `apply-entities`:
-
-```json
-[
-  {
-    "evidenceLinkId": "<draft-evidence-link-id>",
-    "selection": {
-      "evidenceRef": "<same-window-evidence-ref>",
-      "quote": "The exact source span to inspect",
-      "occurrence": 0
-    }
-  }
-]
-```
-
-Copy `evidenceRef` and continuous source text from the bound analysis messages. Link identities must match the draft's `evidence`; one link may cite several spans. `occurrence` is zero-based and includes overlaps; repeated spans need an explicit choice rather than guessing the first occurrence. Do not supply start/end offsets: the host computes them from source text. Omitting `--citations` preserves still-referenced prior citations; providing a file replaces the complete array, and an empty array is invalid. Invalid localization or references preserve the previous revision; another source window cannot supply the new quotes. Both Studio revision forms also edit citations and show source messages. A confirmed citation error preserves the editable draft; conflicts or unknown write outcomes require inspecting the latest knowledge before submitting again.
-
+Studio computes positions from selected exact quotes; CLI drafts supply the complete inline evidence. The old `--citations`, `citationLocators` and parallel grounding API are replaced. New body revisions remain pending and do not inherit retention; previous derived projections become stale. Source-unavailable edits are rejected, while the previously stored body remains readable. Inspect historical bodies with `show --revision <old-revision-id>`.
 
 ## Inspect entities and apply corrections {#inspect-entities-and-apply-corrections}
 
@@ -127,20 +98,29 @@ Without `--analysis`, `entities` searches current objects across workspace analy
 omk observe knowledge entities --workspace ./knowledge --query Atlas --identity-status unresolved --page-size 20 --json
 ```
 
-Search covers names, source mentions, qualifiers, and origin. `--source-status unavailable` finds unavailable-source results; `--page` selects a page. Same-name results preserve separate analysis/entity identities. JSON includes analysis/entity/revision identities, mention and linked-knowledge counts, and a separate older-binding count. Unreadable knowledge makes counts `null`, not zero. Corrupt analyses contribute to `unavailableAnalyses` rather than disappearing silently.
+Search covers names, source mentions, qualifiers, and origin. `--source-status unavailable` finds unavailable-source results; `--page` selects a page. Same-name results preserve separate analysis/entity identities. JSON includes analysis/entity/revision identities, mention and linked-knowledge counts, and a separate older-binding count. Corrupt analyses contribute to `unavailableAnalyses` rather than disappearing silently.
 
-Corrections append an entity revision without rewriting knowledge. To apply a chosen revision, inspect each statement's subject/object. Copy the referenced catalog entities' `entityId`, `label`, and `description` into the knowledge draft. Explicitly choose roles after a split:
+Corrections append an entity revision without rewriting body. To connect segments to a chosen catalog, inspect the exact body and catalog, then write a separate projection:
 
 ```bash
-omk observe knowledge apply-entities --workspace ./knowledge --id <knowledge-id> --revision <knowledge-revision-id> --generation <read-knowledge-generation> --analysis <run-id> --entity-revision <chosen-entity-revision-id> --input ./draft.json --reason 'Clarify entities in the statements' --json
+omk observe knowledge apply-associations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --generation <association-generation> --analysis <analysis-id> --entity-revision <catalog-revision-id> --input ./associations.json --reason 'Reviewed source-backed segment links' --json
+omk observe knowledge review-associations --workspace ./knowledge --id <knowledge-id> --revision <projection-revision-id> --generation <association-generation> --choice accept --reason 'Reviewed this projection' --json
 ```
 
-This creates a knowledge revision bound to the exact analysis revision. Prior additional identity notes are preserved by default. Explicitly update them with `--identity-uncertainties '["Reviewed remaining note"]'`; `'[]'` clears prior notes, while current catalog uncertainties always remain. Inspect statement conditions/unknowns separately in the knowledge editor. Historical analysis, knowledge, and decisions remain inspectable; make a new retention decision. Only the same source window is supported. Unavailable snapshots prevent corrections or application. Independent analysis may contain zero entities and does not require knowledge candidates. See [entity extraction design and limits](../../specs/entities/entity-extraction.md).
-
+The application draft contains `segmentEntityRefs`, optional `typedRelations` and `issues`. Each segment/entity reference names exact catalog mention IDs. Read association generation from `derivedAssociations.generation`, **not** body `history.generation`; absent association starts at 0. Manual application and model rebuilding create a new pending projection, preserving the body/revision/digest and its maintenance decision. Accept/reject review applies only to that projection and does not confirm external truth. A rejected or stale projection is not a current library binding. See the [domain contract](../../specs/knowledge/knowledge-domain-model.md).
 
 ## Organize and find knowledge {#organize-and-find-knowledge}
 
-Save topic tags in knowledge details and search by title or `tag:topic`. Tags organize content without revising content or retention; [knowledge maintenance contracts](../../specs/knowledge/knowledge-maintenance.md) own fields and limits.
+Topic tags organize content without changing its body or maintenance. For task consumption, retrieve complete segments from retained bodies by default:
+
+```bash
+omk observe knowledge retrieve --workspace ./knowledge --query 'What are the initialization conditions?' --max-bytes 65536
+omk observe knowledge retrieve --workspace ./knowledge --query 'What remains unknown?' --include-candidates --snapshot <snapshot-id>
+```
+
+The default **65536 UTF-8 bytes counts the entire single-line JSON plus newline**, not stored knowledge or a model context limit. Explicit `--max-bytes 8192` remains supported; the maximum stays 1 MiB. Complete segments and their inline evidence are atomic: oversized or budget-excluded segments are reported in `omitted`, never condition-truncated. This initial budget does not establish complete task coverage or optimal selection, and does not upgrade previously recorded smaller-budget failures.
+
+Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and optional `--source-version` scope exact source references. `--entity-id` uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
 
 ## Accumulate knowledge around entities {#accumulate-knowledge-around-entities}
 
@@ -162,34 +142,37 @@ OMK uses `codex` from the current process PATH. Check `codex --version`; if the 
 
 ## Recovery and data {#recovery-and-data}
 
-
-Use `generate --run-id <UUID>` to identify one request and its frozen policy. Repeating that request does not call the model again; do not reuse it for different input, policy or runtime configuration. The default v5 run remains single-invocation; an explicitly bounded run records each permitted attempt and reservation separately. Neither policy uses fallback.
+Use `generate --run-id <UUID>` to pin one request. An identical request only restores its journal and makes zero new model calls; a different source/model/runtime cannot reuse that identity.
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
+omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
 omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 ```
 
-Resume archives the original outcome still held by the same application instance, reads a persisted native outcome, or finishes stable pending writes; it never calls the model. If a started invocation loses its unsaved result when the process exits, its outcome and usage remain unknown. Process exit does not prove the request was unsent or cost zero, and does not refund or authorize resending. Inspect the record before explicitly starting a new request under a fresh run identity. Failure or cancellation is not successful delivery.
+`resume` archives an original still held in the same process, attaches a persisted original or completes fixed publication intents using the same request IDs. It never calls models. A claimed phase without recoverable output remains `outcome_unknown_do_not_redispatch`; process exit proves neither no dispatch nor zero cost. If body is already saved and association remains never-claimed, only an explicit `continue-stage --id <run-id> --generation <journal-generation>` can send that stage. The original model configuration must match.
 
-New metadata lives at `extraction-runs/<run-id>.json`, with immutable complete native outcomes at `extraction-runs/outcomes/<run-id>/<attempt-id>.json`. Former `runs/` v4 files remain untouched and are neither read nor migrated: their details, resume, conversation/project batches and admission statistics are unavailable. Existing current source snapshots, entity history v2 and knowledge history v2 remain readable in the same workspace; no empty workspace is required.
+Rebuild associations for an existing exact body without generating another body:
 
-The workspace contains source snapshots, revisions and raw generation output, which can contain private data. `delete-source --snapshot <snapshot-id>` removes that snapshot and leaves an unavailable marker. It does not alter the original log or erase quoted text in revisions or model output; it is not a complete workspace wipe. Missing, corrupt or deleted sources remain explicitly unavailable.
+```bash
+omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-uuid> --executor codex --model <model>
+```
 
-For initial acceptance, inspect source fidelity, scope and future usefulness, recording omissions, incorrect extraction and revision reasons. Automated checks cannot replace this judgment.
+This creates a new independent pending projection. Current model-assisted association generation/rebuild requires one exact available source window; multi-source bodies remain readable and revisable without this feature.
 
+Current journals live at `generation-journals/<run-id>.json`; each complete original is at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Body histories use Schema 3. Old typed knowledge v2 and run5 are explicitly unsupported, not a healthy empty workspace. See the [explicit new-workspace migration](../../specs/knowledge/knowledge-domain-model.md#body-migration); use `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge` with both paths explicit. There is no automatic overwrite. Keep the old workspace and matching binary for rollback.
+
+`delete-source` leaves a deletion marker without changing the original log, saved body quotes or archived model output. It is not a complete data wipe. All workspace material may contain private data. Missing/corrupt/deleted evidence is explicitly unavailable; saving, quote matching and reopening are not semantic acceptance.
 
 ## Admission statistics
 
-`omk observe knowledge quality --workspace ./knowledge --json` and Studio’s **Extraction history → Admission statistics** share the read-only `omk.extraction-quality/v3` projection of current v5 runs in the selected workspace’s `extraction-runs/`. They make no model calls and do not replay historical checkers. Former `runs/` files are outside this projection; their absence does not mean that workspace was never extracted. Groups bind prompt version/hash, executor, requested model, run Schema version, policyId and the complete policy configuration, initial timeout/output-token cap, outputMode, wireId (or null), producerId and producerRevision. This is a `BREAKING-COMPARABILITY` change from projection v2: different retry/budget limits no longer share a group merely because policyId matches. These dimensions do not establish matching endpoints or complete runtime conditions, and the counts are not a causal quality experiment. Each run contributes its final selected birth admission once; retries and native outcome evidence add no run or candidate denominators. Later entity corrections, knowledge edits and maintenance choices do not change generation counts.
+`omk observe knowledge quality --workspace ./knowledge --json` and Studio read the current `knowledge-body-admission` projection. It shows each journal's status, recorded bodies, phase state, body rejection count and issues; `semanticQuality: not_assessed` is explicit. Unsupported legacy inventory remains separate.
 
-Entity, mention and knowledge-proposal admission rates divide summed accepted items by summed accepted plus rejected items, rather than averaging run percentages. Identifier-fragment rejections use all recorded mention items as the denominator. Exact localization separately reports passed, rejected, not checked and unknown: accepted mentions and saved post-location rejection reasons prove position checking; structural/duplicate-ID rejection precedes checking. Unknown reasons are not interpreted. Not-checked items are excluded from the localization denominator; any unknown check records, missing historical entity rejection lists or absent admission records make the corresponding rate unknown. Empty denominators are `null`, never 100%.
-
-Failed/cancelled/generating runs, runs without admission records and zero-admission/zero-knowledge runs remain visible. Reason counts can overlap on one item. Reference/dependency rejection counts do not establish causal cascades; exact position and structural admission do not prove semantic accuracy, recall or knowledge usefulness. Corrupt or unsupported files inside the current run directory fail the query; Studio offers a reload instead of displaying a healthy empty workspace. Preserved files in the former directory do not enter the query. No source, prompt, raw output, saved run or historical score is rewritten.
+These are mechanical observations, not extraction accuracy, completeness, causal comparisons, truth, task success or cost acceptance. A completed workflow can contain a failed derived projection while its body remains saved; inspect phase and body details. Original native usage/reporting flags remain available through CLI `inspect`. Old run5 quality denominators and historical typed study scores are not recomputed or mixed into the new journal identity.
 
 ## Extraction quality checks
 
-Use the [current annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md). Generating a review package makes no model calls and does not establish overall quality acceptance. Historical results are reproduced only at their frozen revisions, without rescoring using current artifacts.
+The [historical typed annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md) retain their measurement identities. Current CLI/Studio study inspection and portable archive replay are read-only; old typed generation plans are explicitly unsupported and start no model calls. These records do not certify the body-first workflow. Body source fidelity and real task usefulness still require explicit validation with its own source/request/version evidence; do not rescore old runs using the new contract.
 
 
 ## Review cross-window entity links {#review-cross-window-entity-links}

@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import type { AnalyzedEntity, EntityAnalysisEnvelope } from '../entities/contracts.js';
-import type { KnowledgeEnvelope } from '../store.js';
+import type { AnalyzedEntity } from '../entities/contracts.js';
 import type { EvidenceWindow, SourceResolution } from '../extraction/evidence.js';
 
 export const EntityQuerySchema = z.strictObject({
@@ -17,7 +16,7 @@ export interface EntityKnowledgeLink {
   knowledgeId: string; revisionId: string; title: string;
   entityRevisionId: string; currentEntityRevision: boolean;
   choice: 'retain' | 'discard' | null;
-  roles: { statementId: string; role: 'subject' | 'object'; relation: string }[];
+  segmentIds: string[]; projectionReviewStatus: 'pending' | 'accepted' | 'rejected';
 }
 export interface EntityCatalogRow extends AnalyzedEntity {
   analysisId: string; revisionId: string; generation: number; revisedAt: string;
@@ -26,22 +25,6 @@ export interface EntityCatalogRow extends AnalyzedEntity {
   knowledgeCount: number | null; outdatedKnowledgeCount: number | null;
 }
 export type EntitySearchRow = EntityCatalogRow & { surfaces: string[] };
-
-/** Knowledge links always refer to its current immutable revision and its actual entity binding. */
-export function entityKnowledgeLinks(histories: readonly KnowledgeEnvelope[], analysis: EntityAnalysisEnvelope, entityId: string): EntityKnowledgeLink[] {
-  return histories.flatMap(history => {
-    const revision = history.revisions.find(value => value.revisionId === history.writeHeadRevisionId)!;
-    const ref = history.grounding.find(value => value.revisionId === revision.revisionId)?.entityAnalysisRef;
-    if (ref?.analysisId !== analysis.analysisId || !revision.entities.some(entity => entity.entityId === entityId)) return [];
-    return [{ knowledgeId: history.knowledgeId, revisionId: revision.revisionId, title: revision.title,
-      entityRevisionId: ref.revisionId, currentEntityRevision: ref.revisionId === analysis.writeHeadRevisionId,
-      choice: history.maintenance.filter(value => value.revisionId === revision.revisionId).at(-1)?.choice ?? null,
-      roles: revision.content.statements.flatMap(statement => [
-        ...(statement.subject.entityId === entityId ? [{ statementId: statement.statementId, role: 'subject' as const, relation: statement.relation }] : []),
-        ...(statement.object?.entityId === entityId ? [{ statementId: statement.statementId, role: 'object' as const, relation: statement.relation }] : []),
-      ]) }];
-  }).sort((a, b) => a.knowledgeId.localeCompare(b.knowledgeId));
-}
 
 /** Search surfaces and qualifiers, never turn a matching name into an identity merge. */
 export function queryEntityRows(rows: EntitySearchRow[], input: EntityQuery = {}) {

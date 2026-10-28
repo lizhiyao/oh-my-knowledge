@@ -1,21 +1,28 @@
 import type { KnowledgeApplication } from '../../../knowledge/application/application.js';
 import type { EvidenceWindow } from '../../../knowledge/extraction/evidence.js';
-import type { ExtractionRunSummary } from '../../../knowledge/extraction/runs.js';
+import type { KnowledgeBodyRef } from '../../../knowledge/contracts.js';
+import type { GenerationStage } from '../../../knowledge/extraction/generation-journal.js';
 
 type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
-export type KnowledgeCandidateDetail = Omit<CandidateDetail, 'entityAnalysis'> & {
-  entityAnalysis?: ({ status: 'available' } & KnowledgeEntityAnalysisDetail)
-    | { status: 'unavailable'; reason: 'analysis_unavailable' };
-  origin?: EvidenceWindow['origin'];
-};
+export type KnowledgeCandidateDetail = CandidateDetail & { origin?: EvidenceWindow['origin'] };
 export type KnowledgeCandidateSource = EvidenceWindow;
 export type KnowledgeExtractionQuality = ReturnType<KnowledgeApplication['quality']>;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
-export type KnowledgeEntityCatalog = ReturnType<KnowledgeApplication['queryEntities']>;
-export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source'> & Pick<KnowledgeEntityAnalysisDetail, 'source'>;
-export type KnowledgeCandidateRun = Omit<ExtractionRunSummary, 'startedAt'> & { startedAt?: string };
+export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['queryEntities']>, 'knowledgeStatus'> & { knowledgeStatus: 'available' | 'unavailable' };
+export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source' | 'knowledgeStatus'> & Pick<KnowledgeEntityAnalysisDetail, 'source'> & { knowledgeStatus: 'available' | 'unavailable' };
+export interface KnowledgeCandidateRun {
+  runId: string; schemaStatus: 'current' | 'unsupported'; status: 'active' | 'completed' | 'failed' | 'unsupported';
+  createdAt?: string; executor?: string; model?: string; snapshotId?: string; sourceVersion?: string; origin?: EvidenceWindow['origin'];
+  bodies: KnowledgeBodyRef[];
+  phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
+    producerId: string; producerRevision: string; rejectedCount: number | null;
+  })[];
+  nextAction: 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported';
+  entityAnalysis?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' };
+  unsupportedReason?: string;
+}
 export interface KnowledgeCandidateQueue { rows: KnowledgeCandidateRow[]; runs: KnowledgeCandidateRun[] }
-export type { AutoExtractionState, AutoExtractionPreview } from '../../../knowledge/application/auto-extraction.js';
+export type { AutoExtractionState, AutoExtractionStatus, AutoExtractionPreview } from '../../../knowledge/application/auto-extraction.js';
 type EntityDetail = ReturnType<KnowledgeApplication['entities']>;
 export type KnowledgeEntityAnalysisDetail = Omit<EntityDetail, 'source'> & {
   source: { status: 'available'; excerpts: EvidenceWindow['excerpts']; limitations: EvidenceWindow['limitations'] }

@@ -1,0 +1,146 @@
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { z } from 'zod';
+import { constants as bufferConstants } from 'node:buffer';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { GenerationJournalSchema, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
+import { canonicalJson } from '../store.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
+import { generationTextDigest } from '../extraction/body-generation-wire.js';
+
+const MAX_JOURNAL = 32 * 1024 * 1024;
+export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
+const uuid = z.string().uuid();
+function validateJournal(j: GenerationJournal): void {
+  if (j.mode === 'generate' && j.stages[0].stageKind !== 'body'
+    || j.mode === 'rebuild_associations' && (j.stages.length !== 1 || j.stages[0].stageKind !== 'association' || j.bodies.length !== 1)
+    || j.stages.length === 2 && (j.stages[0].state !== 'completed' || j.stages[1].stageKind !== 'association' || !j.bodies.length)) throw new Error('Invalid generation phase order.');
+  for (const s of j.stages) {
+    const writes = s.stageKind === 'body' ? s.bodyWrites : s.associationWrites;
+    const total = (writes?.length ?? 0) + (s.entityWrite ? 1 : 0);
+    if (s.committed > total || s.state === 'completed' && s.committed !== total
+      || ['prepared_writes', 'completed'].includes(s.state) && writes === undefined
+      || ['archived', 'prepared_writes', 'completed', 'failed'].includes(s.state) !== !!s.outcomeRef
+      || s.stageKind === 'body' && (s.associationWrites || s.entityWrite)
+      || s.stageKind === 'association' && s.bodyWrites) throw new Error('Invalid generation publication state.');
+  }
+  const body = j.stages.find(s => s.stageKind === 'body');
+  if (body) {
+    const expected = (body.bodyWrites ?? []).slice(0, body.committed).map(w => {
+      if (w.commandKind !== 'append_revision') throw new Error('Generation must not record maintenance.');
+      return { knowledgeId: w.knowledgeId, revisionId: w.revision.revisionId, bodyDigest: w.revision.bodyDigest };
+    });
+    if (canonicalJson(expected) !== canonicalJson(j.bodies)) throw new Error('Generation committed body references mismatch.');
+  }
+  if (j.status === 'completed' && j.stages.at(-1)!.state !== 'completed'
+    || j.status === 'failed' && j.stages.at(-1)!.state !== 'failed') throw new Error('Generation terminal state mismatch.');
+}
+/** Current-only journal. Legacy filenames remain visible, never decoded as this workflow. */
+export class FileGenerationJournalStore implements GenerationJournalStore {
+  private readonly root: string;
+  constructor(root: string, private readonly workspaceRoot: string) { this.root = resolve(root); }
+  private path(id: string) { return join(this.root, `${uuid.parse(id)}.json`); }
+  private archivePath(runId: string, invocationId: string) { return join(this.root, 'outcomes', uuid.parse(runId), `${uuid.parse(invocationId)}.json`); }
+  private check() { checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root); }
+  private readBytes(path: string, maximum: number): string {
+    const before = lstatSync(path, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(maximum)) throw new Error('Invalid generation storage file.');
+    const bytes = readFileSync(path); const after = lstatSync(path, { bigint: true });
+    if (before.ino !== after.ino || before.dev !== after.dev || before.size !== after.size || before.mtimeNs !== after.mtimeNs
+      || before.ctimeNs !== after.ctimeNs || bytes.length !== Number(before.size)) throw new Error('Generation storage changed during read.');
+    const text = bytes.toString('utf8'); if (!Buffer.from(text).equals(bytes)) throw new Error('Invalid generation storage UTF-8.'); return text;
+  }
+  read(runId: string): GenerationJournal | undefined {
+    this.check(); const path = this.path(runId);
+    if (!existsSync(path)) {
+      if (existsSync(join(this.workspaceRoot, 'extraction-runs', `${uuid.parse(runId)}.json`))) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      return undefined;
+    }
+    let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
+    if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 1) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+    const journal = GenerationJournalSchema.parse(parsed);
+    validateJournal(journal);
+    if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
+      || new Set(journal.stages.map(s => s.invocationId)).size !== journal.stages.length) throw new Error('Generation journal identity mismatch.');
+    for (const stage of journal.stages) {
+      if (generationTextDigest(stage.input) !== stage.inputDigest) throw new Error('Generation input digest mismatch.');
+      const requestDigest = generationTextDigest(canonicalJson({ executor: journal.executor, model: journal.model, timeoutMs: journal.timeoutMs,
+        profileId: stage.profileId, system: stage.system, wireId: stage.wireId, input: stage.input, producer: stage.producer }));
+      if (requestDigest !== stage.requestDigest) throw new Error('Generation request digest mismatch.');
+      if (stage.outcomeRef && !this.outcome(journal, stage)) throw new Error('Generation native archive is missing.');
+    }
+    return journal;
+  }
+  list(): ReturnType<GenerationJournalStore['list']> {
+    this.check(); const current: GenerationJournal[] = [], unsupported: ReturnType<GenerationJournalStore['list']>['unsupported'] = [];
+    const files = existsSync(this.root) ? readdirSync(this.root).filter(f => f.endsWith('.json')).sort() : [];
+    if (files.length > 4096 || files.reduce((sum, file) => sum + lstatSync(join(this.root, file)).size, 0) > 64 * 1024 * 1024) throw new Error('Generation inventory capacity exceeded.');
+    for (const file of files) {
+      const runId = file.slice(0, -5); const journal = this.read(runId); if (journal) current.push(journal);
+    }
+    const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
+    for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v1 does not decode run5.' });
+    }
+    return { current, unsupported };
+  }
+  write(input: GenerationJournal, expectedGeneration: number): GenerationJournal {
+    const next = GenerationJournalSchema.parse(input), path = this.path(next.runId); this.check();
+    validateJournal(next);
+    const bytes = JSON.stringify(next); if (Buffer.byteLength(bytes) > MAX_JOURNAL) throw new Error('Generation journal capacity exceeded.');
+    return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
+      const old = this.read(next.runId);
+      if ((old?.generation ?? 0) !== expectedGeneration || next.generation !== expectedGeneration + 1) throw new Error('Generation journal conflict.');
+      if (old) {
+        const immutable = (j: GenerationJournal) => ({ runId: j.runId, mode: j.mode, createdAt: j.createdAt, actor: j.actor,
+          snapshotId: j.snapshotId, sourceVersion: j.sourceVersion, sourceDigest: j.sourceDigest, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
+        if (canonicalJson(immutable(old)) !== canonicalJson(immutable(next))) throw new Error('Generation journal identity changed.');
+        for (const [i, stage] of old.stages.entries()) {
+          const updated = next.stages[i]; if (!updated) throw new Error('Generation phase removed.');
+          const identity = (s: GenerationStage) => ({ stageKind: s.stageKind, invocationId: s.invocationId, profileId: s.profileId,
+            promptVersion: s.promptVersion, system: s.system, wireId: s.wireId, wireSchema: s.wireSchema, input: s.input,
+            inputDigest: s.inputDigest, requestDigest: s.requestDigest, producer: s.producer });
+          if (canonicalJson(identity(stage)) !== canonicalJson(identity(updated)) || updated.committed < stage.committed
+            || stage.outcomeRef && canonicalJson(stage.outcomeRef) !== canonicalJson(updated.outcomeRef)) throw new Error('Generation phase identity changed.');
+          if (stage.bodyWrites && canonicalJson(stage.bodyWrites) !== canonicalJson(updated.bodyWrites)
+            || stage.entityWrite && canonicalJson(stage.entityWrite) !== canonicalJson(updated.entityWrite)
+            || stage.associationWrites && canonicalJson(stage.associationWrites) !== canonicalJson(updated.associationWrites)) throw new Error('Generation prepared writes changed.');
+          const states = ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed'];
+          if (states.indexOf(updated.state) < states.indexOf(stage.state) || ['completed', 'failed'].includes(stage.state) && updated.state !== stage.state) throw new Error('Generation phase moved backwards.');
+        }
+      }
+      publishKnowledgeBytes(path, bytes, this.workspaceRoot, !old); return next;
+    });
+  }
+  archive(journal: GenerationJournal, stage: GenerationStage, input: GenerationOutcome) {
+    this.check(); const outcome = observeGenerationJSON(input); checkGenerationOutcome(outcome);
+    if (input.outcomeKind === 'result') measureGenerationJSON((outcome as { result: ReturnType<typeof observeGenerationJSON> }).result, stage.producer.maxOutcomeJsonBytes);
+    const record = observeGenerationJSON({ archiveKind: 'knowledge-generation-native', schemaVersion: 1,
+      runId: journal.runId, invocationId: stage.invocationId, requestDigest: stage.requestDigest, outcome });
+    const maximum = Math.min(MAX_GENERATION_OUTCOME_BYTES, stage.producer.maxOutcomeJsonBytes + 64 * 1024);
+    const ref = measureGenerationJSON(record, maximum), path = this.archivePath(journal.runId, stage.invocationId);
+    return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
+      const saved = this.read(journal.runId), claimed = saved?.stages.find(s => s.invocationId === stage.invocationId);
+      if (!claimed || claimed.requestDigest !== stage.requestDigest || !['claimed', 'archived', 'prepared_writes', 'completed', 'failed'].includes(claimed.state)) throw new Error('Native archive requires its durable phase claim.');
+      if (existsSync(path)) {
+        const previous = this.readBytes(path, maximum);
+        if (Buffer.byteLength(previous) !== ref.bytes || generationTextDigest(previous) !== ref.digest) throw new Error('Native archive identity conflict.');
+        confirmKnowledgePublication(path, this.workspaceRoot);
+      } else publishKnowledgeChunks(path, generationJSONChunks(record), this.workspaceRoot, true);
+      return ref;
+    });
+  }
+  outcome(journal: GenerationJournal, stage: GenerationStage): GenerationOutcome | undefined {
+    this.check(); const parent = join(this.root, 'outcomes', uuid.parse(journal.runId));
+    checkStorageDirectory(join(this.root, 'outcomes')); checkStorageDirectory(parent);
+    const path = this.archivePath(journal.runId, stage.invocationId); if (!existsSync(path)) return undefined;
+    const bytes = this.readBytes(path, MAX_GENERATION_OUTCOME_BYTES);
+    if (stage.outcomeRef && (Buffer.byteLength(bytes) !== stage.outcomeRef.bytes || generationTextDigest(bytes) !== stage.outcomeRef.digest)) throw new Error('Native archive digest mismatch.');
+    const record = JSON.parse(bytes) as Record<string, unknown>;
+    if (record.archiveKind !== 'knowledge-generation-native' || record.schemaVersion !== 1 || record.runId !== journal.runId
+      || record.invocationId !== stage.invocationId || record.requestDigest !== stage.requestDigest) throw new Error('Native archive binding mismatch.');
+    return checkGenerationOutcome(record.outcome);
+  }
+}

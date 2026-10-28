@@ -1,16 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { canonicalJson } from '../store.js';
-import { KnowledgeApplication } from './application.js';
 import type { ExtractionStudyRunnerPorts } from './study-runner.js';
 import { FileExtractionRunStore } from '../adapters/run-store.js';
 import { TraceEvidenceStore } from '../adapters/trace-evidence.js';
-import { FileKnowledgeStore } from '../adapters/knowledge-store.js';
-import { FileKnowledgeTags } from '../adapters/knowledge-tags.js';
-import { FileEntityAnalysisStore } from '../adapters/entity-store.js';
 import { ExtractionStudyFiles, extractionStudyBytesDigest, extractionStudyFileText } from '../adapters/study-files.js';
 import { extractionStudyHostIdentity } from '../adapters/study-host.js';
-import { prepareExtractionStudy, replayExtractionStudyEvidence, runExtractionStudySlot } from './study-runner.js';
+import { prepareExtractionStudy, replayExtractionStudyEvidence } from './study-runner.js';
 import { ExtractionStudyPlanSchema } from '../extraction/study-plan.js';
 import { parseExtractionStudyCorpus, createExtractionStudyReferenceTemplate } from '../extraction/study-corpus.js';
 import { createExtractionStudyOutputTemplate } from '../extraction/study-review.js';
@@ -22,18 +18,22 @@ import { ExtractionGenerationPolicySchema } from '../extraction/generation-polic
 import { ExtractionPromptProfileSchema } from '../extraction/generation.js';
 import { z } from 'zod';
 const bytesDigest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
+export const FROZEN_TYPED_GENERATION_UNSUPPORTED = 'knowledge_study_generation_unsupported: 旧 typed 生成计划不适用于当前正文宿主；请使用 observe knowledge generate 或新的 body 测量协议。Frozen typed generation plans require a separate compatible host; use the current body generation entry or a new body measurement protocol. No model was invoked.';
+export const unsupportedFrozenTypedGeneration = () => ({ errorCode: 'knowledge_study_generation_unsupported', message: FROZEN_TYPED_GENERATION_UNSUPPORTED,
+  modelCallsByThisCommand: 0, goldReady: false, qualityConclusion: 'not_evaluated', exitCode: 1 });
 
 /** The research host declares its real actor instead of inheriting local-user human attribution. */
 export function createExtractionStudyPorts(input: {
   workspace: string; actor: ExtractionStudyRunnerPorts['actor']; identity: ExtractionStudyRunnerPorts['identity']; model: ExtractionStudyRunnerPorts['model'];
 }): ExtractionStudyRunnerPorts {
   const workspace = resolve(input.workspace), runs = new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace);
+  const evidence = new TraceEvidenceStore(join(workspace, 'sources'), workspace);
   const hash = (value: unknown) => bytesDigest(canonicalJson(value));
   const actor = input.actor;
   return { runs, actor, hash, id: randomUUID, now: () => new Date().toISOString(), identity: input.identity, model: input.model,
-    application: new KnowledgeApplication({ runs, actor, hash, id: randomUUID, now: () => new Date().toISOString(),
-      evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace), knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
-      tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace), entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace) }) };
+    application: { source: (id, version) => evidence.read(id, version), capture: (selection, signal) => evidence.capture(selection, signal),
+      async generate() { throw new Error(FROZEN_TYPED_GENERATION_UNSUPPORTED); },
+      resume() { throw new Error(FROZEN_TYPED_GENERATION_UNSUPPORTED); } } };
 }
 
 const arm = z.strictObject({ variantId: z.enum(['baseline', 'candidate']), executor: z.enum(['openai-api', 'codex']),
@@ -52,6 +52,8 @@ export async function executeLocalExtractionStudy(input: {
   command: 'prepare' | 'run' | 'report'; values: Record<string, string>; repository: string; runnerFile: string;
   producer: ExecutorArchiveProducer; signal?: AbortSignal;
 }) {
+  // Reject before opening a plan, claiming a slot, inspecting a producer or touching a store.
+  if (input.command === 'run') return unsupportedFrozenTypedGeneration();
   const { values } = input;
   const files = new ExtractionStudyFiles({ directory: values['--study'], workspace: values['--workspace'], repository: input.repository });
   const identity = () => extractionStudyHostIdentity();
@@ -73,19 +75,6 @@ export async function executeLocalExtractionStudy(input: {
       goldReady: false, qualityConclusion: 'not_evaluated', exitCode: 0 };
   }
   const opened = files.open();
-  if (input.command === 'run') {
-    if (values['--authorize-plan'] !== opened.plan.planId) throw new Error('Explicit authorization must name this exact frozen plan, source, model and declared invocation policy.');
-    const ports = createExtractionStudyPorts({ workspace: files.workspace, actor: opened.plan.actor, identity, model });
-    let dispatches = 0;
-    const report = await files.exclusively(() => runExtractionStudySlot(ports, { plan: opened.plan, corpus: opened.corpus,
-      slotId: values['--slot'], signal: input.signal, beforeDispatch() {
-        if (files.open().plan.planId !== opened.plan.planId) throw new Error('Study plan changed before dispatch.');
-        dispatches++;
-      } }));
-    return { planId: opened.plan.planId, slotId: values['--slot'], omkDispatchesByThisCommand: dispatches,
-      providerRequests: 'not_attested', summary: report.summary, goldReady: false, qualityConclusion: 'not_evaluated',
-      exitCode: report.slots.find(value => value.slotId === values['--slot'])?.run?.status === 'completed' ? 0 : 1 };
-  }
   const portable = files.evidence(opened.plan), report = replayExtractionStudyEvidence(portable, identity());
   const receipt = (flag: string) => values[flag] ? JSON.parse(extractionStudyFileText(values[flag], 64 * 1024 * 1024)) as unknown : undefined;
   const reviewInput = { plan: opened.plan, corpus: opened.corpus, slots: report.slots, outputDigest: report.outputDigest,

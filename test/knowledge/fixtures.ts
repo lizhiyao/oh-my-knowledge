@@ -1,4 +1,4 @@
-import type { KnowledgeDraft } from '../../src/knowledge/contracts.js';
+import type { KnowledgeDraft } from '../../src/knowledge/measurement/typed-contracts.js';
 import type { ExtractionProposal } from '../../src/knowledge/extraction/proposals.js';
 import type { WindowExtractionModel } from '../../src/knowledge/extraction/window-proposals.js';
 

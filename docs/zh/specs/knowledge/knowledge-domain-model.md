@@ -15,7 +15,8 @@
 | 来源窗口 | 保存选定片段、来源身份、范围及限制；后续判断可回到同一证据 |
 | 来源实体分析 | 保存窗口内对象、提及及不可变分析修订；不提供跨窗口统一身份 |
 | 实体关联核对 | 固定两个窗口的实体、精确模型请求／结果、结构接纳、独立人工决定及可恢复的知识库意图 |
-| 知识内容 | 稳定知识身份、不可变内容修订及支持／反对／背景证据；候选是复核状态 |
+| 知识正文 | 稳定知识／修订／段落身份、完整自然语言段及 inline 精确来源证据；新修订待审 |
+| 派生关联 | 精确 body digest 的独立实体／可选 typed 投影；单独修订和接受／拒绝审查，不成为第二份正文 |
 | 维护决定 | 针对精确知识修订记录保留／舍弃及理由；保留不等于已证实 |
 | 知识库对象 | 用户确认的跨窗口组织入口；引用来源身份，不复制知识正文 |
 | 标签 | 用户维护的主题组织信息；独立历史，不改变知识内容修订 |
@@ -28,9 +29,10 @@
 
 ```mermaid
 flowchart LR
-  source[选定来源窗口] --> extract[提取与宿主准入]
-  extract --> catalog[窗口实体目录]
-  extract --> knowledge[知识复核与修订]
+  source[选定来源窗口] --> extract[正文生成与宿主准入]
+  extract --> knowledge[保存待审正文]
+  knowledge --> association[独立关联生成]
+  association --> catalog[窗口实体目录]
   catalog --> review[跨窗口实体核对]
   review --> library[知识库组织]
   library --> knowledge
@@ -38,16 +40,16 @@ flowchart LR
   carrier --> evaluate[受控评测]
 ```
 
-图中的分支有意保留：实体与知识候选可以共同接纳，知识维护不以知识库关联为前提。知识库增加跨窗口阅读和选择入口，不是第二次提取，也不是第二份内容存储。
+顺序有意明确：完整正文先接纳并保存，再独立调用模型生成关联。缺失或失败的投影不阻断正文读取与维护。知识库增加跨窗口组织，不成为第二份主数据。
 
 | 阶段 | 职责与交接 | 权威规范 |
 |---|---|---|
-| 窗口提取 | 固定选定来源与限制；派发前准备调用；解码前保存完整执行器返回结果。 | [实体提取](../entities/entity-extraction.md) |
-| 宿主准入 | 将精确 quote occurrence 定位为 UTF-16 位置；校验 wire／领域结构及引用闭合；记录理由并拒绝无效提及及其依赖实体／陈述，保留合法 sibling 与原始结果。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
+| 窗口提取 | 固定来源及每阶段请求；解码前保存各完整返回原件，先保存接纳正文，再生成关联。 | [实体提取](../entities/entity-extraction.md) |
+| 宿主准入 | 将精确 quote occurrence 定位为 UTF-16 位置，校验 wire／领域结构及引用闭合；保留合法正文 sibling 与原始结果，派生校验不删除已保存正文。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
 | 实体目录 | 查询当前窗口分析，保留分析／实体／修订身份，披露不可读分析和来源。检索不生成共享身份。 | [提取存储与目录](../entities/entity-extraction.md) |
 | 跨窗口核对 | 规范化召回 → 有界预览 → 明确确认后持久准备 → 受治理模型建议 → 结果归档与接纳 → 人工明确接受／拒绝 → 可恢复应用。召回与模型建议均不能发布组织。 | [实体关联日志](../entities/entity-links.md)；[Studio 传输界面](../studio/studio-entity-links.md) |
 | 知识库组织 | 用独立维护的对象引用原窗口身份；确认身份和来源证据；在工作区锁内发布不可变成员修订。 | [实体知识库](knowledge-library.md) |
-| 知识维护 | 保留／舍弃精确知识修订、修订正文和来源解释，并显式应用实体纠正。组织关联不自动转移主张。 | [第 3～4 节](#current-revisions)及[维护契约](knowledge-maintenance.md) |
+| 知识维护 | 保留／舍弃精确知识修订、修订完整正文与 inline 精确证据，独立应用／审查实体关联。组织关联不自动转移主张。 | [第 3～4 节](#current-revisions)及[维护契约](knowledge-maintenance.md) |
 | 载体生成与保存 | 选择精确已保留修订，保留条件与证据，预览改动并保存 skill／prompt 新版本，不改写旧内容。 | [维护与载体契约](knowledge-maintenance.md) |
 | 受控评测 | 将载体版本、固定任务模型、用例及评分计划绑定到既有 Core 证据；采纳改动前核对结果，保存与完成评测分别记录。 | [载体评测](knowledge-maintenance.md)及 [Evaluation Core](../evaluation/eval-core-vnext.md) |
 
@@ -59,11 +61,11 @@ flowchart LR
 
 ## 3. 知识与修订 {#current-revisions}
 
-知识正文保留陈述、条件、时间、例外、未知与来源解释。陈述的主体／对象角色与来源实体身份分开；识别出实体不要求生成知识。来源断言、实际执行和提炼推断不混写。
+Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
 
-修改内容生成新修订，旧正文与旧处理理由完整保留。旧决定不自动继承到新版本。实体纠正也不回写知识；用户核对并明确应用精确实体修订后，才生成知识新修订。
+知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、可选目录修订、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
-来源匹配只证明定位与引用闭合，不证明陈述得到支持。无法读回来源时保留已保存记录并显示限制，不伪造原文或无问题结论。
+修改正文创建新正文修订，不继承旧保留／舍弃决定。实体纠正、手工应用关联和模型辅助重建创建或选择独立派生修订，不改写正文。指向其它 body digest 的投影为 stale。来源删除后正文仍可读，证据明确显示不可用，不伪造原文或健康空结果。
 
 ## 4. 组织与载体维护 {#current-maintenance}
 
@@ -87,7 +89,7 @@ flowchart LR
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；外层观测应用及文件系统 adapter 负责归档、模型调用和持久化，CLI／Studio 共享这些应用流程。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 1，不把两个原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -101,6 +103,14 @@ flowchart LR
 | 载体保存或评测中断 | 保留旧版本；下一次操作前核对不确定保存／运行。恢复写入或查看既有运行，不后台改写或自动重发模型。 | 维护契约 |
 
 这些是可恢复的应用边界，不是多文件文件系统事务，也不保证远端恰好一次交付。缺失、损坏和不可读证据，必须与健康空结果区分。
+
+### 5.2 显式迁移旧数据 {#body-migration}
+
+这是 **BREAKING-SCHEMA/API/COMPARABILITY**。当前 reader 只接受正文历史 Schema 3 和新日志，不静默读取旧 typed 知识 v2 或恢复 run5；旧运行清单明确 unsupported。历史 typed study 的只读核对／可携带归档重放保留冻结测量身份，当前构建不支持旧 typed 生成计划，并且零调用。
+
+显式运行 `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge`，两个路径均须提供。源码构建 adapter 依次调用 `adapters/knowledge-migration` 的 `inspectLegacyKnowledgeWorkspace`、`prepareKnowledgeMigration`、`applyKnowledgeMigration(plan, expectedPlanDigest)`；命令不调用模型，也不覆盖旧工作区。Prepare 只接受独立的新空工作区，固定 ID、来源 pin 与计划摘要但不写目标。Apply 将所有原始字节以 base64 保存在 `migration/<migrationId>/original/`，发布精确计划／映射，并复制支持的 source／entity 记录。每个旧修订机械渲染为**新的待审**正文修订；原 typed 字段、原生记录、决定与谱系留档。旧 retain 不继承，library／carrier／跨窗精确引用不自动改指向。
+
+Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被编辑时拒绝。机械字段保留与映射不等于来源保真或任务验收。保留或使用前仍需核对新段落及证据。旧工作区不变，可继续用匹配旧 binary 读取；回退是重新打开保全的旧目录与旧程序，不引入永久双 canonical reader。
 
 ## 6. 验收与限制 {#current-evidence}
 

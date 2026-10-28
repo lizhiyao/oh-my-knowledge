@@ -13,6 +13,7 @@ import { parseKnowledgeStudyArguments } from '../../scripts/bench/knowledge-stud
 import { parseExtractionStudyPlan } from '../../src/knowledge/extraction/study-plan.js';
 import { ExtractionAttemptSchema } from '../../src/knowledge/extraction/runs.js';
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
+import { FROZEN_TYPED_GENERATION_UNSUPPORTED } from '../../src/knowledge/application/study-local.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
@@ -43,7 +44,7 @@ function evidenceSemantics() {
   return { baselineSystem: STRICT_EXTRACTION_PROMPT, rules, wireId: WINDOW_EXTRACTION_WIRE_ID, manifest };
 }
 
-describe('production extraction study runner (authored executor, zero model access)', () => {
+describe('frozen extraction study archives (synthetic executor, zero model access)', () => {
   it.each(['baseline', 'candidate'] as const)('rejects a guided %s before inspecting or reserving a shared-input study', selected => {
     const f = setup(), baseline = f.model(), candidate = f.model();
     const baselineInspect = vi.spyOn(baseline, 'inspect'), candidateInspect = vi.spyOn(candidate, 'inspect');
@@ -55,7 +56,7 @@ describe('production extraction study runner (authored executor, zero model acce
         promptProfile: selected === 'candidate' ? OCCURRENCE_GUIDED_EXTRACTION_PROFILE : ENTITY_ONLY_EXTRACTION_PROFILE },
     ] })).toThrow(/shared.*input|input.*shared/i);
     expect(baselineInspect).not.toHaveBeenCalled(); expect(candidateInspect).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.application.runs()).toEqual([]);
+    expect(create).not.toHaveBeenCalled(); expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
   });
 
   it('rejects a restored, internally byte-consistent guided plan at report, replay and run boundaries', async () => {
@@ -82,90 +83,68 @@ describe('production extraction study runner (authored executor, zero model acce
     await expect(runExtractionStudySlot(f.ports, { plan: restored, corpus: f.corpus, slotId: restored.slots[0].slotId }))
       .rejects.toThrow(/shared.*input|input.*shared/i);
     expect(actualModel).not.toHaveBeenCalled(); expect(generate).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
-    expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.application.runs()).toEqual([]);
+    expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
   });
 
-  it('freezes complete paired order before effects, advances production births and replays byte-bound evidence without dispatch', async () => {
+  it('freezes paired order and replays synthetic byte-bound archives without current product generation', async () => {
     const f = setup((_index, output) => native(output, { attemptCount: 2 })), plan = f.prepare({ repeats: 2 });
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
     expect(f.effects).not.toHaveBeenCalled(); expect(plan.slots.map(value => value.variantId)).toEqual(['baseline', 'candidate', 'candidate', 'baseline']);
     const initial = reportExtractionStudy(f.ports, plan, f.corpus);
     expect(initial.summary).toMatchObject({ planned: 4, unattempted: 4, totalCostUSD: null, executorReportedAttempts: null });
     await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[1].slotId })).rejects.toThrow('predeclared order');
-    for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
+    for (const slot of plan.slots) await f.archiveSlot(plan, slot.slotId);
     expect(f.effects).toHaveBeenCalledTimes(4);
     const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(report.summary).toMatchObject({ completed: 4, unattempted: 0, attempts: 4, executorReportedAttempts: 8, recordedNative: 4, totalCostUSD: null, totalInputTokens: 28 });
     expect(report.slots.every(value => value.nativeVerified && value.run?.intents.length === 1)).toBe(true);
     expect(report.goldReady).toBe(false); expect(report.qualityConclusion).toBe('not_evaluated');
     const bytes = plan.slots.map(slot => readFileSync(join(f.workspace, 'extraction-runs', `${slot.runId}.json`)));
-    await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId });
+    replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(f.effects).toHaveBeenCalledTimes(4);
     expect(plan.slots.map(slot => readFileSync(join(f.workspace, 'extraction-runs', `${slot.runId}.json`)))).toEqual(bytes);
     expect(replayExtractionStudyEvidence(f.files.evidence(plan)).integrity.outputVerified).toBe(false);
   });
-  it('recovers a lost archive observer from production evidence and counts all retries, including unknown cost', async () => {
-    const f = setup((index, output) => native(index ? output : '{')), selected = boundedExtractionPolicy({
-      maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2176, maxOutputTokens: 64, profileId: 'loopback-test/v1' });
-    const plan = f.prepare({ variants: [{ variantId: 'baseline', model: f.model(), policy: selected }, { variantId: 'candidate', model: f.model(), policy: selected }] });
-    f.files.create(plan, f.corpusRaw, f.configurationRaw);
-    await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId,
-      onOutcomeArchived() { throw new Error('authored observer lost acknowledgement'); } })).rejects.toThrow('observer lost');
-    expect(f.effects).toHaveBeenCalledTimes(1);
-    expect(reportExtractionStudy(f.ports, plan, f.corpus).summary).toMatchObject({ incomplete: 1, generating: 1, archivePending: 0 });
-    const resumed = await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId });
-    expect(resumed.slots[0].run?.status).toBe('failed'); expect(f.effects).toHaveBeenCalledTimes(1);
-    await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[1].slotId });
-    const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
-    expect(report.summary).toMatchObject({ failed: 1, completed: 1, attempts: 2, totalCostUSD: null });
-    expect(report.slots[0].attempts[0].outcome).toMatchObject({ outcomeKind: 'result', result: { output: '{' } });
-  });
-  it('preserves failed attempts before a production reask and derives every native accounting record', async () => {
-    const f = setup((index, output) => native(index % 2 ? output : '{'));
-    const selected = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2176, maxOutputTokens: 64, profileId: 'loopback-test/v1' });
-    const plan = f.prepare({ variants: [{ variantId: 'baseline', model: f.model(), policy: selected }, { variantId: 'candidate', model: f.model(), policy: selected }] });
-    f.files.create(plan, f.corpusRaw, f.configurationRaw);
-    for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
-    const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
-    expect(f.effects).toHaveBeenCalledTimes(4); expect(report.summary).toMatchObject({ completed: 2, attempts: 4, recordedNative: 4, totalInputTokens: 28, totalCostUSD: null });
-    expect(report.slots.every(slot => slot.run?.attempts[0].failure?.failureKind === 'parse_error')).toBe(true);
-    const changed = structuredClone(f.files.evidence(plan));
-    const run = JSON.parse(changed.records[0].raw); run.attempts[0].accounting.costUSD = 2; changed.records[0].raw = JSON.stringify(run);
-    expect(() => replayExtractionStudyEvidence(changed, f.ports.identity())).toThrow('accounting differs');
-    type MutableProducer = { proof: Record<string, unknown>; maxOutcomeJsonBytes: number; sourceChannels: { maxBytes: number }[] };
-    const producerChanges = [
-      (producer: MutableProducer) => { producer.proof.bodyDigest = hash('different retry body'); },
-      (producer: MutableProducer) => { producer.proof.endpoint = 'http://127.0.0.1:2/v1/chat/completions'; },
-      (producer: MutableProducer) => { producer.proof.redirect = 'follow'; },
-      (producer: MutableProducer) => { producer.proof.singleCompletion = false; },
-      (producer: MutableProducer) => { producer.maxOutcomeJsonBytes++; },
-      (producer: MutableProducer) => { producer.sourceChannels[0].maxBytes++; },
-    ];
-    for (const change of producerChanges) {
-      const tampered = structuredClone(f.files.evidence(plan)), rewritten = JSON.parse(tampered.records[0].raw);
-      const retry = rewritten.attempts[1]; change(retry.producer);
-      // Recomputing a receipt cannot make changed transport conditions or unrelated body bytes valid.
-      retry.requestDigest = extractionStudyDigest({ requestDigest: rewritten.requestDigest, request: retry.request,
-        producer: retry.producer, policy: rewritten.policy, budget: retry.budget, trigger: retry.trigger ?? null });
-      tampered.records[0].raw = JSON.stringify(rewritten);
-      expect(() => replayExtractionStudyEvidence(tampered, f.ports.identity())).toThrow(/producer conditions changed|producer request body differs/);
+  it('refuses default frozen typed generation without invoking or claiming either policy', async () => {
+    const f = setup();
+    const bounded = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, maxTotalTokens: 2176, maxOutputTokens: 64, profileId: 'loopback-test/v1' });
+    for (const policy of [SINGLE_EXTRACTION_POLICY, bounded]) {
+      const plan = f.prepare({ variants: [{ variantId: 'baseline', model: f.model(), policy }, { variantId: 'candidate', model: f.model(), policy }] });
+      await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId }))
+        .rejects.toThrow(FROZEN_TYPED_GENERATION_UNSUPPORTED);
     }
-    expect(f.effects).toHaveBeenCalledTimes(4);
+    expect(f.effects).not.toHaveBeenCalled(); expect(f.ports.runs.listManifests()).toEqual([]);
   });
-  it('keeps unknown started reservations and prevents later paired slots or replay from redispatching them', async () => {
-    const f = setup(), plan = f.prepare();
+  it('preserves malformed authored output and request proof tamper detection in read-only replay', async () => {
+    const f = setup((index, output) => native(index ? output : '{')), plan = f.prepare();
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
+    for (const slot of plan.slots) await f.archiveSlot(plan, slot.slotId);
+    const evidence = f.files.evidence(plan), report = replayExtractionStudyEvidence(evidence, f.ports.identity());
+    expect(report.summary).toMatchObject({ failed: 1, completed: 1, attempts: 2, recordedNative: 2, totalCostUSD: null });
+    expect(report.slots[0].attempts[0].outcome).toMatchObject({ outcomeKind: 'result', result: { output: '{' } });
+    for (const field of ['bodyDigest', 'endpoint', 'redirect', 'singleCompletion']) {
+      const changed = structuredClone(evidence), run = JSON.parse(changed.records[1].raw), attempt = run.attempts[0];
+      attempt.producer.proof[field] = 'synthetic drift';
+      attempt.requestDigest = extractionStudyDigest({ requestDigest: run.requestDigest, request: attempt.request, producer: attempt.producer, policy: run.policy });
+      changed.records[1].raw = JSON.stringify(run);
+      expect(() => replayExtractionStudyEvidence(changed, f.ports.identity())).toThrow(/request differs|producer|frozen/);
+    }
+    expect(f.effects).toHaveBeenCalledTimes(2);
+  });
+  it('keeps a synthetic lost reservation acknowledgement visible without recovery or redispatch', async () => {
+    const f = setup(), plan = f.prepare(); f.files.create(plan, f.corpusRaw, f.configurationRaw);
     const create = f.ports.runs.create.bind(f.ports.runs);
     const reservation = vi.spyOn(f.ports.runs, 'create').mockImplementationOnce(run => { create(run); throw new Error('authored lost reservation acknowledgement'); });
-    await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId })).rejects.toThrow('lost reservation'); reservation.mockRestore();
-    const report = await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId });
+    await expect(f.archiveSlot(plan, plan.slots[0].slotId)).rejects.toThrow('lost reservation'); reservation.mockRestore();
+    const bytes = readFileSync(join(f.workspace, 'extraction-runs', `${plan.slots[0].runId}.json`));
+    const report = replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(report.summary).toMatchObject({ incomplete: 1, unattempted: 1, attempts: 1, recordedNative: 0, totalCostUSD: null });
-    await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[1].slotId })).rejects.toThrow('unknown or incomplete');
+    expect(readFileSync(join(f.workspace, 'extraction-runs', `${plan.slots[0].runId}.json`))).toEqual(bytes);
     expect(f.effects).not.toHaveBeenCalled();
   });
   it('rejects portable native tampering, birth rewriting and runtime drift before semantic review', async () => {
     const f = setup(), plan = f.prepare(); f.files.create(plan, f.corpusRaw, f.configurationRaw);
-    await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId });
+    await f.archiveSlot(plan, plan.slots[0].slotId);
     const original = f.files.evidence(plan), nativeChanged = structuredClone(original);
     nativeChanged.records[0].outcomes[0].raw += ' ';
     expect(() => replayExtractionStudyEvidence(nativeChanged, f.ports.identity())).toThrow('digest mismatch');
@@ -243,7 +222,7 @@ describe('production extraction study runner (authored executor, zero model acce
         promptProfile: profiles.candidate },
     ] });
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
-    for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
+    for (const slot of plan.slots) await f.archiveSlot(plan, slot.slotId);
     for (const [index, profile] of [profiles.baseline, profiles.candidate].entries()) {
       expect(f.effects).toHaveBeenNthCalledWith(index + 1, expect.objectContaining({ system: profile.system, prompt: plan.cases[0].input }));
       expect(plan.slots[index].request.systemDigest).toBe(hash(profile.system));
@@ -259,13 +238,14 @@ describe('production extraction study runner (authored executor, zero model acce
     expect(candidate.entityRejections).toEqual([]); expect(candidate.rejections).toEqual([]);
     expect(candidate.entityAnalysis?.revision.entities.map(entity => entity.label)).toEqual(['Alpha', 'Beta']);
     expect(candidate.entityAnalysis?.revision.mentions).toHaveLength(2);
-    expect(f.ports.application.entities(candidate.runId).revision).toEqual(candidate.entityAnalysis?.revision);
+    // The frozen archive contains a fictional typed birth; no current KnowledgeStore/entity store is written.
+    expect(candidate.entityAnalysis?.revision.revisionId).toBeDefined();
     const candidateNative = report.slots[1].attempts[0].outcome;
     expect(candidateNative?.outcomeKind).toBe('result');
     if (candidateNative?.outcomeKind !== 'result') throw new Error('Authored native result is missing.');
     expect(JSON.parse(candidateNative.result.output as string).proposals).toHaveLength(entry.knowledge ? 1 : 0);
     expect(candidate.rawOutput).toBe(candidateNative.result.output);
-    await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[1].slotId });
+    replayExtractionStudyEvidence(f.files.evidence(plan), f.ports.identity());
     expect(f.effects).toHaveBeenCalledTimes(2);
     expect(report.goldReady).toBe(false); expect(report.qualityConclusion).toBe('not_evaluated');
   });

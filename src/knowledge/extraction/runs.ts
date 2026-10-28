@@ -2,11 +2,12 @@ import type { ExtractionRunSealPreview, ExtractionRunSealRequest, ExtractionRunS
 import { EvidenceWindowSchema } from './evidence.js';
 import { z } from 'zod';
 import { KnowledgeActorSchema } from '../contracts.js';
-import { canonicalJson, GroundingSchema } from '../store.js';
-import { KnowledgeRevisionSchema } from '../contracts.js';
+import { canonicalJson } from '../store.js';
+import { GroundingSchema } from '../measurement/typed-grounding.js';
+import { KnowledgeRevisionSchema } from '../measurement/typed-contracts.js';
 import { EntityAnalysisWriteSchema } from '../entities/contracts.js';
 import { validateEntityAnalysis } from '../entities/validation.js';
-import { validateGroundingReferences, validateKnowledgeDraft } from '../validation.js';
+import { validateGroundingReferences, validateKnowledgeDraft } from '../measurement/typed-validation.js';
 import { ExtractionGenerationPolicySchema, ExtractionBudgetReservationSchema, ExtractionAttemptAccountingSchema } from './generation-policy.js';
 
 export type ExtractionJson = null | boolean | number | string | ExtractionJson[] | { [key: string]: ExtractionJson };

@@ -1,14 +1,16 @@
 import { z } from 'zod';
-import { KnowledgeDraftSchema, type EvidenceExcerpt } from '../contracts.js';
+import { KnowledgeDraftSchema } from '../measurement/typed-contracts.js';
+import { TypedQuoteOccurrenceLocatorSchema } from '../measurement/typed-quote-locator.js';
+import type { EvidenceExcerpt } from '../contracts.js';
 import { admitEntities, EntityModelMentionSchema, EntityModelSchema, type AdmittedEntityAnalysis } from './entities.js';
-import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
+import { locateQuoteOccurrence } from './quote-occurrence.js';
 import { resolvedProposalProblems, type CheckedProposals, type ExtractionProposal } from './proposals.js';
 
 const id = z.string().min(1).max(256);
 export const WindowExtractionProposalSchema = z.strictObject({
   proposalId: id, draft: KnowledgeDraftSchema.omit({ entities: true }),
   entityIds: z.array(id).min(1).max(256), mentionIds: z.array(id).min(1).max(512),
-  citations: z.array(z.strictObject({ evidenceLinkId: id, selection: QuoteOccurrenceLocatorSchema })).min(1).max(512),
+  citations: z.array(z.strictObject({ evidenceLinkId: id, selection: TypedQuoteOccurrenceLocatorSchema })).min(1).max(512),
   reuseRationale: z.string().min(1).max(4096), identityUncertainties: z.array(z.string().min(1).max(4096)).max(64),
 });
 export const WindowExtractionModelSchema = z.strictObject({

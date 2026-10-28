@@ -54,12 +54,14 @@ describe('built repository knowledge study entry', () => {
     const plan = JSON.parse(readFileSync(join(study, 'plan.json'), 'utf8'));
     const denied = execute(['run', '--workspace', workspace, '--study', study, '--slot', plan.slots[0].slotId, '--authorize-plan', 'sha256:wrong']);
     expect(denied.status).toBe(1);
+    expect(JSON.parse(denied.stdout)).toMatchObject({ errorCode: 'knowledge_study_generation_unsupported', modelCallsByThisCommand: 0,
+      qualityConclusion: 'not_evaluated', exitCode: 1 });
     expect(existsSync(join(workspace, 'extraction-runs')) ? readdirSync(join(workspace, 'extraction-runs')) : []).toEqual([]);
   });
-  it('carries configured and default timeouts through the built study host, native producer and frozen run without configuration drift', () => {
+  it('preserves timeout identities in read-only plans but rejects retired typed dispatch before configuring or calling the producer', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-timeout-'))); roots.push(root);
     const moduleUrl = (path: string) => pathToFileURL(join(repository, 'dist', path)).href;
-    // Production composition and producer; the executor return is authored and has no provider access.
+    // Preparation may inspect the concrete producer. The retired default dispatch must never configure or call it.
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
       import assert from 'node:assert/strict';
       import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -113,29 +115,28 @@ describe('built repository knowledge study entry', () => {
       for (const [name, timeouts, expected] of [['explicit', [600000, 600000], 600000], ['default', [], 300000]]) {
         const study = join(root, name); writeFileSync(configPath, JSON.stringify(configuration(timeouts)));
         const prepared = await request('prepare', study), files = new ExtractionStudyFiles({ directory: study, workspace, repository }), { plan } = files.open();
-        assert.equal(prepared.modelCallsByThisCommand, 0); assert.deepEqual(effects, observed.map(value => value.actual));
+        assert.equal(prepared.modelCallsByThisCommand, 0); assert.deepEqual(effects, []);
         assert.deepEqual(plan.variants.map(value => value.timeoutMs), [expected, expected]);
         assert.deepEqual(plan.slots.map(value => value.request.timeoutMs), [expected, expected]);
         assert.ok(producerCalls.every(value => value.timeoutMs === expected)); producerCalls.length = 0;
         // Changing the source configuration cannot change a previously prepared plan, including a default-300000 plan.
         writeFileSync(configPath, JSON.stringify(configuration([1200000, 1200000])));
         const slot = plan.slots[0], advanced = await request('run', study, { '--slot': slot.slotId, '--authorize-plan': plan.planId });
-        assert.equal(advanced.exitCode, 0); assert.equal(advanced.omkDispatchesByThisCommand, 1);
-        const run = JSON.parse(readFileSync(join(workspace, 'extraction-runs', slot.runId + '.json'), 'utf8'));
-        assert.equal(run.status, 'completed'); assert.equal(run.attempts.length, 1);
-        assert.equal(run.attempts[0].request.timeoutMs, expected); assert.deepEqual(run.attempts[0].producer, slot.producer);
-        assert.ok(producerCalls.every(value => value.timeoutMs === expected)); producerCalls.length = 0;
+        assert.equal(advanced.exitCode, 1); assert.equal(advanced.errorCode, 'knowledge_study_generation_unsupported');
+        assert.equal(advanced.modelCallsByThisCommand, 0); assert.match(advanced.message, /observe knowledge generate/);
+        assert.deepEqual(producerCalls, []); assert.deepEqual(effects, []);
+        assert.equal(existsSync(join(workspace, 'extraction-runs')), false);
         const output = join(root, name + '-report'); await request('report', study, { '--output': output });
         const report = JSON.parse(readFileSync(join(output, 'report.json'), 'utf8'));
-        assert.equal(report.slots[0].nativeVerified, true); assert.equal(report.summary.attempts, 1);
-        observed.push({ configured: expected, actual: effects.at(-1), run: run.attempts[0].request.timeoutMs, nativeVerified: report.slots[0].nativeVerified });
+        assert.equal(report.summary.unattempted, 2); assert.equal(report.summary.attempts, 0);
+        observed.push({ configured: expected, frozen: plan.slots[0].request.timeoutMs, errorCode: advanced.errorCode, modelCalls: advanced.modelCallsByThisCommand });
       }
-      assert.deepEqual(effects, [600000, 300000]); process.stdout.write(JSON.stringify(observed));
+      assert.deepEqual(effects, []); process.stdout.write(JSON.stringify(observed));
     `], { cwd: root, encoding: 'utf8', timeout: 60_000 });
     expect(result.error).toBeUndefined(); expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual([
-      { configured: 600_000, actual: 600_000, run: 600_000, nativeVerified: true },
-      { configured: 300_000, actual: 300_000, run: 300_000, nativeVerified: true },
+      { configured: 600_000, frozen: 600_000, errorCode: 'knowledge_study_generation_unsupported', modelCalls: 0 },
+      { configured: 300_000, frozen: 300_000, errorCode: 'knowledge_study_generation_unsupported', modelCalls: 0 },
     ]);
   });
   it('freezes shared runtime and installed validator code and schema bytes, beyond dependency versions', () => {

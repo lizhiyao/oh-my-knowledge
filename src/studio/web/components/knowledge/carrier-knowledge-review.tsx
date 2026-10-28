@@ -13,7 +13,7 @@ export function CarrierReviewStatus({ review, lang }: { review: CarrierReviewSum
 export function CarrierKnowledgeReviewPanel({ review, workspace, lang }: { review: CarrierKnowledgeReview; workspace: string; lang: Language }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const reasons = { revision_changed: t('已有新修订', 'New revision available'), not_retained: t('当前修订未保留', 'Current revision is not retained'), source_unavailable: t('来源不可用', 'Source unavailable'), incorporated_unavailable: t('旧知识修订不可用', 'Incorporated revision unavailable'), current_unavailable: t('当前知识不可用', 'Current knowledge unavailable') };
-  const fields = { title: t('标题', 'Title'), statements: t('陈述与适用条件', 'Statements and conditions'), organization: t('组织形式', 'Organization'), entities: t('实体', 'Entities'), evidence: t('依据', 'Evidence'), grounding: t('来源与引用', 'Sources and citations') };
+  const fields = { title: t('标题', 'Title'), body: t('知识正文', 'Knowledge content'), organization: t('组织形式', 'Organization'), evidence: t('依据', 'Evidence'), reuseRationale: t('复用说明', 'Reuse notes') };
   const changed = review.checks.filter(check => check.reasons.length);
   const href = (id: string, revision: string) => workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${encodeURIComponent(id)}&revision=${encodeURIComponent(revision)}`, workspace);
   return <div className="carrier-knowledge-review">

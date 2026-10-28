@@ -1,6 +1,8 @@
-import type { EntityMention, EvidenceExcerpt, EvidenceSelection, KnowledgeDraft } from '../contracts.js';
-import { GroundingSchema } from '../store.js';
-import { validateEvidenceSelection, validateGroundingReferences, validateKnowledgeDraft } from '../validation.js';
+import type { EntityMention, EvidenceExcerpt, EvidenceSelection } from '../contracts.js';
+import type { KnowledgeDraft } from '../measurement/typed-contracts.js';
+import { GroundingSchema } from '../measurement/typed-grounding.js';
+import { validateEvidenceSelection } from '../validation.js';
+import { validateGroundingReferences, validateKnowledgeDraft } from '../measurement/typed-validation.js';
 
 /** Host-resolved proposal using the shared window's temporary model identities. */
 export interface ExtractionProposal {

@@ -1,38 +1,29 @@
 import { z } from 'zod';
-import { EntityMentionSchema, EvidenceSelectionSchema, KnowledgeActorSchema, KnowledgeRevisionSchema } from './contracts.js';
-import type { KnowledgeActor, KnowledgeRevision } from './contracts.js';
+import { KnowledgeActorSchema, KnowledgeRevisionSchema } from './contracts.js';
+import type { KnowledgeActor } from './contracts.js';
 
 const id = z.string().min(1).max(256);
-export const GroundingSchema = z.strictObject({
-  revisionId: id,
-  mentions: z.array(EntityMentionSchema).min(1).max(512),
-  citations: z.array(z.strictObject({ evidenceLinkId: id, selection: EvidenceSelectionSchema })).min(1).max(512),
-  sourceBindings: z.array(z.strictObject({ snapshotId: z.string().uuid(), sourceVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/), evidenceRefs: z.array(id).min(1) })).min(1),
-  reuseRationale: z.string().min(1).max(4096),
-  identityUncertainties: z.array(z.string().min(1).max(4096)).max(64),
-  entityAnalysisRef: z.strictObject({ analysisId: z.string().uuid(), revisionId: z.string().uuid() }).optional(),
-});
-export type KnowledgeGrounding = z.infer<typeof GroundingSchema>;
 export const MaintenanceSchema = z.strictObject({
   revisionId: id, choice: z.enum(['retain', 'discard']),
   actor: KnowledgeActorSchema, at: z.iso.datetime({ offset: true }), reason: z.string().min(1).max(4096),
 });
 export type MaintenanceChoice = z.infer<typeof MaintenanceSchema>;
 export const KnowledgeEnvelopeSchema = z.strictObject({
-  storeKind: z.literal('knowledge-item-history'), schemaVersion: z.literal(2),
+  storeKind: z.literal('knowledge-item-history'), schemaVersion: z.literal(3),
   namespace: id, knowledgeId: id, generation: z.number().int().positive(), writeHeadRevisionId: id,
   revisions: z.array(KnowledgeRevisionSchema).min(1),
-  grounding: z.array(GroundingSchema).min(1),
   maintenance: z.array(MaintenanceSchema),
   receipts: z.array(z.strictObject({ requestId: id, commandDigest: z.string(), committedGeneration: z.number().int().positive(), revisionId: id })).min(1),
 });
 export type KnowledgeEnvelope = z.infer<typeof KnowledgeEnvelopeSchema>;
-export type KnowledgeWrite = {
-  requestId: string; knowledgeId: string; expectedGeneration: number;
-} & (
-  | { commandKind: 'append_revision'; expectedHeadRevisionId: string | null; revision: KnowledgeRevision; grounding: KnowledgeGrounding }
-  | { commandKind: 'record_maintenance'; maintenance: MaintenanceChoice }
-);
+const writeIdentity = {
+  requestId: id, knowledgeId: id, expectedGeneration: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+};
+export const KnowledgeWriteSchema = z.discriminatedUnion('commandKind', [
+  z.strictObject({ ...writeIdentity, commandKind: z.literal('append_revision'), expectedHeadRevisionId: id.nullable(), revision: KnowledgeRevisionSchema }),
+  z.strictObject({ ...writeIdentity, commandKind: z.literal('record_maintenance'), maintenance: MaintenanceSchema }),
+]);
+export type KnowledgeWrite = z.infer<typeof KnowledgeWriteSchema>;
 export interface KnowledgeStore {
   list(knowledgeIds?: ReadonlySet<string>): KnowledgeEnvelope[];
   read(knowledgeId: string): KnowledgeEnvelope;

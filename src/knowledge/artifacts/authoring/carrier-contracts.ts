@@ -20,7 +20,7 @@ export type CarrierReviewReason = 'revision_changed' | 'not_retained' | 'source_
 export interface CarrierKnowledgeCheck {
   knowledgeId: string; title: string; incorporatedRevisionId: string; currentRevisionId: string | null;
   currentChoice: 'retain' | 'discard' | null; reasons: CarrierReviewReason[];
-  changedFields: ('title' | 'statements' | 'organization' | 'entities' | 'evidence' | 'grounding')[];
+  changedFields: ('title' | 'body' | 'organization' | 'evidence' | 'reuseRationale')[];
   incorporatedContent: string | null; currentContent: string | null;
 }
 export interface CarrierReviewSummary { referenceCount: number; needsReviewCount: number; unavailableCount: number }

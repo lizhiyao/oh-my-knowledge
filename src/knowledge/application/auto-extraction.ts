@@ -1,499 +1,386 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
-import type { EvidenceWindow } from '../extraction/evidence.js';
-import type { ExtractionModel } from './application.js';
-import { createLocalKnowledgeApplication } from './local.js';
-import { validateExtractionModelSelection } from '../adapters/executor.js';
 import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
+import type { EvidenceWindow } from '../extraction/evidence.js';
 import { conversationExtractionSource } from '../extraction/conversation-source.js';
-import { assertExtractionInputCapacity, extractionModelInput, ExtractionInputCapacityError } from '../extraction/model-input.js';
-import { extractionPrompt } from '../extraction/generation.js';
-import { FileExtractionRunStore } from '../adapters/run-store.js';
-import { ExtractionOutcomeRefSchema } from '../extraction/runs.js';
-import { ExtractionBudgetReservationSchema, ExtractionGenerationPolicySchema, SINGLE_EXTRACTION_POLICY, TRANSIENT_EXTRACTION_FAILURES,
-  type ExtractionBudgetReservation, type ExtractionGenerationPolicy } from '../extraction/generation-policy.js';
+import type { KnowledgeGenerationModel, KnowledgeGenerationOptions } from './application.js';
+import { createLocalKnowledgeApplication } from './local.js';
+import { FileGenerationJournalStore } from '../adapters/generation-journal-store.js';
+import { GenerationOutcomeRefSchema, measureGenerationJSON, observeGenerationJSON } from '../extraction/native-outcome.js';
+import type { GenerationJournal, GenerationStage } from '../extraction/generation-journal.js';
+import { publishKnowledgeBytes, confirmKnowledgePublication } from '../adapters/durable-publication.js';
+import { canonicalJson } from '../store.js';
 
-const text = z.string().min(1).max(4096);
-const schema = z.strictObject({
-  schemaVersion: z.literal(1), automationKind: z.literal('conversation-knowledge-extraction'),
-  threadId: text, owner: z.string().uuid(), pid: z.number().int().positive(), hostname: text,
-  permissionId: z.string().uuid(),
-  executor: text, model: text, maxCalls: z.number().int().min(1).max(20), callsUsed: z.number().int().min(0).max(20),
-  enabledAt: z.iso.datetime(), expiresAt: z.iso.datetime(), enabled: z.boolean(),
+const text = z.string().min(1).max(4096), uuid = z.string().uuid(), sha = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+export const AUTO_EXTRACTION_WORKFLOW = 'knowledge-body-first/v1' as const;
+const ledgerVersion = 'conversation-phase-invocations/v2' as const;
+const stageKind = z.enum(['body', 'association']);
+const permissionFields = {
+  schemaVersion: z.literal(2), workflowId: z.literal(AUTO_EXTRACTION_WORKFLOW),
+  permissionId: uuid, threadId: text, executor: text, model: text,
+  maxCalls: z.number().int().min(1).max(20), enabledAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+  ledgerVersion: z.literal(ledgerVersion),
+};
+export const AutoExtractionStateSchema = z.strictObject({
+  ...permissionFields, automationKind: z.literal('conversation-knowledge-extraction'), schemaStatus: z.literal('current'),
+  owner: uuid, pid: z.number().int().positive(), hostname: text, callsUsed: z.number().int().min(0).max(20), enabled: z.boolean(),
   reason: z.enum(['waiting', 'generating', 'stopped', 'quota', 'expired', 'failed', 'interrupted', 'capacity']),
-  checkedTurns: z.array(text).max(2000), initialTurns: z.array(text).max(3),
-  attemptedVersions: z.array(text).max(1000), lastRunId: z.string().uuid().optional(),
-  policy: ExtractionGenerationPolicySchema.optional(), ledgerVersion: z.literal('conversation-invocations/v1').optional(),
-  tokensReserved: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-  notBefore: z.iso.datetime().optional(),
+  checkedTurns: z.array(text).max(2000), initialTurns: z.array(text).max(3), attemptedVersions: z.array(text).max(1000),
+  lastRunId: uuid.optional(), notBefore: z.iso.datetime().optional(),
 });
-export type AutoExtractionState = z.infer<typeof schema>;
+export type AutoExtractionState = z.infer<typeof AutoExtractionStateSchema>;
+export interface AutoExtractionUnsupportedState {
+  schemaStatus: 'unsupported'; threadId: string; enabled: false; reason: 'permission_upgrade_required';
+}
+export type AutoExtractionStatus = AutoExtractionState | AutoExtractionUnsupportedState;
+export const AutoExtractionConsentSchema = z.strictObject({
+  workflowId: z.literal(AUTO_EXTRACTION_WORKFLOW), token: text, executor: z.enum(['codex', 'openai-api']), model: text,
+  maxCalls: z.number().int().min(1).max(20),
+});
 export interface AutoExtractionPreview {
   token: string; title: string; turnCount: number; messages: EvidenceWindow['excerpts']; limitations: string[];
 }
-const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value) ?? 'undefined').digest('hex');
-const permissionSchema = z.strictObject({ schemaVersion: z.literal(1), automationKind: z.literal('conversation-knowledge-permission'),
-  permissionId: z.string().uuid(), threadId: text, executor: text, model: text, maxCalls: z.number().int().min(1).max(20),
-  enabledAt: z.iso.datetime(), expiresAt: z.iso.datetime(), token: text, initialTurns: z.array(text).max(3),
+const permissionSchema = z.strictObject({ ...permissionFields, automationKind: z.literal('conversation-knowledge-permission'),
+  token: text, initialTurns: z.array(text).max(3),
   futureWindow: z.strictObject({ newTurns: z.literal(3), precedingTurns: z.literal(2), stableMs: z.literal(30_000) }),
-  policy: ExtractionGenerationPolicySchema.optional(), ledgerVersion: z.literal('conversation-invocations/v1').optional(),
 });
-const receiptSchema = z.strictObject({ schemaVersion: z.literal(1), automationKind: z.literal('conversation-knowledge-attempt'),
-  ledgerVersion: z.literal('conversation-invocations/v1'), permissionId: z.string().uuid(), threadId: text,
-  runId: z.string().uuid(), attemptId: z.string().uuid(), requestDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  policyId: z.enum(['knowledge-generation-single/v1', 'knowledge-generation-bounded/v1']),
-  turnIds: z.array(text).min(1).max(5), sourceVersion: text, reservedAt: z.iso.datetime(), callNumber: z.number().int().min(1).max(20),
-  budget: ExtractionBudgetReservationSchema.optional(),
+const scheduleSchema = z.strictObject({
+  schemaVersion: z.literal(2), automationKind: z.literal('conversation-knowledge-schedule'), workflowId: z.literal(AUTO_EXTRACTION_WORKFLOW),
+  permissionId: uuid, threadId: text, runId: uuid, executor: text, model: text,
+  sourceVersion: sha, turnIds: z.array(text).min(1).max(5), scheduledAt: z.iso.datetime(), firstCallNumber: z.number().int().min(1).max(20),
 });
-const cooldownSchema = z.strictObject({ schemaVersion: z.literal(1), automationKind: z.literal('conversation-knowledge-cooldown'),
-  permissionId: z.string().uuid(), threadId: text, runId: z.string().uuid(), attemptId: z.string().uuid(),
-  requestDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  sourceVersion: text, policyId: z.enum(['knowledge-generation-single/v1', 'knowledge-generation-bounded/v1']),
-  outcome: ExtractionOutcomeRefSchema, observedAt: z.iso.datetime(),
-  decision: z.enum(['no-cooldown', 'required', 'invalid']), retryAfterMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-  notBefore: z.iso.datetime().optional(),
+type Schedule = z.infer<typeof scheduleSchema>;
+const receiptSchema = z.strictObject({
+  schemaVersion: z.literal(2), automationKind: z.literal('conversation-knowledge-invocation'), ledgerVersion: z.literal(ledgerVersion),
+  permissionId: uuid, threadId: text, runId: uuid, invocationId: uuid, stageKind, requestDigest: sha,
+  turnIds: z.array(text).min(1).max(5), sourceVersion: sha, callNumber: z.number().int().min(1).max(20),
+  at: z.iso.datetime(), evidenceKind: z.enum(['dispatch-reservation', 'journal-claim-recovery']),
+  recoveredFrom: z.strictObject({ journalGeneration: z.number().int().positive(), phaseState: text, nativeOutcome: GenerationOutcomeRefSchema.optional() }).optional(),
+}).superRefine((receipt, context) => {
+  if ((receipt.evidenceKind === 'journal-claim-recovery') !== !!receipt.recoveredFrom) context.addIssue({ code: 'custom', message: 'Invalid invocation recovery evidence.' });
+});
+const cooldownSchema = z.strictObject({
+  schemaVersion: z.literal(2), automationKind: z.literal('conversation-knowledge-cooldown'), permissionId: uuid, threadId: text,
+  runId: uuid, invocationId: uuid, stageKind, requestDigest: sha, outcome: GenerationOutcomeRefSchema, observedAt: z.iso.datetime(),
+  decision: z.enum(['no-cooldown', 'required', 'invalid']), retryAfterMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(), notBefore: z.iso.datetime().optional(),
 }).superRefine((fact, context) => {
   if (fact.decision === 'required' ? fact.retryAfterMs === undefined || !fact.notBefore
     || Date.parse(fact.notBefore) !== Date.parse(fact.observedAt) + fact.retryAfterMs : fact.retryAfterMs !== undefined || fact.notBefore !== undefined) {
     context.addIssue({ code: 'custom', message: 'Invalid automation cooldown evidence.' });
   }
 });
-type CooldownFact = z.infer<typeof cooldownSchema>;
-type AttemptReceipt = z.infer<typeof receiptSchema>;
-type ReceiptInventory = { entries: string[]; read(name: string): AttemptReceipt };
-const MAX_DURABLE_COOLDOWNS = 3000;
-type DispatchClaim = { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionBudgetReservation };
-function readDocument(path: string) {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error('Invalid automation receipt.');
-  return JSON.parse(readFileSync(path, 'utf8')) as unknown;
-}
-/** Publication is exclusive. A lost acknowledgement still leaves an authoritative, non-refundable receipt. */
-function syncDocument(path: string) {
-  for (const target of [path, dirname(path), dirname(dirname(path))]) {
-    const fd = openSync(target, 'r');
-    try { fsyncSync(fd); } finally { closeSync(fd); }
-  }
-}
-function publishReceipt(path: string, value: unknown) {
-  createJsonFileAtomic(path, value); syncDocument(path);
-}
+type Cooldown = z.infer<typeof cooldownSchema>;
+type DispatchClaim = Parameters<NonNullable<KnowledgeGenerationOptions['beforeDispatch']>>[0];
+const digest = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
+const unsupported = (threadId: string): AutoExtractionUnsupportedState => ({ schemaStatus: 'unsupported', threadId, enabled: false, reason: 'permission_upgrade_required' });
+const MAX_FILES = 3000, INPUT_MAX_BYTES = 1024 * 1024;
+class AutoExtractionCapacityError extends Error {}
 
-/** One Studio lifetime owns scheduling. A reservation is durable before any model call. */
+/** One Studio lifetime schedules scoped windows. Every native phase consumes a distinct non-refundable reservation. */
 export class ConversationAutoExtraction {
   private readonly owner = randomUUID();
   private readonly roots = new Map<string, { root: string; threadId: string }>();
   private readonly stable = new Map<string, { version: string; since: number }>();
-  private readonly durableCooldowns = new Map<string, { dev: number; ino: number; ctimeMs: number; digest: string }>();
-  private active?: { key: string; controller: AbortController };
+  private active?: { key: string; permissionId: string; controller: AbortController };
   private ticking = false;
   private closed = false;
   private readonly timer?: ReturnType<typeof setInterval>;
   constructor(private readonly catalog: ConversationCatalog, private readonly options: {
-    now?: () => number; stableMs?: number; intervalMs?: number; model: (executor: string, model: string, policy?: ExtractionGenerationPolicy) => ExtractionModel;
+    now?: () => number; stableMs?: number; intervalMs?: number; model(executor: string, model: string): KnowledgeGenerationModel;
   }) {
-    if (options.intervalMs !== 0) {
-      this.timer = setInterval(() => { void this.tick(); }, options.intervalMs ?? 5000);
-      this.timer.unref();
-    }
+    if (options.intervalMs !== 0) { this.timer = setInterval(() => { void this.tick(); }, options.intervalMs ?? 5000); this.timer.unref(); }
   }
   private now() { return this.options.now?.() ?? Date.now(); }
   private location(root: string, threadId: string) {
     if (!root.trim() || !threadId.trim()) throw new Error('Explicit auto-extraction scope required.');
     const workspace = resolve(root), directory = join(workspace, 'auto-extraction');
     checkStorageDirectory(workspace); checkStorageDirectory(directory);
-    return { workspace, path: join(directory, `${digest(threadId)}.json`), key: `${workspace}\0${threadId}` };
+    return { workspace, directory, path: join(directory, `${digest(threadId)}.json`), key: `${workspace}\0${threadId}` };
   }
-  private read(root: string, threadId: string) {
-    const { path } = this.location(root, threadId);
-    if (!existsSync(path)) return null;
-    const stat = lstatSync(path);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error('Invalid automation state.');
-    const state = schema.parse(JSON.parse(readFileSync(path, 'utf8')));
-    if (state.threadId !== threadId) throw new Error('Automation identity conflict.');
-    return state;
+  private readDocument(path: string): unknown {
+    const before = lstatSync(path, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink() || before.size > 1024n * 1024n) throw new Error('Invalid automation document.');
+    const bytes = readFileSync(path), after = lstatSync(path, { bigint: true });
+    if (before.ino !== after.ino || before.dev !== after.dev || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new Error('Automation document changed during read.');
+    const data = bytes.toString('utf8'); if (!Buffer.from(data).equals(bytes)) throw new Error('Invalid automation document UTF8.');
+    return JSON.parse(data);
+  }
+  private read(root: string, threadId: string): AutoExtractionStatus | null {
+    const { path } = this.location(root, threadId); if (!existsSync(path)) return null;
+    const raw = this.readDocument(path) as Record<string, unknown>;
+    if (raw.schemaVersion !== 2) return unsupported(threadId); // Never interpret legacy permission as authority for two calls.
+    const state = AutoExtractionStateSchema.parse(raw);
+    if (state.threadId !== threadId) throw new Error('Automation identity conflict.'); return state;
   }
   private write(root: string, state: AutoExtractionState) {
-    const { path } = this.location(root, state.threadId);
-    writeJsonFileAtomic(path, schema.parse(state)); syncDocument(path);
+    publishKnowledgeBytes(this.location(root, state.threadId).path, JSON.stringify(AutoExtractionStateSchema.parse(state), null, 2), root, false);
   }
-  /** One locked reconciliation observes each selected receipt only once. */
-  private receiptInventory(root: string): ReceiptInventory {
-    const directory = join(root, 'auto-extraction'), entries = readdirSync(directory);
-    if (entries.length > 3000) throw new Error('Automation capacity exceeded.');
-    const receipts = new Map<string, AttemptReceipt>();
-    return { entries, read(name) {
-      let receipt = receipts.get(name);
-      if (!receipt) { receipt = receiptSchema.parse(readDocument(join(directory, name))); receipts.set(name, receipt); }
-      return receipt;
-    } };
+  private publish(root: string, path: string, value: unknown) {
+    if (existsSync(path)) {
+      if (canonicalJson(this.readDocument(path)) !== canonicalJson(value)) throw new Error('Automation immutable evidence conflict.');
+      confirmKnowledgePublication(path, root);
+    } else publishKnowledgeBytes(path, JSON.stringify(value, null, 2), root, true);
   }
-  /** Re-read and validate bytes on every observation; cache only successful durability confirmation. */
-  private readCooldown(path: string, receipt: AttemptReceipt): CooldownFact {
-    try {
-      const before = lstatSync(path);
-      if (!before.isFile() || before.isSymbolicLink() || before.size > 1024 * 1024) throw new Error('Invalid automation receipt.');
-      const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-      try {
-        const opened = fstatSync(fd);
-        if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino || opened.size !== before.size) throw new Error('Automation cooldown changed before read.');
-        const read = () => {
-          const bytes = Buffer.allocUnsafe(opened.size + 1); let offset = 0;
-          while (offset < bytes.length) { const count = readSync(fd, bytes, offset, bytes.length - offset, offset); if (!count) break; offset += count; }
-          const after = fstatSync(fd);
-          if (offset !== opened.size || after.size !== opened.size || after.ctimeMs !== opened.ctimeMs || after.mtimeMs !== opened.mtimeMs) throw new Error('Automation cooldown changed during read.');
-          return bytes.subarray(0, offset);
-        };
-        const bytes = read(), fact = cooldownSchema.parse(JSON.parse(bytes.toString('utf8')));
-        if (fact.permissionId !== receipt.permissionId || fact.threadId !== receipt.threadId || fact.runId !== receipt.runId
-          || fact.attemptId !== receipt.attemptId || fact.requestDigest !== receipt.requestDigest
-          || fact.sourceVersion !== receipt.sourceVersion || fact.policyId !== receipt.policyId) throw new Error('Automation cooldown identity conflict.');
-        const fingerprint = { dev: opened.dev, ino: opened.ino, ctimeMs: opened.ctimeMs, digest: createHash('sha256').update(bytes).digest('hex') };
-        const previous = this.durableCooldowns.get(path);
-        if (!previous || previous.dev !== fingerprint.dev || previous.ino !== fingerprint.ino || previous.ctimeMs !== fingerprint.ctimeMs || previous.digest !== fingerprint.digest) {
-          this.durableCooldowns.delete(path);
-          fsyncSync(fd);
-          for (const directory of [dirname(path), dirname(dirname(path))]) {
-            const parent = openSync(directory, 'r'); try { fsyncSync(parent); } finally { closeSync(parent); }
-          }
-          if (createHash('sha256').update(read()).digest('hex') !== fingerprint.digest) throw new Error('Automation cooldown changed during durability confirmation.');
-        }
-        const current = lstatSync(path);
-        if (!current.isFile() || current.isSymbolicLink() || current.dev !== fingerprint.dev || current.ino !== fingerprint.ino || current.size !== opened.size || current.ctimeMs !== opened.ctimeMs || current.mtimeMs !== opened.mtimeMs) throw new Error('Automation cooldown changed after read.');
-        if (!this.closed) {
-          this.durableCooldowns.delete(path); this.durableCooldowns.set(path, fingerprint);
-          if (this.durableCooldowns.size > MAX_DURABLE_COOLDOWNS) this.durableCooldowns.delete(this.durableCooldowns.keys().next().value!);
-        }
-        return fact;
-      } finally { closeSync(fd); }
-    } catch (error) { this.durableCooldowns.delete(path); throw error; }
+  private files(root: string): string[] {
+    const directory = join(root, 'auto-extraction'); checkStorageDirectory(directory);
+    const entries = existsSync(directory) ? readdirSync(directory) : [];
+    if (entries.length > MAX_FILES) throw new AutoExtractionCapacityError('Automation capacity exceeded.'); return entries;
   }
-  /** Once per archived invocation, including sidecars whose manifest acknowledgement was lost. */
-  private cooldowns(root: string, threadId: string, inventory = this.receiptInventory(root)): CooldownFact[] {
-    const directory = join(root, 'auto-extraction'), cooldownRoot = join(directory, 'cooldowns');
-    checkStorageDirectory(cooldownRoot);
-    if (existsSync(cooldownRoot) && readdirSync(cooldownRoot).length > 3000) throw new Error('Automation capacity exceeded.');
-    const receipts = inventory.entries.filter(name => /^attempt-[a-f0-9-]{36}-[a-f0-9-]{36}\.json$/i.test(name))
-      .map(name => ({ name, receipt: inventory.read(name) }))
-      .filter(({ receipt }) => receipt.threadId === threadId);
-    const facts: CooldownFact[] = [];
-    for (const { name, receipt } of receipts) {
-      if (name !== `attempt-${receipt.permissionId}-${receipt.attemptId}.json`) throw new Error('Automation reservation conflict.');
-      const path = join(cooldownRoot, `${digest(threadId)}-${receipt.runId}-${receipt.attemptId}.json`);
-      const existing = () => this.readCooldown(path, receipt);
-      if (existsSync(path)) { facts.push(existing()); continue; }
-      this.durableCooldowns.delete(path);
-      const store = new FileExtractionRunStore(join(root, 'extraction-runs'), root), run = store.readManifest(receipt.runId);
-      const attempt = run.attempts.find(value => value.attemptId === receipt.attemptId);
-      if (!attempt || attempt.requestDigest !== receipt.requestDigest || run.sourceVersion !== receipt.sourceVersion
-        || run.policy.policyId !== receipt.policyId) throw new Error('Automation outcome identity conflict.');
-      let recorded: ReturnType<FileExtractionRunStore['readOutcome']>;
-      try { recorded = store.readOutcome(receipt.runId, receipt.attemptId, attempt.outcome); }
-      catch (error) { if (!attempt.outcome && (error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
-      const result = recorded.outcome.outcomeKind === 'result' ? recorded.outcome.result : undefined;
-      const failure = result?.failure;
-      const value = result?.ok === false && failure && typeof failure === 'object' && !Array.isArray(failure) ? failure.retryAfterMs : undefined;
-      const observedAt = new Date(this.now()).toISOString();
-      let wait: { decision: 'no-cooldown' | 'required' | 'invalid'; retryAfterMs?: number; notBefore?: string } = { decision: 'no-cooldown' };
-      if (value !== undefined) {
-        if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || !Number.isSafeInteger(this.now() + value)) wait = { decision: 'invalid' };
-        else {
-          try {
-            const notBefore = new Date(Date.parse(observedAt) + value).toISOString();
-            wait = z.iso.datetime().safeParse(notBefore).success ? { decision: 'required', retryAfterMs: value, notBefore } : { decision: 'invalid' };
-          } catch { wait = { decision: 'invalid' }; }
-        }
-      }
-      const fact = cooldownSchema.parse({ schemaVersion: 1, automationKind: 'conversation-knowledge-cooldown',
-        permissionId: receipt.permissionId, threadId, runId: receipt.runId, attemptId: receipt.attemptId,
-        requestDigest: receipt.requestDigest, sourceVersion: receipt.sourceVersion, policyId: receipt.policyId,
-        outcome: recorded.ref, observedAt, ...wait });
-      try { createJsonFileAtomic(path, fact); facts.push(existing()); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; facts.push(existing()); }
+  private schedulePath(root: string, permissionId: string, runId: string) { return join(root, 'auto-extraction', `schedule-${uuid.parse(permissionId)}-${uuid.parse(runId)}.json`); }
+  private receiptPath(root: string, permissionId: string, invocationId: string) { return join(root, 'auto-extraction', `phase-${uuid.parse(permissionId)}-${uuid.parse(invocationId)}.json`); }
+  private store(root: string) { return new FileGenerationJournalStore(join(root, 'generation-journals'), root); }
+  private journal(schedule: Schedule, root: string): GenerationJournal | undefined {
+    const journal = this.store(root).read(schedule.runId);
+    if (journal && (journal.workflowId !== AUTO_EXTRACTION_WORKFLOW || journal.mode !== 'generate' || journal.executor !== schedule.executor || journal.model !== schedule.model
+      || journal.sourceVersion !== schedule.sourceVersion || journal.stages[0].stageKind !== 'body'
+      || journal.stages.some((stage, index) => stage.stageKind !== (index === 0 ? 'body' : 'association')))) throw new Error('Automation journal identity conflict.');
+    return journal;
+  }
+  private cooldown(root: string, schedule: Schedule, journal: GenerationJournal, stage: GenerationStage): Cooldown | undefined {
+    const path = join(root, 'auto-extraction', `outcome-${schedule.permissionId}-${stage.invocationId}.json`);
+    const outcome = this.store(root).outcome(journal, stage);
+    if (!outcome) { if (existsSync(path)) throw new Error('Automation cooldown native evidence missing.'); return undefined; }
+    // Reading an orphan native original does not call the model or invent a run5 receipt.
+    const record = stage.outcomeRef ?? measureGenerationJSON(observeGenerationJSON({ archiveKind: 'knowledge-generation-native', schemaVersion: 1,
+      runId: journal.runId, invocationId: stage.invocationId, requestDigest: stage.requestDigest, outcome }), 512 * 1024 * 1024);
+    if (existsSync(path)) {
+      const fact = cooldownSchema.parse(this.readDocument(path));
+      if (fact.permissionId !== schedule.permissionId || fact.threadId !== schedule.threadId || fact.runId !== schedule.runId
+        || fact.invocationId !== stage.invocationId || fact.stageKind !== stage.stageKind || fact.requestDigest !== stage.requestDigest
+        || canonicalJson(fact.outcome) !== canonicalJson(record)) throw new Error('Automation cooldown identity conflict.');
+      confirmKnowledgePublication(path, root); return fact;
     }
-    return facts;
+    const observedAt = new Date(this.now()).toISOString();
+    const failure = outcome.outcomeKind === 'result' && outcome.result.ok === false ? outcome.result.failure : undefined;
+    const retry = failure && typeof failure === 'object' && !Array.isArray(failure) ? failure.retryAfterMs : undefined;
+    let wait: Pick<Cooldown, 'decision' | 'retryAfterMs' | 'notBefore'> = { decision: 'no-cooldown' };
+    if (retry !== undefined) {
+      if (typeof retry !== 'number' || !Number.isSafeInteger(retry) || retry < 0 || !Number.isSafeInteger(this.now() + retry)) wait = { decision: 'invalid' };
+      else try { wait = { decision: 'required', retryAfterMs: retry, notBefore: new Date(Date.parse(observedAt) + retry).toISOString() }; } catch { wait = { decision: 'invalid' }; }
+    }
+    const fact = cooldownSchema.parse({ schemaVersion: 2, automationKind: 'conversation-knowledge-cooldown', permissionId: schedule.permissionId,
+      threadId: schedule.threadId, runId: schedule.runId, invocationId: stage.invocationId, stageKind: stage.stageKind,
+      requestDigest: stage.requestDigest, outcome: record, observedAt, ...wait });
+    if (this.files(root).length >= MAX_FILES) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
+    this.publish(root, path, fact); return fact;
   }
-  private reconcile(root: string, state: AutoExtractionState, observed?: ReceiptInventory) {
-    // Existing v1 permissions without this optional ledger retain their original single-call accounting.
-    if (!state.ledgerVersion) return state;
+  /** Reconstruct a missing ledger receipt only from an exact scheduled durable journal claim. No slot is refunded. */
+  private reconcile(root: string, state: AutoExtractionState) {
     const directory = join(root, 'auto-extraction');
-    const permission = permissionSchema.parse(readDocument(join(directory, `permission-${state.permissionId}.json`)));
-    if (permission.permissionId !== state.permissionId || permission.ledgerVersion !== state.ledgerVersion || permission.threadId !== state.threadId
-      || permission.executor !== state.executor || permission.model !== state.model || permission.maxCalls !== state.maxCalls
-      || permission.enabledAt !== state.enabledAt || permission.expiresAt !== state.expiresAt
-      || digest(permission.policy ?? SINGLE_EXTRACTION_POLICY) !== digest(state.policy ?? SINGLE_EXTRACTION_POLICY)) throw new Error('Automation permission conflict.');
-    const inventory = observed ?? this.receiptInventory(root);
-    const prefix = `attempt-${state.permissionId}-`;
-    const receipts = inventory.entries.filter(name => name.startsWith(prefix) && name.endsWith('.json'));
-    if (receipts.length > state.maxCalls) throw new Error('Automation reservation conflict.');
-    const numbers = new Set<number>(); let tokens = 0;
-    const policy = state.policy ?? SINGLE_EXTRACTION_POLICY;
-    for (const name of receipts) {
-      const receipt = inventory.read(name);
-      if (name !== `${prefix}${receipt.attemptId}.json` || receipt.permissionId !== state.permissionId
-        || receipt.threadId !== state.threadId || receipt.policyId !== policy.policyId || numbers.has(receipt.callNumber)
-        || policy.policyId === 'knowledge-generation-bounded/v1' && (!receipt.budget || receipt.budget.profileId !== policy.profileId
-          || receipt.budget.outputUpperBound !== policy.maxOutputTokens)
-        || policy.policyId === 'knowledge-generation-single/v1' && receipt.budget) throw new Error('Automation reservation conflict.');
-      numbers.add(receipt.callNumber); tokens += receipt.budget?.tokensReserved ?? 0;
+    const permission = permissionSchema.parse(this.readDocument(join(directory, `permission-${state.permissionId}.json`)));
+    const identity = (value: z.infer<typeof permissionSchema> | AutoExtractionState) => Object.fromEntries(Object.keys(permissionFields).map(key => [key, value[key as keyof typeof value]]));
+    if (canonicalJson(identity(permission)) !== canonicalJson(identity(state))) throw new Error('Automation permission conflict.');
+    const schedules = this.files(root).filter(name => /^schedule-[a-f0-9-]{36}-[a-f0-9-]{36}\.json$/i.test(name)).map(name => {
+      const schedule = scheduleSchema.parse(this.readDocument(join(directory, name)));
+      if (name !== `schedule-${schedule.permissionId}-${schedule.runId}.json`) throw new Error('Automation schedule identity conflict.'); return schedule;
+    }).filter(schedule => schedule.threadId === state.threadId);
+    const facts: Cooldown[] = [];
+    for (const schedule of schedules) {
+      const journal = this.journal(schedule, root); if (!journal) continue;
+      for (const [index, stage] of journal.stages.entries()) {
+        const path = this.receiptPath(root, schedule.permissionId, stage.invocationId);
+        if (stage.state !== 'prepared' && !existsSync(path)) {
+          const recovered = receiptSchema.parse({ schemaVersion: 2, automationKind: 'conversation-knowledge-invocation', ledgerVersion,
+            permissionId: schedule.permissionId, threadId: schedule.threadId, runId: schedule.runId, invocationId: stage.invocationId,
+            stageKind: stage.stageKind, requestDigest: stage.requestDigest, turnIds: schedule.turnIds, sourceVersion: schedule.sourceVersion,
+            callNumber: schedule.firstCallNumber + index, at: new Date(this.now()).toISOString(), evidenceKind: 'journal-claim-recovery',
+            recoveredFrom: { journalGeneration: journal.generation, phaseState: stage.state, ...(stage.outcomeRef ? { nativeOutcome: stage.outcomeRef } : {}) } });
+          if (this.files(root).length >= MAX_FILES) throw new AutoExtractionCapacityError('Automation capacity exceeded.'); this.publish(root, path, recovered);
+        }
+        const fact = stage.state !== 'prepared' ? this.cooldown(root, schedule, journal, stage) : undefined; if (fact) facts.push(fact);
+      }
     }
-    if ([...numbers].some(number => number > receipts.length) || receipts.length < state.callsUsed
-      || !Number.isSafeInteger(tokens) || tokens < (state.tokensReserved ?? 0)
-      || policy.policyId === 'knowledge-generation-bounded/v1' && tokens > policy.maxTotalTokens) throw new Error('Automation reservation conflict.');
-    const facts = this.cooldowns(root, state.threadId, inventory);
+    const receipts = this.files(root).filter(name => name.startsWith(`phase-${state.permissionId}-`) && name.endsWith('.json')).map(name => {
+      const receipt = receiptSchema.parse(this.readDocument(join(directory, name)));
+      const schedule = schedules.find(value => value.runId === receipt.runId && value.permissionId === state.permissionId);
+      if (name !== `phase-${receipt.permissionId}-${receipt.invocationId}.json` || receipt.permissionId !== state.permissionId || receipt.threadId !== state.threadId
+        || !schedule || schedule.sourceVersion !== receipt.sourceVersion || canonicalJson(schedule.turnIds) !== canonicalJson(receipt.turnIds)
+        || receipt.callNumber !== schedule.firstCallNumber + (receipt.stageKind === 'body' ? 0 : 1)) throw new Error('Automation reservation conflict.'); return receipt;
+    });
+    const numbers = new Set(receipts.map(receipt => receipt.callNumber));
+    if (numbers.size !== receipts.length || receipts.length < state.callsUsed || receipts.length > state.maxCalls
+      || [...numbers].some(number => number > receipts.length)) throw new Error('Automation reservation conflict.');
     const latest = facts.filter(fact => fact.decision === 'required').map(fact => fact.notBefore!).sort().at(-1);
-    const invalid = facts.some(fact => fact.permissionId === state.permissionId && fact.decision === 'invalid');
-    const changed = state.callsUsed !== receipts.length || state.tokensReserved !== tokens || latest !== undefined && (!state.notBefore || latest > state.notBefore)
-      || invalid && state.enabled;
-    state.callsUsed = receipts.length; state.tokensReserved = tokens;
+    const invalid = facts.some(fact => fact.decision === 'invalid');
+    const changed = state.callsUsed !== receipts.length || latest !== undefined && (!state.notBefore || latest > state.notBefore) || invalid && state.enabled;
+    state.callsUsed = receipts.length;
     if (latest && (!state.notBefore || latest > state.notBefore)) state.notBefore = latest;
     if (invalid && state.enabled) { state.enabled = false; state.reason = 'failed'; }
-    if (changed) this.write(root, state);
-    return state;
+    if (changed) this.write(root, state); return state;
   }
-  private reserve(root: string, threadId: string, expected: AutoExtractionState, window: EvidenceWindow,
-    turnIds: string[], claim: DispatchClaim, signal: AbortSignal) {
+  private reserve(root: string, threadId: string, expected: AutoExtractionState, schedule: Schedule, claim: DispatchClaim, signal: AbortSignal) {
     signal.throwIfAborted();
     withWorkspaceWrite(root, () => {
       const current = this.read(root, threadId);
-      if (!current || current.permissionId !== expected.permissionId || current.owner !== this.owner || !current.enabled
-        || current.lastRunId !== claim.runId || !current.attemptedVersions.includes(window.sourceVersion)) throw new Error('Automation permission conflict.');
-      const inventory = this.receiptInventory(root); this.reconcile(root, current, inventory);
+      if (!current || current.schemaStatus !== 'current' || current.permissionId !== expected.permissionId || current.owner !== this.owner || !current.enabled
+        || current.lastRunId !== claim.runId || !current.attemptedVersions.includes(schedule.sourceVersion)) throw new Error('Automation permission conflict.');
+      this.reconcile(root, current);
       if (!current.enabled) throw new Error('Automation permission stopped.');
-      if (this.now() >= Date.parse(current.expiresAt)) {
-        current.enabled = false; current.reason = 'expired'; this.write(root, current); throw new Error('Automation permission expired.');
-      }
-      if (current.notBefore && this.now() < Date.parse(current.notBefore)) throw new Error('Automation is waiting for the server cooldown.');
-      const policy = current.policy ?? SINGLE_EXTRACTION_POLICY;
-      const path = join(root, 'auto-extraction', `attempt-${current.permissionId}-${claim.attemptId}.json`);
-      if (existsSync(path)) {
-        const saved = inventory.read(`attempt-${current.permissionId}-${claim.attemptId}.json`);
-        if (saved.runId !== claim.runId || saved.requestDigest !== claim.requestDigest || digest(saved.budget) !== digest(claim.budget)) throw new Error('Automation reservation conflict.');
-        return; // The exact receipt has already consumed its slot; never debit twice.
-      }
-      if (!current.ledgerVersion || policy.policyId === 'knowledge-generation-bounded/v1' && (!claim.budget
-        || claim.budget.profileId !== policy.profileId || claim.budget.outputUpperBound !== policy.maxOutputTokens)
-        || policy.policyId === 'knowledge-generation-single/v1' && claim.budget) throw new Error('Automation reservation policy conflict.');
-      const total = (current.tokensReserved ?? 0) + (claim.budget?.tokensReserved ?? 0);
-      if (current.callsUsed >= current.maxCalls || !Number.isSafeInteger(total)
-        || policy.policyId === 'knowledge-generation-bounded/v1' && total > policy.maxTotalTokens) {
-        current.enabled = false; current.reason = 'quota'; this.write(root, current); throw new Error('Automation quota exhausted.');
-      }
-      const cooldownRoot = join(root, 'auto-extraction', 'cooldowns');
-      if (readdirSync(join(root, 'auto-extraction')).length + (existsSync(cooldownRoot) ? 1 : 2) > 3000) {
-        current.enabled = false; current.reason = 'capacity'; this.write(root, current); throw new Error('Automation capacity exceeded.');
-      }
+      if (this.now() >= Date.parse(current.expiresAt)) { current.enabled = false; current.reason = 'expired'; this.write(root, current); throw new Error('Automation permission expired.'); }
+      if (current.notBefore && this.now() < Date.parse(current.notBefore)) throw new Error('Automation server cooldown is active.');
+      const journal = this.journal(schedule, root), stage = journal?.stages.find(stage => stage.invocationId === claim.invocationId);
+      if (!journal || !stage || stage.state !== 'prepared' || stage.stageKind !== claim.stageKind || stage.requestDigest !== claim.requestDigest) throw new Error('Automation phase claim conflict.');
+      if (Buffer.byteLength(stage.system) + Buffer.byteLength(stage.input) > INPUT_MAX_BYTES) throw new AutoExtractionCapacityError('Automation input capacity exceeded.');
+      const path = this.receiptPath(root, current.permissionId, claim.invocationId);
+      if (existsSync(path)) throw new Error('Automation invocation already reserved; unknown dispatch must not be repeated.');
+      if (current.callsUsed >= current.maxCalls) { current.enabled = false; current.reason = 'quota'; this.write(root, current); throw new Error('Automation quota exhausted.'); }
+      if (this.files(root).length >= MAX_FILES) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
+      const receipt = receiptSchema.parse({ schemaVersion: 2, automationKind: 'conversation-knowledge-invocation', ledgerVersion,
+        permissionId: current.permissionId, threadId, ...claim, turnIds: schedule.turnIds, sourceVersion: schedule.sourceVersion,
+        at: new Date(this.now()).toISOString(), callNumber: current.callsUsed + 1, evidenceKind: 'dispatch-reservation' });
+      this.publish(root, path, receipt); current.callsUsed++; this.write(root, current);
       signal.throwIfAborted();
-      mkdirSync(cooldownRoot, { recursive: true }); checkStorageDirectory(cooldownRoot);
-      const receipt = receiptSchema.parse({ schemaVersion: 1, automationKind: 'conversation-knowledge-attempt',
-        ledgerVersion: 'conversation-invocations/v1', permissionId: current.permissionId, threadId,
-        ...claim, policyId: policy.policyId, turnIds, sourceVersion: window.sourceVersion,
-        reservedAt: new Date(this.now()).toISOString(), callNumber: current.callsUsed + 1 });
-      publishReceipt(path, receipt);
-      current.callsUsed++; current.tokensReserved = total; this.write(root, current);
-      signal.throwIfAborted();
-      if (this.now() >= Date.parse(current.expiresAt)) {
-        current.enabled = false; current.reason = 'expired'; this.write(root, current); throw new Error('Automation permission expired.');
-      }
+      if (this.now() >= Date.parse(current.expiresAt)) { current.enabled = false; current.reason = 'expired'; this.write(root, current); throw new Error('Automation permission expired.'); }
     });
-  }
-  /** Only a fully checked, empty dispatch ledger proves a failed local start did not send this window. */
-  private releaseUnsentWindow(root: string, current: AutoExtractionState, scheduled: { runId: string; sourceVersion: string }, observed?: ReceiptInventory) {
-    if (!current.ledgerVersion || current.lastRunId !== scheduled.runId) return;
-    const inventory = observed ?? this.receiptInventory(root);
-    this.reconcile(root, current, inventory);
-    const prefix = `attempt-${current.permissionId}-`;
-    const receipts = inventory.entries.filter(name => name.startsWith(prefix) && name.endsWith('.json'))
-      .map(name => inventory.read(name));
-    if (!receipts.some(receipt => receipt.runId === scheduled.runId)) {
-      current.attemptedVersions = current.attemptedVersions.filter(version => version !== scheduled.sourceVersion);
-    }
   }
   private ownerAlive(state: AutoExtractionState) {
     if (state.hostname !== hostname()) return true;
-    try { process.kill(state.pid, 0); return true; }
-    catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+    try { process.kill(state.pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
   }
   private async completed(threadId: string) {
-    const conversation = await this.catalog.getConversation(threadId);
-    if (!conversation) throw new Error('Conversation unavailable.');
-    const turns = [...new Set(conversation.tasks.filter(task => ['completed', 'failed', 'interrupted'].includes(task.status))
-      .map(task => task.sourceTurnId ?? task.turnId))];
-    if (turns.length > 2000) throw new Error('Automation capacity exceeded.');
-    return { conversation, turns };
+    const conversation = await this.catalog.getConversation(threadId); if (!conversation) throw new Error('Conversation unavailable.');
+    const turns = [...new Set(conversation.tasks.filter(task => ['completed', 'failed', 'interrupted'].includes(task.status)).map(task => task.sourceTurnId ?? task.turnId))];
+    if (turns.length > 2000) throw new AutoExtractionCapacityError('Automation capacity exceeded.'); return { conversation, turns };
   }
   private async plan(threadId: string, signal?: AbortSignal) {
-    const { conversation, turns } = await this.completed(threadId);
-    const selected = turns.slice(-3);
+    const { conversation, turns } = await this.completed(threadId), selected = turns.slice(-3);
     const source = selected.length ? await conversationExtractionSource(this.catalog, threadId, undefined, signal, selected) : undefined;
-    return { turns, selected, preview: { token: digest({ turns, version: source?.window.sourceVersion ?? null }),
-      title: conversation.title, turnCount: selected.length, messages: source?.messages ?? [], limitations: source?.window.limitations ?? [] } };
+    return { turns, selected, preview: { token: digest({ turns, version: source?.window.sourceVersion ?? null }), title: conversation.title,
+      turnCount: selected.length, messages: source?.messages ?? [], limitations: source?.window.limitations ?? [] } };
   }
   async preview(threadId: string, signal?: AbortSignal): Promise<AutoExtractionPreview> { return (await this.plan(threadId, signal)).preview; }
-  status(root: string, threadId: string) {
+  status(root: string, threadId: string): AutoExtractionStatus | null {
     const { workspace, key } = this.location(root, threadId);
     return withWorkspaceWrite(workspace, () => {
-      const state = this.read(workspace, threadId);
-      if (!state) return null;
+      const state = this.read(workspace, threadId); if (!state || state.schemaStatus === 'unsupported') return state;
       this.reconcile(workspace, state);
-      if (state.enabled && state.owner !== this.owner && !this.ownerAlive(state)) {
-        state.enabled = false; state.reason = 'interrupted'; this.write(workspace, state);
-      } else if (state.enabled && this.now() >= Date.parse(state.expiresAt)) {
-        state.enabled = false; state.reason = 'expired'; this.write(workspace, state);
-        if (this.active?.key === key) this.active.controller.abort();
+      if (state.enabled && state.owner !== this.owner && !this.ownerAlive(state)) { state.enabled = false; state.reason = 'interrupted'; this.write(workspace, state); }
+      else if (state.enabled && this.now() >= Date.parse(state.expiresAt)) {
+        state.enabled = false; state.reason = 'expired'; this.write(workspace, state); if (this.active?.key === key) this.active.controller.abort();
       }
-      if (!state.enabled) this.roots.delete(key);
-      return state;
+      if (!state.enabled) this.roots.delete(key); return state;
     });
   }
-  async enable(root: string, threadId: string, consent: { token: string; executor: string; model: string; maxCalls: number; policy?: ExtractionGenerationPolicy }, signal?: AbortSignal) {
+  async enable(root: string, threadId: string, input: z.infer<typeof AutoExtractionConsentSchema>, signal?: AbortSignal) {
+    const consent = AutoExtractionConsentSchema.parse(input);
     if (this.closed) throw new Error('Automation stopped.');
-    const plan = await this.plan(threadId, signal);
-    if (plan.preview.token !== consent.token) throw new Error('Source conflict. Preview again.');
-    const policy = ExtractionGenerationPolicySchema.parse(consent.policy ?? SINGLE_EXTRACTION_POLICY);
-    // Validate executor/model before saving permission, without invoking it.
-    validateExtractionModelSelection(consent.executor, consent.model);
-    signal?.throwIfAborted();
-    const { workspace, key } = this.location(root, threadId);
-    if (this.roots.size >= 32 && !this.roots.has(key)) throw new Error('Automation capacity exceeded.');
-    this.status(root, threadId);
+    const plan = await this.plan(threadId, signal); if (plan.preview.token !== consent.token) throw new Error('Source conflict. Preview again.'); signal?.throwIfAborted();
+    const { workspace, directory, path, key } = this.location(root, threadId);
+    if (this.roots.size >= 32 && !this.roots.has(key)) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
+    this.status(workspace, threadId);
     const state = withWorkspaceWrite(workspace, () => {
-      const previous = this.read(workspace, threadId);
-      if (previous) this.reconcile(workspace, previous);
-      if (previous?.enabled || this.active?.key === key || (previous?.owner !== this.owner && previous?.reason === 'generating' && this.ownerAlive(previous))) throw new Error('Automation conflict. Stop the active run first.');
-      const directory = join(workspace, 'auto-extraction');
-      if (existsSync(directory) && readdirSync(directory).length >= 2998) throw new Error('Automation capacity exceeded.');
-      const next = schema.parse({ schemaVersion: 1, automationKind: 'conversation-knowledge-extraction', threadId,
-        owner: this.owner, pid: process.pid, hostname: hostname(), permissionId: randomUUID(), executor: consent.executor, model: consent.model,
-        maxCalls: consent.maxCalls, callsUsed: 0, ledgerVersion: 'conversation-invocations/v1', tokensReserved: 0,
-        ...(policy.policyId === 'knowledge-generation-bounded/v1' ? { policy } : {}), enabledAt: new Date(this.now()).toISOString(),
-        expiresAt: new Date(this.now() + 24 * 60 * 60 * 1000).toISOString(), enabled: true, reason: 'waiting',
-        checkedTurns: plan.turns.filter(id => !plan.selected.includes(id)), initialTurns: plan.selected,
-        ...(previous?.notBefore ? { notBefore: previous.notBefore } : {}),
-        attemptedVersions: previous?.attemptedVersions ?? [], ...(previous?.lastRunId ? { lastRunId: previous.lastRunId } : {}) });
-      publishReceipt(join(directory, `permission-${next.permissionId}.json`), permissionSchema.parse({
-        schemaVersion: 1, automationKind: 'conversation-knowledge-permission', permissionId: next.permissionId,
-        threadId, executor: next.executor, model: next.model, maxCalls: next.maxCalls,
-        enabledAt: next.enabledAt, expiresAt: next.expiresAt, token: consent.token, initialTurns: plan.selected,
-        futureWindow: { newTurns: 3, precedingTurns: 2, stableMs: 30_000 }, ledgerVersion: next.ledgerVersion,
-        ...(next.policy ? { policy: next.policy } : {}),
-      }));
+      const previous = this.read(workspace, threadId), current = previous?.schemaStatus === 'current' ? previous : undefined;
+      if (current) this.reconcile(workspace, current);
+      if (current?.enabled || this.active?.key === key || (current && current.owner !== this.owner && current.reason === 'generating' && this.ownerAlive(current))) throw new Error('Automation conflict. Stop the active run first.');
+      if (this.files(workspace).length >= MAX_FILES - 3) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
+      if (previous?.schemaStatus === 'unsupported') {
+        const original = readFileSync(path, 'utf8');
+        const archive = join(directory, `legacy-state-${digest(threadId)}-${digest(original)}.json`);
+        if (existsSync(archive)) {
+          if (readFileSync(archive, 'utf8') !== original) throw new Error('Legacy permission archive conflict.'); confirmKnowledgePublication(archive, workspace);
+        } else publishKnowledgeBytes(archive, original, workspace, true);
+      }
+      const next = AutoExtractionStateSchema.parse({ workflowId: consent.workflowId, executor: consent.executor, model: consent.model, maxCalls: consent.maxCalls, schemaVersion: 2, automationKind: 'conversation-knowledge-extraction', schemaStatus: 'current',
+        threadId, owner: this.owner, pid: process.pid, hostname: hostname(), permissionId: randomUUID(), callsUsed: 0, ledgerVersion,
+        enabledAt: new Date(this.now()).toISOString(), expiresAt: new Date(this.now() + 24 * 60 * 60 * 1000).toISOString(), enabled: true, reason: 'waiting',
+        checkedTurns: plan.turns.filter(id => !plan.selected.includes(id)), initialTurns: plan.selected, attemptedVersions: current?.attemptedVersions ?? [],
+        ...(current?.lastRunId ? { lastRunId: current.lastRunId } : {}), ...(current?.notBefore ? { notBefore: current.notBefore } : {}) });
+      this.publish(workspace, join(directory, `permission-${next.permissionId}.json`), permissionSchema.parse({ ...Object.fromEntries(Object.keys(permissionFields).map(key => [key, next[key as keyof typeof next]])),
+        automationKind: 'conversation-knowledge-permission', token: consent.token, initialTurns: plan.selected, futureWindow: { newTurns: 3, precedingTurns: 2, stableMs: 30_000 } }));
       this.write(workspace, next); return next;
     });
-    this.roots.set(key, { root: workspace, threadId });
-    this.stable.delete(key); return state;
+    this.roots.set(key, { root: workspace, threadId }); this.stable.delete(key); return state;
   }
   stop(root: string, threadId: string) {
     const { workspace, key } = this.location(root, threadId);
     const state = withWorkspaceWrite(workspace, () => {
       const current = this.read(workspace, threadId);
-      if (current) this.reconcile(workspace, current);
-      if (current?.enabled && current.owner !== this.owner && this.ownerAlive(current)) throw new Error('Automation conflict. Stop it in its owning Studio.');
-      if (current) { current.enabled = false; current.reason = 'stopped'; this.write(workspace, current); }
-      return current;
+      if (!current || current.schemaStatus === 'unsupported') return current;
+      this.reconcile(workspace, current);
+      if (current.enabled && current.owner !== this.owner && this.ownerAlive(current)) throw new Error('Automation conflict. Stop it in its owning Studio.');
+      current.enabled = false; current.reason = 'stopped'; this.write(workspace, current); return current;
     });
-    if (this.active?.key === key) this.active.controller.abort();
-    this.roots.delete(key); this.stable.delete(key); return state;
+    if (this.active?.key === key) this.active.controller.abort(); this.roots.delete(key); this.stable.delete(key); return state;
   }
-  /** Serialized across scopes. Tests use an explicit clock and a model stub. */
   async tick() {
-    if (this.closed || this.ticking) return;
-    this.ticking = true;
+    if (this.closed || this.ticking) return; this.ticking = true;
     try {
       for (const [key, { root, threadId }] of this.roots) {
         if (this.closed) break;
-        const controller = new AbortController(); this.active = { key, controller };
-        let deadline: ReturnType<typeof setTimeout> | undefined;
-        let scheduled: { runId: string; sourceVersion: string } | undefined;
+        let deadline: ReturnType<typeof setTimeout> | undefined, scheduled: Schedule | undefined, permissionId: string | undefined;
+        const controller = new AbortController();
         try {
-          const state = this.status(root, threadId);
-          if (!state?.enabled || state.owner !== this.owner) continue;
+          const state = this.status(root, threadId); if (!state || state.schemaStatus !== 'current' || !state.enabled || state.owner !== this.owner) continue;
+          permissionId = state.permissionId; this.active = { key, permissionId, controller };
           if (state.notBefore && this.now() < Date.parse(state.notBefore)) continue;
-          const { turns } = await this.completed(threadId);
-          const pending = state.initialTurns.length ? state.initialTurns : turns.filter(id => !state.checkedTurns.includes(id)).slice(0, 3);
+          const { turns } = await this.completed(threadId), pending = state.initialTurns.length ? state.initialTurns : turns.filter(id => !state.checkedTurns.includes(id)).slice(0, 3);
           if (!pending.length) continue;
-          const first = turns.indexOf(pending[0]);
-          const selected = state.initialTurns.length ? pending : [...turns.slice(Math.max(0, first - 2), first), ...pending];
+          const first = turns.indexOf(pending[0]), selected = state.initialTurns.length ? pending : [...turns.slice(Math.max(0, first - 2), first), ...pending];
           const { window } = await conversationExtractionSource(this.catalog, threadId, undefined, controller.signal, selected);
-          // Check before reserving a paid call or marking this source version attempted.
-          const model = this.options.model(state.executor, state.model, state.policy);
-          if (model.executor !== state.executor || model.model !== state.model) throw new Error('Automation model selection conflict.');
-          assertExtractionInputCapacity(extractionModelInput(window), extractionPrompt(model).system);
+          const model = this.options.model(state.executor, state.model);
+          if (model.executor !== state.executor || model.model !== state.model || model.timeoutMs !== 300_000) throw new Error('Automation model selection conflict.');
           const stable = this.stable.get(key);
           if (!stable || stable.version !== window.sourceVersion) { this.stable.set(key, { version: window.sourceVersion, since: this.now() }); continue; }
           if (this.now() - stable.since < (this.options.stableMs ?? 30_000)) continue;
           const reserved = withWorkspaceWrite(root, () => {
-            const current = this.read(root, threadId);
-            if (!current?.enabled || current.owner !== this.owner || this.now() >= Date.parse(current.expiresAt)) return null;
-            if (current.notBefore && this.now() < Date.parse(current.notBefore)) return null;
+            const current = this.read(root, threadId); if (!current || current.schemaStatus !== 'current' || !current.enabled || current.owner !== this.owner || this.now() >= Date.parse(current.expiresAt)) return null;
+            this.reconcile(root, current); if (!current.enabled || current.notBefore && this.now() < Date.parse(current.notBefore)) return null;
             const duplicate = current.attemptedVersions.includes(window.sourceVersion);
             current.checkedTurns = [...new Set([...current.checkedTurns, ...pending])]; current.initialTurns = [];
             if (!duplicate) {
-              if (readdirSync(join(root, 'auto-extraction')).length >= 3000) { current.enabled = false; current.reason = 'capacity'; this.write(root, current); return null; }
               if (current.callsUsed >= current.maxCalls) { current.enabled = false; current.reason = 'quota'; this.write(root, current); return null; }
-              if (current.attemptedVersions.length >= 1000) { current.enabled = false; current.reason = 'capacity'; this.write(root, current); return null; }
-              current.attemptedVersions.push(window.sourceVersion); current.lastRunId = randomUUID(); current.reason = 'generating';
+              if (current.attemptedVersions.length >= 1000 || this.files(root).length >= MAX_FILES - 3) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
+              current.lastRunId = randomUUID(); current.attemptedVersions.push(window.sourceVersion); current.reason = 'generating';
+              scheduled = scheduleSchema.parse({ schemaVersion: 2, automationKind: 'conversation-knowledge-schedule', workflowId: AUTO_EXTRACTION_WORKFLOW,
+                permissionId: current.permissionId, threadId, runId: current.lastRunId, executor: current.executor, model: current.model,
+                sourceVersion: window.sourceVersion, turnIds: selected, scheduledAt: new Date(this.now()).toISOString(), firstCallNumber: current.callsUsed + 1 });
+              this.publish(root, this.schedulePath(root, current.permissionId, current.lastRunId), scheduled);
             }
-            this.write(root, current);
-            return duplicate ? null : current;
+            this.write(root, current); return duplicate ? null : current;
           });
-          this.stable.delete(key);
-          if (!reserved) continue;
-          scheduled = { runId: reserved.lastRunId!, sourceVersion: window.sourceVersion };
+          this.stable.delete(key); if (!reserved || !scheduled) continue;
           deadline = setTimeout(() => controller.abort(), Math.max(0, Date.parse(reserved.expiresAt) - this.now())); deadline.unref();
-          const app = createLocalKnowledgeApplication(root);
-          const snapshot = app.capture({ path: window.sourcePath, records: window.records, origin: window.origin }, controller.signal);
-          const run = await app.generate(snapshot.snapshotId, model, reserved.lastRunId!, controller.signal, { policy: reserved.policy,
-            beforeDispatch: claim => this.reserve(root, threadId, reserved, window, selected, claim, controller.signal),
-            onOutcomeArchived: () => withWorkspaceWrite(root, () => { this.cooldowns(root, threadId); }) });
+          const app = createLocalKnowledgeApplication(root), snapshot = app.capture({ path: window.sourcePath, records: window.records, origin: window.origin }, controller.signal);
+          const result = await app.generate(snapshot.snapshotId, model, scheduled.runId, controller.signal, {
+            beforeDispatch: claim => this.reserve(root, threadId, reserved, scheduled!, claim, controller.signal),
+            onOutcomeArchived: () => withWorkspaceWrite(root, () => {
+              const journal = this.journal(scheduled!, root); if (journal) { const stage = journal.stages.at(-1)!; this.cooldown(root, scheduled!, journal, stage); }
+            }),
+          });
           withWorkspaceWrite(root, () => {
-            // Publish facts even when an old owner finishes after a new permission was granted.
-            // The old task never mutates that new permission; its gate/status reconciles these facts.
-            const inventory = this.receiptInventory(root); this.cooldowns(root, threadId, inventory);
             const current = this.read(root, threadId);
-            if (!current || current.permissionId !== reserved.permissionId || current.owner !== this.owner
-              || current.lastRunId !== reserved.lastRunId) return;
-            if (run.status !== 'completed') this.releaseUnsentWindow(root, current, scheduled!, inventory);
-            this.reconcile(root, current, inventory);
-            if (!current.enabled) { this.write(root, current); return; }
-            const last = run.attempts[run.attempts.length - 1];
-            const transient = run.status === 'failed' && !!last.outcome
-              && TRANSIENT_EXTRACTION_FAILURES.has(last.failure?.failureKind ?? '');
-            current.reason = run.status === 'completed' || transient ? 'waiting' : 'failed';
-            if (run.status !== 'completed' && !transient) current.enabled = false;
-            const policy = current.policy ?? SINGLE_EXTRACTION_POLICY;
-            if (current.callsUsed >= current.maxCalls || policy.policyId === 'knowledge-generation-bounded/v1'
-              && (current.tokensReserved ?? 0) >= policy.maxTotalTokens) { current.enabled = false; current.reason = 'quota'; }
-            this.write(root, current);
+            if (!current || current.schemaStatus !== 'current' || current.permissionId !== reserved.permissionId || current.owner !== this.owner) return;
+            this.reconcile(root, current); if (current.enabled) {
+              current.reason = result.journal.status === 'completed' ? 'waiting' : 'failed';
+              if (result.journal.status !== 'completed') current.enabled = false;
+              if (current.callsUsed >= current.maxCalls) { current.enabled = false; current.reason = 'quota'; } this.write(root, current);
+            }
           });
         } catch (error) {
-          // Errors never trigger a fresh model attempt; details stay in local run evidence.
           try { withWorkspaceWrite(root, () => {
             const current = this.read(root, threadId);
-            if (current && current.owner === this.owner) {
-              if (scheduled) this.releaseUnsentWindow(root, current, scheduled);
-              if (current.enabled) { current.enabled = false; current.reason = error instanceof ExtractionInputCapacityError ? 'capacity' : 'failed'; }
-              this.write(root, current);
+            if (!current || current.schemaStatus !== 'current' || current.permissionId !== permissionId || current.owner !== this.owner) return;
+            this.reconcile(root, current);
+            if (scheduled && !this.files(root).some(name => name.startsWith(`phase-${current.permissionId}-`)
+              && receiptSchema.parse(this.readDocument(join(root, 'auto-extraction', name))).runId === scheduled!.runId)) {
+              current.attemptedVersions = current.attemptedVersions.filter(version => version !== scheduled!.sourceVersion);
             }
-          }); } catch { /* A blocked store must not crash the server or authorize another call. */ }
+            if (current.enabled) { current.enabled = false; current.reason = error instanceof AutoExtractionCapacityError ? 'capacity' : 'failed'; } this.write(root, current);
+          }); } catch { /* A blocked ledger must not authorize more calls or crash Studio. */ }
         } finally { if (deadline) clearTimeout(deadline); this.active = undefined; }
       }
     } finally { this.ticking = false; }
   }
   close() {
-    this.closed = true; if (this.timer) clearInterval(this.timer);
-    this.active?.controller.abort();
-    for (const { root, threadId } of this.roots.values()) {
-      try { withWorkspaceWrite(root, () => {
-        const current = this.read(root, threadId);
-        if (current?.enabled && current.owner === this.owner) { current.enabled = false; current.reason = 'interrupted'; this.write(root, current); }
-      }); } catch { /* Preserve durable reservations on shutdown failures. */ }
-    }
-    this.roots.clear(); this.stable.clear(); this.durableCooldowns.clear();
+    this.closed = true; if (this.timer) clearInterval(this.timer); this.active?.controller.abort();
+    for (const { root, threadId } of this.roots.values()) try { withWorkspaceWrite(root, () => {
+      const current = this.read(root, threadId);
+      if (current?.schemaStatus === 'current' && current.enabled && current.owner === this.owner) { current.enabled = false; current.reason = 'interrupted'; this.write(root, current); }
+    }); } catch { /* Preserve claims on shutdown failures. */ }
+    this.roots.clear(); this.stable.clear();
   }
 }

@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectExtractionStudy } from '../../src/knowledge/application/study-inspection.js';
 import { ExtractionStudyInspectionError } from '../../src/knowledge/adapters/study-inspection-errors.js';
 import * as studyHost from '../../src/knowledge/adapters/study-host.js';
-import { runExtractionStudySlot } from '../../src/knowledge/application/study-runner.js';
 import { EXTRACTION_STUDY_INSPECTION_MAX_BYTES } from '../../src/knowledge/extraction/study-capacity.js';
 import { extractionStudyDigest } from '../../src/knowledge/extraction/study-corpus.js';
 import { nativeStudyEvidenceFixture, nativeStudyFixture, studyNativeResult } from './extraction-study-fixtures.js';
@@ -15,7 +14,7 @@ const root = () => { const value = realpathSync(mkdtempSync(join(tmpdir(), 'omk-
 afterEach(() => { vi.restoreAllMocks(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 describe('shared portable study inspection', () => {
-  it('replays actual authored production archives, preserves scoped review, and exposes only the product whitelist', async () => {
+  it('replays explicitly synthetic frozen archives, preserves scoped review, and exposes only the product whitelist', async () => {
     const f = await nativeStudyEvidenceFixture(root(), { annotated: true, reply: (_index, output) => ({
       ...studyNativeResult(output), privateNativeDiagnostic: 'PRIVATE-NATIVE-INSPECTION-SENTINEL',
     }) });
@@ -84,7 +83,7 @@ describe('shared portable study inspection', () => {
     const f = nativeStudyFixture(root()), plan = f.prepare(); f.files.create(plan, f.corpusRaw, f.configurationRaw);
     const create = f.ports.runs.create.bind(f.ports.runs);
     const interrupted = vi.spyOn(f.ports.runs, 'create').mockImplementationOnce(run => { create(run); throw new Error('authored lost reservation acknowledgement'); });
-    await expect(runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: plan.slots[0].slotId })).rejects.toThrow('lost reservation');
+    await expect(f.archiveSlot(plan, plan.slots[0].slotId)).rejects.toThrow('lost reservation');
     interrupted.mockRestore(); vi.spyOn(studyHost, 'extractionStudyHostIdentity').mockImplementation(f.ports.identity);
     const value = inspectExtractionStudy({ evidence: f.files.evidence(plan) });
     expect(value.summary).toMatchObject({ planned: 2, incomplete: 1, unattempted: 1, totalCostUSD: null });

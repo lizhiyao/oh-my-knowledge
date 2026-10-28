@@ -10,9 +10,23 @@ import { executeArtifactAuthoring } from '../../../src/studio/application/knowle
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { KnowledgeApplication } from '../../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../../src/knowledge/entities/contracts.js';
-import { modelWindow } from '../../knowledge/fixtures.js';
-import { boundedExtractionPolicy } from '../../../src/knowledge/extraction/generation-policy.js';
+import { authoredKnowledgeResponse, seedKnowledgeWorkspace } from '../../cli/knowledge-fixtures.js';
+import type { KnowledgeGenerationModel } from '../../../src/knowledge/adapters/generation-executor.js';
+import type { GenerationOutcome } from '../../../src/knowledge/extraction/native-outcome.js';
+import { AUTO_EXTRACTION_WORKFLOW } from '../../../src/knowledge/application/auto-extraction.js';
 import { writeJsonFileAtomic } from '../../../src/shared/atomic-json.js';
+
+/** Pure authored responses exercise current journal/publication paths without any model execution. */
+function currentModel(multiple = false, outcome?: GenerationOutcome): KnowledgeGenerationModel {
+  return { executor: 'authored-http-fixture', model: 'no-model-call', timeoutMs: 300_000,
+    inspect: () => ({ producerId: 'authored-http-fixture', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false } }),
+    async invoke(profile, input, _signal, gate): Promise<GenerationOutcome> {
+      gate?.(); if (outcome) return outcome;
+      const response = authoredKnowledgeResponse(input, profile.stageKind);
+      if (multiple && 'proposals' in response && response.proposals) response.proposals.push({ ...structuredClone(response.proposals[0]), proposalId: 'second-candidate' });
+      return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(response), authoredFixture: true } };
+    } };
+}
 
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
@@ -49,17 +63,17 @@ describe('Studio candidate action boundary', () => {
     const preview = await (await auto({ operation: 'preview', threadId: 'thread' })).json();
     expect(preview.turnCount).toBe(1); expect(preview.messages).toHaveLength(2);
     expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toBeNull();
-    const consent = { operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
+    const consent = { workflowId: AUTO_EXTRACTION_WORKFLOW, operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
     expect((await auto({ ...consent, maxCalls: 0 })).status).toBe(400);
-    const policy = boundedExtractionPolicy({ maxInvocations: 3, maxReasks: 2, profileId: 'openai-gpt54-snapshot-context/v1', maxTotalTokens: 3_162_288, maxOutputTokens: 4096 });
-    expect((await auto({ ...consent, policy: { ...policy, maxInvocations: 1 } })).status).toBe(400);
+    expect((await auto({ ...consent, policy: {} })).status).toBe(400);
+    expect((await auto({ ...consent, workflowId: undefined })).status).toBe(400);
     changed = true; expect((await auto(consent)).status).toBe(409); changed = false;
     expect((await auto(consent)).status).toBe(200);
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
-    // A fresh, explicit permission records its selected policy, without constructing or dispatching a model.
-    expect(await (await auto({ ...consent, policy })).json()).toMatchObject({ policy, callsUsed: 0, tokensReserved: 0 });
+    // Schema2 explicitly authorizes both phases, each charged separately; preview/enable never constructs a model.
+    expect(await (await auto(consent)).json()).toMatchObject({ schemaVersion: 2, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 0 });
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
-    expect(createLocalKnowledgeApplication(workspace).runs()).toHaveLength(0);
+    expect(createLocalKnowledgeApplication(workspace).runs()).toEqual({ current: [], unsupported: [] });
   });
   it('adds only ephemeral status tags and observes external atomic JSON heads without trusting a client revision', async () => {
     const selected = join(root, 'status-heads');
@@ -75,7 +89,7 @@ describe('Studio candidate action boundary', () => {
     const normalized = await fetch(`${url}/api/knowledge/auto-extraction`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ operation: 'status', workspace: ` ${selected} `, threadId: ' head-thread ' }) });
     expect(normalized.status).toBe(200); expect(normalized.headers.get('etag')).toBe(previous);
-    for (const folder of ['items', 'extraction-runs', 'tags', 'entities']) {
+    for (const folder of ['items', 'generation-journals', 'associations', 'tags', 'entities']) {
       const name = ['items', 'tags'].includes(folder) ? 'a'.repeat(64) : randomUUID();
       const path = join(selected, folder, `${name}.json`);
       // Authored UI-head fixtures are never admitted as knowledge/run evidence.
@@ -105,25 +119,21 @@ describe('Studio candidate action boundary', () => {
     const generate = async (threadId: string, multiple = false) => {
       const snapshot = app.capture({ path: join(root, `${threadId}.jsonl`), origin: { threadId, title: threadId },
         records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
-      return app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => {
-        const output = modelWindow();
-        if (multiple) output.proposals.push({ ...structuredClone(output.proposals[0]), proposalId: 'second-candidate' });
-        return { output: JSON.stringify(output).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 };
-      } });
+      return app.generate(snapshot.snapshotId, currentModel(multiple));
     };
     const chosen = await generate('chosen-thread', true), other = await generate('other-thread');
-    const id = chosen.committed[0].knowledgeId, detail = app.detail(id);
+    const id = chosen.journal.bodies[0].knowledgeId, detail = app.detail(id);
     app.tag(id, 0, ['候选/待核对']); app.maintain(id, detail.revision.revisionId, 'retain', 'Authored queue fixture', detail.history.generation);
-    const ids = new Set(chosen.committed.map(value => value.knowledgeId)), expected = app.list().filter(row => ids.has(row.knowledgeId));
+    const ids = new Set(chosen.journal.bodies.map(value => value.knowledgeId)), expected = app.list().filter(row => ids.has(row.knowledgeId));
     const itemPath = (knowledgeId: string) => readdirSync(join(selected, 'items')).map(name => join(selected, 'items', name))
       .find(path => (JSON.parse(readFileSync(path, 'utf8')) as { knowledgeId: string }).knowledgeId === knowledgeId)!;
-    const chosenPath = itemPath(id), otherPath = itemPath(other.committed[0].knowledgeId), chosenBytes = readFileSync(chosenPath);
+    const chosenPath = itemPath(id), otherPath = itemPath(other.journal.bodies[0].knowledgeId), chosenBytes = readFileSync(chosenPath);
     writeFileSync(otherPath, '{unrelated corrupt item');
     const queue = () => post({ workspace: selected, operation: 'queue', threadId: 'chosen-thread' });
     const scoped = await queue(); expect(scoped.status).toBe(200);
     const result = await scoped.json(); expect(result.rows).toHaveLength(2); expect(result.rows).toEqual(expected);
     expect(result.rows.find((row: { knowledgeId: string }) => row.knowledgeId === id)).toMatchObject({ choice: 'retain', tags: ['候选/待核对'] });
-    expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual([chosen.runId]);
+    expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual([chosen.journal.runId]);
     expect((await post({ workspace: selected, operation: 'list' })).status).toBe(400); // Unscoped reads remain fail-closed.
     unlinkSync(chosenPath); const missing = await queue(); expect(missing.status).toBe(200); expect((await missing.json()).rows).toEqual(expected.filter(row => row.knowledgeId !== id));
     writeFileSync(chosenPath, chosenBytes); writeFileSync(chosenPath, '{selected corrupt item');
@@ -181,19 +191,16 @@ describe('Studio candidate action boundary', () => {
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
-  it('exposes bounded invocation status without native diagnostics or archive witnesses', async () => {
+  it('exposes current phase status without native diagnostics or producer archive witnesses', async () => {
     const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected);
     const source = app.capture({ path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
-    const run = await app.generate(source.snapshotId, { executor: 'fixture', model: 'fixture', generate: async () => ({
-      outcomeKind: 'result', result: { ok: false, output: 'private-native-output', error: 'private-native-diagnostic',
-        durationMs: 2, failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }) });
+    const run = await app.generate(source.snapshotId, currentModel(false, {
+      outcomeKind: 'result', result: { ok: false, output: 'private-native-output', error: 'private-native-diagnostic', durationMs: 2,
+        failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }));
     const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
-    const text = await response.text(); const rows = JSON.parse(text);
-    expect(rows).toEqual([expect.objectContaining({ runId: run.runId, status: 'failed', invocation: {
-      policyId: 'knowledge-generation-single/v1', outputMode: 'prompt-json', wireId: null, attemptCount: 1,
-      archiveStatus: 'recorded', failureKind: 'network', limits: { maxInvocations: 1, maxReasks: 0 },
-      budget: { reservedTokens: 0, observedTokens: null, unknownAttempts: 1 } } })]);
-    for (const privateValue of ['private-native-', 'producerRevision', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
+    const text = await response.text(), rows = JSON.parse(text);
+    expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'body', state: 'failed', outcomeRef: expect.any(Object) })] })]);
+    for (const privateValue of ['private-native-', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
   });
   it.each(['history', 'file'] as const)('returns only the stable code for a known entity %s capacity refusal', async scope => {
     const refusal = new EntityAnalysisWriteCapacityError(scope); refusal.message += ` private-context:${root}`;
@@ -205,89 +212,62 @@ describe('Studio candidate action boundary', () => {
       expect(correction).toHaveBeenCalledOnce();
     } finally { correction.mockRestore(); }
   });
-  it('inspects and corrects independent entities and applies a knowledge revision through the real HTTP boundary', async () => {
+  it('inspects/corrects independent entities and separately reviews associations then revises body through real HTTP', async () => {
     const entitySource = join(root, 'entity.jsonl');
     writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), message('user', '仅在隔离环境中使用 Beta，语义质量尚未验收。'),
       JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
-    const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: entitySource });
-    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => ({
-      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
-    const inspection = await post({ operation: 'entities', analysisId: run.runId }); expect(inspection.status).toBe(200);
+    const app = createLocalKnowledgeApplication(workspace), snapshot = app.capture({ path: entitySource }), run = await app.generate(snapshot.snapshotId, currentModel());
+    const analysisId = run.journal.stages.find(stage => stage.stageKind === 'association')!.entityWrite!.analysisId, bodyRef = run.journal.bodies[0];
+    const inspection = await post({ operation: 'entities', analysisId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
     const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
     const catalog = await (await post({ operation: 'entity-catalog', query: 'Alpha', pageSize: 1 })).json();
-    expect(catalog.rows[0]).toMatchObject({ analysisId: run.runId, mentionCount: 1, knowledgeCount: 1 });
-    expect(JSON.stringify(catalog)).not.toContain('rawOutput'); expect(JSON.stringify(catalog)).not.toContain(root);
-    for (const bad of [{ page: 0 }, { pageSize: 101 }, { analysisId: '../private' }, { unsafe: true }]) {
-      expect((await post({ operation: 'entity-catalog', ...bad })).status).toBe(400);
-    }
-    const entityResponse = await post({ operation: 'entity-detail', analysisId: run.runId, entityId: before.revision.entities[0].entityId });
+    expect(catalog.rows[0]).toMatchObject({ analysisId, mentionCount: 1, knowledgeCount: 1 }); expect(JSON.stringify(catalog)).not.toContain('rawOutput'); expect(JSON.stringify(catalog)).not.toContain(root);
+    for (const bad of [{ page: 0 }, { pageSize: 101 }, { analysisId: '../private' }, { unsafe: true }]) expect((await post({ operation: 'entity-catalog', ...bad })).status).toBe(400);
+    const entityResponse = await post({ operation: 'entity-detail', analysisId, entityId: before.revision.entities[0].entityId });
     expect(entityResponse.status).toBe(200); const entityText = await entityResponse.text(); expect(entityText).not.toContain(root); expect(entityText).not.toContain('private-raw-value');
-    expect(JSON.parse(entityText).knowledge[0].roles[0].role).toBe('subject');
+    expect(JSON.parse(entityText).knowledge[0].segmentIds).toEqual(['s1']);
     const edit = { entities: before.revision.entities, mentions: before.revision.mentions }; edit.entities[0].label = '项目 Alpha';
-    const request = { operation: 'correct-entities', analysisId: run.runId, revision: before.revision.revisionId, generation: 1, draft: edit, reason: '核对项目名称' };
+    const request = { operation: 'correct-entities', analysisId, revision: before.revision.revisionId, generation: 1, draft: edit, reason: '核对项目名称' };
     expect((await post(request, 'https://untrusted.example')).status).toBe(403);
     const corrected = await (await post(request)).json(); expect(corrected.history.generation).toBe(2);
     const stale = await post(request); expect(stale.status).toBe(409); expect(await stale.json()).toEqual({ error: 'knowledge_conflict' });
-    const candidate = await (await post({ operation: 'show', id: run.committed[0].knowledgeId })).json();
-    expect(candidate.entityAnalysis.revision.revisionId).toBe(before.revision.revisionId);
-    expect(candidate.entityAnalysis.source).not.toHaveProperty('window');
-    const entities = corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description }));
-    const originalKnowledge = app.detail(candidate.revision.knowledgeId);
-    const extraLinkId = randomUUID(), conditions = before.source.excerpts[1];
-    const evidence = [...candidate.revision.evidence, { ...candidate.revision.evidence[0], evidenceLinkId: extraLinkId,
-      evidenceRef: conditions.evidenceRef, relation: 'supports', basis: 'source_assertion', interpretation: '保留后文条件与未验收限制，精确定位不是语义验收。' }];
-    const citationLocators = [...candidate.grounding.citations.map((citation: { evidenceLinkId: string; selection: { evidenceRef: string; quote: string } }) => ({
-      evidenceLinkId: citation.evidenceLinkId, selection: { evidenceRef: citation.selection.evidenceRef, quote: citation.selection.quote, occurrence: 0 },
-    })), { evidenceLinkId: extraLinkId, selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, occurrence: 0 } }];
-    const applyRequest = { operation: 'apply-entities', id: candidate.revision.knowledgeId, revision: candidate.revision.revisionId,
-      generation: candidate.history.generation, analysisId: run.runId, entityRevision: corrected.revision.revisionId,
-      draft: { title: candidate.revision.title, content: { ...candidate.revision.content,
-        statements: candidate.revision.content.statements.map((statement: { context: { conditions: string[]; unknowns: string[] } }) => ({ ...statement,
-          context: { ...statement.context, conditions: [...statement.context.conditions, '仅在隔离环境中'],
-            unknowns: [...statement.context.unknowns, '语义质量尚未验收'] } })) }, evidence, entities },
-      reason: '明确陈述主体并补入后文条件的精确引文', identityUncertainties: [], citationLocators };
-    const invalid = await post({ ...applyRequest, citationLocators: [{ ...citationLocators[0],
-      selection: { ...citationLocators[0].selection, quote: `not-in-source ${root}` } }] });
-    expect(invalid.status).toBe(400); expect(await invalid.json()).toEqual({ error: 'knowledge_citations_invalid' });
-    expect(app.detail(candidate.revision.knowledgeId)).toEqual(originalKnowledge);
-    const malformed = await post({ ...applyRequest, citationLocators: [] });
-    expect(malformed.status).toBe(400); expect(await malformed.json()).toEqual({ error: 'knowledge_citations_invalid' });
-    const applied = await post(applyRequest);
-    expect(applied.status).toBe(200);
-    const latest = await applied.json(); expect(latest.history.revisions).toHaveLength(2);
-    expect(latest.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
-    expect(latest.grounding.citations.find((citation: { evidenceLinkId: string }) => citation.evidenceLinkId === extraLinkId)).toEqual({
-      evidenceLinkId: extraLinkId, selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, start: 0, end: conditions.text.length } });
-    const oldRevision = app.detail(candidate.revision.knowledgeId, candidate.revision.revisionId);
-    expect(oldRevision.revision).toEqual(originalKnowledge.revision);
-    expect(oldRevision.grounding).toEqual(originalKnowledge.grounding);
-    const revised = await post({ operation: 'revise', id: candidate.revision.knowledgeId, revision: latest.revision.revisionId,
-      generation: latest.history.generation, draft: applyRequest.draft, reason: '同一修订入口读回并保留精确引文', citationLocators });
-    expect(revised.status).toBe(200);
-    expect((await revised.json()).grounding.citations).toEqual(latest.grounding.citations);
-    const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
-    expect(await quality.json()).toEqual(app.quality());
-    const runPath = join(workspace, 'extraction-runs', `${run.runId}.json`); const savedRun = readFileSync(runPath);
-    try {
-      writeFileSync(runPath, '{bad private content');
-      const failedQuality = await post({ operation: 'quality' }); expect(failedQuality.status).toBe(400);
-      expect(await failedQuality.json()).toEqual({ error: 'knowledge_request_failed' });
-    } finally { writeFileSync(runPath, savedRun); }
+    const candidate = await (await post({ operation: 'show', id: bodyRef.knowledgeId })).json(), original = app.detail(bodyRef.knowledgeId);
+    expect(candidate.derivedAssociations.revision.entityAnalysisRef.revisionId).toBe(before.revision.revisionId);
+    const associationDraft = { segmentEntityRefs: [{ segmentId: 's1', entityId: corrected.revision.entities[0].entityId, mentionIds: [corrected.revision.mentions[0].mentionId] }], typedRelations: [], issues: [] };
+    const applyRequest = { operation: 'apply-associations', id: bodyRef.knowledgeId, revision: bodyRef.revisionId, bodyDigest: bodyRef.bodyDigest,
+      generation: 1, analysisId, entityRevision: corrected.revision.revisionId, draft: associationDraft, reason: '正文不改，只修订独立关联' };
+    const invalid = await post({ ...applyRequest, draft: { ...associationDraft, segmentEntityRefs: [{ ...associationDraft.segmentEntityRefs[0], mentionIds: [randomUUID()] }] } });
+    expect(invalid.status).toBe(400); expect((await invalid.text())).not.toContain(root); expect(app.detail(bodyRef.knowledgeId)).toEqual(original);
+    const applied = await post(applyRequest); expect(applied.status).toBe(200); const projection = await applied.json();
+    expect(projection.history.revisions).toHaveLength(1); expect(projection.revision).toEqual(original.revision); expect(projection.derivedAssociations.reviewStatus).toBe('pending');
+    const reviewed = await post({ operation: 'review-associations', id: bodyRef.knowledgeId, revision: projection.derivedAssociations.revision.revisionId, generation: 2, choice: 'accept', reason: '明确核对新关联' });
+    expect(reviewed.status).toBe(200); expect((await reviewed.json()).derivedAssociations.reviewStatus).toBe('accepted');
+    const conditions = before.source.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
+    draft.content.segments[0].text += ` ${conditions.text}`;
+    draft.content.segments[0].evidence.push({ source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }, basis: 'source_assertion',
+      selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, start: 0, end: conditions.text.length } });
+    const revisedRequest = { operation: 'revise', id: bodyRef.knowledgeId, revision: bodyRef.revisionId, generation: 1, draft, reason: '正文保留后文条件与直接引文' };
+    const malformed = structuredClone(revisedRequest); malformed.draft.content.segments[0].evidence[0].selection.quote = 'not-in-source';
+    const refused = await post(malformed); expect(refused.status).toBe(400); expect(await refused.text()).not.toContain(root);
+    const revised = await post(revisedRequest); expect(revised.status).toBe(200); const latest = await revised.json();
+    expect(latest.revision.content.segments[0].evidence).toEqual(draft.content.segments[0].evidence); expect(latest.derivedAssociations.status).toBe('stale');
+    expect(app.detail(bodyRef.knowledgeId, bodyRef.revisionId).revision).toEqual(original.revision);
     expect(await (await post({ operation: 'quality' })).json()).toEqual(app.quality());
+    const runPath = join(workspace, 'generation-journals', `${run.journal.runId}.json`), saved = readFileSync(runPath);
+    try { writeFileSync(runPath, '{bad private content'); const failed = await post({ operation: 'quality' }); expect(failed.status).toBe(400); expect(await failed.json()).toEqual({ error: 'knowledge_request_failed' }); }
+    finally { writeFileSync(runPath, saved); }
     const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
-    expect(summaries.find((entry: { runId: string }) => entry.runId === run.runId).entityAnalysis.entityCount).toBe(2);
-    await post({ operation: 'delete-source', snapshot: snapshot.snapshotId });
-    const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
+    expect(summaries.find((entry: { runId: string }) => entry.runId === run.journal.runId).entityAnalysis.entityCount).toBe(2);
+    await post({ operation: 'delete-source', snapshot: snapshot.snapshotId }); const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });
   it('organizes exact entity revisions through the real library API and retains history without exposing source paths', async () => {
     const selected = join(root, 'library-workspace'); const app = createLocalKnowledgeApplication(selected);
-    const source = app.capture({ path: join(root, 'library-source.jsonl'), records: [{ recordIndex: 2, raw: message('user', 'Alpha 使用 Beta') }] });
-    const run = await app.generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-call', generate: async (_system, input) => ({
-      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
-    const entity = app.entities(run.runId); const member = { analysisId: run.runId, entityId: entity.revision.entities[0].entityId,
-      entityRevisionId: entity.revision.revisionId, mentionIds: [entity.revision.mentions[0].mentionId], rationale: '按来源确认项目身份' };
+    const seeded = seedKnowledgeWorkspace(selected, 'library-source'), entity = seeded.analysis;
+    const member = { ...seeded.ref(), entityRevisionId: entity.revision.revisionId, mentionIds: [entity.revision.mentions[0].mentionId], rationale: '按来源确认项目身份' };
+    const projection = app.detail(seeded.body.knowledgeId).derivedAssociations;
+    app.reviewAssociations(seeded.body.knowledgeId, projection.revision!.revisionId, projection.generation, 'accept', '独立核对派生关联');
     const libraryPost = (body: object, origin?: string) => fetch(`${url}/api/knowledge/library`, { method: 'POST',
       headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace: selected, ...body }) });
     const command = { operation: 'save', objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
@@ -308,15 +288,13 @@ describe('Studio candidate action boundary', () => {
       draft: { ...command.draft, members: [] }, reason: '明确解除关联' }); expect(removed.status).toBe(200);
     expect((await (await libraryPost({ operation: 'show', id: saved.objectId })).json()).knowledge).toEqual([]);
     expect((await (await libraryPost({ operation: 'show', id: saved.objectId, revision: saved.writeHeadRevisionId })).json()).knowledge).toHaveLength(1);
-    expect(app.detail(run.committed[0].knowledgeId).history.revisions).toHaveLength(1);
+    expect(app.detail(seeded.body.knowledgeId).history.revisions).toHaveLength(1);
   });
   it('reports workspace contention consistently for source, tag and carrier writes, then recovers after release', async () => {
     const selected = join(root, 'busy-workspace'); const app = createLocalKnowledgeApplication(selected);
     const fixture = join(root, 'busy-source.jsonl'); writeFileSync(fixture, message('user', 'Alpha 使用 Beta'));
-    const snapshot = app.capture({ path: fixture });
-    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async (_prompt, input) => ({
-      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
-    const current = app.detail(run.committed[0].knowledgeId);
+    const seeded = seedKnowledgeWorkspace(selected, 'busy-source'), snapshot = seeded.source;
+    const current = app.detail(seeded.body.knowledgeId);
     app.maintain(current.revision.knowledgeId, current.revision.revisionId, 'retain', '已核对', current.history.generation);
     const draft = executeArtifactAuthoring({ operation: 'preview', workspace: selected, source: { sourceKind: 'new' }, artifactKind: 'prompt', name: '当前知识', ids: [current.revision.knowledgeId] }, 'zh');
     const lock = join(selected, WORKSPACE_LOCK_FILE); const owner = JSON.stringify({ owner: randomUUID(), pid: process.pid, hostname: (await import('node:os')).hostname(), acquiredAt: new Date().toISOString() });
@@ -342,8 +320,10 @@ describe('Studio candidate action boundary', () => {
     const selected = join(root, 'unsupported'); const folder = join(selected, 'extraction-runs'); mkdirSync(folder, { recursive: true });
     const path = join(folder, `${randomUUID()}.json`);
     const original = JSON.stringify({ schemaVersion: 0, privateValue: 'private-sensitive-value' }); writeFileSync(path, original);
-    const required = await post({ workspace: selected, operation: 'runs' }); expect(required.status).toBe(409);
-    expect(await required.json()).toEqual({ error: 'knowledge_storage_unsupported' });
+    const required = await post({ workspace: selected, operation: 'runs' }); expect(required.status).toBe(200);
+    expect(await required.json()).toMatchObject([{ schemaStatus: 'unsupported', status: 'unsupported', bodies: [], phases: [] }]);
+    const resume = await post({ workspace: selected, operation: 'resume', id: path.slice(path.lastIndexOf('/') + 1, -5) });
+    expect(resume.status).toBe(409); expect(await resume.json()).toEqual({ error: 'knowledge_storage_unsupported' });
     const backup = join(root, 'external-backup');
     for (const operation of ['migration-preview', 'migrate']) {
       const response = await post({ workspace: selected, operation, backupDirectory: backup });

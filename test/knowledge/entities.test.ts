@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
-import { KnowledgeDraftSchema } from '../../src/knowledge/contracts.js';
+import { KnowledgeDraftSchema } from '../../src/knowledge/measurement/typed-contracts.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { admitEntities, type EntityModel } from '../../src/knowledge/extraction/entities.js';
 import { WindowExtractionModelSchema, checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';

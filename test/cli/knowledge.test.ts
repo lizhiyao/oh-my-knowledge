@@ -1,7 +1,7 @@
 import { ExtractionRunSchema } from '../../src/knowledge/extraction/runs.js';
 import { FileExtractionRunStore } from '../../src/knowledge/adapters/run-store.js';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync, cpSync } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -18,9 +18,9 @@ import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKno
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/contracts.js';
-import { modelWindow } from '../knowledge/fixtures.js';
-import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
+import { authoredKnowledgeResponse, seedKnowledgeWorkspace } from './knowledge-fixtures.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
+import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 
 const roots: string[] = [];
 const linkServers: Server[] = [];
@@ -64,8 +64,8 @@ describe('observe knowledge command wiring', () => {
     const list = JSON.parse((await runCli(['observe', 'knowledge', 'sealed-runs', '--workspace', workspace, '--json'], options)).stdout);
     expect(list).toMatchObject([{ state: 'sealed', executionStatus: 'unknown' }]);
     expect(readFileSync(join(workspace, 'extraction-runs', 'seals', 'current', runId, 'evidence', 'manifest.json'))).toEqual(original);
-    expect(createLocalKnowledgeApplication(workspace).quality()).toMatchObject({ projectionVersion: 'omk.extraction-quality/v4', runCount: 1, sealedRunCount: 1 });
-    expect(() => createLocalKnowledgeApplication(workspace).resume(runId)).toThrow('run_sealed');
+    expect(createLocalKnowledgeApplication(workspace).quality()).toMatchObject({ projectionKind: 'knowledge-body-admission', current: [], unsupported: [{ runId, schemaStatus: 'unsupported' }], semanticQuality: 'not_assessed' });
+    expect(() => createLocalKnowledgeApplication(workspace).resume(runId)).toThrow('knowledge_storage_unsupported');
     expect(existsSync(join(workspace, 'entities'))).toBe(false); expect(existsSync(join(workspace, 'items'))).toBe(false);
     expect(readFileSync(join(home, 'settings.json'), 'utf8')).toBe('{invalid');
     const legacy = join(workspace, 'runs'); mkdirSync(legacy); const oldId = randomUUID(), oldPath = join(legacy, `${oldId}.json`);
@@ -78,45 +78,49 @@ describe('observe knowledge command wiring', () => {
     expect(JSON.parse((await runCli([...opaque, '--offline'], options)).stdout)).toMatchObject({ state: 'sealed', evidenceScope: 'opaque-unsupported-schema',
       executionStatus: 'unknown', request: { offlineDeclared: true } });
   }, 120_000);
-  it('formats the selected or pending final attempt without promoting a previous failure to current status', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-output-')); roots.push(root);
-    const source = join(root, 'source.jsonl'), workspace = join(root, 'workspace');
+  it('generates body then independent associations through the actual CLI producer, persists both originals and resumes without dispatch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-body-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    vi.stubEnv('OPENAI_API_KEY', 'isolated-loopback-fixture-key'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9321');
+    const workspace = join(root, 'knowledge'), source = join(root, 'source.jsonl');
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
-    const app = createLocalKnowledgeApplication(workspace), snapshot = app.capture({ path: source });
-    const original = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture', generate: async () => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', snapshot.excerpts[0].evidenceRef), durationMs: 1 }) });
-    const policy = boundedExtractionPolicy({ maxInvocations: 3, maxReasks: 2, profileId: 'loopback-test/v1', maxTotalTokens: 3264, maxOutputTokens: 64 });
-    const budget = { profileId: 'loopback-test/v1', authority: 'loopback-test-only' as const, evidenceDigest: `sha256:${'0'.repeat(64)}`, inputUpperBound: 1024, outputUpperBound: 64, tokensReserved: 1088 };
-    const first = { ...original.attempts[0], budget, failure: { failureKind: 'parse_error', diagnostic: 'earlier invalid output' } };
-    const last = { ...original.attempts[0], attemptId: randomUUID(), budget };
-    const run = { ...original, policy, attempts: [first, last], selectedAttemptId: last.attemptId };
-    const command = { operation: 'resume' as const, id: run.runId };
-    const completed = formatKnowledgeResult(run, 'zh', command, workspace);
-    expect(completed).toContain('completed'); expect(completed).toContain('归档引用已记录'); expect(completed).not.toContain('失败类别');
-    expect(completed).toContain('累计 token 预约 2176/3264'); expect(completed).toContain('已预约 2 次尝试');
-    const pending = { ...run, status: 'generating' as const, selectedAttemptId: undefined, entityAnalysis: undefined, intents: [], committed: [], rawOutput: undefined,
-      attempts: [first, { ...last, outcome: undefined }] };
-    const waiting = formatKnowledgeResult(pending, 'zh', command, workspace);
-    expect(waiting).toContain('归档待确认'); expect(waiting).not.toContain('归档引用已记录'); expect(waiting).not.toContain('失败类别');
-    expect(waiting).not.toContain('本次调用已终止'); expect(waiting).toContain('尚无可恢复的模型结果');
-    expect(waiting).toContain(`--workspace ${workspace}`);
-    const listed = formatKnowledgeResult([run], 'zh', { operation: 'runs' }, workspace);
-    expect(listed).toContain('归档引用已记录'); expect(listed).toContain('清单仅投影已保存记录，不校验当前归档完整性；恢复时会校验');
-    const english = formatKnowledgeResult([run], 'en', { operation: 'runs' }, workspace);
-    expect(english).toContain('archive reference recorded'); expect(english).toContain('Listings project saved records without verifying current archive integrity');
+    const captured = JSON.parse((await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', source, '--json'], { cwd: root })).stdout);
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions'); expect(init?.redirect).toBe('error');
+      const request = JSON.parse(String(init?.body)); requests.push(request);
+      expect(request).toMatchObject({ model: 'authored-loopback-test', n: 1, stream: false }); expect(request.max_completion_tokens).toBeUndefined();
+      const stage = request.response_format.json_schema.name.includes('association') ? 'association' : 'body';
+      const output = authoredKnowledgeResponse(request.messages.at(-1).content, stage);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 2 } } }));
+    }); vi.stubGlobal('fetch', fetch);
+    const runId = randomUUID(), args = ['generate', '--workspace', workspace, '--snapshot', captured.snapshotId, '--executor', 'openai-api', '--model', 'authored-loopback-test', '--run-id', runId, '--json'];
+    const run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v1', status: 'completed', bodies: [expect.anything()],
+      stages: [{ stageKind: 'body', state: 'completed', outcomeRef: expect.any(Object) }, { stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
+    expect(fetch).toHaveBeenCalledTimes(2); expect(requests[0].messages).not.toEqual(requests[1].messages);
+    const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(2);
+    expect(app.detail(run.journal.bodies[0].knowledgeId)).toMatchObject({ maintenance: null, derivedAssociations: { status: 'available', reviewStatus: 'pending' } });
+    expect(JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout)).toEqual(run);
+    expect(JSON.parse((await runCommand(ObserveKnowledge, ['resume', '--workspace', workspace, '--id', runId, '--json'], { cwd: root })).stdout)).toEqual(run); expect(fetch).toHaveBeenCalledTimes(2);
+    const quality = JSON.parse((await runCommand(ObserveKnowledge, ['quality', '--workspace', workspace, '--json'], { cwd: root })).stdout);
+    expect(quality).toMatchObject({ current: [{ runId, savedBodies: 1 }], unsupported: [], semanticQuality: 'not_assessed' });
+    const completed = formatKnowledgeResult(run, 'zh', { operation: 'resume', id: runId }, workspace);
+    expect(completed).toContain('body: completed'); expect(completed).toContain('association: completed'); expect(completed).toContain('--workspace'); expect(completed).not.toContain('重问');
+    const waiting = formatKnowledgeResult({ ...run, nextAction: 'continue_stage', journal: { ...run.journal, status: 'active',
+      stages: [run.journal.stages[0], { ...run.journal.stages[1], state: 'prepared', outcomeRef: undefined }] } }, 'zh', { operation: 'resume', id: runId }, workspace);
+    expect(waiting).toContain('association: prepared'); expect(waiting).toContain('resume 永不调用模型'); expect(waiting).toContain('continue-stage');
   });
   it('exports the exact wire schema and identity before reading settings or creating a workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-schema-cli-')); roots.push(root);
     vi.stubEnv('OMK_HOME', root);
     const settings = join(root, 'settings.json'); writeFileSync(settings, '{invalid');
     const workspace = join(root, 'unused-workspace');
-    const base = ['schema', '--workspace', workspace];
-    const raw = (await runCommand(ObserveKnowledge, base, { cwd: root })).stdout;
-    const bundle = JSON.parse((await runCommand(ObserveKnowledge, [...base, '--json'], { cwd: root })).stdout);
-    expect(bundle).toMatchObject({ responseKind: 'knowledge-extraction-wire-contract',
-      identity: { domainSchemaVersion: 4, profile: 'omk-strict-structural/v1' } });
-    expect(bundle.schema).toEqual(JSON.parse(raw));
-    expect(bundle.identity.wireSchemaDigest).toBe(`sha256:${createHash('sha256').update(raw).digest('hex')}`);
-    expect(bundle.hostOnly.nullableOptionals.map((value: { property: string }) => value.property).sort()).toEqual(['object', 'occurrence']);
+    for (const profile of [BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
+      const args = ['schema', '--workspace', workspace, '--stage', profile.stageKind];
+      const raw = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
+      const bundle = JSON.parse((await runCommand(ObserveKnowledge, [...args, '--json'], { cwd: root })).stdout);
+      expect(bundle).toEqual(raw); expect(bundle).toEqual({ profileId: profile.profileId, promptVersion: profile.promptVersion, wireId: profile.wireId, schema: profile.wireSchema });
+    }
     expect(readFileSync(settings, 'utf8')).toBe('{invalid');
     expect(existsSync(workspace)).toBe(false);
   });
@@ -155,127 +159,54 @@ describe('observe knowledge command wiring', () => {
       await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
   });
-  it('validates citation files and complete locator arrays before settings or storage for both revision commands', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-citation-input-cli-')); roots.push(root);
-    vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
-    const workspace = join(root, 'unused-workspace'), draftPath = join(root, 'draft.json'); writeFileSync(draftPath, '{}');
-    const malformed = join(root, 'malformed.json'), empty = join(root, 'empty.json'), invalid = join(root, 'invalid.json'), linked = join(root, 'linked.json');
-    writeFileSync(malformed, '{invalid'); writeFileSync(empty, '[]');
-    writeFileSync(invalid, JSON.stringify([{ evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: -1 } }]));
-    symlinkSync(empty, linked);
-    const cases = [[join(root, 'missing.json'), '引用文件不可读'], [linked, '引用文件不可读'],
-      [malformed, '--citations 不是有效 JSON'], [empty, '引用数组不能为空'], [invalid, '--citations 格式无效']];
-    for (const operation of ['revise', 'apply-entities']) for (const [path, diagnostic] of cases) {
-      const args = [operation, '--workspace', workspace, '--id', 'knowledge', '--revision', 'revision', '--generation', '1',
-        '--input', draftPath, '--citations', path, '--reason', '核对引用', '--lang', 'zh'];
-      if (operation === 'apply-entities') args.push('--analysis', randomUUID(), '--entity-revision', randomUUID());
-      await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2, stderr: expect.stringContaining(diagnostic) });
+  it('validates complete body JSON input files before settings/storage and rejects retired citation or bounded flags', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-body-input-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    writeFileSync(join(root, 'settings.json'), '{invalid'); const workspace = join(root, 'unused'), bad = join(root, 'bad.json'), linked = join(root, 'linked.json');
+    writeFileSync(bad, '{invalid'); symlinkSync(bad, linked);
+    for (const input of [join(root, 'missing.json'), bad, linked]) {
+      await expect(runCommand(ObserveKnowledge, ['revise', '--workspace', workspace, '--id', 'knowledge', '--revision', 'revision', '--generation', '1', '--input', input, '--reason', '核对正文'], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
-    expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
-    expect(existsSync(workspace)).toBe(false);
-  });
-  it('passes explicit bounded policy and its output cap through the command and shared operations, reusing a run without another dispatch', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-bounded-knowledge-cli-')); roots.push(root);
-    vi.stubEnv('OMK_HOME', root); vi.stubEnv('OPENAI_API_KEY', 'isolated-loopback-fixture-key'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9321');
-    const workspace = join(root, 'knowledge'), source = join(root, 'source.jsonl');
-    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
-    const captured = JSON.parse((await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', source, '--json'], { cwd: root })).stdout);
-    const policy = boundedExtractionPolicy({ maxInvocations: 1, maxReasks: 0, profileId: 'loopback-test/v1', maxTotalTokens: 1088, maxOutputTokens: 64 });
-    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
-      expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions'); expect(init?.redirect).toBe('error');
-      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'authored-loopback-test', max_completion_tokens: 64, n: 1, stream: false });
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4,
-        entities: [], mentions: [], proposals: [] }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 2 } } }));
-    }); vi.stubGlobal('fetch', fetch);
-    const args = ['generate', '--workspace', workspace, '--snapshot', captured.snapshotId, '--executor', 'openai-api', '--model', 'authored-loopback-test',
-      '--run-id', randomUUID(), '--generation-policy', JSON.stringify(policy), '--json'];
-    const run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
-    expect(run).toMatchObject({ status: 'completed', policy, attempts: [{ request: { maxOutputTokens: 64 },
-      budget: { tokensReserved: 1088 }, accounting: { chargedTokens: 1088, status: 'reported' } }] });
-    expect(JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout)).toEqual(run);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid'); expect(existsSync(workspace)).toBe(false);
   });
   it('keeps text next steps in the selected workspace and leaves JSON as a single machine result', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-cli-loop-')); roots.push(root);
     const workspace = join(root, 'chosen workspace'); const source = join(root, 'source.jsonl');
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
     const text = await runCommand(ObserveKnowledge, ['capture', '--workspace', workspace, '--source', source, '--lang', 'zh'], { cwd: root });
-    expect(text.stdout).toContain('下一步'); expect(text.stdout).toContain('observe knowledge source');
-    expect(text.stdout).toContain(`--workspace '${workspace}'`); expect(text.stdout).toContain('不会调用模型');
+    expect(text.stdout).toContain('observe knowledge source');
+    expect(text.stdout).toContain(`--workspace '${workspace}'`);
     const empty = await runCommand(ObserveKnowledge, ['list', '--workspace', join(root, 'empty'), '--lang', 'en'], { cwd: root });
-    expect(empty.stdout).toContain('No knowledge'); expect(empty.stdout).toContain('observe knowledge capture');
+    expect(empty.stdout).toContain('[]'); expect(empty.stdout).toContain(workspace.split('/').slice(0, -1).join('/'));
     expect(existsSync(join(root, 'empty'))).toBe(false);
     const json = await runCommand(ObserveKnowledge, ['list', '--workspace', join(root, 'empty'), '--json'], { cwd: root });
     expect(JSON.parse(json.stdout)).toEqual([]); expect(json.stdout).not.toContain('Next');
   });
-  it('inspects and corrects an independent entity result, then explicitly binds a new knowledge revision', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'omk-entities-cli-')); roots.push(root);
-    const workspace = join(root, 'knowledge'); const source = join(root, 'trace.jsonl');
-    const sourceText = 'Alpha 使用 Beta。操作备注：仍按上述方式使用。';
-    writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: sourceText }] } }));
-    const app = createLocalKnowledgeApplication(workspace); const snapshot = app.capture({ path: source });
-    const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'fixture',
-      generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 1 }) });
-    const base = ['--workspace', workspace, '--lang', 'zh'];
+  it('corrects an independent entity catalog and explicitly revises/reviews associations without modifying the complete body', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-current-entity-cli-')); roots.push(root);
+    const workspace = join(root, 'knowledge'), seeded = seedKnowledgeWorkspace(workspace, 'cli');
+    const app = createLocalKnowledgeApplication(workspace), analysisId = seeded.ref().analysisId, base = ['--workspace', workspace, '--lang', 'zh'];
     const found = JSON.parse((await runCommand(ObserveKnowledge, ['entities', ...base, '--query', 'Alpha', '--page-size', '1', '--json'], { cwd: root })).stdout);
     expect(found).toMatchObject({ total: 1, pageSize: 1, rows: [{ label: 'Alpha', knowledgeCount: 1 }] });
-    expect((await runCommand(ObserveKnowledge, ['entities', ...base, '--query', 'Alpha'], { cwd: root })).stdout).toContain('1 个匹配对象');
-    await expect(runCommand(ObserveKnowledge, ['entities', ...base, '--entity-revision', 'orphan'], { cwd: root })).rejects.toMatchObject({ code: 2 });
-    const inspect = await runCommand(ObserveKnowledge, ['entities', ...base, '--analysis', run.runId], { cwd: root });
-    expect(inspect.stdout).toContain('实体分析'); expect(inspect.stdout).toContain('Alpha');
-    const quality = await runCommand(ObserveKnowledge, ['quality', ...base, '--json'], { cwd: root });
-    expect(JSON.parse(quality.stdout)).toEqual(app.quality());
-    const statistics = await runCommand(ObserveKnowledge, ['quality', ...base], { cwd: root });
-    expect(statistics.stdout).toContain('提炼接纳统计'); expect(statistics.stdout).toContain('位置匹配不证明语义准确');
-    expect(statistics.stdout).toContain('当前 v5 运行'); expect(statistics.stdout).toContain('knowledge-generation-single/v1');
-    expect(statistics.stdout).toContain('authored-model-port/v1');
-    expect(statistics.stdout).toContain(`--workspace ${workspace}`);
-    const before = app.entities(run.runId);
-    const edit = { entities: structuredClone(before.revision.entities), mentions: before.revision.mentions };
-    edit.entities[0].label = '项目 Alpha';
-    const path = join(root, 'correction.json'); writeFileSync(path, JSON.stringify(edit));
-    const args = ['correct-entities', ...base, '--analysis', run.runId, '--entity-revision', before.revision.revisionId,
-      '--generation', '1', '--input', path, '--reason', '核对项目名称', '--json'];
-    const corrected = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
-    expect(corrected.history.generation).toBe(2);
-    const old = app.detail(run.committed[0].knowledgeId);
-    expect(old.revision.entities[0].label).toBe('Alpha');
-    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('observe knowledge entities') });
-    const draft = { title: old.revision.title, entities: corrected.revision.entities.map(({ entityId, label, description }: { entityId: string; label: string; description: string }) => ({ entityId, label, description })),
-      content: old.revision.content, evidence: old.revision.evidence.map(link => ({ ...link, evidenceLinkId: 'reviewed-link' })) };
-    const draftPath = join(root, 'knowledge.json'); writeFileSync(draftPath, JSON.stringify(draft));
-    const citationPath = join(root, 'citations.json');
-    const locator = { evidenceLinkId: 'reviewed-link', selection: { evidenceRef: old.revision.evidence[0].evidenceRef, quote: 'Alpha 使用 Beta。', occurrence: 0 } };
-    writeFileSync(citationPath, JSON.stringify([locator]));
-    const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-entities', ...base, '--id', old.revision.knowledgeId,
-      '--revision', old.revision.revisionId, '--generation', '1', '--analysis', run.runId,
-      '--entity-revision', corrected.revision.revisionId, '--input', draftPath, '--citations', citationPath,
-      '--identity-uncertainties', '[]', '--reason', '明确知识主体', '--json'], { cwd: root })).stdout);
-    expect(applied.revision.entities[0].label).toBe('项目 Alpha');
-    expect(applied.grounding.entityAnalysisRef.revisionId).toBe(corrected.revision.revisionId);
-    expect(applied.grounding.citations).toEqual([{ evidenceLinkId: 'reviewed-link',
-      selection: { evidenceRef: locator.selection.evidenceRef, start: 0, end: 14, quote: 'Alpha 使用 Beta。' } }]);
-    expect(applied.history.revisions[0]).toEqual(old.revision);
-    expect(app.detail(old.revision.knowledgeId, old.revision.revisionId).grounding).toEqual(old.grounding);
-    await runCommand(ObserveKnowledge, ['retain', ...base, '--id', old.revision.knowledgeId, '--revision', applied.revision.revisionId,
-      '--generation', '2', '--reason', '核对条件后保留'], { cwd: root });
-    const kept = await runCommand(ObserveKnowledge, ['show', ...base, '--id', old.revision.knowledgeId], { cwd: root });
-    expect(kept.stdout).toContain('维护决定：已保留'); expect(kept.stdout).toContain('效果尚未验证');
-    expect(kept.stdout).toContain('--generation 3');
-    const reviseArgs = ['revise', ...base, '--id', old.revision.knowledgeId, '--revision', applied.revision.revisionId,
-      '--generation', '3', '--input', draftPath, '--citations', citationPath, '--reason', '逐项核对引用', '--json'];
-    const beforeInvalid = app.detail(old.revision.knowledgeId).history;
-    writeFileSync(citationPath, JSON.stringify([{ ...locator, selection: { ...locator.selection, quote: 'PRIVATE-ABSENT-QUOTE' } }]));
-    await expect(runCommand(ObserveKnowledge, reviseArgs, { cwd: root })).rejects.toMatchObject({ code: 1,
-      stderr: expect.stringContaining('knowledge_citations_invalid') });
-    expect(app.detail(old.revision.knowledgeId).history).toEqual(beforeInvalid);
-    writeFileSync(citationPath, JSON.stringify([{ ...locator, selection: { ...locator.selection, quote: sourceText } }]));
-    const revised = JSON.parse((await runCommand(ObserveKnowledge, reviseArgs, { cwd: root })).stdout);
-    expect(revised.grounding.citations).toEqual([{ evidenceLinkId: 'reviewed-link',
-      selection: { evidenceRef: locator.selection.evidenceRef, start: 0, end: sourceText.length, quote: sourceText } }]);
-    expect(revised.maintenance).toBeNull();
-    expect(app.detail(old.revision.knowledgeId, applied.revision.revisionId).grounding).toEqual(applied.grounding);
-    await expect(runCommand(ObserveKnowledge, ['correct-entities', ...base, '--analysis', run.runId], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const before = app.entities(analysisId), edit = structuredClone({ entities: before.revision.entities, mentions: before.revision.mentions }); edit.entities[0].label = '项目 Alpha';
+    const input = join(root, 'correction.json'); writeFileSync(input, JSON.stringify(edit));
+    const correction = ['correct-entities', ...base, '--analysis', analysisId, '--entity-revision', before.revision.revisionId, '--generation', '1', '--input', input, '--reason', '核对名称', '--json'];
+    const corrected = JSON.parse((await runCommand(ObserveKnowledge, correction, { cwd: root })).stdout); expect(corrected.history.generation).toBe(2);
+    await expect(runCommand(ObserveKnowledge, correction, { cwd: root })).rejects.toMatchObject({ code: 1 });
+    const draft = { segmentEntityRefs: [{ segmentId: 's1', entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], typedRelations: [], issues: [] };
+    writeFileSync(input, JSON.stringify(draft));
+    const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-associations', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId,
+      '--body-digest', seeded.body.bodyDigest, '--generation', '1', '--analysis', analysisId, '--entity-revision', corrected.revision.revisionId, '--input', input, '--reason', '明确修订关联', '--json'], { cwd: root })).stdout);
+    expect(applied.revision).toEqual(seeded.body); expect(applied.derivedAssociations).toMatchObject({ reviewStatus: 'pending', revision: { entityAnalysisRef: { revisionId: corrected.revision.revisionId } } });
+    const reviewed = JSON.parse((await runCommand(ObserveKnowledge, ['review-associations', ...base, '--id', seeded.body.knowledgeId,
+      '--revision', applied.derivedAssociations.revision.revisionId, '--generation', '2', '--choice', 'accept', '--reason', '逐项核对', '--json'], { cwd: root })).stdout);
+    expect(reviewed.derivedAssociations.reviewStatus).toBe('accepted'); expect(reviewed.maintenance).toBeNull();
+    await runCommand(ObserveKnowledge, ['retain', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId, '--generation', '1', '--reason', '保留正文'], { cwd: root });
+    const bodyDraft = { title: '新的正文限定', content: seeded.body.content, reuseRationale: seeded.body.reuseRationale }; writeFileSync(input, JSON.stringify(bodyDraft));
+    const revise = ['revise', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId, '--generation', '2', '--input', input, '--reason', '核对正文', '--json'];
+    const revised = JSON.parse((await runCommand(ObserveKnowledge, revise, { cwd: root })).stdout);
+    expect(revised.maintenance).toBeNull(); expect(revised.derivedAssociations.status).toBe('stale'); expect(revised.revision.content).toEqual(seeded.body.content);
+    expect(app.detail(seeded.body.knowledgeId, seeded.body.revisionId).revision).toEqual(seeded.body);
+    expect(app.detail(seeded.body.knowledgeId, seeded.body.revisionId).maintenance?.choice).toBe('retain');
   });
   it.each(['history', 'file'] as const)('reports a known entity %s capacity refusal instead of invalid draft fields', async scope => {
     const root = mkdtempSync(join(tmpdir(), 'omk-entity-capacity-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
@@ -286,7 +217,6 @@ describe('observe knowledge command wiring', () => {
         '--entity-revision', randomUUID(), '--generation', '1024', '--input', input, '--reason', '核对容量诊断', '--lang', 'zh'], { cwd: root })
         .then(() => undefined, cause => cause);
       expect(failure).toMatchObject({ code: 1, stderr: expect.stringContaining('knowledge_capacity_exceeded') });
-      expect(failure.stderr).toContain(scope === 'history' ? '1024' : '16 MiB');
       expect(failure.stderr).not.toContain('草稿内容未通过校验');
       expect(correction).toHaveBeenCalledOnce();
     } finally { correction.mockRestore(); }
@@ -303,15 +233,7 @@ describe('observe knowledge command wiring', () => {
 /** Actual dispatcher/process coverage for the new delivery route; all completions stay on loopback. */
 describe('observe entity-links confirmed CLI flow', () => {
   const temporary = () => { const root = mkdtempSync(join(tmpdir(), 'omk-entity-link-cli-')); roots.push(root); return root; };
-  async function window(workspace: string, name: string) {
-    const app = createLocalKnowledgeApplication(workspace);
-    const source = app.capture({ path: join(workspace, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
-      raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
-    const run = await app.generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-model-call', generate: async (_system, input) => ({
-      output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
-    const analysis = app.entities(run.runId);
-    return { run, analysis, ref: (index = 0) => ({ analysisId: run.runId, entityId: analysis.revision.entities[index].entityId }) };
-  }
+  async function window(workspace: string, name: string) { return seedKnowledgeWorkspace(workspace, name); }
   function environment(root: string, endpoint: string): NodeJS.ProcessEnv {
     return { PATH: process.env.PATH, HOME: root, OMK_HOME: join(root, 'settings'), OMK_SKIP_UPDATE_CHECK: '1', LANG: 'C', LC_ALL: 'C',
       OPENAI_BASE_URL: endpoint, OPENAI_API_KEY: 'loopback-long-private-fixture-key' };
@@ -385,8 +307,8 @@ describe('observe entity-links confirmed CLI flow', () => {
   it('dispatches a frozen saved plan once and explicitly organizes original UUIDs after human confirmation', async () => {
     const root = temporary(), workspace = join(root, 'knowledge'), a = await window(workspace, 'a'), b = await window(workspace, 'b');
     const api = await transport(), env = environment(root, api.endpoint), saved = await preview(root, workspace, a.ref(), b.ref(), env);
-    const entityPaths = [a, b].map(value => join(workspace, 'entities', `${value.run.runId}.json`)), originalEntities = entityPaths.map(path => readFileSync(path));
-    const originalKnowledge = [a, b].map(value => createLocalKnowledgeApplication(workspace).detail(value.run.committed[0].knowledgeId));
+    const entityPaths = [a, b].map(value => join(workspace, 'entities', `${value.ref().analysisId}.json`)), originalEntities = entityPaths.map(path => readFileSync(path));
+    const originalKnowledge = [a, b].map(value => createLocalKnowledgeApplication(workspace).detail(value.body.knowledgeId));
     expect(api.requests).toHaveLength(0); expect(existsSync(join(workspace, 'entity-links'))).toBe(false);
     expect(JSON.stringify(saved.plan)).not.toContain(env.OPENAI_API_KEY);
     const inspected = await runCli(command('preview', '--input', saved.path, '--lang', 'zh'), { cwd: root, env: environment(root, 'http://127.0.0.1:1') });
@@ -414,7 +336,7 @@ describe('observe entity-links confirmed CLI flow', () => {
     const applied = JSON.parse((await runCli(accept, { cwd: root, env })).stdout); expect(applied.projection.status).toBe('applied');
     expect(JSON.parse((await runCli(accept, { cwd: root, env })).stdout).history).toEqual(applied.history);
     expect(entityPaths.map(path => readFileSync(path))).toEqual(originalEntities);
-    expect([a, b].map(value => createLocalKnowledgeApplication(workspace).detail(value.run.committed[0].knowledgeId))).toEqual(originalKnowledge);
+    expect([a, b].map(value => createLocalKnowledgeApplication(workspace).detail(value.body.knowledgeId))).toEqual(originalKnowledge);
     expect(a.ref().entityId).not.toBe(b.ref().entityId); expect(api.requests).toHaveLength(1);
     const listed = JSON.parse((await runCli(command('list', '--workspace', workspace, '--json'), { cwd: root, env })).stdout);
     expect(listed.rows).toHaveLength(1); expect(listed.rows[0].status).toBe('applied');

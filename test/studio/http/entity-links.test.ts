@@ -10,19 +10,12 @@ import type { ExecResult } from '../../../src/executors/contracts/result.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { createEntityLinkStudioService } from '../../../src/studio/application/knowledge/entity-links.js';
 import type { EntityLinkStudioInspection, EntityLinkAcceptPreview, EntityLinkStudioPreview } from '../../../src/studio/view-models/knowledge/entity-links.js';
-import { modelWindow } from '../../knowledge/fixtures.js';
+import { seedKnowledgeWorkspace } from '../../cli/knowledge-fixtures.js';
 
 let root: string, workspace: string, server: ReturnType<typeof createReportServer> | undefined, url: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-studio-links-')); workspace = join(root, 'selected'); });
 afterEach(async () => { await server?.stop(); server = undefined; vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); });
-async function source(name: string) {
-  const app = createLocalKnowledgeApplication(workspace);
-  const snapshot = app.capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
-    raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
-  const run = await app.generate(snapshot.snapshotId, { executor: 'fixture', model: 'no-model-call', generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
-  const analysis = app.entities(run.runId);
-  return { analysisId: run.runId, entityId: analysis.revision.entities[0].entityId };
-}
+async function source(name: string) { return seedKnowledgeWorkspace(workspace, name).ref(); }
 function result(input: ExecutorInput): ExecResult {
   const pair = JSON.parse(input.prompt);
   return { ok: true, output: JSON.stringify({ responseKind: 'entity-link-suggestion', schemaVersion: 1, leftEntityId: pair.left.binding.entityId,

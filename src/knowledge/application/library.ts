@@ -55,19 +55,36 @@ export class KnowledgeLibraryApplication {
     }
     const rows = this.knowledge.list().map(row => {
       const detail = this.knowledge.detail(row.knowledgeId);
-      const ref = detail.grounding.entityAnalysisRef;
+      const projection = this.bodyAssociation(detail);
+      const ref = projection?.revision.entityAnalysisRef;
       const links = new Map<string, { objectId: string; label: string; associationStatus: 'matched' | 'needs_review' }>();
-      if (ref) for (const entity of detail.revision.entities) {
+      if (ref && projection) for (const entity of projection.entities) {
         for (const object of byEntity.get(memberKey({ analysisId: ref.analysisId, entityId: entity.entityId })) ?? []) {
           const previous = links.get(object.objectId);
           links.set(object.objectId, { objectId: object.objectId, label: object.label,
-            associationStatus: previous?.associationStatus === 'needs_review' || object.entityRevisionId !== ref.revisionId ? 'needs_review' : 'matched' });
+            associationStatus: previous?.associationStatus === 'needs_review' || projection.reviewStatus !== 'accepted'
+              || !projection.currentCatalog || object.entityRevisionId !== ref.revisionId ? 'needs_review' : 'matched' });
         }
       }
-      return { ...row, knowledgeKind: detail.revision.content.organization.knowledgeKind,
+      return { ...row, knowledgeKind: detail.revision.content.organization?.knowledgeKind ?? null,
         revisedAt: detail.revision.revisedAt, objects: [...links.values()] };
     }).sort((a, b) => Date.parse(b.revisedAt) - Date.parse(a.revisedAt) || a.knowledgeId.localeCompare(b.knowledgeId));
     return { rows, objects: objects.map(({ objectId, label }) => ({ objectId, label })) };
+  }
+
+  /** A derived view never supplies missing body text or silently follows the latest entity catalog. */
+  private bodyAssociation(detail: ReturnType<KnowledgeApplication['detail']>) {
+    const selected = detail.derivedAssociations, revision = selected.revision, body = detail.revision;
+    if (selected.status !== 'available' || selected.reviewStatus === 'rejected' || !revision?.entityAnalysisRef
+      || canonicalJson(revision.bodyRef) !== canonicalJson({ knowledgeId: body.knowledgeId, revisionId: body.revisionId, bodyDigest: body.bodyDigest })) return undefined;
+    try {
+      const catalog = this.knowledge.entities(revision.entityAnalysisRef.analysisId, revision.entityAnalysisRef.revisionId);
+      const entityIds = new Set(revision.segmentEntityRefs.map(ref => ref.entityId));
+      const entities = catalog.revision.entities.filter(entity => entityIds.has(entity.entityId));
+      if (entities.length !== entityIds.size) return undefined;
+      return { revision, reviewStatus: selected.reviewStatus, entities,
+        currentCatalog: catalog.revision.revisionId === catalog.history.writeHeadRevisionId };
+    } catch { return undefined; }
   }
 
   private member(member: LibraryMember) {
@@ -93,27 +110,30 @@ export class KnowledgeLibraryApplication {
     try { for (const row of this.knowledge.list()) details.push(this.knowledge.detail(row.knowledgeId)); }
     catch { status.knowledge = 'unavailable'; details.length = 0; }
     const knowledge = details.flatMap(detail => {
-      const ref = detail.grounding.entityAnalysisRef;
-      if (!ref) return [];
-      const linked = detail.revision.entities.flatMap(entity => {
+      const projection = this.bodyAssociation(detail);
+      const ref = projection?.revision.entityAnalysisRef;
+      if (!ref || !projection) return [];
+      const linked = projection.entities.flatMap(entity => {
         const member = byEntity.get(memberKey({ analysisId: ref.analysisId, entityId: entity.entityId }));
         if (!member) return [];
         return [{ ...member, matchesRevision: member.entityRevisionId === ref.revisionId }];
       });
       if (!linked.length) return [];
       // An identity correction must be reviewed before its claims can be attributed to this object.
-      const associationStatus = linked.every(member => member.matchesRevision) ? 'matched' as const : 'needs_review' as const;
+      const associationStatus = projection.reviewStatus === 'accepted' && projection.currentCatalog
+        && linked.every(member => member.matchesRevision) ? 'matched' as const : 'needs_review' as const;
       return [{ knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId, title: detail.revision.title,
         choice: detail.maintenance?.choice ?? null, associationStatus,
-        content: detail.revision.content, entities: detail.revision.entities, tags: detail.tagging.tags,
+        content: detail.revision.content, bodyDigest: detail.revision.bodyDigest, entities: projection.entities, tags: detail.tagging.tags,
         revisedAt: detail.revision.revisedAt, revisionCount: detail.history.revisions.length,
-        evidence: detail.revision.evidence.map(link => ({ basis: link.basis, relation: link.relation, interpretation: link.interpretation,
-          statementIds: link.statementIds })),
+        evidence: detail.revision.content.segments.flatMap(segment => segment.evidence.map(evidence => ({ segmentId: segment.segmentId, ...evidence }))),
         sourceStatus: detail.sources.every(source => source.status === 'available') ? 'available' as const : 'unavailable' as const,
-        roles: detail.revision.content.statements.flatMap(statement => [
-          ...(linked.some(member => member.entityId === statement.subject.entityId) ? [{ statementId: statement.statementId, role: 'subject' as const }] : []),
-          ...(linked.some(member => member.entityId === statement.object?.entityId) ? [{ statementId: statement.statementId, role: 'object' as const }] : []),
-        ]),
+        segmentAssociations: detail.revision.content.segments.flatMap(segment => {
+          const refs = projection.revision.segmentEntityRefs.filter(ref => ref.segmentId === segment.segmentId
+            && linked.some(member => member.entityId === ref.entityId));
+          return refs.length ? [{ segmentId: segment.segmentId, entityIds: refs.map(ref => ref.entityId), mentionIds: [...new Set(refs.flatMap(ref => ref.mentionIds))] }] : [];
+        }),
+        projectionReviewStatus: projection.reviewStatus,
         bindings: linked.map(member => ({ analysisId: member.analysisId, entityId: member.entityId,
           entityRevisionId: ref.revisionId, confirmedEntityRevisionId: member.entityRevisionId, matchesRevision: member.matchesRevision })),
       }];

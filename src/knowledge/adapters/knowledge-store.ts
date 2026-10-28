@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
+import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
+import { validateKnowledgeBodyDigests } from './body-digest.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { applyKnowledgeWrite, validateKnowledgeHistory } from '../history.js';
 import {
-  canonicalJson, KnowledgeEnvelopeSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
+  canonicalJson, KnowledgeEnvelopeSchema, KnowledgeWriteSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../store.js';
 import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { assertCurrentStorage } from './storage-state.js';
@@ -47,10 +48,12 @@ export class FileKnowledgeStore implements KnowledgeStore {
     const entry = KnowledgeEnvelopeSchema.parse(raw);
     if (entry.namespace !== this.namespace) throw new Error('Knowledge namespace mismatch.');
     validateKnowledgeHistory(entry);
+    validateKnowledgeBodyDigests(entry.revisions);
     return entry;
   }
-  write(command: KnowledgeWrite, actorInput: KnowledgeActor): KnowledgeEnvelope['receipts'][number] {
+  write(input: KnowledgeWrite, actorInput: KnowledgeActor): KnowledgeEnvelope['receipts'][number] {
     const actor = KnowledgeActorSchema.parse(actorInput);
+    const command = KnowledgeWriteSchema.parse(input);
     // Reject non-JSON input before hashing; retries retain their original payload timestamps.
     const commandDigest = digest({ namespace: this.namespace, actor: { actorKind: actor.actorKind, actorId: actor.actorId }, command });
     if (!command.requestId.trim() || !Number.isSafeInteger(command.expectedGeneration) || command.expectedGeneration < 0) throw new Error('Invalid write request.');
@@ -59,9 +62,13 @@ export class FileKnowledgeStore implements KnowledgeStore {
     return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const existing = existsSync(path) ? this.read(command.knowledgeId) : undefined;
       const next = applyKnowledgeWrite(existing, command, actor, this.namespace, commandDigest);
-      if (next === existing) return next.receipts.find((item) => item.requestId === command.requestId)!;
+      if (next === existing) {
+        confirmKnowledgePublication(path, this.workspaceRoot);
+        return next.receipts.find((item) => item.requestId === command.requestId)!;
+      }
+      validateKnowledgeBodyDigests(next.revisions);
       if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('capacity_exceeded');
-      writeJsonFileAtomic(path, next);
+      publishKnowledgeBytes(path, JSON.stringify(next, null, 2), this.workspaceRoot, !existing);
       return next.receipts.at(-1)!;
     });
   }

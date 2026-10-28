@@ -7,7 +7,6 @@ import { inspectExtractionStudy } from '../../../src/knowledge/application/study
 import * as inspectionService from '../../../src/knowledge/application/study-inspection-service.js';
 import { parseExtractionStudyInspectionBody } from '../../../src/knowledge/adapters/study-inspection-input.js';
 import { ExtractionStudyInspectionError } from '../../../src/knowledge/adapters/study-inspection-errors.js';
-import { runExtractionStudySlot } from '../../../src/knowledge/application/study-runner.js';
 import { nativeStudyFixture } from '../../knowledge/extraction-study-fixtures.js';
 import { request } from '../../helpers/http-request.js';
 
@@ -30,7 +29,7 @@ describe('portable study HTTP inspection', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-study-http-'))); roots.push(root);
     const f = nativeStudyFixture(root), plan = f.prepare(); trusted.host = f.ports.identity();
     f.files.create(plan, f.corpusRaw, f.configurationRaw);
-    for (const slot of plan.slots) await runExtractionStudySlot(f.ports, { plan, corpus: f.corpus, slotId: slot.slotId });
+    for (const slot of plan.slots) await f.archiveSlot(plan, slot.slotId);
     const evidence = f.files.evidence(plan), expected = inspectExtractionStudy({ evidence });
     const directories = vi.fn(() => { throw new Error('PRIVATE-DIRECTORY-SENTINEL: active settings are broken'); });
     const server = createReportServer({ port: 0, analysesDir: directories, doctorsDir: directories, observationsDir: join(root, 'observations') });

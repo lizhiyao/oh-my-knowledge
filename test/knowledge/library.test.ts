@@ -1,170 +1,101 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { hostname, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
-import { createLocalKnowledgeLibrary } from '../../src/knowledge/application/local.js';
-import type { LibraryDraft, LibraryMember } from '../../src/knowledge/entity-library/contracts.js';
-import { modelWindow } from './fixtures.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createLocalKnowledgeApplication, createLocalKnowledgeLibrary } from '../../src/knowledge/application/local.js';
+import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
+import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
+import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
+import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
+import type { LibraryMember } from '../../src/knowledge/entity-library/contracts.js';
+import { bodyActor as actor, bodyAt as at, bodyWrite } from './body-fixtures.js';
 
-describe('entity knowledge library', () => {
-  let root: string;
-  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-library-')); });
-  afterEach(() => { vi.restoreAllMocks(); rmSync(root, { recursive: true, force: true }); });
-  const app = () => createLocalKnowledgeApplication(root);
-  const library = () => createLocalKnowledgeLibrary(root);
-  async function window(name: string, transform: (packet: ReturnType<typeof modelWindow>) => void = () => {}, text = 'Alpha 使用 Beta') {
-    const source = app().capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
-      raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }) }] });
-    const run = await app().generate(source.snapshotId, { executor: 'recorded-fixture', model: 'no-model-call', generate: async (_system, input) => {
-      const packet = modelWindow(); transform(packet);
-      return { output: JSON.stringify(packet).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 };
-    } });
-    const analysis = app().entities(run.runId); const knowledge = app().detail(run.committed[0].knowledgeId);
-    const member = (label = 'Alpha'): LibraryMember => {
-      const entity = analysis.revision.entities.find(value => value.label === label)!;
-      return { analysisId: run.runId, entityId: entity.entityId, entityRevisionId: analysis.revision.revisionId,
-        mentionIds: analysis.revision.mentions.filter(value => value.entityId === entity.entityId).map(value => value.mentionId), rationale: '按原文确认同一项目对象' };
-    };
-    return { source, run, analysis, knowledge, member };
-  }
-  const draft = (members: LibraryMember[], label = '项目 Alpha'): LibraryDraft => ({ label, description: '来源明确描述的本项目对象；范围不推广到其它项目', referentKind: 'object', members });
-  const initial = (value: LibraryDraft) => ({ objectId: randomUUID(), requestId: randomUUID(), generation: 0,
-    headRevisionId: null, draft: value, reason: '核对来源后建立知识入口', identityConfirmed: true as const });
-
-  it('accumulates two windows and reaches the same knowledge from both subject and object without copying bodies', async () => {
-    const a = await window('first'); const b = await window('second');
-    for (const item of [a, b]) app().maintain(item.knowledge.revision.knowledgeId, item.knowledge.revision.revisionId, 'retain', '按条件维护', item.knowledge.history.generation);
-    const before = readFileSync(join(root, 'entities', `${a.run.runId}.json`));
-    const saved = library().save(initial(draft([a.member(), b.member()])));
-    const beta = library().save(initial(draft([a.member('Beta'), b.member('Beta')], '工具 Beta')));
-    const detail = library().detail(saved.objectId); const other = library().detail(beta.objectId);
-    expect(detail.counts).toEqual({ retained: 2, pending: 0, discarded: 0, needsReview: 0 });
-    expect(detail.knowledge.map(value => value.knowledgeId).sort()).toEqual(other.knowledge.map(value => value.knowledgeId).sort());
-    expect(detail.knowledge.map(value => value.content)).toEqual(other.knowledge.map(value => value.content));
-    expect(detail.knowledge[0].roles[0].role).toBe('subject'); expect(other.knowledge[0].roles[0].role).toBe('object');
-    expect(detail.knowledge[0].sourceStatus).toBe('available'); expect(detail.members.every(member => member.status === 'available')).toBe(true);
-    expect(readFileSync(join(root, 'library', `${saved.objectId}.json`), 'utf8')).not.toContain('statements');
-    expect(readFileSync(join(root, 'entities', `${a.run.runId}.json`))).toEqual(before);
-    expect(library().catalog({ query: '项目', pageSize: 1, page: 999 })).toMatchObject({ total: 2, page: 2 });
-    expect(library().catalog({ query: '不存在' }).rows).toEqual([]);
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'omk-body-library-')); roots.push(root);
+  const app = createLocalKnowledgeApplication(root), library = createLocalKnowledgeLibrary(root);
+  const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root), entities = new FileEntityAnalysisStore(join(root, 'entities'), root);
+  const associations = new FileKnowledgeAssociationStore(join(root, 'associations'), 'local', knowledge, entities, root);
+  const source = app.capture({ path: join(root, 'authored.jsonl'), origin: { threadId: 'authored', title: 'Authored source' }, records: [{ recordIndex: 1,
+    raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
+  const analysisId = randomUUID(), entityRevisionId = randomUUID(), entityIds = [randomUUID(), randomUUID()], mentionIds = [randomUUID(), randomUUID()];
+  const catalog = { entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: entityIds[index], label, description: `来源内的${label}对象`, qualifiers: [],
+    identityStatus: 'proposed' as const, possibleEntityIds: [], uncertainties: [], referentKind: 'object' as const, componentRef: null, collection: null })),
+    mentions: ['Alpha', 'Beta'].map((quote, index) => ({ mentionId: mentionIds[index], entityId: entityIds[index], selection: {
+      evidenceRef: source.excerpts[0].evidenceRef, start: index ? 9 : 0, end: index ? 13 : 5, quote }, basis: 'explicit' as const, rationale: '来源明确提及' })), limitations: [] };
+  entities.write({ analysisId, requestId: randomUUID(), snapshotId: source.snapshotId, sourceVersion: source.sourceVersion, expectedGeneration: 0, expectedHeadRevisionId: null,
+    revision: { ...catalog, revisionId: entityRevisionId, revisedAt: at, revisedBy: actor, revisionReason: '独立派生目录' } }, actor);
+  const body = bodyWrite(); body.revision.content.segments[0].evidence = [{ source: { snapshotId: source.snapshotId, sourceVersion: source.sourceVersion },
+    selection: { evidenceRef: source.excerpts[0].evidenceRef, start: 0, end: 13, quote: 'Alpha 使用 Beta' }, basis: 'source_assertion' }];
+  body.revision.bodyDigest = knowledgeBodyDigest(body.revision); knowledge.write(body, actor);
+  const projectionId = randomUUID(); associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: body.knowledgeId, expectedGeneration: 0,
+    expectedHeadRevisionId: null, revision: { revisionId: projectionId, bodyRef: knowledgeBodyRef(body.revision), status: 'available', reviewStatus: 'pending',
+      entityAnalysisRef: { analysisId, revisionId: entityRevisionId }, segmentEntityRefs: entityIds.map((entityId, index) => ({ segmentId: 's1', entityId, mentionIds: [mentionIds[index]] })),
+      typedRelations: [], issues: [], revisedAt: at, revisedBy: actor, revisionReason: '正文后的独立关联' } }, actor);
+  const member = (index = 0): LibraryMember => ({ analysisId, entityId: entityIds[index], entityRevisionId, mentionIds: [mentionIds[index]], rationale: '明确核对来源限定和身份' });
+  const save = (members = [member()], label = 'Alpha 对象') => library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
+    draft: { label, description: '用户明确确认的同一对象', referentKind: 'object', members }, reason: '人工组织', identityConfirmed: true });
+  const review = (choice: 'accept' | 'reject') => app.reviewAssociations(body.knowledgeId, projectionId, associations.read(body.knowledgeId).generation, choice, '独立核对本次派生结果');
+  return { root, app, library, knowledge, entities, associations, source, body, analysisId, entityRevisionId, entityIds, mentionIds, catalog, projectionId, member, save, review };
+}
+describe('body canonical knowledge library projections', () => {
+  it('shows unassociated bodies, presents pending projections as needs_review and matches only independent accepted exact references', () => {
+    const f = fixture(), object = f.save(), other = f.save([f.member(1)], 'Beta 对象');
+    const pending = f.library.detail(object.objectId);
+    expect(pending.counts).toEqual({ retained: 0, pending: 0, discarded: 0, needsReview: 1 });
+    expect(pending.knowledge[0].segmentAssociations).toEqual([{ segmentId: 's1', entityIds: [f.entityIds[0]], mentionIds: [f.mentionIds[0]] }]);
+    expect(pending.knowledge[0]).not.toHaveProperty('roles');
+    f.app.maintain(f.body.knowledgeId, f.body.revision.revisionId, 'retain', '仅保留正文，不代表接受关联', 1);
+    expect(f.library.detail(object.objectId).counts.needsReview).toBe(1);
+    f.review('accept');
+    const detail = f.library.detail(object.objectId); expect(detail.counts).toEqual({ retained: 1, pending: 0, discarded: 0, needsReview: 0 });
+    expect(detail.knowledge[0].content).toEqual(f.body.revision.content); expect(detail.knowledge[0].projectionReviewStatus).toBe('accepted');
+    expect(detail.relatedEntities).toEqual([{ analysisId: f.analysisId, entityId: f.entityIds[1], entityRevisionId: f.entityRevisionId, label: 'Beta', object: { objectId: other.objectId, label: 'Beta 对象' } }]);
+    f.review('reject'); expect(f.library.detail(object.objectId).knowledge).toEqual([]);
+    expect(f.library.knowledgeCatalog().rows[0].objects).toEqual([]); expect(f.library.knowledgeCatalog().rows).toHaveLength(1);
   });
-  it('projects the whole workspace once, including unassociated knowledge and exact shared-object matches', async () => {
-    const shared = await window('shared'); const unassociated = await window('unassociated');
-    const alpha = library().save(initial(draft([shared.member()])));
-    const beta = library().save(initial(draft([shared.member('Beta')], '工具 Beta')));
-    const catalog = library().knowledgeCatalog();
-    expect(catalog.rows).toHaveLength(2);
-    expect(catalog.rows.find(row => row.knowledgeId === shared.knowledge.revision.knowledgeId)?.objects)
-      .toEqual(expect.arrayContaining([{ objectId: alpha.objectId, label: '项目 Alpha', associationStatus: 'matched' }, { objectId: beta.objectId, label: '工具 Beta', associationStatus: 'matched' }]));
-    expect(catalog.rows.find(row => row.knowledgeId === unassociated.knowledge.revision.knowledgeId)?.objects).toEqual([]);
-    expect(catalog.rows.every(row => row.knowledgeKind === 'fact')).toBe(true);
-    const before = app().detail(shared.knowledge.revision.knowledgeId);
-    const revised = app().revise(before.revision.knowledgeId, before.revision.revisionId, before.history.generation,
-      { title: '限定的新修订', content: before.revision.content, entities: before.revision.entities, evidence: before.revision.evidence }, '补充适用范围');
-    expect(library().knowledgeCatalog().rows.find(row => row.knowledgeId === revised.revision.knowledgeId))
-      .toMatchObject({ title: '限定的新修订', revisionId: revised.revision.revisionId, choice: null });
-    app().deleteSource(shared.source.snapshotId);
-    expect(library().knowledgeCatalog().rows).toHaveLength(2);
+  it('reads the precise catalog revision, flags later identity corrections, and never silently changes body attribution', () => {
+    const f = fixture(), object = f.save(); f.review('accept');
+    const bodyFile = join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]), before = readFileSync(bodyFile);
+    f.entities.write({ analysisId: f.analysisId, requestId: randomUUID(), snapshotId: f.source.snapshotId, sourceVersion: f.source.sourceVersion, expectedGeneration: 1,
+      expectedHeadRevisionId: f.entityRevisionId, revision: { ...f.catalog, entities: f.catalog.entities.map(entity => ({ ...entity, label: `修订${entity.label}` })),
+        revisionId: randomUUID(), parentRevisionId: f.entityRevisionId, revisedAt: at, revisedBy: actor, revisionReason: '纠正有据含义' } }, actor);
+    const detail = f.library.detail(object.objectId);
+    expect(detail.knowledge[0].entities[0].label).toBe('Alpha'); expect(detail.knowledge[0].associationStatus).toBe('needs_review');
+    expect(detail.counts.needsReview).toBe(1); expect(f.library.knowledgeCatalog().rows[0].objects[0].associationStatus).toBe('needs_review');
+    expect(readFileSync(bodyFile)).toEqual(before);
   });
-  it('does not join names automatically and rejects a competing owner, including across exact revision changes', async () => {
-    const a = await window('a'); const b = await window('b');
-    expect(library().catalog().objectCount).toBe(0);
-    const first = library().save(initial(draft([a.member()])));
-    const second = library().save(initial(draft([b.member()])));
-    expect(first.objectId).not.toBe(second.objectId);
-    expect(() => library().save(initial(draft([a.member()])))).toThrow('owner conflict');
-    expect(library().owners(a.run.runId, a.member().entityId)).toEqual([{ objectId: first.objectId, label: '项目 Alpha' }]);
+  it('does not transfer an accepted projection or retain to a new body revision, while the complete body stays in the catalog', () => {
+    const f = fixture(), object = f.save(); f.review('accept');
+    const draft = { title: '新的正文限定', content: f.body.revision.content, reuseRationale: f.body.revision.reuseRationale };
+    const edited = f.app.revise(f.body.knowledgeId, f.body.revision.revisionId, 1, draft, '明确修订');
+    expect(edited.derivedAssociations.status).toBe('stale'); expect(f.library.detail(object.objectId).knowledge).toEqual([]);
+    expect(f.library.knowledgeCatalog().rows).toMatchObject([{ revisionId: edited.revision.revisionId, title: '新的正文限定', choice: null, objects: [] }]);
   });
-  it('keeps differing conditions and opposite claims together without letting chronology decide truth', async () => {
-    const a = await window('staging', packet => { packet.proposals[0].draft.content.statements[0].context.conditions = ['仅测试环境']; });
-    const b = await window('production', packet => {
-      packet.proposals[0].draft.content.statements[0].polarity = 'negative';
-      packet.proposals[0].draft.content.statements[0].context.conditions = ['仅生产环境'];
-      packet.proposals[0].draft.evidence[0].basis = 'source_assertion';
-      packet.proposals[0].citations[0].selection.quote = 'Alpha 不使用 Beta';
-    }, 'Alpha 不使用 Beta');
-    const saved = library().save(initial(draft([a.member(), b.member()])));
-    expect(library().detail(saved.objectId).counts.pending).toBe(2);
-    app().maintain(a.knowledge.revision.knowledgeId, a.knowledge.revision.revisionId, 'retain', '保留限定范围', 1);
-    app().maintain(b.knowledge.revision.knowledgeId, b.knowledge.revision.revisionId, 'discard', '仍保留原始反对说法', 1);
-    const detail = library().detail(saved.objectId);
-    expect(detail.counts).toEqual({ retained: 1, pending: 0, discarded: 1, needsReview: 0 });
-    expect(detail.knowledge).toHaveLength(2);
-    expect(detail.knowledge.find(item => item.knowledgeId === b.knowledge.revision.knowledgeId)?.content).toEqual(b.knowledge.revision.content);
-    expect(detail.knowledge.find(item => item.knowledgeId === a.knowledge.revision.knowledgeId)?.content).toEqual(a.knowledge.revision.content);
+  it('keeps source-loss knowledge readable and permits removing organization links without deleting body history', () => {
+    const f = fixture(), object = f.save(); f.review('accept'); f.app.deleteSource(f.source.snapshotId);
+    expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('unavailable');
+    const saved = f.library.save({ objectId: object.objectId, requestId: randomUUID(), generation: object.generation, headRevisionId: object.writeHeadRevisionId,
+      draft: { ...object.revisions[0].draft, members: [] }, reason: '解除组织关联', identityConfirmed: true });
+    expect(saved.revisions).toHaveLength(2); expect(f.library.detail(object.objectId).knowledge).toEqual([]);
+    expect(f.app.detail(f.body.knowledgeId).revision).toEqual(f.body.revision);
   });
-  it('retries an identical request once and rejects altered idempotency inputs or stale drafts', async () => {
-    const a = await window('a'); const input = initial(draft([a.member()])); const first = library().save(input);
-    expect(library().save(input)).toEqual(first);
-    expect(() => library().save({ ...input, reason: '不同的请求内容' })).toThrow('idempotency conflict');
-    expect(() => library().save({ ...input, requestId: randomUUID() })).toThrow('revision conflict');
-    expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false);
+  it('preserves library ownership, explicit identity confirmation, CAS and stable request replay', () => {
+    const f = fixture(), object = f.save(); expect(() => f.save()).toThrow('owner conflict');
+    expect(() => f.save([{ ...f.member(1), mentionIds: [f.mentionIds[0]] }], 'wrong')).toThrow('evidence mismatch');
+    const request = { objectId: object.objectId, requestId: randomUUID(), generation: 1, headRevisionId: object.writeHeadRevisionId,
+      draft: { ...object.revisions[0].draft, description: '仅组织说明修订' }, reason: '限定组织说明', identityConfirmed: true as const };
+    const updated = f.library.save(request); expect(f.library.save(request)).toEqual(updated);
+    expect(() => f.library.save({ ...request, requestId: randomUUID() })).toThrow();
+    expect(() => f.library.save({ ...request, reason: 'changed' })).toThrow('idempotency');
+    expect(existsSync(join(f.root, '.knowledge-write.lock'))).toBe(false);
   });
-  it('requires current readable mention evidence and rejects unresolved or incompatible levels', async () => {
-    const a = await window('a'); const member = a.member();
-    expect(() => library().save(initial(draft([{ ...member, mentionIds: [randomUUID()] }])))).toThrow('evidence mismatch');
-    expect(() => library().save(initial({ ...draft([member]), referentKind: 'component' }))).toThrow('needs correction');
-    expect(() => library().save({ ...initial(draft([member])), identityConfirmed: false as unknown as true })).toThrow();
-    expect(() => library().save(initial(draft([member, member])))).toThrow();
-    const entities = structuredClone(a.analysis.revision.entities); entities[0].identityStatus = 'unresolved'; entities[0].uncertainties = ['原文所指待核对'];
-    const changed = app().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '记录歧义');
-    expect(() => library().save(initial(draft([member])))).toThrow('revision conflict');
-    expect(() => library().save(initial(draft([{ ...member, entityRevisionId: changed.revision.revisionId }])))).toThrow('needs correction');
-  });
-  it('quarantines knowledge after an explicit entity update until the organization link is reviewed', async () => {
-    const a = await window('a'); const input = initial(draft([a.member()])); const saved = library().save(input);
-    const entities = structuredClone(a.analysis.revision.entities); entities[0].label = '明确项目 Alpha';
-    const changed = app().correctEntities(a.run.runId, a.analysis.revision.revisionId, 1, { entities, mentions: a.analysis.revision.mentions }, '补充限定');
-    const revised = app().reviseUsingEntities(a.knowledge.revision.knowledgeId, a.knowledge.revision.revisionId, a.knowledge.history.generation,
-      a.run.runId, changed.revision.revisionId, { title: a.knowledge.revision.title, content: a.knowledge.revision.content,
-        evidence: a.knowledge.revision.evidence, entities: changed.revision.entities.map(({ entityId, label, description }) => ({ entityId, label, description })) }, '明确应用实体修订');
-    app().maintain(revised.revision.knowledgeId, revised.revision.revisionId, 'retain', '重新核对', revised.history.generation);
-    expect(library().detail(saved.objectId).counts).toMatchObject({ retained: 0, needsReview: 1 });
-    const updated = library().save({ ...input, requestId: randomUUID(), generation: saved.generation, headRevisionId: saved.writeHeadRevisionId,
-      draft: draft([{ ...a.member(), entityRevisionId: changed.revision.revisionId, rationale: '核对补充限定后确认仍为同一对象' }]), reason: '显式核对关联' });
-    expect(library().detail(saved.objectId).counts).toMatchObject({ retained: 1, needsReview: 0 });
-    expect(updated.revisions[0]).toEqual(saved.revisions[0]);
-    expect(library().detail(saved.objectId, saved.writeHeadRevisionId).counts.needsReview).toBe(1);
-    expect(app().detail(a.knowledge.revision.knowledgeId).history.revisions[0]).toEqual(a.knowledge.revision);
-  });
-  it('can remove links after source loss without destroying source identities, history, or knowledge', async () => {
-    const a = await window('a'); const input = initial(draft([a.member()])); const saved = library().save(input);
-    app().deleteSource(a.source.snapshotId);
-    expect(library().detail(saved.objectId).knowledge[0].sourceStatus).toBe('unavailable');
-    expect(library().detail(saved.objectId).members[0]).toMatchObject({ sourceStatus: 'unavailable' });
-    const noSource = await window('b'); app().deleteSource(noSource.source.snapshotId);
-    expect(() => library().save(initial(draft([noSource.member()])))).toThrow('source unavailable');
-    const removed = library().save({ ...input, requestId: randomUUID(), generation: 1, headRevisionId: saved.writeHeadRevisionId, draft: draft([]), reason: '解除组织关联' });
-    expect(removed.revisions).toHaveLength(2); expect(library().detail(saved.objectId).knowledge).toEqual([]);
-    expect(library().detail(saved.objectId, saved.writeHeadRevisionId).knowledge).toHaveLength(1);
-    expect(app().detail(a.knowledge.revision.knowledgeId).revision).toEqual(a.knowledge.revision);
-  });
-  it('fails closed for unreadable owners and refuses symlink storage or a live workspace lock', async () => {
-    const a = await window('a'); const saved = library().save(initial(draft([a.member()])));
-    const file = join(root, 'library', `${saved.objectId}.json`); const original = readFileSync(file);
-    writeFileSync(file, '{bad'); expect(() => library().catalog()).toThrow();
-    expect(() => library().save(initial(draft([])))).toThrow(); writeFileSync(file, original);
-    const lock = join(root, '.knowledge-write.lock'); writeFileSync(lock, JSON.stringify({ owner: randomUUID(), pid: process.pid, hostname: hostname(), acquiredAt: new Date().toISOString() }));
-    expect(() => library().save(initial(draft([a.member('Beta')])))).toThrow(); rmSync(lock);
-    expect(readFileSync(file)).toEqual(original);
-    rmSync(join(root, 'library'), { recursive: true }); symlinkSync(join(root, 'entities'), join(root, 'library'));
-    expect(() => library().catalog()).toThrow('storage directory'); expect(() => library().save(initial(draft([a.member()])))).toThrow();
-  });
-  it('rejects broken organization history and shows unknown rather than partial knowledge counts', async () => {
-    const a = await window('a'); const input = initial(draft([a.member()])); const first = library().save(input);
-    const saved = library().save({ ...input, requestId: randomUUID(), generation: 1, headRevisionId: first.writeHeadRevisionId,
-      draft: { ...input.draft, description: '明确补充本项目限定，保留原始知识' }, reason: '补充对象范围' });
-    const file = join(root, 'library', `${saved.objectId}.json`); const original = readFileSync(file);
-    const tampered = structuredClone(saved); tampered.revisions[1].parentRevisionId = randomUUID();
-    writeFileSync(file, JSON.stringify(tampered)); expect(() => library().detail(saved.objectId)).toThrow('history references');
-    expect(() => library().save(initial(draft([a.member('Beta')])))).toThrow(); writeFileSync(file, original);
-    const knowledgeFile = join(root, 'items', readdirSync(join(root, 'items'))[0]); const knowledgeBytes = readFileSync(knowledgeFile);
-    writeFileSync(knowledgeFile, '{bad');
-    expect(library().detail(saved.objectId)).toMatchObject({ knowledgeStatus: 'unavailable', knowledge: [],
-      counts: { retained: null, pending: null, discarded: null, needsReview: null } });
-    writeFileSync(knowledgeFile, knowledgeBytes); expect(library().detail(saved.objectId).counts.pending).toBe(1);
-    expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false);
+  it('fails closed for damaged organization storage and redirected paths without hiding independent body catalog rows', () => {
+    const f = fixture(), object = f.save(); const file = join(f.root, 'library', `${object.objectId}.json`), before = readFileSync(file);
+    writeFileSync(file, '{bad'); expect(() => f.library.catalog()).toThrow(); writeFileSync(file, before);
+    rmSync(join(f.root, 'library'), { recursive: true }); symlinkSync(join(f.root, 'entities'), join(f.root, 'library'));
+    expect(() => f.library.catalog()).toThrow('storage directory'); expect(f.app.list()).toHaveLength(1);
   });
 });

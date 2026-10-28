@@ -22,50 +22,36 @@ export const KnowledgeTimeSchema = z.discriminatedUnion('timeKind', [
   }
 });
 
-const context = z.strictObject({
-  scenario: text,
-  conditions: z.array(text).max(64),
-  exceptions: z.array(text).max(64),
-  unknowns: z.array(text).max(64),
-  occurredDuring: KnowledgeTimeSchema,
-  validDuring: KnowledgeTimeSchema,
+/** Positions use zero-based UTF-16 offsets into the exact registered excerpt. */
+export const EvidenceSelectionSchema = z.strictObject({
+  evidenceRef: id, start: z.number().int().nonnegative(), end: z.number().int().positive(), quote: text,
 });
-const entityRef = z.strictObject({ entityId: id });
+export type EvidenceSelection = z.infer<typeof EvidenceSelectionSchema>;
+export interface EvidenceExcerpt { evidenceRef: string; text: string }
+export const KnowledgeBodyEvidenceSchema = z.strictObject({
+  source: z.strictObject({ snapshotId: z.string().uuid(), sourceVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/) }),
+  selection: EvidenceSelectionSchema,
+  basis: z.enum(['source_assertion', 'direct_observation', 'inference']),
+  interpretation: text.optional(),
+});
+export type KnowledgeBodyEvidence = z.infer<typeof KnowledgeBodyEvidenceSchema>;
+/** Each segment is a complete independently consumable unit. Titles and evidence never complete its meaning. */
 export const KnowledgeContentSchema = z.strictObject({
-  statements: z.array(z.strictObject({
-    statementId: id,
-    subject: entityRef,
-    relation: text,
-    object: entityRef.optional(),
-    modality: z.enum(['descriptive', 'normative', 'capability', 'permission']),
-    polarity: z.enum(['positive', 'negative']),
-    context,
-  })).min(1).max(256),
-  organization: z.discriminatedUnion('knowledgeKind', [
-    z.strictObject({ knowledgeKind: z.literal('fact') }),
-    z.strictObject({
-      knowledgeKind: z.literal('case'), situation: text,
-      actionStatementIds: ids, outcomeStatementIds: ids, gaps: z.array(text).max(64),
-    }),
-    z.strictObject({ knowledgeKind: z.literal('method'), purpose: text, instructionStatementIds: ids.min(1) }),
-  ]),
+  segments: z.array(z.strictObject({
+    segmentId: id,
+    text: z.string().min(1).refine(value => value.trim().length > 0),
+    evidence: z.array(KnowledgeBodyEvidenceSchema).min(1),
+  })).min(1),
+  organization: z.strictObject({ knowledgeKind: z.enum(['fact', 'case', 'method']) }).optional(),
 });
-
-export const KnowledgeEvidenceLinkSchema = z.strictObject({
-  evidenceLinkId: id, evidenceRef: id, statementIds: ids.min(1),
-  relation: z.enum(['supports', 'opposes', 'background']),
-  basis: z.enum(['direct_observation', 'source_assertion', 'inference']),
-  interpretation: text,
-});
-
-/** Content shared by generated proposals and human edits; no lifecycle authority. */
 export const KnowledgeDraftSchema = z.strictObject({
-  title: text,
-  content: KnowledgeContentSchema,
-  entities: z.array(z.strictObject({ entityId: id, label: text, description: text })).min(1).max(256),
-  evidence: z.array(KnowledgeEvidenceLinkSchema).min(1).max(512),
+  title: text, content: KnowledgeContentSchema, reuseRationale: text,
 });
 export type KnowledgeDraft = z.infer<typeof KnowledgeDraftSchema>;
+export const KnowledgeBodyRefSchema = z.strictObject({
+  knowledgeId: id, revisionId: id, bodyDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+});
+export type KnowledgeBodyRef = z.infer<typeof KnowledgeBodyRefSchema>;
 
 export const KnowledgeActorSchema = z.discriminatedUnion('actorKind', [
   z.strictObject({ actorKind: z.literal('human'), actorId: id }),
@@ -73,7 +59,7 @@ export const KnowledgeActorSchema = z.discriminatedUnion('actorKind', [
 ]);
 const revisionRef = z.strictObject({ knowledgeId: id, revisionId: id });
 export const KnowledgeRevisionSchema = KnowledgeDraftSchema.extend({
-  knowledgeId: id, revisionId: id, parentRevision: revisionRef.optional(),
+  knowledgeId: id, revisionId: id, bodyDigest: KnowledgeBodyRefSchema.shape.bodyDigest, parentRevision: revisionRef.optional(),
   observationRefs: ids,
   derivations: z.array(z.strictObject({
     relation: z.enum(['derived_from', 'split_from', 'merged_from', 'replaces']),
@@ -84,16 +70,6 @@ export const KnowledgeRevisionSchema = KnowledgeDraftSchema.extend({
 });
 export type KnowledgeRevision = z.infer<typeof KnowledgeRevisionSchema>;
 export type KnowledgeActor = z.infer<typeof KnowledgeActorSchema>;
-
-/** Positions use zero-based UTF-16 offsets into the exact registered excerpt. */
-export const EvidenceSelectionSchema = z.strictObject({
-  evidenceRef: id, start: z.number().int().nonnegative(), end: z.number().int().positive(), quote: text,
-});
-export type EvidenceSelection = z.infer<typeof EvidenceSelectionSchema>;
-export interface EvidenceExcerpt {
-  evidenceRef: string;
-  text: string;
-}
 
 export const EntityMentionSchema = z.strictObject({
   mentionId: id, entityId: id, selection: EvidenceSelectionSchema,
