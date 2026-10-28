@@ -94,7 +94,7 @@ Auxiliary Codex CLI/SDK calls likewise reject explicit `allowedSkills`, includin
 
 ### Codex SDK contract coverage
 
-The optional peer range permits installation; it does not certify every version in that range. Repository tests install exactly `@openai/codex-sdk` 0.149.0, pinned in [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) and [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock). Tests check OMK's types against the real SDK declarations, resolve its installed module and bundled native package, and drive the actual SDK through a temporary fake executable to verify options, private environment, events and child termination after abort. The process fixture uses a POSIX executable and skips Windows; a passing run covers only its actual OS, architecture and Node version. These checks make no model calls and read no user authentication; they do not establish live authentication, provider behavior or compatibility with other SDK versions. See the [official SDK guide](https://learn.chatgpt.com/docs/codex-sdk).
+The optional peer range permits installation; it does not certify every version in that range. Repository tests install exactly `@openai/codex-sdk` 0.165.0 with its bundled `@openai/codex` 0.165.0, pinned in [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) and [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock). Tests check OMK's types against the real SDK declarations, resolve its installed module and bundled native package, and drive the actual SDK through a temporary fake executable to verify options, private environment, events and child termination after abort. The process fixture uses a POSIX executable and skips Windows; a passing run covers only its actual OS, architecture and Node version. These checks make no model calls and read no user authentication; they do not establish live authentication, provider behavior or compatibility with other SDK versions. See the [official SDK guide](https://learn.chatgpt.com/docs/codex-sdk).
 
 In this tested SDK, `runStreamed` fills a missing `cache_write_input_tokens` field in `turn.completed.usage` with `0`. OMK currently projects that normalized SDK field into `cacheWriteInputTokens`; that value alone does not prove the provider reported zero cache writes. The contract test makes the absent CLI field and SDK-generated zero explicit. Existing usage and persisted evidence formats are unchanged; keep the SDK version fixed when comparing measurements.
 
@@ -215,9 +215,11 @@ Codex `Reconnecting...` events are transport notices. A call succeeds only after
 The base OMK install omits the optional Agent SDK packages and their large platform binaries. The `codex` CLI executor, API executors, custom executors, and the DSH host plugin do not need them. Install an SDK in the same scope as OMK only when you explicitly select its `*-sdk` executor.
 
 - **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
-- **codex-sdk**: install the compatible optional SDK locally with `npm i @openai/codex-sdk@^0.149.0`, or globally beside a global OMK install with `npm i -g @openai/codex-sdk@^0.149.0` (it bundles the `@openai/codex` binary)
+- **codex-sdk**: install the compatible optional SDK locally with `npm i @openai/codex-sdk@^0.165.0`, or globally beside a global OMK install with `npm i -g @openai/codex-sdk@^0.165.0` (it bundles the `@openai/codex` binary)
 - **DSH plugin**: install `oh-my-knowledge` into an existing command-capable DSH profile and use `/omk eval <eval.yaml>`
 - **openai-api**: set the `OPENAI_API_KEY` env var
+
+If an existing installation still has an older optional Codex SDK, select an OMK build whose manifest declares `@openai/codex-sdk` as `^0.165.0` in `peerDependencies`, then upgrade that OMK build and the SDK together in one install command in the same local or global scope. Published packages and `main` source can differ; check the actual OMK package's `peerDependencies` instead of inferring SDK compatibility from the OMK version alone. This dependency upgrade requires no stored-data migration. Historical measurements retain their recorded Runtime identity; measurements taken with different SDK versions must not be combined as a comparison with a fixed runtime.
 
 ## Related
 
