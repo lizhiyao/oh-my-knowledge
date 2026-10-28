@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -6,7 +6,6 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWorkerJobService, fileWorkerExecArgv } from '../../src/shared/worker-job.js';
-import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import { nativeStudyFixture } from '../knowledge/extraction-study-fixtures.js';
 import { copyStudyRuntime } from '../helpers/study-runtime.js';
 import { runCli } from '../helpers/cli-process.js';
@@ -132,44 +131,28 @@ describe('fixed study workers (built runtime; authored local data, no model serv
     const aborted = controller(); aborted.abort(); expect(() => jobs.reserve(aborted.signal)).toThrow('worker_cancelled');
   });
 
-  it.each(['changed', 'missing'] as const)('rejects the next real beforeDispatch after %s dependency bytes in the same running worker', async mutation => {
-    const directory = root(), installation = join(directory, 'runtime'); copyStudyRuntime(repository, installation);
-    const f = nativeStudyFixture(directory), template = f.prepare();
-    const policy = boundedExtractionPolicy({ maxInvocations: 2, maxReasks: 1, profileId: 'loopback-test/v1', maxTotalTokens: 2176, maxOutputTokens: 64 });
-    const corpusPath = join(directory, 'corpus.json'), configPath = join(directory, 'configuration.json');
-    writeFileSync(corpusPath, f.corpusRaw);
-    writeFileSync(configPath, JSON.stringify({ configurationVersion: 'omk-knowledge-extraction-study-configuration/v1', actor: template.actor,
-      changedVariable: 'replication', split: 'development', repeats: 1, criteria: template.criteria, sampling: template.sampling,
-      variants: ['baseline', 'candidate'].map(variantId => ({ variantId, executor: 'openai-api', model: 'authored-loopback-test', policy, maxOutputTokens: 64 })) }));
-    const changedFile = join(installation, 'node_modules/zod/index.cjs'), missingFile = join(installation, 'node_modules/ajv/dist/refs/json-schema-2020-12/schema.json');
-    expect(existsSync(changedFile)).toBe(true); expect(existsSync(missingFile)).toBe(true);
+  it('rejects retired typed dispatch in the fixed worker before reading a plan, touching a workspace or calling a provider', async () => {
+    const directory = root(), workspace = join(directory, 'absent-workspace'), study = join(directory, 'absent-study');
     let requests = 0;
     const server = createServer((request, response) => {
       request.resume(); request.on('end', () => {
         requests++;
-        if (requests === 1) { if (mutation === 'changed') appendFileSync(changedFile, '\n// isolated dependency drift\n'); else unlinkSync(missingFile); }
-        response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
+        response.writeHead(500); response.end('Provider must not be called.');
       });
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address(); if (!address || typeof address === 'string') throw new Error('Expected loopback server.');
     const environment = { OPENAI_API_KEY: 'authored-worker-test-key', OPENAI_BASE_URL: `http://127.0.0.1:${address.port}` };
-    const request = { repository: installation, runnerFile: join(repository, 'dist-scripts/bench/knowledge-study.js'), environment,
-      values: { '--workspace': f.workspace, '--study': join(directory, 'study'), '--corpus': corpusPath, '--config': configPath } };
+    const request = { command: 'run', repository, runnerFile: join(repository, 'dist-scripts/bench/knowledge-study.js'), environment,
+      values: { '--workspace': workspace, '--study': study, '--slot': 'absent-slot', '--authorize-plan': 'sha256:absent' } };
     try {
-      const prepared = await builtCall(installation, 'cli/runtime/knowledge-study.js', 'executeLocalExtractionStudy', { ...request, command: 'prepare' });
-      expect(prepared.ok).toBe(true); expect(requests).toBe(0);
-      const plan = JSON.parse(readFileSync(join(directory, 'study/plan.json'), 'utf8'));
-      const advanced = await builtCall(installation, 'cli/runtime/knowledge-study.js', 'executeLocalExtractionStudy', { ...request, command: 'run',
-        values: { ...request.values, '--slot': plan.slots[0].slotId, '--authorize-plan': plan.planId } });
-      expect(advanced.ok && advanced.value.exitCode === 0).toBe(false); expect(requests).toBe(1);
-      const runFile = join(f.workspace, 'extraction-runs', `${plan.slots[0].runId}.json`), saved = readFileSync(runFile);
-      const manifest = JSON.parse(saved.toString('utf8')); expect(manifest.status).not.toBe('completed');
-      expect(manifest.attempts[0].outcome).toBeDefined(); expect(manifest.attempts.length).toBeLessThanOrEqual(2);
-      const retry = await builtCall(installation, 'cli/runtime/knowledge-study.js', 'executeLocalExtractionStudy', { ...request, command: 'run',
-        values: { ...request.values, '--slot': plan.slots[0].slotId, '--authorize-plan': plan.planId } });
-      expect(retry.ok).toBe(false); expect(requests).toBe(1); expect(readFileSync(runFile)).toEqual(saved);
+      for (let call = 0; call < 2; call++) {
+        const rejected = await builtCall(repository, 'cli/runtime/knowledge-study.js', 'executeLocalExtractionStudy', request);
+        expect(rejected).toMatchObject({ ok: true, value: { errorCode: 'knowledge_study_generation_unsupported',
+          modelCallsByThisCommand: 0, qualityConclusion: 'not_evaluated', exitCode: 1 } });
+        expect(rejected.value.message).toContain('observe knowledge generate');
+        expect(requests).toBe(0); expect(existsSync(workspace)).toBe(false); expect(existsSync(study)).toBe(false);
+      }
     } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   }, 120_000);
 

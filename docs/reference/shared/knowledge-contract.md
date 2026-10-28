@@ -7,24 +7,27 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Authored prompt-json | `knowledge-extraction-v29` |
-| Configured strict prompt | `knowledge-extraction-v30` |
-| Structural wire | `omk-knowledge-extraction-wire/v1` |
-| Domain response Schema | `4` |
-| Extraction run Schema | `5` |
+| Production workflow | `knowledge-body-first/v1` |
+| Body prompt | `knowledge-body-generation/v2` |
+| Association prompt | `knowledge-association-generation/v1` |
+| Body profile digest | `sha256:50a3749e9d70bc3e712dce78275af050c4b860af2bc756bf638d97535270c62f` |
+| Association profile digest | `sha256:77a645dd123e894174566767a1a5b9e8125042119ae0a472107b374741c24337` |
+| Body structural wire digest | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
+| Association structural wire digest | `sha256:9739c4f7e3c90d76826323cb6aa270219086ddcf183e40e6c33ad8d5caf911ae` |
+| Body response Schema | `1` |
+| Association response Schema | `1` |
+| Knowledge history Schema | `3` |
+| Association history Schema | `1` |
+| Generation journal Schema | `1` |
 | Entity history Schema | `2` |
-| System + input UTF-8 capacity | 1,048,576 bytes |
-| Producer outcome JSON declaration ceiling | 536,805,376 bytes |
-| Serialized study plan capacity | 16,777,216 bytes |
-| Complete study inspection input capacity | 134,217,728 bytes |
-| Default generation policy | `knowledge-generation-single/v1` |
-| Default OMK invocation count | 1 |
-| Opt-in bounded policy | `knowledge-generation-bounded/v1` |
-| Bounded OMK invocation ceiling | 3 |
-| Bounded reask ceiling (included in invocations) | 2 |
-| Bounded output-token ceiling per invocation | 128,000 |
+| Complete native archive capacity | 536,870,887 bytes |
+| Default retrieval response budget (adjustable) | 65,536 bytes |
+| Minimum retrieval response budget | 1,024 bytes |
+| Maximum retrieval response budget | 1,048,576 bytes |
+| Historical typed study plan capacity | 16,777,216 bytes |
+| Portable study inspection capacity | 134,217,728 bytes |
 <!-- omk:knowledge-contract:end -->
 
-Byte capacities are not token, model-context or spending budgets. The outcome ceiling bounds the producer’s declared returned JSON; persisted archive envelopes have a separate file capacity. Bounded policy requires explicit opt-in, and reasks count toward total invocations; see the [knowledge extraction guide](../../guides/knowledge/extract-knowledge.md) for model and token-reservation conditions.
+The retrieval default is an adjustable budget for the whole serialized response plus newline, not a knowledge-body definition, storage cap or model limit. Native archive capacity, producer proof, source/request admission and store limits remain separate checks. The body and association phases use distinct native originals; current generation does not use the old single/bounded policy. See the [knowledge guide](../../guides/knowledge/extract-knowledge.md) for phase recovery and explicit continuation.
 
-These current values do not rewrite historical prompts, runs, Schemas or measurement conclusions; different identities cannot inherit quality acceptance. See the [entity extraction contract](../../specs/entities/entity-extraction.md) for historical identities and provenance limits.
+These identities are BREAKING-SCHEMA/API/COMPARABILITY relative to typed history v2/run5. They neither rewrite historical prompt bytes nor inherit historical quality conclusions. Historical typed study capacities above describe only the independent frozen measurement/inspection contract; its generation plans are unsupported in this build. See the [construction and migration contract](../../specs/knowledge/knowledge-domain-model.md) and [extraction specification](../../specs/entities/entity-extraction.md).

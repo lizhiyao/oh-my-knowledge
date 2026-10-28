@@ -1,51 +1,46 @@
 import yaml from 'js-yaml';
 import type { KnowledgeRevision } from '../../contracts.js';
-import type { KnowledgeGrounding } from '../../store.js';
 import type { AuthoredArtifactKind } from './carrier-contracts.js';
 
-export interface CarrierKnowledge { revision: KnowledgeRevision; grounding: KnowledgeGrounding; sourceWarnings: string[]; tagging: { tags: string[] } }
+export interface CarrierKnowledge { revision: KnowledgeRevision; sourceWarnings: string[]; tagging: { tags: string[] } }
 
-/** Exported properties describe this snapshot; they do not grant verification authority. */
+/** Metadata describes exact incorporated body revisions, never their truth or derived links. */
 export function carrierMetadata(items: CarrierKnowledge[], kind: AuthoredArtifactKind): Record<string, unknown> {
   const unique = (values: string[]) => [...new Set(values)];
   const tags = [...new Map(items.flatMap(item => item.tagging.tags).map(tag => [tag.toLowerCase(), tag])).values()];
+  const evidence = items.flatMap(item => item.revision.content.segments.flatMap(segment => segment.evidence));
   const properties = {
-    omk_schema: 'omk-knowledge-metadata/v1', tags,
+    omk_schema: 'omk-knowledge-metadata/v2', tags,
     summary: items.map(item => item.revision.title).join('；'),
-    knowledge_types: unique(items.map(item => item.revision.content.organization.knowledgeKind)),
-    scope: unique(items.flatMap(item => item.revision.content.statements.map(statement => statement.context.scenario))),
-    evidence_bases: unique(items.flatMap(item => item.revision.evidence.map(link => link.basis))),
+    knowledge_types: unique(items.flatMap(item => item.revision.content.organization ? [item.revision.content.organization.knowledgeKind] : [])),
+    evidence_bases: unique(evidence.map(item => item.basis)),
     verification_status: 'not_assessed',
     knowledge_revisions: items.map(item => `${item.revision.knowledgeId}/${item.revision.revisionId}`),
-    source_versions: unique(items.flatMap(item => item.grounding.sourceBindings.map(binding => `${binding.snapshotId}/${binding.sourceVersion}`))),
+    knowledge_body_digests: items.map(item => item.revision.bodyDigest),
+    source_versions: unique(evidence.map(item => `${item.source.snapshotId}/${item.source.sourceVersion}`)),
   };
   return kind === 'prompt' ? properties : { metadata: Object.fromEntries(Object.entries(properties).map(([key, value]) => [key.startsWith('omk_') ? key : `omk_${key}`, typeof value === 'string' ? value : JSON.stringify(value)])) };
 }
 
-/** Render reviewed material without inventing instructions, time bounds or verification. */
+/** Incorporate the complete canonical segments; entity and typed projections never rewrite them. */
 export function renderCarrierKnowledge(items: CarrierKnowledge[], lang: 'zh' | 'en'): string {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const literal = (value: string) => value.replace(/[\\`*_{}\[\]<>#]/g, '\\$&');
-  const field = (name: string, values: string[]) => `${name}：${values.length ? values.map(literal).join('；') : t('未记录', 'Not recorded')}`;
-  return items.map(({ revision: r, grounding: g, sourceWarnings }) => {
-    const entity = (id: string) => literal(r.entities.find(item => item.entityId === id)?.label ?? id);
-    const time = (value: KnowledgeRevision['content']['statements'][number]['context']['occurredDuring']) => JSON.stringify(value);
-    const lines = [`### ${literal(r.title)}`, `${t('组织形式', 'Form')}：${({ fact: t('事实', 'Fact'), case: t('案例', 'Case'), method: t('方法', 'Method') })[r.content.organization.knowledgeKind]}`, `${t('使用前核对适用范围；保留表示愿意维护，不代表已证实。', 'Check applicability before use. Retained content is not verified.')}`];
-    const organization = r.content.organization;
-    if (organization.knowledgeKind === 'case') lines.push(field(t('案例场景', 'Case situation'), [organization.situation]), field(t('案例缺口', 'Case gaps'), organization.gaps));
-    if (organization.knowledgeKind === 'method') lines.push(field(t('方法目的', 'Purpose'), [organization.purpose]));
-    for (const s of r.content.statements) {
-      const roles = organization.knowledgeKind === 'case' ? [organization.actionStatementIds.includes(s.statementId) ? t('行动', 'Action') : '', organization.outcomeStatementIds.includes(s.statementId) ? t('结果', 'Outcome') : ''].filter(Boolean) : organization.knowledgeKind === 'method' && organization.instructionStatementIds.includes(s.statementId) ? [t('方法步骤', 'Instruction')] : [];
-      if (roles.length) lines.push(field(t('作用', 'Role'), roles));
-      lines.push(`\n- ${entity(s.subject.entityId)} ${literal(s.relation)}${s.object ? ` ${entity(s.object.entityId)}` : ''}`, `  ${t('陈述含义', 'Claim classification')}：${({ descriptive: t('描述', 'Description'), normative: t('规范要求', 'Normative requirement'), capability: t('能力', 'Capability'), permission: t('许可', 'Permission') })[s.modality]} / ${s.polarity === 'positive' ? t('肯定陈述', 'Positive claim') : t('否定陈述', 'Negative claim')}`, `  ${field(t('场景', 'Scenario'), [s.context.scenario])}`, `  ${field(t('条件', 'Conditions'), s.context.conditions)}`, `  ${field(t('例外', 'Exceptions'), s.context.exceptions)}`, `  ${field(t('未知项', 'Unknowns'), s.context.unknowns)}`, `  ${t('发生时间', 'Occurrence')}：${literal(time(s.context.occurredDuring))}`, `  ${t('适用时间', 'Validity')}：${literal(time(s.context.validDuring))}`);
-      for (const e of r.evidence.filter(link => link.statementIds.includes(s.statementId))) {
-        const citation = g.citations.find(item => item.evidenceLinkId === e.evidenceLinkId);
-        lines.push(`  ${t('依据', 'Evidence')}：${({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[e.basis]} / ${({ supports: t('支持', 'Supports'), opposes: t('反对', 'Opposes'), background: t('背景', 'Background') })[e.relation]}；${literal(e.interpretation)}`);
-        if (citation) lines.push(`  ${t('原文', 'Quote')}：${literal(citation.selection.quote)} (${citation.selection.evidenceRef}, ${citation.selection.start}–${citation.selection.end})`);
+  return items.map(({ revision, sourceWarnings }) => {
+    const lines = [`### ${literal(revision.title)}`, t('使用前核对适用范围；保留表示愿意维护，不代表已证实。', 'Check applicability before use. Retained content is not verified.')];
+    if (revision.content.organization) lines.push(`${t('组织形式', 'Form')}：${({ fact: t('事实', 'Fact'), case: t('案例', 'Case'), method: t('方法', 'Method') })[revision.content.organization.knowledgeKind]}`);
+    for (const segment of revision.content.segments) {
+      lines.push(literal(segment.text));
+      for (const evidence of segment.evidence) {
+        const basis = ({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[evidence.basis];
+        lines.push(`${t('依据', 'Evidence')}：${basis}${evidence.interpretation ? `；${literal(evidence.interpretation)}` : ''}`,
+          `${t('原文', 'Quote')}：${literal(evidence.selection.quote)} (${evidence.selection.evidenceRef}, ${evidence.selection.start}–${evidence.selection.end})`,
+          `${t('来源版本', 'Source version')}：${evidence.source.snapshotId} / ${evidence.source.sourceVersion}`);
       }
     }
-    lines.push(`\n${field(t('复用用途', 'Potential use'), [g.reuseRationale])}`, field(t('身份不确定性', 'Identity uncertainties'), g.identityUncertainties), `${t('知识修订', 'Knowledge revision')}：${r.knowledgeId} / ${r.revisionId}`);
-    for (const binding of g.sourceBindings) lines.push(`${t('来源版本', 'Source version')}：${binding.snapshotId} / ${binding.sourceVersion}`);
+    lines.push(`${t('复用用途', 'Potential use')}：${literal(revision.reuseRationale)}`,
+      `${t('知识修订', 'Knowledge revision')}：${revision.knowledgeId} / ${revision.revisionId}`,
+      `${t('正文摘要', 'Body digest')}：${revision.bodyDigest}`);
     for (const warning of sourceWarnings) lines.push(`${t('来源限制', 'Source limitation')}：${literal(warning)}`);
     return lines.join('\n\n');
   }).join('\n\n');
@@ -103,7 +98,7 @@ export function composeCarrierContent(name: string, directoryName: string, artif
     metadata: { ...previous.metadata as Record<string, unknown> | undefined, ...properties.metadata as Record<string, unknown> },
   }) };
   // A generated header is a snapshot of the selected revisions/tags. Imported custom tags are kept on first import.
-  if (artifactKind === 'prompt' && previous.omk_schema !== 'omk-knowledge-metadata/v1' && Array.isArray(previous.tags)) {
+  if (artifactKind === 'prompt' && previous.omk_schema !== 'omk-knowledge-metadata/v2' && Array.isArray(previous.tags)) {
     updated.tags = [...new Set([...previous.tags.filter((tag): tag is string => typeof tag === 'string'), ...properties.tags as string[]])];
   }
   const prepared = JSON.stringify(previous) === JSON.stringify(updated) ? base

@@ -93,6 +93,7 @@ Knowledge responsibilities retain separate dependency boundaries within one sour
 ```text
 knowledge/
 ├── contracts.ts  # knowledge content and evidence contracts
+├── associations.ts # independent derived association contracts and reviews
 ├── history.ts    # immutable revision rules
 ├── store.ts      # storage ports and canonical identity
 ├── tags.ts       # tag contracts
@@ -100,9 +101,11 @@ knowledge/
 ├── entities/     # pure window identity, link review and invocation contracts
 ├── entity-library/      # pure cross-window organization contracts and revisions
 ├── extraction/   # selected windows, model protocols and output admission
+├── measurement/  # frozen typed measurement DTOs
 ├── entity-linking/      # cross-window candidate and review execution
 ├── application/  # shared use cases and local application assembly
 ├── adapters/     # model transport, source reads and file persistence
+├── migration/    # explicit legacy workspace conversion contracts
 └── artifacts/    # knowledge carrier lifecycle
 ```
 

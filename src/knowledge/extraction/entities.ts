@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { EntityMentionSchema, type EvidenceExcerpt } from '../contracts.js';
+import type { EvidenceExcerpt } from '../contracts.js';
+import { EntityMentionSchema } from '../measurement/typed-contracts.js';
+import { TypedQuoteOccurrenceLocatorSchema } from '../measurement/typed-quote-locator.js';
 import { entityIdentityProblems, entityIdentityReferenceProblems, entityIdentityShape } from '../entities/identity.js';
 import { validateEntityMentionSelection } from '../entities/validation.js';
-import { locateQuoteOccurrence, QuoteOccurrenceLocatorSchema } from './quote-occurrence.js';
+import { locateQuoteOccurrence } from './quote-occurrence.js';
 
 const id = z.string().min(1).max(256);
 const text = z.string().trim().min(1).max(4096);
@@ -19,7 +21,7 @@ export const EntityModelSchema = z.strictObject({
     context.addIssue({ code: 'custom', path: ['possibleEntityIds'], message: 'Possible targets belong to unresolved identities.' });
   }
 });
-export const EntityModelMentionSchema = EntityMentionSchema.extend({ selection: QuoteOccurrenceLocatorSchema });
+export const EntityModelMentionSchema = EntityMentionSchema.extend({ selection: TypedQuoteOccurrenceLocatorSchema });
 export type EntityModel = z.infer<typeof EntityModelSchema>;
 export interface EntityAdmissionRejection { component: 'entity' | 'mention'; index: number; reasons: string[] }
 export interface AdmittedEntityAnalysis {

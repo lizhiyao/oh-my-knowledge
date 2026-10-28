@@ -4,10 +4,9 @@ import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { ConversationExtractionDialog } from './conversation-extraction';
-import { GenerationPolicyFields } from './generation-policy-fields';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
-import { ApplyEntitiesDialog } from './apply-entities';
 import { KnowledgeRevisionDrawer } from './revision-editor';
+import { AssociationMappingDrawer } from './association-mapping';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeReader } from './reader';
@@ -21,7 +20,6 @@ import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
-import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(rows: KnowledgeCandidateRow[]): void }) {
   const zh = lang === 'zh';
@@ -45,7 +43,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [end, setEnd] = useState<number | null>(null);
   const [executor, setExecutor] = useState('codex');
   const [model, setModel] = useState('');
-  const [policy, setPolicy] = useState<ExtractionGenerationPolicy>();
   const [snapshot, setSnapshot] = useState<KnowledgeCandidateSource | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -54,13 +51,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showRuns, setShowRuns] = useState(false);
   const [showStudy, setShowStudy] = useState(false);
   const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
-  const [applyingEntities, setApplyingEntities] = useState(false);
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
   const [batchRunId, setBatchRunId] = useState<string | null>(null);
   const [previousId, setPreviousId] = useState<string | null>(null);
   const [showBatchSummary, setShowBatchSummary] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [mapping, setMapping] = useState(false);
   const [reason, setReason] = useState('');
   const [decisionChoice, setDecisionChoice] = useState<'retain' | 'discard' | null>(null);
   const [tagsDraft, setTagsDraft] = useState<string[]>([]);
@@ -75,7 +72,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); setDecisionChoice(null); }, [detail]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
     const data = await requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal ?? controller.current?.signal);
-    if (['maintain', 'revise', 'apply-entities', 'resume'].includes(operation)) notifyKnowledgeChange(workspace);
+    if (['maintain', 'revise', 'apply-associations', 'review-associations', 'resume'].includes(operation)) notifyKnowledgeChange(workspace);
     return data as T;
   }
   async function work(action: () => Promise<void>) {
@@ -122,14 +119,14 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
   }
   function readbackDetail(latest: KnowledgeCandidateDetail) {
-    setEditing(false); setApplyingEntities(false); setDetail(latest); setNeedsRefresh(false); setError(''); setReason('');
+    setEditing(false); setMapping(false); setDetail(latest); setNeedsRefresh(false); setError(''); setReason('');
     if (!embedded) {
       const url = new URL(window.location.href); url.searchParams.set('id', latest.revision.knowledgeId);
       url.searchParams.set('revision', latest.revision.revisionId); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url);
     }
   }
   function closeRevisionEditor(needsReadback: boolean) {
-    setEditing(false); setApplyingEntities(false);
+    setEditing(false); setMapping(false);
     if (needsReadback) {
       setNeedsRefresh(true);
       setError(t('草稿已关闭。先重新读取知识及修订历史，再开始新的修订；不会重发先前保存。', 'Draft closed. Reload knowledge and revision history before starting a new revision; the previous save will not be resent.'));
@@ -153,9 +150,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   }, []);
   async function handleRun(run: KnowledgeCandidateRun) {
     setNotice(run.status === 'completed'
-      ? t(`生成完成：${run.committed.length} 条候选，${run.rejections.length} 条输出未接纳。`, `Generated ${run.committed.length} candidates; ${run.rejections.length} outputs rejected.`)
+      ? t(`生成完成：${run.bodies.length} 条候选，${run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} 条输出未接纳。`, `Generated ${run.bodies.length} candidates; ${run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} outputs rejected.`)
       : t(`运行状态：${run.status}。请在生成记录中查看或恢复。`, `Run status: ${run.status}. Inspect or resume it in history.`));
-    await refresh(); if (run.committed[0]) { await open(run.committed[0].knowledgeId); setBatchRunId(run.runId); setPreviousId(null); }
+    await refresh(); if (run.bodies[0]) { await open(run.bodies[0].knowledgeId); setBatchRunId(run.runId); setPreviousId(null); }
   }
   function leaveBatch() {
     setBatchRunId(null); setPreviousId(null); setShowBatchSummary(false); setQuery(''); setFilter('all');
@@ -225,7 +222,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         ], onClick: ({ key }) => {
           if (key === 'study') setShowStudy(true);
           if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
-          if (key === 'import') { setSnapshot(null); setPolicy(undefined); setShowImport(true); }
+          if (key === 'import') { setSnapshot(null); setShowImport(true); }
         } }}><Button ref={moreControl}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
@@ -253,12 +250,29 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         {visibleRows.length ? visibleRows.map((row) => <button key={row.knowledgeId} disabled={busy} className={`knowledge-directory-row${detail?.revision.knowledgeId === row.knowledgeId ? ' selected' : ''}`} onClick={event => { if (directory) event.currentTarget.closest('.knowledge-core')?.querySelector<HTMLButtonElement>('.knowledge-directory-toggle')?.focus(); setDirectory(false); void work(() => open(row.knowledgeId)); }}>
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </div><footer className="knowledge-directory-footer" role="status">{t(`${visibleRows.length} 条结果`, `${visibleRows.length} results`)}</footer></aside>
-      {summary && batch ? <article className="knowledge-reader"><div className="knowledge-reader-scroll"><div className="knowledge-reading"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.committed.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div></div></article>
+      {summary && batch ? <article className="knowledge-reader"><div className="knowledge-reader-scroll"><div className="knowledge-reading"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.bodies.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div></div></article>
         : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh}
           onRevision={revision => void work(() => open(detail.revision.knowledgeId, revision))}
           onRetry={() => void work(() => open(detail.revision.knowledgeId, detail.revision.revisionId))}
-          onEntities={() => { if (detail.grounding.entityAnalysisRef) setEntityTarget({ analysisId: detail.grounding.entityAnalysisRef.analysisId, revision: detail.grounding.entityAnalysisRef.revisionId }); }}
-          onApplyEntities={needsRefresh ? undefined : () => setApplyingEntities(true)}
+          onEntities={() => { const ref = detail.derivedAssociations.revision?.entityAnalysisRef; if (ref) setEntityTarget({ analysisId: ref.analysisId, revision: ref.revisionId }); }}
+          onMapAssociations={needsRefresh ? undefined : () => setMapping(true)}
+          onReviewAssociations={needsRefresh ? undefined : (choice, reason) => void work(async () => {
+            const projection = detail.derivedAssociations.revision;
+            if (!projection) return;
+            await api('review-associations', { id: detail.revision.knowledgeId, revision: projection.revisionId,
+              generation: detail.derivedAssociations.generation, choice, reason });
+            await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
+          })}
+          onRebuildAssociations={model.trim() && detail.sources.length === 1 && detail.sources[0].status === 'available' ? () => Modal.confirm({
+            title: t('重新生成实体关联？', 'Regenerate entity associations?'),
+            content: t(`将已保存正文与其来源窗口发送到 ${executor} / ${model}，调用模型一次。正文和保留决定不变，新关联需要单独核对。`, `Send the saved content and its source window to ${executor} / ${model} for one model call. Content and retention decisions stay unchanged; review the new associations separately.`),
+            onOk: () => work(async () => {
+              await api('rebuild-associations', { knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId,
+                bodyDigest: detail.revision.bodyDigest, executor, model, runId: crypto.randomUUID() });
+              await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
+              setNotice(t('已读取关联结果，请单独核对关联状态与对象。', 'Association results loaded. Review their state and entities separately.'));
+            }),
+          }) : undefined}
           onDeleteSource={snapshot => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}
           tools={<CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>}
           footer={<>{detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <Button disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button>}
@@ -269,12 +283,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {authoringIds && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
     {showStudy && <KnowledgeStudyInspectionDrawer lang={lang} onClose={() => setShowStudy(false)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
-      lang={lang} onClose={() => setEntityTarget(undefined)}/>}
-    {applyingEntities && detail && <ApplyEntitiesDialog key={`${workspace}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
-      notifyKnowledgeChange(workspace); setApplyingEntities(false); setDetail(saved); setReason(''); setNeedsRefresh(false);
-      setNotice(t('已保存绑定实体新修订的知识。请重新核对并决定保留或舍弃。', 'Saved knowledge bound to the new entity revision. Review it and make a new retention decision.'));
-      void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
-    }}/>}
+      lang={lang} onClose={() => setEntityTarget(undefined)} onSaved={() => void work(async () => {
+        if (detail) { await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId); }
+      })}/>}
+
     {showExtraction && <ConversationExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowExtraction(false)} onFinished={root => {
       void work(async () => {
         const changed = root !== workspace;
@@ -318,12 +330,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
         <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={value => { setExecutor(value); setModel(''); }} options={['codex', 'openai-api'].map((value) => ({ value, label: value }))}/></label>
         <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
-        <GenerationPolicyFields lang={lang} value={policy} presentation="summary"/>
-        <details className="conversation-extract-options"><summary>{t('调整调用与预算上限', 'Adjust invocation and budget limits')}</summary><GenerationPolicyFields lang={lang} value={policy} onChange={setPolicy} disabled={busy} presentation="fields"/></details>
         <Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
           {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}
           <p>{t('仅处理选定输入；不会自动修改 AGENTS.md 或 skill。模型费用以执行器实际报告为准。', 'Only selected input is processed. No automatic AGENTS.md or skill edits. Cost depends on executor reporting.')}</p>
-          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID(), ...(policy ? { policy } : {}) }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
+          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
     {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang}
@@ -332,40 +342,35 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         setNotice(t('已保存新修订，需要重新决定保留或舍弃。', 'Saved a new revision. Decide again whether to retain or discard it.'));
         void work(async () => { await refresh(); await open(saved.revision.knowledgeId); });
       }}/>}
+    {mapping && detail && <AssociationMappingDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang}
+      onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
+        setMapping(false); setDetail(saved); notifyKnowledgeChange(workspace);
+        setNotice(t('已保存新的待核对实体映射；正文和保留决定保持原样。', 'Saved new pending entity mappings. Content and retention decisions are unchanged.'));
+        void work(async () => { await refresh(); await open(saved.revision.knowledgeId, saved.revision.revisionId); });
+      }}/>}
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
       <Button onClick={() => { setShowRuns(false); setShowStudy(true); }}>{t('核对研究证据', 'Inspect study evidence')}</Button>
-      <p className="candidate-help">{t('仅显示当前 v5 运行。旧 runs/ 记录不在此读取，已有来源、实体 v2 与知识 v2 仍可在同一目录使用。', 'Only current v5 runs are shown. Former runs/ records are not read here; existing sources, entity v2 and knowledge v2 remain usable in this workspace.')}</p>
+      <p className="candidate-help">{t('显示当前正文优先流程。旧格式运行会明确标记；旧知识需显式迁入新工作区。', 'Current content-first workflow. Older runs are explicitly marked; old knowledge requires explicit migration to a new workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.startedAt}</p><p>{run.committed.length} {t('条候选', 'candidates')} / {run.rejections.length} {t('条拒绝输出', 'rejected outputs')}</p>
-        <ExtractionInvocationSummary invocation={run.invocation} lang={lang}/>
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.createdAt}</p><p>{run.bodies.length} {t('条候选', 'candidates')} / {run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} {t('条拒绝输出', 'rejected outputs')}</p>
+        <ExtractionInvocationSummary run={run} lang={lang}/>
         <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
-        {run.committed.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.committed[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['prepared', 'generating', 'cancelled', 'failed'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
+        {run.bodies.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.bodies[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['active'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
     </Drawer>
   </section>;
 }
 
-/** Present the safe domain summary without loading raw outcomes or interpreting usage. */
-function ExtractionInvocationSummary({ invocation, lang }: { invocation: KnowledgeCandidateRun['invocation']; lang: Language }) {
+/** Native phase records are diagnostics, independent of content acceptance. */
+function ExtractionInvocationSummary({ run, lang }: { run: KnowledgeCandidateRun; lang: Language }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  return <details className="candidate-help extraction-invocation">
-    <summary>{t('结果证据归档：', 'Outcome evidence archive: ')}{invocation.archiveStatus === 'recorded' ? t('已记录', 'Recorded') : t('待归档', 'Pending')}
-      {invocation.failureKind !== null && <> · {t('失败类别：', 'Failure category: ')}{invocation.failureKind}</>}</summary>
-    <p>{invocation.policyId === 'knowledge-generation-single/v1'
-      ? t(`本运行限 ${invocation.limits.maxInvocations} 次 OMK 调用；不自动重试或 fallback。`, `This run permits ${invocation.limits.maxInvocations} OMK invocation; no automatic retry or fallback.`)
-      : t(`本运行最多 ${invocation.limits.maxInvocations} 次 OMK 调用，含最多 ${invocation.limits.maxReasks} 次校验重问；不使用 fallback。`, `This run permits up to ${invocation.limits.maxInvocations} OMK invocations, including up to ${invocation.limits.maxReasks} validation reasks; no fallback.`)}</p>
-    <p>{t('已记录 OMK 调用尝试：', 'Recorded OMK invocation attempts: ')}{invocation.attemptCount}</p>
-    <p>{invocation.budget.maxTotalTokens === undefined
-      ? t('未启用 token 预约预算。', 'No token reservation budget is enabled.')
-      : t(`token 预约已用 ${invocation.budget.reservedTokens}／总额 ${invocation.budget.maxTotalTokens}；已预约额度不返还。`, `Token reservation used ${invocation.budget.reservedTokens} / total ${invocation.budget.maxTotalTokens}; reservations are not refunded.`)}</p>
-    {invocation.policyId === 'knowledge-generation-bounded/v1'
-      ? <p>{t('观测 token 用量：', 'Observed token usage: ')}{invocation.budget.observedTokens ?? t('未知', 'Unknown')} · {t('用量未知调用：', 'Invocations with unknown usage: ')}{invocation.budget.unknownAttempts}</p>
-      : <p>{t('未启用预约核算；原生用量见运行详情。', 'Reservation accounting is not enabled; inspect the run details for native usage.')}</p>}
-    <p>{t('策略：', 'Policy: ')}<code>{invocation.policyId}</code> · {t('输出模式：', 'Output mode: ')}<code>{invocation.outputMode}</code></p>
-    <p>{t('结构线协议：', 'Structural wire: ')}{invocation.wireId === null ? t('未使用', 'Not used') : <code>{invocation.wireId}</code>}</p>
-    <p>{invocation.archiveStatus === 'pending'
-      ? t('待归档不能证明请求未发送或费用为零；恢复不会再次调用模型。', 'Pending archival does not prove the request was unsent or cost zero; resume never calls the model again.')
-      : t('已记录归档引用，不代表当前归档完整性已校验，也不代表内容已通过接纳或质量验证；恢复时会校验归档，不会再次调用模型。', 'Recorded archive references do not verify current archive integrity, admission or quality; resume validates the archive and never calls the model again.')}</p>
+  return <details className="candidate-help extraction-invocation"><summary>{t('执行记录', 'Execution records')}</summary>
+    {run.schemaStatus === 'unsupported' ? <p>{t('旧格式运行，保留原件；当前流程不会恢复或重发它。', 'Older run format retained. The current workflow does not resume or redispatch it.')}</p>
+      : run.phases.map(phase => <div key={phase.invocationId}>
+        <p>{phase.stageKind === 'body' ? t('知识正文', 'Knowledge content') : t('实体关联', 'Entity associations')} · {phase.state}</p>
+        <p>{phase.issues.join('；')}</p><code>{phase.profileId} · {phase.promptVersion}</code>
+      </div>)}
+    <p>{t('恢复只处理已有原件，不重新调用模型。保存成功不代表内容已经核对。', 'Resume processes existing outcomes without calling models again. Saving does not establish reviewed content.')}</p>
   </details>;
 }
 
@@ -409,7 +414,7 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
   latest?: KnowledgeCandidateRun; failedToLoad?: boolean; onChoose(): void; onHistory(): void; onRetry?(): void; onEntities?(id: string): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  const emptyResult = latest?.status === 'completed' && latest.committed.length === 0;
+  const emptyResult = latest?.status === 'completed' && latest.bodies.length === 0;
   return <div className="candidate-start">
     <div className="candidate-start-main">
       <h2>{t('选一段工作记录，找出值得复用的经验', 'Find reusable knowledge in a work log')}</h2>
@@ -430,8 +435,8 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
       <div className="candidate-last-run" role="status">
         {loading ? <p>{t('正在读取提炼记录…', 'Loading extraction history…')}</p> : failedToLoad ? <><p>{t('暂时无法读取已有记录。请检查保存位置，再重新读取；读取失败不表示没有候选。', 'Could not load existing records. Check the save location and retry; a failed read does not mean there are no candidates.')}</p>{onRetry && <Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button>}</> : latest ? <>
           <strong>{emptyResult ? t('上次提炼完成，返回 0 条候选', 'Last extraction completed with 0 candidates') : t(`上次提炼：${extractionRunStatusLabel(latest.status, lang)}`, `Last extraction: ${extractionRunStatusLabel(latest.status, lang)}`)}</strong>
-          <p>{emptyResult ? (latest.rejections.length ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
-          <ExtractionInvocationSummary invocation={latest.invocation} lang={lang}/>
+          <p>{emptyResult ? (latest.phases.some(phase => (phase.rejectedCount ?? 0) > 0) ? t('部分输出未通过引用或格式校验，详情见提炼记录。', 'Some output failed citation or format checks. See the extraction history.') : t('可以换一份包含具体事实、纠正或处理结果的记录再试。', 'Try a record with concrete facts, corrections, or outcomes.')) : t('查看提炼记录，了解结果或继续未完成的保存。', 'Inspect the extraction history for results or unfinished saves.')}</p>
+          <ExtractionInvocationSummary run={latest} lang={lang}/>
           {onEntities && <EntityAnalysisSummary run={latest} lang={lang} disabled={busy} onOpen={onEntities}/>}
           <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
         </> : <p>{t('尚无当前 v5 提炼记录；旧 runs/ 记录不在此读取。从左侧选择工作记录开始。', 'No current v5 extraction records; former runs/ records are not read here. Choose a work log to begin.')}</p>}

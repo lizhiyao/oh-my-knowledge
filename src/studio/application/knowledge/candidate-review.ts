@@ -2,13 +2,13 @@ import type { KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeReviewBatch
 
 /** A batch is the candidates actually saved by one extraction, never the whole folder. */
 export function candidateReviewRun(runs: KnowledgeCandidateRun[], knowledgeId: string) {
-  return runs.find(run => run.committed.some(item => item.knowledgeId === knowledgeId));
+  return runs.find(run => run.bodies.some(item => item.knowledgeId === knowledgeId));
 }
 
 /** Project current maintenance choices, including new revisions that await a new decision. */
 export function projectCandidateBatch(run: KnowledgeCandidateRun | undefined, rows: KnowledgeCandidateRow[], selectedId?: string): KnowledgeReviewBatch | undefined {
-  if (!run?.committed.length) return undefined;
-  const ids = [...new Set(run.committed.map(item => item.knowledgeId))];
+  if (!run?.bodies.length) return undefined;
+  const ids = [...new Set(run.bodies.map(item => item.knowledgeId))];
   const byId = new Map(rows.map(row => [row.knowledgeId, row]));
   const batchRows = ids.flatMap(id => byId.has(id) ? [byId.get(id)!] : []);
   const current = batchRows.findIndex(row => row.knowledgeId === selectedId);

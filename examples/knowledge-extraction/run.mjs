@@ -35,88 +35,106 @@ try {
     identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
     referentKind: 'object', componentRef: null, collection: null,
   }));
-  // Authored Schema v4 response, not a model capture or human-reviewed annotation.
-  const response = {
-    responseKind: 'knowledge-extraction', schemaVersion: 4, entities,
+  // Two authored current responses, not native model captures or reviewed annotations.
+  const bodyText = '来源报告 Alpha 使用 Beta；仅限本合成窗口，版本、结果和事实发生时间未知。';
+  const bodyResponse = {
+    responseKind: 'knowledge-body-generation', schemaVersion: 1,
+    proposals: [{ proposalId: 'candidate', title: message,
+      segments: [{ segmentId: 'usage', text: bodyText, evidence: [{ evidenceRef, quote: message, occurrence: null,
+        basis: 'source_assertion', interpretation: '只记录来源说法，尚待核对' }] }],
+      organization: { knowledgeKind: 'fact' }, reuseRationale: '演示后续核对相同条件下的来源说法' }],
+  };
+  const associationResponse = {
+    responseKind: 'knowledge-association-generation', schemaVersion: 1, entities,
     mentions: entities.map((entity, index) => ({
       mentionId: `mention-${index}`, entityId: entity.entityId,
-      selection: { evidenceRef, quote: entity.label }, basis: 'explicit', rationale: '逐字对象名称',
+      selection: { evidenceRef, quote: entity.label, occurrence: null }, basis: 'explicit', rationale: '逐字对象名称',
     })),
-    proposals: [{
-      proposalId: 'candidate', entityIds: entities.map(entity => entity.entityId),
-      mentionIds: ['mention-0', 'mention-1'],
-      draft: {
-        title: message,
-        content: {
-          statements: [{ statementId: 'usage', subject: { entityId: 'entity-0' },
-            object: { entityId: 'entity-1' }, relation: '使用', modality: 'descriptive', polarity: 'positive',
-            context: { scenario: '本例合成日志的来源说法', conditions: [], exceptions: [],
-              unknowns: ['版本与结果未记录'],
-              occurredDuring: { timeKind: 'unknown', reason: '原文未说明' },
-              validDuring: { timeKind: 'unknown', reason: '适用范围未验证' } } }],
-          organization: { knowledgeKind: 'fact' },
-        },
-        evidence: [{ evidenceLinkId: 'evidence', evidenceRef, statementIds: ['usage'],
-          relation: 'supports', basis: 'source_assertion', interpretation: '只记录来源说法，尚待核对' }],
-      },
-      citations: [{ evidenceLinkId: 'evidence', selection: { evidenceRef, quote: message } }],
-      reuseRationale: '演示后续检查对象之间的关系', identityUncertainties: [],
-    }],
+    associations: [{ bodyKey: 'b0', segmentEntityRefs: entities.map((entity, index) => ({
+      segmentId: 'usage', entityId: entity.entityId, mentionIds: [`mention-${index}`],
+    })), typedRelations: [], issues: [] }],
   };
-  const rawOutput = JSON.stringify(response);
+  const rawByStage = { body: JSON.stringify(bodyResponse), association: JSON.stringify(associationResponse) };
   let fixtureInvocations = 0;
   const fixture = {
-    executor: 'authored-fixture', model: 'not-a-model',
-    async generate(_system, input) {
-      fixtureInvocations++;
-      assert.deepEqual(JSON.parse(input), { excerpts: snapshot.excerpts, limitations: snapshot.limitations });
-      // No provider usage was measured: do not populate token/cost fields with fake zeros.
-      return { output: rawOutput, durationMs: 0 };
+    executor: 'authored-fixture', model: 'not-a-model', timeoutMs: 300_000,
+    inspect() {
+      return { producerId: 'authored-example/v2', producerRevision: 'body-and-association', sourceChannels: [],
+        maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false, scope: 'authored teaching fixture only' } };
+    },
+    async invoke(profile, input, _signal, beforeDispatch) {
+      const parsed = JSON.parse(input);
+      assert.deepEqual(parsed.excerpts, snapshot.excerpts);
+      assert.deepEqual(parsed.limitations, snapshot.limitations);
+      assert.equal(parsed.source.snapshotId, snapshot.snapshotId);
+      assert.equal(parsed.source.sourceVersion, snapshot.sourceVersion);
+      assert.equal(parsed.source.sourcePath, undefined);
+      if (profile.stageKind === 'association') {
+        // The independent second phase consumes a body already committed to public storage.
+        assert.equal(app.list().length, 1);
+        assert.equal(parsed.bodies.length, 1);
+        assert.equal(parsed.bodies[0].bodyKey, 'b0');
+        assert.equal(parsed.bodies[0].content.segments[0].text, bodyText);
+        assert.equal(app.detail(parsed.bodies[0].bodyRef.knowledgeId).revision.bodyDigest, parsed.bodies[0].bodyRef.bodyDigest);
+      } else {
+        assert.equal(profile.stageKind, 'body'); assert.equal(parsed.bodies, undefined);
+      }
+      beforeDispatch(); fixtureInvocations++;
+      // Missing provider token/cost measurements remain missing, not fabricated zeros.
+      return { outcomeKind: 'result', result: { ok: true, output: rawByStage[profile.stageKind], authoredFixture: true } };
     },
   };
   const run = await app.generate(snapshot.snapshotId, fixture);
-  assert.equal(run.status, 'completed');
-  assert.equal(run.rawOutput, rawOutput);
-  assert.equal(run.committed.length, 1);
-  assert.equal(run.rejections.length, 0);
-  assert.equal(run.entityRejections.length, 0);
-  assert.equal(run.runtime.inputTokens, undefined);
-  assert.equal(run.runtime.costUSD, undefined);
+  assert.equal(run.journal.status, 'completed');
+  assert.equal(run.journal.workflowId, 'knowledge-body-first/v1');
+  assert.equal(run.journal.bodies.length, 1);
+  assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['body', 'association']);
+  for (const stage of run.journal.stages) {
+    assert.equal(stage.state, 'completed'); assert.deepEqual(stage.rejected ?? [], []);
+  }
 
-  // Reopen stores from disk; an existing completed run must not invoke the fixture again.
+  // Reopening the same identity only replays durable publication; it never calls either fixture phase again.
   const reopened = createLocalKnowledgeApplication(workspace);
-  const replay = await reopened.generate(snapshot.snapshotId, fixture, run.runId);
-  assert.equal(replay.runId, run.runId);
-  assert.equal(replay.rawOutput, rawOutput);
-  assert.equal(fixtureInvocations, 1);
-  const stored = reopened.detail(run.committed[0].knowledgeId);
-  assert.equal(stored.reviewStatus, 'pending');
-  assert.equal(stored.revision.evidence[0].basis, 'source_assertion');
+  const replay = await reopened.generate(snapshot.snapshotId, fixture, run.journal.runId);
+  assert.deepEqual(replay, run); assert.equal(fixtureInvocations, 2);
+  const originals = reopened.inspect(run.journal.runId).nativeOutcomes;
+  assert.equal(originals.length, 2);
+  for (const original of originals) {
+    assert.equal(original.outcome.outcomeKind, 'result');
+    assert.equal(original.outcome.result.output, rawByStage[original.stageKind]);
+    assert.equal(original.outcome.result.inputTokens, undefined);
+    assert.equal(original.outcome.result.costUSD, undefined);
+  }
+  const stored = reopened.detail(run.journal.bodies[0].knowledgeId);
+  assert.equal(stored.reviewStatus, 'pending'); assert.equal(stored.maintenance, null);
+  assert.equal(stored.revision.content.segments[0].text, bodyText);
+  const bodyEvidence = stored.revision.content.segments[0].evidence[0];
+  assert.equal(bodyEvidence.basis, 'source_assertion');
+  assert.equal(bodyEvidence.source.snapshotId, snapshot.snapshotId);
+  assert.equal(bodyEvidence.source.sourceVersion, snapshot.sourceVersion);
   assert.equal(stored.sources[0].status, 'available');
   assert.equal(stored.sources[0].window.snapshotId, snapshot.snapshotId);
   assert.equal(stored.sources[0].window.sourceVersion, snapshot.sourceVersion);
-  assert.equal(stored.grounding.sourceBindings[0].snapshotId, snapshot.snapshotId);
-  assert.equal(stored.grounding.sourceBindings[0].sourceVersion, snapshot.sourceVersion);
-  assert.equal(stored.grounding.entityAnalysisRef.analysisId, run.runId);
-  assert.equal(stored.entityAnalysis.status, 'available');
-  assert.equal(stored.entityAnalysis.revision.revisionId, stored.grounding.entityAnalysisRef.revisionId);
-  assert.equal(stored.entityAnalysis.revision.entities.length, 2);
-  for (const mention of stored.grounding.mentions) {
-    const excerpt = stored.sources[0].window.excerpts.find(value => value.evidenceRef === mention.selection.evidenceRef);
-    assert.ok(excerpt);
-    assert.equal(excerpt.text.slice(mention.selection.start, mention.selection.end), mention.selection.quote);
+  assert.equal(stored.derivedAssociations.status, 'available');
+  assert.equal(stored.derivedAssociations.reviewStatus, 'pending');
+  const projection = stored.derivedAssociations.revision;
+  assert.deepEqual(projection.bodyRef, run.journal.bodies[0]);
+  const analysis = reopened.entities(projection.entityAnalysisRef.analysisId, projection.entityAnalysisRef.revisionId);
+  assert.equal(analysis.revision.entities.length, 2);
+  for (const selection of [bodyEvidence.selection, ...analysis.revision.mentions.map(mention => mention.selection)]) {
+    const excerpt = stored.sources[0].window.excerpts.find(value => value.evidenceRef === selection.evidenceRef);
+    assert.ok(excerpt); assert.equal(excerpt.text.slice(selection.start, selection.end), selection.quote);
   }
-  const found = reopened.queryEntities({ query: 'Alpha', analysisId: run.runId });
-  assert.equal(found.total, 1);
-  assert.equal(found.rows[0].label, 'Alpha');
-  assert.equal(found.rows[0].knowledgeCount, 1);
+  const found = reopened.queryEntities({ query: 'Alpha', analysisId: analysis.history.analysisId });
+  assert.equal(found.total, 1); assert.equal(found.rows[0].label, 'Alpha'); assert.equal(found.rows[0].knowledgeCount, 1);
   assert.equal(readFileSync(source, 'utf8'), sourceBytes);
   summary = {
-    fixtureInvocations, modelCalls: 0, runStatus: run.status,
-    candidateCount: run.committed.length, entityCount: stored.entityAnalysis.revision.entities.length,
+    fixtureInvocations, modelCalls: 0, workflowId: run.journal.workflowId,
+    phaseKinds: run.journal.stages.map(stage => stage.stageKind), runStatus: run.journal.status,
+    candidateCount: run.journal.bodies.length, entityCount: analysis.revision.entities.length,
     reopened: true, sourceBindingVerified: true, entitySearchMatches: found.total,
     linkedKnowledgeCount: found.rows[0].knowledgeCount, reviewStatus: stored.reviewStatus,
-    humanReview: 'pending', independentReview: 'pending', usageReported: false,
+    humanReview: 'pending', independentReview: 'pending', associationReview: stored.derivedAssociations.reviewStatus, usageReported: false,
   };
 } finally {
   rmSync(sandbox, { recursive: true, force: true });

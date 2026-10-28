@@ -7,24 +7,27 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 作者 prompt-json | `knowledge-extraction-v29` |
-| 配置生成的 strict prompt | `knowledge-extraction-v30` |
-| 结构线协议 | `omk-knowledge-extraction-wire/v1` |
-| 领域响应 Schema | `4` |
-| 提炼运行 Schema | `5` |
+| 生产流程 | `knowledge-body-first/v1` |
+| 正文 prompt | `knowledge-body-generation/v2` |
+| 关联 prompt | `knowledge-association-generation/v1` |
+| 正文 profile 摘要 | `sha256:50a3749e9d70bc3e712dce78275af050c4b860af2bc756bf638d97535270c62f` |
+| 关联 profile 摘要 | `sha256:77a645dd123e894174566767a1a5b9e8125042119ae0a472107b374741c24337` |
+| 正文结构线协议摘要 | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
+| 关联结构线协议摘要 | `sha256:9739c4f7e3c90d76826323cb6aa270219086ddcf183e40e6c33ad8d5caf911ae` |
+| 正文响应 Schema | `1` |
+| 关联响应 Schema | `1` |
+| 知识历史 Schema | `3` |
+| 关联历史 Schema | `1` |
+| 生成日志 Schema | `1` |
 | 实体历史 Schema | `2` |
-| system＋input UTF-8 容量 | 1,048,576 字节 |
-| producer outcome JSON 声明上限 | 536,805,376 字节 |
-| 序列化研究计划容量 | 16,777,216 字节 |
-| 完整研究核对输入容量 | 134,217,728 字节 |
-| 默认生成政策 | `knowledge-generation-single/v1` |
-| 默认 OMK 调用次数 | 1 |
-| 显式启用的有界政策 | `knowledge-generation-bounded/v1` |
-| 有界政策 OMK 调用上限 | 3 |
-| 有界重问上限（计入调用次数） | 2 |
-| 有界政策每次输出 token 上限 | 128,000 |
+| 完整原生归档容量 | 536,870,887 字节 |
+| 默认检索响应预算（可调） | 65,536 字节 |
+| 最小检索响应预算 | 1,024 字节 |
+| 最大检索响应预算 | 1,048,576 字节 |
+| 历史 typed 研究计划容量 | 16,777,216 字节 |
+| 可携带研究核对容量 | 134,217,728 字节 |
 <!-- omk:knowledge-contract:end -->
 
-字节容量不是 token、模型上下文或金额预算；outcome 上限约束 producer 声明的返回 JSON；落盘归档封装另有文件容量。有界政策须显式启用，重问计入总调用数，具体模型与 token 预约条件见[知识提炼指南](../../guides/knowledge/extract-knowledge.md)。
+检索默认值是整个序列化响应及换行的可调预算，不是知识正文定义、存储硬 cap 或模型限制。原生归档容量、producer 证明、来源／请求准入与 store 限额分别检查。正文与关联阶段各保留独立原生原件，当前生成不再使用旧 single／bounded 政策；阶段恢复与明确继续见[知识指南](../../guides/knowledge/extract-knowledge.md)。
 
-这些当前值不改写历史 prompt、运行、Schema 或测量结论；不同身份不能继承质量验收。历史身份与来源边界见[实体提取契约](../../specs/entities/entity-extraction.md)。
+这些身份相对 typed 历史 v2／run5 属于 BREAKING-SCHEMA/API/COMPARABILITY，不改写旧 prompt 字节，也不继承历史质量结论。上表历史 typed study 容量只描述独立冻结测量／核对契约，当前构建不支持其生成计划。见[建设与迁移契约](../../specs/knowledge/knowledge-domain-model.md)及[提取规范](../../specs/entities/entity-extraction.md)。

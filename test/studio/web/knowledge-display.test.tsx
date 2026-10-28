@@ -92,7 +92,7 @@ describe('知识详情到观测区的跨区边', () => {
 // The authored content is editable plain text; it is never executed as HTML.
 describe('载体内容核对', () => {
   it('renders read-time review signals, exact old/current links, selection changes and safe comparison content in both languages', () => {
-    const review: CarrierKnowledgeReview = { checkedAt: '2026-10-12T13:00:00Z', referenceCount: 1, needsReviewCount: 1, unavailableCount: 0, checks: [{ knowledgeId: 'knowledge-id', title: '<script>title</script>', incorporatedRevisionId: 'old-revision', currentRevisionId: 'new-revision', currentChoice: null, reasons: ['revision_changed', 'not_retained'], changedFields: ['statements'], incorporatedContent: '<script>old</script>', currentContent: 'New conditions' }] };
+    const review: CarrierKnowledgeReview = { checkedAt: '2026-10-12T13:00:00Z', referenceCount: 1, needsReviewCount: 1, unavailableCount: 0, checks: [{ knowledgeId: 'knowledge-id', title: '<script>title</script>', incorporatedRevisionId: 'old-revision', currentRevisionId: 'new-revision', currentChoice: null, reasons: ['revision_changed', 'not_retained'], changedFields: ['body'], incorporatedContent: '<script>old</script>', currentContent: 'New conditions' }] };
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToString(createElement(CarrierKnowledgeReviewPanel, { review, workspace: '/tmp/selected', lang }));
       expect(html).toContain(lang === 'zh' ? '已有新修订' : 'New revision available');

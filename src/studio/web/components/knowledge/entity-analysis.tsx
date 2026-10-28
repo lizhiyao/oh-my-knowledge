@@ -22,8 +22,8 @@ export function EntityAnalysisSummary({ run, lang, disabled = false, onOpen }: {
   const analysis = run.entityAnalysis;
   if (!analysis) return null;
   return <div className="entity-summary"><p>{lang === 'zh'
-    ? `首次分析：${analysis.entityCount} 个对象，${analysis.mentionCount} 处提及，${analysis.unresolvedCount} 个身份待确定；${analysis.rejectedCount} 项未通过结构接纳。`
-    : `Initial analysis: ${analysis.entityCount} entities, ${analysis.mentionCount} mentions, ${analysis.unresolvedCount} unresolved; ${analysis.rejectedCount} entries failed structural admission.`}</p>
+    ? `首次分析：${analysis.entityCount} 个对象，${analysis.mentionCount} 处提及，${analysis.unresolvedCount} 个身份待确定；关联投影仍独立待核对。`
+    : `Initial analysis: ${analysis.entityCount} entities, ${analysis.mentionCount} mentions, ${analysis.unresolvedCount} unresolved; derived projections remain pending independent review.`}</p>
     <Button disabled={disabled} onClick={() => onOpen(analysis.analysisId)}>{lang === 'zh' ? '核对实体与指代' : 'Inspect entities and references'}</Button>
   </div>;
 }

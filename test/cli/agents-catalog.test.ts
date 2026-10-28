@@ -17,10 +17,9 @@ import { runCommand } from '../helpers/run-command.js';
 import AgentsCommand from '../../src/cli/commands/agents.js';
 import * as executors from '../../src/executors/index.js';
 import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
-import { modelWindow } from '../knowledge/fixtures.js';
+import { authoredKnowledgeResponse } from './knowledge-fixtures.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
-import { boundedExtractionPolicy } from '../../src/knowledge/extraction/generation-policy.js';
 import {
   AGENT_CATALOG_VERSION,
   AGENT_COLLECTION_VERSION,
@@ -100,7 +99,7 @@ describe('omk agents 与本机登记表扩展', () => {
       message: { role: 'user', content: text } });
     writeFileSync(path, [message('中'.repeat(400_000), 'u1'), message('Alpha 使用 Beta', 'u2')].map(value => JSON.stringify(value)).join('\n'));
     const execute = vi.fn<ExecutorFn>(async input => ({
-      ok: true, output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input.prompt).excerpts[0].evidenceRef),
+      ok: true, output: JSON.stringify(authoredKnowledgeResponse(input.prompt, input.outputFormat?.mode === 'json-schema' && input.outputFormat.name.includes('association') ? 'association' : 'body')),
       durationMs: 1, durationApiMs: 1, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
       costUSD: 0, stopReason: 'end_turn', numTurns: 1,
     }));
@@ -117,17 +116,18 @@ describe('omk agents 与本机登记表扩展', () => {
     }
     await expect(runCommand(AgentsCommand, [...args, '--start-record', '2', '--end-record', '1'], options)).rejects.toMatchObject({ code: 2 });
     expect(existsSync(workspace)).toBe(false);
-    await expect(runCommand(AgentsCommand, args, options)).rejects.toMatchObject({ code: 1, message: expect.stringContaining('--start-record/--end-record') });
+    await expect(runCommand(AgentsCommand, args, options)).rejects.toMatchObject({ code: 1, message: expect.stringContaining('capacity_exceeded') });
     expect(create).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
     const output = await runCommand(AgentsCommand, [...args, '--start-record', '1', '--end-record', '1'], options);
     const result = JSON.parse(output.stdout);
     expect(result.snapshot).toMatchObject({ startRecord: 1, endRecord: 1, records: [{ recordIndex: 1 }] });
-    expect(result.run).toMatchObject({ status: 'completed', committed: [expect.anything()] });
+    expect(result.run.journal).toMatchObject({ status: 'completed', bodies: [expect.anything()], stages: [{ stageKind: 'body', state: 'completed' }, { stageKind: 'association', state: 'completed' }] });
     expect(result.snapshot.limitations).toContain('Explicit record range; surrounding context may be missing.');
-    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(2);
     const app = createLocalKnowledgeApplication(workspace);
-    expect(app.runs().find(run => run.runId === result.run.runId)?.rawOutput).toBe(result.run.rawOutput);
-    expect(app.detail(result.run.committed[0].knowledgeId).sources[0]).toMatchObject({ status: 'available', window: { startRecord: 1, endRecord: 1 } });
+    expect(app.runs().current.find(run => run.runId === result.run.journal.runId)).toEqual(result.run.journal);
+    expect(app.inspect(result.run.journal.runId).nativeOutcomes).toHaveLength(2);
+    expect(app.detail(result.run.journal.bodies[0].knowledgeId).sources[0]).toMatchObject({ status: 'available', window: { startRecord: 1, endRecord: 1 } });
     execute.mockImplementation(async () => ({ ok: false, output: null, error: 'fixture failure',
       durationMs: 1, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
       costUSD: 0, stopReason: 'error', numTurns: 0 }));
@@ -140,20 +140,6 @@ describe('omk agents 与本机登记表扩展', () => {
       expect((error as { stdout: string }).stdout).not.toContain('提炼完成');
     }
     create.mockRestore();
-    const policy = boundedExtractionPolicy({ maxInvocations: 1, maxReasks: 0, profileId: 'loopback-test/v1', maxTotalTokens: 1088, maxOutputTokens: 64 });
-    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
-      expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions');
-      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'authored-loopback-test', max_completion_tokens: 64, n: 1, stream: false });
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ responseKind: 'knowledge-extraction', schemaVersion: 4,
-        entities: [], mentions: [], proposals: [] }) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3 } }));
-    }); vi.stubGlobal('fetch', fetch);
-    const bounded = await runCommand(AgentsCommand, ['extract', '--session', report.sessions[0].runId, '--dir', sandbox.outDir,
-      '--knowledge', join(sandbox.home, 'bounded-knowledge'), '--executor', 'openai-api', '--model', 'authored-loopback-test',
-      '--start-record', '1', '--end-record', '1', '--generation-policy', JSON.stringify(policy), '--json'], {
-      ...options, env: { ...sandbox.env, OPENAI_API_KEY: 'isolated-loopback-fixture-key', OPENAI_BASE_URL: 'http://127.0.0.1:9321' },
-    });
-    expect(JSON.parse(bounded.stdout).run).toMatchObject({ status: 'completed', policy, attempts: [{ request: { maxOutputTokens: 64 }, budget: { tokensReserved: 1088 } }] });
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it('list 把扩展条目当成本机登记表的一部分，并按同一身份与日志根计数', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));

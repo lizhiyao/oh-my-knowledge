@@ -7,7 +7,7 @@ import type { ExecutorArchiveProducer } from '../../../src/executors/contracts/a
 import type { ExecutorFn } from '../../../src/executors/contracts/ports.js';
 import type { KnowledgeEntityLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import type { EntityLinkStudioInspection } from '../../../src/studio/view-models/knowledge/entity-links.js';
-import { modelWindow } from '../../knowledge/fixtures.js';
+import { FileEntityAnalysisStore } from '../../../src/knowledge/adapters/entity-store.js';
 
 export async function entityLinkFixture(options: { terminate?: boolean; existingMember?: boolean } = {}) {
   const workspace = mkdtempSync(join(tmpdir(), 'omk-studio-link-view-'));
@@ -15,8 +15,13 @@ export async function entityLinkFixture(options: { terminate?: boolean; existing
   async function window(name: string) {
     const source = knowledge.capture({ path: join(workspace, `${name}.jsonl`), records: [{ recordIndex: 1,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
-    const run = await knowledge.generate(source.snapshotId, { executor: 'fixture', model: 'no-model-call', generate: async (_system, input) => ({ output: JSON.stringify(modelWindow()).replaceAll('record-1', JSON.parse(input).excerpts[0].evidenceRef), durationMs: 0 }) });
-    const analysis = knowledge.entities(run.runId), detail = knowledge.entityDetail(run.runId, analysis.revision.entities[0].entityId);
+    const analysisId = randomUUID(), revisionId = randomUUID(), entityId = randomUUID(), mentionId = randomUUID();
+    const actor = { actorKind: 'human' as const, actorId: 'local-user' }, at = '2026-10-15T00:00:00Z';
+    new FileEntityAnalysisStore(join(workspace, 'entities'), workspace).write({ analysisId, snapshotId: source.snapshotId, sourceVersion: source.sourceVersion,
+      requestId: randomUUID(), expectedGeneration: 0, expectedHeadRevisionId: null, revision: { revisionId, revisedAt: at, revisedBy: actor, revisionReason: 'Authored entity fixture; no knowledge generation', limitations: [],
+        entities: [{ entityId, label: 'Alpha', description: '本次项目', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null }],
+        mentions: [{ mentionId, entityId, selection: { evidenceRef: source.excerpts[0].evidenceRef, start: 0, end: 5, quote: 'Alpha' }, basis: 'explicit', rationale: 'Literal project name' }] } }, actor);
+    const detail = knowledge.entityDetail(analysisId, entityId);
     const sourceView = detail.source.status === 'available' ? { status: 'available' as const, excerpts: detail.source.window.excerpts, limitations: detail.source.window.limitations } : detail.source;
     return { ...detail, source: sourceView } satisfies KnowledgeEntityLibraryDetail;
   }

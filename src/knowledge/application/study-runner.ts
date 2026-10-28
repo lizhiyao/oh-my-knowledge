@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { KnowledgeActor } from '../contracts.js';
+import type { EvidenceStore } from '../extraction/evidence.js';
 import { canonicalJson } from '../store.js';
 import { ExtractionOutcomeSchema, ExtractionRunSchema, type ExtractionOutcome, type ExtractionOutcomeRef, type ExtractionRun, type ExtractionRunStore } from '../extraction/runs.js';
 import { ExtractionGenerationPolicySchema, accountExtractionOutcome, EXTRACTION_FEEDBACK_PREAMBLE,
@@ -14,7 +15,6 @@ import { checkWindowExtractionResponse } from '../extraction/window-proposals.js
 import { WINDOW_EXTRACTION_WIRE_SCHEMA } from '../extraction/model-wire.js';
 import { mapEntityIdentity } from '../entities/identity.js';
 import { parseExtractionStudyCorpus, type ExtractionStudyCorpus } from '../extraction/study-corpus.js';
-import type { KnowledgeApplication } from './application.js';
 import { ExtractionStudyPlanSchema, parseExtractionStudyPlan, checkVariation, EXTRACTION_STUDY_PLAN_MAX_BYTES,
   ExtractionStudyVariantSchema as Variant, ExtractionStudyCriteriaSchema as Criteria, ExtractionStudySamplingSchema as Sampling,
   type ExtractionStudyPlan, type ExtractionStudyHost, type ExtractionStudyVariantId } from '../extraction/study-plan.js';
@@ -27,8 +27,18 @@ export interface ExtractionStudyVariantInput {
   variantId: ExtractionStudyVariantId; model: ExtractionModel; policy: ExtractionGenerationPolicy;
   promptProfile?: { profileVersion: 'knowledge-extraction-prompt-profile/v1'; promptVersion: string; system: string };
 }
+/** Frozen typed measurement host, deliberately separate from canonical body application/store. */
+export interface FrozenExtractionStudyApplication {
+  source: EvidenceStore['read']; capture: EvidenceStore['capture'];
+  resume(runId: string, signal?: AbortSignal): ExtractionRun;
+  generate(snapshotId: string, model: ExtractionModel, runId?: string, signal?: AbortSignal, options?: {
+    policy?: ExtractionGenerationPolicy; promptProfile?: ExtractionStudyVariantInput['promptProfile'];
+    beforeDispatch?: (claim: { runId: string; attemptId: string; requestDigest: string; budget?: ExtractionRun['attempts'][number]['budget'] }) => void;
+    onOutcomeArchived?: (event: { runId: string; attemptId: string; outcome: ExtractionOutcome; ref: ExtractionOutcomeRef }) => void;
+  }): Promise<ExtractionRun>;
+}
 export interface ExtractionStudyRunnerPorts {
-  application: KnowledgeApplication; runs: ExtractionRunStore; actor: KnowledgeActor;
+  application: FrozenExtractionStudyApplication; runs: ExtractionRunStore; actor: KnowledgeActor;
   hash(value: unknown): string; id(): string; now(): string; identity(): ExtractionStudyHost;
   model(variant: ExtractionStudyPlan['variants'][number]): ExtractionModel;
 }
@@ -374,7 +384,7 @@ export function replayExtractionStudyEvidence(input: unknown, expectedHost?: Ext
     const sample = corpus.cases.find(value => value.window.snapshotId === snapshotId && (!sourceVersion || value.window.sourceVersion === sourceVersion));
     return sample ? { status: 'available' as const, window: sample.window } : { status: 'unavailable' as const, reason: 'missing' as const, detail: 'Not in frozen corpus.' };
   };
-  const report = reportExtractionStudy({ application: { source } as KnowledgeApplication, runs, actor: plan.actor,
+  const report = reportExtractionStudy({ application: { source, capture: forbidden, generate: forbidden, resume: forbidden }, runs, actor: plan.actor,
     hash: extractionRequestDigest, id: forbidden, now: forbidden, identity: () => plan.host, model: forbidden }, plan, corpus);
   return { ...report, integrity: { planVerified: true, outputVerified: !!expectedHost }, evidenceDigest: frozenHash(evidence),
     hostEvidence: 'frozen-plan-claim;current-host-not-required-for-read-only-replay' as const };

@@ -8,7 +8,7 @@ import { createSettingsRoutes } from './routes/settings.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog, ObservationReviewStateValidationError } from '../../observability/application.js';
 import { ConversationAutoExtraction } from '../../knowledge/application/auto-extraction.js';
-import { configuredExtractionModel } from '../../knowledge/adapters/executor.js';
+import { configuredKnowledgeGenerationModel } from '../../knowledge/adapters/generation-executor.js';
 
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
@@ -50,8 +50,7 @@ export function createStudioRequestHandler({
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
-  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model, policy) => configuredExtractionModel(executor, model,
-    createExtractionArchiveProducer(process.env), policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined) });
+  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => configuredKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer(process.env)) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
   const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);

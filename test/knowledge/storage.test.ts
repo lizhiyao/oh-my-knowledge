@@ -1,5 +1,4 @@
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
-import { extractionQuality } from '../../src/knowledge/extraction/quality.js';
 import type { ExtractionRunSealRequest } from '../../src/knowledge/extraction/run-sealing.js';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -111,12 +110,13 @@ function sealRequest(store: FileExtractionRunStore, runId: string, storageNamesp
     expectedManifestDigest: preview.expectedManifestDigest, expectedInventoryDigest: preview.expectedInventoryDigest, offlineDeclared: false };
 }
 
-describe('v5 extraction manifests and immutable native evidence', () => {
-  it('seals only fully archived old-wire unapplied runs, preserves every byte and keeps unknown quality denominators', () => {
+// Frozen typed measurement archives only; never the canonical body generation journal/store.
+describe('frozen typed measurement manifests and immutable native evidence', () => {
+  it('seals only fully archived old-wire unapplied runs, preserves every original byte without reinterpreting archived output', () => {
     const workspace = root(), directory = join(workspace, 'extraction-runs'), store = new FileExtractionRunStore(directory, workspace);
     const run = oldWireRun(store), request = sealRequest(store, run.runId);
     const manifest = join(directory, `${run.runId}.json`), native = join(directory, 'outcomes', run.runId, `${run.attempts[0].attemptId}.json`);
-    const original = readFileSync(manifest), outcome = readFileSync(native), before = extractionQuality(store.listManifests());
+    const original = readFileSync(manifest), outcome = readFileSync(native);
     faults.order.length = 0;
     const sealed = store.seal(request), evidence = join(directory, 'seals', 'current', run.runId, 'evidence');
     expect(faults.order.indexOf(`rename:${manifest}`)).toBeGreaterThan(0);
@@ -140,15 +140,11 @@ describe('v5 extraction manifests and immutable native evidence', () => {
       { ...request, actor: { ...request.actor, actorId: 'another human' } }, { ...request, expectedManifestDigest: sha('e') }]) {
       expect(() => store.seal(changed)).toThrow('run_seal_conflict'); expect(readFileSync(manifest)).toEqual(marker);
     }
-    const quality = extractionQuality(store.listManifests(), store.listSeals());
-    expect(quality).toMatchObject({ projectionVersion: 'omk.extraction-quality/v4', runCount: before.runCount, sealedRunCount: 1,
-      activeRunCount: 0, pendingSealCount: 0, groups: [{ runs: { total: 1, generating: 0, sealedUnknown: 1, withoutAdmission: 1 },
-        entities: { unknownRuns: 1, acceptanceRate: null }, mentions: { unknownRuns: 1, acceptanceRate: null } }] });
-    expect(quality.manualDispositions[0]).not.toHaveProperty('originalRun');
+    expect(store.listSeals()).toMatchObject([{ state: 'sealed', request, executionStatus: 'unknown' }]);
     expect(existsSync(join(workspace, 'entities'))).toBe(false); expect(existsSync(join(workspace, 'items'))).toBe(false);
-    // Manifest-only quality does not reopen native evidence, and does not claim it just verified the archive.
+    // Listing the seal is not verification of copied native evidence.
     writeFileSync(native, 'corrupt current native'); writeFileSync(join(evidence, 'outcomes', `${run.attempts[0].attemptId}.json`), 'corrupt copied native');
-    expect(extractionQuality(store.listManifests(), store.listSeals()).sealedRunCount).toBe(1);
+    expect(store.listSeals()).toMatchObject([{ state: 'sealed', evidenceIntegrity: 'not_checked' }]);
     expect(() => store.seal(request)).toThrow('run_seal_conflict');
   });
   it.each(['intent', 'copy', 'marker'] as const)('recovers only the exact operation after %s publication loses its acknowledgement', stage => {
@@ -160,8 +156,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     expect(state.state).toBe(stage === 'marker' ? 'sealed' : 'pending');
     if (stage !== 'marker') {
       expect(readFileSync(path)).toEqual(bytes); expect(() => store.read(run.runId)).toThrow('run_seal_pending');
-      const quality = extractionQuality(store.listManifests(), store.listSeals());
-      expect(quality).toMatchObject({ runCount: 1, sealedRunCount: 0, pendingSealCount: 1 });
+      expect(store.listSeals()).toMatchObject([{ state: 'pending', request }]);
     }
     expect(() => store.seal({ ...request, operationId: randomUUID() })).toThrow('run_seal_conflict');
     expect(store.seal(request).state).toBe('sealed');
@@ -222,9 +217,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
     const copied = join(directory, 'seals', namespace, runId, 'evidence');
     expect(readFileSync(join(copied, 'manifest.json'))).toEqual(raw); expect(readFileSync(join(copied, 'outcomes', `${attemptId}.json`))).toEqual(archive);
     expect(() => store.create({ ...runFixture(), runId })).toThrow();
-    const quality = extractionQuality(store.listManifests(), store.listSeals());
-    expect(quality).toMatchObject({ runCount: namespace === 'current' ? 1 : 0, sealedRunCount: namespace === 'current' ? 1 : 0,
-      legacySealedRunCount: namespace === 'legacy' ? 1 : 0, ungroupedSealedRunCount: namespace === 'current' ? 1 : 0, groups: [] });
+    expect(store.listSeals()).toMatchObject([{ state: 'sealed', request: { ...request, offlineDeclared: true }, evidenceScope: 'opaque-unsupported-schema' }]);
   });
 
 
@@ -471,7 +464,7 @@ describe('v5 extraction manifests and immutable native evidence', () => {
   });
 });
 
-describe('current knowledge storage', () => {
+describe('canonical body and generic domain storage durability', () => {
   it('publishes exact bytes only after complete short writes, file sync and every directory sync, and closes on failures', () => {
     const workspace = root(), parent = join(workspace, 'entities', 'nested'), path = join(parent, 'fixture.json');
     const bytes = '{"fixture":"中文短写"}'; const events: string[] = []; faults.durable = { events, shortWrite: true };
@@ -576,7 +569,8 @@ describe('current knowledge storage', () => {
     mkdirSync(items); mkdirSync(runs);
     const knowledge = new FileKnowledgeStore(items, 'local', workspace); const runStore = new FileExtractionRunStore(runs, workspace);
     const itemPath = join(items, 'unsupported.json'); const runId = randomUUID(); const runPath = join(runs, `${runId}.json`);
-    for (const value of [{ storeKind: 'knowledge-item-history', schemaVersion: 1 }, { storeKind: 'unknown', schemaVersion: 2 }]) {
+    for (const value of [{ storeKind: 'knowledge-item-history', schemaVersion: 1 },
+      { storeKind: 'knowledge-item-history', schemaVersion: 2 }, { storeKind: 'unknown', schemaVersion: 2 }]) {
       const bytes = JSON.stringify(value); writeFileSync(itemPath, bytes);
       expect(() => knowledge.list()).toThrow('knowledge_storage_unsupported'); expect(readFileSync(itemPath, 'utf8')).toBe(bytes);
     }

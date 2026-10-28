@@ -46,18 +46,27 @@ export function confirmKnowledgePublication(path: string, workspace: string): vo
 
 /** Narrow domain publisher: existing JSON encodings stay caller-owned; acknowledgement follows fsync. */
 export function publishKnowledgeBytes(path: string, bytes: string, workspace: string, exclusive: boolean): void {
+  publishKnowledgeChunks(path, [bytes], workspace, exclusive);
+}
+
+/** Streams complete native JSON without recursive stringify or a second giant string. */
+export function publishKnowledgeChunks(path: string, chunks: Iterable<string>, workspace: string, exclusive: boolean): void {
   const parents = directories(path, workspace); parents.forEach(checkStorageDirectory);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 }); parents.forEach(checkStorageDirectory);
   const temp = `${path}.${process.pid}.${randomUUID()}.tmp`; let fd: number | undefined;
   try {
-    fd = openSync(temp, 'wx', 0o600); const buffer = Buffer.from(bytes); let offset = 0;
-    while (offset < buffer.length) {
-      const count = writeSync(fd, buffer, offset, buffer.length - offset);
-      if (!Number.isSafeInteger(count) || count <= 0 || count > buffer.length - offset) throw new Error('Knowledge write did not progress.');
-      offset += count;
+    fd = openSync(temp, 'wx', 0o600); let total = 0;
+    for (const chunk of chunks) {
+      const buffer = Buffer.from(chunk); let offset = 0; total += buffer.length;
+      if (!Number.isSafeInteger(total)) throw new Error('Knowledge publication capacity exceeded.');
+      while (offset < buffer.length) {
+        const count = writeSync(fd, buffer, offset, buffer.length - offset);
+        if (!Number.isSafeInteger(count) || count <= 0 || count > buffer.length - offset) throw new Error('Knowledge write did not progress.');
+        offset += count;
+      }
     }
     fsyncSync(fd); const written = fstatSync(fd, { bigint: true });
-    if (written.size !== BigInt(buffer.length)) throw new Error('Knowledge temporary file size mismatch.');
+    if (written.size !== BigInt(total)) throw new Error('Knowledge temporary file size mismatch.');
     if (!sameFile(written, lstatSync(temp, { bigint: true }))) throw new Error('Knowledge temporary file changed before publication.');
     closeSync(fd); fd = undefined;
     if (exclusive) linkSync(temp, path); else renameSync(temp, path);

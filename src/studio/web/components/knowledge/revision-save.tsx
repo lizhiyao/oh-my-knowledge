@@ -15,11 +15,13 @@ export function useRevisionSave(workspace: string, detail: KnowledgeCandidateDet
   const [reading, setReading] = useState(false); const [readError, setReadError] = useState('');
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, [workspace, detail.revision.revisionId]);
-  async function save(operation: 'revise' | 'apply-entities', fields: Record<string, unknown>) {
+  async function save(operation: 'revise' | 'apply-associations', fields: Record<string, unknown>) {
     if (conflicted || reading) return;
     return session.save({ operation, ...fields }, (command, signal) => requestKnowledge<KnowledgeCandidateDetail>('candidates', { workspace, ...command }, signal), cause => {
       if (!(cause instanceof KnowledgeRequestError) || !cause.definiteRejection) return;
-      if (cause.message === 'knowledge_conflict') { setConflicted(true); return t('知识已有更新，草稿已保留。先核对最新修订，再关闭草稿重新编辑；不会再次提交过期草稿。', 'Knowledge changed; your draft is preserved. Check the latest revision, then close this draft and reopen it to edit. The outdated draft will not be submitted again.'); }
+      if (cause.message === 'knowledge_conflict') { setConflicted(true); return operation === 'apply-associations'
+        ? t('知识或关联已有更新，映射草稿已保留。先核对最新状态，再关闭草稿重新编辑；不会重提过期映射。', 'Knowledge or associations changed; your mapping draft is preserved. Check the latest state, then close and reopen the editor. The outdated mapping will not be resubmitted.')
+        : t('知识已有更新，草稿已保留。先核对最新修订，再关闭草稿重新编辑；不会再次提交过期草稿。', 'Knowledge changed; your draft is preserved. Check the latest revision, then close this draft and reopen it to edit. The outdated draft will not be submitted again.'); }
       if (cause.message === 'knowledge_citations_invalid') return t('引文无效，请核对来源、原文及出现序号。草稿已保留。', 'Invalid citations. Check the source, exact quotation and occurrence. Your draft is preserved.');
       if (cause.message === 'knowledge_workspace_busy') return t('知识目录正在写入，草稿尚未保存。稍后可重试。', 'The knowledge directory is busy; your draft was not saved. Try again shortly.');
       if (cause.message === 'knowledge_storage_unsupported') return t('数据格式不受支持，草稿未保存。请核对知识目录。', 'Unsupported data format; your draft was not saved. Check the knowledge directory.');

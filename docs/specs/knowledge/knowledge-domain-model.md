@@ -15,7 +15,8 @@ The design does not require a graph database, embedding retrieval, background id
 | Source window | Selected excerpts, source identity, scope, and limits; later judgments can return to the same evidence |
 | Source entity analysis | Window-local objects, mentions, and immutable analysis revisions; no cross-window unified identity |
 | Entity-link review | Pinned entities from two windows, exact model request/outcome, structural admission, separate human decision, and recoverable library intent |
-| Knowledge content | Stable identity, immutable content revisions, and supporting/opposing/background evidence; candidate is a review state |
+| Canonical knowledge body | Stable knowledge/revision/segment identities, complete natural-language segments and inline exact source evidence; new revisions are pending |
+| Derived association | Independent entity/optional typed projection of an exact body digest; separate revisions and accept/reject review, never a second canonical body |
 | Maintenance decision | Retain/discard and reason for an exact knowledge revision; retention is not truth verification |
 | Library object | User-confirmed cross-window organization; references source identity without copying content |
 | Tags | User-maintained topic organization with separate history; does not revise content |
@@ -28,9 +29,10 @@ One carrier may cite many items; one item may appear in multiple carriers or obj
 
 ```mermaid
 flowchart LR
-  source[Selected source window] --> extract[Extraction and host admission]
-  extract --> catalog[Window entity catalog]
-  extract --> knowledge[Knowledge review and revisions]
+  source[Selected source window] --> extract[Body generation and host admission]
+  extract --> knowledge[Save canonical body pending]
+  knowledge --> association[Independent association generation]
+  association --> catalog[Window entity catalog]
   catalog --> review[Cross-window entity review]
   review --> library[Library organization]
   library --> knowledge
@@ -38,16 +40,16 @@ flowchart LR
   carrier --> evaluate[Controlled evaluation]
 ```
 
-The branches are intentional: entities and knowledge candidates can be admitted together, and knowledge maintenance does not require a library link. The library adds a cross-window reading and selection entry, not a second extraction or content store.
+The order is intentional: the complete body is admitted and saved before an independent association call. An absent or failed projection cannot block body reading or maintenance. The library adds cross-window organization, not another canonical content store.
 
 | Stage | Responsibility and hand-off | Authoritative specification |
 |---|---|---|
-| Window extraction | Freeze selected source and limits; prepare invocation before dispatch; preserve the complete returned executor outcome before decoding. | [Entity extraction](../entities/entity-extraction.md) |
-| Host admission | Resolve exact quote occurrences to UTF-16 positions; validate wire/domain structure and reference closure; reject invalid mentions and dependent entities/statements with reasons, retaining valid siblings and the original outcome. Admission does not adjudicate semantics. | [Extraction contracts](../entities/entity-extraction.md#_3-contracts-and-identity) and [identity rules](../entities/entity-identity.md) |
+| Window extraction | Freeze source and each phase request; archive each complete returned outcome before decoding; persist admitted body pending before association generation. | [Entity extraction](../entities/entity-extraction.md) |
+| Host admission | Resolve exact quote occurrences to UTF-16 positions; validate wire/domain structure and reference closure; retain admitted body siblings and the original outcome; derived validation never deletes saved body. Admission does not adjudicate semantics. | [Extraction contracts](../entities/entity-extraction.md#_3-contracts-and-identity) and [identity rules](../entities/entity-identity.md) |
 | Entity catalog | Query current window analyses while preserving analysis/entity/revision identities; disclose unreadable analyses and sources. Search does not create a shared identity. | [Extraction storage and catalog](../entities/entity-extraction.md#_6-current-storage-contracts) |
 | Cross-window review | Normalized recall → bounded preview → confirmed durable preparation → governed model suggestion → archived outcome and admission → explicit human acceptance/rejection → recoverable application. Retrieval and model advice cannot publish organization. | [Entity-link journal](../entities/entity-links.md); [Studio transport](../studio/studio-entity-links.md) |
 | Library organization | Reference original window identities through a separately maintained object; confirm identity and source evidence; publish immutable membership revisions under the workspace lock. | [Entity knowledge library](knowledge-library.md) |
-| Knowledge maintenance | Retain/discard an exact knowledge revision, revise content and source interpretation, and explicitly apply entity corrections. Organization never transfers a claim automatically. | [Sections 3–4](#current-revisions) and [maintenance contract](knowledge-maintenance.md) |
+| Knowledge maintenance | Retain/discard an exact knowledge revision, revise complete body drafts and exact inline evidence; apply/review entity associations independently. Organization never transfers a claim automatically. | [Sections 3–4](#current-revisions) and [maintenance contract](knowledge-maintenance.md) |
 | Carrier generation and saving | Select exact retained revisions, preserve conditions and evidence, preview the change, and save a new skill/prompt version without rewriting previous content. | [Maintenance and carrier contract](knowledge-maintenance.md) |
 | Controlled evaluation | Bind carrier versions, fixed task model, samples and scoring plan to existing Core evidence. Review outcomes before adopting a change; saving and evaluation completion are separate facts. | [Carrier evaluation](knowledge-maintenance.md) and [Evaluation Core](../evaluation/eval-core-vnext.md) |
 
@@ -59,11 +61,11 @@ The library's independent `objectId` organizes those original references across 
 
 ## 3. Knowledge and revisions {#current-revisions}
 
-Content preserves statements, conditions, time, exceptions, unknowns, and source interpretation. Statement subject/object roles remain distinct from source entity identity. Finding an entity need not yield knowledge. Source assertions, execution facts, and extraction inferences remain distinct.
+The canonical draft is `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`. Every segment is a complete independently consumable body unit. Its text retains necessary conditions, attribution, negation, time, exceptions and unknowns; quotes, titles and catalogs cannot substitute for that meaning. Each evidence entry carries `source: {snapshotId, sourceVersion}`, `selection: {evidenceRef, start, end, quote}`, `basis` and optional `interpretation`. The host verifies exact continuous UTF-16 positions against the source on generation and revision.
 
-Content edits create new revisions while old content and reasons remain available. Old decisions do not automatically apply to new versions. Entity correction also does not rewrite knowledge; a user reviews and explicitly applies the exact entity revision to create a new knowledge revision.
+Knowledge history uses Schema 3. Immutable revisions add `bodyDigest`, computed from the versioned canonical title/content/reuse rationale. The independent association history binds the exact `{knowledgeId, revisionId, bodyDigest}` and optional catalog revision, `segmentEntityRefs`, optional `typedRelations` and unresolved issues. Missing typed relations mean not requested; an empty array means requested with none formed. Its `available` status means structurally readable, not confirmed identity or truth. Separate accept/reject review applies to that projection; every new projection starts pending.
 
-Source matching establishes location and reference closure, not claim support. Unreadable sources leave saved records available with limits, without fabricated originals or a no-problem conclusion.
+Editing body content creates a new body revision and does not inherit a previous retain/discard decision. Entity correction, manual association application and model-assisted rebuilding create or select independent derived revisions without rewriting body. A projection for another body digest is stale. Source deletion leaves saved body readable with evidence explicitly unavailable; no fabricated original or healthy-empty result replaces it.
 
 ## 4. Organization and carrier maintenance {#current-maintenance}
 
@@ -87,20 +89,28 @@ Saving, actual use, and controlled effect verification are separate records. The
 
 `knowledge/` owns pure content contracts, validation, and history rules. Outer observation applications and filesystem adapters own capture, model calls, and persistence; CLI/Studio share those flows. Library organization is not a second content store.
 
-Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
+Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. Generation uses the current-only `knowledge-generation-journal` Schema 1, not a run5 wrapper around two originals. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
 
 ### 5.1 Failure and recovery hand-offs {#construction-recovery}
 
 | Boundary | Required result and next action | Contract owner |
 |---|---|---|
-| Model output is refused, malformed, unsupported, or partly invalid | Preserve the complete returned outcome first; record decoding/admission facts. Valid extraction siblings can survive; invalid dependent references cannot. Failed link admission prevents acceptance and library publication, while an explicit human rejection can close the review. | Extraction and entity-link specifications |
+| Model output is refused, malformed, unsupported, or partly invalid | Preserve the complete returned outcome first; record decoding/admission facts. Valid body siblings can survive. Entity or typed projection failure leaves saved body intact. Failed link admission prevents acceptance and library publication, while an explicit human rejection can close the review. | Extraction and entity-link specifications |
 | Invocation starts but no outcome survives process loss | Preserve running/unknown evidence and consumed invocation identity. Entity-link review also supports an explicit human termination without asserting owner exit; retain unarchived producer capacity and archive late output without admission. A read, reload or resume never resends. A newly confirmed retry uses a new identity and allowance, with the terminated predecessor explicitly bound. | Extraction specification and [entity-link recovery](../entities/entity-links.md#human-termination) |
 | Source/entity/owner changes after preview | Recheck pinned heads and exact source positions under the same workspace lock; reject stale preparation or record an explicit application conflict after a decision. Fix the source/organization and create a new review from current bindings. | Entity-link journal and library specification |
 | Library write commits but acknowledgement or journal append fails | Resume the durable stable intent with the same command/receipt; record the already committed fact without another model call or duplicate library revision. Unknown I/O remains retryable, rather than being called a proven rejection. | Entity-link journal |
-| Knowledge or entity revision changes | Preserve old content, decisions and bindings. Mark mismatches for review and require explicit application of the chosen revision. Removing a library link does not delete knowledge. | Library and maintenance specifications |
+| Knowledge or entity revision changes | Preserve old content, decisions and bindings. Mark derived mismatches for review; explicitly apply the chosen catalog to a new projection without changing body. Removing a library link does not delete knowledge. | Library and maintenance specifications |
 | Carrier save or evaluation is interrupted | Keep prior versions intact; inspect an uncertain save/run before another action. Recover writes or inspect the existing run, without background rewriting or automatic model resends. | Maintenance contract |
 
 These are recoverable application boundaries, not a multi-file filesystem transaction or a guarantee of remote exactly-once delivery. Missing, corrupt and unreadable evidence must remain distinguishable from empty healthy results.
+
+### 5.2 Explicit legacy migration {#body-migration}
+
+This is **BREAKING-SCHEMA/API/COMPARABILITY**. Current readers accept body history Schema 3 and the new journal; they do not silently read old typed knowledge v2 or resume run5. Legacy run inventory is explicitly unsupported. Historical typed study inspection/portable archive replay keeps its frozen measurement identity; old typed generation plans are unsupported in this build and make zero calls.
+
+Run `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge` with both paths explicit. Its source-build adapter calls `inspectLegacyKnowledgeWorkspace`, `prepareKnowledgeMigration`, then `applyKnowledgeMigration(plan, expectedPlanDigest)` from `adapters/knowledge-migration`. The command has no model calls and never overwrites the old workspace. Prepare only targets a separate new empty workspace and fixes IDs, source pins and the plan digest without writing it. Apply preserves every original byte as base64 under `migration/<migrationId>/original/`, publishes the exact plan/mapping and copies supported source/entity records. Each legacy revision is mechanically rendered into a **new pending** body revision; original typed fields, native records, decisions and lineage remain archived. Old retain decisions are not inherited, and library/carrier/cross-window references are not retargeted.
+
+Apply validates the original inventory and planned body writes; identical-plan recovery is idempotent and refuses edited targets. Mechanical field preservation and mapping are not source-faithfulness or task acceptance. Inspect the new segments and evidence before retaining or using them. The old workspace is unchanged and remains usable with its matching old binary; rollback means reopening that preserved pair. No permanent dual canonical reader is introduced.
 
 ## 6. Acceptance and limits {#current-evidence}
 

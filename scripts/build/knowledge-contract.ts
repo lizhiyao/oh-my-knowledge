@@ -3,55 +3,42 @@ import { pathToFileURL } from 'node:url';
 
 type Language = 'en' | 'zh';
 export interface CurrentKnowledgeContract {
-  promptJsonVersion: string;
-  strictPromptVersion: string;
-  wireVersion: string;
-  responseSchemaVersion: number;
-  runSchemaVersion: number;
-  entityHistorySchemaVersion: number;
-  inputMaxBytes: number;
-  outcomeMaxBytes: number;
-  studyPlanMaxBytes: number;
-  studyInspectionMaxBytes: number;
-  singlePolicyId: string;
-  singleMaxInvocations: number;
-  boundedPolicyId: string;
-  boundedMaxInvocations: number;
-  boundedMaxReasks: number;
-  boundedMaxOutputTokens: number;
+  workflowId: string; bodyPromptVersion: string; associationPromptVersion: string;
+  bodyProfileId: string; associationProfileId: string; bodyWireId: string; associationWireId: string;
+  bodyResponseSchemaVersion: number; associationResponseSchemaVersion: number;
+  knowledgeHistorySchemaVersion: number; associationHistorySchemaVersion: number; journalSchemaVersion: number;
+  entityHistorySchemaVersion: number; outcomeMaxBytes: number;
+  retrievalDefaultBytes: number; retrievalMinBytes: number; retrievalMaxBytes: number;
+  studyPlanMaxBytes: number; studyInspectionMaxBytes: number;
 }
 
-/** Read the same compiled modules used by the installed runtime; never copy their values. */
+/** Current production identities and separately labelled historical-study capacities. */
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
-  const [prompt, strict, wire, response, runs, entities, input, generation, plan, inspection, policy] = await Promise.all([
-    load('extraction/prompt.js'), load('extraction/strict-prompt.js'), load('extraction/model-wire.js'),
-    load('extraction/window-proposals.js'), load('extraction/runs.js'), load('entities/contracts.js'),
-    load('extraction/model-input.js'), load('extraction/generation.js'), load('extraction/study-plan.js'),
-    load('extraction/study-capacity.js'), load('extraction/generation-policy.js'),
+  const [wire, knowledge, associations, journal, entities, archive, retrieval, plan, inspection] = await Promise.all([
+    load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('extraction/generation-journal.js'),
+    load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
+    load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
   ]);
-  const bounded = policy.ExtractionBoundedPolicySchema.shape;
+  const body = wire.BODY_GENERATION_PROFILE, association = wire.ASSOCIATION_GENERATION_PROFILE;
   return {
-    promptJsonVersion: prompt.EXTRACTION_PROMPT_VERSION,
-    strictPromptVersion: strict.STRICT_EXTRACTION_PROMPT_VERSION,
-    wireVersion: wire.WINDOW_EXTRACTION_WIRE_VERSION,
-    responseSchemaVersion: response.WindowExtractionModelSchema.shape.schemaVersion.value,
-    runSchemaVersion: runs.ExtractionRunSchema.shape.schemaVersion.value,
+    workflowId: journal.GenerationJournalSchema.shape.workflowId.value,
+    bodyPromptVersion: body.promptVersion, associationPromptVersion: association.promptVersion,
+    bodyProfileId: body.profileId, associationProfileId: association.profileId, bodyWireId: body.wireId, associationWireId: association.wireId,
+    bodyResponseSchemaVersion: wire.BodyGenerationResponseSchema.shape.schemaVersion.value,
+    associationResponseSchemaVersion: wire.AssociationGenerationResponseSchema.shape.schemaVersion.value,
+    knowledgeHistorySchemaVersion: knowledge.KnowledgeEnvelopeSchema.shape.schemaVersion.value,
+    associationHistorySchemaVersion: associations.KnowledgeAssociationEnvelopeSchema.shape.schemaVersion.value,
+    journalSchemaVersion: journal.GenerationJournalSchema.shape.schemaVersion.value,
     entityHistorySchemaVersion: entities.EntityAnalysisEnvelopeSchema.shape.schemaVersion.value,
-    inputMaxBytes: input.EXTRACTION_INPUT_MAX_BYTES,
-    outcomeMaxBytes: generation.EXTRACTION_OUTCOME_MAX_BYTES,
-    studyPlanMaxBytes: plan.EXTRACTION_STUDY_PLAN_MAX_BYTES,
-    studyInspectionMaxBytes: inspection.EXTRACTION_STUDY_INSPECTION_MAX_BYTES,
-    singlePolicyId: policy.SINGLE_EXTRACTION_POLICY.policyId,
-    singleMaxInvocations: policy.SINGLE_EXTRACTION_POLICY.maxInvocations,
-    boundedPolicyId: bounded.policyId.value,
-    boundedMaxInvocations: bounded.maxInvocations.maxValue,
-    boundedMaxReasks: bounded.maxReasks.maxValue,
-    boundedMaxOutputTokens: bounded.maxOutputTokens.maxValue,
+    outcomeMaxBytes: archive.MAX_GENERATION_OUTCOME_BYTES,
+    retrievalDefaultBytes: retrieval.KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES, retrievalMinBytes: retrieval.KNOWLEDGE_RETRIEVAL_MIN_BYTES,
+    retrievalMaxBytes: retrieval.KNOWLEDGE_RETRIEVAL_MAX_BYTES,
+    studyPlanMaxBytes: plan.EXTRACTION_STUDY_PLAN_MAX_BYTES, studyInspectionMaxBytes: inspection.EXTRACTION_STUDY_INSPECTION_MAX_BYTES,
   };
 }
 
-/** Both languages render one data object. Byte limits remain exact, without rounded caps. */
+/** Both languages render one data object; no rounded limits or copied prompt versions. */
 export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract, language: Language): string {
   const zh = language === 'zh';
   const integer = (value: number) => {
@@ -65,26 +52,27 @@ export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract,
     return `\`${value}\``;
   };
   const rows: [string, string, string][] = [
-    ['Authored prompt-json', '作者 prompt-json', code(values.promptJsonVersion)],
-    ['Configured strict prompt', '配置生成的 strict prompt', code(values.strictPromptVersion)],
-    ['Structural wire', '结构线协议', code(values.wireVersion)],
-    ['Domain response Schema', '领域响应 Schema', code(values.responseSchemaVersion)],
-    ['Extraction run Schema', '提炼运行 Schema', code(values.runSchemaVersion)],
+    ['Production workflow', '生产流程', code(values.workflowId)],
+    ['Body prompt', '正文 prompt', code(values.bodyPromptVersion)],
+    ['Association prompt', '关联 prompt', code(values.associationPromptVersion)],
+    ['Body profile digest', '正文 profile 摘要', code(values.bodyProfileId)],
+    ['Association profile digest', '关联 profile 摘要', code(values.associationProfileId)],
+    ['Body structural wire digest', '正文结构线协议摘要', code(values.bodyWireId)],
+    ['Association structural wire digest', '关联结构线协议摘要', code(values.associationWireId)],
+    ['Body response Schema', '正文响应 Schema', code(values.bodyResponseSchemaVersion)],
+    ['Association response Schema', '关联响应 Schema', code(values.associationResponseSchemaVersion)],
+    ['Knowledge history Schema', '知识历史 Schema', code(values.knowledgeHistorySchemaVersion)],
+    ['Association history Schema', '关联历史 Schema', code(values.associationHistorySchemaVersion)],
+    ['Generation journal Schema', '生成日志 Schema', code(values.journalSchemaVersion)],
     ['Entity history Schema', '实体历史 Schema', code(values.entityHistorySchemaVersion)],
-    ['System + input UTF-8 capacity', 'system＋input UTF-8 容量', bytes(values.inputMaxBytes)],
-    ['Producer outcome JSON declaration ceiling', 'producer outcome JSON 声明上限', bytes(values.outcomeMaxBytes)],
-    ['Serialized study plan capacity', '序列化研究计划容量', bytes(values.studyPlanMaxBytes)],
-    ['Complete study inspection input capacity', '完整研究核对输入容量', bytes(values.studyInspectionMaxBytes)],
-    ['Default generation policy', '默认生成政策', code(values.singlePolicyId)],
-    ['Default OMK invocation count', '默认 OMK 调用次数', integer(values.singleMaxInvocations)],
-    ['Opt-in bounded policy', '显式启用的有界政策', code(values.boundedPolicyId)],
-    ['Bounded OMK invocation ceiling', '有界政策 OMK 调用上限', integer(values.boundedMaxInvocations)],
-    ['Bounded reask ceiling (included in invocations)', '有界重问上限（计入调用次数）', integer(values.boundedMaxReasks)],
-    ['Bounded output-token ceiling per invocation', '有界政策每次输出 token 上限', integer(values.boundedMaxOutputTokens)],
+    ['Complete native archive capacity', '完整原生归档容量', bytes(values.outcomeMaxBytes)],
+    ['Default retrieval response budget (adjustable)', '默认检索响应预算（可调）', bytes(values.retrievalDefaultBytes)],
+    ['Minimum retrieval response budget', '最小检索响应预算', bytes(values.retrievalMinBytes)],
+    ['Maximum retrieval response budget', '最大检索响应预算', bytes(values.retrievalMaxBytes)],
+    ['Historical typed study plan capacity', '历史 typed 研究计划容量', bytes(values.studyPlanMaxBytes)],
+    ['Portable study inspection capacity', '可携带研究核对容量', bytes(values.studyInspectionMaxBytes)],
   ];
-  return [
-    '<!-- Generated by scripts/build/docs.ts from compiled runtime constants and Schemas. -->',
-    '', zh ? '| 当前契约 | 值 |' : '| Current contract | Value |', '|---|---|',
-    ...rows.map(([en, cn, value]) => `| ${zh ? cn : en} | ${value} |`),
-  ].join('\n');
+  return ['<!-- Generated by scripts/build/docs.ts from compiled runtime constants and Schemas. -->', '',
+    zh ? '| 当前契约 | 值 |' : '| Current contract | Value |', '|---|---|',
+    ...rows.map(([en, cn, value]) => `| ${zh ? cn : en} | ${value} |`)].join('\n');
 }

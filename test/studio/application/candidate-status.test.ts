@@ -28,19 +28,17 @@ describe('candidate status labels', () => {
   });
 
   it('keeps one extraction run vocabulary and echoes an unknown status instead of guessing', () => {
-    assert.equal(extractionRunStatusLabel('completed', 'zh'), '提炼完成');
-    assert.equal(extractionRunStatusLabel('prepared', 'en'), 'Ready to save');
+    assert.equal(extractionRunStatusLabel('completed', 'zh'), '流程已结束');
+    assert.equal(extractionRunStatusLabel('active', 'en'), 'Stage continuation or recovery needed');
     assert.equal(extractionRunStatusLabel('queued', 'zh'), 'queued');
   });
 });
 
 
 describe('extraction review batch', () => {
-  const run: KnowledgeCandidateRun = { runId: 'one', status: 'completed', committed: ['a', 'b', 'c'].map(knowledgeId => ({ knowledgeId, revisionId: 'original' })), rejections: [],
-    invocation: { policyId: 'knowledge-generation-single/v1', outputMode: 'json-schema', wireId: `sha256:${'a'.repeat(64)}`,
-      attemptCount: 1, archiveStatus: 'recorded', failureKind: null, limits: { maxInvocations: 1, maxReasks: 0 },
-      budget: { reservedTokens: 0, observedTokens: null, unknownAttempts: 1 } } };
-  const row = (knowledgeId: string, choice: KnowledgeCandidateRow['choice']): KnowledgeCandidateRow => ({ knowledgeId, revisionId: 'latest', generation: 1, title: knowledgeId, knowledgeKind: 'fact', reviewStatus: 'pending', choice });
+  const run: KnowledgeCandidateRun = { runId: 'one', schemaStatus: 'current', status: 'completed',
+    bodies: ['a', 'b', 'c'].map(knowledgeId => ({ knowledgeId, revisionId: 'original', bodyDigest: `sha256:${'a'.repeat(64)}` })), phases: [], nextAction: 'none' };
+  const row = (knowledgeId: string, choice: KnowledgeCandidateRow['choice']): KnowledgeCandidateRow => ({ bodyDigest: `sha256:${'a'.repeat(64)}`, knowledgeId, revisionId: 'latest', generation: 1, title: knowledgeId, knowledgeKind: 'fact', reviewStatus: 'pending', choice });
   it('follows extraction order and wraps within that extraction, excluding unrelated candidates', () => {
     const rows = [row('unrelated', null), row('c', null), row('b', 'retain'), row('a', null)];
     assert.equal(candidateReviewRun([run], 'a'), run);
@@ -58,10 +56,10 @@ describe('extraction review batch', () => {
     assert.equal(revised.complete, false); assert.equal(revised.pending, 1); assert.equal(revised.retained, 1);
   });
   it('does not report completion for missing content, duplicates or an empty extraction', () => {
-    const partial = projectCandidateBatch({ ...run, status: 'failed', committed: [...run.committed, run.committed[0]!] }, [row('a', 'retain'), row('b', 'discard')])!;
+    const partial = projectCandidateBatch({ ...run, status: 'failed', bodies: [...run.bodies, run.bodies[0]!] }, [row('a', 'retain'), row('b', 'discard')])!;
     assert.equal(partial.total, 3); assert.equal(partial.missing, 1); assert.equal(partial.complete, false);
     assert.equal(projectCandidateBatch(undefined, []), undefined);
-    assert.equal(projectCandidateBatch({ ...run, committed: [] }, []), undefined);
-    assert.equal(projectCandidateBatch({ ...run, committed: run.committed.slice(0, 1) }, [row('a', null)], 'a')?.nextId, undefined);
+    assert.equal(projectCandidateBatch({ ...run, bodies: [] }, []), undefined);
+    assert.equal(projectCandidateBatch({ ...run, bodies: run.bodies.slice(0, 1) }, [row('a', null)], 'a')?.nextId, undefined);
   });
 });

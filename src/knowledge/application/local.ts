@@ -5,7 +5,8 @@ import { canonicalJson } from '../store.js';
 import { KnowledgeApplication } from './application.js';
 import { TraceEvidenceStore } from '../adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../adapters/knowledge-store.js';
-import { FileExtractionRunStore } from '../adapters/run-store.js';
+import { FileGenerationJournalStore } from '../adapters/generation-journal-store.js';
+import { FileKnowledgeAssociationStore } from '../adapters/association-store.js';
 import { FileKnowledgeTags } from '../adapters/knowledge-tags.js';
 import { FileLibraryStore } from '../adapters/library-store.js';
 import { KnowledgeLibraryApplication } from './library.js';
@@ -21,12 +22,15 @@ import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.
 export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
+  const knowledge = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace);
+  const entities = new FileEntityAnalysisStore(join(workspace, 'entities'), workspace);
   return new KnowledgeApplication({
     evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace),
-    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
-    runs: new FileExtractionRunStore(join(workspace, 'extraction-runs'), workspace),
+    knowledge,
+    journals: new FileGenerationJournalStore(join(workspace, 'generation-journals'), workspace),
+    associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
     tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace),
-    entities: new FileEntityAnalysisStore(join(workspace, 'entities'), workspace),
+    entities,
     id: randomUUID, now: () => new Date().toISOString(),
     hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
     actor: { actorKind: 'human', actorId: 'local-user' },
@@ -63,7 +67,7 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
       const stat = lstatSync(workspace);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return undefined;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined; }
-    const heads = ['items', 'extraction-runs', 'tags', 'entities'].map(name => {
+    const heads = ['items', 'generation-journals', 'associations', 'tags', 'entities'].map(name => {
       const directory = join(workspace, name);
       try {
         const stat = lstatSync(directory);

@@ -2,13 +2,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { vi } from 'vitest';
-import { ExtractionRunSchema } from '../../src/knowledge/extraction/runs.js';
+import { ExtractionOutcomeSchema, ExtractionRunSchema, type ExtractionRun } from '../../src/knowledge/extraction/runs.js';
 import { freezeExtractionStudyCorpus, extractionStudyDigest } from '../../src/knowledge/extraction/study-corpus.js';
 import { extractionStudyReviewTargets, type ExtractionStudyJudgeIdentity, type ExtractionStudyOutputReceipt, type ExtractionStudyReviewInput } from '../../src/knowledge/extraction/study-review.js';
 import { checkWindowExtractionResponse } from '../../src/knowledge/extraction/window-proposals.js';
 import { SINGLE_EXTRACTION_POLICY } from '../../src/knowledge/extraction/generation-policy.js';
 import { modelWindow, wireModelWindow } from './fixtures.js';
-import { prepareExtractionStudy, replayExtractionStudyEvidence, runExtractionStudySlot } from '../../src/knowledge/application/study-runner.js';
+import { prepareExtractionStudy, replayExtractionStudyEvidence } from '../../src/knowledge/application/study-runner.js';
+import { extractionRequestDigest, extractionResponse } from '../../src/knowledge/extraction/generation.js';
+import { mapEntityIdentity } from '../../src/knowledge/entities/identity.js';
 import { createExtractionStudyPorts } from '../../src/knowledge/application/study-local.js';
 import { ExtractionStudyFiles } from '../../src/knowledge/adapters/study-files.js';
 import { configuredExtractionModel } from '../../src/knowledge/adapters/executor.js';
@@ -98,7 +100,7 @@ export function studyNativeResult(output: string | null, changes: Partial<ExecRe
     costUSD: 0, costReportedByExecutor: false, tokenUsageReportedByExecutor: true, stopReason: 'stop', numTurns: 1, attemptCount: 1, ...changes };
 }
 
-/** The caller owns an explicit temporary root and cleanup. Production adapters receive authored returns only. */
+/** Synthetic archive construction only; the current product host still refuses old typed generation. */
 export function nativeStudyFixture(root: string, reply?: (index: number, output: string) => ExecResult) {
   const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
   const workspace = join(root, 'workspace'); mkdirSync(workspace);
@@ -136,10 +138,66 @@ export function nativeStudyFixture(root: string, reply?: (index: number, output:
     variants: [{ variantId: 'baseline', model: model(), policy: SINGLE_EXTRACTION_POLICY }, { variantId: 'candidate', model: model(), policy: SINGLE_EXTRACTION_POLICY }], ...extra,
   });
   const files = new ExtractionStudyFiles({ directory: join(root, 'study'), workspace, repository: resolve('.') });
-  return { root, workspace, ports, effects, corpus, corpusRaw, configurationRaw, prepare, files, model };
+  // This narrow authored archive host writes frozen run/outcome DTOs, never a KnowledgeApplication
+  // or KnowledgeStore. "committed" below is fictional fixture data for read-only replay, not a
+  // claim that the current canonical body store accepted an old typed knowledge revision.
+  const archiveSlot = async (plan: ReturnType<typeof prepare>, slotId: string) => {
+    const slot = plan.slots.find(value => value.slotId === slotId)!;
+    const sample = plan.cases.find(value => value.caseId === slot.caseId)!;
+    const variant = plan.variants.find(value => value.variantId === slot.variantId)!;
+    if (variant.policy.policyId !== 'knowledge-generation-single/v1') throw new Error('Synthetic archive fixture supports one authored return only.');
+    const at = new Date().toISOString(), attemptId = randomUUID();
+    const requestDigest = extractionRequestDigest({ requestDigest: slot.requestDigest, request: slot.request, producer: slot.producer, policy: variant.policy });
+    const run = ExtractionRunSchema.parse({ runKind: 'knowledge-extraction-run', schemaVersion: 5, runId: slot.runId,
+      requestDigest: slot.requestDigest, generation: 1, snapshotId: sample.snapshotId, sourceVersion: sample.sourceVersion,
+      executor: variant.executor, model: variant.model, promptVersion: variant.promptProfile.promptVersion,
+      promptHash: ports.hash(variant.promptProfile.system), inputDigest: ports.hash(sample.input), actor: plan.actor, policy: variant.policy,
+      attempts: [{ attemptId, startedAt: at, requestDigest, request: slot.request, producer: slot.producer }],
+      startedAt: at, status: 'generating', rejections: [], entityRejections: [], intents: [], committed: [] });
+    ports.runs.create(run);
+    const outcome = ExtractionOutcomeSchema.parse(await ports.model(variant).generate(variant.promptProfile.system, sample.input));
+    // The configured adapter above can only call the explicitly authored in-memory facade.
+    const ref = ports.runs.writeOutcome(run.runId, attemptId, outcome, slot.producer.maxOutcomeJsonBytes);
+    const decoded = extractionResponse(outcome, variant.outputMode, variant.wireId ?? undefined);
+    const attempts: ExtractionRun['attempts'] = [{ ...run.attempts[0], outcome: ref }];
+    if (decoded.status === 'failed') {
+      attempts[0].failure = decoded.failure;
+      const failed = ExtractionRunSchema.parse({ ...run, generation: 2, attempts, status: 'failed', finishedAt: new Date().toISOString(), error: decoded.failure.diagnostic });
+      ports.runs.save(failed, 1); return failed;
+    }
+    const checked = checkWindowExtractionResponse(decoded.response, window.excerpts);
+    const entityIds = new Map(checked.analysis.entities.map(value => [value.entityId, randomUUID()]));
+    const mentionIds = new Map(checked.analysis.mentions.map(value => [value.mentionId, randomUUID()]));
+    const mention = (value: typeof checked.analysis.mentions[number]) => ({ ...value, entityId: entityIds.get(value.entityId)!, mentionId: mentionIds.get(value.mentionId)! });
+    const entityRevisionId = randomUUID(), actor = { actorKind: 'agent' as const, actorId: `extractor:${run.executor}`, executionRef: run.runId };
+    const entityAnalysis = { requestId: randomUUID(), analysisId: run.runId, snapshotId: run.snapshotId, sourceVersion: run.sourceVersion,
+      expectedGeneration: 0, expectedHeadRevisionId: null, revision: { revisionId: entityRevisionId, revisedAt: at, revisedBy: actor,
+        revisionReason: 'Synthetic frozen measurement archive, not a current product birth.',
+        entities: checked.analysis.entities.map(value => mapEntityIdentity(value, entityIds, mentionIds)),
+        mentions: checked.analysis.mentions.map(mention), limitations: window.limitations } };
+    const intents = checked.accepted.map(proposal => {
+      const knowledgeId = randomUUID(), revisionId = randomUUID();
+      const draft = { ...proposal.draft, entities: proposal.draft.entities.map(value => ({ ...value, entityId: entityIds.get(value.entityId)! })),
+        content: { ...proposal.draft.content, statements: proposal.draft.content.statements.map(value => ({ ...value,
+          subject: { entityId: entityIds.get(value.subject.entityId)! }, ...(value.object ? { object: { entityId: entityIds.get(value.object.entityId)! } } : {}) })) } };
+      return { requestId: randomUUID(), revision: { ...draft, knowledgeId, revisionId, observationRefs: [], derivations: [],
+        createdAt: at, revisedAt: at, createdBy: actor, revisedBy: actor, revisionReason: 'Synthetic archive fixture only.' },
+        grounding: { revisionId, mentions: proposal.mentions.map(mention), citations: proposal.citations, reuseRationale: proposal.reuseRationale,
+          identityUncertainties: proposal.identityUncertainties,
+          sourceBindings: [{ snapshotId: run.snapshotId, sourceVersion: run.sourceVersion,
+            evidenceRefs: [...new Set([...draft.evidence.map(value => value.evidenceRef), ...proposal.mentions.map(value => value.selection.evidenceRef)])] }],
+          entityAnalysisRef: { analysisId: run.runId, revisionId: entityRevisionId } } };
+    });
+    const completed = ExtractionRunSchema.parse({ ...run, generation: 2, attempts, status: 'completed', finishedAt: new Date().toISOString(),
+      selectedAttemptId: attemptId, rawOutput: decoded.rawOutput, entityAnalysis, intents,
+      rejections: checked.rejected, entityRejections: checked.analysis.rejected,
+      committed: intents.map(value => ({ knowledgeId: value.revision.knowledgeId, revisionId: value.revision.revisionId })) });
+    ports.runs.save(completed, 1); return completed;
+  };
+  return { root, workspace, ports, effects, corpus, corpusRaw, configurationRaw, prepare, files, model, archiveSlot };
 }
 
-/** Saved production bytes plus fictional review receipts; never an actual human, model or quality study. */
+/** Synthetic frozen archive bytes and fictional receipts; never native, human or quality evidence. */
 export async function nativeStudyEvidenceFixture(root: string, options: {
   annotated?: boolean; runSlots?: number; reply?: Parameters<typeof nativeStudyFixture>[1]; withoutCompletedFinish?: boolean;
 } = {}) {
@@ -157,7 +215,7 @@ export async function nativeStudyEvidenceFixture(root: string, options: {
   const plan = f.prepare({ corpus, corpusBytesDigest: `sha256:${createHash('sha256').update(corpusRaw).digest('hex')}` });
   f.files.create(plan, corpusRaw, f.configurationRaw);
   const reviewedBeforeOutputs = new Date(Date.now() - 60_000).toISOString();
-  for (const slot of plan.slots.slice(0, options.runSlots ?? plan.slots.length)) await runExtractionStudySlot(f.ports, { plan, corpus, slotId: slot.slotId });
+  for (const slot of plan.slots.slice(0, options.runSlots ?? plan.slots.length)) await f.archiveSlot(plan, slot.slotId);
   const evidence = f.files.evidence(plan);
   // An authored legacy-v5 portable fixture only: original production files remain unchanged.
   if (options.withoutCompletedFinish) for (const record of evidence.records) {

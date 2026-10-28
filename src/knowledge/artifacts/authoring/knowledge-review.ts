@@ -16,8 +16,9 @@ export function reviewCarrierKnowledge(refs: CarrierKnowledgeRef[], read: (id: s
     if (incorporated && !incorporated.sourceAvailable || current && !current.sourceAvailable) reasons.push('source_unavailable');
     const changedFields: CarrierKnowledgeCheck['changedFields'] = [];
     if (incorporated && current) {
-      const grounding = (item: ReviewKnowledge) => ({ sourceBindings: item.grounding.sourceBindings, citations: item.grounding.citations, entityAnalysisRef: item.grounding.entityAnalysisRef, reuseRationale: item.grounding.reuseRationale, identityUncertainties: item.grounding.identityUncertainties });
-      const pairs = { title: [incorporated.revision.title, current.revision.title], statements: [incorporated.revision.content.statements, current.revision.content.statements], organization: [incorporated.revision.content.organization, current.revision.content.organization], entities: [incorporated.revision.entities, current.revision.entities], evidence: [incorporated.revision.evidence, current.revision.evidence], grounding: [grounding(incorporated), grounding(current)] };
+      const body = (item: ReviewKnowledge) => item.revision.content.segments.map(({ segmentId, text }) => ({ segmentId, text }));
+      const evidence = (item: ReviewKnowledge) => item.revision.content.segments.map(({ segmentId, evidence }) => ({ segmentId, evidence }));
+      const pairs = { title: [incorporated.revision.title, current.revision.title], body: [body(incorporated), body(current)], organization: [incorporated.revision.content.organization, current.revision.content.organization], evidence: [evidence(incorporated), evidence(current)], reuseRationale: [incorporated.revision.reuseRationale, current.revision.reuseRationale] };
       for (const field of Object.keys(pairs) as CarrierKnowledgeCheck['changedFields']) if (JSON.stringify(pairs[field][0]) !== JSON.stringify(pairs[field][1])) changedFields.push(field);
     }
     return { knowledgeId: ref.knowledgeId, title: current?.revision.title ?? incorporated?.revision.title ?? ref.knowledgeId,

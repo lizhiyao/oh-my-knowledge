@@ -7,8 +7,8 @@ prepare --workspace <existing-directory> --study <new-external-directory> --corp
 run --workspace <directory> --study <directory> --slot <slot-id> --authorize-plan <sha256:id>
 report --workspace <directory> --study <directory> --output <new-external-directory>
        [--author-review <json>] [--reference-review <json>] [--output-review <json>]
-prepare/report: zero model calls. run: one planned slot; only its predeclared production policy may retry.
-prepare/report 零模型调用。run 仅推进一个明确授权的 slot；已开始的 run 只恢复，未知中断不重发。
+prepare/report: zero model calls. run: frozen typed generation is unsupported by the canonical body host.
+prepare/report 零模型调用。run 明确拒绝旧 typed 生成计划；请使用 observe knowledge generate 或新的 body 测量协议，不冒充旧计划继续可比。
 `;
 const FLAGS = {
   prepare: { required: ['--workspace', '--study', '--corpus', '--config'], optional: [] },

@@ -10,8 +10,6 @@ import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
-import { GenerationPolicyFields } from './generation-policy-fields';
-import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 type Scope = { threadId: string; turnId?: string };
 
@@ -43,7 +41,6 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [executor, setExecutor] = useState('codex');
   const [model, setModel] = useState('');
-  const [policy, setPolicy] = useState<ExtractionGenerationPolicy>();
   const [adjust, setAdjust] = useState(false);
   const [error, setError] = useState('');
   const [run, setRun] = useState<KnowledgeCandidateRun>();
@@ -124,12 +121,12 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
     const active = request(); setStage('generating');
     try {
       const captured = await api<KnowledgeCandidateSource>('capture-conversation', { workspace: workspace.trim(), ...source, sourceVersion: preview.sourceVersion, recordIndexes: selected }, active.signal);
-      const result = await api<KnowledgeCandidateRun>('generate', { workspace: workspace.trim(), snapshot: captured.snapshotId, executor, model: model.trim(), runId: crypto.randomUUID(), ...(policy ? { policy } : {}) }, active.signal);
+      const result = await api<KnowledgeCandidateRun>('generate', { workspace: workspace.trim(), snapshot: captured.snapshotId, executor, model: model.trim(), runId: crypto.randomUUID() }, active.signal);
       if (active.signal.aborted) return;
       setRun(result); setStage('result'); notifyKnowledgeChange(workspace.trim());
-      if (result.status === 'completed' && result.committed[0]) {
+      if (result.status === 'completed' && result.bodies[0]) {
         if (!onReview) onFinished?.(workspace.trim());
-        await reviewCandidate(result.committed[0].knowledgeId, active.signal);
+        await reviewCandidate(result.bodies[0].knowledgeId, active.signal);
       } else onFinished?.(workspace.trim());
     } catch (cause) {
       if (!mounted.current) return;
@@ -145,19 +142,18 @@ export function ConversationExtractionDialog({ source: initialSource, initialWor
       : stage === 'generating' ? <Button onClick={() => controller.current?.abort()}>{t('取消提炼', 'Cancel extraction')}</Button>
         : <Button onClick={onClose}>{t('关闭', 'Close')}</Button>}>
     <div className="conversation-extract-confirm">
-      {error && <Alert type="error" title={error} action={!run?.committed.length ? <Button onClick={() => void retry()}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
+      {error && <Alert type="error" title={error} action={!run?.bodies.length ? <Button onClick={() => void retry()}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
       {stage === 'loading' && !error && <Spin tip={t('正在读取来源…', 'Reading source…')}><div style={{ height: 80 }}/></Spin>}
       {!initialSource && stage !== 'select' && stage !== 'generating' && <Button type="text" onClick={() => { controller.current?.abort(); controller.current = null; setError(''); setSource(undefined); setPreview(undefined); setRun(undefined); setStage('select'); }}>{t('重新选择来源', 'Choose another source')}</Button>}
       {stage === 'select' && <ConversationExtractionPicker conversations={conversations} conversation={conversation} conversationId={conversationId} loading={loadingConversation} lang={lang}
         onConversation={id => void chooseConversation(id)} onScope={next => void prepare(next)}/>}
       {stage === 'confirm' && preview && <ConversationExtractionConfirmation preview={preview} turnId={source?.turnId} selected={selected} onSelected={setSelected}
-        workspace={workspace} onWorkspace={setWorkspace} executor={executor} onExecutor={value => { setExecutor(value); setModel(''); setAdjust(true); }} model={model} onModel={setModel} adjust={adjust} onAdjust={setAdjust} policy={policy} onPolicy={setPolicy} lang={lang}/>}
-      {stage === 'generating' && <><GenerationPolicyFields lang={lang} value={policy} presentation="summary"/><div className="conversation-extract-progress"><Spin/><p>{t('正在提炼知识…', 'Extracting knowledge…')}</p><p>{t('完成后直接进入候选核对。', 'Review candidates as soon as extraction completes.')}</p></div></>}
-      {stage === 'result' && run && <><Alert type={run.status === 'completed' ? 'success' : 'warning'} title={run.status === 'completed' ? t(`提炼完成，${run.committed.length} 条候选知识`, `Completed: ${run.committed.length} candidates`) : t('提炼未完成，请查看提炼记录。', 'Extraction incomplete. Check extraction history.')}/>
-        {run.status === 'completed' && !run.committed.length && <p>{run.entityAnalysis ? t('本次返回零条知识候选，实体分析已独立保存，可按需核对。', 'This extraction returned zero knowledge candidates. Its independent entity analysis is saved and available for inspection.') : t('本次返回零条知识候选，请查看提炼记录中的接纳结果。', 'This extraction returned zero knowledge candidates. Check the admission results in extraction history.')}</p>}
+        workspace={workspace} onWorkspace={setWorkspace} executor={executor} onExecutor={value => { setExecutor(value); setModel(''); setAdjust(true); }} model={model} onModel={setModel} adjust={adjust} onAdjust={setAdjust} lang={lang}/>}
+      {stage === 'generating' && <><p>{t('先保存完整知识正文，再关联实体；最多两次模型调用。关联失败不撤销正文。', 'Save complete content first, then associate entities, using up to two model calls. Association failure does not undo saved content.')}</p><div className="conversation-extract-progress"><Spin/><p>{t('正在提炼知识…', 'Extracting knowledge…')}</p><p>{t('完成后直接进入候选核对。', 'Review candidates as soon as extraction completes.')}</p></div></>}
+      {stage === 'result' && run && <><Alert type={run.status === 'completed' ? 'success' : 'warning'} title={run.status === 'completed' ? t(`提炼完成，${run.bodies.length} 条候选知识`, `Completed: ${run.bodies.length} candidates`) : t('提炼未完成，请查看提炼记录。', 'Extraction incomplete. Check extraction history.')}/>
+        {run.status === 'completed' && !run.bodies.length && <p>{t('本次没有保存知识正文，请查看提炼记录。', 'No content was saved. Inspect extraction history.')}</p>}
         <EntityAnalysisSummary run={run} lang={lang} onOpen={setEntityId}/>
-        {run.rejections.length > 0 && <p>{t(`${run.rejections.length} 条输出未通过引用或格式校验。`, `${run.rejections.length} outputs failed citation or format validation.`)}</p>}
-        {run.committed.map(item => <p key={item.knowledgeId}>{onReview ? <Button type="link" loading={reviewing} onClick={() => void openSaved(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Button> : <Link href={candidateLink(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Link>}</p>)}
+        {run.bodies.map(item => <p key={item.knowledgeId}>{onReview ? <Button type="link" loading={reviewing} onClick={() => void openSaved(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Button> : <Link href={candidateLink(item.knowledgeId)}>{t('核对已保存的候选', 'Review saved candidate')}</Link>}</p>)}
       </>}
     </div>
   </Modal>{entityId && <EntityAnalysisDrawer workspace={workspace.trim()} analysisId={entityId} lang={lang} onClose={() => setEntityId(undefined)}/>}</>;
@@ -183,11 +179,11 @@ export function ConversationExtractionPicker({ conversations, conversation, conv
   </div>;
 }
 
-export function ConversationExtractionConfirmation({ preview, turnId, selected, onSelected, workspace, onWorkspace, executor, onExecutor, model, onModel, adjust, onAdjust, policy, onPolicy, disabled = false, lang }: {
+export function ConversationExtractionConfirmation({ preview, turnId, selected, onSelected, workspace, onWorkspace, executor, onExecutor, model, onModel, adjust, onAdjust, disabled = false, lang }: {
   preview: KnowledgeConversationPreview; turnId?: string; selected: number[]; onSelected(value: number[] | ((current: number[]) => number[])): void;
   workspace: string; onWorkspace(value: string): void; executor: string; onExecutor(value: string): void; model: string; onModel(value: string): void;
   adjust: boolean; onAdjust(value: boolean): void; lang: Language;
-  policy?: ExtractionGenerationPolicy; onPolicy?(policy: ExtractionGenerationPolicy | undefined): void; disabled?: boolean;
+  disabled?: boolean;
 }) {
   const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   return <>
@@ -202,12 +198,11 @@ export function ConversationExtractionConfirmation({ preview, turnId, selected, 
       </div>)}</div>
     </details>
     <div className="conversation-extract-destination"><span>{t('模型', 'Model')}</span><strong>{executor} / {model || t('尚未设置', 'Not set')}</strong><span>{t('保存到', 'Save to')}</span><span title={workspace}>{workspace}</span></div>
-    <GenerationPolicyFields lang={lang} value={policy} presentation="summary"/>
+    <p>{t('先保存完整知识正文，再关联实体；最多两次模型调用。关联失败不撤销正文。', 'Save complete content first, then associate entities, using up to two model calls. Association failure does not undo saved content.')}</p>
     <details className="conversation-extract-options" open={adjust} onToggle={event => onAdjust(event.currentTarget.open)}><summary>{t('调整本次配置', 'Adjust for this extraction')}</summary><div className="candidate-form">
       <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={disabled} onChange={onExecutor} options={['codex', 'openai-api'].map(value => ({ value, label: value }))}/></label>
       <label>{t('模型', 'Model')}<Input value={model} disabled={disabled} onChange={event => onModel(event.target.value)}/></label>
       <label>{t('保存目录', 'Folder')}<Input value={workspace} disabled={disabled} onChange={event => onWorkspace(event.target.value)}/></label>
-      <GenerationPolicyFields lang={lang} value={policy} onChange={onPolicy} disabled={disabled} presentation="fields"/>
     </div></details>
   </>;
 }

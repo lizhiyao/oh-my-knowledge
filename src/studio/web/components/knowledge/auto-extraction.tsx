@@ -2,21 +2,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, InputNumber, Modal, Select, Space } from 'antd';
 import type { Language } from '../layout/shell';
-import type { AutoExtractionPreview, AutoExtractionState } from '../../../view-models/knowledge/knowledge-candidates';
+import type { AutoExtractionPreview, AutoExtractionStatus } from '../../../view-models/knowledge/knowledge-candidates';
 import { requestKnowledge } from './request';
 import { resolveKnowledgeWorkspace } from './workspace';
-import { GenerationPolicyFields } from './generation-policy-fields';
-import type { ExtractionGenerationPolicy } from '../../../../knowledge/extraction/generation-policy';
 
 /** Opening a preview does not grant permission or call a model. */
 export function AutoExtractConversation({ threadId, lang, onChanged }: { threadId: string; lang: Language; onChanged?(): void }) {
   const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
-  const [state, setState] = useState<AutoExtractionState | null>(null);
+  const [state, setState] = useState<AutoExtractionStatus | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [workspace, setWorkspace] = useState(''), [executor, setExecutor] = useState('codex'), [model, setModel] = useState('');
   const [limit, setLimit] = useState(5), [confirmed, setConfirmed] = useState(false);
-  const [policy, setPolicy] = useState<ExtractionGenerationPolicy>();
   const [preview, setPreview] = useState<AutoExtractionPreview>();
   const controller = useRef<AbortController | null>(null);
   const statusRevision = useRef<{ scope: string; etag: string | null } | null>(null);
@@ -25,7 +22,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
   async function readStatus(root: string, signal: AbortSignal) {
     const epoch = statusEpoch.current;
     let etag: string | null = null;
-    const next = await requestKnowledge<AutoExtractionState | null>('auto-extraction', { operation: 'status', workspace: root, threadId }, signal, metadata => { etag = metadata.etag; });
+    const next = await requestKnowledge<AutoExtractionStatus | null>('auto-extraction', { operation: 'status', workspace: root, threadId }, signal, metadata => { etag = metadata.etag; });
     if (signal.aborted || controller.current || epoch !== statusEpoch.current) return;
     const scope = JSON.stringify([root, threadId]), previous = statusRevision.current;
     statusRevision.current = { scope, etag }; setState(next);
@@ -71,19 +68,19 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
   }
   const reason = state ? ({ waiting: t('等待新轮次', 'Waiting for turns'), generating: t('正在提炼', 'Extracting'), stopped: t('已停止', 'Stopped'),
     quota: t('额度已用完', 'Call limit reached'), expired: t('授权已到期', 'Permission expired'), failed: t('失败，已停止', 'Failed; stopped'),
-    interrupted: t('已中断，需重新开启', 'Interrupted; enable again'), capacity: t('已达容量上限', 'Capacity reached') })[state.reason] : '';
+    interrupted: t('已中断，需重新开启', 'Interrupted; enable again'), capacity: t('已达容量上限', 'Capacity reached'), permission_upgrade_required: t('提炼流程已更新，需重新开启', 'Extraction workflow changed; enable again') })[state.reason] : '';
   return <><Space wrap><Button type={state?.enabled ? 'default' : 'primary'} disabled={!settingsReady} onClick={() => {
     if (state?.enabled) void work(async signal => { setState(await api('stop', { workspace, threadId }, signal)); });
     else { setOpen(true); setPreview(undefined); setConfirmed(false); void work(async signal => { setPreview(await api('preview', { threadId }, signal)); }); }
   }} loading={busy}>{state?.enabled ? t('停止自动提炼', 'Stop auto extraction') : t('开启自动提炼', 'Enable auto extraction')}</Button>
-    {state && <span className="auto-extraction-status" role="status">{reason} · {state.callsUsed}／{state.maxCalls}{state.policy?.policyId === 'knowledge-generation-bounded/v1' && ` · ${t('已预约 token', 'Reserved tokens')} ${state.tokensReserved ?? 0}／${state.policy.maxTotalTokens}`}{state.enabled && state.notBefore && ` · ${t('服务端冷却至', 'Server cooldown until')} ${state.notBefore}`}</span>}</Space>
+    {state && <span className="auto-extraction-status" role="status">{reason} · {'callsUsed' in state ? `${state.callsUsed}／${state.maxCalls}` : ''}{state.enabled && 'notBefore' in state && state.notBefore && ` · ${t('服务端冷却至', 'Server cooldown until')} ${state.notBefore}`}</span>}</Space>
     {!open && error && <span role="alert">{error}</span>}
     <Modal className="auto-extraction-confirmation" styles={{ body: { maxHeight: '65vh', overflow: 'auto', overscrollBehavior: 'contain' } }} title={t('确认这条对话的自动提炼', 'Confirm auto extraction for this conversation')} open={open} width={720}
       onCancel={() => { controller.current?.abort(); setOpen(false); }}
       okText={t('批准并开启', 'Approve and enable')} cancelText={t('取消', 'Cancel')} confirmLoading={busy && preview !== undefined}
       okButtonProps={{ disabled: !preview || !confirmed || !workspace.trim() || !model.trim() }}
       onOk={() => void work(async signal => {
-        const next = await api<AutoExtractionState>('enable', { workspace: workspace.trim(), threadId, token: preview!.token, executor, model: model.trim(), maxCalls: limit, ...(policy ? { policy } : {}) }, signal);
+        const next = await api<AutoExtractionStatus>('enable', { workspace: workspace.trim(), threadId, token: preview!.token, executor, model: model.trim(), maxCalls: limit, workflowId: 'knowledge-body-first/v1' }, signal);
         setState(next); setOpen(false); onChanged?.();
       })}>
       <p>{t('本次授权仅限此对话，24 小时内、且 Studio 服务运行时有效。可以随时停止；重启后需要重新开启。', 'Permission covers only this conversation for 24 hours while Studio runs. Stop anytime; enable again after restart.')}</p>
@@ -92,11 +89,10 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
       <Space wrap><label>{t('发送到执行器', 'Send to executor')}<Select value={executor} disabled={busy} onChange={value => { setExecutor(value); setConfirmed(false); }} options={['codex', 'openai-api'].map(value => ({ value, label: value }))}/></label>
         <label>{t('模型', 'Model')}<Input value={model} disabled={busy} onChange={event => { setModel(event.target.value); setConfirmed(false); }}/></label>
         <label>{t('本次授权最多 OMK 调用次数', 'Maximum OMK invocations for this conversation permission')}<InputNumber aria-label={t('本次授权最多 OMK 调用次数', 'Maximum OMK invocations for this conversation permission')} min={1} max={20} value={limit} disabled={busy} onChange={value => { setLimit(value ?? 5); setConfirmed(false); }}/></label></Space>
-      <GenerationPolicyFields lang={lang} value={policy} scope="conversation" disabled={busy} onChange={value => { setPolicy(value); setConfirmed(false); }}/>
-      <p>{t('每次初始调用、重试和校验重问均占用上述授权总次数。美元费用及 provider 内部请求数未知；次数和 token 预约不是美元预算。派发前全额预约，即使中断后未实际发送或用量未知也不返还；默认单次政策不会重试。只发送窗口消息、时间／序号及限制、提取 Schema／提示词和政策允许的校验反馈；原始路径留在本机。', 'Every initial invocation, retry and validation reask consumes this conversation-wide call allowance. USD cost and internal provider request counts are unknown; invocation and token reservations are not a dollar budget. Reservations are charged before dispatch and never refunded, including interruptions before sending or unknown usage. The default single-invocation policy never retries. Only window messages, timestamps/indexes, limitations, extraction schema/prompt and policy-approved validation feedback are sent; raw paths stay local.')}</p>
+      <p>{t('每个窗口先生成并保存完整知识正文，再关联实体，最多调用模型两次；两次各占用一次额度。关联阶段还会发送已保存正文。发送内容包括选定消息、对话标题、轮次、时间／序号和限制。宿主路径不发送；消息正文中已有的路径会随正文发送。费用以执行器实际报告为准。', 'Each window first generates and saves complete content, then associates entities, using up to two model calls. Each call consumes one allowance. The association phase also sends saved content. Selected messages, conversation title, turn, timestamps/indexes and limitations are sent. Host paths are excluded; paths already in messages remain in those messages. Cost depends on executor reporting.')}</p>
       {preview && <details><summary>{t(`核对初始发送内容：${preview.turnCount} 轮、${preview.messages.length} 条消息`, `Review initial content: ${preview.turnCount} turns, ${preview.messages.length} messages`)}</summary>
         <h3>{preview.title}</h3>{preview.messages.map(message => <pre key={message.evidenceRef}>{message.role} · {message.timestamp ?? '—'} · #{message.recordIndex}{'\n'}{message.text}</pre>)}{preview.limitations.map(value => <p key={value}>{value}</p>)}</details>}
-      <Checkbox checked={confirmed} disabled={busy || !preview} onChange={event => setConfirmed(event.target.checked)}>{t('批准上述初始窗口与本对话后续窗口按当前显示的调用、重问和预算上限发送到所选执行器／模型。输出仍为候选，保留与保存载体由我决定。', 'Approve sending the initial and future windows of this conversation to the selected executor/model within the displayed invocation, reask and budget limits. Outputs remain candidates; I decide what to retain and save as an artifact.')}</Checkbox>
+      <Checkbox checked={confirmed} disabled={busy || !preview} onChange={event => setConfirmed(event.target.checked)}>{t('批准上述初始窗口与本对话后续窗口按当前显示的两阶段流程和调用总额度发送到所选执行器／模型。输出仍为候选，保留与保存载体由我决定。', 'Approve sending the initial and future windows of this conversation to the selected executor/model using the displayed two-phase workflow and total call allowance. Outputs remain candidates; I decide what to retain and save as an artifact.')}</Checkbox>
       {error && <Alert type="error" title={error}/>}
     </Modal></>;
 }

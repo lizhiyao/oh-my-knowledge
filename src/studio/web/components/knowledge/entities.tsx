@@ -170,8 +170,8 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
       : !detail.knowledge.length ? <p>{t('没有当前知识修订引用此实体。实体提取可以独立于知识提炼存在。', 'No current knowledge revision references this entity. Entity extraction can exist without knowledge proposals.')}</p>
         : detail.knowledge.map(link => <section className="entity-mention" key={link.knowledgeId}>
           <Link href={`${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id: link.knowledgeId, revision: link.revisionId })}`}>{link.title}</Link>
-          <p>{link.roles.map(role => `${t(role.role === 'subject' ? '主体' : '对象', role.role)} · ${role.relation}`).join('；')}</p>
-          {!link.currentEntityRevision && <Alert type="info" title={t('此知识仍绑定实体旧修订。打开知识后明确应用新修订，不会自动改写。', 'This knowledge still binds an older entity revision. Apply the new revision explicitly from knowledge.')}/>}
+          <p>{t(`关联 ${link.segmentIds.length} 个正文段落`, `Associated with ${link.segmentIds.length} content segments`)} · {link.projectionReviewStatus === 'pending' ? t('关联待核对', 'Associations pending review') : t('关联已接受', 'Associations accepted')}</p>
+          {!link.currentEntityRevision && <Alert type="info" title={t('此知识仍绑定实体旧修订。打开知识后重新生成或维护关联；正文不会自动改写。', 'This knowledge still binds an older entity revision. Regenerate or maintain associations from knowledge; content is not rewritten.')}/>}
           <Link href={entityUrl(workspace, { analysisId: history.analysisId, entityId: entity.entityId, revision: link.entityRevisionId })}>{t('查看知识绑定的实体修订', 'Inspect the entity revision bound by knowledge')}</Link>
           <p className="candidate-help">{link.choice === 'retain' ? t('已保留；不等于语义已验证。', 'Retained; semantic validity is not verified.') : link.choice === 'discard' ? t('已舍弃；历史关联仍保留。', 'Discarded; its historical association remains.') : t('等待处理；不等于语义已验证。', 'Pending; semantic validity is not verified.')}</p>
         </section>)}

@@ -7,13 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LibraryEditor } from '../../../src/studio/web/components/knowledge/library-editor';
 import { ArtifactAuthoringDialog } from '../../../src/studio/web/components/knowledge/artifact-authoring';
 import { KnowledgeRevisionDrawer } from '../../../src/studio/web/components/knowledge/revision-editor';
-import { ApplyEntitiesDialog } from '../../../src/studio/web/components/knowledge/apply-entities';
-import { CitationLocatorEditor, initialCitationLocators } from '../../../src/studio/web/components/knowledge/citation-editor';
-import { draft as knowledgeDraft } from '../../knowledge/fixtures';
+import { AssociationMappingDrawer } from '../../../src/studio/web/components/knowledge/association-mapping';
+import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader';
+import { BodyEvidenceEditor, initialBodyCitations } from '../../../src/studio/web/components/knowledge/body-evidence-editor';
+import { bodyDraft } from '../../knowledge/body-fixtures';
+import { knowledgeBodyDigest } from '../../../src/knowledge/adapters/body-digest';
 import { AutoExtractConversation } from '../../../src/studio/web/components/knowledge/auto-extraction';
 import { KnowledgeInbox } from '../../../src/studio/web/components/knowledge/inbox';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
-import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -21,7 +23,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = '2026-10-15T00:00:00Z';
 const digest = `sha256:${'a'.repeat(64)}`;
-const candidate: KnowledgeCandidateRow = { knowledgeId: uuid(50), revisionId: uuid(51), generation: 1,
+const candidate: KnowledgeCandidateRow = { bodyDigest: digest, knowledgeId: uuid(50), revisionId: uuid(51), generation: 1,
   title: 'Confirmed knowledge', knowledgeKind: 'fact', reviewStatus: 'pending', choice: 'retain' };
 function entity(name = 'Alpha', n = 1): KnowledgeEntityLibraryDetail {
   const value = { entityId: uuid(n), label: name, description: `${name} description`, qualifiers: [], identityStatus: 'proposed' as const,
@@ -112,7 +114,7 @@ describe('conversation automation consent lifecycle', () => {
     let previewIndex = 0;
     const preview = (token: string, text: string): AutoExtractionPreview => ({ token, title: 'Synthetic conversation', turnCount: 1,
       messages: [{ evidenceRef: `preview-${token}`, recordIndex: 0, eventKind: 'message', role: 'user', text }], limitations: [] });
-    const enabled: AutoExtractionState = { schemaVersion: 1, automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
+    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
       owner: uuid(500), pid: 1, hostname: 'fixture', permissionId: uuid(501), executor: 'openai-api', model: 'reviewed-model',
       maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
       checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
@@ -174,16 +176,11 @@ describe('conversation automation consent lifecycle', () => {
     expect(approve().hasAttribute('disabled')).toBe(true);
     await act(async () => previews[2].resolve(json(preview('fresh-token', 'Fresh reviewed preview'))));
     expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
-    expect(within(dialog()).getByText(/This run permits 1 OMK invocation/)).toBeTruthy();
-    fireEvent.click(consent());
-    const retries = within(dialog()).getByRole('checkbox', { name: 'Allow retries or validation reasks within these limits' });
-    fireEvent.click(retries); expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
-    expect(within(dialog()).getByText(/3 OMK invocations/)).toBeTruthy();
-    fireEvent.click(retries); expect(consent().checked).toBe(false);
+    expect(within(dialog()).getByText(/up to two model calls/)).toBeTruthy();
     fireEvent.click(consent()); fireEvent.click(approve()); fireEvent.click(approve());
     await screen.findByRole('button', { name: 'Stop auto extraction' });
     expect(requests('enable').map(call => call.body)).toEqual([{ operation: 'enable', workspace: '/reviewed', threadId: 'thread/a',
-      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2 }]);
+      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2, workflowId: 'knowledge-body-first/v1' }]);
     expect(onChanged).toHaveBeenCalledTimes(2);
     const index = intervals.mock.calls.map(([, delay], index) => delay === 5000 ? index : -1).filter(index => index >= 0).at(-1)!;
     expect(index).toBeGreaterThanOrEqual(0);
@@ -223,7 +220,7 @@ describe('conversation automation consent lifecycle', () => {
     const initialProjections = queues;
     await poll(); await poll(); await poll();
     expect(queues).toBe(initialProjections); // Three unchanged five-second polls perform no queue projection.
-    status = { schemaVersion: 1, automationKind: 'conversation-knowledge-extraction', threadId: 'poll-thread',
+    status = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'poll-thread',
       owner: uuid(700), pid: 1, hostname: 'fixture', permissionId: uuid(701), executor: 'openai-api', model: 'fixture',
       maxCalls: 2, callsUsed: 1, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'generating',
       checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
@@ -247,7 +244,7 @@ describe('conversation automation consent lifecycle', () => {
 
   it('does not let an older status reply undo an explicit stop', async () => {
     const intervals = vi.spyOn(globalThis, 'setInterval'), poll = deferred<Response>(), changed = vi.fn();
-    const enabled: AutoExtractionState = { schemaVersion: 1, automationKind: 'conversation-knowledge-extraction', threadId: 'stop-thread',
+    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'stop-thread',
       owner: uuid(710), pid: 1, hostname: 'fixture', permissionId: uuid(711), executor: 'openai-api', model: 'fixture',
       maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
       checkedTurns: [], initialTurns: [], attemptedVersions: [] };
@@ -530,38 +527,120 @@ describe('artifact editor component lifecycle', () => {
 });
 
 
-function citationFixture(): { detail: KnowledgeCandidateDetail; analysis: KnowledgeEntityAnalysisDetail } {
-  const base = knowledgeDraft();
-  base.entities = [entity().entity, entity('Beta', 2).entity].map(({ entityId, label, description }) => ({ entityId, label, description }));
-  base.content.statements[0].subject.entityId = uuid(1); base.content.statements[0].object = { entityId: uuid(2) };
-  const revision: KnowledgeCandidateDetail['revision'] = { ...base, knowledgeId: candidate.knowledgeId, revisionId: candidate.revisionId,
-    observationRefs: [], derivations: [], createdAt: now, createdBy: { actorKind: 'human', actorId: 'reviewer' },
-    revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original authored fixture' };
+function citationFixture(): { detail: KnowledgeCandidateDetail } {
+  const base = bodyDraft();
   const quotation = 'Alpha 使用 Beta', text = `${quotation}；${quotation}\n<script>fixture only</script>`;
   const excerpts = [{ evidenceRef: 'record-1', text, recordIndex: 0, eventKind: 'message', role: 'user' },
     { evidenceRef: 'record-2', text: '纠正：Alpha 未使用 Beta', recordIndex: 1, eventKind: 'message', role: 'user' }];
-  const original = entity(), analysisRevision = { ...original.revision, entities: [entity().entity, entity('Beta', 2).entity],
-    mentions: [entity().revision.mentions[0], { ...entity('Beta', 2).revision.mentions[0], selection: { evidenceRef: 'record-1', start: 9, end: 13, quote: 'Beta' } }] };
-  const analysis: KnowledgeEntityAnalysisDetail = { revision: analysisRevision,
-    history: { ...original.history, revisions: [analysisRevision] }, source: { status: 'available', excerpts, limitations: ['Authored UI fixture; no model calls.'] } };
-  const grounding: KnowledgeCandidateDetail['grounding'] = { revisionId: revision.revisionId, mentions: analysisRevision.mentions,
-    citations: [{ evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: quotation, start: quotation.length + 1, end: quotation.length * 2 + 1 } }],
-    sourceBindings: [{ snapshotId: original.history.snapshotId, sourceVersion: digest, evidenceRefs: ['record-1'] }],
-    reuseRationale: 'Authored UI evidence', identityUncertainties: ['Keep this source assertion uncertain.'],
-    entityAnalysisRef: { analysisId: analysis.history.analysisId, revisionId: analysis.revision.revisionId } };
-  return { analysis, detail: { revision, grounding, history: { storeKind: 'knowledge-item-history', schemaVersion: 2,
+  const source = { snapshotId: uuid(401), sourceVersion: digest };
+  base.content.segments[0].evidence = [{ source, basis: 'source_assertion',
+    selection: { evidenceRef: 'record-1', quote: quotation, start: quotation.length + 1, end: quotation.length * 2 + 1 } }];
+  const revision: KnowledgeCandidateDetail['revision'] = { ...base, knowledgeId: candidate.knowledgeId, revisionId: candidate.revisionId,
+    bodyDigest: knowledgeBodyDigest(base), observationRefs: [], derivations: [], createdAt: now, createdBy: { actorKind: 'human', actorId: 'reviewer' },
+    revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original authored fixture' };
+  return { detail: { revision, history: { storeKind: 'knowledge-item-history', schemaVersion: 3,
     namespace: 'fixture', knowledgeId: revision.knowledgeId, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
-    grounding: [grounding], maintenance: [], receipts: [{ requestId: uuid(900), commandDigest: digest, committedGeneration: 1, revisionId: revision.revisionId }] },
-    reviewStatus: 'pending', maintenance: null, tagging: { generation: 0, tags: [] }, entityAnalysis: { status: 'available', ...analysis },
-    sources: [{ status: 'available', window: { snapshotId: original.history.snapshotId, sourceVersion: digest, sourcePath: '/authored-fixture', sourceKind: 'codex',
+    maintenance: [], receipts: [{ requestId: uuid(900), commandDigest: digest, committedGeneration: 1, revisionId: revision.revisionId }] },
+    reviewStatus: 'pending', maintenance: null, tagging: { generation: 0, tags: [] }, derivedCatalog: { status: 'absent' },
+    derivedAssociations: { status: 'absent', reviewStatus: 'pending', bodyRef: { knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, bodyDigest: revision.bodyDigest }, generation: 0, headRevisionId: null },
+    sources: [{ status: 'available', window: { ...source, sourcePath: '/authored-fixture', sourceKind: 'codex',
       projectionVersion: 'knowledge-window-v2', capturedAt: now, startRecord: 0, endRecord: 1, excerpts,
       records: excerpts.map(excerpt => ({ recordIndex: excerpt.recordIndex, raw: JSON.stringify(excerpt) })), limitations: [] } }] } };
 }
 
-const revisionEntries = ['revise', 'apply-entities'] as const;
-function citationEditor(entry: typeof revisionEntries[number], detail: KnowledgeCandidateDetail, onSaved = vi.fn(), onReadback = vi.fn()) {
+function associationFixture() {
+  const { detail } = citationFixture(), analyzed = entity();
+  const original: KnowledgeEntityAnalysisDetail = { history: analyzed.history, revision: analyzed.revision, source: analyzed.source };
+  const current = structuredClone(original);
+  current.revision = { ...current.revision, revisionId: uuid(1100), parentRevisionId: original.revision.revisionId,
+    revisionReason: 'Corrected catalog', entities: [{ ...current.revision.entities[0], label: 'Alpha corrected' }, entity('Beta', 2).entity],
+    mentions: [...current.revision.mentions, entity('Beta', 2).revision.mentions[0]] };
+  current.history = { ...current.history, generation: 2, writeHeadRevisionId: current.revision.revisionId,
+    revisions: [original.revision, current.revision], receipts: [...current.history.receipts, { requestId: uuid(1101), commandDigest: digest, committedGeneration: 2, revisionId: current.revision.revisionId }] };
+  original.history = structuredClone(current.history);
+  const bodyRef = detail.derivedAssociations.bodyRef;
+  detail.derivedAssociations = { status: 'available', bodyRef, reviewStatus: 'accepted', generation: 3, headRevisionId: uuid(700), revision: {
+    revisionId: uuid(700), bodyRef, status: 'available', reviewStatus: 'pending',
+    entityAnalysisRef: { analysisId: original.history.analysisId, revisionId: original.revision.revisionId },
+    segmentEntityRefs: [{ segmentId: 's1', entityId: analyzed.entity.entityId, mentionIds: [original.revision.mentions[0].mentionId] }],
+    typedRelations: [{ relationId: 'relation-1', segmentIds: ['s1'], subject: { entityId: analyzed.entity.entityId }, relation: 'uses the selected test configuration',
+      modality: 'capability', polarity: 'positive', evidence: detail.revision.content.segments[0].evidence, issues: ['Not independently verified.'] }],
+    issues: [], revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original mapping',
+  } };
+  detail.derivedCatalog = { status: 'available', analysisId: original.history.analysisId, revisionId: original.revision.revisionId,
+    currentHeadRevisionId: current.revision.revisionId, entities: original.revision.entities, mentions: original.revision.mentions };
+  detail.maintenance = { revisionId: detail.revision.revisionId, choice: 'retain', reason: 'Maintain the body', actor: { actorKind: 'human', actorId: 'reviewer' }, at: now };
+  detail.history.maintenance.push(detail.maintenance); detail.history.generation = 2;
+  detail.history.receipts.push({ requestId: uuid(901), commandDigest: digest, committedGeneration: 2, revisionId: detail.revision.revisionId });
+  return { detail, original, current };
+}
+
+describe('independent entity mapping review', () => {
+  it('shows the exact bound segment, entity, mention and typed evidence instead of substituting the current catalog', () => {
+    const { detail } = associationFixture();
+    render(<KnowledgeReader detail={detail} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} onReviewAssociations={vi.fn()}/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Entities and associations' }));
+    expect(screen.getByText(detail.revision.content.segments[0].text)).toBeTruthy();
+    expect(screen.getByText('Alpha')).toBeTruthy();
+    expect(screen.queryByText('Alpha corrected')).toBeNull();
+    expect(screen.getByText('Alpha 使用 Beta')).toBeTruthy();
+    expect(screen.getByText(/uses the selected test configuration/)).toBeTruthy();
+    expect(screen.getByText(/capability \/ positive/)).toBeTruthy();
+    expect(screen.getByText(/The catalog has a newer revision/)).toBeTruthy();
+    expect(screen.getByText('Not independently verified.')).toBeTruthy();
+  });
+
+  it('explicitly loads a corrected catalog and saves only selected owned mentions against the frozen projection generation', async () => {
+    const { detail, current } = associationFixture(), received = vi.fn();
+    const saved = structuredClone(detail);
+    saved.derivedAssociations = { ...saved.derivedAssociations, reviewStatus: 'pending', generation: 4, headRevisionId: uuid(701),
+      revision: { ...saved.derivedAssociations.revision!, revisionId: uuid(701), parentRevisionId: uuid(700),
+        entityAnalysisRef: { analysisId: current.history.analysisId, revisionId: current.revision.revisionId }, typedRelations: undefined } };
+    saved.derivedCatalog = { status: 'available', analysisId: current.history.analysisId, revisionId: current.revision.revisionId,
+      currentHeadRevisionId: current.revision.revisionId, entities: current.revision.entities, mentions: current.revision.mentions };
+    const calls = api(call => call.operation === 'entities' ? json(current) : call.operation === 'apply-associations' ? json(saved) : undefined);
+    function View({ value }: { value: KnowledgeCandidateDetail }) {
+      const [editing, setEditing] = useState(false), [result, setResult] = useState<KnowledgeCandidateDetail>();
+      return <><KnowledgeReader detail={result ?? value} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} onMapAssociations={() => setEditing(true)}/>
+        {editing && <AssociationMappingDrawer detail={value} workspace="/mapping-fixture" lang="en" onClose={() => setEditing(false)} onReadback={vi.fn()}
+          onSaved={next => { received(next); setResult(next); setEditing(false); }}/>}</>;
+    }
+    const view = render(<View value={detail}/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Entities and associations' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit entity mappings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load current entity revision' }));
+    const select = await screen.findByRole('combobox', { name: 'Entities for segment 1' });
+    expect(screen.queryByRole('checkbox', { name: /^Alpha / })).toBeNull();
+    fireEvent.mouseDown(select);
+    fireEvent.click(await screen.findByText('Alpha corrected · Alpha description'));
+    const mentions = screen.getByRole('group', { name: `Segment 1 / ${current.revision.entities[0].entityId}` });
+    expect(within(mentions).queryByRole('checkbox', { name: /^Beta/ })).toBeNull();
+    fireEvent.click(within(mentions).getByRole('checkbox', { name: /^Alpha / }));
+    change('Mapping reason', 'Checked corrected entity and exact mention');
+    const saveButton = screen.getByRole('button', { name: 'Save pending mappings' });
+    expect(saveButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    const refreshed = structuredClone(detail); refreshed.derivedAssociations.generation = 99;
+    view.rerender(<View value={refreshed}/>);
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(received).toHaveBeenCalledTimes(1));
+    const requests = calls.filter(call => call.operation === 'apply-associations');
+    expect(requests).toHaveLength(1);
+    expect(requests[0].body).toMatchObject({ revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3,
+      analysisId: current.history.analysisId, entityRevision: current.revision.revisionId,
+      draft: { segmentEntityRefs: [{ segmentId: 's1', entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], issues: [] } });
+    expect(requests[0].body.draft).not.toHaveProperty('typedRelations');
+    expect(received.mock.calls[0][0].revision).toEqual(detail.revision);
+    expect(received.mock.calls[0][0].maintenance).toEqual(detail.maintenance);
+    expect(screen.getByText('Association review: Pending')).toBeTruthy();
+    expect(detail.derivedAssociations.revision?.typedRelations).toHaveLength(1);
+  });
+});
+
+const revisionEntries = ['revise'] as const;
+function citationEditor(_entry: typeof revisionEntries[number], detail: KnowledgeCandidateDetail, onSaved = vi.fn(), onReadback = vi.fn()) {
   const props = { workspace: '/citation-fixture', detail, lang: 'en' as const, onClose: vi.fn(), onSaved, onReadback };
-  return entry === 'revise' ? <KnowledgeRevisionDrawer {...props}/> : <ApplyEntitiesDialog {...props}/>;
+  return <KnowledgeRevisionDrawer {...props}/>;
 }
 function revisionSaveButton(entry: typeof revisionEntries[number]) {
   return screen.getByRole('button', { name: entry === 'revise' ? /Save new revision$/ : /Review and save a new knowledge revision$/ });
@@ -572,13 +651,12 @@ function revisionReason(entry: typeof revisionEntries[number]) { change(entry ==
 describe('knowledge citation revision editors', () => {
   it('renders exact saved quotations and accessible source/occurrence fields in both languages without executing source markup', () => {
     const { detail } = citationFixture();
-    expect(initialCitationLocators(detail)[0].selection).toEqual({ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', occurrence: 1 });
+    expect(initialBodyCitations(detail)[0].selection).toEqual({ evidenceRef: 'record-1', quote: 'Alpha 使用 Beta', occurrence: 1 });
     for (const lang of ['zh', 'en'] as const) {
-      const html = renderToStaticMarkup(<CitationLocatorEditor detail={detail} evidence={detail.revision.evidence}
-        value={initialCitationLocators(detail)} readOnly={false} lang={lang} onChange={() => {}}/>);
-      expect(html).toContain(lang === 'zh' ? '已保存的引文' : 'Saved citations');
-      expect(html).toContain(lang === 'zh' ? '出现序号（从零开始，可留空）' : '(zero-based, optional)');
-      expect(html).toContain(lang === 'zh' ? '重叠出现也计数' : 'overlapping occurrences also count');
+      const html = renderToStaticMarkup(<BodyEvidenceEditor detail={detail} draft={detail.revision}
+        value={initialBodyCitations(detail)} readOnly={false} lang={lang} onChange={() => {}}/>);
+      expect(html).toContain(lang === 'zh' ? '来源与引文' : 'Sources and citations');
+      expect(html).toContain(lang === 'zh' ? '出现序号（从 0 开始）' : 'Occurrence (starting at 0)');
       expect(html).toContain('&lt;script&gt;fixture only&lt;/script&gt;'); expect(html).not.toContain('<script>');
       expect(html).toContain(lang === 'zh' ? '原始消息（只读）' : 'Original message (read-only)');
       const parsed = new DOMParser().parseFromString(html, 'text/html');
@@ -587,16 +665,15 @@ describe('knowledge citation revision editors', () => {
     }
   });
   it.each(revisionEntries)('%s preserves failed drafts, sends a complete locator replacement and freezes its original baseline', async entry => {
-    const { detail, analysis } = citationFixture(), pending = deferred<Response>(), saved = vi.fn();
-    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry
+    const { detail } = citationFixture(), pending = deferred<Response>(), saved = vi.fn();
+    const calls = api(call => call.operation === entry
       ? calls.filter(value => value.operation === entry).length === 1 ? pending.promise : json(detail) : undefined);
     const view = render(citationEditor(entry, detail, saved), { wrapper });
-    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
-    expect((screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }) as HTMLInputElement).value).toBe('1');
-    change('Quotation for citation 1', 'Alpha');
-    fireEvent.click(screen.getByRole('button', { name: 'Add citation' }));
-    change('Quotation for citation 2', 'Beta');
-    fireEvent.click(screen.getByRole('button', { name: 'Add citation' }));
+    await screen.findByRole('textbox', { name: 'Citation 1' });
+    change('Citation 1', 'Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Add a citation to segment 1' }));
+    change('Citation 2', '<script>fixture only</script>');
+    fireEvent.click(screen.getByRole('button', { name: 'Add a citation to segment 1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove citation 3' }));
     revisionReason(entry);
     const refreshed = structuredClone(detail); refreshed.history.generation = 7;
@@ -605,58 +682,39 @@ describe('knowledge citation revision editors', () => {
     expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(true);
     fireEvent.click(revisionSaveButton(entry));
     await waitFor(() => expect(calls.filter(call => call.operation === entry)).toHaveLength(1));
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
     const command = calls.find(call => call.operation === entry)!.body;
     expect(command.generation).toBe(1);
-    expect(command.citationLocators).toEqual([
-      { evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Alpha', occurrence: 1 } },
-      { evidenceLinkId: 'link', selection: { evidenceRef: 'record-1', quote: 'Beta' } },
+    const evidence = (command.draft as KnowledgeCandidateDetail['revision']).content.segments[0].evidence;
+    expect(evidence.map(item => item.selection)).toEqual([
+      { evidenceRef: 'record-1', quote: 'Alpha', start: 14, end: 19 },
+      { evidenceRef: 'record-1', quote: '<script>fixture only</script>', start: 28, end: 57 },
     ]);
-    expect(JSON.stringify(command.citationLocators)).not.toMatch(/"(?:start|end)"/);
+    expect(command).not.toHaveProperty('citationLocators');
     await act(async () => pending.resolve(json({ error: 'knowledge_citations_invalid', detail: '/private/secret-source' }, 400)));
     await screen.findByText(/Invalid citations. Check the source, exact quotation and occurrence/);
     expect(document.body.textContent).not.toContain('/private/secret-source');
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Alpha');
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(false);
+    expect((screen.getByRole('textbox', { name: 'Citation 1' }) as HTMLTextAreaElement).value).toBe('Alpha');
+    expect((screen.getByRole('textbox', { name: 'Citation 1' }) as HTMLTextAreaElement).readOnly).toBe(false);
     expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(false);
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Occurrence for citation 2 (zero-based, optional)' }), { target: { value: '0' } });
-    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Occurrence for citation 2 (zero-based, optional)' }));
     fireEvent.click(revisionSaveButton(entry));
     await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
     expect(calls.filter(call => call.operation === entry)).toHaveLength(2);
   });
-  it.each(revisionEntries)('%s synchronizes a same-window message change across the full evidence link without replacing quotations', async entry => {
-    const { detail, analysis } = citationFixture(), saved = vi.fn();
-    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? json(detail) : undefined);
-    render(citationEditor(entry, detail, saved), { wrapper });
-    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
-    fireEvent.click(screen.getByRole('button', { name: 'Add citation' })); change('Quotation for citation 2', 'Beta');
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Source message for citation 1' }));
-    fireEvent.click(await screen.findByText('1 · user · 纠正：Alpha 未使用 Beta'));
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Alpha 使用 Beta');
-    expect((screen.getByRole('textbox', { name: 'Original message (read-only)' }) as HTMLTextAreaElement).value).toBe('纠正：Alpha 未使用 Beta');
-    change('Quotation for citation 1', 'Alpha 未使用 Beta');
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }), { target: { value: '0' } });
-    fireEvent.blur(screen.getByRole('spinbutton', { name: 'Occurrence for citation 1 (zero-based, optional)' }));
-    revisionReason(entry); fireEvent.click(revisionSaveButton(entry)); await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
-    const command = calls.find(call => call.operation === entry)!.body;
-    expect((command.draft as KnowledgeCandidateDetail['revision']).evidence[0].evidenceRef).toBe('record-2');
-    expect((command.citationLocators as { selection: { evidenceRef: string } }[]).map(locator => locator.selection.evidenceRef)).toEqual(['record-2', 'record-2']);
-  });
   it.each(revisionEntries.flatMap(entry => [409, 503].map(status => ({ entry, status }))))('$entry freezes $status outcomes and only reads current knowledge without another write', async ({ entry, status }) => {
-    const { detail, analysis } = citationFixture(), saved = vi.fn(), readback = vi.fn();
+    const { detail } = citationFixture(), saved = vi.fn(), readback = vi.fn();
     const latest = structuredClone(detail); latest.revision.revisionId = uuid(901); latest.revision.revisionReason = 'New persisted revision';
-    const calls = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry
+    const calls = api(call => call.operation === entry
       ? json({ error: status === 409 ? 'knowledge_conflict' : '/private/raw-server-error' }, status)
       : call.operation === 'show' ? json(latest) : undefined);
     render(citationEditor(entry, detail, saved, readback), { wrapper });
-    await screen.findByRole('textbox', { name: 'Quotation for citation 1' });
-    change('Quotation for citation 1', 'Preserved source draft'); revisionReason(entry);
+    await screen.findByRole('textbox', { name: 'Citation 1' });
+    change('Knowledge segment 1', 'Preserved source draft'); revisionReason(entry);
     fireEvent.click(revisionSaveButton(entry));
     await screen.findByRole('button', { name: 'Check latest knowledge (read-only)' });
     expect(revisionSaveButton(entry).hasAttribute('disabled')).toBe(true);
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((screen.getByRole('textbox', { name: 'Quotation for citation 1' }) as HTMLTextAreaElement).value).toBe('Preserved source draft');
+    expect((screen.getByRole('textbox', { name: 'Citation 1' }) as HTMLTextAreaElement).readOnly).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Knowledge segment 1' }) as HTMLTextAreaElement).value).toBe('Preserved source draft');
     expect(document.body.textContent).not.toContain('/private/raw-server-error');
     fireEvent.click(revisionSaveButton(entry));
     fireEvent.click(screen.getByRole('button', { name: 'Check latest knowledge (read-only)' }));
@@ -667,10 +725,10 @@ describe('knowledge citation revision editors', () => {
     expect(readback).toHaveBeenCalledWith(latest); expect(saved).not.toHaveBeenCalled();
   });
   it.each(revisionEntries)('%s discards late write and readback responses after unmount without resending', async entry => {
-    const { detail, analysis } = citationFixture(), saved = vi.fn(), readback = vi.fn(), pendingWrite = deferred<Response>();
-    const first = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? pendingWrite.promise : undefined);
+    const { detail } = citationFixture(), saved = vi.fn(), readback = vi.fn(), pendingWrite = deferred<Response>();
+    const first = api(call => call.operation === entry ? pendingWrite.promise : undefined);
     const writer = render(citationEditor(entry, detail, saved, readback), { wrapper });
-    await screen.findByRole('textbox', { name: 'Quotation for citation 1' }); revisionReason(entry);
+    await screen.findByRole('textbox', { name: 'Citation 1' }); revisionReason(entry);
     fireEvent.click(revisionSaveButton(entry));
     await waitFor(() => expect(first.filter(call => call.operation === entry)).toHaveLength(1));
     expect(first.find(call => call.operation === entry)!.body).not.toHaveProperty('citationLocators');
@@ -679,9 +737,9 @@ describe('knowledge citation revision editors', () => {
     expect(saved).not.toHaveBeenCalled(); expect(readback).not.toHaveBeenCalled();
 
     const pendingRead = deferred<Response>();
-    const second = api(call => call.operation === 'entities' ? json(analysis) : call.operation === entry ? json({}, 503) : call.operation === 'show' ? pendingRead.promise : undefined);
+    const second = api(call => call.operation === entry ? json({}, 503) : call.operation === 'show' ? pendingRead.promise : undefined);
     const reader = render(citationEditor(entry, detail, saved, readback), { wrapper });
-    await screen.findByRole('textbox', { name: 'Quotation for citation 1' }); revisionReason(entry); fireEvent.click(revisionSaveButton(entry));
+    await screen.findByRole('textbox', { name: 'Citation 1' }); revisionReason(entry); fireEvent.click(revisionSaveButton(entry));
     fireEvent.click(await screen.findByRole('button', { name: 'Check latest knowledge (read-only)' }));
     await waitFor(() => expect(second.filter(call => call.operation === 'show')).toHaveLength(1));
     reader.unmount(); expect(second.find(call => call.operation === 'show')!.signal?.aborted).toBe(true);

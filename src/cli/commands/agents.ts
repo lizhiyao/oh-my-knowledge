@@ -8,7 +8,6 @@ import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { AgentCollectionEntry } from '../../observability/agents/index.js';
-import { ExtractionGenerationPolicySchema, type ExtractionGenerationPolicy } from '../../knowledge/extraction/generation-policy.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 
@@ -67,7 +66,6 @@ export default class AgentsCommand extends BaseCommand {
     model: Flags.string({
       description: description('extract：生成模型，沿用已配置模型。', 'extract: generation model, using the configured model.'),
     }),
-    'generation-policy': Flags.string({ description: description('extract：完整生成策略 JSON；省略时仅调用一次。有界重试须明确调用及 token 预算，输出上限取自策略。', 'extract: complete generation-policy JSON; omitted means one invocation. Bounded retries require explicit invocation and token budgets; the policy sets the output cap.') }),
     json: Flags.boolean({
       default: false,
       description: description('输出完整 JSON；默认输出可读摘要。', 'Print complete JSON instead of a readable summary.'),
@@ -84,16 +82,6 @@ export default class AgentsCommand extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AgentsCommand);
     const lang = this.lang;
-    let policy: ExtractionGenerationPolicy | undefined;
-    if (flags['generation-policy'] !== undefined) {
-      if (args.operation !== 'extract') this.error(lang === 'zh' ? '--generation-policy 仅用于 extract。' : '--generation-policy is only valid for extract.', { exit: 2 });
-      let value: unknown;
-      try { value = JSON.parse(flags['generation-policy']); }
-      catch { this.error(lang === 'zh' ? '--generation-policy 不是有效 JSON。' : '--generation-policy is not valid JSON.', { exit: 2 }); }
-      const checked = ExtractionGenerationPolicySchema.safeParse(value);
-      if (!checked.success) this.error(lang === 'zh' ? '生成策略无效。请核对完整策略及调用、token 预算。' : 'Invalid generation policy. Check the complete policy and invocation/token budgets.', { exit: 2 });
-      policy = checked.data;
-    }
     if (flags['start-record'] !== undefined || flags['end-record'] !== undefined) {
       if (args.operation !== 'extract') this.error(lang === 'zh' ? '记录范围参数仅用于 extract。' : 'Record range flags are only valid for extract.', { exit: 2 });
       if (!Number.isSafeInteger(flags['start-record'] ?? 0) || !Number.isSafeInteger(flags['end-record'] ?? 0)
@@ -234,7 +222,7 @@ export default class AgentsCommand extends BaseCommand {
           : 'No generation model; pass --model.', { exit: 2 });
       }
       const { createLocalKnowledgeApplication } = await import('../../knowledge/application/local.js');
-      const { configuredExtractionModel } = await import('../../knowledge/adapters/executor.js');
+      const { configuredKnowledgeGenerationModel } = await import('../../knowledge/adapters/generation-executor.js');
       const app = createLocalKnowledgeApplication(settings.workspace);
       this.logToStderr(lang === 'zh'
         ? `${session.agentId} / ${session.sourceKind} · 仅发送选定来源片段；费用以执行器实际报告为准。`
@@ -246,25 +234,23 @@ export default class AgentsCommand extends BaseCommand {
       }, signal);
       const run = await app.generate(
         captured.snapshotId,
-        configuredExtractionModel(settings.executor, settings.model, createExtractionArchiveProducer(process.env),
-          policy?.policyId === 'knowledge-generation-bounded/v1' ? { maxOutputTokens: policy.maxOutputTokens } : undefined),
+        configuredKnowledgeGenerationModel(settings.executor, settings.model, createExtractionArchiveProducer(process.env)),
         undefined,
         signal,
-        { policy },
       );
       if (flags.json) {
         this.log(JSON.stringify({ session, snapshot: captured, run }, null, 2));
-        if (run.status !== 'completed') this.exit(1);
+        if (run.journal.status !== 'completed') this.exit(1);
         return;
       }
-      if (run.status !== 'completed') this.error((lang === 'zh' ? `提炼未完成（${run.status}，${run.runId}）。先核对已保存结果：` : `Extraction incomplete (${run.status}, ${run.runId}). Inspect saved results first:`)
+      if (run.journal.status !== 'completed') this.error((lang === 'zh' ? `提炼未完成（${run.journal.status}，${run.journal.runId}）。先核对已保存结果：` : `Extraction incomplete (${run.journal.status}, ${run.journal.runId}). Inspect saved results first:`)
         + `\nomk observe knowledge runs --workspace ${shellQuoteArg(settings.workspace)} --json`);
       this.log(lang === 'zh'
-        ? `提炼完成：${run.committed.length} 条候选知识（来源格式 ${captured.sourceKind}，快照 ${captured.snapshotId}）`
-        : `Extracted ${run.committed.length} candidate(s) from ${captured.sourceKind} (snapshot ${captured.snapshotId}).`);
-      for (const committed of run.committed) {
+        ? `提炼完成：${run.journal.bodies.length} 条候选知识（来源格式 ${captured.sourceKind}，快照 ${captured.snapshotId}）`
+        : `Extracted ${run.journal.bodies.length} candidate(s) from ${captured.sourceKind} (snapshot ${captured.snapshotId}).`);
+      for (const committed of run.journal.bodies) {
         const detail = app.detail(committed.knowledgeId, committed.revisionId);
-        this.log(`- ${detail.revision.title} · ${detail.revision.entities.length} 个实体 · ${committed.knowledgeId}`);
+        this.log(`- ${detail.revision.title} · ${detail.revision.content.segments.length} 个正文段 · ${committed.knowledgeId}`);
       }
       this.logToStderr(lang === 'zh'
         ? `下一步：omk observe knowledge list --workspace ${shellQuoteArg(settings.workspace)}`

@@ -1,4 +1,4 @@
-import { CandidateStatementHeading, CandidateDecisionHeader } from '../../../src/studio/web/components/knowledge/reader.js';
+import { CandidateDecisionHeader } from '../../../src/studio/web/components/knowledge/reader.js';
 /**
  * 候选详情头与列表行读到的决定文案：用户做过什么决定、理由是否回显、复核维度有没有被冒充。
  *
@@ -23,22 +23,7 @@ const row = (choice: 'retain' | 'discard' | null, lang: 'zh' | 'en' = 'zh') =>
   renderToStaticMarkup(createElement(CandidateRowStatus, { choice, lang }));
 
 describe('candidate decision display', () => {
-  it('marks negative claims in the default heading without rewriting their relation or hiding the object', () => {
-    const entities = [{ entityId: 'session', label: 'Session' }, { entityId: 'metric', label: '<Count>' }];
-    for (const lang of ['zh', 'en'] as const) {
-      for (const object of [undefined, { entityId: 'metric' }] as const) {
-        const statement = { subject: { entityId: 'session' }, relation: '在状态更新时新增计数', polarity: 'negative' as const, ...(object ? { object } : {}) };
-        const html = renderToStaticMarkup(createElement(CandidateStatementHeading, { statement, entities, lang }));
-        expect(html).toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
-        expect(html).not.toContain('<details');
-        expect(html).toContain('Session'); expect(html).toContain(statement.relation);
-        if (object) expect(html).toContain('&lt;Count&gt;');
-        const positive = renderToStaticMarkup(createElement(CandidateStatementHeading, { statement: { ...statement, polarity: 'positive' }, entities, lang }));
-        expect(positive).not.toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
-        expect(positive).toContain(statement.relation);
-      }
-    }
-  });
+
   it('finds retained or undecided knowledge by title without treating a decision as verification', () => {
     const row = { title: 'Taro 判断更正', choice: 'retain' as const };
     expect(candidateMatches(row, 'retain', ' taro ')).toBe(true);
@@ -52,20 +37,6 @@ describe('candidate decision display', () => {
     expect(candidateMatches(tagged, 'all', 'tag:tar')).toBe(false);
     expect(candidateMatches(tagged, 'pending', 'tag:Taro')).toBe(false);
     expect(candidateMatches(tagged, 'all', 'tag:')).toBe(false);
-  });
-  it('renders exact configuration literals and tested-state claims without interpreting their values', () => {
-    for (const lang of ['zh', 'en'] as const) {
-      for (const [relation, polarity] of [['配置值为布尔值 false', 'positive'], ["配置值为字符串 'false'", 'positive'], ['本次被测代码已发布', 'negative']] as const) {
-        const statement = { subject: { entityId: 'field' }, relation, polarity };
-        const html = renderToStaticMarkup(createElement(CandidateStatementHeading, {
-          statement, entities: [{ entityId: 'field', label: 'enabled / 当前 master' }], lang,
-        }));
-        expect(html).toContain(relation.replaceAll("'", '&#x27;'));
-        expect(html).toContain('enabled / 当前 master');
-        expect(html).not.toContain('已禁用');
-        if (polarity === 'negative') expect(html).toContain(lang === 'zh' ? '否定陈述' : 'Negative claim');
-      }
-    }
   });
 
   it('offers explicit tag editing without presenting tags as verified knowledge', () => {

@@ -181,7 +181,7 @@ describe('scripts/build-docs codegen', () => {
       }
     }
     assert.throws(() => renderCurrentKnowledgeContract({ ...current, studyPlanMaxBytes: Infinity }, 'en'));
-    assert.throws(() => renderCurrentKnowledgeContract({ ...current, strictPromptVersion: '' }, 'zh'));
+    assert.throws(() => renderCurrentKnowledgeContract({ ...current, bodyPromptVersion: '' }, 'zh'));
   });
 
   it('rejects semantic value drift and --write restores only the generated current-contract section', async () => {
@@ -190,10 +190,10 @@ describe('scripts/build-docs codegen', () => {
       const target = join(root, 'docs/zh/reference/shared/knowledge-contract.md');
       const original = readFileSync(target, 'utf8');
       const current = await loadCurrentKnowledgeContract(PROJECT_ROOT);
-      writeFileSync(target, original.replace(current.strictPromptVersion, 'knowledge-extraction-stale'));
+      writeFileSync(target, original.replace(current.bodyPromptVersion, 'knowledge-body-stale'));
       const checked = await runCliFailing(['--check'], 1, { entry: BUILD_DOCS, cwd: root });
       assert.ok(checked.stderr.includes('knowledge-contract.md'));
-      assert.ok(checked.stderr.includes(current.strictPromptVersion));
+      assert.ok(checked.stderr.includes(current.bodyPromptVersion));
       await runCli(['--write'], { entry: BUILD_DOCS, cwd: root });
       assert.equal(readFileSync(target, 'utf8'), original);
       await runCli(['--check'], { entry: BUILD_DOCS, cwd: root });
