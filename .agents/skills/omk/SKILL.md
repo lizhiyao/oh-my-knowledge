@@ -23,7 +23,7 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 
 ## 从历史知识完成当前任务
 
-用户希望参考已有知识回答问题、分析取舍或完成当前任务时，先阅读 [按任务复用知识](references/knowledge-reuse.md)，按其中的只读流程使用现有 `retrieve`、`show` 和 `source`。沿用用户已选的知识工作区或 CLI 已配置默认；保留与任务有关的具体条件、反例、异议、请求与回应的先后关系及未决状态，并提供实际知识／来源引用。
+用户希望参考已有知识回答问题、分析取舍或完成当前任务时，先阅读 [按任务复用知识](references/knowledge-reuse.md)，首选 `retrieve --format text` 阅读原样正文，必要时用 JSON、`show` 和 `source` 精确读回。沿用用户已选的知识工作区或 CLI 已配置默认；按工具的单次可见容量调整读取量，确认没有截断后再采用。保留与任务有关的具体条件、反例、异议、请求与回应的历史关系及未决状态；建议中的限定紧随所约束的动作，并提供实际知识／来源引用。
 
 命中此分支后不进入下方评测项目扫描：不查找 `eval-samples`，不因缺少 skill 或评测用例而运行 `init`、`sample`、`doctor`、`eval` 或 `evolve`。完成必要信息核对后直接交付当前任务；若用户另有评测或保存要求，再处理相应分支。CLI 不存在或不支持所需能力时，说明版本边界，不自动安装、升级或迁移数据。
 
@@ -66,7 +66,7 @@ Codex 是 omk 的一等 runtime。未显式指定执行器时，`omk eval` / `do
 | 用户意图 | 操作 |
 |---------|------|
 | `$omk feedback` 快捷反馈 | → MCP `save_observation`；不执行 CLI |
-| 从历史知识完成当前任务、参考已有知识回答或行动 | → 先读 [按任务复用知识](references/knowledge-reuse.md)，走只读检索与引用流程；跳过下方评测项目扫描 |
+| 从历史知识完成当前任务、参考已有知识回答或行动 | → 先读 [按任务复用知识](references/knowledge-reuse.md)，首选只读 `retrieve --format text`，核对可见完整性与引用；跳过下方评测项目扫描 |
 | 评测 / 对比 skill | → `omk eval` |
 | 改进 / 优化 skill | → `omk evolve`（自动多轮迭代） |
 | 生成测试用例 | → `omk sample` |

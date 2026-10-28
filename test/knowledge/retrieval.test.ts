@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
-import { KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID, KnowledgeRetrievalRequestSchema, knowledgeRetrievalTerms, retrieveKnowledge } from '../../src/knowledge/application/retrieval.js';
+import { KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID, KnowledgeRetrievalRequestSchema, knowledgeRetrievalTerms, retrieveKnowledge, retrieveKnowledgeText } from '../../src/knowledge/application/retrieval.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;
@@ -159,5 +159,42 @@ describe('canonical body segment retrieval', () => {
     const sameTopic = retrieveKnowledge(app, { query: 'Vue Transition 初始化条件' });
     expect(new Set(sameTopic.knowledge.slice(0, 2).map(item => item.bodyRef.knowledgeId))).toEqual(new Set([first.row.knowledgeId, second.row.knowledgeId]));
     expect(sameTopic.items).toHaveLength(3);
+  });
+  it('renders complete original text in saved segment order while leaving JSON selection order unchanged', () => {
+    const first = 'v-model 先讨论初始化条件。\r\n  否定与未知必须保留。  \n' + '必要上下文。'.repeat(20);
+    const second = 'v-model 后续讨论：仍未验证。';
+    const f = fixture([first, second]); f.retain();
+    const jsonBefore = JSON.stringify(retrieveKnowledge(f.app, { query: 'v-model' }));
+    expect(JSON.parse(jsonBefore).items.map((item: { segmentIndex: number }) => item.segmentIndex)).toEqual([1, 0]);
+    const text = retrieveKnowledgeText(f.app, { query: 'v-model' });
+    expect(text).toContain(first); expect(text).toContain(second);
+    expect(text.indexOf('segmentIndex: 0;')).toBeLessThan(text.indexOf('segmentIndex: 1;'));
+    expect(JSON.stringify(retrieveKnowledge(f.app, { query: 'v-model' }))).toBe(jsonBefore);
+    expect(f.segments.map(segment => segment.text)).toEqual([first, second]);
+  });
+  it('packs by actual text UTF-8 plus LF, not the JSON cost of undisplayed citation quotations', () => {
+    const f = fixture(['v-model 完整必要约束：初始化才适用，后续行为未知。']); f.retain();
+    const quote = '仅作为来源引用，不代替知识正文。'.repeat(1000), evidence = f.segments[0].evidence[0];
+    evidence.selection.quote = quote; evidence.selection.end = quote.length;
+    f.source.mockReturnValue({ status: 'available', window: { sourceKind: 'codex', excerpts: [{ evidenceRef: 'record:0', text: quote }] } });
+    const request = { query: 'v-model', maxBytes: 8192 }, jsonBefore = JSON.stringify(retrieveKnowledge(f.app, request));
+    expect(JSON.parse(jsonBefore)).toMatchObject({ items: [], omitted: { oversizedSegments: 1 } });
+    const text = retrieveKnowledgeText(f.app, request);
+    expect(text).toContain(f.segments[0].text); expect(text).not.toContain(quote);
+    expect(text).toContain('quoteDisplay: omitted'); expect(text).toContain(`utf16=[0,${quote.length})`);
+    expect(text).toContain('basis=source_assertion; positionStatus=matched');
+    expect(Buffer.byteLength(text, 'utf8') + 1).toBeLessThanOrEqual(request.maxBytes);
+    const exactBudget = Buffer.byteLength(text, 'utf8') + 1;
+    expect(retrieveKnowledgeText(f.app, { ...request, maxBytes: exactBudget })).toBe(text);
+    expect(JSON.stringify(retrieveKnowledge(f.app, request))).toBe(jsonBefore);
+  });
+  it('omits an oversized text segment whole and keeps unavailable evidence explicit without source fallback', () => {
+    const long = 'v-model 完整正文限制不能截断。'.repeat(2000), short = 'v-model 短段保留否定：未确认。';
+    const f = fixture([long, short]); f.retain(); f.source.mockReturnValue({ status: 'unavailable', reason: 'deleted' });
+    const text = retrieveKnowledgeText(f.app, { query: 'v-model', maxBytes: 8192 });
+    expect(text).toContain(short); expect(text).not.toContain('完整正文限制');
+    expect(text).toContain('oversizedSegments=1'); expect(text).toContain('sourceStatus=unavailable; reason="deleted"');
+    expect(text).toContain('positionStatus=unavailable'); expect(Buffer.byteLength(text, 'utf8') + 1).toBeLessThanOrEqual(8192);
+    expect(f.segments[0].text).toBe(long);
   });
 });

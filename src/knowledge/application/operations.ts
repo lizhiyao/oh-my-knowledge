@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { KnowledgeGenerationModel, KnowledgeApplication } from './application.js';
 import { KnowledgeBodyRefSchema } from '../contracts.js';
-import { KnowledgeRetrievalRequestSchema, retrieveKnowledge } from './retrieval.js';
+import { KnowledgeRetrievalRequestSchema, retrieveKnowledge, retrieveKnowledgeText } from './retrieval.js';
 import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
 import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 
@@ -26,6 +26,7 @@ export const knowledgeOperationSchemas = {
   'continue-stage': z.strictObject({ operation: z.literal('continue-stage'), id: uuid, generation: z.number().int().positive(), executor: text, model: text }),
   'rebuild-associations': KnowledgeBodyRefSchema.extend({ operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional() }),
   retrieve: z.strictObject({ ...KnowledgeRetrievalRequestSchema.shape, operation: z.literal('retrieve'),
+    format: z.enum(['json', 'text']).optional(),
     maxBytes: KnowledgeRetrievalRequestSchema.shape.maxBytes.unwrap().optional(),
     includeCandidates: KnowledgeRetrievalRequestSchema.shape.includeCandidates.unwrap().optional(),
   }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' }),
@@ -49,7 +50,7 @@ type Results = {
   quality: ReturnType<KnowledgeApplication['quality']>; runs: ReturnType<KnowledgeApplication['runs']>; show: ReturnType<KnowledgeApplication['detail']>;
   entities: ReturnType<KnowledgeApplication['entities']>; 'entity-catalog': ReturnType<KnowledgeApplication['queryEntities']>;
   'entity-detail': ReturnType<KnowledgeApplication['entityDetail']>; 'correct-entities': ReturnType<KnowledgeApplication['correctEntities']>;
-  inspect: ReturnType<KnowledgeApplication['inspect']>; retrieve: ReturnType<typeof retrieveKnowledge>; 'continue-stage': Awaited<ReturnType<KnowledgeApplication['continueStage']>>; 'rebuild-associations': Awaited<ReturnType<KnowledgeApplication['rebuildAssociations']>>; capture: ReturnType<KnowledgeApplication['capture']>;
+  inspect: ReturnType<KnowledgeApplication['inspect']>; retrieve: ReturnType<typeof retrieveKnowledge> | string; 'continue-stage': Awaited<ReturnType<KnowledgeApplication['continueStage']>>; 'rebuild-associations': Awaited<ReturnType<KnowledgeApplication['rebuildAssociations']>>; capture: ReturnType<KnowledgeApplication['capture']>;
   generate: Awaited<ReturnType<KnowledgeApplication['generate']>>; resume: ReturnType<KnowledgeApplication['resume']>;
   source: ReturnType<KnowledgeApplication['source']>; 'delete-source': { deleted: string };
   maintain: ReturnType<KnowledgeApplication['maintain']>; revise: ReturnType<KnowledgeApplication['revise']>;
@@ -69,7 +70,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'entity-catalog': return app.queryEntities({ query: request.query, identityStatus: request.identityStatus, sourceStatus: request.sourceStatus, threadId: request.threadId, analysisId: request.analysisId, page: request.page, pageSize: request.pageSize });
       case 'entity-detail': return app.entityDetail(request.analysisId, request.entityId, request.revision);
       case 'correct-entities': return app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason);
-      case 'retrieve': return retrieveKnowledge(app, { query: request.query, maxBytes: request.maxBytes,
+      case 'retrieve': return (request.format === 'text' ? retrieveKnowledgeText : retrieveKnowledge)(app, { query: request.query, maxBytes: request.maxBytes,
         includeCandidates: request.includeCandidates, snapshot: request.snapshot, sourceVersion: request.sourceVersion, entityId: request.entityId });
       case 'inspect': return app.inspect(request.id);
       case 'continue-stage': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.continueStage(request.id, request.generation, model(request.executor, request.model), signal); }
