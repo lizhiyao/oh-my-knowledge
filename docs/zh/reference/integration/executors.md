@@ -95,7 +95,7 @@ Core Codex 适配器目前只声明 `runtime-default` skill 发现。严格 `bas
 
 ### Codex SDK 契约覆盖
 
-optional peer 范围允许安装，不代表其中每个版本都已经验证。仓库测试精确安装 `@openai/codex-sdk` 0.149.0，由 [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) 与 [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock) 固定。测试将 OMK 类型与真实 SDK 声明核对，解析已安装模块及其自带 native 包，并让真实 SDK 调用临时假可执行文件，验证选项、私有环境、事件以及 abort 后的子进程终止。进程 fixture 使用 POSIX 可执行文件，在 Windows 跳过；通过结果只覆盖实际运行的操作系统、架构和 Node 版本。这些检查不调用模型、不读取用户认证，不能证明线上认证、provider 行为或其他 SDK 版本兼容。参见[官方 SDK 指南](https://learn.chatgpt.com/docs/codex-sdk)。
+optional peer 范围允许安装，不代表其中每个版本都已经验证。仓库测试精确安装 `@openai/codex-sdk` 0.165.0 及其自带的 `@openai/codex` 0.165.0，由 [package.json](https://github.com/lizhiyao/oh-my-knowledge/blob/main/package.json) 与 [yarn.lock](https://github.com/lizhiyao/oh-my-knowledge/blob/main/yarn.lock) 固定。测试将 OMK 类型与真实 SDK 声明核对，解析已安装模块及其自带 native 包，并让真实 SDK 调用临时假可执行文件，验证选项、私有环境、事件以及 abort 后的子进程终止。进程 fixture 使用 POSIX 可执行文件，在 Windows 跳过；通过结果只覆盖实际运行的操作系统、架构和 Node 版本。这些检查不调用模型、不读取用户认证，不能证明线上认证、provider 行为或其他 SDK 版本兼容。参见[官方 SDK 指南](https://learn.chatgpt.com/docs/codex-sdk)。
 
 在这个受测 SDK 中，`runStreamed` 会把 `turn.completed.usage` 缺失的 `cache_write_input_tokens` 补为 `0`。OMK 目前将这个 SDK 归一化字段投影为 `cacheWriteInputTokens`；仅凭该值不能认定 provider 报告了零次缓存写入。契约测试显式展示 CLI 字段缺失与 SDK 生成零值的区别。本次保持既有 usage 和持久化证据格式，比较测量结果时须固定 SDK 版本。
 
@@ -216,9 +216,11 @@ Codex 的 `Reconnecting...` 是传输重连通知；只有后续出现合法的�
 OMK 基础安装不再携带可选 Agent SDK 及其大型平台二进制。`codex` CLI 执行器、API 执行器、自定义执行器和 DSH 宿主插件都不需要它们。只有明确选择 `*-sdk` 执行器时，才在 OMK 所在的同一作用域安装对应 SDK。
 
 - **codex**：安装 Codex CLI（`npm i -g @openai/codex`）并认证
-- **codex-sdk**：本地安装兼容的可选 SDK：`npm i @openai/codex-sdk@^0.149.0`；如果 OMK 是全局安装，则执行 `npm i -g @openai/codex-sdk@^0.149.0`（自带 `@openai/codex` binary）
+- **codex-sdk**：本地安装兼容的可选 SDK：`npm i @openai/codex-sdk@^0.165.0`；如果 OMK 是全局安装，则执行 `npm i -g @openai/codex-sdk@^0.165.0`（自带 `@openai/codex` binary）
 - **DSH 插件**：在已有 command-capable DSH profile 中安装 `oh-my-knowledge`，使用 `/omk eval <eval.yaml>`
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
+
+已有安装如果仍使用旧版可选 Codex SDK，请按上面的本地或全局 SDK 命令升级。此次依赖升级不需要迁移存量数据；历史测量保留各自记录的 Runtime identity，使用不同 SDK 版本的测量不能合并为固定 runtime 的比较。
 
 ## 相关
 

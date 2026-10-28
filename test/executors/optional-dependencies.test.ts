@@ -27,7 +27,7 @@ describe('optional executor dependencies', () => {
   it('uses the compatible Codex SDK patch range in the install command', () => {
     assert.throws(
       () => assertOptionalExecutorDependency('codex-sdk', () => false),
-      /npm install @openai\/codex-sdk@\^0\.149\.0/,
+      /npm install @openai\/codex-sdk@\^0\.165\.0/,
     );
   });
 

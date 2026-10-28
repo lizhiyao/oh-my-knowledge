@@ -118,7 +118,7 @@ describe.skipIf(process.platform === 'win32')('installed Codex SDK process contr
       assert.equal(captured.marker, 'private-only');
       assert.equal(captured.inherited, undefined);
 
-      // SDK 0.149.0 fills a missing CLI cache-write bucket with zero. This is
+      // The installed real SDK fills a missing CLI cache-write bucket with zero. This is
       // upstream normalization, not evidence that the provider reported zero.
       assert.equal('cache_write_input_tokens' in captured.wireUsage, false);
       assert.deepEqual(events.at(-1), {
