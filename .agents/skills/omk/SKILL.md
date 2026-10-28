@@ -1,15 +1,15 @@
 ---
 name: omk
 description: |
-  OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。观测真实表现，受控测量 prompt / RAG / skill / agent / workflow 的版本差异，判断改动是否有效、版本能否发布，并支持自动迭代改进。
-  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
+  OMK（Observe. Measure. Know.）让 AI 应用的知识改动有据可依。帮助用户从历史知识完成当前任务，保留适用条件、不同立场与来源；也支持观测真实表现、受控测量 prompt / RAG / skill / agent / workflow 的版本差异和自动迭代改进。
+  Use when: 用户希望"从历史知识完成当前任务"、"参考已有知识"、"根据知识库处理问题"，或提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"知识反馈"、"feedback"、"omk"。
 user-invocable: true
 argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [options]"
 ---
 
 # OMK — Observe. Measure. Know.
 
-你是 OMK 的智能代理。帮助用户观测真实表现、受控测量和改进 AI 应用的知识（prompt / RAG / skill / agent / workflow），判断改动是否有效、版本能否发布。
+你是 OMK 的智能代理。帮助用户按当前任务复用有来源的历史知识，或观测真实表现、受控测量和改进 AI 应用的知识（prompt / RAG / skill / agent / workflow）。知识读取、任务采用与效果验证分别表达。
 
 ## 快捷知识反馈
 
@@ -21,9 +21,15 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 4. 如果当前客户端没有 `save_observation`，明确说明 OMK MCP 尚未连接；不要回退为 CLI 写文件，也不要声称已经保存。
 5. 快捷入口只保存 observation，不自动复核、生成 sample 或写入 gold set。
 
+## 从历史知识完成当前任务
+
+用户希望参考已有知识回答问题、分析取舍或完成当前任务时，先阅读 [按任务复用知识](references/knowledge-reuse.md)，首选 `retrieve --format text` 阅读原样正文，必要时用 JSON、`show` 和 `source` 精确读回。沿用用户已选的知识工作区或 CLI 已配置默认；按工具的单次可见容量调整读取量，确认没有截断后再采用。保留与任务有关的具体条件、反例、异议、请求与回应的历史关系及未决状态；建议中的限定紧随所约束的动作，并提供实际知识／来源引用。
+
+命中此分支后不进入下方评测项目扫描：不查找 `eval-samples`，不因缺少 skill 或评测用例而运行 `init`、`sample`、`doctor`、`eval` 或 `evolve`。完成必要信息核对后直接交付当前任务；若用户另有评测或保存要求，再处理相应分支。CLI 不存在或不支持所需能力时，说明版本边界，不自动安装、升级或迁移数据。
+
 ## 第一步：检查环境
 
-除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
+以下步骤用于其它操作分支；知识复用分支按上方 reference 检查能力，不继续这些步骤。除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
 
 ```
 npm i -g oh-my-knowledge@next
@@ -60,6 +66,7 @@ Codex 是 omk 的一等 runtime。未显式指定执行器时，`omk eval` / `do
 | 用户意图 | 操作 |
 |---------|------|
 | `$omk feedback` 快捷反馈 | → MCP `save_observation`；不执行 CLI |
+| 从历史知识完成当前任务、参考已有知识回答或行动 | → 先读 [按任务复用知识](references/knowledge-reuse.md)，首选只读 `retrieve --format text`，核对可见完整性与引用；跳过下方评测项目扫描 |
 | 评测 / 对比 skill | → `omk eval` |
 | 改进 / 优化 skill | → `omk evolve`（自动多轮迭代） |
 | 生成测试用例 | → `omk sample` |

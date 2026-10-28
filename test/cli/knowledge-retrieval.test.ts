@@ -11,6 +11,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { knowledgeBodyDigest } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeActor, KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import * as executor from '../../src/knowledge/adapters/generation-executor.js';
+import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
 import { runCommand } from '../helpers/run-command.js';
 
 const roots: string[] = [];
@@ -74,6 +75,26 @@ describe('body retrieve command wiring', () => {
     expect(result).toMatchObject({ sources: [{ status: 'unavailable', reason: 'deleted' }], items: [{ evidenceChecks: [{ positionStatus: 'unavailable' }] }] });
     expect(result.items[0].segment).toEqual(f.draft.content.segments[0]); expect(workspaceBytes(f.workspace)).toEqual(before);
   });
+  it('renders complete canonical text with exact evidence identities while keeping default and explicit JSON bytes identical', async () => {
+    const f = persistedBody(); f.retain(); const before = workspaceBytes(f.workspace);
+    const json = await f.command(), explicit = await f.command(['--format', 'json', '--json']);
+    expect(explicit.stdout).toBe(json.stdout);
+    const readback = JSON.parse(json.stdout), segment = f.draft.content.segments[0], evidence = segment.evidence[0];
+    expect(readback.items[0].segment).toEqual(segment);
+    const output = await f.command(['--format', 'text', '--max-bytes', '8192']);
+    expect(output.stdout).toContain('viewKind: knowledge-body-text/v1');
+    expect(output.stdout).toContain('packingPolicyId: knowledge-body-text-packing/v1');
+    expect(output.stdout).toContain('quoteDisplay: omitted');
+    for (const value of [segment.text, f.knowledgeId, f.revisionId, knowledgeBodyDigest(f.draft), f.snapshot.snapshotId,
+      f.snapshot.sourceVersion, evidence.selection.evidenceRef, evidence.basis, `utf16=[${evidence.selection.start},${evidence.selection.end})`]) {
+      expect(output.stdout).toContain(value);
+    }
+    expect(output.stdout).toContain('matched');
+    expect(output.stdout.endsWith('endView: knowledge-body-text/v1\n')).toBe(true);
+    expect(output.stdout.endsWith('\n')).toBe(true); expect(output.stdout.endsWith('\n\n')).toBe(false);
+    expect(Buffer.byteLength(output.stdout, 'utf8')).toBeLessThanOrEqual(8192);
+    expect(workspaceBytes(f.workspace)).toEqual(before); expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
+  });
   it('keeps independent body reads available through failed or unreadable derived records and ignores unrelated corrupt catalogs', async () => {
     const f = persistedBody(); f.retain(); const file = f.failedAssociations();
     expect(JSON.parse((await f.command()).stdout).knowledge[0].derivedAssociations.status).toBe('failed');
@@ -91,11 +112,18 @@ describe('body retrieve command wiring', () => {
   it('rejects malformed and mutation/generation flags as parameter errors before reading settings or creating a workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-retrieve-args-')); roots.push(root); const workspace = join(root, 'absent');
     vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
+    const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve');
     const invoke = (args: string[]) => runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, ...args], { cwd: root });
     for (const args of [[], ['--query', 'x', '--max-bytes', '1023'], ['--query', 'x', '--source-version', `sha256:${'a'.repeat(64)}`],
-      ['--query', 'x', '--executor', 'codex'], ['--query', 'x', '--reason', 'must not mutate']]) {
+      ['--query', 'x', '--executor', 'codex'], ['--query', 'x', '--reason', 'must not mutate'],
+      ['--query', 'x', '--format', 'text', '--json'], ['--query', 'x', '--format', 'yaml']]) {
       await expect(invoke(args)).rejects.toMatchObject({ code: 2 });
     }
+    for (const args of [['list', '--workspace', workspace, '--format', 'json'], ['schema', '--format', 'text'],
+      ['study', '--format', 'text', '--evidence', join(root, 'absent-evidence.json')]]) {
+      await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    expect(settings).not.toHaveBeenCalled();
     expect(existsSync(workspace)).toBe(false); expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
   });
 });

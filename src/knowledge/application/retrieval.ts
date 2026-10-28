@@ -3,6 +3,7 @@ import type { KnowledgeBodyRef, KnowledgeDraft } from '../contracts.js';
 import type { KnowledgeAssociationSelection } from '../associations.js';
 import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
+import { formatKnowledgeRetrievalText } from './retrieval-text.js';
 
 export const KNOWLEDGE_RETRIEVAL_MIN_BYTES = 1024;
 export const KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES = 65536;
@@ -121,8 +122,9 @@ function project(units: Unit[], matched: number, oversized: number, resolutions:
   return result;
 }
 /** Current canonical bodies only; no executor, mutation, source-text fallback or name-based merging. */
-export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest): KnowledgeRetrievalResult {
+function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest, format: 'json' | 'text'): KnowledgeRetrievalResult {
   const request = KnowledgeRetrievalRequestSchema.parse(input), terms = knowledgeRetrievalTerms(request.query);
+  const measureResult = format === 'text' ? (value: KnowledgeRetrievalResult) => Buffer.byteLength(formatKnowledgeRetrievalText(value), 'utf8') + 1 : measure;
   const asciiTerms = terms.filter(term => /^[a-z0-9_$]+(?:[.:/#-][a-z0-9_$]+)*$/.test(term));
   const fullHanRuns = new Set([...request.query.normalize('NFKC').toLowerCase().matchAll(/\p{Script=Han}+/gu)].map(match => match[0]));
   const derivedBigrams = new Set(terms.filter(term => /^\p{Script=Han}{2}$/u.test(term) && !fullHanRuns.has(term)));
@@ -162,16 +164,16 @@ export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'deta
   const dominated = new Set([...topics].filter(([, topic]) => [...topics.values()].some(other =>
     topic.size < other.size && [...topic].every(term => other.has(term)))).map(([id]) => id));
   candidates.sort(stableOrder);
-  const oversized = new Set(candidates.filter(unit => measure(project([unit], 1, 0, resolutions, scopeDiagnostics)) > request.maxBytes));
+  const oversized = new Set(candidates.filter(unit => measureResult(project([unit], 1, 0, resolutions, scopeDiagnostics)) > request.maxBytes));
   const chosen: Unit[] = [], remaining = new Set(candidates), covered = new Set<string>(), coveredDocuments = new Set<string>();
   const projected = (units: Unit[]) => project(units, candidates.length, [...oversized].filter(unit => !units.includes(unit)).length, resolutions, scopeDiagnostics);
   let result = projected(chosen);
-  if (measure(result) > request.maxBytes) throw new KnowledgeRetrievalBudgetError(measure(result));
+  if (measureResult(result) > request.maxBytes) throw new KnowledgeRetrievalBudgetError(measureResult(result));
   while (remaining.size) {
     let best: { unit: Unit; result: KnowledgeRetrievalResult; gain: number; cost: number; novel: number; priority: number } | undefined;
-    const currentBytes = measure(result);
+    const currentBytes = measureResult(result);
     for (const unit of remaining) {
-      const next = projected([...chosen, unit]), nextBytes = measure(next); if (nextBytes > request.maxBytes) continue;
+      const next = projected([...chosen, unit]), nextBytes = measureResult(next); if (nextBytes > request.maxBytes) continue;
       const novelTerms = [...unit.hits].filter(term => !covered.has(term)), novel = novelTerms.length;
       const novelty = novelTerms.reduce((gain, term) => gain + (derivedBigrams.has(term) ? 1 : 4), 0);
       const documentNovel = [...unit.documentHits].filter(term => !coveredDocuments.has(term)).length;
@@ -188,4 +190,13 @@ export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'deta
     best.unit.hits.forEach(term => covered.add(term)); best.unit.documentHits.forEach(term => coveredDocuments.add(term));
   }
   return result;
+}
+
+/** The existing JSON selection and byte representation retain their original packing costs. */
+export function retrieveKnowledge(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest): KnowledgeRetrievalResult {
+  return retrieveForFormat(app, input, 'json');
+}
+/** Text has its own actual UTF-8 + LF cost; it is never selected under the JSON budget first. */
+export function retrieveKnowledgeText(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest): string {
+  return formatKnowledgeRetrievalText(retrieveForFormat(app, input, 'text'));
 }

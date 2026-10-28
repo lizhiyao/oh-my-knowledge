@@ -617,6 +617,7 @@ omk observe knowledge <operation> [flags]
 - `--entity-revision` `option`:明确实体分析修订 UUID。
 - `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
 - `--executor` `option`:生成/继续/重建的执行器。
+- `--format` `json|text`:仅 retrieve：json 为完整结构，text 为正文消费视图；省略保持 JSON。text 不可与 --json 同用。
 - `--from-workspace` `option`:migrate：显式旧 v2 工作区，原件逐字保留；须同时明确 --workspace 新目标，零模型迁移。
 - `--generation` `option`:预先读取的 generation，防并发覆盖。
 - `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
@@ -624,11 +625,11 @@ omk observe knowledge <operation> [flags]
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
 - `--input` `option`:完整新正文/实体/派生草稿 JSON 文件，不修改原修订。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
-- `--json` `boolean`:完整 JSON；retrieve 始终单行预算内 JSON。
+- `--json` `boolean`:完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
-- `--max-bytes` `option`:retrieve 完整 JSON+换行 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
+- `--max-bytes` `option`:retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
 - `--operation-id` `option`:seal-run：稳定的人工操作 UUID，重入必须复用。

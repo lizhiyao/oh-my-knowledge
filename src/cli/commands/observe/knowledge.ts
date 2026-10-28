@@ -52,7 +52,8 @@ export default class ObserveKnowledge extends BaseCommand {
     analysis: Flags.string({ description: description('明确实体分析 UUID，省略时 entities 搜索目录。', 'Exact entity analysis UUID; entities searches catalog when omitted.') }),
     'entity-revision': Flags.string({ description: description('明确实体分析修订 UUID。', 'Exact entity analysis revision UUID.') }),
     query: Flags.string({ description: description('retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。', 'Required natural question for retrieve; literal ASCII/code and Han run/bigram recall, without semantic inference.') }),
-    'max-bytes': Flags.integer({ min: 1024, max: 1048576, description: description('retrieve 完整 JSON+换行 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。', 'retrieve complete JSON plus newline UTF-8 budget, default 65536, with explicit 8192 supported; not a body limit. Omit complete segments, never truncate conditions.') }),
+    format: Flags.string({ options: ['json', 'text'], description: description('仅 retrieve：json 为完整结构，text 为正文消费视图；省略保持 JSON。text 不可与 --json 同用。', 'retrieve only: json returns the complete structure; text returns a content consumption view. Omission preserves JSON. text cannot be combined with --json.') }),
+    'max-bytes': Flags.integer({ min: 1024, max: 1048576, description: description('retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。', 'retrieve complete selected view plus one newline UTF-8 budget, default 65536, with explicit 8192 supported; not a body limit. Omit complete segments, never truncate conditions.') }),
     'include-candidates': Flags.boolean({ description: description('retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。', 'retrieve explicitly includes unretained candidates without verified truth; discarded revisions remain excluded.') }),
     'source-version': Flags.string({ description: description('retrieve 精确来源 sha256，须配 --snapshot。', 'retrieve exact source sha256, requiring --snapshot.') }),
     'entity-id': Flags.string({ description: description('retrieve 按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。', 'retrieve scopes exact entity IDs through derived segment associations matching the current body revision/hash, with independent review status; rejected associations do not match and names are never merged.') }),
@@ -68,7 +69,7 @@ export default class ObserveKnowledge extends BaseCommand {
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
     stage: Flags.string({ options: ['body', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
-    json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 始终单行预算内 JSON。', 'Complete JSON; retrieve always emits budgeted single-line JSON.') }),
+    json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。', 'Complete JSON; retrieve defaults to budgeted single-line JSON, also selected by --format json. Cannot be combined with --format text.') }),
   };
   static examples = [
     '<%= config.bin %> observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-body-knowledge --json',
@@ -85,6 +86,8 @@ export default class ObserveKnowledge extends BaseCommand {
   ];
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveKnowledge), t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
+    if (flags.format !== undefined && args.operation !== 'retrieve') this.error(t('--format 仅用于 retrieve。', '--format is only valid for retrieve.'), { exit: 2 });
+    if (flags.format === 'text' && flags.json) this.error(t('--format text 不可与 --json 同用。', '--format text cannot be combined with --json.'), { exit: 2 });
     if (args.operation !== 'migrate' && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于 migrate。', '--from-workspace is only valid for migrate.'), { exit: 2 });
     if (args.operation === 'migrate') {
       const allowed = new Set(['from-workspace', 'workspace', 'json', 'lang']);
@@ -179,7 +182,7 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });
     if (args.operation === 'retrieve') {
-      const allowed = new Set(['workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id', 'lang', 'json']);
+      const allowed = new Set(['workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id', 'lang', 'json', 'format']);
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('retrieve 仅接受只读检索参数。', 'retrieve accepts read-only retrieval flags only.'), { exit: 2 });
     } else if (flags['max-bytes'] !== undefined || flags['include-candidates'] || flags['source-version'] !== undefined || flags['entity-id'] !== undefined) this.error(t('检索参数仅用于 retrieve。', 'Retrieval flags are only valid for retrieve.'), { exit: 2 });
     const generation = () => { if (flags.generation === undefined) this.error('--generation is required', { exit: 2 }); return flags.generation!; };
@@ -189,7 +192,7 @@ export default class ObserveKnowledge extends BaseCommand {
     } catch { this.error(t('--input 必须是 16 MiB 内的普通 UTF-8 JSON 文件。', '--input must be a regular UTF-8 JSON file within 16 MiB.'), { exit: 2 }); } };
     let operation: KnowledgeOperation;
     switch (args.operation) {
-      case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'], snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'] }; break;
+      case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'], snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'], ...(flags.format === undefined ? {} : { format: flags.format as 'json' | 'text' }) }; break;
       case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
       case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'] }; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured' }; break;
@@ -221,7 +224,8 @@ export default class ObserveKnowledge extends BaseCommand {
         const detail = cause instanceof z.ZodError ? cause.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('\n') : cause instanceof Error ? cause.message : String(cause);
         this.error(`${code} · ${detail}\n${t('先 inspect/runs 核对状态；resume 不发送模型，unknown claim 禁止重发。', 'Inspect runs first; resume does not dispatch models and unknown claims must not be redispatched.')}`, { exit: 1 });
       }
-      this.log(operation.operation === 'retrieve' ? JSON.stringify(result) : flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
+      this.log(operation.operation === 'retrieve' ? flags.format === 'text' ? String(result) : JSON.stringify(result)
+        : flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
       if (result && typeof result === 'object' && 'journal' in result && (result.journal as { status: string }).status !== 'completed') this.exit(1);
     });
   }
