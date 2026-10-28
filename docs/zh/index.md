@@ -1,7 +1,7 @@
 ---
-title: OMK — 从工作记录到持续维护的知识
+title: OMK — 帮助人和 Agent 沉淀、维护并复用知识
 titleTemplate: false
-description: 从真实工作记录沉淀和维护知识。用 Studio 积累、修订并核对载体，按需评测改动或接入 Node.js。
+description: OMK 帮助人和 Agent 沉淀、维护并复用有价值的知识，将真实工作与协作中的认识、方法和判断依据整理为可读、可追溯、可持续修订的知识，供后续任务使用。
 layout: page
 sidebar: false
 aside: false

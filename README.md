@@ -6,9 +6,11 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**Observe. Measure. Know.** Turn working experience into knowledge you can keep maintaining.
+**Observe. Measure. Know.**
 
-OMK is for agent users and AI application developers. Extract candidates from real work, review sources and conditions, accumulate and revise knowledge around objects, then update the skills or prompts that reference it. When you need evidence about a change, compare artifact versions under controlled conditions independently.
+OMK helps people and agents build, maintain, and reuse valuable knowledge: turn insights, methods, and the reasoning behind decisions from real work and collaboration into readable, traceable knowledge that can be continually revised and used by people and different agents in future tasks.
+
+For agent users and AI application developers, extract candidates from selected work records, review sources and conditions, and keep accumulating and revising knowledge. Select knowledge for a task or generate carriers such as skills and prompts. When you need evidence about a specific change, compare artifact versions under controlled conditions independently. See the guides below for version availability and integration boundaries.
 
 ## Start with local work records
 
