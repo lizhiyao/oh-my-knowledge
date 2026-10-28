@@ -9,7 +9,7 @@ const GITHUB = 'https://github.com/lizhiyao/oh-my-knowledge';
 // 文档源按领域组织；pageRoute 保留既有公开地址，页面按语言提供 metadata。
 export default defineConfig({
   title: 'OMK',
-  description: 'OMK — Observe. Measure. Know. Build knowledge from collaboration between people and AI.',
+  description: 'OMK helps people and agents build, maintain, and reuse valuable knowledge from real work and collaboration, with readable content, traceable sources, and ongoing revisions for future tasks.',
   cleanUrls: true,
   rewrites: pageRoute,
   markdown: {
@@ -162,7 +162,7 @@ export default defineConfig({
     zh: {
       label: '简体中文',
       lang: 'zh-Hans',
-      description: '从真实工作记录沉淀有来源的知识，持续积累、修订并核对载体；按需受控评测具体改动。',
+      description: 'OMK 帮助人和 Agent 沉淀、维护并复用有价值的知识，将真实工作与协作中的认识、方法和判断依据整理为可读、可追溯、可持续修订的知识，供后续任务使用。',
       link: '/zh/',
       themeConfig: {
         nav: [

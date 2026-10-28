@@ -1,6 +1,6 @@
 # OMK documentation: start with a task
 
-OMK helps you build sourced knowledge from collaboration between people and AI, maintain knowledge and carriers, and verify changes when needed. Choose your current task first; look up fields and implementation details later.
+OMK helps people and agents build, maintain, and reuse valuable knowledge: turn insights, methods, and the reasoning behind decisions from real work and collaboration into readable, traceable knowledge that can be continually revised and used by people and different agents in future tasks. Choose your current task first; verify specific changes when needed, and look up fields and implementation details later.
 
 ## Inspect tasks, accumulate knowledge, and maintain it
 

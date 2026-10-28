@@ -1,7 +1,7 @@
 ---
-title: OMK — Knowledge you can keep maintaining
+title: OMK — Build, maintain, and reuse knowledge for people and agents
 titleTemplate: false
-description: Build and maintain knowledge from real work. Start with Studio, compare artifact versions, or embed evaluation in Node.js.
+description: OMK helps people and agents build, maintain, and reuse valuable knowledge from real work and collaboration, with readable content, traceable sources, and ongoing revisions for future tasks.
 layout: page
 sidebar: false
 aside: false
