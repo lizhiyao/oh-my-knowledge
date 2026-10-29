@@ -50,7 +50,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const [selectionInvalid, setSelectionInvalid] = useState(initialReaderSelectionInvalid);
   const [mapping, setMapping] = useState<{ detail: KnowledgeCandidateDetail; target?: { analysisId: string; entityRevisionId: string } }>();
   const [entityTarget, setEntityTarget] = useState<Omit<KnowledgeReaderEntityTarget, 'entityId'> & { entityId?: string }>();
-  const [directory, setDirectory] = useState(initialView === 'task'); const [editing, setEditing] = useState(seed ? 'new' : '');
+  const [directory, setDirectory] = useState(initialView === 'task' && !knowledgeId); const [editing, setEditing] = useState(seed ? 'new' : '');
   const [workspaceRetry, setWorkspaceRetry] = useState(0);
   const [refresh, setRefresh] = useState(0); const [loading, setLoading] = useState(true); const [reading, setReading] = useState(false);
   const [error, setError] = useState(''); const [readError, setReadError] = useState('');

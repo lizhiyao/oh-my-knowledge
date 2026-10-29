@@ -91,8 +91,9 @@ describe('knowledge graph browsing and evidence', () => {
       else throw new Error(`Unexpected operation ${call.operation}`);
       return new Response(JSON.stringify(value), { status: 200 });
     }));
-    render(<KnowledgeLibrary lang="en" initialWorkspace="/task-snapshot" initialView="task"/>, { wrapper });
+    const mounted = render(<KnowledgeLibrary lang="en" initialWorkspace="/task-snapshot" initialView="task"/>, { wrapper });
     fireEvent.change(await screen.findByRole('textbox', { name: 'Question for the current task' }), { target: { value: 'When does Alpha apply?' } });
+    expect(document.querySelector('.knowledge-workbench')?.classList.contains('knowledge-directory-open')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Find applicable knowledge' }));
     await screen.findByRole('button', { name: 'Open complete content' });
     fireEvent.click(screen.getByRole('button', { name: 'Open complete content' }));
@@ -106,6 +107,12 @@ describe('knowledge graph browsing and evidence', () => {
     const params = new URLSearchParams(window.location.search);
     expect(params.get('revision')).toBe(data.detail.revision.revisionId); expect(params.get('segment')).toBe('s1');
     expect(JSON.parse(params.get('evidence')!)).toEqual({ ...data.source, evidenceRef: 'record-1', start: 6, end: 11 });
+    mounted.unmount();
+    render(<KnowledgeLibrary lang="en" initialWorkspace="/task-snapshot" initialView="task" knowledgeId={data.detail.revision.knowledgeId}
+      initialKnowledgeRevision={params.get('revision')!} initialReaderTab="evidence" initialSegmentId="s1"
+      initialEvidence={JSON.parse(params.get('evidence')!)}/>, { wrapper });
+    await waitFor(() => expect(document.querySelector('.knowledge-reader pre.knowledge-source mark')?.textContent).toBe('Alpha'));
+    expect(document.querySelector('.knowledge-workbench')?.classList.contains('knowledge-directory-open')).toBe(false);
     expect(calls.every(call => ['knowledge', 'retrieve', 'show'].includes(String(call.operation)))).toBe(true);
   });
 
