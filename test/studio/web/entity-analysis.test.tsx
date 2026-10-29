@@ -15,7 +15,7 @@ const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 
   receipts: [{ requestId: 'request', commandDigest: 'digest', committedGeneration: 1, revisionId: revision.revisionId }] },
   source: { status: 'available', excerpts: [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], limitations: ['仅所选消息'] } };
 const run: KnowledgeCandidateRun = { runId: 'analysis', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none', archiveChecks: [], archiveVerification: 'not_verified',
-  entityAnalysis: { analysisId: 'analysis', revisionId: 'revision-1', entityCount: 2, mentionCount: 1, unresolvedCount: 1, reviewStatus: 'pending' } };
+  entityAnalyses: [{ analysisId: 'analysis', revisionId: 'revision-1', entityCount: 2, mentionCount: 1, unresolvedCount: 1, reviewStatus: 'pending' }] };
 
 describe('entity analysis user views', () => {
   it('offers entity inspection with zero knowledge candidates and describes counts without asserting semantic accuracy', () => {
@@ -23,7 +23,7 @@ describe('entity analysis user views', () => {
     expect(html).toContain('2 个对象，1 处提及，1 个身份待确定'); expect(html).toContain('关联投影仍独立待核对'); expect(html).toContain('核对实体与指代');
     const start = renderToStaticMarkup(createElement(KnowledgeCandidateStart, { latest: run, lang: 'zh', loading: false, busy: false, onChoose() {}, onHistory() {}, onEntities() {} }));
     expect(start).toContain('返回 0 条候选'); expect(start).toContain('核对实体与指代');
-    expect(renderToStaticMarkup(createElement(EntityAnalysisSummary, { run: { ...run, entityAnalysis: undefined }, lang: 'zh', onOpen() {} }))).toBe('');
+    expect(renderToStaticMarkup(createElement(EntityAnalysisSummary, { run: { ...run, entityAnalyses: undefined }, lang: 'zh', onOpen() {} }))).toBe('');
   });
   it('shows entity scope, provenance and unavailable source limits in both languages', () => {
     for (const lang of ['zh', 'en'] as const) {

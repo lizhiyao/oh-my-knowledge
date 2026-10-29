@@ -61,26 +61,45 @@ export class KnowledgeApplication {
       maintenance: { revisionId, choice, reason, actor: this.ports.actor, at: this.ports.now() } }, this.ports.actor);
   }
   reviewAssociations(knowledgeId: string, projectionRevisionId: string, expectedGeneration: number, choice: 'accept' | 'reject', reason: string) {
+    if (choice === 'accept') {
+      const projection = this.ports.associations.read(knowledgeId).revisions.find(value => value.revisionId === projectionRevisionId);
+      if (!projection) throw new Error('Unknown association projection.');
+      for (const ref of projection.catalogRefs) {
+        const catalog = this.entities(ref.analysisId, ref.entityRevisionId);
+        if (catalog.source.status !== 'available') throw new Error('Association entity source unavailable.');
+        for (const mapping of projection.segmentEntityRefs.filter(value => value.analysisId === ref.analysisId && value.entityRevisionId === ref.entityRevisionId)) {
+          for (const id of mapping.mentionIds) {
+            const mention = catalog.revision.mentions.find(value => value.mentionId === id && value.entityId === mapping.entityId);
+            if (!mention || validateEntityMentionSelection(mention.selection, catalog.source.window.excerpts).length) throw new Error('Association mention evidence is invalid.');
+          }
+        }
+      }
+    }
     this.ports.associations.write({ commandKind: 'record_review', requestId: this.ports.id(), knowledgeId, expectedGeneration,
       review: { projectionRevisionId, choice, actor: this.ports.actor, at: this.ports.now(), reason } }, this.ports.actor);
     return this.detail(knowledgeId);
   }
-  applyAssociations(knowledgeId: string, revisionId: string, bodyDigest: string, analysisId: string, entityRevisionId: string,
+  applyAssociations(knowledgeId: string, revisionId: string, bodyDigest: string,
     expectedGeneration: number, input: unknown, reason: string) {
     const body = this.detail(knowledgeId, revisionId).revision;
     if (body.bodyDigest !== bodyDigest) throw new Error('Association body digest conflict.');
-    const catalog = this.entities(analysisId, entityRevisionId);
-    if (catalog.source.status !== 'available') throw new Error('Association entity source unavailable.');
-    const draft = KnowledgeAssociationRevisionSchema.pick({ segmentEntityRefs: true, typedRelations: true, issues: true }).parse(input);
+    const draft = KnowledgeAssociationRevisionSchema.pick({ catalogRefs: true, segmentEntityRefs: true, typedRelations: true, issues: true }).parse(input);
+    const catalogs = new Map(draft.catalogRefs.map(ref => {
+      const catalog = this.entities(ref.analysisId, ref.entityRevisionId);
+      if (catalog.source.status !== 'available') throw new Error('Association entity source unavailable.');
+      return [canonicalJson([ref.analysisId, ref.entityRevisionId]), catalog] as const;
+    }));
     for (const ref of draft.segmentEntityRefs) for (const id of ref.mentionIds) {
-      const mention = catalog.revision.mentions.find(m => m.mentionId === id && m.entityId === ref.entityId);
-      if (!mention || validateEntityMentionSelection(mention.selection, catalog.source.window.excerpts).length) throw new Error('Association mention evidence is invalid.');
+      const catalog = catalogs.get(canonicalJson([ref.analysisId, ref.entityRevisionId]));
+      const mention = catalog?.revision.mentions.find(m => m.mentionId === id && m.entityId === ref.entityId);
+      if (!catalog || !mention || catalog.source.status !== 'available'
+        || validateEntityMentionSelection(mention.selection, catalog.source.window.excerpts).length) throw new Error('Association mention evidence is invalid.');
     }
     const previous = (() => { try { return this.ports.associations.read(knowledgeId); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; return undefined; } })();
     this.ports.associations.write({ commandKind: 'append_revision', requestId: this.ports.id(), knowledgeId, expectedGeneration,
       expectedHeadRevisionId: previous?.writeHeadRevisionId ?? null, revision: { ...draft, revisionId: this.ports.id(),
         ...(previous ? { parentRevisionId: previous.writeHeadRevisionId } : {}), bodyRef: knowledgeBodyRef(body), status: 'available', reviewStatus: 'pending',
-        entityAnalysisRef: { analysisId, revisionId: entityRevisionId }, revisedAt: this.ports.now(), revisedBy: this.ports.actor, revisionReason: reason } }, this.ports.actor);
+        revisedAt: this.ports.now(), revisedBy: this.ports.actor, revisionReason: reason } }, this.ports.actor);
     return this.detail(knowledgeId, revisionId);
   }
   revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {

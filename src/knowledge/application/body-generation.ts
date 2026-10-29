@@ -50,10 +50,10 @@ export class BodyGenerationApplication {
       : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch' as const
         : pending ? 'resume_publication' as const : journal.status === 'active' ? 'continue_stage' as const : 'none' as const };
   }
-  private window(journal: Pick<GenerationJournal, 'snapshotId' | 'sourceVersion' | 'sourceDigest'>) {
-    const source = this.ports.evidence.read(journal.snapshotId, journal.sourceVersion);
+  private window(sourceRef: GenerationJournal['sources'][number]) {
+    const source = this.ports.evidence.read(sourceRef.snapshotId, sourceRef.sourceVersion);
     if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`);
-    if (generationTextDigest(canonicalJson(source.window)) !== journal.sourceDigest) throw new Error('Generation source snapshot changed.');
+    if (generationTextDigest(canonicalJson(source.window)) !== sourceRef.sourceDigest) throw new Error('Generation source snapshot changed.');
     return source.window;
   }
   private phase(model: KnowledgeGenerationModel, profile: GenerationProfile, input: string): GenerationStage {
@@ -79,24 +79,24 @@ export class BodyGenerationApplication {
   }
   private prepareAssociation(journal: GenerationJournal, model: KnowledgeGenerationModel): GenerationJournal {
     if (journal.stages.some(s => s.stageKind === 'association') || !journal.bodies.length) return journal;
-    const window = this.window(journal), bodies = this.bodies(journal);
-    const input = canonicalJson({ ...sourceInput(window), bodies: bodies.map((body, index) => ({ bodyKey: `b${index}`,
+    const windows = journal.sources.map(source => this.window(source)), bodies = this.bodies(journal);
+    const input = canonicalJson({ sources: windows.map((window, index) => ({ sourceKey: `s${index}`, ...sourceInput(window) })), bodies: bodies.map((body, index) => ({ bodyKey: `b${index}`,
       bodyRef: knowledgeBodyRef(body), title: body.title, content: body.content, reuseRationale: body.reuseRationale })) });
     return this.persist({ ...journal, stages: [...journal.stages, this.phase(model, ASSOCIATION_GENERATION_PROFILE, input)] });
   }
   async generate(snapshotId: string, model: KnowledgeGenerationModel, runId = this.ports.id(), signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
     const existing = this.ports.journals.read(runId);
     if (existing) {
-      if (existing.mode !== 'generate' || existing.snapshotId !== snapshotId || existing.executor !== model.executor
+      if (existing.mode !== 'generate' || existing.sources.length !== 1 || existing.sources[0].snapshotId !== snapshotId || existing.executor !== model.executor
         || existing.model !== model.model || existing.timeoutMs !== model.timeoutMs) throw new Error('Generation request conflicts with existing journal.');
       return this.resume(runId); // Reusing a run identity never implies permission to dispatch another stage.
     }
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
     signal?.throwIfAborted(); const source = this.ports.evidence.read(snapshotId);
     if (source.status !== 'available') throw new Error('Generation source unavailable.');
-    let journal = this.ports.journals.write({ storeKind: 'knowledge-generation-journal', schemaVersion: 1, workflowId: 'knowledge-body-first/v1',
+    let journal = this.ports.journals.write({ storeKind: 'knowledge-generation-journal', schemaVersion: 2, workflowId: 'knowledge-body-first/v2',
       runId, generation: 1, mode: 'generate', status: 'active', createdAt: this.ports.now(), actor: this.ports.actor,
-      snapshotId, sourceVersion: source.window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(source.window)),
+      sources: [{ snapshotId, sourceVersion: source.window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(source.window)) }],
       executor: model.executor, model: model.model, timeoutMs: model.timeoutMs, bodies: [],
       stages: [this.phase(model, BODY_GENERATION_PROFILE, canonicalJson(sourceInput(source.window)))] }, 0);
     journal = await this.invoke(journal, model, signal, options);
@@ -117,14 +117,17 @@ export class BodyGenerationApplication {
     signal?.throwIfAborted(); const body = this.ports.knowledge.read(ref.knowledgeId).revisions.find(r => r.revisionId === ref.revisionId);
     if (!body || canonicalJson(knowledgeBodyRef(body)) !== canonicalJson(ref)) throw new Error('Association body identity mismatch.');
     const refs = [...new Map(body.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
-    if (refs.length !== 1) throw new Error('Association generation currently requires one exact source window; body remains readable.');
-    const source = this.ports.evidence.read(refs[0].snapshotId, refs[0].sourceVersion);
-    if (source.status !== 'available') throw new Error('Association source unavailable; body remains readable.');
-    const seed = { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 1 as const, workflowId: 'knowledge-body-first/v1' as const,
+    if (!refs.length) throw new Error('Association body needs at least one exact source.');
+    const windows = refs.map(ref => {
+      const source = this.ports.evidence.read(ref.snapshotId, ref.sourceVersion);
+      if (source.status !== 'available') throw new Error('Association source unavailable; body remains readable.');
+      return source.window;
+    });
+    const seed = { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 2 as const, workflowId: 'knowledge-body-first/v2' as const,
       runId, generation: 1, mode: 'rebuild_associations' as const, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
-      snapshotId: refs[0].snapshotId, sourceVersion: refs[0].sourceVersion, sourceDigest: generationTextDigest(canonicalJson(source.window)),
+      sources: windows.map(window => ({ snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(window)) })),
       executor: model.executor, model: model.model, timeoutMs: model.timeoutMs, bodies: [ref], stages: [] as GenerationStage[] };
-    const input = canonicalJson({ ...sourceInput(source.window), bodies: [{ bodyKey: 'b0', bodyRef: ref,
+    const input = canonicalJson({ sources: windows.map((window, index) => ({ sourceKey: `s${index}`, ...sourceInput(window) })), bodies: [{ bodyKey: 'b0', bodyRef: ref,
       title: body.title, content: body.content, reuseRationale: body.reuseRationale }] });
     const journal = this.ports.journals.write({ ...seed, stages: [this.phase(model, ASSOCIATION_GENERATION_PROFILE, input)] }, 0);
     return this.state(await this.invoke(journal, model, signal));
@@ -144,7 +147,7 @@ export class BodyGenerationApplication {
     if (stage.state !== 'prepared') throw new Error('Generation phase is not dispatchable.');
     const profile = stage.stageKind === 'body' ? BODY_GENERATION_PROFILE : ASSOCIATION_GENERATION_PROFILE;
     if (profile.profileId !== stage.profileId || canonicalJson(model.inspect(profile, stage.input)) !== canonicalJson(stage.producer)) throw new Error('Generation producer/profile changed.');
-    signal?.throwIfAborted(); this.window(journal); this.inFlight = journal.runId; let claims = 0;
+    signal?.throwIfAborted(); journal.sources.forEach(source => this.window(source)); this.inFlight = journal.runId; let claims = 0;
     try {
       const outcome = await model.invoke(profile, stage.input, signal, () => {
         if (claims !== 0) throw new Error('Duplicate native dispatch gate.');
@@ -190,11 +193,11 @@ export class BodyGenerationApplication {
       if (stage.stageKind === 'body') {
         try {
           if (output === undefined || outcome.cleanupFailure || stage.issues.length) throw new Error('Body native execution did not complete cleanly.');
-          const checked = checkGeneratedBodies(output, this.window(j)), actor = this.actor(j, stage), at = this.ports.now();
+          const checked = checkGeneratedBodies(output, this.window(j.sources[0])), actor = this.actor(j, stage), at = this.ports.now();
           const writes: KnowledgeWrite[] = checked.accepted.map(({ draft }) => {
             const knowledgeId = this.ports.id(), revisionId = this.ports.id();
             return { commandKind: 'append_revision', requestId: this.ports.id(), knowledgeId, expectedGeneration: 0, expectedHeadRevisionId: null,
-              revision: { ...draft, knowledgeId, revisionId, bodyDigest: knowledgeBodyDigest(draft), observationRefs: [j.snapshotId], derivations: [],
+              revision: { ...draft, knowledgeId, revisionId, bodyDigest: knowledgeBodyDigest(draft), observationRefs: [j.sources[0].snapshotId], derivations: [],
                 createdAt: at, createdBy: actor, revisedAt: at, revisedBy: actor, revisionReason: 'Generated canonical knowledge body; pending review.' } };
           });
           stage = { ...stage, state: 'prepared_writes', bodyWrites: writes, rejected: checked.rejected };
@@ -205,7 +208,7 @@ export class BodyGenerationApplication {
     index = j.stages.length - 1; stage = j.stages[index];
     if (stage.state !== 'prepared_writes') return j;
     const actor = this.actor(j, stage);
-    const writes = stage.stageKind === 'body' ? (stage.bodyWrites ?? []) : [...(stage.entityWrite ? [stage.entityWrite] : []), ...(stage.associationWrites ?? [])];
+    const writes = stage.stageKind === 'body' ? (stage.bodyWrites ?? []) : [...(stage.entityWrites ?? []), ...(stage.associationWrites ?? [])];
     for (let i = stage.committed; i < writes.length; i++) {
       const write = writes[i];
       if (stage.stageKind === 'body') this.ports.knowledge.write(write as KnowledgeWrite, actor);
@@ -231,48 +234,82 @@ export class BodyGenerationApplication {
         revision: { ...revision, ...(history ? { parentRevisionId: history.writeHeadRevisionId } : {}) } };
     };
     const failed = (body: KnowledgeRevision, reason: string) => command(body, { revisionId: this.ports.id(), bodyRef: knowledgeBodyRef(body),
-      status: 'failed', reviewStatus: 'pending', segmentEntityRefs: [], issues: [reason], revisedAt: at, revisedBy: actor,
+      status: 'failed', reviewStatus: 'pending', catalogRefs: [], segmentEntityRefs: [], issues: [reason], revisedAt: at, revisedBy: actor,
       revisionReason: 'Derived association failed; canonical body unchanged.' });
     try {
       if (output === undefined || cleanupFailure || stage.issues.length) throw new Error('Association native execution did not complete cleanly.');
-      const response = checkGeneratedAssociations(output), window = this.window(j);
-      const entityIds = new Map(response.entities.map(e => [e.entityId, this.ports.id()])), mentionIds = new Map(response.mentions.map(m => [m.mentionId, this.ports.id()]));
-      if (entityIds.size !== response.entities.length || mentionIds.size !== response.mentions.length) throw new Error('Duplicate local catalog identity.');
+      const response = checkGeneratedAssociations(output), windows = j.sources.map(source => this.window(source));
+      const sourceKeys = windows.map((_, index) => `s${index}`), expectedKeys = new Set(bodies.map((_, index) => `b${index}`));
+      if (response.catalogs.length !== sourceKeys.length || new Set(response.catalogs.map(catalog => catalog.sourceKey)).size !== sourceKeys.length
+        || response.catalogs.some(catalog => !sourceKeys.includes(catalog.sourceKey))) throw new Error('Association source keys are not closed.');
+      if (response.associations.length !== bodies.length || response.associations.some(association => !expectedKeys.has(association.bodyKey))
+        || new Set(response.associations.map(association => association.bodyKey)).size !== bodies.length) throw new Error('Association body keys are not closed.');
       const mapped = (map: Map<string, string>, id: string) => { const value = map.get(id); if (!value) throw new Error('Unknown local catalog identity.'); return value; };
-      const draft = EntityAnalysisDraftSchema.parse({ entities: response.entities.map(e => mapEntityIdentity(e, entityIds, mentionIds)),
-        mentions: response.mentions.map(m => {
-          const selection = locateQuoteOccurrence({ evidenceRef: m.selection.evidenceRef, quote: m.selection.quote,
-            ...(m.selection.occurrence === null ? {} : { occurrence: m.selection.occurrence }) }, window.excerpts);
-          if (typeof selection === 'string' || validateEntityMentionSelection(selection, window.excerpts).length) throw new Error('Entity mention locator rejected.');
-          return { ...m, mentionId: mapped(mentionIds, m.mentionId), entityId: mapped(entityIds, m.entityId), selection };
-        }), limitations: ['AI-derived pending associations; source quote matching is not semantic identity or truth confirmation.'] });
-      const catalogProblems = validateEntityAnalysis(draft);
-      if (catalogProblems.length) throw new Error(`Entity catalog reference closure rejected: ${catalogProblems.join(', ')}.`);
-      const entityRevisionId = this.ports.id();
-      const entityWrite: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: j.runId, snapshotId: j.snapshotId, sourceVersion: j.sourceVersion,
-        expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...draft, revisionId: entityRevisionId, revisedAt: at,
-          revisedBy: actor, revisionReason: 'Derived candidate catalog; canonical body unchanged.' } };
-      const expectedKeys = new Set(bodies.map((_, i) => `b${i}`));
-      if (response.associations.length !== bodies.length || response.associations.some(a => !expectedKeys.has(a.bodyKey))
-        || new Set(response.associations.map(a => a.bodyKey)).size !== bodies.length) throw new Error('Association body keys are not closed.');
+      const catalogs = new Map<string, { window: EvidenceWindow; write: EntityAnalysisWrite; entityIds: Map<string, string>; mentionIds: Map<string, string> }>();
+      const catalogIssues = new Map<string, string>();
+      for (const [index, window] of windows.entries()) {
+        const sourceKey = sourceKeys[index], catalog = response.catalogs.find(item => item.sourceKey === sourceKey)!;
+        try {
+          const entityIds = new Map(catalog.entities.map(entity => [entity.entityId, this.ports.id()]));
+          const mentionIds = new Map(catalog.mentions.map(mention => [mention.mentionId, this.ports.id()]));
+          if (entityIds.size !== catalog.entities.length || mentionIds.size !== catalog.mentions.length) throw new Error('Duplicate local catalog identity.');
+          const draft = EntityAnalysisDraftSchema.parse({ entities: catalog.entities.map(entity => mapEntityIdentity(entity, entityIds, mentionIds)),
+            mentions: catalog.mentions.map(mention => {
+              const selection = locateQuoteOccurrence({ evidenceRef: mention.selection.evidenceRef, quote: mention.selection.quote,
+                ...(mention.selection.occurrence === null ? {} : { occurrence: mention.selection.occurrence }) }, window.excerpts);
+              if (typeof selection === 'string' || validateEntityMentionSelection(selection, window.excerpts).length) throw new Error('Entity mention locator rejected.');
+              return { ...mention, mentionId: mapped(mentionIds, mention.mentionId), entityId: mapped(entityIds, mention.entityId), selection };
+            }), limitations: ['AI-derived pending associations; source quote matching is not semantic identity or truth confirmation.'] });
+          const problems = validateEntityAnalysis(draft);
+          if (problems.length) throw new Error(`Entity catalog reference closure rejected: ${problems.join(', ')}.`);
+          const write: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: this.ports.id(), snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
+            expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...draft, revisionId: this.ports.id(), revisedAt: at,
+              revisedBy: actor, revisionReason: 'Derived candidate catalog; canonical body unchanged.' } };
+          catalogs.set(sourceKey, { window, write, entityIds, mentionIds });
+        } catch (error) { catalogIssues.set(sourceKey, `${sourceKey}: ${message(error)}`); }
+      }
       const associationWrites = bodies.map((body, index) => {
         try {
-          const association = response.associations.find(a => a.bodyKey === `b${index}`)!;
+          const association = response.associations.find(item => item.bodyKey === `b${index}`)!;
+          const bodySources = new Set(body.content.segments.flatMap(segment => segment.evidence).map(evidence => canonicalJson(evidence.source)));
+          const bodyKeys = sourceKeys.filter((_, sourceIndex) => bodySources.has(canonicalJson({ snapshotId: windows[sourceIndex].snapshotId, sourceVersion: windows[sourceIndex].sourceVersion })));
+          const failures = bodyKeys.flatMap(key => catalogIssues.has(key) ? [catalogIssues.get(key)!] : []);
+          if (failures.length) throw new Error(`Required source catalogs rejected: ${failures.join('; ')}`);
+          const qualified = (sourceKey: string, entityId: string) => {
+            const catalog = catalogs.get(sourceKey);
+            if (!catalog || !bodyKeys.includes(sourceKey)) throw new Error(`Unknown or unrelated source catalog: ${sourceKey}.`);
+            return { analysisId: catalog.write.analysisId, entityRevisionId: catalog.write.revision.revisionId, entityId: mapped(catalog.entityIds, entityId) };
+          };
           const revision = KnowledgeAssociationRevisionSchema.parse({ revisionId: this.ports.id(), bodyRef: knowledgeBodyRef(body),
-            status: 'available', reviewStatus: 'pending', entityAnalysisRef: { analysisId: j.runId, revisionId: entityRevisionId },
-            segmentEntityRefs: association.segmentEntityRefs.map(ref => ({ ...ref, entityId: mapped(entityIds, ref.entityId), mentionIds: ref.mentionIds.map(id => mapped(mentionIds, id)) })),
-            ...(association.typedRelations === null ? {} : { typedRelations: association.typedRelations.map(r => {
-              const { object, evidence: locators, ...fields } = r;
-              return { ...fields,
-              subject: { entityId: mapped(entityIds, r.subject.entityId) }, ...(object ? { object: { entityId: mapped(entityIds, object.entityId) } } : {}),
-              evidence: locators.map(e => {
-                const segment = body.content.segments.find(s => s.segmentId === e.segmentId);
-                const evidence = segment?.evidence[e.evidenceIndex]; if (!evidence || !r.segmentIds.includes(e.segmentId)) throw new Error('Unknown body evidence index.'); return evidence;
-              }) }; }) }), issues: association.issues, revisedAt: at, revisedBy: actor, revisionReason: 'Independent derived association; pending review.' });
+            status: 'available', reviewStatus: 'pending', catalogRefs: bodyKeys.map(sourceKey => {
+              const write = catalogs.get(sourceKey)!.write; return { analysisId: write.analysisId, entityRevisionId: write.revision.revisionId };
+            }),
+            segmentEntityRefs: association.segmentEntityRefs.map(ref => {
+              const catalog = catalogs.get(ref.sourceKey), endpoint = qualified(ref.sourceKey, ref.entityId);
+              const segment = body.content.segments.find(item => item.segmentId === ref.segmentId);
+              if (!catalog || !segment?.evidence.some(evidence => evidence.source.snapshotId === catalog.window.snapshotId && evidence.source.sourceVersion === catalog.window.sourceVersion)) {
+                throw new Error(`Segment does not bind source catalog: ${ref.sourceKey}.`);
+              }
+              const mentionIds = ref.mentionIds.map(id => mapped(catalog.mentionIds, id));
+              if (mentionIds.some(id => !catalog.write.revision.mentions.some(mention => mention.mentionId === id && mention.entityId === endpoint.entityId))) {
+                throw new Error(`Mention does not belong to entity in source catalog: ${ref.sourceKey}.`);
+              }
+              return { segmentId: ref.segmentId, ...endpoint, mentionIds };
+            }),
+            ...(association.typedRelations === null ? {} : { typedRelations: association.typedRelations.map(relation => {
+              const { object, evidence: locators, ...fields } = relation;
+              return { ...fields, subject: qualified(relation.subject.sourceKey, relation.subject.entityId),
+                ...(object ? { object: qualified(object.sourceKey, object.entityId) } : {}),
+                evidence: locators.map(locator => {
+                  const segment = body.content.segments.find(item => item.segmentId === locator.segmentId), evidence = segment?.evidence[locator.evidenceIndex];
+                  if (!evidence || !relation.segmentIds.includes(locator.segmentId)) throw new Error('Unknown body evidence index.'); return evidence;
+                }) };
+            }) }), issues: association.issues, revisedAt: at, revisedBy: actor, revisionReason: 'Independent derived association; pending review.' });
           validateKnowledgeAssociationReferences(revision, body); return command(body, revision);
         } catch (error) { return failed(body, message(error)); }
       });
-      return { ...stage, state: 'prepared_writes', entityWrite, associationWrites };
+      return { ...stage, state: 'prepared_writes', entityWrites: [...catalogs.values()].map(catalog => catalog.write),
+        issues: [...stage.issues, ...catalogIssues.values()], associationWrites };
     } catch (error) { return { ...stage, state: 'prepared_writes', issues: [...stage.issues, message(error)], associationWrites: bodies.map(body => failed(body, message(error))) }; }
   }
 }

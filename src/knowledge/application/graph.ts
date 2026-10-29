@@ -2,7 +2,8 @@ import { z } from 'zod';
 import type { EntityMention, EvidenceSelection, KnowledgeBodyEvidence, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { AnalyzedEntity, EntityAnalysisEnvelope, EntityAnalysisRevisionSchema } from '../entities/contracts.js';
 import type { EvidenceStore, EvidenceWindow, SourceResolution } from '../extraction/evidence.js';
-import { selectKnowledgeAssociation, type KnowledgeAssociationEnvelope, type KnowledgeAssociationRevision, type KnowledgeAssociationSelection } from '../associations.js';
+import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationEnvelope, type KnowledgeAssociationRevision, type KnowledgeAssociationSelection } from '../associations.js';
+import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { canonicalJson, type KnowledgeEnvelope } from '../store.js';
 import { validateEvidenceSelection } from '../validation.js';
 
@@ -163,25 +164,35 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
     }
     return key;
   }
-  function associationEdges(knowledge: KnowledgeGraphKnowledgeNode, history: KnowledgeAssociationEnvelope, projection: KnowledgeAssociationRevision, selected: GraphAssociation) {
-    const ref = projection.entityAnalysisRef;
-    if (projection.status !== 'available' || !ref) return;
-    let catalog = catalogs.get(ref.analysisId);
-    if (catalog === undefined) {
-      try { catalog = reader.catalog(ref.analysisId); } catch { catalog = null; }
-      catalogs.set(ref.analysisId, catalog);
-    }
-    const revision = catalog?.revisions.find(item => item.revisionId === ref.revisionId);
-    if (!catalog || !revision) {
-      gap({ gapKind: 'catalog_unavailable', knowledgeId: knowledge.bodyRef.knowledgeId, analysisId: ref.analysisId, revisionId: ref.revisionId, detail: 'The exact catalog revision could not be read.' });
-      return;
-    }
+  function associationEdges(knowledge: KnowledgeGraphKnowledgeNode, body: KnowledgeRevision, history: KnowledgeAssociationEnvelope, projection: KnowledgeAssociationRevision, selected: GraphAssociation) {
+    if (projection.status !== 'available') return;
+    const resolved = new Map<string, { catalog: EntityAnalysisEnvelope; revision: EntityRevision; current: boolean }>();
     const reviewStatus = reviewFor(history, projection.revisionId);
     const current = knowledge.current && projection.revisionId === selected.revisionId && reviewStatus !== 'rejected';
-    const catalogCurrent = catalog.writeHeadRevisionId === revision.revisionId;
-    if (current && !catalogCurrent) gap({ gapKind: 'catalog_outdated', knowledgeId: knowledge.bodyRef.knowledgeId,
-      analysisId: ref.analysisId, revisionId: ref.revisionId, detail: 'The association still binds an earlier catalog revision.' });
+    for (const ref of projection.catalogRefs) {
+      let catalog = catalogs.get(ref.analysisId);
+      if (catalog === undefined) {
+        try { catalog = reader.catalog(ref.analysisId); } catch { catalog = null; }
+        catalogs.set(ref.analysisId, catalog);
+      }
+      const revision = catalog?.revisions.find(item => item.revisionId === ref.entityRevisionId);
+      let valid = !!catalog && !!revision;
+      if (catalog && revision) {
+        try { validateKnowledgeAssociationCatalogReferences(projection, body, catalog, revision.revisionId); } catch { valid = false; }
+      }
+      if (!catalog || !revision || !valid) {
+        gap({ gapKind: 'catalog_unavailable', knowledgeId: knowledge.bodyRef.knowledgeId, analysisId: ref.analysisId, revisionId: ref.entityRevisionId, detail: 'The exact catalog revision or its saved references could not be read.' });
+        continue;
+      }
+      const catalogCurrent = catalog.writeHeadRevisionId === revision.revisionId;
+      resolved.set(knowledgeAssociationCatalogKey(ref), { catalog, revision, current: catalogCurrent });
+      if (current && !catalogCurrent) gap({ gapKind: 'catalog_outdated', knowledgeId: knowledge.bodyRef.knowledgeId,
+        analysisId: ref.analysisId, revisionId: ref.entityRevisionId, detail: 'The association still binds an earlier catalog revision.' });
+    }
     for (const mapping of projection.segmentEntityRefs) {
+      const binding = resolved.get(knowledgeAssociationCatalogKey(mapping));
+      if (!binding) continue;
+      const { catalog, revision, current: catalogCurrent } = binding;
       const target = entity(catalog, revision, mapping.entityId);
       if (!target) continue;
       edge({ edgeKind: 'segment_entity', from: knowledge.nodeId, to: target, current, projectionRevisionId: projection.revisionId,
@@ -190,9 +201,13 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
       [knowledge.nodeId, projection.revisionId, mapping.segmentId, target]);
     }
     for (const relation of projection.typedRelations ?? []) {
-      const subject = entity(catalog, revision, relation.subject.entityId);
-      const object = relation.object ? entity(catalog, revision, relation.object.entityId) : undefined;
+      const subjectBinding = resolved.get(knowledgeAssociationCatalogKey(relation.subject));
+      const objectBinding = relation.object && resolved.get(knowledgeAssociationCatalogKey(relation.object));
+      if (!subjectBinding || (relation.object && !objectBinding)) continue;
+      const subject = entity(subjectBinding.catalog, subjectBinding.revision, relation.subject.entityId);
+      const object = relation.object && objectBinding ? entity(objectBinding.catalog, objectBinding.revision, relation.object.entityId) : undefined;
       if (!subject || (relation.object && !object)) continue;
+      const catalogCurrent = subjectBinding.current && (!objectBinding || objectBinding.current);
       // A unary relation points to its knowledge provenance, never to a fabricated object endpoint.
       edge({ edgeKind: 'typed_relation', from: subject, to: object ?? knowledge.nodeId, current,
         knowledgeNodeId: knowledge.nodeId, projectionRevisionId: projection.revisionId, reviewStatus, catalogCurrent,
@@ -250,7 +265,7 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
       if (associations) {
         const projections = request.includeHistory ? associations.revisions.filter(item => sameBody(item.bodyRef, ref))
           : selected.status === 'available' && selected.reviewStatus !== 'rejected' && selected.revision ? [selected.revision] : [];
-        for (const projection of projections) associationEdges(knowledge, associations, projection, association);
+        for (const projection of projections) associationEdges(knowledge, revision, associations, projection, association);
       }
     }
     if (request.includeHistory) for (const revision of revisions) {

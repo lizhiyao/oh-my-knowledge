@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,9 +26,9 @@ function fixture() {
     revision: { ...catalog, revisionId, revisedAt: at, revisedBy: actor, revisionReason: '独立派生目录' } }, actor);
   const command: Extract<KnowledgeAssociationWrite, { commandKind: 'append_revision' }> = { commandKind: 'append_revision', requestId: 'association-1', knowledgeId: body.knowledgeId,
     expectedGeneration: 0, expectedHeadRevisionId: null, revision: { revisionId: 'association-revision-1', bodyRef: knowledgeBodyRef(body.revision),
-      status: 'available', reviewStatus: 'pending', entityAnalysisRef: { analysisId, revisionId },
-      segmentEntityRefs: [{ segmentId: 's1', entityId, mentionIds: [mentionId] }],
-      typedRelations: [{ relationId: 'r1', segmentIds: ['s1'], subject: { entityId }, relation: '被来源报告采用', modality: 'descriptive', polarity: 'positive', evidence: [evidence], issues: ['派生标签尚待复核'] }],
+      status: 'available', reviewStatus: 'pending', catalogRefs: [{ analysisId, entityRevisionId: revisionId }],
+      segmentEntityRefs: [{ segmentId: 's1', analysisId, entityRevisionId: revisionId, entityId, mentionIds: [mentionId] }],
+      typedRelations: [{ relationId: 'r1', segmentIds: ['s1'], subject: { analysisId, entityRevisionId: revisionId, entityId }, relation: '被来源报告采用', modality: 'descriptive', polarity: 'positive', evidence: [evidence], issues: ['派生标签尚待复核'] }],
       issues: [], revisedAt: at, revisedBy: actor, revisionReason: '正文之后的派生关联' } };
   return { root, knowledge, entities, store, body, command, analysisId, revisionId, catalog };
 }
@@ -54,7 +54,7 @@ describe('independent body-derived association histories', () => {
     expect(selectKnowledgeAssociation(f.store.read(f.body.knowledgeId), knowledgeBodyRef(edit.revision)).status).toBe('stale');
     const failure = structuredClone(f.command); failure.requestId = 'failed'; failure.expectedGeneration = 1; failure.expectedHeadRevisionId = f.command.revision.revisionId;
     failure.revision = { revisionId: 'association-failed', parentRevisionId: f.command.revision.revisionId, bodyRef: knowledgeBodyRef(edit.revision),
-      status: 'failed', reviewStatus: 'pending', segmentEntityRefs: [], issues: ['原生关联失败；正文保留'], revisedAt: at, revisedBy: actor, revisionReason: '显式失败结果' };
+      status: 'failed', reviewStatus: 'pending', catalogRefs: [], segmentEntityRefs: [], issues: ['原生关联失败；正文保留'], revisedAt: at, revisedBy: actor, revisionReason: '显式失败结果' };
     f.store.write(failure, actor);
     expect(selectKnowledgeAssociation(f.store.read(f.body.knowledgeId), knowledgeBodyRef(edit.revision)).status).toBe('failed');
     expect(selectKnowledgeAssociation(undefined, knowledgeBodyRef(edit.revision)).status).toBe('absent');
@@ -83,12 +83,24 @@ describe('independent body-derived association histories', () => {
     expect(selectKnowledgeAssociation(history, knowledgeBodyRef(f.body.revision)).reviewStatus).toBe('rejected');
     expect(history.revisions[0]).toEqual(beforeProjection); expect(f.knowledge.read(f.body.knowledgeId)).toEqual(beforeBody);
   });
-  it.each(['digest', 'segment', 'catalog', 'mention', 'evidence'] as const)('refuses %s drift without blocking saved body', target => {
+  it('requires explicit migration of legacy histories and refuses legacy unqualified writes', () => {
+    const f = fixture(); f.store.write(f.command, actor);
+    const path = join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]);
+    const history = JSON.parse(readFileSync(path, 'utf8')); history.schemaVersion = 1; writeFileSync(path, JSON.stringify(history));
+    expect(() => f.store.read(f.body.knowledgeId)).toThrow('knowledge_storage_unsupported');
+    const legacy = structuredClone(f.command) as unknown as { revision: Record<string, unknown> };
+    legacy.revision.entityAnalysisRef = { analysisId: f.analysisId, revisionId: f.revisionId }; delete legacy.revision.catalogRefs;
+    expect(() => f.store.write(legacy as unknown as KnowledgeAssociationWrite, actor)).toThrow();
+    expect(f.knowledge.read(f.body.knowledgeId).revisions[0]).toEqual(f.body.revision);
+  });
+  it.each(['digest', 'segment', 'catalog', 'mention', 'evidence', 'duplicate_catalog', 'undeclared_endpoint'] as const)('refuses %s drift without blocking saved body', target => {
     const f = fixture(), invalid = structuredClone(f.command);
     if (target === 'digest') invalid.revision.bodyRef.bodyDigest = `sha256:${'b'.repeat(64)}`;
     if (target === 'segment') invalid.revision.segmentEntityRefs[0].segmentId = 'missing';
-    if (target === 'catalog') invalid.revision.entityAnalysisRef!.revisionId = randomUUID();
+    if (target === 'catalog') invalid.revision.catalogRefs[0].entityRevisionId = randomUUID();
     if (target === 'mention') invalid.revision.segmentEntityRefs[0].mentionIds = [randomUUID()];
+    if (target === 'duplicate_catalog') invalid.revision.catalogRefs.push(invalid.revision.catalogRefs[0]);
+    if (target === 'undeclared_endpoint') invalid.revision.typedRelations![0].subject.analysisId = randomUUID();
     if (target === 'evidence') invalid.revision.typedRelations![0].evidence[0].selection.quote = 'Other';
     expect(() => f.store.write(invalid, actor)).toThrow(); expect(f.store.list()).toEqual([]);
     expect(f.knowledge.read(f.body.knowledgeId).revisions[0]).toEqual(f.body.revision);

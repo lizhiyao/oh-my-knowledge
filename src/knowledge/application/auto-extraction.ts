@@ -16,7 +16,7 @@ import { publishKnowledgeBytes, confirmKnowledgePublication } from '../adapters/
 import { canonicalJson } from '../store.js';
 
 const text = z.string().min(1).max(4096), uuid = z.string().uuid(), sha = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-export const AUTO_EXTRACTION_WORKFLOW = 'knowledge-body-first/v1' as const;
+export const AUTO_EXTRACTION_WORKFLOW = 'knowledge-body-first/v2' as const;
 const ledgerVersion = 'conversation-phase-invocations/v2' as const;
 const stageKind = z.enum(['body', 'association']);
 const permissionFields = {
@@ -112,7 +112,7 @@ export class ConversationAutoExtraction {
   private read(root: string, threadId: string): AutoExtractionStatus | null {
     const { path } = this.location(root, threadId); if (!existsSync(path)) return null;
     const raw = this.readDocument(path) as Record<string, unknown>;
-    if (raw.schemaVersion !== 2) return unsupported(threadId); // Never interpret legacy permission as authority for two calls.
+    if (raw.schemaVersion !== 2 || raw.workflowId !== AUTO_EXTRACTION_WORKFLOW) return unsupported(threadId); // A different workflow's permission does not authorize the current native phases.
     const state = AutoExtractionStateSchema.parse(raw);
     if (state.threadId !== threadId) throw new Error('Automation identity conflict.'); return state;
   }
@@ -136,7 +136,7 @@ export class ConversationAutoExtraction {
   private journal(schedule: Schedule, root: string): GenerationJournal | undefined {
     const journal = this.store(root).read(schedule.runId);
     if (journal && (journal.workflowId !== AUTO_EXTRACTION_WORKFLOW || journal.mode !== 'generate' || journal.executor !== schedule.executor || journal.model !== schedule.model
-      || journal.sourceVersion !== schedule.sourceVersion || journal.stages[0].stageKind !== 'body'
+      || journal.sources.length !== 1 || journal.sources[0].sourceVersion !== schedule.sourceVersion || journal.stages[0].stageKind !== 'body'
       || journal.stages.some((stage, index) => stage.stageKind !== (index === 0 ? 'body' : 'association')))) throw new Error('Automation journal identity conflict.');
     return journal;
   }
@@ -269,7 +269,7 @@ export class ConversationAutoExtraction {
     const consent = AutoExtractionConsentSchema.parse(input);
     if (this.closed) throw new Error('Automation stopped.');
     const plan = await this.plan(threadId, signal); if (plan.preview.token !== consent.token) throw new Error('Source conflict. Preview again.'); signal?.throwIfAborted();
-    const { workspace, directory, path, key } = this.location(root, threadId);
+    const { workspace, directory, key } = this.location(root, threadId);
     if (this.roots.size >= 32 && !this.roots.has(key)) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
     this.status(workspace, threadId);
     const state = withWorkspaceWrite(workspace, () => {
@@ -277,12 +277,10 @@ export class ConversationAutoExtraction {
       if (current) this.reconcile(workspace, current);
       if (current?.enabled || this.active?.key === key || (current && current.owner !== this.owner && current.reason === 'generating' && this.ownerAlive(current))) throw new Error('Automation conflict. Stop the active run first.');
       if (this.files(workspace).length >= MAX_FILES - 3) throw new AutoExtractionCapacityError('Automation capacity exceeded.');
-      if (previous?.schemaStatus === 'unsupported') {
-        const original = readFileSync(path, 'utf8');
-        const archive = join(directory, `legacy-state-${digest(threadId)}-${digest(original)}.json`);
-        if (existsSync(archive)) {
-          if (readFileSync(archive, 'utf8') !== original) throw new Error('Legacy permission archive conflict.'); confirmKnowledgePublication(archive, workspace);
-        } else publishKnowledgeBytes(archive, original, workspace, true);
+      if (previous?.schemaStatus === 'unsupported') throw new Error('Automation workflow unsupported. Migrate to a separate workspace before granting new permission.');
+      for (const name of this.files(workspace).filter(name => name.startsWith('schedule-') && name.endsWith('.json'))) {
+        const record = this.readDocument(join(directory, name)) as { workflowId?: unknown };
+        if (record.workflowId !== AUTO_EXTRACTION_WORKFLOW) throw new Error('Automation workflow unsupported. Migrate to a separate workspace before granting new permission.');
       }
       const next = AutoExtractionStateSchema.parse({ workflowId: consent.workflowId, executor: consent.executor, model: consent.model, maxCalls: consent.maxCalls, schemaVersion: 2, automationKind: 'conversation-knowledge-extraction', schemaStatus: 'current',
         threadId, owner: this.owner, pid: process.pid, hostname: hostname(), permissionId: randomUUID(), callsUsed: 0, ledgerVersion,

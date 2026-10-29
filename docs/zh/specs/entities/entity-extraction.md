@@ -28,12 +28,12 @@
 
 ## 3. 契约与身份
 
-当前生产使用 `knowledge-body-first/v1`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
+当前生产使用 `knowledge-body-first/v2`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
 
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
 - 模型给连续逐字 `quote` 及可空的零基 `occurrence`，宿主不规范化、不模糊匹配，计算 UTF-16 位置。重复引文未选出现序号或序号越界时拒绝；结构／领域／引用检查前保全原生原件。
-- 派生关联绑定 `{knowledgeId,revisionId,bodyDigest}`、精确目录修订、`segmentEntityRefs`、可选 `typedRelations` 与 issues。形成 typed 投影时仍保留角色／modality／polarity，不强迫全部正文变成 triples；失败或重建不修订正文。
+- 派生关联绑定 `{knowledgeId,revisionId,bodyDigest}`、完整 `catalogRefs:[{analysisId,entityRevisionId}]`、带目录限定的 `segmentEntityRefs`、可选 `typedRelations` 与 issues。形成 typed 投影时仍保留角色／modality／polarity，不强迫全部正文变成 triples；失败或重建不修订正文。
 - 窗口实体保留有来源的 `description`、`qualifiers`、`referentKind`、`identityStatus`、uncertainties 及闭合的组件／集合／候选引用。每个接纳实体需有效提及；标识符碎片、引用缺失和提及归属错误拒绝接纳。确定性检查不证明语义身份。
 - 新正文和派生修订均待审；正文保留／舍弃与派生接受／拒绝是独立决定，新修订不继承任一决定。
 
@@ -49,7 +49,7 @@
 
 正文修订接收完整新 `KnowledgeDraft` 及 inline evidence；宿主重新读取每个 snapshot／version，核对精确 UTF-16 引文后才追加。旧 `citationLocators`／`--citations` 和平行 grounding 已替换。新正文有新 digest、待审且不继承 retain，旧投影变为 stale。
 
-`apply-associations` 固定正文修订／digest、目录修订及关联 generation，创建新待审投影；`review-associations` 只为该投影记录接受／拒绝。`rebuild-associations` 用新日志及关联调用，不再调用正文模型、不产生正文修订。当前模型生成只支持单个精确可读来源窗口，多来源正文读取／修订不依赖该投影。来源不可用或写头过期时明确拒绝；纠正身份时仍在正文保留条件／否定／未知，目录编辑不静默转移主张。
+`apply-associations` 固定正文修订／digest、目录修订及关联 generation，创建新待审投影；`review-associations` 只为该投影记录接受／拒绝。`rebuild-associations` 用新日志及关联调用，不再调用正文模型、不产生正文修订。正文生成仍从一个选定窗口开始；关联重建读取正文的全部精确来源，以宿主 `sourceKey` 分隔目录和局部实体／提及 ID。端点均绑定目录、目录修订和实体，跨目录关系不确认同一身份。来源不可用或写头过期时明确拒绝；纠正身份时仍在正文保留条件／否定／未知，目录编辑不静默转移主张。
 
 ## 5. 领域与运行边界
 

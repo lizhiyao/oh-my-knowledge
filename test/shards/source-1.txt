@@ -213,3 +213,4 @@ test/cli/knowledge-retrieval.test.ts
 test/cli/knowledge-migration.test.ts
 test/knowledge/associations.test.ts
 test/knowledge/legacy-migration.test.ts
+test/knowledge/association-migration.test.ts

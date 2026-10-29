@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,11 +8,35 @@ import { canonicalJson } from '../../src/knowledge/store.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import * as executor from '../../src/knowledge/adapters/generation-executor.js';
 import { runCommand } from '../helpers/run-command.js';
+import { seedKnowledgeWorkspace } from './knowledge-fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 describe('explicit workspace migration command', () => {
+  it('migrates association v1 only with explicit roots and a stable operation ID, replays the exact plan without models', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-assoc-migrate-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    writeFileSync(join(root, 'settings.json'), '{invalid');
+    const source = join(root, 'old'), target = join(root, 'new'); mkdirSync(source);
+    seedKnowledgeWorkspace(source, 'cli-migration');
+    const path = join(source, 'associations', readdirSync(join(source, 'associations'))[0]), history = JSON.parse(readFileSync(path, 'utf8'));
+    history.schemaVersion = 1;
+    for (const revision of history.revisions) {
+      revision.entityAnalysisRef = { analysisId: revision.catalogRefs[0].analysisId, revisionId: revision.catalogRefs[0].entityRevisionId }; delete revision.catalogRefs;
+      revision.segmentEntityRefs = revision.segmentEntityRefs.map(({ analysisId: _analysis, entityRevisionId: _revision, ...ref }: { analysisId: string; entityRevisionId: string }) => ref);
+    }
+    writeFileSync(path, JSON.stringify(history)); const original = readFileSync(path);
+    vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('No model configuration during migration.'); });
+    const args = ['migrate-associations', '--from-workspace', source, '--workspace', target];
+    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const full = [...args, '--operation-id', randomUUID(), '--json'];
+    await expect(runCommand(ObserveKnowledge, [...full, '--model', 'forbidden'], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const result = JSON.parse((await runCommand(ObserveKnowledge, full, { cwd: root })).stdout);
+    expect(result).toMatchObject({ migratedRevisions: 1, pending: true, modelCalls: 0, semanticAcceptance: false });
+    expect(JSON.parse((await runCommand(ObserveKnowledge, full, { cwd: root })).stdout)).toEqual(result);
+    expect(readFileSync(path)).toEqual(original); expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
+    expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
+  });
   it('requires both explicit roots before settings and rejects model flags', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-migrate-args-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
     writeFileSync(join(root, 'settings.json'), '{invalid');

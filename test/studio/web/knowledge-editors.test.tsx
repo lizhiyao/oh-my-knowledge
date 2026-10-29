@@ -115,7 +115,7 @@ describe('conversation automation consent lifecycle', () => {
     let previewIndex = 0;
     const preview = (token: string, text: string): AutoExtractionPreview => ({ token, title: 'Synthetic conversation', turnCount: 1,
       messages: [{ evidenceRef: `preview-${token}`, recordIndex: 0, eventKind: 'message', role: 'user', text }], limitations: [] });
-    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
+    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v2', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
       owner: uuid(500), pid: 1, hostname: 'fixture', permissionId: uuid(501), executor: 'openai-api', model: 'reviewed-model',
       maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
       checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
@@ -181,7 +181,7 @@ describe('conversation automation consent lifecycle', () => {
     fireEvent.click(consent()); fireEvent.click(approve()); fireEvent.click(approve());
     await screen.findByRole('button', { name: 'Stop auto extraction' });
     expect(requests('enable').map(call => call.body)).toEqual([{ operation: 'enable', workspace: '/reviewed', threadId: 'thread/a',
-      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2, workflowId: 'knowledge-body-first/v1' }]);
+      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2, workflowId: 'knowledge-body-first/v2' }]);
     expect(onChanged).toHaveBeenCalledTimes(2);
     const index = intervals.mock.calls.map(([, delay], index) => delay === 5000 ? index : -1).filter(index => index >= 0).at(-1)!;
     expect(index).toBeGreaterThanOrEqual(0);
@@ -221,7 +221,7 @@ describe('conversation automation consent lifecycle', () => {
     const initialProjections = queues;
     await poll(); await poll(); await poll();
     expect(queues).toBe(initialProjections); // Three unchanged five-second polls perform no queue projection.
-    status = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'poll-thread',
+    status = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v2', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'poll-thread',
       owner: uuid(700), pid: 1, hostname: 'fixture', permissionId: uuid(701), executor: 'openai-api', model: 'fixture',
       maxCalls: 2, callsUsed: 1, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'generating',
       checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
@@ -274,7 +274,7 @@ describe('conversation automation consent lifecycle', () => {
 
   it('does not let an older status reply undo an explicit stop', async () => {
     const intervals = vi.spyOn(globalThis, 'setInterval'), poll = deferred<Response>(), changed = vi.fn();
-    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v1', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'stop-thread',
+    const enabled: AutoExtractionState = { schemaVersion: 2, schemaStatus: 'current', workflowId: 'knowledge-body-first/v2', ledgerVersion: 'conversation-phase-invocations/v2', automationKind: 'conversation-knowledge-extraction', threadId: 'stop-thread',
       owner: uuid(710), pid: 1, hostname: 'fixture', permissionId: uuid(711), executor: 'openai-api', model: 'fixture',
       maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
       checkedTurns: [], initialTurns: [], attemptedVersions: [] };
@@ -571,7 +571,7 @@ function citationFixture(): { detail: KnowledgeCandidateDetail } {
   return { detail: { revision, history: { storeKind: 'knowledge-item-history', schemaVersion: 3,
     namespace: 'fixture', knowledgeId: revision.knowledgeId, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
     maintenance: [], receipts: [{ requestId: uuid(900), commandDigest: digest, committedGeneration: 1, revisionId: revision.revisionId }] },
-    reviewStatus: 'pending', maintenance: null, tagging: { generation: 0, tags: [] }, derivedCatalog: { status: 'absent' },
+    reviewStatus: 'pending', maintenance: null, tagging: { generation: 0, tags: [] }, derivedCatalogs: [],
     derivedAssociations: { status: 'absent', reviewStatus: 'pending', bodyRef: { knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, bodyDigest: revision.bodyDigest }, generation: 0, headRevisionId: null },
     sources: [{ status: 'available', window: { ...source, sourcePath: '/authored-fixture', sourceKind: 'codex',
       projectionVersion: 'knowledge-window-v2', capturedAt: now, startRecord: 0, endRecord: 1, excerpts,
@@ -591,15 +591,15 @@ function associationFixture() {
   const bodyRef = detail.derivedAssociations.bodyRef;
   detail.derivedAssociations = { status: 'available', bodyRef, reviewStatus: 'accepted', generation: 3, headRevisionId: uuid(700), revision: {
     revisionId: uuid(700), bodyRef, status: 'available', reviewStatus: 'pending',
-    entityAnalysisRef: { analysisId: original.history.analysisId, revisionId: original.revision.revisionId },
-    segmentEntityRefs: [{ segmentId: 's1', entityId: analyzed.entity.entityId, mentionIds: [original.revision.mentions[0].mentionId] }],
-    typedRelations: [{ relationId: 'relation-1', segmentIds: ['s1'], subject: { entityId: analyzed.entity.entityId }, relation: 'uses the selected test configuration',
+    catalogRefs: [{ analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId }],
+    segmentEntityRefs: [{ segmentId: 's1', analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: analyzed.entity.entityId, mentionIds: [original.revision.mentions[0].mentionId] }],
+    typedRelations: [{ relationId: 'relation-1', segmentIds: ['s1'], subject: { analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: analyzed.entity.entityId }, relation: 'uses the selected test configuration',
       modality: 'capability', polarity: 'positive', evidence: detail.revision.content.segments[0].evidence, issues: ['Not independently verified.'] }],
     issues: [], revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original mapping',
   } };
-  detail.derivedCatalog = { status: 'available', analysisId: original.history.analysisId, revisionId: original.revision.revisionId,
+  detail.derivedCatalogs = [{ status: 'available', analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId,
     snapshotId: original.history.snapshotId, sourceVersion: original.history.sourceVersion,
-    currentHeadRevisionId: current.revision.revisionId, entities: original.revision.entities, mentions: original.revision.mentions };
+    currentHeadRevisionId: current.revision.revisionId, entities: original.revision.entities, mentions: original.revision.mentions }];
   detail.maintenance = { revisionId: detail.revision.revisionId, choice: 'retain', reason: 'Maintain the body', actor: { actorKind: 'human', actorId: 'reviewer' }, at: now };
   detail.history.maintenance.push(detail.maintenance); detail.history.generation = 2;
   detail.history.receipts.push({ requestId: uuid(901), commandDigest: digest, committedGeneration: 2, revisionId: detail.revision.revisionId });
@@ -614,7 +614,101 @@ function matchingCatalogs(detail: KnowledgeCandidateDetail, analysis: KnowledgeE
         revisionReason: revision.revisionReason, revisedAt: revision.revisedAt, entityCount: revision.entities.length, mentionCount: revision.mentions.length })) }] };
 }
 
+function multiCatalogFixture() {
+  const { detail, original } = associationFixture();
+  const second = structuredClone(original);
+  second.history.analysisId = uuid(1201); second.history.snapshotId = uuid(1202);
+  second.revision.entities[0].label = 'Alpha from another source';
+  second.revision.mentions[0].rationale = 'The second source supplies this distinct catalog identity';
+  const source = structuredClone(detail.sources[0]);
+  if (source.status !== 'available') throw new Error('Expected a source fixture');
+  source.window.snapshotId = second.history.snapshotId; source.window.origin = { threadId: 'second-thread', title: 'Second source' };
+  detail.sources.push(source);
+  const segment = structuredClone(detail.revision.content.segments[0]); segment.segmentId = 's2'; segment.text = 'A distinct source supports this second segment.';
+  segment.evidence[0].source.snapshotId = second.history.snapshotId; detail.revision.content.segments.push(segment);
+  detail.revision.bodyDigest = knowledgeBodyDigest(detail.revision); detail.derivedAssociations.bodyRef.bodyDigest = detail.revision.bodyDigest;
+  const ref = { analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId };
+  detail.derivedAssociations.revision!.catalogRefs.push(ref);
+  detail.derivedAssociations.revision!.segmentEntityRefs.push({ segmentId: 's2', ...ref, entityId: second.revision.entities[0].entityId, mentionIds: [second.revision.mentions[0].mentionId] });
+  detail.derivedCatalogs.push({ status: 'available', ...ref, currentHeadRevisionId: second.history.writeHeadRevisionId,
+    snapshotId: second.history.snapshotId, sourceVersion: second.history.sourceVersion, entities: second.revision.entities, mentions: second.revision.mentions });
+  const catalogs = matchingCatalogs(detail, original), other = matchingCatalogs(detail, second);
+  catalogs.catalogs.push(...other.catalogs); catalogs.sources.push(...other.sources);
+  return { detail, original, second, catalogs };
+}
+
 describe('independent entity mapping review', () => {
+  it('keeps identical local entity and mention IDs separate across catalogs and degrades only the missing catalog', () => {
+    const { detail, original, second } = multiCatalogFixture();
+    const inspectEntity = vi.fn();
+    const view = render(<KnowledgeReader detail={detail} lang="en" workspace="/multi-catalog" onEntity={inspectEntity} onRevision={vi.fn()} onRetry={vi.fn()}/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Entities and associations' }));
+    expect(screen.getByText(/Associated entity: Alpha from another source/)).toBeTruthy();
+    const secondSegment = view.container.querySelector<HTMLElement>('[data-segment-id="s2"]')!;
+    fireEvent.click(within(secondSegment).getByRole('button', { name: 'Inspect this entity' }));
+    expect(inspectEntity).toHaveBeenLastCalledWith({ analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId, entityId: second.revision.entities[0].entityId });
+    fireEvent.click(within(secondSegment).getByRole('button', { name: 'Inspect this mention in its source' }));
+    expect(screen.getByText(/The second source supplies this distinct catalog identity/)).toBeTruthy();
+    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    expect(screen.getByText(new RegExp(second.history.snapshotId))).toBeTruthy();
+    detail.derivedCatalogs[1] = { status: 'unavailable', analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId, reason: 'catalog_unavailable' };
+    view.rerender(<KnowledgeReader detail={detail} lang="en" workspace="/multi-catalog" onEntity={inspectEntity} onRevision={vi.fn()} onRetry={vi.fn()} selection={{ tab: 'associations' }}/ >);
+    expect(screen.getByText(/Catalog unavailable; other catalogs and content remain inspectable/)).toBeTruthy();
+    expect(within(view.container.querySelector<HTMLElement>('[data-segment-id="s1"]')!).getByRole('button', { name: 'Inspect this mention in its source' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByText(original.revision.mentions[0].selection.quote, { selector: 'blockquote' })).toBeTruthy();
+  });
+
+  it('explicitly removes the last catalog and saves empty pending mappings with the frozen body and projection baseline', async () => {
+    const { detail, original } = associationFixture();
+    const saved = structuredClone(detail); saved.derivedAssociations.reviewStatus = 'pending';
+    saved.derivedAssociations.revision!.catalogRefs = []; saved.derivedAssociations.revision!.segmentEntityRefs = []; saved.derivedCatalogs = [];
+    const received = vi.fn();
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
+      : call.operation === 'entities' ? json(original) : call.operation === 'apply-associations' ? json(saved) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/empty-catalog" lang="en" onClose={vi.fn()} onSaved={received} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision' }));
+    await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove catalog 1 and its mappings' }));
+    expect(screen.queryByRole('combobox', { name: 'Entities for segment 1' })).toBeNull();
+    const submit = screen.getByRole('button', { name: 'Save pending mappings' });
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    change('Mapping reason', 'Explicitly clear derived mappings while preserving canonical content');
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(submit);
+    await waitFor(() => expect(received).toHaveBeenCalledOnce());
+    expect(calls.find(call => call.operation === 'apply-associations')!.body).toMatchObject({ id: detail.revision.knowledgeId,
+      revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3, draft: { catalogRefs: [], segmentEntityRefs: [], issues: [] } });
+    expect(saved.revision).toEqual(detail.revision); expect(saved.maintenance).toEqual(detail.maintenance);
+  });
+
+  it('preserves selections from both source catalogs while switching and removes only the explicitly chosen catalog', async () => {
+    const { detail, original, second, catalogs } = multiCatalogFixture();
+    const received = vi.fn();
+    const calls = api(call => call.operation === 'association-catalogs' ? json(catalogs)
+      : call.operation === 'entities' ? json(call.body.analysisId === second.history.analysisId ? second : original)
+        : call.operation === 'apply-associations' ? json(detail) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/multi-catalog" lang="en" onClose={vi.fn()} onSaved={received} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision 1' }));
+    await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
+    expect(screen.getByRole('combobox', { name: 'Entities for segment 2' }).closest('.ant-select')?.className).toContain('ant-select-disabled');
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision 2' }));
+    await screen.findByRole('group', { name: `Segment 2 / ${second.revision.entities[0].entityId}` });
+    expect((screen.getByRole('checkbox', { name: /^Alpha / }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getAllByText(/1 mappings/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision 1' }));
+    await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove catalog 1 and its mappings' }));
+    change('Mapping reason', 'Keep only the explicitly checked second source catalog');
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    await waitFor(() => expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1));
+    expect(calls.find(call => call.operation === 'apply-associations')!.body).toMatchObject({ generation: 3,
+      draft: { catalogRefs: [{ analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's2', analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId, entityId: second.revision.entities[0].entityId, mentionIds: [second.revision.mentions[0].mentionId] }], issues: [] } });
+    expect(detail.derivedAssociations.revision!.catalogRefs).toHaveLength(2);
+  });
+
   it('follows a controlled segment and mention into the exact original span and back without replacing the bound entity revision', () => {
     const { detail, original } = associationFixture(), onEntity = vi.fn();
     function View() {
@@ -652,9 +746,9 @@ describe('independent entity mapping review', () => {
     detail.revision.content.segments.push(second);
     detail.revision.bodyDigest = knowledgeBodyDigest(detail.revision);
     detail.derivedAssociations.bodyRef.bodyDigest = detail.revision.bodyDigest;
-    detail.derivedAssociations.revision!.segmentEntityRefs = [{ segmentId: 's2', entityId: mention.entityId, mentionIds: [mention.mentionId] }];
-    if (detail.derivedCatalog.status !== 'available') throw new Error('Expected an available fixture catalog');
-    detail.derivedCatalog.mentions = [mention];
+    detail.derivedAssociations.revision!.segmentEntityRefs = [{ segmentId: 's2', analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: mention.entityId, mentionIds: [mention.mentionId] }];
+    if (detail.derivedCatalogs[0].status !== 'available') throw new Error('Expected an available fixture catalog');
+    detail.derivedCatalogs[0].mentions = [mention];
     function View() {
       const [selection, setSelection] = useState<KnowledgeReaderSelection>({ tab: 'associations', segmentId: 's2', mentionId: mention.mentionId });
       return <KnowledgeReader detail={detail} lang="en" selection={selection} onSelectionChange={setSelection} onRevision={vi.fn()} onRetry={vi.fn()}/>;
@@ -729,10 +823,10 @@ describe('independent entity mapping review', () => {
     const saved = structuredClone(detail);
     saved.derivedAssociations = { ...saved.derivedAssociations, reviewStatus: 'pending', generation: 4, headRevisionId: uuid(701),
       revision: { ...saved.derivedAssociations.revision!, revisionId: uuid(701), parentRevisionId: uuid(700),
-        entityAnalysisRef: { analysisId: current.history.analysisId, revisionId: current.revision.revisionId }, typedRelations: undefined } };
-    saved.derivedCatalog = { status: 'available', analysisId: current.history.analysisId, revisionId: current.revision.revisionId,
+        catalogRefs: [{ analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], typedRelations: undefined } };
+    saved.derivedCatalogs = [{ status: 'available', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId,
       snapshotId: current.history.snapshotId, sourceVersion: current.history.sourceVersion,
-      currentHeadRevisionId: current.revision.revisionId, entities: current.revision.entities, mentions: current.revision.mentions };
+      currentHeadRevisionId: current.revision.revisionId, entities: current.revision.entities, mentions: current.revision.mentions }];
     const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, current))
       : call.operation === 'entities' ? json(current) : call.operation === 'apply-associations' ? json(saved) : undefined);
     function View({ value }: { value: KnowledgeCandidateDetail }) {
@@ -745,6 +839,7 @@ describe('independent entity mapping review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Entities and associations' }));
     fireEvent.click(screen.getByRole('button', { name: 'Edit entity mappings' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove catalog 1 and its mappings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Load current entity revision' }));
     const select = await screen.findByRole('combobox', { name: 'Entities for segment 1' });
     expect(screen.queryByRole('checkbox', { name: /^Alpha / })).toBeNull();
@@ -764,8 +859,7 @@ describe('independent entity mapping review', () => {
     const requests = calls.filter(call => call.operation === 'apply-associations');
     expect(requests).toHaveLength(1);
     expect(requests[0].body).toMatchObject({ revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3,
-      analysisId: current.history.analysisId, entityRevision: current.revision.revisionId,
-      draft: { segmentEntityRefs: [{ segmentId: 's1', entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], issues: [] } });
+      draft: { catalogRefs: [{ analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], issues: [] } });
     expect(requests[0].body.draft).not.toHaveProperty('typedRelations');
     expect(received.mock.calls[0][0].revision).toEqual(detail.revision);
     expect(received.mock.calls[0][0].maintenance).toEqual(detail.maintenance);

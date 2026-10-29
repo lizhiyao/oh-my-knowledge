@@ -44,7 +44,7 @@ function persistedBody() {
         new FileEntityAnalysisStore(join(workspace, 'entities'), workspace), workspace);
       associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId, expectedGeneration: 0, expectedHeadRevisionId: null,
         revision: { revisionId: randomUUID(), bodyRef: { knowledgeId, revisionId, bodyDigest: knowledgeBodyDigest(draft) }, status: 'failed',
-          reviewStatus: 'pending', segmentEntityRefs: [], issues: ['Authored association failure.'], revisedAt: at, revisedBy: actor, revisionReason: 'Authored failure fixture.' } }, actor);
+          reviewStatus: 'pending', catalogRefs: [], segmentEntityRefs: [], issues: ['Authored association failure.'], revisedAt: at, revisedBy: actor, revisionReason: 'Authored failure fixture.' } }, actor);
       const file = join(directory, readdirSync(directory).find(name => name.endsWith('.json'))!);
       expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ storeKind: 'knowledge-association-history', knowledgeId });
       return file;
@@ -59,7 +59,7 @@ describe('body retrieve command wiring', () => {
     expect(JSON.parse((await f.command()).stdout).items).toEqual([]);
     const output = await f.command(['--include-candidates', '--json', '--snapshot', f.snapshot.snapshotId, '--source-version', f.snapshot.sourceVersion]);
     const result = JSON.parse(output.stdout);
-    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 1,
+    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 2,
       knowledge: [{ bodyRef: { knowledgeId: f.knowledgeId, revisionId: f.revisionId, bodyDigest: knowledgeBodyDigest(f.draft) }, choice: null,
         derivedAssociations: { status: 'absent', reviewStatus: 'pending' } }], items: [{ evidenceChecks: [{ positionStatus: 'matched' }] }] });
     expect(result.items[0].segment).toEqual(f.draft.content.segments[0]);
@@ -101,7 +101,7 @@ describe('body retrieve command wiring', () => {
     writeFileSync(file, '{invalid'); const before = workspaceBytes(f.workspace);
     const corrupt = JSON.parse((await f.command()).stdout);
     expect(corrupt.items[0].segment).toEqual(f.draft.content.segments[0]); expect(corrupt.knowledge[0].derivedAssociations.status).toBe('failed');
-    expect(JSON.parse((await f.command(['--entity-id', randomUUID()])).stdout).items).toEqual([]);
+    expect(JSON.parse((await f.command(['--analysis', randomUUID(), '--entity-revision', randomUUID(), '--entity-id', randomUUID()])).stdout).items).toEqual([]);
     expect(workspaceBytes(f.workspace)).toEqual(before);
     const other = persistedBody(); other.retain(); const directory = join(other.workspace, 'associations'); mkdirSync(directory);
     writeFileSync(join(directory, 'unrelated-corrupt.json'), '{invalid'); const unrelated = workspaceBytes(other.workspace);

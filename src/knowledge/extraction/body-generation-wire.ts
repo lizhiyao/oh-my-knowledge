@@ -19,15 +19,17 @@ export const BodyGenerationResponseSchema = z.strictObject({
     organization: z.strictObject({ knowledgeKind: z.enum(['fact', 'case', 'method']) }).nullable(), reuseRationale: text,
   })).max(256),
 });
+const localEndpoint = z.strictObject({ sourceKey: id, entityId: id });
 export const AssociationGenerationResponseSchema = z.strictObject({
-  responseKind: z.literal('knowledge-association-generation'), schemaVersion: z.literal(1),
-  entities: z.array(EntityModelSchema).max(256),
-  mentions: z.array(z.strictObject({ mentionId: id, entityId: id, selection: locator,
-    basis: z.enum(['explicit', 'inference']), rationale: text })).max(512),
+  responseKind: z.literal('knowledge-association-generation'), schemaVersion: z.literal(2),
+  catalogs: z.array(z.strictObject({ sourceKey: id, entities: z.array(EntityModelSchema).max(256),
+    mentions: z.array(z.strictObject({ mentionId: id, entityId: id, selection: locator,
+      basis: z.enum(['explicit', 'inference']), rationale: text })).max(512),
+  })).min(1).max(256),
   associations: z.array(z.strictObject({ bodyKey: id,
-    segmentEntityRefs: z.array(z.strictObject({ segmentId: id, entityId: id, mentionIds: z.array(id).max(512) })).max(512),
+    segmentEntityRefs: z.array(z.strictObject({ segmentId: id, sourceKey: id, entityId: id, mentionIds: z.array(id).max(512) })).max(512),
     typedRelations: z.array(z.strictObject({ relationId: id, segmentIds: z.array(id).min(1).max(256),
-      subject: z.strictObject({ entityId: id }), relation: text, object: z.strictObject({ entityId: id }).nullable(),
+      subject: localEndpoint, relation: text, object: localEndpoint.nullable(),
       modality: z.enum(['descriptive', 'normative', 'capability', 'permission']), polarity: z.enum(['positive', 'negative']),
       evidence: z.array(z.strictObject({ segmentId: id, evidenceIndex: z.number().int().nonnegative() })).min(1).max(512),
       issues: z.array(text).max(64),
@@ -51,12 +53,12 @@ const BODY_SYSTEM = `你从用户选定的协作记录中提炼值得未来复�
 正文将主张归于特定对象时，证据也须支持该对象的来源指代。若主体只在原话上文或明确承接的对话中出现，补足必要的原source主体上下文锚点，与主张证据一起引用；不要只截取省略主体的结论，再靠生成正文、标题或其他proposal补来源身份。原source无法可靠确定主体时保留未知，不猜测归属。
 本阶段不生成实体、关系三元组、review决定或持久化身份。使用局部proposalId/segmentId，保持每个proposal内segmentId唯一。只返回提供的知识正文JSON。`;
 const ASSOCIATION_SYSTEM = `你为已经保存的知识正文建立独立、待核对的实体关联与可选typed关系。正文及bodyKey/segmentId是只读输入，绝不修改、概括或补写正文，也不把正文说法当新的原始来源。关联失败或未知不表示正文应被删除。
-仅从原source识别对象与精确提及，为各bodyKey的segment建立候选关联。一个窗口共享实体目录，别名/代词须有真实对应依据；不按名称、路径、类型或相似度确认身份，不做跨窗口合并。身份未决保留uncertainties，不能把已知对象因版本或结果未知而改成未知对象。实体应保留对象含义与有据限定，不补百科、归属或发布状态。
+输入sources中的每个sourceKey标识一个精确来源窗口。为每个sourceKey恰好返回一项catalogs，实体和mention的局部ID仅在该目录内有效。仅从相应source识别对象与精确提及，为各bodyKey的segment建立候选关联；segmentEntityRefs及typedRelations端点必须显式带sourceKey，不能引用该段正文证据未使用的来源。一个窗口共享实体目录，别名/代词须有真实对应依据；不按名称、路径、类型或相似度确认身份，不做跨窗口合并。身份未决保留uncertainties，不能把已知对象因版本或结果未知而改成未知对象。实体应保留对象含义与有据限定，不补百科、归属或发布状态。
 ${ENTITY_REFERENT_KIND_POLICY}
 ${ENTITY_MENTION_BOUNDARY_POLICY}
 mentions使用原source的连续逐字quote，occurrence是同一evidenceRef含重叠的零起始序号；唯一匹配null或0。没有可靠关联时可留空并写issues，不能造提及或端点。
 typedRelations只投影正文segment已经明确表达的关系，允许[]；不要求把全部正文转换为三元组。若未请求该投影用null。使用原descriptive/normative/capability/permission和positive/negative，按实际语义保留角色、否定与归因，不能靠转述包装改变原语气。每条relation引用原body的segmentIds，evidence仅用相应segment已有evidenceIndex，不增加来源或知识。未能无歧义投影时写issues或不形成关系，不修补正文。
-所有结果都是AI候选、pending，不是人工确认或真实性认证。实体仅用本返回内局部ID，associations.bodyKey必须来自输入且每个bodyKey恰好一项；无关联也返回空数组和原因。只返回提供的关联JSON。`;
+所有结果都是AI候选、pending，不是人工确认或真实性认证。实体仅用各sourceKey目录内局部ID，不同sourceKey下同名或同局部ID是独立对象；跨目录关系不表示身份合并。associations.bodyKey必须来自输入且每个bodyKey恰好一项；无关联也返回空数组和原因。只返回提供的关联JSON。`;
 
 function strictWire(schema: unknown): Record<string, unknown> {
   const omitted = new Set(['minLength', 'maxLength', 'pattern', 'format', 'minimum', 'maximum', 'exclusiveMinimum',
@@ -80,8 +82,8 @@ function strictWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v3' : 'knowledge-association-generation/v1';
-  const wireVersion = `omk-knowledge-${stageKind}-wire/v1`;
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v3' : 'knowledge-association-generation/v2';
+  const wireVersion = `omk-knowledge-${stageKind}-wire/v${stageKind === 'body' ? 1 : 2}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });
   const wireSchema = strictWire(domain), wireId = generationTextDigest(canonicalJson({ wireVersion, domain, wireSchema,
     mappingPolicy: 'explicit-null-fields/v1', zodVersion: z.core.version }));
@@ -90,7 +92,7 @@ function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: s
     if (value && typeof value === 'object' && !Object.isFrozen(value)) { for (const child of Object.values(value)) freeze(child); Object.freeze(value); }
   };
   freeze(wireSchema);
-  return Object.freeze({ stageKind, profileId, promptVersion, system, wireId, outputName: `knowledge_${stageKind}_v1`, wireSchema });
+  return Object.freeze({ stageKind, profileId, promptVersion, system, wireId, outputName: `knowledge_${stageKind}_v${stageKind === 'body' ? 1 : 2}`, wireSchema });
 }
 export const BODY_GENERATION_PROFILE = profile('body', BodyGenerationResponseSchema, BODY_SYSTEM);
 export const ASSOCIATION_GENERATION_PROFILE = profile('association', AssociationGenerationResponseSchema, ASSOCIATION_SYSTEM);

@@ -45,19 +45,19 @@ export function confirmKnowledgePublication(path: string, workspace: string): vo
 }
 
 /** Narrow domain publisher: existing JSON encodings stay caller-owned; acknowledgement follows fsync. */
-export function publishKnowledgeBytes(path: string, bytes: string, workspace: string, exclusive: boolean): void {
+export function publishKnowledgeBytes(path: string, bytes: string | Uint8Array, workspace: string, exclusive: boolean): void {
   publishKnowledgeChunks(path, [bytes], workspace, exclusive);
 }
 
 /** Streams complete native JSON without recursive stringify or a second giant string. */
-export function publishKnowledgeChunks(path: string, chunks: Iterable<string>, workspace: string, exclusive: boolean): void {
+export function publishKnowledgeChunks(path: string, chunks: Iterable<string | Uint8Array>, workspace: string, exclusive: boolean): void {
   const parents = directories(path, workspace); parents.forEach(checkStorageDirectory);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 }); parents.forEach(checkStorageDirectory);
   const temp = `${path}.${process.pid}.${randomUUID()}.tmp`; let fd: number | undefined;
   try {
     fd = openSync(temp, 'wx', 0o600); let total = 0;
     for (const chunk of chunks) {
-      const buffer = Buffer.from(chunk); let offset = 0; total += buffer.length;
+      const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk); let offset = 0; total += buffer.length;
       if (!Number.isSafeInteger(total)) throw new Error('Knowledge publication capacity exceeded.');
       while (offset < buffer.length) {
         const count = writeSync(fd, buffer, offset, buffer.length - offset);

@@ -14,7 +14,7 @@ export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['query
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source' | 'knowledgeStatus'> & Pick<KnowledgeEntityAnalysisDetail, 'source'> & { knowledgeStatus: 'available' | 'unavailable' };
 export interface KnowledgeCandidateRun {
   runId: string; schemaStatus: 'current' | 'unsupported' | 'unavailable'; status: 'active' | 'completed' | 'failed' | 'unsupported' | 'unavailable';
-  createdAt?: string; executor?: string; model?: string; snapshotId?: string; sourceVersion?: string; origin?: EvidenceWindow['origin'];
+  createdAt?: string; executor?: string; model?: string; sources?: { snapshotId: string; sourceVersion: string; origin?: EvidenceWindow['origin'] }[];
   sourceMetadataStatus?: 'frozen_input' | 'unknown';
   archiveVerification: 'not_verified' | 'verified'; archiveChecks: GenerationArchiveCheck[];
   bodies: KnowledgeBodyRef[];
@@ -22,7 +22,7 @@ export interface KnowledgeCandidateRun {
     producerId: string; producerRevision: string; rejectedCount: number | null;
   })[];
   nextAction: 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
-  entityAnalysis?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' };
+  entityAnalyses?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' }[];
   unsupportedReason?: string;
   unavailableReason?: 'unreadable' | 'invalid_identity' | 'invalid_source_metadata';
 }

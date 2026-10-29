@@ -68,7 +68,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
   }
   const reason = state ? ({ waiting: t('等待新轮次', 'Waiting for turns'), generating: t('正在提炼', 'Extracting'), stopped: t('已停止', 'Stopped'),
     quota: t('额度已用完', 'Call limit reached'), expired: t('授权已到期', 'Permission expired'), failed: t('失败，已停止', 'Failed; stopped'),
-    interrupted: t('已中断，需重新开启', 'Interrupted; enable again'), capacity: t('已达容量上限', 'Capacity reached'), permission_upgrade_required: t('提炼流程已更新，需重新开启', 'Extraction workflow changed; enable again') })[state.reason] : '';
+    interrupted: t('已中断，需重新开启', 'Interrupted; enable again'), capacity: t('已达容量上限', 'Capacity reached'), permission_upgrade_required: t('提炼流程已更新，请先迁移到独立新工作区', 'Extraction workflow changed; migrate to a separate workspace first') })[state.reason] : '';
   return <><Space wrap><Button type={state?.enabled ? 'default' : 'primary'} disabled={!settingsReady} onClick={() => {
     if (state?.enabled) void work(async signal => { setState(await api('stop', { workspace, threadId }, signal)); });
     else { setOpen(true); setPreview(undefined); setConfirmed(false); void work(async signal => { setPreview(await api('preview', { threadId }, signal)); }); }
@@ -78,11 +78,12 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
     <Modal className="auto-extraction-confirmation" styles={{ body: { maxHeight: '65vh', overflow: 'auto', overscrollBehavior: 'contain' } }} title={t('确认这条对话的自动提炼', 'Confirm auto extraction for this conversation')} open={open} width={720}
       onCancel={() => { controller.current?.abort(); setOpen(false); }}
       okText={t('批准并开启', 'Approve and enable')} cancelText={t('取消', 'Cancel')} confirmLoading={busy && preview !== undefined}
-      okButtonProps={{ disabled: !preview || !confirmed || !workspace.trim() || !model.trim() }}
+      okButtonProps={{ disabled: !preview || !confirmed || !workspace.trim() || !model.trim() || state?.schemaStatus === 'unsupported' }}
       onOk={() => void work(async signal => {
-        const next = await api<AutoExtractionStatus>('enable', { workspace: workspace.trim(), threadId, token: preview!.token, executor, model: model.trim(), maxCalls: limit, workflowId: 'knowledge-body-first/v1' }, signal);
+        const next = await api<AutoExtractionStatus>('enable', { workspace: workspace.trim(), threadId, token: preview!.token, executor, model: model.trim(), maxCalls: limit, workflowId: 'knowledge-body-first/v2' }, signal);
         setState(next); setOpen(false); onChanged?.();
       })}>
+      {state?.schemaStatus === 'unsupported' && <Alert type="warning" title={t('当前工作区使用旧提炼流程。请先显式迁移到独立新工作区，再填写迁移后的目录并重新授权；不会在原目录升级权限或恢复旧调用。', 'This workspace uses an older extraction workflow. Explicitly migrate to a separate workspace, then enter the migrated folder and grant fresh permission. Permissions are not upgraded in place and old calls are not resumed.')}/>}
       <p>{t('本次授权仅限此对话，24 小时内、且 Studio 服务运行时有效。可以随时停止；重启后需要重新开启。', 'Permission covers only this conversation for 24 hours while Studio runs. Stop anytime; enable again after restart.')}</p>
       <p>{t('先处理最近 3 个已结束轮次，之后每次最多处理 3 个新增已结束轮次，并带上前 2 轮上下文。记录稳定 30 秒后开始；不会读取整条历史来判断所有纠正。', 'Start with the latest 3 finished turns, then process up to 3 new finished turns with 2 preceding turns of context. Wait 30 seconds for stable records; this does not reconcile the entire history.')}</p>
       <label>{t('候选保存目录', 'Candidate folder')}<Input value={workspace} disabled={busy} onChange={event => { setWorkspace(event.target.value); setConfirmed(false); }}/></label>

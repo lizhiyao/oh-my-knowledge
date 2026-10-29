@@ -36,8 +36,8 @@ function setup(text = 'Alpha 使用 Beta', options: { prefix?: string } = {}) {
     selection: { evidenceRef: snapshot.excerpts[0].evidenceRef, start: 0, end: text.length, quote: text }, basis: 'source_assertion' }];
   body.revision.bodyDigest = knowledgeBodyDigest(body.revision); knowledge.write(body, actor);
   const projectionId = randomUUID(); associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: body.knowledgeId, expectedGeneration: 0,
-    expectedHeadRevisionId: null, revision: { revisionId: projectionId, bodyRef: knowledgeBodyRef(body.revision), status: 'available', reviewStatus: 'pending', entityAnalysisRef: { analysisId, revisionId: entityRevisionId },
-      segmentEntityRefs: entityIds.map((entityId, index) => ({ segmentId: 's1', entityId, mentionIds: [mentions[index].mentionId] })), issues: [],
+    expectedHeadRevisionId: null, revision: { revisionId: projectionId, bodyRef: knowledgeBodyRef(body.revision), status: 'available', reviewStatus: 'pending', catalogRefs: [{ analysisId, entityRevisionId }],
+      segmentEntityRefs: entityIds.map((entityId, index) => ({ segmentId: 's1', analysisId, entityRevisionId, entityId, mentionIds: [mentions[index].mentionId] })), issues: [],
       revisedAt: at, revisedBy: actor, revisionReason: '独立正文关联夹具' } }, actor);
   return { root, app, source, snapshot, knowledge, entities, associations, analysisId, entityRevisionId, entityIds, catalog, body, projectionId };
 }
@@ -62,12 +62,18 @@ describe('shared canonical body application', () => {
     const updated = f.app.correctEntities(f.analysisId, f.entityRevisionId, 1, { entities: edit.entities, mentions: edit.mentions }, '有据修订');
     expect(updated.history.generation).toBe(2); expect(f.app.entities(f.analysisId, f.entityRevisionId).revision.entities[0].description).toBe(f.catalog.entities[0].description);
     const expected = structuredClone(before);
-    if (expected.derivedCatalog.status !== 'available') throw new Error('Expected an exact catalog projection.');
-    expected.derivedCatalog.currentHeadRevisionId = updated.revision.revisionId;
+    if (expected.derivedCatalogs[0].status !== 'available') throw new Error('Expected an exact catalog projection.');
+    expected.derivedCatalogs[0].currentHeadRevisionId = updated.revision.revisionId;
     expect(f.app.detail(f.body.knowledgeId)).toEqual(expected);
     expect(f.app.queryEntities({ query: 'Alpha' }).rows).toHaveLength(1);
     expect(f.app.entityDetail(f.analysisId, f.entityIds[0]).knowledge[0].currentEntityRevision).toBe(false);
     expect(() => f.app.correctEntities(f.analysisId, f.entityRevisionId, 1, { entities: edit.entities, mentions: edit.mentions }, '过期')).toThrow('conflict');
+    const refs = [f.entityRevisionId, updated.revision.revisionId].map(entityRevisionId => ({ analysisId: f.analysisId, entityRevisionId }));
+    f.app.applyAssociations(f.body.knowledgeId, f.body.revision.revisionId, f.body.revision.bodyDigest, 1, {
+      catalogRefs: refs, segmentEntityRefs: refs.map(ref => ({ ...ref, segmentId: 's1', entityId: f.entityIds[0], mentionIds: [f.catalog.mentions[0].mentionId] })), issues: ['显式保留同目录两个精确修订，不能计为两份知识'],
+    }, '明确版本绑定');
+    expect(f.app.queryEntities({ query: 'Alpha' }).rows[0]).toMatchObject({ knowledgeCount: 1, outdatedKnowledgeCount: 1 });
+    expect(f.app.entityDetail(f.analysisId, f.entityIds[0]).knowledge.map(link => link.entityRevisionId)).toEqual([f.entityRevisionId, updated.revision.revisionId]);
   });
   it('rejects foreign IDs, moved identifier fragments and fabricated quotes before appending an entity correction', () => {
     const prefix = '_prefixAlphaSuffix；', f = setup(`${prefix}Alpha 使用 Beta`, { prefix }), original = f.entities.read(f.analysisId);
@@ -88,13 +94,55 @@ describe('shared canonical body application', () => {
   });
   it('applies a corrected derived projection without revising body, then requires an independent review action', () => {
     const f = setup(), bodyFile = join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]), before = readFileSync(bodyFile);
-    const updated = f.app.applyAssociations(f.body.knowledgeId, f.body.revision.revisionId, f.body.revision.bodyDigest, f.analysisId, f.entityRevisionId, 1,
-      { segmentEntityRefs: [{ segmentId: 's1', entityId: f.entityIds[0], mentionIds: [f.catalog.mentions[0].mentionId] }], typedRelations: [], issues: ['人工映射仍需独立核对'] }, '明确修订关联');
+    const updated = f.app.applyAssociations(f.body.knowledgeId, f.body.revision.revisionId, f.body.revision.bodyDigest, 1,
+      { catalogRefs: [{ analysisId: f.analysisId, entityRevisionId: f.entityRevisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: f.analysisId, entityRevisionId: f.entityRevisionId, entityId: f.entityIds[0], mentionIds: [f.catalog.mentions[0].mentionId] }], typedRelations: [], issues: ['人工映射仍需独立核对'] }, '明确修订关联');
     expect(updated.derivedAssociations.reviewStatus).toBe('pending'); const projection = updated.derivedAssociations.revision!;
     const reviewed = f.app.reviewAssociations(f.body.knowledgeId, projection.revisionId, 2, 'accept', '已逐项核对本投影');
     expect(reviewed.derivedAssociations.reviewStatus).toBe('accepted'); expect(reviewed.maintenance).toBeNull(); expect(readFileSync(bodyFile)).toEqual(before);
-    expect(() => f.app.applyAssociations(f.body.knowledgeId, f.body.revision.revisionId, f.body.revision.bodyDigest, f.analysisId, f.entityRevisionId, 3,
-      { segmentEntityRefs: [{ segmentId: 's1', entityId: f.entityIds[1], mentionIds: [f.catalog.mentions[0].mentionId] }], issues: [] }, '错误提及归属')).toThrow('mention');
+    expect(() => f.app.applyAssociations(f.body.knowledgeId, f.body.revision.revisionId, f.body.revision.bodyDigest, 3,
+      { catalogRefs: [{ analysisId: f.analysisId, entityRevisionId: f.entityRevisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: f.analysisId, entityRevisionId: f.entityRevisionId, entityId: f.entityIds[1], mentionIds: [f.catalog.mentions[0].mentionId] }], issues: [] }, '错误提及归属')).toThrow('mention');
+  });
+  it('keeps colliding entity identities qualified across two sources and degrades only a missing catalog before explicit repair', () => {
+    const f = setup(), beforeBody = f.knowledge.read(f.body.knowledgeId);
+    const secondSource = f.app.capture({ path: join(f.root, 'second-authored.jsonl'), records: [{ recordIndex: 2,
+      raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 属于另一个环境' }] } }) }] });
+    const analysisId = randomUUID(), entityRevisionId = randomUUID(), entityId = f.entityIds[0], mentionId = f.catalog.mentions[0].mentionId;
+    const second = { ...f.catalog, entities: [{ ...f.catalog.entities[0], description: '另一个精确来源内的 Alpha，不表示同一对象' }],
+      mentions: [{ ...f.catalog.mentions[0], selection: { evidenceRef: secondSource.excerpts[0].evidenceRef, start: 0, end: 5, quote: 'Alpha' } }] };
+    f.entities.write({ analysisId, snapshotId: secondSource.snapshotId, sourceVersion: secondSource.sourceVersion, requestId: randomUUID(),
+      expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...second, revisionId: entityRevisionId, revisedAt: at, revisedBy: actor, revisionReason: '独立来源目录，局部身份刻意碰撞' } }, actor);
+    const draft = { title: f.body.revision.title, reuseRationale: f.body.revision.reuseRationale, content: structuredClone(f.body.revision.content) };
+    draft.content.segments.push({ segmentId: 's2', text: '另一个来源报告 Alpha 属于另一个环境；没有跨来源身份确认。', evidence: [{
+      source: { snapshotId: secondSource.snapshotId, sourceVersion: secondSource.sourceVersion }, basis: 'source_assertion',
+      selection: { evidenceRef: secondSource.excerpts[0].evidenceRef, start: 0, end: 5, quote: 'Alpha' } }] });
+    const revised = f.app.revise(f.body.knowledgeId, f.body.revision.revisionId, 1, draft, '显式保留第二来源条件');
+    const firstRef = { analysisId: f.analysisId, entityRevisionId: f.entityRevisionId }, secondRef = { analysisId, entityRevisionId };
+    const applied = f.app.applyAssociations(f.body.knowledgeId, revised.revision.revisionId, revised.revision.bodyDigest, 1, {
+      catalogRefs: [firstRef, secondRef], segmentEntityRefs: [
+        { ...firstRef, segmentId: 's1', entityId, mentionIds: [mentionId] }, { ...secondRef, segmentId: 's2', entityId, mentionIds: [mentionId] }],
+      typedRelations: [{ relationId: 'cross-catalog', segmentIds: ['s1', 's2'], subject: { ...firstRef, entityId }, object: { ...secondRef, entityId },
+        relation: '来源描述采用不同环境', modality: 'descriptive', polarity: 'positive', evidence: draft.content.segments.flatMap(segment => segment.evidence), issues: ['这不是身份合并'] }], issues: [],
+    }, '两个目录逐项核对后待审');
+    expect(applied.derivedCatalogs.map(catalog => catalog.status)).toEqual(['available', 'available']);
+    const graph = f.app.graph();
+    expect(graph.nodes.filter(node => node.nodeKind === 'entity' && node.entityId === entityId)).toHaveLength(2);
+    const relation = graph.edges.find(edge => edge.edgeKind === 'typed_relation')!;
+    expect(relation.from).not.toBe(relation.to); expect(graph.coverage.status).toBe('available');
+    expect(f.app.entityDetail(analysisId, entityId).knowledge[0].segmentIds).toEqual(['s2']);
+    expect(f.app.entityDetail(f.analysisId, entityId).knowledge[0].segmentIds).toEqual(['s1']);
+    rmSync(join(f.root, 'entities', `${analysisId}.json`));
+    const reopened = createLocalKnowledgeApplication(f.root).detail(f.body.knowledgeId);
+    expect(reopened.revision).toEqual(revised.revision); expect(reopened.derivedAssociations.status).toBe('available');
+    expect(reopened.derivedCatalogs.map(catalog => catalog.status)).toEqual(['available', 'unavailable']);
+    const partial = f.app.graph(); expect(partial.edges.filter(edge => edge.edgeKind === 'segment_entity')).toHaveLength(1);
+    expect(partial.coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'catalog_unavailable', analysisId }));
+    expect(() => f.app.reviewAssociations(f.body.knowledgeId, applied.derivedAssociations.revision!.revisionId, 2, 'accept', '缺失目录不能接受')).toThrow();
+    const repaired = f.app.applyAssociations(f.body.knowledgeId, revised.revision.revisionId, revised.revision.bodyDigest, 2,
+      { catalogRefs: [firstRef], segmentEntityRefs: [{ ...firstRef, segmentId: 's1', entityId, mentionIds: [mentionId] }], issues: ['第二来源目录缺失，保留其正文等待单独修复'] }, '显式修复健康目录映射');
+    expect(repaired.derivedAssociations.reviewStatus).toBe('pending'); expect(repaired.derivedCatalogs).toHaveLength(1);
+    expect(f.associations.read(f.body.knowledgeId).revisions).toHaveLength(3);
+    expect(f.knowledge.read(f.body.knowledgeId).revisions[0]).toEqual(beforeBody.revisions[0]);
+    expect(f.knowledge.read(f.body.knowledgeId).revisions[1]).toEqual(revised.revision);
   });
   it('retains and revises without transferring maintenance/projection acceptance, and rejects invalid or missing-source edits', () => {
     const f = setup(); f.app.maintain(f.body.knowledgeId, f.body.revision.revisionId, 'retain', '保留正文', 1);
@@ -105,16 +153,35 @@ describe('shared canonical body application', () => {
     const after = f.app.revise(f.body.knowledgeId, f.body.revision.revisionId, 2, draft, '正文修订');
     expect(after.maintenance).toBeNull(); expect(after.derivedAssociations.status).toBe('stale'); expect(f.app.detail(f.body.knowledgeId, f.body.revision.revisionId).maintenance?.choice).toBe('retain');
     f.app.deleteSource(f.snapshot.snapshotId); expect(f.app.detail(f.body.knowledgeId).sources[0].status).toBe('unavailable');
+    expect(() => f.app.reviewAssociations(f.body.knowledgeId, f.projectionId, 2, 'accept', '缺来源不能再次接受')).toThrow('source unavailable');
     expect(() => f.app.revise(f.body.knowledgeId, after.revision.revisionId, after.history.generation, draft, '缺来源')).toThrow('unavailable');
   });
   it('keeps body independent of damaged entity/derived storage and exposes unsupported old run inventory without decoding it', () => {
     const f = setup(), file = join(f.root, 'entities', `${f.analysisId}.json`); writeFileSync(file, '{bad');
     expect(() => f.app.entities(f.analysisId)).toThrow(); expect(f.app.queryEntities()).toMatchObject({ total: 0, unavailableAnalyses: 1 });
-    expect(f.app.detail(f.body.knowledgeId)).toMatchObject({ revision: { bodyDigest: f.body.revision.bodyDigest }, derivedAssociations: { status: 'failed' } });
+    expect(f.app.detail(f.body.knowledgeId)).toMatchObject({ revision: { bodyDigest: f.body.revision.bodyDigest }, derivedAssociations: { status: 'available' }, derivedCatalogs: [{ status: 'unavailable' }] });
     const legacy = join(f.root, 'extraction-runs');
     // Explicit old manifests are inventoried, never read as a current generation journal.
     const id = randomUUID(); mkdirSync(legacy); writeFileSync(join(legacy, `${id}.json`), '{"runKind":"knowledge-extraction-run","schemaVersion":5}');
     expect(f.app.runs().unsupported).toMatchObject([{ runId: id, schemaStatus: 'unsupported' }]);
+  });
+  it('keeps known invalid catalog references visible as a local gap and refuses acceptance without losing body evidence', () => {
+    const f = setup(), path = join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]);
+    const corrupt = JSON.parse(readFileSync(path, 'utf8'));
+    corrupt.revisions[0].segmentEntityRefs[0].mentionIds = [randomUUID()];
+    writeFileSync(path, JSON.stringify(corrupt));
+    const detail = f.app.detail(f.body.knowledgeId);
+    expect(detail.revision).toEqual(f.body.revision); expect(detail.derivedCatalogs[0].status).toBe('unavailable');
+    expect(f.app.graph().coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'catalog_unavailable', analysisId: f.analysisId }));
+    expect(() => f.app.reviewAssociations(f.body.knowledgeId, f.projectionId, 1, 'accept', '坏引用不能接受')).toThrow('mention evidence');
+    const originalRead = TraceEvidenceStore.prototype.read;
+    vi.spyOn(TraceEvidenceStore.prototype, 'read').mockImplementation(function (this: TraceEvidenceStore, id, version) {
+      if (id === f.snapshot.snapshotId) throw new Error('private source failure');
+      return originalRead.call(this, id, version);
+    });
+    const unreadable = f.app.detail(f.body.knowledgeId);
+    expect(unreadable.revision).toEqual(f.body.revision); expect(unreadable.sources).toMatchObject([{ status: 'unavailable', reason: 'invalid_source' }]);
+    expect(JSON.stringify(unreadable)).not.toContain('private source failure');
   });
   it('isolates healthy entity identity and source from an unrelated corrupt knowledge file', () => {
     const f = setup(); writeFileSync(join(f.root, 'items', 'unrelated-corrupt.json'), '{bad');

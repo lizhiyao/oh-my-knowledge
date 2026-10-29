@@ -38,7 +38,7 @@ function fixture() {
       const output = profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 1, proposals: [{
         proposalId: 'p1', title: '有条件的来源报告', segments: [{ segmentId: 's1', text: source.excerpts[0].text, evidence: [{ evidenceRef: source.excerpts[0].evidenceRef,
           quote: 'Alpha', occurrence: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '核对相同环境时复用' }] }
-        : { responseKind: 'knowledge-association-generation', schemaVersion: 1, entities: [], mentions: [], associations: [{ bodyKey: 'b0', segmentEntityRefs: [], typedRelations: [], issues: ['无可确认关联'] }] };
+        : { responseKind: 'knowledge-association-generation', schemaVersion: 2, catalogs: [{ sourceKey: 's0', entities: [], mentions: [] }], associations: [{ bodyKey: 'b0', segmentEntityRefs: [], typedRelations: [], issues: ['无可确认关联'] }] };
       return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(output), authoredFixture: true } };
     },
   };
@@ -96,17 +96,24 @@ describe('explicit schema2 body-first conversation auto permission', () => {
     vi.restoreAllMocks(); await f.enable(4); await f.tick(); expect(f.inputs).toHaveLength(0);
     expect(createLocalKnowledgeApplication(f.workspace).runs().current[0].stages[0].state).toBe('prepared');
   });
-  it('rejects old consent shape and reports old permission unsupported without mutating it until explicit new consent', async () => {
+  it.each([1, 2])('reports old workflow permission schema %s unsupported and requires a separate workspace before new consent', async schemaVersion => {
     const f = fixture(); await f.enable(); f.service.stop(f.workspace, 'thread');
     const stateFile = join(f.directory(), readdirSync(f.directory()).find(name => /^[a-f0-9]{64}\.json$/.test(name))!);
-    const raw = ' {"schemaVersion":1,"automationKind":"conversation-knowledge-extraction","oldOpaqueAllowance":"single"}\n'; writeFileSync(stateFile, raw);
+    const raw = JSON.stringify({ schemaVersion, automationKind: 'conversation-knowledge-extraction', workflowId: 'knowledge-body-first/v1', oldOpaqueAllowance: 'single' });
+    writeFileSync(stateFile, raw);
     expect(f.service.status(f.workspace, 'thread')).toEqual({ schemaStatus: 'unsupported', threadId: 'thread', enabled: false, reason: 'permission_upgrade_required' });
     expect(readFileSync(stateFile, 'utf8')).toBe(raw);
     const token = (await f.service.preview('thread')).token;
     expect(() => executeAutoExtractionAction({ operation: 'enable', workspace: f.workspace, threadId: 'thread', token,
       executor: 'codex', model: f.model.model, maxCalls: 4 }, f.service)).toThrow();
-    await f.enable(4); expect(f.state().schemaVersion).toBe(2);
-    const archive = readdirSync(f.directory()).find(name => name.startsWith('legacy-state-'))!; expect(readFileSync(join(f.directory(), archive), 'utf8')).toBe(raw);
+    await expect(f.enable(4)).rejects.toThrow('Migrate to a separate workspace');
+    expect(readFileSync(stateFile, 'utf8')).toBe(raw);
+    rmSync(stateFile);
+    writeFileSync(join(f.directory(), 'schedule-old.json'), JSON.stringify({ workflowId: 'knowledge-body-first/v1' }));
+    await expect(f.enable(4)).rejects.toThrow('Migrate to a separate workspace');
+    expect(f.inputs).toHaveLength(0);
+    await f.service.enable(join(f.root, 'fresh-workspace'), 'thread', { workflowId: AUTO_EXTRACTION_WORKFLOW, token,
+      executor: 'codex', model: f.model.model, maxCalls: 4 });
     expect(f.inputs).toHaveLength(0);
   });
   it('preserves archived server cooldown across explicit renewal and never starts with expired permission', async () => {

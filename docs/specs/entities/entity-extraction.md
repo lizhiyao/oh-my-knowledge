@@ -28,7 +28,7 @@ These sources inform choices, not OMK performance evidence. Old single/bounded t
 
 ## 3. Contracts and identity
 
-Current production uses `knowledge-body-first/v1`, replacing the old joint typed response. Its [generated contract](../../reference/shared/knowledge-contract.md) identifies the body and association prompts, structural wires and current stores separately.
+Current production uses `knowledge-body-first/v2`, replacing the old joint typed response. Its [generated contract](../../reference/shared/knowledge-contract.md) identifies the body and association prompts, structural wires and current stores separately.
 
 - Canonical body draft: `{title, content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`. Each segment is complete and preserves necessary conditions, attribution, negation, time, exceptions, participant stances and unknowns. Titles, reuse hints, quotes and future catalogs cannot supply missing body content.
 - Inline evidence: `{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`. Basis distinguishes source assertion, direct observation and inference; exact matching is not truth.
@@ -49,7 +49,7 @@ Entity correction appends an immutable entity-analysis revision under exact gene
 
 Body revision accepts a complete new `KnowledgeDraft` with inline evidence. The host rereads every referenced snapshot/version and validates exact UTF-16 quotes before appending. The old `citationLocators`/`--citations` and parallel grounding fields are replaced. A new body revision gets its own digest, remains pending and does not inherit retain; older projection refs become stale.
 
-`apply-associations` binds exact body revision/digest, catalog revision and association generation, producing a new pending projection. `review-associations` records accept/reject for that projection only. `rebuild-associations` uses a new journal and association invocation without another body call/revision. The current model generator supports one exact available source window; multi-source body reads/revisions do not require such a projection. Source-unavailable or stale writes fail explicitly. Keep source-backed conditions/negation/unknowns in body when correcting identity; catalog edits do not silently transfer claims.
+`apply-associations` binds exact body revision/digest, catalog revision and association generation, producing a new pending projection. `review-associations` records accept/reject for that projection only. `rebuild-associations` uses a new journal and association invocation without another body call/revision. Body generation still begins with one selected window. Association rebuilding reads all exact body sources, using host-assigned `sourceKey` scopes for independent catalogs and local entity/mention IDs. Endpoints pin catalog, catalog revision and entity; cross-catalog relations do not confirm shared identity. Source-unavailable or stale writes fail explicitly. Keep source-backed conditions/negation/unknowns in body when correcting identity; catalog edits do not silently transfer claims.
 
 ## 5. Domain and runtime boundaries
 

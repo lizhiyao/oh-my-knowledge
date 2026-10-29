@@ -45,13 +45,14 @@ try {
       organization: { knowledgeKind: 'fact' }, reuseRationale: '演示后续核对相同条件下的来源说法' }],
   };
   const associationResponse = {
-    responseKind: 'knowledge-association-generation', schemaVersion: 1, entities,
+    responseKind: 'knowledge-association-generation', schemaVersion: 2,
+    catalogs: [{ sourceKey: 's0', entities,
     mentions: entities.map((entity, index) => ({
       mentionId: `mention-${index}`, entityId: entity.entityId,
       selection: { evidenceRef, quote: entity.label, occurrence: null }, basis: 'explicit', rationale: '逐字对象名称',
-    })),
+    })) }],
     associations: [{ bodyKey: 'b0', segmentEntityRefs: entities.map((entity, index) => ({
-      segmentId: 'usage', entityId: entity.entityId, mentionIds: [`mention-${index}`],
+      segmentId: 'usage', sourceKey: 's0', entityId: entity.entityId, mentionIds: [`mention-${index}`],
     })), typedRelations: [], issues: [] }],
   };
   const rawByStage = { body: JSON.stringify(bodyResponse), association: JSON.stringify(associationResponse) };
@@ -64,11 +65,13 @@ try {
     },
     async invoke(profile, input, _signal, beforeDispatch) {
       const parsed = JSON.parse(input);
-      assert.deepEqual(parsed.excerpts, snapshot.excerpts);
-      assert.deepEqual(parsed.limitations, snapshot.limitations);
-      assert.equal(parsed.source.snapshotId, snapshot.snapshotId);
-      assert.equal(parsed.source.sourceVersion, snapshot.sourceVersion);
-      assert.equal(parsed.source.sourcePath, undefined);
+      const selected = profile.stageKind === 'association' ? parsed.sources[0] : parsed;
+      if (profile.stageKind === 'association') { assert.equal(parsed.sources.length, 1); assert.equal(selected.sourceKey, 's0'); }
+      assert.deepEqual(selected.excerpts, snapshot.excerpts);
+      assert.deepEqual(selected.limitations, snapshot.limitations);
+      assert.equal(selected.source.snapshotId, snapshot.snapshotId);
+      assert.equal(selected.source.sourceVersion, snapshot.sourceVersion);
+      assert.equal(selected.source.sourcePath, undefined);
       if (profile.stageKind === 'association') {
         // The independent second phase consumes a body already committed to public storage.
         assert.equal(app.list().length, 1);
@@ -86,7 +89,7 @@ try {
   };
   const run = await app.generate(snapshot.snapshotId, fixture);
   assert.equal(run.journal.status, 'completed');
-  assert.equal(run.journal.workflowId, 'knowledge-body-first/v1');
+  assert.equal(run.journal.workflowId, 'knowledge-body-first/v2');
   assert.equal(run.journal.bodies.length, 1);
   assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['body', 'association']);
   for (const stage of run.journal.stages) {
@@ -119,7 +122,7 @@ try {
   assert.equal(stored.derivedAssociations.reviewStatus, 'pending');
   const projection = stored.derivedAssociations.revision;
   assert.deepEqual(projection.bodyRef, run.journal.bodies[0]);
-  const analysis = reopened.entities(projection.entityAnalysisRef.analysisId, projection.entityAnalysisRef.revisionId);
+  const analysis = reopened.entities(projection.catalogRefs[0].analysisId, projection.catalogRefs[0].entityRevisionId);
   assert.equal(analysis.revision.entities.length, 2);
   for (const selection of [bodyEvidence.selection, ...analysis.revision.mentions.map(mention => mention.selection)]) {
     const excerpt = stored.sources[0].window.excerpts.find(value => value.evidenceRef === selection.evidenceRef);

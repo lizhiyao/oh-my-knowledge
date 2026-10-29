@@ -15,12 +15,13 @@ function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适�
   const bodyRef = { knowledgeId, revisionId, bodyDigest: digest };
   const derivedAssociations: { status: string; reviewStatus: 'pending' | 'accepted' | 'rejected'; bodyRef: typeof bodyRef; revision?: {
     revisionId: string; bodyRef: typeof bodyRef; status: 'available' | 'failed'; reviewStatus: 'pending'; issues: string[];
-    segmentEntityRefs: { segmentId: string; entityId: string; mentionIds: string[] }[]; typedRelations?: unknown[];
+    catalogRefs: { analysisId: string; entityRevisionId: string }[];
+    segmentEntityRefs: { analysisId: string; entityRevisionId: string; segmentId: string; entityId: string; mentionIds: string[] }[]; typedRelations?: unknown[];
   } } = { status: 'absent', reviewStatus: 'pending', bodyRef };
   const detail = { history: { generation: 1, writeHeadRevisionId: revisionId },
     revision: { ...bodyRef, revisedAt: '2026-01-01T00:00:00Z', title: '初始化记录', content: { segments } },
     maintenance: undefined as { choice: 'retain' | 'discard' } | undefined, tagging: { tags: [] as string[] }, reviewStatus: 'pending',
-    derivedAssociations,
+    derivedAssociations, derivedCatalogs: [] as { status: 'available' | 'unavailable'; analysisId: string; entityRevisionId: string }[],
   };
   const row = { knowledgeId, revisionId, choice: null as 'retain' | 'discard' | null };
   const window = { sourceKind: 'codex', excerpts: [{ evidenceRef: 'record:0', text: quote }] };
@@ -41,7 +42,7 @@ describe('canonical body segment retrieval', () => {
     const f = fixture(), before = structuredClone(f.detail);
     expect(retrieveKnowledge(f.app, { query: 'v-model' }).items).toEqual([]);
     const result = retrieveKnowledge(f.app, { query: 'v-model', includeCandidates: true });
-    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 1,
+    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 2,
       knowledge: [{ bodyRef: { revisionId: f.row.revisionId, bodyDigest: digest }, choice: null, reviewStatus: 'pending' }] });
     expect(result.items[0].segment).toEqual(f.segments[0]);
     expect(result.items[0].evidenceChecks).toEqual([{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }]);
@@ -61,25 +62,31 @@ describe('canonical body segment retrieval', () => {
     expect(retrieveKnowledge(f.app, { query: '独立验证' }).items).toEqual([]);
   });
   it('keeps large derived catalogs outside the body budget and scopes only exact current-body associations, still pending', () => {
-    const f = fixture(); f.retain(); const entityId = randomUUID(), associations = f.detail.derivedAssociations;
+    const f = fixture(); f.retain(); const entityId = randomUUID(), analysisId = randomUUID(), entityRevisionId = randomUUID(), scope = { analysisId, entityRevisionId }, associations = f.detail.derivedAssociations;
     associations.status = 'available'; associations.revision = { revisionId: randomUUID(), bodyRef: associations.bodyRef,
-      status: 'available', reviewStatus: 'pending', issues: [], segmentEntityRefs: [{ segmentId: 'segment-0', entityId, mentionIds: ['mention-0'] }],
+      status: 'available', reviewStatus: 'pending', issues: [], catalogRefs: [{ analysisId, entityRevisionId }], segmentEntityRefs: [{ analysisId, entityRevisionId, segmentId: 'segment-0', entityId, mentionIds: ['mention-0'] }],
       typedRelations: ['large optional derived catalog'.repeat(10000)] };
-    const scoped = retrieveKnowledge(f.app, { query: 'v-model', entityId });
+    f.detail.derivedCatalogs.push({ ...scope, status: 'available' });
+    const scoped = retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId });
     expect(scoped.items).toHaveLength(1); expect(bytes(scoped)).toBeLessThanOrEqual(8192);
     expect(scoped.knowledge[0].derivedAssociations).toMatchObject({ status: 'available', revision: { reviewStatus: 'pending', bodyRef: associations.bodyRef } });
     expect(scoped.knowledge[0].derivedAssociations.revision).not.toHaveProperty('typedRelations');
-    expect(retrieveKnowledge(f.app, { query: 'v-model', entityId: '同名对象' }).items).toEqual([]);
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId: '同名对象' }).items).toEqual([]);
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, analysisId: randomUUID(), entityId }).items).toEqual([]);
+    f.detail.derivedCatalogs[0].status = 'unavailable';
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId }).items).toEqual([]);
+    expect(retrieveKnowledge(f.app, { query: 'v-model' }).items).toHaveLength(1);
+    f.detail.derivedCatalogs[0].status = 'available';
     associations.reviewStatus = 'accepted';
-    expect(retrieveKnowledge(f.app, { query: 'v-model', entityId }).knowledge[0].derivedAssociations).toMatchObject({ reviewStatus: 'accepted', revision: { reviewStatus: 'pending' } });
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId }).knowledge[0].derivedAssociations).toMatchObject({ reviewStatus: 'accepted', revision: { reviewStatus: 'pending' } });
     associations.reviewStatus = 'rejected';
-    expect(retrieveKnowledge(f.app, { query: 'v-model', entityId }).items).toEqual([]);
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId }).items).toEqual([]);
     expect(retrieveKnowledge(f.app, { query: 'v-model' }).items).toHaveLength(1);
     associations.reviewStatus = 'pending';
     associations.revision.bodyRef = { ...associations.bodyRef, bodyDigest: `sha256:${'b'.repeat(64)}` };
-    expect(retrieveKnowledge(f.app, { query: 'v-model', entityId }).items).toEqual([]);
+    expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId }).items).toEqual([]);
     expect(retrieveKnowledge(f.app, { query: 'v-model' }).items).toHaveLength(1);
-    associations.status = 'stale'; expect(retrieveKnowledge(f.app, { query: 'v-model', entityId }).scopeDiagnostics?.entity?.status).toBe('no_eligible_segments');
+    associations.status = 'stale'; expect(retrieveKnowledge(f.app, { query: 'v-model', ...scope, entityId }).scopeDiagnostics?.entity?.status).toBe('no_eligible_segments');
   });
   it('budgets the complete segment and every inline evidence field; 8192 is adjustable, never a body storage cap', () => {
     expect(KnowledgeRetrievalRequestSchema.parse({ query: 'v-model' }).maxBytes).toBe(65536);
@@ -117,7 +124,7 @@ describe('canonical body segment retrieval', () => {
   });
   it('validates requests before reads and fails closed on a changed current revision or maintenance choice', () => {
     const f = fixture();
-    for (const input of [{ query: '' }, { query: '???' }, { query: 'x', maxBytes: 1023 }, { query: 'x', sourceVersion: digest }, { query: 'x', snapshot: 'invalid' }]) {
+    for (const input of [{ query: '' }, { query: '???' }, { query: 'x', maxBytes: 1023 }, { query: 'x', sourceVersion: digest }, { query: 'x', snapshot: 'invalid' }, { query: 'x', entityId: randomUUID() }, { query: 'x', analysisId: randomUUID(), entityRevisionId: randomUUID() }]) {
       expect(() => retrieveKnowledge(f.app, input)).toThrow();
     }
     expect(f.app.list).not.toHaveBeenCalled(); expect(f.app.detail).not.toHaveBeenCalled();

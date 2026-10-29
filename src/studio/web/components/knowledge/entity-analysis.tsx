@@ -17,15 +17,15 @@ const optionLabel = (entity: Entity) => `${entity.label || '—'} · ${entity.qu
 
 /** Counts describe the original extraction; opening inspection reads the current analysis history. */
 export function EntityAnalysisSummary({ run, lang, disabled = false, onOpen }: {
-  run: Pick<KnowledgeCandidateRun, 'entityAnalysis' | 'status'>; lang: Language; disabled?: boolean; onOpen(id: string): void;
+  run: Pick<KnowledgeCandidateRun, 'entityAnalyses' | 'status'>; lang: Language; disabled?: boolean; onOpen(id: string): void;
 }) {
-  const analysis = run.entityAnalysis;
-  if (!analysis) return null;
-  return <div className="entity-summary"><p>{lang === 'zh'
-    ? `首次分析：${analysis.entityCount} 个对象，${analysis.mentionCount} 处提及，${analysis.unresolvedCount} 个身份待确定；关联投影仍独立待核对。`
-    : `Initial analysis: ${analysis.entityCount} entities, ${analysis.mentionCount} mentions, ${analysis.unresolvedCount} unresolved; derived projections remain pending independent review.`}</p>
-    <Button disabled={disabled} onClick={() => onOpen(analysis.analysisId)}>{lang === 'zh' ? '核对实体与指代' : 'Inspect entities and references'}</Button>
-  </div>;
+  const analyses = run.entityAnalyses;
+  if (!analyses?.length) return null;
+  return <div className="entity-summary">{analyses.map((analysis, index) => <section key={`${analysis.analysisId}/${analysis.revisionId}`}><p>{lang === 'zh'
+    ? `来源分析 ${index + 1}：${analysis.entityCount} 个对象，${analysis.mentionCount} 处提及，${analysis.unresolvedCount} 个身份待确定；关联投影仍独立待核对。`
+    : `Source analysis ${index + 1}: ${analysis.entityCount} entities, ${analysis.mentionCount} mentions, ${analysis.unresolvedCount} unresolved; derived projections remain pending independent review.`}</p>
+    <Button disabled={disabled} onClick={() => onOpen(analysis.analysisId)}>{analyses.length === 1 ? lang === 'zh' ? '核对实体与指代' : 'Inspect entities and references' : lang === 'zh' ? `核对来源分析 ${index + 1}` : `Inspect source analysis ${index + 1}`}</Button>
+  </section>)}</div>;
 }
 
 export function EntityAnalysisDrawer({ workspace, analysisId, initialRevision, initialEntityId, lang, onClose, onSaved }: {

@@ -1,12 +1,13 @@
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { prepareKnowledgeMigration, applyKnowledgeMigration } from '../../../knowledge/adapters/knowledge-migration.js';
+import { prepareAssociationMigration, applyAssociationMigration, type AssociationMigrationPlan } from '../../../knowledge/adapters/association-migration.js';
 import { FileExtractionRunStore } from '../../../knowledge/adapters/run-store.js';
 import { ExtractionRunSealRequestSchema, ExtractionRunSealError } from '../../../knowledge/extraction/run-sealing.js';
 import { ExtractionStudyInspectionError, ExtractionStudyFileError } from '../../../knowledge/adapters/study-inspection-errors.js';
 import { inspectExtractionStudyFiles } from '../../../knowledge/application/study-inspection-service.js';
 import { formatKnowledgeStudy } from '../../lib/knowledge-study-output.js';
-import { lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { z } from 'zod';
 import { BaseCommand } from '../../oclif/base-command.js';
@@ -24,12 +25,12 @@ const description = (zh: string, en: string) => bilingual({ zh, en });
 const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。', 'Generate and maintain complete knowledge bodies, with separately reviewed derived associations. Saved bodies are pending; matching quotes does not verify truth.');
-  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'capture', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations'],
+  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'capture', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations'],
     description: description('generate 先保存正文再生成关联；resume 零模型恢复，continue-stage 仅发送尚未 claim 的阶段。', 'generate saves body before associations; resume recovers without models; continue-stage dispatches only a never-claimed phase.') }) };
   static flags = {
     lang: LANG_FLAG,
-    'from-workspace': Flags.string({ description: description('migrate：显式旧 v2 工作区，原件逐字保留；须同时明确 --workspace 新目标，零模型迁移。', 'migrate: explicit legacy v2 workspace, preserving originals byte-for-byte; also requires an explicit new --workspace target, without models.') }),
-    'operation-id': Flags.string({ description: description('seal-run：稳定的人工操作 UUID，重入必须复用。', 'seal-run: stable human operation UUID; reuse it on replay.') }),
+    'from-workspace': Flags.string({ description: description('migrate／migrate-associations：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。', 'migrate/migrate-associations: explicit old workspace; requires a separate new --workspace target, preserving originals without models.') }),
+    'operation-id': Flags.string({ description: description('seal-run／migrate-associations：稳定操作 UUID，重入必须复用。', 'seal-run/migrate-associations: stable operation UUID; reuse it on replay.') }),
     operator: Flags.string({ description: description('seal-run：显式声明的人类操作者身份，不认证真人。', 'seal-run: explicitly declared human actor identity; not authenticated human identity.') }),
     'manifest-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的原 manifest SHA-256。', 'seal-run: original manifest SHA-256 from sealed-runs.') }),
     'inventory-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。', 'seal-run: exact inventory SHA-256 from sealed-runs.') }),
@@ -56,7 +57,7 @@ export default class ObserveKnowledge extends BaseCommand {
     'max-bytes': Flags.integer({ min: 1024, max: 1048576, description: description('retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。', 'retrieve complete selected view plus one newline UTF-8 budget, default 65536, with explicit 8192 supported; not a body limit. Omit complete segments, never truncate conditions.') }),
     'include-candidates': Flags.boolean({ description: description('retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。', 'retrieve explicitly includes unretained candidates without verified truth; discarded revisions remain excluded.') }),
     'source-version': Flags.string({ description: description('retrieve 精确来源 sha256，须配 --snapshot。', 'retrieve exact source sha256, requiring --snapshot.') }),
-    'entity-id': Flags.string({ description: description('retrieve 按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。', 'retrieve scopes exact entity IDs through derived segment associations matching the current body revision/hash, with independent review status; rejected associations do not match and names are never merged.') }),
+    'entity-id': Flags.string({ description: description('retrieve 须配 --analysis 和 --entity-revision，按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。', 'retrieve requires --analysis and --entity-revision and scopes exact entity IDs through derived segment associations matching the current body revision/hash, with independent review status; rejected associations do not match and names are never merged.') }),
     'identity-status': Flags.string({ options: ['all', 'proposed', 'unresolved'], description: description('entities 身份状态筛选。', 'entities identity status filter.') }),
     'source-status': Flags.string({ options: ['all', 'available', 'unavailable'], description: description('entities 来源可读状态筛选。', 'entities source availability filter.') }),
     page: Flags.integer({ min: 1, max: 100000, description: description('entities 页码。', 'entities page number.') }),
@@ -73,6 +74,7 @@ export default class ObserveKnowledge extends BaseCommand {
   };
   static examples = [
     '<%= config.bin %> observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-body-knowledge --json',
+    '<%= config.bin %> observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <uuid> --json',
     '<%= config.bin %> observe knowledge study --evidence ./evidence.json --json',
     '<%= config.bin %> observe knowledge sealed-runs --workspace ./knowledge --id <run-id> --json',
     '<%= config.bin %> observe knowledge seal-run --workspace ./knowledge --id <run-id> --operation-id <uuid> --operator <human-id> --reason "reviewed offline disposition" --manifest-digest sha256:<digest> --inventory-digest sha256:<digest> --offline --json',
@@ -88,7 +90,30 @@ export default class ObserveKnowledge extends BaseCommand {
     const { args, flags } = await this.parse(ObserveKnowledge), t = (zh: string, en: string) => this.lang === 'zh' ? zh : en;
     if (flags.format !== undefined && args.operation !== 'retrieve') this.error(t('--format 仅用于 retrieve。', '--format is only valid for retrieve.'), { exit: 2 });
     if (flags.format === 'text' && flags.json) this.error(t('--format text 不可与 --json 同用。', '--format text cannot be combined with --json.'), { exit: 2 });
-    if (args.operation !== 'migrate' && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于 migrate。', '--from-workspace is only valid for migrate.'), { exit: 2 });
+    if (!['migrate', 'migrate-associations'].includes(args.operation) && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于 migrate／migrate-associations。', '--from-workspace is only valid for migrate/migrate-associations.'), { exit: 2 });
+    if (args.operation === 'migrate-associations') {
+      const allowed = new Set(['from-workspace', 'workspace', 'operation-id', 'json', 'lang']);
+      if (!flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success
+        || Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) {
+        this.error(t('migrate-associations 须显式提供 --from-workspace、独立 --workspace 和稳定 --operation-id UUID；不接受模型参数。', 'migrate-associations requires explicit --from-workspace, a separate --workspace and a stable --operation-id UUID; model flags are not accepted.'), { exit: 2 });
+      }
+      try {
+        const sourceRoot = resolve(flags['from-workspace']!), targetRoot = resolve(flags.workspace!), migrationId = flags['operation-id']!;
+        const path = join(targetRoot, 'migration', migrationId, 'plan.json'); let plan: AssociationMigrationPlan;
+        if (existsSync(path)) {
+          const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw new Error('Invalid migration plan file.');
+          plan = JSON.parse(readFileSync(path, 'utf8')) as AssociationMigrationPlan;
+          if (plan.sourceRoot !== sourceRoot || plan.targetRoot !== targetRoot || plan.migrationId !== migrationId || plan.namespace !== 'local') throw new Error('Migration invocation does not match its frozen plan.');
+        } else plan = prepareAssociationMigration({ sourceRoot, targetRoot, migrationId, namespace: 'local',
+          actor: { actorKind: 'human', actorId: 'local-user' }, at: new Date().toISOString() });
+        const result = applyAssociationMigration(plan, plan.planDigest);
+        this.log(JSON.stringify({ ...result, migrationId, sourceRoot, targetRoot, originalBytesPreserved: true,
+          modelCalls: 0, semanticAcceptance: false, limitations: plan.limitations }, null, 2));
+      } catch (cause) {
+        this.error(`${t('迁移未完成；保留原目录、目标计划和原件，以同一 --operation-id 重入。', 'Migration did not complete; preserve the source, target plan and originals, and replay the same --operation-id.')}\n${cause instanceof Error ? cause.message : String(cause)}`, { exit: 1 });
+      }
+      return;
+    }
     if (args.operation === 'migrate') {
       const allowed = new Set(['from-workspace', 'workspace', 'json', 'lang']);
       if (!flags['from-workspace']?.trim() || !flags.workspace?.trim()
@@ -182,9 +207,10 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });
     if (args.operation === 'retrieve') {
-      const allowed = new Set(['workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id', 'lang', 'json', 'format']);
+      const allowed = new Set(['workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id', 'analysis', 'entity-revision', 'lang', 'json', 'format']);
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('retrieve 仅接受只读检索参数。', 'retrieve accepts read-only retrieval flags only.'), { exit: 2 });
     } else if (flags['max-bytes'] !== undefined || flags['include-candidates'] || flags['source-version'] !== undefined || flags['entity-id'] !== undefined) this.error(t('检索参数仅用于 retrieve。', 'Retrieval flags are only valid for retrieve.'), { exit: 2 });
+    if (args.operation === 'apply-associations' && (flags.analysis !== undefined || flags['entity-revision'] !== undefined)) this.error(t('apply-associations 使用草稿中的 catalogRefs 和带目录限定的实体引用，不接受旧 --analysis／--entity-revision。', 'apply-associations uses draft catalogRefs and catalog-qualified entity references; old --analysis/--entity-revision flags are not accepted.'), { exit: 2 });
     const generation = () => { if (flags.generation === undefined) this.error('--generation is required', { exit: 2 }); return flags.generation!; };
     const draft = () => { const path = need(flags.input, 'input'); try {
       const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw new Error('invalid file');
@@ -192,7 +218,7 @@ export default class ObserveKnowledge extends BaseCommand {
     } catch { this.error(t('--input 必须是 16 MiB 内的普通 UTF-8 JSON 文件。', '--input must be a regular UTF-8 JSON file within 16 MiB.'), { exit: 2 }); } };
     let operation: KnowledgeOperation;
     switch (args.operation) {
-      case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'], snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'], ...(flags.format === undefined ? {} : { format: flags.format as 'json' | 'text' }) }; break;
+      case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'], snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'], analysisId: flags.analysis, entityRevisionId: flags['entity-revision'], ...(flags.format === undefined ? {} : { format: flags.format as 'json' | 'text' }) }; break;
       case 'capture': operation = { operation: 'capture', source: need(flags.source, 'source'), startRecord: flags['start-record'], endRecord: flags['end-record'] }; break;
       case 'generate': operation = { operation: 'generate', snapshot: need(flags.snapshot, 'snapshot'), executor: 'configured', model: 'configured', runId: flags['run-id'] }; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured' }; break;
@@ -206,7 +232,7 @@ export default class ObserveKnowledge extends BaseCommand {
       case 'source': case 'delete-source': operation = { operation: args.operation, snapshot: need(flags.snapshot, 'snapshot') }; break;
       case 'retain': case 'discard': operation = { operation: 'maintain', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(), choice: args.operation, reason: need(flags.reason, 'reason') }; break;
       case 'review-associations': operation = { operation: 'review-associations', id: need(flags.id,'id'), revision: need(flags.revision,'revision'), generation: generation(), choice: need(flags.choice,'choice') as 'accept'|'reject', reason: need(flags.reason,'reason') }; break;
-      case 'apply-associations': operation = { operation: 'apply-associations', id: need(flags.id,'id'), revision: need(flags.revision,'revision'), bodyDigest: need(flags['body-digest'],'body-digest'), analysisId: need(flags.analysis,'analysis'), entityRevision: need(flags['entity-revision'],'entity-revision'), generation: generation(), draft: draft(), reason: need(flags.reason,'reason') }; break;
+      case 'apply-associations': operation = { operation: 'apply-associations', id: need(flags.id,'id'), revision: need(flags.revision,'revision'), bodyDigest: need(flags['body-digest'],'body-digest'), generation: generation(), draft: draft(), reason: need(flags.reason,'reason') }; break;
       case 'revise': operation = { operation: 'revise', id: need(flags.id, 'id'), revision: need(flags.revision, 'revision'), generation: generation(), draft: draft(), reason: need(flags.reason, 'reason') }; break;
       default: this.error(t('该操作尚不可用。', 'This operation is unavailable.'), { exit: 2 });
     }

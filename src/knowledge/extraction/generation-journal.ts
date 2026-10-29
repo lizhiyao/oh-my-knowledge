@@ -20,14 +20,14 @@ export const GenerationStageSchema = z.strictObject({
   outcomeRef: GenerationOutcomeRefSchema.optional(),
   rejected: z.array(z.strictObject({ index: z.number().int().nonnegative(), reasons: z.array(z.string()) })).optional(),
   issues: z.array(z.string()),
-  bodyWrites: z.array(KnowledgeWriteSchema).optional(), entityWrite: EntityAnalysisWriteSchema.optional(),
+  bodyWrites: z.array(KnowledgeWriteSchema).optional(), entityWrites: z.array(EntityAnalysisWriteSchema).optional(),
   associationWrites: z.array(associationWrite).optional(), committed: z.number().int().nonnegative(),
 });
 export const GenerationJournalSchema = z.strictObject({
-  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(1), workflowId: z.literal('knowledge-body-first/v1'),
+  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(2), workflowId: z.literal('knowledge-body-first/v2'),
   runId: uuid, generation: z.number().int().positive(), mode: z.enum(['generate', 'rebuild_associations']),
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,
-  snapshotId: uuid, sourceVersion: digest, sourceDigest: digest,
+  sources: z.array(z.strictObject({ snapshotId: uuid, sourceVersion: digest, sourceDigest: digest })).min(1).max(256),
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
   bodies: z.array(KnowledgeBodyRefSchema), stages: z.array(GenerationStageSchema).min(1).max(2),
 });

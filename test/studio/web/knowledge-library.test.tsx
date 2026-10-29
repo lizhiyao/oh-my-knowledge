@@ -16,9 +16,9 @@ function detail(): KnowledgeLibraryDetail {
       evidence: [{ mentionId: 'mention', quote: 'Alpha', basis: 'explicit', rationale: '原文项目名称', positionStatus: 'unavailable' }],
       origin: { threadId: 'thread', title: '来源对话' } }],
     knowledge: [{ knowledgeId: 'knowledge', revisionId: 'knowledge-revision', title: '来源中关于 Alpha 的说法 <script>', choice: 'retain', associationStatus: 'matched',
-      content: knowledge.content, entities: entities, tags: ['排障'], revisedAt: '2026-10-12T00:00:00Z', revisionCount: 2,
+      content: knowledge.content, entities: entities.map(entity => ({ ...entity, analysisId: member.analysisId, entityRevisionId: member.entityRevisionId, currentCatalog: false })), tags: ['排障'], revisedAt: '2026-10-12T00:00:00Z', revisionCount: 2,
       evidence: knowledge.content.segments.flatMap(segment => segment.evidence.map(evidence => ({ ...evidence, segmentId: segment.segmentId }))), sourceStatus: 'unavailable',
-      bodyDigest: `sha256:${'a'.repeat(64)}`, projectionReviewStatus: 'accepted', segmentAssociations: [{ segmentId: 's1', entityIds: ['project'], mentionIds: ['mention'] }], bindings: [{ ...member, confirmedEntityRevisionId: member.entityRevisionId, matchesRevision: true }] }],
+      bodyDigest: `sha256:${'a'.repeat(64)}`, projectionReviewStatus: 'accepted', segmentAssociations: [{ segmentId: 's1', entityRefs: [{ analysisId: member.analysisId, entityRevisionId: member.entityRevisionId, entityId: 'project', mentionIds: ['mention'] }] }], bindings: [{ ...member, confirmedEntityRevisionId: member.entityRevisionId, matchesRevision: true }] }],
     relatedEntities: [{ analysisId: 'analysis', entityId: 'tool', entityRevisionId: 'entity-revision', label: 'Beta', object: { objectId: 'other-object', label: '工具 Beta' } }],
     knowledgeStatus: 'available', counts: { retained: 1, pending: 0, discarded: 0, needsReview: 0 } };
 }
