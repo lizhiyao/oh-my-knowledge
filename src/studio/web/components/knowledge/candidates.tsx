@@ -10,7 +10,7 @@ import { AssociationMappingDrawer } from './association-mapping';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeReader } from './reader';
-import { ExtractionQualityPanel } from './extraction-quality';
+import { ExtractionQualityPanel, NativeArchiveChecks } from './extraction-quality';
 import { KnowledgeStudyInspectionDrawer } from './study-inspection';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
@@ -21,7 +21,7 @@ import { conversationLabel } from '../../../application/display/conversation-lab
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(rows: KnowledgeCandidateRow[]): void }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(queue: KnowledgeCandidateQueue): void }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [authoringIds, setAuthoringIds] = useState<string[] | null>(null);
@@ -103,7 +103,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     const first = scope ? nextRows.find(row => row.choice === null) ?? nextRows[0] : nextRows[0];
     const nextDetail = selectFirst && first
       ? await api<KnowledgeCandidateDetail>('show', { workspace: root, id: first.knowledgeId }) : undefined;
-    setRows(nextRows); setRuns(nextRuns); setFailedToLoad(false); onLoaded?.(nextRows);
+    setRows(nextRows); setRuns(nextRuns); setFailedToLoad(false); onLoaded?.({ rows: nextRows, runs: nextRuns });
     if (selectFirst) { setDetail(nextDetail ?? null); setReason('');
       if (scope && first) setBatchRunId(candidateReviewRun(nextRuns, first.knowledgeId)?.runId ?? null);
     }
@@ -231,8 +231,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
     {rows.length > 0 && <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : t('知识目录', 'Knowledge directory')}</Button>}
+    {scope && rows.length > 0 && runs.some(run => run.schemaStatus !== 'current') && <Alert type="warning" title={t('部分提炼记录无法确认来源范围，当前候选清单可能不完整。', 'Some extraction records cannot be attributed to a source scope. This candidate list may be incomplete.')}/>}
 
-    {rows.length === 0 && scope ? <ScopedCandidateEmpty lang={lang} loading={loading} busy={busy} failedToLoad={failedToLoad} onRetry={retryCandidates}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={failedToLoad}
+    {rows.length === 0 && scope ? <ScopedCandidateEmpty lang={lang} loading={loading} busy={busy} failedToLoad={failedToLoad} incompleteHistory={runs.some(run => run.schemaStatus !== 'current')} onRetry={retryCandidates}/> : rows.length === 0 ? <KnowledgeCandidateStart lang={lang} loading={loading} busy={busy} latest={runs[0]} failedToLoad={failedToLoad}
       onChoose={chooseConversation} onHistory={() => setShowRuns(true)} onRetry={retryCandidates} onEntities={analysisId => setEntityTarget({ analysisId })}/>
       : <div className={`knowledge-workbench candidate-columns${directory ? ' knowledge-directory-open' : ''}`}>
       <aside className="knowledge-directory candidate-list" aria-label={t('候选知识', 'Candidate knowledge')}>
@@ -353,7 +354,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       <p className="candidate-help">{t('显示当前正文优先流程。旧格式运行会明确标记；旧知识需显式迁入新工作区。', 'Current content-first workflow. Older runs are explicitly marked; old knowledge requires explicit migration to a new workspace.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 
-      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.createdAt}</p><p>{run.bodies.length} {t('条候选', 'candidates')} / {run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} {t('条拒绝输出', 'rejected outputs')}</p>
+      {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.createdAt}</p>{run.schemaStatus === 'current' && <p>{run.bodies.length} {t('条候选', 'candidates')} / {run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} {t('条拒绝输出', 'rejected outputs')}</p>}
         <ExtractionInvocationSummary run={run} lang={lang}/>
         <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
         {run.bodies.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.bodies[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['active'].includes(run.status)} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
@@ -366,10 +367,15 @@ function ExtractionInvocationSummary({ run, lang }: { run: KnowledgeCandidateRun
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   return <details className="candidate-help extraction-invocation"><summary>{t('执行记录', 'Execution records')}</summary>
     {run.schemaStatus === 'unsupported' ? <p>{t('旧格式运行，保留原件；当前流程不会恢复或重发它。', 'Older run format retained. The current workflow does not resume or redispatch it.')}</p>
-      : run.phases.map(phase => <div key={phase.invocationId}>
+      : run.schemaStatus === 'unavailable' ? <p>{run.unavailableReason === 'invalid_source_metadata'
+        ? t('冻结来源归因元数据不可读，无法确认此运行是否属于当前来源范围；其中候选未计入当前队列。', 'Frozen source attribution metadata is unreadable, so this run cannot be attributed to the current source scope. Its candidates are excluded from this queue.')
+        : t('提炼日志损坏或不可读，无法确认结果及来源范围。原件仍保留，请检查保存位置。', 'The extraction journal is invalid or unreadable. Its result and source scope cannot be confirmed. Original files are retained; check the save location.')}</p>
+        : <>{run.sourceMetadataStatus === 'frozen_input' && <p>{t('来源归因取自冻结请求，不表示来源当前可读。', 'Source attribution comes from the frozen request and does not establish current source availability.')}</p>}
+          {run.sourceMetadataStatus === 'unknown' && <p>{t('来源归因元数据未知。', 'Source attribution metadata is unknown.')}</p>}
+          {run.phases.map(phase => <div key={phase.invocationId}>
         <p>{phase.stageKind === 'body' ? t('知识正文', 'Knowledge content') : t('实体关联', 'Entity associations')} · {phase.state}</p>
         <p>{phase.issues.join('；')}</p><code>{phase.profileId} · {phase.promptVersion}</code>
-      </div>)}
+      </div>)}<NativeArchiveChecks checks={run.archiveChecks} verification={run.archiveVerification} lang={lang}/></>}
     <p>{t('恢复只处理已有原件，不重新调用模型。保存成功不代表内容已经核对。', 'Resume processes existing outcomes without calling models again. Saving does not establish reviewed content.')}</p>
   </details>;
 }
@@ -400,12 +406,13 @@ export function CandidateRowStatus({ choice, lang }: { choice: CandidateChoice; 
 }
 
 /** 决定必须留下理由，理由就要看得见：标签只报维护决定，已做决定时回显理由、决定人与时间。 */
-export function ScopedCandidateEmpty({ lang, loading, busy, failedToLoad, onRetry }: {
-  lang: Language; loading: boolean; busy: boolean; failedToLoad: boolean; onRetry(): void;
+export function ScopedCandidateEmpty({ lang, loading, busy, failedToLoad, incompleteHistory, onRetry }: {
+  lang: Language; loading: boolean; busy: boolean; failedToLoad: boolean; incompleteHistory?: boolean; onRetry(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   if (loading) return <p role="status">{t('正在读取此来源范围的候选…', 'Loading candidates in this source scope…')}</p>;
   if (failedToLoad) return <div role="status"><p>{t('暂时无法读取此来源范围的候选。请检查保存位置，再重新读取；读取失败不表示没有候选。', 'Could not load candidates in this source scope. Check the save location and retry; a failed read does not mean there are no candidates.')}</p><Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button></div>;
+  if (incompleteHistory) return <div role="status"><p>{t('部分提炼记录不可读或版本不受支持，无法确认是否属于此来源范围；当前候选清单可能不完整。', 'Some extraction records are unreadable or unsupported, so their source scope cannot be confirmed. This candidate list may be incomplete.')}</p><Button disabled={busy} onClick={onRetry}>{t('重新读取候选', 'Reload candidates')}</Button></div>;
   return <Empty description={t('此来源范围没有候选。回到对话开启自动提炼，或手动选择消息提炼。', 'No candidates in this source scope. Enable auto extraction in a conversation or extract selected messages manually.')}/>;
 }
 

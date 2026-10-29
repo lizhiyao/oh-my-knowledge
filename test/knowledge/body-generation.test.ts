@@ -122,6 +122,8 @@ describe('body-first generation and zero-model recovery', () => {
     const f = setup(), id = randomUUID();
     f.invoke.mockImplementationOnce(async (_p, _i, _s, gate) => { gate?.(); throw new Error('process lost native outcome'); });
     await expect(f.app.generate(f.window.snapshotId, f.model, id)).rejects.toThrow('lost native');
+    expect(f.ports.journals.list().archiveChecks).toEqual([expect.objectContaining({ runId: id,
+      archiveStatus: 'unknown', verificationStatus: 'not_verified' })]);
     const state = createLocalKnowledgeApplication(f.root).resume(id);
     expect(state.nextAction).toBe('outcome_unknown_do_not_redispatch');
     await expect(f.app.continueStage(id, state.journal.generation, f.model)).rejects.toThrow('never-claimed'); expect(f.invoke).toHaveBeenCalledTimes(1);
@@ -136,6 +138,7 @@ describe('body-first generation and zero-model recovery', () => {
       if (claim.stageKind === 'association') { expect(f.app.list()).toHaveLength(1); throw new Error('phase quota exhausted'); }
     } })).rejects.toThrow('phase quota exhausted');
     const read = f.app.inspect(runId); expect(read.journal.stages.at(-1)?.state).toBe('prepared');
+    expect(f.ports.journals.list().archiveChecks.at(-1)).toMatchObject({ archiveStatus: 'not_recorded', verificationStatus: 'not_verified' });
     expect(read.nativeOutcomes.filter(o => o.outcome)).toHaveLength(1);
     expect(f.app.resume(runId).nextAction).toBe('continue_stage');
     const result = await f.app.continueStage(runId, read.journal.generation, f.model);
@@ -150,6 +153,49 @@ describe('body-first generation and zero-model recovery', () => {
     const stage = result.journal.stages[0], path = join(f.root, 'generation-journals', 'outcomes', result.journal.runId, `${stage.invocationId}.json`);
     const original = JSON.parse(readFileSync(path, 'utf8')); original.outcome.result.output = 'altered'; writeFileSync(path, JSON.stringify(original));
     expect(() => createLocalKnowledgeApplication(f.root).resume(result.journal.runId)).toThrow('digest mismatch');
+    expect(f.invoke).toHaveBeenCalledTimes(2);
+  });
+  it('inventories journal state without decoding originals, and reports unavailable journals and archive metadata separately', async () => {
+    const f = setup(), result = await f.app.generate(f.window.snapshotId, f.model);
+    const decode = vi.spyOn(f.ports.journals, 'outcome');
+    const first = f.ports.journals.list();
+    expect(decode).not.toHaveBeenCalled();
+    expect(first.current).toEqual([result.journal]);
+    expect(first.archiveChecks).toEqual(result.journal.stages.map(stage => ({ runId: result.journal.runId,
+      invocationId: stage.invocationId, archiveStatus: 'present', verificationStatus: 'not_verified',
+      reason: 'File metadata observed; content, digest and native binding have not been verified.' })));
+    const brokenId = randomUUID();
+    writeFileSync(join(f.root, 'generation-journals', `${brokenId}.json`), '{broken');
+    const invalidName = 'not-a-run'; writeFileSync(join(f.root, 'generation-journals', `${invalidName}.json`), '{}');
+    const mismatchedId = randomUUID(); writeFileSync(join(f.root, 'generation-journals', `${mismatchedId}.json`), JSON.stringify(result.journal));
+    const unsupportedId = randomUUID(); writeFileSync(join(f.root, 'generation-journals', `${unsupportedId}.json`), JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 2 }));
+    const missing = result.journal.stages[0], altered = result.journal.stages[1];
+    rmSync(join(f.root, 'generation-journals', 'outcomes', result.journal.runId, `${missing.invocationId}.json`));
+    writeFileSync(join(f.root, 'generation-journals', 'outcomes', result.journal.runId, `${altered.invocationId}.json`), '{}');
+    const observed = f.ports.journals.list();
+    expect(decode).not.toHaveBeenCalled();
+    expect(observed.current).toEqual([result.journal]);
+    expect(observed.unavailable).toEqual(expect.arrayContaining([
+      { runId: brokenId, reason: 'unreadable', detail: 'Generation journal is invalid or unreadable.' },
+      { runId: mismatchedId, reason: 'unreadable', detail: 'Generation journal is invalid or unreadable.' },
+      { runId: invalidName, reason: 'invalid_identity', detail: 'Generation journal filename is not a run identity.' },
+    ]));
+    expect(observed.unsupported).toContainEqual({ runId: unsupportedId, schemaStatus: 'unsupported', reason: 'Generation journal requires a matching workflow version.' });
+    expect(observed.archiveChecks).toEqual([
+      expect.objectContaining({ invocationId: missing.invocationId, archiveStatus: 'missing', verificationStatus: 'not_verified' }),
+      expect.objectContaining({ invocationId: altered.invocationId, archiveStatus: 'invalid', verificationStatus: 'not_verified' }),
+    ]);
+    expect(() => f.ports.journals.read(result.journal.runId)).toThrow('missing');
+    expect(f.invoke).toHaveBeenCalledTimes(2);
+  });
+  it('does not label same-size archive content as verified or weaken full inspection and recovery checks', async () => {
+    const f = setup(), result = await f.app.generate(f.window.snapshotId, f.model);
+    const stage = result.journal.stages[0], path = join(f.root, 'generation-journals', 'outcomes', result.journal.runId, `${stage.invocationId}.json`);
+    const original = readFileSync(path, 'utf8');
+    writeFileSync(path, original.replace('knowledge-generation-native', 'knowledge-generation-broken'));
+    expect(f.ports.journals.list().archiveChecks[0]).toMatchObject({ archiveStatus: 'present', verificationStatus: 'not_verified' });
+    expect(() => f.app.inspect(result.journal.runId)).toThrow('digest mismatch');
+    expect(() => f.app.resume(result.journal.runId)).toThrow('digest mismatch');
     expect(f.invoke).toHaveBeenCalledTimes(2);
   });
   it('validates full replacement inline evidence before revise and makes old derived projection stale', async () => {

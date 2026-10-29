@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
+import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import type { EntityAnalysisDraft } from '../../src/knowledge/entities/contracts.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
@@ -14,7 +15,7 @@ import { executeKnowledgeCandidateAction } from '../../src/studio/application/kn
 import { bodyActor as actor, bodyAt as at, bodyWrite } from './body-fixtures.js';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function setup(text = 'Alpha 使用 Beta', options: { prefix?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'omk-current-body-app-')); roots.push(root);
   const app = createLocalKnowledgeApplication(root), source = join(root, 'authored.jsonl');
@@ -46,7 +47,7 @@ describe('shared canonical body application', () => {
     expect(detail.revision).toEqual(f.body.revision); expect(detail.derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
     expect(await executeKnowledgeOperation(f.app, { operation: 'show', id: f.body.knowledgeId })).toEqual(detail);
     expect(await executeKnowledgeOperation(f.app, { operation: 'quality' })).toMatchObject({ projectionKind: 'knowledge-body-admission', semanticQuality: 'not_assessed' });
-    expect(f.app.runs()).toEqual({ current: [], unsupported: [] }); // Store fixtures never invent a generation run.
+    expect(f.app.runs()).toEqual({ current: [], unsupported: [], unavailable: [], archiveChecks: [] }); // Store fixtures never invent a generation run.
   });
   it('preserves literal configuration types, scope and unknown time through save/reopen without requiring typed labels', () => {
     const text = "Alpha 在测试环境的 enabled 为布尔值 false，Beta 生产配置为字符串 'false'；没有记录运行效果。";
@@ -114,6 +115,29 @@ describe('shared canonical body application', () => {
     // Explicit old manifests are inventoried, never read as a current generation journal.
     const id = randomUUID(); mkdirSync(legacy); writeFileSync(join(legacy, `${id}.json`), '{"runKind":"knowledge-extraction-run","schemaVersion":5}');
     expect(f.app.runs().unsupported).toMatchObject([{ runId: id, schemaStatus: 'unsupported' }]);
+  });
+  it('isolates healthy entity identity and source from an unrelated corrupt knowledge file', () => {
+    const f = setup(); writeFileSync(join(f.root, 'items', 'unrelated-corrupt.json'), '{bad');
+    expect(() => f.app.list()).toThrow();
+    expect(f.app.queryEntities({ pageSize: 1 })).toMatchObject({ total: 2, knowledgeStatus: 'unavailable',
+      rows: [{ knowledgeCount: null, outdatedKnowledgeCount: null }] });
+    expect(f.app.entityDetail(f.analysisId, f.entityIds[0])).toMatchObject({ entity: { label: 'Alpha' }, knowledgeStatus: 'unavailable' });
+    expect(f.app.entityBasis(f.analysisId, f.entityIds[0]).mentionChecks[0].positionStatus).toBe('matched');
+    expect(f.app.detail(f.body.knowledgeId).revision).toEqual(f.body.revision);
+  });
+  it('shares one knowledge/association projection per page and skips it for a search with no matches', () => {
+    const f = setup(), knowledge = vi.spyOn(FileKnowledgeStore.prototype, 'list');
+    const associations = vi.spyOn(FileKnowledgeAssociationStore.prototype, 'read'), source = vi.spyOn(TraceEvidenceStore.prototype, 'read');
+    expect(f.app.queryEntities({ pageSize: 1 })).toMatchObject({ total: 2, knowledgeStatus: 'available', rows: [{ knowledgeCount: 1 }] });
+    expect(knowledge).toHaveBeenCalledTimes(1); expect(associations).toHaveBeenCalledTimes(1); expect(source).toHaveBeenCalledTimes(1);
+    knowledge.mockClear(); associations.mockClear(); source.mockClear();
+    expect(f.app.queryEntities({ query: 'no matching object', pageSize: 1 }).rows).toEqual([]);
+    expect(knowledge).not.toHaveBeenCalled(); expect(associations).not.toHaveBeenCalled(); expect(source).toHaveBeenCalledTimes(1);
+  });
+  it('marks association counts unknown on corrupt derived storage while preserving entity evidence', () => {
+    const f = setup(); writeFileSync(join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]), '{bad');
+    expect(f.app.queryEntities()).toMatchObject({ knowledgeStatus: 'unavailable', rows: [{ knowledgeCount: null }, { knowledgeCount: null }] });
+    expect(f.app.entityDetail(f.analysisId, f.entityIds[0])).toMatchObject({ entity: { label: 'Alpha' }, knowledgeStatus: 'unavailable' });
   });
   it('uses current Studio/operation revision and tag inputs and rejects obsolete generator policy/citation aliases', async () => {
     const f = setup();

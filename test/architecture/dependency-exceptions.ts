@@ -60,6 +60,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/trace-evidence.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-links.ts',
+  'knowledge/application/read-context.ts → knowledge/adapters/body-digest.ts',
   'knowledge/application/study-inspection-service.ts → knowledge/adapters/study-inspection-errors.ts',
   'knowledge/application/study-inspection-worker.ts → knowledge/adapters/study-inspection-errors.ts',
   'knowledge/application/study-inspection-worker.ts → knowledge/adapters/study-inspection-input.ts',

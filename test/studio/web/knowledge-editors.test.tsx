@@ -15,7 +15,7 @@ import { knowledgeBodyDigest } from '../../../src/knowledge/adapters/body-digest
 import { AutoExtractConversation } from '../../../src/studio/web/components/knowledge/auto-extraction';
 import { KnowledgeInbox } from '../../../src/studio/web/components/knowledge/inbox';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
-import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeCandidateQueue } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -240,6 +240,35 @@ describe('conversation automation consent lifecycle', () => {
     await waitFor(() => expect(queues).toBe(initialProjections + 5)); expect(statuses).toBe(beforeEvent);
     tag = null; await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 6));
     await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 7));
+  });
+
+  it('keeps incomplete inbox counts unknown through initial and embedded refreshes, then restores confirmed counts', async () => {
+    const { detail } = citationFixture();
+    let queue: KnowledgeCandidateQueue = { rows: [], runs: [{ runId: uuid(720), schemaStatus: 'unavailable', status: 'unavailable',
+      unavailableReason: 'unreadable', nextAction: 'unavailable', bodies: [], phases: [], archiveChecks: [], archiveVerification: 'not_verified' }] };
+    let requests = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url === '/api/settings') return json({ effective: { workspace: '/partial-inbox', executor: 'openai-api', model: 'fixture' } });
+      const body = JSON.parse(String(init.body)) as { operation: string };
+      if (url === '/api/knowledge/candidates' && body.operation === 'queue') { requests++; return json(queue); }
+      if (url === '/api/knowledge/candidates' && body.operation === 'show') return json(detail);
+      throw new Error(`Unexpected inbox request: ${url}/${body.operation}`);
+    }));
+    render(<KnowledgeInbox threadId="partial-thread" lang="en"/>, { wrapper });
+    const open = await screen.findByRole('button', { name: 'Knowledge inbox · Count unknown' });
+    expect(screen.queryByRole('button', { name: /0 pending/ })).toBeNull();
+    const beforeOpen = requests; fireEvent.click(open);
+    await waitFor(() => expect(requests).toBeGreaterThanOrEqual(beforeOpen + 2));
+    await screen.findByText(/This candidate list may be incomplete/);
+    expect(screen.getByRole('button', { name: 'Knowledge inbox · Count unknown' })).toBeTruthy();
+    expect(screen.getByText(/counts cannot be confirmed/)).toBeTruthy();
+    expect(screen.queryByText(/0 candidates grouped by source/)).toBeNull();
+    queue = { rows: [{ ...candidate, choice: null }], runs: [] };
+    fireEvent.click(screen.getByRole('button', { name: 'Reload candidates' }));
+    await screen.findByRole('button', { name: 'Knowledge inbox · 1 pending' });
+    expect(screen.getByText(/1 candidates grouped by source/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Confirmed knowledge/ })).toBeTruthy();
+    expect(screen.queryByText(/counts cannot be confirmed/)).toBeNull();
   });
 
   it('does not let an older status reply undo an explicit stop', async () => {

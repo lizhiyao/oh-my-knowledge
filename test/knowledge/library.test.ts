@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication, createLocalKnowledgeLibrary } from '../../src/knowledge/application/local.js';
+import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
@@ -12,7 +13,7 @@ import type { LibraryMember } from '../../src/knowledge/entity-library/contracts
 import { bodyActor as actor, bodyAt as at, bodyWrite } from './body-fixtures.js';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'omk-body-library-')); roots.push(root);
   const app = createLocalKnowledgeApplication(root), library = createLocalKnowledgeLibrary(root);
@@ -91,6 +92,32 @@ describe('body canonical knowledge library projections', () => {
     expect(() => f.library.save({ ...request, requestId: randomUUID() })).toThrow();
     expect(() => f.library.save({ ...request, reason: 'changed' })).toThrow('idempotency');
     expect(existsSync(join(f.root, '.knowledge-write.lock'))).toBe(false);
+  });
+  it('keeps healthy members readable and permits valid organization when unrelated knowledge is corrupt', () => {
+    const f = fixture(), object = f.save(); writeFileSync(join(f.root, 'items', 'unrelated-corrupt.json'), '{bad');
+    const detail = f.library.detail(object.objectId);
+    expect(detail.members[0]).toMatchObject({ status: 'available', entity: { label: 'Alpha' }, sourceStatus: 'available' });
+    expect(detail.knowledgeStatus).toBe('unavailable'); expect(detail.counts).toEqual({ retained: null, pending: null, discarded: null, needsReview: null });
+    const added = f.save([f.member(1)], 'Beta 对象');
+    expect(f.library.detail(added.objectId).members[0]).toMatchObject({ status: 'available', entity: { label: 'Beta' } });
+    expect(createLocalKnowledgeLibrary(f.root).detail(object.objectId).members[0].status).toBe('available');
+  });
+  it('keeps the knowledge catalog source-free and deduplicates exact source reads within an object request', () => {
+    const f = fixture(), object = f.save(); f.review('accept');
+    const source = vi.spyOn(TraceEvidenceStore.prototype, 'read');
+    expect(f.library.knowledgeCatalog().rows).toHaveLength(1); expect(source).not.toHaveBeenCalled();
+    expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('available'); expect(source).toHaveBeenCalledTimes(1);
+    f.app.deleteSource(f.source.snapshotId); source.mockClear();
+    expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('unavailable'); expect(source).toHaveBeenCalledTimes(1);
+  });
+  it('reports unknown object counts for unreadable associations while retaining healthy member and body reads', () => {
+    const f = fixture(), object = f.save(); f.review('accept');
+    writeFileSync(join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]), '{bad');
+    const detail = f.library.detail(object.objectId);
+    expect(detail.members[0]).toMatchObject({ status: 'available', entity: { label: 'Alpha' }, sourceStatus: 'available' });
+    expect(detail.knowledge).toEqual([]); expect(detail.knowledgeStatus).toBe('unavailable');
+    expect(detail.counts).toEqual({ retained: null, pending: null, discarded: null, needsReview: null });
+    expect(f.app.detail(f.body.knowledgeId).revision).toEqual(f.body.revision);
   });
   it('fails closed for damaged organization storage and redirected paths without hiding independent body catalog rows', () => {
     const f = fixture(), object = f.save(); const file = join(f.root, 'library', `${object.objectId}.json`), before = readFileSync(file);

@@ -4,8 +4,8 @@ import { validateEvidenceSelection } from '../validation.js';
 
 /** Called inside the workspace transaction immediately before organization publication. */
 export function currentEntityLinkSource(knowledge: KnowledgeApplication, endpoint: EntityLinkEndpoint) {
-  let detail: ReturnType<KnowledgeApplication['entityDetail']>;
-  try { detail = knowledge.entityDetail(endpoint.analysisId, endpoint.entityId, endpoint.entityRevisionId); }
+  let detail: ReturnType<KnowledgeApplication['entityBasis']>;
+  try { detail = knowledge.entityBasis(endpoint.analysisId, endpoint.entityId, endpoint.entityRevisionId); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT'
       || (error instanceof Error && ['Entity analysis revision is missing.', 'Entity is absent from the selected revision.'].includes(error.message))) {

@@ -73,7 +73,7 @@ describe('Studio candidate action boundary', () => {
     // Schema2 explicitly authorizes both phases, each charged separately; preview/enable never constructs a model.
     expect(await (await auto(consent)).json()).toMatchObject({ schemaVersion: 2, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 0 });
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
-    expect(createLocalKnowledgeApplication(workspace).runs()).toEqual({ current: [], unsupported: [] });
+    expect(createLocalKnowledgeApplication(workspace).runs()).toEqual({ current: [], unsupported: [], unavailable: [], archiveChecks: [] });
   });
   it('adds only ephemeral status tags and observes external atomic JSON heads without trusting a client revision', async () => {
     const selected = join(root, 'status-heads');
@@ -134,11 +134,25 @@ describe('Studio candidate action boundary', () => {
     const result = await scoped.json(); expect(result.rows).toHaveLength(2); expect(result.rows).toEqual(expected);
     expect(result.rows.find((row: { knowledgeId: string }) => row.knowledgeId === id)).toMatchObject({ choice: 'retain', tags: ['候选/待核对'] });
     expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual([chosen.journal.runId]);
+    const sourceRead = vi.spyOn(KnowledgeApplication.prototype, 'source').mockImplementation(() => { throw new Error('Full source reads are forbidden for the queue.'); });
+    const inspection = vi.spyOn(KnowledgeApplication.prototype, 'inspect').mockImplementation(() => { throw new Error('Full archive reads are forbidden for the queue.'); });
+    try {
+      const metadataOnly = await queue(); expect(metadataOnly.status).toBe(200);
+      expect((await metadataOnly.json()).runs[0]).toMatchObject({ origin: { threadId: 'chosen-thread', title: 'chosen-thread' }, sourceMetadataStatus: 'frozen_input', archiveVerification: 'not_verified' });
+      expect(sourceRead).not.toHaveBeenCalled(); expect(inspection).not.toHaveBeenCalled();
+    } finally { sourceRead.mockRestore(); inspection.mockRestore(); }
     expect((await post({ workspace: selected, operation: 'list' })).status).toBe(400); // Unscoped reads remain fail-closed.
     unlinkSync(chosenPath); const missing = await queue(); expect(missing.status).toBe(200); expect((await missing.json()).rows).toEqual(expected.filter(row => row.knowledgeId !== id));
     writeFileSync(chosenPath, chosenBytes); writeFileSync(chosenPath, '{selected corrupt item');
     const corrupt = await queue(); expect(corrupt.status).toBe(400); const diagnostic = await corrupt.text();
     expect(diagnostic).not.toContain(selected); expect(diagnostic).not.toContain('selected corrupt item');
+    const journalPath = join(selected, 'generation-journals', `${chosen.journal.runId}.json`), originalJournal = readFileSync(journalPath, 'utf8');
+    try {
+      writeFileSync(journalPath, JSON.stringify({ ...JSON.parse(originalJournal), snapshotId: randomUUID() }));
+      const unknownScope = await post({ workspace: selected, operation: 'queue', threadId: 'unrelated-thread' }); expect(unknownScope.status).toBe(200);
+      const projection = await unknownScope.json(); expect(projection.rows).toEqual([]);
+      expect(projection.runs).toContainEqual(expect.objectContaining({ runId: chosen.journal.runId, schemaStatus: 'unavailable', unavailableReason: 'invalid_source_metadata', bodies: [] }));
+    } finally { writeFileSync(journalPath, originalJournal); }
   });
 
   it('uses the selected local workspace and shared capture operation', async () => {
@@ -191,7 +205,7 @@ describe('Studio candidate action boundary', () => {
     expect(await invalid.text()).not.toContain(root);
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
-  it('exposes current phase status without native diagnostics or producer archive witnesses', async () => {
+  it('lists archive metadata without native decoding and keeps full inspection fail-closed', async () => {
     const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected);
     const source = app.capture({ path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
     const run = await app.generate(source.snapshotId, currentModel(false, {
@@ -200,7 +214,19 @@ describe('Studio candidate action boundary', () => {
     const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
     const text = await response.text(), rows = JSON.parse(text);
     expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'body', state: 'failed', outcomeRef: expect.any(Object) })] })]);
+    expect(rows[0]).toMatchObject({ archiveVerification: 'not_verified', archiveChecks: [{ archiveStatus: 'present', verificationStatus: 'not_verified' }] });
     for (const privateValue of ['private-native-', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
+    const inspect = await post({ workspace: selected, operation: 'inspect', id: run.journal.runId }); expect(inspect.status).toBe(200);
+    expect(await inspect.json()).toMatchObject({ archiveVerification: 'verified' });
+    const archive = join(selected, 'generation-journals', 'outcomes', run.journal.runId, `${run.journal.stages[0].invocationId}.json`);
+    const original = readFileSync(archive, 'utf8');
+    writeFileSync(archive, original.replace('knowledge-generation-native', 'knowledge-generation-broken'));
+    const unverified = await post({ workspace: selected, operation: 'runs' }); expect(unverified.status).toBe(200);
+    expect((await unverified.json())[0]).toMatchObject({ archiveVerification: 'not_verified', archiveChecks: [{ archiveStatus: 'present', verificationStatus: 'not_verified' }] });
+    expect((await post({ workspace: selected, operation: 'inspect', id: run.journal.runId })).status).toBe(400);
+    unlinkSync(archive);
+    const missing = await post({ workspace: selected, operation: 'quality' }); expect(missing.status).toBe(200);
+    expect(await missing.json()).toMatchObject({ archiveChecks: [{ archiveStatus: 'missing', verificationStatus: 'not_verified' }] });
   });
   it.each(['history', 'file'] as const)('returns only the stable code for a known entity %s capacity refusal', async scope => {
     const refusal = new EntityAnalysisWriteCapacityError(scope); refusal.message += ` private-context:${root}`;
@@ -255,7 +281,16 @@ describe('Studio candidate action boundary', () => {
     expect(app.detail(bodyRef.knowledgeId, bodyRef.revisionId).revision).toEqual(original.revision);
     expect(await (await post({ operation: 'quality' })).json()).toEqual(app.quality());
     const runPath = join(workspace, 'generation-journals', `${run.journal.runId}.json`), saved = readFileSync(runPath);
-    try { writeFileSync(runPath, '{bad private content'); const failed = await post({ operation: 'quality' }); expect(failed.status).toBe(400); expect(await failed.json()).toEqual({ error: 'knowledge_request_failed' }); }
+    try {
+      writeFileSync(runPath, '{bad private content');
+      const quality = await post({ operation: 'quality' }); expect(quality.status).toBe(200);
+      const inventory = await quality.json(); expect(inventory.unavailable).toEqual([{ runId: run.journal.runId, reason: 'unreadable', detail: 'Generation journal is invalid or unreadable.' }]);
+      expect(JSON.stringify(inventory)).not.toContain('bad private content');
+      const runs = await post({ operation: 'runs' }); expect(runs.status).toBe(200);
+      expect(await runs.json()).toContainEqual(expect.objectContaining({ runId: run.journal.runId, schemaStatus: 'unavailable', status: 'unavailable', nextAction: 'unavailable' }));
+      const queue = await post({ operation: 'queue', threadId: 'cannot-attribute-this-run' }); expect(queue.status).toBe(200);
+      expect((await queue.json()).runs).toContainEqual(expect.objectContaining({ runId: run.journal.runId, schemaStatus: 'unavailable' }));
+    }
     finally { writeFileSync(runPath, saved); }
     const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
     expect(summaries.find((entry: { runId: string }) => entry.runId === run.journal.runId).entityAnalysis.entityCount).toBe(2);

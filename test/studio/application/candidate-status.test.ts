@@ -30,13 +30,14 @@ describe('candidate status labels', () => {
   it('keeps one extraction run vocabulary and echoes an unknown status instead of guessing', () => {
     assert.equal(extractionRunStatusLabel('completed', 'zh'), '流程已结束');
     assert.equal(extractionRunStatusLabel('active', 'en'), 'Stage continuation or recovery needed');
+    assert.equal(extractionRunStatusLabel('unavailable', 'zh'), '提炼记录不可读');
     assert.equal(extractionRunStatusLabel('queued', 'zh'), 'queued');
   });
 });
 
 
 describe('extraction review batch', () => {
-  const run: KnowledgeCandidateRun = { runId: 'one', schemaStatus: 'current', status: 'completed',
+  const run: KnowledgeCandidateRun = { runId: 'one', schemaStatus: 'current', status: 'completed', archiveChecks: [], archiveVerification: 'not_verified',
     bodies: ['a', 'b', 'c'].map(knowledgeId => ({ knowledgeId, revisionId: 'original', bodyDigest: `sha256:${'a'.repeat(64)}` })), phases: [], nextAction: 'none' };
   const row = (knowledgeId: string, choice: KnowledgeCandidateRow['choice']): KnowledgeCandidateRow => ({ bodyDigest: `sha256:${'a'.repeat(64)}`, knowledgeId, revisionId: 'latest', generation: 1, title: knowledgeId, knowledgeKind: 'fact', reviewStatus: 'pending', choice });
   it('follows extraction order and wraps within that extraction, excluding unrelated candidates', () => {

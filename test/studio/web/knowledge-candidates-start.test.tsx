@@ -10,7 +10,7 @@ import type { KnowledgeCandidateRun } from '../../../src/studio/view-models/know
 import { KnowledgeInboxSummary } from '../../../src/studio/web/components/knowledge/inbox.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
-const latest: KnowledgeCandidateRun = { runId: 'fixture', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none' };
+const latest: KnowledgeCandidateRun = { runId: 'fixture', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none', archiveChecks: [], archiveVerification: 'not_verified' };
 const render = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeCandidateStart, {
   lang: 'zh', loading: false, busy: false, onChoose() {}, onHistory() {}, onRetry() {}, ...overrides,
 }));
@@ -28,6 +28,11 @@ describe('knowledge extraction onboarding', () => {
     expect(render({ latest })).toContain('上次提炼完成，返回 0 条候选');
     expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：正文阶段失败');
     expect(render({ latest: { ...latest, schemaStatus: 'unsupported', status: 'unsupported', nextAction: 'unsupported' } })).toContain('旧格式运行');
+    const unavailable = render({ latest: { ...latest, schemaStatus: 'unavailable', status: 'unavailable', nextAction: 'unavailable' } });
+    expect(unavailable).toContain('提炼记录不可读'); expect(unavailable).toContain('无法确认结果及来源范围'); expect(unavailable).not.toContain('返回 0 条候选');
+    expect(render({ latest: { ...latest, sourceMetadataStatus: 'frozen_input' } })).toContain('不表示来源当前可读');
+    expect(render({ latest })).toContain('原始归档尚未完整核验');
+    expect(render({ latest: { ...latest, archiveVerification: 'verified' } })).toContain('原始归档已完成完整性核验');
     expect(render({ latest, loading: true })).not.toContain('上次提炼完成');
     expect(render({ failedToLoad: true })).toContain('读取失败不表示没有候选');
     expect(render({ failedToLoad: true })).toContain('重新读取候选');
@@ -57,6 +62,8 @@ describe('knowledge extraction onboarding', () => {
     expect(scoped({ failedToLoad: true, busy: true })).toMatch(/<button[^>]+disabled/);
     expect(scoped()).toContain('此来源范围没有候选');
     expect(scoped({ failedToLoad: true, lang: 'en' })).toContain('Reload candidates');
+    expect(scoped({ incompleteHistory: true })).toContain('当前候选清单可能不完整');
+    expect(scoped({ incompleteHistory: true })).not.toContain('此来源范围没有候选');
     const summary = (overrides = {}) => renderToStaticMarkup(createElement(KnowledgeInboxSummary, { lang: 'zh', failedToLoad: false, ...overrides }));
     expect(summary()).toContain('正在读取候选数量');
     expect(summary()).not.toContain('共 0 条候选');
@@ -64,6 +71,10 @@ describe('knowledge extraction onboarding', () => {
     expect(summary({ total: 7, failedToLoad: true })).not.toContain('共 7 条候选');
     expect(summary({ total: 0 })).toContain('共 0 条候选');
     expect(summary({ total: 3, lang: 'en' })).toContain('3 candidates grouped by source');
+    const incompleteSummary = summary({ total: 0, incomplete: true });
+    expect(incompleteSummary).toContain('数量暂无法确认'); expect(incompleteSummary).not.toContain('共 0 条候选');
+    expect(summary({ total: 7, incomplete: true, lang: 'en' })).toContain('counts cannot be confirmed');
+    expect(summary({ total: 7, incomplete: true, lang: 'en' })).not.toContain('7 candidates');
   });
 });
 
@@ -98,9 +109,19 @@ it('keeps conversation and turn selection on the knowledge page, with explicit e
 });
 
 it('keeps execution records distinct from quality and does not infer an empty workspace after failure', () => {
-  const quality = { projectionKind: 'knowledge-body-admission' as const, schemaVersion: 1 as const, current: [], unsupported: [], semanticQuality: 'not_assessed' as const };
+  const quality = { projectionKind: 'knowledge-body-admission' as const, schemaVersion: 1 as const, current: [], unsupported: [], unavailable: [], archiveChecks: [], semanticQuality: 'not_assessed' as const };
   const view = (failed: boolean) => renderToStaticMarkup(createElement(ExtractionQualityView, { quality, loading: false, failed, lang: 'zh', onRetry() {} }));
   expect(view(false)).toContain('不能据此判断知识是否准确、有用');
   expect(view(false)).toContain('暂无当前流程记录');
   expect(view(true)).toContain('记录暂不可读'); expect(view(true)).not.toContain('暂无当前流程记录');
+  const incomplete = renderToStaticMarkup(createElement(ExtractionQualityView, { quality: { ...quality,
+    current: [{ runId: 'fixture', status: 'completed', savedBodies: 1, phases: [] }],
+    unavailable: [{ runId: 'broken', reason: 'unreadable', detail: 'Unreadable journal.' }],
+    archiveChecks: [{ runId: 'fixture', invocationId: 'present', archiveStatus: 'present', verificationStatus: 'not_verified' },
+      { runId: 'fixture', invocationId: 'missing', archiveStatus: 'missing', verificationStatus: 'not_verified' },
+      { runId: 'fixture', invocationId: 'invalid', archiveStatus: 'invalid', verificationStatus: 'not_verified' },
+      { runId: 'fixture', invocationId: 'not-recorded', archiveStatus: 'not_recorded', verificationStatus: 'not_verified' },
+      { runId: 'fixture', invocationId: 'unknown', archiveStatus: 'unknown', verificationStatus: 'not_verified' }],
+  }, loading: false, failed: false, lang: 'zh', onRetry() {} }));
+  for (const text of ['当前统计可能不完整', '原始归档尚未完整核验', '文件存在，内容未核验', '归档缺失', '归档文件元数据不匹配', '尚无归档引用', '归档状态未知']) expect(incomplete).toContain(text);
 });

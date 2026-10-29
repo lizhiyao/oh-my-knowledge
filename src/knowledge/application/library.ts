@@ -5,6 +5,7 @@ import { LibraryWriteSchema, type LibraryWrite, LibraryDraftSchema, memberKey, t
 import { canonicalJson } from '../store.js';
 import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
+import type { KnowledgeReadContext } from './read-context.js';
 import { EntityLinkConflictError, type EntityLinkEndpoint } from '../entities/links.js';
 import { currentEntityLinkSource } from '../entity-linking/entity-link-source.js';
 
@@ -44,6 +45,7 @@ export class KnowledgeLibraryApplication {
 
   /** All knowledge remains visible even before it has a confirmed organizational home. */
   knowledgeCatalog() {
+    const query = this.knowledge.readContext();
     const objects = this.store.list().map(history => {
       const revision = history.revisions.at(-1)!;
       return { objectId: history.objectId, label: revision.draft.label, members: revision.draft.members };
@@ -53,9 +55,9 @@ export class KnowledgeLibraryApplication {
       const key = memberKey(member);
       byEntity.set(key, [...(byEntity.get(key) ?? []), { objectId: object.objectId, label: object.label, entityRevisionId: member.entityRevisionId }]);
     }
-    const rows = this.knowledge.list().map(row => {
-      const detail = this.knowledge.detail(row.knowledgeId);
-      const projection = this.bodyAssociation(detail);
+    const rows = query.list().map(row => {
+      const detail = query.body(row.knowledgeId);
+      const projection = this.bodyAssociation(detail, query);
       const ref = projection?.revision.entityAnalysisRef;
       const links = new Map<string, { objectId: string; label: string; associationStatus: 'matched' | 'needs_review' }>();
       if (ref && projection) for (const entity of projection.entities) {
@@ -73,12 +75,12 @@ export class KnowledgeLibraryApplication {
   }
 
   /** A derived view never supplies missing body text or silently follows the latest entity catalog. */
-  private bodyAssociation(detail: ReturnType<KnowledgeApplication['detail']>) {
+  private bodyAssociation(detail: ReturnType<KnowledgeReadContext['body']>, query: KnowledgeReadContext) {
     const selected = detail.derivedAssociations, revision = selected.revision, body = detail.revision;
     if (selected.status !== 'available' || selected.reviewStatus === 'rejected' || !revision?.entityAnalysisRef
       || canonicalJson(revision.bodyRef) !== canonicalJson({ knowledgeId: body.knowledgeId, revisionId: body.revisionId, bodyDigest: body.bodyDigest })) return undefined;
     try {
-      const catalog = this.knowledge.entities(revision.entityAnalysisRef.analysisId, revision.entityAnalysisRef.revisionId);
+      const catalog = query.catalog(revision.entityAnalysisRef.analysisId, revision.entityAnalysisRef.revisionId);
       const entityIds = new Set(revision.segmentEntityRefs.map(ref => ref.entityId));
       const entities = catalog.revision.entities.filter(entity => entityIds.has(entity.entityId));
       if (entities.length !== entityIds.size) return undefined;
@@ -87,9 +89,9 @@ export class KnowledgeLibraryApplication {
     } catch { return undefined; }
   }
 
-  private member(member: LibraryMember) {
+  private member(member: LibraryMember, query: KnowledgeReadContext) {
     try {
-      const detail = this.knowledge.entityDetail(member.analysisId, member.entityId, member.entityRevisionId);
+      const detail = query.entityBasis(member.analysisId, member.entityId, member.entityRevisionId);
       const mentions = detail.revision.mentions.filter(mention => member.mentionIds.includes(mention.mentionId));
       return { ...member, status: 'available' as const, entity: detail.entity, current: detail.revision.revisionId === detail.history.writeHeadRevisionId,
         sourceStatus: detail.source.status, origin: detail.origin ? { threadId: detail.origin.threadId, title: detail.origin.title } : undefined,
@@ -100,17 +102,23 @@ export class KnowledgeLibraryApplication {
   }
 
   detail(objectId: string, revisionId?: string) {
+    const query = this.knowledge.readContext();
     const history = this.store.read(objectId);
     const revision = history.revisions.find(value => value.revisionId === (revisionId ?? history.writeHeadRevisionId));
     if (!revision) throw new Error('Library revision unavailable.');
-    const members = revision.draft.members.map(member => this.member(member));
+    const members = revision.draft.members.map(member => this.member(member, query));
     const byEntity = new Map(revision.draft.members.map(member => [memberKey(member), member]));
     const status = { knowledge: 'available' as 'available' | 'unavailable' };
-    const details: ReturnType<KnowledgeApplication['detail']>[] = [];
-    try { for (const row of this.knowledge.list()) details.push(this.knowledge.detail(row.knowledgeId)); }
+    const details: ReturnType<KnowledgeReadContext['body']>[] = [];
+    try { for (const row of query.list()) {
+      const detail = query.body(row.knowledgeId), association = detail.derivedAssociations;
+      if (association.status === 'failed' || association.status === 'available' && association.reviewStatus !== 'rejected'
+        && detail.derivedCatalog.status === 'unavailable') status.knowledge = 'unavailable';
+      details.push(detail);
+    } }
     catch { status.knowledge = 'unavailable'; details.length = 0; }
     const knowledge = details.flatMap(detail => {
-      const projection = this.bodyAssociation(detail);
+      const projection = this.bodyAssociation(detail, query);
       const ref = projection?.revision.entityAnalysisRef;
       if (!ref || !projection) return [];
       const linked = projection.entities.flatMap(entity => {
@@ -127,7 +135,7 @@ export class KnowledgeLibraryApplication {
         content: detail.revision.content, bodyDigest: detail.revision.bodyDigest, entities: projection.entities, tags: detail.tagging.tags,
         revisedAt: detail.revision.revisedAt, revisionCount: detail.history.revisions.length,
         evidence: detail.revision.content.segments.flatMap(segment => segment.evidence.map(evidence => ({ segmentId: segment.segmentId, ...evidence }))),
-        sourceStatus: detail.sources.every(source => source.status === 'available') ? 'available' as const : 'unavailable' as const,
+        sourceStatus: query.detail(detail.revision.knowledgeId, detail.revision.revisionId).sources.every(source => source.status === 'available') ? 'available' as const : 'unavailable' as const,
         segmentAssociations: detail.revision.content.segments.flatMap(segment => {
           const refs = projection.revision.segmentEntityRefs.filter(ref => ref.segmentId === segment.segmentId
             && linked.some(member => member.entityId === ref.entityId));
@@ -210,7 +218,7 @@ export class KnowledgeLibraryApplication {
   }
 
   private validateMember(member: LibraryMember, draft: LibraryDraft) {
-    const detail = this.knowledge.entityDetail(member.analysisId, member.entityId, member.entityRevisionId);
+    const detail = this.knowledge.entityBasis(member.analysisId, member.entityId, member.entityRevisionId);
     if (detail.revision.revisionId !== detail.history.writeHeadRevisionId) throw new Error('Library entity revision conflict.');
     if (detail.entity.identityStatus !== 'proposed' || detail.entity.referentKind !== draft.referentKind) throw new Error('Library identity needs correction.');
     if (detail.source.status !== 'available') throw new Error('Library source unavailable.');
