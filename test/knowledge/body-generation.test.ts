@@ -9,6 +9,9 @@ import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { FileGenerationJournalStore } from '../../src/knowledge/adapters/generation-journal-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
+import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
+import type { GenerationJournal, GenerationStage } from '../../src/knowledge/extraction/generation-journal.js';
+import type { KnowledgeWrite } from '../../src/knowledge/store.js';
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
@@ -32,9 +35,10 @@ function setup() {
     tags: new FileKnowledgeTags(join(root, 'tags'), 'local', root), associations: new FileKnowledgeAssociationStore(join(root, 'associations'), 'local', knowledge, entities, root),
     id: randomUUID, now: () => '2026-10-28T00:00:00Z', hash: (v: unknown) => generationTextDigest(canonicalJson(v)), actor: { actorKind: 'human' as const, actorId: 'test-user' } };
   const app = new KnowledgeApplication(ports), window = app.capture({ path: source });
-  const body = { responseKind: 'knowledge-body-generation', schemaVersion: 1, proposals: [{ proposalId: 'p1', title: 'Limited source report',
-    segments: [{ segmentId: 's1', text: window.excerpts[0].text, evidence: [{ evidenceRef: window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: 'Retain the limitation for later comparisons.' }] };
-  const association = { responseKind: 'knowledge-association-generation', schemaVersion: 2, catalogs: [{ sourceKey: 's0', entities: [], mentions: [] }], associations: [{ bodyKey: 'b0', segmentEntityRefs: [], typedRelations: [], issues: ['No identity confirmation.'] }] };
+  const body = { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{ proposalId: 'p1', title: 'Limited source report', requiredContexts: [],
+    segments: [{ segmentId: 's1', text: window.excerpts[0].text, evidence: [{ evidenceRef: window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: 'Retain the limitation for later comparisons.' }] };
+  const association = { responseKind: 'knowledge-association-generation', schemaVersion: 3, catalogs: [{ sourceKey: 's0', entities: [] }], associations: [{ bodyKey: 'b0',
+    segmentDecisions: [{ segmentId: 's1', decisionKind: 'abstained', entityRefs: [], reason: 'No identity confirmation.' }], typedRelations: [], issues: ['No identity confirmation.'] }] };
   const invoke = vi.fn(async (profile: GenerationProfile, _input: string, _signal?: AbortSignal, gate?: () => void) => {
     gate?.();
     if (profile.stageKind === 'association') expect(app.list()).toHaveLength(1);
@@ -43,6 +47,54 @@ function setup() {
   const model: KnowledgeGenerationModel = { executor: 'authored-test', model: 'fixture', timeoutMs: 300000,
     inspect: () => ({ producerId: 'authored-test', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }), invoke };
   return { root, app, ports, window, body, association, model, invoke };
+}
+
+/** Authored prior-profile states use current public storage, never an old-output compatibility reader. */
+function legacyRun(f: ReturnType<typeof setup>, state: 'prepared' | 'claimed' | 'archived' | 'body_completed' | 'prepared_writes' | 'completed' | 'failed') {
+  const runId = randomUUID(), invocationId = randomUUID(), at = f.ports.now();
+  const input = canonicalJson({ source: { snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion, sourceKind: f.window.sourceKind },
+    excerpts: f.window.excerpts, limitations: f.window.limitations });
+  const system = 'Authored prior generation profile fixture; not a native observation.', wireSchema = { type: 'object', authoredPriorProtocol: true };
+  const profileId = generationTextDigest('authored-prior-body-profile'), wireId = generationTextDigest(canonicalJson(wireSchema));
+  const producer = f.model.inspect(BODY_GENERATION_PROFILE, input);
+  const stage: GenerationStage = { stageKind: 'body', invocationId, state: state === 'prepared' ? 'prepared' : 'claimed',
+    profileId, promptVersion: 'knowledge-body-generation/v3', system, wireId, wireSchema, input, inputDigest: generationTextDigest(input),
+    requestDigest: generationTextDigest(canonicalJson({ executor: f.model.executor, model: f.model.model, timeoutMs: f.model.timeoutMs,
+      profileId, system, wireId, input, producer })), producer, committed: 0, issues: [] };
+  let journal: GenerationJournal = f.ports.journals.write({ storeKind: 'knowledge-generation-journal', schemaVersion: 2, workflowId: 'knowledge-body-first/v2',
+    runId, generation: 1, mode: 'generate', status: 'active', createdAt: at, actor: f.ports.actor,
+    sources: [{ snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(f.window)) }],
+    executor: f.model.executor, model: f.model.model, timeoutMs: f.model.timeoutMs, bodies: [], stages: [stage] }, 0);
+  const actor = { actorKind: 'agent' as const, actorId: `extractor:${f.model.executor}`, executionRef: `${runId}:${invocationId}` };
+  const draft = { title: 'Prior profile source report', reuseRationale: 'Keep the recorded test limitation.', content: { segments: [{ segmentId: 's1',
+    text: f.window.excerpts[0].text, evidence: [{ source: { snapshotId: f.window.snapshotId, sourceVersion: f.window.sourceVersion },
+      selection: { evidenceRef: f.window.excerpts[0].evidenceRef, start: 0, end: 5, quote: 'Alpha' }, basis: 'source_assertion' as const }] }] } };
+  const knowledgeId = randomUUID();
+  const write: Extract<KnowledgeWrite, { commandKind: 'append_revision' }> = { commandKind: 'append_revision', requestId: randomUUID(),
+    knowledgeId, expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...draft, knowledgeId, revisionId: randomUUID(),
+      bodyDigest: knowledgeBodyDigest(draft), observationRefs: [f.window.snapshotId], derivations: [], createdAt: at, createdBy: actor,
+      revisedAt: at, revisedBy: actor, revisionReason: 'Authored fixed prior-profile intent.' } };
+  const oldProposal = { proposalId: 'p1', title: draft.title, segments: [{ segmentId: 's1', text: draft.content.segments[0].text,
+    evidence: [{ evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null, basis: 'source_assertion', interpretation: null }] }],
+  organization: null, reuseRationale: draft.reuseRationale };
+  const outcome = { outcomeKind: 'result' as const, result: { ok: state !== 'failed', output: JSON.stringify({ responseKind: 'knowledge-body-generation',
+    schemaVersion: 1, proposals: state === 'completed' ? [] : [oldProposal] }), authoredPriorProfileFixture: true } };
+  const journalPath = join(f.root, 'generation-journals', `${runId}.json`), paths = [journalPath];
+  if (state !== 'prepared') {
+    const outcomeRef = f.ports.journals.archive(journal, stage, outcome);
+    paths.push(join(f.root, 'generation-journals', 'outcomes', runId, `${invocationId}.json`));
+    if (state !== 'claimed') {
+      const hasBody = state === 'body_completed';
+      if (hasBody) f.ports.knowledge.write(write, actor);
+      const updated: GenerationStage = { ...stage, state: state === 'body_completed' ? 'completed' : state, outcomeRef,
+        ...(['prepared_writes', 'body_completed', 'completed'].includes(state) ? { bodyWrites: state === 'completed' ? [] : [write] } : {}),
+        committed: hasBody ? 1 : 0, issues: state === 'failed' ? ['Authored prior-profile failure.'] : [] };
+      journal = f.ports.journals.write({ ...journal, generation: 2, stages: [updated], bodies: hasBody ? [knowledgeBodyRef(write.revision)] : [],
+        status: state === 'completed' ? 'completed' : state === 'failed' ? 'failed' : 'active' }, 1);
+      if (hasBody) paths.push(join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]));
+    }
+  }
+  return { journal, outcome, write, paths };
 }
 
 async function twoSourceSetup() {
@@ -57,24 +109,26 @@ async function twoSourceSetup() {
     const detail = f.app.revise(first.revision.knowledgeId, first.revision.revisionId, first.history.generation, draft, 'Explicit two-source body revision');
     const bodyBytes = readFileSync(join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]));
     const catalog = (sourceKey: string, evidenceRef: string) => ({ sourceKey, entities: [{ entityId: 'e1', label: 'Alpha', description: 'Window-local source object; cross-window identity unconfirmed.',
-      qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: ['Cross-window identity is unknown.'], referentKind: 'object', componentRef: null, collection: null }],
-      mentions: [{ mentionId: 'm1', entityId: 'e1', selection: { evidenceRef, quote: 'Alpha', occurrence: null }, basis: 'explicit', rationale: 'Exact local mention.' }] });
-    const output = { responseKind: 'knowledge-association-generation', schemaVersion: 2,
+      qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: ['Cross-window identity is unknown.'], referentKind: 'object', componentLink: null, collectionLink: null,
+      mentions: [{ mentionKey: 'm1', selection: { evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: 'Exact local mention.' }] }] });
+    const output = { responseKind: 'knowledge-association-generation', schemaVersion: 3,
       catalogs: [catalog('s0', f.window.excerpts[0].evidenceRef), catalog('s1', second.excerpts[0].evidenceRef)],
-      associations: [{ bodyKey: 'b0', segmentEntityRefs: [
-        { segmentId: 's1', sourceKey: 's0', entityId: 'e1', mentionIds: ['m1'] },
-        { segmentId: 's2', sourceKey: 's1', entityId: 'e1', mentionIds: ['m1'] }], typedRelations: null, issues: ['Distinct source catalogs are not an identity merge.'] }] };
+      associations: [{ bodyKey: 'b0', segmentDecisions: [
+        { segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'First exact source.' },
+        { segmentId: 's2', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's1', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Second exact source.' }], typedRelations: null, issues: ['Distinct source catalogs are not an identity merge.'] }] };
   return { f, detail, second, bodyBytes, output };
 }
 
 describe('body-first generation and zero-model recovery', () => {
   it('uses the real producer gate and reads two bodies through their shared source-context subject', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v3',
-      profileId: 'sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab',
-      wireId: 'sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c' });
-    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:d0d2e2bba2ac30c50a8dcadf86e49f440be98b1bf36a6eb19e3ec5cbd2848597');
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v3', outputName: 'knowledge_association_v2',
-      wireId: 'sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe' });
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v5', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186',
+      wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
+    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:6df5c436c1caad44c549c36e920e6f2c33af23c6b405c1e9d11584b2763dfd46');
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v4', outputName: 'knowledge_association_v3',
+      profileId: 'sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee',
+      wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
+    expect(generationTextDigest(ASSOCIATION_GENERATION_PROFILE.system)).toBe('sha256:8bb3286b7bfb1898b12cccef0be01ac1ba98d02fc3bcced833d2ba519177f826');
     const f = setup();
     // Authored model responses verify source/association wiring, not model semantic quality.
     const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = segment.evidence[0];
@@ -86,11 +140,11 @@ describe('body-first generation and zero-model recovery', () => {
         evidence: [{ ...evidence, quote: 'time and other environments remain unknown.' }] }] },
     ] };
     const association = { ...f.association, catalogs: [{ sourceKey: 's0', entities: [{ entityId: 'e1', label: 'Alpha', description: 'The source test object, without version identity confirmation.',
-      qualifiers: ['selected test only'], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null }],
-    mentions: [{ mentionId: 'm1', entityId: 'e1', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }, basis: 'explicit', rationale: 'Exact source mention.' }] }],
-    associations: [{ bodyKey: 'b0', segmentEntityRefs: [{ segmentId: 's1', sourceKey: 's0', entityId: 'e1', mentionIds: ['m1'] }], typedRelations: [{ relationId: 'r1', segmentIds: ['s1'],
+      qualifiers: ['selected test only'], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentLink: null, collectionLink: null,
+      mentions: [{ mentionKey: 'm1', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: 'Exact source mention.' }] }] }],
+    associations: [{ bodyKey: 'b0', segmentDecisions: [{ segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Source context binds Alpha.' }], typedRelations: [{ relationId: 'r1', segmentIds: ['s1'],
       subject: { sourceKey: 's0', entityId: 'e1' }, relation: 'works in the selected test', object: null, modality: 'capability', polarity: 'positive', evidence: [{ segmentId: 's1', evidenceIndex: 0 }], issues: [] }], issues: [] },
-    { bodyKey: 'b1', segmentEntityRefs: [{ segmentId: 's1', sourceKey: 's0', entityId: 'e1', mentionIds: ['m1'] }], typedRelations: null, issues: [] }] };
+    { bodyKey: 'b1', segmentDecisions: [{ segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Shared original source context, not title inference.' }], typedRelations: null, issues: [] }] };
     const execute = vi.fn(async request => {
       expect(request.cwd).toMatch(/omk-knowledge-text-[A-Za-z0-9]{6}$/);
       expect(request.timeoutMs).toBe(300000); expect(request.effort).toBeUndefined();
@@ -133,13 +187,28 @@ describe('body-first generation and zero-model recovery', () => {
     expect(readdirSync(join(f.root, 'items'))).toHaveLength(1);
     expect(() => reopened.detail(detail.revision.knowledgeId, detail.revision.revisionId)).not.toThrow();
   });
+  it('preserves a maximum-length abstention and segment identity without overflowing the stored diagnostic', async () => {
+    const f = setup(), segmentId = 's'.repeat(256), reason = '界'.repeat(32768);
+    f.body.proposals[0].segments[0].segmentId = segmentId;
+    f.association.associations[0].segmentDecisions[0] = { segmentId, decisionKind: 'abstained', entityRefs: [], reason };
+    f.association.associations[0].issues = [];
+    const output = JSON.stringify(f.association);
+    const result = await f.app.generate(f.window.snapshotId, f.model), ref = result.journal.bodies[0];
+    expect(result.journal.status).toBe('completed'); expect(f.invoke).toHaveBeenCalledTimes(2);
+    const reopened = createLocalKnowledgeApplication(f.root), detail = reopened.detail(ref.knowledgeId);
+    expect(detail.derivedAssociations.status).toBe('available');
+    expect(detail.derivedAssociations.revision?.segmentEntityRefs).toEqual([]);
+    expect(detail.derivedAssociations.revision?.issues).toEqual([`AI association abstained for ${segmentId}; reason follows.`, reason]);
+    expect(reopened.inspect(result.journal.runId).nativeOutcomes[1].outcome).toMatchObject({ result: { output } });
+    expect(reopened.resume(result.journal.runId)).toEqual(result);
+  });
   it.each(['native_failure', 'duplicate_mention_position'] as const)('preserves body and originals after %s without hidden retries, and permits explicit rebuild', async failure => {
     const f = setup(); f.invoke.mockImplementationOnce(async (_p, _i, _s, gate) => { gate?.(); return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(f.body), runtime: { producer: 'authored-test-not-native' } } }; });
     const invalidCatalog = { ...f.association, catalogs: [{ sourceKey: 's0',
       entities: ['e1', 'e2'].map(entityId => ({ entityId, label: 'Alpha', description: 'Authored conflicting source interpretation.', qualifiers: [],
-        identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null })),
-      mentions: ['m1', 'm2'].map((mentionId, index) => ({ mentionId, entityId: `e${index + 1}`,
-        selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }, basis: 'explicit', rationale: 'Same original position assigned twice.' })),
+        identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentLink: null, collectionLink: null,
+        mentions: [{ mentionKey: 'same-local-key', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null },
+          basis: 'explicit', rationale: 'Same original position assigned twice.' }] })),
     }] };
     const native = { ok: failure !== 'native_failure', output: failure === 'native_failure' ? '' : JSON.stringify(invalidCatalog),
       runtime: { producer: 'authored-test-not-native' } };
@@ -213,6 +282,41 @@ describe('body-first generation and zero-model recovery', () => {
     expect(f.app.resume(runId).nextAction).toBe('continue_stage');
     const result = await f.app.continueStage(runId, read.journal.generation, f.model);
     expect(result.journal.status).toBe('completed');
+  });
+  it.each(['prepared', 'claimed', 'archived', 'body_completed'] as const)('leaves an active prior-profile %s run and its originals untouched without decoding or redispatch', async state => {
+    const f = setup(), prior = legacyRun(f, state), bytes = prior.paths.map(path => readFileSync(path));
+    const reopened = createLocalKnowledgeApplication(f.root), inspected = reopened.inspect(prior.journal.runId);
+    expect(inspected).toMatchObject({ journal: prior.journal, nextAction: 'unsupported' });
+    if (['archived', 'body_completed'].includes(state)) expect(inspected.nativeOutcomes[0].outcome).toEqual(prior.outcome);
+    else expect(inspected.nativeOutcomes[0]).not.toHaveProperty('outcome');
+    expect(reopened.resume(prior.journal.runId)).toEqual({ journal: prior.journal, nextAction: 'unsupported' });
+    await expect(reopened.continueStage(prior.journal.runId, prior.journal.generation, f.model)).rejects.toThrow(/profile changed.*matching build/);
+    expect(prior.paths.map(path => readFileSync(path))).toEqual(bytes);
+    expect(reopened.list()).toHaveLength(state === 'body_completed' ? 1 : 0);
+    expect(reopened.inspect(prior.journal.runId)).toEqual(inspected); expect(f.invoke).not.toHaveBeenCalled();
+  });
+  it('replays immutable prior-profile prepared writes once and refuses a new-protocol association on the saved body', async () => {
+    const f = setup(), prior = legacyRun(f, 'prepared_writes'), archived = readFileSync(prior.paths[1]);
+    const reopened = createLocalKnowledgeApplication(f.root);
+    expect(reopened.inspect(prior.journal.runId).nextAction).toBe('resume_publication');
+    const replayed = reopened.resume(prior.journal.runId);
+    expect(replayed).toMatchObject({ nextAction: 'unsupported', journal: { status: 'active', bodies: [knowledgeBodyRef(prior.write.revision)],
+      stages: [{ state: 'completed', bodyWrites: [prior.write], committed: 1 }] } });
+    const detail = reopened.detail(prior.write.knowledgeId);
+    expect(detail.history.revisions).toEqual([prior.write.revision]); expect(detail.derivedAssociations.status).toBe('absent');
+    const journalBytes = readFileSync(prior.paths[0]), bodyPath = join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]), bodyBytes = readFileSync(bodyPath);
+    expect(reopened.resume(prior.journal.runId)).toEqual(replayed);
+    await expect(reopened.continueStage(prior.journal.runId, replayed.journal.generation, f.model)).rejects.toThrow(/profile changed.*matching build/);
+    expect(readFileSync(prior.paths[0])).toEqual(journalBytes); expect(readFileSync(prior.paths[1])).toEqual(archived);
+    expect(readFileSync(bodyPath)).toEqual(bodyBytes); expect(f.invoke).not.toHaveBeenCalled();
+  });
+  it.each(['completed', 'failed'] as const)('keeps terminal prior-profile %s results inspectable with zero mutation or model calls', state => {
+    const f = setup(), prior = legacyRun(f, state), bytes = prior.paths.map(path => readFileSync(path));
+    const reopened = createLocalKnowledgeApplication(f.root);
+    expect(reopened.inspect(prior.journal.runId)).toMatchObject({ nextAction: 'none', journal: prior.journal,
+      nativeOutcomes: [{ outcome: prior.outcome }] });
+    expect(reopened.resume(prior.journal.runId)).toEqual({ journal: prior.journal, nextAction: 'none' });
+    expect(prior.paths.map(path => readFileSync(path))).toEqual(bytes); expect(f.invoke).not.toHaveBeenCalled();
   });
   it('reports legacy runs unsupported and refuses corrupt archived originals instead of presenting completed success', async () => {
     const f = setup(), result = await f.app.generate(f.window.snapshotId, f.model), id = randomUUID();
@@ -300,7 +404,7 @@ describe('body-first generation and zero-model recovery', () => {
   });
   it('preserves a healthy source catalog and canonical body when another catalog is rejected, without publishing a misleading partial success', async () => {
     const { f, detail, bodyBytes, output } = await twoSourceSetup();
-    output.catalogs[1].mentions.push({ ...output.catalogs[1].mentions[0], mentionId: 'duplicate-position' });
+    output.catalogs[1].entities[0].mentions.push({ ...output.catalogs[1].entities[0].mentions[0], mentionKey: 'duplicate-position' });
     const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, _input, _signal, gate) => {
       gate?.(); return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(output) } };
     });

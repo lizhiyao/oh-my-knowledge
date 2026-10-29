@@ -1,6 +1,7 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { type ConversationCatalog } from '../../../observability/application.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
+import { generationNextAction } from '../../../knowledge/application/body-generation.js';
 import { configuredKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-executor.js';
 import type { GenerationArchiveCheck, GenerationJournal, GenerationJournalInventory } from '../../../knowledge/extraction/generation-journal.js';
 import { type KnowledgeApplication } from '../../../knowledge/application/application.js';
@@ -31,8 +32,7 @@ function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandida
   } catch { return { sources, sourceMetadataStatus: 'unknown' }; }
 }
 function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchiveCheck[] = [], archiveVerification: KnowledgeCandidateRun['archiveVerification'] = 'not_verified'): KnowledgeCandidateRun {
-  const last = journal.stages.at(-1)!;
-  const pending = journal.stages.find(s => !['completed', 'failed'].includes(s.state));
+  const nextAction = generationNextAction(journal);
   const association = journal.stages.find(s => s.stageKind === 'association'), catalogs = association?.entityWrites?.slice(0, association.committed) ?? [];
   return { runId: journal.runId, schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
     executor: journal.executor, model: journal.model,
@@ -40,8 +40,8 @@ function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchive
     phases: journal.stages.map(s => ({ stageKind: s.stageKind, state: s.state, invocationId: s.invocationId, profileId: s.profileId,
       promptVersion: s.promptVersion, wireId: s.wireId, ...(s.outcomeRef ? { outcomeRef: s.outcomeRef } : {}), committed: s.committed,
       issues: s.issues, producerId: s.producer.producerId, producerRevision: s.producer.producerRevision, rejectedCount: s.rejected?.length ?? null })),
-    nextAction: pending?.state === 'prepared' ? 'continue_stage' : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch'
-      : pending ? 'resume_publication' : journal.status === 'active' && last.state === 'completed' ? 'continue_stage' : 'none',
+    nextAction,
+    ...(nextAction === 'unsupported' ? { unsupportedReason: 'generation_profile_changed_use_matching_build' } : {}),
     ...(catalogs.length ? { entityAnalyses: catalogs.map(catalog => ({ analysisId: catalog.analysisId, revisionId: catalog.revision.revisionId,
       entityCount: catalog.revision.entities.length, mentionCount: catalog.revision.mentions.length,
       unresolvedCount: catalog.revision.entities.filter(e => e.identityStatus === 'unresolved').length, reviewStatus: 'pending' as const })) } : {}) };
