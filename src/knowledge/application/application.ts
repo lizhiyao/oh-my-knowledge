@@ -17,6 +17,7 @@ import type { KnowledgeGenerationModel } from '../adapters/generation-executor.j
 import { BodyGenerationApplication, type KnowledgeGenerationOptions } from './body-generation.js';
 import type { EntityQuery } from './entity-catalog.js';
 import { KnowledgeReadContext } from './read-context.js';
+import type { KnowledgeGraphRequest } from './graph.js';
 
 export type { KnowledgeGenerationModel } from '../adapters/generation-executor.js';
 export type { KnowledgeGenerationOptions } from './body-generation.js';
@@ -50,6 +51,8 @@ export class KnowledgeApplication {
   readContext() { return new KnowledgeReadContext(this.ports); }
   list(knowledgeIds?: ReadonlySet<string>) { return this.readContext().list(knowledgeIds); }
   detail(knowledgeId: string, revisionId?: string) { return this.readContext().detail(knowledgeId, revisionId); }
+  graph(input: KnowledgeGraphRequest = {}) { return this.readContext().graph(input); }
+  associationCatalogs(knowledgeId: string, revisionId?: string) { return this.readContext().associationCatalogs(knowledgeId, revisionId); }
   tag(knowledgeId: string, generation: number, tags: unknown) {
     this.ports.knowledge.read(knowledgeId); return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
   }

@@ -113,6 +113,13 @@ describe('entity analysis user views', () => {
     expect(unavailable).toContain('Source snapshot unavailable'); expect(unavailable).not.toContain('<mark>');
     const unknown = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, knowledge: [], knowledgeStatus: 'unavailable' }, workspace: '/workspace', lang: 'zh', onRevision() {} }));
     expect(unknown).toContain('无法判断是否存在关联'); expect(unknown).not.toContain('没有当前知识修订');
+    const partial = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: { ...value, knowledgeStatus: 'unavailable' }, workspace: '/workspace space', lang: 'zh', onRevision() {} }));
+    expect(partial).toContain('总数量未知'); expect(partial).toContain('以下保留已知关联');
+    expect(partial).toContain('项目使用工具'); expect(partial).toContain('/knowledge/library?');
+    expect(partial).toContain('view=graph'); expect(partial).toContain('knowledge=knowledge'); expect(partial).toContain('revision=knowledge-revision');
+    expect(partial).toContain('analysis=analysis'); expect(partial).toContain('entity=project'); expect(partial).toContain('entityRevision=old-revision');
+    expect(partial).toContain('segment=s1'); expect(partial).toContain('section=associations');
+    expect(partial).not.toContain('没有当前知识修订');
   });
 });
 

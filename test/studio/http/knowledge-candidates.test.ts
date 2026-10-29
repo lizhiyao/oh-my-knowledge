@@ -247,6 +247,20 @@ describe('Studio candidate action boundary', () => {
     const inspection = await post({ operation: 'entities', analysisId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
     const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
+    const graphResponse = await post({ operation: 'graph', knowledgeIds: [bodyRef.knowledgeId] });
+    expect(graphResponse.status).toBe(200); const graphText = await graphResponse.text(), graph = JSON.parse(graphText);
+    expect(graphText).not.toContain(root); expect(graphText).not.toContain('private-raw-value'); expect(graphText).not.toContain('sourcePath');
+    expect(graph.nodes.filter((node: { nodeKind: string }) => node.nodeKind === 'knowledge')).toHaveLength(1);
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ nodeKind: 'knowledge', bodyRef, current: true }));
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ nodeKind: 'source', snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }));
+    expect(graph.edges).toContainEqual(expect.objectContaining({ edgeKind: 'segment_entity' }));
+    for (const bad of [{ knowledgeIds: Array(1001).fill(bodyRef.knowledgeId) }, { includeHistory: 'yes' }, { unsafe: true }]) {
+      expect((await post({ operation: 'graph', ...bad })).status).toBe(400);
+    }
+    const choices = await (await post({ operation: 'association-catalogs', id: bodyRef.knowledgeId, revision: bodyRef.revisionId })).json();
+    expect(choices.bodyRef).toEqual(bodyRef); expect(choices.catalogs).toContainEqual(expect.objectContaining({ analysisId,
+      snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, writeHeadRevisionId: before.revision.revisionId }));
+    expect(JSON.stringify(choices)).not.toContain(root); expect(JSON.stringify(choices)).not.toContain('sourcePath');
     const catalog = await (await post({ operation: 'entity-catalog', query: 'Alpha', pageSize: 1 })).json();
     expect(catalog.rows[0]).toMatchObject({ analysisId, mentionCount: 1, knowledgeCount: 1 }); expect(JSON.stringify(catalog)).not.toContain('rawOutput'); expect(JSON.stringify(catalog)).not.toContain(root);
     for (const bad of [{ page: 0 }, { pageSize: 101 }, { analysisId: '../private' }, { unsafe: true }]) expect((await post({ operation: 'entity-catalog', ...bad })).status).toBe(400);
@@ -269,6 +283,9 @@ describe('Studio candidate action boundary', () => {
     expect(projection.history.revisions).toHaveLength(1); expect(projection.revision).toEqual(original.revision); expect(projection.derivedAssociations.reviewStatus).toBe('pending');
     const reviewed = await post({ operation: 'review-associations', id: bodyRef.knowledgeId, revision: projection.derivedAssociations.revision.revisionId, generation: 2, choice: 'accept', reason: '明确核对新关联' });
     expect(reviewed.status).toBe(200); expect((await reviewed.json()).derivedAssociations.reviewStatus).toBe('accepted');
+    const reopenedGraph = await (await post({ operation: 'graph', knowledgeIds: [bodyRef.knowledgeId], includeHistory: true })).json();
+    expect(reopenedGraph.edges).toContainEqual(expect.objectContaining({ edgeKind: 'segment_entity', projectionRevisionId: projection.derivedAssociations.revision.revisionId, reviewStatus: 'accepted' }));
+    expect(createLocalKnowledgeApplication(workspace).detail(bodyRef.knowledgeId).revision).toEqual(original.revision);
     const conditions = before.source.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
     draft.content.segments[0].text += ` ${conditions.text}`;
     draft.content.segments[0].evidence.push({ source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }, basis: 'source_assertion',

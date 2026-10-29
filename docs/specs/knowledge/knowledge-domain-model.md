@@ -112,6 +112,16 @@ Run `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace 
 
 Apply validates the original inventory and planned body writes; identical-plan recovery is idempotent and refuses edited targets. Mechanical field preservation and mapping are not source-faithfulness or task acceptance. Inspect the new segments and evidence before retaining or using them. The old workspace is unchanged and remains usable with its matching old binary; rollback means reopening that preserved pair. No permanent dual canonical reader is introduced.
 
+### 5.3 Knowledge graph read projection {#knowledge-graph}
+
+Application `graph({knowledgeIds?, includeHistory?})` returns a read-only `knowledge-graph` projection (Schema 1), without creating canonical persistence or calling models. An explicit selection allows at most 1,000 knowledge IDs; an empty selection is an empty scope. Knowledge nodes pin `{knowledgeId, revisionId, bodyDigest}`, entity nodes pin `{analysisId, entityRevisionId, entityId}`, and source nodes pin `{snapshotId, sourceVersion}`. Equal names never merge nodes.
+
+Body-evidence edges retain segments, original evidence and position checks. Segment/entity edges retain exact projections, catalog revisions and mention IDs. Typed relations, components, collections, possible identities and revision-parent edges project existing records only, without inferring from co-occurrence. Current content and its actual bindings are the default; history requires explicit expansion, and old projections are never marked current. A current projection bound to an older catalog retains that exact binding, with separate `catalogCurrent` and entity-revision states rather than automatic rebinding.
+
+Coverage and known nodes/edges are separate. Missing usable associations for current content, outdated catalog bindings, source failures and position mismatches create explicit gaps; historical association results retain their own states. Source failures degrade locally while retaining content and other readable evidence; raw exceptions and file paths from source metadata are excluded. Large collections and long histories still determine total graph size; small-scope operation evidence is not a load guarantee.
+
+`associationCatalogs(id, revisionId?)` lists only catalogs and revisions matching the content evidence's exact source identities, with readable source summaries and an unreadable-analysis count. Discovery does not confirm identity. Writes continue through existing single-catalog `applyAssociations`, optimistic concurrency and new-projection pending rules. Studio transports and presents the domain projection and user actions, without reading underlying files or redefining relations.
+
 ## 6. Acceptance and limits {#current-evidence}
 
 Functional acceptance covers continued accumulation, knowledge revision, source/version rereading, organization links, and carrier reminders/update consistency. Usability does not establish overall extraction accuracy, truth, or task benefits; each has its own evidence.

@@ -8,6 +8,7 @@ import { selectKnowledgeAssociation, type KnowledgeAssociationSelection, type Kn
 import { knowledgeBodyRef } from '../adapters/body-digest.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { EntityQuerySchema, queryEntityRows, type EntityKnowledgeLink, type EntityQuery, type EntitySearchRow } from './entity-catalog.js';
+import { buildKnowledgeGraph, type KnowledgeGraphRequest } from './graph.js';
 
 interface ReadPorts {
   evidence: EvidenceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
@@ -31,6 +32,8 @@ export class KnowledgeReadContext {
   private readonly sources = new Map<string, Cached<ReturnType<EvidenceStore['read']>>>();
   private readonly tags = new Map<string, Cached<ReturnType<KnowledgeTagStore['read']>>>();
   private readonly projections = new Map<string, ReturnType<KnowledgeReadContext['readAssociation']>>();
+  private readonly associationHistories = new Map<string, Cached<ReturnType<KnowledgeAssociationStore['read']>>>();
+  private entityInventory?: Cached<ReturnType<EntityAnalysisStore['list']>>;
   private histories?: Cached<KnowledgeEnvelope[]>;
   private links?: { status: 'available' | 'unavailable'; byEntity: Map<string, EntityKnowledgeLink[]> };
   constructor(private readonly ports: ReadPorts) {}
@@ -55,9 +58,23 @@ export class KnowledgeReadContext {
     if (!revision) throw new Error('Entity analysis revision is missing.');
     return { history, revision };
   }
+  private allEntities() {
+    if (!this.entityInventory) {
+      try {
+        const value = this.ports.entities.list();
+        value.histories.forEach(history => this.catalogs.set(history.analysisId, { value: history }));
+        this.entityInventory = { value };
+      } catch (error) { this.entityInventory = { error }; }
+    }
+    if ('error' in this.entityInventory) throw this.entityInventory.error;
+    return this.entityInventory.value;
+  }
+  private associationHistory(knowledgeId: string) {
+    return once(this.associationHistories, knowledgeId, () => this.ports.associations.read(knowledgeId));
+  }
   private readAssociation(bodyRef: KnowledgeBodyRef): KnowledgeAssociationSelection & { generation: number; headRevisionId: string | null } {
     try {
-      const history = this.ports.associations.read(bodyRef.knowledgeId);
+      const history = this.associationHistory(bodyRef.knowledgeId);
       return { ...selectKnowledgeAssociation(history, bodyRef), generation: history.generation, headRevisionId: history.writeHeadRevisionId };
     } catch (error) {
       return { status: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'absent' : 'failed',
@@ -76,6 +93,7 @@ export class KnowledgeReadContext {
     try {
       const { history, revision } = this.catalog(ref.analysisId, ref.revisionId);
       return { status: 'available' as const, ...ref, currentHeadRevisionId: history.writeHeadRevisionId,
+        snapshotId: history.snapshotId, sourceVersion: history.sourceVersion,
         entities: revision.entities, mentions: revision.mentions };
     } catch { return { status: 'unavailable' as const, ...ref }; }
   }
@@ -107,6 +125,46 @@ export class KnowledgeReadContext {
     const body = this.body(knowledgeId, revisionId);
     const refs = [...new Map(body.revision.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
     return { ...body, sources: refs.map(ref => this.source(ref.snapshotId, ref.sourceVersion)) };
+  }
+  graph(input: KnowledgeGraphRequest = {}) {
+    return buildKnowledgeGraph({
+      listKnowledge: ids => {
+        if (!ids) return this.allKnowledge();
+        const histories = this.ports.knowledge.list(ids);
+        histories.forEach(history => this.bodies.set(history.knowledgeId, { value: history }));
+        return histories;
+      },
+      knowledge: id => once(this.bodies, id, () => this.ports.knowledge.read(id)),
+      associations: id => this.associationHistory(id), catalog: id => this.catalog(id).history,
+      source: (id, version) => this.source(id, version!),
+    }, input);
+  }
+  /** Catalog discovery is exact source membership, never name or path similarity. */
+  associationCatalogs(knowledgeId: string, revisionId?: string) {
+    const history = once(this.bodies, knowledgeId, () => this.ports.knowledge.read(knowledgeId));
+    const revision = history.revisions.find(item => item.revisionId === (revisionId ?? history.writeHeadRevisionId));
+    if (!revision) throw new Error('Knowledge revision is missing.');
+    const refs = [...new Map(revision.content.segments.flatMap(segment => segment.evidence).map(evidence => [canonicalJson(evidence.source), evidence.source])).values()];
+    const identities = new Set(refs.map(ref => canonicalJson(ref))), saved = this.allEntities();
+    const sourceSummaries = new Map(refs.map(ref => {
+      try {
+        const resolution = this.source(ref.snapshotId, ref.sourceVersion);
+        const summary = resolution.status === 'available' ? { ...(resolution.window.origin?.title ? { title: resolution.window.origin.title } : {}),
+          sourceKind: resolution.window.sourceKind, excerptCount: resolution.window.excerpts.length,
+          firstRecordIndex: resolution.window.startRecord, lastRecordIndex: resolution.window.endRecord } : undefined;
+        return [canonicalJson(ref), summary] as const;
+      } catch { return [canonicalJson(ref), undefined] as const; }
+    }));
+    return { bodyRef: knowledgeBodyRef(revision), catalogs: saved.histories.filter(item => identities.has(canonicalJson({ snapshotId: item.snapshotId, sourceVersion: item.sourceVersion })))
+      .map(item => ({ analysisId: item.analysisId, snapshotId: item.snapshotId, sourceVersion: item.sourceVersion, writeHeadRevisionId: item.writeHeadRevisionId,
+        ...(sourceSummaries.get(canonicalJson({ snapshotId: item.snapshotId, sourceVersion: item.sourceVersion }))
+          ? { sourceSummary: sourceSummaries.get(canonicalJson({ snapshotId: item.snapshotId, sourceVersion: item.sourceVersion }))! } : {}),
+        revisions: item.revisions.map(value => ({ revisionId: value.revisionId, revisionReason: value.revisionReason, revisedAt: value.revisedAt,
+          entityCount: value.entities.length, mentionCount: value.mentions.length })) })),
+    unavailableAnalyses: saved.unavailable, sources: refs.map(ref => {
+      try { return { ...ref, status: this.source(ref.snapshotId, ref.sourceVersion).status }; }
+      catch { return { ...ref, status: 'unavailable' as const }; }
+    }) };
   }
   /** Identity and source checks do not depend on unrelated knowledge or derived links. */
   entityBasis(analysisId: string, entityId: string, revisionId?: string) {
@@ -149,8 +207,7 @@ export class KnowledgeReadContext {
     return { ...basis, knowledge: links.byEntity.get(`${analysisId}:${entityId}`) ?? [], knowledgeStatus: links.status };
   }
   queryEntities(input: EntityQuery = {}) {
-    const query = EntityQuerySchema.parse(input), saved = this.ports.entities.list();
-    saved.histories.forEach(history => this.catalogs.set(history.analysisId, { value: history }));
+    const query = EntityQuerySchema.parse(input), saved = this.allEntities();
     const rows: EntitySearchRow[] = saved.histories.flatMap(history => {
       const revision = history.revisions.at(-1)!, source = this.source(history.snapshotId, history.sourceVersion);
       return revision.entities.map(entity => {

@@ -4,6 +4,7 @@ import { createLocalKnowledgeApplication } from '../../../knowledge/application/
 import { configuredKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-executor.js';
 import type { GenerationArchiveCheck, GenerationJournal, GenerationJournalInventory } from '../../../knowledge/extraction/generation-journal.js';
 import { type KnowledgeApplication } from '../../../knowledge/application/application.js';
+import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
 import { type KnowledgeOperation, executeKnowledgeOperation, knowledgeOperationSchemas } from '../../../knowledge/application/operations.js';
 import { conversationExtractionSource } from '../conversations/conversation-extraction.js';
 import { z } from 'zod';
@@ -64,6 +65,8 @@ const requestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ workspace: z.string().optional(), operation: z.literal('preview-conversation'), threadId: text, turnId: text.optional() }),
   z.strictObject({ ...common, operation: z.literal('capture-conversation'), threadId: text, turnId: text.optional(), sourceVersion: text, recordIndexes: z.array(z.number().int().nonnegative()).min(1).max(1000) }),
   z.strictObject({ ...common, operation: z.literal('queue'), threadId: text.optional(), projectId: text.optional() }),
+  KnowledgeGraphRequestSchema.extend({ ...common, operation: z.literal('graph') }),
+  z.strictObject({ ...common, operation: z.literal('association-catalogs'), id: text, revision: text.optional() }),
   knowledgeOperationSchemas['list'].extend(common),
   knowledgeOperationSchemas['tag'].extend(common),
   knowledgeOperationSchemas['runs'].extend(common),
@@ -111,6 +114,8 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
   const app = create(request.workspace);
   const execute = <C extends KnowledgeOperation>(command: C) => executeKnowledgeOperation(app, command, signal, (executor, model) => configuredKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer(process.env)));
   switch (request.operation) {
+    case 'graph': return app.graph({ knowledgeIds: request.knowledgeIds, includeHistory: request.includeHistory });
+    case 'association-catalogs': return app.associationCatalogs(request.id, request.revision);
     case 'queue': {
       if (request.threadId && request.projectId) throw new Error('Select one knowledge scope.');
       const projectThreads = request.projectId && catalog ? new Set((await catalog.listConversations()).conversations
