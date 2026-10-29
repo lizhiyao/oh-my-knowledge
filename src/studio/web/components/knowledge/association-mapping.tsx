@@ -6,6 +6,7 @@ import type { Language } from '../layout/shell';
 import { requestKnowledge } from './request';
 import { RevisionSaveFeedback, useRevisionSave } from './revision-save';
 import { displayTime } from '../../../application/display/format';
+import { AssociationRelationEditor, associationRelationsReady, type AssociationRelationDraft } from './association-relations';
 
 type Mapping = NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>['segmentEntityRefs'];
 type CatalogRef = NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>['catalogRefs'][number];
@@ -27,6 +28,8 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
   const [catalogsReading, setCatalogsReading] = useState(true), [catalogsError, setCatalogsError] = useState('');
   const [catalog, setCatalog] = useState<KnowledgeEntityAnalysisDetail>();
   const [mappings, setMappings] = useState<Mapping>(detail.derivedAssociations.status === 'available' ? structuredClone(detail.derivedAssociations.revision?.segmentEntityRefs ?? []) : []);
+  const [relations, setRelations] = useState<AssociationRelationDraft[] | undefined>(detail.derivedAssociations.status === 'available' ? structuredClone(detail.derivedAssociations.revision?.typedRelations) : undefined);
+  const [issues] = useState(detail.derivedAssociations.status === 'available' ? structuredClone(detail.derivedAssociations.revision?.issues ?? []) : []);
   const [reason, setReason] = useState(''), [confirmed, setConfirmed] = useState(false);
   const [reading, setReading] = useState(false), [readError, setReadError] = useState('');
   const controller = useRef<AbortController | null>(null);
@@ -86,6 +89,7 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
       && source.window.snapshotId === existing.snapshotId && source.window.sourceVersion === existing.sourceVersion) ? existing : undefined;
   }
   const invalid = catalogsReading || !!catalogsError
+    || !associationRelationsReady(relations, detail.revision.content.segments, mappings)
     || selectedRefs.some(ref => !resolved(ref)) || mappings.some(ref => {
       const selected = resolved(ref);
       return !selected || !selectedRefs.some(item => sameCatalog(item, ref)) || !selected.entities.some(entity => entity.entityId === ref.entityId) || !ref.mentionIds.length
@@ -104,10 +108,10 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
     if (activeRef && sameCatalog(ref, activeRef)) setCatalog(undefined);
   }
   async function submit() {
-    if (invalid || !confirmed || !reason.trim() || locked) return;
+    if (invalid || !confirmed || !reason.trim() || locked || !associationRelationsReady(relations, detail.revision.content.segments, mappings)) return;
     const result = await save.save('apply-associations', { id: detail.revision.knowledgeId, revision: detail.revision.revisionId,
       bodyDigest: detail.revision.bodyDigest, generation: detail.derivedAssociations.generation,
-      draft: { catalogRefs: selectedRefs, segmentEntityRefs: mappings, issues: [] }, reason: reason.trim() });
+      draft: { catalogRefs: selectedRefs, segmentEntityRefs: mappings, ...(relations === undefined ? {} : { typedRelations: relations }), issues }, reason: reason.trim() });
     if (result?.current()) onSaved(result.value);
   }
   return <Drawer open title={t('编辑实体映射', 'Edit entity mappings')} size={680} closable={!busy} keyboard={!busy} maskClosable={!busy}
@@ -115,7 +119,7 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
     <RevisionSaveFeedback save={save} lang={lang} onOpenLatest={onReadback}/>
     {catalogsError && <Alert type="error" title={catalogsError} action={<Button disabled={catalogsReading || save.locked} onClick={() => void loadCatalogs()}>{t('重新读取分析目录', 'Reload analysis catalog')}</Button>}/>}
     {readError && <Alert type="error" title={readError}/>}
-    <p>{t('只修改派生实体映射；正文、正文摘要及保留决定保持原样。新映射需要单独核对。', 'Edit derived entity mappings only. Content, its digest and retention decision remain unchanged. New mappings require independent review.')}</p>
+    <p>{t('编辑派生实体映射与关系；正文、正文摘要及保留决定保持原样。新关联需要单独核对。', 'Edit derived entity mappings and relations. Content, its digest and retention decision remain unchanged. New associations require independent review.')}</p>
     <details><summary>{t('本次编辑的知识与关联基线', 'Knowledge and association baseline for this edit')}</summary>
       <p className="candidate-help">{t('知识修订：', 'Knowledge revision: ')}<code>{detail.revision.revisionId}</code> · {t('关联基线：', 'Association baseline: ')}<code>{detail.derivedAssociations.headRevisionId ?? t('尚无关联', 'No association')}</code></p>
     </details>
@@ -157,8 +161,13 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
           </fieldset>)}
         </section>; })}
       </>}
+      <AssociationRelationEditor relations={relations} segments={detail.revision.content.segments} sources={detail.sources} mappings={mappings} locked={locked} lang={lang}
+        entities={mappings.flatMap(ref => { const entity = resolved(ref)?.entities.find(item => item.entityId === ref.entityId); return entity ? [{ segmentId: ref.segmentId,
+          ref: { analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId, entityId: ref.entityId }, label: `${entity.label} · ${t('目录', 'Catalog')} ${selectedRefs.findIndex(item => sameCatalog(item, ref)) + 1} · ${ref.entityRevisionId.slice(-8)}` }] : []; })}
+        onChange={next => { setRelations(next); setConfirmed(false); }}/>
+      {!!issues.length && <div><p className="candidate-help">{t('随关联保留的整体限制与疑点', 'Overall limits and issues preserved with the associations')}</p><ul>{issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div>}
       <label>{t('映射修改理由', 'Mapping reason')}<Input.TextArea aria-label={t('映射修改理由', 'Mapping reason')} readOnly={locked} value={reason} onChange={event => setReason(event.target.value)}/></label>
-      <Checkbox disabled={locked} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>{t('本次只保存实体映射，不编辑或沿用已有 typedRelations；它们的原件留在关联历史，新修订不含这些关系。我已核对上述精确实体修订与选择。', 'Save entity mappings only. Existing typedRelations are not edited or inherited; their originals remain in association history and are absent from the new revision. I checked the exact entity revision and selections above.')}</Checkbox>
+      <Checkbox disabled={locked} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}>{t('我已核对上述精确实体修订、映射与关系。本次保存包含这里显示的选择；旧修订保留在历史，新关联仍待核对。', 'Save mappings and the relations shown above. I checked the exact entity revisions, mappings and relations. Prior revisions remain in history; new associations stay pending review.')}</Checkbox>
     </div>
   </Drawer>;
 }
