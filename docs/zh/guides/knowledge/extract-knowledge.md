@@ -190,6 +190,8 @@ omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowled
 
 保留[历史 typed 标注指南与离线工具](../../specs/entities/entity-extraction-evaluation.md)的测量身份。当前 CLI／Studio 的 study 核对及可携带归档重放只读；旧 typed 生成计划明确不支持，零模型调用。这些记录不验收正文优先流程；正文来源保真与真实任务价值仍需独立绑定来源／请求／版本的验证，不用新契约重算旧运行。
 
+按[核对知识质量](review-knowledge-quality.md)对照选定来源检查完整含义、区分失败层次、修订并重开，记录实际成本与复核限制，再决定可用、继续还是停止。
+
 
 ## 跨窗口核对实体关联 {#review-cross-window-entity-links}
 

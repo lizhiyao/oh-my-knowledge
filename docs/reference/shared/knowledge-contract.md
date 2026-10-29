@@ -8,9 +8,9 @@ This page is generated from the current source build’s runtime constants and S
 | Current contract | Value |
 |---|---|
 | Production workflow | `knowledge-body-first/v1` |
-| Body prompt | `knowledge-body-generation/v2` |
+| Body prompt | `knowledge-body-generation/v3` |
 | Association prompt | `knowledge-association-generation/v1` |
-| Body profile digest | `sha256:50a3749e9d70bc3e712dce78275af050c4b860af2bc756bf638d97535270c62f` |
+| Body profile digest | `sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab` |
 | Association profile digest | `sha256:77a645dd123e894174566767a1a5b9e8125042119ae0a472107b374741c24337` |
 | Body structural wire digest | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
 | Association structural wire digest | `sha256:9739c4f7e3c90d76826323cb6aa270219086ddcf183e40e6c33ad8d5caf911ae` |
