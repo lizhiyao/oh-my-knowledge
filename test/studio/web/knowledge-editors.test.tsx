@@ -15,7 +15,8 @@ import { knowledgeBodyDigest } from '../../../src/knowledge/adapters/body-digest
 import { AutoExtractConversation } from '../../../src/studio/web/components/knowledge/auto-extraction';
 import { KnowledgeInbox } from '../../../src/studio/web/components/knowledge/inbox';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
-import type { AutoExtractionPreview, AutoExtractionState, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeCandidateQueue } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { KnowledgeReaderSelection } from '../../../src/studio/web/components/knowledge/reader';
+import type { AutoExtractionPreview, AutoExtractionState, KnowledgeAssociationCatalogs, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeCandidateQueue } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -597,14 +598,118 @@ function associationFixture() {
     issues: [], revisedAt: now, revisedBy: { actorKind: 'human', actorId: 'reviewer' }, revisionReason: 'Original mapping',
   } };
   detail.derivedCatalog = { status: 'available', analysisId: original.history.analysisId, revisionId: original.revision.revisionId,
+    snapshotId: original.history.snapshotId, sourceVersion: original.history.sourceVersion,
     currentHeadRevisionId: current.revision.revisionId, entities: original.revision.entities, mentions: original.revision.mentions };
   detail.maintenance = { revisionId: detail.revision.revisionId, choice: 'retain', reason: 'Maintain the body', actor: { actorKind: 'human', actorId: 'reviewer' }, at: now };
   detail.history.maintenance.push(detail.maintenance); detail.history.generation = 2;
   detail.history.receipts.push({ requestId: uuid(901), commandDigest: digest, committedGeneration: 2, revisionId: detail.revision.revisionId });
   return { detail, original, current };
 }
+function matchingCatalogs(detail: KnowledgeCandidateDetail, analysis: KnowledgeEntityAnalysisDetail): KnowledgeAssociationCatalogs {
+  return { bodyRef: detail.derivedAssociations.bodyRef, unavailableAnalyses: 0,
+    sources: [{ snapshotId: analysis.history.snapshotId, sourceVersion: analysis.history.sourceVersion, status: 'available' }],
+    catalogs: [{ analysisId: analysis.history.analysisId, snapshotId: analysis.history.snapshotId, sourceVersion: analysis.history.sourceVersion,
+      sourceSummary: { title: 'Selected conversation', sourceKind: 'codex', excerptCount: 2, firstRecordIndex: 0, lastRecordIndex: 1 },
+      writeHeadRevisionId: analysis.history.writeHeadRevisionId, revisions: analysis.history.revisions.map(revision => ({ revisionId: revision.revisionId,
+        revisionReason: revision.revisionReason, revisedAt: revision.revisedAt, entityCount: revision.entities.length, mentionCount: revision.mentions.length })) }] };
+}
 
 describe('independent entity mapping review', () => {
+  it('follows a controlled segment and mention into the exact original span and back without replacing the bound entity revision', () => {
+    const { detail, original } = associationFixture(), onEntity = vi.fn();
+    function View() {
+      const [selection, setSelection] = useState<KnowledgeReaderSelection>({ tab: 'associations', segmentId: 's1', mentionId: original.revision.mentions[0].mentionId });
+      return <KnowledgeReader detail={detail} lang="en" workspace="/reader-fixture" selection={selection} onSelectionChange={setSelection}
+        onEntity={onEntity} onRevision={vi.fn()} onRetry={vi.fn()}/>;
+    }
+    const view = render(<View/>, { wrapper });
+    expect(view.container.querySelector(`[data-mention-id="${original.revision.mentions[0].mentionId}"]`)?.getAttribute('data-focused')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect this entity' }));
+    expect(onEntity).toHaveBeenCalledWith({ analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: original.revision.entities[0].entityId });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect this mention in its source' }));
+    expect(screen.getByRole('button', { name: 'Evidence' }).getAttribute('aria-pressed')).toBe('true');
+    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    expect(screen.getByText(/00000000-0000-4000-8000-000000000401/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to this content segment' }));
+    expect(view.container.querySelector('[data-segment-id="s1"]')?.getAttribute('data-focused')).toBe('true');
+    expect(screen.getByText(detail.revision.content.segments[0].text)).toBeTruthy();
+  });
+
+  it('does not substitute a nearby quotation when a graph selection names a different exact evidence identity', () => {
+    const { detail } = associationFixture();
+    const view = render(<KnowledgeReader detail={detail} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} selection={{ tab: 'evidence',
+      evidence: { snapshotId: uuid(999), sourceVersion: digest, evidenceRef: 'record-1', start: 0, end: 5 } }}/>, { wrapper });
+    expect(screen.getByText(/requested exact evidence is absent/)).toBeTruthy();
+    expect(view.container.querySelector('mark')).toBeNull();
+  });
+
+  it('preserves the selected mention rationale and return segment when another segment cites the same source span', () => {
+    const { detail, original } = associationFixture();
+    const mention = { ...original.revision.mentions[0], basis: 'inference' as const, rationale: 'The second segment identifies the referent from this mention' };
+    const second = { ...structuredClone(detail.revision.content.segments[0]), segmentId: 's2', text: 'A second claim uses the interpreted referent.' };
+    detail.revision.content.segments[0].evidence = [{ source: { snapshotId: original.history.snapshotId, sourceVersion: original.history.sourceVersion },
+      selection: mention.selection, basis: 'direct_observation', interpretation: 'The first segment directly quotes the same source span' }];
+    detail.revision.content.segments.push(second);
+    detail.revision.bodyDigest = knowledgeBodyDigest(detail.revision);
+    detail.derivedAssociations.bodyRef.bodyDigest = detail.revision.bodyDigest;
+    detail.derivedAssociations.revision!.segmentEntityRefs = [{ segmentId: 's2', entityId: mention.entityId, mentionIds: [mention.mentionId] }];
+    if (detail.derivedCatalog.status !== 'available') throw new Error('Expected an available fixture catalog');
+    detail.derivedCatalog.mentions = [mention];
+    function View() {
+      const [selection, setSelection] = useState<KnowledgeReaderSelection>({ tab: 'associations', segmentId: 's2', mentionId: mention.mentionId });
+      return <KnowledgeReader detail={detail} lang="en" selection={selection} onSelectionChange={setSelection} onRevision={vi.fn()} onRetry={vi.fn()}/>;
+    }
+    const view = render(<View/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect this mention in its source' }));
+    expect(screen.getByText(`Inference · ${mention.rationale}`)).toBeTruthy();
+    expect(screen.queryByText(/Direct observation · The first segment/)).toBeNull();
+    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Return to this content segment' }));
+    expect(view.container.querySelector('[data-segment-id="s2"]')?.getAttribute('data-focused')).toBe('true');
+    expect(view.container.querySelector('[data-segment-id="s1"]')?.getAttribute('data-focused')).toBe('false');
+    expect(screen.getByText(second.text)).toBeTruthy();
+  });
+
+  it.each(['s1', 's2'])('keeps relation evidence semantics and returns to %s when canonical citations share its exact span', segmentId => {
+    const { detail, original } = associationFixture();
+    const shared = { source: { snapshotId: original.history.snapshotId, sourceVersion: original.history.sourceVersion }, selection: original.revision.mentions[0].selection };
+    detail.revision.content.segments[0].evidence = [{ ...shared, basis: 'direct_observation', interpretation: 'Direct source citation for the first segment' }];
+    detail.revision.content.segments.push({ segmentId: 's2', text: 'The second segment interprets a relation from the same quote.',
+      evidence: [{ ...shared, basis: 'source_assertion', interpretation: 'Canonical assertion for the second segment' }] });
+    detail.revision.bodyDigest = knowledgeBodyDigest(detail.revision);
+    detail.derivedAssociations.bodyRef.bodyDigest = detail.revision.bodyDigest;
+    const relation = { ...detail.derivedAssociations.revision!.typedRelations![0], segmentIds: ['s1', 's2'],
+      evidence: [{ ...shared, basis: 'inference' as const, interpretation: 'The relationship is inferred independently from the quoted name' }] };
+    detail.derivedAssociations.revision!.typedRelations = [relation];
+    const changed = vi.fn();
+    function View() {
+      const [selection, setSelection] = useState<KnowledgeReaderSelection>({ tab: 'associations', segmentId, relationId: relation.relationId });
+      return <KnowledgeReader detail={detail} lang="en" selection={selection} onSelectionChange={next => { changed(next); setSelection(next); }} onRevision={vi.fn()} onRetry={vi.fn()}/>;
+    }
+    const view = render(<View/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect this relation evidence in its source' }));
+    expect(changed).toHaveBeenLastCalledWith({ tab: 'evidence', segmentId, mentionId: undefined, relationId: relation.relationId,
+      evidence: { ...shared.source, evidenceRef: shared.selection.evidenceRef, start: shared.selection.start, end: shared.selection.end } });
+    expect(screen.getByText(`Inference · ${relation.evidence[0].interpretation}`)).toBeTruthy();
+    expect(screen.queryByText(/Direct observation · Direct source citation/)).toBeNull();
+    expect(screen.queryByText(/Source assertion · Canonical assertion/)).toBeNull();
+    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    expect(screen.getByText(relation.relationId, { selector: 'code' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to this content segment' }));
+    expect(view.container.querySelector(`[data-segment-id="${segmentId}"]`)?.getAttribute('data-focused')).toBe('true');
+    expect(view.container.querySelector(`[data-segment-id="${segmentId === 's1' ? 's2' : 's1'}"]`)?.getAttribute('data-focused')).toBe('false');
+  });
+
+  it.each(['segment', 'mention', 'relation'] as const)('does not fall back to a matching source span when the explicit %s target is missing', target => {
+    const { detail } = associationFixture(), citation = detail.revision.content.segments[0].evidence[0];
+    const view = render(<KnowledgeReader detail={detail} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} selection={{ tab: 'evidence',
+      segmentId: target === 'segment' ? 'missing-segment' : 's1', ...(target === 'mention' ? { mentionId: 'missing-mention' } : {}), ...(target === 'relation' ? { relationId: 'missing-relation' } : {}),
+      evidence: { ...citation.source, evidenceRef: citation.selection.evidenceRef, start: citation.selection.start, end: citation.selection.end } }}/>, { wrapper });
+    expect(screen.getByText(/requested exact evidence is absent/)).toBeTruthy();
+    expect(view.container.querySelector('mark')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Return to this content segment' })).toBeNull();
+  });
+
   it('shows the exact bound segment, entity, mention and typed evidence instead of substituting the current catalog', () => {
     const { detail } = associationFixture();
     render(<KnowledgeReader detail={detail} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} onReviewAssociations={vi.fn()}/>, { wrapper });
@@ -626,8 +731,10 @@ describe('independent entity mapping review', () => {
       revision: { ...saved.derivedAssociations.revision!, revisionId: uuid(701), parentRevisionId: uuid(700),
         entityAnalysisRef: { analysisId: current.history.analysisId, revisionId: current.revision.revisionId }, typedRelations: undefined } };
     saved.derivedCatalog = { status: 'available', analysisId: current.history.analysisId, revisionId: current.revision.revisionId,
+      snapshotId: current.history.snapshotId, sourceVersion: current.history.sourceVersion,
       currentHeadRevisionId: current.revision.revisionId, entities: current.revision.entities, mentions: current.revision.mentions };
-    const calls = api(call => call.operation === 'entities' ? json(current) : call.operation === 'apply-associations' ? json(saved) : undefined);
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, current))
+      : call.operation === 'entities' ? json(current) : call.operation === 'apply-associations' ? json(saved) : undefined);
     function View({ value }: { value: KnowledgeCandidateDetail }) {
       const [editing, setEditing] = useState(false), [result, setResult] = useState<KnowledgeCandidateDetail>();
       return <><KnowledgeReader detail={result ?? value} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} onMapAssociations={() => setEditing(true)}/>
@@ -637,6 +744,7 @@ describe('independent entity mapping review', () => {
     const view = render(<View value={detail}/>, { wrapper });
     fireEvent.click(screen.getByRole('button', { name: 'Entities and associations' }));
     fireEvent.click(screen.getByRole('button', { name: 'Edit entity mappings' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Load current entity revision' }));
     const select = await screen.findByRole('combobox', { name: 'Entities for segment 1' });
     expect(screen.queryByRole('checkbox', { name: /^Alpha / })).toBeNull();
@@ -663,6 +771,63 @@ describe('independent entity mapping review', () => {
     expect(received.mock.calls[0][0].maintenance).toEqual(detail.maintenance);
     expect(screen.getByText('Association review: Pending')).toBeTruthy();
     expect(detail.derivedAssociations.revision?.typedRelations).toHaveLength(1);
+    expect(calls.filter(call => call.operation === 'association-catalogs').map(call => call.body)).toEqual([
+      { workspace: '/mapping-fixture', operation: 'association-catalogs', id: detail.revision.knowledgeId, revision: detail.revision.revisionId },
+    ]);
+    expect(calls.some(call => call.operation === 'rebuild-associations')).toBe(false);
+    expect(screen.getByText(saved.derivedAssociations.revision!.revisionId, { selector: 'code' })).toBeTruthy();
+  });
+
+  it('keeps the original binding inspectable through an unreadable directory and preserves the draft while retrying exact-source candidates', async () => {
+    const { detail, original } = associationFixture(); let attempts = 0;
+    const available = matchingCatalogs(detail, original); available.unavailableAnalyses = 1;
+    available.sources.push({ snapshotId: uuid(450), sourceVersion: digest, status: 'available' });
+    const calls = api(call => call.operation === 'association-catalogs' ? ++attempts === 1 ? json({}, 503) : json(available)
+      : call.operation === 'entities' ? json(original) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/mapping-fixture" lang="en" onClose={vi.fn()} onSaved={vi.fn()} onReadback={vi.fn()}/>, { wrapper });
+    await screen.findByText(/Matching entity analyses could not be read/);
+    expect(screen.queryByRole('textbox', { name: 'Entity analysis ID' })).toBeNull();
+    change('Mapping reason', 'Preserve this checked reason');
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision' }));
+    await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
+    expect((screen.getByRole('checkbox', { name: /^Alpha / }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    expect(screen.getByRole('button', { name: 'Save pending mappings' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload analysis catalog' }));
+    await screen.findByText(/catalog coverage is incomplete/);
+    expect(screen.getAllByText(/Selected conversation · codex · 2 source messages · 2 entities/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/No readable exact-source analysis/)).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: 'Mapping reason' }) as HTMLTextAreaElement).value).toBe('Preserve this checked reason');
+    expect(calls.find(call => call.operation === 'entities')!.body).toMatchObject({ analysisId: original.history.analysisId, revision: original.revision.revisionId });
+    expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(0);
+  });
+
+  it.each([409, 503])('preserves the mapping draft after %s and reads a new projection without resending the frozen command', async status => {
+    const { detail, original } = associationFixture(), saved = vi.fn(), readback = vi.fn();
+    const latest = structuredClone(detail); latest.derivedAssociations.generation = 4; latest.derivedAssociations.headRevisionId = uuid(705);
+    latest.derivedAssociations.revision!.revisionId = uuid(705); latest.derivedAssociations.reviewStatus = 'pending';
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
+      : call.operation === 'entities' ? json(original) : call.operation === 'apply-associations' ? json({ error: status === 409 ? 'knowledge_conflict' : 'internal_failure' }, status)
+        : call.operation === 'show' ? json(latest) : undefined);
+    const view = render(<AssociationMappingDrawer detail={detail} workspace="/mapping-fixture" lang="en" onClose={vi.fn()} onSaved={saved} onReadback={readback}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Load bound revision' }));
+    await screen.findByRole('combobox', { name: 'Entities for segment 1' });
+    change('Mapping reason', 'Checked original binding');
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    const refreshed = structuredClone(detail); refreshed.derivedAssociations.generation = 99;
+    view.rerender(<AssociationMappingDrawer detail={refreshed} workspace="/mapping-fixture" lang="en" onClose={vi.fn()} onSaved={saved} onReadback={readback}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Check latest knowledge (read-only)' }));
+    await screen.findByText('Latest revision loaded');
+    expect((screen.getByRole('textbox', { name: 'Mapping reason' }) as HTMLTextAreaElement).value).toBe('Checked original binding');
+    expect(screen.getByRole('button', { name: 'Save pending mappings' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1);
+    expect(calls.find(call => call.operation === 'apply-associations')!.body).toMatchObject({ generation: 3, revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest });
+    expect(saved).not.toHaveBeenCalled(); expect(readback).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close draft and inspect this revision' }));
+    expect(readback).toHaveBeenCalledWith(latest);
   });
 });
 

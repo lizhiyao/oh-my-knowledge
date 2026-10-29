@@ -112,6 +112,16 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被编辑时拒绝。机械字段保留与映射不等于来源保真或任务验收。保留或使用前仍需核对新段落及证据。旧工作区不变，可继续用匹配旧 binary 读取；回退是重新打开保全的旧目录与旧程序，不引入永久双 canonical reader。
 
+### 5.3 知识图谱读取投影 {#knowledge-graph}
+
+应用层的 `graph({knowledgeIds?, includeHistory?})` 返回只读 `knowledge-graph` 投影（Schema 1），不创建新的持久化主数据或调用模型。显式选择最多 1,000 条知识；空选择是空范围。知识节点固定 `{knowledgeId, revisionId, bodyDigest}`，实体节点固定 `{analysisId, entityRevisionId, entityId}`，来源节点固定 `{snapshotId, sourceVersion}`。同名节点不合并。
+
+正文依据边保留段落、原 evidence 和位置核对状态；段落实体边保留精确投影、目录修订及 mention ID。typed 关系、组件、集合、可能身份和修订父子边只投影已有记录，不从共现推断。默认展示当前正文及其实际绑定；历史需明确展开，旧投影不能标为当前。当前投影绑定旧目录时，保留原绑定，并用 `catalogCurrent` 与实体修订状态单独提示，不自动换头。
+
+覆盖状态与已知节点／边分别返回。当前正文缺少可用关联、绑定目录过期、来源异常或位置不匹配等形成明确缺口；历史关联结果保留各自状态。来源异常局部降级，正文和其它可读依据保留，不暴露原始异常或来源元数据中的文件路径。请求范围内的大库、长历史总图规模仍取决于已有记录，不将小范围操作证据泛化为负载保证。
+
+`associationCatalogs(id, revisionId?)` 只列出与该正文 evidence 的精确来源身份匹配的目录及可选修订，返回来源摘要与不可读分析数量。目录召回不确认身份；写入仍使用既有单目录 `applyAssociations`、乐观并发和新投影待审规则。Studio 仅传输、呈现该领域投影并组织用户动作，不读取底层文件或重新定义关系。
+
 ## 6. 验收与限制 {#current-evidence}
 
 功能闭环的验收覆盖持续积累、旧知识修订、来源与版本回看、组织关联，以及载体提醒／更新一致性。功能可用不等于整体提炼准确率、知识真实性或任务收益已验收；这些证据各自记录。

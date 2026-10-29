@@ -6,6 +6,8 @@ import type { GenerationArchiveCheck, GenerationStage } from '../../../knowledge
 type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
 export type KnowledgeCandidateDetail = CandidateDetail & { origin?: EvidenceWindow['origin'] };
 export type KnowledgeCandidateSource = EvidenceWindow;
+export type KnowledgeGraph = ReturnType<KnowledgeApplication['graph']>;
+export type KnowledgeAssociationCatalogs = ReturnType<KnowledgeApplication['associationCatalogs']>;
 export type KnowledgeExtractionQuality = ReturnType<KnowledgeApplication['quality']>;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
 export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['queryEntities']>, 'knowledgeStatus'> & { knowledgeStatus: 'available' | 'unavailable' };
