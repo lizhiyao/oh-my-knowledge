@@ -5,10 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../../src/knowledge/application/local.js';
-import { executeArtifactAuthoring } from '../../../../src/studio/application/knowledge/artifact-authoring.js';
+import { executeCarrierAuthoring, parseCarrierAuthoringRequest } from '../../../../src/knowledge/artifacts/authoring/application.js';
 import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../../src/evidence/storage/knowledge-workspace.js';
 import { CarrierLibrary } from '../../../../src/knowledge/artifacts/authoring/carrier-library.js';
-import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../../src/studio/view-models/knowledge/artifact-authoring.js';
+import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../../src/knowledge/artifacts/authoring/carrier-contracts.js';
 import { FileKnowledgeStore } from '../../../../src/knowledge/adapters/knowledge-store.js';
 import { knowledgeBodyDigest } from '../../../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeDraft } from '../../../../src/knowledge/contracts.js';
@@ -37,7 +37,10 @@ async function setup() {
     knowledgeId: entry.knowledgeId, expectedGeneration: 0, expectedHeadRevisionId: null,
     revision: { ...body, ...entry, bodyDigest: knowledgeBodyDigest(body), createdAt: '2026-10-28T00:00:00Z', revisedAt: '2026-10-28T00:00:00Z',
       createdBy: actor, revisedBy: actor, observationRefs: [snapshot.snapshotId], derivations: [], revisionReason: 'Authored body fixture; no model invocation.' } }, actor);
-  const execute = (fields: Record<string, unknown>) => executeArtifactAuthoring({ workspace, ...fields }, 'zh');
+  const execute = (fields: Record<string, unknown>) => executeCarrierAuthoring(parseCarrierAuthoringRequest(fields), {
+    knowledge: createLocalKnowledgeApplication(workspace), library: new CarrierLibrary(workspace),
+    id: randomUUID, now: () => new Date().toISOString(),
+  }, 'zh');
   const preview = (fields: Record<string, unknown> = {}) => execute({ operation: 'preview', source: { sourceKind: 'new' }, artifactKind: 'skill', name: '工具使用', ids: [entry.knowledgeId], ...fields }) as CarrierDraft;
   const save = (draft: CarrierDraft, content = draft.content) => execute({ operation: 'save', artifactId: draft.artifactId, source: draft.source, artifactKind: draft.artifactKind, name: draft.name, directoryName: draft.directoryName, baselineRevisionId: draft.baselineRevisionId, baselineHash: draft.baselineHash, content, selectedRefs: draft.selectedRefs, tagSelections: draft.tagSelections }) as CarrierDetail;
   const retain = () => { const current = app.detail(entry.knowledgeId); app.maintain(entry.knowledgeId, current.revision.revisionId, 'retain', '核对后维护', current.history.generation); };

@@ -33,9 +33,23 @@ export const GenerationJournalSchema = z.strictObject({
 });
 export type GenerationStage = z.infer<typeof GenerationStageSchema>;
 export type GenerationJournal = z.infer<typeof GenerationJournalSchema>;
+/** Inventory observations never claim that a native original has been decoded or verified. */
+export interface GenerationArchiveCheck {
+  runId: string;
+  invocationId: string;
+  archiveStatus: 'not_recorded' | 'present' | 'missing' | 'invalid' | 'unknown';
+  verificationStatus: 'not_verified';
+  reason?: string;
+}
+export interface GenerationJournalInventory {
+  current: GenerationJournal[];
+  unsupported: { runId: string; schemaStatus: 'unsupported'; reason: string }[];
+  unavailable: { runId: string; reason: 'unreadable' | 'invalid_identity'; detail: string }[];
+  archiveChecks: GenerationArchiveCheck[];
+}
 export interface GenerationJournalStore {
   read(runId: string): GenerationJournal | undefined;
-  list(): { current: GenerationJournal[]; unsupported: { runId: string; schemaStatus: 'unsupported'; reason: string }[] };
+  list(): GenerationJournalInventory;
   write(journal: GenerationJournal, expectedGeneration: number): GenerationJournal;
   archive(journal: GenerationJournal, stage: GenerationStage, outcome: GenerationOutcome): z.infer<typeof GenerationOutcomeRefSchema>;
   outcome(journal: GenerationJournal, stage: GenerationStage): GenerationOutcome | undefined;

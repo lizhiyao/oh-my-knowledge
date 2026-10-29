@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { constants as bufferConstants } from 'node:buffer';
 import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
-import { GenerationJournalSchema, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { GenerationJournalSchema, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
@@ -51,7 +51,8 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
       || before.ctimeNs !== after.ctimeNs || bytes.length !== Number(before.size)) throw new Error('Generation storage changed during read.');
     const text = bytes.toString('utf8'); if (!Buffer.from(text).equals(bytes)) throw new Error('Invalid generation storage UTF-8.'); return text;
   }
-  read(runId: string): GenerationJournal | undefined {
+  /** Verify the journal's identity and publication state without decoding native originals. */
+  private journal(runId: string): GenerationJournal | undefined {
     this.check(); const path = this.path(runId);
     if (!existsSync(path)) {
       if (existsSync(join(this.workspaceRoot, 'extraction-runs', `${uuid.parse(runId)}.json`))) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
@@ -69,22 +70,63 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
       const requestDigest = generationTextDigest(canonicalJson({ executor: journal.executor, model: journal.model, timeoutMs: journal.timeoutMs,
         profileId: stage.profileId, system: stage.system, wireId: stage.wireId, input: stage.input, producer: stage.producer }));
       if (requestDigest !== stage.requestDigest) throw new Error('Generation request digest mismatch.');
+    }
+    return journal;
+  }
+  /** Execution, recovery and publication continue to require the complete archive checks. */
+  read(runId: string): GenerationJournal | undefined {
+    const journal = this.journal(runId);
+    if (journal) for (const stage of journal.stages) {
       if (stage.outcomeRef && !this.outcome(journal, stage)) throw new Error('Generation native archive is missing.');
     }
     return journal;
   }
+  private archiveCheck(journal: GenerationJournal, stage: GenerationStage): GenerationArchiveCheck {
+    const base = { runId: journal.runId, invocationId: stage.invocationId, verificationStatus: 'not_verified' as const };
+    if (!stage.outcomeRef) return { ...base, archiveStatus: stage.state === 'claimed' ? 'unknown' : 'not_recorded',
+      ...(stage.state === 'claimed' ? { reason: 'Native dispatch is claimed without an archived result reference.' } : {}) };
+    try {
+      checkStorageDirectory(join(this.root, 'outcomes'));
+      checkStorageDirectory(join(this.root, 'outcomes', uuid.parse(journal.runId)));
+      const stat = lstatSync(this.archivePath(journal.runId, stage.invocationId));
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_GENERATION_OUTCOME_BYTES || stat.size !== stage.outcomeRef.bytes) {
+        return { ...base, archiveStatus: 'invalid', reason: 'Native archive file metadata does not match its recorded reference.' };
+      }
+      return { ...base, archiveStatus: 'present', reason: 'File metadata observed; content, digest and native binding have not been verified.' };
+    } catch (error) {
+      return { ...base, archiveStatus: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unknown',
+        reason: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'Recorded native archive is missing.' : 'Native archive file metadata is unavailable.' };
+    }
+  }
   list(): ReturnType<GenerationJournalStore['list']> {
     this.check(); const current: GenerationJournal[] = [], unsupported: ReturnType<GenerationJournalStore['list']>['unsupported'] = [];
+    const unavailable: ReturnType<GenerationJournalStore['list']>['unavailable'] = [], archiveChecks: GenerationArchiveCheck[] = [];
     const files = existsSync(this.root) ? readdirSync(this.root).filter(f => f.endsWith('.json')).sort() : [];
-    if (files.length > 4096 || files.reduce((sum, file) => sum + lstatSync(join(this.root, file)).size, 0) > 64 * 1024 * 1024) throw new Error('Generation inventory capacity exceeded.');
+    if (files.length > 4096) throw new Error('Generation inventory capacity exceeded.');
+    let totalBytes = 0;
     for (const file of files) {
-      const runId = file.slice(0, -5); const journal = this.read(runId); if (journal) current.push(journal);
+      const runId = file.slice(0, -5);
+      if (!uuid.safeParse(runId).success) {
+        unavailable.push({ runId, reason: 'invalid_identity', detail: 'Generation journal filename is not a run identity.' }); continue;
+      }
+      try {
+        totalBytes += lstatSync(join(this.root, file)).size;
+        if (totalBytes > 64 * 1024 * 1024) throw new Error('Generation inventory capacity exceeded.');
+        const journal = this.journal(runId);
+        if (journal) { current.push(journal); archiveChecks.push(...journal.stages.map(stage => this.archiveCheck(journal, stage))); }
+        else unavailable.push({ runId, reason: 'unreadable', detail: 'Generation journal disappeared during inventory.' });
+      } catch (error) {
+        if (totalBytes > 64 * 1024 * 1024) throw error;
+        if (error instanceof KnowledgeStorageStateError && error.stateCode === 'knowledge_storage_unsupported') {
+          unsupported.push({ runId, schemaStatus: 'unsupported', reason: 'Generation journal requires a matching workflow version.' });
+        } else unavailable.push({ runId, reason: 'unreadable', detail: 'Generation journal is invalid or unreadable.' });
+      }
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
       unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v1 does not decode run5.' });
     }
-    return { current, unsupported };
+    return { current, unsupported, unavailable, archiveChecks };
   }
   write(input: GenerationJournal, expectedGeneration: number): GenerationJournal {
     const next = GenerationJournalSchema.parse(input), path = this.path(next.runId); this.check();

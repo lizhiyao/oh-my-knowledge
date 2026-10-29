@@ -14,7 +14,7 @@ const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 
   analysisId: 'analysis', snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}`, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
   receipts: [{ requestId: 'request', commandDigest: 'digest', committedGeneration: 1, revisionId: revision.revisionId }] },
   source: { status: 'available', excerpts: [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], limitations: ['仅所选消息'] } };
-const run: KnowledgeCandidateRun = { runId: 'analysis', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none',
+const run: KnowledgeCandidateRun = { runId: 'analysis', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none', archiveChecks: [], archiveVerification: 'not_verified',
   entityAnalysis: { analysisId: 'analysis', revisionId: 'revision-1', entityCount: 2, mentionCount: 1, unresolvedCount: 1, reviewStatus: 'pending' } };
 
 describe('entity analysis user views', () => {
