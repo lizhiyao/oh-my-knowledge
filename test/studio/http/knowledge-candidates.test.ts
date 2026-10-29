@@ -17,6 +17,10 @@ import { AUTO_EXTRACTION_WORKFLOW } from '../../../src/knowledge/application/aut
 import { retrieveKnowledge } from '../../../src/knowledge/application/retrieval.js';
 import { writeJsonFileAtomic } from '../../../src/shared/atomic-json.js';
 import { FileKnowledgeReviewStore } from '../../../src/knowledge/adapters/review-store.js';
+import { FileKnowledgeAssociationStore } from '../../../src/knowledge/adapters/association-store.js';
+import { FileKnowledgeStore } from '../../../src/knowledge/adapters/knowledge-store.js';
+import { FileEntityAnalysisStore } from '../../../src/knowledge/adapters/entity-store.js';
+import type { KnowledgeBodyEvidence } from '../../../src/knowledge/contracts.js';
 import type { KnowledgeReviewContentInput, KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews.js';
 
 /** Pure authored responses exercise current journal/publication paths without any model execution. */
@@ -412,17 +416,47 @@ describe('Studio candidate action boundary', () => {
     const stale = await post(request); expect(stale.status).toBe(409); expect(await stale.json()).toEqual({ error: 'knowledge_conflict' });
     const candidate = await (await post({ operation: 'show', id: bodyRef.knowledgeId })).json(), original = app.detail(bodyRef.knowledgeId);
     expect(candidate.derivedAssociations.revision.catalogRefs[0].entityRevisionId).toBe(before.revision.revisionId);
-    const associationDraft = { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId, entityRevisionId: corrected.revision.revisionId, entityId: corrected.revision.entities[0].entityId, mentionIds: [corrected.revision.mentions[0].mentionId] }], typedRelations: [], issues: [] };
+    const endpoint = (entityId: string) => ({ analysisId, entityRevisionId: corrected.revision.revisionId, entityId });
+    const relation = { relationId: 'source-supported-use', segmentIds: ['s1'], subject: endpoint(corrected.revision.entities[0].entityId),
+      relation: '使用', object: endpoint(corrected.revision.entities[1].entityId), modality: 'descriptive', polarity: 'positive',
+      evidence: candidate.revision.content.segments[0].evidence.map((evidence: KnowledgeBodyEvidence) => ({ ...structuredClone(evidence),
+        basis: 'inference', interpretation: '关系解释保留为推断，不因保存而升级为直接观测。' })), issues: ['此测试只核对写入和来源约束，不证明外部真值。'] };
+    const associationDraft = { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }],
+      segmentEntityRefs: corrected.revision.entities.map((entity: { entityId: string }) => ({ segmentId: 's1', ...endpoint(entity.entityId),
+        mentionIds: corrected.revision.mentions.filter((mention: { entityId: string }) => mention.entityId === entity.entityId).map((mention: { mentionId: string }) => mention.mentionId) })),
+      typedRelations: [relation], issues: [] };
     const applyRequest = { operation: 'apply-associations', id: bodyRef.knowledgeId, revision: bodyRef.revisionId, bodyDigest: bodyRef.bodyDigest,
       generation: 1, draft: associationDraft, reason: '正文不改，只修订独立关联' };
     const invalid = await post({ ...applyRequest, draft: { ...associationDraft, segmentEntityRefs: [{ ...associationDraft.segmentEntityRefs[0], mentionIds: [randomUUID()] }] } });
     expect(invalid.status).toBe(400); expect((await invalid.text())).not.toContain(root); expect(app.detail(bodyRef.knowledgeId)).toEqual(original);
+    for (const typed of [{ ...relation, object: endpoint(randomUUID()) }, { ...relation,
+      evidence: [{ ...relation.evidence[0], selection: { ...relation.evidence[0].selection, quote: '未包含在正文中的依据' } }] }]) {
+      const refusedRelation = await post({ ...applyRequest, draft: { ...associationDraft, typedRelations: [typed] } });
+      expect(refusedRelation.status).toBe(400); expect((await refusedRelation.text())).not.toContain(root);
+      expect(app.detail(bodyRef.knowledgeId)).toEqual(original);
+    }
     const applied = await post(applyRequest); expect(applied.status).toBe(200); const projection = await applied.json();
     expect(projection.history.revisions).toHaveLength(1); expect(projection.revision).toEqual(original.revision); expect(projection.derivedAssociations.reviewStatus).toBe('pending');
+    expect(projection.derivedAssociations.revision.typedRelations).toEqual([relation]);
     const reviewed = await post({ operation: 'review-associations', id: bodyRef.knowledgeId, revision: projection.derivedAssociations.revision.revisionId, generation: 2, choice: 'accept', reason: '明确核对新关联' });
     expect(reviewed.status).toBe(200); expect((await reviewed.json()).derivedAssociations.reviewStatus).toBe('accepted');
     const reopenedGraph = await (await post({ operation: 'graph', knowledgeIds: [bodyRef.knowledgeId], includeHistory: true })).json();
     expect(reopenedGraph.edges).toContainEqual(expect.objectContaining({ edgeKind: 'segment_entity', projectionRevisionId: projection.derivedAssociations.revision.revisionId, reviewStatus: 'accepted' }));
+    expect(reopenedGraph.edges).toContainEqual(expect.objectContaining({ edgeKind: 'typed_relation', relationId: relation.relationId,
+      projectionRevisionId: projection.derivedAssociations.revision.revisionId, reviewStatus: 'accepted' }));
+    const changedRelation = { ...relation, relation: '使用 Beta', issues: [...relation.issues, '适用条件需要另行核对。'] };
+    const edited = await post({ ...applyRequest, generation: 3, draft: { ...associationDraft, typedRelations: [changedRelation] } });
+    expect(edited.status).toBe(200); const editedProjection = await edited.json();
+    expect(editedProjection.derivedAssociations).toMatchObject({ generation: 4, reviewStatus: 'pending', revision: { typedRelations: [changedRelation] } });
+    expect(editedProjection.revision).toEqual(original.revision);
+    const removed = await post({ ...applyRequest, generation: 4, draft: { ...associationDraft, typedRelations: [] } });
+    expect(removed.status).toBe(200); const removedProjection = await removed.json();
+    expect(removedProjection.derivedAssociations).toMatchObject({ generation: 5, reviewStatus: 'pending', revision: { typedRelations: [] } });
+    const relationHistory = new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local',
+      new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace), new FileEntityAnalysisStore(join(workspace, 'entities'), workspace), workspace).read(bodyRef.knowledgeId);
+    expect(relationHistory.revisions.find(revision => revision.revisionId === projection.derivedAssociations.revision.revisionId)?.typedRelations).toEqual([relation]);
+    expect(relationHistory.revisions.find(revision => revision.revisionId === editedProjection.derivedAssociations.revision.revisionId)?.typedRelations).toEqual([changedRelation]);
+    expect(relationHistory.revisions.at(-1)?.typedRelations).toEqual([]);
     expect(createLocalKnowledgeApplication(workspace).detail(bodyRef.knowledgeId).revision).toEqual(original.revision);
     const conditions = before.source.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
     draft.content.segments[0].text += ` ${conditions.text}`;

@@ -417,7 +417,7 @@ describe('knowledge graph browsing and evidence', () => {
     const group = screen.getByRole('group', { name: `段落 1 / ${uuid(4)}` });
     fireEvent.click(within(group).getAllByRole('checkbox')[1]);
     fireEvent.change(screen.getByRole('textbox', { name: '映射修改理由' }), { target: { value: '核对同一消息中第二次准确提及' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /^本次只保存实体映射/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^我已核对上述精确实体修订、映射与关系/ }));
     fireEvent.click(screen.getByRole('button', { name: '保存待核对映射' }));
     await waitFor(() => expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1));
     await waitFor(() => expect(screen.queryByRole('textbox', { name: '映射修改理由' })).toBeNull());

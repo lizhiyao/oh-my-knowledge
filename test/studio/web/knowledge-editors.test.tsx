@@ -638,6 +638,18 @@ function multiCatalogFixture() {
 }
 
 describe('independent entity mapping review', () => {
+  async function chooseRelationOption(name: string, label: string | RegExp) {
+    const input = screen.getByRole('combobox', { name });
+    fireEvent.mouseDown(input);
+    fireEvent.click(await screen.findByText(label, { selector: '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-content' }));
+    fireEvent.keyDown(input, { key: 'Escape', code: 'Escape' });
+    fireEvent.blur(input);
+  }
+  function confirmMapping() {
+    change('Mapping reason', 'Checked exact entities, relation meaning and source evidence');
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
+  }
+
   it('keeps identical local entity and mention IDs separate across catalogs and degrades only the missing catalog', () => {
     const { detail, original, second } = multiCatalogFixture();
     const inspectEntity = vi.fn();
@@ -661,7 +673,7 @@ describe('independent entity mapping review', () => {
   it('explicitly removes the last catalog and saves empty pending mappings with the frozen body and projection baseline', async () => {
     const { detail, original } = associationFixture();
     const saved = structuredClone(detail); saved.derivedAssociations.reviewStatus = 'pending';
-    saved.derivedAssociations.revision!.catalogRefs = []; saved.derivedAssociations.revision!.segmentEntityRefs = []; saved.derivedCatalogs = [];
+    saved.derivedAssociations.revision!.catalogRefs = []; saved.derivedAssociations.revision!.segmentEntityRefs = []; saved.derivedAssociations.revision!.typedRelations = []; saved.derivedCatalogs = [];
     const received = vi.fn();
     const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
       : call.operation === 'entities' ? json(original) : call.operation === 'apply-associations' ? json(saved) : undefined);
@@ -674,11 +686,15 @@ describe('independent entity mapping review', () => {
     const submit = screen.getByRole('button', { name: 'Save pending mappings' });
     expect(submit.hasAttribute('disabled')).toBe(true);
     change('Mapping reason', 'Explicitly clear derived mappings while preserving canonical content');
-    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    expect((screen.getByRole('textbox', { name: 'Description for relation 1' }) as HTMLTextAreaElement).value).toBe('uses the selected test configuration');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove relation 1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
     fireEvent.click(submit);
     await waitFor(() => expect(received).toHaveBeenCalledOnce());
     expect(calls.find(call => call.operation === 'apply-associations')!.body).toMatchObject({ id: detail.revision.knowledgeId,
-      revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3, draft: { catalogRefs: [], segmentEntityRefs: [], issues: [] } });
+      revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3, draft: { catalogRefs: [], segmentEntityRefs: [], typedRelations: [], issues: [] } });
     expect(saved.revision).toEqual(detail.revision); expect(saved.maintenance).toEqual(detail.maintenance);
   });
 
@@ -700,13 +716,102 @@ describe('independent entity mapping review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load bound revision 1' }));
     await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
     fireEvent.click(screen.getByRole('button', { name: 'Remove catalog 1 and its mappings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove relation 1' }));
     change('Mapping reason', 'Keep only the explicitly checked second source catalog');
-    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
     await waitFor(() => expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1));
     expect(calls.find(call => call.operation === 'apply-associations')!.body).toMatchObject({ generation: 3,
       draft: { catalogRefs: [{ analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's2', analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId, entityId: second.revision.entities[0].entityId, mentionIds: [second.revision.mentions[0].mentionId] }], issues: [] } });
     expect(detail.derivedAssociations.revision!.catalogRefs).toHaveLength(2);
+  });
+
+  it('edits a relation while preserving its exact subset quote, inference and both levels of issues', async () => {
+    const { detail, original } = associationFixture(), received = vi.fn();
+    const relation = detail.derivedAssociations.revision!.typedRelations![0], citation = detail.revision.content.segments[0].evidence[0];
+    relation.evidence = [{ ...citation, basis: 'inference', interpretation: 'The relation is inferred from this specific mention.',
+      selection: { ...citation.selection, end: citation.selection.start + 5, quote: 'Alpha' } }];
+    detail.derivedAssociations.revision!.issues = ['The source only reports this historical configuration.'];
+    const unchanged = structuredClone(detail), saved = structuredClone(detail);
+    saved.derivedAssociations.reviewStatus = 'pending'; saved.derivedAssociations.generation = 4;
+    saved.derivedAssociations.revision!.typedRelations![0] = { ...structuredClone(relation), relation: 'does not permit using Beta', modality: 'permission', polarity: 'negative' };
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
+      : call.operation === 'apply-associations' ? json(saved) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/relations" lang="en" onClose={vi.fn()} onSaved={received} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.getByText(/Inference · The relation is inferred/)).toBeTruthy();
+    change('Description for relation 1', 'does not permit using Beta');
+    await chooseRelationOption('Modality for relation 1', 'Permission');
+    await chooseRelationOption('Polarity for relation 1', 'Negative');
+    confirmMapping();
+    fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    await waitFor(() => expect(received).toHaveBeenCalledWith(saved));
+    const draft = calls.find(call => call.operation === 'apply-associations')!.body.draft;
+    expect(draft).toMatchObject({ typedRelations: saved.derivedAssociations.revision!.typedRelations, issues: unchanged.derivedAssociations.revision!.issues });
+    expect(detail).toEqual(unchanged);
+    expect(saved.revision).toEqual(unchanged.revision); expect(saved.maintenance).toEqual(unchanged.maintenance);
+  });
+
+  it('adds a relation across catalog-qualified entities only after explicit segment, endpoint and evidence choices', async () => {
+    const { detail, original, second, catalogs } = multiCatalogFixture(), received = vi.fn();
+    const calls = api(call => call.operation === 'association-catalogs' ? json(catalogs)
+      : call.operation === 'apply-associations' ? json(detail) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/multi-relations" lang="en" onClose={vi.fn()} onSaved={received} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Add an entity relation' }));
+    change('Description for relation 2', 'is compared with'); confirmMapping();
+    expect(screen.getByRole('button', { name: 'Save pending mappings' }).hasAttribute('disabled')).toBe(true);
+    await chooseRelationOption('Segments for relation 2', /^1 · /);
+    await chooseRelationOption('Segments for relation 2', /^2 · /);
+    await chooseRelationOption('Subject for relation 2', /^Alpha · Catalog 1/);
+    await chooseRelationOption('Object for relation 2', /^Alpha from another source · Catalog 2/);
+    await chooseRelationOption('Evidence for relation 2', /^Source 1 · Record 0/);
+    await chooseRelationOption('Evidence for relation 2', /^Source 2 · Record 0/);
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    await waitFor(() => expect(received).toHaveBeenCalledOnce());
+    const draft = calls.find(call => call.operation === 'apply-associations')!.body.draft as { typedRelations: NonNullable<NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>['typedRelations']> };
+    expect(draft.typedRelations).toHaveLength(2);
+    expect(draft.typedRelations[0]).toEqual(detail.derivedAssociations.revision!.typedRelations![0]);
+    expect(draft.typedRelations[1]).toMatchObject({ segmentIds: ['s1', 's2'], relation: 'is compared with', modality: 'descriptive', polarity: 'positive',
+      subject: { analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: original.revision.entities[0].entityId },
+      object: { analysisId: second.history.analysisId, entityRevisionId: second.revision.revisionId, entityId: second.revision.entities[0].entityId },
+      evidence: detail.revision.content.segments.flatMap(segment => segment.evidence), issues: [] });
+    expect(draft.typedRelations[1].relationId).toMatch(/^[\da-f-]{36}$/);
+    expect(calls.some(call => call.operation === 'rebuild-associations')).toBe(false);
+  });
+
+  it.each([undefined, []])('preserves untouched relationship request intent %j while saving mappings', async typedRelations => {
+    const { detail, original } = associationFixture();
+    detail.derivedAssociations.revision!.typedRelations = typedRelations;
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
+      : call.operation === 'apply-associations' ? json(detail) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/relation-intent" lang="en" onClose={vi.fn()} onSaved={vi.fn()} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    confirmMapping(); fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    await waitFor(() => expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1));
+    const draft = calls.find(call => call.operation === 'apply-associations')!.body.draft;
+    if (typedRelations === undefined) expect(draft).not.toHaveProperty('typedRelations');
+    else expect(draft).toHaveProperty('typedRelations', []);
+  });
+
+  it('does not inherit a stale body relation or its issues into a new projection', async () => {
+    const { detail, original } = associationFixture();
+    detail.derivedAssociations.status = 'stale';
+    detail.derivedAssociations.revision!.bodyRef = { ...detail.derivedAssociations.bodyRef, revisionId: uuid(702) };
+    detail.derivedAssociations.revision!.issues = ['Only applies to the old body.'];
+    const calls = api(call => call.operation === 'association-catalogs' ? json(matchingCatalogs(detail, original))
+      : call.operation === 'apply-associations' ? json(detail) : undefined);
+    render(<AssociationMappingDrawer detail={detail} workspace="/stale-relations" lang="en" onClose={vi.fn()} onSaved={vi.fn()} onReadback={vi.fn()}/>, { wrapper });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load current entity revision' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByRole('textbox', { name: 'Description for relation 1' })).toBeNull();
+    expect(screen.queryByText('Only applies to the old body.')).toBeNull();
+    confirmMapping(); fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
+    await waitFor(() => expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1));
+    const draft = calls.find(call => call.operation === 'apply-associations')!.body.draft;
+    expect(draft).toMatchObject({ catalogRefs: [], segmentEntityRefs: [], issues: [] });
+    expect(draft).not.toHaveProperty('typedRelations');
+    expect(detail.derivedAssociations.revision!.typedRelations).toHaveLength(1);
   });
 
   it('follows a controlled segment and mention into the exact original span and back without replacing the bound entity revision', () => {
@@ -823,7 +928,7 @@ describe('independent entity mapping review', () => {
     const saved = structuredClone(detail);
     saved.derivedAssociations = { ...saved.derivedAssociations, reviewStatus: 'pending', generation: 4, headRevisionId: uuid(701),
       revision: { ...saved.derivedAssociations.revision!, revisionId: uuid(701), parentRevisionId: uuid(700),
-        catalogRefs: [{ analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], typedRelations: undefined } };
+        catalogRefs: [{ analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], typedRelations: [{ ...detail.derivedAssociations.revision!.typedRelations![0], subject: { analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId } }] } };
     saved.derivedCatalogs = [{ status: 'available', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId,
       snapshotId: current.history.snapshotId, sourceVersion: current.history.sourceVersion,
       currentHeadRevisionId: current.revision.revisionId, entities: current.revision.entities, mentions: current.revision.mentions }];
@@ -848,10 +953,12 @@ describe('independent entity mapping review', () => {
     const mentions = screen.getByRole('group', { name: `Segment 1 / ${current.revision.entities[0].entityId}` });
     expect(within(mentions).queryByRole('checkbox', { name: /^Beta/ })).toBeNull();
     fireEvent.click(within(mentions).getByRole('checkbox', { name: /^Alpha / }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Subject for relation 1' }));
+    fireEvent.click(await screen.findByText(/Alpha corrected · Catalog 1/, { selector: '.ant-select-item-option-content' }));
     change('Mapping reason', 'Checked corrected entity and exact mention');
     const saveButton = screen.getByRole('button', { name: 'Save pending mappings' });
     expect(saveButton.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
     const refreshed = structuredClone(detail); refreshed.derivedAssociations.generation = 99;
     view.rerender(<View value={refreshed}/>);
     fireEvent.click(saveButton);
@@ -860,7 +967,7 @@ describe('independent entity mapping review', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].body).toMatchObject({ revision: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest, generation: 3,
       draft: { catalogRefs: [{ analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: current.history.analysisId, entityRevisionId: current.revision.revisionId, entityId: current.revision.entities[0].entityId, mentionIds: [current.revision.mentions[0].mentionId] }], issues: [] } });
-    expect(requests[0].body.draft).not.toHaveProperty('typedRelations');
+    expect(requests[0].body.draft).toMatchObject({ typedRelations: saved.derivedAssociations.revision!.typedRelations });
     expect(received.mock.calls[0][0].revision).toEqual(detail.revision);
     expect(received.mock.calls[0][0].maintenance).toEqual(detail.maintenance);
     expect(screen.getByText('Association review: Pending')).toBeTruthy();
@@ -885,7 +992,7 @@ describe('independent entity mapping review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load bound revision' }));
     await screen.findByRole('group', { name: `Segment 1 / ${original.revision.entities[0].entityId}` });
     expect((screen.getByRole('checkbox', { name: /^Alpha / }) as HTMLInputElement).checked).toBe(true);
-    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
     expect(screen.getByRole('button', { name: 'Save pending mappings' }).hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Reload analysis catalog' }));
     await screen.findByText(/catalog coverage is incomplete/);
@@ -908,7 +1015,7 @@ describe('independent entity mapping review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load bound revision' }));
     await screen.findByRole('combobox', { name: 'Entities for segment 1' });
     change('Mapping reason', 'Checked original binding');
-    fireEvent.click(screen.getByRole('checkbox', { name: /^Save entity mappings only/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Save mappings and the relations/ }));
     const refreshed = structuredClone(detail); refreshed.derivedAssociations.generation = 99;
     view.rerender(<AssociationMappingDrawer detail={refreshed} workspace="/mapping-fixture" lang="en" onClose={vi.fn()} onSaved={saved} onReadback={readback}/>);
     fireEvent.click(screen.getByRole('button', { name: 'Save pending mappings' }));
