@@ -14,7 +14,7 @@ type KnowledgeNode = Extract<Node, { nodeKind: 'knowledge' }>;
 type EntityNode = Extract<Node, { nodeKind: 'entity' }>;
 type SourceNode = Extract<Node, { nodeKind: 'source' }>;
 type Selection = { evidenceRef: string; quote: string; start: number; end: number };
-type Citation = { source?: SourceNode; selection: Selection; basis: string; rationale?: string; positionStatus?: string; mentionId?: string; relationId?: string };
+type Citation = { source?: SourceNode; selection: Selection; basis: string; rationale?: string; positionStatus?: string; mentionId?: string; relationId?: string; catalogRef?: KnowledgeReaderSelection['catalogRef'] };
 
 function nodeLabel(node: Node, lang: Language) {
   return node.nodeKind === 'knowledge' ? node.title : node.nodeKind === 'entity' ? node.label
@@ -152,10 +152,12 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
 function citations(graph: KnowledgeGraph, edge: Edge): Citation[] {
   const source = (id: string) => graph.nodes.find((node): node is SourceNode => node.nodeKind === 'source' && node.nodeId === id);
   if (edge.edgeKind === 'source_evidence') return [{ source: source(edge.to), selection: edge.evidence.selection, basis: edge.evidence.basis, rationale: edge.evidence.interpretation, positionStatus: edge.positionStatus }];
-  if (edge.edgeKind === 'entity_mention') return [{ source: source(edge.to), selection: edge.selection, basis: edge.basis, rationale: edge.rationale, positionStatus: edge.positionStatus, mentionId: edge.mentionId }];
+  const entity = graph.nodes.find((node): node is EntityNode => node.nodeKind === 'entity' && node.nodeId === (edge.edgeKind === 'segment_entity' ? edge.to : edge.from));
+  const catalogRef = entity ? { analysisId: entity.analysisId, entityRevisionId: entity.entityRevisionId } : undefined;
+  if (edge.edgeKind === 'entity_mention') return [{ catalogRef, source: source(edge.to), selection: edge.selection, basis: edge.basis, rationale: edge.rationale, positionStatus: edge.positionStatus, mentionId: edge.mentionId }];
   if (edge.edgeKind === 'segment_entity') return edge.mentions.map(mention => {
     const original = graph.edges.find(value => value.edgeKind === 'entity_mention' && value.from === edge.to && value.mentionId === mention.mentionId);
-    return { source: original ? source(original.to) : undefined, selection: mention.selection, basis: mention.basis, rationale: mention.rationale,
+    return { catalogRef, source: original ? source(original.to) : undefined, selection: mention.selection, basis: mention.basis, rationale: mention.rationale,
       mentionId: mention.mentionId, positionStatus: original && 'positionStatus' in original ? original.positionStatus : undefined };
   });
   if (edge.edgeKind === 'typed_relation') return edge.evidence.map(evidence => ({ source: graph.nodes.find((node): node is SourceNode => node.nodeKind === 'source'
@@ -210,7 +212,7 @@ export function KnowledgeGraphInspection({ graph, selectedId, detail, loading, w
           return <section className="knowledge-network-citation" key={`${ref.mentionId ?? ref.selection.evidenceRef}:${index}`}>
             <blockquote>{ref.selection.quote}</blockquote><p className="candidate-help">{ref.basis === 'inference' ? t('推断', 'Inference') : ref.basis === 'direct_observation' ? t('直接观测', 'Direct observation') : ref.basis === 'explicit' ? t('明确提及', 'Explicit mention') : ref.basis === 'inferred' ? t('推断对应', 'Inferred identity') : t('来源中的说法', 'Source assertion')}{ref.rationale ? ` · ${ref.rationale}` : ''}</p>
             <p className="candidate-help">{ref.source?.origin?.title || t('精确来源窗口', 'Exact source window')} · {ref.selection.evidenceRef} · {ref.selection.start}–{ref.selection.end}</p>
-            {ref.source && <Button type="link" size="small" onClick={() => onLocate({ tab: 'evidence', segmentId: segmentIds[0], mentionId: ref.mentionId, relationId: ref.relationId, evidence: { snapshotId: ref.source!.snapshotId, sourceVersion: ref.source!.sourceVersion, evidenceRef: ref.selection.evidenceRef, start: ref.selection.start, end: ref.selection.end } })}>{t('在阅读器回查依据', 'Inspect evidence in reader')}</Button>}
+            {ref.source && <Button type="link" size="small" onClick={() => onLocate({ tab: 'evidence', segmentId: segmentIds[0], mentionId: ref.mentionId, relationId: ref.relationId, ...(ref.catalogRef ? { catalogRef: ref.catalogRef } : {}), evidence: { snapshotId: ref.source!.snapshotId, sourceVersion: ref.source!.sourceVersion, evidenceRef: ref.selection.evidenceRef, start: ref.selection.start, end: ref.selection.end } })}>{t('在阅读器回查依据', 'Inspect evidence in reader')}</Button>}
             {excerpt ? <details><summary>{t('展开这处依据的完整原文', 'Show this evidence in the full source message')}</summary><p className="candidate-help">{t('来源消息', 'Source message')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('来源时间未知', 'Source time unknown')}</p>
               {!matched && <Alert type="warning" title={t('引文位置不匹配，不能作为已核对原文。', 'Quotation position does not match; it is not verified source evidence.')}/>}<pre className="knowledge-source">{matched ? <>{excerpt.text.slice(0, ref.selection.start)}<mark>{ref.selection.quote}</mark>{excerpt.text.slice(ref.selection.end)}</> : excerpt.text}</pre></details>
               : <p className="candidate-help">{loading ? t('正在读取所选知识的来源。', 'Loading the selected knowledge source.') : ref.source?.status === 'unavailable' ? t('原文不可用，不能完整核对。', 'Source unavailable; full review is not possible.') : t('此来源原文尚未载入当前正文；可先打开对应的精确知识修订。', 'This source is not loaded with the current content. Open its exact knowledge revision first.')}</p>}

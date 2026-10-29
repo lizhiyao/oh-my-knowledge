@@ -255,7 +255,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh}
           onRevision={revision => void work(() => open(detail.revision.knowledgeId, revision))}
           onRetry={() => void work(() => open(detail.revision.knowledgeId, detail.revision.revisionId))}
-          onEntities={() => { const ref = detail.derivedAssociations.revision?.entityAnalysisRef; if (ref) setEntityTarget({ analysisId: ref.analysisId, revision: ref.revisionId }); }}
+          onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, revision: ref.entityRevisionId }); } : undefined}
           onMapAssociations={needsRefresh ? undefined : () => setMapping(true)}
           onReviewAssociations={needsRefresh ? undefined : (choice, reason) => void work(async () => {
             const projection = detail.derivedAssociations.revision;
@@ -264,9 +264,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
               generation: detail.derivedAssociations.generation, choice, reason });
             await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
           })}
-          onRebuildAssociations={model.trim() && detail.sources.length === 1 && detail.sources[0].status === 'available' ? () => Modal.confirm({
+          onRebuildAssociations={model.trim() && detail.sources.length > 0 && detail.sources.every(source => source.status === 'available') ? () => Modal.confirm({
             title: t('重新生成实体关联？', 'Regenerate entity associations?'),
-            content: t(`将已保存正文与其来源窗口发送到 ${executor} / ${model}，调用模型一次。正文和保留决定不变，新关联需要单独核对。`, `Send the saved content and its source window to ${executor} / ${model} for one model call. Content and retention decisions stay unchanged; review the new associations separately.`),
+            content: <div className="knowledge-association-transmission"><p>{t(`将已保存正文与全部 ${detail.sources.length} 份来源窗口发送到 ${executor} / ${model}，调用模型一次。正文和保留决定不变，新关联需要单独核对。`, `Send the saved content and all ${detail.sources.length} source windows to ${executor} / ${model} for one model call. Content and retention decisions stay unchanged; review the new associations separately.`)}</p><ul>{detail.sources.map(source => source.status === 'available' ? <li key={source.window.snapshotId}>{source.window.origin?.title || t('来源窗口', 'Source window')}<br/><code>{source.window.snapshotId} / {source.window.sourceVersion}</code></li> : null)}</ul></div>,
             onOk: () => work(async () => {
               await api('rebuild-associations', { knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId,
                 bodyDigest: detail.revision.bodyDigest, executor, model, runId: crypto.randomUUID() });

@@ -95,7 +95,7 @@ describe('observe knowledge command wiring', () => {
     }); vi.stubGlobal('fetch', fetch);
     const runId = randomUUID(), args = ['generate', '--workspace', workspace, '--snapshot', captured.snapshotId, '--executor', 'openai-api', '--model', 'authored-loopback-test', '--run-id', runId, '--json'];
     const run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v1', status: 'completed', bodies: [expect.anything()],
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v2', status: 'completed', bodies: [expect.anything()],
       stages: [{ stageKind: 'body', state: 'completed', outcomeRef: expect.any(Object) }, { stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
     expect(fetch).toHaveBeenCalledTimes(2); expect(requests[0].messages).not.toEqual(requests[1].messages);
     const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(2);
@@ -192,11 +192,11 @@ describe('observe knowledge command wiring', () => {
     const correction = ['correct-entities', ...base, '--analysis', analysisId, '--entity-revision', before.revision.revisionId, '--generation', '1', '--input', input, '--reason', '核对名称', '--json'];
     const corrected = JSON.parse((await runCommand(ObserveKnowledge, correction, { cwd: root })).stdout); expect(corrected.history.generation).toBe(2);
     await expect(runCommand(ObserveKnowledge, correction, { cwd: root })).rejects.toMatchObject({ code: 1 });
-    const draft = { segmentEntityRefs: [{ segmentId: 's1', entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], typedRelations: [], issues: [] };
+    const draft = { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], typedRelations: [], issues: [] };
     writeFileSync(input, JSON.stringify(draft));
     const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-associations', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId,
-      '--body-digest', seeded.body.bodyDigest, '--generation', '1', '--analysis', analysisId, '--entity-revision', corrected.revision.revisionId, '--input', input, '--reason', '明确修订关联', '--json'], { cwd: root })).stdout);
-    expect(applied.revision).toEqual(seeded.body); expect(applied.derivedAssociations).toMatchObject({ reviewStatus: 'pending', revision: { entityAnalysisRef: { revisionId: corrected.revision.revisionId } } });
+      '--body-digest', seeded.body.bodyDigest, '--generation', '1', '--input', input, '--reason', '明确修订关联', '--json'], { cwd: root })).stdout);
+    expect(applied.revision).toEqual(seeded.body); expect(applied.derivedAssociations).toMatchObject({ reviewStatus: 'pending', revision: { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }] } });
     const reviewed = JSON.parse((await runCommand(ObserveKnowledge, ['review-associations', ...base, '--id', seeded.body.knowledgeId,
       '--revision', applied.derivedAssociations.revision.revisionId, '--generation', '2', '--choice', 'accept', '--reason', '逐项核对', '--json'], { cwd: root })).stdout);
     expect(reviewed.derivedAssociations.reviewStatus).toBe('accepted'); expect(reviewed.maintenance).toBeNull();

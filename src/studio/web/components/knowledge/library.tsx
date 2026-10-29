@@ -23,12 +23,12 @@ import { EntityAnalysisDrawer } from './entity-analysis';
 
 export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisionId, knowledgeId, seed, initialView = 'list', initialGraphSelection,
   initialGraphScope = 'current', initialReaderTab = 'body', initialKnowledgeRevision, initialQuery = '', initialChoice = 'all', initialKind = 'all', initialObjects = [],
-  initialGraphHistory = false, initialGraphEntity, initialSegmentId, initialMentionId, initialRelationId, initialEvidence, initialReaderSelectionInvalid = false }: {
+  initialGraphHistory = false, initialGraphEntity, initialSegmentId, initialMentionId, initialRelationId, initialCatalogRef, initialEvidence, initialReaderSelectionInvalid = false }: {
   lang: Language; initialWorkspace?: string; objectId?: string; revisionId?: string; knowledgeId?: string; seed?: LibrarySeed;
   initialView?: 'list' | 'graph'; initialGraphSelection?: string; initialGraphScope?: 'current' | 'filtered'; initialGraphHistory?: boolean;
   initialReaderTab?: 'body' | 'evidence' | 'associations' | 'history'; initialKnowledgeRevision?: string;
   initialQuery?: string; initialChoice?: 'all' | 'pending' | 'retain' | 'discard'; initialKind?: 'all' | 'fact' | 'case' | 'method'; initialObjects?: string[];
-  initialGraphEntity?: KnowledgeReaderEntityTarget; initialSegmentId?: string; initialMentionId?: string; initialRelationId?: string; initialEvidence?: KnowledgeReaderSelection['evidence']; initialReaderSelectionInvalid?: boolean;
+  initialGraphEntity?: KnowledgeReaderEntityTarget; initialSegmentId?: string; initialMentionId?: string; initialRelationId?: string; initialCatalogRef?: KnowledgeReaderSelection['catalogRef']; initialEvidence?: KnowledgeReaderSelection['evidence']; initialReaderSelectionInvalid?: boolean;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [workspace, setWorkspace] = useState('');
@@ -43,7 +43,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const [graphScope, setGraphScope] = useState(initialGraphScope), [graphHistory, setGraphHistory] = useState(initialGraphHistory);
   const [graph, setGraph] = useState<KnowledgeGraph>(), [graphLoading, setGraphLoading] = useState(false), [graphError, setGraphError] = useState('');
   const [readerSelection, setReaderSelection] = useState<KnowledgeReaderSelection>(initialReaderSelectionInvalid ? { tab: 'body' }
-    : { tab: initialReaderTab, segmentId: initialSegmentId, mentionId: initialMentionId, relationId: initialRelationId, evidence: initialEvidence });
+    : { tab: initialReaderTab, segmentId: initialSegmentId, mentionId: initialMentionId, relationId: initialRelationId, catalogRef: initialCatalogRef, evidence: initialEvidence });
   const [selectionInvalid, setSelectionInvalid] = useState(initialReaderSelectionInvalid);
   const [mapping, setMapping] = useState<{ detail: KnowledgeCandidateDetail; target?: { analysisId: string; entityRevisionId: string } }>();
   const [entityTarget, setEntityTarget] = useState<Omit<KnowledgeReaderEntityTarget, 'entityId'> & { entityId?: string }>();
@@ -129,6 +129,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
     if (readerSelection.segmentId) params.set('segment', readerSelection.segmentId);
     if (readerSelection.mentionId) params.set('mention', readerSelection.mentionId);
     if (readerSelection.relationId) params.set('relation', readerSelection.relationId);
+    if (readerSelection.catalogRef) params.set('catalog', JSON.stringify(readerSelection.catalogRef));
     if (readerSelection.evidence) {
       const { snapshotId, sourceVersion, evidenceRef, start, end } = readerSelection.evidence;
       params.set('evidence', JSON.stringify({ snapshotId, sourceVersion, evidenceRef, start, end }));
@@ -206,7 +207,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
           : !object && currentId && detail?.revision.knowledgeId === currentId ? <KnowledgeReader detail={detail} lang={lang} workspace={workspace} selection={readerSelection} onSelectionChange={locate}
             onRevision={revision => { setActive(currentId); setKnowledgeRevision(revision); setSelectionInvalid(false); }} onRetry={() => setRefresh(value => value + 1)}
             onMapAssociations={() => openMapping()} onEntity={setEntityTarget}
-            onEntities={detail.derivedAssociations.revision?.entityAnalysisRef ? () => { const ref = detail.derivedAssociations.revision!.entityAnalysisRef!; setEntityTarget({ analysisId: ref.analysisId, entityRevisionId: ref.revisionId }); } : undefined}
+            onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId }); } : undefined}
             header={<div className="knowledge-reader-associations">{catalog?.rows.find(row => row.knowledgeId === currentId)?.objects.length ? catalog.rows.find(row => row.knowledgeId === currentId)!.objects.map(item => <span key={item.objectId}><Button type="link" onClick={() => selectObject(item.objectId)}>{item.label}</Button>{item.associationStatus === 'needs_review' && t('（关联待核对）', ' (association needs review)')}</span>) : t('尚未关联知识库对象', 'Not associated with a library object')}</div>}
             footer={<><span>{t('保留表示愿意维护，效果尚未验证。', 'Retention is a maintenance decision; effectiveness is unverified.')}</span><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${currentId}&revision=${detail.revision.revisionId}`, workspace)}>{t('进入候选核对', 'Review candidate')}</Link></>}/>
             : <div className="knowledge-reader knowledge-reader-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? t('修复读取问题后继续。', 'Resolve the reading error to continue.') : t('没有匹配知识，请调整筛选或提炼新知识。', 'No matching knowledge. Adjust filters or extract new knowledge.')}>

@@ -89,7 +89,7 @@ Saving, actual use, and controlled effect verification are separate records. The
 
 `knowledge/` owns pure content contracts, validation and history rules. Its `application/` owns CLI/Studio use cases and local composition; `adapters/` owns source reading, model transport and filesystem persistence. Observation supplies trace parsing, while delivery surfaces own host configuration and presentation. Library organization is not a second content store.
 
-Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. Generation uses the current-only `knowledge-generation-journal` Schema 1, not a run5 wrapper around two originals. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
+Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. Generation uses the current-only `knowledge-generation-journal` Schema 2, not a run5 wrapper around two originals. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
 
 ### 5.1 Failure and recovery hand-offs {#construction-recovery}
 
@@ -120,7 +120,7 @@ Body-evidence edges retain segments, original evidence and position checks. Segm
 
 Coverage and known nodes/edges are separate. Missing usable associations for current content, outdated catalog bindings, source failures and position mismatches create explicit gaps; historical association results retain their own states. Source failures degrade locally while retaining content and other readable evidence; raw exceptions and file paths from source metadata are excluded. Large collections and long histories still determine total graph size; small-scope operation evidence is not a load guarantee.
 
-`associationCatalogs(id, revisionId?)` lists only catalogs and revisions matching the content evidence's exact source identities, with readable source summaries and an unreadable-analysis count. Discovery does not confirm identity. Writes continue through existing single-catalog `applyAssociations`, optimistic concurrency and new-projection pending rules. Studio transports and presents the domain projection and user actions, without reading underlying files or redefining relations.
+`associationCatalogs(id, revisionId?)` lists only catalogs and revisions matching the content evidence's exact source identities, with readable source summaries and an unreadable-analysis count. Discovery does not confirm identity. Writes use multi-catalog `applyAssociations`, optimistic concurrency and new-projection pending rules. Drafts declare complete `catalogRefs`; segment entities and typed endpoints are qualified by catalog, catalog revision and entity. Studio transports and presents the domain projection and user actions, without reading underlying files or redefining relations.
 
 ## 6. Acceptance and limits {#current-evidence}
 
@@ -147,7 +147,7 @@ The Mem0, OWASP and ACE mappings below were checked on 2026-10-21. Papers and th
 
 ## 8. Extension architecture decisions (design, not implemented) {#extension-boundaries}
 
-This section completes the extension-boundary decisions in [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) for later graph and multi-source construction work. **These contracts are implementation designs, not current capabilities or data formats.** This change does not alter source-window, body, association, journal, carrier or actor schemas, migrate data, or change prompts, wire formats or historical measurement identities. Implementation requires confirmation of the concrete public-contract and existing-data impacts in section 8.4.
+This section records the extension boundaries from [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392). **Section 8.2 multi-catalog associations and the corresponding Schema 2 / separate-workspace migration in section 8.4 are implemented; neutral source adapters and trusted public actor context remain designs.** Source windows, bodies, entity histories, carriers and actor data shapes stay unchanged. The new association profile/wire and journal have separate versions without rewriting historical measurements.
 
 ### 8.1 Source-neutral snapshots and adapters {#neutral-source-design}
 
@@ -166,12 +166,12 @@ Reading authorization, model transmission and knowledge saving are checked separ
 
 ### 8.2 Multi-source body and multiple entity catalogs {#multi-catalog-design}
 
-Current body may cite multiple exact sources, but association history has one entityAnalysisRef and automatic association rebuilding requires one source window. The extension uses **independent source catalogs combined by an explicit projection**: one entity analysis remains bound to one exact source snapshot, without a name-merged global entity catalog.
+Current bodies and association rebuilding support multiple exact sources. Association history Schema 2 uses **independent source catalogs combined by an explicit projection**: one entity analysis remains bound to one exact source snapshot, without a name-merged global entity catalog.
 
 - An association projection pins bodyRef and the complete catalogRefs set. Entity endpoints use `{analysisId, entityRevisionId, entityId}`, and mentions add mentionId; neither entityId alone nor a displayed name resolves its catalog. Each segmentEntityRefs entry pins segmentId, a catalog-qualified entity and mention references. Mentions must belong to the declared catalog and return to an exact source bound by that body segment.
 - Typed-relation subjects and objects use the same catalog-qualified entity references; evidence may come from multiple snapshots already cited by body. Model suggestions, source uncertainty, association review and human cross-window identity decisions remain separate. A cross-catalog relation is not an identity merge.
 - A changed body revisionId or digest makes the prior projection inapplicable. After a catalog gains a revision, its old exact association remains available for historical reading, while the current-catalog difference requires visible review. Applying or rebuilding creates a new pending projection without inherited acceptance. Report each unavailable catalog/source separately, without removing other body content or presenting it as zero associations.
-- The library continues to reference original catalog identities and human decisions. Pinned historical snapshots can still support historical statements. Upstream file edits, source deletion, removed organization membership and discarded body are handled separately; they neither adjudicate truth automatically nor cascade-delete body. Later feature acceptance covers cross-catalog projections, graph queries and propagation of source-change review signals.
+- The library continues to reference original catalog identities and human decisions. Pinned historical snapshots can still support historical statements. Upstream file edits, source deletion, removed organization membership and discarded body are handled separately; they neither adjudicate truth automatically nor cascade-delete body. Cross-catalog projections and graph queries use exact catalog identities; file/Git sources and propagation of source-change review signals still require separate acceptance.
 
 ### 8.3 Actual actor and delegating user {#actor-context-design}
 
@@ -183,14 +183,14 @@ CLI launch context, an authenticated service session or a trusted Agent runtime 
 
 ### 8.4 Versions, migration and implementation hand-off {#extension-migration-plan}
 
-The following concrete plan requires confirmation before later implementation. Confirmation and implementation belong to the related delivery work; this change creates none of these versions or migration readers.
+Multi-catalog associations and separate-workspace migration have been explicitly approved and implemented. Source-window and public-actor extensions below still require their own confirmation; Schema 2 does not replace them.
 
-| Affected surface | Later version and migration decision |
+| Affected surface | Version and migration decision |
 |---|---|
 | Source windows and capture/source DTOs | SourceSnapshot uses knowledge-window-v3. Replace SourceExcerpt, SourceSelection, SourceResolution, EvidenceStore and capture APIs together; selection is no longer limited to path/record ranges, and resolution adds authorization and other states. Archive original v2 bytes and digests unchanged; an explicit adapter creates v3 snapshots and reference mappings in a new directory. Never reinterpret an old sourceVersion or add a permanent dual reader. |
 | Body and entity histories | Body Schema 3 already expresses multi-source evidence; entity history v2 can retain one snapshot per catalog. Moving old references to new snapshots creates a new pending body revision and explicit catalog mappings, without reusing old body digests, retention or association acceptance. Never automatically retarget old catalogs, body or carrier references. Adding a derived projection alone changes neither body nor its maintenance decision. |
-| Associations and generation journals | Use association history Schema 2 for multiple catalogs, and journal Schema 2, knowledge-body-first/v2 and new profile/wire identities for journals containing that write intent or multi-source input. Explicitly convert a v1 projection to a new pending singleton-catalogRefs projection. Preserve old originals, receipts and unknown-dispatch identities; migration neither calls a model nor resumes dispatch of an old request. |
+| Associations and generation journals | Current multi-catalog associations use association history Schema 2 and generation uses journal Schema 2 / knowledge-body-first/v2. Association profile/wire identities change; body prompt/profile/wire bytes remain unchanged. Explicitly convert a v1 projection to a new pending singleton-catalogRefs projection. Preserve old originals, receipts and unknown-dispatch identities; migration neither calls a model nor resumes dispatch of an old request. Old journals retain original bytes and appear unsupported; old automatic permissions/schedules are archived only. |
 | Actor context | Reuse human/agent shapes, while explicitly documenting release impacts for trusted CLI/service context input and refusal when missing. Never rewrite old actors or receipts. Any new persisted authorization record first needs its own versioned contract and retention scope. |
 | Organization, carriers and measurement | Keep organization members, exact carrier references and historical measurements under their original identities. Relinking requires explicit review and a new revision. Never recompute old prompts, wires, scoring, denominators or studies; validate new generation/association behavior under independent measurement identities. |
 
-The implementation hand-off must include supported sources, DTO/persisted-schema diffs, reference mappings, destinations, migration preflight and rollback, with confirmation before new-version writes. Rollback reopens the preserved old workspace with its matching binary; the new workspace retains migration originals and mappings. Graph and direct project-material ingestion have separate feature acceptance. Completing this design does not establish multi-source graph or existing-project construction support.
+The implementation hand-off must include supported sources, DTO/persisted-schema diffs, reference mappings, destinations, migration preflight and rollback, with confirmation before new-version writes. Rollback reopens the preserved old workspace with its matching binary; the new workspace retains migration originals and mappings. Multi-catalog graphs and direct project-material ingestion have separate acceptance. The former does not establish file/Git ingestion or existing-project knowledge construction.

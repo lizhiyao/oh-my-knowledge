@@ -170,7 +170,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
       ? t('关联知识覆盖不全，总数量未知。以下保留已知关联，无法判断是否还有其他关联。', 'Linked knowledge coverage is incomplete and total counts are unknown. Known links remain below; additional links may exist.')
       : t('关联知识不可读，无法判断是否存在关联。', 'Linked knowledge unavailable; associations are unknown.')}/>}
     {detail.knowledgeStatus === 'available' && !detail.knowledge.length && <p>{t('没有当前知识修订引用此实体。实体提取可以独立于知识提炼存在。', 'No current knowledge revision references this entity. Entity extraction can exist without knowledge proposals.')}</p>}
-    {detail.knowledge.map(link => <section className="entity-mention" key={link.knowledgeId}>
+    {detail.knowledge.map(link => <section className="entity-mention" key={`${link.knowledgeId}/${link.revisionId}/${link.entityRevisionId}`}>
           <Link href={`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ workspace, view: 'graph', knowledge: link.knowledgeId, revision: link.revisionId,
             section: 'associations', analysis: history.analysisId, entity: entity.entityId, entityRevision: link.entityRevisionId, ...(link.segmentIds[0] ? { segment: link.segmentIds[0] } : {}) })}`}>{link.title}</Link>
           <p>{t(`关联 ${link.segmentIds.length} 个正文段落`, `Associated with ${link.segmentIds.length} content segments`)} · {link.projectionReviewStatus === 'pending' ? t('关联待核对', 'Associations pending review') : t('关联已接受', 'Associations accepted')}</p>

@@ -69,7 +69,7 @@ describe('exact knowledge graph read projection', () => {
     f.associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: failed.body.knowledgeId,
       expectedGeneration: failedHistory.generation, expectedHeadRevisionId: failedHistory.writeHeadRevisionId,
       revision: { revisionId: randomUUID(), parentRevisionId: failedHistory.writeHeadRevisionId, bodyRef: knowledgeBodyRef(failed.body),
-        status: 'failed', reviewStatus: 'pending', segmentEntityRefs: [], issues: ['作者夹具：关联失败，正文保留'],
+        status: 'failed', reviewStatus: 'pending', catalogRefs: [], segmentEntityRefs: [], issues: ['作者夹具：关联失败，正文保留'],
         revisedAt: failed.body.revisedAt, revisedBy: failed.body.revisedBy, revisionReason: '独立失败结果' } }, failed.body.revisedBy);
     const absentFile = readdirSync(join(f.root, 'associations')).find(name => JSON.parse(readFileSync(join(f.root, 'associations', name), 'utf8')).knowledgeId === absent.body.knowledgeId)!;
     rmSync(join(f.root, 'associations', absentFile));
@@ -112,8 +112,8 @@ describe('exact knowledge graph read projection', () => {
     expect(outdated.coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'catalog_outdated' }));
     expect(entityNodes(outdated).filter(node => node.entityId === edit.entities[0].entityId).map(node => node.current).sort()).toEqual([false, true]);
     expect(outdated.edges).toContainEqual(expect.objectContaining({ edgeKind: 'revision_parent', revisionDomain: 'entity' }));
-    const applied = f.app.applyAssociations(id, seeded.body.revisionId, seeded.body.bodyDigest, seeded.analysis.history.analysisId, corrected.revision.revisionId, 2,
-      { segmentEntityRefs: [{ segmentId: 's1', entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], issues: [] }, '显式应用纠正');
+    const applied = f.app.applyAssociations(id, seeded.body.revisionId, seeded.body.bodyDigest, 2,
+      { catalogRefs: [{ analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], issues: [] }, '显式应用纠正');
     const pending = f.app.graph({ includeHistory: true });
     expect(knowledgeNodes(pending)[0].association.reviewStatus).toBe('pending');
     expect(pending.edges.filter(edge => edge.edgeKind === 'segment_entity' && edge.current)).toHaveLength(1);
@@ -174,11 +174,11 @@ describe('exact knowledge graph read projection', () => {
         edit.entities[0].identityStatus = 'unresolved'; edit.entities[0].possibleEntityIds = [edit.entities[1].entityId]; edit.entities[0].uncertainties = ['仅为可能对应'];
       }
       const corrected = f.app.correctEntities(seeded.analysis.history.analysisId, edit.revisionId, 1, { entities: edit.entities, mentions: edit.mentions }, '作者关系投影夹具');
-      f.app.applyAssociations(seeded.body.knowledgeId, seeded.body.revisionId, seeded.body.bodyDigest, seeded.analysis.history.analysisId, corrected.revision.revisionId, 1,
-        { segmentEntityRefs: [{ segmentId: 's1', entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] },
-          { segmentId: 's1', entityId: edit.entities[1].entityId, mentionIds: [edit.mentions[1].mentionId] }],
-        ...(relation === 'component' ? { typedRelations: [{ relationId: 'authored-relation', segmentIds: ['s1'], subject: { entityId: edit.entities[0].entityId }, relation: '来源报告使用',
-          object: { entityId: edit.entities[1].entityId }, modality: 'descriptive', polarity: 'positive', evidence: seeded.body.content.segments[0].evidence, issues: ['派生关系待核对'] }] } : {}), issues: [] }, '显式应用关系夹具');
+      f.app.applyAssociations(seeded.body.knowledgeId, seeded.body.revisionId, seeded.body.bodyDigest, 1,
+        { catalogRefs: [{ analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] },
+          { segmentId: 's1', analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[1].entityId, mentionIds: [edit.mentions[1].mentionId] }],
+        ...(relation === 'component' ? { typedRelations: [{ relationId: 'authored-relation', segmentIds: ['s1'], subject: { analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[0].entityId }, relation: '来源报告使用',
+          object: { analysisId: seeded.analysis.history.analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[1].entityId }, modality: 'descriptive', polarity: 'positive', evidence: seeded.body.content.segments[0].evidence, issues: ['派生关系待核对'] }] } : {}), issues: [] }, '显式应用关系夹具');
     }
     const graph = f.app.graph();
     for (const edgeKind of ['typed_relation', 'component', 'collection', 'possible_identity']) expect(graph.edges.filter(edge => edge.edgeKind === edgeKind)).toHaveLength(1);

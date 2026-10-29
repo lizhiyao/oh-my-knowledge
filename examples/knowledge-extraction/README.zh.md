@@ -19,7 +19,7 @@ node examples/knowledge-extraction/run.mjs
 
 脚本使用该检出构建出的内部应用模块。它们不是公共 SDK 入口；安装 npm 包后复制此文件不是受支持的集成方法。示例不需要 API 凭证、Codex 或模型账号，也不会选择 provider 执行器。
 
-命令输出一行 JSON，其中包含 `fixtureInvocations: 2`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v1"`、`phaseKinds: ["body", "association"]`、`runStatus: "completed"`、`candidateCount: 1`、`entityCount: 2`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。它还核对重新打开同一 run 不会再次调用 fixture，以及检索结果能关联已保存知识。没有测量的 provider token／成本字段保持缺失。
+命令输出一行 JSON，其中包含 `fixtureInvocations: 2`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v2"`、`phaseKinds: ["body", "association"]`、`runStatus: "completed"`、`candidateCount: 1`、`entityCount: 2`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。它还核对重新打开同一 run 不会再次调用 fixture，以及检索结果能关联已保存知识。没有测量的 provider token／成本字段保持缺失。
 
 来源、证据快照、含两份独立作者响应原件的双阶段 generation journal、实体分析、正文历史及独立关联历史均写入一处由脚本创建的系统临时目录。成功或失败后都会删除该目录，不写入示例目录、`.omk`、用户知识目录或全局设置。
 

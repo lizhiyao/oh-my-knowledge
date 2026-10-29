@@ -22,7 +22,7 @@ export interface LegacyWorkspaceInventory {
   items: { path: string; envelope: LegacyKnowledgeEnvelope }[];
   unsupported: { path: string; reason: string }[];
 }
-function inventoryFiles(root: string): MigrationFile[] {
+export function inventoryFiles(root: string): MigrationFile[] {
   checkStorageDirectory(root);
   if (!existsSync(root)) throw new Error('Legacy workspace is missing.');
   const files: MigrationFile[] = []; let total = 0;
@@ -83,7 +83,7 @@ export interface KnowledgeMigrationPlan {
   limitations: string[];
   planDigest: string;
 }
-function assertSeparateRoots(source: string, target: string) {
+export function assertSeparateRoots(source: string, target: string) {
   const absoluteSource = realpathSync(source);
   let ancestor = target; const missing: string[] = [];
   while (!existsSync(ancestor)) { missing.push(basename(ancestor)); ancestor = dirname(ancestor); }
@@ -91,7 +91,7 @@ function assertSeparateRoots(source: string, target: string) {
   const nested = (from: string, to: string) => { const path = relative(from, to); return !path || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`)); };
   if (nested(absoluteSource, absoluteTarget) || nested(absoluteTarget, absoluteSource)) throw new Error('Migration requires a separate new workspace.');
 }
-function assertEmptyTarget(target: string) {
+export function assertEmptyTarget(target: string) {
   checkStorageDirectory(target);
   if (existsSync(target) && readdirSync(target).length) throw new Error('Migration target must be a new empty workspace.');
 }

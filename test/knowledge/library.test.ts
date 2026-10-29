@@ -33,7 +33,7 @@ function fixture() {
   body.revision.bodyDigest = knowledgeBodyDigest(body.revision); knowledge.write(body, actor);
   const projectionId = randomUUID(); associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: body.knowledgeId, expectedGeneration: 0,
     expectedHeadRevisionId: null, revision: { revisionId: projectionId, bodyRef: knowledgeBodyRef(body.revision), status: 'available', reviewStatus: 'pending',
-      entityAnalysisRef: { analysisId, revisionId: entityRevisionId }, segmentEntityRefs: entityIds.map((entityId, index) => ({ segmentId: 's1', entityId, mentionIds: [mentionIds[index]] })),
+      catalogRefs: [{ analysisId, entityRevisionId }], segmentEntityRefs: entityIds.map((entityId, index) => ({ segmentId: 's1', analysisId, entityRevisionId, entityId, mentionIds: [mentionIds[index]] })),
       typedRelations: [], issues: [], revisedAt: at, revisedBy: actor, revisionReason: '正文后的独立关联' } }, actor);
   const member = (index = 0): LibraryMember => ({ analysisId, entityId: entityIds[index], entityRevisionId, mentionIds: [mentionIds[index]], rationale: '明确核对来源限定和身份' });
   const save = (members = [member()], label = 'Alpha 对象') => library.save({ objectId: randomUUID(), requestId: randomUUID(), generation: 0, headRevisionId: null,
@@ -46,7 +46,7 @@ describe('body canonical knowledge library projections', () => {
     const f = fixture(), object = f.save(), other = f.save([f.member(1)], 'Beta 对象');
     const pending = f.library.detail(object.objectId);
     expect(pending.counts).toEqual({ retained: 0, pending: 0, discarded: 0, needsReview: 1 });
-    expect(pending.knowledge[0].segmentAssociations).toEqual([{ segmentId: 's1', entityIds: [f.entityIds[0]], mentionIds: [f.mentionIds[0]] }]);
+    expect(pending.knowledge[0].segmentAssociations).toEqual([{ segmentId: 's1', entityRefs: [{ analysisId: f.analysisId, entityRevisionId: f.entityRevisionId, entityId: f.entityIds[0], mentionIds: [f.mentionIds[0]] }] }]);
     expect(pending.knowledge[0]).not.toHaveProperty('roles');
     f.app.maintain(f.body.knowledgeId, f.body.revision.revisionId, 'retain', '仅保留正文，不代表接受关联', 1);
     expect(f.library.detail(object.objectId).counts.needsReview).toBe(1);

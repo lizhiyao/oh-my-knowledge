@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { canonicalJson, type KnowledgeStore } from '../store.js';
 import { applyKnowledgeAssociationWrite, KnowledgeAssociationEnvelopeSchema, KnowledgeAssociationWriteSchema, validateKnowledgeAssociationHistory, validateKnowledgeAssociationReferences,
   type KnowledgeAssociationEnvelope, type KnowledgeAssociationStore, type KnowledgeAssociationWrite } from '../associations.js';
+import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -39,25 +40,24 @@ export class FileKnowledgeAssociationStore implements KnowledgeAssociationStore 
       const body = knowledge.revisions.find(body => body.revisionId === revision.bodyRef.revisionId);
       if (!body) throw new Error('Unknown association body revision.');
       validateKnowledgeAssociationReferences(revision, body);
-      if (!revision.entityAnalysisRef) continue;
-      const analysis = this.entities.read(revision.entityAnalysisRef.analysisId);
-      const catalog = analysis.revisions.find(item => item.revisionId === revision.entityAnalysisRef!.revisionId);
-      if (!catalog) throw new Error('Unknown association entity revision.');
-      for (const ref of revision.segmentEntityRefs) {
-        const segment = body.content.segments.find(item => item.segmentId === ref.segmentId)!;
-        if (!catalog.entities.some(entity => entity.entityId === ref.entityId)
-          || !segment.evidence.some(evidence => evidence.source.snapshotId === analysis.snapshotId && evidence.source.sourceVersion === analysis.sourceVersion)
-          || ref.mentionIds.some(id => !catalog.mentions.some(mention => mention.mentionId === id && mention.entityId === ref.entityId))) {
-          throw new Error('Association entity catalog mismatch.');
-        }
-      }
+    }
+  }
+  private validateCatalogs(entry: KnowledgeAssociationEnvelope, revisionId: string) {
+    const revision = entry.revisions.find(value => value.revisionId === revisionId);
+    if (!revision) throw new Error('Unknown association revision.');
+    const body = this.knowledge.read(entry.knowledgeId).revisions.find(value => value.revisionId === revision.bodyRef.revisionId);
+    if (!body) throw new Error('Unknown association body revision.');
+    for (const ref of revision.catalogRefs) {
+      validateKnowledgeAssociationCatalogReferences(revision, body, this.entities.read(ref.analysisId), ref.entityRevisionId);
     }
   }
   private load(path: string): KnowledgeAssociationEnvelope {
     checkStorageDirectory(this.workspaceRoot); checkStorageDirectory(this.root);
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES) throw new Error('Invalid association file.');
-    const entry = KnowledgeAssociationEnvelopeSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    if (raw?.schemaVersion !== 2) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+    const entry = KnowledgeAssociationEnvelopeSchema.parse(raw);
     if (entry.namespace !== this.namespace) throw new Error('Association namespace mismatch.');
     validateKnowledgeAssociationHistory(entry); this.validateReferences(entry); return entry;
   }
@@ -73,6 +73,8 @@ export class FileKnowledgeAssociationStore implements KnowledgeAssociationStore 
       if (next === existing) confirmKnowledgePublication(path, this.workspaceRoot);
       else {
         this.validateReferences(next);
+        if (command.commandKind === 'append_revision') this.validateCatalogs(next, command.revision.revisionId);
+        else if (command.review.choice === 'accept') this.validateCatalogs(next, command.review.projectionRevisionId);
         const bytes = JSON.stringify(next, null, 2);
         if (Buffer.byteLength(bytes) > MAX_BYTES) throw new Error('capacity_exceeded');
         publishKnowledgeBytes(path, bytes, this.workspaceRoot, !existing);

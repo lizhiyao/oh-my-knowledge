@@ -4,14 +4,18 @@ import { canonicalJson } from './store.js';
 
 const id = z.string().min(1).max(256);
 const text = z.string().min(1).max(32_768).refine(value => value.trim().length > 0);
+export const KnowledgeAssociationCatalogRefSchema = z.strictObject({ analysisId: z.string().uuid(), entityRevisionId: z.string().uuid() });
+export const KnowledgeAssociationEntityRefSchema = KnowledgeAssociationCatalogRefSchema.extend({ entityId: id });
+export const knowledgeAssociationCatalogKey = (ref: z.infer<typeof KnowledgeAssociationCatalogRefSchema>) => canonicalJson([ref.analysisId, ref.entityRevisionId]);
+export const knowledgeAssociationEntityKey = (ref: z.infer<typeof KnowledgeAssociationEntityRefSchema>) => canonicalJson([ref.analysisId, ref.entityRevisionId, ref.entityId]);
 export const KnowledgeAssociationRevisionSchema = z.strictObject({
   revisionId: id, parentRevisionId: id.optional(), bodyRef: KnowledgeBodyRefSchema,
   status: z.enum(['available', 'failed']), reviewStatus: z.literal('pending'),
-  entityAnalysisRef: z.strictObject({ analysisId: z.string().uuid(), revisionId: z.string().uuid() }).optional(),
-  segmentEntityRefs: z.array(z.strictObject({ segmentId: id, entityId: id, mentionIds: z.array(id).min(1) })),
+  catalogRefs: z.array(KnowledgeAssociationCatalogRefSchema),
+  segmentEntityRefs: z.array(KnowledgeAssociationEntityRefSchema.extend({ segmentId: id, mentionIds: z.array(id).min(1) })),
   typedRelations: z.array(z.strictObject({
-    relationId: id, segmentIds: z.array(id).min(1), subject: z.strictObject({ entityId: id }),
-    relation: text, object: z.strictObject({ entityId: id }).optional(),
+    relationId: id, segmentIds: z.array(id).min(1), subject: KnowledgeAssociationEntityRefSchema,
+    relation: text, object: KnowledgeAssociationEntityRefSchema.optional(),
     modality: z.enum(['descriptive', 'normative', 'capability', 'permission']),
     polarity: z.enum(['positive', 'negative']),
     evidence: z.array(KnowledgeBodyEvidenceSchema).min(1), issues: z.array(text),
@@ -25,7 +29,7 @@ export const KnowledgeAssociationReviewSchema = z.strictObject({
 });
 export type KnowledgeAssociationReview = z.infer<typeof KnowledgeAssociationReviewSchema>;
 export const KnowledgeAssociationEnvelopeSchema = z.strictObject({
-  storeKind: z.literal('knowledge-association-history'), schemaVersion: z.literal(1),
+  storeKind: z.literal('knowledge-association-history'), schemaVersion: z.literal(2),
   namespace: id, knowledgeId: id, generation: z.number().int().positive(), writeHeadRevisionId: id,
   revisions: z.array(KnowledgeAssociationRevisionSchema).min(1), reviews: z.array(KnowledgeAssociationReviewSchema),
   receipts: z.array(z.strictObject({ requestId: id, commandDigest: z.string().min(1), committedGeneration: z.number().int().positive(), revisionId: id })).min(1),
@@ -61,10 +65,12 @@ export function validateKnowledgeAssociationReferences(revision: KnowledgeAssoci
     throw new Error('Association body identity mismatch.');
   }
   const segments = new Map(body.content.segments.map(segment => [segment.segmentId, segment]));
+  const catalogs = new Set(revision.catalogRefs.map(knowledgeAssociationCatalogKey));
+  if (catalogs.size !== revision.catalogRefs.length) throw new Error('Duplicate association catalog reference.');
   const associations = new Set<string>();
   for (const ref of revision.segmentEntityRefs) {
-    const key = canonicalJson([ref.segmentId, ref.entityId]);
-    if (!segments.has(ref.segmentId) || associations.has(key) || new Set(ref.mentionIds).size !== ref.mentionIds.length) {
+    const key = canonicalJson([ref.segmentId, knowledgeAssociationEntityKey(ref)]);
+    if (!catalogs.has(knowledgeAssociationCatalogKey(ref)) || !segments.has(ref.segmentId) || associations.has(key) || new Set(ref.mentionIds).size !== ref.mentionIds.length) {
       throw new Error('Invalid segment entity reference.');
     }
     associations.add(key);
@@ -75,7 +81,7 @@ export function validateKnowledgeAssociationReferences(revision: KnowledgeAssoci
       || relation.segmentIds.some(id => !segments.has(id))) throw new Error('Invalid typed relation references.');
     relationIds.add(relation.relationId);
     for (const endpoint of [relation.subject, relation.object].filter(value => value !== undefined)) {
-      if (!relation.segmentIds.some(segmentId => associations.has(canonicalJson([segmentId, endpoint.entityId])))) {
+      if (!catalogs.has(knowledgeAssociationCatalogKey(endpoint)) || !relation.segmentIds.some(segmentId => associations.has(canonicalJson([segmentId, knowledgeAssociationEntityKey(endpoint)])))) {
         throw new Error('Typed relation entity is not associated with its body segments.');
       }
     }
@@ -94,9 +100,6 @@ export function validateKnowledgeAssociationReferences(revision: KnowledgeAssoci
     throw new Error('Failed association must not publish successful relations.');
   }
   if (revision.status === 'failed' && !revision.issues.length) throw new Error('Failed association needs an issue.');
-  if ((revision.segmentEntityRefs.length || (revision.typedRelations?.length ?? 0)) && !revision.entityAnalysisRef) {
-    throw new Error('Entity relations need an exact entity analysis revision.');
-  }
 }
 export function validateKnowledgeAssociationHistory(history: KnowledgeAssociationEnvelope): void {
   if (history.generation !== history.revisions.length + history.reviews.length || history.generation !== history.receipts.length
@@ -138,7 +141,7 @@ export function applyKnowledgeAssociationWrite(existing: KnowledgeAssociationEnv
     reviews.push(command.review); revisionId = command.review.projectionRevisionId;
   }
   const next = KnowledgeAssociationEnvelopeSchema.parse({
-    storeKind: 'knowledge-association-history', schemaVersion: 1, namespace, knowledgeId: command.knowledgeId,
+    storeKind: 'knowledge-association-history', schemaVersion: 2, namespace, knowledgeId: command.knowledgeId,
     generation: command.expectedGeneration + 1, writeHeadRevisionId: revisions.at(-1)!.revisionId,
     revisions, reviews, receipts: [...(existing?.receipts ?? []), {
       requestId: command.requestId, commandDigest, committedGeneration: command.expectedGeneration + 1, revisionId,

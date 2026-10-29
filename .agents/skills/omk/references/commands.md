@@ -613,12 +613,12 @@ omk observe knowledge <operation> [flags]
 - `--body-digest` `option`:rebuild/apply-associations：精确正文 sha256 摘要。
 - `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
 - `--end-record` `option`:末条记录序号（包含）。
-- `--entity-id` `option`:retrieve 按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。
+- `--entity-id` `option`:retrieve 须配 --analysis 和 --entity-revision，按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。
 - `--entity-revision` `option`:明确实体分析修订 UUID。
 - `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
 - `--executor` `option`:生成/继续/重建的执行器。
 - `--format` `json|text`:仅 retrieve：json 为完整结构，text 为正文消费视图；省略保持 JSON。text 不可与 --json 同用。
-- `--from-workspace` `option`:migrate：显式旧 v2 工作区，原件逐字保留；须同时明确 --workspace 新目标，零模型迁移。
+- `--from-workspace` `option`:migrate／migrate-associations：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。
 - `--generation` `option`:预先读取的 generation，防并发覆盖。
 - `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
@@ -632,7 +632,7 @@ omk observe knowledge <operation> [flags]
 - `--max-bytes` `option`:retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
-- `--operation-id` `option`:seal-run：稳定的人工操作 UUID，重入必须复用。
+- `--operation-id` `option`:seal-run／migrate-associations：稳定操作 UUID，重入必须复用。
 - `--operator` `option`:seal-run：显式声明的人类操作者身份，不认证真人。
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities 页码。
@@ -655,6 +655,10 @@ omk observe knowledge <operation> [flags]
 
 ```bash
 omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-body-knowledge --json
+```
+
+```bash
+omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <uuid> --json
 ```
 
 ```bash

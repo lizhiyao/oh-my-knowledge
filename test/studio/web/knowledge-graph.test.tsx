@@ -32,16 +32,16 @@ function fixture() {
     generation: 1, writeHeadRevisionId: entityRevision.revisionId, revisions: [entityRevision], receipts: [] }, revision: entityRevision, source: { status: 'available', excerpts, limitations: [] } };
   const bodyRef = { knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, bodyDigest: revision.bodyDigest };
   const association = { revisionId: uuid(9), bodyRef, status: 'available' as const, reviewStatus: 'pending' as const,
-    entityAnalysisRef: { analysisId: analysis.history.analysisId, revisionId: entityRevision.revisionId },
-    segmentEntityRefs: [{ segmentId: 's1', entityId: entity.entityId, mentionIds: [mentions[0].mentionId] }],
+    catalogRefs: [{ analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId }],
+    segmentEntityRefs: [{ segmentId: 's1', analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId, entityId: entity.entityId, mentionIds: [mentions[0].mentionId] }],
     issues: [], revisedAt: at, revisedBy: { actorKind: 'human' as const, actorId: 'reviewer' }, revisionReason: '原映射' };
   const detail: KnowledgeCandidateDetail = { revision, history: { storeKind: 'knowledge-item-history', schemaVersion: 3, namespace: 'fixture',
     knowledgeId: revision.knowledgeId, generation: 2, writeHeadRevisionId: revision.revisionId, revisions: [revision], maintenance: [], receipts: [] },
     maintenance: { revisionId: revision.revisionId, choice: 'retain', reason: '愿意维护，未独立验证', actor: { actorKind: 'human', actorId: 'reviewer' }, at },
     reviewStatus: 'pending', tagging: { generation: 0, tags: [] },
     derivedAssociations: { status: 'available', reviewStatus: 'pending', bodyRef, generation: 1, headRevisionId: association.revisionId, revision: association },
-    derivedCatalog: { status: 'available', analysisId: analysis.history.analysisId, revisionId: entityRevision.revisionId, currentHeadRevisionId: entityRevision.revisionId,
-      snapshotId: source.snapshotId, sourceVersion: source.sourceVersion, entities: [entity], mentions },
+    derivedCatalogs: [{ status: 'available', analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId, currentHeadRevisionId: entityRevision.revisionId,
+      snapshotId: source.snapshotId, sourceVersion: source.sourceVersion, entities: [entity], mentions }],
     sources: [{ status: 'available', window: { ...source, sourcePath: '/fixture-only', sourceKind: 'codex', projectionVersion: 'knowledge-window-v2', capturedAt: at,
       startRecord: 0, endRecord: 0, excerpts, records: [{ recordIndex: 0, raw: '原始记录夹具' }], limitations: ['仅选定消息'], origin: { threadId: uuid(15), title: '项目接续记录' } } }] };
   const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 1, scope: { knowledgeIds: [revision.knowledgeId], includeHistory: false },
@@ -170,7 +170,7 @@ describe('knowledge graph browsing and evidence', () => {
         persisted = structuredClone(persisted);
         persisted.derivedAssociations.generation = 2; persisted.derivedAssociations.headRevisionId = uuid(20);
         persisted.derivedAssociations.revision = { ...persisted.derivedAssociations.revision!, revisionId: uuid(20), parentRevisionId: uuid(9), revisionReason: String(call.reason),
-          segmentEntityRefs: [{ segmentId: 's1', entityId: uuid(4), mentionIds: [uuid(5), uuid(6)] }] };
+          segmentEntityRefs: [{ segmentId: 's1', analysisId: data.analysis.history.analysisId, entityRevisionId: data.analysis.revision.revisionId, entityId: uuid(4), mentionIds: [uuid(5), uuid(6)] }] };
         persistedGraph = structuredClone(persistedGraph);
         const mapping = persistedGraph.edges.find(edge => edge.edgeKind === 'segment_entity')!;
         if (mapping.edgeKind === 'segment_entity') { mapping.edgeId = 'mapping-corrected'; mapping.projectionRevisionId = uuid(20); mapping.mentionIds = [uuid(5), uuid(6)]; mapping.mentions = data.mentions; }
@@ -194,18 +194,19 @@ describe('knowledge graph browsing and evidence', () => {
     await waitFor(() => expect(screen.queryByRole('textbox', { name: '映射修改理由' })).toBeNull());
     expect(persisted.revision).toEqual(data.detail.revision); expect(persisted.maintenance).toEqual(data.detail.maintenance);
     expect(calls.find(call => call.operation === 'apply-associations')).toMatchObject({ revision: data.detail.revision.revisionId, bodyDigest: data.detail.revision.bodyDigest, generation: 1,
-      draft: { segmentEntityRefs: [{ segmentId: 's1', entityId: uuid(4), mentionIds: [uuid(5), uuid(6)] }] } });
+      draft: { catalogRefs: [{ analysisId: data.analysis.history.analysisId, entityRevisionId: data.analysis.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId: data.analysis.history.analysisId, entityRevisionId: data.analysis.revision.revisionId, entityId: uuid(4), mentionIds: [uuid(5), uuid(6)] }] } });
     await waitFor(() => expect(document.querySelector(`.knowledge-reader [data-mention-id="${uuid(6)}"]`)).not.toBeNull());
     fireEvent.click(within(document.querySelector<HTMLElement>(`.knowledge-reader [data-mention-id="${uuid(6)}"]`)!).getByRole('button', { name: '回查这处提及的原文' }));
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('section')).toBe('evidence'));
     const params = new URLSearchParams(window.location.search);
     expect(params.get('view')).toBe('graph'); expect(params.get('scope')).toBe('filtered'); expect(params.get('choice')).toBe('retain');
+    expect(JSON.parse(params.get('catalog')!)).toEqual({ analysisId: data.analysis.history.analysisId, entityRevisionId: data.analysis.revision.revisionId });
     expect(params.get('mention')).toBe(uuid(6)); expect(params.get('segment')).toBe('s1');
     expect(JSON.parse(params.get('evidence')!)).toEqual({ ...data.source, evidenceRef: 'record-1', start: 6, end: 11 });
     view.unmount();
     render(<KnowledgeLibrary lang="zh" initialWorkspace={params.get('workspace')!} knowledgeId={params.get('knowledge')!} initialKnowledgeRevision={params.get('revision')!}
       initialView="graph" initialGraphScope="filtered" initialGraphSelection={params.get('selection')!} initialChoice="retain" initialReaderTab="evidence"
-      initialSegmentId={params.get('segment')!} initialMentionId={params.get('mention')!} initialEvidence={JSON.parse(params.get('evidence')!)}/>, { wrapper });
+      initialSegmentId={params.get('segment')!} initialMentionId={params.get('mention')!} initialCatalogRef={JSON.parse(params.get('catalog')!)} initialEvidence={JSON.parse(params.get('evidence')!)}/>, { wrapper });
     await screen.findByRole('combobox', { name: '选择图谱节点' });
     const reader = await screen.findByRole('navigation', { name: '知识阅读视图' });
     const article = reader.closest<HTMLElement>('article')!;
@@ -249,7 +250,7 @@ describe('knowledge graph browsing and evidence', () => {
     const { detail, graph, catalog, source } = fixture();
     const interpretation = '关系中的有条件归因，不能替代正文来源说法';
     const evidence = { ...detail.revision.content.segments[0].evidence[0], basis: 'inference' as const, interpretation };
-    detail.derivedAssociations.revision!.typedRelations = [{ relationId: 'relation-same-span', segmentIds: ['s1'], subject: { entityId: uuid(4) },
+    detail.derivedAssociations.revision!.typedRelations = [{ relationId: 'relation-same-span', segmentIds: ['s1'], subject: { analysisId: uuid(7), entityRevisionId: uuid(8), entityId: uuid(4) },
       relation: '只在选定条件下适用', modality: 'descriptive', polarity: 'positive', evidence: [evidence], issues: [] }];
     graph.edges.push({ edgeKind: 'typed_relation', edgeId: 'typed-relation', from: 'entity-window-1', to: 'knowledge-current', current: true,
       knowledgeNodeId: 'knowledge-current', projectionRevisionId: uuid(9), reviewStatus: 'pending', catalogCurrent: true, relationId: 'relation-same-span',

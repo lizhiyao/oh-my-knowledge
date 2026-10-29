@@ -19,29 +19,32 @@ function entityDetail(detail: ReturnType<KnowledgeApplication['entities']>): Kno
 function candidateDetail(detail: ReturnType<KnowledgeApplication['detail']>): KnowledgeCandidateDetail { return detail; }
 const frozenSourceSchema = z.object({ source: z.object({ snapshotId: z.string(), sourceVersion: z.string(),
   origin: z.object({ threadId: z.string().min(1), title: z.string(), turnId: z.string().min(1).optional() }).optional() }) });
-/** Frozen attribution is metadata only; it does not assert that the source can still be read. */
-function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandidateRun, 'origin' | 'sourceMetadataStatus'> {
+/** Frozen attribution is metadata only; it does not assert that the sources can still be read. */
+function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandidateRun, 'sources' | 'sourceMetadataStatus'> {
+  const sources = journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
   try {
-    const { source } = frozenSourceSchema.parse(JSON.parse(journal.stages[0]!.input));
-    if (source.snapshotId !== journal.snapshotId || source.sourceVersion !== journal.sourceVersion) return { sourceMetadataStatus: 'unknown' };
-    return { sourceMetadataStatus: 'frozen_input', ...(source.origin ? { origin: source.origin } : {}) };
-  } catch { return { sourceMetadataStatus: 'unknown' }; }
+    const input: unknown = JSON.parse(journal.stages[0]!.input);
+    const entries = journal.stages[0]!.stageKind === 'body' ? [frozenSourceSchema.parse(input)]
+      : z.object({ sources: z.array(frozenSourceSchema) }).parse(input).sources;
+    if (entries.length !== sources.length || entries.some(({ source }, index) => source.snapshotId !== sources[index].snapshotId || source.sourceVersion !== sources[index].sourceVersion)) return { sources, sourceMetadataStatus: 'unknown' };
+    return { sources: entries.map(({ source }) => source), sourceMetadataStatus: 'frozen_input' };
+  } catch { return { sources, sourceMetadataStatus: 'unknown' }; }
 }
 function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchiveCheck[] = [], archiveVerification: KnowledgeCandidateRun['archiveVerification'] = 'not_verified'): KnowledgeCandidateRun {
   const last = journal.stages.at(-1)!;
   const pending = journal.stages.find(s => !['completed', 'failed'].includes(s.state));
-  const association = journal.stages.find(s => s.stageKind === 'association'), catalog = association?.committed ? association.entityWrite : undefined;
+  const association = journal.stages.find(s => s.stageKind === 'association'), catalogs = association?.entityWrites?.slice(0, association.committed) ?? [];
   return { runId: journal.runId, schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
-    executor: journal.executor, model: journal.model, snapshotId: journal.snapshotId, sourceVersion: journal.sourceVersion,
+    executor: journal.executor, model: journal.model,
     ...frozenSourceMetadata(journal), archiveChecks, archiveVerification, bodies: journal.bodies,
     phases: journal.stages.map(s => ({ stageKind: s.stageKind, state: s.state, invocationId: s.invocationId, profileId: s.profileId,
       promptVersion: s.promptVersion, wireId: s.wireId, ...(s.outcomeRef ? { outcomeRef: s.outcomeRef } : {}), committed: s.committed,
       issues: s.issues, producerId: s.producer.producerId, producerRevision: s.producer.producerRevision, rejectedCount: s.rejected?.length ?? null })),
     nextAction: pending?.state === 'prepared' ? 'continue_stage' : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch'
       : pending ? 'resume_publication' : journal.status === 'active' && last.state === 'completed' ? 'continue_stage' : 'none',
-    ...(catalog ? { entityAnalysis: { analysisId: catalog.analysisId, revisionId: catalog.revision.revisionId,
+    ...(catalogs.length ? { entityAnalyses: catalogs.map(catalog => ({ analysisId: catalog.analysisId, revisionId: catalog.revision.revisionId,
       entityCount: catalog.revision.entities.length, mentionCount: catalog.revision.mentions.length,
-      unresolvedCount: catalog.revision.entities.filter(e => e.identityStatus === 'unresolved').length, reviewStatus: 'pending' as const } } : {}) };
+      unresolvedCount: catalog.revision.entities.filter(e => e.identityStatus === 'unresolved').length, reviewStatus: 'pending' as const })) } : {}) };
 }
 function inventoryRuns(inventory: GenerationJournalInventory): KnowledgeCandidateRun[] {
   const checks = new Map<string, GenerationArchiveCheck[]>();
@@ -124,8 +127,8 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
       const runs = inventoryRuns(app.runs()).flatMap(run => {
         if (run.schemaStatus !== 'current') return [run];
         if ((request.threadId || projectThreads) && run.sourceMetadataStatus === 'unknown') return [unavailableSourceScope(run)];
-        return (request.threadId ? run.origin?.threadId === request.threadId
-          : projectThreads ? Boolean(run.origin && projectThreads.has(run.origin.threadId)) : true) ? [run] : [];
+        return (request.threadId ? run.sources?.some(source => source.origin?.threadId === request.threadId)
+          : projectThreads ? run.sources?.some(source => source.origin && projectThreads.has(source.origin.threadId)) : true) ? [run] : [];
       });
       const ids = new Set(runs.flatMap(run => run.bodies.map(ref => ref.knowledgeId)));
       return { rows: app.list(ids), runs };

@@ -61,7 +61,7 @@ omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> 
 
 用 `--start-record`／`--end-record` 选择零基、含首尾的记录范围。生成前核对隐私及范围；执行能力不支持或请求不可完整归档时在派发前拒绝，不截断来源。宿主 source 文件路径不作为语义 metadata 发送。
 
-当前 `knowledge-body-first/v1` 先调用正文模型，归档完整返回原件、核对精确证据，再将接纳的完整正文修订保存为**待审且未保留**；随后才独立调用关联模型，提出实体与可选 typed 关系。每阶段默认 300 秒，分别记录请求／profile／wire／producer／原始结果。投影失败或未决不删除已保存正文。没有自动模型重试、校验重问或 provider 回退；旧 `--generation-policy` 不再是当前生成契约。
+当前 `knowledge-body-first/v2` 先调用正文模型，归档完整返回原件、核对精确证据，再将接纳的完整正文修订保存为**待审且未保留**；随后才独立调用关联模型，提出实体与可选 typed 关系。每阶段默认 300 秒，分别记录请求／profile／wire／producer／原始结果。投影失败或未决不删除已保存正文。没有自动模型重试、校验重问或 provider 回退；旧 `--generation-policy` 不再是当前生成契约。
 
 无需读取工作区或调用模型即可导出两个当前结构 wire：
 
@@ -114,11 +114,11 @@ omk observe knowledge entities --workspace ./knowledge --query Atlas --identity-
 纠正只追加实体修订，不改写正文。要把段落连接到选定目录，先核对精确正文与目录，再单独写入派生投影：
 
 ```bash
-omk observe knowledge apply-associations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --generation <association-generation> --analysis <analysis-id> --entity-revision <catalog-revision-id> --input ./associations.json --reason '已核对有来源的段落关联' --json
+omk observe knowledge apply-associations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --generation <association-generation> --input ./associations.json --reason '已核对有来源的段落关联' --json
 omk observe knowledge review-associations --workspace ./knowledge --id <knowledge-id> --revision <projection-revision-id> --generation <association-generation> --choice accept --reason '已核对该投影' --json
 ```
 
-应用草稿含 `segmentEntityRefs`、可选 `typedRelations`、`issues`；每项段落／实体引用给出精确目录 mention ID。关联 generation 从 `derivedAssociations.generation` 读取，**不是**正文 `history.generation`，尚无关联时为 0。手工应用和模型重建都创建新待审投影，保留正文／修订／digest 及其维护决定；接受／拒绝只作用于该投影，不确认外部真值。被拒或过期投影不是当前知识库绑定。见[领域契约](../../specs/knowledge/knowledge-domain-model.md)。
+应用草稿含 `catalogRefs:[{analysisId,entityRevisionId}]`、`segmentEntityRefs`、可选 `typedRelations`、`issues`。每项段落引用为 `{segmentId,analysisId,entityRevisionId,entityId,mentionIds}`；typed 主体／客体使用相同的目录限定实体三元组。可组合正文来源匹配的多个目录，局部同名或同 ID 不自动合并。旧 `--analysis／--entity-revision` 不再用于 apply-associations。关联 generation 从 `derivedAssociations.generation` 读取，**不是**正文 `history.generation`，尚无关联时为 0。手工应用和模型重建都创建新待审投影，保留正文／修订／digest 及其维护决定；接受／拒绝只作用于该投影，不确认外部真值。被拒或过期投影不是当前知识库绑定。见[领域契约](../../specs/knowledge/knowledge-domain-model.md)。
 
 ## 组织与检索知识 {#组织与检索知识}
 
@@ -131,7 +131,7 @@ omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未�
 
 默认 JSON 视图的 **65536 UTF-8 字节计算整个单行 JSON 和换行**，不是知识存储或模型上下文限制。仍支持显式 `--max-bytes 8192`，最大保持 1 MiB；完整段落及其 inline evidence 原子装入，超大或预算排除的段落记入 `omitted`，不截条件。这一初始预算不证明任务覆盖完整或选择最优，也不升级旧小预算失败记录。下方可选 text 视图按自身完整输出计算预算。
 
-召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和可选 `--source-version` 限定精确来源引用；`--entity-id` 使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
+召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和可选 `--source-version` 限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
 
 ### 从已有知识完成任务 {#task-knowledge-reuse}
 
@@ -167,6 +167,18 @@ omk observe knowledge retrieve --workspace <selected-workspace> --query '<curren
 OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若服务器报告模型需要更新客户端，应升级或明确选择兼容的现有客户端，不必切换模型或 API。桌面应用与命令行可能使用不同版本。
 
 
+### 关联 Schema 1 迁入独立副本 {#association-migration}
+
+先保存旧工作区与匹配旧版本安装包，停止相关旧写入。新版本只读取关联／生成日志 Schema 2，不自动升级。显式执行：
+
+```bash
+omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <stable-uuid> --json
+```
+
+新目标须为空且与原目录互不嵌套。该操作零模型调用，逐字复制正文、来源、实体目录、retention 与历史测量；旧关联原件和回执保存在 `migration/<operation-id>/original/`，`plan.json` 固定来源指纹与新旧修订映射，`complete.json` 记录完成。旧投影转为新的待审修订，不继承接受决定。旧生成日志及原件保留字节并明确 unsupported，不伪造新 profile 或恢复派发；旧自动权限、调度和预算只归档，新工作区须重新明确授权。
+
+中断时保留计划，以同一两个目录及 `--operation-id` 重入；源目录漂移或目标已修改则拒绝，不覆盖。完成后重放只验证原计划，人工新增／修改／删除不得被复活或覆盖。回退使用旧工作区和匹配旧 binary，新副本继续保留原件与映射。机械迁移、可读和保存成功均不表示知识语义通过。
+
 ## 中断与来源管理 {#中断与来源管理}
 
 用 `generate --run-id <UUID>` 固定一次请求。完全相同的请求只恢复原日志，零新模型调用；不同来源／模型／runtime 不能复用该身份。
@@ -185,7 +197,7 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-uuid> --executor codex --model <model>
 ```
 
-这会创建独立的新待审投影。当前模型关联生成／重建要求单个精确可读来源窗口；多来源正文仍可读取、修订，不依赖该能力。
+这会创建独立的新待审投影。关联生成／重建支持正文的全部精确可读来源，每个来源保持独立目录，全部来源必须在发送前核对。单个目录输出校验失败时，相关正文投影明确 failed，健康目录与已存正文保留；后续目录读不到时分目录呈现缺口，其余映射仍可读。
 
 当前日志在 `generation-journals/<run-id>.json`，各完整原件在 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。正文历史使用 Schema 3；旧 typed 知识 v2 和 run5 明确 unsupported，不显示成健康空库。见[显式迁入新工作区](../../specs/knowledge/knowledge-domain-model.md#body-migration)，可运行 `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge`，两个路径须显式提供，不自动覆盖；保全旧工作区及匹配 binary 可回退。
 

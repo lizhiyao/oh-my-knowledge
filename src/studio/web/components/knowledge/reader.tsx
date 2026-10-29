@@ -10,6 +10,7 @@ import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
 
 export type KnowledgeReaderSelection = {
   tab?: 'body' | 'evidence' | 'associations' | 'history'; segmentId?: string; mentionId?: string; relationId?: string;
+  catalogRef?: { analysisId: string; entityRevisionId: string };
   evidence?: { snapshotId: string; sourceVersion: string; evidenceRef: string; start: number; end: number };
 };
 export type KnowledgeReaderEntityTarget = { analysisId: string; entityRevisionId: string; entityId: string };
@@ -45,32 +46,37 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   useEffect(() => {
     const container = scroll.current, focused = container?.querySelector<HTMLElement>('[data-mention-id][data-focused="true"], [data-relation-id][data-focused="true"]') ?? container?.querySelector<HTMLElement>('[data-focused="true"]');
     if (container && focused) container.scrollTop += focused.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
-  }, [detail.revision.knowledgeId, detail.revision.revisionId, tab, active.segmentId, active.mentionId, active.relationId, active.evidence]);
+  }, [detail.revision.knowledgeId, detail.revision.revisionId, tab, active.segmentId, active.mentionId, active.relationId, active.catalogRef, active.evidence]);
   const segments = detail.revision.content.segments;
   const derived = detail.derivedAssociations;
-  const catalog = detail.derivedCatalog;
-  const selections = segments.flatMap(segment => segment.evidence.map(evidence => ({ segmentId: segment.segmentId, mentionId: undefined as string | undefined, relationId: undefined as string | undefined, ...evidence })));
-  if (derived.status === 'available' && catalog.status === 'available' && catalog.snapshotId && catalog.sourceVersion) {
+  const catalogs = detail.derivedCatalogs;
+  const catalogFor = (ref: { analysisId: string; entityRevisionId: string }) => catalogs.find(catalog => catalog.analysisId === ref.analysisId && catalog.entityRevisionId === ref.entityRevisionId);
+  const selections = segments.flatMap(segment => segment.evidence.map(evidence => ({ segmentId: segment.segmentId, mentionId: undefined as string | undefined, relationId: undefined as string | undefined, catalogRef: undefined as KnowledgeReaderSelection['catalogRef'], ...evidence })));
+  if (derived.status === 'available') {
     for (const ref of derived.revision?.segmentEntityRefs ?? []) for (const mentionId of ref.mentionIds) {
-      const mention = catalog.mentions.find(item => item.mentionId === mentionId && item.entityId === ref.entityId);
-      if (mention) selections.push({ segmentId: ref.segmentId, mentionId, relationId: undefined, source: { snapshotId: catalog.snapshotId, sourceVersion: catalog.sourceVersion },
+      const catalog = catalogFor(ref);
+      const mention = catalog?.status === 'available' ? catalog.mentions.find(item => item.mentionId === mentionId && item.entityId === ref.entityId) : undefined;
+      if (mention && catalog?.status === 'available') selections.push({ segmentId: ref.segmentId, mentionId, relationId: undefined,
+        catalogRef: { analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId }, source: { snapshotId: catalog.snapshotId, sourceVersion: catalog.sourceVersion },
         selection: mention.selection, basis: mention.basis === 'explicit' ? 'source_assertion' : 'inference', interpretation: mention.rationale });
     }
   }
   for (const relation of derived.status === 'available' ? derived.revision?.typedRelations ?? [] : []) for (const segmentId of relation.segmentIds) for (const evidence of relation.evidence) {
-    selections.push({ segmentId, mentionId: undefined, relationId: relation.relationId, ...evidence });
+    selections.push({ segmentId, mentionId: undefined, relationId: relation.relationId, catalogRef: undefined, ...evidence });
   }
   const requestedEvidence = active.evidence;
-  const hasTarget = requestedEvidence !== undefined || active.segmentId !== undefined || active.mentionId !== undefined || active.relationId !== undefined;
-  const citation = hasTarget ? selections.findIndex(item => (active.segmentId === undefined || item.segmentId === active.segmentId)
+  const hasTarget = requestedEvidence !== undefined || active.segmentId !== undefined || active.mentionId !== undefined || active.relationId !== undefined || active.catalogRef !== undefined;
+  const matchingCitations = hasTarget ? selections.flatMap((item, index) => (active.segmentId === undefined || item.segmentId === active.segmentId)
     && (active.mentionId === undefined || item.mentionId === active.mentionId)
     && (active.relationId === undefined || item.relationId === active.relationId)
+    && (!active.catalogRef || (item.catalogRef?.analysisId === active.catalogRef.analysisId && item.catalogRef?.entityRevisionId === active.catalogRef.entityRevisionId))
     && (!requestedEvidence || (item.source.snapshotId === requestedEvidence.snapshotId && item.source.sourceVersion === requestedEvidence.sourceVersion
-      && item.selection.evidenceRef === requestedEvidence.evidenceRef && item.selection.start === requestedEvidence.start && item.selection.end === requestedEvidence.end))) : 0;
+      && item.selection.evidenceRef === requestedEvidence.evidenceRef && item.selection.start === requestedEvidence.start && item.selection.end === requestedEvidence.end)) ? [index] : []) : [0];
+  const citation = active.mentionId && matchingCitations.length > 1 ? -1 : matchingCitations[0] ?? -1;
   const selected = selections[citation];
   function inspect(index: number) {
     const item = selections[index];
-    if (item) choose({ tab: 'evidence', segmentId: item.segmentId, mentionId: item.mentionId, relationId: item.relationId, evidence: { ...item.source,
+    if (item) choose({ tab: 'evidence', segmentId: item.segmentId, mentionId: item.mentionId, relationId: item.relationId, ...(item.catalogRef ? { catalogRef: item.catalogRef } : {}), evidence: { ...item.source,
       evidenceRef: item.selection.evidenceRef, start: item.selection.start, end: item.selection.end } });
   }
   const source = detail.sources.find(entry => entry.status === 'available'
@@ -78,8 +84,9 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   const excerpt = source?.status === 'available' ? source.window.excerpts.find(item => item.evidenceRef === selected?.selection.evidenceRef) : undefined;
   const organization = detail.revision.content.organization;
   const sourceMatches = !!excerpt && !!selected && excerpt.text.slice(selected.selection.start, selected.selection.end) === selected.selection.quote;
-  const entityLabel = (id: string) => catalog.status === 'available' ? catalog.entities.find(entity => entity.entityId === id)?.label ?? id : id;
-  const referencesUnavailable = catalog.status !== 'available' && !!(derived.revision?.segmentEntityRefs.length || derived.revision?.typedRelations?.length);
+  const entityLabel = (ref: { analysisId: string; entityRevisionId: string; entityId: string }) => { const catalog = catalogFor(ref); return catalog?.status === 'available' ? catalog.entities.find(entity => entity.entityId === ref.entityId)?.label ?? ref.entityId : ref.entityId; };
+  const referencesUnavailable = (derived.revision?.catalogRefs ?? []).some(ref => { const catalog = catalogFor(ref); return catalog?.status !== 'available'
+    || !detail.sources.some(source => source.status === 'available' && source.window.snapshotId === catalog.snapshotId && source.window.sourceVersion === catalog.sourceVersion); });
   const tabs = [{ key: 'body', label: t('正文', 'Content') }, { key: 'evidence', label: t('依据', 'Evidence') },
     { key: 'associations', label: t('实体与关联', 'Entities and associations') }, { key: 'history', label: t('修订历史', 'Revision history') }];
   return <article className="knowledge-reader">
@@ -118,22 +125,23 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
             <p>{t('关联核对状态：', 'Association review: ')}{({ pending: t('待核对', 'Pending'), accepted: t('已接受', 'Accepted'), rejected: t('已拒绝', 'Rejected') })[derived.reviewStatus]}</p>
             <p className="candidate-help">{t('关联修订：', 'Association revision: ')}<code>{derived.revision?.revisionId}</code> · {t('正文修订：', 'Content revision: ')}<code>{detail.revision.revisionId}</code></p>
             <p>{t(`${derived.revision?.segmentEntityRefs.length ?? 0} 处段落关联。`, `${derived.revision?.segmentEntityRefs.length ?? 0} segment associations.`)}</p>
-            {catalog.status === 'available' && <p className="candidate-help">{t('实体修订：', 'Entity revision: ')}<code>{catalog.revisionId}</code>{catalog.revisionId !== catalog.currentHeadRevisionId && ` · ${t('目录已有新修订；此处显示原绑定版本，需明确应用新映射。', 'The catalog has a newer revision. This shows the bound version; apply a new mapping explicitly.')}`}</p>}
-            {referencesUnavailable && <Alert type="warning" title={t('绑定的实体修订暂不可读；保留精确 ID，不能核对或接受这些映射。', 'The bound entity revision is unavailable. Exact IDs remain visible; these mappings cannot be checked or accepted.')}/>}
-            {derived.revision?.segmentEntityRefs.map(ref => <section className="candidate-statement" key={`${ref.segmentId}/${ref.entityId}`} data-segment-id={ref.segmentId} data-focused={active.segmentId === ref.segmentId}>
+            {catalogs.map(catalog => <p className="candidate-help" key={`${catalog.analysisId}/${catalog.entityRevisionId}`}>{t('实体目录与修订：', 'Entity catalog and revision: ')}<code>{catalog.analysisId} / {catalog.entityRevisionId}</code>{catalog.status === 'available' && catalog.entityRevisionId !== catalog.currentHeadRevisionId && ` · ${t('目录已有新修订；此处显示原绑定版本，需明确应用新映射。', 'The catalog has a newer revision. This shows the bound version; apply a new mapping explicitly.')}`}{catalog.status === 'unavailable' && ` · ${t('目录不可读，其他目录及正文仍可核对。', 'Catalog unavailable; other catalogs and content remain inspectable.')}`}</p>)}
+            {referencesUnavailable && <Alert type="warning" title={t('部分实体目录或来源暂不可读；精确 ID 和其他可读映射仍保留，暂不能接受此关联修订。', 'Some bound entity catalogs or sources are unavailable. Exact IDs and other readable mappings remain visible; accepting this projection is unavailable.')}/>}
+            {derived.revision?.segmentEntityRefs.map(ref => { const catalog = catalogFor(ref); return <section className="candidate-statement" key={`${ref.segmentId}/${ref.analysisId}/${ref.entityRevisionId}/${ref.entityId}`} data-segment-id={ref.segmentId} data-focused={active.segmentId === ref.segmentId}>
               <p>{segments.find(segment => segment.segmentId === ref.segmentId)?.text ?? ref.segmentId}</p>
-              <p>{t('关联对象：', 'Associated entity: ')}{entityLabel(ref.entityId)} <code>{ref.entityId}</code></p>
+              <p>{t('关联对象：', 'Associated entity: ')}{entityLabel(ref)} <code>{ref.entityId}</code></p>
+              <details><summary>{t('此映射的精确目录身份', 'Exact catalog identity for this mapping')}</summary><code>{ref.analysisId} / {ref.entityRevisionId}</code></details>
               <Space wrap><Button type="link" disabled={busy} onClick={() => choose({ tab: 'body', segmentId: ref.segmentId })}>{t('定位正文段落', 'Locate content segment')}</Button>
-                {derived.revision?.entityAnalysisRef && (onEntity ? <Button type="link" disabled={busy} onClick={() => onEntity({ analysisId: derived.revision!.entityAnalysisRef!.analysisId, entityRevisionId: derived.revision!.entityAnalysisRef!.revisionId, entityId: ref.entityId })}>{t('核对这个实体', 'Inspect this entity')}</Button>
-                  : workspace && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace, analysis: derived.revision.entityAnalysisRef.analysisId, revision: derived.revision.entityAnalysisRef.revisionId, entity: ref.entityId })}`}>{t('核对这个实体', 'Inspect this entity')}</Link>)}</Space>
-              {ref.mentionIds.map(id => { const mention = catalog.status === 'available' ? catalog.mentions.find(item => item.mentionId === id && item.entityId === ref.entityId) : undefined;
-                const index = selections.findIndex(item => item.mentionId === id && item.segmentId === ref.segmentId);
-                return <div className="knowledge-mention" key={id} data-mention-id={id} data-focused={active.mentionId === id}>{mention ? <><blockquote>{mention.selection.quote}</blockquote><p className="candidate-help"><code>{id}</code> · {mention.selection.evidenceRef} · {mention.selection.start}–{mention.selection.end} · {mention.rationale}</p>
+                {onEntity ? <Button type="link" disabled={busy} onClick={() => onEntity({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId, entityId: ref.entityId })}>{t('核对这个实体', 'Inspect this entity')}</Button>
+                  : workspace && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace, analysis: ref.analysisId, revision: ref.entityRevisionId, entity: ref.entityId })}`}>{t('核对这个实体', 'Inspect this entity')}</Link>}</Space>
+              {ref.mentionIds.map(id => { const mention = catalog?.status === 'available' ? catalog.mentions.find(item => item.mentionId === id && item.entityId === ref.entityId) : undefined;
+                const index = selections.findIndex(item => item.mentionId === id && item.segmentId === ref.segmentId && item.catalogRef?.analysisId === ref.analysisId && item.catalogRef.entityRevisionId === ref.entityRevisionId);
+                return <div className="knowledge-mention" key={id} data-mention-id={id} data-focused={active.mentionId === id && (!active.catalogRef || (active.catalogRef.analysisId === ref.analysisId && active.catalogRef.entityRevisionId === ref.entityRevisionId))}>{mention ? <><blockquote>{mention.selection.quote}</blockquote><p className="candidate-help"><code>{id}</code> · {mention.selection.evidenceRef} · {mention.selection.start}–{mention.selection.end} · {mention.rationale}</p>
                   <Button type="link" disabled={busy || index < 0} onClick={() => inspect(index)}>{t('回查这处提及的原文', 'Inspect this mention in its source')}</Button></> : <p>{t('提及不可读：', 'Mention unavailable: ')}<code>{id}</code></p>}</div>;
               })}
-            </section>)}
+            </section>; })}
             {!!derived.revision?.typedRelations?.length && <><h4>{t('已有的派生关系', 'Existing derived relations')}</h4>{derived.revision.typedRelations.map(relation => <section className="candidate-statement" key={relation.relationId} data-relation-id={relation.relationId} data-focused={active.relationId === relation.relationId}>
-              <p>{entityLabel(relation.subject.entityId)} · {relation.relation}{relation.object ? ` · ${entityLabel(relation.object.entityId)}` : ''}</p>
+              <p>{entityLabel(relation.subject)} · {relation.relation}{relation.object ? ` · ${entityLabel(relation.object)}` : ''}</p>
               <p className="candidate-help"><code>{relation.subject.entityId}{relation.object ? ` → ${relation.object.entityId}` : ''}</code></p>
               <p className="candidate-help">{relation.modality} / {relation.polarity} · {relation.segmentIds.join(', ')}</p>
               {relation.evidence.map((evidence, index) => {
@@ -154,7 +162,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
           <Space wrap>
             {onMapAssociations && <Button disabled={busy} onClick={onMapAssociations}>{t('编辑实体映射', 'Edit entity mappings')}</Button>}
             {onRebuildAssociations && <Button disabled={busy} onClick={onRebuildAssociations}>{t('重新生成关联', 'Regenerate associations')}</Button>}
-            {onEntities && derived.status === 'available' && derived.revision?.entityAnalysisRef && <Button disabled={busy} onClick={onEntities}>{t('核对关联对象', 'Inspect associated entities')}</Button>}
+            {onEntities && derived.status === 'available' && !!derived.revision?.catalogRefs.length && <Button disabled={busy} onClick={onEntities}>{t('核对关联对象', 'Inspect associated entities')}</Button>}
           </Space>
         </>}
         {tab === 'evidence' && <>

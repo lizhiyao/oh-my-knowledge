@@ -138,7 +138,7 @@ describe('Studio candidate action boundary', () => {
     const inspection = vi.spyOn(KnowledgeApplication.prototype, 'inspect').mockImplementation(() => { throw new Error('Full archive reads are forbidden for the queue.'); });
     try {
       const metadataOnly = await queue(); expect(metadataOnly.status).toBe(200);
-      expect((await metadataOnly.json()).runs[0]).toMatchObject({ origin: { threadId: 'chosen-thread', title: 'chosen-thread' }, sourceMetadataStatus: 'frozen_input', archiveVerification: 'not_verified' });
+      expect((await metadataOnly.json()).runs[0]).toMatchObject({ sources: [expect.objectContaining({ origin: { threadId: 'chosen-thread', title: 'chosen-thread' } })], sourceMetadataStatus: 'frozen_input', archiveVerification: 'not_verified' });
       expect(sourceRead).not.toHaveBeenCalled(); expect(inspection).not.toHaveBeenCalled();
     } finally { sourceRead.mockRestore(); inspection.mockRestore(); }
     expect((await post({ workspace: selected, operation: 'list' })).status).toBe(400); // Unscoped reads remain fail-closed.
@@ -148,10 +148,10 @@ describe('Studio candidate action boundary', () => {
     expect(diagnostic).not.toContain(selected); expect(diagnostic).not.toContain('selected corrupt item');
     const journalPath = join(selected, 'generation-journals', `${chosen.journal.runId}.json`), originalJournal = readFileSync(journalPath, 'utf8');
     try {
-      writeFileSync(journalPath, JSON.stringify({ ...JSON.parse(originalJournal), snapshotId: randomUUID() }));
+      writeFileSync(journalPath, JSON.stringify({ ...JSON.parse(originalJournal), sources: [{ ...JSON.parse(originalJournal).sources[0], snapshotId: randomUUID() }] }));
       const unknownScope = await post({ workspace: selected, operation: 'queue', threadId: 'unrelated-thread' }); expect(unknownScope.status).toBe(200);
       const projection = await unknownScope.json(); expect(projection.rows).toEqual([]);
-      expect(projection.runs).toContainEqual(expect.objectContaining({ runId: chosen.journal.runId, schemaStatus: 'unavailable', unavailableReason: 'invalid_source_metadata', bodies: [] }));
+      expect(projection.runs).toContainEqual(expect.objectContaining({ runId: chosen.journal.runId, schemaStatus: 'unavailable', unavailableReason: 'unreadable', bodies: [] }));
     } finally { writeFileSync(journalPath, originalJournal); }
   });
 
@@ -243,7 +243,7 @@ describe('Studio candidate action boundary', () => {
     writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), message('user', '仅在隔离环境中使用 Beta，语义质量尚未验收。'),
       JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
     const app = createLocalKnowledgeApplication(workspace), snapshot = app.capture({ path: entitySource }), run = await app.generate(snapshot.snapshotId, currentModel());
-    const analysisId = run.journal.stages.find(stage => stage.stageKind === 'association')!.entityWrite!.analysisId, bodyRef = run.journal.bodies[0];
+    const analysisId = run.journal.stages.find(stage => stage.stageKind === 'association')!.entityWrites![0].analysisId, bodyRef = run.journal.bodies[0];
     const inspection = await post({ operation: 'entities', analysisId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
     const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
@@ -273,10 +273,10 @@ describe('Studio candidate action boundary', () => {
     const corrected = await (await post(request)).json(); expect(corrected.history.generation).toBe(2);
     const stale = await post(request); expect(stale.status).toBe(409); expect(await stale.json()).toEqual({ error: 'knowledge_conflict' });
     const candidate = await (await post({ operation: 'show', id: bodyRef.knowledgeId })).json(), original = app.detail(bodyRef.knowledgeId);
-    expect(candidate.derivedAssociations.revision.entityAnalysisRef.revisionId).toBe(before.revision.revisionId);
-    const associationDraft = { segmentEntityRefs: [{ segmentId: 's1', entityId: corrected.revision.entities[0].entityId, mentionIds: [corrected.revision.mentions[0].mentionId] }], typedRelations: [], issues: [] };
+    expect(candidate.derivedAssociations.revision.catalogRefs[0].entityRevisionId).toBe(before.revision.revisionId);
+    const associationDraft = { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId, entityRevisionId: corrected.revision.revisionId, entityId: corrected.revision.entities[0].entityId, mentionIds: [corrected.revision.mentions[0].mentionId] }], typedRelations: [], issues: [] };
     const applyRequest = { operation: 'apply-associations', id: bodyRef.knowledgeId, revision: bodyRef.revisionId, bodyDigest: bodyRef.bodyDigest,
-      generation: 1, analysisId, entityRevision: corrected.revision.revisionId, draft: associationDraft, reason: '正文不改，只修订独立关联' };
+      generation: 1, draft: associationDraft, reason: '正文不改，只修订独立关联' };
     const invalid = await post({ ...applyRequest, draft: { ...associationDraft, segmentEntityRefs: [{ ...associationDraft.segmentEntityRefs[0], mentionIds: [randomUUID()] }] } });
     expect(invalid.status).toBe(400); expect((await invalid.text())).not.toContain(root); expect(app.detail(bodyRef.knowledgeId)).toEqual(original);
     const applied = await post(applyRequest); expect(applied.status).toBe(200); const projection = await applied.json();
@@ -310,7 +310,7 @@ describe('Studio candidate action boundary', () => {
     }
     finally { writeFileSync(runPath, saved); }
     const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
-    expect(summaries.find((entry: { runId: string }) => entry.runId === run.journal.runId).entityAnalysis.entityCount).toBe(2);
+    expect(summaries.find((entry: { runId: string }) => entry.runId === run.journal.runId).entityAnalyses[0].entityCount).toBe(2);
     await post({ operation: 'delete-source', snapshot: snapshot.snapshotId }); const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });

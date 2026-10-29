@@ -13,16 +13,28 @@ const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
 const uuid = z.string().uuid();
 function validateJournal(j: GenerationJournal): void {
+  const sourceKeys = j.sources.map(source => canonicalJson([source.snapshotId, source.sourceVersion]));
+  if (new Set(sourceKeys).size !== sourceKeys.length || j.mode === 'generate' && j.sources.length !== 1) throw new Error('Invalid generation source identities.');
   if (j.mode === 'generate' && j.stages[0].stageKind !== 'body'
     || j.mode === 'rebuild_associations' && (j.stages.length !== 1 || j.stages[0].stageKind !== 'association' || j.bodies.length !== 1)
     || j.stages.length === 2 && (j.stages[0].state !== 'completed' || j.stages[1].stageKind !== 'association' || !j.bodies.length)) throw new Error('Invalid generation phase order.');
   for (const s of j.stages) {
+    const input = JSON.parse(s.input) as { source?: { snapshotId?: unknown; sourceVersion?: unknown }; sources?: { sourceKey?: unknown; source?: { snapshotId?: unknown; sourceVersion?: unknown } }[] };
+    const refs = s.stageKind === 'body' ? [input.source] : Array.isArray(input.sources) ? input.sources.map((item, index) => {
+      if (item.sourceKey !== `s${index}`) throw new Error('Invalid generation input source keys.'); return item.source;
+    }) : [];
+    if (canonicalJson(refs.map(ref => ({ snapshotId: ref?.snapshotId, sourceVersion: ref?.sourceVersion })))
+      !== canonicalJson(j.sources.map(ref => ({ snapshotId: ref.snapshotId, sourceVersion: ref.sourceVersion })))) throw new Error('Generation input source identities mismatch.');
+    const entityIds = (s.entityWrites ?? []).map(write => write.analysisId);
+    if (new Set(entityIds).size !== entityIds.length || (s.entityWrites ?? []).some(write => !j.sources.some(source => source.snapshotId === write.snapshotId && source.sourceVersion === write.sourceVersion))) {
+      throw new Error('Invalid generation catalog source identities.');
+    }
     const writes = s.stageKind === 'body' ? s.bodyWrites : s.associationWrites;
-    const total = (writes?.length ?? 0) + (s.entityWrite ? 1 : 0);
+    const total = (writes?.length ?? 0) + (s.entityWrites?.length ?? 0);
     if (s.committed > total || s.state === 'completed' && s.committed !== total
       || ['prepared_writes', 'completed'].includes(s.state) && writes === undefined
       || ['archived', 'prepared_writes', 'completed', 'failed'].includes(s.state) !== !!s.outcomeRef
-      || s.stageKind === 'body' && (s.associationWrites || s.entityWrite)
+      || s.stageKind === 'body' && (s.associationWrites || s.entityWrites)
       || s.stageKind === 'association' && s.bodyWrites) throw new Error('Invalid generation publication state.');
   }
   const body = j.stages.find(s => s.stageKind === 'body');
@@ -60,7 +72,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 1) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 2) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -124,7 +136,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
-      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v1 does not decode run5.' });
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v2 does not decode run5.' });
     }
     return { current, unsupported, unavailable, archiveChecks };
   }
@@ -137,7 +149,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
       if ((old?.generation ?? 0) !== expectedGeneration || next.generation !== expectedGeneration + 1) throw new Error('Generation journal conflict.');
       if (old) {
         const immutable = (j: GenerationJournal) => ({ runId: j.runId, mode: j.mode, createdAt: j.createdAt, actor: j.actor,
-          snapshotId: j.snapshotId, sourceVersion: j.sourceVersion, sourceDigest: j.sourceDigest, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
+          sources: j.sources, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
         if (canonicalJson(immutable(old)) !== canonicalJson(immutable(next))) throw new Error('Generation journal identity changed.');
         for (const [i, stage] of old.stages.entries()) {
           const updated = next.stages[i]; if (!updated) throw new Error('Generation phase removed.');
@@ -147,7 +159,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
           if (canonicalJson(identity(stage)) !== canonicalJson(identity(updated)) || updated.committed < stage.committed
             || stage.outcomeRef && canonicalJson(stage.outcomeRef) !== canonicalJson(updated.outcomeRef)) throw new Error('Generation phase identity changed.');
           if (stage.bodyWrites && canonicalJson(stage.bodyWrites) !== canonicalJson(updated.bodyWrites)
-            || stage.entityWrite && canonicalJson(stage.entityWrite) !== canonicalJson(updated.entityWrite)
+            || stage.entityWrites && canonicalJson(stage.entityWrites) !== canonicalJson(updated.entityWrites)
             || stage.associationWrites && canonicalJson(stage.associationWrites) !== canonicalJson(updated.associationWrites)) throw new Error('Generation prepared writes changed.');
           const states = ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed'];
           if (states.indexOf(updated.state) < states.indexOf(stage.state) || ['completed', 'failed'].includes(stage.state) && updated.state !== stage.state) throw new Error('Generation phase moved backwards.');

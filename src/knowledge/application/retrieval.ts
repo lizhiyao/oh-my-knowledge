@@ -17,8 +17,11 @@ export const KnowledgeRetrievalRequestSchema = z.strictObject({
   includeCandidates: z.boolean().default(false),
   snapshot: z.string().uuid().optional(),
   sourceVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  analysisId: z.string().uuid().optional(),
+  entityRevisionId: z.string().uuid().optional(),
   entityId: z.string().min(1).max(256).refine(value => value.trim().length > 0).optional(),
-}).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' });
+}).refine(value => [value.analysisId, value.entityRevisionId, value.entityId].filter(value => value !== undefined).length % 3 === 0,
+  { message: 'Entity scope requires analysisId, entityRevisionId and entityId.' }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' });
 export type KnowledgeRetrievalRequest = z.input<typeof KnowledgeRetrievalRequestSchema>;
 type Detail = ReturnType<KnowledgeApplication['detail']>;
 type Segment = KnowledgeDraft['content']['segments'][number];
@@ -29,12 +32,12 @@ type SourceContext = { snapshotId: string; sourceVersion: string } & (
   | { status: 'unavailable'; reason: string }
 );
 type ScopeDiagnostics = { source?: { status: 'available' | 'unavailable'; reason?: string };
-  entity?: { entityId: string; status: 'matched_segments' | 'no_eligible_segments' } };
+  entity?: { analysisId: string; entityRevisionId: string; entityId: string; status: 'matched_segments' | 'no_eligible_segments' } };
 type DerivedSummary = { status: KnowledgeAssociationSelection['status']; reviewStatus: KnowledgeAssociationSelection['reviewStatus']; bodyRef: KnowledgeBodyRef;
   revision?: { revisionId: string; bodyRef: KnowledgeBodyRef; status: 'available' | 'failed'; reviewStatus: 'pending';
-    entityAnalysisRef?: { analysisId: string; revisionId: string }; issueCount: number } };
+    catalogRefs: { analysisId: string; entityRevisionId: string }[]; issueCount: number } };
 export interface KnowledgeRetrievalResult {
-  projectionKind: 'knowledge-body-segments'; schemaVersion: 1;
+  projectionKind: 'knowledge-body-segments'; schemaVersion: 2;
   rankingPolicyId: typeof KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID;
   omitted: { oversizedSegments: number; budgetSegments: number };
   scopeDiagnostics?: ScopeDiagnostics;
@@ -68,12 +71,13 @@ const sameBody = (a: KnowledgeBodyRef, b: KnowledgeBodyRef) => a.knowledgeId ===
 function currentAssociation(detail: Detail) {
   const result = detail.derivedAssociations, revision = result.revision;
   return result.status === 'available' && result.reviewStatus !== 'rejected' && revision?.status === 'available' && sameBody(result.bodyRef, detail.revision)
-    && sameBody(revision.bodyRef, detail.revision) ? revision : undefined;
+    && sameBody(revision.bodyRef, detail.revision) ? { ...revision, segmentEntityRefs: revision.segmentEntityRefs.filter(ref => detail.derivedCatalogs.some(catalog =>
+      catalog.status === 'available' && catalog.analysisId === ref.analysisId && catalog.entityRevisionId === ref.entityRevisionId)) } : undefined;
 }
 function derivedSummary(detail: Detail): DerivedSummary {
   const { status, reviewStatus, bodyRef, revision } = detail.derivedAssociations;
   return { status, reviewStatus, bodyRef, ...(revision ? { revision: { revisionId: revision.revisionId, bodyRef: revision.bodyRef,
-    status: revision.status, reviewStatus: revision.reviewStatus, ...(revision.entityAnalysisRef ? { entityAnalysisRef: revision.entityAnalysisRef } : {}),
+    status: revision.status, reviewStatus: revision.reviewStatus, catalogRefs: revision.catalogRefs,
     issueCount: revision.issues.length } } : {}) };
 }
 const compareId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
@@ -87,7 +91,7 @@ function stableOrder(a: Unit, b: Unit): number {
     || compareId(a.detail.revision.knowledgeId, b.detail.revision.knowledgeId) || a.segmentIndex - b.segmentIndex;
 }
 function project(units: Unit[], matched: number, oversized: number, resolutions: Map<string, Resolution>, scopeDiagnostics: ScopeDiagnostics): KnowledgeRetrievalResult {
-  const result: KnowledgeRetrievalResult = { projectionKind: 'knowledge-body-segments', schemaVersion: 1,
+  const result: KnowledgeRetrievalResult = { projectionKind: 'knowledge-body-segments', schemaVersion: 2,
     rankingPolicyId: KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID,
     omitted: { oversizedSegments: oversized, budgetSegments: matched - oversized - units.length },
     ...(Object.keys(scopeDiagnostics).length ? { scopeDiagnostics } : {}), knowledge: [], sources: [], items: [] };
@@ -142,7 +146,7 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
     const scopedSegments = detail.revision.content.segments.map((segment, segmentIndex) => ({ segment, segmentIndex })).filter(({ segment }) => {
       if (request.snapshot && !segment.evidence.some(evidence => evidence.source.snapshotId === request.snapshot
         && (!request.sourceVersion || evidence.source.sourceVersion === request.sourceVersion))) return false;
-      return !request.entityId || !!association?.segmentEntityRefs.some(ref => ref.segmentId === segment.segmentId && ref.entityId === request.entityId);
+      return !request.entityId || !!association?.segmentEntityRefs.some(ref => ref.segmentId === segment.segmentId && ref.analysisId === request.analysisId && ref.entityRevisionId === request.entityRevisionId && ref.entityId === request.entityId);
     });
     const topicHits = hits([detail.revision.title, ...scopedSegments.map(({ segment }) => segment.text), ...detail.tagging.tags], asciiTerms);
     scopedSegments.forEach(({ segment, segmentIndex }) => {
@@ -156,7 +160,7 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
       candidates.push({ detail, segment, segmentIndex, hits: local, documentHits: recalled, topicHits });
     });
   }
-  if (request.entityId) scopeDiagnostics.entity = { entityId: request.entityId, status: entityMatched ? 'matched_segments' : 'no_eligible_segments' };
+  if (request.entityId) scopeDiagnostics.entity = { analysisId: request.analysisId!, entityRevisionId: request.entityRevisionId!, entityId: request.entityId, status: entityMatched ? 'matched_segments' : 'no_eligible_segments' };
   // Topic containment affects packing priority only, never candidate eligibility:
   // a smaller literal set cannot establish that a body's constraints are redundant.
   // With no ASCII hits (including pure Han queries), the existing recall is unchanged.

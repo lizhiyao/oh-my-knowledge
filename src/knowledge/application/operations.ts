@@ -19,7 +19,7 @@ export const knowledgeOperationSchemas = {
   'entity-detail': z.strictObject({ operation: z.literal('entity-detail'), analysisId: uuid, entityId: uuid, revision: uuid.optional() }),
   'correct-entities': z.strictObject({ operation: z.literal('correct-entities'), analysisId: uuid, revision: uuid, generation: z.number().int().positive(), draft: z.unknown(), reason: text }),
   'review-associations': z.strictObject({ operation: z.literal('review-associations'), id: text, revision: text, generation: z.number().int().positive(), choice: z.enum(['accept','reject']), reason: text }),
-  'apply-associations': z.strictObject({ operation: z.literal('apply-associations'), id: text, revision: text, bodyDigest: KnowledgeBodyRefSchema.shape.bodyDigest, analysisId: uuid, entityRevision: uuid, generation: z.number().int().nonnegative(), draft: z.unknown(), reason: text }),
+  'apply-associations': z.strictObject({ operation: z.literal('apply-associations'), id: text, revision: text, bodyDigest: KnowledgeBodyRefSchema.shape.bodyDigest, generation: z.number().int().nonnegative(), draft: z.unknown(), reason: text }),
   capture: z.strictObject({ operation: z.literal('capture'), source: text, startRecord: z.number().int().nonnegative().optional(), endRecord: z.number().int().nonnegative().optional() }),
   generate: z.strictObject({ operation: z.literal('generate'), snapshot: text, executor: text, model: text, runId: uuid.optional() }),
   inspect: z.strictObject({ operation: z.literal('inspect'), id: uuid }),
@@ -29,7 +29,8 @@ export const knowledgeOperationSchemas = {
     format: z.enum(['json', 'text']).optional(),
     maxBytes: KnowledgeRetrievalRequestSchema.shape.maxBytes.unwrap().optional(),
     includeCandidates: KnowledgeRetrievalRequestSchema.shape.includeCandidates.unwrap().optional(),
-  }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' }),
+  }).refine(value => [value.analysisId, value.entityRevisionId, value.entityId].filter(value => value !== undefined).length % 3 === 0,
+    { message: 'Entity scope requires analysisId, entityRevisionId and entityId.' }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' }),
   resume: z.strictObject({ operation: z.literal('resume'), id: text }),
   source: z.strictObject({ operation: z.literal('source'), snapshot: text }),
   'delete-source': z.strictObject({ operation: z.literal('delete-source'), snapshot: text }),
@@ -71,12 +72,12 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'entity-detail': return app.entityDetail(request.analysisId, request.entityId, request.revision);
       case 'correct-entities': return app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason);
       case 'retrieve': return (request.format === 'text' ? retrieveKnowledgeText : retrieveKnowledge)(app, { query: request.query, maxBytes: request.maxBytes,
-        includeCandidates: request.includeCandidates, snapshot: request.snapshot, sourceVersion: request.sourceVersion, entityId: request.entityId });
+        includeCandidates: request.includeCandidates, snapshot: request.snapshot, sourceVersion: request.sourceVersion, analysisId: request.analysisId, entityRevisionId: request.entityRevisionId, entityId: request.entityId });
       case 'inspect': return app.inspect(request.id);
       case 'continue-stage': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.continueStage(request.id, request.generation, model(request.executor, request.model), signal); }
       case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations({ knowledgeId: request.knowledgeId, revisionId: request.revisionId, bodyDigest: request.bodyDigest }, model(request.executor, request.model), request.runId, signal); }
       case 'review-associations': return app.reviewAssociations(request.id, request.revision, request.generation, request.choice, request.reason);
-      case 'apply-associations': return app.applyAssociations(request.id, request.revision, request.bodyDigest, request.analysisId, request.entityRevision, request.generation, request.draft, request.reason);
+      case 'apply-associations': return app.applyAssociations(request.id, request.revision, request.bodyDigest, request.generation, request.draft, request.reason);
       case 'capture': return app.capture({ path: request.source, startRecord: request.startRecord, endRecord: request.endRecord }, signal);
       case 'generate': {
         if (!model) throw new Error('Extraction model adapter unavailable.');

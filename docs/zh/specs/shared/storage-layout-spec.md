@@ -110,9 +110,9 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | 路径 | 当前契约 |
 |---|---|
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3：不可变正文修订、inline evidence、`bodyDigest`、维护及收据 |
-| `associations/<identity-digest>.json` | `knowledge-association-history` Schema 1：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
+| `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
-| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 1、流程 `knowledge-body-first/v1`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
+| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 2、流程 `knowledge-body-first/v2`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变正文或关联原生完整返回，分别绑定请求与摘要 |
 | `library/<object-id>.json` | 既有 `knowledge-library-object-history` Schema 1，明确确认的跨窗组织 |
 | `entity-links/<review-id>.json` | 既有 `entity-link-invocation-history` Schema 1，独立跨窗建议／决定／应用日志 |
@@ -123,7 +123,9 @@ Generate 先归档正文原件、把接纳正文保存待审，再尝试关联�
 
 **BREAKING-SCHEMA/API/COMPARABILITY：**当前正文 reader 拒绝 typed 知识 Schema 2，当前日志恢复拒绝 run5；旧 `extraction-runs/` 清单明确 unsupported，原文件不动。[显式迁入独立新工作区](../knowledge/knowledge-domain-model.md#body-migration)把所有原字节保存在 `migration/<migrationId>/original/<relative-path>.base64`，保留原字节摘要、固定 `plan.json`、精确修订／段落映射与 `complete.json`。复制支持的 source／entity 记录，机械渲染的新正文待审、不隐式保留。Library／carrier／既有跨窗引用只归档、不改指向。旧目录与匹配旧 binary 用于回退，不提供永久双 canonical reader，也不虚构迁移 CLI。
 
-自动提炼使用许可 Schema 2 与 `conversation-phase-invocations/v2`。`auto-extraction/<thread-hash>.json` 保存可变状态；不可变 `permission-<id>.json`、`schedule-<permission-id>-<run-id>.json`、`phase-<permission-id>-<invocation-id>.json`、`outcome-<permission-id>-<invocation-id>.json` 分别绑定同意、来源窗口计划、各付费阶段预约与观测 cooldown。正文／关联分别消耗一次调用；关联前因额度／过期拒绝时保留已存正文。旧 Schema 1 许可明确不支持，须重新批准，不自动扩大为两阶段授权。读取与恢复不派发。
+新增 `migrate-associations` 显式迁移关联 Schema 1：要求两个独立路径与稳定 `--operation-id`，保留正文、retention、source、entity 与原生结果字节；旧关联原件／回执归档，新投影待审并记录修订映射。旧 journal 1 保留原身份、明确 unsupported；`auto-extraction/` 只归档，不继承权限。完成后重放只核对并确认持久性，后续删除或修改拒绝重放，不复活资料。
+
+自动提炼使用许可 Schema 2 与 `conversation-phase-invocations/v2`。`auto-extraction/<thread-hash>.json` 保存可变状态；不可变 `permission-<id>.json`、`schedule-<permission-id>-<run-id>.json`、`phase-<permission-id>-<invocation-id>.json`、`outcome-<permission-id>-<invocation-id>.json` 分别绑定同意、来源窗口计划、各付费阶段预约与观测 cooldown。正文／关联分别消耗一次调用；关联前因额度／过期拒绝时保留已存正文。旧 Schema 或旧 workflow 许可明确不支持；须迁入独立新工作区后重新批准，不在原目录升级授权。读取与恢复不派发。
 
 所有写入共享 `.knowledge-write.lock` 及适用的 CAS／幂等收据；争用报告 `knowledge_workspace_busy`，只恢复证实本机退出的 owner，拒绝存储目录软链。可调的检索默认 65536 UTF-8 字节计算整个响应及换行，不是存储、正文、模型上下文或金额上限；producer 与 store 容量仍分别显式检查。运行身份来自[生成契约](../../reference/shared/knowledge-contract.md)；历史 typed study 核对／重放保留冻结身份与结论，当前构建零调用拒绝旧 typed 生成计划。工作区记录可能包含私有来源与输出。
 

@@ -4,7 +4,8 @@ import type { KnowledgeEnvelope, KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
 import type { EvidenceStore } from '../extraction/evidence.js';
-import { selectKnowledgeAssociation, type KnowledgeAssociationSelection, type KnowledgeAssociationStore } from '../associations.js';
+import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationSelection, type KnowledgeAssociationStore } from '../associations.js';
+import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { knowledgeBodyRef } from '../adapters/body-digest.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { EntityQuerySchema, queryEntityRows, type EntityKnowledgeLink, type EntityQuery, type EntitySearchRow } from './entity-catalog.js';
@@ -87,15 +88,20 @@ export class KnowledgeReadContext {
     if (!projection) { projection = this.readAssociation(bodyRef); this.projections.set(key, projection); }
     return projection;
   }
-  private associationCatalog(association: KnowledgeAssociationSelection) {
-    const ref = association.revision?.entityAnalysisRef;
-    if (!ref) return { status: 'absent' as const };
-    try {
-      const { history, revision } = this.catalog(ref.analysisId, ref.revisionId);
-      return { status: 'available' as const, ...ref, currentHeadRevisionId: history.writeHeadRevisionId,
-        snapshotId: history.snapshotId, sourceVersion: history.sourceVersion,
-        entities: revision.entities, mentions: revision.mentions };
-    } catch { return { status: 'unavailable' as const, ...ref }; }
+  private associationCatalogsFor(association: KnowledgeAssociationSelection, body: KnowledgeEnvelope['revisions'][number]) {
+    const projection = association.revision;
+    return (projection?.catalogRefs ?? []).map(ref => {
+      try {
+        const { history, revision } = this.catalog(ref.analysisId, ref.entityRevisionId);
+        // A stale projection still describes its original body, not the currently selected revision.
+        const associatedBody = projection && once(this.bodies, body.knowledgeId, () => this.ports.knowledge.read(body.knowledgeId))
+          .revisions.find(value => value.revisionId === projection.bodyRef.revisionId);
+        if (!projection || !associatedBody) throw new Error('Unknown association body revision.');
+        validateKnowledgeAssociationCatalogReferences(projection, associatedBody, history, revision.revisionId);
+        return { status: 'available' as const, ...ref, currentHeadRevisionId: history.writeHeadRevisionId,
+          snapshotId: history.snapshotId, sourceVersion: history.sourceVersion, entities: revision.entities, mentions: revision.mentions };
+      } catch { return { status: 'unavailable' as const, ...ref, reason: 'The exact catalog or its saved references are unavailable.' }; }
+    });
   }
   list(knowledgeIds?: ReadonlySet<string>) {
     const histories = knowledgeIds ? this.ports.knowledge.list(knowledgeIds) : this.allKnowledge();
@@ -119,12 +125,15 @@ export class KnowledgeReadContext {
     return { history, revision, reviewStatus: 'pending' as const,
       tagging: once(this.tags, knowledgeId, () => this.ports.tags.read(knowledgeId)),
       maintenance: history.maintenance.filter(m => m.revisionId === selected).at(-1) ?? null,
-      derivedAssociations, derivedCatalog: this.associationCatalog(derivedAssociations) };
+      derivedAssociations, derivedCatalogs: this.associationCatalogsFor(derivedAssociations, revision) };
   }
   detail(knowledgeId: string, revisionId?: string) {
     const body = this.body(knowledgeId, revisionId);
     const refs = [...new Map(body.revision.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
-    return { ...body, sources: refs.map(ref => this.source(ref.snapshotId, ref.sourceVersion)) };
+    return { ...body, sources: refs.map(ref => {
+      try { return this.source(ref.snapshotId, ref.sourceVersion); }
+      catch { return { status: 'unavailable' as const, reason: 'invalid_source' as const, detail: 'The exact source snapshot could not be read.' }; }
+    }) };
   }
   graph(input: KnowledgeGraphRequest = {}) {
     return buildKnowledgeGraph({
@@ -186,16 +195,21 @@ export class KnowledgeReadContext {
       for (const history of this.allKnowledge()) {
         const body = history.revisions.at(-1)!, selected = this.association(knowledgeBodyRef(body)), revision = selected.revision;
         if (selected.status === 'failed') { result.status = 'unavailable'; continue; }
-        if (selected.status !== 'available' || selected.reviewStatus === 'rejected' || !revision?.entityAnalysisRef) continue;
-        const ref = revision.entityAnalysisRef;
-        const catalog = this.catalog(ref.analysisId);
-        const grouped = new Map<string, string[]>();
-        for (const segment of revision.segmentEntityRefs) grouped.set(segment.entityId, [...(grouped.get(segment.entityId) ?? []), segment.segmentId]);
-        for (const [entityId, segmentIds] of grouped) {
-          const key = `${ref.analysisId}:${entityId}`;
-          byEntity.set(key, [...(byEntity.get(key) ?? []), { knowledgeId: history.knowledgeId, revisionId: body.revisionId, title: body.title,
-            projectionReviewStatus: selected.reviewStatus, entityRevisionId: ref.revisionId, currentEntityRevision: ref.revisionId === catalog.history.writeHeadRevisionId,
-            choice: history.maintenance.filter(m => m.revisionId === body.revisionId).at(-1)?.choice ?? null, segmentIds }]);
+        if (selected.status !== 'available' || selected.reviewStatus === 'rejected' || !revision) continue;
+        const available = this.associationCatalogsFor(selected, body);
+        for (const catalog of available) {
+          if (catalog.status !== 'available') { result.status = 'unavailable'; continue; }
+          const grouped = new Map<string, string[]>();
+          for (const segment of revision.segmentEntityRefs.filter(ref => knowledgeAssociationCatalogKey(ref) === knowledgeAssociationCatalogKey(catalog))) {
+            grouped.set(segment.entityId, [...new Set([...(grouped.get(segment.entityId) ?? []), segment.segmentId])]);
+          }
+          for (const [entityId, segmentIds] of grouped) {
+            const key = `${catalog.analysisId}:${entityId}`;
+            byEntity.set(key, [...(byEntity.get(key) ?? []), { knowledgeId: history.knowledgeId, revisionId: body.revisionId, title: body.title,
+              projectionReviewStatus: selected.reviewStatus, entityRevisionId: catalog.entityRevisionId,
+              currentEntityRevision: catalog.entityRevisionId === catalog.currentHeadRevisionId,
+              choice: history.maintenance.filter(m => m.revisionId === body.revisionId).at(-1)?.choice ?? null, segmentIds }]);
+          }
         }
       }
     } catch { result.status = 'unavailable'; }
@@ -222,8 +236,8 @@ export class KnowledgeReadContext {
     const links = page.rows.length ? this.knowledgeLinks() : { status: 'available' as const, byEntity: new Map<string, EntityKnowledgeLink[]>() };
     return { ...page, rows: page.rows.map(row => {
       const related = links.byEntity.get(`${row.analysisId}:${row.entityId}`) ?? [];
-      return { ...row, knowledgeCount: links.status === 'available' ? related.length : null,
-        outdatedKnowledgeCount: links.status === 'available' ? related.filter(link => !link.currentEntityRevision).length : null };
+      return { ...row, knowledgeCount: links.status === 'available' ? new Set(related.map(link => canonicalJson([link.knowledgeId, link.revisionId]))).size : null,
+        outdatedKnowledgeCount: links.status === 'available' ? new Set(related.filter(link => !link.currentEntityRevision).map(link => canonicalJson([link.knowledgeId, link.revisionId]))).size : null };
     }), analysisCount: saved.histories.length, unavailableAnalyses: saved.unavailable, knowledgeStatus: links.status };
   }
 }

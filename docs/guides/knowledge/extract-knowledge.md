@@ -61,7 +61,7 @@ omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> 
 
 Use `--start-record`/`--end-record` for zero-based inclusive record ranges. Review privacy and scope before generating. Unsupported capabilities or unarchivable requests fail before dispatch; source text is not truncated. The host source file path is not sent as semantic metadata.
 
-The current `knowledge-body-first/v1` workflow first calls the body model, archives its complete returned outcome, checks exact evidence and saves admitted complete body revisions **pending and unretained**. Only then does a separate association call propose entities and optional typed relations. Each phase defaults to 300 seconds and has its own request/profile/wire/producer/original outcome. A failed or unresolved projection does not remove the saved body. There is no automatic model retry, validation reask or provider fallback; old `--generation-policy` flags are no longer current generation contracts.
+The current `knowledge-body-first/v2` workflow first calls the body model, archives its complete returned outcome, checks exact evidence and saves admitted complete body revisions **pending and unretained**. Only then does a separate association call propose entities and optional typed relations. Each phase defaults to 300 seconds and has its own request/profile/wire/producer/original outcome. A failed or unresolved projection does not remove the saved body. There is no automatic model retry, validation reask or provider fallback; old `--generation-policy` flags are no longer current generation contracts.
 
 Export either current structural wire without accessing a workspace or invoking a model:
 
@@ -114,11 +114,11 @@ Search covers names, source mentions, qualifiers, and origin. `--source-status u
 Corrections append an entity revision without rewriting body. To connect segments to a chosen catalog, inspect the exact body and catalog, then write a separate projection:
 
 ```bash
-omk observe knowledge apply-associations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --generation <association-generation> --analysis <analysis-id> --entity-revision <catalog-revision-id> --input ./associations.json --reason 'Reviewed source-backed segment links' --json
+omk observe knowledge apply-associations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --generation <association-generation> --input ./associations.json --reason 'Reviewed source-backed segment links' --json
 omk observe knowledge review-associations --workspace ./knowledge --id <knowledge-id> --revision <projection-revision-id> --generation <association-generation> --choice accept --reason 'Reviewed this projection' --json
 ```
 
-The application draft contains `segmentEntityRefs`, optional `typedRelations` and `issues`. Each segment/entity reference names exact catalog mention IDs. Read association generation from `derivedAssociations.generation`, **not** body `history.generation`; absent association starts at 0. Manual application and model rebuilding create a new pending projection, preserving the body/revision/digest and its maintenance decision. Accept/reject review applies only to that projection and does not confirm external truth. A rejected or stale projection is not a current library binding. See the [domain contract](../../specs/knowledge/knowledge-domain-model.md).
+The draft contains `catalogRefs:[{analysisId,entityRevisionId}]`, `segmentEntityRefs`, optional `typedRelations` and `issues`. Segment references are `{segmentId,analysisId,entityRevisionId,entityId,mentionIds}`; typed subjects/objects use the same catalog-qualified entity triple. Combine catalogs matching body sources without merging local names or IDs. The old --analysis/--entity-revision flags are no longer accepted by apply-associations. Read association generation from `derivedAssociations.generation`, **not** body `history.generation`; absent association starts at 0. Manual application and model rebuilding create a new pending projection, preserving the body/revision/digest and its maintenance decision. Accept/reject review applies only to that projection and does not confirm external truth. A rejected or stale projection is not a current library binding. See the [domain contract](../../specs/knowledge/knowledge-domain-model.md).
 
 ## Organize and find knowledge {#organize-and-find-knowledge}
 
@@ -131,7 +131,7 @@ omk observe knowledge retrieve --workspace ./knowledge --query 'What remains unk
 
 For the default JSON view, **65536 UTF-8 bytes counts the entire single-line JSON plus newline**, not stored knowledge or a model context limit. Explicit `--max-bytes 8192` remains supported; the maximum stays 1 MiB. Complete segments and their inline evidence are atomic: oversized or budget-excluded segments are reported in `omitted`, never condition-truncated. This initial budget does not establish complete task coverage or optimal selection, and does not upgrade previously recorded smaller-budget failures. The optional text view below is budgeted against its own complete output.
 
-Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and optional `--source-version` scope exact source references. `--entity-id` uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
+Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and optional `--source-version` scope exact source references. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
 
 ### Complete a task with existing knowledge {#task-knowledge-reuse}
 
@@ -167,6 +167,18 @@ Follow Studio step 7 to preview and run. Check status before repeating a start r
 OMK uses `codex` from the current process PATH. Check `codex --version`; if the server reports that the model requires a newer client, update or explicitly select an existing compatible client rather than changing models or APIs. The desktop app and shell may use different versions.
 
 
+### Migrate association Schema 1 into a separate copy {#association-migration}
+
+Preserve the old workspace and its matching installed package, and stop old writers. The new version reads only association/journal Schema 2 without automatic upgrades. Run explicitly:
+
+```bash
+omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <stable-uuid> --json
+```
+
+The new target must be empty and neither root may contain the other. The operation uses no models and copies body, source, entity, retention and historical-measurement bytes unchanged. Original association histories/receipts live under `migration/<operation-id>/original/`; `plan.json` fixes source pins and old/new revision mappings, and `complete.json` records completion. Converted projections have fresh pending revisions without inherited acceptance. Old journals/native outcomes retain original bytes and appear unsupported, without fabricated profiles or resumed dispatch. Old automatic permissions, schedules and budgets are archived only; the new workspace requires fresh explicit authorization.
+
+After interruption, preserve the plan and replay the same roots and --operation-id. Source drift or target edits reject replay without overwrite. Completed replay verifies its plan; later additions, edits and deletions must not be resurrected or overwritten. Rollback uses the old workspace and matching binary; the new copy retains originals and mappings. Mechanical migration, readability and successful saves do not establish semantic acceptance.
+
 ## Recovery and data {#recovery-and-data}
 
 Use `generate --run-id <UUID>` to pin one request. An identical request only restores its journal and makes zero new model calls; a different source/model/runtime cannot reuse that identity.
@@ -185,7 +197,7 @@ Rebuild associations for an existing exact body without generating another body:
 omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-uuid> --executor codex --model <model>
 ```
 
-This creates a new independent pending projection. Current model-assisted association generation/rebuild requires one exact available source window; multi-source bodies remain readable and revisable without this feature.
+This creates a new independent pending projection. Association generation/rebuild supports all exact available body sources, keeping an independent catalog per source; review all sources before sending. Invalid catalog output fails dependent body projections while preserving healthy catalogs and stored bodies. Later catalog read failures expose local gaps while retaining other readable mappings.
 
 Current journals live at `generation-journals/<run-id>.json`; each complete original is at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Body histories use Schema 3. Old typed knowledge v2 and run5 are explicitly unsupported, not a healthy empty workspace. See the [explicit new-workspace migration](../../specs/knowledge/knowledge-domain-model.md#body-migration); use `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge` with both paths explicit. There is no automatic overwrite. Keep the old workspace and matching binary for rollback.
 
