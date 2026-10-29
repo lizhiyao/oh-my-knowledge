@@ -70,6 +70,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               { text: "Knowledge maintenance workflow", link: "/guides/extract-knowledge" },
+              { text: "Review knowledge quality", link: "/guides/review-knowledge-quality" },
               { text: "SDK maintenance case", link: "/guides/sdk-maintenance-case" },
               { text: "Extraction evidence and semantic review", link: "/guides/verify-extraction-study" },
               { text: "Extraction storage example", link: "https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/knowledge-extraction/README.md" },
@@ -189,6 +190,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               { text: "知识维护完整动线", link: "/zh/guides/extract-knowledge" },
+              { text: "核对知识质量", link: "/zh/guides/review-knowledge-quality" },
               { text: "SDK 维护案例", link: "/zh/guides/sdk-maintenance-case" },
               { text: "提炼证据与语义复核", link: "/zh/guides/verify-extraction-study" },
               { text: "知识提取存储示例", link: "https://github.com/lizhiyao/oh-my-knowledge/blob/main/examples/knowledge-extraction/README.zh.md" },

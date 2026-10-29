@@ -190,6 +190,8 @@ These are mechanical observations, not extraction accuracy, completeness, causal
 
 The [historical typed annotation guide and offline tool](../../specs/entities/entity-extraction-evaluation.md) retain their measurement identities. Current CLI/Studio study inspection and portable archive replay are read-only; old typed generation plans are explicitly unsupported and start no model calls. These records do not certify the body-first workflow. Body source fidelity and real task usefulness still require explicit validation with its own source/request/version evidence; do not rescore old runs using the new contract.
 
+Use [review knowledge quality](review-knowledge-quality.md) to check complete meaning against selected sources, separate failures, revise and reopen content, and record actual cost and review limits before deciding whether to use, continue or stop.
+
 
 ## Review cross-window entity links {#review-cross-window-entity-links}
 

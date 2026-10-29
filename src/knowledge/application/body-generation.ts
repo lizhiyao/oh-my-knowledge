@@ -246,7 +246,8 @@ export class BodyGenerationApplication {
           if (typeof selection === 'string' || validateEntityMentionSelection(selection, window.excerpts).length) throw new Error('Entity mention locator rejected.');
           return { ...m, mentionId: mapped(mentionIds, m.mentionId), entityId: mapped(entityIds, m.entityId), selection };
         }), limitations: ['AI-derived pending associations; source quote matching is not semantic identity or truth confirmation.'] });
-      if (validateEntityAnalysis(draft).length) throw new Error('Entity catalog reference closure rejected.');
+      const catalogProblems = validateEntityAnalysis(draft);
+      if (catalogProblems.length) throw new Error(`Entity catalog reference closure rejected: ${catalogProblems.join(', ')}.`);
       const entityRevisionId = this.ports.id();
       const entityWrite: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: j.runId, snapshotId: j.snapshotId, sourceVersion: j.sourceVersion,
         expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...draft, revisionId: entityRevisionId, revisedAt: at,

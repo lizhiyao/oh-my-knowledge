@@ -45,17 +45,27 @@ function setup() {
 }
 
 describe('body-first generation and zero-model recovery', () => {
-  it('uses the real producer gate/private cwd with complete originals and independent optional typed projections', async () => {
+  it('uses the real producer gate and reads two bodies through their shared source-context subject', async () => {
     const f = setup();
+    // Authored model responses verify source/association wiring, not model semantic quality.
+    const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = segment.evidence[0];
+    const body = { ...f.body, proposals: [
+      { ...proposal, proposalId: 'p1', title: 'Alpha in the selected test', segments: [{ ...segment,
+        text: 'Alpha works only in this test.', evidence: [{ ...evidence, quote: 'works only in this test' }] }] },
+      { ...proposal, proposalId: 'p2', title: 'Alpha applicability remains unknown', segments: [{ ...segment,
+        text: 'The fact time and behavior of Alpha in other environments remain unknown.',
+        evidence: [{ ...evidence, quote: 'time and other environments remain unknown.' }] }] },
+    ] };
     const association = { ...f.association, entities: [{ entityId: 'e1', label: 'Alpha', description: 'The source test object, without version identity confirmation.',
       qualifiers: ['selected test only'], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null }],
     mentions: [{ mentionId: 'm1', entityId: 'e1', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }, basis: 'explicit', rationale: 'Exact source mention.' }],
     associations: [{ bodyKey: 'b0', segmentEntityRefs: [{ segmentId: 's1', entityId: 'e1', mentionIds: ['m1'] }], typedRelations: [{ relationId: 'r1', segmentIds: ['s1'],
-      subject: { entityId: 'e1' }, relation: 'works in the selected test', object: null, modality: 'capability', polarity: 'positive', evidence: [{ segmentId: 's1', evidenceIndex: 0 }], issues: [] }], issues: [] }] };
+      subject: { entityId: 'e1' }, relation: 'works in the selected test', object: null, modality: 'capability', polarity: 'positive', evidence: [{ segmentId: 's1', evidenceIndex: 0 }], issues: [] }], issues: [] },
+    { bodyKey: 'b1', segmentEntityRefs: [{ segmentId: 's1', entityId: 'e1', mentionIds: ['m1'] }], typedRelations: null, issues: [] }] };
     const execute = vi.fn(async request => {
       expect(request.cwd).toMatch(/omk-knowledge-text-[A-Za-z0-9]{6}$/);
       expect(request.timeoutMs).toBe(300000); expect(request.effort).toBeUndefined();
-      return { ok: true, output: JSON.stringify(request.outputFormat.name.includes('association') ? association : f.body),
+      return { ok: true, output: JSON.stringify(request.outputFormat.name.includes('association') ? association : body),
         opaqueNestedField: { preserved: ['original', 1] } } as unknown as ExecResult;
     });
     const model = configuredKnowledgeGenerationModel('codex', 'fixture-model', createCodexArchiveProducer({}, () => execute));
@@ -65,6 +75,15 @@ describe('body-first generation and zero-model recovery', () => {
       revisionId: detail.derivedAssociations.revision?.entityAnalysisRef?.revisionId });
     expect(detail.derivedCatalog).not.toHaveProperty('source');
     expect(detail.derivedAssociations.revision?.segmentEntityRefs[0].entityId).not.toBe('e1');
+    expect(result.journal.bodies).toHaveLength(2);
+    const entityId = detail.derivedAssociations.revision!.segmentEntityRefs[0].entityId;
+    expect(f.app.entityDetail(result.journal.runId, entityId).knowledge.map(item => item.knowledgeId).sort())
+      .toEqual(result.journal.bodies.map(ref => ref.knowledgeId).sort());
+    for (const ref of result.journal.bodies) {
+      const saved = f.app.detail(ref.knowledgeId);
+      expect(saved.derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
+      expect(saved.revision.content.segments[0].evidence[0].selection.quote).not.toContain('Alpha');
+    }
     expect(f.app.inspect(result.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { opaqueNestedField: { preserved: ['original', 1] } } });
     const before = detail.revision.bodyDigest, projection = detail.derivedAssociations.revision!;
     const reviewed = f.app.reviewAssociations(detail.revision.knowledgeId, projection.revisionId, detail.derivedAssociations.generation, 'accept', 'explicit derived review');
@@ -85,15 +104,36 @@ describe('body-first generation and zero-model recovery', () => {
     expect(readdirSync(join(f.root, 'items'))).toHaveLength(1);
     expect(() => reopened.detail(detail.revision.knowledgeId, detail.revision.revisionId)).not.toThrow();
   });
-  it('keeps a readable pending body when the association original fails and permits independent review/rebuild', async () => {
+  it.each(['native_failure', 'duplicate_mention_position'] as const)('preserves body and originals after %s without hidden retries, and permits explicit rebuild', async failure => {
     const f = setup(); f.invoke.mockImplementationOnce(async (_p, _i, _s, gate) => { gate?.(); return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(f.body), runtime: { producer: 'authored-test-not-native' } } }; });
-    f.invoke.mockImplementationOnce(async (_p, _i, _s, gate) => { gate?.(); return { outcomeKind: 'result', result: { ok: false, output: '', runtime: { producer: 'authored-test-not-native' } } }; });
+    const invalidCatalog = { ...f.association,
+      entities: ['e1', 'e2'].map(entityId => ({ entityId, label: 'Alpha', description: 'Authored conflicting source interpretation.', qualifiers: [],
+        identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null })),
+      mentions: ['m1', 'm2'].map((mentionId, index) => ({ mentionId, entityId: `e${index + 1}`,
+        selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', occurrence: null }, basis: 'explicit', rationale: 'Same original position assigned twice.' })),
+    };
+    const native = { ok: failure !== 'native_failure', output: failure === 'native_failure' ? '' : JSON.stringify(invalidCatalog),
+      runtime: { producer: 'authored-test-not-native' } };
+    f.invoke.mockImplementationOnce(async (_p, _i, _s, gate) => { gate?.(); return { outcomeKind: 'result', result: native }; });
     const result = await f.app.generate(f.window.snapshotId, f.model), ref = result.journal.bodies[0], detail = f.app.detail(ref.knowledgeId);
+    const reason = failure === 'native_failure' ? 'Association native execution did not complete cleanly.'
+      : 'Entity catalog reference closure rejected: duplicate_mention_position.';
+    expect(f.invoke).toHaveBeenCalledTimes(2); expect(result.journal.stages[1].issues).toEqual([reason]);
     expect(detail.derivedAssociations.status).toBe('failed'); expect(detail.revision.content.segments).toHaveLength(1);
+    expect(detail.derivedAssociations.revision?.issues).toEqual([reason]);
+    const original = f.app.inspect(result.journal.runId).nativeOutcomes[1].outcome;
+    expect(original).toEqual({ outcomeKind: 'result', result: native });
+    const archivePath = join(f.root, 'generation-journals', 'outcomes', result.journal.runId, `${result.journal.stages[1].invocationId}.json`);
+    const archiveBytes = readFileSync(archivePath);
     const bodyBytes = readFileSync(join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]));
+    const reopened = createLocalKnowledgeApplication(f.root);
+    expect(reopened.resume(result.journal.runId).journal).toEqual(result.journal); expect(f.invoke).toHaveBeenCalledTimes(2);
+    expect(reopened.inspect(result.journal.runId).nativeOutcomes[1].outcome).toEqual(original);
     await f.app.rebuildAssociations(ref, f.model);
+    expect(f.invoke).toHaveBeenCalledTimes(3);
     expect(f.app.detail(ref.knowledgeId).derivedAssociations.status).toBe('available');
     expect(readFileSync(join(f.root, 'items', readdirSync(join(f.root, 'items'))[0]))).toEqual(bodyBytes);
+    expect(readFileSync(archivePath)).toEqual(archiveBytes);
   });
   it('replays an acknowledged store write after journal interruption without an extra revision or native call', async () => {
     const f = setup(), write = f.ports.knowledge.write.bind(f.ports.knowledge);
