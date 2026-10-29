@@ -6,6 +6,7 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
+import { KnowledgeReviewSummary } from './review-summary';
 import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
 
 export type KnowledgeReaderSelection = {
@@ -30,9 +31,9 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
 }
 
 /** Canonical text remains readable independently of source availability and derived associations. */
-export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry }: {
+export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent }: {
   detail: KnowledgeCandidateDetail; lang: Language; busy?: boolean; header?: ReactNode; tools?: ReactNode; footer?: ReactNode;
-  workspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
+  onReviewContent?(): void; workspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
   onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(snapshot: string): void; onRetry(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
@@ -104,6 +105,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
     </header>
     <div className="knowledge-reader-scroll" ref={scroll} key={`${detail.revision.knowledgeId}/${detail.revision.revisionId}/${tab}`}>
       <div className="knowledge-reading">
+        <KnowledgeReviewSummary detail={detail} workspace={workspace} lang={lang} onOpen={onReviewContent}/>
         {tab === 'body' && <>
           {detail.sources.some(entry => entry.status === 'unavailable') && <Alert type="warning" title={t('来源不可用；已保存正文可读，依据无法完整核对。', 'Source unavailable. Saved content remains readable; evidence cannot be fully reviewed.')} action={<Button disabled={busy} onClick={onRetry}>{t('重试读取', 'Retry reading')}</Button>}/>}
           {segments.map(segment => <section key={segment.segmentId} className="knowledge-statement" data-segment-id={segment.segmentId} data-focused={active.segmentId === segment.segmentId}>

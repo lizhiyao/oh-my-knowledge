@@ -6,7 +6,7 @@ export interface CurrentKnowledgeContract {
   workflowId: string; bodyPromptVersion: string; associationPromptVersion: string;
   bodyProfileId: string; associationProfileId: string; bodyWireId: string; associationWireId: string;
   bodyResponseSchemaVersion: number; associationResponseSchemaVersion: number;
-  knowledgeHistorySchemaVersion: number; associationHistorySchemaVersion: number; journalSchemaVersion: number;
+  knowledgeHistorySchemaVersion: number; associationHistorySchemaVersion: number; reviewHistorySchemaVersion: number; journalSchemaVersion: number;
   entityHistorySchemaVersion: number; outcomeMaxBytes: number;
   retrievalDefaultBytes: number; retrievalMinBytes: number; retrievalMaxBytes: number;
   studyPlanMaxBytes: number; studyInspectionMaxBytes: number;
@@ -15,8 +15,8 @@ export interface CurrentKnowledgeContract {
 /** Current production identities and separately labelled historical-study capacities. */
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
-  const [wire, knowledge, associations, journal, entities, archive, retrieval, plan, inspection] = await Promise.all([
-    load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('extraction/generation-journal.js'),
+  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection] = await Promise.all([
+    load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews.js'), load('extraction/generation-journal.js'),
     load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
     load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
   ]);
@@ -29,6 +29,7 @@ export async function loadCurrentKnowledgeContract(root: string): Promise<Curren
     associationResponseSchemaVersion: wire.AssociationGenerationResponseSchema.shape.schemaVersion.value,
     knowledgeHistorySchemaVersion: knowledge.KnowledgeEnvelopeSchema.shape.schemaVersion.value,
     associationHistorySchemaVersion: associations.KnowledgeAssociationEnvelopeSchema.shape.schemaVersion.value,
+    reviewHistorySchemaVersion: reviews.KnowledgeReviewEnvelopeSchema.shape.schemaVersion.value,
     journalSchemaVersion: journal.GenerationJournalSchema.shape.schemaVersion.value,
     entityHistorySchemaVersion: entities.EntityAnalysisEnvelopeSchema.shape.schemaVersion.value,
     outcomeMaxBytes: archive.MAX_GENERATION_OUTCOME_BYTES,
@@ -63,6 +64,7 @@ export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract,
     ['Association response Schema', '关联响应 Schema', code(values.associationResponseSchemaVersion)],
     ['Knowledge history Schema', '知识历史 Schema', code(values.knowledgeHistorySchemaVersion)],
     ['Association history Schema', '关联历史 Schema', code(values.associationHistorySchemaVersion)],
+    ['Review and use feedback history Schema', '复核与使用反馈历史 Schema', code(values.reviewHistorySchemaVersion)],
     ['Generation journal Schema', '生成日志 Schema', code(values.journalSchemaVersion)],
     ['Entity history Schema', '实体历史 Schema', code(values.entityHistorySchemaVersion)],
     ['Complete native archive capacity', '完整原生归档容量', bytes(values.outcomeMaxBytes)],

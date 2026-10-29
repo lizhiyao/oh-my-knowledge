@@ -63,9 +63,11 @@ flowchart LR
 
 Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
 
-知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、可选目录修订、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
+知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
 修改正文创建新正文修订，不继承旧保留／舍弃决定。实体纠正、手工应用关联和模型辅助重建创建或选择独立派生修订，不改写正文。指向其它 body digest 的投影为 stale。来源删除后正文仍可读，证据明确显示不可用，不伪造原文或健康空结果。
+
+[独立复核与任务反馈](knowledge-reviews.md)绑定实际正文修订与来源，区分尚未复核、明确待修和带限制的意见；逐段关联覆盖另绑定精确投影。使用反馈固定实际消费版本，来源或新修订不改写旧事件。复核、保留和效果报告分别表达，不自动变成真值或新正文。
 
 ## 4. 组织与载体维护 {#current-maintenance}
 
@@ -175,6 +177,8 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ### 8.3 实际操作者与委托用户 {#actor-context-design}
 
+独立 reviews v1 已在其新增操作内落实可信宿主 actor：CLI 写入识别 Codex Desktop 启动归属，未知上下文拒绝；Studio 与受信任应用构造分别注入其实际操作者，浏览器 payload 不能自报。该实现不改变下面既有知识维护入口的默认值，也不是身份认证系统，详见[复核操作边界](knowledge-reviews.md#review-operations)。
+
 当前 KnowledgeActor 已区分 human 与带 executionRef 的 agent，但本地装配把维护调用者固定为 human/local-user；生成阶段另记 extractor Agent。该默认值不能证明每次 CLI 维护都由真人直接执行，旧记录也不能据此自动重标。
 
 后续决定：知识修订的 createdBy／revisedBy 和维护 actor 记录**实际执行写入的主体**；委托用户与授权范围由可信宿主 principal／授权记录保存，使用精确 requestId 与写入回执关联。Agent 代用户写入时记录 agent 及稳定 executionRef，真人委托不将执行者改记为 human。跨窗口发布需要的人工身份决定仍独立保留。
@@ -183,7 +187,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ### 8.4 版本、迁移与实施交接 {#extension-migration-plan}
 
-多目录关联与副本迁移已获明确批准并实施。下表的来源窗口与公共操作者扩展仍须各自确认；不随 Schema 2 一并更换。
+多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的来源窗口与其余既有维护入口的公共操作者扩展仍须各自确认；不随关联 Schema 2 或新增复核记录一并更换。
 
 | 受影响面 | 版本与迁移决定 |
 |---|---|

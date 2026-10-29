@@ -44,6 +44,46 @@ omk studio
 
 任务检索复用 CLI 的确定性字面检索，不调用生成模型；措辞不同仍可能漏召回。检索命中、引文位置匹配和保留决定均不证明内容真实或适用于当前任务。发现正文遗漏、错误关联或来源不足后，分别回到相应的修订或核对入口。
 
+### 记录复核与任务反馈 {#review-feedback}
+
+打开精确正文后进入“内容复核”。内容意见与保留／舍弃、关联接受及独立人工验收分别保存；新记录不会自动改正文或载体。
+
+1. 阅读原文和必要上下文，明确记录需要修订的问题，或带限制的复核意见。问题可以指向具体段落，也可以说明整块内容未生成；来源中未被正文引用的片段同样可以作为遗漏依据。
+2. 逐段核对已有实体映射，明确区分已关联、没有可靠对象、已发现缺口和未知。没有映射不等于没有对象；精确引文也不证明语境或身份正确。
+3. 从任务检索结果记录使用反馈时，保留实际提供的正文修订、段落和任务问题。分别记录已提供、已读取、自述使用、观察到帮助或受控效果报告；后两项需要任务结果／对照引用或有效证据，不自动升级为系统认证。
+4. 报告缺口时区分正文遗漏、关联错误和来源不可用，再进入相应修订、映射核对或来源入口。历史版本反馈不自动转到最新版本；修改正文仍明确创建新修订，重新决定保留，并核对受影响的关联和载体。
+5. 先前待修意见只有被明确替代后才解除，新的正面意见不会悄悄覆盖它。保存回执不明时先核对同一 requestId 的已保存记录，不自动重发；冲突后保留草稿，重读并确认再提交新的决定。
+
+CLI 先读取实际消费的精确修订状态；再把完整草稿写到普通 UTF-8 JSON 文件中。下列标识须替换为实际值：
+
+```bash
+omk observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
+omk observe knowledge review-content --workspace ./knowledge --input ./content-review.json --json
+omk observe knowledge review-coverage --workspace ./knowledge --input ./coverage-review.json --json
+omk observe knowledge record-use --workspace ./knowledge --input ./use-feedback.json --json
+```
+
+例如内容复核草稿：
+
+```json
+{
+  "requestId": "<stable-request-uuid>",
+  "bodyRef": { "knowledgeId": "<knowledge-id>", "revisionId": "<revision-id>", "bodyDigest": "sha256:<digest>" },
+  "sources": [{ "snapshotId": "<snapshot-uuid>", "sourceVersion": "sha256:<source-digest>" }],
+  "expectedGeneration": 0,
+  "expectedHeadEventId": null,
+  "supersedesEventIds": [],
+  "status": "needs_revision",
+  "reason": "来源中的适用条件未完整进入正文。",
+  "limitations": ["本次只核对选定来源，不证明结论真值。"],
+  "findings": [{ "problemKind": "omission", "description": "需要补充会改变后续判断的适用条件。", "segmentIds": [], "evidence": [] }]
+}
+```
+
+`bodyRef`、generation 和 head 从精确状态读取；`sources` 只复制其中的 snapshotId／sourceVersion，不带当前可读状态字段。不可读账本的未知 generation 不能当作 0。重放同一意图保留同一 requestId 和草稿；修改内容或 CAS 后属于新的明确决定。三个 CLI 写操作需要[可信宿主归属上下文](../../specs/knowledge/knowledge-reviews.md#review-operations)，未知终端不会被记录成真人；状态读取不需要操作者上下文。
+
+复核记录、逐段决定、使用分类及不继承规则的完整字段和边界见[复核与反馈契约](../../specs/knowledge/knowledge-reviews.md)。这些操作不调用生成模型；已保存不代表已证实或已产生收益。
+
 ### 从图谱回查和纠正关联 {#graph-review}
 
 在“知识 → 知识库”先按标题、标签与维护状态找到知识，再切到“图谱”。可查看当前知识的邻域或当前筛选集合；没有有效实体映射的知识仍保留正文与来源入口。节点分别表示精确知识修订、来源窗口内的实体修订和来源快照，同名不会自动合并。

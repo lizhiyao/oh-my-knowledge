@@ -206,10 +206,12 @@ test/knowledge/artifacts/authoring/carrier-library.test.ts
 test/eval-workflows/hosts/carrier-measurement.test.ts
 test/knowledge/auto-extraction.test.ts
 test/knowledge/body-generation.test.ts
+test/knowledge/reviews.test.ts
 test/knowledge/graph.test.ts
 test/knowledge/retrieval.test.ts
 test/knowledge/frozen-measurement.test.ts
 test/cli/knowledge-retrieval.test.ts
+test/cli/knowledge-reviews.test.ts
 test/cli/knowledge-migration.test.ts
 test/knowledge/associations.test.ts
 test/knowledge/legacy-migration.test.ts

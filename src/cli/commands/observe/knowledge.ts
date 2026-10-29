@@ -13,19 +13,21 @@ import { z } from 'zod';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
-import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
+import { createLocalKnowledgeApplication, createLocalKnowledgeReview } from '../../../knowledge/application/local.js';
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { configuredKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-executor.js';
 import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../../knowledge/extraction/body-generation-wire.js';
 import { KnowledgeOperationSchema, executeKnowledgeOperation, knowledgeFailureCode, type KnowledgeOperation } from '../../../knowledge/application/operations.js';
 import { KnowledgeRetrievalBudgetError } from '../../../knowledge/application/retrieval.js';
 import { formatKnowledgeResult } from '../../lib/knowledge-output.js';
+import { knowledgeReviewCliActor } from '../../lib/knowledge-review-actor.js';
+import { KnowledgeReviewOperationSchema, executeKnowledgeReviewOperation } from '../../../knowledge/application/review-operations.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。', 'Generate and maintain complete knowledge bodies, with separately reviewed derived associations. Saved bodies are pending; matching quotes does not verify truth.');
-  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'capture', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations'],
+  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'capture', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use'],
     description: description('generate 先保存正文再生成关联；resume 零模型恢复，continue-stage 仅发送尚未 claim 的阶段。', 'generate saves body before associations; resume recovers without models; continue-stage dispatches only a never-claimed phase.') }) };
   static flags = {
     lang: LANG_FLAG,
@@ -64,8 +66,9 @@ export default class ObserveKnowledge extends BaseCommand {
     'page-size': Flags.integer({ min: 1, max: 100, description: description('entities 每页条数。', 'entities page size.') }),
     generation: Flags.integer({ min: 0, description: description('预先读取的 generation，防并发覆盖。', 'Previously read generation, preventing concurrent overwrite.') }),
     reason: Flags.string({ description: description('修订或维护理由。保留和关联审查均不证明真值。', 'Revision or maintenance reason. Retention and association review do not verify truth.') }),
-    input: Flags.string({ description: description('完整新正文/实体/派生草稿 JSON 文件，不修改原修订。', 'Complete new body/entity/projection JSON draft file; original revisions remain immutable.') }),
+    input: Flags.string({ description: description('完整新正文／实体／派生或复核草稿 JSON 文件；复核写入须含稳定 requestId、精确 bodyRef、来源和账本 CAS。', 'Complete body/entity/projection or review JSON draft; review writes include a stable requestId, exact bodyRef, sources and ledger CAS.') }),
     choice: Flags.string({ options: ['accept', 'reject'], description: description('review-associations：派生修订的明确审查决定。', 'review-associations: explicit projection review decision.') }),
+    'projection-revision': Flags.string({ description: description('review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。', 'review-status: inspect coverage for an exact association projection; defaults to the projection matching this body.') }),
     executor: Flags.string({ description: description('生成/继续/重建的执行器。', 'Executor for generation/continuation/rebuild.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
@@ -84,6 +87,8 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
     '<%= config.bin %> observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation 5',
     '<%= config.bin %> observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates',
+    '<%= config.bin %> observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json',
+    '<%= config.bin %> observe knowledge review-content --workspace ./knowledge --input ./review.json --json',
     '<%= config.bin %> observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./body.json --reason "核对来源"',
   ];
   async run(): Promise<void> {
@@ -206,6 +211,7 @@ export default class ObserveKnowledge extends BaseCommand {
       this.log(JSON.stringify({ profileId: profile.profileId, promptVersion: profile.promptVersion, wireId: profile.wireId, schema: profile.wireSchema }, null, 2)); return;
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });
+    if (flags['projection-revision'] !== undefined && args.operation !== 'review-status') this.error(t('--projection-revision 仅用于 review-status。', '--projection-revision is only valid for review-status.'), { exit: 2 });
     if (args.operation === 'retrieve') {
       const allowed = new Set(['workspace', 'query', 'max-bytes', 'include-candidates', 'snapshot', 'source-version', 'entity-id', 'analysis', 'entity-revision', 'lang', 'json', 'format']);
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('retrieve 仅接受只读检索参数。', 'retrieve accepts read-only retrieval flags only.'), { exit: 2 });
@@ -216,6 +222,22 @@ export default class ObserveKnowledge extends BaseCommand {
       const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw new Error('invalid file');
       const bytes = readFileSync(path), text = bytes.toString('utf8'); if (!Buffer.from(text).equals(bytes)) throw new Error('invalid UTF-8'); return JSON.parse(text) as unknown;
     } catch { this.error(t('--input 必须是 16 MiB 内的普通 UTF-8 JSON 文件。', '--input must be a regular UTF-8 JSON file within 16 MiB.'), { exit: 2 }); } };
+    if (['review-status', 'review-content', 'review-coverage', 'record-use'].includes(args.operation)) {
+      const reading = args.operation === 'review-status';
+      const allowed = new Set(reading ? ['workspace', 'id', 'revision', 'body-digest', 'projection-revision', 'json', 'lang'] : ['workspace', 'input', 'json', 'lang']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('复核操作仅接受其精确读取参数或完整 --input，不接受模型、维护或身份自报参数。', 'Review operations accept only their exact read flags or a complete --input, without model, maintenance or self-declared actor flags.'), { exit: 2 });
+      const actor = reading ? undefined : knowledgeReviewCliActor(process.env);
+      if (!reading && !actor) this.error(t('复核写入需要可信宿主的实际操作者上下文。当前仅识别 Codex Desktop 启动声明；其它宿主请使用 Studio 或显式注入 actor 的应用入口，不能回落为真人。', 'Review writes require actual-actor context from a trusted host. This CLI currently recognizes Codex Desktop launcher declarations; other hosts should use Studio or an application entry with an injected actor. No human fallback is inferred.'), { exit: 2 });
+      const input = reading ? { operation: 'review-status', bodyRef: { knowledgeId: need(flags.id, 'id'), revisionId: need(flags.revision, 'revision'), bodyDigest: need(flags['body-digest'], 'body-digest') },
+        ...(flags['projection-revision'] ? { projectionRevisionId: flags['projection-revision'] } : {}) } : draft();
+      if (!reading && (!input || typeof input !== 'object' || Array.isArray(input) || 'operation' in input)) this.error(t('--input 必须是复核草稿对象，operation 由命令指定。', '--input must be a review draft object; the command supplies operation.'), { exit: 2 });
+      const parsed = KnowledgeReviewOperationSchema.safeParse(reading ? input : { ...input as Record<string, unknown>, operation: args.operation });
+      if (!parsed.success) this.error(t('复核参数无效：', 'Invalid review input: ') + parsed.error.issues.map(issue => issue.path.join('.')).join(', '), { exit: 2 });
+      const workspace = flags.workspace?.trim() ? resolve(flags.workspace.trim()) : new UserSettingsStore().resolve({}).workspace;
+      try { this.log(JSON.stringify(executeKnowledgeReviewOperation(createLocalKnowledgeReview(workspace, actor), parsed.data), null, 2)); }
+      catch (cause) { this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${t('先用 review-status 核对同一 requestId 的收据与记录；不自动重发未知写入。', 'Inspect the same requestId in review-status receipts and history first; do not automatically redispatch an unknown write.')}`, { exit: 1 }); }
+      return;
+    }
     let operation: KnowledgeOperation;
     switch (args.operation) {
       case 'retrieve': operation = { operation: 'retrieve', query: need(flags.query, 'query'), maxBytes: flags['max-bytes'], includeCandidates: flags['include-candidates'], snapshot: flags.snapshot, sourceVersion: flags['source-version'], entityId: flags['entity-id'], analysisId: flags.analysis, entityRevisionId: flags['entity-revision'], ...(flags.format === undefined ? {} : { format: flags.format as 'json' | 'text' }) }; break;

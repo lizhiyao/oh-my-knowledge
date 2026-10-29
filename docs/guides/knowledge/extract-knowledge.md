@@ -44,6 +44,46 @@ Expand **Source scope and response budget** to select an exact source version an
 
 Task retrieval uses the same deterministic literal search as the CLI, without a generation model call; different wording can still miss relevant content. A search hit, matching quotation position or retain decision does not establish truth or applicability to the current task. Follow content omissions, wrong associations and insufficient sources back to their respective revision or review entry points.
 
+### Record reviews and task feedback {#review-feedback}
+
+Open an exact body and enter **Content review**. Content opinions remain separate from retain/discard choices, association acceptance and independent human acceptance. A new record changes neither content nor carriers automatically.
+
+1. Read the original and necessary context, then record issues requiring revision or a review with explicit limits. Findings may target segments or an entirely omitted topic; source passages not cited in the body can also support an omission.
+2. Inspect existing entity mappings per segment, distinguishing linked, no reliable object, observed gaps and unknown. No mapping does not mean no object exists; exact quotations establish neither contextual correctness nor identity.
+3. When recording feedback from a task result, retain the actually provided body revision, segments and task query. Separately record provided, read, reported use, observed help or controlled effect reports. The last two require task/comparison references or valid evidence, without automatic system certification.
+4. Distinguish missing content, wrong associations and unavailable sources, then enter the appropriate revision, mapping review or source view. Historical-version feedback never follows the latest version automatically. Content changes explicitly create a new revision, require a fresh retain decision and review of affected associations/carriers.
+5. Earlier revision-needed opinions are resolved only by explicit supersession; a new positive opinion does not silently replace them. An unclear acknowledgement requires checking saved records for the same requestId before redispatch. Conflicts preserve the draft; reread and confirm a new decision.
+
+The CLI first reads status for the actually consumed exact revision, then accepts a complete draft from a regular UTF-8 JSON file. Replace the following identifiers with real values:
+
+```bash
+omk observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
+omk observe knowledge review-content --workspace ./knowledge --input ./content-review.json --json
+omk observe knowledge review-coverage --workspace ./knowledge --input ./coverage-review.json --json
+omk observe knowledge record-use --workspace ./knowledge --input ./use-feedback.json --json
+```
+
+For example, a content review draft:
+
+```json
+{
+  "requestId": "<stable-request-uuid>",
+  "bodyRef": { "knowledgeId": "<knowledge-id>", "revisionId": "<revision-id>", "bodyDigest": "sha256:<digest>" },
+  "sources": [{ "snapshotId": "<snapshot-uuid>", "sourceVersion": "sha256:<source-digest>" }],
+  "expectedGeneration": 0,
+  "expectedHeadEventId": null,
+  "supersedesEventIds": [],
+  "status": "needs_revision",
+  "reason": "Applicable conditions in the source are missing from the content.",
+  "limitations": ["Only the selected source was reviewed; truth is not established."],
+  "findings": [{ "problemKind": "omission", "description": "Add the conditions that change subsequent decisions.", "segmentIds": [], "evidence": [] }]
+}
+```
+
+Read bodyRef, generation and head from the exact status. Copy only snapshotId/sourceVersion into `sources`, excluding current availability fields. An unavailable ledger's unknown generation is not zero. Replaying the same intent preserves its requestId and draft; changing content or CAS creates a new explicit decision. The three CLI writes require [trusted-host attribution context](../../specs/knowledge/knowledge-reviews.md#review-operations); unknown terminals are not recorded as humans. Status reads need no actor context.
+
+See the [review and feedback contract](../../specs/knowledge/knowledge-reviews.md) for complete fields, classifications and non-inheritance rules. These operations call no generation model; persistence establishes neither truth nor benefits.
+
 ### Trace and correct graph associations {#graph-review}
 
 In **Knowledge → Knowledge library**, first find knowledge by title, tags and maintenance state, then switch to **Graph**. Inspect the current knowledge's neighborhood or the filtered collection. Knowledge without a valid entity mapping still has readable content and source entry points. Nodes identify exact knowledge revisions, source-window entity revisions and source snapshots; equal names never merge identities.

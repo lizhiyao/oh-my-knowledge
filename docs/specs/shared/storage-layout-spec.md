@@ -111,6 +111,7 @@ The workspace is explicitly selected through settings or `--workspace`, separate
 |---|---|
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3: immutable canonical body revisions, inline evidence, `bodyDigest`, maintenance and receipts |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2: exact body/catalog refs, segment/entity links, optional typed relations, pending projections and independent review ledger |
+| `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1: exact-body content review, per-segment association coverage, task use feedback and independent receipts; [contract](../knowledge/knowledge-reviews.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2: window entities, mentions and immutable revisions |
 | `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 2, workflow `knowledge-body-first/v2`: source/request/profile/wire/producer identities, native references and fixed publication intents |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | Immutable complete native body or association outcome, separately bound to its request and digest |

@@ -16,6 +16,8 @@ import type { GenerationOutcome } from '../../../src/knowledge/extraction/native
 import { AUTO_EXTRACTION_WORKFLOW } from '../../../src/knowledge/application/auto-extraction.js';
 import { retrieveKnowledge } from '../../../src/knowledge/application/retrieval.js';
 import { writeJsonFileAtomic } from '../../../src/shared/atomic-json.js';
+import { FileKnowledgeReviewStore } from '../../../src/knowledge/adapters/review-store.js';
+import type { KnowledgeReviewContentInput, KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews.js';
 
 /** Pure authored responses exercise current journal/publication paths without any model execution. */
 function currentModel(multiple = false, outcome?: GenerationOutcome): KnowledgeGenerationModel {
@@ -55,6 +57,9 @@ describe('Studio candidate action boundary', () => {
   afterAll(async () => { await server?.stop(); rmSync(root, { recursive: true, force: true }); });
   const post = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/candidates`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace, ...body }),
+  });
+  const postReview = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/reviews`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
   });
   it('previews automation without permission, requires fresh explicit consent, and can stop before any call', async () => {
     const auto = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/auto-extraction`, {
@@ -142,6 +147,109 @@ describe('Studio candidate action boundary', () => {
     for (const row of app.list()) app.maintain(row.knowledgeId, row.revisionId, 'discard', 'Explicitly excluded test knowledge', row.generation);
     expect((await (await post({ ...request, includeCandidates: true })).json()).items).toEqual([]);
     expect(app.inspect(run.journal.runId).journal.generation).toBe(run.journal.generation);
+  });
+
+  it('writes independent reviews with exact bodies, CAS receipts and trusted local UI attribution', async () => {
+    const selected = join(root, 'review-ledger'), fixture = seedKnowledgeWorkspace(selected, 'review-source');
+    const bodyRef = { knowledgeId: fixture.body.knowledgeId, revisionId: fixture.body.revisionId, bodyDigest: fixture.body.bodyDigest };
+    const identity = { workspace: selected, bodyRef };
+    const status = async (ref: KnowledgeReviewStatus['bodyRef'] = bodyRef) => {
+      const response = await postReview({ ...identity, bodyRef: ref, operation: 'review-status' });
+      expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
+      return await response.json() as KnowledgeReviewStatus;
+    };
+    expect(await status()).toMatchObject({ storageStatus: 'absent', generation: 0, headEventId: null, content: { status: 'not_reviewed' } });
+    expect((await fetch(`${url}/api/knowledge/reviews`)).status).toBe(405);
+    expect((await postReview({ ...identity, operation: 'review-status' }, 'https://untrusted.example')).status).toBe(403);
+    const input: KnowledgeReviewContentInput = { requestId: randomUUID(), bodyRef,
+      sources: [{ snapshotId: fixture.source.snapshotId, sourceVersion: fixture.source.sourceVersion }], expectedGeneration: 0, expectedHeadEventId: null,
+      status: 'needs_revision', reason: 'Review the exact delivered body before reusing it.', limitations: [],
+      findings: [{ problemKind: 'omission', description: 'The canonical text omits an independently stated limitation.', segmentIds: [], evidence: [] }] };
+    const command = { workspace: selected, operation: 'review-content', ...input };
+    for (const fields of [{ actor: { actorKind: 'agent', actorId: 'browser-spoof', executionRef: 'untrusted' } }, { actorId: 'browser-spoof' }, { executor: 'codex' }]) {
+      expect((await postReview({ ...command, ...fields })).status).toBe(400);
+    }
+    expect(await status()).toMatchObject({ storageStatus: 'absent', generation: 0 });
+    const response = await postReview(command); expect(response.status).toBe(200);
+    const receipt = await response.json(); expect(receipt).toMatchObject({ requestId: input.requestId, committedGeneration: 1 });
+    expect(await (await postReview(command)).json()).toEqual(receipt);
+    expect((await postReview({ ...command, reason: 'Same request with a changed command must fail.' })).status).toBe(409);
+    expect((await postReview({ ...command, requestId: randomUUID() })).status).toBe(409);
+    const reviewed = await status();
+    expect(reviewed).toMatchObject({ storageStatus: 'available', generation: 1, headEventId: receipt.eventId, content: { status: 'needs_revision' } });
+    expect(reviewed.history?.receipts).toEqual([receipt]);
+    expect(reviewed.content.events[0]).toMatchObject({ bodyRef, actor: { actorKind: 'human', actorId: 'local-user' }, findings: [{ segmentIds: [] }] });
+    const app = createLocalKnowledgeApplication(selected), current = app.detail(bodyRef.knowledgeId), projection = current.derivedAssociations.revision!;
+    const coverage = await postReview({ ...identity, operation: 'review-coverage', requestId: randomUUID(), sources: input.sources,
+      expectedGeneration: 1, expectedHeadEventId: receipt.eventId, projectionRevisionId: projection.revisionId, reason: 'Inspect only this exact projection.',
+      decisions: [{ segmentId: 's1', status: 'linked', reason: 'The authored projection binds exact source mentions.',
+        entityRefs: projection.segmentEntityRefs.map(ref => ({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId, entityId: ref.entityId, mentionIds: ref.mentionIds })) }] });
+    expect(coverage.status).toBe(200); const coverageReceipt = await coverage.json();
+    expect((await status()).coverage).toMatchObject({ status: 'recorded', projectionRevisionId: projection.revisionId,
+      decisions: [{ segmentId: 's1', status: 'linked' }] });
+    const revision = app.revise(bodyRef.knowledgeId, bodyRef.revisionId, current.history.generation,
+      { title: current.revision.title + '（explicit fixture correction）', content: current.revision.content, reuseRationale: current.revision.reuseRationale }, 'Explicit test fixture revision');
+    const newRef = { knowledgeId: revision.revision.knowledgeId, revisionId: revision.revision.revisionId, bodyDigest: revision.revision.bodyDigest };
+    expect((await status(newRef)).content.status).toBe('not_reviewed');
+    expect((await status()).content.status).toBe('needs_revision');
+    expect((await status(newRef)).coverage).toMatchObject({ status: 'not_reviewed', decisions: [{ segmentId: 's1', status: 'unknown' }] });
+    const use = { ...identity, operation: 'record-use', requestId: randomUUID(), sources: input.sources, expectedGeneration: 2, expectedHeadEventId: coverageReceipt.eventId,
+      taskRef: 'real-http-consumer-fixture', query: 'What limitation is actually provided?', segmentIds: ['s1'], signal: 'read', reason: 'Read the returned old body after a new revision existed.' };
+    expect((await postReview({ ...use, signal: 'observed_help' })).status).toBe(400);
+    expect((await postReview(use)).status).toBe(200);
+    expect((await status()).usage[0]).toMatchObject({ bodyRef, signal: 'read', actor: { actorKind: 'human', actorId: 'local-user' } });
+    expect((await status(newRef)).usage).toEqual([]);
+    expect(app.list()[0].choice).toBeNull();
+    expect(app.detail(bodyRef.knowledgeId, bodyRef.revisionId).revision).toEqual(fixture.body);
+  });
+
+  it('binds an explicit automation review actor at the trusted host and never accepts a browser actor', async () => {
+    const selected = join(root, 'agent-review-ledger'), fixture = seedKnowledgeWorkspace(selected, 'agent-review-source');
+    const actor = { actorKind: 'agent' as const, actorId: 'actual-browser-acceptance-Agent', executionRef: 'explicit-test-execution' };
+    const agentServer = createReportServer({ port: 0, knowledgeReviewActor: actor, observationsDir: join(root, 'agent-observations'),
+      analysesDir: join(root, 'agent-analyses'), doctorsDir: join(root, 'agent-doctors'), conversationCatalog: catalog });
+    const agentUrl = await agentServer.start();
+    const send = (body: object) => fetch(`${agentUrl}/api/knowledge/reviews`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    try {
+      const bodyRef = { knowledgeId: fixture.body.knowledgeId, revisionId: fixture.body.revisionId, bodyDigest: fixture.body.bodyDigest };
+      const command = { workspace: selected, operation: 'review-content', bodyRef, requestId: randomUUID(), expectedGeneration: 0, expectedHeadEventId: null,
+        sources: [{ snapshotId: fixture.source.snapshotId, sourceVersion: fixture.source.sourceVersion }], status: 'reviewed_with_limits',
+        reason: 'The explicit Agent inspected only this source-local fixture.', limitations: ['This authored fixture establishes no semantic quality or human Gold.'], findings: [] };
+      expect((await send({ ...command, actor: { actorKind: 'human', actorId: 'browser-spoof' } })).status).toBe(400);
+      expect((await send(command)).status).toBe(200);
+      const result = await (await send({ workspace: selected, operation: 'review-status', bodyRef })).json();
+      expect(result.content.events[0].actor).toEqual(actor);
+      expect(result.history.events).toHaveLength(1);
+    } finally { await agentServer.stop(); }
+  });
+
+  it('can recover a lost acknowledgement from the production receipt and treats a corrupt review ledger as unavailable', async () => {
+    const selected = join(root, 'review-acknowledgement'), fixture = seedKnowledgeWorkspace(selected, 'review-ack-source');
+    const bodyRef = { knowledgeId: fixture.body.knowledgeId, revisionId: fixture.body.revisionId, bodyDigest: fixture.body.bodyDigest };
+    const command = { workspace: selected, operation: 'review-content', bodyRef, requestId: randomUUID(), expectedGeneration: 0, expectedHeadEventId: null,
+      sources: [{ snapshotId: fixture.source.snapshotId, sourceVersion: fixture.source.sourceVersion }], status: 'reviewed_with_limits',
+      reason: 'Only the exact source-local fixture was reviewed.', limitations: ['The source does not establish general effectiveness.'], findings: [] };
+    const original = FileKnowledgeReviewStore.prototype.write;
+    const lostAcknowledgement = vi.spyOn(FileKnowledgeReviewStore.prototype, 'write').mockImplementation(function (this: FileKnowledgeReviewStore, ...args) {
+      original.apply(this, args); throw new Error('Lost acknowledgement token=private /private/review-ledger');
+    });
+    try {
+      const response = await postReview(command); expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: 'knowledge_request_failed' });
+    } finally { lostAcknowledgement.mockRestore(); }
+    const request = { workspace: selected, operation: 'review-status', bodyRef };
+    const recovered = await (await postReview(request)).json();
+    expect(recovered.history.events).toHaveLength(1);
+    expect(recovered.history.receipts).toEqual([expect.objectContaining({ requestId: command.requestId, committedGeneration: 1 })]);
+    const ledger = join(selected, 'reviews', readdirSync(join(selected, 'reviews'))[0]);
+    writeFileSync(ledger, '{corrupt private ledger token=secret');
+    const unavailable = await postReview(request); expect(unavailable.status).toBe(200);
+    const unreadable = await unavailable.json();
+    expect(unreadable).toMatchObject({ storageStatus: 'unavailable', generation: null, headEventId: null, history: null,
+      content: { status: 'unavailable' }, coverage: { status: 'unavailable' } });
+    expect(JSON.stringify(unreadable)).not.toContain(selected); expect(JSON.stringify(unreadable)).not.toContain('token=secret');
+    const body = await post({ workspace: selected, operation: 'show', id: bodyRef.knowledgeId, revision: bodyRef.revisionId });
+    expect(body.status).toBe(200); expect((await body.json()).revision).toEqual(fixture.body);
   });
 
   it('loads only scoped committed knowledge while preserving queue order, tags, missing rows and selected corruption failures', async () => {

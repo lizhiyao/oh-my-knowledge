@@ -7,3 +7,4 @@
 - [端到端建设设计与行业决策](knowledge-domain-model.md)
 - [实体知识库](knowledge-library.md)
 - [知识维护、自动提炼与载体契约](knowledge-maintenance.md)
+- [内容复核、关联覆盖与任务反馈](knowledge-reviews.md)

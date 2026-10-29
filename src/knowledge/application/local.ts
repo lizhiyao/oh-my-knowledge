@@ -3,6 +3,9 @@ import { lstatSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { canonicalJson } from '../store.js';
 import { KnowledgeApplication } from './application.js';
+import { KnowledgeReviewApplication } from './review.js';
+import type { KnowledgeActor } from '../contracts.js';
+import { FileKnowledgeReviewStore } from '../adapters/review-store.js';
 import { TraceEvidenceStore } from '../adapters/trace-evidence.js';
 import { FileKnowledgeStore } from '../adapters/knowledge-store.js';
 import { FileGenerationJournalStore } from '../adapters/generation-journal-store.js';
@@ -87,4 +90,14 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
     const value = createHash('sha256').update(JSON.stringify([workspace, scope.trim(), state, heads])).digest('hex');
     return `W/"omk-ui-${value}"`;
   } catch { return undefined; } // A missing hint means conservative UI refresh, never a cached acceptance.
+}
+
+/** The host supplies the actual actor. An omitted actor deliberately creates a read-only instance. */
+export function createLocalKnowledgeReview(root: string, actor?: KnowledgeActor): KnowledgeReviewApplication {
+  if (!root.trim()) throw new Error('Explicit review workspace required.');
+  const workspace = resolve(root), knowledge = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace);
+  const entities = new FileEntityAnalysisStore(join(workspace, 'entities'), workspace);
+  return new KnowledgeReviewApplication({ knowledge, entities, associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
+    evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace), reviews: new FileKnowledgeReviewStore(join(workspace, 'reviews'), 'local', workspace),
+    actor, now: () => new Date().toISOString() });
 }

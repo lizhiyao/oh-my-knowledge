@@ -21,6 +21,7 @@ import { KnowledgeGraphInspection, KnowledgeGraphView } from './knowledge-graph'
 import { AssociationMappingDrawer } from './association-mapping';
 import { EntityAnalysisDrawer } from './entity-analysis';
 import { KnowledgeTaskSearch } from './task-search';
+import { KnowledgeReviewDrawer } from './review-drawer';
 
 export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisionId, knowledgeId, seed, initialView = 'list', initialGraphSelection,
   initialGraphScope = 'current', initialReaderTab = 'body', initialKnowledgeRevision, initialQuery = '', initialChoice = 'all', initialKind = 'all', initialObjects = [],
@@ -39,6 +40,8 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const [objectDetail, setObjectDetail] = useState<KnowledgeLibraryDetail>();
   const [active, setActive] = useState(knowledgeId); const [knowledgeRevision, setKnowledgeRevision] = useState(initialKnowledgeRevision);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail>();
+  const [contentReview, setContentReview] = useState<{ detail: KnowledgeCandidateDetail; workspace: string }>();
+  const [taskReview, setTaskReview] = useState<{ bodyRef: KnowledgeTaskRetrieval['knowledge'][number]['bodyRef']; segmentId: string; query: string; workspace: string; detail?: KnowledgeCandidateDetail }>();
   const [taskBodyRef, setTaskBodyRef] = useState<KnowledgeTaskRetrieval['knowledge'][number]['bodyRef']>();
   const [query, setQuery] = useState(initialQuery); const [choice, setChoice] = useState<'all' | 'pending' | 'retain' | 'discard'>(initialChoice);
   const [kind, setKind] = useState<'all' | 'fact' | 'case' | 'method'>(initialKind); const [objects, setObjects] = useState<string[]>(initialObjects);
@@ -67,7 +70,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const graphIds = JSON.stringify(visible.map(row => row.knowledgeId));
   useEffect(() => {
     const controller = new AbortController();
-    setWorkspace(''); setCatalog(undefined); setDetail(undefined); setTaskBodyRef(undefined); setActive(knowledgeId); setKnowledgeRevision(initialKnowledgeRevision); setGraph(undefined); setMapping(undefined); setEntityTarget(undefined); setError(''); setLoading(true);
+    setWorkspace(''); setCatalog(undefined); setDetail(undefined); setTaskBodyRef(undefined); setTaskReview(undefined); setContentReview(undefined); setActive(knowledgeId); setKnowledgeRevision(initialKnowledgeRevision); setGraph(undefined); setMapping(undefined); setEntityTarget(undefined); setError(''); setLoading(true);
     void resolveKnowledgeDirectory(initialWorkspace, controller.signal).then(value => { if (!controller.signal.aborted) setWorkspace(value); })
       .catch(() => { if (!controller.signal.aborted) { setError(t('知识工作区设置不可读，请重试。', 'Knowledge workspace settings unavailable. Retry.')); setLoading(false); } });
     return () => controller.abort();
@@ -154,6 +157,11 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
     if (query) params.set('query', query); if (choice !== 'all') params.set('choice', choice); if (kind !== 'all') params.set('kind', kind); if (objects.length) params.set('objects', objects.join(','));
     window.history.replaceState(null, '', `${KNOWLEDGE_LIBRARY_PATH}?${params}`);
   }, [workspace, object?.id, currentId, active, knowledgeRevision, view, graphScope, graphSelection, graphHistory, readerSelection, query, choice, kind, JSON.stringify(objects)]);
+  useEffect(() => {
+    if (!taskReview || taskReview.detail || !detail || taskReview.workspace !== workspace) return;
+    const ref = taskReview.bodyRef;
+    if (detail.revision.knowledgeId === ref.knowledgeId && detail.revision.revisionId === ref.revisionId && detail.revision.bodyDigest === ref.bodyDigest) setTaskReview({ ...taskReview, detail: structuredClone(detail) });
+  }, [taskReview, detail, workspace]);
   function openMapping(target?: { analysisId: string; entityRevisionId: string }) {
     if (detail) setMapping({ detail: structuredClone(detail), target });
   }
@@ -201,7 +209,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
         {!object && view !== 'task' && <div className="knowledge-directory-filters"><label>{t('查找知识', 'Find knowledge')}<Input aria-label={t('搜索知识标题或标签', 'Search knowledge titles or tags')} allowClear value={query} onChange={event => { setQuery(event.target.value); setKnowledgeRevision(undefined); }}/></label>
           <div><label>{t('维护状态', 'Maintenance')}<Select aria-label={t('维护状态', 'Maintenance')} value={choice} onChange={value => { setChoice(value); setKnowledgeRevision(undefined); }} options={[{ value: 'all', label: t('全部', 'All') }, { value: 'pending', label: t('待定', 'Pending') }, { value: 'retain', label: t('已保留', 'Retained') }, { value: 'discard', label: t('已舍弃', 'Discarded') }]}/></label>
             <label>{t('知识类型', 'Knowledge type')}<Select aria-label={t('知识类型', 'Knowledge type')} value={kind} onChange={value => { setKind(value); setKnowledgeRevision(undefined); }} options={[{ value: 'all', label: t('全部', 'All') }, { value: 'fact', label: t('事实', 'Fact') }, { value: 'case', label: t('案例', 'Case') }, { value: 'method', label: t('方法', 'Method') }]}/></label></div></div>}
-        {!object && view === 'task' ? workspace ? <KnowledgeTaskSearch workspace={workspace} lang={lang} sources={taskSources} onOpen={openTaskKnowledge} onFeedback={onTaskFeedback}/> : <div className="knowledge-directory-scroll"><Skeleton active paragraph={{ rows: 3 }}/></div>
+        {!object && view === 'task' ? workspace ? <KnowledgeTaskSearch workspace={workspace} lang={lang} sources={taskSources} onOpen={openTaskKnowledge} onFeedback={(ref, segmentId, query) => { openTaskKnowledge(ref, { tab: 'body', segmentId }); setTaskReview({ bodyRef: ref, segmentId, query, workspace }); onTaskFeedback?.(ref, segmentId, query); }}/> : <div className="knowledge-directory-scroll"><Skeleton active paragraph={{ rows: 3 }}/></div>
           : !object && view === 'graph' ? graphLoading || loading ? <div className="knowledge-directory-scroll"><Skeleton active paragraph={{ rows: 5 }}/></div>
           : graphError ? <div className="knowledge-directory-scroll"><Alert type="warning" title={graphError} action={<Button onClick={() => setRefresh(value => value + 1)}>{t('重新读取图谱', 'Reload graph')}</Button>}/></div>
             : graph ? <KnowledgeGraphView graph={graph} lang={lang} activeKnowledgeId={currentId} activeRevisionId={active === currentId ? knowledgeRevision : undefined} selectedId={graphSelection} scope={graphScope} includeHistory={graphHistory}
@@ -225,7 +233,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
           footer={<><Button disabled={!!historical} onClick={() => setEditing('edit')}>{t('维护对象与来源关联', 'Maintain object and source links')}</Button><Button type="primary" onClick={() => { clearFilters(); setObjects([object.id]); setObject(undefined); }}>{t('按此对象筛选知识', 'Filter knowledge by this object')}</Button></>}/>
           : !object && currentId && detail?.revision.knowledgeId === currentId ? <KnowledgeReader detail={detail} lang={lang} workspace={workspace} selection={readerSelection} onSelectionChange={locate}
             onRevision={revision => { setActive(currentId); setKnowledgeRevision(revision); setSelectionInvalid(false); }} onRetry={() => setRefresh(value => value + 1)}
-            onMapAssociations={() => openMapping()} onEntity={setEntityTarget}
+            onMapAssociations={() => openMapping()} onEntity={setEntityTarget} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
             onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId }); } : undefined}
             header={<div className="knowledge-reader-associations">{catalog?.rows.find(row => row.knowledgeId === currentId)?.objects.length ? catalog.rows.find(row => row.knowledgeId === currentId)!.objects.map(item => <span key={item.objectId}><Button type="link" onClick={() => selectObject(item.objectId)}>{item.label}</Button>{item.associationStatus === 'needs_review' && t('（关联待核对）', ' (association needs review)')}</span>) : t('尚未关联知识库对象', 'Not associated with a library object')}</div>}
             footer={<><span>{t('保留表示愿意维护，效果尚未验证。', 'Retention is a maintenance decision; effectiveness is unverified.')}</span><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${currentId}&revision=${detail.revision.revisionId}`, workspace)}>{t('进入候选核对', 'Review candidate')}</Link></>}/>
@@ -238,6 +246,10 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
     {mapping && <AssociationMappingDrawer key={`${workspace}:${mapping.detail.revision.knowledgeId}:${mapping.detail.revision.revisionId}`} workspace={workspace} detail={mapping.detail} lang={lang}
       initialAnalysisId={mapping.target?.analysisId} initialRevision={mapping.target?.entityRevisionId}
       onClose={needsReadback => { setMapping(undefined); if (needsReadback) setRefresh(value => value + 1); }} onSaved={readback} onReadback={readback}/>}
+    {contentReview && contentReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${contentReview.detail.revision.revisionId}`} detail={contentReview.detail} workspace={workspace} lang={lang} onClose={() => setContentReview(undefined)}/>}
+    {taskReview?.detail && taskReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${taskReview.bodyRef.revisionId}/${taskReview.segmentId}`} detail={taskReview.detail} workspace={workspace} lang={lang}
+      initialMode="use" segmentId={taskReview.segmentId} query={taskReview.query} onClose={() => setTaskReview(undefined)}/>}
+
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.entityRevisionId}:${entityTarget.entityId}`} workspace={workspace} analysisId={entityTarget.analysisId}
       initialRevision={entityTarget.entityRevisionId} initialEntityId={entityTarget.entityId} lang={lang} onClose={() => setEntityTarget(undefined)} onSaved={() => notifyKnowledgeChange(workspace)}/>}
   </section>;

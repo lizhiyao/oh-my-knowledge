@@ -2,12 +2,15 @@ import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.
 import type { KnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import type { ConversationCatalog } from '../../observability/application.js';
 import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
+import type { KnowledgeActor } from '../../knowledge/contracts.js';
 
 export interface ReportServerOptions {
   /** Shared knowledge query for page and API adapters, scoped to this server. */
   knowledgeQuery?: KnowledgeQuery;
   /** Delivery-owned concrete archive producer; defaults to the proven API producer. */
   entityLinkProducer?: ExecutorArchiveProducer;
+  /** Trusted UI host attribution; browser payloads cannot override this identity. */
+  knowledgeReviewActor?: KnowledgeActor;
   port?: number;
   /** 监听 host。默认 '127.0.0.1'（只允许本机访问，容器／远程场景看不到）。
    * 暴露到容器外／局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */

@@ -113,6 +113,7 @@ test/studio/web/entity-analysis.test.tsx
 test/studio/web/knowledge-library.test.tsx
 test/studio/web/knowledge-graph.test.tsx
 test/studio/web/knowledge-task-search.test.tsx
+test/studio/web/knowledge-reviews.test.tsx
 test/studio/web/knowledge-reader.test.tsx
 test/studio/http/entity-links.test.ts
 test/studio/web/entity-links.test.tsx

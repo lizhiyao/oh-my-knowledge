@@ -657,3 +657,19 @@ html,body{width:100%;height:100%;overflow:hidden}.studio-app{height:100dvh;min-w
 .conversation-extract-options code{overflow-wrap:anywhere}
 @container(max-width:1024px){.knowledge-workbench-task{grid-template-columns:minmax(280px,.85fr) minmax(0,1.15fr)}}
 @container(max-width:860px){.knowledge-workbench-task{grid-template-columns:minmax(0,1fr)}}
+
+.knowledge-review-summary{margin-block:var(--studio-space-3) var(--studio-space-5);padding-bottom:var(--studio-space-4);border-bottom:1px solid var(--studio-edge-default);font-size:13px;line-height:1.7}
+.knowledge-review-summary p{margin-block:var(--studio-space-2)}.knowledge-review-summary ul{padding-inline-start:20px}
+.knowledge-review-summary details>summary,.knowledge-review-editor details>summary{cursor:pointer;color:var(--studio-action-ink)}
+.knowledge-review-editor{display:flex;flex-direction:column;gap:var(--studio-space-4);font-size:14px;line-height:1.7}
+.knowledge-review-editor p{margin-block:var(--studio-space-2)}.knowledge-review-editor code{overflow-wrap:anywhere}
+.knowledge-review-fields{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:var(--studio-space-4);min-width:0}
+.knowledge-review-fields label{display:flex;flex-direction:column;gap:var(--studio-space-2)}
+.knowledge-review-mapping{display:flex;align-items:flex-start;gap:var(--studio-space-2);flex-wrap:wrap}.knowledge-review-mapping code{flex-basis:100%;font-size:12px}
+.knowledge-review-coverage-segment{display:flex;flex-direction:column;gap:var(--studio-space-3);padding-block:var(--studio-space-4);border-bottom:1px solid var(--studio-edge-default)}
+.knowledge-review-coverage-segment h3{margin:0;font-size:14px}.knowledge-review-evidence .candidate-form{margin-top:var(--studio-space-3)}
+.knowledge-review-actions{position:sticky;bottom:0;padding-block:var(--studio-space-3);background:#fff;border-top:1px solid var(--studio-edge-default);z-index:2}
+
+.knowledge-review-coverage-context{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:var(--studio-space-4)}
+.knowledge-review-coverage-context>div{min-width:0}.knowledge-review-coverage-context h4{font-size:13px;margin:0 0 var(--studio-space-2)}
+@media(max-width:860px){.knowledge-review-coverage-context{grid-template-columns:minmax(0,1fr)}}
