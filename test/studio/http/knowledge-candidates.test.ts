@@ -14,6 +14,7 @@ import { authoredKnowledgeResponse, seedKnowledgeWorkspace } from '../../cli/kno
 import type { KnowledgeGenerationModel } from '../../../src/knowledge/adapters/generation-executor.js';
 import type { GenerationOutcome } from '../../../src/knowledge/extraction/native-outcome.js';
 import { AUTO_EXTRACTION_WORKFLOW } from '../../../src/knowledge/application/auto-extraction.js';
+import { retrieveKnowledge } from '../../../src/knowledge/application/retrieval.js';
 import { writeJsonFileAtomic } from '../../../src/shared/atomic-json.js';
 
 /** Pure authored responses exercise current journal/publication paths without any model execution. */
@@ -112,6 +113,35 @@ describe('Studio candidate action boundary', () => {
     expect(noHint.headers.get('etag')).toBeNull(); expect(noHint.headers.get('cache-control')).toBe('no-store');
     unlinkSync(head);
     expect((await status()).headers.get('etag')).toBe(previous);
+  });
+
+  it('retrieves task content through the production read path with candidate/source/budget boundaries and no new generation', async () => {
+    const selected = join(root, 'task-retrieval'), app = createLocalKnowledgeApplication(selected);
+    const captured = app.capture({ path: join(root, 'task-source.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha uses Beta diagnostics only with matching source, model and configuration. ' + 'This limitation remains specific. '.repeat(70)) }] });
+    const run = await app.generate(captured.snapshotId, currentModel(true));
+    const request = { operation: 'retrieve', workspace: selected, format: 'json', query: 'Alpha diagnostics', maxBytes: 8192,
+      snapshot: captured.snapshotId, sourceVersion: captured.sourceVersion };
+    const defaultResult = await (await post(request)).json();
+    expect(defaultResult.items).toEqual([]);
+    const response = await post({ ...request, includeCandidates: true });
+    expect(response.status).toBe(200); const result = await response.json();
+    expect(result).toEqual(retrieveKnowledge(app, { query: request.query, maxBytes: 8192, includeCandidates: true,
+      snapshot: captured.snapshotId, sourceVersion: captured.sourceVersion }));
+    expect(result.items.length).toBeGreaterThan(0); expect(run.journal.bodies).toContainEqual(result.knowledge[0].bodyRef);
+    expect(result.omitted.budgetSegments).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(result)) + 1).toBeLessThanOrEqual(8192);
+    expect(JSON.stringify(result)).not.toContain(selected);
+    for (const invalid of [{ format: 'text' }, { sourceVersion: captured.sourceVersion, snapshot: undefined }, { analysisId: randomUUID() }, { maxBytes: 100 }, { executor: 'codex' }]) {
+      expect((await post({ ...request, ...invalid })).status).toBe(400);
+    }
+    expect(app.list().every(row => row.choice === null)).toBe(true);
+    const ref = result.knowledge[0].bodyRef, before = app.detail(ref.knowledgeId, ref.revisionId);
+    app.revise(ref.knowledgeId, ref.revisionId, before.history.generation, { title: before.revision.title + ' — current revision', content: before.revision.content, reuseRationale: before.revision.reuseRationale }, 'Explicit fixture revision after retrieval');
+    const historical = await (await post({ workspace: selected, operation: 'show', id: ref.knowledgeId, revision: ref.revisionId })).json();
+    expect(historical.revision).toEqual(before.revision); expect(historical.history.writeHeadRevisionId).not.toBe(ref.revisionId);
+    for (const row of app.list()) app.maintain(row.knowledgeId, row.revisionId, 'discard', 'Explicitly excluded test knowledge', row.generation);
+    expect((await (await post({ ...request, includeCandidates: true })).json()).items).toEqual([]);
+    expect(app.inspect(run.journal.runId).journal.generation).toBe(run.journal.generation);
   });
 
   it('loads only scoped committed knowledge while preserving queue order, tags, missing rows and selected corruption failures', async () => {

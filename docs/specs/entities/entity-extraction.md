@@ -63,7 +63,7 @@ Only selected excerpts, limitations and explicit source attribution are sent. Ho
 
 ## 6. Current storage contracts
 
-Current physical paths and identities are defined by the [explicit workspace contract](../shared/storage-layout-spec.md#explicit-knowledge-workspace): body history Schema 3, independent association history Schema 1, entity history Schema 2 and generation journal Schema 1. Each body revision has `bodyDigest`; inline evidence is the source binding, without old parallel grounding/extractionRunId read dependencies.
+Current physical paths and identities are defined by the [explicit workspace contract](../shared/storage-layout-spec.md#explicit-knowledge-workspace): body history Schema 3, independent association history Schema 2, entity history Schema 2 and generation journal Schema 2. Each body revision has `bodyDigest`; inline evidence is the source binding, without old parallel grounding/extractionRunId read dependencies.
 
 `generation-journals/<run-id>.json` records phases and fixed publication intents. Originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json` bind their request and complete byte digest. `inspect` reads those originals; `resume` attaches held/orphan originals and replays exact commands/receipts with zero model calls. Partial publication retains fixed IDs and committed prefixes. A claimed phase with no original remains unknown and cannot be resent automatically. A never-claimed association may be sent only by explicit continuation. Repeating a completed run identity makes zero calls.
 

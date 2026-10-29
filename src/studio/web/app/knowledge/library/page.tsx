@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
   }
   return <StudioShell lang={lang} active="knowledge"><KnowledgeLibrary key={params.workspace ?? ''} lang={lang} initialWorkspace={params.workspace}
     knowledgeId={params.knowledge} objectId={params.object} revisionId={params.revision}
-    initialView={params.view === 'graph' ? 'graph' : 'list'} initialGraphSelection={params.selection}
+    initialView={params.view === 'graph' ? 'graph' : params.view === 'task' ? 'task' : 'list'} initialGraphSelection={params.selection}
     initialGraphScope={params.scope === 'filtered' ? 'filtered' : 'current'}
     initialGraphHistory={params.history === 'true'}
     initialGraphEntity={params.view === 'graph' && params.analysis && params.entity && params.entityRevision ? {

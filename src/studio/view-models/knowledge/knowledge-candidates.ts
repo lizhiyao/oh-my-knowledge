@@ -2,6 +2,7 @@ import type { KnowledgeApplication } from '../../../knowledge/application/applic
 import type { EvidenceWindow } from '../../../knowledge/extraction/evidence.js';
 import type { KnowledgeBodyRef } from '../../../knowledge/contracts.js';
 import type { GenerationArchiveCheck, GenerationStage } from '../../../knowledge/extraction/generation-journal.js';
+import type { KnowledgeRetrievalRequest, KnowledgeRetrievalResult } from '../../../knowledge/application/retrieval.js';
 
 type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
 export type KnowledgeCandidateDetail = CandidateDetail & { origin?: EvidenceWindow['origin'] };
@@ -9,6 +10,8 @@ export type KnowledgeCandidateSource = EvidenceWindow;
 export type KnowledgeGraph = ReturnType<KnowledgeApplication['graph']>;
 export type KnowledgeAssociationCatalogs = ReturnType<KnowledgeApplication['associationCatalogs']>;
 export type KnowledgeExtractionQuality = ReturnType<KnowledgeApplication['quality']>;
+export type KnowledgeTaskRetrieval = KnowledgeRetrievalResult;
+export type KnowledgeTaskQuery = Pick<KnowledgeRetrievalRequest, 'query' | 'maxBytes' | 'includeCandidates' | 'snapshot' | 'sourceVersion'>;
 export type KnowledgeCandidateRow = ReturnType<KnowledgeApplication['list']>[number];
 export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['queryEntities']>, 'knowledgeStatus'> & { knowledgeStatus: 'available' | 'unavailable' };
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source' | 'knowledgeStatus'> & Pick<KnowledgeEntityAnalysisDetail, 'source'> & { knowledgeStatus: 'available' | 'unavailable' };

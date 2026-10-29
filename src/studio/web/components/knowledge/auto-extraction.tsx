@@ -5,6 +5,7 @@ import type { Language } from '../layout/shell';
 import type { AutoExtractionPreview, AutoExtractionStatus } from '../../../view-models/knowledge/knowledge-candidates';
 import { requestKnowledge } from './request';
 import { resolveKnowledgeWorkspace } from './workspace';
+import { ConversationSourceScope } from './conversation-source-scope';
 
 /** Opening a preview does not grant permission or call a model. */
 export function AutoExtractConversation({ threadId, lang, onChanged }: { threadId: string; lang: Language; onChanged?(): void }) {
@@ -86,6 +87,7 @@ export function AutoExtractConversation({ threadId, lang, onChanged }: { threadI
       {state?.schemaStatus === 'unsupported' && <Alert type="warning" title={t('当前工作区使用旧提炼流程。请先显式迁移到独立新工作区，再填写迁移后的目录并重新授权；不会在原目录升级权限或恢复旧调用。', 'This workspace uses an older extraction workflow. Explicitly migrate to a separate workspace, then enter the migrated folder and grant fresh permission. Permissions are not upgraded in place and old calls are not resumed.')}/>}
       <p>{t('本次授权仅限此对话，24 小时内、且 Studio 服务运行时有效。可以随时停止；重启后需要重新开启。', 'Permission covers only this conversation for 24 hours while Studio runs. Stop anytime; enable again after restart.')}</p>
       <p>{t('先处理最近 3 个已结束轮次，之后每次最多处理 3 个新增已结束轮次，并带上前 2 轮上下文。记录稳定 30 秒后开始；不会读取整条历史来判断所有纠正。', 'Start with the latest 3 finished turns, then process up to 3 new finished turns with 2 preceding turns of context. Wait 30 seconds for stable records; this does not reconcile the entire history.')}</p>
+      <ConversationSourceScope lang={lang}/>
       <label>{t('候选保存目录', 'Candidate folder')}<Input value={workspace} disabled={busy} onChange={event => { setWorkspace(event.target.value); setConfirmed(false); }}/></label>
       <Space wrap><label>{t('发送到执行器', 'Send to executor')}<Select value={executor} disabled={busy} onChange={value => { setExecutor(value); setConfirmed(false); }} options={['codex', 'openai-api'].map(value => ({ value, label: value }))}/></label>
         <label>{t('模型', 'Model')}<Input value={model} disabled={busy} onChange={event => { setModel(event.target.value); setConfirmed(false); }}/></label>
