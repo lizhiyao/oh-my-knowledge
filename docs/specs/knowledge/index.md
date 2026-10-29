@@ -7,3 +7,4 @@ Start with the end-to-end construction design for extraction, host admission, cr
 - [End-to-end construction design and industry decisions](knowledge-domain-model.md)
 - [Entity knowledge library](knowledge-library.md)
 - [Knowledge maintenance, automatic extraction, and carrier contracts](knowledge-maintenance.md)
+- [Content review, association coverage and task feedback](knowledge-reviews.md)

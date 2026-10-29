@@ -623,7 +623,7 @@ omk observe knowledge <operation> [flags]
 - `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
-- `--input` `option`:完整新正文/实体/派生草稿 JSON 文件，不修改原修订。
+- `--input` `option`:完整新正文／实体／派生或复核草稿 JSON 文件；复核写入须含稳定 requestId、精确 bodyRef、来源和账本 CAS。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
 - `--json` `boolean`:完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
@@ -637,6 +637,7 @@ omk observe knowledge <operation> [flags]
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities 页码。
 - `--page-size` `option`:entities 每页条数。
+- `--projection-revision` `option`:review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。
 - `--query` `option`:retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。
 - `--reason` `option`:修订或维护理由。保留和关联审查均不证明真值。
 - `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
@@ -695,6 +696,14 @@ omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --gen
 
 ```bash
 omk observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates
+```
+
+```bash
+omk observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
+```
+
+```bash
+omk observe knowledge review-content --workspace ./knowledge --input ./review.json --json
 ```
 
 ```bash

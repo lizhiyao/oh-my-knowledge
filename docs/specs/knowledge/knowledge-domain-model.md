@@ -63,9 +63,11 @@ The library's independent `objectId` organizes those original references across 
 
 The canonical draft is `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`. Every segment is a complete independently consumable body unit. Its text retains necessary conditions, attribution, negation, time, exceptions and unknowns; quotes, titles and catalogs cannot substitute for that meaning. Each evidence entry carries `source: {snapshotId, sourceVersion}`, `selection: {evidenceRef, start, end, quote}`, `basis` and optional `interpretation`. The host verifies exact continuous UTF-16 positions against the source on generation and revision.
 
-Knowledge history uses Schema 3. Immutable revisions add `bodyDigest`, computed from the versioned canonical title/content/reuse rationale. The independent association history binds the exact `{knowledgeId, revisionId, bodyDigest}` and optional catalog revision, `segmentEntityRefs`, optional `typedRelations` and unresolved issues. Missing typed relations mean not requested; an empty array means requested with none formed. Its `available` status means structurally readable, not confirmed identity or truth. Separate accept/reject review applies to that projection; every new projection starts pending.
+Knowledge history uses Schema 3. Immutable revisions add `bodyDigest`, computed from the versioned canonical title/content/reuse rationale. The independent association history binds the exact `{knowledgeId, revisionId, bodyDigest}`, a complete `catalogRefs` revision set, `segmentEntityRefs`, optional `typedRelations` and unresolved issues. Missing typed relations mean not requested; an empty array means requested with none formed. Its `available` status means structurally readable, not confirmed identity or truth. Separate accept/reject review applies to that projection; every new projection starts pending.
 
 Editing body content creates a new body revision and does not inherit a previous retain/discard decision. Entity correction, manual association application and model-assisted rebuilding create or select independent derived revisions without rewriting body. A projection for another body digest is stale. Source deletion leaves saved body readable with evidence explicitly unavailable; no fabricated original or healthy-empty result replaces it.
+
+[Independent review and task feedback](knowledge-reviews.md) pin the actual body revision and sources, distinguishing unreviewed content, explicit revision needs and limited opinions. Per-segment association coverage separately pins the projection. Use feedback targets the actually consumed version; sources and new revisions do not rewrite past events. Review, retention and effect reports remain separate, without automatically establishing truth or new content.
 
 ## 4. Organization and carrier maintenance {#current-maintenance}
 
@@ -175,6 +177,8 @@ Current bodies and association rebuilding support multiple exact sources. Associ
 
 ### 8.3 Actual actor and delegating user {#actor-context-design}
 
+Independent reviews v1 implements trusted-host actor injection within its new operations: CLI writes recognize Codex Desktop launcher attribution and reject unknown contexts; Studio and trusted application construction inject their actual callers, while browser payloads cannot self-declare actors. This does not change existing knowledge-maintenance defaults below or provide identity authentication. See [review operation boundaries](knowledge-reviews.md#review-operations).
+
 Current KnowledgeActor distinguishes human from agent with executionRef, but local composition fixes maintenance callers to human/local-user; generation records a separate extractor Agent. This default does not prove every CLI maintenance action was performed directly by a human, and historical records cannot be relabeled from that assumption.
 
 The decision is to record the **actual writing principal** in knowledge createdBy/revisedBy and maintenance actor fields. Trusted-host principal/authorization records separately preserve the delegating user and scope, linked to the write receipt through an exact requestId. An Agent writing for a user is recorded as agent with a stable executionRef; human delegation does not relabel the executor as human. The human identity decision required for cross-window publication remains separate.
@@ -183,7 +187,7 @@ CLI launch context, an authenticated service session or a trusted Agent runtime 
 
 ### 8.4 Versions, migration and implementation hand-off {#extension-migration-plan}
 
-Multi-catalog associations and separate-workspace migration have been explicitly approved and implemented. Source-window and public-actor extensions below still require their own confirmation; Schema 2 does not replace them.
+Multi-catalog associations, separate-workspace migration and independent reviews v1 have been explicitly approved and implemented. Source-window changes and public-actor changes to other existing maintenance entries below still require their own confirmation; association Schema 2 and the new review records do not replace them.
 
 | Affected surface | Version and migration decision |
 |---|---|

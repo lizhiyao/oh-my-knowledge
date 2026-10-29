@@ -10,6 +10,8 @@ import { AssociationMappingDrawer } from './association-mapping';
 import { candidateReviewRun, projectCandidateBatch } from '../../../application/knowledge/candidate-review';
 import { CandidateDecisionActions, CandidateReviewProgress, CandidateReviewSummary } from './candidate-review';
 import { KnowledgeReader } from './reader';
+import type { KnowledgeReaderSelection } from './reader';
+import { KnowledgeReviewDrawer } from './review-drawer';
 import { ExtractionQualityPanel, NativeArchiveChecks } from './extraction-quality';
 import { KnowledgeStudyInspectionDrawer } from './study-inspection';
 import { KnowledgeSectionNav } from './section-nav';
@@ -21,7 +23,7 @@ import { conversationLabel } from '../../../application/display/conversation-lab
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
 import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
-export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(queue: KnowledgeCandidateQueue): void }) {
+export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, initialSegmentId, initialEdit = false, initialReason, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; initialSegmentId?: string; initialEdit?: boolean; initialReason?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(queue: KnowledgeCandidateQueue): void }) {
   const zh = lang === 'zh';
   const t = (cn: string, en: string) => zh ? cn : en;
   const [authoringIds, setAuthoringIds] = useState<string[] | null>(null);
@@ -57,6 +59,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showBatchSummary, setShowBatchSummary] = useState(false);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [contentReview, setContentReview] = useState<{ detail: KnowledgeCandidateDetail; workspace: string }>();
+  const [readerSelection, setReaderSelection] = useState<KnowledgeReaderSelection>({ tab: 'body', segmentId: initialSegmentId });
   const [mapping, setMapping] = useState(false);
   const [reason, setReason] = useState('');
   const [decisionChoice, setDecisionChoice] = useState<'retain' | 'discard' | null>(null);
@@ -113,10 +117,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   }
   async function open(id: string, revision?: string, root = workspace, activateBatch = false) {
     const next = await api<KnowledgeCandidateDetail>('show', { workspace: root, id, ...(revision ? { revision } : {}) });
-    setDetail(next); setReason(''); setShowBatchSummary(false); setNeedsRefresh(false);
+    setDetail(next); setReaderSelection({ tab: 'body', ...(id === initialId && revision === initialRevision && initialSegmentId ? { segmentId: initialSegmentId } : {}) }); setReason(''); setShowBatchSummary(false); setNeedsRefresh(false);
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
     if (embedded) return;
-    const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); window.history.replaceState(null, '', url);
+    const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); if (id !== initialId || revision !== initialRevision) { for (const key of ['edit', 'segment', 'reason']) url.searchParams.delete(key); } window.history.replaceState(null, '', url);
   }
   function readbackDetail(latest: KnowledgeCandidateDetail) {
     setEditing(false); setMapping(false); setDetail(latest); setNeedsRefresh(false); setError(''); setReason('');
@@ -138,7 +142,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       const { workspace: root, defaultWorkspace: fallback, executor: provider, model: defaultModel } = await resolveKnowledgeWorkspace(initialWorkspace, controller.current?.signal);
       setDefaultWorkspace(fallback); setWorkspace(root); setWorkspaceDraft(root);
       setExecutor(provider); setModel(defaultModel);
-      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); if (scope) setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
+      if (root) { const current = await refresh(root, true); if (initialId) { await open(initialId, initialRevision, root); if (initialEdit && initialRevision) setEditing(true); if (scope) setBatchRunId(candidateReviewRun(current.runs, initialId)?.runId ?? null); } }
     } catch (cause) { setFailedToLoad(true); throw cause; }
     finally { setLoading(false); }
   }
@@ -252,7 +256,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </div><footer className="knowledge-directory-footer" role="status">{t(`${visibleRows.length} 条结果`, `${visibleRows.length} results`)}</footer></aside>
       {summary && batch ? <article className="knowledge-reader"><div className="knowledge-reader-scroll"><div className="knowledge-reading"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.bodies.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div></div></article>
-        : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh}
+        : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh} workspace={workspace} selection={readerSelection} onSelectionChange={setReaderSelection} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
           onRevision={revision => void work(() => open(detail.revision.knowledgeId, revision))}
           onRetry={() => void work(() => open(detail.revision.knowledgeId, detail.revision.revisionId))}
           onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, revision: ref.entityRevisionId }); } : undefined}
@@ -337,7 +341,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
       </div>
     </Drawer>
-    {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang}
+    {contentReview && contentReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${contentReview.detail.revision.revisionId}`} detail={contentReview.detail} workspace={workspace} lang={lang} onClose={() => setContentReview(undefined)}/>}
+    {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} initialReason={detail.revision.knowledgeId === initialId && detail.revision.revisionId === initialRevision ? initialReason : undefined}
       onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
         setEditing(false); setDetail(saved); setReason(''); notifyKnowledgeChange(workspace);
         setNotice(t('已保存新修订，需要重新决定保留或舍弃。', 'Saved a new revision. Decide again whether to retain or discard it.'));

@@ -57,6 +57,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/knowledge-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/knowledge-tags.ts',
   'knowledge/application/local.ts → knowledge/adapters/library-store.ts',
+  'knowledge/application/local.ts → knowledge/adapters/review-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/trace-evidence.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-links.ts',
@@ -125,7 +126,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
   {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
-    rationale: '正文生成应用装配独立 journal/custody 适配器；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
+    rationale: '正文生成应用装配独立 journal/custody 适配器；既有 local 组合根另装配独立复核账本，复核用例只消费端口，不引入新的适配器反向调用；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
   },
 ] as const;
 
@@ -229,8 +230,8 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: '8fa0c6830fbd5f1f833a226edc4a8285229e7944d4480ec12ab4763e41410710',
-    rationale: 'Documentation generation loads only fixed compiled current body contract modules to derive identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
+    sourceSha256: '33b33d8ed0b1354b14f99e91a7eed267f9ffaa99599fc17a2bb139a424d5bb1a',
+    rationale: 'Documentation generation loads only fixed compiled current body and independent review contract modules to derive identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',

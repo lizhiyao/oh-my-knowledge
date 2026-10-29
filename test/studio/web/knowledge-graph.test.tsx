@@ -8,6 +8,7 @@ import { KnowledgeLibrary } from '../../../src/studio/web/components/knowledge/l
 import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader';
 import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail, KnowledgeGraph } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { KnowledgeLibraryKnowledge } from '../../../src/studio/view-models/knowledge/knowledge-library';
+import type { KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews';
 import { bodyWrite } from '../../knowledge/body-fixtures';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search), useRouter: () => ({ push: vi.fn() }) }));
@@ -61,6 +62,13 @@ function fixture() {
     bodyDigest: revision.bodyDigest, generation: 2, title: revision.title, knowledgeKind: 'fact', reviewStatus: 'pending', choice: 'retain', revisedAt: at, objects: [] }] };
   return { detail, graph, analysis, catalog, mentions, source };
 }
+function absentReviews(detail: KnowledgeCandidateDetail): KnowledgeReviewStatus {
+  const { knowledgeId, revisionId, bodyDigest } = detail.revision;
+  const sources = [...new Map<string, KnowledgeReviewStatus['sources'][number]>(detail.revision.content.segments.flatMap(segment => segment.evidence).map(evidence => [`${evidence.source.snapshotId}/${evidence.source.sourceVersion}`, { ...evidence.source, status: 'available' as const }] as const)).values()];
+  return { storageStatus: 'absent', bodyRef: { knowledgeId, revisionId, bodyDigest }, generation: 0, headEventId: null, sources, history: null,
+    content: { status: 'not_reviewed', events: [] }, coverage: { status: 'not_reviewed', projectionRevisionId: detail.derivedAssociations.revision?.revisionId ?? null,
+      events: [], decisions: detail.revision.content.segments.map(segment => ({ segmentId: segment.segmentId, status: 'unknown', opinions: [] })) }, usage: [] };
+}
 function wrapper({ children }: PropsWithChildren) { return <ConfigProvider theme={{ token: { motion: false } }}>{children}</ConfigProvider>; }
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -87,6 +95,7 @@ describe('knowledge graph browsing and evidence', () => {
           segmentScope: { returned: 1, total: 1 }, derivedAssociations: data.detail.derivedAssociations }],
         sources: [{ ...data.source, status: 'available', sourceKind: 'codex' }],
         items: [{ knowledge: 0, segmentIndex: 0, segment: data.detail.revision.content.segments[0], evidenceChecks: [{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }] }] };
+      else if (call.operation === 'review-status') value = absentReviews(data.detail);
       else if (call.operation === 'show') value = call.revision === data.detail.revision.revisionId ? data.detail : latest;
       else throw new Error(`Unexpected operation ${call.operation}`);
       return new Response(JSON.stringify(value), { status: 200 });
@@ -113,7 +122,9 @@ describe('knowledge graph browsing and evidence', () => {
       initialEvidence={JSON.parse(params.get('evidence')!)}/>, { wrapper });
     await waitFor(() => expect(document.querySelector('.knowledge-reader pre.knowledge-source mark')?.textContent).toBe('Alpha'));
     expect(document.querySelector('.knowledge-workbench')?.classList.contains('knowledge-directory-open')).toBe(false);
-    expect(calls.every(call => ['knowledge', 'retrieve', 'show'].includes(String(call.operation)))).toBe(true);
+    await screen.findByText(/Content review: Not reviewed/);
+    expect(calls.some(call => call.operation === 'review-status')).toBe(true);
+    expect(calls.every(call => ['knowledge', 'retrieve', 'show', 'review-status'].includes(String(call.operation)))).toBe(true);
   });
 
   it('keeps failed and replacement projection records readable after a correction', () => {
@@ -205,6 +216,7 @@ describe('knowledge graph browsing and evidence', () => {
       if (call.operation === 'knowledge') value = data.catalog;
       else if (call.operation === 'graph') value = persistedGraph;
       else if (call.operation === 'show') value = persisted;
+      else if (call.operation === 'review-status') value = absentReviews(persisted);
       else if (call.operation === 'entities') value = data.analysis;
       else if (call.operation === 'association-catalogs') value = { bodyRef: persisted.derivedAssociations.bodyRef, unavailableAnalyses: 0,
         sources: [{ ...data.source, status: 'available' }], catalogs: [{ analysisId: data.analysis.history.analysisId, ...data.source,
@@ -272,14 +284,16 @@ describe('knowledge graph browsing and evidence', () => {
     fireEvent.click(within(article).getByRole('button', { name: '返回对应正文段落' }));
     expect(article.querySelector('[data-segment-id="s1"][data-focused="true"]')?.textContent).toContain(data.detail.revision.content.segments[0].text);
     expect(calls.filter(call => call.operation === 'apply-associations')).toHaveLength(1);
-    expect(calls.every(call => ['knowledge', 'graph', 'show', 'association-catalogs', 'entities', 'apply-associations'].includes(String(call.operation)))).toBe(true);
+    await screen.findByText(/内容复核：尚未复核/);
+    expect(calls.some(call => call.operation === 'review-status')).toBe(true);
+    expect(calls.every(call => ['knowledge', 'graph', 'show', 'review-status', 'association-catalogs', 'entities', 'apply-associations'].includes(String(call.operation)))).toBe(true);
   });
 
   it('starts at content with a visible recovery notice for invalid evidence links, then clears it on an explicit new location', async () => {
     const { catalog, detail, source } = fixture();
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
       const call = JSON.parse(String(init.body));
-      return new Response(JSON.stringify(call.operation === 'knowledge' ? catalog : detail), { status: 200 });
+      return new Response(JSON.stringify(call.operation === 'knowledge' ? catalog : call.operation === 'review-status' ? absentReviews(detail) : detail), { status: 200 });
     }));
     render(<KnowledgeLibrary lang="zh" initialWorkspace="/isolated" knowledgeId={detail.revision.knowledgeId} initialReaderTab="evidence" initialSegmentId="bad-segment"
       initialMentionId="bad-mention" initialEvidence={{ ...source, evidenceRef: 'bad-record', start: 0, end: 1 }} initialReaderSelectionInvalid/>, { wrapper });
@@ -302,7 +316,7 @@ describe('knowledge graph browsing and evidence', () => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
       const call = JSON.parse(String(init.body)); calls.push(call.operation);
-      const value = call.operation === 'knowledge' ? catalog : call.operation === 'graph' ? graph : call.operation === 'show' ? detail : undefined;
+      const value = call.operation === 'knowledge' ? catalog : call.operation === 'graph' ? graph : call.operation === 'show' ? detail : call.operation === 'review-status' ? absentReviews(detail) : undefined;
       if (!value) throw new Error(`Unexpected operation: ${call.operation}`);
       return new Response(JSON.stringify(value), { status: 200 });
     }));
@@ -336,7 +350,9 @@ describe('knowledge graph browsing and evidence', () => {
     expect(within(identity).getByText('relation-same-span')).toBeTruthy();
     fireEvent.click(within(article).getByRole('button', { name: '返回对应正文段落' }));
     expect(article.querySelector('[data-segment-id="s1"][data-focused="true"]')?.textContent).toContain(detail.revision.content.segments[0].text);
-    expect(calls.every(operation => ['knowledge', 'graph', 'show'].includes(operation))).toBe(true);
+    await screen.findByText(/内容复核：尚未复核/);
+    expect(calls).toContain('review-status');
+    expect(calls.every(operation => ['knowledge', 'graph', 'show', 'review-status'].includes(operation))).toBe(true);
   });
 
   it('keeps mismatched original text and unavailable-source quotations outside the folded exact identity', () => {

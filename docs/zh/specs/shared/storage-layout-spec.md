@@ -111,6 +111,7 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 |---|---|
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3：不可变正文修订、inline evidence、`bodyDigest`、维护及收据 |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
+| `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1：精确正文的内容复核、逐段关联覆盖、任务使用反馈及独立收据；[详细契约](../knowledge/knowledge-reviews.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
 | `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 2、流程 `knowledge-body-first/v2`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变正文或关联原生完整返回，分别绑定请求与摘要 |

@@ -926,8 +926,8 @@ describe('independent entity mapping review', () => {
 });
 
 const revisionEntries = ['revise'] as const;
-function citationEditor(_entry: typeof revisionEntries[number], detail: KnowledgeCandidateDetail, onSaved = vi.fn(), onReadback = vi.fn()) {
-  const props = { workspace: '/citation-fixture', detail, lang: 'en' as const, onClose: vi.fn(), onSaved, onReadback };
+function citationEditor(_entry: typeof revisionEntries[number], detail: KnowledgeCandidateDetail, onSaved = vi.fn(), onReadback = vi.fn(), initialReason?: string) {
+  const props = { workspace: '/citation-fixture', detail, lang: 'en' as const, onClose: vi.fn(), onSaved, onReadback, initialReason };
   return <KnowledgeRevisionDrawer {...props}/>;
 }
 function revisionSaveButton(entry: typeof revisionEntries[number]) {
@@ -951,6 +951,45 @@ describe('knowledge citation revision editors', () => {
       const original = parsed.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${lang === 'zh' ? '原始消息（只读）' : 'Original message (read-only)'}"]`);
       expect(original?.readOnly).toBe(true); expect(original?.disabled).toBe(false);
     }
+  });
+  it('prefills a review reason and adds a missing segment only after exact evidence is supplied, preserving the original body CAS and segments', async () => {
+    const { detail } = citationFixture(), original = structuredClone(detail.revision), saved = vi.fn(), pending = deferred<Response>();
+    const reason = 'Address content review: the source correction block was missing.';
+    const calls = api(call => call.operation === 'revise' ? pending.promise : undefined);
+    const mounted = render(citationEditor('revise', detail, saved, vi.fn(), reason), { wrapper });
+    expect((await screen.findByRole('textbox', { name: 'Revision reason' }) as HTMLInputElement).value).toBe(reason);
+    expect(revisionSaveButton('revise').hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a missing segment' }));
+    change('Knowledge segment 2', 'The source subsequently corrected that Alpha did not use Beta.');
+    expect(revisionSaveButton('revise').hasAttribute('disabled')).toBe(true);
+    fireEvent.click(revisionSaveButton('revise')); expect(calls.filter(call => call.operation === 'revise')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a citation to segment 2' }));
+    expect(revisionSaveButton('revise').hasAttribute('disabled')).toBe(true);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Source excerpt for citation 2' }));
+    fireEvent.click(await screen.findByText('1 · user · 纠正：Alpha 未使用 Beta'));
+    change('Citation 2', 'Alpha 未使用 Beta');
+    expect(revisionSaveButton('revise').hasAttribute('disabled')).toBe(false);
+    const refreshed = structuredClone(detail); refreshed.revision.revisionId = uuid(902); refreshed.history.generation = 9; refreshed.history.writeHeadRevisionId = uuid(902);
+    mounted.rerender(citationEditor('revise', refreshed, saved, vi.fn(), 'A later prop must not replace the draft reason.'));
+    expect((screen.getByRole('textbox', { name: 'Revision reason' }) as HTMLInputElement).value).toBe(reason);
+    fireEvent.click(revisionSaveButton('revise'));
+    await waitFor(() => expect(calls.filter(call => call.operation === 'revise')).toHaveLength(1));
+    const command = calls.find(call => call.operation === 'revise')!.body;
+    expect(command).toMatchObject({ workspace: '/citation-fixture', id: original.knowledgeId, revision: original.revisionId, generation: 1, reason });
+    const draft = command.draft as Pick<KnowledgeCandidateDetail['revision'], 'title' | 'content' | 'reuseRationale'>;
+    expect(draft.content.segments).toHaveLength(2); expect(draft.content.segments[0]).toEqual(original.content.segments[0]);
+    expect(draft.content.segments[1].segmentId).not.toBe(original.content.segments[0].segmentId);
+    expect(draft.content.segments[1]).toMatchObject({ text: 'The source subsequently corrected that Alpha did not use Beta.',
+      evidence: [{ source: original.content.segments[0].evidence[0].source, basis: 'source_assertion',
+        selection: { evidenceRef: 'record-2', quote: 'Alpha 未使用 Beta', start: 3, end: 17 } }] });
+    expect(detail.revision).toEqual(original); expect(saved).not.toHaveBeenCalled();
+    const persisted = structuredClone(detail); persisted.revision = { ...original, ...draft, revisionId: uuid(903), bodyDigest: knowledgeBodyDigest(draft),
+      parentRevision: { knowledgeId: original.knowledgeId, revisionId: original.revisionId }, revisionReason: reason };
+    persisted.history = { ...persisted.history, generation: 2, writeHeadRevisionId: persisted.revision.revisionId, revisions: [original, persisted.revision],
+      receipts: [...persisted.history.receipts, { requestId: uuid(904), commandDigest: digest, committedGeneration: 2, revisionId: persisted.revision.revisionId }] };
+    await act(async () => pending.resolve(json(persisted)));
+    await waitFor(() => expect(saved).toHaveBeenCalledWith(persisted));
+    expect(calls.filter(call => call.operation === 'revise')).toHaveLength(1);
   });
   it.each(revisionEntries)('%s preserves failed drafts, sends a complete locator replacement and freezes its original baseline', async entry => {
     const { detail } = citationFixture(), pending = deferred<Response>(), saved = vi.fn();

@@ -38,6 +38,18 @@ omk observe knowledge source --workspace "$knowledge_workspace" --snapshot "$sna
 
 `source` 用于需要时核对原文、引用或来源状态；核对其 `window.sourceVersion` 与所选 evidence 的 `sourceVersion` 一致。来源 unavailable、定位 mismatch 或版本不符时如实说明，不能称证据已核实。若任务确需正文之外的来源补充，明确区分它与已保存知识，不能拿原文悄悄补正文遗漏并称提炼完整。引文 matched 只证明定位匹配，`source_assertion`、`direct_observation` 和 `inference` 的依据性质仍须区分。
 
+## 核对已记录的复核意见
+
+对准备引用或采用的正文，按本次实际返回的 bodyRef 读取独立复核状态，不用最新修订替代：
+
+```bash
+omk observe knowledge review-status --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --body-digest "$body_digest" --json
+```
+
+先确认已安装入口支持 `review-status`；旧版本不支持时说明未读到复核状态，不自动升级。核对 `storageStatus`、正文的 `content.status` 与相关 findings、逐段 coverage 和来源可读性。缺少记录才是尚未复核；不可读账本不是没有问题。复核记录独立于 retrieve 的响应预算，历史可能很长，只读取、展示与本任务有关的状态和理由，并保留工具截断边界。
+
+已有 `needs_revision` 时，说明具体缺口对本任务的影响；可以在明确边界下使用不受影响的段落，不能隐去待修意见或称整篇已核验。覆盖缺口影响对象导航，不自动证明正文错误；`reviewed_with_limits` 也不是真值或收益认证。新正文、新投影的复核状态分别核对，不继承旧版完成。发现缺口后沿用现有用户授权处理，不因读取复核状态自动提交 `record-use`、修订或保留决定。
+
 ## 用知识完成任务
 
 依据用户问题组织结论或处置，保留会改变该判断的具体理由、适用条件、否定、反例、归因、时间与未知。建议中的“只／必须／禁止／除外”等限定应紧随其约束的动作，不能只放进引用或笼统免责声明。讨论包含不同立场时，保留与任务有关的历史请求及其回应关系、接受后仍有的异议、条件性处置及待决状态；后续已有回应，不会抹去此前确实提出过的请求或反对。不要把具体理由压成“有分歧”，也不要把未解决的讨论写成共识或最终采纳。只表达任务需要的历史，不强制固定问答模板或冗长清单。

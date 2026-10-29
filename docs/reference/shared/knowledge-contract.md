@@ -18,6 +18,7 @@ This page is generated from the current source build’s runtime constants and S
 | Association response Schema | `2` |
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
+| Review and use feedback history Schema | `1` |
 | Generation journal Schema | `2` |
 | Entity history Schema | `2` |
 | Complete native archive capacity | 536,870,887 bytes |
