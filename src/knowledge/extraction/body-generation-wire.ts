@@ -95,6 +95,7 @@ const contextMentionBoundaryPolicy = ENTITY_MENTION_BOUNDARY_POLICY.replace(
   '重复短名收窄后仍按实际原文位置重新选择相邻 context，不沿用长引文的定位条件。');
 const ASSOCIATION_SYSTEM = `你为已经保存的知识正文建立独立、待核对的实体关联与可选typed关系。正文及bodyKey/segmentId是只读输入，绝不修改、概括或补写正文，也不把正文说法当新的原始来源。关联失败或未知不表示正文应被删除。
 输入sources中的每个sourceKey标识一个精确来源窗口。为每个sourceKey恰好返回一项catalogs，entityId仅在该目录内有效。每个entity拥有自己的mentions，mentionKey只在该entity内唯一；不另建顶层mentions，不提供持久化ID。宿主按目录/实体/mentionKey归属编译最终提及ID。仅从相应source识别对象与精确提及，为各bodyKey的segment建立候选关联；entityRefs及typedRelations端点必须显式带sourceKey，不能引用该段正文证据未使用的来源。一个窗口共享实体目录，别名/代词须有真实对应依据；不按名称、路径、类型或相似度确认身份，不做跨窗口合并。身份未决保留uncertainties，不能把已知对象因版本或结果未知而改成未知对象。实体应保留对象含义与有据限定，不补百科、归属或发布状态。
+这里的来源边界是sourceKey对应的完整精确窗口，不是正文所引用的某个evidenceRef或quote范围。段落的entityRefs可选择同一sourceKey内其它片段或来源上文中已有且确实支持该段对象指代的提及；提及不必位于该段正文引用的quote或excerpt内。正文主张的证据支持与实体导航的提及选择分开核对：保留完整同源指代链，不因某个案例段只引具体工作记录就遗漏已经明确的项目主体，也不把具体工作记录新建成实体。仍不得借用未绑定的其它sourceKey、同名猜测或仅靠标题确认身份；typedRelations的evidence继续只用正文已有evidenceIndex。
 ${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${contextMentionBoundaryPolicy}
@@ -126,7 +127,7 @@ function strictWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v6' : 'knowledge-association-generation/v4';
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v6' : 'knowledge-association-generation/v5';
   const outputVersion = stageKind === 'body' ? 2 : 3;
   const wireVersion = `omk-knowledge-${stageKind}-wire/v${outputVersion}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });

@@ -25,10 +25,12 @@ import type { ExecResult } from '../../src/executors/contracts/result.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function setup() {
+function setup(splitMentionContext = false) {
   const root = mkdtempSync(join(tmpdir(), 'omk-body-generation-')); roots.push(root);
   const source = join(root, 'source.jsonl');
-  writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha works only in this test; time and other environments remain unknown.' }] } }));
+  const messages = splitMentionContext ? ['Alpha is the source object.', 'It works only in this test; time and other environments remain unknown.']
+    : ['Alpha works only in this test; time and other environments remain unknown.'];
+  writeFileSync(source, messages.map(text => JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } })).join('\n'));
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root), entities = new FileEntityAnalysisStore(join(root, 'entities'), root);
   const journals = new FileGenerationJournalStore(join(root, 'generation-journals'), root);
   const ports = { knowledge, entities, journals, evidence: new TraceEvidenceStore(join(root, 'sources'), root),
@@ -120,18 +122,18 @@ async function twoSourceSetup() {
 }
 
 describe('body-first generation and zero-model recovery', () => {
-  it('uses the real producer gate and reads two bodies through their shared source-context subject', async () => {
+  it('uses the real producer gate and reads two bodies through a subject in an uncited excerpt of their exact source', async () => {
     expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v6', outputName: 'knowledge_body_v2',
       profileId: 'sha256:e94deb02f58ba1bd4b2a05498d573591f21f1b84994405765c4b745ef8919377',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
     expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:8adfd43f5cfa19f8b33a2c2373bf307d59b104e5fb4e9b48ad65d341da41fefb');
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v4', outputName: 'knowledge_association_v3',
-      profileId: 'sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee',
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v5', outputName: 'knowledge_association_v3',
+      profileId: 'sha256:94243d98971f163db4229abd91c0a6240521af47e2a33e49a9945b47e619898f',
       wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
-    expect(generationTextDigest(ASSOCIATION_GENERATION_PROFILE.system)).toBe('sha256:8bb3286b7bfb1898b12cccef0be01ac1ba98d02fc3bcced833d2ba519177f826');
-    const f = setup();
+    expect(generationTextDigest(ASSOCIATION_GENERATION_PROFILE.system)).toBe('sha256:181dcfa2770f4a4eeffdc6cc560840c63cc6d6f5aa96db8841851da128752606');
+    const f = setup(true);
     // Authored model responses verify source/association wiring, not model semantic quality.
-    const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = segment.evidence[0];
+    const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = { ...segment.evidence[0], evidenceRef: f.window.excerpts[1].evidenceRef };
     const body = { ...f.body, proposals: [
       { ...proposal, proposalId: 'p1', title: 'Alpha in the selected test', segments: [{ ...segment,
         text: 'Alpha works only in this test.', evidence: [{ ...evidence, quote: 'works only in this test' }] }] },
@@ -164,8 +166,11 @@ describe('body-first generation and zero-model recovery', () => {
       .toEqual(result.journal.bodies.map(ref => ref.knowledgeId).sort());
     for (const ref of result.journal.bodies) {
       const saved = f.app.detail(ref.knowledgeId);
+      const sourceCatalog = saved.derivedCatalogs[0];
+      if (sourceCatalog?.status !== 'available') throw new Error('Expected the source catalog to remain available.');
       expect(saved.derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
       expect(saved.revision.content.segments[0].evidence[0].selection.quote).not.toContain('Alpha');
+      expect(saved.revision.content.segments[0].evidence[0].selection.evidenceRef).not.toBe(sourceCatalog.mentions[0].selection.evidenceRef);
     }
     expect(f.app.inspect(result.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { opaqueNestedField: { preserved: ['original', 1] } } });
     const before = detail.revision.bodyDigest, projection = detail.derivedAssociations.revision!;

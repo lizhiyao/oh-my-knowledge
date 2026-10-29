@@ -63,7 +63,7 @@ flowchart LR
 
 Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
 
-当前正文生成输出 v2／prompt v6 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v4 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v2／prompt v6 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v5 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
