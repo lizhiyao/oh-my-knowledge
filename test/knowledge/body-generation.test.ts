@@ -121,10 +121,10 @@ async function twoSourceSetup() {
 
 describe('body-first generation and zero-model recovery', () => {
   it('uses the real producer gate and reads two bodies through their shared source-context subject', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v5', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v6', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:e94deb02f58ba1bd4b2a05498d573591f21f1b84994405765c4b745ef8919377',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
-    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:6df5c436c1caad44c549c36e920e6f2c33af23c6b405c1e9d11584b2763dfd46');
+    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:8adfd43f5cfa19f8b33a2c2373bf307d59b104e5fb4e9b48ad65d341da41fefb');
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v4', outputName: 'knowledge_association_v3',
       profileId: 'sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee',
       wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });

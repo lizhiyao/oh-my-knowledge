@@ -30,7 +30,7 @@ These sources inform choices, not OMK performance evidence. Old single/bounded t
 
 Current production uses `knowledge-body-first/v2`, replacing the old joint typed response. Its [generated contract](../../reference/shared/knowledge-contract.md) identifies the body and association prompts, structural wires and current stores separately.
 
-Current body output/wire v2 uses prompt v5; association output/wire v3 uses prompt v4. This is **BREAKING-API/COMPARABILITY** for model responses and generation profiles, without changing the stored contracts in section 6 or rescoring historical outputs. Independently versioned extraction/measurement protocols retain their frozen occurrence locators and identities.
+Current body output/wire v2 uses prompt v6; association output/wire v3 uses prompt v4. This is **BREAKING-API/COMPARABILITY** for model responses and generation profiles, without changing the stored contracts in section 6 or rescoring historical outputs. Independently versioned extraction/measurement protocols retain their frozen occurrence locators and identities.
 
 - Canonical body draft: `{title, content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`. Each segment is complete and preserves necessary conditions, attribution, negation, time, exceptions, participant stances and unknowns. Titles, reuse hints, quotes and future catalogs cannot supply missing body content.
 - Inline evidence: `{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`. Basis distinguishes source assertion, direct observation and inference; exact matching is not truth.
@@ -44,6 +44,8 @@ Current body output/wire v2 uses prompt v5; association output/wire v3 uses prom
 ### 3.1 Critical sources and ordinary repeated mentions
 
 Each complete body segment directly cites locations supporting its important conditions, corrections, exceptions and unknowns. When attribution depends on earlier source context, retain that anchor alongside the claim evidence. Metadata-derived scope remains identified as metadata: never fabricate a quote from it or treat source time as fact time. Full-message access, a catalog description or rationale is not direct evidence for a body claim. A body segment must preserve the content itself, not just its quote.
+
+For statements about changing implementations, production defaults, versions or completion status, the generation prompt requires every affected segment to retain the reporting date and speaker attribution from the supporting excerpt's `timestamp`. The text identifies the date as message metadata and preserves its UTC or timezone basis; it is neither fact time, effective time nor verification in the current task. Evidence still quotes the actual statement verbatim, with `interpretation` identifying the same excerpt's `timestamp` and its original value. Metadata dates never become fabricated quotes or literals in `requiredContexts`. A missing timestamp leaves the reporting date explicitly unknown; stable methods independent of historical status need no added date. This prompt requirement does not make date attribution a deterministic semantic check.
 
 Object mentions are a separate identity-navigation obligation. Ordinary repeated names need not all become mentions, but necessary identity occurrences remain inspectable. Optional derived typed evidence may only reuse the cited source ranges of its referenced body segments. Source matching/localization and source-faithfulness judgment remain different checks.
 

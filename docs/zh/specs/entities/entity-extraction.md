@@ -30,7 +30,7 @@
 
 当前生产使用 `knowledge-body-first/v2`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
 
-当前正文输出／wire v2 使用 prompt v5，关联输出／wire v3 使用 prompt v4。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+当前正文输出／wire v2 使用 prompt v6，关联输出／wire v3 使用 prompt v4。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
 
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
@@ -44,6 +44,8 @@
 ### 3.1 关键来源与普通重复提及
 
 每个完整正文段直接引用支持重要条件、纠正、例外和未知的来源位置；归属依赖较早原文上下文时，将该锚点与主张证据一起保留。metadata 限定仍明确为 metadata，不伪造成原文 quote，也不将来源时间当事实时间。可读全文、目录描述或 rationale 不是该主张的直接依据。正文还必须表达内容本身，不能只存引文。
+
+对于会变化的实现、生产默认、版本或完成状态，生成 prompt 要求每个受影响段落保留承载该说法的 `excerpt.timestamp` 所示报告日期及说话者归因。正文明确日期来自消息 metadata，并保留其 UTC／时区性质；它不是事实发生、生效或本轮核验时间。evidence 仍逐字引用实际说法，在 `interpretation` 中标明日期来自同一 excerpt 的 `timestamp` 及其原值，不将 metadata 日期伪造成 quote 或放进要求原文字面的 `requiredContexts`。没有 timestamp 时明确报告日期未知；不依赖历史状态的稳定方法不必增加日期。这项 prompt 要求不等于宿主已确定性校验日期归属的语义。
 
 对象提及是独立的身份导航义务。普通重复名称不必全部变成 mention，必要的身份出现位置仍需可核对。可选 typed 派生证据只能复用其引用正文段已有来源范围。精确位置匹配与来源保真判断分别检查。
 

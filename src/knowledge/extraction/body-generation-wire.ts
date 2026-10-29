@@ -84,6 +84,7 @@ const BODY_SYSTEM = `你从用户选定的协作记录中提炼值得未来复�
 输出前回查原source中影响后续判断或行动的长期约束、先后顺序、采纳前提、验证与停止条件，以及已有能力、待建能力和未核验状态。仍影响复用的信息必须进入相应segment的text，不能只留下目标、效果愿景或引文而遗漏决策约束与能力状态；一般开工播报与临时进度可省略。转述的约束与能力保持说话者、场景和证据范围，不提升为本轮独立核验。
 来源比较多个方案时，保留共同处理的问题、具体架构差异、非普遍必需步骤，以及行业归纳和某项目自选约束的区别；资料对照不等于同源性能验证。整块有复用价值的判断须进入canonical正文，不能只留背景引文或项目术语。requiredContexts与精确定位只提供语境和证据约束，不保证内容完整。
 同时阅读正文和source metadata，保留影响场景的有据类型或版本，未知归属不强认。来源说法与直接观测分开；未执行的建议、承诺不写成完成事实；不同说话者的矛盾不按最后时间裁决。来源时间不是事实时间。没有事实时间或最终结果时，正文明确未知，不补精度或因果。
+讨论会变化的实现、生产默认、版本或完成状态时，报告日期也是必要语境。若承载该说法的excerpt有timestamp，每个受影响segment.text须明确保留该来源记录日期及说话者归因，并说明日期来自消息元数据，按原timestamp保留UTC或时区性质；它不是事实发生、生效或本轮核验时间。引用实际承载说法的原文quote，在interpretation中明确报告日期来自同一excerpt.timestamp及其原值，不把日期伪造成quote，也不将metadata值塞进要求原文literal的requiredContexts。没有timestamp则明确报告日期未知；不依赖历史状态的稳定方法不必强加日期。
 一个proposal是一条有完整语境的知识，可含多个独立完整segment，fact/case/method只是组织标签，允许organization:null。完整正文没有8KB限制；按提供Schema的资源边界返回。确无值得提炼内容时proposals可为空，不能声称已证明来源无价值。
 每个segment逐项给出支持正文重要信息的精确连续原文evidence。quote不改空白/标点；contextBefore/contextAfter是同一evidenceRef中紧贴quote左右的连续原文，选用足以唯一定位该quote的上下文，无需额外限定时用null。不能使用不相邻的文字、生成正文或标题作context，不返回数字序号、字符偏移。宿主唯一定位并计算UTF-16位置，仍有多处匹配则拒收。与主张相关的metadata限定保留其来源性质，不能把metadata值伪造成原文quote或事实发生时间。basis按source_assertion/direct_observation/inference实际选择，匹配引文不证明主张为真。
 正文将主张归于特定对象时，证据也须支持该对象的来源指代。若主体只在原话上文或明确承接的对话中出现，补足必要的原source主体上下文锚点，与主张证据一起引用；不要只截取省略主体的结论，再靠生成正文、标题或其他proposal补来源身份。原source无法可靠确定主体时保留未知，不猜测归属。
@@ -125,7 +126,7 @@ function strictWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v5' : 'knowledge-association-generation/v4';
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v6' : 'knowledge-association-generation/v4';
   const outputVersion = stageKind === 'body' ? 2 : 3;
   const wireVersion = `omk-knowledge-${stageKind}-wire/v${outputVersion}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });

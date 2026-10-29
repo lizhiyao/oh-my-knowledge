@@ -8,9 +8,9 @@
 | 当前契约 | 值 |
 |---|---|
 | 生产流程 | `knowledge-body-first/v2` |
-| 正文 prompt | `knowledge-body-generation/v5` |
+| 正文 prompt | `knowledge-body-generation/v6` |
 | 关联 prompt | `knowledge-association-generation/v4` |
-| 正文 profile 摘要 | `sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186` |
+| 正文 profile 摘要 | `sha256:e94deb02f58ba1bd4b2a05498d573591f21f1b84994405765c4b745ef8919377` |
 | 关联 profile 摘要 | `sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee` |
 | 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
