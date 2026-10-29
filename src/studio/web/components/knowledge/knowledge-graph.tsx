@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Empty, Space } from 'antd';
 import type { KnowledgeGraph, KnowledgeCandidateDetail } from '../../../view-models/knowledge/knowledge-candidates';
@@ -73,7 +73,11 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
   onScope(value: 'current' | 'filtered'): void; onHistory(value: boolean): void; onSelect(id: string, knowledge?: { knowledgeId: string; revisionId: string }): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const canvasRef = useRef<HTMLDivElement>(null), focusNodeRef = useRef<SVGGElement>(null);
+  const focusIntentRef = useRef<{ request: string; target: string; complete: boolean } | undefined>(undefined);
+  const focusRequest = JSON.stringify([activeKnowledgeId, activeRevisionId, scope, includeHistory]);
   const focus = graph.nodes.find(node => node.nodeKind === 'knowledge' && node.bodyRef.knowledgeId === activeKnowledgeId && (activeRevisionId ? node.bodyRef.revisionId === activeRevisionId : node.current));
+  const focusTarget = JSON.stringify([activeKnowledgeId, focus?.nodeKind === 'knowledge' ? focus.bodyRef.revisionId : activeRevisionId, scope, includeHistory]);
   const displayed = scope === 'current' && focus ? new Set([focus.nodeId]) : new Set(graph.nodes.map(node => node.nodeId));
   if (scope === 'current' && focus) {
     for (const edge of graph.edges) if (edge.from === focus.nodeId || edge.to === focus.nodeId || ('knowledgeNodeId' in edge && edge.knowledgeNodeId === focus.nodeId)) {
@@ -89,6 +93,31 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
   const height = Math.max(...groups.map(group => group.length), 1) * 76 + 70;
   const positions = new Map(groups.flatMap((group, column) => group.map((node, index) => [node.nodeId,
     { x: 110 + column * 235, y: 64 + index * 76 + Math.max(0, (height - 70 - group.length * 76) / 2) }] as const)));
+  useEffect(() => {
+    const previous = focusIntentRef.current;
+    if (previous?.request !== focusRequest) focusIntentRef.current = { request: focusRequest, target: focusTarget, complete: previous?.target === focusTarget && previous.complete };
+    else if (previous && focus) previous.target = focusTarget;
+    const intent = focusIntentRef.current, canvas = canvasRef.current;
+    if (!intent || intent.complete || !canvas || !focusNodeRef.current) return;
+    let disposed = false, observer: ResizeObserver | undefined;
+    const reveal = () => {
+      const target = focusNodeRef.current;
+      if (disposed || intent.complete || !target || !canvas.clientWidth || !canvas.clientHeight) return false;
+      const viewport = canvas.getBoundingClientRect(), bounds = target.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return false;
+      const top = viewport.top + canvas.clientTop, left = viewport.left + canvas.clientLeft;
+      if (bounds.top < top || bounds.bottom > top + canvas.clientHeight) canvas.scrollTop += bounds.top + bounds.height / 2 - top - canvas.clientHeight / 2;
+      if (bounds.left < left || bounds.right > left + canvas.clientWidth) canvas.scrollLeft += bounds.left + bounds.width / 2 - left - canvas.clientWidth / 2;
+      intent.complete = true;
+      observer?.disconnect();
+      return true;
+    };
+    if (!reveal()) {
+      observer = new ResizeObserver(reveal);
+      observer.observe(canvas);
+    }
+    return () => { disposed = true; observer?.disconnect(); };
+  }, [focusRequest, focusTarget, focus, graph]);
   const choose = (id: string) => {
     const selected = graph.nodes.find(node => node.nodeId === id) ?? graph.edges.find(edge => edge.edgeId === id);
     const owner = knowledgeOwner(graph, selected, activeKnowledgeId);
@@ -104,7 +133,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
     {graph.coverage.status === 'unavailable' && <p className="knowledge-network-limitation" role="status">{t('覆盖不完整：显示已知节点与关联，不能据此判断不存在其它关联。', 'Coverage is incomplete. Known nodes and links remain visible; missing links cannot be ruled out.')}</p>}
     <p className="knowledge-network-legend">{t('方框：知识　圆形：实体　虚线框：来源；虚线关联属于历史或待核对判断。', 'Box: knowledge · circle: entity · dashed box: source. Dashed links represent history or judgments needing review.')}</p>
     {!nodes.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('当前筛选没有可浏览的知识。', 'No knowledge in the current filter.')}/>
-      : <div className="knowledge-network-canvas" tabIndex={0} aria-label={t('可滚动图谱画布', 'Scrollable graph canvas')}>
+      : <div className="knowledge-network-canvas" ref={canvasRef} tabIndex={0} aria-label={t('可滚动图谱画布', 'Scrollable graph canvas')}>
         <svg viewBox={`0 0 690 ${height}`} width="690" height={height} role="group" aria-label={t('知识、实体和来源的关联图', 'Relationships among knowledge, entities and sources')}>
           {groups.map((group, index) => group.length ? <text className="knowledge-network-column" x={110 + index * 235} y="23" textAnchor="middle" key={index}>{kindLabel(group[0], lang)}</text> : null)}
           {edges.map(edge => {
@@ -126,7 +155,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
               : node.nodeKind === 'entity' ? `${node.entityId.slice(-8)} · ${node.current ? t('当前修订', 'Current') : t('绑定旧修订', 'Older binding')}`
                 : node.status === 'available' ? t('原文可回查', 'Source readable') : t('来源不可用', 'Source unavailable');
             return <g className={`knowledge-network-node ${node.nodeKind}${selected ? ' selected' : ''}${node.nodeKind !== 'source' && !node.current ? ' historical' : ''}`}
-              key={node.nodeId} transform={`translate(${position.x} ${position.y})`} role="button" tabIndex={0} aria-label={`${kindLabel(node, lang)}：${label} · ${suffix}`} aria-pressed={selected}
+              key={node.nodeId} ref={node.nodeId === focus?.nodeId ? focusNodeRef : undefined} transform={`translate(${position.x} ${position.y})`} role="button" tabIndex={0} aria-label={`${kindLabel(node, lang)}：${label} · ${suffix}`} aria-pressed={selected}
               onClick={() => choose(node.nodeId)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(node.nodeId); } }}>
               <title>{label} · {suffix}</title>
               {node.nodeKind === 'entity' ? <><circle r="27"/><text className="knowledge-network-symbol" textAnchor="middle" y="4">{label.slice(0, 3)}</text></>
