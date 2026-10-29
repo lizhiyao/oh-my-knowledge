@@ -9,9 +9,9 @@ This page is generated from the current source build’s runtime constants and S
 |---|---|
 | Production workflow | `knowledge-body-first/v2` |
 | Body prompt | `knowledge-body-generation/v3` |
-| Association prompt | `knowledge-association-generation/v2` |
+| Association prompt | `knowledge-association-generation/v3` |
 | Body profile digest | `sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab` |
-| Association profile digest | `sha256:a2bb4eb313a90729bccf2478a8da901d2790735616647782a2792ae8e6806d68` |
+| Association profile digest | `sha256:ed8c330cf1b1624982b316dde312a78fa8e5db48324ce72e22aec32093f02f2c` |
 | Body structural wire digest | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
 | Association structural wire digest | `sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe` |
 | Body response Schema | `1` |

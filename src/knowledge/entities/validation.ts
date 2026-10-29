@@ -12,14 +12,27 @@ function adjacentIdentifierText(source: string, index: number, step: 1 | -1): bo
   return false;
 }
 
+type MentionExcerpt = EvidenceExcerpt & { eventKind?: string };
+
+function escapedToolUrlBoundary(selection: EvidenceSelection, excerpt: MentionExcerpt): boolean {
+  // Some tool returns retain a serialized separator instead of an actual tab/newline.
+  // Recognize only one literal backslash before a complete HTTP(S)-shaped mention;
+  // doubled or longer backslashes stay conservative, without interpreting JSON escapes.
+  return excerpt.eventKind === 'tool_result'
+    && /^https?:\/\/[^/?#\s"'<>]+(?:[/?#][^\s"'<>]*)?$/iu.test(selection.quote)
+    && ['\\t', '\\n', '\\r'].includes(excerpt.text.slice(selection.start - 2, selection.start))
+    && excerpt.text[selection.start - 3] !== '\\';
+}
+
 /** Reject an ASCII identifier fragment, without treating lexical boundaries as semantic verification. */
-export function validateEntityMentionSelection(selection: EvidenceSelection, excerpts: readonly EvidenceExcerpt[]): string[] {
+export function validateEntityMentionSelection(selection: EvidenceSelection, excerpts: readonly MentionExcerpt[]): string[] {
   const problems = validateEvidenceSelection(selection, excerpts).map(problem => problem.code);
   if (problems.length) return problems;
-  const source = excerpts.find(excerpt => excerpt.evidenceRef === selection.evidenceRef)!.text;
+  const excerpt = excerpts.find(excerpt => excerpt.evidenceRef === selection.evidenceRef)!;
+  const source = excerpt.text;
   // Underscores/dollar signs alone can be markup; an adjacent identifier must contain a letter or digit.
   const cutsStart = /^[A-Za-z0-9_$]/.test(selection.quote)
-    && adjacentIdentifierText(source, selection.start - 1, -1);
+    && adjacentIdentifierText(source, selection.start - 1, -1) && !escapedToolUrlBoundary(selection, excerpt);
   const cutsEnd = /[A-Za-z0-9_$]$/.test(selection.quote)
     && adjacentIdentifierText(source, selection.end, 1);
   return cutsStart || cutsEnd ? ['mention_identifier_fragment'] : [];

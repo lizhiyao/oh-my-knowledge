@@ -6,7 +6,7 @@ import type { EvidenceWindow } from './evidence.js';
 import { EntityModelSchema } from './entities.js';
 import { locateQuoteOccurrence } from './quote-occurrence.js';
 import { canonicalJson } from '../store.js';
-import { ENTITY_REFERENT_KIND_POLICY, ENTITY_MENTION_BOUNDARY_POLICY } from './knowledge-semantic-policy.js';
+import { ENTITY_REFERENT_KIND_POLICY, ENTITY_MENTION_BOUNDARY_POLICY, KNOWLEDGE_RECORD_SCOPE_POLICY } from './knowledge-semantic-policy.js';
 import { validateKnowledgeDraft } from '../validation.js';
 
 const id = z.string().min(1).max(256), text = z.string().min(1).max(32_768);
@@ -54,6 +54,7 @@ const BODY_SYSTEM = `你从用户选定的协作记录中提炼值得未来复�
 本阶段不生成实体、关系三元组、review决定或持久化身份。使用局部proposalId/segmentId，保持每个proposal内segmentId唯一。只返回提供的知识正文JSON。`;
 const ASSOCIATION_SYSTEM = `你为已经保存的知识正文建立独立、待核对的实体关联与可选typed关系。正文及bodyKey/segmentId是只读输入，绝不修改、概括或补写正文，也不把正文说法当新的原始来源。关联失败或未知不表示正文应被删除。
 输入sources中的每个sourceKey标识一个精确来源窗口。为每个sourceKey恰好返回一项catalogs，实体和mention的局部ID仅在该目录内有效。仅从相应source识别对象与精确提及，为各bodyKey的segment建立候选关联；segmentEntityRefs及typedRelations端点必须显式带sourceKey，不能引用该段正文证据未使用的来源。一个窗口共享实体目录，别名/代词须有真实对应依据；不按名称、路径、类型或相似度确认身份，不做跨窗口合并。身份未决保留uncertainties，不能把已知对象因版本或结果未知而改成未知对象。实体应保留对象含义与有据限定，不补百科、归属或发布状态。
+${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${ENTITY_MENTION_BOUNDARY_POLICY}
 mentions使用原source的连续逐字quote，occurrence是同一evidenceRef含重叠的零起始序号；唯一匹配null或0。没有可靠关联时可留空并写issues，不能造提及或端点。
@@ -82,7 +83,7 @@ function strictWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v3' : 'knowledge-association-generation/v2';
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v3' : 'knowledge-association-generation/v3';
   const wireVersion = `omk-knowledge-${stageKind}-wire/v${stageKind === 'body' ? 1 : 2}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });
   const wireSchema = strictWire(domain), wireId = generationTextDigest(canonicalJson({ wireVersion, domain, wireSchema,
