@@ -63,7 +63,7 @@
 
 ## 6. 当前存储契约
 
-当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 1、实体历史 Schema 2、生成日志 Schema 1。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
+当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、生成日志 Schema 2。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
 
 `generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。`inspect` 读取原件；`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
 

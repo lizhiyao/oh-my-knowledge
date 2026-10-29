@@ -72,6 +72,50 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('knowledge graph browsing and evidence', () => {
+  it('opens a retrieved historical body and exact evidence even after the catalog head changes', async () => {
+    const data = fixture(), calls: Record<string, unknown>[] = [];
+    const latest = structuredClone(data.detail); latest.revision.revisionId = uuid(200); latest.history.writeHeadRevisionId = uuid(200);
+    latest.revision.content.segments[0].text = 'A newer revision is not the returned search snapshot.';
+    const catalog = structuredClone(data.catalog); catalog.rows[0].revisionId = latest.revision.revisionId;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const call = JSON.parse(String(init.body)); calls.push(call);
+      let value: unknown;
+      if (call.operation === 'knowledge') value = catalog;
+      else if (call.operation === 'retrieve') value = { projectionKind: 'knowledge-body-segments', schemaVersion: 2,
+        rankingPolicyId: 'knowledge-body-literal-topic-priority/v3', omitted: { oversizedSegments: 0, budgetSegments: 0 },
+        knowledge: [{ bodyRef: data.detail.derivedAssociations.bodyRef, generation: 1, title: data.detail.revision.title, choice: 'retain', reviewStatus: 'pending',
+          segmentScope: { returned: 1, total: 1 }, derivedAssociations: data.detail.derivedAssociations }],
+        sources: [{ ...data.source, status: 'available', sourceKind: 'codex' }],
+        items: [{ knowledge: 0, segmentIndex: 0, segment: data.detail.revision.content.segments[0], evidenceChecks: [{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }] }] };
+      else if (call.operation === 'show') value = call.revision === data.detail.revision.revisionId ? data.detail : latest;
+      else throw new Error(`Unexpected operation ${call.operation}`);
+      return new Response(JSON.stringify(value), { status: 200 });
+    }));
+    const mounted = render(<KnowledgeLibrary lang="en" initialWorkspace="/task-snapshot" initialView="task"/>, { wrapper });
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Question for the current task' }), { target: { value: 'When does Alpha apply?' } });
+    expect(document.querySelector('.knowledge-workbench')?.classList.contains('knowledge-directory-open')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Find applicable knowledge' }));
+    await screen.findByRole('button', { name: 'Open complete content' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open complete content' }));
+    await waitFor(() => expect(document.querySelector('.knowledge-reader .knowledge-segment-text')?.textContent).toBe(data.detail.revision.content.segments[0].text));
+    expect(calls.filter(call => call.operation === 'show')).toEqual([expect.objectContaining({ id: data.detail.revision.knowledgeId, revision: data.detail.revision.revisionId })]);
+    expect(new URLSearchParams(window.location.search).get('revision')).toBe(data.detail.revision.revisionId);
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('task');
+    fireEvent.click(screen.getByText('Inspect evidence and exact revision'));
+    fireEvent.click(screen.getByRole('button', { name: 'Open exact evidence' }));
+    await waitFor(() => expect(document.querySelector('.knowledge-reader pre.knowledge-source mark')?.textContent).toBe('Alpha'));
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get('revision')).toBe(data.detail.revision.revisionId); expect(params.get('segment')).toBe('s1');
+    expect(JSON.parse(params.get('evidence')!)).toEqual({ ...data.source, evidenceRef: 'record-1', start: 6, end: 11 });
+    mounted.unmount();
+    render(<KnowledgeLibrary lang="en" initialWorkspace="/task-snapshot" initialView="task" knowledgeId={data.detail.revision.knowledgeId}
+      initialKnowledgeRevision={params.get('revision')!} initialReaderTab="evidence" initialSegmentId="s1"
+      initialEvidence={JSON.parse(params.get('evidence')!)}/>, { wrapper });
+    await waitFor(() => expect(document.querySelector('.knowledge-reader pre.knowledge-source mark')?.textContent).toBe('Alpha'));
+    expect(document.querySelector('.knowledge-workbench')?.classList.contains('knowledge-directory-open')).toBe(false);
+    expect(calls.every(call => ['knowledge', 'retrieve', 'show'].includes(String(call.operation)))).toBe(true);
+  });
+
   it('keeps failed and replacement projection records readable after a correction', () => {
     const { graph, detail } = fixture();
     const node = graph.nodes.find(node => node.nodeKind === 'knowledge');

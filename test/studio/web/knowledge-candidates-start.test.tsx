@@ -91,10 +91,15 @@ it('confirms the exact scope and model while optional message/configuration cont
   expect(html).toContain('当前这一轮'); expect(html).toContain('已选 2 条消息'); expect(html).toContain('codex / configured-model');
   expect(html).toContain('将这些消息交给模型'); expect(html).toContain('查看／调整消息');
   expect(html).toContain('先保存完整知识正文，再关联实体');
+  expect(html).toContain('来源仅包含所选轮次中的用户和助手消息');
+  expect(html).toContain('独立的工具调用与结果、项目文件、附件原件未纳入');
+  expect(html).toContain('这次提炼不代表项目资料已完整覆盖');
+  expect(html).toContain('预览来源版本'); expect(html).toContain('<code>version</code>');
   expect(html).not.toContain('<details class="conversation-extract-options" open');
   expect(html).toContain('&lt;script&gt;原文&lt;/script&gt;'); expect(html).not.toContain('<script>');
   expect(confirm({ selected: [] })).toContain('已选 0 条消息');
   expect(confirm({ turnId: undefined, lang: 'en' })).toContain('Entire conversation');
+  expect(confirm({ lang: 'en' })).toContain('Separate tool calls and results, project files and original attachments are excluded');
   expect(confirm({ model: '', adjust: true })).toContain('尚未设置');
   expect(confirm({ adjust: true })).toMatch(/<details[^>]+open=""/);
 });

@@ -51,10 +51,27 @@ describe('knowledge library object views', () => {
     expect(render(value, 'en', 'history')).toContain('do not overwrite knowledge');
   });
   it('keeps unavailable knowledge distinct from a genuinely empty object', () => {
-    const value = detail(); value.knowledgeStatus = 'unavailable'; value.knowledge = [];
-    value.counts = { retained: null, pending: null, discarded: null, needsReview: null };
-    const html = render(value, 'zh'); expect(html).toContain('数量未知'); expect(html).not.toContain('尚无关联知识');
-    value.knowledgeStatus = 'available';
-    expect(render(value, 'en')).toContain('No associated knowledge');
+    for (const lang of ['zh', 'en'] as const) {
+      const value = detail(); value.knowledgeStatus = 'unavailable';
+      value.counts = { retained: null, pending: null, discarded: null, needsReview: null };
+      const partial = render(value, lang);
+      expect(partial).toContain(lang === 'zh' ? '已知 1 条关联知识，总数量未知' : '1 known associated items; total unknown');
+      expect(partial).toContain(lang === 'zh' ? '以下保留已知关联' : 'Known links remain below');
+      expect(partial).toContain('来源中关于 Alpha 的说法 &lt;script&gt;');
+      expect(partial).toContain('object=other-object');
+      expect(partial).not.toContain(lang === 'zh' ? '尚无关联知识' : 'No associated knowledge');
+      value.knowledgeStatus = 'available'; value.counts = { retained: 1, pending: 0, discarded: 0, needsReview: 0 };
+      const restored = render(value, lang);
+      expect(restored).toContain(lang === 'zh' ? '1 条关联知识' : '1 associated items');
+      expect(restored).toContain('来源中关于 Alpha 的说法 &lt;script&gt;');
+      expect(restored).not.toContain(lang === 'zh' ? '数量未知' : 'total unknown');
+      value.knowledgeStatus = 'unavailable'; value.knowledge = [];
+      value.counts = { retained: null, pending: null, discarded: null, needsReview: null };
+      const unavailable = render(value, lang);
+      expect(unavailable).toContain(lang === 'zh' ? '无法判断是否存在关联' : 'associations are unknown');
+      expect(unavailable).not.toContain(lang === 'zh' ? '尚无关联知识' : 'No associated knowledge');
+      value.knowledgeStatus = 'available'; value.counts = { retained: 0, pending: 0, discarded: 0, needsReview: 0 };
+      expect(render(value, lang)).toContain(lang === 'zh' ? '尚无关联知识' : 'No associated knowledge');
+    }
   });
 });

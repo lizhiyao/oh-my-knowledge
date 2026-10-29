@@ -10,6 +10,7 @@ import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
+import { ConversationSourceScope } from './conversation-source-scope';
 
 type Scope = { threadId: string; turnId?: string };
 
@@ -190,6 +191,7 @@ export function ConversationExtractionConfirmation({ preview, turnId, selected, 
     <p className="conversation-extract-scope"><strong>{turnId ? t('当前这一轮', 'This turn') : t('整条对话', 'Entire conversation')}</strong> · {t(`已选 ${selected.length} 条消息`, `${selected.length} messages selected`)}</p>
     <p className="conversation-extract-title" title={conversationLabel(preview.origin.title, t('系统或附件记录', 'System or attachment record'))}>{conversationLabel(preview.origin.title, t('系统或附件记录', 'System or attachment record'))}</p>
     <p>{t('将这些消息交给模型，提炼可复用的事实、方法和经验。', 'Send these messages to the model to extract reusable facts, methods and lessons.')}</p>
+    <ConversationSourceScope lang={lang} sourceVersion={preview.sourceVersion}/>
     <details className="conversation-extract-options"><summary>{t('查看／调整消息', 'View or adjust messages')}</summary>
       <Space><Button size="small" disabled={disabled} onClick={() => onSelected([...new Set(preview.messages.map(message => message.recordIndex))])}>{t('全选', 'Select all')}</Button><Button size="small" disabled={disabled} onClick={() => onSelected([])}>{t('清空', 'Clear')}</Button></Space>
       <div className="conversation-extract-messages">{preview.messages.map(message => <div className="conversation-extract-message" key={message.evidenceRef}>

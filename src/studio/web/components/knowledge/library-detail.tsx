@@ -19,18 +19,22 @@ export function LibraryObjectDetail({ detail, workspace, lang, onRevision, onKno
   const historical = detail.revision.revisionId !== detail.history.writeHeadRevisionId;
   return <article className="knowledge-reader library-object-detail">
     <header className="knowledge-reader-heading"><h2>{detail.revision.draft.label}</h2>
-      <p className="knowledge-reader-meta">{detail.knowledgeStatus === 'available' ? t(`${detail.knowledge.length} 条关联知识`, `${detail.knowledge.length} associated items`) : t('知识集合不可读，数量未知', 'Knowledge unavailable; counts unknown')} · {t(`${detail.members.length} 个来源关联`, `${detail.members.length} source links`)}</p>
+      <p className="knowledge-reader-meta">{detail.knowledgeStatus === 'available' ? t(`${detail.knowledge.length} 条关联知识`, `${detail.knowledge.length} associated items`) : detail.knowledge.length
+        ? t(`已知 ${detail.knowledge.length} 条关联知识，总数量未知`, `${detail.knowledge.length} known associated items; total unknown`)
+        : t('关联知识不可读，数量未知', 'Linked knowledge unavailable; counts unknown')} · {t(`${detail.members.length} 个来源关联`, `${detail.members.length} source links`)}</p>
       <nav className="knowledge-reader-tabs" aria-label={t('对象详情视图', 'Object detail view')}>
         {([{ key: 'knowledge', label: t('相关知识', 'Related knowledge') }, { key: 'sources', label: t('来源关联', 'Source links') }, { key: 'history', label: t('组织历史', 'Organization history') }] as const).map(item => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => setTab(item.key)}>{item.label}</button>)}
       </nav></header>
     <div className="knowledge-reader-scroll"><div className="knowledge-reading">
       {historical && <Alert type="info" title={t('正在查看组织历史；相关知识仍为当前修订，不是过去时点的完整知识快照。', 'Viewing organization history with current knowledge, not a complete historical knowledge snapshot.')}/>}
       {tab === 'knowledge' && <><p>{detail.revision.draft.description}</p><p className="candidate-help">{t('简介由用户维护；知识与来源判断分别保留。', 'User-maintained description; knowledge and source judgments remain separate.')}</p>
-        {detail.knowledgeStatus === 'unavailable' ? <Alert type="warning" title={t('知识集合不可读，数量未知。修复后再查看。', 'Knowledge unavailable; counts unknown. Restore access to continue.')}/>
-          : !detail.knowledge.length ? <Empty description={t('尚无关联知识。核对来源关联或继续提炼。', 'No associated knowledge. Review source links or extract more knowledge.')}/>
-            : detail.knowledge.map(item => <section className="knowledge-object-item" key={item.knowledgeId}><Button type="link" onClick={() => onKnowledge(item.knowledgeId)}>{item.title}</Button>
-              <span>{candidateDecisionLabel(item.choice, lang)}</span>{item.associationStatus === 'needs_review' && <Alert type="warning" title={t('知识绑定的实体修订与组织确认不一致，需核对关联。', 'Knowledge and confirmed entity revisions differ; review the association.')}/>}
-              {item.sourceStatus === 'unavailable' && <p className="candidate-help">{t('原文不可用；知识仍保留。', 'Source unavailable; knowledge remains.')}</p>}</section>)}
+        {detail.knowledgeStatus === 'unavailable' && <Alert type="warning" title={detail.knowledge.length
+          ? t('关联知识覆盖不全，总数量未知。以下保留已知关联，无法判断是否还有其他关联。', 'Linked knowledge coverage is incomplete and total counts are unknown. Known links remain below; additional links may exist.')
+          : t('关联知识不可读，无法判断是否存在关联。', 'Linked knowledge unavailable; associations are unknown.')}/>}
+        {detail.knowledgeStatus === 'available' && !detail.knowledge.length && <Empty description={t('尚无关联知识。核对来源关联或继续提炼。', 'No associated knowledge. Review source links or extract more knowledge.')}/>}
+        {detail.knowledge.map(item => <section className="knowledge-object-item" key={item.knowledgeId}><Button type="link" onClick={() => onKnowledge(item.knowledgeId)}>{item.title}</Button>
+          <span>{candidateDecisionLabel(item.choice, lang)}</span>{item.associationStatus === 'needs_review' && <Alert type="warning" title={t('知识绑定的实体修订与组织确认不一致，需核对关联。', 'Knowledge and confirmed entity revisions differ; review the association.')}/>}
+          {item.sourceStatus === 'unavailable' && <p className="candidate-help">{t('原文不可用；知识仍保留。', 'Source unavailable; knowledge remains.')}</p>}</section>)}
         {!!detail.relatedEntities.length && <details><summary>{t('知识涉及的其它对象', 'Other entities in this knowledge')}</summary>
           {detail.relatedEntities.map(entity => <p key={`${entity.analysisId}:${entity.entityId}:${entity.entityRevisionId}`}><Link href={entity.object ? libraryUrl(workspace, entity.object.objectId) : libraryEntityUrl(workspace, entity)}>{entity.object?.label ?? entity.label}</Link></p>)}</details>}
       </>}

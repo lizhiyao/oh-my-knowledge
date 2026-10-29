@@ -74,6 +74,7 @@ const requestSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas['tag'].extend(common),
   knowledgeOperationSchemas['runs'].extend(common),
   knowledgeOperationSchemas['quality'].extend(common),
+  knowledgeOperationSchemas.retrieve.safeExtend({ ...common, format: z.literal('json').optional() }),
   knowledgeOperationSchemas['show'].extend(common),
   knowledgeOperationSchemas['entities'].extend(common),
   knowledgeOperationSchemas['entity-catalog'].extend(common),
@@ -134,6 +135,7 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
       return { rows: app.list(ids), runs };
     }
     case 'quality': return execute(request);
+    case 'retrieve': return execute(request);
     case 'list': return execute(request);
     case 'tag': return execute(request);
     case 'runs': return inventoryRuns(await execute(request));

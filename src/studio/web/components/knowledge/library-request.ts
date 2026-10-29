@@ -1,5 +1,10 @@
 import { KNOWLEDGE_LIBRARY_PATH, KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
 import { requestKnowledge } from './request';
+import type { KnowledgeTaskQuery, KnowledgeTaskRetrieval } from '../../../view-models/knowledge/knowledge-candidates';
+
+export function requestTaskKnowledge(workspace: string, query: KnowledgeTaskQuery, signal: AbortSignal): Promise<KnowledgeTaskRetrieval> {
+  return requestKnowledge('candidates', { workspace, operation: 'retrieve', format: 'json', ...query }, signal);
+}
 
 export async function requestLibrary<T>(workspace: string, operation: string, fields: object = {}, signal?: AbortSignal): Promise<T> {
   return requestKnowledge<T>('library', { workspace, operation, ...fields }, signal);

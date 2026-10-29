@@ -110,13 +110,40 @@ describe('body canonical knowledge library projections', () => {
     f.app.deleteSource(f.source.snapshotId); source.mockClear();
     expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('unavailable'); expect(source).toHaveBeenCalledTimes(1);
   });
-  it('reports unknown object counts for unreadable associations while retaining healthy member and body reads', () => {
+  it('keeps known object knowledge during unrelated association failures and restores counts after repair', () => {
     const f = fixture(), object = f.save(); f.review('accept');
-    writeFileSync(join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]), '{bad');
-    const detail = f.library.detail(object.objectId);
-    expect(detail.members[0]).toMatchObject({ status: 'available', entity: { label: 'Alpha' }, sourceStatus: 'available' });
-    expect(detail.knowledge).toEqual([]); expect(detail.knowledgeStatus).toBe('unavailable');
-    expect(detail.counts).toEqual({ retained: null, pending: null, discarded: null, needsReview: null });
+    const ownProjectionFile = join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]);
+    f.app.maintain(f.body.knowledgeId, f.body.revision.revisionId, 'retain', '保留健康对象知识', 1);
+    const quote = 'Gamma 使用 Delta';
+    const source = f.app.capture({ path: join(f.root, 'unrelated.jsonl'), records: [{ recordIndex: 1,
+      raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: quote }] } }) }] });
+    const unrelated = bodyWrite(); unrelated.knowledgeId = unrelated.revision.knowledgeId = 'unrelated-knowledge';
+    unrelated.requestId = randomUUID(); unrelated.revision.revisionId = 'unrelated-revision'; unrelated.revision.title = 'Gamma 的来源报告';
+    unrelated.revision.content.segments[0] = { segmentId: 's1', text: '来源称 Gamma 使用 Delta；版本和发生时间未知。', evidence: [{
+      source: { snapshotId: source.snapshotId, sourceVersion: source.sourceVersion },
+      selection: { evidenceRef: source.excerpts[0].evidenceRef, start: 0, end: quote.length, quote }, basis: 'source_assertion' }] };
+    unrelated.revision.bodyDigest = knowledgeBodyDigest(unrelated.revision); f.knowledge.write(unrelated, actor);
+    const failedProjectionId = randomUUID();
+    f.associations.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: unrelated.knowledgeId, expectedGeneration: 0,
+      expectedHeadRevisionId: null, revision: { revisionId: failedProjectionId, bodyRef: knowledgeBodyRef(unrelated.revision), status: 'failed',
+        reviewStatus: 'pending', catalogRefs: [], segmentEntityRefs: [], typedRelations: [], issues: ['无关来源的关联生成失败'],
+        revisedAt: at, revisedBy: actor, revisionReason: '保留独立失败记录' } }, actor);
+    const partial = f.library.detail(object.objectId);
+    expect(partial.members[0]).toMatchObject({ status: 'available', entity: { label: 'Alpha' }, sourceStatus: 'available' });
+    expect(partial.knowledge.map(item => item.knowledgeId)).toEqual([f.body.knowledgeId]);
+    expect(partial.knowledge[0]).toMatchObject({ associationStatus: 'matched', choice: 'retain' });
+    expect(partial.knowledgeStatus).toBe('unavailable');
+    expect(partial.counts).toEqual({ retained: null, pending: null, discarded: null, needsReview: null });
+    f.app.applyAssociations(unrelated.knowledgeId, unrelated.revision.revisionId, unrelated.revision.bodyDigest, 1,
+      { catalogRefs: [], segmentEntityRefs: [], typedRelations: [], issues: ['独立核对后暂未确认实体关联'] }, '修复无关投影，不改变已有对象归属');
+    const restored = f.library.detail(object.objectId);
+    expect(restored.knowledgeStatus).toBe('available'); expect(restored.knowledge.map(item => item.knowledgeId)).toEqual([f.body.knowledgeId]);
+    expect(restored.counts).toEqual({ retained: 1, pending: 0, discarded: 0, needsReview: 0 });
+    expect(f.associations.read(unrelated.knowledgeId).revisions.map(revision => revision.status)).toEqual(['failed', 'available']);
+    writeFileSync(ownProjectionFile, '{bad');
+    const unavailable = f.library.detail(object.objectId);
+    expect(unavailable.knowledge).toEqual([]); expect(unavailable.knowledgeStatus).toBe('unavailable');
+    expect(unavailable.counts).toEqual({ retained: null, pending: null, discarded: null, needsReview: null });
     expect(f.app.detail(f.body.knowledgeId).revision).toEqual(f.body.revision);
   });
   it('fails closed for damaged organization storage and redirected paths without hiding independent body catalog rows', () => {

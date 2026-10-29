@@ -32,7 +32,17 @@ Use the returned address and check the current knowledge location first. Changin
 
 Candidate pages switch between content and source evidence; entity/library lists support narrow-screen switching. Failure, zero candidates, cancellation, and missing sources have explicit states. Extraction records and knowledge todos reopen saved content.
 
+Manual and automatic extraction previews explicitly cover user and assistant messages from the selected turns. Separate tool calls and results, project files and original attachments are excluded; content quoted within messages is still sent. The manual preview can expand its source version; message selection and the pre-generation version check remain separate. This does not establish complete project coverage or turn assistant-reported results into direct execution evidence.
+
 Library, entity, and artifact pages show the selected knowledge directory; reading an explicit directory does not require model settings. Retry failed reads in place while preserving organization entries. Association conflicts preserve the body and draft; reread exact body/catalog/projection heads before applying again. Generic server failures or unreadable acknowledgements do not prove no write occurred. Choose “Check saved version”: organization checks the request receipt, while artifacts check content and exact references, avoiding duplicate saves. Pending content stays read-only and copyable; saving and checking make no extra model calls.
+
+### Find knowledge for a task in Studio {#studio-task-retrieval}
+
+In **Knowledge → Knowledge library**, switch to **Find for a task** and enter the question you need to resolve. Search retained content by default; explicitly choose **Include candidates without a retain decision** when inspecting undecided content. Discarded revisions are excluded. Reading does not require organizing an object or generating an artifact first.
+
+Expand **Source scope and response budget** to select an exact source version and adjust the UTF-8 byte budget. Results show complete provided segments, the provided scope for each knowledge item and budget omissions. No returned content does not mean no knowledge exists. Increase the budget and search again, or open complete content and exact evidence. Opening a result uses the actual revision returned by retrieval; later revisions do not silently replace it.
+
+Task retrieval uses the same deterministic literal search as the CLI, without a generation model call; different wording can still miss relevant content. A search hit, matching quotation position or retain decision does not establish truth or applicability to the current task. Follow content omissions, wrong associations and insufficient sources back to their respective revision or review entry points.
 
 ### Trace and correct graph associations {#graph-review}
 
@@ -43,7 +53,7 @@ In **Knowledge → Knowledge library**, first find knowledge by title, tags and 
 3. Enter a reason, save, and read back the new projection's exact revision and pending state. Mapping operations do not change content, its digest or retention decision. A new projection does not inherit acceptance of the old one. Saving entity mappings does not carry existing typed relations into the new projection; their originals remain in history.
 4. Refresh or reopen the current address and check filters, graph selection, content revision and sources; expand history as needed. An unclear acknowledgement requires checking the saved version first. Conflicts preserve the draft; reread current state before deciding, rather than resending a stale save.
 
-Incomplete coverage still shows known readable associations in the graph and entity detail, alongside unknown counts, failed, stale, rejected or unavailable-source states. Historical edges describe their exact past bindings and do not apply to current content. Multi-source content can trace each source; current manual mapping binds one entity catalog at a time. A source without a catalog is not replaced by a same-name entity from another source. Browsing, manual correction and reopening call no generation model. Separately requesting model-assisted rebuilding requires reviewing the transmission scope.
+Incomplete coverage still shows known readable associations in the graph, entity detail and library object detail, alongside unknown counts, failed, stale, rejected or unavailable-source states. Historical edges describe their exact past bindings and do not apply to current content. Multi-source content can trace each source; manual mapping can retain several exact source catalogs, selecting entities and mentions per catalog before saving them together. A source without a catalog is not replaced by a same-name entity from another source. Browsing, manual correction and reopening call no generation model. Separately requesting model-assisted rebuilding requires reviewing the transmission scope.
 
 ### Automatic conversation extraction and project todos
 
