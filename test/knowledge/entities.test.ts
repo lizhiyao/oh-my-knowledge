@@ -73,6 +73,38 @@ describe('window entity admission', () => {
   it.each(['固定Task对象', '*Task*', '_Task_', '`Task`', 'Task 归属适配', 'Task.js', '(Task)'])('preserves possible standalone mention boundaries in %s without asserting semantic identity', text => {
     expect(admitEntities([entity('task')], [mention('task', 'm', 'Task')], [{ evidenceRef: 'r', text }]).rejected).toEqual([]);
   });
+  it('preserves exact URL spans after single escaped tool separators without decoding source text', () => {
+    const url = 'https://example.test/actions/runs/123';
+    for (const separator of [String.raw`\t`, String.raw`\n`, String.raw`\r`]) {
+      const text = `😀 checks${separator}${url}/job/456`, source = [{ evidenceRef: 'r', eventKind: 'tool_result', text }];
+      const before = structuredClone(source), selected = mention('run', 'm', url); selected.selection.occurrence = 0;
+      const result = admitEntities([entity('run')], [selected], source);
+      expect(result.rejected).toEqual([]);
+      expect(result.mentions[0].selection).toEqual({ evidenceRef: 'r', quote: url, start: text.indexOf(url), end: text.indexOf(url) + url.length });
+      expect(source).toEqual(before);
+    }
+  });
+  it('keeps ordinary identifiers, messages, unknown escapes and escaped backslashes protected around URL-shaped mentions', () => {
+    const url = 'https://example.test/actions/runs/123';
+    const cases = [
+      { eventKind: 'message', separator: String.raw`\t`, quote: url },
+      { eventKind: 'tool_call', separator: String.raw`\t`, quote: url },
+      { eventKind: 'tool_result', separator: 'n', quote: url },
+      { eventKind: undefined, separator: String.raw`\n`, quote: url },
+      { eventKind: 'tool_result', separator: String.raw`\x`, quote: url },
+      { eventKind: 'tool_result', separator: String.raw`\\t`, quote: url },
+      { eventKind: 'tool_result', separator: String.raw`\\\n`, quote: url },
+      { eventKind: 'tool_result', separator: String.raw`\t`, quote: 'Task' },
+      { eventKind: 'tool_result', separator: String.raw`\r`, quote: 'https' },
+      { eventKind: 'tool_result', separator: String.raw`\t`, quote: 'https://' },
+      { eventKind: 'tool_result', separator: String.raw`\t`, quote: url, suffix: 'Suffix' },
+    ];
+    for (const entry of cases) {
+      const text = `checks${entry.separator}${entry.quote}${entry.suffix ?? ''}`, source = [{ evidenceRef: 'r', eventKind: entry.eventKind, text }];
+      const result = admitEntities([entity('candidate')], [mention('candidate', 'm', entry.quote)], source);
+      expect(result.rejected, JSON.stringify(entry)).toContainEqual({ component: 'mention', index: 0, reasons: ['mention_identifier_fragment'] });
+    }
+  });
   it('admits an entire field identifier and distinct overlapping library/version mentions with an explicit component link', () => {
     const source = [{ evidenceRef: 'r', text: 'runtime 3.2 覆写 _pendingTaskStatus。' }];
     const version: EntityModel = { ...entity('version'), referentKind: 'version',

@@ -13,6 +13,7 @@ import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.j
 import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, generationTextDigest } from '../../src/knowledge/extraction/body-generation-wire.js';
+import { KNOWLEDGE_RECORD_SCOPE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import type { KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import type { GenerationProfile } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { configuredKnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
@@ -72,7 +73,8 @@ describe('body-first generation and zero-model recovery', () => {
       profileId: 'sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab',
       wireId: 'sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c' });
     expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:d0d2e2bba2ac30c50a8dcadf86e49f440be98b1bf36a6eb19e3ec5cbd2848597');
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v2', outputName: 'knowledge_association_v2' });
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v3', outputName: 'knowledge_association_v2',
+      wireId: 'sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe' });
     const f = setup();
     // Authored model responses verify source/association wiring, not model semantic quality.
     const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = segment.evidence[0];
@@ -92,6 +94,7 @@ describe('body-first generation and zero-model recovery', () => {
     const execute = vi.fn(async request => {
       expect(request.cwd).toMatch(/omk-knowledge-text-[A-Za-z0-9]{6}$/);
       expect(request.timeoutMs).toBe(300000); expect(request.effort).toBeUndefined();
+      if (request.outputFormat.name.includes('association')) expect(request.system).toContain(KNOWLEDGE_RECORD_SCOPE_POLICY);
       return { ok: true, output: JSON.stringify(request.outputFormat.name.includes('association') ? association : body),
         opaqueNestedField: { preserved: ['original', 1] } } as unknown as ExecResult;
     });

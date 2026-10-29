@@ -9,9 +9,9 @@
 |---|---|
 | 生产流程 | `knowledge-body-first/v2` |
 | 正文 prompt | `knowledge-body-generation/v3` |
-| 关联 prompt | `knowledge-association-generation/v2` |
+| 关联 prompt | `knowledge-association-generation/v3` |
 | 正文 profile 摘要 | `sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab` |
-| 关联 profile 摘要 | `sha256:a2bb4eb313a90729bccf2478a8da901d2790735616647782a2792ae8e6806d68` |
+| 关联 profile 摘要 | `sha256:ed8c330cf1b1624982b316dde312a78fa8e5db48324ce72e22aec32093f02f2c` |
 | 正文结构线协议摘要 | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
 | 关联结构线协议摘要 | `sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe` |
 | 正文响应 Schema | `1` |
