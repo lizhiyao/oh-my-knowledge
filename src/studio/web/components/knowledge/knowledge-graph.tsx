@@ -86,7 +86,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
   const nodes = graph.nodes.filter(node => displayed.has(node.nodeId));
   const edges = graph.edges.filter(edge => displayed.has(edge.from) && displayed.has(edge.to));
   const groups = (['source', 'knowledge', 'entity'] as const).map(kind => nodes.filter(node => node.nodeKind === kind));
-  const height = Math.max(270, Math.max(...groups.map(group => group.length), 1) * 76 + 70);
+  const height = Math.max(...groups.map(group => group.length), 1) * 76 + 70;
   const positions = new Map(groups.flatMap((group, column) => group.map((node, index) => [node.nodeId,
     { x: 110 + column * 235, y: 64 + index * 76 + Math.max(0, (height - 70 - group.length * 76) / 2) }] as const)));
   const choose = (id: string) => {
