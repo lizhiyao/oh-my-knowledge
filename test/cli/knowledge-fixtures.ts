@@ -9,18 +9,20 @@ import type { EvidenceExcerpt } from '../../src/knowledge/contracts.js';
 
 /** Authored protocol responses, never a model quality observation. */
 export function authoredKnowledgeResponse(input: string, stage: 'body' | 'association') {
-  const data = JSON.parse(input) as { excerpts?: EvidenceExcerpt[]; sources?: { sourceKey: string; excerpts: EvidenceExcerpt[] }[]; bodies?: { bodyKey: string }[] };
+  const data = JSON.parse(input) as { excerpts?: EvidenceExcerpt[]; sources?: { sourceKey: string; excerpts: EvidenceExcerpt[] }[];
+    bodies?: { bodyKey: string; content: { segments: { segmentId: string }[] } }[] };
   const excerpt = (data.excerpts ?? data.sources?.[0].excerpts ?? [])[0];
   const sourceKey = data.sources?.[0].sourceKey ?? 's0';
-  if (stage === 'body') return { responseKind: 'knowledge-body-generation', schemaVersion: 1, proposals: [{ proposalId: 'p1', title: '选定来源的完整条件',
+  if (stage === 'body') return { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{ proposalId: 'p1', title: '选定来源的完整条件', requiredContexts: [],
     segments: [{ segmentId: 's1', text: `来源报告：${excerpt.text}。事实发生时间及未来适用范围未知。`, evidence: [{ evidenceRef: excerpt.evidenceRef,
-      quote: excerpt.text, occurrence: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }] };
-  return { responseKind: 'knowledge-association-generation', schemaVersion: 2,
+      quote: excerpt.text, contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }] };
+  return { responseKind: 'knowledge-association-generation', schemaVersion: 3,
     catalogs: [{ sourceKey, entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: `e${index}`, label, description: `所选来源中的${label}`, qualifiers: [], identityStatus: 'proposed',
-      possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null })),
-    mentions: ['Alpha', 'Beta'].map((quote, index) => ({ mentionId: `m${index}`, entityId: `e${index}`, selection: { evidenceRef: excerpt.evidenceRef, quote, occurrence: null }, basis: 'explicit', rationale: '精确来源提及' })) }],
+      possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentLink: null, collectionLink: null,
+      mentions: [{ mentionKey: `m${index}`, selection: { evidenceRef: excerpt.evidenceRef, quote: label, contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: '精确来源提及' }] })) }],
     associations: (data.bodies ?? []).map(body => ({ bodyKey: body.bodyKey,
-      segmentEntityRefs: ['Alpha', 'Beta'].map((_label, index) => ({ segmentId: 's1', sourceKey, entityId: `e${index}`, mentionIds: [`m${index}`] })), typedRelations: [], issues: [] })) };
+      segmentDecisions: body.content.segments.map(segment => ({ segmentId: segment.segmentId, decisionKind: 'mapped', reason: '本段引用所选来源中的明确对象。',
+        entityRefs: ['Alpha', 'Beta'].map((_label, index) => ({ sourceKey, entityId: `e${index}`, mentionKeys: [`m${index}`] })) })), typedRelations: [], issues: [] })) };
 }
 
 /** Legal public-store seed for independent CLI/host tests; no fake extraction run or native output. */

@@ -33,27 +33,25 @@ try {
   const entities = ['Alpha', 'Beta'].map((label, index) => ({
     entityId: `entity-${index}`, label, description: '合成窗口明确命名的对象', qualifiers: [],
     identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
-    referentKind: 'object', componentRef: null, collection: null,
+    referentKind: 'object', componentLink: null, collectionLink: null,
+    mentions: [{ mentionKey: 'name', selection: { evidenceRef, quote: label, contextBefore: null, contextAfter: null },
+      basis: 'explicit', rationale: '逐字对象名称' }],
   }));
   // Two authored current responses, not native model captures or reviewed annotations.
   const bodyText = '来源报告 Alpha 使用 Beta；仅限本合成窗口，版本、结果和事实发生时间未知。';
   const bodyResponse = {
-    responseKind: 'knowledge-body-generation', schemaVersion: 1,
-    proposals: [{ proposalId: 'candidate', title: message,
-      segments: [{ segmentId: 'usage', text: bodyText, evidence: [{ evidenceRef, quote: message, occurrence: null,
+    responseKind: 'knowledge-body-generation', schemaVersion: 2,
+    proposals: [{ proposalId: 'candidate', title: message, requiredContexts: [],
+      segments: [{ segmentId: 'usage', text: bodyText, evidence: [{ evidenceRef, quote: message, contextBefore: null, contextAfter: null,
         basis: 'source_assertion', interpretation: '只记录来源说法，尚待核对' }] }],
       organization: { knowledgeKind: 'fact' }, reuseRationale: '演示后续核对相同条件下的来源说法' }],
   };
   const associationResponse = {
-    responseKind: 'knowledge-association-generation', schemaVersion: 2,
-    catalogs: [{ sourceKey: 's0', entities,
-    mentions: entities.map((entity, index) => ({
-      mentionId: `mention-${index}`, entityId: entity.entityId,
-      selection: { evidenceRef, quote: entity.label, occurrence: null }, basis: 'explicit', rationale: '逐字对象名称',
-    })) }],
-    associations: [{ bodyKey: 'b0', segmentEntityRefs: entities.map((entity, index) => ({
-      segmentId: 'usage', sourceKey: 's0', entityId: entity.entityId, mentionIds: [`mention-${index}`],
-    })), typedRelations: [], issues: [] }],
+    responseKind: 'knowledge-association-generation', schemaVersion: 3,
+    catalogs: [{ sourceKey: 's0', entities }],
+    associations: [{ bodyKey: 'b0', segmentDecisions: [{ segmentId: 'usage', decisionKind: 'mapped',
+      entityRefs: entities.map(entity => ({ sourceKey: 's0', entityId: entity.entityId, mentionKeys: ['name'] })),
+      reason: '合成来源明确命名两个对象；关联仍待核对。' }], typedRelations: [], issues: [] }],
   };
   const rawByStage = { body: JSON.stringify(bodyResponse), association: JSON.stringify(associationResponse) };
   let fixtureInvocations = 0;

@@ -20,7 +20,7 @@
 | [GLiNER](https://aclanthology.org/2024.naacl-long.300/)（2024） | 开放类型的命名实体识别。 | 不限定实体类别；识别与身份消歧分别验收。暂不引入额外 Python 模型依赖。 |
 | [实体级联合关系提取](https://aclanthology.org/2021.eacl-main.319/)（2021） | 联合利用局部提及、共指与实体级关系。 | 保留窗口证据与独立身份；当前生产先保存正文，再单独生成关联，替换历史联合 typed 流程。 |
 | [GraphRAG Dataflow](https://microsoft.github.io/graphrag/index/default_dataflow/) | TextUnit 保留来源关联；实体与关系共同提取；默认按名称和类型合并。 | 保留来源关联；按名称和类型合并不适合 OMK 的同名对象边界，不照搬该策略或全图索引。 |
-| [W3C Web Annotation](https://www.w3.org/TR/annotation-model/#text-quote-selector) | 原文短语及前后文帮助区分重复片段。 | 模型明确选择精确原文出现序号，宿主计算位置，不任选歧义片段的第一处。这是 OMK 的引用方式，不宣称完整协议兼容。 |
+| [W3C Web Annotation](https://www.w3.org/TR/annotation-model/#text-quote-selector) | 原文短语及前后文帮助区分重复片段。 | 用精确 quote 及相邻原文上下文唯一选中片段，宿主计算位置并拒绝歧义匹配。这是 OMK 的引用方式，不宣称完整协议兼容。 |
 | [LLM 共指能力评测](https://aclanthology.org/2024.lrec-main.145/)（2024） | 用自动与人工分析考察不同提示词的优势和失败。 | 分开报告结构接纳与语义错误，采用输出前冻结的案例。 |
 | [LEA 共指评测研究](https://aclanthology.org/P16-1060/)（2016） | 从实体链接考察共指评测口径。 | 单独检查应对应和必须分开的提及，避免只报实体数量或名称匹配。首版不声称实现完整 LEA 指标。 |
 
@@ -30,16 +30,20 @@
 
 当前生产使用 `knowledge-body-first/v2`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
 
+当前正文输出／wire v2 使用 prompt v5，关联输出／wire v3 使用 prompt v4。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
-- 模型给连续逐字 `quote` 及可空的零基 `occurrence`，宿主不规范化、不模糊匹配，计算 UTF-16 位置。重复引文未选出现序号或序号越界时拒绝；结构／领域／引用检查前保全原生原件。
+- 模型定位使用 `{evidenceRef,quote,contextBefore,contextAfter}`，quote 与可空 context 均为同一片段内相邻的逐字原文。宿主要求连续 `contextBefore + quote + contextAfter` 唯一匹配，再计算 quote 的 UTF-16 位置，不规范化或模糊匹配；不匹配或有歧义即拒绝。模型不提供 occurrence 或偏移；结构／领域／引用检查前保全原生原件。
+- 每个正文 proposal 用 `requiredContexts:[{literal,evidence}]` 声明所有段落共享且有来源的必要语境。literal 必须逐字出现于其 evidence quote 及每段 text；宿主将相应证据追加到每段，按完整 evidence 值去重，不补写正文。允许空声明；已声明语境不证明必要语境或可复用内容已找全。编译后接纳草稿的 UTF-8 JSON 合计最多 16 MiB；超过容量或合并证据限制时整条 proposal 拒收，不截断。
 - 派生关联绑定 `{knowledgeId,revisionId,bodyDigest}`、完整 `catalogRefs:[{analysisId,entityRevisionId}]`、带目录限定的 `segmentEntityRefs`、可选 `typedRelations` 与 issues。形成 typed 投影时仍保留角色／modality／polarity，不强迫全部正文变成 triples；失败或重建不修订正文。
 - 窗口实体保留有来源的 `description`、`qualifiers`、`referentKind`、`identityStatus`、uncertainties 及闭合的组件／集合／候选引用。每个接纳实体需有效提及；标识符碎片、引用缺失和提及归属错误拒绝接纳。确定性检查不证明语义身份。
+- 关联输出将 `mentions` 放在各实体内，`mentionKey` 只在所属实体内唯一；宿主分配持久 ID，按目录／实体／key 编译引用，不同实体的相同 key 互不混用。组件／集合关联只能引用声明实体自身的提及，仍须通过原有指代层级与引用闭合检查。每个正文段恰有一项 `segmentDecisions`：`mapped` 的实体引用非空，`abstained` 无实体引用，两者均须给理由。这些 AI 决定是诊断，不是内容或覆盖复核；弃权不证明不存在相关对象。
 - 新正文和派生修订均待审；正文保留／舍弃与派生接受／拒绝是独立决定，新修订不继承任一决定。
 
 ### 3.1 关键来源与普通重复提及
 
-每个完整正文段直接引用支持重要条件、纠正、例外和未知的来源位置；主张必需的 source metadata 同样要有精确原文证据。较早名称、可读全文、目录描述或 rationale 不是该主张的直接依据。正文还必须表达内容本身，不能只存引文。
+每个完整正文段直接引用支持重要条件、纠正、例外和未知的来源位置；归属依赖较早原文上下文时，将该锚点与主张证据一起保留。metadata 限定仍明确为 metadata，不伪造成原文 quote，也不将来源时间当事实时间。可读全文、目录描述或 rationale 不是该主张的直接依据。正文还必须表达内容本身，不能只存引文。
 
 对象提及是独立的身份导航义务。普通重复名称不必全部变成 mention，必要的身份出现位置仍需可核对。可选 typed 派生证据只能复用其引用正文段已有来源范围。精确位置匹配与来源保真判断分别检查。
 
@@ -63,9 +67,11 @@
 
 ## 6. 当前存储契约
 
-当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、生成日志 Schema 2。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
+当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 2。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
 
-`generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。`inspect` 读取原件；`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
+`generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。生成 profile 匹配时，`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
+
+含旧生成 profile 的 active 日志明确 `unsupported`：当前构建不解码其归档输出、不挂接孤立输出，也不在混合身份下派发后续阶段；恢复须使用保全的匹配旧构建。已记录的 `prepared_writes` 仍可重放固定发布意图，不解码模型输出、不调用模型；若仍有旧 profile 工作未完成，随后回到 `unsupported`。completed／failed 终态日志及原始字节仍可检视，不将历史记录改写为新 profile。
 
 实体历史继续保持每文件 1024 修订／16 MiB 限制及幂等收据重放，不截断旧修订。目录扫描仍限制 4096 文件／64 MiB，单列不可读分析。结构校验、精确位置和成功重开不证明语义质量。
 

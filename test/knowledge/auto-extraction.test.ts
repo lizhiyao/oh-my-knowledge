@@ -35,10 +35,11 @@ function fixture() {
       gate?.(); inputs.push({ stageKind: profile.stageKind, input }); await afterGate?.();
       if (failure) return { outcomeKind: 'result', result: { ok: false, output: null, failure: { failureKind: 'rate_limit', ...failure } } };
       const source = JSON.parse(input);
-      const output = profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 1, proposals: [{
-        proposalId: 'p1', title: '有条件的来源报告', segments: [{ segmentId: 's1', text: source.excerpts[0].text, evidence: [{ evidenceRef: source.excerpts[0].evidenceRef,
-          quote: 'Alpha', occurrence: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '核对相同环境时复用' }] }
-        : { responseKind: 'knowledge-association-generation', schemaVersion: 2, catalogs: [{ sourceKey: 's0', entities: [], mentions: [] }], associations: [{ bodyKey: 'b0', segmentEntityRefs: [], typedRelations: [], issues: ['无可确认关联'] }] };
+      const output = profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{
+        proposalId: 'p1', title: '有条件的来源报告', requiredContexts: [], segments: [{ segmentId: 's1', text: source.excerpts[0].text, evidence: [{ evidenceRef: source.excerpts[0].evidenceRef,
+          quote: 'Alpha', contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '核对相同环境时复用' }] }
+        : { responseKind: 'knowledge-association-generation', schemaVersion: 3, catalogs: [{ sourceKey: 's0', entities: [] }], associations: [{ bodyKey: 'b0',
+          segmentDecisions: [{ segmentId: 's1', decisionKind: 'abstained', entityRefs: [], reason: '无可确认关联' }], typedRelations: [], issues: ['无可确认关联'] }] };
       return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(output), authoredFixture: true } };
     },
   };

@@ -20,6 +20,8 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
     if (result.nextAction === 'continue_stage') lines.push(t('仅显式 continue-stage 可发送尚未 claim 的阶段；resume 永不调用模型。', 'Only explicit continue-stage may dispatch a never-claimed phase; resume never calls a model.'),
       knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation }));
     if (result.nextAction === 'outcome_unknown_do_not_redispatch') lines.push(t('已 claim 但没有可读原件；发送/费用未知，禁止自动重发。', 'Claimed without a readable original; dispatch/cost unknown, do not redispatch.'));
+    if (result.nextAction === 'unsupported') lines.push(t('此任务使用旧生成协议，请使用保留的匹配构建恢复。当前程序不重新解释原件，也不重新派发旧请求。',
+      'This run uses an older generation protocol. Recover it with the preserved matching build; originals are not reinterpreted and old requests are not redispatched.'));
   } else if ('revision' in item && 'derivedAssociations' in item) {
     const detail = value as ReturnType<KnowledgeApplication['detail']>;
     lines.push(detail.revision.title, `${detail.revision.knowledgeId}/${detail.revision.revisionId}\n${detail.revision.bodyDigest}`,

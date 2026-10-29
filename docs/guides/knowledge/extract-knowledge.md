@@ -121,7 +121,9 @@ omk observe knowledge schema --stage body --json
 omk observe knowledge schema --stage association --json
 ```
 
-The result includes profile/prompt/wire identities and Schema. Models return exact quotes and zero-based occurrences; the host computes UTF-16 positions. Quotes, titles and catalogs cannot replace missing body meaning. Wire validity and quote matching do not establish source fidelity or truth. See the [generated contract](../../reference/shared/knowledge-contract.md) and [extraction specification](../../specs/entities/entity-extraction.md).
+The result includes profile/prompt/wire identities and Schema. Current body output v2 / prompt v5 and association output v3 / prompt v4 use exact quotes with nullable adjacent `contextBefore`/`contextAfter`; the host requires a unique match and computes UTF-16 positions. Body proposals declare source-backed shared `requiredContexts`, whose literals must occur in every segment; the host adds their evidence without rewriting text. Association proposals own mentions within each entity and explicitly map or abstain for every segment with a reason. These checks neither recover omitted content nor establish complete entity coverage, source fidelity or truth. Quotes, titles and catalogs cannot replace missing body meaning. See the [generated contract](../../reference/shared/knowledge-contract.md) and [extraction specification](../../specs/entities/entity-extraction.md).
+
+An active run from an older generation profile requires its matching preserved build: the current build does not decode its archived output or redispatch its requests. Already prepared publication intents can still replay exactly with zero model calls; completed and failed runs remain inspectable. Independent historical extraction/measurement protocols retain their frozen locator rules and identities.
 
 Required parameters and JSON syntax are checked before settings/storage access. Parameter errors exit 2, business failures exit 1 and success exits 0. `--json` emits machine output without prose guidance. Inspect saved state after an unknown acknowledgement rather than blindly invoking again.
 

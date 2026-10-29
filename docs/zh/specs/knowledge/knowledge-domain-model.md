@@ -45,7 +45,7 @@ flowchart LR
 | 阶段 | 职责与交接 | 权威规范 |
 |---|---|---|
 | 窗口提取 | 固定来源及每阶段请求；解码前保存各完整返回原件，先保存接纳正文，再生成关联。 | [实体提取](../entities/entity-extraction.md) |
-| 宿主准入 | 将精确 quote occurrence 定位为 UTF-16 位置，校验 wire／领域结构及引用闭合；保留合法正文 sibling 与原始结果，派生校验不删除已保存正文。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
+| 宿主准入 | 用精确 quote 及相邻原文上下文唯一定位并计算 UTF-16 位置，校验 wire／领域结构及引用闭合；保留合法正文 sibling 与原始结果，派生校验不删除已保存正文。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
 | 实体目录 | 查询当前窗口分析，保留分析／实体／修订身份，披露不可读分析和来源。检索不生成共享身份。 | [提取存储与目录](../entities/entity-extraction.md) |
 | 跨窗口核对 | 规范化召回 → 有界预览 → 明确确认后持久准备 → 受治理模型建议 → 结果归档与接纳 → 人工明确接受／拒绝 → 可恢复应用。召回与模型建议均不能发布组织。 | [实体关联日志](../entities/entity-links.md)；[Studio 传输界面](../studio/studio-entity-links.md) |
 | 知识库组织 | 用独立维护的对象引用原窗口身份；确认身份和来源证据；在工作区锁内发布不可变成员修订。 | [实体知识库](knowledge-library.md) |
@@ -62,6 +62,8 @@ flowchart LR
 ## 3. 知识与修订 {#current-revisions}
 
 Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
+
+当前正文生成输出 v2／prompt v5 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v4 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
@@ -143,13 +145,13 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 | [Mem0 OSS v2→v3 迁移](https://docs.mem0.ai/migration/oss-v2-to-v3)、[update](https://docs.mem0.ai/core-concepts/memory-operations/update) 及 [history](https://docs.mem0.ai/api-reference/memory/history-memory) | 迁移指南规定 ADD-only 提取；显式 update 仍替换已存内容，history 提供变更日志。追加提取与历史记录不等于统一的不可变修订契约。 | **采纳**新增提取与既有内容维护的区分。OMK 保留不可变内容修订和精确版本的决定，不采用原地替换内容，也不声称 Mem0 v3 已具备相同修订语义。 |
 | [Neo4j Agent Memory：消解与去重](https://neo4j.com/labs/agent-memory/explanation/resolution-deduplication/) | 消解判断两个引用是否指同一事物，去重执行该判断；相似度信号及类型约束不能单独证明身份。 | **采纳**分层，**改编**为 recall／preview／proposal 与人工 decide／知识库发布分离。拒绝相似度阈值自动合并，误转移身份的代价要求可见的来源核对。 |
 | [Graphiti 时态上下文图](https://github.com/getzep/graphiti#why-graphiti)及[事实时间字段](https://github.com/getzep/graphiti/blob/main/graphiti_core/edges.py) | 事实保留来源 episode 及时间历史，包括 `valid_at`／`invalid_at`；信息变化可自动使旧事实失效并保留历史。 | **采纳**来源追溯与历史保留；**拒绝**自动按时间裁决真值／身份失效：晚到陈述可能是计划、纠正、不同条件或冲突。采用不可变修订与明确纠正、舍弃或解除关联；时间和来源断言是证据，不是自动裁决。 |
-| [LangExtract 来源定位](https://github.com/google/langextract) | 提取映射回来源片段，无法定位的输出显式无 grounding。 | **采纳并收紧**宿主定位：要求精确连续 quote，重复文本明确选择 occurrence，再拒绝无 grounding 或歧义定位的依赖。精确位置仍不证明语义身份或主张支持。 |
+| [LangExtract 来源定位](https://github.com/google/langextract) | 提取映射回来源片段，无法定位的输出显式无 grounding。 | **采纳并收紧**宿主定位：要求精确连续 quote 及相邻原文上下文唯一匹配，再拒绝无 grounding 或歧义定位的依赖。精确位置仍不证明语义身份或主张支持。 |
 | [OWASP Agentic Top 10 2026，ASI06：Memory & Context Poisoning（2025-12-09）](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | 持久污染会影响后续会话；缓解措施包括来源归属、记忆隔离、写入前校验、版本恢复和高风险动作的人工复核。 | **改编**来源追溯、明确来源范围、保留修订与分开的晋升门槛。候选写入和 Agent 修订不要求独立人工复核；跨窗口知识库发布需要明确人工决定，载体预览选择当前已保留的精确修订，保存前重新核对这些引用并生成新版本。这些边界不证明抗投毒效果，也不表示已实现全部 ASI06 缓解措施。 |
 | [ACE v3，§§3.1–3.2（2026-03-29）](https://arxiv.org/html/2510.04618v3) | 结构化条目接收局部增量，生成、反思与整理分离；精炼可更新条目并去除冗余。 | **改编**逐条维护与精确知识修订的明确选择。OMK 当前重建所选载体知识区段并保存新版本，没有实现 ACE 的增量合并／裁剪或自主在线适应；载体收益仍须受控测量。 |
 
 ## 8. 后续扩展的架构决定（设计，尚未实施） {#extension-boundaries}
 
-本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；来源中立适配器与可信公共操作者上下文仍是设计。** 本轮保持来源窗口、正文、实体历史、载体及操作者数据形状；新关联 profile／wire 与日志独立版本化，不改写历史测量。
+本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；来源中立适配器与可信公共操作者上下文仍是设计。** 当时多目录改造保持来源窗口、正文、实体历史、载体及操作者数据形状，关联 profile／wire 与日志独立版本化；后续第 3 节的生成升级另改正文／关联模型契约，不回写这些存储或历史测量。
 
 ### 8.1 来源中立的快照与适配器 {#neutral-source-design}
 
@@ -187,14 +189,14 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ### 8.4 版本、迁移与实施交接 {#extension-migration-plan}
 
-多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的来源窗口与其余既有维护入口的公共操作者扩展仍须各自确认；不随关联 Schema 2 或新增复核记录一并更换。
+多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的来源窗口 v3 升级及独立副本迁移已批准、尚未实施；其余既有维护入口的公共操作者扩展仍须单独确认。两项扩展均不随关联 Schema 2 或新增复核记录一并更换。
 
 | 受影响面 | 版本与迁移决定 |
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、EvidenceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 当前多目录关联采用 association history Schema 2，生成日志采用 journal Schema 2、knowledge-body-first/v2；关联阶段使用新 profile／wire identity，正文阶段的 prompt／profile／wire 字节不变。旧 v1 投影可显式转换为单元素 catalogRefs 的新待审投影；旧原件、回执和未知派发身份保留，迁移不重新调用模型或恢复派发旧请求。旧日志保留原字节并显示 unsupported，不伪造新日志身份；旧自动授权／调度只归档，不继承。 |
+| 关联与生成日志 | 当前多目录关联采用 association history Schema 2，生成日志采用 journal Schema 2、knowledge-body-first/v2。早先多目录迁移更换关联 profile／wire identity，保持当时正文 profile；它将旧 v1 投影显式转换为单元素 catalogRefs 的新待审投影，保留旧原件、回执及未知派发身份，不调用模型或恢复派发旧请求。迁移旧日志保持 unsupported，旧自动授权／调度只归档。后续正文输出 v2／关联输出 v3 升级在相同存储下同时更换两阶段 profile；旧 profile 的 active 运行须用匹配旧构建恢复，已准备的固定发布意图可精确重放。 |
 | 操作者上下文 | 复用 human／agent 数据形状；公共 CLI／服务的可信上下文输入与缺失时拒绝行为需明确发布影响。旧 actor 和回执不回写；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 
-实施交接须提交来源支持清单、DTO／落盘 Schema 差异、引用映射、保存位置、迁移前检查及回退方式，确认后再写入新版本。回退使用保全的旧工作区及匹配旧 binary；新工作区保留迁移原件和映射。多目录图谱与直接项目资料接入分别验收；前者不证明文件／Git 摄取或存量项目建库已完成。
+实施交接须提交来源支持清单、DTO／落盘 Schema 差异、引用映射、保存位置、迁移前检查及回退方式，超出已确认边界的写入仍须先确认。回退使用保全的旧工作区及匹配旧 binary；新工作区保留迁移原件和映射。多目录图谱与直接项目资料接入分别验收；前者不证明文件／Git 摄取或存量项目建库已完成。
