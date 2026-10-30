@@ -61,6 +61,9 @@ test/knowledge/validation.test.ts
 test/knowledge/entities.test.ts
 test/knowledge/entity-identity.test.ts
 test/knowledge/quote-occurrence.test.ts
+test/knowledge/quote-context.test.ts
+test/knowledge/association-catalog.test.ts
+test/knowledge/body-generation-wire.test.ts
 test/knowledge/storage.test.ts
 test/knowledge/entity-first-bound-knowledge-profile.test.ts
 test/knowledge/body-occurrence-guide.test.ts

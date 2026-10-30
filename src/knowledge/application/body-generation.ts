@@ -3,9 +3,6 @@ import type { KnowledgeStore, KnowledgeWrite } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { EvidenceStore, EvidenceWindow } from '../extraction/evidence.js';
 import type { EntityAnalysisStore, EntityAnalysisWrite } from '../entities/contracts.js';
-import { EntityAnalysisDraftSchema } from '../entities/contracts.js';
-import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
-import { mapEntityIdentity } from '../entities/identity.js';
 import type { KnowledgeAssociationStore, KnowledgeAssociationWrite } from '../associations.js';
 import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferences } from '../associations.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../adapters/body-digest.js';
@@ -14,7 +11,7 @@ import { MAX_GENERATION_OUTCOME_BYTES } from '../adapters/generation-journal-sto
 import type { GenerationJournal, GenerationJournalStore, GenerationStage } from '../extraction/generation-journal.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies,
   generationTextDigest, type GenerationProfile } from '../extraction/body-generation-wire.js';
-import { locateQuoteOccurrence } from '../extraction/quote-occurrence.js';
+import { associationMentionKey, compileAssociationCatalog } from '../extraction/association-catalog.js';
 import { observeGenerationException, type GenerationOutcome, type GenerationOutcomeRef } from '../extraction/native-outcome.js';
 
 export interface BodyGenerationPorts {
@@ -32,6 +29,20 @@ const sourceInput = (window: EvidenceWindow) => ({ source: { snapshotId: window.
 excerpts: window.excerpts, limitations: window.limitations });
 const message = (error: unknown) => observeGenerationException(error).message || 'Host validation failed.';
 type AssociationAppend = Extract<KnowledgeAssociationWrite, { commandKind: 'append_revision' }>;
+const currentProfile = (stage: GenerationStage) => stage.stageKind === 'body' ? BODY_GENERATION_PROFILE : ASSOCIATION_GENERATION_PROFILE;
+function currentStage(stage: GenerationStage): boolean {
+  const profile = currentProfile(stage);
+  return stage.profileId === profile.profileId && stage.wireId === profile.wireId && stage.promptVersion === profile.promptVersion
+    && stage.system === profile.system && canonicalJson(stage.wireSchema) === canonicalJson(profile.wireSchema);
+}
+/** Stored write intents are replayable; old model output is never decoded under a new protocol. */
+export function generationNextAction(journal: GenerationJournal) {
+  const pending = journal.stages.find(stage => !['completed', 'failed'].includes(stage.state));
+  if (journal.status === 'active' && journal.stages.at(-1)?.state !== 'prepared_writes' && journal.stages.some(stage => !currentStage(stage))) return 'unsupported' as const;
+  return pending?.state === 'prepared' ? 'continue_stage' as const
+    : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch' as const
+      : pending ? 'resume_publication' as const : journal.status === 'active' ? 'continue_stage' as const : 'none' as const;
+}
 /** Body and association are separate native stages; saved body is never rolled back by derived failure. */
 export class BodyGenerationApplication {
   private held?: { runId: string; invocationId: string; outcome: GenerationOutcome };
@@ -45,10 +56,7 @@ export class BodyGenerationApplication {
   private required(runId: string) { const j = this.ports.journals.read(runId); if (!j) throw new Error('Generation journal is missing.'); return j; }
   private persist(j: GenerationJournal) { return this.ports.journals.write({ ...j, generation: j.generation + 1 }, j.generation); }
   private state(journal: GenerationJournal) {
-    const pending = journal.stages.find(s => !['completed', 'failed'].includes(s.state));
-    return { journal, nextAction: pending?.state === 'prepared' ? 'continue_stage' as const
-      : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch' as const
-        : pending ? 'resume_publication' as const : journal.status === 'active' ? 'continue_stage' as const : 'none' as const };
+    return { journal, nextAction: generationNextAction(journal) };
   }
   private window(sourceRef: GenerationJournal['sources'][number]) {
     const source = this.ports.evidence.read(sourceRef.snapshotId, sourceRef.sourceVersion);
@@ -136,6 +144,7 @@ export class BodyGenerationApplication {
   async continueStage(runId: string, expectedGeneration: number, model: KnowledgeGenerationModel, signal?: AbortSignal) {
     let j = this.required(runId);
     if (j.generation !== expectedGeneration || j.status !== 'active') throw new Error('Generation continuation conflict.');
+    if (generationNextAction(j) === 'unsupported') throw new Error('Generation profile changed; use the preserved matching build to recover this run.');
     if (j.executor !== model.executor || j.model !== model.model || j.timeoutMs !== model.timeoutMs) throw new Error('Generation continuation model changed.');
     if (j.stages.every(s => s.state === 'completed')) j = this.prepareAssociation(j, model);
     if (j.stages.at(-1)!.state !== 'prepared') throw new Error('Only a never-claimed phase may be continued; resume never redispatches.');
@@ -146,7 +155,7 @@ export class BodyGenerationApplication {
     const index = journal.stages.length - 1, stage = journal.stages[index];
     if (stage.state !== 'prepared') throw new Error('Generation phase is not dispatchable.');
     const profile = stage.stageKind === 'body' ? BODY_GENERATION_PROFILE : ASSOCIATION_GENERATION_PROFILE;
-    if (profile.profileId !== stage.profileId || canonicalJson(model.inspect(profile, stage.input)) !== canonicalJson(stage.producer)) throw new Error('Generation producer/profile changed.');
+    if (!currentStage(stage) || canonicalJson(model.inspect(profile, stage.input)) !== canonicalJson(stage.producer)) throw new Error('Generation producer/profile changed.');
     signal?.throwIfAborted(); journal.sources.forEach(source => this.window(source)); this.inFlight = journal.runId; let claims = 0;
     try {
       const outcome = await model.invoke(profile, stage.input, signal, () => {
@@ -169,6 +178,7 @@ export class BodyGenerationApplication {
   resume(runId: string) {
     let j = this.required(runId), stage = j.stages.at(-1)!;
     if (this.inFlight === runId) return this.state(j);
+    if (generationNextAction(j) === 'unsupported') return this.state(j);
     if (this.held?.runId === runId && this.held.invocationId === stage.invocationId) {
       const ref = this.ports.journals.archive(j, stage, this.held.outcome);
       j = this.persist({ ...j, stages: j.stages.map(s => s.invocationId === stage.invocationId ? { ...s, state: 'archived', outcomeRef: ref } : s) }); this.held = undefined;
@@ -186,6 +196,7 @@ export class BodyGenerationApplication {
   private finish(j: GenerationJournal): GenerationJournal {
     let index = j.stages.length - 1, stage = j.stages[index];
     if (stage.state === 'archived') {
+      if (!currentStage(stage)) return j;
       const outcome = this.ports.journals.outcome(j, stage); if (!outcome) throw new Error('Native outcome missing.');
       const output = outcome.outcomeKind === 'result' && outcome.result.ok && outcome.result.refusal === undefined
         && outcome.result.failure === undefined && (!Array.isArray(outcome.result.toolCalls) || outcome.result.toolCalls.length === 0)
@@ -250,18 +261,7 @@ export class BodyGenerationApplication {
       for (const [index, window] of windows.entries()) {
         const sourceKey = sourceKeys[index], catalog = response.catalogs.find(item => item.sourceKey === sourceKey)!;
         try {
-          const entityIds = new Map(catalog.entities.map(entity => [entity.entityId, this.ports.id()]));
-          const mentionIds = new Map(catalog.mentions.map(mention => [mention.mentionId, this.ports.id()]));
-          if (entityIds.size !== catalog.entities.length || mentionIds.size !== catalog.mentions.length) throw new Error('Duplicate local catalog identity.');
-          const draft = EntityAnalysisDraftSchema.parse({ entities: catalog.entities.map(entity => mapEntityIdentity(entity, entityIds, mentionIds)),
-            mentions: catalog.mentions.map(mention => {
-              const selection = locateQuoteOccurrence({ evidenceRef: mention.selection.evidenceRef, quote: mention.selection.quote,
-                ...(mention.selection.occurrence === null ? {} : { occurrence: mention.selection.occurrence }) }, window.excerpts);
-              if (typeof selection === 'string' || validateEntityMentionSelection(selection, window.excerpts).length) throw new Error('Entity mention locator rejected.');
-              return { ...mention, mentionId: mapped(mentionIds, mention.mentionId), entityId: mapped(entityIds, mention.entityId), selection };
-            }), limitations: ['AI-derived pending associations; source quote matching is not semantic identity or truth confirmation.'] });
-          const problems = validateEntityAnalysis(draft);
-          if (problems.length) throw new Error(`Entity catalog reference closure rejected: ${problems.join(', ')}.`);
+          const { draft, entityIds, mentionIds } = compileAssociationCatalog(catalog, window, () => this.ports.id());
           const write: EntityAnalysisWrite = { requestId: this.ports.id(), analysisId: this.ports.id(), snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
             expectedGeneration: 0, expectedHeadRevisionId: null, revision: { ...draft, revisionId: this.ports.id(), revisedAt: at,
               revisedBy: actor, revisionReason: 'Derived candidate catalog; canonical body unchanged.' } };
@@ -271,6 +271,9 @@ export class BodyGenerationApplication {
       const associationWrites = bodies.map((body, index) => {
         try {
           const association = response.associations.find(item => item.bodyKey === `b${index}`)!;
+          const segmentIds = new Set(body.content.segments.map(segment => segment.segmentId));
+          if (association.segmentDecisions.length !== segmentIds.size || new Set(association.segmentDecisions.map(decision => decision.segmentId)).size !== segmentIds.size
+            || association.segmentDecisions.some(decision => !segmentIds.has(decision.segmentId))) throw new Error('Association segment decisions are not closed.');
           const bodySources = new Set(body.content.segments.flatMap(segment => segment.evidence).map(evidence => canonicalJson(evidence.source)));
           const bodyKeys = sourceKeys.filter((_, sourceIndex) => bodySources.has(canonicalJson({ snapshotId: windows[sourceIndex].snapshotId, sourceVersion: windows[sourceIndex].sourceVersion })));
           const failures = bodyKeys.flatMap(key => catalogIssues.has(key) ? [catalogIssues.get(key)!] : []);
@@ -284,18 +287,18 @@ export class BodyGenerationApplication {
             status: 'available', reviewStatus: 'pending', catalogRefs: bodyKeys.map(sourceKey => {
               const write = catalogs.get(sourceKey)!.write; return { analysisId: write.analysisId, entityRevisionId: write.revision.revisionId };
             }),
-            segmentEntityRefs: association.segmentEntityRefs.map(ref => {
+            segmentEntityRefs: association.segmentDecisions.flatMap(decision => decision.entityRefs.map(ref => {
               const catalog = catalogs.get(ref.sourceKey), endpoint = qualified(ref.sourceKey, ref.entityId);
-              const segment = body.content.segments.find(item => item.segmentId === ref.segmentId);
+              const segment = body.content.segments.find(item => item.segmentId === decision.segmentId);
               if (!catalog || !segment?.evidence.some(evidence => evidence.source.snapshotId === catalog.window.snapshotId && evidence.source.sourceVersion === catalog.window.sourceVersion)) {
                 throw new Error(`Segment does not bind source catalog: ${ref.sourceKey}.`);
               }
-              const mentionIds = ref.mentionIds.map(id => mapped(catalog.mentionIds, id));
+              const mentionIds = ref.mentionKeys.map(key => mapped(catalog.mentionIds, associationMentionKey(ref.entityId, key)));
               if (mentionIds.some(id => !catalog.write.revision.mentions.some(mention => mention.mentionId === id && mention.entityId === endpoint.entityId))) {
                 throw new Error(`Mention does not belong to entity in source catalog: ${ref.sourceKey}.`);
               }
-              return { segmentId: ref.segmentId, ...endpoint, mentionIds };
-            }),
+              return { segmentId: decision.segmentId, ...endpoint, mentionIds };
+            })),
             ...(association.typedRelations === null ? {} : { typedRelations: association.typedRelations.map(relation => {
               const { object, evidence: locators, ...fields } = relation;
               return { ...fields, subject: qualified(relation.subject.sourceKey, relation.subject.entityId),
@@ -304,7 +307,8 @@ export class BodyGenerationApplication {
                   const segment = body.content.segments.find(item => item.segmentId === locator.segmentId), evidence = segment?.evidence[locator.evidenceIndex];
                   if (!evidence || !relation.segmentIds.includes(locator.segmentId)) throw new Error('Unknown body evidence index.'); return evidence;
                 }) };
-            }) }), issues: association.issues, revisedAt: at, revisedBy: actor, revisionReason: 'Independent derived association; pending review.' });
+            }) }), issues: [...association.issues, ...association.segmentDecisions.filter(decision => decision.decisionKind === 'abstained')
+              .flatMap(decision => [`AI association abstained for ${decision.segmentId}; reason follows.`, decision.reason])], revisedAt: at, revisedBy: actor, revisionReason: 'Independent derived association; pending review.' });
           validateKnowledgeAssociationReferences(revision, body); return command(body, revision);
         } catch (error) { return failed(body, message(error)); }
       });

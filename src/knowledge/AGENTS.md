@@ -10,7 +10,7 @@
 - 身份红线：名称、路径、类型或字符串／向量相似度都不证明同一对象；跨窗口实体关联只经显式人工确认（`entities/links.ts` 的人审事件流），不做自动合并、不按时间先后裁决矛盾。
 - 不确定性用显式字段表达（`identityStatus`、`uncertainties`、`context.unknowns`），观测信号不冒充已核实事实。
 - 持久化身份稳定：`storeKind`、schema 版本、摘要算法不得静默改变；必要变更按 BREAKING-SCHEMA 显式版本化。源码目录调整不改变用户工作区路径、prompt 字节或公开 Schema 身份；运行时源码指纹如实反映当前字节。
-- 提及定位只认宿主计算的 UTF-16 位置（quote + occurrence），不接受模型提供的偏移或模糊匹配。
+- 提及定位只认宿主计算的 UTF-16 位置，不接受模型提供的偏移或模糊匹配。正文优先生成使用连续逐字 quote 与同一片段内紧邻的 contextBefore／contextAfter 唯一定位；其它独立版本化的提取／测量协议保留其冻结的 quote + occurrence 规则，不混用身份。
 
 ## Code Review Rules
 

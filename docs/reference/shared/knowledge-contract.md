@@ -8,14 +8,14 @@ This page is generated from the current source build’s runtime constants and S
 | Current contract | Value |
 |---|---|
 | Production workflow | `knowledge-body-first/v2` |
-| Body prompt | `knowledge-body-generation/v3` |
-| Association prompt | `knowledge-association-generation/v3` |
-| Body profile digest | `sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab` |
-| Association profile digest | `sha256:ed8c330cf1b1624982b316dde312a78fa8e5db48324ce72e22aec32093f02f2c` |
-| Body structural wire digest | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
-| Association structural wire digest | `sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe` |
-| Body response Schema | `1` |
-| Association response Schema | `2` |
+| Body prompt | `knowledge-body-generation/v5` |
+| Association prompt | `knowledge-association-generation/v4` |
+| Body profile digest | `sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186` |
+| Association profile digest | `sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee` |
+| Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
+| Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
+| Body response Schema | `2` |
+| Association response Schema | `3` |
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
 | Review and use feedback history Schema | `1` |

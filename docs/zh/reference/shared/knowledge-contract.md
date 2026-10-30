@@ -8,14 +8,14 @@
 | 当前契约 | 值 |
 |---|---|
 | 生产流程 | `knowledge-body-first/v2` |
-| 正文 prompt | `knowledge-body-generation/v3` |
-| 关联 prompt | `knowledge-association-generation/v3` |
-| 正文 profile 摘要 | `sha256:0929d9b088512b7307aeea91c2b490328452439568ebeb3bf40db50fda12efab` |
-| 关联 profile 摘要 | `sha256:ed8c330cf1b1624982b316dde312a78fa8e5db48324ce72e22aec32093f02f2c` |
-| 正文结构线协议摘要 | `sha256:7fdd6321da235bf7439e52a1188946f7d9b4eb55b8fc9e21ef376f20c28fb88c` |
-| 关联结构线协议摘要 | `sha256:f015df180f5eb3b4283973bf703d2b2c56cb5a4c37203c7937dd9d1ae9d3d9fe` |
-| 正文响应 Schema | `1` |
-| 关联响应 Schema | `2` |
+| 正文 prompt | `knowledge-body-generation/v5` |
+| 关联 prompt | `knowledge-association-generation/v4` |
+| 正文 profile 摘要 | `sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186` |
+| 关联 profile 摘要 | `sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee` |
+| 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
+| 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
+| 正文响应 Schema | `2` |
+| 关联响应 Schema | `3` |
 | 知识历史 Schema | `3` |
 | 关联历史 Schema | `2` |
 | 复核与使用反馈历史 Schema | `1` |
