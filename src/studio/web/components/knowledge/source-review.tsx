@@ -14,6 +14,10 @@ type Coverage = ReturnType<SourceReviewApplication['coverage']> & { ledgerStatus
 type Command = Exclude<SourceCoverageWrite, { commandKind: 'append_analysis' }>;
 type Decision = Extract<Command, { commandKind: 'record_decision' }>['decision'];
 type DraftDisposition = { disposition?: Decision['dispositions'][number]['disposition']; reason: string };
+type ReviewIssue = { id: string; group: string; groupLabel: string; reason: string;
+  target?: SourceCoverageData['checks'][number]['target']; sourceEvidence: SourceReviewEvidence[];
+  bodyEvidence: SourceCoverageData['checks'][number]['bodyEvidence']; unknown?: boolean;
+  boundedInput?: SourceCoverageData['checks'][number]['boundedInput'] };
 type Props = { workspace: string; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef; lang?: Language;
   onProceed?(ref: SourceCoverageDecisionRef): void };
 const lines = (value: string) => value.split('\n').map(line => line.trim()).filter(Boolean);
@@ -88,7 +92,7 @@ function SourceReviewSession(props: Props) {
       {!coverage ? <p>{t('尚未指定覆盖核对记录。请先单独准备并确认来源核对请求。', 'No coverage analysis was selected. Prepare and confirm a source coverage request separately.')}</p> : <>
         <CoverageSummary coverage={coverage} lang={lang}/>
         {!ready && <p role="status">{t('来源、正文或清单当前不可读；不会据此准备新的关联请求。', 'A source, body or inventory is unavailable; a new association request cannot be prepared here.')}</p>}
-        <DecisionForm key={`${coverage.history.generation}/${coverage.history.writeHeadEventId}`} workspace={workspace} baseline={coverage}
+        <DecisionForm key={`${coverage.history.generation}/${coverage.history.writeHeadEventId}`} workspace={workspace} baseline={coverage} ledger={ledger}
           writable={!!ready} lang={lang} onSaved={() => { setNotice(t('已保存本次来源意见，正在读回记录。', 'The source opinion was saved; reloading its record.')); refresh(); }}/>
         {onProceed && coverage.decision.status === 'proceed_with_limits'
           && coverage.decision.events.map(event => <section key={event.eventId} className="candidate-statement">
@@ -168,7 +172,105 @@ function BodyQuotes({ evidence, lang }: { evidence: SourceCoverageData['checks']
       <code>{quote.bodyRef.knowledgeId}/{quote.bodyRef.revisionId} · {quote.segmentId} · {quote.start}–{quote.end}</code></p></blockquote>)}
   </details>;
 }
-function DecisionForm({ workspace, baseline, writable, lang, onSaved }: { workspace: string; baseline: Coverage; writable: boolean; lang: Language; onSaved(): void }) {
+function reviewIssues(coverage: Coverage, ledger: Ledger | undefined, lang: Language): ReviewIssue[] {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const dispositions = { retain: t('建议保留', 'Proposed retention'), exclude: t('建议排除', 'Proposed exclusion'), pending: t('尚待判断', 'Pending') };
+  const statuses = { covered: t('已表达', 'Expressed'), partial: t('部分遗漏', 'Partial'), omitted: t('遗漏', 'Omitted'),
+    contradicted: t('矛盾', 'Contradicted'), not_retained: t('未保留', 'Not retained'), unassessable: t('无法判断', 'Unassessable') };
+  const targets = { knowledge_meaning: t('知识含义', 'Knowledge meaning'), preserved_source_declared_unknown: t('来源明确的未知', 'Source-declared unknown'),
+    preserved_bounded_input_limitation: t('输入范围限制', 'Input limitation'), factual_value: t('具体事实值', 'Factual value') };
+  const findingKinds = { ledger_omission: t('清单遗漏', 'Inventory omission'), ledger_error: t('清单错误', 'Inventory error'),
+    body_unsupported: t('正文依据不足', 'Unsupported content'), body_omission: t('正文遗漏', 'Content omission'), scope_error: t('范围错误', 'Scope error'), other: t('其它发现', 'Other finding') };
+  const units = new Map(ledger?.revision.data.unitDispositions.map(unit => [`unit:${unit.unitKey}`, unit]));
+  const items = new Map(ledger?.revision.data.items.map(item => [`item:${item.itemId}`, item]));
+  const checks = new Map(coverage.revision.data.checks.map(check => [`check:${check.checkId}`, check]));
+  const findings = new Map(coverage.revision.data.findings.map(finding => [`finding:${finding.findingId}`, finding]));
+  return (coverage.unresolvedIds ?? []).map<ReviewIssue>(id => {
+    const unit = units.get(id), item = items.get(id), check = checks.get(id), finding = findings.get(id);
+    if (unit) return { id, group: `unit:${unit.disposition}`, groupLabel: `${t('来源单位', 'Source units')} · ${dispositions[unit.disposition]}`,
+      reason: unit.reason, target: { targetKind: 'source_unit', unitKey: unit.unitKey }, sourceEvidence: [], bodyEvidence: [] };
+    if (item) return { id, group: `item:${item.disposition}`, groupLabel: `${t('清单条目', 'Inventory items')} · ${dispositions[item.disposition]}`,
+      reason: item.reason, target: { targetKind: 'ledger_item', itemId: item.itemId }, sourceEvidence: item.evidence, bodyEvidence: [] };
+    if (check) return { id, group: `check:${check.coverageTarget}:${check.status}`, groupLabel: `${targets[check.coverageTarget]} · ${statuses[check.status]}`,
+      reason: check.reason, target: check.target, sourceEvidence: check.sourceEvidence, bodyEvidence: check.bodyEvidence,
+      unknown: check.factualValue === 'unknown', boundedInput: check.boundedInput };
+    if (finding) return { id, group: `finding:${finding.findingKind}`, groupLabel: `${t('额外发现', 'Additional findings')} · ${findingKinds[finding.findingKind]}`,
+      reason: finding.reason, sourceEvidence: finding.sourceEvidence, bodyEvidence: finding.bodyEvidence };
+    return { id, group: 'unavailable', groupLabel: t('问题详情不可读', 'Issue details unavailable'),
+      reason: t('未能定位本项的原始判断，请重新读取后核对。', 'The original issue could not be located. Reload and inspect it.'), sourceEvidence: [], bodyEvidence: [] };
+  });
+}
+function ReviewTarget({ target, coverage, ledger, lang }: { target: NonNullable<ReviewIssue['target']>; coverage: Coverage; ledger?: Ledger; lang: Language }) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const unit = target.targetKind === 'source_unit' ? coverage.revision.data.manifest.units.find(unit => unit.unitKey === target.unitKey) : undefined;
+  const source = unit && coverage.revision.data.manifest.sources.find(source => source.sourceKey === unit.sourceKey);
+  const item = target.targetKind === 'ledger_item' || target.targetKind === 'ledger_facet' ? ledger?.revision.data.items.find(item => item.itemId === target.itemId) : undefined;
+  const facet = target.targetKind === 'ledger_facet' ? item?.facets.find(facet => facet.facetId === target.facetId) : undefined;
+  return <>
+    {unit && <p>{unit.unitKind === 'source_metadata' ? t('来源元数据', 'Source metadata') : t('来源原文片段', 'Source excerpt')}
+      {' · '}<code>{unit.sourceKey}{unit.evidenceRef ? ` · ${unit.evidenceRef}` : ''}</code></p>}
+    {item && <p>{item.statement}</p>}{facet && <p>{facet.statement}</p>}
+    {target.targetKind === 'body_segment' && <p>{t('正文段落：', 'Content segment: ')}<code>{target.segmentId}</code></p>}
+    <details><summary>{t('核对目标与精确版本', 'Target and exact versions')}</summary>
+      {unit?.unitKind === 'source_metadata' && <p className="candidate-help">{unit.fieldPaths.join(', ')}</p>}
+      <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(source ? { ...target, sourceRef: source.sourceRef } : target, null, 2)}</pre>
+    </details>
+  </>;
+}
+function DispositionGroup({ issues, coverage, ledger, dispositions, editable, lang, onChange }: {
+  issues: ReviewIssue[]; coverage: Coverage; ledger?: Ledger; dispositions: Record<string, DraftDisposition>; editable: boolean; lang: Language;
+  onChange(ids: string[], value: DraftDisposition): void;
+}) {
+  const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
+  const [selected, setSelected] = useState<string[]>([]), [disposition, setDisposition] = useState<Decision['dispositions'][number]['disposition'] | ''>('');
+  const [reason, setReason] = useState(''), [notice, setNotice] = useState('');
+  const label = issues[0].groupLabel;
+  const apply = () => {
+    if (!editable || !selected.length || !disposition || !reason.trim()) return;
+    onChange(selected, { disposition, reason: reason.trim() });
+    setNotice(t(`已填入所选 ${selected.length} 项草稿，尚未保存。`, `Filled ${selected.length} selected drafts; nothing has been saved.`));
+    setSelected([]); setDisposition(''); setReason('');
+  };
+  return <fieldset className="knowledge-review-fields">
+    <legend>{label} · {issues.length}</legend>
+    <details className="extraction-invocation"><summary>{t('批量填写本组草稿', 'Fill selected drafts in this group')} · {selected.length} {t('项已选', 'selected')}</summary>
+      <div className="candidate-form">
+        <p className="candidate-help">{t('先核对并选择同类事项，再填写共同处置和理由。只填入所选草稿，不保存意见或准备模型请求；已有草稿会被替换。', 'Inspect and select similar issues, then enter their shared disposition and reason. Only selected drafts are filled; existing drafts are replaced. No opinion is saved or model request prepared.')}</p>
+        <Checkbox disabled={!editable} aria-label={t(`选择「${label}」本组全部事项`, `Select all issues in ${label}`)} checked={selected.length === issues.length}
+          indeterminate={selected.length > 0 && selected.length < issues.length} onChange={event => setSelected(event.target.checked ? issues.map(issue => issue.id) : [])}>
+          {t(`选择本组 ${issues.length} 项`, `Select all ${issues.length} issues in this group`)}
+        </Checkbox>
+        <label>{t('共同处置', 'Shared disposition')}<select disabled={!editable} style={{ maxWidth: '100%' }} aria-label={t(`「${label}」的共同处置`, `Shared disposition for ${label}`)}
+          value={disposition} onChange={event => setDisposition(event.target.value as typeof disposition)}>
+          <option value="">{t('请选择', 'Choose a disposition')}</option><option value="accepted_limit">{t('明确接受为限制', 'Accept as a limitation')}</option>
+          <option value="resolved">{t('已核对解决', 'Reviewed as resolved')}</option><option value="blocks">{t('阻止继续', 'Blocks continuation')}</option>
+        </select></label>
+        <label>{t('共同理由', 'Shared reason')}<Input.TextArea readOnly={!editable} aria-label={t(`「${label}」的共同理由`, `Shared reason for ${label}`)}
+          value={reason} rows={2} maxLength={4096} onChange={event => setReason(event.target.value)}/></label>
+        <Button disabled={!editable || !selected.length || !disposition || !reason.trim()} onClick={apply}
+          aria-label={t(`将「${label}」的处置和理由填入所选草稿`, `Fill selected drafts in ${label}`)}>{t(`填入所选 ${selected.length} 项草稿`, `Fill ${selected.length} selected drafts`)}</Button>
+      </div>
+    </details>
+    {notice && <p role="status">{notice}</p>}
+    {issues.map(issue => <section key={issue.id} className="candidate-statement">
+      <Checkbox disabled={!editable} aria-label={t(`选择问题 ${issue.id}`, `Select issue ${issue.id}`)} checked={selected.includes(issue.id)}
+        onChange={event => setSelected(values => event.target.checked ? [...values, issue.id] : values.filter(id => id !== issue.id))}><code>{issue.id}</code></Checkbox>
+      {issue.target && <ReviewTarget target={issue.target} coverage={coverage} ledger={ledger} lang={lang}/>}
+      <p>{issue.reason}</p>
+      {issue.unknown && <p>{t('具体事实值仍未知。', 'The factual value remains unknown.')}</p>}
+      {issue.boundedInput && <p>{t('仅限本次完整输入：', 'Bounded to this complete input: ')}{issue.boundedInput.scope} · {issue.boundedInput.inspectedFields.join(', ')}</p>}
+      <SourceQuotes evidence={issue.sourceEvidence} lang={lang}/><BodyQuotes evidence={issue.bodyEvidence} lang={lang}/>
+      <label>{t('本项处置', 'Disposition')}<select disabled={!editable} style={{ maxWidth: '100%' }} aria-label={t(`问题 ${issue.id} 的处置`, `Disposition for ${issue.id}`)}
+        value={dispositions[issue.id]?.disposition ?? ''} onChange={event => onChange([issue.id], { reason: dispositions[issue.id]?.reason ?? '', disposition: event.target.value as DraftDisposition['disposition'] })}>
+        <option value="">{t('请选择', 'Choose a disposition')}</option><option value="accepted_limit">{t('明确接受为限制', 'Accept as a limitation')}</option>
+        <option value="resolved">{t('已核对解决', 'Reviewed as resolved')}</option><option value="blocks">{t('阻止继续', 'Blocks continuation')}</option>
+      </select></label>
+      <label>{t('本项理由', 'Reason for this item')}<Input.TextArea readOnly={!editable} aria-label={t(`问题 ${issue.id} 的理由`, `Reason for ${issue.id}`)}
+        value={dispositions[issue.id]?.reason ?? ''} rows={2} maxLength={4096} onChange={event => onChange([issue.id], { ...dispositions[issue.id], reason: event.target.value })}/></label>
+    </section>)}
+  </fieldset>;
+}
+function DecisionForm({ workspace, baseline, ledger, writable, lang, onSaved }: { workspace: string; baseline: Coverage; ledger?: Ledger; writable: boolean; lang: Language; onSaved(): void }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [requestId] = useState(() => crypto.randomUUID()), [mode, setMode] = useState<'record' | 'revoke'>('record');
   const [decisionKind, setDecisionKind] = useState<Decision['decisionKind'] | ''>(''), [reason, setReason] = useState(''), [limitations, setLimitations] = useState('');
@@ -176,6 +278,13 @@ function DecisionForm({ workspace, baseline, writable, lang, onSaved }: { worksp
   const [conflicted, setConflicted] = useState(false), save = useKnowledgeSave<Command>(`${workspace}/${baseline.ref.coverageId}/${requestId}`);
   const locked = save.busy || save.uncertain || conflicted;
   const unresolvedIds = baseline.unresolvedIds ?? [];
+  const groups = new Map<string, ReviewIssue[]>();
+  for (const issue of reviewIssues(baseline, ledger, lang)) {
+    const group = groups.get(issue.group);
+    if (group) group.push(issue); else groups.set(issue.group, [issue]);
+  }
+  const editDispositions = (ids: string[], draft: DraftDisposition) => setDispositions(values => ({ ...values,
+    ...Object.fromEntries(ids.map(id => [id, { ...draft }])) }));
   const missing = unresolvedIds.some(id => !dispositions[id]?.disposition || !dispositions[id]?.reason.trim());
   const blocked = unresolvedIds.some(id => dispositions[id]?.disposition === 'blocks');
   const invalid = !reason.trim() || (mode === 'revoke' ? !target : !writable || baseline.unresolvedIds === null || !decisionKind || !lines(limitations).length || missing || decisionKind === 'proceed_with_limits' && blocked);
@@ -218,15 +327,8 @@ function DecisionForm({ workspace, baseline, writable, lang, onSaved }: { worksp
           <option value="needs_revision">{t('需要修订正文或清单', 'Needs revision')}</option><option value="stop">{t('停止本轮', 'Stop this run')}</option>
         </select></label>
         <label>{t('保留的限制（每行一项）', 'Limitations to preserve (one per line)')}<Input.TextArea readOnly={locked} aria-label={t('保留的限制', 'Preserved limitations')} value={limitations} rows={3} maxLength={32_768} onChange={event => setLimitations(event.target.value)}/></label>
-        {unresolvedIds.map(id => <section key={id} className="candidate-form"><code>{id}</code>
-          <label>{t('本项处置', 'Disposition')}<select disabled={locked} style={{ maxWidth: '100%' }} aria-label={t(`问题 ${id} 的处置`, `Disposition for ${id}`)} value={dispositions[id]?.disposition ?? ''}
-            onChange={event => setDispositions(values => ({ ...values, [id]: { reason: values[id]?.reason ?? '', disposition: event.target.value as DraftDisposition['disposition'] } }))}>
-            <option value="">{t('请选择', 'Choose a disposition')}</option><option value="accepted_limit">{t('明确接受为限制', 'Accept as a limitation')}</option>
-            <option value="resolved">{t('已核对解决', 'Reviewed as resolved')}</option><option value="blocks">{t('阻止继续', 'Blocks continuation')}</option>
-          </select></label>
-          <label>{t('本项理由', 'Reason for this item')}<Input.TextArea readOnly={locked} aria-label={t(`问题 ${id} 的理由`, `Reason for ${id}`)} value={dispositions[id]?.reason ?? ''} rows={2} maxLength={4096}
-            onChange={event => setDispositions(values => ({ ...values, [id]: { ...values[id], reason: event.target.value } }))}/></label>
-        </section>)}
+        {[...groups].map(([key, issues]) => <DispositionGroup key={key} issues={issues} coverage={baseline} ledger={ledger} dispositions={dispositions}
+          editable={!locked && writable} lang={lang} onChange={editDispositions}/>)}
         {decisionKind === 'proceed_with_limits' && blocked && <p role="status">{t('仍有阻止项，不能允许继续。', 'A blocking item prevents continuation.')}</p>}
         {!!baseline.decision.events.length && <details><summary>{t('明确替代旧意见（可选）', 'Explicitly supersede prior opinions (optional)')}</summary>
           {baseline.decision.events.map(event => <Checkbox disabled={locked} key={event.eventId} checked={supersedes.includes(event.eventId)} onChange={change => setSupersedes(values => change.target.checked ? [...values, event.eventId] : values.filter(id => id !== event.eventId))}>

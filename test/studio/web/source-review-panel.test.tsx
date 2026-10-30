@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ConfigProvider } from 'antd';
 import type { PropsWithChildren } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SourceReviewPanel } from '../../../src/studio/web/components/knowledge/source-review';
 import { applySourceLedgerWrite, applySourceCoverageWrite, selectSourceCoverageDecision, sourceCoverageUnresolved } from '../../../src/knowledge/source-review-history.js';
@@ -17,9 +17,10 @@ const saveButton = () => screen.getByRole('button', { name: '保存本次决定'
 function wrapper({ children }: PropsWithChildren) { return <ConfigProvider theme={{ token: { motion: false } }}>{children}</ConfigProvider>; }
 
 /** Authored UI projections exercise command custody and interactions, not semantic acceptance. */
-function fixture(empty = false) {
+function fixture(empty = false, extend?: (f: ReturnType<typeof sourceReviewFixture>) => void) {
   const f = sourceReviewFixture();
   f.ledger.data.items[0].statement = '<img src=x onerror=alert(1)> is untrusted source wording.';
+  extend?.(f);
   const { digest: _ledgerDigest, ...ledgerContent } = f.ledger; void _ledgerDigest;
   f.ledger.digest = sourceReviewRevisionDigest(ledgerContent); f.ledgerRef.digest = f.ledger.digest;
   if (empty) {
@@ -85,8 +86,8 @@ describe('explicit source review panel', () => {
     const f = fixture(), prepare = vi.fn();
     const mounted = render(<SourceReviewPanel workspace="/source-review" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
     await screen.findByRole('combobox', { name: '本次来源决定' });
-    expect(screen.getByText('具体事实值仍未知。')).toBeTruthy();
-    expect(screen.getByText(/尚待判断/)).toBeTruthy();
+    expect(screen.getAllByText('具体事实值仍未知。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/尚待判断/).length).toBeGreaterThan(0);
     expect(mounted.container.querySelector('img')).toBeNull();
     expect(saveButton().disabled).toBe(true);
     expect(screen.queryByRole('button', { name: '按此意见准备关联' })).toBeNull();
@@ -100,6 +101,73 @@ describe('explicit source review panel', () => {
     expect(prepare).toHaveBeenCalledWith({ coverageRef: f.f.coverageRef, sourceSetId: f.f.coverage.data.manifest.sourceSetId,
       ledgerRef: f.f.ledgerRef, bodyRefs: f.f.coverage.data.bodyRefs, eventId: command.requestId });
     expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
+  });
+  it('fills only explicitly selected drafts in a matching group without saving, then sends every individual disposition', async () => {
+    const f = fixture(false, f => {
+      f.ledger.data.items[0].facets.push({ ...structuredClone(f.ledger.data.items[0].facets[0]), facetId: 'f2', statement: 'The supported platform is unknown.' });
+      f.coverage.data.checks.push({ ...structuredClone(f.coverage.data.checks[3]), checkId: 'c6',
+        target: { targetKind: 'ledger_facet', itemId: 'i1', facetId: 'f2' }, reason: 'No supported platform was stated.' });
+    });
+    const prepare = vi.fn();
+    render(<SourceReviewPanel workspace="/batch-draft" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
+    await fillDecision(f);
+    choose('问题 check:c4 的处置', ''); change('问题 check:c4 的理由', '');
+    choose('问题 check:c6 的处置', 'blocks'); change('问题 check:c6 的理由', 'Keep this separate existing draft.');
+    const operationsBefore = [...f.operations];
+    const group = screen.getByRole('group', { name: '具体事实值 · 无法判断 · 2' });
+    fireEvent.click(within(group).getByText(/^批量填写本组草稿/));
+    const apply = within(group).getByRole('button', { name: '将「具体事实值 · 无法判断」的处置和理由填入所选草稿' }) as HTMLButtonElement;
+    expect((within(group).getByRole('combobox', { name: '「具体事实值 · 无法判断」的共同处置' }) as HTMLSelectElement).value).toBe('');
+    expect((within(group).getByRole('textbox', { name: '「具体事实值 · 无法判断」的共同理由' }) as HTMLTextAreaElement).value).toBe('');
+    expect(within(group).getAllByRole('checkbox').every(input => !(input as HTMLInputElement).checked)).toBe(true);
+    choose('「具体事实值 · 无法判断」的共同处置', 'accepted_limit'); change('「具体事实值 · 无法判断」的共同理由', 'Preserve only the selected unknown.');
+    expect(apply.disabled).toBe(true); fireEvent.click(apply);
+    expect((screen.getByRole('combobox', { name: '问题 check:c4 的处置' }) as HTMLSelectElement).value).toBe('');
+    fireEvent.click(screen.getByRole('checkbox', { name: '选择问题 check:c4' }));
+    choose('「具体事实值 · 无法判断」的共同处置', ''); expect(apply.disabled).toBe(true);
+    choose('「具体事实值 · 无法判断」的共同处置', 'accepted_limit'); change('「具体事实值 · 无法判断」的共同理由', '  '); expect(apply.disabled).toBe(true);
+    change('「具体事实值 · 无法判断」的共同理由', 'Preserve only the selected unknown.'); expect(apply.disabled).toBe(false); fireEvent.click(apply);
+    expect((screen.getByRole('combobox', { name: '问题 check:c4 的处置' }) as HTMLSelectElement).value).toBe('accepted_limit');
+    expect((screen.getByRole('textbox', { name: '问题 check:c4 的理由' }) as HTMLTextAreaElement).value).toBe('Preserve only the selected unknown.');
+    expect((screen.getByRole('combobox', { name: '问题 check:c6 的处置' }) as HTMLSelectElement).value).toBe('blocks');
+    expect((screen.getByRole('textbox', { name: '问题 check:c6 的理由' }) as HTMLTextAreaElement).value).toBe('Keep this separate existing draft.');
+    expect((screen.getByRole('textbox', { name: '问题 unit:s1/metadata 的理由' }) as HTMLTextAreaElement).value).toBe('Preserve the bounded uncertainty without inventing a value.');
+    expect(f.writes).toEqual([]); expect(prepare).not.toHaveBeenCalled();
+    expect(f.operations).toEqual(operationsBefore);
+    expect(apply.disabled).toBe(true); expect(saveButton().disabled).toBe(true);
+    choose('问题 check:c6 的处置', 'resolved'); change('问题 check:c6 的理由', 'Individually reviewed after filling the other draft.');
+    change('问题 check:c4 的理由', 'The selected draft remains individually editable.');
+    expect(saveButton().disabled).toBe(false); fireEvent.click(saveButton());
+    await screen.findByRole('button', { name: '按此意见准备关联' });
+    expect(f.writes).toHaveLength(1);
+    const command = f.writes[0]; if (command.commandKind !== 'record_decision') throw new Error('Expected a complete decision.');
+    expect(command.decision.dispositions.map(value => value.unresolvedId)).toEqual(f.status().unresolvedIds);
+    expect(command.decision.dispositions.find(value => value.unresolvedId === 'check:c4')).toMatchObject({ disposition: 'accepted_limit', reason: 'The selected draft remains individually editable.' });
+    expect(command.decision.dispositions.find(value => value.unresolvedId === 'check:c6')).toMatchObject({ disposition: 'resolved', reason: 'Individually reviewed after filling the other draft.' });
+    expect(command.decision).toMatchObject({ coverageRef: f.f.coverageRef, ledgerRef: f.f.ledgerRef, bodyRefs: f.f.coverage.data.bodyRefs });
+    expect(command).toMatchObject({ expectedGeneration: 1, expectedHeadEventId: f.f.coverageCommand.requestId });
+    expect(command).not.toHaveProperty('actor'); expect(prepare).not.toHaveBeenCalled();
+  });
+  it('shows the original reason and object beside each unit, item, check and finding without rendering source HTML', async () => {
+    const f = fixture(false, f => {
+      f.ledger.data.items[0].disposition = 'pending';
+      f.coverage.data.findings.push({ findingId: 'extra1', findingKind: 'body_omission', reason: 'Inspect this additional bounded omission.',
+        sourceEvidence: structuredClone(f.ledger.data.items[0].evidence), bodyEvidence: structuredClone(f.coverage.data.checks[3].bodyEvidence) });
+    });
+    const mounted = render(<SourceReviewPanel workspace="/issue-context" coverageRef={f.f.coverageRef}/>, { wrapper });
+    await screen.findByRole('combobox', { name: '本次来源决定' });
+    const row = (id: string) => within(screen.getByRole('checkbox', { name: `选择问题 ${id}` }).closest('section')!);
+    expect(row('unit:s1/metadata').getByText(/来源元数据/)).toBeTruthy();
+    expect(row('unit:s1/metadata').getByText('Provenance is preserved, not a verified fact.')).toBeTruthy();
+    expect(row('unit:s1/metadata').getByText(/"snapshotId"/)).toBeTruthy();
+    expect(row('item:i1').getByText(f.f.ledger.data.items[0].statement)).toBeTruthy();
+    expect(row('item:i1').getByText('Reusable within the bounded source.')).toBeTruthy();
+    expect(row('check:c4').getByText('The version value is unknown.')).toBeTruthy();
+    expect(row('check:c4').getByText('The version value was not supplied.')).toBeTruthy();
+    expect(row('check:c4').getByText('具体事实值仍未知。')).toBeTruthy();
+    expect(row('finding:extra1').getByText('Inspect this additional bounded omission.')).toBeTruthy();
+    expect(row('finding:extra1').getByText('Alpha')).toBeTruthy();
+    expect(mounted.container.querySelector('img')).toBeNull(); expect(f.writes).toEqual([]);
   });
   it('locks an unknown write and confirms the exact saved event without posting again', async () => {
     const f = fixture(), prepare = vi.fn(); f.loseAcknowledgement();
