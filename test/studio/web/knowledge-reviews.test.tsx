@@ -79,7 +79,115 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+/** JSDOM has no layout or ResizeObserver delivery: model the review block above the source. */
+function readerLayout() {
+  const reviewHeight = (pane: Element) => pane.querySelectorAll('.knowledge-review-summary ul.candidate-help li').length * 120
+    + pane.querySelectorAll('.knowledge-review-summary details[open]').length * 400;
+  const observers = new Set<{ callback: ResizeObserverCallback; targets: Set<Element> }>();
+  vi.stubGlobal('ResizeObserver', class {
+    targets = new Set<Element>();
+    constructor(readonly callback: ResizeObserverCallback) { observers.add(this); }
+    observe(target: Element) { this.targets.add(target); }
+    unobserve(target: Element) { this.targets.delete(target); }
+    disconnect() { this.targets.clear(); }
+  });
+  const original = Element.prototype.getBoundingClientRect;
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.matches('.knowledge-reader-scroll')) return new DOMRect(0, 100, 640, 200);
+    const pane = this.closest<HTMLElement>('.knowledge-reader-scroll');
+    if (pane && this.matches('.knowledge-source mark')) return new DOMRect(0,
+      600 + reviewHeight(pane) - pane.scrollTop, 640, 24);
+    return original.call(this);
+  });
+  const originalHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight')!.get!;
+  vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) {
+    return this.matches('.knowledge-reader-scroll') ? 676 + reviewHeight(this) : originalHeight.call(this);
+  });
+  const originalClient = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!.get!;
+  vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) {
+    return this.matches('.knowledge-reader-scroll') ? 200 : originalClient.call(this);
+  });
+  const summaryObservers = () => [...observers].filter(observer => [...observer.targets].some(target => target.matches('.knowledge-review-summary')));
+  const captureResize = () => { const queued = summaryObservers(); return () => queued.forEach(observer => observer.callback([], observer as unknown as ResizeObserver)); };
+  return { resize: () => act(captureResize()), captureResize, active: () => summaryObservers().length, pageScroll: vi.spyOn(window, 'scrollTo') };
+}
+function reviewedWithLimits(data: ReturnType<typeof fixture>): KnowledgeReviewStatus {
+  const event: KnowledgeReviewEvent = { eventKind: 'content_review', eventId: uuid(70), parentEventId: null, bodyRef: data.bodyRef, sources: [source], actor, at,
+    supersedesEventIds: [], status: 'reviewed_with_limits', reason: 'Keep all source limitations visible.', findings: [],
+    limitations: Array.from({ length: 5 }, (_, i) => `Source limitation ${i + 1}: this historical claim still needs independent verification.`) };
+  return { ...data.baseline, storageStatus: 'available', generation: 1, headEventId: event.eventId,
+    history: { storeKind: 'knowledge-review-history', schemaVersion: 1, namespace: 'fixture', knowledgeId: data.bodyRef.knowledgeId, generation: 1, writeHeadEventId: event.eventId,
+      events: [event], receipts: [{ requestId: event.eventId, eventId: event.eventId, committedGeneration: 1, commandDigest: digest }] },
+    content: { status: 'reviewed_with_limits', events: [event] } };
+}
+
 describe('independent knowledge review interactions', () => {
+  it('keeps the source highlight visible when review limitations load after the initial reveal', async () => {
+    const layout = readerLayout(), data = fixture(); let release!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
+    const mounted = render(<KnowledgeReader detail={data.detail} workspace="/late-review" lang="en"
+      selection={{ tab: 'evidence', segmentId: 's1' }} onRevision={vi.fn()} onRetry={vi.fn()}/>, { wrapper });
+    const pane = mounted.container.querySelector<HTMLElement>('.knowledge-reader-scroll')!, mark = pane.querySelector('mark')!;
+    const visible = () => { const target = mark.getBoundingClientRect(), viewport = pane.getBoundingClientRect();
+      expect(target.top).toBeGreaterThanOrEqual(viewport.top); expect(target.top).toBeLessThan(viewport.bottom); };
+    visible(); fireEvent.scroll(pane); // The event from the initial automatic scroll is not manual input.
+    await act(async () => release(response(reviewedWithLimits(data))));
+    expect(pane.querySelectorAll('.knowledge-review-summary li')).toHaveLength(5);
+    layout.resize(); visible();
+    act(() => window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: '/late-review' })));
+    expect(screen.getByText('Reading independent review records…')).toBeTruthy();
+    // A shorter loading block clamps a reader already at its end; that is layout, not manual scrolling.
+    pane.scrollTop = Math.min(pane.scrollTop, pane.scrollHeight - pane.clientHeight); fireEvent.scroll(pane); layout.resize();
+    await act(async () => release(response(reviewedWithLimits(data)))); layout.resize(); visible();
+    expect(mark.textContent).toBe('Alpha'); expect(layout.pageScroll).not.toHaveBeenCalled();
+    mounted.unmount(); expect(layout.active()).toBe(0);
+  });
+
+  it.each(['scroll', 'wheel', 'touchMove'] as const)('preserves manual %s while a late review response and equivalent refresh change layout', async interaction => {
+    const layout = readerLayout(), data = fixture(); let release!: (value: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { release = resolve; })));
+    const selection = { tab: 'evidence' as const, segmentId: 's1' };
+    const reader = (detail = data.detail) => <KnowledgeReader detail={detail} workspace="/manual-review" lang="en"
+      selection={{ ...selection }} onRevision={vi.fn()} onRetry={vi.fn()}/>;
+    const mounted = render(reader(), { wrapper }), pane = mounted.container.querySelector<HTMLElement>('.knowledge-reader-scroll')!;
+    if (interaction === 'scroll') { pane.scrollTop -= 80; fireEvent.scroll(pane); }
+    else if (interaction === 'wheel') fireEvent.wheel(pane, { deltaY: -80 });
+    else fireEvent.touchMove(pane);
+    const manualTop = pane.scrollTop;
+    await act(async () => release(response(reviewedWithLimits(data))));
+    layout.resize(); mounted.rerender(reader(structuredClone(data.detail))); layout.resize();
+    expect(pane.scrollTop).toBe(manualTop); expect(pane.querySelectorAll('.knowledge-review-summary li')).toHaveLength(5);
+    expect(layout.pageScroll).not.toHaveBeenCalled();
+  });
+
+  it('lets the user expand review details without pulling the reader back to its source highlight', async () => {
+    const layout = readerLayout(), data = fixture(); vi.stubGlobal('fetch', vi.fn(async () => response(reviewedWithLimits(data))));
+    const mounted = render(<KnowledgeReader detail={data.detail} workspace="/read-review-details" lang="en"
+      selection={{ tab: 'evidence', segmentId: 's1' }} onRevision={vi.fn()} onRetry={vi.fn()}/>, { wrapper });
+    await screen.findByText('Content review: Reviewed with limits'); layout.resize();
+    const pane = mounted.container.querySelector<HTMLElement>('.knowledge-reader-scroll')!, before = pane.scrollTop;
+    fireEvent.click(screen.getByText('Inspect segment coverage and use signals'));
+    await waitFor(() => expect(pane.querySelector('details')?.open).toBe(true));
+    layout.resize(); expect(pane.scrollTop).toBe(before); expect(pane.querySelector('mark')?.textContent).toBe('Alpha');
+  });
+
+  it('cleans up pending layout callbacks when the target changes, its source disappears, or the reader unmounts', async () => {
+    const layout = readerLayout(), data = fixture(); vi.stubGlobal('fetch', vi.fn(async () => response(data.baseline)));
+    const reader = (segmentId: string, detail = data.detail) => <KnowledgeReader detail={detail} workspace="/layout-cleanup" lang="en"
+      selection={{ tab: 'evidence', segmentId }} onRevision={vi.fn()} onRetry={vi.fn()}/>;
+    const mounted = render(reader('s1'), { wrapper }); await screen.findByText('Content review: Not reviewed');
+    expect(layout.active()).toBe(1); const oldTarget = layout.captureResize();
+    mounted.rerender(reader('s2')); expect(layout.active()).toBe(1);
+    const pane = mounted.container.querySelector<HTMLElement>('.knowledge-reader-scroll')!; pane.scrollTop = 0;
+    act(oldTarget); expect(pane.scrollTop).toBe(0);
+    const unavailable = structuredClone(data.detail); unavailable.sources = [{ status: 'unavailable', reason: 'missing', detail: 'Source temporarily unreadable.' }];
+    const missingSource = layout.captureResize(); mounted.rerender(reader('s2', unavailable)); expect(layout.active()).toBe(0);
+    act(missingSource); expect(pane.scrollTop).toBe(0); expect(pane.querySelector('mark')).toBeNull();
+    mounted.rerender(reader('s2')); expect(layout.active()).toBe(1);
+    const unmounted = layout.captureResize(); mounted.unmount(); expect(layout.active()).toBe(0);
+    pane.scrollTop = 0; act(unmounted); expect(pane.scrollTop).toBe(0);
+  });
+
   it('keeps content readable when its ledger is unavailable and ignores the cancelled old-workspace response instead of calling it unreviewed', async () => {
     const data = fixture(), calls: Record<string, unknown>[] = []; let releaseOld!: (value: Response) => void, oldSignal: AbortSignal | undefined;
     const unavailable: KnowledgeReviewStatus = { storageStatus: 'unavailable', bodyRef: data.bodyRef, generation: null, headEventId: null, sources: data.baseline.sources,
