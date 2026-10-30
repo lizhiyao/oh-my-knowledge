@@ -73,8 +73,8 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
   onScope(value: 'current' | 'filtered'): void; onHistory(value: boolean): void; onSelect(id: string, knowledge?: { knowledgeId: string; revisionId: string }): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  const canvasRef = useRef<HTMLDivElement>(null), focusNodeRef = useRef<SVGGElement>(null);
-  const focusIntentRef = useRef<{ request: string; target: string; complete: boolean } | undefined>(undefined);
+  const canvasRef = useRef<HTMLDivElement>(null), nodeRefs = useRef(new Map<string, SVGGElement>());
+  const focusIntentRef = useRef<{ request: string; target: string; nodeId?: string; selection?: string; complete: boolean } | undefined>(undefined);
   const focusRequest = JSON.stringify([activeKnowledgeId, activeRevisionId, scope, includeHistory]);
   const focus = graph.nodes.find(node => node.nodeKind === 'knowledge' && node.bodyRef.knowledgeId === activeKnowledgeId && (activeRevisionId ? node.bodyRef.revisionId === activeRevisionId : node.current));
   const focusTarget = JSON.stringify([activeKnowledgeId, focus?.nodeKind === 'knowledge' ? focus.bodyRef.revisionId : activeRevisionId, scope, includeHistory]);
@@ -88,6 +88,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
     for (const edge of graph.edges) if (edge.edgeKind === 'entity_mention' && displayed.has(edge.from)) displayed.add(edge.to);
   }
   const nodes = graph.nodes.filter(node => displayed.has(node.nodeId));
+  const selectedNodeId = nodes.find(node => node.nodeId === selectedId)?.nodeId;
   const edges = graph.edges.filter(edge => displayed.has(edge.from) && displayed.has(edge.to));
   const groups = (['source', 'knowledge', 'entity'] as const).map(kind => nodes.filter(node => node.nodeKind === kind));
   const height = Math.max(...groups.map(group => group.length), 1) * 76 + 70;
@@ -95,13 +96,18 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
     { x: 110 + column * 235, y: 64 + index * 76 + Math.max(0, (height - 70 - group.length * 76) / 2) }] as const)));
   useEffect(() => {
     const previous = focusIntentRef.current;
-    if (previous?.request !== focusRequest) focusIntentRef.current = { request: focusRequest, target: focusTarget, complete: previous?.target === focusTarget && previous.complete };
-    else if (previous && focus) previous.target = focusTarget;
+    if (previous?.request !== focusRequest) focusIntentRef.current = { request: focusRequest, target: focusTarget, nodeId: focus?.nodeId, selection: previous?.selection, complete: previous?.target === focusTarget && previous.complete };
+    else if (previous && focus) { previous.target = focusTarget; if (!previous.selection) previous.nodeId = focus.nodeId; }
     const intent = focusIntentRef.current, canvas = canvasRef.current;
-    if (!intent || intent.complete || !canvas || !focusNodeRef.current) return;
+    if (intent && intent.selection !== selectedNodeId) {
+      intent.selection = selectedNodeId;
+      if (selectedNodeId) { intent.nodeId = selectedNodeId; intent.complete = false; }
+      else if (intent.nodeId !== focus?.nodeId) intent.complete = true;
+    }
+    if (!intent || intent.complete || !canvas || !intent.nodeId || !nodeRefs.current.has(intent.nodeId)) return;
     let disposed = false, observer: ResizeObserver | undefined;
     const reveal = () => {
-      const target = focusNodeRef.current;
+      const target = nodeRefs.current.get(intent.nodeId!);
       if (disposed || intent.complete || !target || !canvas.clientWidth || !canvas.clientHeight) return false;
       const viewport = canvas.getBoundingClientRect(), bounds = target.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return false;
@@ -117,7 +123,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
       observer.observe(canvas);
     }
     return () => { disposed = true; observer?.disconnect(); };
-  }, [focusRequest, focusTarget, focus, graph]);
+  }, [focusRequest, focusTarget, focus, graph, selectedNodeId]);
   const choose = (id: string) => {
     const selected = graph.nodes.find(node => node.nodeId === id) ?? graph.edges.find(edge => edge.edgeId === id);
     const owner = knowledgeOwner(graph, selected, activeKnowledgeId);
@@ -155,7 +161,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
               : node.nodeKind === 'entity' ? `${node.entityId.slice(-8)} · ${node.current ? t('当前修订', 'Current') : t('绑定旧修订', 'Older binding')}`
                 : node.status === 'available' ? t('原文可回查', 'Source readable') : t('来源不可用', 'Source unavailable');
             return <g className={`knowledge-network-node ${node.nodeKind}${selected ? ' selected' : ''}${node.nodeKind !== 'source' && !node.current ? ' historical' : ''}`}
-              key={node.nodeId} ref={node.nodeId === focus?.nodeId ? focusNodeRef : undefined} transform={`translate(${position.x} ${position.y})`} role="button" tabIndex={0} aria-label={`${kindLabel(node, lang)}：${label} · ${suffix}`} aria-pressed={selected}
+              key={node.nodeId} ref={element => { if (element) nodeRefs.current.set(node.nodeId, element); else nodeRefs.current.delete(node.nodeId); }} transform={`translate(${position.x} ${position.y})`} role="button" tabIndex={0} aria-label={`${kindLabel(node, lang)}：${label} · ${suffix}`} aria-pressed={selected}
               onClick={() => choose(node.nodeId)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(node.nodeId); } }}>
               <title>{label} · {suffix}</title>
               {node.nodeKind === 'entity' ? <><circle r="27"/><text className="knowledge-network-symbol" textAnchor="middle" y="4">{label.slice(0, 3)}</text></>
