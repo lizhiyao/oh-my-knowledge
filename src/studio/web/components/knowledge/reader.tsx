@@ -84,7 +84,40 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   const evidenceReady = tab === 'evidence' && sourceMatches;
   useEffect(() => {
     const container = scroll.current, focused = container?.querySelector<HTMLElement>('[data-mention-id][data-focused="true"], [data-relation-id][data-focused="true"]') ?? container?.querySelector<HTMLElement>('[data-focused="true"]');
-    if (container && focused) container.scrollTop += focused.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
+    if (!container || !focused) return;
+    let lastAutomaticTop = container.scrollTop;
+    const reveal = () => {
+      container.scrollTop += focused.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
+      lastAutomaticTop = container.scrollTop;
+    };
+    reveal();
+    const summary = container.querySelector('.knowledge-review-summary');
+    if (!evidenceReady || !summary) return;
+    let following = true;
+    // A reloading summary can shrink and clamp the reader before its next response grows it.
+    const atAutomaticPosition = () => Math.abs(container.scrollTop - Math.min(lastAutomaticTop, Math.max(0, container.scrollHeight - container.clientHeight))) <= 1;
+    const observer = new ResizeObserver(() => {
+      if (!following) return;
+      if (!atAutomaticPosition()) { stopFollowing(); return; }
+      reveal();
+    });
+    function stopFollowing() { following = false; observer.disconnect(); }
+    function scrolled() { if (!atAutomaticPosition()) stopFollowing(); }
+    function openingDetails(event: Event) { if (event.target instanceof Element && event.target.closest('summary')) stopFollowing(); }
+    observer.observe(summary);
+    summary.addEventListener('click', openingDetails, true);
+    summary.addEventListener('toggle', stopFollowing, true);
+    container.addEventListener('scroll', scrolled);
+    container.addEventListener('wheel', stopFollowing, { passive: true });
+    container.addEventListener('touchmove', stopFollowing, { passive: true });
+    return () => {
+      stopFollowing();
+      summary.removeEventListener('click', openingDetails, true);
+      summary.removeEventListener('toggle', stopFollowing, true);
+      container.removeEventListener('scroll', scrolled);
+      container.removeEventListener('wheel', stopFollowing);
+      container.removeEventListener('touchmove', stopFollowing);
+    };
   }, [detail.revision.knowledgeId, detail.revision.revisionId, tab, active.segmentId, active.mentionId, active.relationId,
     active.catalogRef?.analysisId, active.catalogRef?.entityRevisionId, requestedEvidence?.snapshotId, requestedEvidence?.sourceVersion,
     requestedEvidence?.evidenceRef, requestedEvidence?.start, requestedEvidence?.end, evidenceReady]);
