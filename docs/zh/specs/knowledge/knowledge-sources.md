@@ -51,11 +51,11 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 ## 发送与默认导入身份 {#generation}
 
-完整 system 加模型 input 另有 1 MiB 上限，来源预览通过不证明请求一定可接纳。来源感知生成使用 journal Schema 3、`knowledge-body-first/v3` 工作流及 `knowledge-source-generation-input/v1` 输入。模型收到有序 `sources:[{sourceKey,source,excerpts,limitations}]`，含可携带的材料／归因元数据；原始 envelope、捕获时间、绝对根路径与 cwd 不进入该输入。当前 prompt／profile 身份见生成契约，输出 wire 版本保持独立。
+完整 system 加模型 input 另有 1 MiB 上限，富化后的清单、来源和正文不能静默截断。默认流程使用 journal Schema 4、`knowledge-body-first/v4` 及 `knowledge-source-generation-input/v2`，先盘点完整获准来源，再生成正文、查漏并等待实际决定。关联阶段为保持 prompt7／profile／wire3 的原字节，仍使用自己的 `knowledge-source-generation-input/v1` envelope；它不是 journal 的默认输入版本。可携带材料／归因与所有已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 不进入模型输入。
 
-`prepare-generation` 零模型创建 prepared 日志。核对完整 system、input、目标模型、producer proof 和 `requestDigest` 后，`generate --confirm-request <digest>` 只发送该精确正文请求，保存的正文为 pending。关联基于已保存的精确正文另行准备，需要自己的 `continue-stage --confirm-request <digest>` 决定。关联重建同样先准备再发送；不能保留摘要却替换模型或 producer。普通 CLI／Studio 宿主显式版本化环境策略：按键排序，只移除已观测为逐工具调用变化的 `CODEX_TOOL_CALL_ID`，proof 与实际执行使用同一组结果值；其余环境值（含 PATH、凭据）继续核对，历史研究保留自己的冻结环境。
+`prepare-generation` 零模型准备首阶段；核对完整 system、input、模型、producer proof 和 requestDigest 后，`generate --confirm-request` 只发送来源盘点。每个后续阶段单独核对并以 `continue-stage` 确认。覆盖完成后，实际 Agent／人须记录绑定精确清单、覆盖、正文和完整来源的决定；关联准备及 claim 前重验，不能以 capture、摘要确认或模型 all-covered 代替。重建同样要求精确决定，不能只从正文引文推断完整来源。普通宿主继续只移除已观测为逐工具调用变化的 CODEX_TOOL_CALL_ID，proof 与执行环境一致；其它环境值及历史冻结身份保持。
 
-`knowledge-source-set/v1` 对精确 SourceRef 排序、去重。默认导入以 `knowledge-source-set-import-run/v1` 从来源集合摘要派生 UUIDv8，复用已有日志，包括失败和未知结果。有意重新生成须明确提供新的 run UUID。已完成集合的默认重复导入不增加模型调用或重复正文；已 claim 的未知阶段不能重发，恢复只接回原件和重放固定写入。独立历史研究保留原 Source2／corpus 身份并使用匹配的工作区／构建。
+`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v2` 绑定 workflow4 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；旧 journal3 由匹配旧构建处理。
 
 ## 变化与删除 {#updates}
 
@@ -67,8 +67,12 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 旧 `sourcePath`、`origin.cwd` 和捕获时间完整保留在 `migration/<migrationId>/original/sources/` 归档中。新快照沿用可移植来源规则，只保留轨迹的 threadId／turnId／title，省略宿主路径并记录新的捕获时间；迁移计划明确列出这一边界，不把旧捕获时间当作新快照的时间。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** Source3、中立 DTO、journal／workflow3 和来源感知 profile 替换旧来源入口。当前写入口拒绝旧来源／日志格式。保留原工作区与匹配构建，不原地升级。
+**BREAKING-SCHEMA/API/COMPARABILITY：** Source3、中立 DTO、当时的 journal／workflow3 和来源感知 profile 替换旧来源入口。当前写入口拒绝旧来源／日志格式。保留原工作区与匹配构建，不原地升级。
 
 `migrate-sources --plan-only` 读取明确旧工作区及匹配构建归档，零写入导出固定计划；通过 `--input` 和精确 `--confirm-plan` 摘要应用到独立新目标。迁移归档保留所有旧字节、journal／outcome、复核、授权、知识库／载体引用及提供的构建。构建标记和摘要不证明兼容性，须单独验证匹配构建与回退。新来源引用、正文修订／摘要和派生目录／投影均显式映射、重新 pending；不继承旧保留、身份接受、复核、使用反馈或自动授权，普通组织标签另行保留。
 
 预检在创建目标前核对源／目标身份、容量及完整恢复记录。固定迁移计划文档最多 128 MiB（含 CLI 换行），导出、adapter 接纳与 CLI reader 使用同一容量。已归属的中断迁移复用同一计划恢复，未完成目标不能当普通工作区打开。包括已打开实例在内，普通写入均在共享工作区锁内重验此边界；迁移仅在同步应用期间持有绑定计划的显式临时写入能力。已完成输出被改删时不悄悄复活。启动阶段所有者不明的锁保持拒绝，须明确核实所有者。回退使用未改动的旧工作区与匹配构建，不依靠兼容 reader。周边契约见[存储布局](../shared/storage-layout-spec.md#explicit-knowledge-workspace)。
+
+`migrate-workflow` 是独立的 workflow3→4 复制入口，不改 Source3 摘要算法。仅支持健康的 sources3、items3、entities2、associations2、reviews1 和 tags 六类活动数据，保留所有字节、身份、历史和既有意见；这些意见不变成新的来源覆盖批准。旧 generation-journals（含 outcomes）、auto-extraction、既有 migration 和旧 marker 只归档，匹配旧包一并保留。包含 library、carriers、entity-links 或其它不受支持内容时须保留旧目录并报告 unsupported，不静默丢弃或改指向；并非所有历史工作区都可用此入口。
+
+计划绑定实际源／目标、完整 inventory／摘要、实际 actor、旧包及容量。`--plan-only` 零写入；应用只认固定 `--input` 和精确 `--confirm-plan`，在双锁及完成哨兵下复制，未知临时文件安全停止。只恢复同计划的已确认步骤／回执；完成后目标增改删均拒绝覆盖，unknown 旧调用不重发。回退用旧目录及匹配构建。

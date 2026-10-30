@@ -6,6 +6,7 @@ import { KnowledgeApplication } from './application.js';
 import { KnowledgeReviewApplication } from './review.js';
 import { SourceReviewApplication, type SourceReviewPorts } from './source-review.js';
 import { FileSourceLedgerStore, FileSourceCoverageStore } from '../adapters/source-review-store.js';
+import { readSourceReviewOriginal } from '../adapters/source-review-original.js';
 import type { KnowledgeActor } from '../contracts.js';
 import { FileKnowledgeReviewStore } from '../adapters/review-store.js';
 import { FileSourceStore } from '../adapters/source-store.js';
@@ -29,7 +30,7 @@ import { entityLinkTextHash } from '../adapters/entity-link-api-producer.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
-export function createLocalKnowledgeApplication(root: string, options: { sourceCapture?: SourceCaptureService; sourceScope?: LocalSourceScope; actor?: KnowledgeActor } = {}): KnowledgeApplication {
+export function createLocalKnowledgeApplication(root: string, options: { sourceCapture?: SourceCaptureService; sourceScope?: LocalSourceScope; actor?: KnowledgeActor; reviewActor?: KnowledgeActor } = {}): KnowledgeApplication {
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
   assertSourceMigrationComplete(workspace);
@@ -44,6 +45,9 @@ export function createLocalKnowledgeApplication(root: string, options: { sourceC
     ...(options.sourceScope ? { sourceUpdates: createLocalSourceUpdates(workspace, options.sourceScope) } : {}),
     knowledge,
     journals: new FileGenerationJournalStore(join(workspace, 'generation-journals'), workspace),
+    ledgers: new FileSourceLedgerStore(join(workspace, 'source-ledgers'), 'local', workspace),
+    coverage: new FileSourceCoverageStore(join(workspace, 'source-coverage'), 'local', workspace),
+    reviewActor: options.reviewActor,
     associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
     tags: new FileKnowledgeTags(join(workspace, 'tags'), 'local', workspace),
     entities,
@@ -83,7 +87,7 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
       const stat = lstatSync(workspace);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return undefined;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined; }
-    const heads = ['items', 'generation-journals', 'associations', 'tags', 'entities'].map(name => {
+    const heads = ['items', 'generation-journals', 'associations', 'tags', 'entities', 'source-ledgers', 'source-coverage'].map(name => {
       const directory = join(workspace, name);
       try {
         const stat = lstatSync(directory);
@@ -121,11 +125,13 @@ export function createLocalKnowledgeSourceReview(root: string, options: Pick<Sou
   if (!root.trim()) throw new Error('Explicit source review workspace required.');
   const workspace = resolve(root);
   assertSourceMigrationComplete(workspace);
+  const journals = new FileGenerationJournalStore(join(workspace, 'generation-journals'), workspace);
   return new SourceReviewApplication({
     sources: new FileSourceStore(join(workspace, 'sources'), workspace),
     knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
     ledgers: new FileSourceLedgerStore(join(workspace, 'source-ledgers'), 'local', workspace),
     coverage: new FileSourceCoverageStore(join(workspace, 'source-coverage'), 'local', workspace),
+    readOriginal: (original, expected) => readSourceReviewOriginal(journals, original, expected),
     ...options, now: () => new Date().toISOString(), assertWritable: () => assertSourceWorkspaceWritable(workspace),
   });
 }

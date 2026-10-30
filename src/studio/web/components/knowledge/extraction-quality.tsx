@@ -4,6 +4,7 @@ import { Alert, Button, Skeleton } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeCandidateRun, KnowledgeExtractionQuality } from '../../../view-models/knowledge/knowledge-candidates';
 import { requestKnowledge } from './request';
+import { generationStageLabel } from './source-picker';
 
 /** The domain owns every count and ratio. This component only presents its projection. */
 export function ExtractionQualityView({ quality, loading, failed, onRetry, lang }: {
@@ -19,7 +20,7 @@ export function ExtractionQualityView({ quality, loading, failed, onRetry, lang 
           {quality.unavailable.length > 0 && <Alert type="warning" title={t('部分提炼记录不可读，当前统计可能不完整。', 'Some extraction records are unavailable. Current counts may be incomplete.')}/>}
           {!quality.current.length && <p>{t('暂无当前流程记录。', 'No current workflow records.')}</p>}
           {quality.current.map(run => <details key={run.runId}><summary>{run.runId} · {run.status} · {t(`已存 ${run.savedBodies} 条正文`, `${run.savedBodies} saved bodies`)}</summary>
-            {run.phases.map((phase, index) => <p key={index}>{phase.stageKind === 'body' ? t('正文', 'Content') : t('关联', 'Associations')} · {phase.state} · {t('未接纳输出', 'Rejected outputs')}：{phase.rejected ?? t('未知', 'Unknown')}{phase.issues.length ? ` · ${phase.issues.join('；')}` : ''}</p>)}
+            {run.phases.map((phase, index) => <p key={index}>{generationStageLabel(phase.stageKind, lang)} · {phase.state} · {t('未接纳输出', 'Rejected outputs')}：{phase.rejected ?? t('未知', 'Unknown')}{phase.issues.length ? ` · ${phase.issues.join('；')}` : ''}</p>)}
             <NativeArchiveChecks checks={quality.archiveChecks.filter(check => check.runId === run.runId)} verification="not_verified" lang={lang}/>
           </details>)}
           <Button size="small" onClick={onRetry}>{t('重新读取', 'Reload')}</Button>

@@ -7,6 +7,7 @@ import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources.js';
 import { SourceCaptureError } from './source-capture.js';
 import { SourceStoreError } from '../adapters/source-store.js';
+import { SourceLedgerRefSchema, SourceCoverageDecisionRefSchema, SourceCoverageWriteSchema } from '../source-review.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
@@ -25,12 +26,18 @@ export const knowledgeOperationSchemas = {
   'apply-associations': z.strictObject({ operation: z.literal('apply-associations'), id: text, revision: text, bodyDigest: KnowledgeBodyRefSchema.shape.bodyDigest, generation: z.number().int().nonnegative(), draft: z.unknown(), reason: text }),
   'preview-sources': z.strictObject({ operation: z.literal('preview-sources'), selections: z.array(SourceSelectionSchema).min(1).max(256), afterDeletion: z.literal('new_snapshot').optional() }),
   capture: z.strictObject({ operation: z.literal('capture'), selections: z.array(ResolvedSourceSelectionSchema).min(1).max(256), previewDigest: SourceDigestSchema, afterDeletion: z.literal('new_snapshot').optional() }),
-  'prepare-generation': z.strictObject({ operation: z.literal('prepare-generation'), sources: z.array(SourceRefSchema).min(1).max(256), executor: text, model: text, runId: uuid.optional() }),
+  'prepare-generation': z.strictObject({ operation: z.literal('prepare-generation'), sources: z.array(SourceRefSchema).min(1).max(256), executor: text, model: text, runId: uuid.optional(), sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema.optional() }),
+  'prepare-source-review': z.strictObject({ operation: z.literal('prepare-source-review'), sources: z.array(SourceRefSchema).min(1).max(256),
+    bodyRefs: z.array(KnowledgeBodyRefSchema).max(256), ledgerRef: SourceLedgerRefSchema.optional(), executor: text, model: text, runId: uuid.optional() }),
+  'source-ledger': z.strictObject({ operation: z.literal('source-ledger'), id: uuid, revision: uuid.optional() }),
+  'source-coverage-status': z.strictObject({ operation: z.literal('source-coverage-status'), id: uuid, revision: uuid.optional() }),
+  'review-source-coverage': z.strictObject({ operation: z.literal('review-source-coverage'),
+    command: z.discriminatedUnion('commandKind', [SourceCoverageWriteSchema.options[1], SourceCoverageWriteSchema.options[2]]) }),
   generate: z.strictObject({ operation: z.literal('generate'), sources: z.array(SourceRefSchema).min(1).max(256), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
   inspect: z.strictObject({ operation: z.literal('inspect'), id: uuid }),
   'continue-stage': z.strictObject({ operation: z.literal('continue-stage'), id: uuid, generation: z.number().int().positive(), executor: text, model: text, confirmedRequestDigest: SourceDigestSchema }),
-  'prepare-rebuild-associations': KnowledgeBodyRefSchema.extend({ operation: z.literal('prepare-rebuild-associations'), executor: text, model: text, runId: uuid.optional() }),
-  'rebuild-associations': KnowledgeBodyRefSchema.extend({ operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
+  'prepare-rebuild-associations': KnowledgeBodyRefSchema.extend({ operation: z.literal('prepare-rebuild-associations'), executor: text, model: text, runId: uuid.optional(), sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }),
+  'rebuild-associations': KnowledgeBodyRefSchema.extend({ operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema, sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }),
   retrieve: z.strictObject({ ...KnowledgeRetrievalRequestSchema.shape, operation: z.literal('retrieve'),
     format: z.enum(['json', 'text']).optional(),
     maxBytes: KnowledgeRetrievalRequestSchema.shape.maxBytes.unwrap().optional(),
@@ -46,6 +53,8 @@ export const knowledgeOperationSchemas = {
 };
 export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
+  knowledgeOperationSchemas['prepare-source-review'], knowledgeOperationSchemas['source-ledger'],
+  knowledgeOperationSchemas['source-coverage-status'], knowledgeOperationSchemas['review-source-coverage'],
   knowledgeOperationSchemas.show, knowledgeOperationSchemas.entities, knowledgeOperationSchemas['entity-catalog'],
   knowledgeOperationSchemas['entity-detail'], knowledgeOperationSchemas['correct-entities'], knowledgeOperationSchemas.inspect, knowledgeOperationSchemas['continue-stage'], knowledgeOperationSchemas['prepare-rebuild-associations'], knowledgeOperationSchemas['rebuild-associations'], knowledgeOperationSchemas.retrieve,
   knowledgeOperationSchemas['review-associations'], knowledgeOperationSchemas['apply-associations'], knowledgeOperationSchemas['preview-sources'], knowledgeOperationSchemas.capture, knowledgeOperationSchemas['prepare-generation'], knowledgeOperationSchemas.generate, knowledgeOperationSchemas.resume,
@@ -53,6 +62,10 @@ export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
 ]);
 export type KnowledgeOperation = z.infer<typeof KnowledgeOperationSchema>;
 type Results = {
+  'prepare-source-review': ReturnType<KnowledgeApplication['prepareSourceReview']>;
+  'source-ledger': ReturnType<KnowledgeApplication['sourceLedger']>;
+  'source-coverage-status': ReturnType<KnowledgeApplication['sourceCoverageStatus']>;
+  'review-source-coverage': ReturnType<KnowledgeApplication['reviewSourceCoverage']>;
   'review-associations': ReturnType<KnowledgeApplication['reviewAssociations']>; 'apply-associations': ReturnType<KnowledgeApplication['applyAssociations']>;
   list: ReturnType<KnowledgeApplication['list']>; tag: ReturnType<KnowledgeApplication['tag']>;
   quality: ReturnType<KnowledgeApplication['quality']>; runs: ReturnType<KnowledgeApplication['runs']>; show: ReturnType<KnowledgeApplication['detail']>;
@@ -84,15 +97,20 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'retrieve': return (request.format === 'text' ? retrieveKnowledgeText : retrieveKnowledge)(app, { query: request.query, maxBytes: request.maxBytes,
         includeCandidates: request.includeCandidates, snapshot: request.snapshot, sourceVersion: request.sourceVersion, analysisId: request.analysisId, entityRevisionId: request.entityRevisionId, entityId: request.entityId });
       case 'inspect': return app.inspect(request.id);
+      case 'source-ledger': return app.sourceLedger(request.id, request.revision);
+      case 'source-coverage-status': return app.sourceCoverageStatus(request.id, request.revision);
+      case 'review-source-coverage': return app.reviewSourceCoverage(request.command);
+      case 'prepare-source-review': { if (!model) throw new Error('Generation model adapter unavailable.');
+        return app.prepareSourceReview(request.sources, request.bodyRefs, model(request.executor, request.model), request.ledgerRef, request.runId, signal); }
       case 'continue-stage': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.continueStage(request.id, request.generation, model(request.executor, request.model), signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
-      case 'prepare-rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareAssociationRebuild({ knowledgeId: request.knowledgeId, revisionId: request.revisionId, bodyDigest: request.bodyDigest }, model(request.executor, request.model), request.runId, signal); }
-      case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations({ knowledgeId: request.knowledgeId, revisionId: request.revisionId, bodyDigest: request.bodyDigest }, model(request.executor, request.model), request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
+      case 'prepare-rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareAssociationRebuild({ knowledgeId: request.knowledgeId, revisionId: request.revisionId, bodyDigest: request.bodyDigest }, model(request.executor, request.model), request.sourceCoverageDecisionRef, request.runId, signal); }
+      case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations({ knowledgeId: request.knowledgeId, revisionId: request.revisionId, bodyDigest: request.bodyDigest }, model(request.executor, request.model), request.sourceCoverageDecisionRef, request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
       case 'review-associations': return app.reviewAssociations(request.id, request.revision, request.generation, request.choice, request.reason);
       case 'apply-associations': return app.applyAssociations(request.id, request.revision, request.bodyDigest, request.generation, request.draft, request.reason);
       case 'preview-sources': return app.previewSources(request.selections, { afterDeletion: request.afterDeletion, signal });
       case 'capture': { const preview = app.previewResolvedSources(request.selections, { afterDeletion: request.afterDeletion, expectedDigest: request.previewDigest, signal });
         return app.captureSources({ previewId: preview.previewId, previewDigest: preview.previewDigest }, signal); }
-      case 'prepare-generation': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareGeneration(request.sources, model(request.executor, request.model), request.runId, signal); }
+      case 'prepare-generation': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareGeneration(request.sources, model(request.executor, request.model), request.runId, signal, request.sourceCoverageDecisionRef); }
       case 'generate': {
         if (!model) throw new Error('Extraction model adapter unavailable.');
         return app.generate(request.sources, model(request.executor, request.model), request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest });

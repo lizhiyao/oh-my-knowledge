@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { prepareKnowledgeMigration, applyKnowledgeMigration } from '../../../knowledge/adapters/knowledge-migration.js';
 import { prepareAssociationMigration, applyAssociationMigration, type AssociationMigrationPlan } from '../../../knowledge/adapters/association-migration.js';
 import { prepareSourceMigration, applySourceMigration, SOURCE_MIGRATION_PLAN_MAX_BYTES, type SourceMigrationPlan } from '../../../knowledge/adapters/source-migration.js';
+import { planKnowledgeWorkflowMigration, applyKnowledgeWorkflowMigration, type KnowledgeWorkflowMigrationPlan } from '../../../knowledge/adapters/workflow-migration.js';
+import { SourceCoverageDecisionRefSchema } from '../../../knowledge/source-review.js';
+import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../../knowledge/extraction/source-review-wire.js';
 import { readLocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { SourceDigestSchema, SourceRefSchema, ResolvedSourceSelectionSchema } from '../../../knowledge/sources.js';
 import { FileExtractionRunStore } from '../../../knowledge/adapters/run-store.js';
@@ -45,7 +48,7 @@ function readInputJson(path: string, maxBytes = 16 * 1024 * 1024): unknown {
 }
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。', 'Generate and maintain complete knowledge bodies, with separately reviewed derived associations. Saved bodies are pending; matching quotes does not verify truth.');
-  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use'],
+  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow', 'source-ledger', 'source-coverage-status', 'review-source-coverage', 'prepare-source-review', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use'],
     description: description('preview 只读，capture 仅保存；prepare 展示完整模型请求，generate／continue-stage 须逐阶段确认摘要；resume 零模型恢复。', 'Preview reads only; capture saves only. Prepare displays the complete model request; generate/continue-stage require per-stage digest confirmation. Resume never calls a model.') }) };
   static flags = {
     lang: LANG_FLAG,
@@ -64,10 +67,10 @@ export default class ObserveKnowledge extends BaseCommand {
     'judge-review': Flags.string({ description: description('study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。', 'study: model-judge review JSON with version identity and separate declared usage, compared with human judgments; does not execute the judge.') }),
     workspace: Flags.string({ description: description('显式知识工作区，省略使用设置。', 'Explicit knowledge workspace; defaults to settings.') }),
     scope: Flags.string({ description: description('preview-sources／capture／source-updates：独立可信宿主绑定 JSON（1 MiB 内），声明项目 root 或 trace path；选区 JSON 仅使用逻辑 ID 和相对路径。', 'preview-sources/capture/source-updates: independent trusted host bindings JSON within 1 MiB, declaring project roots or trace paths; selection JSON uses logical IDs and relative paths only.') }),
-    'matching-build': Flags.string({ description: description('migrate-sources：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。', 'migrate-sources: matching-build installation archive preserving its filename (tgz, tar.gz, tar or zip).') }),
-    'matching-build-id': Flags.string({ description: description('migrate-sources：宿主声明的旧构建身份；不等同于实际安装和回退已验收。', 'migrate-sources: host-declared old build identity; this does not verify installation or rollback.') }),
-    'plan-only': Flags.boolean({ description: description('migrate-sources：只读导出独立副本迁移计划，不创建目标。', 'migrate-sources: export the independent-copy migration plan read-only without creating the target.') }),
-    'confirm-plan': Flags.string({ description: description('migrate-sources：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。', 'migrate-sources: confirm the exact SHA-256 of the fixed --input plan to apply or resume the same migration.') }),
+    'matching-build': Flags.string({ description: description('migrate-sources／migrate-workflow：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。', 'migrate-sources/migrate-workflow: matching-build installation archive preserving its filename (tgz, tar.gz, tar or zip).') }),
+    'matching-build-id': Flags.string({ description: description('migrate-sources／migrate-workflow：宿主声明的旧构建身份；不等同于实际安装和回退已验收。', 'migrate-sources/migrate-workflow: host-declared old build identity; this does not verify installation or rollback.') }),
+    'plan-only': Flags.boolean({ description: description('migrate-sources／migrate-workflow：只读导出独立副本迁移计划，不创建目标。', 'migrate-sources/migrate-workflow: export the independent-copy migration plan read-only without creating the target.') }),
+    'confirm-plan': Flags.string({ description: description('migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。', 'migrate-sources/migrate-workflow: confirm the exact SHA-256 of the fixed --input plan to apply or resume the same migration.') }),
     snapshot: Flags.string({ description: description('source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。', 'source/delete-source/retrieve: source snapshot UUID, requiring --source-version.') }),
     id: Flags.string({ description: description('知识 ID；inspect/resume/continue-stage 为运行 UUID。', 'Knowledge ID; run UUID for inspect/resume/continue-stage.') }),
     revision: Flags.string({ description: description('明确知识或派生修订身份。', 'Exact knowledge or projection revision identity.') }),
@@ -86,14 +89,14 @@ export default class ObserveKnowledge extends BaseCommand {
     'page-size': Flags.integer({ min: 1, max: 100, description: description('entities 每页条数。', 'entities page size.') }),
     generation: Flags.integer({ min: 0, description: description('预先读取的 generation，防并发覆盖。', 'Previously read generation, preventing concurrent overwrite.') }),
     reason: Flags.string({ description: description('修订或维护理由。保留和关联审查均不证明真值。', 'Revision or maintenance reason. Retention and association review do not verify truth.') }),
-    input: Flags.string({ description: description('普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，generate 为 {sources} 精确引用数组；也接受完整修订／复核草稿。', 'Regular UTF-8 JSON is normally limited to 16 MiB; fixed migrate-sources plans have a separate 128 MiB bound. preview-sources uses {selections}, capture the complete preview, and generate {sources} exact references; complete revision/review drafts are also accepted.') }),
+    input: Flags.string({ description: description('普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources, sourceCoverageDecisionRef?}；prepare-source-review 为 {sources, bodyRefs, ledgerRef?}；重建为 {sourceCoverageDecisionRef}；来源决定为完整 command，也接受完整修订／复核草稿。', 'Regular UTF-8 JSON is normally limited to 16 MiB; fixed migrate-sources plans have a separate 128 MiB bound. preview-sources uses {selections}, capture the complete preview, prepare-generation uses {sources, sourceCoverageDecisionRef?}, prepare-source-review {sources, bodyRefs, ledgerRef?}, rebuilding {sourceCoverageDecisionRef}, and source review a complete command; revision/review drafts are also accepted.') }),
     choice: Flags.string({ options: ['accept', 'reject'], description: description('review-associations：派生修订的明确审查决定。', 'review-associations: explicit projection review decision.') }),
     'projection-revision': Flags.string({ description: description('review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。', 'review-status: inspect coverage for an exact association projection; defaults to the projection matching this body.') }),
     executor: Flags.string({ description: description('生成/继续/重建的执行器。', 'Executor for generation/continuation/rebuild.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
     'confirm-request': Flags.string({ description: description('generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。', 'generate/continue-stage/rebuild-associations: confirm the requestDigest for the complete system/input shown by prepare/inspect; each phase requires separate confirmation.') }),
-    stage: Flags.string({ options: ['body', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
+    stage: Flags.string({ options: ['source_ledger', 'body', 'source_coverage', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
     json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。', 'Complete JSON; retrieve defaults to budgeted single-line JSON, also selected by --format json. Cannot be combined with --format text.') }),
   };
   static examples = [
@@ -123,8 +126,10 @@ export default class ObserveKnowledge extends BaseCommand {
       'preview-sources': ['scope', 'input'], capture: ['scope', 'input'], source: ['snapshot', 'source-version'], 'source-updates': ['scope', 'input'], 'delete-source': ['snapshot', 'source-version'],
       'prepare-generation': ['input', 'executor', 'model', 'run-id'], generate: ['input', 'executor', 'model', 'run-id', 'confirm-request'],
       'continue-stage': ['id', 'generation', 'executor', 'model', 'confirm-request'],
-      'prepare-rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id'],
-      'rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id', 'confirm-request'],
+      'prepare-source-review': ['input', 'executor', 'model', 'run-id'],
+      'source-ledger': ['id', 'revision'], 'source-coverage-status': ['id', 'revision'], 'review-source-coverage': ['input'],
+      'prepare-rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id', 'input'],
+      'rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id', 'confirm-request', 'input'],
     };
     const selectedFlags = sourceFlags[args.operation];
     if (selectedFlags && Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && ![...selectedFlags, 'workspace', 'lang', 'json'].includes(name))) {
@@ -134,8 +139,23 @@ export default class ObserveKnowledge extends BaseCommand {
     if (flags.format === 'text' && flags.json) this.error(t('--format text 不可与 --json 同用。', '--format text cannot be combined with --json.'), { exit: 2 });
     if (flags.scope !== undefined && !['preview-sources', 'capture', 'source-updates'].includes(args.operation)) this.error(t('--scope 仅用于来源预览、保存和变化查询。', '--scope is only valid for source preview/capture/update checks.'), { exit: 2 });
     if (flags['confirm-request'] !== undefined && !['generate', 'continue-stage', 'rebuild-associations'].includes(args.operation)) this.error(t('--confirm-request 仅用于明确发送阶段。', '--confirm-request is only valid for explicit stage dispatch.'), { exit: 2 });
-    if (!['migrate', 'migrate-associations', 'migrate-sources'].includes(args.operation) && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于迁移。', '--from-workspace is only valid for migration.'), { exit: 2 });
-    if (args.operation !== 'migrate-sources' && [flags['matching-build'], flags['matching-build-id'], flags['confirm-plan'], flags['plan-only'] || undefined].some(value => value !== undefined)) this.error(t('来源迁移参数仅用于 migrate-sources。', 'Source migration flags are only valid for migrate-sources.'), { exit: 2 });
+    if (!['migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow'].includes(args.operation) && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于迁移。', '--from-workspace is only valid for migration.'), { exit: 2 });
+    if (!['migrate-sources', 'migrate-workflow'].includes(args.operation) && [flags['matching-build'], flags['matching-build-id'], flags['confirm-plan'], flags['plan-only'] || undefined].some(value => value !== undefined)) this.error(t('来源迁移参数仅用于 migrate-sources。', 'Source migration flags are only valid for migrate-sources.'), { exit: 2 });
+    if (args.operation === 'migrate-workflow') {
+      const applying = flags.input !== undefined, allowed = new Set(applying ? ['input', 'confirm-plan', 'json', 'lang'] : ['from-workspace', 'workspace', 'operation-id', 'matching-build', 'matching-build-id', 'plan-only', 'json', 'lang']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
+        || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
+        || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow4 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow4 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+      }
+      try {
+        const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),
+          migrationId: flags['operation-id']!, namespace: 'local', actor: knowledgeReviewCliActor(process.env) ?? { actorKind: 'human', actorId: 'local-user' }, at: new Date().toISOString(),
+          matchingBuildArchivePath: resolve(flags['matching-build']!), matchingBuildId: flags['matching-build-id']! });
+        this.log(JSON.stringify(applying ? { ...applyKnowledgeWorkflowMigration(plan, flags['confirm-plan']!), modelCalls: 0, semanticAcceptance: false } : plan, null, 2));
+      } catch (cause) { this.error(`${t('流程副本迁移未完成；保留原目录、目标与固定计划。', 'Workflow copy migration did not complete; preserve the source, target and fixed plan.')}\n${cause instanceof Error ? cause.message : String(cause)}`, { exit: 1 }); }
+      return;
+    }
     if (args.operation === 'migrate-sources') {
       const applying = flags.input !== undefined, allowed = new Set(applying ? ['input', 'confirm-plan', 'json', 'lang'] : ['from-workspace', 'workspace', 'operation-id', 'matching-build', 'matching-build-id', 'plan-only', 'json', 'lang']);
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
@@ -262,7 +282,7 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     const need = (value: string | undefined, name: string) => { if (!value?.trim()) this.error(`--${name} ${t('必填', 'is required')}`, { exit: 2 }); return value!; };
     if (args.operation === 'schema') {
-      const profile = flags.stage === 'association' ? ASSOCIATION_GENERATION_PROFILE : BODY_GENERATION_PROFILE;
+      const profile = { source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body: BODY_GENERATION_PROFILE, source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE, association: ASSOCIATION_GENERATION_PROFILE }[(flags.stage ?? 'body') as 'source_ledger' | 'body' | 'source_coverage' | 'association'];
       this.log(JSON.stringify({ profileId: profile.profileId, promptVersion: profile.promptVersion, wireId: profile.wireId, schema: profile.wireSchema }, null, 2)); return;
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });
@@ -307,12 +327,20 @@ export default class ObserveKnowledge extends BaseCommand {
         if (!parsed.success) this.error(t('capture 需要完整 preview-sources 导出，不接受来源路径或旧 snapshot 参数。', 'capture requires the complete preview-sources export, without source paths or old snapshot arguments.'), { exit: 2 });
         operation = { operation: 'capture', selections: parsed.data.items.map(item => item.resolvedSelection), previewDigest: parsed.data.previewDigest,
           ...(parsed.data.savePlan.afterDeletion === 'new_snapshot' ? { afterDeletion: 'new_snapshot' as const } : {}) }; break; }
-      case 'prepare-generation': case 'generate': { const parsed = z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256) }).safeParse(draft());
+      case 'prepare-generation': case 'prepare-source-review': { const parsed = args.operation === 'prepare-generation'
+        ? knowledgeOperationSchemas['prepare-generation'].omit({ operation: true, executor: true, model: true, runId: true }).safeParse(draft())
+        : knowledgeOperationSchemas['prepare-source-review'].omit({ operation: true, executor: true, model: true, runId: true }).safeParse(draft());
+        if (!parsed.success) this.error(t('准备输入须包含完整精确来源引用及该操作的正文／复核引用。', 'Preparation requires complete exact source references and the body/review references for this operation.'), { exit: 2 });
+        operation = { ...parsed.data, operation: args.operation, executor: 'configured', model: 'configured', runId: flags['run-id'] } as KnowledgeOperation; break; }
+      case 'generate': { const parsed = z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256) }).safeParse(draft());
         if (!parsed.success) this.error(t('生成输入必须是 {sources} 精确来源引用数组。', 'Generation input must be {sources} with exact source references.'), { exit: 2 });
-        operation = args.operation === 'prepare-generation' ? { operation: 'prepare-generation', sources: parsed.data.sources, executor: 'configured', model: 'configured', runId: flags['run-id'] }
-          : { operation: 'generate', sources: parsed.data.sources, executor: 'configured', model: 'configured', runId: flags['run-id'], confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break; }
+        operation = { operation: 'generate', sources: parsed.data.sources, executor: 'configured', model: 'configured', runId: flags['run-id'], confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break; }
+      case 'source-ledger': case 'source-coverage-status': operation = { operation: args.operation, id: need(flags.id, 'id'), revision: flags.revision }; break;
+      case 'review-source-coverage': operation = { operation: 'review-source-coverage', command: draft() } as KnowledgeOperation; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured', confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break;
-      case 'prepare-rebuild-associations': case 'rebuild-associations': { const ref = { knowledgeId: need(flags.id, 'id'), revisionId: need(flags.revision, 'revision'), bodyDigest: need(flags['body-digest'], 'body-digest'), executor: 'configured', model: 'configured', runId: flags['run-id'] };
+      case 'prepare-rebuild-associations': case 'rebuild-associations': { const parsed = z.strictObject({ sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }).safeParse(draft());
+        if (!parsed.success) this.error(t('重建需要 --input 中完整的 sourceCoverageDecisionRef。', 'Rebuilding requires a complete sourceCoverageDecisionRef in --input.'), { exit: 2 });
+        const ref = { sourceCoverageDecisionRef: parsed.data.sourceCoverageDecisionRef, knowledgeId: need(flags.id, 'id'), revisionId: need(flags.revision, 'revision'), bodyDigest: need(flags['body-digest'], 'body-digest'), executor: 'configured', model: 'configured', runId: flags['run-id'] };
         operation = args.operation === 'prepare-rebuild-associations' ? { operation: args.operation, ...ref } : { operation: args.operation, ...ref, confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break; }
       case 'runs': case 'quality': case 'list': operation = { operation: args.operation }; break;
       case 'inspect': case 'resume': operation = { operation: args.operation, id: need(flags.id, 'id') }; break;
@@ -335,8 +363,10 @@ export default class ObserveKnowledge extends BaseCommand {
       catch { this.error(t('--scope 必须是 1 MiB 内的独立可信宿主绑定 JSON。', '--scope must be independent trusted host bindings JSON within 1 MiB.'), { exit: 2 }); }
     }
     const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
-    if (['prepare-generation', 'generate', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations'].includes(operation.operation)) operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') } as KnowledgeOperation;
-    const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope });
+    if (['prepare-generation', 'prepare-source-review', 'generate', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations'].includes(operation.operation)) operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') } as KnowledgeOperation;
+    const reviewActor = operation.operation === 'review-source-coverage' ? knowledgeReviewCliActor(process.env) : undefined;
+    if (operation.operation === 'review-source-coverage' && !reviewActor) this.error(t('来源决定需要可信宿主的实际操作者上下文，不能回落为真人。', 'Source decisions require actual-actor context from a trusted host; no human fallback is inferred.'), { exit: 2 });
+    const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope, reviewActor });
     await this.runWithCancellation(async signal => {
       let result: unknown;
       try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer)); }
@@ -349,7 +379,7 @@ export default class ObserveKnowledge extends BaseCommand {
       this.log(operation.operation === 'retrieve' ? flags.format === 'text' ? String(result) : JSON.stringify(result)
         : flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
       if (result && typeof result === 'object' && 'journal' in result && (result.journal as { status: string }).status !== 'completed'
-        && (!('nextAction' in result) || result.nextAction !== 'continue_stage')) this.exit(1);
+        && (!('nextAction' in result) || !['continue_stage', 'prepare_next_stage', 'review_source_coverage'].includes(String(result.nextAction)))) this.exit(1);
     });
   }
 }

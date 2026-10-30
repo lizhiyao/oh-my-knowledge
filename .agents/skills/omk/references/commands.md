@@ -612,7 +612,7 @@ omk observe knowledge <operation> [flags]
 - `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
 - `--body-digest` `option`:rebuild/apply-associations：精确正文 sha256 摘要。
 - `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
-- `--confirm-plan` `option`:migrate-sources：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
+- `--confirm-plan` `option`:migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
 - `--confirm-request` `option`:generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。
 - `--entity-id` `option`:retrieve 须配 --analysis 和 --entity-revision，按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。
 - `--entity-revision` `option`:明确实体分析修订 UUID。
@@ -624,14 +624,14 @@ omk observe knowledge <operation> [flags]
 - `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
-- `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，generate 为 {sources} 精确引用数组；也接受完整修订／复核草稿。
+- `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources, sourceCoverageDecisionRef?}；prepare-source-review 为 {sources, bodyRefs, ledgerRef?}；重建为 {sourceCoverageDecisionRef}；来源决定为完整 command，也接受完整修订／复核草稿。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
 - `--json` `boolean`:完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
-- `--matching-build` `option`:migrate-sources：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。
-- `--matching-build-id` `option`:migrate-sources：宿主声明的旧构建身份；不等同于实际安装和回退已验收。
+- `--matching-build` `option`:migrate-sources／migrate-workflow：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。
+- `--matching-build-id` `option`:migrate-sources／migrate-workflow：宿主声明的旧构建身份；不等同于实际安装和回退已验收。
 - `--max-bytes` `option`:retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
@@ -640,7 +640,7 @@ omk observe knowledge <operation> [flags]
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities 页码。
 - `--page-size` `option`:entities 每页条数。
-- `--plan-only` `boolean`:migrate-sources：只读导出独立副本迁移计划，不创建目标。
+- `--plan-only` `boolean`:migrate-sources／migrate-workflow：只读导出独立副本迁移计划，不创建目标。
 - `--projection-revision` `option`:review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。
 - `--query` `option`:retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。
 - `--reason` `option`:修订或维护理由。保留和关联审查均不证明真值。
@@ -651,7 +651,7 @@ omk observe knowledge <operation> [flags]
 - `--snapshot` `option`:source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。
 - `--source-status` `all|available|unavailable`:entities 来源可读状态筛选。
 - `--source-version` `option`:source／delete-source／retrieve：精确来源 sha256，须配 --snapshot。
-- `--stage` `body|association`:schema：响应阶段，默认 body。
+- `--stage` `source_ledger|body|source_coverage|association`:schema：响应阶段，默认 body。
 - `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
 - `--workspace` `option`:显式知识工作区，省略使用设置。
 

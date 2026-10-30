@@ -7,24 +7,33 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v3` |
-| Body prompt | `knowledge-body-generation/v8` |
+| Production workflow | `knowledge-body-first/v4` |
+| Source ledger prompt | `knowledge-source-ledger-generation/v1` |
+| Body prompt | `knowledge-body-generation/v9` |
+| Source coverage prompt | `knowledge-source-coverage-generation/v1` |
 | Association prompt | `knowledge-association-generation/v7` |
-| Body profile digest | `sha256:5455186952f8a76b587b749f46385a770c17ffa2dc22a328c3181ce65ba91cea` |
+| Body profile digest | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
 | Association profile digest | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
+| Source ledger profile digest | `sha256:aaa5d7e028c573ee6efc2a15a4714aeec644ed87500f28262693b5b9af18dd8d` |
+| Source coverage profile digest | `sha256:3d6d81ae1088e6dfb3d391b337d0f3a160d31c5f6dd8d9eb8373f5b77e2a9a86` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
+| Source ledger structural wire digest | `sha256:3c14761c31e12b6a61fbe4a2567f7a18b6b31f21f8c08c9b9020894000d1a596` |
+| Source coverage structural wire digest | `sha256:2c251e3c6f4b5ea320dc6648dee99022d631b4c0fd109a9cfb398d5293205f0f` |
 | Body response Schema | `2` |
 | Association response Schema | `3` |
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
 | Review and use feedback history Schema | `1` |
-| Generation journal Schema | `3` |
+| Generation journal Schema | `4` |
+| Source ledger history Schema | `1` |
+| Source coverage history Schema | `1` |
 | Entity history Schema | `2` |
 | Source snapshot Schema | `3` |
 | Source projection | `knowledge-window-v3` |
-| Source generation input | `knowledge-source-generation-input/v1` |
-| Default source import run identity | `knowledge-source-set-import-run/v1` |
+| Source generation input | `knowledge-source-generation-input/v2` |
+| Preserved association input envelope | `knowledge-source-generation-input/v1` |
+| Default source import run identity | `knowledge-source-set-import-run/v2` |
 | Complete native archive capacity | 536,870,887 bytes |
 | Default retrieval response budget (adjustable) | 65,536 bytes |
 | Minimum retrieval response budget | 1,024 bytes |

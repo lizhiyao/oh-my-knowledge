@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-本基础提供内部宿主契约及确定性 wire 校验。默认生成仍为 workflow3、journal3、body8 和 association7。完整 workflow4 接线与独立副本迁移属于后续统一改动；仅有这些记录不代表生成质量已改善或通过。
+默认 `knowledge-body-first/v4` 按来源盘点、正文、来源覆盖、关联四阶段执行；journal 为 Schema 4，默认输入为 `knowledge-source-generation-input/v2`。每阶段独立准备、核对完整请求、确认摘要并 claim，完整原件先归档再解码；不会自动串行发送或批准。正文仍为 wire2／prompt9，关联沿用原字节的 prompt7／profile／wire3 及阶段 v1 envelope。该流程不证明原始生成质量或任务效果已通过。
 
 ## 身份与证据 {#identity}
 
@@ -30,6 +30,8 @@
 
 明确替换意见与撤销均保留旧事件；不同活跃意见为 disputed，不按时间或模型共识裁定真值。关联请求须固定一个活跃、无冲突的允许继续决定，新正文或分析不继承旧决定。
 
+完整 `record_decision` 的 decision 含 coverageRef、sourceSetId、ledgerRef、bodyRefs、decisionKind、reason、limitations、dispositions 和 supersedesEventIds。每项 disposition 为 accepted_limit／resolved／blocks；未决 ID 按实际清单派生：排除／待定单元为 `unit:<unitKey>`，排除／待定 item 为 `item:<itemId>`，非 covered 检查为 `check:<checkId>`，每个 finding 为 `finding:<findingId>`。必须逐项覆盖，不以字符串拼出“已通过”。`sourceCoverageDecisionRef` 只含 coverageRef、sourceSetId、ledgerRef、bodyRefs 及已提交 receipt 的 eventId，不夹带 decisionKind、reason 或 actor。
+
 ## 发布与原件闭合 {#custody}
 
 写入采用追加历史、共享工作区锁、CAS 及绑定实际 actor 的幂等收据。不可信客户端载荷不能自报实际 actor；缺少可信 actor 时可读、不可写。
@@ -40,4 +42,10 @@
 
 ## 集成边界 {#integration}
 
-新增清单／查漏 profile 独立标识，不用它们重新解释旧正文或关联输出。现有正文、实体、关联、来源、review 和 tag 历史保持。workflow4 成为默认前，须统一接通请求确认、claim 时门禁、旧自动许可拒绝及独立副本迁移。原工作区和匹配构建用于回退，新 reader 不恢复旧派发 claim。
+`prepare-generation` 从完整来源准备来源清单；后续阶段分别通过 `continue-stage` 核对并发送。关联准备还须在同一 run 的输入中提供精确 `sourceCoverageDecisionRef`；覆盖分析完成、全部 covered 或无 finding 都不代替该决定。正文为零条也继续盘点和查漏，不虚构占位正文。
+
+`prepare-source-review` 接收完整原始 `sources`、精确 `bodyRefs` 和可选 `ledgerRef`。没有清单引用时先盘点再覆盖；匹配引用只做覆盖，不生成正文或自动关联。正文修订后须按新 bodyRefs 重新覆盖并记录决定。`prepare-rebuild-associations`／`rebuild-associations` 同样绑定精确决定，来源取自该覆盖记录的完整 SourceSet，不能缩成正文已有引文。
+
+`source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command：共同携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不在 payload 自报 actor。关联在准备时及共享锁内 claim 前重验决定和所有上游绑定。claim 后的撤销保留已发送请求及原件，投影仍 pending，并显示失效的复核语境。手工实体／关联维护不自动产生来源覆盖批准。
+
+Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal3 和自动许可仅归档。当前构建不提供 workflow4 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。

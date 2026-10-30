@@ -16,8 +16,8 @@ export function candidateDecisionLabel(choice: CandidateChoice, lang: Lang): str
 }
 
 const RUN_LABELS: Record<Lang, Record<string, string>> = {
-  zh: { completed: '流程已结束', active: '阶段待继续或恢复', failed: '正文阶段失败', unsupported: '旧版本不受支持', unavailable: '提炼记录不可读' },
-  en: { completed: 'Workflow ended', active: 'Stage continuation or recovery needed', failed: 'Body phase failed', unsupported: 'Legacy version unsupported', unavailable: 'Extraction record unavailable' },
+  zh: { completed: '流程已结束', active: '阶段待继续或恢复', failed: '生成阶段失败', unsupported: '旧版本不受支持', unavailable: '提炼记录不可读' },
+  en: { completed: 'Workflow ended', active: 'Stage continuation or recovery needed', failed: 'Generation phase failed', unsupported: 'Legacy version unsupported', unavailable: 'Extraction record unavailable' },
 };
 
 /** 候选页与会话侧的提炼记录读同一套状态词；未知状态原样回显，不替领域补一个猜测。 */

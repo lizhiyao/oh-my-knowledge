@@ -78,6 +78,8 @@ export class SourceReviewApplication {
     if (!same(ref, selected.ref)) throw new Error('Source ledger reference conflict.');
     this.validateLedger(selected.revision); return selected;
   }
+  /** Native identity and complete input are rechecked before a ledger can guide another phase. */
+  assertLedger(input: SourceLedgerRef) { return this.checkedLedger(SourceLedgerRefSchema.parse(input)); }
   private validateLedger(revision: SourceLedgerRevision) {
     const sources = this.sources(revision.data.manifest);
     const raw = this.original(revision.modelOriginal, { profile: SOURCE_LEDGER_GENERATION_PROFILE, input: sourceLedgerModelInput(sources) });

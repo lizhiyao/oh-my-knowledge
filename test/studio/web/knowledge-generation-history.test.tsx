@@ -35,11 +35,11 @@ it.each(['zh', 'en'] as const)('keeps older-profile recovery disabled and prepar
     nextAction: 'unsupported', unsupportedReason: 'generation_profile_changed_use_matching_build', archiveChecks: [], archiveVerification: 'not_verified' };
   const current: KnowledgeCandidateRun = { ...old, runId: '00000000-0000-4000-8000-000000000082', nextAction: 'resume_publication', unsupportedReason: undefined };
   const digest = (value: string) => `sha256:${value.repeat(64)}`;
-  const recovered: KnowledgeCandidateRun = { ...current, nextAction: 'continue_stage', journalGeneration: 5, executor: 'codex', model: 'authored-history-model', bodies: [bodyRef],
+  const recovered: KnowledgeCandidateRun = { ...current, mode: 'generate', nextAction: 'prepare_next_stage', journalGeneration: 5, executor: 'codex', model: 'authored-history-model', bodies: [bodyRef],
     sources: [{ ...sourceRef, sourceKind: 'agent_trace', origin: { threadId: 'authored-thread', title: 'Display metadata is not a source selector' } }],
     phases: [{ stageKind: 'body', state: 'completed', invocationId: '00000000-0000-4000-8000-000000000083', profileId: digest('a'), promptVersion: 'authored-body', wireId: digest('b'),
       committed: 1, issues: [], producerId: 'authored-history', producerRevision: 'v1', rejectedCount: 0 }] };
-  const prepared: KnowledgeCandidateRun = { ...recovered, journalGeneration: 6, phases: [...recovered.phases],
+  const prepared: KnowledgeCandidateRun = { ...recovered, nextAction: 'continue_stage', journalGeneration: 6, phases: [...recovered.phases],
     preparedStage: { stageKind: 'association', state: 'prepared', invocationId: '00000000-0000-4000-8000-000000000084', profileId: digest('c'), promptVersion: 'authored-association', wireId: digest('d'),
       wireSchema: { type: 'object' }, system: 'Authored complete association system; this fixture is not a native result.',
       input: JSON.stringify({ sources: [sourceRef], bodies: [{ bodyRef, title: revision.title, content: revision.content }] }), inputDigest: digest('e'), requestDigest: digest('f'),

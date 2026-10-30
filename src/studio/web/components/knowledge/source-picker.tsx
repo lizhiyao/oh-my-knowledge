@@ -7,6 +7,7 @@ import type { Language } from '../layout/shell';
 import type { SourceSelection } from '../../../../knowledge/sources';
 import type { KnowledgeCandidateRun, KnowledgeConversation, KnowledgeConversationDetail, KnowledgeConversationPreview,
   KnowledgeSourceCapture, KnowledgeSourceCatalog, KnowledgeSourcePreview, KnowledgeSourceRef } from '../../../view-models/knowledge/knowledge-candidates';
+import { SourceReviewPanel } from './source-review';
 import { requestKnowledge } from './request';
 import { SourceUpdates } from './source-updates';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
@@ -50,6 +51,11 @@ export function SourcePreviewContent({ preview, capture, lang }: { preview: Know
   </section>;
 }
 
+export function generationStageLabel(stage: KnowledgeCandidateRun['phases'][number]['stageKind'], lang: Language): string {
+  return ({ source_ledger: ['来源清单', 'Source inventory'], body: ['知识正文', 'Knowledge content'],
+    source_coverage: ['来源覆盖核对', 'Source coverage'], association: ['实体关联', 'Entity associations'] })[stage][lang === 'zh' ? 0 : 1];
+}
+
 /** The immutable journal stage is the whole host request, not a selected-text byte estimate. */
 export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirmed }: {
   run: KnowledgeCandidateRun; lang: Language; confirmed: boolean; onConfirmed(value: boolean): void;
@@ -57,9 +63,9 @@ export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirm
   const stage = run.preparedStage, t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   if (!stage || run.nextAction !== 'continue_stage') return <Alert type="warning" title={t('没有可发送的已准备阶段；请核对现有日志。', 'No prepared stage is sendable. Inspect the existing journal.')}/>;
   return <section>
-    <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : t('确认实体关联请求', 'Confirm entity association request')}</h3>
-    <p>{t('仅发送下面这个精确阶段。正文保存后，关联阶段需要另一次确认；保存来源不等于批准发送。', 'Send only this exact stage. After content is saved, associations require another confirmation. Saving a source does not authorize sending it.')}</p>
-    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {t('保存为待核对候选', 'save as pending candidates')}</p>
+    <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : stage.stageKind === 'association' ? t('确认实体关联请求', 'Confirm entity association request') : t(`确认${generationStageLabel(stage.stageKind, lang)}请求`, `Confirm ${generationStageLabel(stage.stageKind, lang)} request`)}</h3>
+    <p>{t('仅发送下面这个精确阶段。每个阶段单独确认，来源复核决定与模型发送分开。', 'Send only this exact stage. Confirm every stage separately; source review decisions and model dispatch are separate.')}</p>
+    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {stage.stageKind === 'body' || stage.stageKind === 'association' ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately')}</p>
     <p>{t('完整输入 UTF-8 字节：', 'Complete input UTF-8 bytes: ')}{new TextEncoder().encode(stage.input).length} · system: {new TextEncoder().encode(stage.system).length}</p>
     <details><summary>{t('请求详情', 'Request details')}</summary><p>{run.workflowId} · {run.inputVersion}</p><dl><dt>runId</dt><dd><code>{run.runId}</code></dd><dt>invocationId</dt><dd><code>{stage.invocationId}</code></dd>
       <dt>requestDigest</dt><dd><code>{stage.requestDigest}</code></dd><dt>inputDigest</dt><dd><code>{stage.inputDigest}</code></dd>
@@ -176,11 +182,14 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
       })}>{t('准备并核对完整模型请求', 'Prepare and review complete model request')}</Button>}
       {phase === 'prepared' && <Button type="primary" disabled={busy || !confirmed || !run?.preparedStage} onClick={() => void work(async signal => {
         const stage = run!.preparedStage!;
-        const next = await api<KnowledgeCandidateRun>(stage.stageKind === 'body' ? 'generate' : 'continue-stage', stage.stageKind === 'body'
-          ? { sources: refs, runId: run!.runId, executor: run!.executor, model: run!.model, confirmedRequestDigest: stage.requestDigest }
-          : { id: run!.runId, generation: run!.journalGeneration, executor: run!.executor, model: run!.model, confirmedRequestDigest: stage.requestDigest }, signal);
+        const next = await api<KnowledgeCandidateRun>('continue-stage', { id: run!.runId, generation: run!.journalGeneration,
+          executor: run!.executor, model: run!.model, confirmedRequestDigest: stage.requestDigest }, signal);
         if (signal.aborted) return; setRun(next); setConfirmed(false); setPhase(next.nextAction === 'continue_stage' && next.preparedStage ? 'prepared' : 'result'); notifyKnowledgeChange(workspace); onFinished?.(workspace);
-      }, true)}>{run?.preparedStage?.stageKind === 'association' ? t('发送此实体关联请求', 'Send this association request') : t('发送此正文请求', 'Send this content request')}</Button>}
+      }, true)}>{t('发送此阶段请求', 'Send this stage request')}</Button>}
+      {phase === 'result' && run?.nextAction === 'prepare_next_stage' && <Button type="primary" disabled={busy} onClick={() => void work(async signal => {
+        const prepared = await api<KnowledgeCandidateRun>('prepare-generation', { sources: refs, runId: run.runId, executor: run.executor, model: run.model }, signal);
+        if (!signal.aborted) { setRun(prepared); setConfirmed(false); setPhase(prepared.preparedStage ? 'prepared' : 'result'); }
+      })}>{t('准备并核对下一阶段', 'Prepare and review the next stage')}</Button>}
     </Space>}>
     <div className="candidate-form">
       {error && <Alert type="error" title={error}/>}{busy && <Spin/>}
@@ -226,7 +235,13 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
         source={{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }} snapshot={snapshot} workspace={workspace} lang={lang} busy={busy} run={work}/>)}
       {phase === 'prepared' && run && <PreparedGenerationConfirmation key={run.preparedStage?.requestDigest} run={run} lang={lang} confirmed={confirmed} onConfirmed={setConfirmed}/>}
       {run && !!run.bodies.length && <><p>{t(`已保存 ${run.bodies.length} 条候选正文，内容仍待核对。`, `${run.bodies.length} candidate bodies are saved and await review.`)}</p>{run.bodies.map(body => onReview ? <Button key={body.knowledgeId} disabled={busy} onClick={() => void work(signal => onReview(workspace, body.knowledgeId, signal))}>{t('核对已保存正文', 'Review saved content')}</Button> : <Link key={body.knowledgeId} href={`${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id: body.knowledgeId })}`} onClick={onClose}>{t('核对已保存正文', 'Review saved content')}</Link>)}</>}
-      {phase === 'result' && <Alert type={run?.status === 'completed' ? 'info' : 'warning'} title={run?.status === 'completed' ? t('本次任务已结束，请核对候选内容。', 'This run ended. Review the candidate content.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
+      {phase === 'result' && run?.coverageRef && <SourceReviewPanel workspace={workspace} ledgerRef={run.ledgerRef} coverageRef={run.coverageRef} lang={lang}
+        onProceed={run.nextAction === 'review_source_coverage' ? decision => void work(async signal => {
+          const prepared = await api<KnowledgeCandidateRun>('prepare-generation', { sources: refs, runId: run.runId,
+            executor: run.executor, model: run.model, sourceCoverageDecisionRef: decision }, signal);
+          if (!signal.aborted) { setRun(prepared); setConfirmed(false); setPhase(prepared.preparedStage ? 'prepared' : 'result'); notifyKnowledgeChange(workspace); onFinished?.(workspace); }
+        }) : undefined}/>}
+      {phase === 'result' && <Alert type={run?.status === 'completed' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('本次任务已结束，请核对候选内容。', 'This run ended. Review the candidate content.') : t('本轮已按实际复核意见结束，没有保存正文。', 'This run ended with an actual review decision; no content was saved.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段已保存；准备下一阶段后，仍需核对完整请求。', 'This stage is saved. Prepare the next stage and inspect its complete request.') : run?.nextAction === 'review_source_coverage' ? t('来源核对已保存，请在下面记录实际决定。', 'Source coverage is saved. Record your actual decision below.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
     </div>
   </Modal>;
 }

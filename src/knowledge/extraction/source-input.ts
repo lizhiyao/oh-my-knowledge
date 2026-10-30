@@ -3,12 +3,13 @@ import { SourceDigestSchema, type SourceSnapshot } from '../sources.js';
 import { canonicalJson } from '../store.js';
 
 export const SOURCE_GENERATION_INPUT_VERSION = 'knowledge-source-generation-input/v1' as const;
-export const SOURCE_IMPORT_RUN_IDENTITY = 'knowledge-source-set-import-run/v1' as const;
+export const WORKFLOW_ID = 'knowledge-body-first/v4' as const;
+export const SOURCE_IMPORT_RUN_IDENTITY = 'knowledge-source-set-import-run/v2' as const;
 
-/** UUIDv8: a workspace's default import reuses its journal, including failed or unknown results. */
+/** UUIDv8: reuse only this workflow's default journal, including failed or unknown results. */
 export function generationImportRunId(sourceSetId: string): string {
   SourceDigestSchema.parse(sourceSetId);
-  const bytes = createHash('sha256').update(canonicalJson({ runIdentityVersion: SOURCE_IMPORT_RUN_IDENTITY, sourceSetId })).digest().subarray(0, 16);
+  const bytes = createHash('sha256').update(canonicalJson({ runIdentityVersion: SOURCE_IMPORT_RUN_IDENTITY, workflowId: WORKFLOW_ID, sourceSetId })).digest().subarray(0, 16);
   bytes[6] = (bytes[6] & 0x0f) | 0x80;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
