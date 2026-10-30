@@ -234,6 +234,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
           onRevision={revision => selectObject(object.id, revision)} onKnowledge={id => { clearFilters(); setObjects([object.id]); selectKnowledge(id); }}
           footer={<><Button disabled={!!historical} onClick={() => setEditing('edit')}>{t('维护对象与来源关联', 'Maintain object and source links')}</Button><Button type="primary" onClick={() => { clearFilters(); setObjects([object.id]); setObject(undefined); }}>{t('按此对象筛选知识', 'Filter knowledge by this object')}</Button></>}/>
           : !object && currentId && detail?.revision.knowledgeId === currentId ? <KnowledgeReader detail={detail} lang={lang} workspace={workspace} selection={readerSelection} onSelectionChange={locate}
+            onReviewBody={ref => { clearFilters(); selectKnowledge(ref.knowledgeId, ref.revisionId); setView('list'); }}
             onRevision={revision => { setActive(currentId); setKnowledgeRevision(revision); setSelectionInvalid(false); }} onRetry={() => setRefresh(value => value + 1)}
             onMapAssociations={() => openMapping()} onEntity={setEntityTarget} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
             onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId }); } : undefined}

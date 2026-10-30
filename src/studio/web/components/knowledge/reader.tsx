@@ -9,6 +9,7 @@ import { candidateDecisionLabel } from '../../../application/knowledge/candidate
 import { KnowledgeReviewSummary } from './review-summary';
 import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
 import type { SourceRef } from '../../../../knowledge/sources';
+import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
 import { SourceLocator, SourceOriginalContext } from './source-locator';
 import { SourceUpdates } from './source-updates';
 
@@ -34,9 +35,10 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
 }
 
 /** Canonical text remains readable independently of source availability and derived associations. */
-export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent }: {
+export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent, onReviewBody }: {
   detail: KnowledgeCandidateDetail; lang: Language; busy?: boolean; header?: ReactNode; tools?: ReactNode; footer?: ReactNode;
   onReviewContent?(): void; workspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
+  onReviewBody?(bodyRef: KnowledgeBodyRef): void;
   onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(source: SourceRef): void; onRetry(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
@@ -224,7 +226,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
             {selected && <blockquote>{selected.selection.quote}</blockquote>}<Button disabled={busy} onClick={onRetry}>{t('重试读取', 'Retry reading')}</Button></Empty>}
           {selected && <details><summary>{t('精确依据身份', 'Exact evidence identity')}</summary><p className="candidate-help"><code>{selected.source.snapshotId} / {selected.source.sourceVersion}</code> · {selected.selection.evidenceRef} · {selected.selection.start}–{selected.selection.end}{selected.mentionId && <> · <code>{selected.mentionId}</code></>}{selected.relationId && <> · <code>{selected.relationId}</code></>}</p></details>}
           {selected && <details><summary>{t('核对已保存来源的变化影响', 'Check changes affecting the saved source')}</summary>
-            <SourceUpdates source={selected.source} snapshot={source?.status === 'available' ? source.snapshot : undefined} workspace={workspace} lang={lang} busy={busy}/>
+            <SourceUpdates source={selected.source} snapshot={source?.status === 'available' ? source.snapshot : undefined} workspace={workspace} lang={lang} busy={busy} onReviewBody={onReviewBody}/>
           </details>}
           {detail.sources.map((entry, index) => entry.status === 'unavailable' ? <Alert key={index} type="warning" title={`${t('来源不可用', 'Source unavailable')}: ${entry.reason}`}/>
             : onDeleteSource && <Button key={index} danger size="small" disabled={busy} onClick={() => onDeleteSource({ snapshotId: entry.snapshot.snapshotId, sourceVersion: entry.snapshot.sourceVersion })}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}

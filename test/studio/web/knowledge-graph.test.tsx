@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { ConfigProvider } from 'antd';
 import { type PropsWithChildren } from 'react';
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KnowledgeGraphInspection, KnowledgeGraphView } from '../../../src/studio/web/components/knowledge/knowledge-graph';
 import { KnowledgeLibrary } from '../../../src/studio/web/components/knowledge/library';
 import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader';
-import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail, KnowledgeGraph } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail, KnowledgeGraph, KnowledgeSourceUpdates } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { KnowledgeLibraryKnowledge } from '../../../src/studio/view-models/knowledge/knowledge-library';
 import type { KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews';
 import { bodyWrite } from '../../knowledge/body-fixtures';
@@ -117,6 +118,48 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('knowledge graph browsing and evidence', () => {
+  it('reads the exact affected historical body in the same workspace after clearing filters and the evidence tab', async () => {
+    const data = fixture(), workspace = '/source update navigation';
+    data.detail.revision.title = 'Visible source knowledge'; data.catalog.rows[0].title = data.detail.revision.title;
+    data.catalog.objects = [{ objectId: 'only-current', label: 'Current object' }];
+    data.catalog.rows[0].objects = [{ objectId: 'only-current', label: 'Current object', associationStatus: 'matched' }];
+    const target = structuredClone(data.detail);
+    target.revision = { ...target.revision, knowledgeId: uuid(41), revisionId: uuid(42), title: 'Affected historical knowledge',
+      content: { ...target.revision.content, segments: [{ ...target.revision.content.segments[0], text: 'Complete affected historical paragraph, with its original conditions.' }] } };
+    const latest = { ...target.revision, revisionId: uuid(43), title: 'A newer target head must not replace the selected history' };
+    target.history = { ...target.history, knowledgeId: target.revision.knowledgeId, writeHeadRevisionId: latest.revisionId, revisions: [target.revision, latest] };
+    const bodyRef = { knowledgeId: target.revision.knowledgeId, revisionId: target.revision.revisionId, bodyDigest: target.revision.bodyDigest };
+    target.derivedAssociations = { status: 'absent', reviewStatus: 'pending', bodyRef, generation: 0, headRevisionId: null }; target.derivedCatalogs = [];
+    data.catalog.rows.push({ ...data.catalog.rows[0], knowledgeId: latest.knowledgeId, revisionId: latest.revisionId, title: latest.title, knowledgeKind: 'method', choice: 'discard', objects: [] });
+    const report: KnowledgeSourceUpdates = { current: { sourceRef: data.source, checkedAt: at, state: 'unknown', limitations: [] }, historicalSource: { status: 'available' },
+      changes: { comparisonScope: 'current_binding' }, inventoryCompleteness: 'partial', impactCompleteness: 'partial', impactLimitations: [],
+      affectedExactBodyRefs: [bodyRef], catalogRefs: [], projectionRefs: [], reviewSuggestions: [{ reviewKind: 'review_body', target: { targetKind: 'body', bodyRef }, reason: 'Check the affected exact history.' }] };
+    const calls: Record<string, unknown>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const call = JSON.parse(String(init.body)); calls.push(call);
+      if (call.operation === 'knowledge') return new Response(JSON.stringify(data.catalog));
+      if (call.operation === 'review-status') return new Response(JSON.stringify(absentReviews(call.bodyRef.knowledgeId === bodyRef.knowledgeId ? target : data.detail)));
+      if (call.operation === 'source-updates') return new Response(JSON.stringify(report));
+      if (call.operation === 'show') { if (call.id === bodyRef.knowledgeId) { expect(call.revision).toBe(bodyRef.revisionId); return new Response(JSON.stringify(target)); } return new Response(JSON.stringify(data.detail)); }
+      throw new Error(`Unexpected operation ${call.operation}`);
+    }));
+    const router = { route: '/knowledge/library', pathname: '/knowledge/library', query: {}, asPath: '/knowledge/library', basePath: '', isLocaleDomain: false,
+      isReady: true, isFallback: false, isPreview: false, push: vi.fn(async () => true), replace: vi.fn(async () => true), prefetch: vi.fn(async () => {}),
+      reload: vi.fn(), back: vi.fn(), forward: vi.fn(), beforePopState: vi.fn(), events: { on: vi.fn(), off: vi.fn(), emit: vi.fn() } };
+    const view = render(<RouterContext.Provider value={router}><KnowledgeLibrary lang="en" initialWorkspace={workspace} knowledgeId={data.detail.revision.knowledgeId}
+      initialReaderTab="evidence" initialSegmentId="s1" initialQuery="Visible" initialChoice="retain" initialKind="fact" initialObjects={['only-current']}/></RouterContext.Provider>, { wrapper });
+    fireEvent.click(await screen.findByText('Check changes affecting the saved source', { exact: true }));
+    expect(screen.getByText('1 results · 2 total')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check changes affecting this source' }));
+    fireEvent.click(await screen.findByRole('link', { name: /Review affected knowledge/ }));
+    await waitFor(() => expect(view.container.querySelector('.knowledge-segment-text')?.textContent).toBe(target.revision.content.segments[0].text));
+    expect(calls.filter(call => call.operation === 'show').at(-1)).toMatchObject({ workspace, id: bodyRef.knowledgeId, revision: bodyRef.revisionId });
+    expect(screen.getByRole('button', { name: 'Content', pressed: true })).toBeTruthy(); expect(screen.getByText('Historical knowledge revision')).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Search knowledge titles or tags' }).getAttribute('value')).toBe('');
+    expect(screen.getByText('2 results · 2 total')).toBeTruthy();
+    expect(Object.fromEntries(new URLSearchParams(window.location.search))).toEqual({ workspace, knowledge: bodyRef.knowledgeId, revision: bodyRef.revisionId });
+    expect(router.push).not.toHaveBeenCalled();
+  });
   it.each(['project_file', 'git_blob'] as const)('labels %s graph evidence with portable path and real coordinates without fabricating a thread', sourceKind => {
     const { detail, graph, source } = fixture();
     const snapshot = fileSourceFixture(source, 'Alpha；Alpha\n<script>来源原文</script>', { sourceKind, relativePath: 'docs/graph.md', materialType: 'implementation' });

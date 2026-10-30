@@ -205,6 +205,7 @@ describe('Source3 manual transmission boundary', () => {
     const saved = workspaceFiles(workspace);
     fireEvent.click(screen.getByRole('button', { name: 'Check changes affecting this source' }));
     await screen.findByText(/Source state: Unchanged/);
+    expect(screen.queryByRole('link', { name: /Review affected knowledge/ })).toBeNull();
     expect(screen.getByText(/Resolved comparison commit:/).textContent).toBe(`Resolved comparison commit: ${oldRevision}`);
     fireEvent.change(comparison, { target: { value: `  ${comparisonRevision}  ` } });
     expect(screen.queryByText(/Source state:/)).toBeNull();
@@ -212,11 +213,15 @@ describe('Source3 manual transmission boundary', () => {
     await screen.findByText(/Source state: Source content changed/);
     expect(screen.getByText('Known references: 1 body versions · 1 entity catalog versions · 1 association versions.')).toBeTruthy();
     expect(screen.getByText(/Review needed: 1 body versions · 1 entity catalog versions · 1 association versions/)).toBeTruthy();
+    const affected = new URL(screen.getByRole('link', { name: /Review affected knowledge/ }).getAttribute('href')!, 'http://localhost');
+    expect(affected.pathname).toBe('/knowledge/library');
+    expect(Object.fromEntries(affected.searchParams)).toEqual({ workspace, knowledge: bodyWrite().knowledgeId, revision: bodyWrite().revision.revisionId });
     expect(screen.getByText(`Compared Git revision: ${comparisonRevision}`)).toBeTruthy();
     expect(screen.getByText(/Resolved comparison commit:/).textContent).toBe(`Resolved comparison commit: ${newRevision}`);
     view.rerender(<SourceExtractionDialog lang="zh" initialMode="git_blob" initialWorkspace={workspace} onClose={() => {}}/>);
     expect(screen.getByText(/来源状态：来源内容有变化/)).toBeTruthy();
     expect(screen.getByText('已知引用：正文版本 1 个 · 实体目录版本 1 个 · 关联版本 1 个。')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /核对受影响知识/ }).getAttribute('href')).toBe(affected.pathname + affected.search);
     view.rerender(<SourceExtractionDialog lang="en" initialMode="git_blob" initialWorkspace={workspace} onClose={() => {}}/>);
     const checks = requests.filter(request => request.operation === 'source-updates'), snapshot = captured!.sources[0].snapshot;
     expect(checks).toEqual([{ operation: 'source-updates', workspace, source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion } },
@@ -323,6 +328,34 @@ describe('Source3 manual transmission boundary', () => {
     expect(pending.slice(1).map(read => read.body)).toEqual([{ operation: 'source-updates', workspace: '/second', source: first },
       { operation: 'source-updates', workspace: '/second', source: second }, { operation: 'source-updates', workspace: '/second', source: second }]);
     view.unmount(); expect(pending[3].signal.aborted).toBe(true); await act(async () => pending[3].resolve(json(report(second))));
+  });
+  it('opens each suggested exact body revision from an incomplete report and clears the links when its context changes', async () => {
+    const source = { snapshotId: '00000000-0000-4000-8000-000000000071', sourceVersion: `sha256:${'c'.repeat(64)}` };
+    const workspace = '/selected workspace/项目?scope=old#source', bodyRefs = ['older/revision?1', 'current#revision&2'].map((revisionId, index) => ({ knowledgeId: 'same knowledge&project', revisionId, bodyDigest: `sha256:${String(index + 1).repeat(64)}` }));
+    const report: KnowledgeSourceUpdates = { current: { sourceRef: source, checkedAt: '2026-10-30T00:00:00Z', state: 'unknown', limitations: [] }, historicalSource: { status: 'available' },
+      changes: { comparisonScope: 'current_binding' }, inventoryCompleteness: 'partial', impactCompleteness: 'partial', impactLimitations: ['Other dependencies may be unavailable.'],
+      affectedExactBodyRefs: bodyRefs, catalogRefs: [], projectionRefs: [], reviewSuggestions: bodyRefs.map(bodyRef => ({ reviewKind: 'review_body', target: { targetKind: 'body', bodyRef }, reason: 'Compare this exact revision with the original source.' })) };
+    const pending: { signal: AbortSignal; resolve(value: Response): void }[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>(resolve => pending.push({ signal: init.signal!, resolve }))));
+    const view = render(<SourceUpdates source={source} workspace={workspace} lang="en"/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Check changes affecting this source' }));
+    await act(async () => pending[0].resolve(json(report)));
+    expect(screen.getByText('The impact inventory is incomplete; absence of impact cannot be inferred.')).toBeTruthy();
+    const links = screen.getAllByRole('link', { name: /Review affected knowledge/ }); expect(links).toHaveLength(2);
+    expect(new Set(links.map(link => link.getAttribute('aria-label'))).size).toBe(2);
+    for (const [index, link] of links.entries()) {
+      const url = new URL(link.getAttribute('href')!, 'http://localhost');
+      expect(url.pathname).toBe('/knowledge/library'); expect(Object.fromEntries(url.searchParams)).toEqual({ workspace, knowledge: bodyRefs[index].knowledgeId, revision: bodyRefs[index].revisionId });
+      const details = link.closest('li')!.querySelector('details')!; expect(details.open).toBe(false);
+      fireEvent.click(details.querySelector('summary')!); expect(details.open).toBe(true); expect(details.textContent).toContain(bodyRefs[index].revisionId);
+    }
+    expect(screen.getByText('Impact and review suggestions')).toBeTruthy();
+    view.rerender(<SourceUpdates source={source} workspace="/another workspace" lang="en"/>);
+    expect(screen.queryByRole('link', { name: /Review affected knowledge/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check changes affecting this source' }));
+    view.rerender(<SourceUpdates source={{ ...source, sourceVersion: `sha256:${'d'.repeat(64)}` }} workspace="/another workspace" lang="en"/>);
+    expect(pending[1].signal.aborted).toBe(true); await act(async () => pending[1].resolve(json(report)));
+    expect(screen.queryByRole('link', { name: /Review affected knowledge/ })).toBeNull();
   });
   it('reads raw originals only on explicit demand with an exact workspace/source pair, and preserves content after read failure', async () => {
     const snapshot = fileSourceFixture({ snapshotId: '00000000-0000-4000-8000-000000000051', sourceVersion: `sha256:${'a'.repeat(64)}` }, 'Alpha original context');
