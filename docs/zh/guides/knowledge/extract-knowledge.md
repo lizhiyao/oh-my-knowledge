@@ -203,9 +203,9 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-当前清单 wire2／prompt3、覆盖 wire2／prompt3，两份历史仍为 v1；正文 wire2／prompt9，journal4／workflow4／默认 input2，Source3 和正文3／实体2／关联2／reviews1。关联 prompt7／profile／wire3 的原字节及其 v1 输入 envelope 保持不变，与 journal 的 input2 分别表达。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整或真值；当前值见[生成契约](../../reference/shared/knowledge-contract.md)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
+当前清单 wire2／prompt3、覆盖 wire2／prompt3，两份历史仍为 v1；正文 wire2／prompt9，journal4／workflow4／默认 input2，Source3 和正文3／实体2／关联2／reviews1。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**），wire3 及其 v1 输入 envelope 保持不变，与 journal 的 input2 分别表达；本次提示词变更不要求数据迁移。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整或真值；当前值见[生成契约](../../reference/shared/knowledge-contract.md)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
 
-旧日志使用保全的匹配构建或[受支持流程副本](#workflow-migration)。参数错误退出 2、业务失败退出 1、成功退出 0；回执不明确时先检视持久状态，再决定是否重入写操作。
+含旧 profile 的 active 日志（包括关联 v7 的 prepared／claimed／archived）使用保全的匹配构建，不在新 profile 下重发或改写请求。已记录的 `prepared_writes` 按既有规则零模型恢复固定发布意图，仍有旧 profile 工作未完成时回到 unsupported；completed／failed 历史和已有现行格式数据仍可读。旧日志格式另按[受支持流程副本](#workflow-migration)处理。参数错误退出 2、业务失败退出 1、成功退出 0；回执不明确时先检视持久状态，再决定是否重入写操作。
 
 ## 核对与处理 {#核对与处理}
 

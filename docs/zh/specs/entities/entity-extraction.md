@@ -30,9 +30,9 @@
 
 当前默认使用 `knowledge-body-first/v4` 四阶段：source_ledger、body、source_coverage、association。模型分析与实际操作者决定分开，完整范围及门禁见[来源复核契约](../knowledge/knowledge-source-review.md)，版本与容量见[生成契约](../../reference/shared/knowledge-contract.md)。
 
-来源清单为 wire2／prompt3、覆盖为 wire2／prompt3，两份历史仍为 store1；正文 wire2 使用 prompt9，关联 prompt7／profile／wire3 原字节不变。journal4／默认 input2 替换旧 workflow3，关联阶段仍保留其 v1 envelope。该改动为 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 不变。旧原件、分数和历史 occurrence 协议保持冻结，按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
+来源清单为 wire2／prompt3、覆盖为 wire2／prompt3，两份历史仍为 store1；正文 wire2 使用 prompt9。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**），wire3、阶段 v1 envelope 及既有数据格式不变，不要求数据迁移。此前 journal4／默认 input2 替换旧 workflow3 属于 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 保持不变。旧原件、分数和历史 occurrence 协议保持冻结，此前转换按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
 
-正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及再做映射，跨段复用合法提及，分别复查来源独立指认的工件／代码状态及必要的组件、版本映射。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
+正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及，再按已识别对象回查相关同源段落中的定义、属性、条件、维护或存储职责；已有合法自身提及可跨段复用，不要求各段重复名称或 objectId，无关段仍不映射。同一声明位置不能同时作为一般对象与版本的各自提及：Git 元数据可限定对象，独立版本对象仍须自己的来源提及。来源独立指认的工件／代码状态及必要的组件、版本映射仍分别判断。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
@@ -75,7 +75,7 @@
 
 `generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。生成 profile 匹配时，`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
 
-含旧生成 profile 的 active 日志明确 `unsupported`：当前构建不解码其归档输出、不挂接孤立输出，也不在混合身份下派发后续阶段；恢复须使用保全的匹配旧构建。已记录的 `prepared_writes` 仍可重放固定发布意图，不解码模型输出、不调用模型；若仍有旧 profile 工作未完成，随后回到 `unsupported`。completed／failed 终态日志及原始字节仍可检视，不将历史记录改写为新 profile。
+含旧生成 profile 的 active 日志（包括关联 v7 的 prepared／claimed／archived）明确 `unsupported`：当前构建不解码其归档输出、不挂接孤立输出，也不在混合身份下派发后续阶段；恢复须使用保全的匹配旧构建。已记录的 `prepared_writes` 仍可重放固定发布意图，不解码模型输出、不调用模型；若仍有旧 profile 工作未完成，随后回到 `unsupported`。completed／failed 终态日志及原始字节仍可检视，已有现行格式的正文／实体／投影数据仍可读，不将历史记录改写为新 profile。
 
 实体历史继续保持每文件 1024 修订／16 MiB 限制及幂等收据重放，不截断旧修订。目录扫描仍限制 4096 文件／64 MiB，单列不可读分析。结构校验、精确位置和成功重开不证明语义质量。
 

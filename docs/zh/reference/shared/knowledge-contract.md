@@ -11,9 +11,9 @@
 | 来源清单 prompt | `knowledge-source-ledger-generation/v3` |
 | 正文 prompt | `knowledge-body-generation/v9` |
 | 来源覆盖 prompt | `knowledge-source-coverage-generation/v3` |
-| 关联 prompt | `knowledge-association-generation/v7` |
+| 关联 prompt | `knowledge-association-generation/v8` |
 | 正文 profile 摘要 | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
-| 关联 profile 摘要 | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
+| 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | 来源清单 profile 摘要 | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | 来源覆盖 profile 摘要 | `sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09` |
 | 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |

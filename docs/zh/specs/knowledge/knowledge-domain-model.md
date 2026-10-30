@@ -68,7 +68,7 @@ flowchart LR
 
 Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
 
-当前正文生成输出 v2／prompt v9 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v7 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v2／prompt v9 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
@@ -200,7 +200,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 关联历史保持 Schema 2，prompt7／profile／wire3／阶段 v1 envelope 原字节不变。默认 journal Schema 4／knowledge-body-first/v4 绑定四阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal3／自动许可，旧 claim 只能由保全的匹配构建恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
+| 关联与生成日志 | 关联历史保持 Schema 2。prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 及阶段 v1 envelope 不变，不要求数据迁移。默认 journal Schema 4／knowledge-body-first/v4 仍绑定四阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal3／自动许可；旧 profile 的 active 工作使用保全的匹配构建恢复，固定 prepared_writes 按既有规则恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
 | 来源盘点与覆盖 | 默认 workflow4 使用 journal4／input2：source_ledger → body → source_coverage → 明确批准的关联。独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开表达模型意见与实际决定；claim 锁内重验精确决定，拒绝旧自动授权，仅迁移受支持独立副本。Source3、未改正文／实体／关联／review／tag 身份及历史测量保留。 |
 | 操作者上下文 | 复用 human／agent 数据形状；公共 CLI／服务的可信上下文输入与缺失时拒绝行为需明确发布影响。旧 actor 和回执不回写；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
