@@ -14,7 +14,7 @@ import { executeArtifactAuthoring } from '../../../src/studio/application/knowle
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { KnowledgeApplication } from '../../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../../src/knowledge/entities/contracts.js';
-import { authoredKnowledgeResponse, seedKnowledgeWorkspace } from '../../cli/knowledge-fixtures.js';
+import { authoredKnowledgeResponse, authoredSourceDecision, seedKnowledgeWorkspace } from '../../cli/knowledge-fixtures.js';
 import type { KnowledgeGenerationModel } from '../../../src/knowledge/adapters/generation-executor.js';
 import type { GenerationOutcome } from '../../../src/knowledge/extraction/native-outcome.js';
 import { AUTO_EXTRACTION_WORKFLOW } from '../../../src/knowledge/application/auto-extraction.js';
@@ -26,6 +26,8 @@ import { FileKnowledgeStore } from '../../../src/knowledge/adapters/knowledge-st
 import { FileEntityAnalysisStore } from '../../../src/knowledge/adapters/entity-store.js';
 import type { KnowledgeBodyEvidence } from '../../../src/knowledge/contracts.js';
 import type { KnowledgeReviewContentInput, KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews.js';
+
+const actualReviewActor = { actorKind: 'agent' as const, actorId: 'authored-http-reviewer', executionRef: 'test:explicit-source-decision' };
 
 /** Pure authored responses exercise current journal/publication paths without any model execution. */
 function currentModel(multiple = false, outcome?: GenerationOutcome): KnowledgeGenerationModel {
@@ -47,9 +49,20 @@ function captureAuthoredSource(workspace: string, input: { path: string; records
 }
 async function generateAuthored(app: KnowledgeApplication, snapshot: SourceSnapshot, model: KnowledgeGenerationModel) {
   const sources = [{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }], prepared = await app.prepareGeneration(sources, model);
-  let result = await app.generate(sources, model, prepared.journal.runId, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
-  const stage = result.journal.stages.at(-1)!;
-  if (stage.stageKind === 'association' && stage.state === 'prepared') result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+  let result = await app.continueStage(prepared.journal.runId, prepared.journal.generation, model, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
+  while (result.nextAction === 'prepare_next_stage') {
+    result = app.prepareGeneration(sources, model, result.journal.runId);
+    const stage = result.journal.stages.at(-1)!;
+    result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+  }
+  if (result.nextAction === 'review_source_coverage') {
+    const status = app.sourceCoverageStatus(result.journal.coverageRef!.coverageId), command = authoredSourceDecision(status);
+    app.reviewSourceCoverage(command);
+    const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = command.decision;
+    result = app.prepareGeneration(sources, model, result.journal.runId, undefined, { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: command.requestId });
+    const stage = result.journal.stages.at(-1)!;
+    if (stage.state === 'prepared') result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+  }
   return result;
 }
 
@@ -86,24 +99,18 @@ describe('Studio candidate action boundary', () => {
   const postReview = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/reviews`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
   });
-  it('previews automation without permission, requires fresh explicit consent, and can stop before any call', async () => {
+  it('refuses old automation preview and consent without creating a workflow4 grant or native call', async () => {
     const auto = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/auto-extraction`, {
       method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
     });
     expect((await auto({ operation: 'status', workspace, threadId: 'thread' }, 'https://untrusted.example')).status).toBe(403);
-    const preview = await (await auto({ operation: 'preview', threadId: 'thread', executor: 'codex', model: 'not-invoked' })).json();
-    expect(preview.turnCount).toBe(1); expect(preview.messages).toHaveLength(2);
-    expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toBeNull();
-    const consent = { workflowId: AUTO_EXTRACTION_WORKFLOW, operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
-    expect((await auto({ ...consent, maxCalls: 0 })).status).toBe(400);
-    expect((await auto({ ...consent, policy: {} })).status).toBe(400);
-    expect((await auto({ ...consent, workflowId: undefined })).status).toBe(400);
-    changed = true; expect((await auto(consent)).status).toBe(409); changed = false;
-    expect((await auto(consent)).status).toBe(200);
-    expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
-    // Schema2 explicitly authorizes both phases, each charged separately; preview/enable never constructs a model.
-    expect(await (await auto(consent)).json()).toMatchObject({ schemaVersion: 3, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 0 });
-    expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
+    expect((await auto({ operation: 'preview', threadId: 'thread', executor: 'codex', model: 'not-invoked' })).status).toBe(400);
+    expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toMatchObject({ schemaStatus: 'unsupported', enabled: false, reason: 'explicit_stages_required' });
+    const consent = { workflowId: AUTO_EXTRACTION_WORKFLOW, operation: 'enable', workspace, threadId: 'thread', token: 'authored-old-consent', executor: 'codex', model: 'not-invoked', maxCalls: 1 };
+    expect((await auto(consent)).status).toBe(400);
+    expect((await auto({ ...consent, workflowId: 'knowledge-body-first/v4' })).status).toBe(400);
+    expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ schemaStatus: 'unsupported', enabled: false });
+    expect(existsSync(join(workspace, 'auto-extraction'))).toBe(false);
     expect(createLocalKnowledgeApplication(workspace).runs()).toEqual({ current: [], unsupported: [], unavailable: [], archiveChecks: [] });
   });
   it('adds only ephemeral status tags and observes external atomic JSON heads without trusting a client revision', async () => {
@@ -112,10 +119,10 @@ describe('Studio candidate action boundary', () => {
       method: 'POST', headers: { 'content-type': 'application/json', ...(tag ? { 'if-none-match': tag } : {}) },
       body: JSON.stringify({ operation: 'status', workspace: selected, threadId: 'head-thread' }),
     });
-    const initial = await status(); expect(initial.status).toBe(200); expect(await initial.text()).toBe('null');
+    const initial = await status(); expect(initial.status).toBe(200); expect(await initial.json()).toMatchObject({ reason: 'explicit_stages_required' });
     expect(initial.headers.get('cache-control')).toBe('no-store');
     let previous = initial.headers.get('etag')!; expect(previous).toMatch(/^W\/"omk-ui-[a-f0-9]{64}"$/);
-    const unchanged = await status(previous); expect(unchanged.status).toBe(200); expect(await unchanged.text()).toBe('null');
+    const unchanged = await status(previous); expect(unchanged.status).toBe(200); expect(await unchanged.json()).toMatchObject({ reason: 'explicit_stages_required' });
     expect(unchanged.headers.get('etag')).toBe(previous);
     const normalized = await fetch(`${url}/api/knowledge/auto-extraction`, { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ operation: 'status', workspace: ` ${selected} `, threadId: ' head-thread ' }) });
@@ -125,13 +132,13 @@ describe('Studio candidate action boundary', () => {
       const path = join(selected, folder, `${name}.json`);
       // Authored UI-head fixtures are never admitted as knowledge/run evidence.
       writeJsonFileAtomic(path, { value: 'aaaa' }); utimesSync(path, 1_600_000_000, 1_600_000_000);
-      const added = await status(previous); expect(added.status).toBe(200); expect(await added.text()).toBe('null');
+      const added = await status(previous); expect(added.status).toBe(200); expect(await added.json()).toMatchObject({ reason: 'explicit_stages_required' });
       expect(added.headers.get('etag')).not.toBe(previous); previous = added.headers.get('etag')!;
       const before = statSync(path);
       writeJsonFileAtomic(path, { value: 'bbbb' }); utimesSync(path, 1_600_000_000, 1_600_000_000);
       expect(statSync(path).size).toBe(before.size); expect(statSync(path).mtimeMs).toBe(before.mtimeMs);
       expect(statSync(path).ino).not.toBe(before.ino); // Same length and restored mtime still cannot hide atomic replacement.
-      const replaced = await status('W/"untrusted-client-hint"'); expect(replaced.status).toBe(200); expect(await replaced.text()).toBe('null');
+      const replaced = await status('W/"untrusted-client-hint"'); expect(replaced.status).toBe(200); expect(await replaced.json()).toMatchObject({ reason: 'explicit_stages_required' });
       expect(replaced.headers.get('etag')).not.toBe(previous); previous = replaced.headers.get('etag')!;
     }
     const invalid = await fetch(`${url}/api/knowledge/auto-extraction`, { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -139,14 +146,33 @@ describe('Studio candidate action boundary', () => {
     expect(invalid.status).toBe(400);
     const head = join(selected, 'items', `${'f'.repeat(64)}.json`), target = join(root, 'private-ui-head.json');
     writeJsonFileAtomic(target, { privateValue: 'not-a-knowledge-record' }); symlinkSync(target, head);
-    const noHint = await status(previous); expect(noHint.status).toBe(200); expect(await noHint.text()).toBe('null');
+    const noHint = await status(previous); expect(noHint.status).toBe(200); expect(await noHint.json()).toMatchObject({ reason: 'explicit_stages_required' });
     expect(noHint.headers.get('etag')).toBeNull(); expect(noHint.headers.get('cache-control')).toBe('no-store');
     unlinkSync(head);
     expect((await status()).headers.get('etag')).toBe(previous);
   });
 
+  it('reads source analyses and records an actual host revocation without another model call', async () => {
+    const selected = join(root, 'source-review-http'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
+    const captured = captureAuthoredSource(selected, { path: join(root, 'source-review-http.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha 使用 Beta') }] });
+    const model = currentModel(), invoke = vi.spyOn(model, 'invoke'), run = await generateAuthored(app, captured, model);
+    expect(invoke).toHaveBeenCalledTimes(4);
+    const coverageRef = run.journal.coverageRef!, ledgerRef = run.journal.ledgerRef!;
+    expect(await (await post({ workspace: selected, operation: 'source-ledger', id: ledgerRef.ledgerId, revision: ledgerRef.revisionId })).json()).toMatchObject({ ref: ledgerRef, originalVerification: 'not_verified' });
+    const status = await (await post({ workspace: selected, operation: 'source-coverage-status', id: coverageRef.coverageId, revision: coverageRef.revisionId })).json();
+    expect(status).toMatchObject({ ref: coverageRef, ledgerStatus: 'available', originalVerification: 'not_verified', decision: { status: 'proceed_with_limits' } });
+    const command = { commandKind: 'revoke_decision', coverageId: coverageRef.coverageId, requestId: randomUUID(), expectedGeneration: status.history.generation,
+      expectedHeadEventId: status.history.writeHeadEventId, targetEventId: status.decision.events[0].eventId, reason: 'Explicit human UI withdrawal, not a new model opinion.' };
+    expect((await post({ workspace: selected, operation: 'review-source-coverage', command, actor: actualReviewActor })).status).toBe(400);
+    const first = await (await post({ workspace: selected, operation: 'review-source-coverage', command })).json();
+    expect(await (await post({ workspace: selected, operation: 'review-source-coverage', command })).json()).toEqual(first);
+    const current = app.sourceCoverageStatus(coverageRef.coverageId);
+    expect(current.decision.status).toBe('not_reviewed');
+    expect(current.history.events.at(-1)).toMatchObject({ eventKind: 'revocation', actor: { actorKind: 'human', actorId: 'local-user' } });
+    expect(invoke).toHaveBeenCalledTimes(4);
+  });
   it('retrieves task content through the production read path with candidate/source/budget boundaries and no new generation', async () => {
-    const selected = join(root, 'task-retrieval'), app = createLocalKnowledgeApplication(selected);
+    const selected = join(root, 'task-retrieval'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const captured = captureAuthoredSource(selected, { path: join(root, 'task-source.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha uses Beta diagnostics only with matching source, model and configuration. ' + 'This limitation remains specific. '.repeat(70)) }] });
     const run = await generateAuthored(app, captured, currentModel(true));
     const request = { operation: 'retrieve', workspace: selected, format: 'json', query: 'Alpha diagnostics', maxBytes: 8192,
@@ -204,7 +230,7 @@ describe('Studio candidate action boundary', () => {
     expect(reviewed).toMatchObject({ storageStatus: 'available', generation: 1, headEventId: receipt.eventId, content: { status: 'needs_revision' } });
     expect(reviewed.history?.receipts).toEqual([receipt]);
     expect(reviewed.content.events[0]).toMatchObject({ bodyRef, actor: { actorKind: 'human', actorId: 'local-user' }, findings: [{ segmentIds: [] }] });
-    const app = createLocalKnowledgeApplication(selected), current = app.detail(bodyRef.knowledgeId), projection = current.derivedAssociations.revision!;
+    const app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor }), current = app.detail(bodyRef.knowledgeId), projection = current.derivedAssociations.revision!;
     const coverage = await postReview({ ...identity, operation: 'review-coverage', requestId: randomUUID(), sources: input.sources,
       expectedGeneration: 1, expectedHeadEventId: receipt.eventId, projectionRevisionId: projection.revisionId, reason: 'Inspect only this exact projection.',
       decisions: [{ segmentId: 's1', status: 'linked', reason: 'The authored projection binds exact source mentions.',
@@ -278,7 +304,7 @@ describe('Studio candidate action boundary', () => {
   });
 
   it('loads only scoped committed knowledge while preserving queue order, tags, missing rows and selected corruption failures', async () => {
-    const selected = join(root, 'scoped-queue'), app = createLocalKnowledgeApplication(selected);
+    const selected = join(root, 'scoped-queue'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const generate = async (threadId: string, multiple = false) => {
       const snapshot = captureAuthoredSource(selected, { path: join(root, `${threadId}.jsonl`), origin: { threadId, title: threadId },
         records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
@@ -319,7 +345,7 @@ describe('Studio candidate action boundary', () => {
   });
 
   it('includes only exact declared project sources when no Observe project matches', async () => {
-    const selected = join(root, 'explicit-project-scope'), app = createLocalKnowledgeApplication(selected, { sourceScope: {
+    const selected = join(root, 'explicit-project-scope'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor, sourceScope: {
       scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'explicit-project', root }], traces: [],
     } });
     writeFileSync(join(root, 'project-source.md'), 'Alpha 使用 Beta，仅作为合成来源。');
@@ -357,7 +383,7 @@ describe('Studio candidate action boundary', () => {
     expect((await post({ ...input, turnId: 'other' })).status).toBe(400);
     const captured = (await (await post(input)).json()).sources[0].snapshot as SourceSnapshot;
     expect(captured.excerpts.map(entry => entry.text)).toEqual(['选择这条约束']);
-    const stored = createLocalKnowledgeApplication(workspace).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion });
+    const stored = createLocalKnowledgeApplication(workspace, { reviewActor: actualReviewActor }).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion });
     expect(stored.status === 'available' && stored.snapshot.sourceKind === 'agent_trace' && stored.snapshot.origin).toEqual({ threadId: 'thread', turnId: 'turn', title: '项目对话' });
     changed = true;
     expect((await post(input)).status).toBe(409);
@@ -374,7 +400,7 @@ describe('Studio candidate action boundary', () => {
       expect(response.status).toBe(200);
       const captured = (await response.json()).sources[0].snapshot;
       expect(captured.excerpts).toHaveLength(3);
-      expect(createLocalKnowledgeApplication(workspace).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }).status).toBe('available');
+      expect(createLocalKnowledgeApplication(workspace, { reviewActor: actualReviewActor }).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }).status).toBe('available');
       whole = false;
       expect((await post(input)).status).toBe(409);
       incomplete = true;
@@ -392,14 +418,14 @@ describe('Studio candidate action boundary', () => {
     expect((await post({ operation: 'list', approved: true })).status).toBe(400);
   });
   it('lists archive metadata without native decoding and keeps full inspection fail-closed', async () => {
-    const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected);
+    const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const source = captureAuthoredSource(selected, { path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
     const run = await generateAuthored(app, source, currentModel(false, {
       outcomeKind: 'result', result: { ok: false, output: 'private-native-output', error: 'private-native-diagnostic', durationMs: 2,
         failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }));
     const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
     const text = await response.text(), rows = JSON.parse(text);
-    expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'body', state: 'failed', outcomeRef: expect.any(Object) })] })]);
+    expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'source_ledger', state: 'failed', outcomeRef: expect.any(Object) })] })]);
     expect(rows[0]).toMatchObject({ archiveVerification: 'not_verified', archiveChecks: [{ archiveStatus: 'present', verificationStatus: 'not_verified' }] });
     for (const privateValue of ['private-native-', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
     const inspect = await post({ workspace: selected, operation: 'inspect', id: run.journal.runId }); expect(inspect.status).toBe(200);
@@ -428,7 +454,7 @@ describe('Studio candidate action boundary', () => {
     const entitySource = join(root, 'entity.jsonl');
     writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), message('user', '仅在隔离环境中使用 Beta，语义质量尚未验收。'),
       JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
-    const app = createLocalKnowledgeApplication(workspace), snapshot = captureAuthoredSource(workspace, { path: entitySource }), run = await generateAuthored(app, snapshot, currentModel());
+    const app = createLocalKnowledgeApplication(workspace, { reviewActor: actualReviewActor }), snapshot = captureAuthoredSource(workspace, { path: entitySource }), run = await generateAuthored(app, snapshot, currentModel());
     const analysisId = run.journal.stages.find(stage => stage.stageKind === 'association')!.entityWrites![0].analysisId, bodyRef = run.journal.bodies[0];
     const inspection = await post({ operation: 'entities', analysisId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
@@ -504,7 +530,7 @@ describe('Studio candidate action boundary', () => {
     expect(relationHistory.revisions.find(revision => revision.revisionId === projection.derivedAssociations.revision.revisionId)?.typedRelations).toEqual([relation]);
     expect(relationHistory.revisions.find(revision => revision.revisionId === editedProjection.derivedAssociations.revision.revisionId)?.typedRelations).toEqual([changedRelation]);
     expect(relationHistory.revisions.at(-1)?.typedRelations).toEqual([]);
-    expect(createLocalKnowledgeApplication(workspace).detail(bodyRef.knowledgeId).revision).toEqual(original.revision);
+    expect(createLocalKnowledgeApplication(workspace, { reviewActor: actualReviewActor }).detail(bodyRef.knowledgeId).revision).toEqual(original.revision);
     const conditions = before.source.snapshot.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
     draft.content.segments[0].text += ` ${conditions.text}`;
     draft.content.segments[0].evidence.push({ source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }, basis: 'source_assertion',
@@ -534,7 +560,7 @@ describe('Studio candidate action boundary', () => {
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });
   it('organizes exact entity revisions through the real library API and retains history without exposing source paths', async () => {
-    const selected = join(root, 'library-workspace'); const app = createLocalKnowledgeApplication(selected);
+    const selected = join(root, 'library-workspace'); const app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const seeded = seedKnowledgeWorkspace(selected, 'library-source'), entity = seeded.analysis;
     const member = { ...seeded.ref(), entityRevisionId: entity.revision.revisionId, mentionIds: [entity.revision.mentions[0].mentionId], rationale: '按来源确认项目身份' };
     const projection = app.detail(seeded.body.knowledgeId).derivedAssociations;
@@ -562,7 +588,7 @@ describe('Studio candidate action boundary', () => {
     expect(app.detail(seeded.body.knowledgeId).history.revisions).toHaveLength(1);
   });
   it('reports workspace contention consistently for source, tag and carrier writes, then recovers after release', async () => {
-    const selected = join(root, 'busy-workspace'); const app = createLocalKnowledgeApplication(selected);
+    const selected = join(root, 'busy-workspace'); const app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const fixture = join(root, 'busy-source.jsonl'); writeFileSync(fixture, message('user', 'Alpha 使用 Beta'));
     const seeded = seedKnowledgeWorkspace(selected, 'busy-source'), snapshot = seeded.source;
     const current = app.detail(seeded.body.knowledgeId);

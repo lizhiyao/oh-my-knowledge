@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { EntityModelSchema } from '../extraction/entities.js';
 import { mapEntityIdentity } from '../entities/identity.js';
-import type { KnowledgeActor } from '../contracts.js';
+import type { KnowledgeActor, KnowledgeBodyRef } from '../contracts.js';
+import type { SourceLedgerStore, SourceCoverageStore, SourceLedgerRef, SourceCoverageDecisionRef } from '../source-review.js';
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { EntityAnalysisDraftSchema, type EntityAnalysisStore } from '../entities/contracts.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
@@ -28,6 +29,8 @@ export interface KnowledgeApplicationPorts {
   sources: SourceStore; sourceCapture?: SourceCaptureService; sourceUpdates?: Pick<SourceUpdatesService, 'check'>;
   knowledge: KnowledgeStore; journals: GenerationJournalStore; tags: KnowledgeTagStore;
   entities: EntityAnalysisStore; associations: KnowledgeAssociationStore;
+  ledgers: SourceLedgerStore; coverage: SourceCoverageStore;
+  reviewActor?: KnowledgeActor;
   id(): string; now(): string; hash(value: unknown): string; actor: KnowledgeActor;
   assertWritable?(): void;
 }
@@ -58,15 +61,25 @@ export class KnowledgeApplication {
         phases: j.stages.map(s => ({ stageKind: s.stageKind, state: s.state, rejected: s.rejected?.length ?? null, issues: s.issues })) })),
       unsupported: inventory.unsupported, unavailable: inventory.unavailable, archiveChecks: inventory.archiveChecks, semanticQuality: 'not_assessed' as const };
   }
-  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) { return this.generation.prepareGeneration(sources, model, runId, signal); }
+  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal,
+    decision?: SourceCoverageDecisionRef) { return this.generation.prepareGeneration(sources, model, runId, signal, decision); }
+  prepareSourceReview(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
+    ledgerRef?: SourceLedgerRef, runId?: string, signal?: AbortSignal) {
+    return this.generation.prepareSourceReview(sources, bodyRefs, model, ledgerRef, runId, signal);
+  }
+  sourceLedger(id: string, revision?: string) { return this.generation.sourceLedger(id, revision); }
+  sourceCoverageStatus(id: string, revision?: string) { return this.generation.sourceCoverageStatus(id, revision); }
+  reviewSourceCoverage(command: unknown) { return this.generation.reviewSourceCoverage(command); }
   generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.generate(sources, model, runId, signal, options); }
   resume(runId: string, signal?: AbortSignal) { signal?.throwIfAborted(); return this.generation.resume(runId); }
   continueStage(runId: string, generation: number, model: KnowledgeGenerationModel, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.continueStage(runId, generation, model, signal, options); }
-  prepareAssociationRebuild(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
-    return this.generation.prepareAssociationRebuild(ref, model, runId, signal);
+  prepareAssociationRebuild(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel,
+    decision: SourceCoverageDecisionRef, runId?: string, signal?: AbortSignal) {
+    return this.generation.prepareAssociationRebuild(ref, model, decision, runId, signal);
   }
-  rebuildAssociations(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
-    return this.generation.rebuild(ref, model, runId, signal, options);
+  rebuildAssociations(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel,
+    decision: SourceCoverageDecisionRef, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
+    return this.generation.rebuild(ref, model, decision, runId, signal, options);
   }
   readContext() { return new KnowledgeReadContext(this.ports); }
   list(knowledgeIds?: ReadonlySet<string>) { return this.readContext().list(knowledgeIds); }

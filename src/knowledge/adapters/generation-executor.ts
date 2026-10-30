@@ -4,13 +4,15 @@ import { join } from 'node:path';
 import type { ExecutorInput } from '../../executors/contracts/ports.js';
 import type { ExecutorArchiveEvidence, ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 import type { GenerationProfile } from '../extraction/body-generation-wire.js';
+import type { SourceReviewGenerationProfile } from '../extraction/source-review-wire.js';
 import { observeGenerationException, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';
 
+export type KnowledgeGenerationProfile = GenerationProfile | SourceReviewGenerationProfile;
 export interface KnowledgeGenerationModel {
   executor: string; model: string; timeoutMs: number;
-  inspect(profile: GenerationProfile, input: string): ExecutorArchiveEvidence;
-  invoke(profile: GenerationProfile, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<GenerationOutcome>;
+  inspect(profile: KnowledgeGenerationProfile, input: string): ExecutorArchiveEvidence;
+  invoke(profile: KnowledgeGenerationProfile, input: string, signal?: AbortSignal, beforeDispatch?: () => void): Promise<GenerationOutcome>;
 }
 /** Each phase has its own exact request-specific archive proof, never the old window wire. */
 export function configuredKnowledgeGenerationModel(executor: string, model: string, producer: ExecutorArchiveProducer,
@@ -18,9 +20,9 @@ export function configuredKnowledgeGenerationModel(executor: string, model: stri
   if (!['codex', 'openai-api'].includes(executor) || !model.trim()) throw new Error('Unsupported knowledge generation model.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new Error('Invalid generation timeout.');
   const inspected = new Map<string, string>();
-  const request = (profile: GenerationProfile, input: string): ExecutorInput => ({ model, system: profile.system, prompt: input, timeoutMs,
+  const request = (profile: KnowledgeGenerationProfile, input: string): ExecutorInput => ({ model, system: profile.system, prompt: input, timeoutMs,
     outputFormat: { mode: 'json-schema', name: profile.outputName, schema: profile.wireSchema } });
-  const inspect = (profile: GenerationProfile, input: string) => {
+  const inspect = (profile: KnowledgeGenerationProfile, input: string) => {
     const execution = request(profile, input); producer.assertCapabilities(executor, execution);
     const evidence = producer.inspect(executor, execution); inspected.set(canonicalJson(execution), canonicalJson(evidence)); return evidence;
   };

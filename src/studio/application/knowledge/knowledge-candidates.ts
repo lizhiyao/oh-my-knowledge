@@ -28,7 +28,17 @@ function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandida
   const sources = journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
   try {
     const input: unknown = JSON.parse(journal.stages[0]!.input);
-    const entries = z.object({ sources: z.array(frozenSourceSchema) }).parse(input).sources;
+    const legacyEnvelope = z.object({ sources: z.array(frozenSourceSchema) }).safeParse(input);
+    const unitEnvelope = z.object({ manifest: z.object({ sources: z.array(z.object({ sourceKey: z.string(), sourceRef: z.object({ snapshotId: z.string(), sourceVersion: z.string() }) })) }),
+      units: z.array(z.object({ sourceKey: z.string(), unitKind: z.string(), text: z.string() })) }).safeParse(input);
+    const entries = legacyEnvelope.success ? legacyEnvelope.data.sources : unitEnvelope.success
+      ? unitEnvelope.data.manifest.sources.map(({ sourceKey, sourceRef }) => {
+        const unit = unitEnvelope.data.units.find(unit => unit.sourceKey === sourceKey && unit.unitKind === 'source_metadata');
+        if (!unit) throw new Error('Frozen source metadata unit unavailable.');
+        const entry = frozenSourceSchema.parse(JSON.parse(unit.text));
+        if (entry.source.snapshotId !== sourceRef.snapshotId || entry.source.sourceVersion !== sourceRef.sourceVersion) throw new Error('Frozen source metadata identity mismatch.');
+        return entry;
+      }) : [];
     if (entries.length !== sources.length || entries.some(({ source }, index) => source.snapshotId !== sources[index].snapshotId || source.sourceVersion !== sources[index].sourceVersion)) return { sources, sourceMetadataStatus: 'unknown' };
     return { sources: entries.map(({ source }) => {
       const identity = SourceIdentitySchema.parse({ ...source.identity, sourceKind: source.sourceKind });
@@ -41,7 +51,7 @@ function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchive
   const nextAction = generationNextAction(journal);
   const association = journal.stages.find(s => s.stageKind === 'association'), catalogs = association?.entityWrites?.slice(0, association.committed) ?? [];
   const prepared = journal.stages.at(-1);
-  return { runId: journal.runId, journalGeneration: journal.generation, workflowId: journal.workflowId, inputVersion: journal.inputVersion, sourceSetId: journal.sourceSetId,
+  return { runId: journal.runId, mode: journal.mode, ledgerRef: journal.ledgerRef, coverageRef: journal.coverageRef, sourceCoverageDecisionRef: journal.sourceCoverageDecisionRef, journalGeneration: journal.generation, workflowId: journal.workflowId, inputVersion: journal.inputVersion, sourceSetId: journal.sourceSetId,
     ...(nextAction === 'continue_stage' && prepared?.state === 'prepared' ? { preparedStage: prepared } : {}), schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
     executor: journal.executor, model: journal.model,
     ...frozenSourceMetadata(journal), archiveChecks, archiveVerification, bodies: journal.bodies,
@@ -94,6 +104,10 @@ const requestSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas['continue-stage'].extend(common),
   knowledgeOperationSchemas['rebuild-associations'].extend(common),
   knowledgeOperationSchemas['prepare-generation'].extend(common),
+  knowledgeOperationSchemas['prepare-source-review'].extend(common),
+  knowledgeOperationSchemas['source-ledger'].extend(common),
+  knowledgeOperationSchemas['source-coverage-status'].extend(common),
+  knowledgeOperationSchemas['review-source-coverage'].extend(common),
   knowledgeOperationSchemas['prepare-rebuild-associations'].extend(common),
   knowledgeOperationSchemas['generate'].extend(common),
   knowledgeOperationSchemas['resume'].extend(common),
@@ -171,11 +185,12 @@ export async function executeKnowledgeCandidateAction(input: unknown, signal?: A
     }
     case 'correct-entities': return entityDetail(await execute(request));
     case 'apply-associations': case 'review-associations': return candidateDetail(await execute(request));
-    case 'prepare-generation': case 'prepare-rebuild-associations': case 'generate': case 'resume': case 'continue-stage': case 'rebuild-associations': return runSummary((await execute(request)).journal);
+    case 'prepare-generation': case 'prepare-source-review': case 'prepare-rebuild-associations': case 'generate': case 'resume': case 'continue-stage': case 'rebuild-associations': return runSummary((await execute(request)).journal);
     case 'inspect': {
       const { journal } = app.inspect(request.id);
       return runSummary(journal, [], journal.stages.every(stage => stage.outcomeRef) ? 'verified' : 'not_verified');
     }
+    case 'source-ledger': case 'source-coverage-status': case 'review-source-coverage': return execute(request);
     case 'source': case 'delete-source': return execute(request);
     case 'maintain': return execute(request);
     case 'revise': return candidateDetail(await execute(request));

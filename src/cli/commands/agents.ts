@@ -250,13 +250,10 @@ export default class AgentsCommand extends BaseCommand {
           executor: settings.executor, model: settings.model }, signal,
         (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer));
         const { journal } = prepared, pending = journal.stages.find(stage => stage.state === 'prepared');
-        const nextCommand = prepared.nextAction === 'continue_stage' && pending?.stageKind === 'body'
-          ? knowledgeCommand(settings.workspace, 'generate', { input: 'sources.json', 'run-id': journal.runId,
+        const nextCommand = prepared.nextAction === 'continue_stage' && pending
+          ? knowledgeCommand(settings.workspace, 'continue-stage', { id: journal.runId, generation: journal.generation,
             executor: journal.executor, model: journal.model, 'confirm-request': pending.requestDigest, json: true })
-          : prepared.nextAction === 'continue_stage' && pending?.stageKind === 'association'
-            ? knowledgeCommand(settings.workspace, 'continue-stage', { id: journal.runId, generation: journal.generation,
-              executor: journal.executor, model: journal.model, 'confirm-request': pending.requestDigest, json: true })
-            : knowledgeCommand(settings.workspace, 'inspect', { id: journal.runId, json: true });
+          : knowledgeCommand(settings.workspace, 'inspect', { id: journal.runId, json: true });
         const result = { session, preview, capture, sources, prepared, generationInput: { sources }, modelCalls: 0, nextCommand };
         if (flags.json) { this.log(JSON.stringify(result, null, 2)); return; }
         this.log(lang === 'zh'
@@ -264,8 +261,8 @@ export default class AgentsCommand extends BaseCommand {
           : `Sources saved locally; generation run ${journal.runId} is ${journal.status}. Model calls in this command: 0. Complete preview, capture and prepared request:`);
         this.log(JSON.stringify(result, null, 2));
         this.logToStderr(lang === 'zh'
-          ? `先核对完整请求。若下一步为 generate，将 generationInput 原样保存为 sources.json，再显式确认发送正文；关联须另行核对并确认。重复导入复用同一默认任务，未知结果不重发。\n${nextCommand}`
-          : `Inspect the complete request first. For generate, save generationInput unchanged as sources.json, then explicitly confirm body dispatch; inspect and confirm associations separately. Reimport reuses the default run and never redispatches unknown outcomes.\n${nextCommand}`);
+          ? `依次准备来源清单、正文、来源覆盖核对与关联四阶段，每次先核对完整请求，再用 continue-stage 单独确认发送。来源覆盖核对后须记录实际决定，才能准备关联。generationInput 可用于重新准备下一阶段；重复导入复用默认任务，未知结果不重发。\n${nextCommand}`
+          : `Prepare source inventory, content, source coverage and associations separately. Inspect each complete request, then confirm it with continue-stage. Source coverage requires an actual decision before associations can be prepared. Reuse generationInput to prepare the next stage; reimport reuses the default run and never redispatches unknown outcomes.\n${nextCommand}`);
       } catch (cause) {
         this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${knowledgeCommand(settings.workspace, 'runs', { json: true })}`, { exit: 1 });
       }

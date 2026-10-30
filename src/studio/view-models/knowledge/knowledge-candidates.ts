@@ -1,7 +1,8 @@
 import type { KnowledgeApplication } from '../../../knowledge/application/application.js';
 import type { SourceSnapshot, SourceResolution, TraceOrigin, SourceRef } from '../../../knowledge/sources.js';
+import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageDecisionRef } from '../../../knowledge/source-review.js';
 import type { KnowledgeBodyRef } from '../../../knowledge/contracts.js';
-import type { GenerationArchiveCheck, GenerationStage } from '../../../knowledge/extraction/generation-journal.js';
+import type { GenerationArchiveCheck, GenerationStage, GenerationJournal } from '../../../knowledge/extraction/generation-journal.js';
 import type { KnowledgeRetrievalRequest, KnowledgeRetrievalResult } from '../../../knowledge/application/retrieval.js';
 
 type CandidateDetail = ReturnType<KnowledgeApplication['detail']>;
@@ -19,21 +20,20 @@ export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['query
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source' | 'knowledgeStatus'> & Pick<KnowledgeEntityAnalysisDetail, 'source'> & { knowledgeStatus: 'available' | 'unavailable' };
 export interface KnowledgeCandidateRun {
   runId: string; schemaStatus: 'current' | 'unsupported' | 'unavailable'; status: 'active' | 'completed' | 'failed' | 'unsupported' | 'unavailable';
-  journalGeneration?: number; workflowId?: 'knowledge-body-first/v3'; inputVersion?: string; sourceSetId?: string; preparedStage?: GenerationStage;
+  journalGeneration?: number; workflowId?: GenerationJournal['workflowId']; mode?: GenerationJournal['mode']; inputVersion?: string; sourceSetId?: string; preparedStage?: GenerationStage;
   createdAt?: string; executor?: string; model?: string; sources?: { snapshotId: string; sourceVersion: string; sourceKind?: SourceSnapshot['sourceKind']; projectId?: string; origin?: TraceOrigin }[];
   sourceMetadataStatus?: 'frozen_input' | 'unknown';
   archiveVerification: 'not_verified' | 'verified'; archiveChecks: GenerationArchiveCheck[];
-  bodies: KnowledgeBodyRef[];
+  bodies: KnowledgeBodyRef[]; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef; sourceCoverageDecisionRef?: SourceCoverageDecisionRef;
   phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
     producerId: string; producerRevision: string; rejectedCount: number | null;
   })[];
-  nextAction: 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
+  nextAction: 'prepare_next_stage' | 'review_source_coverage' | 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
   entityAnalyses?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' }[];
   unsupportedReason?: string;
   unavailableReason?: 'unreadable' | 'invalid_identity' | 'invalid_source_metadata' | 'project_membership_unavailable';
 }
 export interface KnowledgeCandidateQueue { rows: KnowledgeCandidateRow[]; runs: KnowledgeCandidateRun[] }
-export type { AutoExtractionState, AutoExtractionStatus, AutoExtractionPreview } from '../../../knowledge/application/auto-extraction.js';
 type EntityDetail = ReturnType<KnowledgeApplication['entities']>;
 export type KnowledgeEntityAnalysisDetail = Omit<EntityDetail, 'source'> & { source: SourceViewResolution };
 

@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
+import { authoredKnowledgeResponse } from './knowledge-fixtures.js';
 import { runCommand } from '../helpers/run-command.js';
 import AgentsCommand from '../../src/cli/commands/agents.js';
 import { createExtractionArchiveProducer } from '../../src/executors/archive.js';
@@ -131,14 +132,15 @@ describe('omk agents 与本机登记表扩展', () => {
     expect(result.capture).toMatchObject({ sendAuthorization: 'not_granted', saveManifest: { items: [{ reused: false }] } });
     expect(result.sources).toEqual(result.capture.saveManifest.items.map(({ snapshotId, sourceVersion }: { snapshotId: string; sourceVersion: string }) => ({ snapshotId, sourceVersion })));
     expect(result.generationInput).toEqual({ sources: result.sources }); expect(result.modelCalls).toBe(0);
-    expect(result.prepared.journal).toMatchObject({ schemaVersion: 3, workflowId: 'knowledge-body-first/v3', status: 'active', bodies: [],
-      sources: result.sources.map((source: unknown) => expect.objectContaining(source)), stages: [{ stageKind: 'body', state: 'prepared' }] });
+    expect(result.prepared.journal).toMatchObject({ schemaVersion: 4, workflowId: 'knowledge-body-first/v4', status: 'active', bodies: [],
+      sources: result.sources.map((source: unknown) => expect.objectContaining(source)), stages: [{ stageKind: 'source_ledger', state: 'prepared' }] });
     const stage = result.prepared.journal.stages[0];
     expect(stage.input).toContain('Alpha 使用 Beta'); expect(stage.input).not.toContain('中'); expect(stage.system.length).toBeGreaterThan(0);
     // A collection display title comes from a message; it is not an original trace title.
     expect(result.capture.sources[0].snapshot.origin).toBeUndefined();
-    expect(result.nextCommand).toContain('omk observe knowledge generate');
-    expect(result.nextCommand).toContain(`--workspace ${workspace}`); expect(result.nextCommand).toContain(`--run-id ${result.prepared.journal.runId}`);
+    expect(result.nextCommand).toContain('omk observe knowledge continue-stage');
+    expect(result.nextCommand).toContain(`--workspace ${workspace}`); expect(result.nextCommand).toContain(`--id ${result.prepared.journal.runId}`);
+    expect(result.nextCommand).toContain(`--generation ${result.prepared.journal.generation}`);
     expect(result.nextCommand).toContain(`--confirm-request ${stage.requestDigest}`);
     expect(factory).toHaveBeenCalledExactlyOnceWith('codex', 'fixture', createExtractionArchiveProducer);
     expect(inspect).toHaveBeenCalledOnce(); expect(invoke).not.toHaveBeenCalled();
@@ -152,6 +154,18 @@ describe('omk agents 与本机登记表扩展', () => {
     const text = await runCommand(AgentsCommand, selectedArgs.filter(arg => arg !== '--json'), options);
     expect(text.stdout).toContain(JSON.stringify(stage.system)); expect(text.stdout).toContain(stage.requestDigest);
     expect(text.stderr).toContain(result.nextCommand); expect(text.stdout).not.toContain('提炼完成'); expect(invoke).not.toHaveBeenCalled();
+    invoke.mockImplementation(async (profile, input, _signal, gate) => {
+      gate?.(); return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(authoredKnowledgeResponse(input, profile.stageKind)), authoredFixture: true } };
+    });
+    const saved = await app.continueStage(result.prepared.journal.runId, result.prepared.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+    expect(saved.nextAction).toBe('prepare_next_stage');
+    const bodyPrepared = JSON.parse((await runCommand(AgentsCommand, selectedArgs, options)).stdout);
+    expect(bodyPrepared.prepared.journal.stages.map((phase: { stageKind: string; state: string }) => [phase.stageKind, phase.state]))
+      .toEqual([['source_ledger', 'completed'], ['body', 'prepared']]);
+    expect(bodyPrepared.nextCommand).toContain('omk observe knowledge continue-stage');
+    expect(bodyPrepared.nextCommand).toContain(`--generation ${bodyPrepared.prepared.journal.generation}`);
+    expect(bodyPrepared.nextCommand).not.toContain('knowledge generate'); expect(invoke).toHaveBeenCalledOnce();
+
   });
   it('list 把扩展条目当成本机登记表的一部分，并按同一身份与日志根计数', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));

@@ -219,3 +219,4 @@ test/knowledge/associations.test.ts
 test/knowledge/legacy-migration.test.ts
 test/knowledge/association-migration.test.ts
 test/knowledge/source-review.test.ts
+test/knowledge/workflow-migration.test.ts

@@ -13,6 +13,8 @@ The design does not require a graph database, embedding retrieval, background id
 | Object / record | Owner and responsibility |
 |---|---|
 | Source window | Selected excerpts, source identity, scope, and limits; later judgments can return to the same evidence |
+| Source ledger | Fallible items/facets and exclude/pending opinions for complete authorized sources and every delivered unit; not truth or an entity universe |
+| Source coverage and decision | Independent source/ledger/exact-body checks; separate model analysis and actual Agent/human proceed/revise/stop decisions, rechecked at association claim |
 | Source entity analysis | Window-local objects, mentions, and immutable analysis revisions; no cross-window unified identity |
 | Entity-link review | Pinned entities from two windows, exact model request/outcome, structural admission, separate human decision, and recoverable library intent |
 | Canonical knowledge body | Stable knowledge/revision/segment identities, complete natural-language segments and inline exact source evidence; new revisions are pending |
@@ -29,9 +31,12 @@ One carrier may cite many items; one item may appear in multiple carriers or obj
 
 ```mermaid
 flowchart LR
-  source[Selected source window] --> extract[Body generation and host admission]
+  source[Selected source window] --> ledger[Source meaning inventory]
+  ledger --> extract[Body generation and host admission]
   extract --> knowledge[Save canonical body pending]
-  knowledge --> association[Independent association generation]
+  knowledge --> coverage[Source coverage review]
+  coverage --> decision[Actual operator decision]
+  decision --> association[Independent association generation]
   association --> catalog[Window entity catalog]
   catalog --> review[Cross-window entity review]
   review --> library[Library organization]
@@ -40,11 +45,11 @@ flowchart LR
   carrier --> evaluate[Controlled evaluation]
 ```
 
-The order is intentional: the complete body is admitted and saved before an independent association call. An absent or failed projection cannot block body reading or maintenance. The library adds cross-window organization, not another canonical content store.
+The order is intentional: inventory complete sources, then save complete bodies and independently compare sources, fallible ledger and saved content. Association requires an exact actual Agent/human decision plus separate request confirmation; zero bodies still need coverage. Missing or failed projections never block body reading or maintenance. The library adds cross-window organization.
 
 | Stage | Responsibility and hand-off | Authoritative specification |
 |---|---|---|
-| Window extraction | Freeze source and each phase request; archive each complete returned outcome before decoding; persist admitted body pending before association generation. | [Entity extraction](../entities/entity-extraction.md) |
+| Window extraction | Pin complete sources and each request; ledger → body → coverage → actual decision → association, with original archival before decoding and separate confirmation per model stage. | [Entity extraction](../entities/entity-extraction.md) and [source review](knowledge-source-review.md) |
 | Host admission | Uniquely locate exact quotes with adjacent source context and compute UTF-16 positions; validate wire/domain structure and reference closure; retain admitted body siblings and the original outcome; derived validation never deletes saved body. Admission does not adjudicate semantics. | [Extraction contracts](../entities/entity-extraction.md#_3-contracts-and-identity) and [identity rules](../entities/entity-identity.md) |
 | Entity catalog | Query current window analyses while preserving analysis/entity/revision identities; disclose unreadable analyses and sources. Search does not create a shared identity. | [Extraction storage and catalog](../entities/entity-extraction.md#_6-current-storage-contracts) |
 | Cross-window review | Normalized recall → bounded preview → confirmed durable preparation → governed model suggestion → archived outcome and admission → explicit human acceptance/rejection → recoverable application. Retrieval and model advice cannot publish organization. | [Entity-link journal](../entities/entity-links.md); [Studio transport](../studio/studio-entity-links.md) |
@@ -63,7 +68,7 @@ The library's independent `objectId` organizes those original references across 
 
 The canonical draft is `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`. Every segment is a complete independently consumable body unit. Its text retains necessary conditions, attribution, negation, time, exceptions and unknowns; quotes, titles and catalogs cannot substitute for that meaning. Each evidence entry carries `source: {snapshotId, sourceVersion}`, `selection: {evidenceRef, start, end, quote}`, `basis` and optional `interpretation`. The host verifies exact continuous UTF-16 positions against the source on generation and revision.
 
-Current body generation output v2 / prompt v8 declares shared `requiredContexts`: each literal occurs in its source quote and every segment, with its evidence compiled into every segment without rewriting text. Association output v3 / prompt v7 owns mentions within entities, compiles qualified references on the host, and requires a mapped or abstained decision with a reason for every segment. Exact adjacent-context location and these declarations detect structural omissions only; they do not prove semantic completeness, correct identity or reviewed coverage. The [extraction contract](../entities/entity-extraction.md) defines capacity and recovery boundaries. Other independently versioned extraction/measurement protocols retain their frozen locator rules.
+Current body generation output v2 / prompt v9 declares shared `requiredContexts`: each literal occurs in its source quote and every segment, with its evidence compiled into every segment without rewriting text. Association output v3 / prompt v7 owns mentions within entities, compiles qualified references on the host, and requires a mapped or abstained decision with a reason for every segment. Exact adjacent-context location and these declarations detect structural omissions only; they do not prove semantic completeness, correct identity or reviewed coverage. The [extraction contract](../entities/entity-extraction.md) defines capacity and recovery boundaries. Other independently versioned extraction/measurement protocols retain their frozen locator rules.
 
 Knowledge history uses Schema 3. Immutable revisions add `bodyDigest`, computed from the versioned canonical title/content/reuse rationale. The independent association history binds the exact `{knowledgeId, revisionId, bodyDigest}`, a complete `catalogRefs` revision set, `segmentEntityRefs`, optional `typedRelations` and unresolved issues. Missing typed relations mean not requested; an empty array means requested with none formed. Its `available` status means structurally readable, not confirmed identity or truth. Separate accept/reject review applies to that projection; every new projection starts pending.
 
@@ -93,7 +98,7 @@ Saving, actual use, and controlled effect verification are separate records. The
 
 `knowledge/` owns pure content contracts, validation and history rules. Its `application/` owns CLI/Studio use cases and local composition; `adapters/` owns source reading, model transport and filesystem persistence. Observation supplies trace parsing, while delivery surfaces own host configuration and presentation. Library organization is not a second content store.
 
-Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. Generation uses the current-only `knowledge-generation-journal` Schema 3, not a run5 wrapper around two originals. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
+Writes carry expected versions; conflicts require rereading and review. Only allowed workspace locations receive writes. Generation uses the current-only `knowledge-generation-journal` Schema 4, not a run5 wrapper around its separate stage originals. [Extraction](../entities/entity-extraction.md) and [storage layout](../shared/storage-layout-spec.md) own current formats and recovery. This page does not duplicate a schema catalog.
 
 ### 5.1 Failure and recovery hand-offs {#construction-recovery}
 
@@ -195,8 +200,8 @@ Multi-catalog associations, separate-workspace migration and independent reviews
 |---|---|
 | Source windows and capture/source DTOs | SourceSnapshot uses knowledge-window-v3. Replace SourceExcerpt, SourceSelection, SourceResolution, SourceStore and capture APIs together; selection is no longer limited to path/record ranges, and resolution adds authorization and other states. Archive original v2 bytes and digests unchanged; an explicit adapter creates v3 snapshots and reference mappings in a new directory. Never reinterpret an old sourceVersion or add a permanent dual reader. |
 | Body and entity histories | Body Schema 3 already expresses multi-source evidence; entity history v2 can retain one snapshot per catalog. Moving old references to new snapshots creates a new pending body revision and explicit catalog mappings, without reusing old body digests, retention or association acceptance. Never automatically retarget old catalogs, body or carrier references. Adding a derived projection alone changes neither body nor its maintenance decision. |
-| Associations and generation journals | Current multi-catalog associations use association history Schema 2; Source3 generation uses journal Schema 3 / knowledge-body-first/v3 with explicit multi-source input and separate phase confirmation. The earlier multi-catalog migration changed association profile/wire identities while preserving its then-current body profile. It explicitly converts a v1 projection to a new pending singleton-catalogRefs projection, preserving old originals, receipts and unknown-dispatch identities without model calls or resumed old dispatch. Old migrated journals remain unsupported; old automatic permissions/schedules are archived only. The later body output v2 / association output v3 upgrade changes both generation profiles with the same stores; active old-profile recovery requires a matching preserved build, apart from replaying already prepared fixed publication intents. |
-| Source inventory and coverage | The approved source-first extension adds independent [source ledger/coverage histories](knowledge-source-review.md), both Schema 1. These foundations separate native analyses from trusted actual-actor decisions. Default generation remains v3 until workflow4, claim-time decision validation, old-automation refusal and independent-copy migration are integrated together; existing source/body/review identities and historical measurements are preserved. |
+| Associations and generation journals | Association history stays Schema 2 and its prompt7/profile/wire3/v1 stage envelope stays byte-identical. Default journal Schema 4 / knowledge-body-first/v4 binds four stages, ledger/coverage/decision references and per-stage confirmations. Old journal3/automation remain archive-only during workflow copy migration; recover old claims only with the preserved matching build. Earlier projection conversions and historical profile changes retain their recorded identities and pending-review rules. |
+| Source inventory and coverage | Default workflow4 uses journal4/input2: source_ledger → body → source_coverage → explicitly approved association. Independent Schema1 [ledger/coverage histories](knowledge-source-review.md) distinguish model opinions and actual decisions. Recheck exact decisions under the claim lock, refuse old automation and migrate only supported independent copies. Source3 and unchanged body/entity/association/review/tag identities and historical measurements stay preserved. |
 | Actor context | Reuse human/agent shapes, while explicitly documenting release impacts for trusted CLI/service context input and refusal when missing. Never rewrite old actors or receipts. Any new persisted authorization record first needs its own versioned contract and retention scope. |
 | Organization, carriers and measurement | Keep organization members, exact carrier references and historical measurements under their original identities. Relinking requires explicit review and a new revision. Never recompute old prompts, wires, scoring, denominators or studies; validate new generation/association behavior under independent measurement identities. |
 

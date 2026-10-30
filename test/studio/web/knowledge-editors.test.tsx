@@ -18,7 +18,7 @@ import { AutoExtractConversation } from '../../../src/studio/web/components/know
 import { KnowledgeInbox } from '../../../src/studio/web/components/knowledge/inbox';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library';
 import type { KnowledgeReaderSelection } from '../../../src/studio/web/components/knowledge/reader';
-import type { AutoExtractionPreview, AutoExtractionState, KnowledgeAssociationCatalogs, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeCandidateQueue } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
+import type { KnowledgeAssociationCatalogs, KnowledgeEntityAnalysisDetail, KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail, KnowledgeCandidateRow, KnowledgeCandidateDetail, KnowledgeCandidateQueue } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 import type { ReviewedCarrierDraft, ReviewedCarrierDetail } from '../../../src/studio/view-models/knowledge/artifact-authoring';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -126,140 +126,45 @@ it('maps textarea LF selections back to original CRLF offsets and locates saved 
   expect(snapshot.excerpts[0].text).toBe(text); expect(value.revision.mentions[0].selection.start).toBe(0);
 });
 
-describe('conversation automation consent lifecycle', () => {
-  it('requires fresh reviewed consent, ignores cancelled previews, and disposes an in-flight status poll on unmount', async () => {
-    const calls: Call[] = [], previews = [deferred<Response>(), deferred<Response>(), deferred<Response>()], settings = deferred<Response>();
-    const poll = deferred<Response>(), onChanged = vi.fn();
-    const intervals = vi.spyOn(globalThis, 'setInterval'), clear = vi.spyOn(globalThis, 'clearInterval');
-    let previewIndex = 0;
-    const preview = (token: string, text: string): AutoExtractionPreview => ({ sourceScopeId: 'conversation:fixture', sourceVersion: digest, sourcePreview: null, profiles: [], token, title: 'Synthetic conversation', turnCount: 1,
-      messages: [{ excerptKey: `preview-${token}`, recordIndex: 0, role: 'user', text }], limitations: [] });
-    const enabled: AutoExtractionState = { schemaVersion: 3, sourceScopeId: 'conversation:fixture', profileBindings: [], schemaStatus: 'current', workflowId: 'knowledge-body-first/v3', ledgerVersion: 'conversation-phase-invocations/v3', automationKind: 'conversation-knowledge-extraction', threadId: 'thread/a',
-      owner: uuid(500), pid: 1, hostname: 'fixture', permissionId: uuid(501), executor: 'openai-api', model: 'reviewed-model',
-      maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
-      checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === '/api/settings') return settings.promise;
-      expect(url).toBe('/api/knowledge/auto-extraction');
-      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-      const call = { resource: 'auto-extraction', operation: String(body.operation), body, signal: init.signal ?? undefined };
-      calls.push(call);
-      if (call.operation === 'status') return calls.filter(item => item.operation === 'status').length === 1 ? json(null) : poll.promise;
-      if (call.operation === 'preview') return previews[previewIndex++].promise;
-      if (call.operation === 'enable') return json(enabled);
-      throw new Error(`Unexpected automation operation: ${call.operation}`);
-    }));
-    const requests = (operation: string) => calls.filter(call => call.operation === operation);
-    const dialog = () => screen.getByRole('dialog', { name: 'Confirm auto extraction for this conversation' });
-    const approve = () => within(dialog()).getByRole('button', { name: /Approve and enable$/ });
-    const consent = () => within(dialog()).getByRole('checkbox', { name: /Approve sending the initial and future windows/ }) as HTMLInputElement;
-    const cancel = () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
-    const view = render(<AutoExtractConversation threadId="thread/a" lang="en" onChanged={onChanged}/>, { wrapper });
-    expect(screen.getByRole('button', { name: 'Enable auto extraction' }).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' })); expect(requests('preview')).toHaveLength(0);
-    await act(async () => settings.resolve(json({ effective: { workspace: '/initial', executor: 'openai-api', model: 'initial-model' } })));
-    await waitFor(() => expect(requests('status')).toHaveLength(1));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Enable auto extraction' }).hasAttribute('disabled')).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
-    await waitFor(() => expect(requests('preview')).toHaveLength(1));
-    expect(approve().hasAttribute('disabled')).toBe(true); expect(consent().disabled).toBe(true);
-    expect(requests('enable')).toHaveLength(0);
-    cancel(); expect(requests('preview')[0].signal?.aborted).toBe(true);
-    await act(async () => previews[0].resolve(json(preview('cancelled-token', 'Late cancelled preview'))));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(screen.queryByText('Late cancelled preview')).toBeNull(); expect(requests('enable')).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
-    await waitFor(() => expect(requests('preview')).toHaveLength(2));
-    const unsafe = '<script>window.__omkAutoExecuted = true</script><img src=x onerror=alert(1)>';
-    await act(async () => previews[1].resolve(json(preview('reviewed-but-cancelled-token', unsafe))));
-    fireEvent.click(within(dialog()).getByText('Review initial content: 1 turns, 1 messages'));
-    expect(within(dialog()).getByText(unsafe, { exact: false }).tagName).toBe('PRE');
-    expect(dialog().querySelector('script, img')).toBeNull();
-    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
-    fireEvent.click(consent()); expect(approve().hasAttribute('disabled')).toBe(false);
-    change('Candidate folder', ''); expect(approve().hasAttribute('disabled')).toBe(true);
-    change('Candidate folder', ' /reviewed '); expect(approve().hasAttribute('disabled')).toBe(true);
-    expect(consent().checked).toBe(false); fireEvent.click(consent());
-    change('Model', ''); expect(approve().hasAttribute('disabled')).toBe(true);
-    change('Model', ' reviewed-model '); expect(approve().hasAttribute('disabled')).toBe(true);
-    expect(consent().checked).toBe(false); fireEvent.click(consent());
-    fireEvent.change(within(dialog()).getByRole('spinbutton', { name: 'Maximum OMK invocations for this conversation permission' }), { target: { value: '2' } });
-    fireEvent.blur(within(dialog()).getByRole('spinbutton', { name: 'Maximum OMK invocations for this conversation permission' }));
-    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
-    cancel(); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(requests('enable')).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto extraction' }));
-    await waitFor(() => expect(requests('preview')).toHaveLength(3));
-    expect(consent().checked).toBe(false); expect(consent().disabled).toBe(true);
-    expect(approve().hasAttribute('disabled')).toBe(true);
-    await act(async () => previews[2].resolve(json(preview('fresh-token', 'Fresh reviewed preview'))));
-    expect(consent().checked).toBe(false); expect(approve().hasAttribute('disabled')).toBe(true);
-    expect(within(dialog()).getByText(/up to two model calls/)).toBeTruthy();
-    fireEvent.click(consent()); fireEvent.click(approve()); fireEvent.click(approve());
-    await screen.findByRole('button', { name: 'Stop auto extraction' });
-    expect(requests('enable').map(call => call.body)).toEqual([{ operation: 'enable', workspace: '/reviewed', threadId: 'thread/a',
-      token: 'fresh-token', executor: 'openai-api', model: 'reviewed-model', maxCalls: 2, workflowId: 'knowledge-body-first/v3' }]);
-    expect(onChanged).toHaveBeenCalledTimes(2);
-    const index = intervals.mock.calls.map(([, delay], index) => delay === 5000 ? index : -1).filter(index => index >= 0).at(-1)!;
-    expect(index).toBeGreaterThanOrEqual(0);
-    const callback = intervals.mock.calls[index][0], timer = intervals.mock.results[index].value;
-    if (typeof callback !== 'function') throw new Error('Expected an automation polling callback');
-    await act(async () => { callback(); });
-    await waitFor(() => expect(requests('status')).toHaveLength(2));
+describe('explicit conversation extraction and knowledge inbox', () => {
+  it('shows stage confirmation guidance without automatic grants, model controls, polling or background reads', () => {
+    const fetch = vi.fn(), intervals = vi.spyOn(globalThis, 'setInterval'), changed = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const view = render(<AutoExtractConversation threadId="old-thread" lang="en" onChanged={changed}/>);
+    expect(screen.getByRole('status').textContent).toBe('Extraction requires confirmation at each stage; automatic extraction is disabled.');
+    expect(screen.queryByRole('button')).toBeNull(); expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull(); expect(screen.queryByRole('textbox')).toBeNull();
+    view.rerender(<AutoExtractConversation threadId="new-thread" lang="zh" onChanged={changed}/>);
+    expect(screen.getByRole('status').textContent).toBe('需逐阶段确认，不再自动提炼。');
     view.unmount();
-    expect(clear).toHaveBeenCalledWith(timer); expect(requests('status')[1].signal?.aborted).toBe(true);
-    await act(async () => poll.resolve(json({ ...enabled, callsUsed: 1 })));
-    await act(async () => { callback(); });
-    expect(requests('status')).toHaveLength(2); expect(requests('enable')).toHaveLength(1);
-    expect(onChanged).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled(); expect(intervals).not.toHaveBeenCalled(); expect(changed).not.toHaveBeenCalled();
   });
-  it('skips inbox projections for unchanged status tags while preserving cooldown, stopped-state and maintenance visibility', async () => {
-    const intervals = vi.spyOn(globalThis, 'setInterval');
-    let tag: string | null = 'W/"heads-1"', status: AutoExtractionState | null = null, statuses = 0, queues = 0;
-    const reply = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: tag ? { etag: tag } : {} });
+
+  it('refreshes the inbox after explicit extraction or scoped maintenance without an automation poll', async () => {
+    let queues = 0, queue: KnowledgeCandidateQueue = { rows: [], runs: [] };
+    const changed = vi.fn(), calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === '/api/settings') return json({ effective: { workspace: '/poll-scope', executor: 'openai-api', model: 'fixture' } });
+      calls.push(url);
+      if (url === '/api/settings') return json({ effective: { workspace: '/explicit-inbox', executor: 'openai-api', model: 'fixture' } });
       const body = JSON.parse(String(init.body)) as { operation: string };
-      if (url === '/api/knowledge/auto-extraction' && body.operation === 'status') { statuses++; return reply(status); }
-      if (url === '/api/knowledge/candidates' && body.operation === 'queue') { queues++; return json({ rows: [], runs: [] }); }
-      throw new Error(`Unexpected polling request: ${url}/${body.operation}`);
+      if (url === '/api/knowledge/candidates' && body.operation === 'queue') { queues++; return json(queue); }
+      throw new Error(`Unexpected inbox request: ${url}/${body.operation}`);
     }));
-    function Inbox() {
-      const [epoch, setEpoch] = useState(0);
-      return <><AutoExtractConversation threadId="poll-thread" lang="en" onChanged={() => setEpoch(value => value + 1)}/>
-        <KnowledgeInbox threadId="poll-thread" lang="en" refreshKey={epoch}/></>;
-    }
-    render(<Inbox/>, { wrapper });
+    const content = (refreshKey: number) => <><AutoExtractConversation threadId="explicit-thread" lang="en" onChanged={changed}/>
+      <KnowledgeInbox threadId="explicit-thread" lang="en" refreshKey={refreshKey}/></>;
+    const view = render(content(0), { wrapper });
     await screen.findByRole('button', { name: 'Knowledge inbox · 0 pending' });
-    await waitFor(() => expect(intervals.mock.calls.some(([, delay]) => delay === 5000)).toBe(true));
-    const callback = intervals.mock.calls.find(([, delay]) => delay === 5000)![0];
-    if (typeof callback !== 'function') throw new Error('Expected polling callback');
-    const poll = async () => { const before = statuses; await act(async () => { callback(); }); await waitFor(() => expect(statuses).toBe(before + 1)); };
-    const initialProjections = queues;
-    await poll(); await poll(); await poll();
-    expect(queues).toBe(initialProjections); // Three unchanged five-second polls perform no queue projection.
-    status = { schemaVersion: 3, sourceScopeId: 'conversation:fixture', profileBindings: [], schemaStatus: 'current', workflowId: 'knowledge-body-first/v3', ledgerVersion: 'conversation-phase-invocations/v3', automationKind: 'conversation-knowledge-extraction', threadId: 'poll-thread',
-      owner: uuid(700), pid: 1, hostname: 'fixture', permissionId: uuid(701), executor: 'openai-api', model: 'fixture',
-      maxCalls: 2, callsUsed: 1, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'generating',
-      checkedTurns: [], initialTurns: ['turn-0'], attemptedVersions: [] };
-    tag = 'W/"heads-2"'; await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 1));
-    expect(screen.getByRole('status').textContent).toContain('Extracting · 1／2');
-    status = { ...status, reason: 'waiting', notBefore: '2026-10-15T01:00:00Z' }; tag = 'W/"heads-3"'; await poll();
-    await waitFor(() => expect(queues).toBe(initialProjections + 2));
-    expect(screen.getByRole('status').textContent).toContain('Server cooldown until');
-    status = { ...status, enabled: false, reason: 'stopped' }; tag = 'W/"heads-4"'; await poll();
-    await waitFor(() => expect(queues).toBe(initialProjections + 3));
-    await screen.findByRole('button', { name: 'Enable auto extraction' });
-    await poll(); expect(queues).toBe(initialProjections + 3);
-    // The JSON automation state is identical; an externally published knowledge head still invalidates the inbox.
-    tag = 'W/"heads-5"'; await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 4));
-    const beforeEvent = statuses;
-    await act(async () => { window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: '/poll-scope' })); });
-    await waitFor(() => expect(queues).toBe(initialProjections + 5)); expect(statuses).toBe(beforeEvent);
-    tag = null; await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 6));
-    await poll(); await waitFor(() => expect(queues).toBe(initialProjections + 7));
+    const initial = queues;
+    await act(async () => { window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: '/another-workspace' })); });
+    expect(queues).toBe(initial);
+    queue = { rows: [{ ...candidate, choice: null }], runs: [] };
+    await act(async () => { window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: '/explicit-inbox' })); });
+    await screen.findByRole('button', { name: 'Knowledge inbox · 1 pending' });
+    expect(queues).toBe(initial + 1);
+    queue = { rows: [], runs: [] }; view.rerender(content(1));
+    await screen.findByRole('button', { name: 'Knowledge inbox · 0 pending' });
+    expect(queues).toBe(initial + 2);
+    expect(calls).not.toContain('/api/knowledge/auto-extraction'); expect(changed).not.toHaveBeenCalled();
   });
 
   it('keeps incomplete inbox counts unknown through initial and embedded refreshes, then restores confirmed counts', async () => {
@@ -290,62 +195,6 @@ describe('conversation automation consent lifecycle', () => {
     expect(screen.getByRole('button', { name: /Confirmed knowledge/ })).toBeTruthy();
     expect(screen.queryByText(/counts cannot be confirmed/)).toBeNull();
   });
-
-  it('does not let an older status reply undo an explicit stop', async () => {
-    const intervals = vi.spyOn(globalThis, 'setInterval'), poll = deferred<Response>(), changed = vi.fn();
-    const enabled: AutoExtractionState = { schemaVersion: 3, sourceScopeId: 'conversation:fixture', profileBindings: [], schemaStatus: 'current', workflowId: 'knowledge-body-first/v3', ledgerVersion: 'conversation-phase-invocations/v3', automationKind: 'conversation-knowledge-extraction', threadId: 'stop-thread',
-      owner: uuid(710), pid: 1, hostname: 'fixture', permissionId: uuid(711), executor: 'openai-api', model: 'fixture',
-      maxCalls: 2, callsUsed: 0, enabledAt: now, expiresAt: '2026-10-16T00:00:00Z', enabled: true, reason: 'waiting',
-      checkedTurns: [], initialTurns: [], attemptedVersions: [] };
-    let statuses = 0;
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === '/api/settings') return json({ effective: { workspace: '/stop-scope', executor: 'openai-api', model: 'fixture' } });
-      const body = JSON.parse(String(init.body)) as { operation: string };
-      if (body.operation === 'status') return ++statuses === 1 ? new Response(JSON.stringify(enabled), { headers: { etag: 'W/"before-stop"' } }) : poll.promise;
-      if (body.operation === 'stop') return json({ ...enabled, enabled: false, reason: 'stopped' });
-      throw new Error(`Unexpected action: ${body.operation}`);
-    }));
-    render(<AutoExtractConversation threadId="stop-thread" lang="en" onChanged={changed}/>, { wrapper });
-    await screen.findByRole('button', { name: 'Stop auto extraction' });
-    await waitFor(() => expect(intervals.mock.calls.some(([, delay]) => delay === 5000)).toBe(true));
-    const callback = intervals.mock.calls.find(([, delay]) => delay === 5000)![0];
-    if (typeof callback !== 'function') throw new Error('Expected polling callback');
-    await act(async () => { callback(); }); await waitFor(() => expect(statuses).toBe(2));
-    fireEvent.click(screen.getByRole('button', { name: 'Stop auto extraction' }));
-    await screen.findByRole('button', { name: 'Enable auto extraction' });
-    await act(async () => poll.resolve(new Response(JSON.stringify(enabled), { headers: { etag: 'W/"old-running-head"' } })));
-    expect(screen.getByRole('button', { name: 'Enable auto extraction' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('Stopped'); expect(changed).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps one status poll in flight and ignores late replies from the previous conversation scope', async () => {
-    const intervals = vi.spyOn(globalThis, 'setInterval'), old = deferred<Response>(), changed = vi.fn();
-    const calls: Call[] = []; let firstOldStatus = true;
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url === '/api/settings') return json({ effective: { workspace: '/scope-isolation', executor: 'openai-api', model: 'fixture' } });
-      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-      calls.push({ resource: 'auto-extraction', operation: String(body.operation), body, signal: init.signal ?? undefined });
-      if (body.threadId === 'old-thread' && !firstOldStatus) return old.promise;
-      if (body.threadId === 'old-thread') firstOldStatus = false;
-      return new Response('null', { headers: { etag: `W/"${String(body.threadId)}"` } });
-    }));
-    const view = render(<AutoExtractConversation threadId="old-thread" lang="en" onChanged={changed}/>, { wrapper });
-    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
-    // The initial status callback precedes the effect that installs polling.
-    await waitFor(() => expect(intervals.mock.calls.some(([, delay]) => delay === 5000)).toBe(true));
-    const callback = intervals.mock.calls.find(([, delay]) => delay === 5000)![0];
-    if (typeof callback !== 'function') throw new Error('Expected polling callback');
-    await act(async () => { callback(); callback(); });
-    expect(calls.filter(call => call.body.threadId === 'old-thread')).toHaveLength(2);
-    view.rerender(<AutoExtractConversation threadId="new-thread" lang="en" onChanged={changed}/>);
-    await waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
-    expect(calls.filter(call => call.body.threadId === 'old-thread')[1].signal?.aborted).toBe(true);
-    await act(async () => old.resolve(new Response('null', { headers: { etag: 'W/"late-old-head"' } })));
-    expect(changed).toHaveBeenCalledTimes(2);
-    await act(async () => { callback(); });
-    expect(calls.filter(call => call.body.threadId === 'old-thread')).toHaveLength(2);
-  });
-
 });
 
 describe('organization editor component lifecycle', () => {

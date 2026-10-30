@@ -20,7 +20,7 @@
 
 写入需携带预期 generation／写头，拒绝过期草稿；原子写入前检查容量和成员占用。不可读的组织文件使查询与写入失败，不将其跳过后宣称对象未被占用。复用现有工作区锁及本机死进程锁恢复，不另建后台写入或自动重试。文件系统写入（包括精确回执重放）仅在文件及其所在目录逐级同步至显式工作区后确认成功，既有 JSON 编码及回执不变。未知同步失败保留已可见的发布，由调用方重试精确同一请求；不支持同步时失败，不降低确认保证。这不构成多文件事务、真实断电存活验证或远端 exactly-once 执行。
 
-组织层不自行改变当前 `items/`、`entities/`、`sources/`、`tags/`、`artifacts/` 格式与内容，也不保存知识正文副本。当前正文历史为 Schema 3，实体历史为 v2，生成使用 `generation-journals/` 的独立日志；旧 typed 知识 v2 和 run5 不由当前 reader 解码或续跑。旧工作区须按[显式迁入新工作区](knowledge-domain-model.md#body-migration)处理；知识库、载体和跨窗引用不自动改指向。组织操作不修改提取提示词、Schema、程序接纳或历史分数，不为旧结构增加兼容 reader。
+组织层不自行改变当前 `items/`、`entities/`、`sources/`、`tags/`、`artifacts/` 格式与内容，也不保存知识正文副本。当前正文历史为 Schema 3，实体历史为 v2，生成使用 `generation-journals/` 的独立日志；旧 typed 知识 v2 和 run5 不由当前 reader 解码或续跑。旧 typed 正文按[独立正文迁移](knowledge-domain-model.md#body-migration)处理，来源与 workflow 另按各自明确边界；当前 workflow 副本只支持六类指定数据，包含 library／carrier／entity-links 时须保留旧目录及匹配构建并报告不支持，不能静默丢弃或自动改指向。组织操作不修改提取提示词、Schema、程序接纳或历史分数，不为旧结构增加兼容 reader。
 
 ## 知识投影与修订
 

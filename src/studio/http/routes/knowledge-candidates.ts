@@ -1,3 +1,4 @@
+import type { KnowledgeActor } from '../../../knowledge/contracts.js';
 import type { LocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { executeSourcePickerAction } from '../../application/knowledge/source-picker.js';
@@ -12,7 +13,7 @@ import { readJsonObjectBody } from '../request-errors.js';
 import { createStudioRouter } from './router.js';
 import type { LiveStreamRegistry } from './contracts.js';
 
-export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction, sourceScope?: LocalSourceScope) {
+export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction, sourceScope?: LocalSourceScope, reviewActor?: KnowledgeActor) {
   return createStudioRouter(['candidates', 'sources', 'auto-extraction', 'library'].map(resource => ({
     pattern: `/api/knowledge/${resource}`, method: 'POST', mutation: true,
     async handler({ request, response }) {
@@ -25,7 +26,7 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
         const result = resource === 'sources' ? await executeSourcePickerAction(input, sourceScope, controller.signal) : resource === 'library' ? executeKnowledgeLibraryAction(input)
           : resource === 'auto-extraction' && automation
             ? await executeAutoExtractionAction(input, automation, controller.signal)
-            : await executeKnowledgeCandidateAction(input, controller.signal, root => createLocalKnowledgeApplication(root, { sourceScope }), catalog);
+            : await executeKnowledgeCandidateAction(input, controller.signal, root => createLocalKnowledgeApplication(root, { sourceScope, reviewActor }), catalog);
         if (!response.destroyed) {
           const status = resource === 'auto-extraction' && input.operation === 'status';
           const etag = status && typeof input.workspace === 'string' && typeof input.threadId === 'string'

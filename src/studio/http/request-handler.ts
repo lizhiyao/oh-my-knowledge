@@ -57,8 +57,9 @@ export function createStudioRequestHandler({
   const settingsRoutes = createSettingsRoutes();
   const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
-  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation, trustedSourceScope);
-  const reviewRoutes = createKnowledgeReviewRoutes(knowledgeReviewActor);
+  const actualReviewActor = knowledgeReviewActor ?? { actorKind: 'human' as const, actorId: 'local-user' };
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation, trustedSourceScope, actualReviewActor);
+  const reviewRoutes = createKnowledgeReviewRoutes(actualReviewActor);
   const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);

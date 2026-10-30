@@ -23,6 +23,14 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation, executor: journal.executor, model: journal.model,
         'confirm-request': journal.stages.at(-1)!.requestDigest }));
     if (result.nextAction === 'outcome_unknown_do_not_redispatch') lines.push(t('已 claim 但没有可读原件；发送/费用未知，禁止自动重发。', 'Claimed without a readable original; dispatch/cost unknown, do not redispatch.'));
+    if (result.nextAction === 'prepare_next_stage') lines.push(t('上一阶段已保存。先准备下一阶段的完整请求，再单独确认发送。', 'The prior stage is saved. Prepare the complete next request, then confirm its dispatch separately.'),
+      JSON.stringify({ sources: journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })),
+        ...(journal.mode === 'review_sources' ? { bodyRefs: journal.bodies, ...(journal.ledgerRef ? { ledgerRef: journal.ledgerRef } : {}) } : {}) }, null, 2),
+      knowledgeCommand(workspace, journal.mode === 'review_sources' ? 'prepare-source-review' : 'prepare-generation', { input: 'next-stage.json', 'run-id': journal.runId, executor: journal.executor, model: journal.model, json: true }));
+    if (result.nextAction === 'review_source_coverage') lines.push(t('来源核对已保存，仍需实际操作者逐项复核并记录决定。全部 covered 不会自动准备关联。', 'Source coverage is saved. An actual operator must inspect every unresolved item and record a decision; all-covered does not automatically prepare associations.'),
+      ...(journal.ledgerRef ? [knowledgeCommand(workspace, 'source-ledger', { id: journal.ledgerRef.ledgerId, revision: journal.ledgerRef.revisionId, json: true })] : []),
+      ...(journal.coverageRef ? [knowledgeCommand(workspace, 'source-coverage-status', { id: journal.coverageRef.coverageId, revision: journal.coverageRef.revisionId, json: true })] : []),
+      knowledgeCommand(workspace, 'review-source-coverage', { input: 'source-decision.json', json: true }));
     if (result.nextAction === 'unsupported') lines.push(t('此任务使用旧生成协议，请使用保留的匹配构建恢复。当前程序不重新解释原件，也不重新派发旧请求。',
       'This run uses an older generation protocol. Recover it with the preserved matching build; originals are not reinterpreted and old requests are not redispatched.'));
   } else if ('revision' in item && 'derivedAssociations' in item) {

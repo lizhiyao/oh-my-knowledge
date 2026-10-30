@@ -23,6 +23,7 @@ export type SourceReviewManifest = z.infer<typeof SourceReviewManifestSchema>;
 /** A metadata quote locates host-delivered metadata text; it is never an excerpt quote. */
 export const SourceReviewEvidenceSchema = z.strictObject({ unitKey: id, unitKind: SourceReviewUnitKindSchema,
   start: count, end: count, quote: text }).refine(value => value.end > value.start && value.quote.length === value.end - value.start, 'Invalid UTF-16 source review quote.');
+export type SourceReviewEvidence = z.infer<typeof SourceReviewEvidenceSchema>;
 const evidence = z.array(SourceReviewEvidenceSchema).max(256);
 const disposition = z.enum(['retain', 'exclude', 'pending']);
 export const SourceLedgerDataSchema = z.strictObject({

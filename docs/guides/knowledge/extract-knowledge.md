@@ -9,7 +9,7 @@ This guide describes current main. Check the capability’s version boundary bef
 | Capability | Availability boundary |
 |---|---|
 | Core library, artifact authoring, ongoing revision and change review | Available since published `1.0.0-beta.14`; Beta.13 does not include this maintenance UI. |
-| Source3 project/trace selection, body-first generation with separate request confirmation, independent derived associations, current journals and explicit copy migration | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
+| Source3 project/trace selection, four-stage source-ledger/body/coverage/association generation with separate request confirmation, independent derived associations, current journals and explicit copy migration | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
 | Later read-retry, save-recovery and CLI-guidance fixes | Also described against current main; the published Beta.14 version is not evidence that these fixes are present. |
 
 The [current knowledge extraction contract](../../reference/shared/knowledge-contract.md) generates prompt, Schema and capacity values from runtime code. It identifies the build rather than replacing [release records](https://github.com/lizhiyao/oh-my-knowledge/releases). `@next` is a release channel and does not automatically contain unpublished main changes.
@@ -22,7 +22,7 @@ omk studio
 
 Use the returned address and check the current knowledge location first. Changing the default directory does not move saved data. Connected conversations use the host's conversation catalog. For project files, local Git files or configured trace files, the host first supplies a [finite source scope](#source-scope), then starts Studio with `omk studio --source-scope ./scope.json`. The browser chooses configured IDs and relative paths; it cannot grant an arbitrary project root.
 
-1. **Select and preview sources**: Open extraction for a conversation turn, or choose **Choose sources and extract knowledge** from the knowledge page. Select connected conversation records, project files, fixed Git files or configured original Agent records. Read the complete selected excerpts and separate read/save/send scopes. **Capture selected sources only** saves locally without calling a model. Then choose the executor/model, prepare and inspect the complete request, and explicitly send that content request. After content is saved, inspect and separately confirm the association request; each send can incur cost.
+1. **Select and preview sources**: Choose explicitly authorized material from a conversation turn or **Choose sources and extract knowledge**. Read complete excerpts and separate read/save/send scopes. **Capture selected sources only** saves locally. Independently prepare and confirm source ledger, body and coverage; review sources, ledger and bodies, record an actual decision, then separately confirm association. Every sent stage may incur cost; model analysis never approves itself.
 2. **Review candidates**: Read complete body segments, conditions, attribution, exceptions and unknowns; open source evidence. Record a reason to retain, discard, or revise. New revisions require review again.
 3. **Review entities as needed**: Check names, references, levels, and original text from a candidate or entity list. Entity corrections do not rewrite body; independently apply and review exact segment/entity associations.
 4. **Accumulate across records**: Create an object in the knowledge library, check whether source entities from different windows refer to the same object, and confirm with reasons. Equal names do not merge identities; resolve ambiguity and missing sources first.
@@ -96,13 +96,11 @@ In **Knowledge → Knowledge library**, first find knowledge by title, tags and 
 
 Incomplete coverage still shows known readable associations in the graph, entity detail and library object detail, alongside unknown counts, failed, stale, rejected or unavailable-source states. Historical edges describe their exact past bindings and do not apply to current content. Multi-source content can trace each source; manual mapping can retain several exact source catalogs, selecting entities and mentions per catalog before saving them together. A source without a catalog is not replaced by a same-name entity from another source. Browsing, manual correction and reopening call no generation model. Separately requesting model-assisted rebuilding requires reviewing the transmission scope.
 
-### Automatic conversation extraction and project todos {#automatic-extraction}
+### Explicit stages and project todos {#automatic-extraction}
 
-Automatic extraction is optional and uses a fresh Source3 permission. Preview the conversation, selected-record events, destination, executor/model, two-phase workflow and total invocation limit before enabling it. Permission covers this conversation for 24 hours while the current Studio service runs; restarting requires enabling again. Existing permissions, reservations and ledgers from an older workflow do not authorize Source3, and migration does not transfer them.
+This build provides explicit stages only; conversation scheduling is retired. Old auto3 permissions, schedules, reservations and unknown claims retain their originals and are archive-only during independent migration. They are not upgraded into four-stage grants, and migration does not re-enable automatic mode. Preview/enable refuse, status reports `explicit_stages_required`, and stop/close do not rewrite old history.
 
-The initial window covers up to the latest three finished turns. Later windows use up to three new finished turns plus two preceding context turns, after records remain stable for 30 seconds. One window can use two model calls: body generation and association generation, which also receives the saved body. Each phase consumes one slot from the conversation-wide `maxCalls`; set the allowance in the displayed range of 1–20. The initial permission explicitly covers these future windows and both phases; their future content does not yet exist, so their exact complete requests are recorded when prepared, before dispatch. This differs from manually confirming one prepared request at a time.
-
-Reservations bind the exact source set, complete request and invocation before dispatch, and unknown usage does not refund a slot. Changed scope, destination, model or limits require fresh approval. Stop or inspect failed/interrupted/unknown work before deciding what to do next; the same source or an unknown claim is not automatically resent. Expiry, quota and recorded server cooldowns still block new dispatch. Todos gather candidates for review without deciding retention or rewriting carriers.
+Use **Extract conversation** or **Choose sources and extract knowledge**, reviewing each complete request and the coverage decision. The inbox still gathers candidates; explicit refresh or scoped maintenance events update it without automatically retaining knowledge, confirming cross-window identity or rewriting carriers.
 
 ## Select sources and generate knowledge {#select-sources}
 
@@ -160,37 +158,54 @@ Use actual saved values. The two fields together form the `SourceRef`; an ID alo
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
-omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <body-request-digest> --json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <ledger-request-digest> --json
 ```
 
-Preparation creates a journal without a model call. Inspect its executor/model, complete `system` and `input`, producer context and `requestDigest`; copy the actual prepared body request digest into `--confirm-request`. Source selection or capture approval does not approve this transmission. Unsupported execution or archive capabilities fail before dispatch.
+The default is four explicit stages: **source ledger → body → source coverage → association**. Preparation calls no model. Read the complete prepared `system`, `input`, model, producer and `requestDigest`; `generate` sends only the initial source-ledger request. Capture approval is not model-send approval. Raw envelopes and host roots stay local; selected text, portable attribution and limitations are transmitted. The ledger is fallible model advice, not a Gold set or permission to discard unlisted source meaning.
 
-<details>
-<summary>What to inspect in the complete request</summary>
+After the ledger completes, prepare and confirm body generation with the same run and exact sources. After body completes, repeat this pair for source coverage, inspecting the newly prepared request and using its current generation/digest each time:
 
-Read `journal.stages[0]` in `request.json`: `system` supplies the fixed instructions, `input` contains the complete ordered source material, `producer` identifies the inspected execution context, and `requestDigest` binds this request. Model material includes the selected readable excerpts and portable attribution/limitations. Raw envelopes and host roots stay outside that input. Source text already containing a path is still source text. Retain the original conversation title, attribution and unknowns rather than replacing them with a project label or inferred fact time.
+```bash
+omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --run-id <run-id> --executor codex --model <model> --json > next-request.json
+omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <prepared-stage-digest> --json
+```
 
-</details>
+Each stage claims once and archives the complete returned outcome before decoding. Admitted bodies are **pending and unretained**; even zero bodies proceed to coverage without placeholders. Coverage independently checks all original sources, ledger items/facets, exclusions, pending opinions and body segments, and may find errors or omissions in the ledger itself. A model’s all-covered/no-findings is not actual approval.
 
-`generate` sends only the confirmed body request. It archives the complete returned outcome and saves admitted complete bodies **pending and unretained**. Association is then prepared from those exact saved bodies; it is not sent automatically. Read the resulting run with `inspect`, review its complete prepared association request and confirm that phase separately:
+Read the exact analyses and record an actual decision:
 
 ```bash
 omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
+omk observe knowledge source-ledger --workspace ./knowledge --id <ledger-id> --revision <ledger-revision-id> --json
+omk observe knowledge source-coverage-status --workspace ./knowledge --id <coverage-id> --revision <coverage-revision-id> --json
+omk observe knowledge review-source-coverage --workspace ./knowledge --input ./coverage-decision.json --json
+```
+
+`coverage-decision.json` is the complete `record_decision` command, without an operation wrapper or client-supplied actor. Copy the exact coverage/ledger/body/SourceSet bindings, generation/head and unresolved IDs from the readback. Give every unresolved item a disposition, reasons and limitations; choose `proceed_with_limits`, `needs_revision` or `stop`. Missing trusted actual-actor context refuses writes; do not invent an actor. A `revoke_decision` command names the prior event and preserves history. See the [decision contract](../../specs/knowledge/knowledge-source-review.md#decisions).
+
+To proceed, add the exact `sourceCoverageDecisionRef` alongside `sources` in `association-input.json`. Prepare with the same run, then independently confirm the association request:
+
+```bash
+omk observe knowledge prepare-generation --workspace ./knowledge --input ./association-input.json --run-id <run-id> --executor codex --model <model> --json > association-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <association-request-digest> --json
 ```
 
-A failed or unresolved association does not remove saved content. Each phase defaults to 300 seconds and preserves its own original result. There is no automatic model retry, validation reask or provider fallback. Default import reuses the journal for the same sorted, deduplicated exact source set, including failed or unknown results; a completed default reimport makes zero new model calls and no duplicate body. Use an explicit new `--run-id` only when deliberately authorizing an independent new generation, not to bypass an unknown prior outcome.
+Preparation and the shared-lock dispatch claim both recheck that exact active, nonconflicting decision and its upstream identities. An invalidated decision makes no new model call. Revocation after dispatch preserves the request/original and leaves the result pending with the invalidated review context. Association failure never deletes saved bodies.
 
-Export the current structural wires without a workspace or model call:
+Each model stage defaults to 300 seconds; there is no automatic retry, validation reask or fallback. Enriched complete input must fit the 1 MiB request limit; capacity failure never trims sources, ledger or bodies. Default imports bind the workflow and sorted exact SourceSet, reusing completed, failed and unknown journals. A completed reimport makes no new call or duplicate body. A new run is only for deliberately independent generation, never an unknown-claim bypass. Calls/tokens/time and unreported costs remain separate from quality.
+
+Export structural wires without a workspace or model call:
 
 ```bash
+omk observe knowledge schema --stage source_ledger --json
 omk observe knowledge schema --stage body --json
+omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-Current body output v2 / prompt v8 and association output v3 / prompt v7 use exact quotes with nullable adjacent `contextBefore`/`contextAfter`; the host requires a unique match and computes UTF-16 positions. Body proposals preserve required shared contexts; association proposals own their mentions and map or abstain for each segment. These checks do not prove complete meaning, entity coverage or truth. Source storage and journals use Schema 3 / workflow v3; body Schema 3, entity/association Schema 2 and review Schema 1 remain independent contracts. Current values come from the [generated contract](../../reference/shared/knowledge-contract.md).
+The ledger uses wire2/prompt3, coverage uses wire2/prompt3 and both histories stay v1; body uses wire2/prompt9, journal4/workflow4/default input2, Source3 and body3/entity2/association2/reviews1. Association retains the exact prompt7/profile/wire3 bytes and its v1 input envelope; this is distinct from the journal’s input2. Exact quotes and host-computed UTF-16 positions establish location, not semantic completeness or truth. Read current values in the [generated contract](../../reference/shared/knowledge-contract.md). Historical sources, originals, scores and measurement identities remain unchanged; this implementation does not establish that their raw quality passed.
 
-An unsupported older source/journal requires its preserved matching build and explicit copy migration; it is not decoded by a compatibility reader. Independent historical studies retain their frozen sources, requests and measurement identities. Parameter errors exit 2, business failures exit 1 and success exits 0. `--json` emits one machine result; after an unclear acknowledgement, inspect saved state before repeating a mutation.
+Older journals require their matching preserved build or the [supported workflow copy](#workflow-migration). Parameter errors exit 2, business failures exit 1 and success exits 0. After an unclear acknowledgement, inspect durable state before repeating a mutation.
 
 ## Inspect and maintain {#inspect-and-maintain}
 
@@ -287,6 +302,17 @@ OMK uses `codex` from the current process PATH. Check `codex --version`; if the 
 
 ## Migrate an older workspace {#workspace-migration}
 
+### Copy workflow3 into an independent workflow4 workspace {#workflow-migration}
+
+Preserve the old directory and matching installable package, then stop old writers. This slice supports only healthy active Source3/body3/entity2/association2/reviews1/tags. All bytes, identities, history, retention and review opinions stay unchanged; they do not become source-coverage approval. Library, carriers, entity-links or other unsupported content require retaining the old directory and reporting unsupported, never silent dropping or retargeting.
+
+```bash
+omk observe knowledge migrate-workflow --from-workspace ./workflow3 --workspace ./workflow4 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
+omk observe knowledge migrate-workflow --input ./workflow-plan.json --confirm-plan <plan-digest> --json
+```
+
+Planning writes nothing. Review actual roots, full inventory/digests, old package, capacity and limits before applying that fixed plan and digest. Old journal3 (including outcomes), auto-extraction and old migration/marker are archive-only: no old call or automatic allowance resumes. Roots must be independent and non-overlapping. Interrupted steps/receipts resume only the same plan; unknown temporary files stop for inspection. Completed additions/edits/deletions are never overwritten or resurrected. Explicit requests start the new stages; rollback uses the old directory and matching build. Source2 reference conversion remains the separate path below, without upgrading historical measurements.
+
 ### Migrate association Schema 1 into a separate copy {#association-migration}
 
 Preserve the old workspace and its matching installed package, and stop old writers. An association Schema 1 workspace first needs its explicit Schema 2 copy migration; that operation does not create Source3 or make an old journal current. Run explicitly:
@@ -295,7 +321,7 @@ Preserve the old workspace and its matching installed package, and stop old writ
 omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <stable-uuid> --json
 ```
 
-The new target must be empty and neither root may contain the other. The operation uses no models and copies body, source, entity, retention and historical-measurement bytes unchanged. Original association histories/receipts live under `migration/<operation-id>/original/`; `plan.json` fixes source pins and old/new revision mappings, and `complete.json` records completion. Converted projections have fresh pending revisions without inherited acceptance. Old journals/native outcomes retain original bytes and appear unsupported, without fabricated profiles or resumed dispatch. Old automatic permissions, schedules and budgets are archived only; the new workspace requires fresh explicit authorization.
+The new target must be empty and neither root may contain the other. The operation uses no models and copies body, source, entity, retention and historical-measurement bytes unchanged. Original association histories/receipts live under `migration/<operation-id>/original/`; `plan.json` fixes source pins and old/new revision mappings, and `complete.json` records completion. Converted projections have fresh pending revisions without inherited acceptance. Old journals/native outcomes retain original bytes and appear unsupported, without fabricated profiles or resumed dispatch. Old automatic permissions, schedules and budgets are archived only; the new workspace executes only explicitly confirmed stages, without a new automatic grant.
 
 After interruption, preserve the plan and replay the same roots and --operation-id. Source drift or target edits reject replay without overwrite. Completed replay verifies its plan; later additions, edits and deletions must not be resurrected or overwritten. Rollback uses the old workspace and matching binary; the new copy retains originals and mappings. Mechanical migration, readability and successful saves do not establish semantic acceptance.
 
@@ -324,16 +350,27 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 
 `resume` can archive an original still held in the same process, attach a persisted original or finish fixed writes, without calling a model. A claimed phase without recoverable output stays `outcome_unknown_do_not_redispatch`; process exit proves neither no dispatch nor zero cost. Only a never-claimed prepared phase can be sent after reviewing and explicitly confirming its exact `requestDigest`, with the original model configuration.
 
-Prepare association rebuilding for an existing exact body, inspect the complete request, then send only that confirmed request. Reuse the same explicit new run UUID across these two commands:
+### Review revised sources and rebuild {#source-review-corrections}
+
+A revised body does not inherit source-coverage approval. Put the complete original `sources`, new exact `bodyRefs` and optional matching `ledgerRef` in `source-review.json`, never only the sources still cited by the body. No ledgerRef runs inventory then coverage; a matching reference runs coverage only. It generates no body or automatic association.
 
 ```bash
-omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
-omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
+omk observe knowledge prepare-source-review --workspace ./knowledge --input ./source-review.json --run-id <review-run-id> --executor codex --model <model> --json
+omk observe knowledge continue-stage --workspace ./knowledge --id <review-run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <prepared-stage-digest> --json
 ```
 
-This creates an independent pending projection without regenerating the body. Each exact available body source retains its own catalog. Invalid catalog output fails dependent projections while preserving healthy catalogs and stored bodies; later missing catalogs expose local gaps.
+Without ledgerRef, the first continuation sends inventory. After it completes, repeat `prepare-source-review` with the same input and review-run-id, then inspect and confirm coverage. With a matching ledgerRef, only the coverage request is needed.
 
-Current journals live at `generation-journals/<run-id>.json`, with complete originals in `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Earlier typed-body and source/journal formats are explicitly unsupported, not healthy empty data. Preserve their original workspace/build and follow the [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) and [source migration](#source-migration) boundaries rather than overwriting them.
+Read the analysis and record a new decision with `review-source-coverage` as above. To withdraw one, pass a complete `revoke_decision` command with targetEventId, reason and CAS/idempotence fields. For rebuilding, `association-decision.json` contains only the complete `sourceCoverageDecisionRef`; its coverage record supplies the full sources. Reuse the same explicit new run UUID in both commands:
+
+```bash
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-decision.json --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
+omk observe knowledge rebuild-associations --workspace ./knowledge --input ./association-decision.json --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
+```
+
+Rebuilding creates an independent pending projection without another body generation. Manual `correct-entities`/`apply-associations` retain their explicit maintenance paths and do not fabricate source-coverage approval.
+
+Current journal4 records live at `generation-journals/<run-id>.json`, with complete originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Journal3, old typed and source formats are explicitly unsupported, never healthy empty data. Preserve the original directory and matching build; follow the applicable [workflow copy](#workflow-migration), [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) or [source migration](#source-migration), without resuming old claims.
 
 ### Check source changes {#source-updates}
 

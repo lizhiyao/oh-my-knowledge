@@ -47,7 +47,7 @@ const workspaceFiles = (path: string): [string, string][] => readdirSync(path, {
   ? workspaceFiles(join(path, entry.name)) : [[join(path, entry.name), readFileSync(join(path, entry.name), 'utf8')]]);
 
 describe('Source3 manual transmission boundary', () => {
-  it.each([false, true])('previews and captures without calling a model, then confirms body and association requests separately through production application ports (conversation list unavailable: %s)', async unavailable => {
+  it.each([{ unavailable: false, empty: false }, { unavailable: true, empty: false }, { unavailable: false, empty: true }])('previews and captures, confirms each native stage and explicitly proceeds after source review (%j)', async ({ unavailable, empty }) => {
     const root = mkdtempSync(join(tmpdir(), 'omk-source-picker-')); roots.push(root);
     const project = join(root, 'project'), workspace = join(root, 'workspace'); mkdirSync(project);
     writeFileSync(join(project, 'notes.md'), 'Alpha 使用 Beta。<script>authored literal</script>');
@@ -57,7 +57,9 @@ describe('Source3 manual transmission boundary', () => {
     let conversationListUnavailable = unavailable;
     native.model = { executor: 'codex', model: 'authored-no-model', timeoutMs: 300_000,
       inspect: () => ({ producerId: 'authored-ui-adapter', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false } }),
-      async invoke(profile, input, _signal, gate) { gate?.(); invocations.push(profile.stageKind); return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(authoredKnowledgeResponse(input, profile.stageKind)), authoredFixture: true } }; } };
+      async invoke(profile, input, _signal, gate) { gate?.(); invocations.push(profile.stageKind);
+        const output = empty && profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [] } : authoredKnowledgeResponse(input, profile.stageKind);
+        return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(output), authoredFixture: true } }; } };
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url === '/api/settings') return json({ effective: { workspace, executor: 'codex', model: 'authored-no-model' } });
       const body = JSON.parse(String(init.body)) as Record<string, unknown>, resource = url.split('/').at(-1)!;
@@ -65,7 +67,7 @@ describe('Source3 manual transmission boundary', () => {
       const signal = init.signal instanceof AbortSignal ? init.signal : undefined;
       if (resource === 'sources') return json(await executeSourcePickerAction(body, scope, signal));
       if (resource === 'candidates' && body.operation === 'conversations' && conversationListUnavailable) return new Response(JSON.stringify({ error: 'knowledge_request_failed' }), { status: 400, headers: { 'content-type': 'application/json' } });
-      if (resource === 'candidates') return json(await executeKnowledgeCandidateAction(body, signal, undefined, catalog));
+      if (resource === 'candidates') return json(await executeKnowledgeCandidateAction(body, signal, selected => createLocalKnowledgeApplication(selected, { reviewActor: { actorKind: 'human', actorId: 'authored-browser-reviewer' } }), catalog));
       throw Error('Unexpected authored test resource.');
     }));
     render(<SourceExtractionDialog lang="en" initialWorkspace={workspace} onClose={() => {}}/>, { wrapper });
@@ -88,8 +90,8 @@ describe('Source3 manual transmission boundary', () => {
     expect(existsSync(join(workspace, 'sources'))).toBe(true); expect(invocations).toEqual([]);
     expect(screen.queryByRole('textbox', { name: 'Compare Git commit or branch' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Prepare and review complete model request' }));
-    await screen.findByText('Confirm content request');
-    const sendBody = screen.getByRole('button', { name: 'Send this content request' }) as HTMLButtonElement;
+    await screen.findByText('Confirm Source inventory request');
+    const sendBody = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
     expect(sendBody.disabled).toBe(true); expect(invocations).toEqual([]);
     if (unavailable) {
       // Recovery rereads only the failed list; the already prepared request remains unchanged.
@@ -102,19 +104,55 @@ describe('Source3 manual transmission boundary', () => {
     }
     const approval = () => screen.getByRole('checkbox', { name: 'Approve sending this exact request to the executor/model shown above.' }) as HTMLInputElement;
     fireEvent.click(approval()); fireEvent.click(sendBody);
-    await screen.findByText('Confirm entity association request');
-    expect(invocations).toEqual(['body']); expect(approval().checked).toBe(false);
-    const sendAssociation = screen.getByRole('button', { name: 'Send this association request' }) as HTMLButtonElement;
-    expect(sendAssociation.disabled).toBe(true);
-    const body = requests.find(item => item.body.operation === 'generate')!.body;
-    expect(body.sources).toEqual([expect.objectContaining({ snapshotId: expect.any(String), sourceVersion: expect.stringMatching(/^sha256:/) })]);
-    expect(body.confirmedRequestDigest).toMatch(/^sha256:/);
-    fireEvent.click(approval()); fireEvent.click(sendAssociation);
-    await screen.findByText('This run ended. Review the candidate content.');
-    expect(invocations).toEqual(['body', 'association']);
-    const association = requests.find(item => item.body.operation === 'continue-stage')!.body;
-    expect(association.id).toBe(body.runId); expect(association.confirmedRequestDigest).not.toBe(body.confirmedRequestDigest);
-    expect(requests.filter(item => ['generate', 'continue-stage'].includes(String(item.body.operation)))).toHaveLength(2);
+    await screen.findByRole('button', { name: 'Prepare and review the next stage' });
+    expect(invocations).toEqual(['source_ledger']);
+    for (const [title, invoked] of [['Confirm content request', 'body'], ['Confirm Source coverage request', 'source_coverage']]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
+      await screen.findByText(title);
+      const send = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(true); expect(approval().checked).toBe(false);
+      fireEvent.click(approval()); fireEvent.click(send);
+      if (invoked === 'body') await screen.findByRole('button', { name: 'Prepare and review the next stage' });
+      else await screen.findByRole('combobox', { name: 'Source decision' });
+    }
+    expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage']);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Source decision' }), { target: { value: 'proceed_with_limits' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Source decision reason' }), { target: { value: 'Explicit authored browser operator review.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Preserved limitations' }), { target: { value: 'Authored protocol fixture, not verified factual quality.' } });
+    const dispositions = screen.getAllByRole('combobox').filter(element => element.getAttribute('aria-label')?.startsWith('Disposition for '));
+    expect(dispositions.length).toBeGreaterThan(0);
+    for (const element of dispositions) fireEvent.change(element, { target: { value: 'accepted_limit' } });
+    for (const element of screen.getAllByRole('textbox').filter(element => element.getAttribute('aria-label')?.startsWith('Reason for '))) {
+      fireEvent.change(element, { target: { value: 'Explicitly retain the authored-test limitation.' } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Save this decision' }));
+    const proceed = await screen.findByRole('button', { name: empty ? 'End this run with this opinion (no content)' : 'Prepare associations with this opinion' });
+    expect(invocations).toHaveLength(3);
+    if (empty) {
+      expect(createLocalKnowledgeApplication(workspace).runs().current[0].status).toBe('active');
+      expect(screen.getByText('No content was saved in this run; source omissions still require review.')).toBeTruthy();
+    }
+    fireEvent.click(proceed);
+    if (empty) {
+      await screen.findByText('This run ended with an actual review decision; no content was saved.');
+      const completed = createLocalKnowledgeApplication(workspace).runs().current[0];
+      expect(completed).toMatchObject({ status: 'completed', bodies: [], sourceCoverageDecisionRef: expect.any(Object) });
+      expect(completed.stages.map(stage => stage.stageKind)).toEqual(['source_ledger', 'body', 'source_coverage']);
+      expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage']);
+      expect(existsSync(join(workspace, 'associations'))).toBe(false);
+    } else {
+      await screen.findByText('Confirm entity association request');
+      const sendAssociation = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
+      expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(3);
+      fireEvent.click(approval()); fireEvent.click(sendAssociation);
+      await screen.findByText('This run ended. Review the candidate content.');
+      expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage', 'association']);
+    }
+    const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
+    expect(dispatches).toHaveLength(empty ? 3 : 4); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(empty ? 3 : 4);
+    expect(dispatches.every(item => item.id === dispatches[0].id)).toBe(true);
+    expect(requests.filter(item => item.body.operation === 'review-source-coverage')).toHaveLength(1);
+    expect(requests.some(item => item.body.operation === 'generate')).toBe(false);
   });
   it('distinguishes an unreadable project catalog from unconfigured sources and retries only the failed catalog', async () => {
     let available = false;
@@ -237,7 +275,7 @@ describe('Source3 manual transmission boundary', () => {
     expect(modelInput()).toBe(originalModelInput);
     rejectCheck = false; holdCheck = true; fireEvent.click(compare);
     await waitFor(() => expect(held).toHaveLength(1));
-    expect((screen.getByRole('button', { name: 'Send this content request' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Request cancellation' })); expect(held[0].signal.aborted).toBe(true);
     await act(async () => held[0].resolve(json({})));
     await waitFor(() => expect((compare as HTMLButtonElement).disabled).toBe(false));

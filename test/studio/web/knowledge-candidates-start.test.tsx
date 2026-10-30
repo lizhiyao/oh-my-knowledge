@@ -27,7 +27,7 @@ describe('knowledge extraction onboarding', () => {
   });
   it('distinguishes empty output, failure, unsupported history and unreadable records', () => {
     expect(render({ latest })).toContain('上次提炼完成，返回 0 条候选');
-    expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：正文阶段失败');
+    expect(render({ latest: { ...latest, status: 'failed' } })).toContain('上次提炼：生成阶段失败');
     expect(render({ latest: { ...latest, schemaStatus: 'unsupported', status: 'unsupported', nextAction: 'unsupported' } })).toContain('旧格式运行');
     const unavailable = render({ latest: { ...latest, schemaStatus: 'unavailable', status: 'unavailable', nextAction: 'unavailable' } });
     expect(unavailable).toContain('提炼记录不可读'); expect(unavailable).toContain('无法确认结果及来源范围'); expect(unavailable).not.toContain('返回 0 条候选');
@@ -43,7 +43,8 @@ describe('knowledge extraction onboarding', () => {
     expect(html).toContain('提炼这轮');
     expect(html).not.toContain('已提炼知识');
     const header = renderToStaticMarkup(createElement(ExtractedKnowledge, { threadId: 'thread', lang: 'zh' }));
-    expect(header).toContain('开启自动提炼'); expect(header).toContain('知识待办');
+    expect(header).toContain('需逐阶段确认，不再自动提炼。'); expect(header).not.toContain('开启自动提炼');
+    expect(header).toContain('提炼整条对话'); expect(header).toContain('知识待办');
     expect(html).not.toContain('href=');
     expect(html).toContain('<button');
   });
@@ -62,6 +63,8 @@ describe('knowledge extraction onboarding', () => {
     expect(scoped({ failedToLoad: true })).not.toContain('此来源范围没有候选');
     expect(scoped({ failedToLoad: true, busy: true })).toMatch(/<button[^>]+disabled/);
     expect(scoped()).toContain('此来源范围没有候选');
+    expect(scoped()).not.toContain('自动提炼');
+    expect(scoped({ lang: 'en' })).not.toContain('Enable auto extraction');
     expect(scoped({ failedToLoad: true, lang: 'en' })).toContain('Reload candidates');
     expect(scoped({ incompleteHistory: true })).toContain('当前候选清单可能不完整');
     expect(scoped({ incompleteHistory: true })).not.toContain('此来源范围没有候选');
@@ -99,12 +102,12 @@ it('shows complete literal local material and separate read/send/save boundaries
 it('shows the exact complete prepared stage and target rather than treating capture as send permission', () => {
   const digest = `sha256:${'d'.repeat(64)}`;
   const run: KnowledgeCandidateRun = { ...latest, status: 'active', nextAction: 'continue_stage', journalGeneration: 1, executor: 'codex', model: 'authored-target',
-    workflowId: 'knowledge-body-first/v3', inputVersion: 'knowledge-source-generation-input/v1', preparedStage: { stageKind: 'body', invocationId: '00000000-0000-4000-8000-000000000003',
+    workflowId: 'knowledge-body-first/v4', inputVersion: 'knowledge-source-generation-input/v2', preparedStage: { stageKind: 'body', invocationId: '00000000-0000-4000-8000-000000000003',
       state: 'prepared', profileId: digest, promptVersion: 'authored-profile', wireId: digest, wireSchema: { type: 'object' }, system: '<script>complete system</script>',
       input: '{"material":"complete input","tail":"<script>final tail</script>"}', inputDigest: digest, requestDigest: digest,
       producer: { producerId: 'authored-ui', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1000, proof: { nativeObserved: false } }, committed: 0, issues: [] } };
   const html = renderToStaticMarkup(createElement(PreparedGenerationConfirmation, { run, lang: 'en', confirmed: false, onConfirmed() {} }));
-  for (const text of ['Complete actual model input', 'Complete system', 'invocationId', 'requestDigest', 'codex', 'authored-target', 'complete input', 'final tail', 'another confirmation', 'internal context']) expect(html).toContain(text);
+  for (const text of ['Complete actual model input', 'Complete system', 'invocationId', 'requestDigest', 'codex', 'authored-target', 'complete input', 'final tail', 'Confirm every stage separately', 'internal context']) expect(html).toContain(text);
   expect(html).toContain('&lt;script&gt;complete system&lt;/script&gt;'); expect(html).not.toContain('<script>'); expect(html).not.toContain('checked=""');
   const association = renderToStaticMarkup(createElement(PreparedGenerationConfirmation, { run: { ...run, preparedStage: { ...run.preparedStage!, stageKind: 'association' } }, lang: 'zh', confirmed: false, onConfirmed() {} }));
   expect(association).toContain('确认实体关联请求');
