@@ -8,10 +8,10 @@ This page is generated from the current source build’s runtime constants and S
 | Current contract | Value |
 |---|---|
 | Production workflow | `knowledge-body-first/v2` |
-| Body prompt | `knowledge-body-generation/v6` |
-| Association prompt | `knowledge-association-generation/v5` |
-| Body profile digest | `sha256:e94deb02f58ba1bd4b2a05498d573591f21f1b84994405765c4b745ef8919377` |
-| Association profile digest | `sha256:94243d98971f163db4229abd91c0a6240521af47e2a33e49a9945b47e619898f` |
+| Body prompt | `knowledge-body-generation/v7` |
+| Association prompt | `knowledge-association-generation/v6` |
+| Body profile digest | `sha256:5e41e2be3194c1dc021ddffa1c77532341b0125c3e3603ade98580d7a1b19ad4` |
+| Association profile digest | `sha256:3da8d1d743149dea23c1a9cbb7b18862355a4ad708a428c2229553803a8b9267` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | Body response Schema | `2` |

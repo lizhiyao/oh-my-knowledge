@@ -30,7 +30,9 @@
 
 当前生产使用 `knowledge-body-first/v2`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
 
-当前正文输出／wire v2 使用 prompt v6，关联输出／wire v3 使用 prompt v5。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+当前正文输出／wire v2 使用 prompt v7，关联输出／wire v3 使用 prompt v6。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+
+正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及再做映射，跨段复用合法提及，分别复查来源独立指认的工件／代码状态及必要的组件、版本映射。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。

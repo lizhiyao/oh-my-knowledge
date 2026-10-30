@@ -121,7 +121,7 @@ omk observe knowledge schema --stage body --json
 omk observe knowledge schema --stage association --json
 ```
 
-结果包含 profile／prompt／wire 身份与 Schema。当前正文输出 v2／prompt v6、关联输出 v3／prompt v5 使用精确 quote 及可空的相邻 `contextBefore`／`contextAfter`；宿主要求唯一匹配并计算 UTF-16 位置。正文 proposal 声明有来源的共享 `requiredContexts`，其 literal 必须逐字出现于每段，宿主追加相应证据但不改写正文。关联 proposal 将提及归属到各实体，并为每段明确映射或弃权及理由。这些检查不能补回遗漏内容，也不证明实体覆盖完整、来源保真或真值；引文、标题、目录不能补正文遗漏。见[生成契约](../../reference/shared/knowledge-contract.md)及[提取规范](../../specs/entities/entity-extraction.md)。
+结果包含 profile／prompt／wire 身份与 Schema。当前正文输出 v2／prompt v7、关联输出 v3／prompt v6 使用精确 quote 及可空的相邻 `contextBefore`／`contextAfter`；宿主要求唯一匹配并计算 UTF-16 位置。正文 proposal 声明有来源的共享 `requiredContexts`，其 literal 必须逐字出现于每段，宿主追加相应证据但不改写正文。关联 proposal 将提及归属到各实体，并为每段明确映射或弃权及理由。这些检查不能补回遗漏内容，也不证明实体覆盖完整、来源保真或真值；引文、标题、目录不能补正文遗漏。见[生成契约](../../reference/shared/knowledge-contract.md)及[提取规范](../../specs/entities/entity-extraction.md)。
 
 旧生成 profile 的 active 运行须用保全的匹配旧构建恢复，当前构建不解码其归档输出、不重派发请求；已准备的固定发布意图仍可零模型调用精确重放，completed／failed 运行仍可检视。独立历史提取／测量协议继续保留各自冻结的定位规则与身份。
 

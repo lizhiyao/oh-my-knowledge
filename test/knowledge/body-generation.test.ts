@@ -123,14 +123,14 @@ async function twoSourceSetup() {
 
 describe('body-first generation and zero-model recovery', () => {
   it('uses the real producer gate and reads two bodies through a subject in an uncited excerpt of their exact source', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v6', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:e94deb02f58ba1bd4b2a05498d573591f21f1b84994405765c4b745ef8919377',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v7', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:5e41e2be3194c1dc021ddffa1c77532341b0125c3e3603ade98580d7a1b19ad4',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
-    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:8adfd43f5cfa19f8b33a2c2373bf307d59b104e5fb4e9b48ad65d341da41fefb');
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v5', outputName: 'knowledge_association_v3',
-      profileId: 'sha256:94243d98971f163db4229abd91c0a6240521af47e2a33e49a9945b47e619898f',
+    expect(generationTextDigest(BODY_GENERATION_PROFILE.system)).toBe('sha256:7ec1f37118e7581b4e86c6f838ddeef52886ba85eda003bbf6466cc8d74f03b2');
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v6', outputName: 'knowledge_association_v3',
+      profileId: 'sha256:3da8d1d743149dea23c1a9cbb7b18862355a4ad708a428c2229553803a8b9267',
       wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
-    expect(generationTextDigest(ASSOCIATION_GENERATION_PROFILE.system)).toBe('sha256:181dcfa2770f4a4eeffdc6cc560840c63cc6d6f5aa96db8841851da128752606');
+    expect(generationTextDigest(ASSOCIATION_GENERATION_PROFILE.system)).toBe('sha256:115c80599d0032a8564e172fcf813bcaf38fcc65791cdf415fdf0e78c5f6ae96');
     const f = setup(true);
     // Authored model responses verify source/association wiring, not model semantic quality.
     const proposal = f.body.proposals[0], segment = proposal.segments[0], evidence = { ...segment.evidence[0], evidenceRef: f.window.excerpts[1].evidenceRef };
