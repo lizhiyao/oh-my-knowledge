@@ -11,9 +11,9 @@ This page is generated from the current source build’s runtime constants and S
 | Source ledger prompt | `knowledge-source-ledger-generation/v3` |
 | Body prompt | `knowledge-body-generation/v9` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v3` |
-| Association prompt | `knowledge-association-generation/v7` |
+| Association prompt | `knowledge-association-generation/v8` |
 | Body profile digest | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
-| Association profile digest | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
+| Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | Source coverage profile digest | `sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |

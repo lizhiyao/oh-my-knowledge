@@ -4,7 +4,7 @@
 
 Source review separates a proposed inventory of reusable source meaning, an independent comparison with saved bodies, and the actual operator's decision. Both histories use Schema 1. They do not replace content reviews, segment/entity coverage or task-use feedback in `reviews/`.
 
-Default `knowledge-body-first/v4` runs source ledger, body, source coverage and association as four explicit stages. It uses journal Schema 4 and default input `knowledge-source-generation-input/v2`. Each stage independently prepares a complete request, confirms its digest and claims once; the complete original is archived before decoding. No stage chain or approval is automatic. Body remains wire2 with prompt9; association keeps the original prompt7/profile/wire3 bytes and its stage-specific v1 envelope. This workflow does not establish raw-generation quality or task benefits.
+Default `knowledge-body-first/v4` runs source ledger, body, source coverage and association as four explicit stages. It uses journal Schema 4 and default input `knowledge-source-generation-input/v2`. Each stage independently prepares a complete request, confirms its digest and claims once; the complete original is archived before decoding. No stage chain or approval is automatic. Body remains wire2 with prompt9. Association prompt8 changes only prompt/profile/request identities (**BREAKING-COMPARABILITY**); wire3 and its stage-specific v1 envelope remain unchanged, without data migration. This workflow does not establish raw-generation quality or task benefits.
 
 ## Identity and evidence {#identity}
 

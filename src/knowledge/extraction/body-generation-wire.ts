@@ -102,10 +102,12 @@ const contextMentionBoundaryPolicy = ENTITY_MENTION_BOUNDARY_POLICY.replace(
 const ASSOCIATION_SYSTEM = `你为已经保存的知识正文建立独立、待核对的实体关联与可选typed关系。正文及bodyKey/segmentId是只读输入，绝不修改、概括或补写正文，也不把正文说法当新的原始来源。关联失败或未知不表示正文应被删除。
 输入knowledge-source-generation-input/v1中的每个sourceKey标识一个不可变Source3快照，可能是协作轨迹、选定文件或固定Git blob。来源元数据及选区按各自类型读取；不把文件路径或提交时间当执行结论，不把测试预期当已执行。为每个sourceKey恰好返回一项catalogs，entityId仅在该目录内有效。每个entity拥有自己的mentions，mentionKey只在该entity内唯一；不另建顶层mentions，不提供持久化ID。宿主按目录/实体/mentionKey归属编译最终提及ID。仅从相应source识别对象与精确提及，为各bodyKey的segment建立候选关联；entityRefs及typedRelations端点必须显式带sourceKey，不能引用该段正文证据未使用的来源。一个窗口共享实体目录，别名/代词须有真实对应依据；不按名称、路径、类型或相似度确认身份，不做跨窗口合并。身份未决保留uncertainties，不能把已知对象因版本或结果未知而改成未知对象。实体应保留对象含义与有据限定，不补百科、归属或发布状态。
 这里的来源边界是sourceKey对应的完整精确窗口，不是正文所引用的某个evidenceRef或quote范围。段落的entityRefs可选择同一sourceKey内其它片段或来源上文中已有且确实支持该段对象指代的提及；提及不必位于该段正文引用的quote或excerpt内。正文主张的证据支持与实体导航的提及选择分开核对：保留完整同源指代链，不因某个案例段只引具体工作记录就遗漏已经明确的项目主体，也不把具体工作记录新建成实体。仍不得借用未绑定的其它sourceKey、同名猜测或仅靠标题确认身份；typedRelations的evidence继续只用正文已有evidenceIndex。
+确定实体后，再按实体逐一回查所有绑定其sourceKey的正文段：该段是否直接讨论它的定义、属性、条件、维护或存储职责。已有合法自身提及可复用，不要求该段重复名称、标识符或objectId；有关联依据才加入entityRefs，无关段仍不映射。不要因每段已有其它映射就漏掉该对象，也不因同源就把对象强连所有段。
 ${KNOWLEDGE_RECORD_SCOPE_POLICY}
 ${ENTITY_REFERENT_KIND_POLICY}
 ${contextMentionBoundaryPolicy}
 先选择指向各实体本身的合法提及，再为段落选关联。mentions.selection使用原source的连续逐字quote和紧贴quote左右的contextBefore/contextAfter，未需额外限定时用null。上下文必须在同一evidenceRef中真实相邻且足以唯一定位，不返回occurrence、start或end。同窗已有合法own mention可供多个段落复用，不为每段另造提及；逐条复查quote指的是对象本身，还是关于它的属性、问题、关系或结果陈述。后者不能因与对象相关就成为该对象的inference提及；有明确指代链的代词仍按其实际所指判断。没有可靠提及时不构建无来源提及的实体，目录可用entities:[]；相应段落仍须逐项说明abstained原因，不能造提及或端点。
+同一sourceKey中，同一声明位置不能同时充当一般对象和其固定版本复制体的自身提及。Git commit／blob元数据可保留为qualifier，但不使声明标识符额外成为版本对象提及；不得复制位置或故意改截跨度规避。来源确实独立指认具体版本状态、且有各自合法自身提及时仍按实际所指处理，版本编号可以未知。
 在结束目录前，回查source独立指认、比较、测试或归档的有界工件与固定代码状态。已发布包、包含新契约的构建、最终验收的制品或固定代码状态须按各自实际所指判断；缺少编号、提交hash或发布状态时保留未知，不据此省掉有据对象，也不自动并入持续移动的分支、一般工具或另一构建。只有来源证明是同一状态时才在同一目录内处理其明确指代，字节相同等关系按其实际范围保留，不由名称、先后或同一任务推出身份相同。
 只有instance/version可声明componentLink；其entityId必须指本目录有来源支持且identityStatus=proposed的component，mentionKeys只能选当前instance/version自身mentions内支持该组件归属的提及。不能引用父对象的mentionKey，也不能自动把普通object改成component或version来绕过校验。collectionLink的mentionKeys同样只属于当前集合，成员范围、完整性和未知按原文保留。componentLink/collectionLink无依据时用null，不补造关系。
 对每个bodyKey的每个segmentId恰好返回一个segmentDecisions。decisionKind=mapped时entityRefs非空，每项明确sourceKey/entityId及该实体自身mentionKeys；decisionKind=abstained时entityRefs=[]，reason说明为何没有可靠关联。逐段检查主产品及其它必要对象，选择已有来源支持的提及后明确关联，不靠标题或另一个segment补选择。对确实同时涉及某组件及其固定版本的段落，分别检查两个层次的显式entityRefs，按各自合法own mentions关联；componentLink不使检索自动继承映射。一般组件方法不因此强绑某版本，两个层次也不能合并或互换。不把缺少提及、主体不明或未决状态藏在遗漏的segment里。每项reason仅为AI关联诊断，不是人工覆盖复核；有决定不代表实体召回完整或关系正确。
@@ -134,7 +136,7 @@ function strictWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v9' : 'knowledge-association-generation/v7';
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v9' : 'knowledge-association-generation/v8';
   const outputVersion = stageKind === 'body' ? 2 : 3;
   const wireVersion = `omk-knowledge-${stageKind}-wire/v${outputVersion}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });

@@ -404,8 +404,12 @@ describe('source-first generation and zero-model recovery', () => {
   });
 
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v9', outputName: 'knowledge_body_v2', wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v7', profileId: 'sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c' });
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v9', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2',
+      wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
+      profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
+      wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
     const f = setup(true), proposal = f.body.proposals[0], evidence = { ...proposal.segments[0].evidence[0], evidenceRef: f.window.excerpts[1].evidenceRef };
     f.body.proposals = [{ ...proposal, proposalId: 'p1', segments: [{ ...proposal.segments[0], text: 'Alpha works only in this test.', evidence: [{ ...evidence, quote: 'works only in this test' }] }] },
       { ...proposal, proposalId: 'p2', segments: [{ ...proposal.segments[0], text: 'Alpha in other environments remains unknown.', evidence: [{ ...evidence, quote: 'time and other environments remain unknown.' }] }] }];

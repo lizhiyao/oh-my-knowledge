@@ -51,7 +51,7 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 ## 发送与默认导入身份 {#generation}
 
-完整 system 加模型 input 另有 1 MiB 上限，富化后的清单、来源和正文不能静默截断。默认流程使用 journal Schema 4、`knowledge-body-first/v4` 及 `knowledge-source-generation-input/v2`，先盘点完整获准来源，再生成正文、查漏并等待实际决定。关联阶段为保持 prompt7／profile／wire3 的原字节，仍使用自己的 `knowledge-source-generation-input/v1` envelope；它不是 journal 的默认输入版本。可携带材料／归因与所有已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 不进入模型输入。
+完整 system 加模型 input 另有 1 MiB 上限，富化后的清单、来源和正文不能静默截断。默认流程使用 journal Schema 4、`knowledge-body-first/v4` 及 `knowledge-source-generation-input/v2`，先盘点完整获准来源，再生成正文、查漏并等待实际决定。关联使用 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**）；wire3 和独立的 `knowledge-source-generation-input/v1` envelope 保持不变，它不是 journal 的默认输入版本；本次提示词变更不要求数据迁移。可携带材料／归因与所有已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 不进入模型输入。
 
 `prepare-generation` 零模型准备首阶段；核对完整 system、input、模型、producer proof 和 requestDigest 后，`generate --confirm-request` 只发送来源盘点。每个后续阶段单独核对并以 `continue-stage` 确认。覆盖完成后，实际 Agent／人须记录绑定精确清单、覆盖、正文和完整来源的决定；关联准备及 claim 前重验，不能以 capture、摘要确认或模型 all-covered 代替。重建同样要求精确决定，不能只从正文引文推断完整来源。普通宿主继续只移除已观测为逐工具调用变化的 CODEX_TOOL_CALL_ID，proof 与执行环境一致；其它环境值及历史冻结身份保持。
 

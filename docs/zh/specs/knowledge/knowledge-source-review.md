@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-默认 `knowledge-body-first/v4` 按来源盘点、正文、来源覆盖、关联四阶段执行；journal 为 Schema 4，默认输入为 `knowledge-source-generation-input/v2`。每阶段独立准备、核对完整请求、确认摘要并 claim，完整原件先归档再解码；不会自动串行发送或批准。正文仍为 wire2／prompt9，关联沿用原字节的 prompt7／profile／wire3 及阶段 v1 envelope。该流程不证明原始生成质量或任务效果已通过。
+默认 `knowledge-body-first/v4` 按来源盘点、正文、来源覆盖、关联四阶段执行；journal 为 Schema 4，默认输入为 `knowledge-source-generation-input/v2`。每阶段独立准备、核对完整请求、确认摘要并 claim，完整原件先归档再解码；不会自动串行发送或批准。正文仍为 wire2／prompt9；关联 prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 和阶段 v1 envelope 保持不变，不要求数据迁移。该流程不证明原始生成质量或任务效果已通过。
 
 ## 身份与证据 {#identity}
 

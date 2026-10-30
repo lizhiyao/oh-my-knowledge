@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies } from '../../src/knowledge/extraction/body-generation-wire.js';
+import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
 
 const window = traceSnapshotFixture('Alpha SDK 0.165.0. Use only with a matching build. Result unknown.', { snapshotId: '00000000-0000-4000-8000-000000000001', evidenceRef: 'record-1' });
@@ -28,8 +29,18 @@ function association() {
 
 describe('versioned body and association generation wire', () => {
   it('publishes new strict identities without exposing the ordinal or model-supplied mention ID', () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v9', outputName: 'knowledge_body_v2' });
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v7', outputName: 'knowledge_association_v3' });
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v9', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2',
+      wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8', outputName: 'knowledge_association_v3',
+      profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
+      wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
+    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-ledger-generation/v3',
+      profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
+      wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-coverage-generation/v3',
+      profileId: 'sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09',
+      wireId: 'sha256:ed4e02bfa494a549aa31cd5880a2426eb7b1ba18b74ab1f7b06782733a14ba08' });
     for (const profile of [BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile)).toBe(true);
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);
