@@ -605,6 +605,29 @@ function associationFixture() {
   detail.history.receipts.push({ requestId: uuid(901), commandDigest: digest, committedGeneration: 2, revisionId: detail.revision.revisionId });
   return { detail, original, current };
 }
+
+/** JSDOM has no layout: keep source positions relative to the reader's own viewport. */
+function mockReaderLayout() {
+  const original = Element.prototype.getBoundingClientRect;
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.matches('.knowledge-reader-scroll')) return new DOMRect(0, 100, 640, 200);
+    const pane = this.closest<HTMLElement>('.knowledge-reader-scroll');
+    if (pane && this.matches('.knowledge-source mark')) {
+      return new DOMRect(0, 600 + (this.previousSibling?.textContent?.length ?? 0) * 4 - pane.scrollTop, 640, 360);
+    }
+    return original.call(this);
+  });
+  return vi.spyOn(window, 'scrollTo');
+}
+function expectSourceStartVisible(container: HTMLElement, quote: string) {
+  const pane = container.querySelector<HTMLElement>('.knowledge-reader-scroll')!;
+  const mark = pane.querySelector('mark')!;
+  expect(mark.textContent).toBe(quote);
+  expect(mark.getBoundingClientRect().top).toBeGreaterThanOrEqual(pane.getBoundingClientRect().top);
+  expect(mark.getBoundingClientRect().top).toBeLessThan(pane.getBoundingClientRect().bottom);
+  expect(pane.scrollTop).toBeGreaterThan(0);
+  return pane;
+}
 function matchingCatalogs(detail: KnowledgeCandidateDetail, analysis: KnowledgeEntityAnalysisDetail): KnowledgeAssociationCatalogs {
   return { bodyRef: detail.derivedAssociations.bodyRef, unavailableAnalyses: 0,
     sources: [{ snapshotId: analysis.history.snapshotId, sourceVersion: analysis.history.sourceVersion, status: 'available' }],
@@ -815,10 +838,11 @@ describe('independent entity mapping review', () => {
   });
 
   it('follows a controlled segment and mention into the exact original span and back without replacing the bound entity revision', () => {
+    const pageScroll = mockReaderLayout();
     const { detail, original } = associationFixture(), onEntity = vi.fn();
     function View() {
       const [selection, setSelection] = useState<KnowledgeReaderSelection>({ tab: 'associations', segmentId: 's1', mentionId: original.revision.mentions[0].mentionId });
-      return <KnowledgeReader detail={detail} lang="en" workspace="/reader-fixture" selection={selection} onSelectionChange={setSelection}
+      return <KnowledgeReader detail={detail} lang="en" workspace="/reader-fixture" selection={structuredClone(selection)} onSelectionChange={setSelection}
         onEntity={onEntity} onRevision={vi.fn()} onRetry={vi.fn()}/>;
     }
     const view = render(<View/>, { wrapper });
@@ -827,19 +851,69 @@ describe('independent entity mapping review', () => {
     expect(onEntity).toHaveBeenCalledWith({ analysisId: original.history.analysisId, entityRevisionId: original.revision.revisionId, entityId: original.revision.entities[0].entityId });
     fireEvent.click(screen.getByRole('button', { name: 'Inspect this mention in its source' }));
     expect(screen.getByRole('button', { name: 'Evidence' }).getAttribute('aria-pressed')).toBe('true');
-    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    const pane = expectSourceStartVisible(view.container, 'Alpha');
+    pane.scrollTop = 0;
+    view.rerender(<View/>);
+    expect(pane.scrollTop).toBe(0);
+    expect(pageScroll).not.toHaveBeenCalled();
     expect(screen.getByText(/00000000-0000-4000-8000-000000000401/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Return to this content segment' }));
     expect(view.container.querySelector('[data-segment-id="s1"]')?.getAttribute('data-focused')).toBe('true');
     expect(screen.getByText(detail.revision.content.segments[0].text)).toBeTruthy();
   });
 
+  it('reveals content citations and same-source span changes while preserving manual scroll through equivalent URL selections and data refreshes', () => {
+    const pageScroll = mockReaderLayout(), { detail } = citationFixture();
+    const citation = detail.revision.content.segments[0].evidence[0];
+    detail.revision.content.segments[0].evidence.push({ ...citation, selection: { ...citation.selection, start: 0, end: citation.selection.quote.length } });
+    const props = { detail, lang: 'en' as const, onRevision: vi.fn(), onRetry: vi.fn() };
+    const view = render(<KnowledgeReader {...props}/>, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect sources' }));
+    const pane = expectSourceStartVisible(view.container, citation.selection.quote);
+    expect(view.container.querySelector('mark')?.previousSibling?.textContent).toBe(`${citation.selection.quote}；`);
+    const selection: KnowledgeReaderSelection = { tab: 'evidence', segmentId: 's1', evidence: { ...citation.source,
+      evidenceRef: citation.selection.evidenceRef, start: citation.selection.start, end: citation.selection.end } };
+    pane.scrollTop = 0;
+    view.rerender(<KnowledgeReader {...props} detail={structuredClone(detail)} selection={structuredClone(selection)}/>);
+    expect(pane.scrollTop).toBe(0);
+    view.rerender(<KnowledgeReader {...props} selection={{ ...selection, evidence: { ...selection.evidence!, start: 0, end: citation.selection.quote.length } }}/>);
+    expectSourceStartVisible(view.container, citation.selection.quote);
+    expect(view.container.querySelector('mark')?.previousSibling?.textContent ?? '').toBe('');
+    expect(pageScroll).not.toHaveBeenCalled();
+  });
+
+  it('reveals an exact URL target after its source becomes readable and leaves mismatched original text unhighlighted', () => {
+    const pageScroll = mockReaderLayout(), { detail } = citationFixture();
+    const citation = detail.revision.content.segments[0].evidence[0];
+    const selection: KnowledgeReaderSelection = { tab: 'evidence', evidence: { ...citation.source,
+      evidenceRef: citation.selection.evidenceRef, start: citation.selection.start, end: citation.selection.end } };
+    const unavailable = structuredClone(detail); unavailable.sources = [{ status: 'unavailable', reason: 'missing', detail: 'The exact snapshot is temporarily unreadable.' }];
+    const props = { lang: 'en' as const, onRevision: vi.fn(), onRetry: vi.fn(), selection };
+    const view = render(<KnowledgeReader {...props} detail={unavailable}/>, { wrapper });
+    expect(view.container.querySelector('mark')).toBeNull();
+    expect(view.container.querySelector<HTMLElement>('.knowledge-reader-scroll')?.scrollTop).toBe(0);
+    view.rerender(<KnowledgeReader {...props} detail={detail}/>);
+    const pane = expectSourceStartVisible(view.container, citation.selection.quote);
+    pane.scrollTop = 0;
+    const mismatched = structuredClone(detail);
+    if (mismatched.sources[0].status !== 'available') throw new Error('Expected a source fixture');
+    mismatched.sources[0].window.excerpts[0].text = 'An unrelated original record';
+    view.rerender(<KnowledgeReader {...props} detail={mismatched}/>);
+    expect(screen.getByText(/saved quotation does not match/)).toBeTruthy();
+    expect(view.container.querySelector('.knowledge-source')?.textContent).toBe('An unrelated original record');
+    expect(view.container.querySelector('mark')).toBeNull();
+    expect(pane.scrollTop).toBe(0);
+    expect(pageScroll).not.toHaveBeenCalled();
+  });
+
   it('does not substitute a nearby quotation when a graph selection names a different exact evidence identity', () => {
+    mockReaderLayout();
     const { detail } = associationFixture();
     const view = render(<KnowledgeReader detail={detail} lang="en" onRevision={vi.fn()} onRetry={vi.fn()} selection={{ tab: 'evidence',
       evidence: { snapshotId: uuid(999), sourceVersion: digest, evidenceRef: 'record-1', start: 0, end: 5 } }}/>, { wrapper });
     expect(screen.getByText(/requested exact evidence is absent/)).toBeTruthy();
     expect(view.container.querySelector('mark')).toBeNull();
+    expect(view.container.querySelector<HTMLElement>('.knowledge-reader-scroll')?.scrollTop).toBe(0);
   });
 
   it('preserves the selected mention rationale and return segment when another segment cites the same source span', () => {
@@ -870,6 +944,7 @@ describe('independent entity mapping review', () => {
   });
 
   it.each(['s1', 's2'])('keeps relation evidence semantics and returns to %s when canonical citations share its exact span', segmentId => {
+    const pageScroll = mockReaderLayout();
     const { detail, original } = associationFixture();
     const shared = { source: { snapshotId: original.history.snapshotId, sourceVersion: original.history.sourceVersion }, selection: original.revision.mentions[0].selection };
     detail.revision.content.segments[0].evidence = [{ ...shared, basis: 'direct_observation', interpretation: 'Direct source citation for the first segment' }];
@@ -892,7 +967,11 @@ describe('independent entity mapping review', () => {
     expect(screen.getByText(`Inference · ${relation.evidence[0].interpretation}`)).toBeTruthy();
     expect(screen.queryByText(/Direct observation · Direct source citation/)).toBeNull();
     expect(screen.queryByText(/Source assertion · Canonical assertion/)).toBeNull();
-    expect(view.container.querySelector('mark')?.textContent).toBe('Alpha');
+    const pane = expectSourceStartVisible(view.container, 'Alpha');
+    pane.scrollTop = 0;
+    view.rerender(<View/>);
+    expect(pane.scrollTop).toBe(0);
+    expect(pageScroll).not.toHaveBeenCalled();
     expect(screen.getByText(relation.relationId, { selector: 'code' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Return to this content segment' }));
     expect(view.container.querySelector(`[data-segment-id="${segmentId}"]`)?.getAttribute('data-focused')).toBe('true');

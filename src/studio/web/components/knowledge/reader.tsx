@@ -44,10 +44,6 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   const [associationReason, setAssociationReason] = useState('');
   useEffect(() => { setAssociationReason(''); }, [detail.derivedAssociations.generation, detail.revision.revisionId]);
   useEffect(() => { setLocalSelection({ tab: 'body' }); }, [detail.revision.knowledgeId, detail.revision.revisionId]);
-  useEffect(() => {
-    const container = scroll.current, focused = container?.querySelector<HTMLElement>('[data-mention-id][data-focused="true"], [data-relation-id][data-focused="true"]') ?? container?.querySelector<HTMLElement>('[data-focused="true"]');
-    if (container && focused) container.scrollTop += focused.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
-  }, [detail.revision.knowledgeId, detail.revision.revisionId, tab, active.segmentId, active.mentionId, active.relationId, active.catalogRef, active.evidence]);
   const segments = detail.revision.content.segments;
   const derived = detail.derivedAssociations;
   const catalogs = detail.derivedCatalogs;
@@ -85,6 +81,13 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   const excerpt = source?.status === 'available' ? source.window.excerpts.find(item => item.evidenceRef === selected?.selection.evidenceRef) : undefined;
   const organization = detail.revision.content.organization;
   const sourceMatches = !!excerpt && !!selected && excerpt.text.slice(selected.selection.start, selected.selection.end) === selected.selection.quote;
+  const evidenceReady = tab === 'evidence' && sourceMatches;
+  useEffect(() => {
+    const container = scroll.current, focused = container?.querySelector<HTMLElement>('[data-mention-id][data-focused="true"], [data-relation-id][data-focused="true"]') ?? container?.querySelector<HTMLElement>('[data-focused="true"]');
+    if (container && focused) container.scrollTop += focused.getBoundingClientRect().top - container.getBoundingClientRect().top - 24;
+  }, [detail.revision.knowledgeId, detail.revision.revisionId, tab, active.segmentId, active.mentionId, active.relationId,
+    active.catalogRef?.analysisId, active.catalogRef?.entityRevisionId, requestedEvidence?.snapshotId, requestedEvidence?.sourceVersion,
+    requestedEvidence?.evidenceRef, requestedEvidence?.start, requestedEvidence?.end, evidenceReady]);
   const entityLabel = (ref: { analysisId: string; entityRevisionId: string; entityId: string }) => { const catalog = catalogFor(ref); return catalog?.status === 'available' ? catalog.entities.find(entity => entity.entityId === ref.entityId)?.label ?? ref.entityId : ref.entityId; };
   const referencesUnavailable = (derived.revision?.catalogRefs ?? []).some(ref => { const catalog = catalogFor(ref); return catalog?.status !== 'available'
     || !detail.sources.some(source => source.status === 'available' && source.window.snapshotId === catalog.snapshotId && source.window.sourceVersion === catalog.sourceVersion); });
@@ -175,7 +178,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
           {selected && <p className="candidate-help">{({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[selected.basis]}{selected.interpretation ? ` · ${selected.interpretation}` : ''}</p>}
           {excerpt && selected ? <><p className="candidate-help">{t('记录', 'Record')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('来源时间未知', 'Source time unknown')}</p>
             {!sourceMatches && <Alert type="warning" title={t('保存的引文与此快照位置不匹配，不能当作已核对；原文与保存引文分别保留。', 'The saved quotation does not match this snapshot span. It is not verified; original text and saved quotation remain separate.')}/>}
-            <pre className="knowledge-source">{sourceMatches ? <>{excerpt.text.slice(0, selected.selection.start)}<mark>{excerpt.text.slice(selected.selection.start, selected.selection.end)}</mark>{excerpt.text.slice(selected.selection.end)}</> : excerpt.text}</pre>
+            <pre className="knowledge-source">{sourceMatches ? <>{excerpt.text.slice(0, selected.selection.start)}<mark data-focused="true">{excerpt.text.slice(selected.selection.start, selected.selection.end)}</mark>{excerpt.text.slice(selected.selection.end)}</> : excerpt.text}</pre>
             {!sourceMatches && <blockquote>{selected.selection.quote}</blockquote>}
             {selected.segmentId && <Button type="link" disabled={busy} onClick={() => choose({ ...active, tab: 'body', segmentId: selected.segmentId })}>{t('返回对应正文段落', 'Return to this content segment')}</Button>}
             {source?.status === 'available' && <><p className="candidate-help">{source.window.limitations.join(' ')}</p><details><summary>{t('原始记录及相邻上下文', 'Original record and adjacent context')}</summary>{source.window.records.filter(record => Math.abs(record.recordIndex - excerpt.recordIndex) <= 1).map(record => <pre className="knowledge-source" key={record.recordIndex}>{record.recordIndex}: {record.raw}</pre>)}</details></>}
