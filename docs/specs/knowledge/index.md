@@ -8,4 +8,5 @@ Start with the end-to-end construction design for extraction, host admission, cr
 - [Entity knowledge library](knowledge-library.md)
 - [Knowledge maintenance, automatic extraction, and carrier contracts](knowledge-maintenance.md)
 - [Content review, association coverage and task feedback](knowledge-reviews.md)
+- [Source inventory, coverage analyses and actual decisions](knowledge-source-review.md)
 - [Versioned project and trace sources](knowledge-sources.md)

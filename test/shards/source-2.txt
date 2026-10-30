@@ -101,3 +101,4 @@ test/studio/web/inbox-experience-review.test.tsx
 test/studio/web/measure-react.test.tsx
 test/studio/web/shell-navigation.test.tsx
 test/studio/application/library-view.test.ts
+test/knowledge/source-review-store.test.ts
