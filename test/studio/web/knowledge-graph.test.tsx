@@ -152,15 +152,15 @@ describe('knowledge graph browsing and evidence', () => {
     expectVisibleInCanvas(screen.getByRole('button', { name: /^知识：保存可核对的项目认识/ }), canvas);
   });
 
-  it('waits for a hidden canvas to become visible and stops observing after its first reveal', () => {
+  it('waits for a hidden canvas to reveal its initially selected node and then stops observing', () => {
     const { graph, detail } = crowdedGraph(), viewport = graphViewport(280, 0);
-    const view = render(<KnowledgeGraphView graph={graph} lang="zh" activeKnowledgeId={detail.revision.knowledgeId} scope="current" includeHistory={false} onScope={vi.fn()} onHistory={vi.fn()} onSelect={vi.fn()}/>);
+    const view = render(<KnowledgeGraphView graph={graph} lang="zh" activeKnowledgeId={detail.revision.knowledgeId} selectedId="entity-window-17" scope="current" includeHistory={false} onScope={vi.fn()} onHistory={vi.fn()} onSelect={vi.fn()}/>);
     const canvas = screen.getByLabelText('可滚动图谱画布');
     expect(canvas.scrollTop).toBe(0); expect(viewport.observers).toHaveLength(1);
     const observer = viewport.observers[0]; expect(observer.observe).toHaveBeenCalledWith(canvas);
     viewport.resize(); expect(observer.disconnect).not.toHaveBeenCalled();
     viewport.size.height = 400; viewport.resize();
-    expectVisibleInCanvas(screen.getByRole('button', { name: /^知识：保存可核对的项目认识/ }), canvas);
+    expectVisibleInCanvas(screen.getAllByRole('button', { name: /^实体：Alpha/ }).at(-1)!, canvas);
     expect(observer.disconnect).toHaveBeenCalledTimes(1);
     canvas.scrollTop = 0; viewport.resize(); expect(canvas.scrollTop).toBe(0);
     view.unmount(); expect(observer.disconnect).toHaveBeenCalledTimes(2);
@@ -172,14 +172,23 @@ describe('knowledge graph browsing and evidence', () => {
     const view = render(<KnowledgeGraphView {...props}/>), canvas = screen.getByLabelText('可滚动图谱画布');
     view.rerender(<KnowledgeGraphView {...props} scope="filtered"/>);
     expect(viewport.observers[0].disconnect).toHaveBeenCalledOnce(); expect(viewport.observers).toHaveLength(2);
+    const refreshed = structuredClone(graph), current = refreshed.nodes.find(node => node.nodeKind === 'knowledge')!;
+    if (current.nodeKind !== 'knowledge') throw new Error('Missing knowledge fixture');
+    current.nodeId = 'knowledge-new-head'; current.bodyRef.revisionId = uuid(82); current.title = '更新后的当前知识';
+    refreshed.edges = refreshed.edges.map(edge => ({ ...edge, from: edge.from === 'knowledge-current' ? current.nodeId : edge.from }));
+    view.rerender(<KnowledgeGraphView {...props} graph={refreshed} scope="filtered"/>);
+    expect(viewport.observers[1].disconnect).toHaveBeenCalledOnce(); expect(viewport.observers).toHaveLength(3);
     viewport.size.height = 400;
     act(() => viewport.observers[0].callback()); expect(canvas.scrollTop).toBe(0);
-    view.unmount(); expect(viewport.observers[1].disconnect).toHaveBeenCalledOnce();
+    act(() => viewport.observers[2].callback());
+    expectVisibleInCanvas(screen.getByRole('button', { name: /^知识：更新后的当前知识/ }), canvas);
+    canvas.scrollTop = 0;
+    view.unmount(); expect(viewport.observers[2].disconnect).toHaveBeenCalledTimes(2);
     viewport.resize(); expect(canvas.scrollTop).toBe(0);
   });
 
-  it('keeps manual scrolling when library selection pins the same current revision through an edge or entity', async () => {
-    const data = crowdedGraph(), calls: Record<string, unknown>[] = []; graphViewport();
+  it('keeps manual scrolling for edges and refreshes but reveals a newly selected node in the same current revision', async () => {
+    const data = crowdedGraph(), calls: Record<string, unknown>[] = []; graphViewport(553);
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
       const call = JSON.parse(String(init.body)); calls.push(call);
       const value = call.operation === 'knowledge' ? data.catalog : call.operation === 'graph' ? data.graph
@@ -195,9 +204,17 @@ describe('knowledge graph browsing and evidence', () => {
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('revision')).toBe(data.detail.revision.revisionId));
     expect(screen.getByLabelText('可滚动图谱画布')).toBe(canvas); expect(canvas.scrollTop).toBe(0); expect(canvas.scrollLeft).toBe(20);
     expect(calls.filter(call => call.operation === 'show').at(-1)).toMatchObject({ id: data.detail.revision.knowledgeId, revision: data.detail.revision.revisionId });
-    fireEvent.keyDown(screen.getAllByRole('button', { name: /^实体：Alpha/ })[0], { key: 'Enter' });
-    await waitFor(() => expect(new URLSearchParams(window.location.search).get('selection')).toBe('entity-window-1'));
-    expect(screen.getByRole('combobox', { name: '选择图谱节点' })).toHaveProperty('value', 'entity-window-1');
+    fireEvent.change(screen.getByRole('combobox', { name: '选择图谱节点' }), { target: { value: 'entity-window-17' } });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('selection')).toBe('entity-window-17'));
+    const entity = screen.getAllByRole('button', { name: /^实体：Alpha/ }).at(-1)!;
+    expectVisibleInCanvas(entity, canvas);
+    expect(canvas.scrollTop).toBeGreaterThan(0); expect(canvas.scrollLeft).toBeGreaterThan(20);
+    canvas.scrollTop = 0; canvas.scrollLeft = 20;
+    fireEvent.keyDown(entity, { key: 'Enter' });
+    expect(canvas.scrollTop).toBe(0); expect(canvas.scrollLeft).toBe(20);
+    act(() => window.dispatchEvent(new CustomEvent('omk-knowledge-changed', { detail: '/same-graph-body' })));
+    await waitFor(() => expect(calls.filter(call => call.operation === 'graph')).toHaveLength(2));
+    await screen.findByText(/内容复核：尚未复核/);
     expect(canvas.scrollTop).toBe(0); expect(canvas.scrollLeft).toBe(20);
   });
 
