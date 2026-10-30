@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
+import { sourceSnapshotProjection, sourceVersionPreimage } from '../../src/knowledge/sources.js';
+import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
 import { sourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
 import { checkGeneratedSourceCoverage, checkGeneratedSourceLedger, sourceCoverageModelInput, sourceLedgerModelInput,
@@ -28,8 +31,8 @@ describe('source review wire and deterministic unit compilation', () => {
   });
 
   it('publishes strict, immutable new profiles whose model outputs cannot supply host offsets or acceptance', () => {
-    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v1', promptVersion: 'knowledge-source-ledger-generation/v1' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v1' });
+    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v1', promptVersion: 'knowledge-source-ledger-generation/v2' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v1', promptVersion: 'knowledge-source-coverage-generation/v2' });
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);
@@ -51,6 +54,15 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow('quote_mismatch');
     output.items[1].evidence[0] = locator('invented-unit', originalQuote);
     expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow(/Unknown source review unit/);
+
+    const repeated = { ...source, excerpts: source.excerpts.map(excerpt => ({ ...excerpt, material: source.material })) };
+    repeated.sourceVersion = `sha256:${createHash('sha256').update(canonicalJson(sourceVersionPreimage(sourceSnapshotProjection(repeated)))).digest('hex')}`;
+    const metadata = JSON.parse(sourceReviewInput([repeated]).units[0].text), response = ledgerOutput();
+    response.items[0].evidence = [locator('s0/metadata', repeated.material.reason)];
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(response), [repeated])).toThrow('ambiguous_quote');
+    const scopedQuote = `"source":${canonicalJson(metadata.source)}`;
+    response.items[0].evidence = [locator('s0/metadata', scopedQuote)];
+    expect(checkGeneratedSourceLedger(JSON.stringify(response), [repeated]).items[0].evidence[0]).toMatchObject({ unitKind: 'source_metadata', quote: scopedQuote });
   });
 
   it('requires every delivered source unit to have a disposition and keeps explicit exclusions or pending opinions', () => {
