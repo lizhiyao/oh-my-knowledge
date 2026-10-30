@@ -16,7 +16,7 @@
 
 ### 来源清单 {#ledger}
 
-`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。 当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。覆盖仍为 wire1／prompt2。
+`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。 当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。覆盖使用 wire2／prompt3。宿主从本次精确输入枚举完整单元／item／facet／正文段落目标目录，模型检查只返回 targetKey，宿主恢复完整目标身份。未知键和覆盖不全仍拒收，同一目标仍可分别检查不同覆盖对象。阶段请求绑定派生目录，来源 manifest 与两份存储领域 Schema 保持。
 
 ### 来源覆盖 {#coverage}
 

@@ -32,25 +32,23 @@ export function sourceReviewModelFixture() {
     revision.bodyDigest = knowledgeBodyDigest(revision);
     return revision;
   }
-  const target = (targetKind: 'source_unit' | 'ledger_item' | 'ledger_facet' | 'body_segment', values: Partial<Record<'unitKey' | 'itemId' | 'facetId' | 'bodyKey' | 'segmentId', string>>) =>
-    ({ targetKind, unitKey: null, itemId: null, facetId: null, bodyKey: null, segmentId: null, ...values });
   const bodyQuote = (quote: string) => ({ bodyKey: 'b0', segmentId: 's1', quote, contextBefore: null, contextAfter: null });
   function coverageOutput(): z.infer<typeof SourceCoverageResponseSchema> {
     const base = { coverageTarget: 'knowledge_meaning' as const, status: 'covered' as const, factualValue: 'not_applicable' as const,
       reason: 'The paragraph retains this source meaning.', boundedInput: null };
-    return structuredClone({ responseKind: 'knowledge-source-coverage', schemaVersion: 1, checks: [
-      { ...base, checkId: 'source-metadata', target: target('source_unit', { unitKey: 's0/metadata' }), sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },
-      { ...base, checkId: 'source-text', target: target('source_unit', { unitKey: 's0/excerpt/0' }), sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
-      { ...base, checkId: 'identity', target: target('ledger_item', { itemId: 'identity' }), sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },
-      { ...base, checkId: 'amount', target: target('ledger_item', { itemId: 'amount' }), sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
-      { ...base, checkId: 'unknown', target: target('ledger_facet', { itemId: 'amount', facetId: 'amount-value' }), coverageTarget: 'preserved_source_declared_unknown', sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
-      { ...base, checkId: 'paragraph', target: target('body_segment', { bodyKey: 'b0', segmentId: 's1' }), sourceEvidence: [quotedMetadata, quotedSource], bodyEvidence: [bodyQuote(body().content.segments[0].text)] },
+    return structuredClone({ responseKind: 'knowledge-source-coverage', schemaVersion: 2, checks: [
+      { ...base, checkId: 'source-metadata', targetKey: 't0', sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },
+      { ...base, checkId: 'source-text', targetKey: 't1', sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
+      { ...base, checkId: 'identity', targetKey: 't2', sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },
+      { ...base, checkId: 'amount', targetKey: 't3', sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
+      { ...base, checkId: 'unknown', targetKey: 't4', coverageTarget: 'preserved_source_declared_unknown', sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
+      { ...base, checkId: 'paragraph', targetKey: 't5', sourceEvidence: [quotedMetadata, quotedSource], bodyEvidence: [bodyQuote(body().content.segments[0].text)] },
     ], findings: [], limitations: ['Structural coverage is not an actual review decision.'] });
   }
   const ledger = () => ({ ref: structuredClone(ledgerRef), data: checkGeneratedSourceLedger(JSON.stringify(ledgerOutput()), [source]) });
   function emptyCoverageOutput() {
     const response = coverageOutput();
-    response.checks = response.checks.filter(check => check.target.targetKind !== 'body_segment');
+    response.checks = response.checks.filter(check => check.checkId !== 'paragraph');
     response.checks.forEach(check => { check.status = 'omitted'; check.bodyEvidence = []; });
     return response;
   }

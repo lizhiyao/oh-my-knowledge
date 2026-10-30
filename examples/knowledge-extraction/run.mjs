@@ -70,7 +70,6 @@ try {
       entityRefs: entities.map(entity => ({ sourceKey: 's0', entityId: entity.entityId, mentionKeys: ['name'] })),
       reason: '合成来源明确命名两个对象；关联仍待核对。' }], typedRelations: [], issues: [] }],
   };
-  const target = (targetKind, values) => ({ targetKind, unitKey: null, itemId: null, facetId: null, bodyKey: null, segmentId: null, ...values });
   const quote = (unitKey, text) => ({ unitKey, quote: text, contextBefore: null, contextAfter: null });
   function authoredLedger(input) {
     return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
@@ -87,15 +86,19 @@ try {
     const base = { coverageTarget: 'knowledge_meaning', status: 'unassessable', factualValue: 'not_applicable',
       reason: 'Authored demonstration only; this check does not establish semantic coverage.', bodyEvidence: [], boundedInput: null };
     const sourceQuote = unitKey => quote(unitKey, input.units.find(unit => unit.unitKey === unitKey).text);
-    return { responseKind: 'knowledge-source-coverage', schemaVersion: 1,
-      checks: [...input.units.map((unit, index) => ({ ...base, checkId: `unit-${index}`, target: target('source_unit', { unitKey: unit.unitKey }), sourceEvidence: [sourceQuote(unit.unitKey)] })),
-        ...input.ledger.data.items.flatMap((item, index) => [{ ...base, checkId: `item-${index}`, target: target('ledger_item', { itemId: item.itemId }),
-          sourceEvidence: item.evidence.map(anchor => sourceQuote(anchor.unitKey)) },
-          ...item.facets.map((facet, facetIndex) => ({ ...base, checkId: `facet-${index}-${facetIndex}`, target: target('ledger_facet', { itemId: item.itemId, facetId: facet.facetId }),
-            coverageTarget: 'factual_value', factualValue: 'unknown', sourceEvidence: [] }))]),
-        ...input.bodies.flatMap((body, index) => body.segments.map((segment, segmentIndex) => ({ ...base, checkId: `paragraph-${index}-${segmentIndex}`,
-          target: target('body_segment', { bodyKey: body.bodyKey, segmentId: segment.segmentId }), sourceEvidence: [],
-          bodyEvidence: [{ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null }] })))],
+    return { responseKind: 'knowledge-source-coverage', schemaVersion: 2,
+      checks: input.targets.map(({ targetKey, target }) => {
+        const result = { ...base, checkId: `check-${targetKey}`, targetKey, sourceEvidence: [] };
+        if (target.targetKind === 'source_unit') return { ...result, sourceEvidence: [sourceQuote(target.unitKey)] };
+        if (target.targetKind === 'ledger_item' || target.targetKind === 'ledger_facet') {
+          const item = input.ledger.data.items.find(item => item.itemId === target.itemId);
+          return target.targetKind === 'ledger_facet' ? { ...result, coverageTarget: 'factual_value', factualValue: 'unknown' }
+            : { ...result, sourceEvidence: item.evidence.map(anchor => sourceQuote(anchor.unitKey)) };
+        }
+        const body = input.bodies.find(body => body.bodyRef.knowledgeId === target.bodyRef.knowledgeId && body.bodyRef.revisionId === target.bodyRef.revisionId && body.bodyRef.bodyDigest === target.bodyRef.bodyDigest);
+        const segment = body.segments.find(segment => segment.segmentId === target.segmentId);
+        return { ...result, bodyEvidence: [{ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null }] };
+      }),
       findings: [], limitations: ['Authored demonstration only; unknown factual values remain unknown and no model response approves continuation.'] };
   }
   const rawByStage = {};

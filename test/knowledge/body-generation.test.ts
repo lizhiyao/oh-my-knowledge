@@ -13,7 +13,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileSourceLedgerStore, FileSourceCoverageStore } from '../../src/knowledge/adapters/source-review-store.js';
 import { knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { GenerationJournal, GenerationStage } from '../../src/knowledge/extraction/generation-journal.js';
-import type { SourceCoverageDecisionRef, SourceLedgerData } from '../../src/knowledge/source-review.js';
+import type { SourceCoverageData, SourceCoverageDecisionRef, SourceLedgerData } from '../../src/knowledge/source-review.js';
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
@@ -35,10 +35,10 @@ const stages = ['source_ledger', 'body', 'source_coverage', 'association'] as co
 const testReviewActor = { actorKind: 'agent' as const, actorId: 'explicit-test-source-reviewer', executionRef: 'test:actual-review-operation' };
 type State = ReturnType<BodyGenerationApplication['resume']>;
 type CoverageResponse = z.infer<typeof SourceCoverageResponseSchema>;
-type CoverageRequest = SourceReviewInput & { ledger: { data: SourceLedgerData }; bodies: { bodyKey: string; segments: { segmentId: string; text: string }[] }[] };
+type CoverageRequest = SourceReviewInput & { ledger: { data: SourceLedgerData };
+  bodies: { bodyKey: string; bodyRef: SourceCoverageData['bodyRefs'][number]; segments: { segmentId: string; text: string }[] }[];
+  targets: { targetKey: string; target: SourceCoverageData['checks'][number]['target'] }[] };
 const locator = (unitKey: string, quote: string) => ({ unitKey, quote, contextBefore: null, contextAfter: null });
-const target = (targetKind: CoverageResponse['checks'][number]['target']['targetKind'], values: Partial<Record<'unitKey' | 'itemId' | 'facetId' | 'bodyKey' | 'segmentId', string>>) =>
-  ({ targetKind, unitKey: null, itemId: null, facetId: null, bodyKey: null, segmentId: null, ...values });
 /** Authored native fixtures exercise the real strict wires, not model semantic quality. */
 function ledgerOutput(input: string): z.infer<typeof SourceLedgerResponseSchema> {
   const request = JSON.parse(input) as SourceReviewInput;
@@ -53,13 +53,19 @@ function coverageOutput(input: string): CoverageResponse {
   const base = { coverageTarget: 'knowledge_meaning' as const, status: 'unassessable' as const, factualValue: 'not_applicable' as const,
     reason: 'The fixture keeps this inventory unresolved for the actual test actor; it does not infer semantic acceptance.', bodyEvidence: [], boundedInput: null };
   const sourceQuote = (unitKey: string) => locator(unitKey, request.units.find(unit => unit.unitKey === unitKey)!.text);
-  return { responseKind: 'knowledge-source-coverage', schemaVersion: 1,
-    checks: [...request.units.map(unit => ({ ...base, checkId: `unit:${unit.unitKey}`, target: target('source_unit', { unitKey: unit.unitKey }), sourceEvidence: [sourceQuote(unit.unitKey)] })),
-      ...request.ledger.data.items.flatMap(item => [{ ...base, checkId: `item:${item.itemId}`, target: target('ledger_item', { itemId: item.itemId }), sourceEvidence: item.evidence.map(anchor => sourceQuote(anchor.unitKey)) },
-        ...item.facets.map(facet => ({ ...base, checkId: `facet:${item.itemId}:${facet.facetId}`, target: target('ledger_facet', { itemId: item.itemId, facetId: facet.facetId }), sourceEvidence: facet.evidence.map(anchor => sourceQuote(anchor.unitKey)) }))]),
-      ...request.bodies.flatMap((body, bodyIndex) => body.segments.map((segment, segmentIndex) => ({ ...base, checkId: `paragraph:${bodyIndex}:${segmentIndex}`,
-        target: target('body_segment', { bodyKey: body.bodyKey, segmentId: segment.segmentId }), sourceEvidence: [],
-        bodyEvidence: [{ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null }] })))],
+  return { responseKind: 'knowledge-source-coverage', schemaVersion: 2,
+    checks: request.targets.map(({ targetKey, target }) => {
+      const result = { ...base, checkId: `check:${targetKey}`, targetKey, sourceEvidence: [] as ReturnType<typeof locator>[] };
+      if (target.targetKind === 'source_unit') return { ...result, sourceEvidence: [sourceQuote(target.unitKey)] };
+      if (target.targetKind === 'ledger_item' || target.targetKind === 'ledger_facet') {
+        const item = request.ledger.data.items.find(item => item.itemId === target.itemId)!;
+        const evidence = target.targetKind === 'ledger_facet' ? item.facets.find(facet => facet.facetId === target.facetId)!.evidence : item.evidence;
+        return { ...result, sourceEvidence: evidence.map(anchor => sourceQuote(anchor.unitKey)) };
+      }
+      const body = request.bodies.find(body => canonicalJson(body.bodyRef) === canonicalJson(target.bodyRef))!;
+      const segment = body.segments.find(segment => segment.segmentId === target.segmentId)!;
+      return { ...result, bodyEvidence: [{ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null }] };
+    }),
     findings: [], limitations: ['All inventory uncertainty remains visible; no native response supplies an actual decision.'] };
 }
 function setup(splitMentionContext = false) {

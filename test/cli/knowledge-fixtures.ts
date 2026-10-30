@@ -6,7 +6,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
-import type { SourceCoverageWrite, SourceLedgerData, SourceReviewManifest } from '../../src/knowledge/source-review.js';
+import type { SourceCoverageData, SourceCoverageWrite, SourceLedgerData, SourceReviewManifest } from '../../src/knowledge/source-review.js';
 import type { EvidenceExcerpt } from '../../src/knowledge/contracts.js';
 import { readTraceSource } from '../../src/knowledge/adapters/trace-source-reader.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
@@ -15,6 +15,7 @@ import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' | 'body' | 'source_coverage' | 'association') {
   const data = JSON.parse(input) as { excerpts?: EvidenceExcerpt[]; sources?: { sourceKey: string; excerpts: EvidenceExcerpt[] }[];
     manifest?: SourceReviewManifest; units?: { unitKey: string; unitKind: string; text: string }[]; ledger?: { data: SourceLedgerData };
+    targets?: { targetKey: string; target: SourceCoverageData['checks'][number]['target'] }[];
     bodies?: { bodyKey: string; segments?: { segmentId: string; text: string }[]; content: { segments: { segmentId: string; text: string }[] } }[] };
   if (stage === 'source_ledger') {
     const units = data.units ?? [], retained = units.filter(unit => unit.unitKind === 'excerpt_text');
@@ -28,12 +29,16 @@ export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' 
     const units = data.units ?? [], bodies = data.bodies ?? [];
     const source = (unitKey: string) => { const unit = units.find(unit => unit.unitKey === unitKey)!; return { unitKey, quote: unit.text, contextBefore: null, contextAfter: null }; };
     const bodyEvidence = bodies.flatMap(body => (body.segments ?? body.content.segments).map(segment => ({ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null })));
-    const target = (targetKind: string, values: Record<string, string>) => ({ targetKind, unitKey: null, itemId: null, facetId: null, bodyKey: null, segmentId: null, ...values });
-    const targets = [...units.map(unit => ({ target: target('source_unit', { unitKey: unit.unitKey }), sourceEvidence: [source(unit.unitKey)] })),
-      ...(data.ledger?.data.items ?? []).flatMap(item => [{ target: target('ledger_item', { itemId: item.itemId }), sourceEvidence: item.evidence.map(anchor => source(anchor.unitKey)) },
-        ...item.facets.map(facet => ({ target: target('ledger_facet', { itemId: item.itemId, facetId: facet.facetId }), sourceEvidence: facet.evidence.map(anchor => source(anchor.unitKey)) }))]),
-      ...bodies.flatMap(body => (body.segments ?? body.content.segments).map(segment => ({ target: target('body_segment', { bodyKey: body.bodyKey, segmentId: segment.segmentId }), sourceEvidence: units.length ? [source(units[0].unitKey)] : [] })))];
-    return { responseKind: 'knowledge-source-coverage', schemaVersion: 1, checks: targets.map((value, index) => ({ ...value, checkId: `check-${index}`, coverageTarget: 'knowledge_meaning',
+    const targets = (data.targets ?? []).map(({ targetKey, target }) => {
+      if (target.targetKind === 'source_unit') return { targetKey, sourceEvidence: [source(target.unitKey)] };
+      if (target.targetKind === 'ledger_item' || target.targetKind === 'ledger_facet') {
+        const item = data.ledger!.data.items.find(item => item.itemId === target.itemId)!;
+        const evidence = target.targetKind === 'ledger_facet' ? item.facets.find(facet => facet.facetId === target.facetId)!.evidence : item.evidence;
+        return { targetKey, sourceEvidence: evidence.map(anchor => source(anchor.unitKey)) };
+      }
+      return { targetKey, sourceEvidence: units.length ? [source(units[0].unitKey)] : [] };
+    });
+    return { responseKind: 'knowledge-source-coverage', schemaVersion: 2, checks: targets.map((value, index) => ({ ...value, checkId: `check-${index}`, coverageTarget: 'knowledge_meaning',
       status: 'unassessable', factualValue: 'not_applicable', reason: 'Authored protocol check requiring an explicit actual disposition.', bodyEvidence, boundedInput: null })), findings: [], limitations: ['Authored fixture has no semantic or factual acceptance.'] };
   }
   const excerpt = (data.excerpts ?? data.sources?.[0].excerpts ?? [])[0];

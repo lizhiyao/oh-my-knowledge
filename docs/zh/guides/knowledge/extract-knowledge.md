@@ -203,7 +203,7 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-当前清单 wire2／prompt3、覆盖 wire1／prompt2，两份历史仍为 v1；正文 wire2／prompt9，journal4／workflow4／默认 input2，Source3 和正文3／实体2／关联2／reviews1。关联 prompt7／profile／wire3 的原字节及其 v1 输入 envelope 保持不变，与 journal 的 input2 分别表达。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整或真值；当前值见[生成契约](../../reference/shared/knowledge-contract.md)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
+当前清单 wire2／prompt3、覆盖 wire2／prompt3，两份历史仍为 v1；正文 wire2／prompt9，journal4／workflow4／默认 input2，Source3 和正文3／实体2／关联2／reviews1。关联 prompt7／profile／wire3 的原字节及其 v1 输入 envelope 保持不变，与 journal 的 input2 分别表达。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整或真值；当前值见[生成契约](../../reference/shared/knowledge-contract.md)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
 
 旧日志使用保全的匹配构建或[受支持流程副本](#workflow-migration)。参数错误退出 2、业务失败退出 1、成功退出 0；回执不明确时先检视持久状态，再决定是否重入写操作。
 
