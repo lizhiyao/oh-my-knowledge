@@ -16,7 +16,7 @@
 
 ### 来源清单 {#ledger}
 
-`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。
+`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。 当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。覆盖仍为 wire1／prompt2。
 
 ### 来源覆盖 {#coverage}
 

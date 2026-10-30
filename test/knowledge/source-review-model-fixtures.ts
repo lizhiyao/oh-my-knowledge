@@ -15,9 +15,9 @@ export function sourceReviewModelFixture() {
   const quotedSource = locator('s0/excerpt/0', originalQuote), quotedMetadata = locator('s0/metadata', metadataQuote);
   const ledgerRef = { ledgerId: '00000000-0000-4000-8000-000000000021', revisionId: '00000000-0000-4000-8000-000000000022', digest: `sha256:${'a'.repeat(64)}` };
   function ledgerOutput() {
-    return structuredClone({ responseKind: 'knowledge-source-ledger', schemaVersion: 1,
-      unitDispositions: [{ unitKey: 's0/metadata', disposition: 'retain', reason: 'Preserve the selected source identity.', itemIds: ['identity'] },
-        { unitKey: 's0/excerpt/0', disposition: 'retain', reason: 'Preserve the stated unknown.', itemIds: ['amount'] }],
+    return structuredClone({ responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+      unitDispositions: [{ unitKey: 's0/metadata', disposition: 'retain', reason: 'Preserve the selected source identity.' },
+        { unitKey: 's0/excerpt/0', disposition: 'retain', reason: 'Preserve the stated unknown.' }],
       items: [{ itemId: 'identity', statement: 'The selected source ID is authored:wire.', disposition: 'retain', reason: 'Scope of this account.', equivalentItemIds: [], evidence: [quotedMetadata], facets: [] },
         { itemId: 'amount', statement: 'Alpha amount is unknown.', disposition: 'retain', reason: 'Do not invent a factual amount.', equivalentItemIds: [], evidence: [quotedSource],
           facets: [{ facetId: 'amount-value', statement: 'The source explicitly leaves the amount unknown.', epistemicStatus: 'explicit_unknown', evidence: [quotedSource] }] }],

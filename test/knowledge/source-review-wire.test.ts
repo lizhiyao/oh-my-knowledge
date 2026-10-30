@@ -31,14 +31,20 @@ describe('source review wire and deterministic unit compilation', () => {
   });
 
   it('publishes strict, immutable new profiles whose model outputs cannot supply host offsets or acceptance', () => {
-    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v1', promptVersion: 'knowledge-source-ledger-generation/v2' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v1', promptVersion: 'knowledge-source-coverage-generation/v2' });
+    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v2', promptVersion: 'knowledge-source-ledger-generation/v3' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v1', promptVersion: 'knowledge-source-coverage-generation/v2',
+      profileId: 'sha256:ec9a0dad528f141e1562fddc2067be41b5605e43df33625808d7cd12d7b83ae6',
+      wireId: 'sha256:2c251e3c6f4b5ea320dc6648dee99022d631b4c0fd109a9cfb398d5293205f0f' });
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);
       expect(JSON.stringify(profile.wireSchema)).not.toMatch(/"(?:start|end|actor|decisionKind|bodyDigest)"/);
     }
     expect(() => checkGeneratedSourceLedger(JSON.stringify({ ...ledgerOutput(), decisionKind: 'proceed_with_limits' }), [source])).toThrow(/wire rejected/);
+    expect(JSON.stringify(SOURCE_LEDGER_GENERATION_PROFILE.wireSchema)).not.toContain('"itemIds"');
+    expect(() => checkGeneratedSourceLedger(JSON.stringify({ ...ledgerOutput(), schemaVersion: 1 }), [source])).toThrow(/wire rejected/);
+    const oldIndex = ledgerOutput(); Object.assign(oldIndex.unitDispositions[0], { itemIds: ['identity'] });
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(oldIndex), [source])).toThrow(/wire rejected/);
     const offset = ledgerOutput(); Object.assign(offset.items[1].evidence[0], { start: 0 });
     expect(() => checkGeneratedSourceLedger(JSON.stringify(offset), [source])).toThrow(/wire rejected/);
   });
@@ -65,13 +71,27 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(checkGeneratedSourceLedger(JSON.stringify(response), [repeated]).items[0].evidence[0]).toMatchObject({ unitKind: 'source_metadata', quote: scopedQuote });
   });
 
-  it('requires every delivered source unit to have a disposition and keeps explicit exclusions or pending opinions', () => {
+  it('derives ordered unit item references from validated item and facet evidence while preserving dispositions', () => {
     const omitted = ledgerOutput(); omitted.unitDispositions.shift();
     expect(() => checkGeneratedSourceLedger(JSON.stringify(omitted), [source])).toThrow(/unit dispositions/);
     const excluded = ledgerOutput(); excluded.unitDispositions[0].disposition = 'pending'; excluded.items[0].disposition = 'exclude';
     const data = checkGeneratedSourceLedger(JSON.stringify(excluded), [source]);
     expect(data.unitDispositions[0].disposition).toBe('pending'); expect(data.items[0].disposition).toBe('exclude');
     expect(data).not.toHaveProperty('decision');
+    const indexed = ledgerOutput(), reason = '  Preserve this source opinion exactly.\n';
+    indexed.unitDispositions[0].reason = reason; indexed.unitDispositions[0].disposition = 'pending';
+    indexed.items[1].evidence.push(structuredClone(indexed.items[1].evidence[0]));
+    indexed.items[1].facets[0].evidence.push(locator('s0/metadata', metadataQuote), locator('s0/metadata', metadataQuote));
+    indexed.items.unshift({ ...structuredClone(indexed.items[1]), itemId: 'z-first', facets: [] });
+    const before = JSON.stringify(indexed), compiled = checkGeneratedSourceLedger(before, [source]);
+    expect(compiled.unitDispositions).toEqual([
+      { unitKey: 's0/metadata', disposition: 'pending', reason, itemIds: ['identity', 'amount'] },
+      { unitKey: 's0/excerpt/0', disposition: 'retain', reason: indexed.unitDispositions[1].reason, itemIds: ['z-first', 'amount'] },
+    ]);
+    expect(JSON.stringify(indexed)).toBe(before);
+    const empty = ledgerOutput(); empty.items = [];
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(empty), [source])).toThrow(/Retained source unit requires an item/);
+
   });
 
   it('checks all units, items, facets and exact body paragraphs without letting all-covered become an approval', () => {

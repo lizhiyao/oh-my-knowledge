@@ -8,17 +8,17 @@ This page is generated from the current source build’s runtime constants and S
 | Current contract | Value |
 |---|---|
 | Production workflow | `knowledge-body-first/v4` |
-| Source ledger prompt | `knowledge-source-ledger-generation/v2` |
+| Source ledger prompt | `knowledge-source-ledger-generation/v3` |
 | Body prompt | `knowledge-body-generation/v9` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v2` |
 | Association prompt | `knowledge-association-generation/v7` |
 | Body profile digest | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
 | Association profile digest | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
-| Source ledger profile digest | `sha256:8a10941efb1d8aec5d033406ecc627d8715352e64670f6c9ecdee237d8068cd2` |
+| Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | Source coverage profile digest | `sha256:ec9a0dad528f141e1562fddc2067be41b5605e43df33625808d7cd12d7b83ae6` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
-| Source ledger structural wire digest | `sha256:3c14761c31e12b6a61fbe4a2567f7a18b6b31f21f8c08c9b9020894000d1a596` |
+| Source ledger structural wire digest | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
 | Source coverage structural wire digest | `sha256:2c251e3c6f4b5ea320dc6648dee99022d631b4c0fd109a9cfb398d5293205f0f` |
 | Body response Schema | `2` |
 | Association response Schema | `3` |

@@ -18,9 +18,9 @@ export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' 
     bodies?: { bodyKey: string; segments?: { segmentId: string; text: string }[]; content: { segments: { segmentId: string; text: string }[] } }[] };
   if (stage === 'source_ledger') {
     const units = data.units ?? [], retained = units.filter(unit => unit.unitKind === 'excerpt_text');
-    return { responseKind: 'knowledge-source-ledger', schemaVersion: 1,
+    return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
       unitDispositions: units.map(unit => ({ unitKey: unit.unitKey, disposition: unit.unitKind === 'excerpt_text' ? 'retain' : 'pending',
-        reason: 'Authored protocol inventory, not semantic acceptance.', itemIds: retained.includes(unit) ? [unit.unitKey] : [] })),
+        reason: 'Authored protocol inventory, not semantic acceptance.' })),
       items: retained.map(unit => ({ itemId: unit.unitKey, statement: 'The selected excerpt contains this authored source assertion.', disposition: 'retain',
         reason: 'Authored wire fixture.', equivalentItemIds: [], evidence: [{ unitKey: unit.unitKey, quote: unit.text, contextBefore: null, contextAfter: null }], facets: [] })), limitations: ['Authored protocol output, not a model quality observation.'] };
   }

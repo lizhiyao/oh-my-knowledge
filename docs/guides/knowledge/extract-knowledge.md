@@ -203,7 +203,7 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-Current ledger/coverage wires and histories are v1, body wire2/prompt9, journal4/workflow4/default input2, Source3 and body3/entity2/association2/reviews1. Association retains the exact prompt7/profile/wire3 bytes and its v1 input envelope; this is distinct from the journal’s input2. Exact quotes and host-computed UTF-16 positions establish location, not semantic completeness or truth. Read current values in the [generated contract](../../reference/shared/knowledge-contract.md). Historical sources, originals, scores and measurement identities remain unchanged; this implementation does not establish that their raw quality passed.
+The ledger uses wire2/prompt3, coverage uses wire1/prompt2 and both histories stay v1; body uses wire2/prompt9, journal4/workflow4/default input2, Source3 and body3/entity2/association2/reviews1. Association retains the exact prompt7/profile/wire3 bytes and its v1 input envelope; this is distinct from the journal’s input2. Exact quotes and host-computed UTF-16 positions establish location, not semantic completeness or truth. Read current values in the [generated contract](../../reference/shared/knowledge-contract.md). Historical sources, originals, scores and measurement identities remain unchanged; this implementation does not establish that their raw quality passed.
 
 Older journals require their matching preserved build or the [supported workflow copy](#workflow-migration). Parameter errors exit 2, business failures exit 1 and success exits 0. After an unclear acknowledgement, inspect durable state before repeating a mutation.
 

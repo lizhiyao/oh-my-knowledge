@@ -44,7 +44,7 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 - `source-updates` 只读核对完整 SourceRef 及可选 replacementSelection，不保存、生成或改知识；固定 Git 不代表最新，部分清单不证明零影响。
 - 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；旧 journal3／auto 仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。当前构建不提供自动调度或重新授权入口，只逐阶段确认。
 
-所有命令使用已选 `--workspace`。journal4／默认 input2、正文 prompt9／wire2 与来源清单／覆盖 wire1／store1 各有身份；关联 prompt7／profile／wire3 原字节及其 v1 envelope 保持，Source3／正文3／实体2／关联2／reviews1 不变。以实际 schema／请求／日志为准，不用新身份回算历史实验。接纳、quote 定位、覆盖意见、retain 与保存载体都不证明来源真值、完整生成质量或任务效果通过；缺少真实验收时如实报告。
+所有命令使用已选 `--workspace`。journal4／默认 input2、正文 prompt9／wire2、来源清单 prompt3／wire2、覆盖 prompt2／wire1 与两份 store1 各有身份；关联 prompt7／profile／wire3 原字节及其 v1 envelope 保持，Source3／正文3／实体2／关联2／reviews1 不变。以实际 schema／请求／日志为准，不用新身份回算历史实验。接纳、quote 定位、覆盖意见、retain 与保存载体都不证明来源真值、完整生成质量或任务效果通过；缺少真实验收时如实报告。
 
 ## 第一步：检查环境
 

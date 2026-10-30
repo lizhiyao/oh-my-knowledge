@@ -16,7 +16,7 @@ Unit kind, key, UTF-16 length, text digest and field paths remain explicit. A me
 
 ### Source ledger {#ledger}
 
-`source-ledgers/<identity-digest>.json` stores `knowledge-source-ledger-history` Schema 1. Immutable analysis revisions include their manifest, complete unit dispositions, proposed items/facets, source anchors, limitations and original model reference. Every delivered unit has a retain, exclude or pending opinion with a reason; references between units and items must close. These are model opinions, not a Gold set or permission to discard source material.
+`source-ledgers/<identity-digest>.json` stores `knowledge-source-ledger-history` Schema 1. Immutable analysis revisions include their manifest, complete unit dispositions, proposed items/facets, source anchors, limitations and original model reference. Every delivered unit has a retain, exclude or pending opinion with a reason; references between units and items must close. These are model opinions, not a Gold set or permission to discard source material. The current model output is ledger wire2/prompt3: models provide unit dispositions and reasons, while the host derives each unit’s itemIds from all strictly located item/facet evidence, in item order with duplicates removed. The redundant reverse index is not model-supplied. Domain/history Schema 1 and every closure check remain unchanged; old wire1 originals are not reinterpreted. Coverage remains wire1/prompt2.
 
 ### Source coverage {#coverage}
 

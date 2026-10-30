@@ -44,9 +44,9 @@ it('confirms a prepared Codex request across distinct host instances while retai
       { confirmedRequestDigest: request.requestDigest })).rejects.toThrow('producer/profile changed');
     expect(fake.execute).not.toHaveBeenCalled();
   }
-  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-source-ledger', schemaVersion: 1,
+  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-source-ledger', schemaVersion: 2,
     unitDispositions: sourceReviewInput([source]).units.map(unit => ({ unitKey: unit.unitKey, disposition: 'exclude',
-      reason: 'Authored transport fixture only; no semantic acceptance.', itemIds: [] })),
+      reason: 'Authored transport fixture only; no semantic acceptance.' })),
     items: [], limitations: ['Transport and native custody verification only.'] }) } as ExecResult);
   const second = createLocalKnowledgeGenerationModel('codex', 'fixture', createExtractionArchiveProducer, { CODEX_TOOL_CALL_ID: 'second-tool-call', OPENAI_API_KEY: env.OPENAI_API_KEY, PATH: env.PATH });
   expect(second.inspect(SOURCE_LEDGER_GENERATION_PROFILE, request.input)).toEqual(request.producer);

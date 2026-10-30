@@ -73,9 +73,9 @@ try {
   const target = (targetKind, values) => ({ targetKind, unitKey: null, itemId: null, facetId: null, bodyKey: null, segmentId: null, ...values });
   const quote = (unitKey, text) => ({ unitKey, quote: text, contextBefore: null, contextAfter: null });
   function authoredLedger(input) {
-    return { responseKind: 'knowledge-source-ledger', schemaVersion: 1,
-      unitDispositions: input.units.map((unit, index) => ({ unitKey: unit.unitKey, disposition: 'retain',
-        reason: 'Authored demonstration only; preserve each delivered unit explicitly.', itemIds: [`item-${index}`] })),
+    return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+      unitDispositions: input.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain',
+        reason: 'Authored demonstration only; preserve each delivered unit explicitly.' })),
       items: input.units.map((unit, index) => ({ itemId: `item-${index}`,
         statement: unit.unitKind === 'source_metadata' ? 'The metadata identifies this teaching source and its selected range.' : 'The teaching message reports Alpha using Beta.',
         disposition: 'retain', reason: 'Authored demonstration only, without factual acceptance.', equivalentItemIds: [], evidence: [quote(unit.unitKey, unit.text)],

@@ -30,7 +30,7 @@
 
 当前默认使用 `knowledge-body-first/v4` 四阶段：source_ledger、body、source_coverage、association。模型分析与实际操作者决定分开，完整范围及门禁见[来源复核契约](../knowledge/knowledge-source-review.md)，版本与容量见[生成契约](../../reference/shared/knowledge-contract.md)。
 
-来源清单及覆盖为独立 wire1／store1；正文 wire2 使用 prompt9，关联 prompt7／profile／wire3 原字节不变。journal4／默认 input2 替换旧 workflow3，关联阶段仍保留其 v1 envelope。该改动为 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 不变。旧原件、分数和历史 occurrence 协议保持冻结，按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
+来源清单为 wire2／prompt3、覆盖为 wire1／prompt2，两份历史仍为 store1；正文 wire2 使用 prompt9，关联 prompt7／profile／wire3 原字节不变。journal4／默认 input2 替换旧 workflow3，关联阶段仍保留其 v1 envelope。该改动为 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 不变。旧原件、分数和历史 occurrence 协议保持冻结，按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
 
 正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及再做映射，跨段复用合法提及，分别复查来源独立指认的工件／代码状态及必要的组件、版本映射。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 

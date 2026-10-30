@@ -42,8 +42,8 @@ const target = (targetKind: CoverageResponse['checks'][number]['target']['target
 /** Authored native fixtures exercise the real strict wires, not model semantic quality. */
 function ledgerOutput(input: string): z.infer<typeof SourceLedgerResponseSchema> {
   const request = JSON.parse(input) as SourceReviewInput;
-  return { responseKind: 'knowledge-source-ledger', schemaVersion: 1,
-    unitDispositions: request.units.map((unit, index) => ({ unitKey: unit.unitKey, disposition: 'retain', reason: 'Explicit delivered-unit inventory fixture.', itemIds: [`i${index}`] })),
+  return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+    unitDispositions: request.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain', reason: 'Explicit delivered-unit inventory fixture.' })),
     items: request.units.map((unit, index) => ({ itemId: `i${index}`, statement: `Authored inventory of ${unit.unitKey}; scope is limited to this delivered unit.`,
       disposition: 'retain', reason: 'Exercise exact unit custody.', equivalentItemIds: [], evidence: [locator(unit.unitKey, unit.text)], facets: [] })),
     limitations: ['Authored protocol fixture; neither semantic quality nor source truth is certified.'] };
