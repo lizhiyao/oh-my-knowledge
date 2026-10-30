@@ -2,7 +2,7 @@ import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-
 import type { ExtractionRunSealRequest } from '../../src/knowledge/extraction/run-sealing.js';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,14 +14,18 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileLibraryStore } from '../../src/knowledge/adapters/library-store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from '../../src/knowledge/adapters/durable-publication.js';
 import type { LibraryWrite } from '../../src/knowledge/entity-library/contracts.js';
-import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
+import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE, SOURCE_MIGRATION_LOCK_FILE,
+  SOURCE_MIGRATION_STATE_FILE, withSourceMigrationWorkspaceWrite, type SourceMigrationWriteContext } from '../../src/evidence/storage/knowledge-workspace.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisWriteCapacityError, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 
-const faults = vi.hoisted(() => ({ beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0, sealFailure: undefined as 'intent' | 'copy' | 'marker' | undefined, sealSync: false, afterSealCopy: undefined as (() => void) | undefined, order: [] as string[], descriptors: new Map<number, string>(), durable: undefined as { events: string[]; failSync?: string; afterPublish?: boolean; shortWrite?: boolean; noProgress?: boolean; beforeOpen?: () => void } | undefined }));
+const faults = vi.hoisted(() => ({ beforeWorkspaceLock: undefined as (() => void) | undefined, beforeRecovery: undefined as (() => void) | undefined, afterOutcomeLink: false, afterManifestRename: false, syncs: 0, sealFailure: undefined as 'intent' | 'copy' | 'marker' | undefined, sealSync: false, afterSealCopy: undefined as (() => void) | undefined, order: [] as string[], descriptors: new Map<number, string>(), durable: undefined as { events: string[]; failSync?: string; afterPublish?: boolean; shortWrite?: boolean; noProgress?: boolean; beforeOpen?: () => void } | undefined }));
 vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return { ...fs, openSync: (path: string, flags: string | number, mode?: number) => {
+    if (String(path).endsWith('/.knowledge-write.lock') && flags === 'wx' && faults.beforeWorkspaceLock) {
+      const operation = faults.beforeWorkspaceLock; faults.beforeWorkspaceLock = undefined; operation();
+    }
     if (path.includes('.recovery-') && faults.beforeRecovery) {
       const operation = faults.beforeRecovery; faults.beforeRecovery = undefined; operation();
     }
@@ -58,7 +62,7 @@ vi.mock('node:fs', async importOriginal => {
 });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), 'omk-current-storage-')); roots.push(path); return path; };
-afterEach(() => { faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; faults.sealFailure = undefined; faults.sealSync = false; faults.afterSealCopy = undefined; faults.order.length = 0; faults.durable = undefined; faults.descriptors.clear(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => { faults.beforeWorkspaceLock = undefined; faults.beforeRecovery = undefined; faults.afterOutcomeLink = false; faults.afterManifestRename = false; faults.syncs = 0; faults.sealFailure = undefined; faults.sealSync = false; faults.afterSealCopy = undefined; faults.order.length = 0; faults.durable = undefined; faults.descriptors.clear(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
 const sha = (digit = 'a') => `sha256:${digit.repeat(64)}`;
 function runFixture(): ExtractionRun {
@@ -590,6 +594,48 @@ describe('canonical body and generic domain storage durability', () => {
       const bytes = JSON.stringify(value); writeFileSync(lock, bytes);
       expect(storageLockState(lock)).toBe('busy'); recoverStorageLock(lock); expect(readFileSync(lock, 'utf8')).toBe(bytes);
     }
+  });
+  it('checks migration admission under the actual shared lock after a competing marker appears', () => {
+    const workspace = root(), marker = join(workspace, SOURCE_MIGRATION_STATE_FILE), operation = vi.fn();
+    const state = JSON.stringify({ migrationKind: 'knowledge-source2-to3', schemaVersion: 1, migrationId: randomUUID(), planDigest: sha(), state: 'in_progress' });
+    faults.beforeWorkspaceLock = () => writeFileSync(marker, state);
+    expect(() => withWorkspaceWrite(workspace, operation)).toThrow('knowledge_storage_unsupported');
+    expect(operation).not.toHaveBeenCalled(); expect(readFileSync(marker, 'utf8')).toBe(state);
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false);
+    writeFileSync(marker, state.replace('in_progress', 'complete'));
+    expect(withWorkspaceWrite(workspace, () => 'ordinary complete-workspace write')).toBe('ordinary complete-workspace write');
+  });
+  it('binds migration write capability to its root, plan, active callback and exact lock owners', () => {
+    const workspace = realpathSync(root()), foreign = realpathSync(root()), scope = { migrationId: randomUUID(), planDigest: sha() }, marker = join(workspace, SOURCE_MIGRATION_STATE_FILE);
+    const state = { migrationKind: 'knowledge-source2-to3', schemaVersion: 1, ...scope, state: 'in_progress' };
+    let saved: SourceMigrationWriteContext | undefined;
+    withSourceMigrationWorkspaceWrite(workspace, scope, context => {
+      saved = context; writeFileSync(marker, JSON.stringify(state));
+      expect(withWorkspaceWrite(workspace, () => 'explicit migration write', context)).toBe('explicit migration write');
+      expect(() => withWorkspaceWrite(foreign, () => 'cross-root write', context)).toThrow('knowledge_storage_unsupported');
+      writeFileSync(marker, JSON.stringify({ ...state, planDigest: sha('b') }));
+      expect(() => withWorkspaceWrite(workspace, () => 'cross-plan write', context)).toThrow('knowledge_storage_unsupported');
+      writeFileSync(marker, JSON.stringify(state));
+      rmSync(marker);
+      expect(() => withWorkspaceWrite(workspace, () => 'deleted ownership marker', context)).toThrow('knowledge_storage_unsupported');
+      writeFileSync(marker, JSON.stringify(state));
+      expect(() => withWorkspaceWrite(workspace, () => 'forged capability', {} as SourceMigrationWriteContext)).toThrow('knowledge_storage_unsupported');
+    });
+    expect(() => withWorkspaceWrite(workspace, () => 'expired lease', saved)).toThrow('knowledge_storage_unsupported');
+    expect(() => withWorkspaceWrite(workspace, () => 'ordinary incomplete-workspace write')).toThrow('knowledge_storage_unsupported');
+    expect(existsSync(join(foreign, WORKSPACE_LOCK_FILE))).toBe(false);
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false); expect(existsSync(join(workspace, SOURCE_MIGRATION_LOCK_FILE))).toBe(false);
+  });
+  it.each([SOURCE_MIGRATION_LOCK_FILE, WORKSPACE_LOCK_FILE])('refuses a migration capability after its %s lease is removed or replaced by the same PID', name => {
+    const workspace = realpathSync(root()), scope = { migrationId: randomUUID(), planDigest: sha() };
+    withSourceMigrationWorkspaceWrite(workspace, scope, context => {
+      const path = join(workspace, name), bytes = readFileSync(path, 'utf8'); rmSync(path);
+      expect(() => withWorkspaceWrite(workspace, () => 'missing owning lock', context)).toThrow('knowledge_storage_unsupported');
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(bytes), owner: randomUUID(), pid: process.pid }));
+      expect(() => withWorkspaceWrite(workspace, () => 'same PID is not ownership', context)).toThrow('knowledge_storage_unsupported');
+      rmSync(path); // Remove only this test's replacement, never another owner in production.
+    });
+    expect(existsSync(join(workspace, WORKSPACE_LOCK_FILE))).toBe(false); expect(existsSync(join(workspace, SOURCE_MIGRATION_LOCK_FILE))).toBe(false);
   });
   it('recovers proven exited local owners and interrupted recovery guards without removing a new live owner', () => {
     const workspace = root(); const dead = spawnSync(process.execPath, ['-e', 'process.exit(0)']); expect(dead.status).toBe(0);

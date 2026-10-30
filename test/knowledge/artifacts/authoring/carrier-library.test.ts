@@ -13,6 +13,7 @@ import { FileKnowledgeStore } from '../../../../src/knowledge/adapters/knowledge
 import { knowledgeBodyDigest } from '../../../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeDraft } from '../../../../src/knowledge/contracts.js';
 import yaml from 'js-yaml';
+import { captureTraceFixture, sourceRef as exactSourceRef } from '../../../helpers/knowledge-source.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -22,7 +23,7 @@ async function setup() {
   const source = join(root, 'trace.jsonl');
   writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
   const app = createLocalKnowledgeApplication(workspace);
-  const snapshot = app.capture({ path: source });
+  const snapshot = captureTraceFixture(workspace, { path: source });
   const entry = { knowledgeId: randomUUID(), revisionId: randomUUID() };
   const excerpt = snapshot.excerpts.find(value => value.text === 'Alpha 使用 Beta')!;
   const sourceRef = { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion };
@@ -228,7 +229,7 @@ describe('reviewed knowledge carrier authoring', () => {
     expect(readFileSync(join(local, 'SKILL.md'), 'utf8')).toBe(original);
   });
   it('reports unavailable evidence, detects external drift and refuses symlink redirects', async () => {
-    const s = await setup(); s.retain(); s.app.deleteSource(s.snapshot.snapshotId);
+    const s = await setup(); s.retain(); s.app.deleteSource(exactSourceRef(s.snapshot));
     const draft = s.preview(); expect(draft.content).toContain('来源不可用');
     const saved = s.save(draft); writeFileSync(saved.locator, 'externally edited');
     expect(s.execute({ operation: 'show', id: saved.artifactId })).toMatchObject({ drifted: true, knowledgeReview: { needsReviewCount: 1, checks: [{ reasons: ['source_unavailable'] }] } });

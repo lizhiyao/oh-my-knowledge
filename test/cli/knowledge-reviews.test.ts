@@ -4,13 +4,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { knowledgeReviewCliActor } from '../../src/cli/lib/knowledge-review-actor.js';
-import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
-import * as executor from '../../src/knowledge/adapters/generation-executor.js';
+import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
 import { bodyActor, bodyWrite } from '../knowledge/body-fixtures.js';
 import { testDirectory } from '../helpers/temp-directory.js';
 import { runCommand } from '../helpers/run-command.js';
+import { captureTraceFixture } from '../helpers/knowledge-source.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 const threadId = '00000000-0000-4000-8000-000000000140';
@@ -18,9 +18,8 @@ function fixture() {
   const root = testDirectory('omk-review-cli-'), workspace = join(root, 'workspace');
   vi.stubEnv('OMK_HOME', join(root, 'home')); vi.stubEnv('OMK_SKIP_UPDATE_CHECK', '1');
   vi.stubEnv('CODEX_THREAD_ID', ''); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', '');
-  vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Review commands must not configure a model.'); });
-  const app = createLocalKnowledgeApplication(workspace);
-  const source = app.capture({ path: join(root, 'source.jsonl'), records: [{ recordIndex: 1, raw: JSON.stringify({ type: 'response_item', payload: {
+  vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Review commands must not configure a model.'); });
+  const source = captureTraceFixture(workspace, { path: join(root, 'source.jsonl'), records: [{ recordIndex: 1, raw: JSON.stringify({ type: 'response_item', payload: {
     type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 的版本未知；不能把个案当通则。' }],
   } }) }] });
   const command = bodyWrite();
@@ -49,7 +48,7 @@ describe('knowledge review CLI boundaries', () => {
     codexHost();
     await expect(f.save('review-content', { ...f.review, actor: { actorKind: 'human', actorId: 'forged' } })).rejects.toMatchObject({ code: 2 });
     expect(existsSync(join(f.workspace, 'reviews'))).toBe(false);
-    expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
+    expect(generationHost.createLocalKnowledgeGenerationModel).not.toHaveBeenCalled();
     expect(knowledgeReviewCliActor({ CODEX_THREAD_ID: threadId })).toBeUndefined();
     expect(knowledgeReviewCliActor({ CODEX_THREAD_ID: 'not-a-thread', CODEX_INTERNAL_ORIGINATOR_OVERRIDE: 'Codex Desktop' })).toBeUndefined();
   });
@@ -65,7 +64,7 @@ describe('knowledge review CLI boundaries', () => {
     expect(status.history.events[0]).toMatchObject({ bodyRef: f.bodyRef, actor: { actorKind: 'agent', actorId: `codex:${threadId}`, executionRef: `codex-thread:${threadId}` } });
     expect(readFileSync(bodyPath)).toEqual(original);
     await expect(f.run(['review-content', '--input', join(f.root, 'review-content.json'), '--model', 'not-allowed'])).rejects.toMatchObject({ code: 2 });
-    expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
+    expect(generationHost.createLocalKnowledgeGenerationModel).not.toHaveBeenCalled();
   });
 
   it('attaches use feedback to the delivered old revision after a new body is saved, with no inherited review on the new body', async () => {
@@ -83,6 +82,6 @@ describe('knowledge review CLI boundaries', () => {
     expect(oldStatus.usage).toEqual([expect.objectContaining({ bodyRef: f.bodyRef, signal: 'read', issueKind: 'content_missing', taskRef: 'fixture-task' })]);
     expect(newStatus.content.status).toBe('not_reviewed'); expect(newStatus.usage).toEqual([]);
     expect(oldStatus.content.status).toBe('needs_revision'); expect(f.store.read(f.bodyRef.knowledgeId).revisions).toHaveLength(2);
-    expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
+    expect(generationHost.createLocalKnowledgeGenerationModel).not.toHaveBeenCalled();
   });
 });

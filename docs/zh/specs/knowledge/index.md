@@ -8,3 +8,4 @@
 - [实体知识库](knowledge-library.md)
 - [知识维护、自动提炼与载体契约](knowledge-maintenance.md)
 - [内容复核、关联覆盖与任务反馈](knowledge-reviews.md)
+- [项目与轨迹来源的版本契约](knowledge-sources.md)

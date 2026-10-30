@@ -1,6 +1,7 @@
 import { ExtractionQualityView } from '../../../src/studio/web/components/knowledge/extraction-quality.js';
-import { ConversationExtractionConfirmation, ConversationExtractionPicker } from '../../../src/studio/web/components/knowledge/conversation-extraction.js';
-import type { KnowledgeConversationPreview } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
+import { SourcePreviewContent, PreparedGenerationConfirmation } from '../../../src/studio/web/components/knowledge/source-picker.js';
+import { fileSourceFixture } from './source-fixture.js';
+import type { KnowledgeSourcePreview } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 import { ExtractedKnowledge } from '../../../src/studio/web/components/observe/extracted-knowledge.js';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -78,39 +79,37 @@ describe('knowledge extraction onboarding', () => {
   });
 });
 
-const preview: KnowledgeConversationPreview = { origin: { threadId: 'thread/a', turnId: 'turn/1', title: '<script>对话</script>' }, sourceVersion: 'version', messages: [
-  { evidenceRef: 'm1', recordIndex: 10, eventKind: 'message', role: 'user', text: '<script>原文</script>' },
-  { evidenceRef: 'm2', recordIndex: 11, eventKind: 'message', role: 'assistant', text: '回复' },
-] };
-const confirm = (overrides = {}) => renderToStaticMarkup(createElement(ConversationExtractionConfirmation, {
-  preview, turnId: 'turn/1', selected: [10, 11], workspace: '/example/knowledge', executor: 'codex', model: 'configured-model', adjust: false, lang: 'zh',
-  onSelected() {}, onWorkspace() {}, onExecutor() {}, onModel() {}, onAdjust() {}, ...overrides,
-}));
-it('confirms the exact scope and model while optional message/configuration controls stay collapsed', () => {
-  const html = confirm();
-  expect(html).toContain('当前这一轮'); expect(html).toContain('已选 2 条消息'); expect(html).toContain('codex / configured-model');
-  expect(html).toContain('将这些消息交给模型'); expect(html).toContain('查看／调整消息');
-  expect(html).toContain('先保存完整知识正文，再关联实体');
-  expect(html).toContain('来源仅包含所选轮次中的用户和助手消息');
-  expect(html).toContain('独立的工具调用与结果、项目文件、附件原件未纳入');
-  expect(html).toContain('这次提炼不代表项目资料已完整覆盖');
-  expect(html).toContain('预览来源版本'); expect(html).toContain('<code>version</code>');
-  expect(html).not.toContain('<details class="conversation-extract-options" open');
-  expect(html).toContain('&lt;script&gt;原文&lt;/script&gt;'); expect(html).not.toContain('<script>');
-  expect(confirm({ selected: [] })).toContain('已选 0 条消息');
-  expect(confirm({ turnId: undefined, lang: 'en' })).toContain('Entire conversation');
-  expect(confirm({ lang: 'en' })).toContain('Separate tool calls and results, project files and original attachments are excluded');
-  expect(confirm({ model: '', adjust: true })).toContain('尚未设置');
-  expect(confirm({ adjust: true })).toMatch(/<details[^>]+open=""/);
+const source = fileSourceFixture({ snapshotId: '00000000-0000-4000-8000-000000000001', sourceVersion: `sha256:${'a'.repeat(64)}` }, '<script>选定原文</script>');
+const preview: KnowledgeSourcePreview = {
+  previewId: '00000000-0000-4000-8000-000000000002', previewDigest: `sha256:${'b'.repeat(64)}`, scopeRevision: 'trusted-scope',
+  items: [{ sourceOrdinal: 0, resolvedSelection: { sourceKind: 'project_file', projectId: 'project-alpha', relativePath: 'docs/knowledge.md', lineRanges: [{ startLine: 3, endLine: 3 }] },
+    sourceVersion: source.sourceVersion, material: source.material, retainedUnits: source.rawUnits, excerpts: source.excerpts, limitations: source.limitations }],
+  readManifest: { totalBytes: 200, selectedTextBytes: 80, items: [{ sourceOrdinal: 0, actual: { contentBytes: 200, metadataBytes: 0, totalBytes: 200, selectedTextBytes: 80 } }] },
+  sendDraft: { authorization: 'not_granted', json: '{"material":"<script>选定原文</script>"}', materialDigest: `sha256:${'c'.repeat(64)}`, materialJsonBytes: 90,
+    excerpts: [], neutralMetadataJsonBytes: 30, scope: 'Selected material, not a complete network request.' },
+  savePlan: { afterDeletion: 'reject', projections: [{ sourceOrdinal: 0, sourceVersion: source.sourceVersion, projectionJsonBytes: 500, selectedRawBytes: 80, rawUnitCount: 1, excerptCount: 1 }], actualSnapshotsWritten: 0, actualWrittenBytes: 0 },
+};
+it('shows complete literal local material and separate read/send/save boundaries without granting transmission', () => {
+  const html = renderToStaticMarkup(createElement(SourcePreviewContent, { preview, lang: 'zh' }));
+  for (const text of ['本次预览实际读取', '选定原件', '模型材料草稿', '本次捕获实际写入', '捕获只保存选定来源', '完整模型材料草稿', '固定来源身份与选区', 'project-alpha', 'docs/knowledge.md']) expect(html).toContain(text);
+  expect(html).toContain('200 bytes'); expect(html).toContain('0 bytes'); expect(html).toContain('&lt;script&gt;选定原文&lt;/script&gt;'); expect(html).not.toContain('<script>');
+  const en = renderToStaticMarkup(createElement(SourcePreviewContent, { preview, lang: 'en' }));
+  expect(en).toContain('does not authorize a model request'); expect(en).toContain('excludes final system, complete input and transport envelope');
 });
-it('keeps conversation and turn selection on the knowledge page, with explicit empty-source guidance', () => {
-  const html = renderToStaticMarkup(createElement(ConversationExtractionPicker, { conversations: [{ threadId: 't', title: '对话' }], conversationId: 't', loading: false, lang: 'zh',
-    conversation: { threadId: 't', title: '对话', tasks: [{ turnId: 'turn', title: '这一轮' }] }, onConversation() {}, onScope() {},
-  }));
-  expect(html).toContain('选择来源对话'); expect(html).toContain('选择要提炼的一轮'); expect(html).toContain('确认后才发送给模型');
-  expect(html).not.toContain('href=');
-  const empty = renderToStaticMarkup(createElement(ConversationExtractionPicker, { conversations: [], conversationId: '', loading: false, lang: 'en', onConversation() {}, onScope() {} }));
-  expect(empty).toContain('No local conversations available'); expect(empty).toContain('Import a log file from More');
+it('shows the exact complete prepared stage and target rather than treating capture as send permission', () => {
+  const digest = `sha256:${'d'.repeat(64)}`;
+  const run: KnowledgeCandidateRun = { ...latest, status: 'active', nextAction: 'continue_stage', journalGeneration: 1, executor: 'codex', model: 'authored-target',
+    workflowId: 'knowledge-body-first/v3', inputVersion: 'knowledge-source-generation-input/v1', preparedStage: { stageKind: 'body', invocationId: '00000000-0000-4000-8000-000000000003',
+      state: 'prepared', profileId: digest, promptVersion: 'authored-profile', wireId: digest, wireSchema: { type: 'object' }, system: '<script>complete system</script>',
+      input: '{"material":"complete input","tail":"<script>final tail</script>"}', inputDigest: digest, requestDigest: digest,
+      producer: { producerId: 'authored-ui', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1000, proof: { nativeObserved: false } }, committed: 0, issues: [] } };
+  const html = renderToStaticMarkup(createElement(PreparedGenerationConfirmation, { run, lang: 'en', confirmed: false, onConfirmed() {} }));
+  for (const text of ['Complete actual model input', 'Complete system', 'invocationId', 'requestDigest', 'codex', 'authored-target', 'complete input', 'final tail', 'another confirmation', 'internal context']) expect(html).toContain(text);
+  expect(html).toContain('&lt;script&gt;complete system&lt;/script&gt;'); expect(html).not.toContain('<script>'); expect(html).not.toContain('checked=""');
+  const association = renderToStaticMarkup(createElement(PreparedGenerationConfirmation, { run: { ...run, preparedStage: { ...run.preparedStage!, stageKind: 'association' } }, lang: 'zh', confirmed: false, onConfirmed() {} }));
+  expect(association).toContain('确认实体关联请求');
+  const unsupported = renderToStaticMarkup(createElement(PreparedGenerationConfirmation, { run: { ...run, nextAction: 'unsupported' }, lang: 'en', confirmed: true, onConfirmed() {} }));
+  expect(unsupported).toContain('No prepared stage is sendable'); expect(unsupported).not.toContain('Approve sending this exact request');
 });
 
 it('keeps execution records distinct from quality and does not infer an empty workspace after failure', () => {

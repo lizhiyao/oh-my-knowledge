@@ -300,7 +300,7 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
 
 ```text
   --dir <value>           清单与采集产物目录，默认全局 ~/.oh-my-knowledge/observe/agents。
-  --end-record <value>    extract：最后一条记录序号，包含。
+  --end-record <value>    extract 必填：最后一条非空原记录序号，包含；须同时指定起止范围。
   --executor <value>      extract：生成执行器，沿用 OMK 运行配置。
   --json                  输出完整 JSON；默认输出可读摘要。
   --knowledge <value>     extract：知识工作区，默认全局知识目录。
@@ -308,7 +308,7 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
   --limit <value>         collect 单轮处理的会话文件上限。
   --model <value>         extract：生成模型，沿用已配置模型。
   --session <value>       extract：采集报告里的 runId。
-  --start-record <value>  extract：从零开始的非空记录序号，包含。
+  --start-record <value>  extract 必填：从零开始的非空原记录序号，包含；保留同条记录的全部事件。
 ```
 
 完整描述见 `omk agents --help`。
@@ -432,6 +432,7 @@ omk studio --port 7799 --takeover                  # 显式替换经验证的 OM
   --observations-dir <value>  观测收件箱数据目录（可选，默认 .omk/observe/inbox）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
   --reports-dir <value>       只看指定 Core 报告目录（可选；默认聚合当前项目 + 全局）
+  --source-scope <value>      显式可信来源绑定 JSON（1 MiB 内）；只在宿主启动时读取，浏览器不能指定项目根或日志路径。
   --takeover                  显式替换同地址／端口上经验证的 OMK 服务；默认端口占用时报错，不关闭现有服务
 ```
 

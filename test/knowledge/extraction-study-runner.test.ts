@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,9 @@ import { OCCURRENCE_GUIDED_EXTRACTION_PROFILE } from '../../src/knowledge/extrac
 import { WINDOW_EXTRACTION_WIRE_ID } from '../../src/knowledge/extraction/model-wire.js';
 import { buildEntityTaskOnlyAblation, type EntityTaskOnlyAblationManifest } from '../../scripts/bench/assets/entity-task-only-ablation-v1/profile.js';
 import { buildEntityEvidenceSemantics, type EntityEvidenceSemanticsManifest } from '../../scripts/bench/assets/entity-evidence-semantics-v1/profile.js';
+import { captureTraceFixture } from '../helpers/knowledge-source.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -45,6 +48,60 @@ function evidenceSemantics() {
 }
 
 describe('frozen extraction study archives (synthetic executor, zero model access)', () => {
+  it('refuses historical study capture when Source3 is published after its outer preflight and before acquiring the write locks', () => {
+    const f = setup(), root = join(f.workspace, 'sources'), sourcePath = join(f.root, 'source.jsonl');
+    rmSync(root, { recursive: true }); mkdirSync(root);
+    const capture = TraceEvidenceStore.prototype.capture;
+    let published: { path: string; bytes: Buffer } | undefined;
+    const interleave = vi.spyOn(TraceEvidenceStore.prototype, 'capture').mockImplementationOnce(function (this: TraceEvidenceStore, selection, signal) {
+      // The caller has already passed its empty-directory preflight. Another writer now
+      // completes a genuine Source3 publication using the same workspace/source locks.
+      const source = captureTraceFixture(f.workspace, { path: sourcePath }), path = join(root, `${source.snapshotId}.json`);
+      published = { path, bytes: readFileSync(path) };
+      return capture.call(this, selection, signal);
+    });
+    try { expect(() => f.ports.application.capture({ path: sourcePath })).toThrow('knowledge_storage_unsupported'); }
+    finally { interleave.mockRestore(); }
+    expect(published).toBeDefined();
+    expect(readdirSync(root)).toEqual([published!.path.slice(root.length + 1)]);
+    expect(readFileSync(published!.path)).toEqual(published!.bytes); expect(f.effects).not.toHaveBeenCalled();
+  });
+  it.each(['snapshot', 'deleted snapshot'] as const)('refuses historical study capture into a Source3 workspace containing a %s without changing it', state => {
+    const f = setup(), root = join(f.workspace, 'sources');
+    rmSync(root, { recursive: true });
+    const source = captureTraceFixture(f.workspace, { path: join(f.root, 'source.jsonl') });
+    if (state === 'deleted snapshot') new FileSourceStore(root, f.workspace).delete(source.snapshotId, source.sourceVersion);
+    const path = join(root, `${source.snapshotId}.json`), original = readFileSync(path), names = readdirSync(root);
+    expect(() => f.ports.application.capture({ path: join(f.root, 'source.jsonl') })).toThrow('knowledge_storage_unsupported');
+    expect(readFileSync(path)).toEqual(original); expect(readdirSync(root)).toEqual(names); expect(f.effects).not.toHaveBeenCalled();
+  });
+  it.each(['in_progress', 'complete', 'dangling marker'] as const)('refuses historical study capture for a %s migration marker', state => {
+    const f = setup(), path = join(f.workspace, '.source-migration.json'), root = join(f.workspace, 'sources'), names = readdirSync(root);
+    if (state === 'dangling marker') symlinkSync(join(f.root, 'missing-marker'), path);
+    else writeFileSync(path, JSON.stringify({ state }));
+    expect(() => f.ports.application.capture({ path: join(f.root, 'source.jsonl') })).toThrow('knowledge_storage_unsupported');
+    expect(readdirSync(root)).toEqual(names); expect(f.effects).not.toHaveBeenCalled();
+  });
+  it('keeps independent Source2 study capture available with exact old deletion markers and atomic remnants', () => {
+    const f = setup(), root = join(f.workspace, 'sources'), old = f.corpus.cases[0].window, path = join(root, `${old.snapshotId}.json`);
+    writeFileSync(path, JSON.stringify({ snapshotId: old.snapshotId, deleted: true }));
+    const remnant = join(root, `${old.snapshotId}.json.123.00000000-0000-4000-8000-000000000000.tmp`);
+    writeFileSync(remnant, 'unfinished publication retained by the writer');
+    const next = f.ports.application.capture({ path: join(f.root, 'source.jsonl') });
+    expect(next.projectionVersion).toBe('knowledge-window-v2'); expect(f.ports.application.source(next.snapshotId, next.sourceVersion).status).toBe('available');
+    expect(readFileSync(path, 'utf8')).toBe(JSON.stringify({ snapshotId: old.snapshotId, deleted: true }));
+    expect(readFileSync(remnant, 'utf8')).toBe('unfinished publication retained by the writer'); expect(f.effects).not.toHaveBeenCalled();
+  });
+  it.each(['extended deletion marker', 'unexpected entry', 'symlink', 'oversized remnant'] as const)('refuses historical study capture with an %s before writing', state => {
+    const f = setup(), root = join(f.workspace, 'sources'), old = f.corpus.cases[0].window;
+    if (state === 'extended deletion marker') writeFileSync(join(root, `${old.snapshotId}.json`), JSON.stringify({ snapshotId: old.snapshotId, deleted: true, unsupported: true }));
+    else if (state === 'unexpected entry') writeFileSync(join(root, 'unrecognized.json'), '{}');
+    else if (state === 'symlink') symlinkSync(join(root, `${old.snapshotId}.json`), join(root, '00000000-0000-4000-8000-000000000000.json'));
+    else writeFileSync(join(root, `${old.snapshotId}.json.123.00000000-0000-4000-8000-000000000000.tmp`), Buffer.alloc(16 * 1024 * 1024 + 257));
+    const names = readdirSync(root);
+    expect(() => f.ports.application.capture({ path: join(f.root, 'source.jsonl') })).toThrow('knowledge_storage_unsupported');
+    expect(readdirSync(root)).toEqual(names); expect(f.effects).not.toHaveBeenCalled();
+  });
   it.each(['baseline', 'candidate'] as const)('rejects a guided %s before inspecting or reserving a shared-input study', selected => {
     const f = setup(), baseline = f.model(), candidate = f.model();
     const baselineInspect = vi.spyOn(baseline, 'inspect'), candidateInspect = vi.spyOn(candidate, 'inspect');

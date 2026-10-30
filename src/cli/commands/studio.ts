@@ -14,6 +14,7 @@ import type { ReportServer } from '../../studio/http/contracts.js';
 import { CliExit } from '../lib/cli-exit.js';
 import type { CommandFlags } from '../lib/cmd-flags.js';
 import { openWorkbench } from '../lib/open-workbench.js';
+import { readLocalSourceScope } from '../../knowledge/application/local-source-host.js';
 
 // dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
 // import 直接调用。把业务作为 module-level helper export 从 Command file 暴露，
@@ -24,6 +25,11 @@ export async function runStudio(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
+  let sourceScope;
+  if (flags['source-scope']) {
+    try { sourceScope = readLocalSourceScope(flags['source-scope']); }
+    catch { console.error(lang === 'zh' ? '--source-scope 必须是 1 MiB 内的普通 UTF-8 宿主绑定 JSON。' : '--source-scope must be regular UTF-8 host bindings JSON within 1 MiB.'); throw new CliExit(2); }
+  }
   if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
@@ -56,6 +62,7 @@ export async function runStudio(
     if (flags['agents-dir']) {
       childArgs.push('--agents-dir', flags['agents-dir']);
     }
+    if (flags['source-scope']) childArgs.push('--source-scope', resolve(flags['source-scope']));
     if (flags.global) {
       childArgs.push('--global');
     }
@@ -94,6 +101,7 @@ export async function runStudio(
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),
     takeover: flags.takeover ?? false,
+    ...(sourceScope ? { sourceScope } : {}),
     ...createStudioDirectorySources(
       {
         reports: { global: globalReportsDir, project: projectReportsDir },
@@ -169,6 +177,8 @@ export default class Studio extends BaseCommand {
 
   static flags = {
     lang: LANG_FLAG,
+    'source-scope': Flags.string({ description: bilingual({ zh: '显式可信来源绑定 JSON（1 MiB 内）；只在宿主启动时读取，浏览器不能指定项目根或日志路径。',
+      en: 'Explicit trusted source bindings JSON within 1 MiB, read only at host startup; browsers cannot supply project roots or trace paths.' }) }),
     port: Flags.string({
       description: bilingual({
         zh: '监听端口，默认 7799。传 0 让 OS 分配',

@@ -7,6 +7,7 @@ import { ENTITY_SCOPE_REVIEW_GUIDANCE, entityIdentityProblems, entityIdentityRef
 import { displayTime } from '../../../application/display/format';
 import { KnowledgeRequestError, requestKnowledge } from './request';
 import { EntityRelationFields, identityProblemLabel } from './entity-relations';
+import { SourceLocator, sourceCoordinateLabel, sourceOriginalOffset, sourceTextAreaOffset } from './source-locator';
 
 type Draft = Pick<KnowledgeEntityAnalysisDetail['revision'], 'entities' | 'mentions'>;
 type Entity = Draft['entities'][number];
@@ -120,6 +121,7 @@ export function EntityAnalysisContext({ detail, lang }: { detail: KnowledgeEntit
     <p className="candidate-help">{ENTITY_SCOPE_REVIEW_GUIDANCE[lang]}</p>
     <p>{zh ? '本修订：' : 'This revision: '}{detail.revision.entities.length} {zh ? '个对象' : 'entities'} / {detail.revision.mentions.length} {zh ? '处提及' : 'mentions'} · {displayTime(detail.revision.revisedAt)} · {detail.revision.revisedBy.actorId}</p>
     <p>{detail.revision.revisionReason}</p>
+    {detail.source.status === 'available' && <SourceLocator source={detail.source.snapshot} lang={lang}/>}
     {detail.source.status === 'unavailable' && <Alert type="warning" title={zh ? '来源快照不可用；仅可查看保存的提及，不能重新核对或纠正。' : 'Source snapshot unavailable. Saved mentions remain visible; rechecking and corrections are unavailable.'}/>}
     {detail.revision.limitations.map((limitation, index) => <p className="candidate-help" key={index}>{limitation}</p>)}
   </div>;
@@ -136,7 +138,7 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
   const [range, setRange] = useState<{ start: number; end: number }>();
   const excerptField = useRef<HTMLTextAreaElement | null>(null);
   const entity = draft.entities.find(value => value.entityId === selected);
-  const excerpts = detail.source.status === 'available' ? detail.source.excerpts : [];
+  const excerpts = detail.source.status === 'available' ? detail.source.snapshot.excerpts : [];
   const excerpt = excerpts.find(value => value.evidenceRef === excerptId);
   const mentions = draft.mentions.filter(mention => mention.entityId === selected);
   const linkedMentionIds = new Set(draft.entities.flatMap(value => [...(value.componentRef?.mentionIds ?? []), ...(value.collection?.mentionIds ?? [])]));
@@ -152,7 +154,7 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
   function inspect(selection: Draft['mentions'][number]['selection']) {
     setExcerptId(selection.evidenceRef); setRange({ start: selection.start, end: selection.end });
   }
-  useEffect(() => { if (range && excerptField.current) { excerptField.current.focus(); excerptField.current.setSelectionRange(range.start, range.end); } }, [excerptId, range]);
+  useEffect(() => { if (range && excerpt && excerptField.current) { excerptField.current.focus(); excerptField.current.setSelectionRange(sourceTextAreaOffset(excerpt.text, range.start), sourceTextAreaOffset(excerpt.text, range.end)); } }, [excerptId, range]);
   useEffect(() => { if (!draft.entities.some(entity => entity.entityId === selected)) setSelected(''); }, [draft, selected]);
   return <div className="entity-editor">
     <div className="entity-editor-list"><h3>{t('对象', 'Entities')}</h3>
@@ -214,10 +216,10 @@ export function EntityAnalysisEditor({ detail, draft, initialEntityId, editable,
         <Button danger size="small" disabled={!editable || linkedMentionIds.has(mention.mentionId)} onClick={() => edit(next => { next.mentions = next.mentions.filter(value => value.mentionId !== mention.mentionId); })}>{t('删除误识别提及', 'Remove false mention')}</Button>
       </section>)}
       {detail.source.status === 'available' && <div className="candidate-form">
-        <label>{t('来源消息', 'Source message')}<Select style={{ width: '100%' }} value={excerptId || undefined} onChange={value => { setExcerptId(value); setRange(undefined); }}
-          options={excerpts.map(value => ({ value: value.evidenceRef, label: `${value.recordIndex} · ${value.role ?? value.eventKind} · ${value.text.slice(0, 90)}` }))}/></label>
+        <label>{t('来源片段', 'Source excerpt')}<Select style={{ width: '100%' }} value={excerptId || undefined} onChange={value => { setExcerptId(value); setRange(undefined); }}
+          options={excerpts.map(value => ({ value: value.evidenceRef, label: `${sourceCoordinateLabel(value.coordinate, lang)} · ${value.text.slice(0, 90)}` }))}/></label>
         {excerpt && <><textarea className="entity-source-text" ref={excerptField} readOnly rows={8} value={excerpt.text} aria-label={t('来源原文；选中文字可补充提及', 'Source text; select text to add a mention')}
-          onSelect={event => { const { selectionStart: start, selectionEnd: end } = event.currentTarget; setRange(previous => end <= start ? undefined : previous?.start === start && previous.end === end ? previous : { start, end }); }}/>
+          onSelect={event => { const start = sourceOriginalOffset(excerpt.text, event.currentTarget.selectionStart), end = sourceOriginalOffset(excerpt.text, event.currentTarget.selectionEnd); setRange(previous => end <= start ? undefined : previous?.start === start && previous.end === end ? previous : { start, end }); }}/>
           {range && <p>{t('已选原文：', 'Selected text: ')}<q>{excerpt.text.slice(range.start, range.end)}</q></p>}
           <p className="candidate-help">{t('选中原文中的短语，为当前对象补充遗漏提及。重复短语由实际选中位置区分。', 'Select a phrase to add an omitted mention for the current entity. The selected position distinguishes repeated phrases.')}</p>
           <Button disabled={!editable || !entity || !range || range.end <= range.start || draft.mentions.some(mention => mention.selection.evidenceRef === excerptId && mention.selection.start === range.start && mention.selection.end === range.end)} onClick={() => {

@@ -18,7 +18,7 @@ export function currentEntityLinkSource(knowledge: KnowledgeApplication, endpoin
   if (detail.source.status !== 'available') throw new EntityLinkConflictError('source_unavailable');
   if (endpoint.mentionIds.some(id => {
     const mention = detail.revision.mentions.find(value => value.mentionId === id && value.entityId === endpoint.entityId);
-    return !mention || validateEvidenceSelection(mention.selection, detail.source.status === 'available' ? detail.source.window.excerpts : []).length;
+    return !mention || validateEvidenceSelection(mention.selection, detail.source.status === 'available' ? detail.source.snapshot.excerpts : []).length;
   })) throw new EntityLinkConflictError('entity_changed');
   return detail;
 }

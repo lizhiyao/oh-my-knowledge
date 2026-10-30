@@ -21,6 +21,7 @@ import { LibraryReferentKindConflictError } from '../../src/knowledge/entity-lib
 import { EntityLinkConflictError } from '../../src/knowledge/entities/links.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { entityLinkDigest } from '../../src/knowledge/entity-linking/entity-link-hash.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 
 const durabilityFault = vi.hoisted(() => ({ path: undefined as string | undefined, remaining: 0 }));
 vi.mock('node:fs', async importOriginal => {
@@ -42,7 +43,7 @@ beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-link-host-')); });
 afterEach(async () => { durabilityFault.path = undefined; durabilityFault.remaining = 0; vi.restoreAllMocks(); for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); } expect(existsSync(join(root, '.knowledge-write.lock'))).toBe(false); expect(readdirSync(root, { recursive: true }).filter(name => String(name).endsWith('.tmp'))).toEqual([]); rmSync(root, { recursive: true, force: true }); });
 const knowledge = () => createLocalKnowledgeApplication(root);
 async function window(name: string, multiple = false) {
-  const source = knowledge().capture({ path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
+  const source = captureTraceFixture(root, { path: join(root, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
     raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: multiple ? 'Alpha 使用 Beta。Alpha' : 'Alpha 使用 Beta' }] } }) }] });
   const analysisId = randomUUID(), revisionId = randomUUID(), actor = { actorKind: 'human' as const, actorId: 'authored-fixture' };
   const entityIds = [randomUUID(), randomUUID()], evidenceRef = source.excerpts[0].evidenceRef;
@@ -182,7 +183,7 @@ describe('entity-link actual host/store/API flow', () => {
       expect(() => offline.terminateExecution({ ...request, ownerId: randomUUID() })).toThrow('owner conflict');
       expect(() => offline.terminateExecution({ ...request, expectedGeneration: 1 })).toThrow('revision conflict');
       // Sources and producer configuration may be unavailable when administrative recovery is needed.
-      knowledge().deleteSource(a.source.snapshotId); knowledge().deleteSource(b.source.snapshotId);
+      knowledge().deleteSource(sourceRef(a.source)); knowledge().deleteSource(sourceRef(b.source));
       const terminated = offline.terminateExecution(request);
       expect(terminated.events.slice(0, 2)).toEqual(running.history.events);
       expect(entityLinkAllocation(terminated)).toBe(reservation);
@@ -285,7 +286,7 @@ describe('entity-link actual host/store/API flow', () => {
     }
     expect(() => accept(app, completed)).toThrow(); expect(app.project(preview.reviewId).status).toBe('accepted_pending_application');
     const prior = createLocalKnowledgeLibrary(root).catalog(); expect(prior.objectCount).toBe(fault === 'review_sync' ? 0 : 1);
-    if (prior.objectCount) knowledge().deleteSource(a.source.snapshotId); // receipt-first recovery precedes current-source checks
+    if (prior.objectCount) knowledge().deleteSource(sourceRef(a.source)); // receipt-first recovery precedes current-source checks
     const applied = host(transport.env).resume(preview.reviewId); expect(projectEntityLinkInvocation(applied, { hashJson: entityLinkDigest, hashText: entityLinkTextHash }).status).toBe('applied');
     const after = createLocalKnowledgeLibrary(root).catalog(); expect(after.objectCount).toBe(1);
     expect(createLocalKnowledgeLibrary(root).detail(after.rows[0].objectId).history.generation).toBe(1); expect(readFileSync(entityFile)).toEqual(entitiesBefore); expect(transport.count).toBe(1);
@@ -297,7 +298,7 @@ describe('entity-link actual host/store/API flow', () => {
     const command = { reviewId: completed.reviewId, requestId: randomUUID(), expectedGeneration: completed.generation,
       decision: 'accept' as const, identityConfirmed: true as const, reason: 'authored durability fixture', objectLabel: 'Alpha 对象' };
     const applied = app.decide(command), file = join(root, 'entity-links', `${preview.reviewId}.json`), bytes = readFileSync(file);
-    knowledge().deleteSource(a.source.snapshotId);
+    knowledge().deleteSource(sourceRef(a.source));
     const reopened = host({}), operations = [() => prepare(reopened, preview), () => start(reopened, preview.reviewId),
       () => reopened.decide(command), () => reopened.resume(preview.reviewId)];
     durabilityFault.path = file; durabilityFault.remaining = operations.length;
@@ -326,7 +327,7 @@ describe('entity-link actual host/store/API flow', () => {
     const pending = transitionEntityLinkInvocation(completed, command, ports).history;
     new FileEntityLinkStore(join(root, 'entity-links'), root).transaction(tx => tx.save(pending, completed.generation));
     new KnowledgeLibraryApplication(knowledge(), new FileLibraryStore(join(root, 'library'), root)).applyLinkIntent(intent, [preview.plan.left, preview.plan.right]);
-    knowledge().deleteSource(a.source.snapshotId); knowledge().deleteSource(b.source.snapshotId);
+    knowledge().deleteSource(sourceRef(a.source)); knowledge().deleteSource(sourceRef(b.source));
     const applied = app.decide({ reviewId: pending.reviewId, requestId: command.requestId, expectedGeneration: completed.generation, decision: 'accept', identityConfirmed: true, reason });
     expect(applied.events.slice(0, pending.events.length)).toEqual(pending.events); expect(app.projectHistory(applied)).toMatchObject({ status: 'applied', reviewVersion: 'legacy/v1' });
     expect(library.detail(owner.objectId).history.generation).toBe(2); expect(transport.count).toBe(1);
@@ -349,7 +350,7 @@ describe('entity-link actual host/store/API flow', () => {
     app.decide({ reviewId: complete.reviewId, requestId: randomUUID(), expectedGeneration: complete.generation, decision: 'reject', reason: '同名证据不足' });
     expect(() => host(transport.env).preview(b.ref, a.ref, selection, complete.reviewId)).toThrow('pair_already_reviewed'); expect(app.recall(a.ref).rows).toEqual([]);
     const c = await window('c'), d = await window('d'); preview = app.preview(c.ref, d.ref, selection); prepare(app, preview); const another = await start(app, preview.reviewId);
-    knowledge().deleteSource(c.source.snapshotId); const accepted = accept(app, another);
+    knowledge().deleteSource(sourceRef(c.source)); const accepted = accept(app, another);
     expect(app.project(accepted.reviewId).status).toBe('accepted_conflict'); expect(accepted.events.at(-1)!.command).toMatchObject({ application: { conflictCode: 'source_unavailable' } });
     expect(createLocalKnowledgeLibrary(root).catalog().objectCount).toBe(0);
     const quality = app.quality(); expect(quality.readStatus).toBe('available'); expect(quality.groups).toHaveLength(1);
@@ -377,7 +378,7 @@ describe('entity-link actual host/store/API flow', () => {
     expect(applied.events.slice(0, result.events.length)).toEqual(result.events);
     expect(applied.events.find(event => event.command.commandKind === 'reviewed_v2')!.command).toMatchObject({ reviewVersion: 'omk.entity-link-review/v2',
       evidenceReplacement: { confirmationVersion: 'omk.entity-link-evidence-replacement/v1', confirmedDigest: evidence.confirmationDigest } });
-    knowledge().deleteSource(a.source.snapshotId); expect(app.decide(confirmed)).toEqual(applied);
+    knowledge().deleteSource(sourceRef(a.source)); expect(app.decide(confirmed)).toEqual(applied);
     expect(() => app.decide({ ...confirmed, replacementConfirmationDigest: `sha256:${'a'.repeat(64)}` })).toThrow('identity conflict');
     expect(transport.count).toBe(1);
     const saved = library.detail(owner.objectId).history; expect(saved.revisions[0]).toEqual(owner.revisions[0]); expect(saved.generation).toBe(2); expect(saved.revisions.at(-1)!.draft.members).toHaveLength(3);

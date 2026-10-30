@@ -9,7 +9,8 @@ import { createLocalKnowledgeApplication } from '../../src/knowledge/application
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
-import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeGraph } from '../../src/knowledge/application/graph.js';
 
@@ -42,6 +43,7 @@ describe('exact knowledge graph read projection', () => {
     const before = diskBytes(f.root), writes = [vi.spyOn(FileKnowledgeStore.prototype, 'write'), vi.spyOn(FileEntityAnalysisStore.prototype, 'write'), vi.spyOn(FileKnowledgeAssociationStore.prototype, 'write')];
     const generation = vi.spyOn(KnowledgeApplication.prototype, 'generate'), rebuild = vi.spyOn(KnowledgeApplication.prototype, 'rebuildAssociations');
     const graph = f.app.graph({ knowledgeIds: [first.body.knowledgeId, second.body.knowledgeId] });
+    expect(graph).toMatchObject({ projectionKind: 'knowledge-graph', schemaVersion: 2 });
     expect(graph.coverage).toEqual({ status: 'available', gaps: [] });
     expect(knowledgeNodes(graph)).toHaveLength(2); expect(sourceNodes(graph)).toHaveLength(2);
     const alphas = entityNodes(graph).filter(node => node.label === 'Alpha');
@@ -73,7 +75,7 @@ describe('exact knowledge graph read projection', () => {
         revisedAt: failed.body.revisedAt, revisedBy: failed.body.revisedBy, revisionReason: '独立失败结果' } }, failed.body.revisedBy);
     const absentFile = readdirSync(join(f.root, 'associations')).find(name => JSON.parse(readFileSync(join(f.root, 'associations', name), 'utf8')).knowledgeId === absent.body.knowledgeId)!;
     rmSync(join(f.root, 'associations', absentFile));
-    const additional = f.app.capture({ path: join(f.root, 'additional.jsonl'), records: [{ recordIndex: 2,
+    const additional = captureTraceFixture(f.root, { path: join(f.root, 'additional.jsonl'), records: [{ recordIndex: 2,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '后续补充依据' }] } }) }] });
     const draft = { title: stale.body.title, reuseRationale: stale.body.reuseRationale, content: structuredClone(stale.body.content) };
     draft.content.segments.push({ segmentId: 'addendum', text: '来源后续补充依据；不自动升级旧实体关联。', evidence: [{
@@ -126,16 +128,16 @@ describe('exact knowledge graph read projection', () => {
 
   it('degrades a missing or failing source locally and reports mismatching quotes without deleting knowledge', () => {
     const f = workspace(), missing = seedKnowledgeWorkspace(f.root, 'missing'), healthy = seedKnowledgeWorkspace(f.root, 'healthy');
-    f.app.deleteSource(missing.source.snapshotId);
+    f.app.deleteSource(sourceRef(missing.source));
     const deleted = f.app.graph();
     expect(sourceNodes(deleted)).toContainEqual(expect.objectContaining({ snapshotId: missing.source.snapshotId, status: 'unavailable', reason: 'deleted' }));
     expect(sourceNodes(deleted)).toContainEqual(expect.objectContaining({ snapshotId: healthy.source.snapshotId, status: 'available' }));
     expect(knowledgeNodes(deleted)).toHaveLength(2);
-    const originalRead = TraceEvidenceStore.prototype.read;
-    vi.spyOn(TraceEvidenceStore.prototype, 'read').mockImplementation(function (this: TraceEvidenceStore, snapshotId, version) {
+    const originalRead = FileSourceStore.prototype.read;
+    vi.spyOn(FileSourceStore.prototype, 'read').mockImplementation(function (this: FileSourceStore, snapshotId, version) {
       if (snapshotId === missing.source.snapshotId) throw new Error(`private exception ${f.root}`);
       const result = originalRead.call(this, snapshotId, version);
-      if (result.status === 'available') return { ...result, window: { ...result.window, excerpts: result.window.excerpts.map(excerpt => ({ ...excerpt, text: '改变后的原文' })) } };
+      if (result.status === 'available') return { ...result, snapshot: { ...result.snapshot, excerpts: result.snapshot.excerpts.map(excerpt => ({ ...excerpt, text: '改变后的原文' })) } };
       return result;
     });
     const graph = f.app.graph();
@@ -199,7 +201,7 @@ describe('exact knowledge graph read projection', () => {
     expect(options.unavailableAnalyses).toBe(1); expect(list).toHaveBeenCalledTimes(1);
     expect(read.associationCatalogs(selected.body.knowledgeId)).toEqual(options); expect(list).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(options)).not.toContain(f.root);
-    f.app.deleteSource(selected.source.snapshotId);
+    f.app.deleteSource(sourceRef(selected.source));
     const missing = f.app.associationCatalogs(selected.body.knowledgeId);
     expect(missing.sources[0].status).toBe('unavailable'); expect(missing.catalogs[0].sourceSummary).toBeUndefined();
     list.mockImplementation(() => { throw new Error('catalog capacity'); });

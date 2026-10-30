@@ -1,9 +1,9 @@
 'use client';
 import { useState } from 'react';
 import { Alert, Button, Input, InputNumber, Select } from 'antd';
-import { locateQuoteOccurrence } from '../../../../knowledge/extraction/quote-occurrence';
 import type { KnowledgeCandidateDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import type { Language } from '../layout/shell';
+import { SourceLocator, locateSourceQuoteOccurrence, sourceCoordinateLabel, sourceMaterialLabel, sourceTextAreaOffset, sourceTextAreaText, sourceTitle } from './source-locator';
 
 type Draft = Pick<KnowledgeCandidateDetail['revision'], 'title' | 'content' | 'reuseRationale'>;
 type Evidence = Draft['content']['segments'][number]['evidence'][number];
@@ -15,14 +15,16 @@ interface BodyCitationEdit {
 /** Display-only locators; every saved source/version and position is checked again by the host. */
 export function initialBodyCitations(detail: KnowledgeCandidateDetail): BodyCitationEdit[] {
   return detail.revision.content.segments.flatMap(segment => segment.evidence.map(evidence => {
-    const source = detail.sources.find(value => value.status === 'available' && value.window.snapshotId === evidence.source.snapshotId
-      && value.window.sourceVersion === evidence.source.sourceVersion);
-    const excerpt = source?.status === 'available' ? source.window.excerpts.find(value => value.evidenceRef === evidence.selection.evidenceRef) : undefined;
+    const source = detail.sources.find(value => value.status === 'available' && value.snapshot.snapshotId === evidence.source.snapshotId
+      && value.snapshot.sourceVersion === evidence.source.sourceVersion);
+    const excerpt = source?.status === 'available' ? source.snapshot.excerpts.find(value => value.evidenceRef === evidence.selection.evidenceRef) : undefined;
     let occurrence: number | undefined;
     if (excerpt) {
-      let position = excerpt.text.indexOf(evidence.selection.quote), index = 0;
-      while (position >= 0 && position < evidence.selection.start) { position = excerpt.text.indexOf(evidence.selection.quote, position + 1); index++; }
-      if (position === evidence.selection.start) occurrence = index;
+      const text = sourceTextAreaText(excerpt.text), quote = sourceTextAreaText(evidence.selection.quote);
+      const start = sourceTextAreaOffset(excerpt.text, evidence.selection.start);
+      let position = text.indexOf(quote), index = 0;
+      while (position >= 0 && position < start) { position = text.indexOf(quote, position + 1); index++; }
+      if (position === start) occurrence = index;
     }
     return { segmentId: segment.segmentId, source: evidence.source, basis: evidence.basis,
       ...(evidence.interpretation ? { interpretation: evidence.interpretation } : {}),
@@ -36,10 +38,10 @@ export function resolveBodyCitations(draft: Draft, edits: BodyCitationEdit[], so
   for (const segment of result.content.segments) {
     segment.evidence = [];
     for (const edit of edits.filter(value => value.segmentId === segment.segmentId)) {
-      const source = sources.find(value => value.status === 'available' && value.window.snapshotId === edit.source.snapshotId
-        && value.window.sourceVersion === edit.source.sourceVersion);
+      const source = sources.find(value => value.status === 'available' && value.snapshot.snapshotId === edit.source.snapshotId
+        && value.snapshot.sourceVersion === edit.source.sourceVersion);
       if (!source || source.status !== 'available') return { error: 'source_unavailable' };
-      const selection = locateQuoteOccurrence(edit.selection, source.window.excerpts);
+      const selection = locateSourceQuoteOccurrence(edit.selection, source.snapshot.excerpts);
       if (typeof selection === 'string') return { error: selection };
       segment.evidence.push({ source: { ...edit.source }, basis: edit.basis, selection,
         ...(edit.interpretation?.trim() ? { interpretation: edit.interpretation } : {}) });
@@ -54,13 +56,14 @@ export function BodyEvidenceEditor({ detail, draft, value, readOnly, lang, onCha
   onChange(value: BodyCitationEdit[]): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  const choices = detail.sources.flatMap(source => source.status === 'available' ? source.window.excerpts.map(excerpt => ({
-    value: JSON.stringify([source.window.snapshotId, source.window.sourceVersion, excerpt.evidenceRef]),
-    label: `${excerpt.recordIndex} · ${excerpt.role ?? excerpt.eventKind} · ${excerpt.text.slice(0, 75)}`,
-    source: { snapshotId: source.window.snapshotId, sourceVersion: source.window.sourceVersion }, excerpt,
+  const choices = detail.sources.flatMap(source => source.status === 'available' ? source.snapshot.excerpts.map(excerpt => ({
+    value: JSON.stringify([source.snapshot.snapshotId, source.snapshot.sourceVersion, excerpt.evidenceRef]),
+    label: `${sourceTitle(source.snapshot, lang)} · ${sourceCoordinateLabel(excerpt.coordinate, lang)} · ${sourceMaterialLabel(excerpt.material.materialType, lang)} · ${excerpt.text.slice(0, 75)}`,
+    source: { snapshotId: source.snapshot.snapshotId, sourceVersion: source.snapshot.sourceVersion }, snapshot: source.snapshot, excerpt,
   })) : []);
   const [inspected, setInspected] = useState(choices[0]?.value ?? '');
-  const excerpt = choices.find(choice => choice.value === inspected)?.excerpt;
+  const inspectedChoice = choices.find(choice => choice.value === inspected), excerpt = inspectedChoice?.excerpt;
+  const originalLabel = inspectedChoice?.snapshot.sourceKind === 'agent_trace' ? t('原始消息（只读）', 'Original message (read-only)') : t('原始文件片段（只读）', 'Original file excerpt (read-only)');
   const locked = readOnly || !choices.length;
   const validation = resolveBodyCitations(draft, value, detail.sources);
   function update(index: number, edit: Partial<BodyCitationEdit>) { if (!locked) onChange(value.map((item, at) => at === index ? { ...item, ...edit } : item)); }
@@ -91,6 +94,6 @@ export function BodyEvidenceEditor({ detail, draft, value, readOnly, lang, onCha
       onChange([...value, { segmentId: segment.segmentId, source: choice.source, basis: 'source_assertion', selection: { evidenceRef: choice.excerpt.evidenceRef, quote: '' } }]);
     }}>{t(`为段落 ${index + 1} 添加引文`, `Add a citation to segment ${index + 1}`)}</Button>)}
     {'error' in validation && <Alert type="warning" title={t('引文尚未完整定位，请核对原文与出现位置后保存。', 'Citations are not fully located. Check the source and occurrence before saving.')}/>}
-    {excerpt && <><p className="candidate-help">{t('原始消息（只读）', 'Original message (read-only)')}</p><Input.TextArea className="entity-source-text" aria-label={t('原始消息（只读）', 'Original message (read-only)')} readOnly rows={8} value={excerpt.text}/></>}
+    {excerpt && inspectedChoice && <><SourceLocator source={inspectedChoice.snapshot} excerpt={excerpt} lang={lang}/><p className="candidate-help">{originalLabel}</p><Input.TextArea className="entity-source-text" aria-label={originalLabel} readOnly rows={8} value={excerpt.text}/></>}
   </section>;
 }

@@ -11,6 +11,7 @@ import { libraryEntityUrl, requestLibrary, requestLibraryEntity } from './librar
 import { KnowledgeRequestError } from './request';
 import { useKnowledgeSave } from './save-session';
 import { useLibrarySource, type LibrarySeed } from './library-source';
+import { sourceTitle } from './source-locator';
 import { EntityLibraryDetail } from './entities';
 
 type CatalogState = { phase: 'loading' | 'failed' } | { phase: 'ready'; value: KnowledgeEntityCatalog };
@@ -112,7 +113,7 @@ export function LibraryEditor({ workspace, lang, detail: initialDetail, seed, on
       {previewError && <Alert className="knowledge-operation-feedback" type="error" title={previewError} action={<Button disabled={previewLoading || busy} onClick={() => source.retry()}>{t('重新读取所选实体', 'Reload selected entity')}</Button>}/>}
       {previewLoading && <Spin/>}
       {loading ? <Spin/> : <div className="library-source-list">{catalog?.rows.map(row => <Button key={`${row.analysisId}:${row.entityId}`} disabled={busy} onClick={() => source.select({ analysisId: row.analysisId, entityId: row.entityId })}>
-        <span title={`${row.description} · ${row.qualifiers.join(' / ')}`}>{row.label} · {row.origin?.title || t('导入来源', 'Imported source')}</span></Button>)}</div>}
+        <span title={`${row.description} · ${row.qualifiers.join(' / ')}`}>{row.label} · {sourceTitle(row.source, lang)}</span></Button>)}</div>}
       {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
       {preview && <div className="library-source-preview">
         <EntityLibraryDetail detail={preview} workspace={workspace} lang={lang} onRevision={revision => source.select({ analysisId: preview.history.analysisId, entityId: preview.entity.entityId, revision })}/>

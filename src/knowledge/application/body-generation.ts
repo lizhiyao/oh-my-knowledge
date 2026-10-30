@@ -1,7 +1,9 @@
 import type { KnowledgeActor, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { KnowledgeStore, KnowledgeWrite } from '../store.js';
 import { canonicalJson } from '../store.js';
-import type { EvidenceStore, EvidenceWindow } from '../extraction/evidence.js';
+import type { SourceStore } from '../source-store.js';
+import { sourceSetPreimage, type SourceRef, type SourceSnapshot } from '../sources.js';
+import { generationImportRunId, generationSourceInput, SOURCE_GENERATION_INPUT_VERSION } from '../extraction/source-input.js';
 import type { EntityAnalysisStore, EntityAnalysisWrite } from '../entities/contracts.js';
 import type { KnowledgeAssociationStore, KnowledgeAssociationWrite } from '../associations.js';
 import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferences } from '../associations.js';
@@ -15,18 +17,16 @@ import { associationMentionKey, compileAssociationCatalog } from '../extraction/
 import { observeGenerationException, type GenerationOutcome, type GenerationOutcomeRef } from '../extraction/native-outcome.js';
 
 export interface BodyGenerationPorts {
-  evidence: EvidenceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
+  sources: SourceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
   associations: KnowledgeAssociationStore; journals: GenerationJournalStore;
   actor: KnowledgeActor; id(): string; now(): string;
+  assertWritable?(): void;
 }
 export interface KnowledgeGenerationOptions {
+  confirmedRequestDigest?: string;
   beforeDispatch?: (claim: { runId: string; invocationId: string; stageKind: 'body' | 'association'; requestDigest: string }) => void;
   onOutcomeArchived?: (event: { runId: string; invocationId: string; stageKind: 'body' | 'association'; outcome: GenerationOutcome; ref: GenerationOutcomeRef }) => void;
 }
-const sourceInput = (window: EvidenceWindow) => ({ source: { snapshotId: window.snapshotId, sourceVersion: window.sourceVersion,
-  sourceKind: window.sourceKind, ...(window.origin ? { origin: { threadId: window.origin.threadId, title: window.origin.title,
-    ...(window.origin.turnId ? { turnId: window.origin.turnId } : {}) } } : {}) },
-excerpts: window.excerpts, limitations: window.limitations });
 const message = (error: unknown) => observeGenerationException(error).message || 'Host validation failed.';
 type AssociationAppend = Extract<KnowledgeAssociationWrite, { commandKind: 'append_revision' }>;
 const currentProfile = (stage: GenerationStage) => stage.stageKind === 'body' ? BODY_GENERATION_PROFILE : ASSOCIATION_GENERATION_PROFILE;
@@ -54,15 +54,15 @@ export class BodyGenerationApplication {
       invocationId: stage.invocationId, ...(stage.outcomeRef ? { outcome: this.ports.journals.outcome(journal, stage) } : {}) })) };
   }
   private required(runId: string) { const j = this.ports.journals.read(runId); if (!j) throw new Error('Generation journal is missing.'); return j; }
-  private persist(j: GenerationJournal) { return this.ports.journals.write({ ...j, generation: j.generation + 1 }, j.generation); }
+  private persist(j: GenerationJournal) { this.ports.assertWritable?.(); return this.ports.journals.write({ ...j, generation: j.generation + 1 }, j.generation); }
   private state(journal: GenerationJournal) {
     return { journal, nextAction: generationNextAction(journal) };
   }
-  private window(sourceRef: GenerationJournal['sources'][number]) {
-    const source = this.ports.evidence.read(sourceRef.snapshotId, sourceRef.sourceVersion);
+  private snapshot(sourceRef: GenerationJournal['sources'][number]) {
+    const source = this.ports.sources.read(sourceRef.snapshotId, sourceRef.sourceVersion);
     if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`);
-    if (generationTextDigest(canonicalJson(source.window)) !== sourceRef.sourceDigest) throw new Error('Generation source snapshot changed.');
-    return source.window;
+    if (generationTextDigest(canonicalJson(source.snapshot)) !== sourceRef.sourceDigest) throw new Error('Generation source snapshot changed.');
+    return source.snapshot;
   }
   private phase(model: KnowledgeGenerationModel, profile: GenerationProfile, input: string): GenerationStage {
     if (Buffer.byteLength(profile.system, 'utf8') + Buffer.byteLength(input, 'utf8') > 1024 * 1024) throw new Error('Knowledge model request capacity_exceeded (1 MiB).');
@@ -87,76 +87,106 @@ export class BodyGenerationApplication {
   }
   private prepareAssociation(journal: GenerationJournal, model: KnowledgeGenerationModel): GenerationJournal {
     if (journal.stages.some(s => s.stageKind === 'association') || !journal.bodies.length) return journal;
-    const windows = journal.sources.map(source => this.window(source)), bodies = this.bodies(journal);
-    const input = canonicalJson({ sources: windows.map((window, index) => ({ sourceKey: `s${index}`, ...sourceInput(window) })), bodies: bodies.map((body, index) => ({ bodyKey: `b${index}`,
+    if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
+    const windows = journal.sources.map(source => this.snapshot(source)), bodies = this.bodies(journal);
+    const input = canonicalJson({ inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId: journal.sourceSetId, sources: windows.map(generationSourceInput), bodies: bodies.map((body, index) => ({ bodyKey: `b${index}`,
       bodyRef: knowledgeBodyRef(body), title: body.title, content: body.content, reuseRationale: body.reuseRationale })) });
     return this.persist({ ...journal, stages: [...journal.stages, this.phase(model, ASSOCIATION_GENERATION_PROFILE, input)] });
   }
-  async generate(snapshotId: string, model: KnowledgeGenerationModel, runId = this.ports.id(), signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
+    const sourceSet = sourceSetPreimage(sources), sourceSetId = generationTextDigest(canonicalJson(sourceSet));
+    runId ??= generationImportRunId(sourceSetId);
     const existing = this.ports.journals.read(runId);
     if (existing) {
-      if (existing.mode !== 'generate' || existing.sources.length !== 1 || existing.sources[0].snapshotId !== snapshotId || existing.executor !== model.executor
+      if (existing.mode !== 'generate' || existing.sourceSetId !== sourceSetId || existing.executor !== model.executor
         || existing.model !== model.model || existing.timeoutMs !== model.timeoutMs) throw new Error('Generation request conflicts with existing journal.');
-      return this.resume(runId); // Reusing a run identity never implies permission to dispatch another stage.
+      if (existing.status === 'active' && generationNextAction(existing) !== 'unsupported'
+        && existing.stages.length === 1 && existing.stages[0].state === 'completed' && existing.bodies.length) {
+        signal?.throwIfAborted();
+        return this.state(this.prepareAssociation(existing, model));
+      }
+      return this.state(existing);
     }
+    this.ports.assertWritable?.();
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
-    signal?.throwIfAborted(); const source = this.ports.evidence.read(snapshotId);
-    if (source.status !== 'available') throw new Error('Generation source unavailable.');
-    let journal = this.ports.journals.write({ storeKind: 'knowledge-generation-journal', schemaVersion: 2, workflowId: 'knowledge-body-first/v2',
+    signal?.throwIfAborted();
+    const snapshots = sourceSet.sources.map(ref => {
+      const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
+      if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`);
+      return source.snapshot;
+    });
+    const input = canonicalJson({ inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId, sources: snapshots.map(generationSourceInput) });
+    const journal = this.ports.journals.write({ storeKind: 'knowledge-generation-journal', schemaVersion: 3, workflowId: 'knowledge-body-first/v3',
+      inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId,
       runId, generation: 1, mode: 'generate', status: 'active', createdAt: this.ports.now(), actor: this.ports.actor,
-      sources: [{ snapshotId, sourceVersion: source.window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(source.window)) }],
+      sources: snapshots.map(snapshot => ({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(snapshot)) })),
       executor: model.executor, model: model.model, timeoutMs: model.timeoutMs, bodies: [],
-      stages: [this.phase(model, BODY_GENERATION_PROFILE, canonicalJson(sourceInput(source.window)))] }, 0);
+      stages: [this.phase(model, BODY_GENERATION_PROFILE, input)] }, 0);
+    return this.state(journal);
+  }
+  async generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+    let journal = this.prepareGeneration(sources, model, runId, signal).journal;
+    if (generationNextAction(journal) === 'unsupported') return this.resume(journal.runId);
+    if (journal.status !== 'active' || journal.stages.length !== 1 || journal.stages[0].state !== 'prepared') return this.resume(journal.runId);
     journal = await this.invoke(journal, model, signal, options);
     if (journal.stages[0].state === 'completed' && journal.bodies.length) {
       journal = this.prepareAssociation(journal, model);
-      if (!signal?.aborted) journal = await this.invoke(journal, model, signal, options);
     }
     return this.state(journal);
   }
-  async rebuild(ref: KnowledgeBodyRef, model: KnowledgeGenerationModel, runId = this.ports.id(), signal?: AbortSignal) {
+  prepareAssociationRebuild(ref: KnowledgeBodyRef, model: KnowledgeGenerationModel, runId = this.ports.id(), signal?: AbortSignal) {
     const existing = this.ports.journals.read(runId);
     if (existing) {
       if (existing.mode !== 'rebuild_associations' || canonicalJson(existing.bodies) !== canonicalJson([ref])
         || existing.executor !== model.executor || existing.model !== model.model || existing.timeoutMs !== model.timeoutMs) throw new Error('Association rebuild conflicts with existing journal.');
-      return this.resume(runId);
+      return this.state(existing);
     }
+    this.ports.assertWritable?.();
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
     signal?.throwIfAborted(); const body = this.ports.knowledge.read(ref.knowledgeId).revisions.find(r => r.revisionId === ref.revisionId);
     if (!body || canonicalJson(knowledgeBodyRef(body)) !== canonicalJson(ref)) throw new Error('Association body identity mismatch.');
-    const refs = [...new Map(body.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
+    const refs = sourceSetPreimage(body.content.segments.flatMap(s => s.evidence).map(e => e.source)).sources;
     if (!refs.length) throw new Error('Association body needs at least one exact source.');
     const windows = refs.map(ref => {
-      const source = this.ports.evidence.read(ref.snapshotId, ref.sourceVersion);
+      const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
       if (source.status !== 'available') throw new Error('Association source unavailable; body remains readable.');
-      return source.window;
+      return source.snapshot;
     });
-    const seed = { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 2 as const, workflowId: 'knowledge-body-first/v2' as const,
+    const seed = { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 3 as const, workflowId: 'knowledge-body-first/v3' as const,
+      inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId: generationTextDigest(canonicalJson(sourceSetPreimage(refs))),
       runId, generation: 1, mode: 'rebuild_associations' as const, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
       sources: windows.map(window => ({ snapshotId: window.snapshotId, sourceVersion: window.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(window)) })),
       executor: model.executor, model: model.model, timeoutMs: model.timeoutMs, bodies: [ref], stages: [] as GenerationStage[] };
-    const input = canonicalJson({ sources: windows.map((window, index) => ({ sourceKey: `s${index}`, ...sourceInput(window) })), bodies: [{ bodyKey: 'b0', bodyRef: ref,
+    const input = canonicalJson({ inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId: seed.sourceSetId, sources: windows.map(generationSourceInput), bodies: [{ bodyKey: 'b0', bodyRef: ref,
       title: body.title, content: body.content, reuseRationale: body.reuseRationale }] });
     const journal = this.ports.journals.write({ ...seed, stages: [this.phase(model, ASSOCIATION_GENERATION_PROFILE, input)] }, 0);
-    return this.state(await this.invoke(journal, model, signal));
+    return this.state(journal);
+  }
+  async rebuild(ref: KnowledgeBodyRef, model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+    const journal = this.prepareAssociationRebuild(ref, model, runId, signal).journal;
+    if (journal.status !== 'active' || journal.stages.at(-1)?.state !== 'prepared') return this.resume(journal.runId);
+    return this.state(await this.invoke(journal, model, signal, options));
   }
   /** Explicitly dispatch only a never-claimed phase. A stale generation cannot claim it. */
-  async continueStage(runId: string, expectedGeneration: number, model: KnowledgeGenerationModel, signal?: AbortSignal) {
-    let j = this.required(runId);
+  async continueStage(runId: string, expectedGeneration: number, model: KnowledgeGenerationModel, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+    this.ports.assertWritable?.();
+    const j = this.required(runId);
     if (j.generation !== expectedGeneration || j.status !== 'active') throw new Error('Generation continuation conflict.');
     if (generationNextAction(j) === 'unsupported') throw new Error('Generation profile changed; use the preserved matching build to recover this run.');
     if (j.executor !== model.executor || j.model !== model.model || j.timeoutMs !== model.timeoutMs) throw new Error('Generation continuation model changed.');
-    if (j.stages.every(s => s.state === 'completed')) j = this.prepareAssociation(j, model);
+    if (j.stages.every(s => s.state === 'completed')) throw new Error('Prepare the next generation request before confirming continuation.');
     if (j.stages.at(-1)!.state !== 'prepared') throw new Error('Only a never-claimed phase may be continued; resume never redispatches.');
-    return this.state(await this.invoke(j, model, signal));
+    return this.state(await this.invoke(j, model, signal, options));
   }
   private async invoke(journal: GenerationJournal, model: KnowledgeGenerationModel, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}): Promise<GenerationJournal> {
+    this.ports.assertWritable?.();
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
     const index = journal.stages.length - 1, stage = journal.stages[index];
     if (stage.state !== 'prepared') throw new Error('Generation phase is not dispatchable.');
+    if (options.confirmedRequestDigest !== stage.requestDigest) throw new Error('Confirm the exact prepared generation request before dispatch.');
     const profile = stage.stageKind === 'body' ? BODY_GENERATION_PROFILE : ASSOCIATION_GENERATION_PROFILE;
     if (!currentStage(stage) || canonicalJson(model.inspect(profile, stage.input)) !== canonicalJson(stage.producer)) throw new Error('Generation producer/profile changed.');
-    signal?.throwIfAborted(); journal.sources.forEach(source => this.window(source)); this.inFlight = journal.runId; let claims = 0;
+    signal?.throwIfAborted(); journal.sources.forEach(source => this.snapshot(source)); this.inFlight = journal.runId; let claims = 0;
     try {
       const outcome = await model.invoke(profile, stage.input, signal, () => {
         if (claims !== 0) throw new Error('Duplicate native dispatch gate.');
@@ -179,6 +209,7 @@ export class BodyGenerationApplication {
     let j = this.required(runId), stage = j.stages.at(-1)!;
     if (this.inFlight === runId) return this.state(j);
     if (generationNextAction(j) === 'unsupported') return this.state(j);
+    if (this.held?.runId === runId || ['claimed', 'archived', 'prepared_writes'].includes(stage.state)) this.ports.assertWritable?.();
     if (this.held?.runId === runId && this.held.invocationId === stage.invocationId) {
       const ref = this.ports.journals.archive(j, stage, this.held.outcome);
       j = this.persist({ ...j, stages: j.stages.map(s => s.invocationId === stage.invocationId ? { ...s, state: 'archived', outcomeRef: ref } : s) }); this.held = undefined;
@@ -204,11 +235,11 @@ export class BodyGenerationApplication {
       if (stage.stageKind === 'body') {
         try {
           if (output === undefined || outcome.cleanupFailure || stage.issues.length) throw new Error('Body native execution did not complete cleanly.');
-          const checked = checkGeneratedBodies(output, this.window(j.sources[0])), actor = this.actor(j, stage), at = this.ports.now();
+          const checked = checkGeneratedBodies(output, j.sources.map(source => this.snapshot(source))), actor = this.actor(j, stage), at = this.ports.now();
           const writes: KnowledgeWrite[] = checked.accepted.map(({ draft }) => {
             const knowledgeId = this.ports.id(), revisionId = this.ports.id();
             return { commandKind: 'append_revision', requestId: this.ports.id(), knowledgeId, expectedGeneration: 0, expectedHeadRevisionId: null,
-              revision: { ...draft, knowledgeId, revisionId, bodyDigest: knowledgeBodyDigest(draft), observationRefs: [j.sources[0].snapshotId], derivations: [],
+              revision: { ...draft, knowledgeId, revisionId, bodyDigest: knowledgeBodyDigest(draft), observationRefs: [...new Set(draft.content.segments.flatMap(segment => segment.evidence.map(evidence => evidence.source.snapshotId)))], derivations: [],
                 createdAt: at, createdBy: actor, revisedAt: at, revisedBy: actor, revisionReason: 'Generated canonical knowledge body; pending review.' } };
           });
           stage = { ...stage, state: 'prepared_writes', bodyWrites: writes, rejected: checked.rejected };
@@ -249,14 +280,14 @@ export class BodyGenerationApplication {
       revisionReason: 'Derived association failed; canonical body unchanged.' });
     try {
       if (output === undefined || cleanupFailure || stage.issues.length) throw new Error('Association native execution did not complete cleanly.');
-      const response = checkGeneratedAssociations(output), windows = j.sources.map(source => this.window(source));
+      const response = checkGeneratedAssociations(output), windows = j.sources.map(source => this.snapshot(source));
       const sourceKeys = windows.map((_, index) => `s${index}`), expectedKeys = new Set(bodies.map((_, index) => `b${index}`));
       if (response.catalogs.length !== sourceKeys.length || new Set(response.catalogs.map(catalog => catalog.sourceKey)).size !== sourceKeys.length
         || response.catalogs.some(catalog => !sourceKeys.includes(catalog.sourceKey))) throw new Error('Association source keys are not closed.');
       if (response.associations.length !== bodies.length || response.associations.some(association => !expectedKeys.has(association.bodyKey))
         || new Set(response.associations.map(association => association.bodyKey)).size !== bodies.length) throw new Error('Association body keys are not closed.');
       const mapped = (map: Map<string, string>, id: string) => { const value = map.get(id); if (!value) throw new Error('Unknown local catalog identity.'); return value; };
-      const catalogs = new Map<string, { window: EvidenceWindow; write: EntityAnalysisWrite; entityIds: Map<string, string>; mentionIds: Map<string, string> }>();
+      const catalogs = new Map<string, { window: SourceSnapshot; write: EntityAnalysisWrite; entityIds: Map<string, string>; mentionIds: Map<string, string> }>();
       const catalogIssues = new Map<string, string>();
       for (const [index, window] of windows.entries()) {
         const sourceKey = sourceKeys[index], catalog = response.catalogs.find(item => item.sourceKey === sourceKey)!;

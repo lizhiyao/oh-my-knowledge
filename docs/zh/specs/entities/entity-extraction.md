@@ -28,9 +28,11 @@
 
 ## 3. 契约与身份
 
-当前生产使用 `knowledge-body-first/v2`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
+当前生产使用 `knowledge-body-first/v3`，替换旧联合 typed 响应。[生成契约](../../reference/shared/knowledge-contract.md)分别标识正文／关联 prompt、结构 wire 和当前存储。
 
-当前正文输出／wire v2 使用 prompt v5，关联输出／wire v3 使用 prompt v4。这是模型响应及生成 profile 的 **BREAKING-API/COMPARABILITY**，不改变第 6 节的存储契约，不重评分历史输出。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+当前正文输出／wire v2 使用 prompt v8，关联输出／wire v3 使用 prompt v7。这是 Source3、journal／workflow3、来源感知输入与生成 profile 的 **BREAKING-SCHEMA/API/COMPARABILITY**；正文3／实体2／关联2／复核1不变，旧原件与分数保持冻结，[Source3 迁移](../knowledge/knowledge-sources.md#migration)使用独立副本。其它独立版本化的提取／测量协议继续保留冻结的 occurrence 定位及身份。
+
+正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及再做映射，跨段复用合法提及，分别复查来源独立指认的工件／代码状态及必要的组件、版本映射。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
 - Canonical 正文草稿：`{title,content:{segments:[{segmentId,text,evidence}],organization?},reuseRationale}`。每段完整保留必要条件、归因、否定、时间、例外、参与者立场和未知；标题、复用提示、引文和未来目录不能补正文遗漏。
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
@@ -45,7 +47,9 @@
 
 每个完整正文段直接引用支持重要条件、纠正、例外和未知的来源位置；归属依赖较早原文上下文时，将该锚点与主张证据一起保留。metadata 限定仍明确为 metadata，不伪造成原文 quote，也不将来源时间当事实时间。可读全文、目录描述或 rationale 不是该主张的直接依据。正文还必须表达内容本身，不能只存引文。
 
-对象提及是独立的身份导航义务。普通重复名称不必全部变成 mention，必要的身份出现位置仍需可核对。可选 typed 派生证据只能复用其引用正文段已有来源范围。精确位置匹配与来源保真判断分别检查。
+对于会变化的实现、生产默认、版本或完成状态，生成 prompt 要求每个受影响段落保留承载该说法的 `excerpt.coordinate.timestamp` 所示报告日期及说话者归因。正文明确日期来自消息 metadata，并保留其 UTC／时区性质；它不是事实发生、生效或本轮核验时间。evidence 仍逐字引用实际说法，在 `interpretation` 中标明日期来自同一 excerpt 的 `coordinate.timestamp` 及其原值，不将 metadata 日期伪造成 quote 或放进要求原文字面的 `requiredContexts`。轨迹没有 timestamp 时明确报告日期未知；文件／Git 按实际 provenance 和提交时间保留归因，不伪造消息或事实时间；不依赖历史状态的稳定方法不必增加日期。这项 prompt 要求不等于宿主已确定性校验日期归属的语义。
+
+对象提及是独立的身份导航义务。可选范围是该段已绑定的完整精确来源窗口，不仅限其引用的 excerpt 或 quote；同一 sourceKey 的其它片段中已有且支持该段指代的提及也可用于导航。这不补救主张证据缺失，也不允许借用其它 sourceKey 或仅靠标题确认身份。普通重复名称不必全部变成 mention，必要的身份出现位置仍需可核对。可选 typed 派生证据只能复用其引用正文段已有来源范围。精确位置匹配与来源保真判断分别检查。
 
 ## 4. 纠正与知识修订
 
@@ -53,7 +57,7 @@
 
 正文修订接收完整新 `KnowledgeDraft` 及 inline evidence；宿主重新读取每个 snapshot／version，核对精确 UTF-16 引文后才追加。旧 `citationLocators`／`--citations` 和平行 grounding 已替换。新正文有新 digest、待审且不继承 retain，旧投影变为 stale。
 
-`apply-associations` 固定正文修订／digest、目录修订及关联 generation，创建新待审投影；`review-associations` 只为该投影记录接受／拒绝。`rebuild-associations` 用新日志及关联调用，不再调用正文模型、不产生正文修订。正文生成仍从一个选定窗口开始；关联重建读取正文的全部精确来源，以宿主 `sourceKey` 分隔目录和局部实体／提及 ID。端点均绑定目录、目录修订和实体，跨目录关系不确认同一身份。来源不可用或写头过期时明确拒绝；纠正身份时仍在正文保留条件／否定／未知，目录编辑不静默转移主张。
+`apply-associations` 固定正文修订／digest、目录修订及关联 generation，创建新待审投影；`review-associations` 只为该投影记录接受／拒绝。`rebuild-associations` 用新日志及关联调用，不再调用正文模型、不产生正文修订。正文生成接收排序去重的精确来源集合；关联重建读取该正文实际引用的全部精确来源，以宿主 `sourceKey` 分隔目录和局部实体／提及 ID。端点均绑定目录、目录修订和实体，跨目录关系不确认同一身份。来源不可用或写头过期时明确拒绝；纠正身份时仍在正文保留条件／否定／未知，目录编辑不静默转移主张。
 
 ## 5. 领域与运行边界
 
@@ -61,13 +65,13 @@
 
 每阶段派发前记录精确来源、prompt／profile／wire、system／input、producer 证明和请求摘要，并先检查执行能力与可归档容量。正文和关联各有原生身份及完整执行器 JSON（或有界异常观测），先归档后解码／接纳。Refusal、失败部分输出、未知字段、工具／失败诊断、用量／cache 值及 reported flags 均保留；宿主发布不冒充 single run5 原生响应。
 
-正文先保存待审，再准备关联。不支持的 wire、引文或目录引用失败保留原证据；关联失败尽可能发布独立 failed 投影，不删除正文。各阶段默认 300 秒，无自动重试／重问／回退；阶段身份不证明 provider 请求次数、费用预算或质量。
+准备阶段零模型，发送要求明确确认精确 prepared `requestDigest`。正文先保存待审，再准备需要独立确认的关联请求。不支持的 wire、引文或目录引用失败保留原证据；关联失败尽可能发布独立 failed 投影，不删除正文。各阶段默认 300 秒，无自动重试／重问／回退；阶段身份不证明 provider 请求次数、费用预算或质量。
 
 只发送选定 excerpts、limitations 和明确来源归因，不将宿主 sourcePath／cwd 当语义 metadata。来源里的指令是数据，无权扩展读取或调用工具；模型工具／refusal／failure 结果不接纳为正常文本生成，用量或金额未报告时保持未知。
 
 ## 6. 当前存储契约
 
-当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 2。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
+当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 3。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
 
 `generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。生成 profile 匹配时，`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AnalyzedEntity } from '../entities/contracts.js';
-import type { EvidenceWindow, SourceResolution } from '../extraction/evidence.js';
+import type { TraceOrigin, SourceResolution } from '../sources.js';
+import type { SourceSummary } from './source-summary.js';
 
 export const EntityQuerySchema = z.strictObject({
   query: z.string().trim().max(512).default(''),
@@ -21,7 +22,7 @@ export interface EntityKnowledgeLink {
 export interface EntityCatalogRow extends AnalyzedEntity {
   analysisId: string; revisionId: string; generation: number; revisedAt: string;
   mentionCount: number;
-  sourceStatus: SourceResolution['status']; origin?: EvidenceWindow['origin'];
+  sourceStatus: SourceResolution['status']; origin?: TraceOrigin; source?: SourceSummary;
   knowledgeCount: number | null; outdatedKnowledgeCount: number | null;
 }
 export type EntitySearchRow = EntityCatalogRow & { surfaces: string[] };

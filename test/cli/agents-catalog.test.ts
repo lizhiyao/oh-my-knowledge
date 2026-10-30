@@ -15,9 +15,11 @@ import { join } from 'node:path';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
 import { runCommand } from '../helpers/run-command.js';
 import AgentsCommand from '../../src/cli/commands/agents.js';
-import * as executors from '../../src/executors/index.js';
-import type { ExecutorFn } from '../../src/executors/contracts/ports.js';
-import { authoredKnowledgeResponse } from './knowledge-fixtures.js';
+import { createExtractionArchiveProducer } from '../../src/executors/archive.js';
+import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
+import type { KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
+import { SOURCE_CAPTURE_MAX_SELECTED_BYTES } from '../../src/knowledge/application/source-capture.js';
+import { AgentDescriptorSchema, agentStorageLayout, collectAgentLogs } from '../../src/observability/agents/index.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
 import {
@@ -92,54 +94,64 @@ const SIBLING = {
 };
 
 describe('omk agents 与本机登记表扩展', () => {
-  it('extract rejects oversized input locally, then extracts and reopens an explicit inclusive record range', async () => {
+  it('extract saves an explicit original record range and prepares the full Source3 request without dispatch', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));
     const path = join(sandbox.home, '.sibling-host', 'projects', '-repo-a', 'session-a.jsonl');
     const message = (text: string, uuid: string) => ({ type: 'user', uuid, sessionId: 'session-a',
       message: { role: 'user', content: text } });
-    writeFileSync(path, [message('中'.repeat(400_000), 'u1'), message('Alpha 使用 Beta', 'u2')].map(value => JSON.stringify(value)).join('\n'));
-    const execute = vi.fn<ExecutorFn>(async input => ({
-      ok: true, output: JSON.stringify(authoredKnowledgeResponse(input.prompt, input.outputFormat?.mode === 'json-schema' && input.outputFormat.name.includes('association') ? 'association' : 'body')),
-      durationMs: 1, durationApiMs: 1, inputTokens: 7, outputTokens: 9, cacheReadTokens: 0, cacheCreationTokens: 0,
-      costUSD: 0, stopReason: 'end_turn', numTurns: 1,
-    }));
-    const create = vi.spyOn(executors, 'createExecutor').mockReturnValue(execute);
+    const selectedRaw = JSON.stringify(message('Alpha 使用 Beta', 'u2'));
+    writeFileSync(path, [JSON.stringify(message('中'.repeat(Math.ceil(SOURCE_CAPTURE_MAX_SELECTED_BYTES / 3)), 'u1')), selectedRaw].join('\n'));
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async () => { throw new Error('Preparation must never dispatch a model.'); });
+    const inspect = vi.fn<KnowledgeGenerationModel['inspect']>(() => ({ producerId: 'authored-agents-host', producerRevision: 'fixture-v1', sourceChannels: [],
+      maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }));
+    const model: KnowledgeGenerationModel = { executor: 'codex', model: 'fixture', timeoutMs: 300_000, inspect, invoke };
+    const factory = vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockReturnValue(model);
     const options = { env: sandbox.env, cwd: sandbox.home };
-    // Catalog location is captured at module load; the existing process boundary owns HOME discovery.
-    const collected = await runCli(['agents', 'collect', '--dir', sandbox.outDir, '--json'], options);
-    const report = JSON.parse(collected.stdout) as AgentCollectionReport;
+    // The collector has an explicit fixture home/catalog; this test exercises source commands without stale dist.
+    const report = collectAgentLogs(undefined, { layout: agentStorageLayout(sandbox.outDir),
+      detect: { homeDirectory: sandbox.home, pathDirectories: [], descriptors: [AgentDescriptorSchema.parse(SIBLING)] } });
     assert.ok(report.sessions.length, JSON.stringify(report));
     const workspace = join(sandbox.home, 'knowledge');
     const args = ['extract', '--session', report.sessions[0].runId, '--dir', sandbox.outDir, '--knowledge', workspace, '--executor', 'codex', '--model', 'fixture', '--json'];
     for (const values of [['list', '--generation-policy', '{}'], [...args, '--generation-policy', '{invalid'], [...args, '--generation-policy', '{}']]) {
       await expect(runCommand(AgentsCommand, values, options)).rejects.toMatchObject({ code: 2 });
     }
+    for (const values of [args, [...args, '--start-record', '0'], [...args, '--end-record', '1']]) {
+      await expect(runCommand(AgentsCommand, values, options)).rejects.toMatchObject({ code: 2, message: expect.stringContaining('--start-record') });
+    }
     await expect(runCommand(AgentsCommand, [...args, '--start-record', '2', '--end-record', '1'], options)).rejects.toMatchObject({ code: 2 });
     expect(existsSync(workspace)).toBe(false);
-    await expect(runCommand(AgentsCommand, args, options)).rejects.toMatchObject({ code: 1, message: expect.stringContaining('capacity_exceeded') });
-    expect(create).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
-    const output = await runCommand(AgentsCommand, [...args, '--start-record', '1', '--end-record', '1'], options);
-    const result = JSON.parse(output.stdout);
-    expect(result.snapshot).toMatchObject({ startRecord: 1, endRecord: 1, records: [{ recordIndex: 1 }] });
-    expect(result.run.journal).toMatchObject({ status: 'completed', bodies: [expect.anything()], stages: [{ stageKind: 'body', state: 'completed' }, { stageKind: 'association', state: 'completed' }] });
-    expect(result.snapshot.limitations).toContain('Explicit record range; surrounding context may be missing.');
-    expect(execute).toHaveBeenCalledTimes(2);
-    const app = createLocalKnowledgeApplication(workspace);
-    expect(app.runs().current.find(run => run.runId === result.run.journal.runId)).toEqual(result.run.journal);
-    expect(app.inspect(result.run.journal.runId).nativeOutcomes).toHaveLength(2);
-    expect(app.detail(result.run.journal.bodies[0].knowledgeId).sources[0]).toMatchObject({ status: 'available', window: { startRecord: 1, endRecord: 1 } });
-    execute.mockImplementation(async () => ({ ok: false, output: null, error: 'fixture failure',
-      durationMs: 1, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-      costUSD: 0, stopReason: 'error', numTurns: 0 }));
+    await expect(runCommand(AgentsCommand, [...args, '--start-record', '0', '--end-record', '1'], options))
+      .rejects.toMatchObject({ code: 1, message: expect.stringContaining('knowledge_capacity_exceeded') });
+    expect(factory).not.toHaveBeenCalled(); expect(invoke).not.toHaveBeenCalled(); expect(existsSync(workspace)).toBe(false);
     const selectedArgs = [...args, '--start-record', '1', '--end-record', '1'];
-    await expect(runCommand(AgentsCommand, selectedArgs, options)).rejects.toMatchObject({ code: 1,
-      stdout: expect.stringContaining('"status": "failed"') });
-    try { await runCommand(AgentsCommand, selectedArgs.filter(arg => arg !== '--json'), options); assert.fail('Failed extraction must exit 1'); }
-    catch (error) {
-      expect(error).toMatchObject({ code: 1, message: expect.stringContaining(`--workspace ${workspace} --json`) });
-      expect((error as { stdout: string }).stdout).not.toContain('提炼完成');
-    }
-    create.mockRestore();
+    const result = JSON.parse((await runCommand(AgentsCommand, selectedArgs, options)).stdout);
+    expect(result.preview.items[0]).toMatchObject({ resolvedSelection: { sourceKind: 'agent_trace', sourceId: report.sessions[0].runId,
+      traceKind: 'claude', recordRanges: [{ startRecord: 1, endRecord: 1 }] }, retainedUnits: [{ text: selectedRaw, coordinate: { recordIndex: 1 } }] });
+    expect(result.capture).toMatchObject({ sendAuthorization: 'not_granted', saveManifest: { items: [{ reused: false }] } });
+    expect(result.sources).toEqual(result.capture.saveManifest.items.map(({ snapshotId, sourceVersion }: { snapshotId: string; sourceVersion: string }) => ({ snapshotId, sourceVersion })));
+    expect(result.generationInput).toEqual({ sources: result.sources }); expect(result.modelCalls).toBe(0);
+    expect(result.prepared.journal).toMatchObject({ schemaVersion: 3, workflowId: 'knowledge-body-first/v3', status: 'active', bodies: [],
+      sources: result.sources.map((source: unknown) => expect.objectContaining(source)), stages: [{ stageKind: 'body', state: 'prepared' }] });
+    const stage = result.prepared.journal.stages[0];
+    expect(stage.input).toContain('Alpha 使用 Beta'); expect(stage.input).not.toContain('中'); expect(stage.system.length).toBeGreaterThan(0);
+    // A collection display title comes from a message; it is not an original trace title.
+    expect(result.capture.sources[0].snapshot.origin).toBeUndefined();
+    expect(result.nextCommand).toContain('omk observe knowledge generate');
+    expect(result.nextCommand).toContain(`--workspace ${workspace}`); expect(result.nextCommand).toContain(`--run-id ${result.prepared.journal.runId}`);
+    expect(result.nextCommand).toContain(`--confirm-request ${stage.requestDigest}`);
+    expect(factory).toHaveBeenCalledExactlyOnceWith('codex', 'fixture', createExtractionArchiveProducer);
+    expect(inspect).toHaveBeenCalledOnce(); expect(invoke).not.toHaveBeenCalled();
+    const app = createLocalKnowledgeApplication(workspace);
+    expect(app.runs().current.find(run => run.runId === result.prepared.journal.runId)).toEqual(result.prepared.journal);
+    expect(app.inspect(result.prepared.journal.runId).nativeOutcomes.every(stage => stage.outcome === undefined)).toBe(true);
+    expect(existsSync(join(workspace, 'generation-journals', 'outcomes'))).toBe(false);
+    const replay = JSON.parse((await runCommand(AgentsCommand, selectedArgs, options)).stdout);
+    expect(replay.sources).toEqual(result.sources); expect(replay.capture.saveManifest).toMatchObject({ actualWrittenBytes: 0, items: [{ reused: true }] });
+    expect(replay.prepared).toEqual(result.prepared); expect(invoke).not.toHaveBeenCalled(); expect(inspect).toHaveBeenCalledOnce();
+    const text = await runCommand(AgentsCommand, selectedArgs.filter(arg => arg !== '--json'), options);
+    expect(text.stdout).toContain(JSON.stringify(stage.system)); expect(text.stdout).toContain(stage.requestDigest);
+    expect(text.stderr).toContain(result.nextCommand); expect(text.stdout).not.toContain('提炼完成'); expect(invoke).not.toHaveBeenCalled();
   });
   it('list 把扩展条目当成本机登记表的一部分，并按同一身份与日志根计数', async () => {
     const sandbox = createSandbox(catalogJson([SIBLING]));
@@ -207,7 +219,7 @@ describe('omk agents 与本机登记表扩展', () => {
     const workspace = join(sandbox.home, 'knowledge');
     const invalid = await runCliFailing([
       'agents', 'extract', '--session', report.sessions[0].runId,
-      '--dir', sandbox.outDir, '--knowledge', workspace,
+      '--dir', sandbox.outDir, '--knowledge', workspace, '--start-record', '0', '--end-record', '0',
     ], 2, { env: { ...sandbox.env, OMK_MODEL: '' }, cwd: sandbox.home });
     assert.match(invalid.stderr, /--model/);
     assert.equal(existsSync(workspace), false, '缺少模型时不能先创建工作区或归档来源');
@@ -218,14 +230,14 @@ describe('omk agents 与本机登记表扩展', () => {
     mkdirSync(sandbox.outDir, { recursive: true });
     writeFileSync(join(sandbox.outDir, 'collection.json'), JSON.stringify({ schemaVersion: 'agent-collection-v1' }));
 
-    const chinese = await runCliFailing(['agents', 'extract', '--session', 'trace-1', '--dir', sandbox.outDir], 1, {
+    const chinese = await runCliFailing(['agents', 'extract', '--session', 'trace-1', '--dir', sandbox.outDir, '--start-record', '0', '--end-record', '0'], 1, {
       env: sandbox.env,
       cwd: sandbox.home,
     });
     assert.match(`${chinese.stdout}${chinese.stderr}`, /采集报告是 agent-collection-v1 口径/);
 
     const english = await runCliFailing(
-      ['agents', 'extract', '--session', 'trace-1', '--lang', 'en', '--dir', sandbox.outDir],
+      ['agents', 'extract', '--session', 'trace-1', '--lang', 'en', '--dir', sandbox.outDir, '--start-record', '0', '--end-record', '0'],
       1,
       { env: sandbox.env, cwd: sandbox.home },
     );

@@ -6,7 +6,12 @@ import { KnowledgeApplication } from './application.js';
 import { KnowledgeReviewApplication } from './review.js';
 import type { KnowledgeActor } from '../contracts.js';
 import { FileKnowledgeReviewStore } from '../adapters/review-store.js';
-import { TraceEvidenceStore } from '../adapters/trace-evidence.js';
+import { FileSourceStore } from '../adapters/source-store.js';
+import { assertSourceMigrationComplete } from '../../evidence/storage/knowledge-workspace.js';
+import type { SourceCaptureService } from './source-capture.js';
+import { createLocalSourceCapture, type LocalSourceScope } from './local-source-host.js';
+import { assertSourceWorkspaceWritable } from '../adapters/source-workspace.js';
+import { createLocalSourceUpdates } from './local-source-updates.js';
 import { FileKnowledgeStore } from '../adapters/knowledge-store.js';
 import { FileGenerationJournalStore } from '../adapters/generation-journal-store.js';
 import { FileKnowledgeAssociationStore } from '../adapters/association-store.js';
@@ -22,13 +27,19 @@ import { entityLinkTextHash } from '../adapters/entity-link-api-producer.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 
 /** The root is an explicit user choice shared by CLI and Studio. */
-export function createLocalKnowledgeApplication(root: string): KnowledgeApplication {
+export function createLocalKnowledgeApplication(root: string, options: { sourceCapture?: SourceCaptureService; sourceScope?: LocalSourceScope; actor?: KnowledgeActor } = {}): KnowledgeApplication {
   if (!root.trim()) throw new Error('Explicit knowledge workspace required.');
   const workspace = resolve(root);
+  assertSourceMigrationComplete(workspace);
+  if (options.sourceScope && options.sourceCapture) throw new Error('Supply either trusted source scope or an existing capture service.');
+  const sourceCapture = options.sourceCapture ?? (options.sourceScope ? createLocalSourceCapture(workspace, options.sourceScope) : undefined);
   const knowledge = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace);
   const entities = new FileEntityAnalysisStore(join(workspace, 'entities'), workspace);
   return new KnowledgeApplication({
-    evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace),
+    assertWritable: () => assertSourceWorkspaceWritable(workspace),
+    sources: new FileSourceStore(join(workspace, 'sources'), workspace),
+    ...(sourceCapture ? { sourceCapture } : {}),
+    ...(options.sourceScope ? { sourceUpdates: createLocalSourceUpdates(workspace, options.sourceScope) } : {}),
     knowledge,
     journals: new FileGenerationJournalStore(join(workspace, 'generation-journals'), workspace),
     associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
@@ -36,7 +47,7 @@ export function createLocalKnowledgeApplication(root: string): KnowledgeApplicat
     entities,
     id: randomUUID, now: () => new Date().toISOString(),
     hash: (value) => `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`,
-    actor: { actorKind: 'human', actorId: 'local-user' },
+    actor: options.actor ?? { actorKind: 'human', actorId: 'local-user' },
   });
 }
 
@@ -96,8 +107,9 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
 export function createLocalKnowledgeReview(root: string, actor?: KnowledgeActor): KnowledgeReviewApplication {
   if (!root.trim()) throw new Error('Explicit review workspace required.');
   const workspace = resolve(root), knowledge = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace);
+  assertSourceMigrationComplete(workspace);
   const entities = new FileEntityAnalysisStore(join(workspace, 'entities'), workspace);
   return new KnowledgeReviewApplication({ knowledge, entities, associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
-    evidence: new TraceEvidenceStore(join(workspace, 'sources'), workspace), reviews: new FileKnowledgeReviewStore(join(workspace, 'reviews'), 'local', workspace),
-    actor, now: () => new Date().toISOString() });
+    sources: new FileSourceStore(join(workspace, 'sources'), workspace), reviews: new FileKnowledgeReviewStore(join(workspace, 'reviews'), 'local', workspace),
+    actor, now: () => new Date().toISOString(), assertWritable: () => assertSourceWorkspaceWritable(workspace) });
 }

@@ -6,12 +6,12 @@ import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../enti
 import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
-import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 export class FileEntityAnalysisStore implements EntityAnalysisStore {
   private readonly root: string;
-  constructor(root: string, private readonly workspaceRoot = root) { if (!root.trim()) throw new Error('Explicit entity root required.'); this.root = resolve(root); }
+  constructor(root: string, private readonly workspaceRoot = root, private readonly migrationWriteContext?: SourceMigrationWriteContext) { if (!root.trim()) throw new Error('Explicit entity root required.'); this.root = resolve(root); }
   private path(id: string) { return join(this.root, `${EntityAnalysisWriteSchema.shape.analysisId.parse(id)}.json`); }
   private checkRoot() {
     if (existsSync(this.root)) { const stat = lstatSync(this.root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid entity directory.'); }
@@ -51,6 +51,6 @@ export class FileEntityAnalysisStore implements EntityAnalysisStore {
         publishKnowledgeBytes(path, JSON.stringify(next, null, 2), this.workspaceRoot, !existing);
       } else confirmKnowledgePublication(path, this.workspaceRoot);
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;
-    });
+    }, this.migrationWriteContext);
   }
 }

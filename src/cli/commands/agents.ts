@@ -1,10 +1,11 @@
 import { createExtractionArchiveProducer } from '../../executors/archive.js';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
+import { knowledgeCommand } from '../lib/knowledge-output.js';
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
 import type { AgentCollectionEntry } from '../../observability/agents/index.js';
@@ -25,8 +26,8 @@ function formatEntryLine(entry: AgentCollectionEntry, lang: 'zh' | 'en'): string
 
 export default class AgentsCommand extends BaseCommand {
   static description = description(
-    '识别本机已安装的 Agent，采集其日志并映射成统一格式，再提炼候选知识。',
-    'Detect installed agents, collect their logs into the unified trace format, and extract candidate knowledge.',
+    '识别本机 Agent、采集日志，并从明确选定的原记录准备知识生成请求；不发送模型。',
+    'Detect local agents, collect logs, and prepare knowledge generation from explicitly selected original records without model dispatch.',
   );
 
   static args = {
@@ -34,8 +35,8 @@ export default class AgentsCommand extends BaseCommand {
       required: true,
       options: ['list', 'collect', 'extract'],
       description: description(
-        '操作：list 识别安装情况，collect 采集日志并映射成统一 Trace IR，extract 从已采集日志提炼候选知识。',
-        'list: inspect installs. collect: gather logs into normalized Trace IR. extract: draft candidate knowledge from collected logs.',
+        '操作：list 识别安装情况，collect 采集日志，extract 本地保存选定原记录并展示完整生成请求；发送须另行确认。',
+        'list: inspect installs. collect: gather logs. extract: save selected original records locally and display the complete generation request; dispatch requires separate confirmation.',
       ),
     }),
   };
@@ -55,8 +56,8 @@ export default class AgentsCommand extends BaseCommand {
     session: Flags.string({
       description: description('extract：采集报告里的 runId。', 'extract: a runId from the collection report.'),
     }),
-    'start-record': Flags.integer({ min: 0, description: description('extract：从零开始的非空记录序号，包含。', 'extract: zero-based nonempty record index, inclusive.') }),
-    'end-record': Flags.integer({ min: 0, description: description('extract：最后一条记录序号，包含。', 'extract: last record index, inclusive.') }),
+    'start-record': Flags.integer({ min: 0, description: description('extract 必填：从零开始的非空原记录序号，包含；保留同条记录的全部事件。', 'Required for extract: zero-based nonempty original record index, inclusive; retains every event in the record.') }),
+    'end-record': Flags.integer({ min: 0, description: description('extract 必填：最后一条非空原记录序号，包含；须同时指定起止范围。', 'Required for extract: last nonempty original record index, inclusive; provide both range bounds.') }),
     knowledge: Flags.string({
       description: description('extract：知识工作区，默认全局知识目录。', 'extract: knowledge workspace; defaults to the global knowledge dir.'),
     }),
@@ -75,13 +76,18 @@ export default class AgentsCommand extends BaseCommand {
   static examples = [
     '<%= config.bin %> agents list',
     '<%= config.bin %> agents collect --limit 50',
-    '<%= config.bin %> agents extract --session <runId> --executor codex --model <model>',
+    '<%= config.bin %> agents extract --session <runId> --start-record 0 --end-record 0 --executor codex --model <model> --json',
     '<%= config.bin %> agents extract --session <runId> --start-record 10 --end-record 30 --executor codex --model <model>',
   ];
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(AgentsCommand);
     const lang = this.lang;
+    if (args.operation === 'extract' && (flags['start-record'] === undefined || flags['end-record'] === undefined)) {
+      this.error(lang === 'zh'
+        ? 'extract 须同时指定 --start-record 与 --end-record：零基、包含边界的非空原记录序号，同条记录的全部事件都会纳入；采集报告的事件数不能代替原记录数。'
+        : 'extract requires both --start-record and --end-record: zero-based inclusive nonempty original record indices, retaining all events in each record; collection event counts are not original record counts.', { exit: 2 });
+    }
     if (flags['start-record'] !== undefined || flags['end-record'] !== undefined) {
       if (args.operation !== 'extract') this.error(lang === 'zh' ? '记录范围参数仅用于 extract。' : 'Record range flags are only valid for extract.', { exit: 2 });
       if (!Number.isSafeInteger(flags['start-record'] ?? 0) || !Number.isSafeInteger(flags['end-record'] ?? 0)
@@ -175,8 +181,8 @@ export default class AgentsCommand extends BaseCommand {
         this.logToStderr(lang === 'zh' ? `采集报告已写入：${written}` : `Collection report written to: ${written}`);
         const sample = report.sessions[0]?.runId ?? '<runId>';
         this.logToStderr(lang === 'zh'
-          ? `下一步：omk agents extract --session ${shellQuoteArg(sample)}\n在 Studio 的 Agents 页查看：omk studio`
-          : `Next: omk agents extract --session ${shellQuoteArg(sample)}\nTo review it in Studio: omk studio`);
+          ? `下一步：选定零基非空原记录范围后，运行 omk agents extract --session ${shellQuoteArg(sample)} --start-record <first> --end-record <last>，本地保存并核对请求，不发送模型。\n在 Studio 的 Agents 页查看：omk studio`
+          : `Next: choose zero-based nonempty original record indices, then run omk agents extract --session ${shellQuoteArg(sample)} --start-record <first> --end-record <last> to save locally and inspect the request without model dispatch.\nTo review it in Studio: omk studio`);
         return;
       }
 
@@ -206,7 +212,7 @@ export default class AgentsCommand extends BaseCommand {
           ? `采集报告里没有会话 ${runId}。`
           : `Session ${runId} is not in the collection report.`, { exit: 1 });
       }
-      if (!existsSync(session.sourcePath) || !statSync(session.sourcePath).isFile()) {
+      if (!existsSync(session.sourcePath) || !lstatSync(session.sourcePath).isFile()) {
         this.error(lang === 'zh'
           ? `原始日志已不可读：${session.sourcePath}`
           : `Source log is no longer readable: ${session.sourcePath}`, { exit: 1 });
@@ -222,39 +228,47 @@ export default class AgentsCommand extends BaseCommand {
           : 'No generation model; pass --model.', { exit: 2 });
       }
       const { createLocalKnowledgeApplication } = await import('../../knowledge/application/local.js');
-      const { configuredKnowledgeGenerationModel } = await import('../../knowledge/adapters/generation-executor.js');
-      const app = createLocalKnowledgeApplication(settings.workspace);
+      const { createLocalKnowledgeGenerationModel } = await import('../../knowledge/adapters/generation-host.js');
+      const { executeKnowledgeOperation, knowledgeFailureCode } = await import('../../knowledge/application/operations.js');
+      const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope: {
+        scopeVersion: 'knowledge-source-scope/v1', projects: [],
+        // Collection titles are display labels derived from messages, not original trace titles.
+        traces: [{ sourceId: session.runId, traceKind: session.sourceKind, path: session.sourcePath }],
+      } });
       this.logToStderr(lang === 'zh'
-        ? `${session.agentId} / ${session.sourceKind} · 仅发送选定来源片段；费用以执行器实际报告为准。`
-        : `${session.agentId} / ${session.sourceKind} · Only selected excerpts are sent; cost depends on executor reporting.`);
-      const captured = app.capture({
-        path: session.sourcePath,
-        startRecord: flags['start-record'], endRecord: flags['end-record'],
-        ...(session.title ? { origin: { threadId: session.runId, title: session.title } } : {}),
-      }, signal);
-      const run = await app.generate(
-        captured.snapshotId,
-        configuredKnowledgeGenerationModel(settings.executor, settings.model, createExtractionArchiveProducer(process.env)),
-        undefined,
-        signal,
-      );
-      if (flags.json) {
-        this.log(JSON.stringify({ session, snapshot: captured, run }, null, 2));
-        if (run.journal.status !== 'completed') this.exit(1);
-        return;
+        ? `${session.agentId} / ${session.sourceKind} · 本地保存选定原记录并准备完整请求；本命令不发送模型。`
+        : `${session.agentId} / ${session.sourceKind} · Save selected original records locally and prepare the complete request; this command does not dispatch a model.`);
+      try {
+        const preview = await executeKnowledgeOperation(app, { operation: 'preview-sources', selections: [{
+          sourceKind: 'agent_trace', sourceId: session.runId, traceKind: session.sourceKind,
+          recordRanges: [{ startRecord: flags['start-record']!, endRecord: flags['end-record']! }],
+        }] }, signal);
+        const capture = await executeKnowledgeOperation(app, { operation: 'capture', previewDigest: preview.previewDigest,
+          selections: preview.items.map(item => item.resolvedSelection) }, signal);
+        const sources = capture.saveManifest.items.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
+        const prepared = await executeKnowledgeOperation(app, { operation: 'prepare-generation', sources,
+          executor: settings.executor, model: settings.model }, signal,
+        (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer));
+        const { journal } = prepared, pending = journal.stages.find(stage => stage.state === 'prepared');
+        const nextCommand = prepared.nextAction === 'continue_stage' && pending?.stageKind === 'body'
+          ? knowledgeCommand(settings.workspace, 'generate', { input: 'sources.json', 'run-id': journal.runId,
+            executor: journal.executor, model: journal.model, 'confirm-request': pending.requestDigest, json: true })
+          : prepared.nextAction === 'continue_stage' && pending?.stageKind === 'association'
+            ? knowledgeCommand(settings.workspace, 'continue-stage', { id: journal.runId, generation: journal.generation,
+              executor: journal.executor, model: journal.model, 'confirm-request': pending.requestDigest, json: true })
+            : knowledgeCommand(settings.workspace, 'inspect', { id: journal.runId, json: true });
+        const result = { session, preview, capture, sources, prepared, generationInput: { sources }, modelCalls: 0, nextCommand };
+        if (flags.json) { this.log(JSON.stringify(result, null, 2)); return; }
+        this.log(lang === 'zh'
+          ? `来源已本地保存；生成任务 ${journal.runId} 为 ${journal.status}。本次模型调用：0。以下为完整预览、保存结果和准备请求：`
+          : `Sources saved locally; generation run ${journal.runId} is ${journal.status}. Model calls in this command: 0. Complete preview, capture and prepared request:`);
+        this.log(JSON.stringify(result, null, 2));
+        this.logToStderr(lang === 'zh'
+          ? `先核对完整请求。若下一步为 generate，将 generationInput 原样保存为 sources.json，再显式确认发送正文；关联须另行核对并确认。重复导入复用同一默认任务，未知结果不重发。\n${nextCommand}`
+          : `Inspect the complete request first. For generate, save generationInput unchanged as sources.json, then explicitly confirm body dispatch; inspect and confirm associations separately. Reimport reuses the default run and never redispatches unknown outcomes.\n${nextCommand}`);
+      } catch (cause) {
+        this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${knowledgeCommand(settings.workspace, 'runs', { json: true })}`, { exit: 1 });
       }
-      if (run.journal.status !== 'completed') this.error((lang === 'zh' ? `提炼未完成（${run.journal.status}，${run.journal.runId}）。先核对已保存结果：` : `Extraction incomplete (${run.journal.status}, ${run.journal.runId}). Inspect saved results first:`)
-        + `\nomk observe knowledge runs --workspace ${shellQuoteArg(settings.workspace)} --json`);
-      this.log(lang === 'zh'
-        ? `提炼完成：${run.journal.bodies.length} 条候选知识（来源格式 ${captured.sourceKind}，快照 ${captured.snapshotId}）`
-        : `Extracted ${run.journal.bodies.length} candidate(s) from ${captured.sourceKind} (snapshot ${captured.snapshotId}).`);
-      for (const committed of run.journal.bodies) {
-        const detail = app.detail(committed.knowledgeId, committed.revisionId);
-        this.log(`- ${detail.revision.title} · ${detail.revision.content.segments.length} 个正文段 · ${committed.knowledgeId}`);
-      }
-      this.logToStderr(lang === 'zh'
-        ? `下一步：omk observe knowledge list --workspace ${shellQuoteArg(settings.workspace)}`
-        : `Next: omk observe knowledge list --workspace ${shellQuoteArg(settings.workspace)}`);
     });
   }
 }

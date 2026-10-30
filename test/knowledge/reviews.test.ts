@@ -10,7 +10,8 @@ import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeReviewStore } from '../../src/knowledge/adapters/review-store.js';
-import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import { knowledgeReviewSources, type KnowledgeContentReviewInput } from '../../src/knowledge/reviews.js';
 import { validateKnowledgeReviewHistory } from '../../src/knowledge/review-history.js';
@@ -21,16 +22,16 @@ afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSy
 const agent = { actorKind: 'agent' as const, actorId: 'codex:review-fixture', executionRef: 'fixture-execution' };
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'omk-review-')); roots.push(root);
-  const app = createLocalKnowledgeApplication(root), evidence = new TraceEvidenceStore(join(root, 'sources'), root);
+  const app = createLocalKnowledgeApplication(root), sourceStore = new FileSourceStore(join(root, 'sources'), root);
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root), entities = new FileEntityAnalysisStore(join(root, 'entities'), root);
   const associations = new FileKnowledgeAssociationStore(join(root, 'associations'), 'local', knowledge, entities, root);
   const store = new FileKnowledgeReviewStore(join(root, 'reviews'), 'local', root);
-  const sources = ['Alpha', 'Beta'].map((text, index) => app.capture({ path: join(root, `source-${index}.jsonl`), records: [{ recordIndex: index,
+  const sources = ['Alpha', 'Beta'].map((text, index) => captureTraceFixture(root, { path: join(root, `source-${index}.jsonl`), records: [{ recordIndex: index,
     raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }) }] }));
   const command = bodyWrite(); command.revision.content.segments = sources.map((source, index) => ({ segmentId: `s${index + 1}`, text: `${index ? 'Beta' : 'Alpha'} is a scoped source assertion, not verified truth.`,
     evidence: [{ source: { snapshotId: source.snapshotId, sourceVersion: source.sourceVersion }, selection: { evidenceRef: source.excerpts[0].evidenceRef, start: 0, end: source.excerpts[0].text.length, quote: source.excerpts[0].text }, basis: 'source_assertion' }] }));
   command.revision.bodyDigest = knowledgeBodyDigest(command.revision); knowledge.write(command, bodyActor);
-  const bodyRef = knowledgeBodyRef(command.revision), review = new KnowledgeReviewApplication({ knowledge, entities, associations, evidence, reviews: store, actor: agent, now: () => bodyAt });
+  const bodyRef = knowledgeBodyRef(command.revision), review = new KnowledgeReviewApplication({ knowledge, entities, associations, sources: sourceStore, reviews: store, actor: agent, now: () => bodyAt });
   const identity = () => { const status = review.status(bodyRef); return { requestId: randomUUID(), bodyRef, sources: knowledgeReviewSources(command.revision), expectedGeneration: status.generation!, expectedHeadEventId: status.headEventId }; };
   const content = (overrides: Partial<KnowledgeContentReviewInput> = {}): KnowledgeContentReviewInput => ({ ...identity(), status: 'needs_revision', reason: 'The source scope needs another review.', limitations: [],
     findings: [{ problemKind: 'omission', description: 'The entire project decision section is absent.', segmentIds: [] }], ...overrides });
@@ -54,7 +55,7 @@ function fixture() {
     return { projectionRevisionId, ref: { analysisId, entityRevisionId: revisionId, entityId, mentionIds: [mentionId] } };
   }
   const file = () => join(root, 'reviews', readdirSync(join(root, 'reviews')).find(name => name.endsWith('.json'))!);
-  return { root, app, evidence, knowledge, entities, associations, store, sources, command, bodyRef, review, identity, content, projection, linkedProjection, file };
+  return { root, app, sourceStore, knowledge, entities, associations, store, sources, command, bodyRef, review, identity, content, projection, linkedProjection, file };
 }
 describe('exact knowledge review and task-use ledger', () => {
   it('keeps no record distinct from failed reads and accepts only a trusted host actor', () => {
@@ -84,7 +85,7 @@ describe('exact knowledge review and task-use ledger', () => {
   });
   it('uses CAS and actor-bound receipts, retries only an identical request, and validates inside the shared lock', () => {
     const f = fixture(), command = f.content(), observed: boolean[] = [];
-    const read = f.evidence.read.bind(f.evidence); vi.spyOn(f.evidence, 'read').mockImplementation((id, version) => { observed.push(existsSync(join(f.root, '.knowledge-write.lock'))); return read(id, version); });
+    const read = f.sourceStore.read.bind(f.sourceStore); vi.spyOn(f.sourceStore, 'read').mockImplementation((id, version) => { observed.push(existsSync(join(f.root, '.knowledge-write.lock'))); return read(id, version); });
     const receipt = f.review.reviewContent(command), bytes = readFileSync(f.file());
     expect(observed.length).toBeGreaterThan(0); expect(observed.every(Boolean)).toBe(true);
     expect(createLocalKnowledgeReview(f.root, agent).reviewContent(command)).toEqual(receipt); expect(readFileSync(f.file())).toEqual(bytes);
@@ -120,7 +121,7 @@ describe('exact knowledge review and task-use ledger', () => {
   it('keeps all five use signals separate, binds historical consumption exactly and permits missing original sources', () => {
     const f = fixture(); f.review.reviewContent(f.content());
     const updated = f.app.revise(f.bodyRef.knowledgeId, f.bodyRef.revisionId, 1, { title: 'New body revision', content: f.command.revision.content, reuseRationale: f.command.revision.reuseRationale }, 'Explicit new body fixture');
-    for (const source of f.sources) f.app.deleteSource(source.snapshotId);
+    for (const source of f.sources) f.app.deleteSource(sourceRef(source));
     for (const signal of ['provided', 'read', 'reported_use', 'observed_help', 'controlled_effect'] as const) f.review.recordUse({ ...f.identity(), taskRef: 'task:exact-consumer', query: 'What scope applies to Alpha?', segmentIds: ['s1'], signal,
       reason: `Explicit ${signal} fixture; signals do not imply causation.`, issueKind: 'source_unavailable', evidenceRefs: signal === 'observed_help' || signal === 'controlled_effect' ? ['comparison:fixture-current-versus-baseline'] : [] });
     const historical = f.review.status(f.bodyRef), current = f.review.status(knowledgeBodyRef(updated.revision));
@@ -138,7 +139,7 @@ describe('exact knowledge review and task-use ledger', () => {
     f.review.reviewContent(input); const bytes = readFileSync(f.file());
     expect(() => f.review.reviewContent(f.content({ findings: [{ problemKind: 'scope_error', description: 'A changed quote must fail.', segmentIds: ['s1'], evidence: [{ ...evidence, selection: { ...evidence.selection, quote: 'Beta' } }] }] }))).toThrow('evidence');
     expect(readFileSync(f.file())).toEqual(bytes);
-    const later = f.app.capture({ path: join(f.root, 'later-task.jsonl'), records: [{ recordIndex: 2,
+    const later = captureTraceFixture(f.root, { path: join(f.root, 'later-task.jsonl'), records: [{ recordIndex: 2,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Gamma' }] } }) }] });
     const laterEvidence = { ...evidence, source: { snapshotId: later.snapshotId, sourceVersion: later.sourceVersion },
       selection: { evidenceRef: later.excerpts[0].evidenceRef, start: 0, end: 5, quote: 'Gamma' } };
@@ -147,7 +148,7 @@ describe('exact knowledge review and task-use ledger', () => {
     f.review.recordUse({ ...f.identity(), taskRef: 'task:later-result', query: 'What happened with Gamma?', segmentIds: ['s1'], signal: 'read',
       reason: 'Task evidence may reference its separately registered outcome.', evidence: [laterEvidence] });
     expect(f.review.status(f.bodyRef).usage[0].evidence).toEqual([laterEvidence]);
-    f.app.deleteSource(f.sources[0].snapshotId); expect(f.review.status(f.bodyRef).content.events[0]).toMatchObject({ findings: [{ evidence: [evidence] }] });
+    f.app.deleteSource(sourceRef(f.sources[0])); expect(f.review.status(f.bodyRef).content.events[0]).toMatchObject({ findings: [{ evidence: [evidence] }] });
     f.review.reviewContent(f.content({ status: 'reviewed_with_limits', reason: 'Read the saved body with explicit source limits.', limitations: ['Original Alpha source is no longer available.'], findings: [] }));
     expect(f.review.status(f.bodyRef).content.status).toBe('needs_revision');
   });

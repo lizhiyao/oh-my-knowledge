@@ -26,9 +26,24 @@ try {
   ].map(record => JSON.stringify(record)).join('\n') + '\n';
   writeFileSync(source, sourceBytes);
 
-  const app = createLocalKnowledgeApplication(workspace);
-  const snapshot = app.capture({ path: source, startRecord: 1, endRecord: 1 });
+  const selections = [{ sourceKind: 'agent_trace', sourceId: 'authored-teaching-source', traceKind: 'codex',
+    recordRanges: [{ startRecord: 1, endRecord: 1 }] }];
+  const app = createLocalKnowledgeApplication(workspace, { sourceScope: { scopeVersion: 'knowledge-source-scope/v1', projects: [],
+    traces: [{ sourceId: 'authored-teaching-source', traceKind: 'codex', path: source,
+      material: { materialType: 'discussion', reason: 'Authored teaching message, not a native model execution.' } }] } });
+  const preview = app.previewSources(selections);
+  assert.equal(existsSync(join(workspace, 'sources')), false);
+  assert.equal(preview.savePlan.actualSnapshotsWritten, 0);
+  assert.equal(preview.sendDraft.authorization, 'not_granted');
+  assert.equal(preview.items[0].excerpts[0].text, message);
+  const captured = app.captureSources({ previewId: preview.previewId, previewDigest: preview.previewDigest });
+  assert.equal(captured.sendAuthorization, 'not_granted');
+  assert.equal(captured.sources.length, 1);
+  const snapshot = captured.sources[0].snapshot;
+  assert.equal(snapshot.projectionVersion, 'knowledge-window-v3');
+  assert.equal(snapshot.rawUnits[0].coordinate.recordIndex, 1);
   assert.equal(snapshot.excerpts.length, 1);
+  const sourceRefs = [{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }];
   const evidenceRef = snapshot.excerpts[0].evidenceRef;
   const entities = ['Alpha', 'Beta'].map((label, index) => ({
     entityId: `entity-${index}`, label, description: '合成窗口明确命名的对象', qualifiers: [],
@@ -63,13 +78,20 @@ try {
     },
     async invoke(profile, input, _signal, beforeDispatch) {
       const parsed = JSON.parse(input);
-      const selected = profile.stageKind === 'association' ? parsed.sources[0] : parsed;
-      if (profile.stageKind === 'association') { assert.equal(parsed.sources.length, 1); assert.equal(selected.sourceKey, 's0'); }
+      assert.equal(parsed.inputVersion, 'knowledge-source-generation-input/v1');
+      assert.equal(parsed.sourceSetId, prepared.journal.sourceSetId);
+      assert.equal(parsed.sources.length, 1);
+      const selected = parsed.sources[0];
+      assert.equal(selected.sourceKey, 's0');
       assert.deepEqual(selected.excerpts, snapshot.excerpts);
       assert.deepEqual(selected.limitations, snapshot.limitations);
       assert.equal(selected.source.snapshotId, snapshot.snapshotId);
       assert.equal(selected.source.sourceVersion, snapshot.sourceVersion);
       assert.equal(selected.source.sourcePath, undefined);
+      assert.equal(selected.source.capturedAt, undefined);
+      assert.equal(selected.rawUnits, undefined);
+      assert.equal(selected.source.sourceKind, 'agent_trace');
+      assert.deepEqual(selected.source.identity, { sourceId: 'authored-teaching-source', traceKind: 'codex' });
       if (profile.stageKind === 'association') {
         // The independent second phase consumes a body already committed to public storage.
         assert.equal(app.list().length, 1);
@@ -85,9 +107,29 @@ try {
       return { outcomeKind: 'result', result: { ok: true, output: rawByStage[profile.stageKind], authoredFixture: true } };
     },
   };
-  const run = await app.generate(snapshot.snapshotId, fixture);
+  // Preparing the complete request does not grant a model dispatch; approve each exact stage separately.
+  const prepared = app.prepareGeneration(sourceRefs, fixture);
+  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v3');
+  assert.equal(prepared.journal.schemaVersion, 3);
+  assert.equal(prepared.journal.stages.length, 1);
+  assert.equal(prepared.journal.stages[0].state, 'prepared');
+  assert.equal(fixtureInvocations, 0);
+  await assert.rejects(app.generate(sourceRefs, fixture, prepared.journal.runId), /Confirm the exact prepared generation request/);
+  assert.equal(fixtureInvocations, 0);
+  const body = await app.generate(sourceRefs, fixture, prepared.journal.runId, undefined,
+    { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
+  assert.equal(fixtureInvocations, 1);
+  assert.equal(body.journal.status, 'active');
+  assert.equal(body.journal.bodies.length, 1);
+  assert.deepEqual(body.journal.stages.map(stage => stage.state), ['completed', 'prepared']);
+  const association = body.journal.stages[1];
+  assert.notEqual(association.requestDigest, prepared.journal.stages[0].requestDigest);
+  await assert.rejects(app.continueStage(body.journal.runId, body.journal.generation, fixture), /Confirm the exact prepared generation request/);
+  assert.equal(fixtureInvocations, 1);
+  const run = await app.continueStage(body.journal.runId, body.journal.generation, fixture, undefined,
+    { confirmedRequestDigest: association.requestDigest });
   assert.equal(run.journal.status, 'completed');
-  assert.equal(run.journal.workflowId, 'knowledge-body-first/v2');
+  assert.equal(run.journal.workflowId, 'knowledge-body-first/v3');
   assert.equal(run.journal.bodies.length, 1);
   assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['body', 'association']);
   for (const stage of run.journal.stages) {
@@ -96,7 +138,7 @@ try {
 
   // Reopening the same identity only replays durable publication; it never calls either fixture phase again.
   const reopened = createLocalKnowledgeApplication(workspace);
-  const replay = await reopened.generate(snapshot.snapshotId, fixture, run.journal.runId);
+  const replay = await reopened.generate(sourceRefs, fixture);
   assert.deepEqual(replay, run); assert.equal(fixtureInvocations, 2);
   const originals = reopened.inspect(run.journal.runId).nativeOutcomes;
   assert.equal(originals.length, 2);
@@ -114,8 +156,8 @@ try {
   assert.equal(bodyEvidence.source.snapshotId, snapshot.snapshotId);
   assert.equal(bodyEvidence.source.sourceVersion, snapshot.sourceVersion);
   assert.equal(stored.sources[0].status, 'available');
-  assert.equal(stored.sources[0].window.snapshotId, snapshot.snapshotId);
-  assert.equal(stored.sources[0].window.sourceVersion, snapshot.sourceVersion);
+  assert.equal(stored.sources[0].snapshot.snapshotId, snapshot.snapshotId);
+  assert.equal(stored.sources[0].snapshot.sourceVersion, snapshot.sourceVersion);
   assert.equal(stored.derivedAssociations.status, 'available');
   assert.equal(stored.derivedAssociations.reviewStatus, 'pending');
   const projection = stored.derivedAssociations.revision;
@@ -123,7 +165,7 @@ try {
   const analysis = reopened.entities(projection.catalogRefs[0].analysisId, projection.catalogRefs[0].entityRevisionId);
   assert.equal(analysis.revision.entities.length, 2);
   for (const selection of [bodyEvidence.selection, ...analysis.revision.mentions.map(mention => mention.selection)]) {
-    const excerpt = stored.sources[0].window.excerpts.find(value => value.evidenceRef === selection.evidenceRef);
+    const excerpt = stored.sources[0].snapshot.excerpts.find(value => value.evidenceRef === selection.evidenceRef);
     assert.ok(excerpt); assert.equal(excerpt.text.slice(selection.start, selection.end), selection.quote);
   }
   const found = reopened.queryEntities({ query: 'Alpha', analysisId: analysis.history.analysisId });

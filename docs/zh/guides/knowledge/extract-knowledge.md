@@ -1,6 +1,6 @@
 # 沉淀、维护和使用知识
 
-从选定的工作记录形成候选，核对后保留到知识库，修订过时内容，再维护引用它的载体。保留、保存载体和验证效果各有自己的记录。第一次使用可以先走 Studio；命令行步骤在后面。让 Agent 依据已存知识处理新任务，见[从已有知识完成任务](#task-knowledge-reuse)。
+从选定的对话记录、UTF-8 项目文件或固定本地 Git 文件形成候选，核对后保留到知识库，修订过时内容，再维护引用它的载体。保留、保存载体和验证效果各有自己的记录。第一次使用可以先走 Studio；命令行步骤在后面。让 Agent 依据已存知识处理新任务，见[从已有知识完成任务](#task-knowledge-reuse)。
 
 本指南描述当前 main。先区分能力所属版本，再选择安装包或源码构建；安装后运行 `omk --version`，升级前阅读[迁移指南](../maintenance/v1-preview-migration.md)。
 
@@ -9,7 +9,7 @@
 | 能力 | 可用边界 |
 |---|---|
 | 知识库、载体生成、持续修订与变化核对的核心流程 | 从已发布的 `1.0.0-beta.14` 开始提供；Beta.13 不包含该维护界面。 |
-| 正文优先生成、独立派生关联、新日志、完整原生归档、任务检索与显式迁移 adapter | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
+| Source3 项目／轨迹选区、逐请求确认的正文优先生成、独立派生关联、当前日志及显式副本迁移 | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
 | 读取重试、保存恢复与 CLI 操作指引的后续修复 | 同样以当前 main 为准；不把已发布 Beta.14 当作修复完成的证据。 |
 
 当前 prompt、Schema 和容量由[当前知识提炼契约](../../reference/shared/knowledge-contract.md)从运行时代码生成。该页描述构建身份，不代替[发行记录](https://github.com/lizhiyao/oh-my-knowledge/releases)；`@next` 是发行通道，不会自动包含未发布的 main 改动。
@@ -20,9 +20,9 @@
 omk studio
 ```
 
-使用命令返回的地址，先核对当前知识保存位置。改变默认目录不会移动已有数据。
+使用命令返回的地址，先核对当前知识保存位置。改变默认目录不会移动已有数据。已接入对话使用宿主的对话目录；项目文件、本地 Git 文件或已配置轨迹文件须由宿主先提供[有限来源 scope](#source-scope)，再用 `omk studio --source-scope ./scope.json` 启动。浏览器只选择已配置 ID 和相对路径，不能授予任意项目根目录。
 
-1. **选择来源**：打开对话，在对应轮次选择“提炼这轮”，或从知识页“从对话选择”。核对消息、保存位置、执行器和模型，再确认开始；此时才调用模型，可能产生费用。
+1. **选择并预览来源**：从对话轮次进入提炼，或在知识页选择“选择来源并提炼知识”。可选已接入对话记录、项目文件、固定 Git 文件或已配置 Agent 原始记录。读完整选中片段，分别核对读取、保存和拟发送范围。“仅捕获选定来源”只在本地保存，不调用模型；随后选择执行器／模型，准备并核对完整请求，明确发送正文请求。正文保存后，再核对并单独确认关联请求；每次发送都可能产生费用。
 2. **核对候选**：阅读完整正文段、条件、归因、例外和未知信息，点击“查看依据”回到原文。填写理由后保留、舍弃或修订；新修订需要重新核对。
 3. **按需核对实体**：从候选或“知识 → 实体”检查名称、指代、层次与原文。实体纠正不改正文；核对后独立应用、审查精确段落／实体关联。
 4. **持续积累**：从“知识 → 知识库”建立对象，核对不同窗口的来源实体是否谈论同一对象，填写关联理由并确认。同名不自动归并；先处理歧义与来源缺失。
@@ -32,7 +32,7 @@ omk studio
 
 候选页可切换内容与原始依据，实体与知识库列表支持窄屏切换。失败、零候选、取消或来源缺失都有明确状态；从提炼记录和知识待办找回已保存内容。
 
-手动和自动提炼的来源预览明确限定为所选轮次中的用户、助手消息。独立工具调用与结果、项目文件和附件原件未纳入；消息正文中转述的内容仍会发送。手动预览可展开来源版本；消息选择与生成前的版本核对保持独立。这不表示整个项目资料已覆盖，也不将助手报告的结果当成直接执行证据。
+对话选择保留所选消息所在的完整原始记录；从这些记录投影出的所有可读事件均列入预览及拟发送材料。例如，Claude 的同一记录可能同时包含消息和工具事件，这些同条事件也会纳入。未选中的独立记录、项目文件和附件原件不自动加入。可读片段、本地保留原记录及完整已准备模型请求分别展示；宿主根路径不作为模型元数据发送，来源正文中已有的路径仍属于原文。这不表示完整覆盖项目，也不证明助手报告的执行结果真实。
 
 知识库、实体与载体页显示当前知识目录；显式目录的读取不依赖模型设置。读取失败时原位重读，填写的组织草稿仍保留。关联应用冲突时正文与草稿保留，重新读取精确正文／目录／投影写头后再应用。通用服务器失败或不可读保存回执不能证明未写入；先选择“核对已保存版本”，组织按本次收据、载体按内容与精确引用确认，避免重复保存。等待期间内容保持只读且可复制，保存和核对都不额外调用模型。
 
@@ -96,36 +96,101 @@ omk observe knowledge record-use --workspace ./knowledge --input ./use-feedback.
 
 覆盖不完整时，图谱、实体详情和知识库对象详情仍展示已知的可读关联，同时保留数量未知、失败、过期、被拒或来源不可用提示。历史边只说明当时的精确绑定，不能套到当前正文。多来源正文可回查各来源；手工映射可保留多个精确来源目录，逐目录选择实体和提及后一起保存，没有目录的来源不会被其它来源的同名实体代替。浏览、手工纠正与重开不调用生成模型；另行发起模型重建需要单独核对发送范围。
 
-### 对话自动提炼与项目待办 {#对话自动提炼与项目待办}
+### 对话自动提炼与项目待办 {#automatic-extraction}
 
-自动提炼是可选入口。先预览选定对话的消息、目录、模型及调用／预算上限，确认发送授权后开启；授权限当前对话、24 小时及当前服务生命周期。每次初始调用、重试和校验重问均消耗会话总 `maxCalls` 的一次额度，一个 run 调用三次就占三次。显式启用的 token 预约总额跨所有窗口累计，同时限制每个 run。派发前持久化预约，按不可变回执恢复计数，未知用量或发送前中断均不退款。修改显示的范围、模型或上限会清除同意勾选；既有无 policy 权限仍仅允许单次调用，重试须重新明确批准。硬失败或中断停止自动化；终态瞬时失败可继续等待新的稳定窗口，但不重发同一来源。已归档服务端 Retry-After 会持久保存，每次派发前检查，包含新窗口及重新授权；超过 run 重试上限的等待值不缩短，权限到期仍阻止派发。非法等待值停止自动化。完整核验的空派发 ledger 可释放本地拒绝的来源窗口，供重新明确批准，不删除失败 run 或证据；任何预约或不明确回执仍保留来源去重。重启不自动恢复。知识待办汇集候选供核对，不自动决定保留或改写载体。
+自动提炼是可选入口，需要全新的 Source3 授权。先预览对话、选中原记录的事件、保存目录、执行器／模型、两阶段流程及调用总额度，再开启。授权只覆盖本条对话、24 小时及当前 Studio 服务生命周期，重启后须重新开启。旧流程的权限、预约和调用账本不能授权 Source3，迁移也不会继承它们。
 
-## 选择来源并生成 {#选择来源并生成}
+初始窗口最多包含最近三个已结束轮次；后续每窗最多三个新增已结束轮次，并带前两个轮次上下文，记录稳定 30 秒后才开始。一窗最多调用模型两次：先生成正文，再生成关联，关联阶段还会接收已保存正文。每阶段各占会话总 `maxCalls` 的一次额度，界面允许设置 1～20 次。初始授权明确覆盖这些未来窗口和两个阶段；未来正文尚未产生，对应完整请求在各阶段准备时、派发前记录。这与手动逐次确认一份已准备请求不同。
 
-CLI 与 Studio 使用同一份显式选择的工作区。Capture 只在本地归档选定记录；generate 将选定 excerpts、limitations 和明确来源归因发送给配置的模型。
+派发前预约绑定精确来源集合、完整请求与调用身份，用量未知不退回额度。范围、目录、模型或上限改变须重新同意。失败、中断或未知时先停止或检查记录，不自动重发相同来源或未知 claim；到期、额度和已记录服务端冷却仍会阻止新派发。知识待办只汇集候选，不自动决定保留或改写载体。
 
-```bash
-omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl --json
-omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --run-id <uuid> --json
+## 选择来源并生成 {#select-sources}
+
+CLI 与 Studio 使用同一份选定知识工作区。预览负责读取，捕获负责保存，准备请求供核对，发送需要明确确认。精确格式及容量见[来源契约](../../specs/knowledge/knowledge-sources.md)。
+
+### 配置可信来源绑定 {#source-scope}
+
+由宿主准备 `scope.json`，把示例路径改为实际获准访问的位置：
+
+```json
+{
+  "scopeVersion": "knowledge-source-scope/v1",
+  "projects": [{ "projectId": "project", "root": "/absolute/project" }],
+  "traces": [{ "sourceId": "worklog", "traceKind": "codex", "path": "/absolute/session.jsonl" }]
+}
 ```
 
-用 `--start-record`／`--end-record` 选择零基、含首尾的记录范围。生成前核对隐私及范围；执行能力不支持或请求不可完整归档时在派发前拒绝，不截断来源。宿主 source 文件路径不作为语义 metadata 发送。
+只有这份宿主配置含文件系统根目录和轨迹路径。选区 JSON 只含逻辑 ID、相对路径及明确范围；可选材料声明按精确相对路径生效，未声明的材料保持未知。读到测试源码不表示测试已执行。二进制、非法 UTF-8 及越过配置根目录的路径会被拒绝。
 
-当前 `knowledge-body-first/v2` 先调用正文模型，归档完整返回原件、核对精确证据，再将接纳的完整正文修订保存为**待审且未保留**；随后才独立调用关联模型，提出实体与可选 typed 关系。每阶段默认 300 秒，分别记录请求／profile／wire／producer／原始结果。投影失败或未决不删除已保存正文。没有自动模型重试、校验重问或 provider 回退；旧 `--generation-policy` 不再是当前生成契约。
+例如，用 `selections.json` 选择一个项目文件的实际行：
 
-无需读取工作区或调用模型即可导出两个当前结构 wire：
+```json
+{
+  "selections": [{
+    "sourceKind": "project_file",
+    "projectId": "project",
+    "relativePath": "PRODUCT.md",
+    "lineRanges": [{ "startLine": 1, "endLine": 20 }]
+  }]
+}
+```
+
+按实际内容调整文件和范围。文件／Git 行号从 1 开始、包含终点，`lineRanges: null` 明确选择容量内整个文件。`git_blob` 还需 `revision`，如 `HEAD`，预览会将其解析成固定本地对象。`agent_trace` 使用 `sourceId`、`traceKind` 和从 0 开始、包含终点的 `recordRanges`，选择完整原始非空记录及其中所有可读事件。不连续选区保持独立；不拉取远端 Git，也不扫描全仓。
+
+### 预览并保存 {#source-preview}
+
+```bash
+omk observe knowledge preview-sources --workspace ./knowledge --scope ./scope.json --input ./selections.json --json > preview.json
+omk observe knowledge capture --workspace ./knowledge --scope ./scope.json --input ./preview.json --json > capture.json
+```
+
+保存前先读 `preview.json`：它包含选中文字原文、原记录以及独立的实际读取、拟发送和保存清单。reader 为定位选区可能读取整个文件或扫描轨迹前缀，最终只保留选中单元。预览不保存正式快照、不调用模型；捕获会重建固定选区，核对预览摘要和宿主 scope。来源改变须重新预览，移动的 Git 分支不能悄悄替换已固定对象。容量超限时拒绝，不截断；这些导出可能包含来源隐私内容。
+
+捕获同样不调用模型，也不授予发送权限。从 `capture.json` 的 `saveManifest.items` 中，仅复制每项的精确 `snapshotId` 和 `sourceVersion` 到 `sources.json`，不附带可用状态或序号：
+
+```json
+{
+  "sources": [{ "snapshotId": "<saved-snapshot-uuid>", "sourceVersion": "sha256:<saved-source-digest>" }]
+}
+```
+
+使用实际保存的值。两个字段合在一起才是 `SourceRef`，不能只用 ID 选择或删除某个捕获版本。
+
+### 准备并逐阶段确认模型请求 {#source-generation}
+
+```bash
+omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <body-request-digest> --json
+```
+
+准备请求只创建日志，不调用模型。核对执行器／模型、完整 `system` 和 `input`、producer 上下文及 `requestDigest`，再把实际已准备正文请求的摘要复制到 `--confirm-request`。来源选择或捕获同意不等于批准这次发送；执行或归档能力不支持时，会在派发前拒绝。
+
+<details>
+<summary>完整请求中要读什么</summary>
+
+阅读 `request.json` 的 `journal.stages[0]`：`system` 是固定指令，`input` 是完整、有序的来源材料，`producer` 是已检查的执行上下文，`requestDigest` 绑定这份请求。模型材料含选定可读片段、可携带归因及限制，原始 envelope 和宿主根路径不在其中；来源文本已有的路径仍是原文。保留原始对话标题、归因与未知，不用项目显示名或推测的事实时间替换。
+
+</details>
+
+`generate` 只发送已确认的正文请求，归档完整返回原件，将接纳的完整正文保存为**待审且未保留**。关联基于这些已保存的精确正文另行准备，不会自动发送。用 `inspect` 读回运行，核对完整已准备关联请求，再单独确认：
+
+```bash
+omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
+omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <association-request-digest> --json
+```
+
+关联失败或未决不删除已保存正文。每阶段默认 300 秒，并保留自己的原始结果；没有自动模型重试、校验重问或 provider 回退。默认导入对排序、去重后的同一精确来源集合复用已有日志，包含失败或未知结果；已完成集合的默认重复导入不增加模型调用或重复正文。只有明确批准独立新生成时才给新的 `--run-id`，不能用它绕过未知的旧结果。
+
+无需工作区或模型调用即可导出当前结构 wire：
 
 ```bash
 omk observe knowledge schema --stage body --json
 omk observe knowledge schema --stage association --json
 ```
 
-结果包含 profile／prompt／wire 身份与 Schema。当前正文输出 v2／prompt v5、关联输出 v3／prompt v4 使用精确 quote 及可空的相邻 `contextBefore`／`contextAfter`；宿主要求唯一匹配并计算 UTF-16 位置。正文 proposal 声明有来源的共享 `requiredContexts`，其 literal 必须逐字出现于每段，宿主追加相应证据但不改写正文。关联 proposal 将提及归属到各实体，并为每段明确映射或弃权及理由。这些检查不能补回遗漏内容，也不证明实体覆盖完整、来源保真或真值；引文、标题、目录不能补正文遗漏。见[生成契约](../../reference/shared/knowledge-contract.md)及[提取规范](../../specs/entities/entity-extraction.md)。
+当前正文输出 v2／prompt v8、关联输出 v3／prompt v7 使用精确 quote 及可空的相邻 `contextBefore`／`contextAfter`，宿主要求唯一匹配并计算 UTF-16 位置。正文保留有来源的共享必要条件，关联提及归属各实体，每段明确映射或弃权；这些检查不证明含义完整、实体覆盖完整或真值。来源及日志使用 Schema 3／workflow v3；正文 Schema 3、实体／关联 Schema 2、复核 Schema 1 仍是独立契约。当前运行值见[生成契约](../../reference/shared/knowledge-contract.md)。
 
-旧生成 profile 的 active 运行须用保全的匹配旧构建恢复，当前构建不解码其归档输出、不重派发请求；已准备的固定发布意图仍可零模型调用精确重放，completed／failed 运行仍可检视。独立历史提取／测量协议继续保留各自冻结的定位规则与身份。
-
-必填参数与 JSON 语法在设置／存储访问前校验。参数错误退出 2、业务失败退出 1、成功退出 0；`--json` 不混入文字指引。回执未知时先读已存状态，不盲目再次调用。
+旧来源／日志不受支持时，应保全匹配构建并显式迁入副本，不通过兼容 reader 解码。独立历史研究保留冻结的来源、请求与测量身份。参数错误退出 2、业务失败退出 1、成功退出 0；`--json` 只输出机器结果。回执不明确时先检视保存状态，再决定是否重入写操作。
 
 ## 核对与处理 {#核对与处理}
 
@@ -179,12 +244,12 @@ omk observe knowledge review-associations --workspace ./knowledge --id <knowledg
 
 ```bash
 omk observe knowledge retrieve --workspace ./knowledge --query '初始化需要哪些条件？' --max-bytes 65536
-omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未知？' --include-candidates --snapshot <snapshot-id>
+omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未知？' --include-candidates --snapshot <snapshot-id> --source-version sha256:<source-digest>
 ```
 
 默认 JSON 视图的 **65536 UTF-8 字节计算整个单行 JSON 和换行**，不是知识存储或模型上下文限制。仍支持显式 `--max-bytes 8192`，最大保持 1 MiB；完整段落及其 inline evidence 原子装入，超大或预算排除的段落记入 `omitted`，不截条件。这一初始预算不证明任务覆盖完整或选择最优，也不升级旧小预算失败记录。下方可选 text 视图按自身完整输出计算预算。
 
-召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和可选 `--source-version` 限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
+召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和 `--source-version` 必须成对提供，限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
 
 ### 从已有知识完成任务 {#task-knowledge-reuse}
 
@@ -220,9 +285,11 @@ omk observe knowledge retrieve --workspace <selected-workspace> --query '<curren
 OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若服务器报告模型需要更新客户端，应升级或明确选择兼容的现有客户端，不必切换模型或 API。桌面应用与命令行可能使用不同版本。
 
 
+## 迁移旧工作区 {#workspace-migration}
+
 ### 关联 Schema 1 迁入独立副本 {#association-migration}
 
-先保存旧工作区与匹配旧版本安装包，停止相关旧写入。新版本只读取关联／生成日志 Schema 2，不自动升级。显式执行：
+先保存旧工作区与匹配旧版本安装包，停止相关旧写入。关联 Schema 1 工作区先显式迁入 Schema 2 副本；这一步不会创建 Source3，也不使旧日志变为当前格式。显式执行：
 
 ```bash
 omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <stable-uuid> --json
@@ -232,9 +299,22 @@ omk observe knowledge migrate-associations --from-workspace ./schema1 --workspac
 
 中断时保留计划，以同一两个目录及 `--operation-id` 重入；源目录漂移或目标已修改则拒绝，不覆盖。完成后重放只验证原计划，人工新增／修改／删除不得被复活或覆盖。回退使用旧工作区和匹配旧 binary，新副本继续保留原件与映射。机械迁移、可读和保存成功均不表示知识语义通过。
 
-## 中断与来源管理 {#中断与来源管理}
+### Source2 迁入独立 Source3 副本 {#source-migration}
 
-用 `generate --run-id <UUID>` 固定一次请求。完全相同的请求只恢复原日志，零新模型调用；不同来源／模型／runtime 不能复用该身份。
+保留原工作区及匹配的可安装构建档案，并停止旧写入。当前 Source3 迁移切片接受健康的正文 Schema 3／Source2 工作区，实体及关联须符合当前格式；所需来源缺失、已删除、数据损坏或版本不支持时明确拒绝。更早格式先按各自显式迁移流程及匹配构建处理，不原地升级原件。
+
+```bash
+omk observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > migration-plan.json
+omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan <plan-digest> --json
+```
+
+第一条只读。核对实际源／目标、归档与限制后，将导出的 `planDigest` 复制给第二条命令。目标是互不嵌套的独立副本；旧原始材料、journal／outcome、复核记录、权限、知识库／载体引用和匹配构建在归档中保留字节，原目录保持不变。新来源、正文、目录和投影引用显式映射、重新待审；不继承旧保留、身份接受、复核、任务反馈或自动授权，普通组织标签单独保留。
+
+中断后保全固定计划，用同一输入及摘要重入。未完成目标不能当普通工作区打开；目标已修改不覆盖，已完成输出被删除也不复活。首次归属记录持久保存前崩溃，可能需要核实所有者，不能自动恢复。回退使用未改动旧工作区及匹配构建；复制档案不等于实际安装或回退已验收，见[来源迁移契约](../../specs/knowledge/knowledge-sources.md#migration)。
+
+## 中断与来源管理 {#recovery-and-data}
+
+默认导入已复用精确来源集合的日志；若显式选择过 run UUID，同一请求须继续使用它。不同来源／模型／runtime 不能复用该身份。
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
@@ -242,19 +322,45 @@ omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
 omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 ```
 
-`resume` 只归档同进程仍持有的原件、挂接已存原件，或按同 request ID 完成固定写入意图，不调用模型。已 claim 却没有可恢复结果时保持 `outcome_unknown_do_not_redispatch`；进程退出不证明未派发或费用为零。正文已保存而关联从未 claim 时，只有明确的 `continue-stage --id <run-id> --generation <journal-generation>` 才能发送该阶段，模型配置须与原记录相同。
+`resume` 可以归档同进程仍持有的原件、挂接已存原件或完成固定写入，不调用模型。已 claim 却无可恢复结果时保持 `outcome_unknown_do_not_redispatch`；进程退出不证明未派发或费用为零。只有从未 claim 的已准备阶段，才能在核对并明确确认精确 `requestDigest` 后发送，模型配置须与原记录相同。
 
-对已有精确正文重建关联，不再生成正文：
+对已有精确正文先准备关联重建，核对完整请求后再发送；两条命令复用同一个明确的新 run UUID：
 
 ```bash
-omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-uuid> --executor codex --model <model>
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
+omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
 ```
 
-这会创建独立的新待审投影。关联生成／重建支持正文的全部精确可读来源，每个来源保持独立目录，全部来源必须在发送前核对。单个目录输出校验失败时，相关正文投影明确 failed，健康目录与已存正文保留；后续目录读不到时分目录呈现缺口，其余映射仍可读。
+这只生成独立的新待审投影，不重新生成正文；各精确可读来源保持独立目录。目录输出不合法时，相关投影明确失败，健康目录和已存正文保留；后续目录缺失会呈现局部缺口。
 
-当前日志在 `generation-journals/<run-id>.json`，各完整原件在 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。正文历史使用 Schema 3；旧 typed 知识 v2 和 run5 明确 unsupported，不显示成健康空库。见[显式迁入新工作区](../../specs/knowledge/knowledge-domain-model.md#body-migration)，可运行 `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge`，两个路径须显式提供，不自动覆盖；保全旧工作区及匹配 binary 可回退。
+当前日志在 `generation-journals/<run-id>.json`，完整原件在 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。更早 typed 正文及来源／日志格式明确不支持，不显示成健康空库；保留原工作区及匹配构建，按[正文迁移](../../specs/knowledge/knowledge-domain-model.md#body-migration)和[来源迁移](#source-migration)边界处理，不直接覆盖。
 
-`delete-source` 留删除标记，不改原始日志、已存正文引文或模型归档，并非彻底清空数据。工作区可能包含隐私内容；缺失／损坏／删除证据明确不可用。保存、引文匹配与重开均不等于语义验收。
+### 核对来源变化 {#source-updates}
+
+将精确核对请求保存为 `source-check.json`：
+
+```json
+{ "source": { "snapshotId": "<saved-snapshot-uuid>", "sourceVersion": "sha256:<saved-source-digest>" } }
+```
+
+```bash
+omk observe knowledge source-updates --workspace ./knowledge --scope ./scope.json --input ./source-check.json --json
+```
+
+此操作读取当前材料及已知正文／目录／投影的精确引用，不调用模型、不改知识。当前状态与影响完整性要分别阅读，部分清单不能证明零影响。完整文件可能改变而选中字节不变，形成新待审修订前仍应核对适用条件。默认 Git 核对捕获时固定对象，不是最新分支；刷新分支须显式提供 `replacementSelection`。不同路径即使字节相同，也只是待核对的可能移动；根目录失联不证明原文件已删除。
+
+Studio 捕获 Git 来源后，可在“来源变化影响”中明确填写另一个本地提交或分支，再选择“对比版本并核对影响”。此入口保留旧来源引用及原项目、路径、固定行范围，不自动选择 `HEAD`，也不重新捕获新版本。界面保留旧固定提交，并展示填写版本、实际解析提交、来源状态、已知正文版本／实体目录版本／关联版本的精确引用数量和复核建议；检查不改变模型发送授权，建议不表示知识已更新。比较不替换本次已捕获来源或模型输入；要使用新版本，请另行预览并捕获。
+
+已有知识可在“依据”页的引文下方展开“核对已保存来源的变化影响”，直接检查该精确来源引用，无需重新捕获。上游文件已删除时仍可核对保存的快照；历史快照本身不可读时，结果会保留不可用状态与不完整影响限制，不把它当作已确认的上游删除。只有取得该引用对应的已保存 Git 身份与选区时，才提供显式版本比较。
+
+### 读取或删除捕获证据 {#source-data}
+
+```bash
+omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --json
+omk observe knowledge delete-source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --json
+```
+
+上游改变或删除后，历史捕获证据仍可读。显式 `delete-source` 留下无内容标记，不改上游文件、已有引文或模型归档，并非彻底清空数据。默认拒绝重新捕获该已删除版本；新选区预览中显式声明 `afterDeletion: "new_snapshot"` 可授权创建新引用，不复活旧引用。来源及工作区导出都可能包含隐私内容；保存、引文匹配与重开均不代表语义验收。
 
 ## 接纳统计
 

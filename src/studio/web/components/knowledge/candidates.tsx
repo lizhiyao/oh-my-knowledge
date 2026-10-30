@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requestKnowledge } from './request';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
 import { ArtifactAuthoringDialog } from './artifact-authoring';
+import { SourceExtractionDialog, PreparedGenerationDialog } from './source-picker';
 import { ConversationExtractionDialog } from './conversation-extraction';
 import { EntityAnalysisDrawer, EntityAnalysisSummary } from './entity-analysis';
 import { KnowledgeRevisionDrawer } from './revision-editor';
@@ -16,12 +17,12 @@ import { ExtractionQualityPanel, NativeArchiveChecks } from './extraction-qualit
 import { KnowledgeStudyInspectionDrawer } from './study-inspection';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Dropdown, Empty, Input, InputNumber, Modal, Select, Space } from 'antd';
+import { Alert, Button, Drawer, Dropdown, Empty, Input, Modal, Select, Space } from 'antd';
 import { type Language } from '../layout/shell';
 import { conversationPath } from '../conversation-link';
 import { conversationLabel } from '../../../application/display/conversation-label';
 import { candidateDecisionLabel, extractionRunStatusLabel, type CandidateChoice } from '../../../application/knowledge/candidate-status';
-import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateSource, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
+import type { KnowledgeCandidateDetail, KnowledgeCandidateRow, KnowledgeCandidateRun, KnowledgeCandidateQueue } from '../../../view-models/knowledge/knowledge-candidates';
 
 export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, initialRevision, initialSegmentId, initialEdit = false, initialReason, scope, embedded = false, onLoaded }: { lang: Language; initialWorkspace?: string; initialId?: string; initialRevision?: string; initialSegmentId?: string; initialEdit?: boolean; initialReason?: string; scope?: { threadId?: string; projectId?: string }; embedded?: boolean; onLoaded?(queue: KnowledgeCandidateQueue): void }) {
   const zh = lang === 'zh';
@@ -40,16 +41,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [filter, setFilter] = useState<'all' | 'pending' | 'retain' | 'discard'>(scope ? 'pending' : 'all');
   const [rows, setRows] = useState<KnowledgeCandidateRow[]>([]);
   const [detail, setDetail] = useState<KnowledgeCandidateDetail | null>(null);
-  const [source, setSource] = useState('');
-  const [start, setStart] = useState<number | null>(null);
-  const [end, setEnd] = useState<number | null>(null);
   const [executor, setExecutor] = useState('codex');
   const [model, setModel] = useState('');
-  const [snapshot, setSnapshot] = useState<KnowledgeCandidateSource | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [preparedSend, setPreparedSend] = useState<{ run: KnowledgeCandidateRun; operation: 'rebuild-associations' | 'continue-stage'; fields: Record<string, unknown> }>();
   const [showRuns, setShowRuns] = useState(false);
   const [showStudy, setShowStudy] = useState(false);
   const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
@@ -222,11 +220,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         <Dropdown trigger={['click']} menu={{ items: [
           { key: 'study', label: t('核对研究证据', 'Inspect study evidence') },
           { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: busy || !workspace },
-          { key: 'import', label: t('导入日志文件', 'Import a log file'), disabled: busy || !workspace || embedded },
+          { key: 'import', label: t('导入项目文件或原始记录', 'Import project files or original traces'), disabled: busy || !workspace || embedded },
         ], onClick: ({ key }) => {
           if (key === 'study') setShowStudy(true);
           if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
-          if (key === 'import') { setSnapshot(null); setShowImport(true); }
+          if (key === 'import') { setShowImport(true); }
         } }}><Button ref={moreControl}>{t('更多', 'More')}</Button></Dropdown>
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
@@ -268,17 +266,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
               generation: detail.derivedAssociations.generation, choice, reason });
             await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
           })}
-          onRebuildAssociations={model.trim() && detail.sources.length > 0 && detail.sources.every(source => source.status === 'available') ? () => Modal.confirm({
-            title: t('重新生成实体关联？', 'Regenerate entity associations?'),
-            content: <div className="knowledge-association-transmission"><p>{t(`将已保存正文与全部 ${detail.sources.length} 份来源窗口发送到 ${executor} / ${model}，调用模型一次。正文和保留决定不变，新关联需要单独核对。`, `Send the saved content and all ${detail.sources.length} source windows to ${executor} / ${model} for one model call. Content and retention decisions stay unchanged; review the new associations separately.`)}</p><ul>{detail.sources.map(source => source.status === 'available' ? <li key={source.window.snapshotId}>{source.window.origin?.title || t('来源窗口', 'Source window')}<br/><code>{source.window.snapshotId} / {source.window.sourceVersion}</code></li> : null)}</ul></div>,
-            onOk: () => work(async () => {
-              await api('rebuild-associations', { knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId,
-                bodyDigest: detail.revision.bodyDigest, executor, model, runId: crypto.randomUUID() });
-              await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
-              setNotice(t('已读取关联结果，请单独核对关联状态与对象。', 'Association results loaded. Review their state and entities separately.'));
-            }),
+          onRebuildAssociations={model.trim() && detail.sources.length > 0 && detail.sources.every(source => source.status === 'available') ? () => void work(async () => {
+            const fields = { knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId,
+              bodyDigest: detail.revision.bodyDigest, executor, model };
+            const prepared = await api<KnowledgeCandidateRun>('prepare-rebuild-associations', fields);
+            setPreparedSend({ run: prepared, operation: 'rebuild-associations', fields: { ...fields, runId: prepared.runId } });
           }) : undefined}
-          onDeleteSource={snapshot => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { snapshot }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}
+          onDeleteSource={snapshot => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { source: snapshot }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}
           tools={<CandidateTags lang={lang} tags={tagsDraft} busy={busy || needsRefresh} onChange={setTagsDraft} onSave={() => void work(saveTags)} changed={JSON.stringify(tagsDraft) !== JSON.stringify(detail.tagging.tags)}/>}
           footer={<>{detail.maintenance?.choice === 'retain' && detail.revision.revisionId === detail.history.writeHeadRevisionId && <Button disabled={busy || needsRefresh} onClick={() => setAuthoringIds([detail.revision.knowledgeId])}>{t('生成知识载体', 'Generate knowledge artifact')}</Button>}
             <CandidateDecisionActions lang={lang} reason={reason} busy={busy} needsRefresh={needsRefresh} choice={decisionChoice} onChoice={setDecisionChoice} onReason={setReason}
@@ -297,7 +291,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         const changed = root !== workspace;
         await refresh(root, changed); setWorkspace(root); setWorkspaceDraft(root);
         if (changed) {
-          leaveBatch(); setNeedsRefresh(false); setSnapshot(null); setNotice('');
+          leaveBatch(); setNeedsRefresh(false); setNotice('');
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         }
       });
@@ -309,7 +303,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       if (signal.aborted) return;
       setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setReason('');
       setBatchRunId(candidateReviewRun(nextRuns, id)?.runId ?? null); setPreviousId(null); setShowBatchSummary(false); setNeedsRefresh(false);
-      setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setSnapshot(null); setError(''); setNotice(''); setShowExtraction(false);
+      setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setError(''); setNotice(''); setShowExtraction(false);
       const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
     }}/>}
     <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
@@ -318,29 +312,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         <label>{t('本地保存目录', 'Local folder')}<Input value={workspaceDraft} disabled={busy} placeholder={t('输入保存目录的完整路径', 'Enter the full folder path')} onChange={(event) => setWorkspaceDraft(event.target.value)}/></label>
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
-          await refresh(root, true); leaveBatch(); setNeedsRefresh(false); setWorkspace(root); setSnapshot(null); setNotice(''); setShowSettings(false);
+          await refresh(root, true); leaveBatch(); setNeedsRefresh(false); setWorkspace(root); setNotice(''); setShowSettings(false);
           const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
     </Drawer>
-    <Drawer title={snapshot ? t('确认提炼内容与模型', 'Confirm content and model') : t('导入日志文件', 'Import a log file')} open={showImport} onClose={() => !busy && setShowImport(false)} size={560}>
-      <div className="candidate-form">{error && <Alert type="error" title={error}/>}{!snapshot && <p>{t('选择包含项目事实、你的纠正，或问题处理经过的记录。先在本地预览，再决定是否交给模型提炼。', 'Choose a record containing project facts, your corrections, or a problem and its resolution. Preview it locally before sending it to a model.')}</p>}
-        {!snapshot?.origin && <><label>{t('工作记录文件（Codex JSONL）', 'Work log file (Codex JSONL)')}<Input placeholder="/.../rollout-….jsonl" value={source} disabled={busy} onChange={(event) => { setSource(event.target.value); setSnapshot(null); }}/></label>
-        <p className="candidate-help">{t('粘贴这台电脑上日志文件的完整路径。默认读取整份文件，可在下方缩小范围。', 'Paste the full path to a log file on this computer. Read the entire file or narrow the range below.')}</p>
-        <details><summary>{t('只选部分记录（可选）', 'Select a record range (optional)')}</summary><Space wrap><label>{t('起始记录（从零开始）', 'First record (zero-based)')}<InputNumber min={0} value={start} disabled={busy} onChange={(value) => { setStart(value); setSnapshot(null); }}/></label><label>{t('结束记录（包含）', 'Last record (inclusive)')}<InputNumber min={0} value={end} disabled={busy} onChange={(value) => { setEnd(value); setSnapshot(null); }}/></label></Space></details>
-        <Button loading={busy} disabled={!source.trim()} onClick={() => void work(async () => { setSnapshot(await api('capture', { source, ...(start === null ? {} : { startRecord: start }), ...(end === null ? {} : { endRecord: end }) })); })}>{t('读取并预览', 'Read and preview')}</Button></>}
-        {snapshot && <><section>{snapshot.origin && <p>{t('来源会话：', 'Source session: ')}{snapshot.origin.title}</p>}<h3 className="candidate-form-heading">{t('核对将要提炼的内容', 'Review the selected content')}</h3>
-          <p className="candidate-help">{t('以下内容已在本地读取，尚未发送给模型。', 'This content was read locally and has not been sent to a model.')}</p>
-          <pre className="candidate-source-preview">{snapshot.excerpts.map((entry) => `[${entry.role ?? entry.eventKind}] ${entry.text}`).join('\n\n')}</pre>
-        </section><h3 className="candidate-form-heading">{t('选择用于提炼的模型', 'Choose a model for extraction')}</h3>
-        <label>{t('调用方式', 'Provider')}<Select style={{ width: '100%' }} value={executor} disabled={busy} onChange={value => { setExecutor(value); setModel(''); }} options={['codex', 'openai-api'].map((value) => ({ value, label: value }))}/></label>
-        <label>{t('模型（明确配置）', 'Model (explicit configuration)')}<Input value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}/></label>
-        <Alert type="info" title={t(`将发送 ${snapshot.excerpts.length} 个选定片段给 ${executor} / ${model || '—'}。`, `Send ${snapshot.excerpts.length} selected excerpts to ${executor} / ${model || '—'}.`)} description={`${snapshot.sourcePath} · ${snapshot.startRecord}–${snapshot.endRecord}`}/>
-          {snapshot.limitations.map((item, index) => <Alert type="warning" key={index} title={item}/>)}
-          <p>{t('仅处理选定输入；不会自动修改 AGENTS.md 或 skill。模型费用以执行器实际报告为准。', 'Only selected input is processed. No automatic AGENTS.md or skill edits. Cost depends on executor reporting.')}</p>
-          <Button type="primary" loading={busy} disabled={!model.trim() || snapshot.excerpts.length === 0} onClick={() => void work(async () => { const run = await api<KnowledgeCandidateRun>('generate', { snapshot: snapshot.snapshotId, executor, model, runId: crypto.randomUUID() }); setShowImport(false); await handleRun(run); })}>{t('开始提炼', 'Start extraction')}</Button></>}
-      </div>
-    </Drawer>
+    {showImport && <SourceExtractionDialog initialWorkspace={workspace} lang={lang} onClose={() => setShowImport(false)}
+      onFinished={root => { notifyKnowledgeChange(root); if (root === workspace) void work(async () => { await refresh(); }); }}/>}
+    {preparedSend && <PreparedGenerationDialog run={preparedSend.run} lang={lang} busy={busy} onClose={() => !busy && setPreparedSend(undefined)}
+      onSend={confirmedRequestDigest => void work(async () => {
+        const result = await api<KnowledgeCandidateRun>(preparedSend.operation, { ...preparedSend.fields, confirmedRequestDigest });
+        setPreparedSend(undefined); await handleRun(result); await refresh();
+      })}/>}
     {contentReview && contentReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${contentReview.detail.revision.revisionId}`} detail={contentReview.detail} workspace={workspace} lang={lang} onClose={() => setContentReview(undefined)}/>}
     {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} initialReason={detail.revision.knowledgeId === initialId && detail.revision.revisionId === initialRevision ? initialReason : undefined}
       onClose={closeRevisionEditor} onReadback={readbackDetail} onSaved={saved => {
@@ -362,7 +345,18 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.createdAt}</p>{run.schemaStatus === 'current' && <p>{run.bodies.length} {t('条候选', 'candidates')} / {run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} {t('条拒绝输出', 'rejected outputs')}</p>}
         {run.schemaStatus === 'current' && run.nextAction === 'unsupported' && <Alert type="warning" title={t('此任务使用旧生成协议', 'This run uses an older generation protocol')}
           description={t('请使用保留的匹配构建恢复此任务。当前程序保留原件，不重新解释输出或重新派发；已准备好的固定写入意图仍可恢复。', 'Recover this run with the preserved matching build. Originals are retained without reinterpreting output or redispatching. Already prepared write intents remain recoverable.')}/>}
-        <ExtractionInvocationSummary run={run} lang={lang}/>
+        <ExtractionInvocationSummary run={run} lang={lang}/>{run.nextAction === 'continue_stage' && <Button disabled={busy} onClick={() => void work(async () => {
+          let current = await api<KnowledgeCandidateRun>('inspect', { id: run.runId });
+          if (current.schemaStatus === 'current' && current.status === 'active' && current.nextAction === 'continue_stage'
+            && !current.preparedStage && current.sources?.length && current.executor && current.model) {
+            current = await api<KnowledgeCandidateRun>('prepare-generation', { runId: current.runId, executor: current.executor, model: current.model,
+              sources: current.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })) });
+          }
+          if (current.schemaStatus !== 'current' || current.status !== 'active' || current.nextAction !== 'continue_stage'
+            || current.preparedStage?.state !== 'prepared' || !current.journalGeneration || !current.executor || !current.model) throw new Error('No prepared stage is sendable.');
+          setPreparedSend({ run: current, operation: 'continue-stage', fields: { id: current.runId,
+            generation: current.journalGeneration, executor: current.executor, model: current.model } });
+        })}>{run.preparedStage ? t('核对并发送已准备阶段', 'Review and send prepared stage') : t('准备并核对下一阶段', 'Prepare and review next stage')}</Button>}
         <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
         {run.bodies.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.bodies[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['active'].includes(run.status) || run.nextAction === 'unsupported'} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
     </Drawer>
@@ -374,7 +368,9 @@ function ExtractionInvocationSummary({ run, lang }: { run: KnowledgeCandidateRun
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   return <details className="candidate-help extraction-invocation"><summary>{t('执行记录', 'Execution records')}</summary>
     {run.schemaStatus === 'unsupported' ? <p>{t('旧格式运行，保留原件；当前流程不会恢复或重发它。', 'Older run format retained. The current workflow does not resume or redispatch it.')}</p>
-      : run.schemaStatus === 'unavailable' ? <p>{run.unavailableReason === 'invalid_source_metadata'
+      : run.schemaStatus === 'unavailable' ? <p>{run.unavailableReason === 'project_membership_unavailable'
+        ? t('对话的项目归属暂不可确认；保留运行诊断，当前候选范围与数量不能据此判为零。', 'Conversation project membership is unavailable. Run diagnostics remain visible; this does not establish zero candidates in the requested scope.')
+        : run.unavailableReason === 'invalid_source_metadata'
         ? t('冻结来源归因元数据不可读，无法确认此运行是否属于当前来源范围；其中候选未计入当前队列。', 'Frozen source attribution metadata is unreadable, so this run cannot be attributed to the current source scope. Its candidates are excluded from this queue.')
         : t('提炼日志损坏或不可读，无法确认结果及来源范围。原件仍保留，请检查保存位置。', 'The extraction journal is invalid or unreadable. Its result and source scope cannot be confirmed. Original files are retained; check the save location.')}</p>
         : <>{run.sourceMetadataStatus === 'frozen_input' && <p>{t('来源归因取自冻结请求，不表示来源当前可读。', 'Source attribution comes from the frozen request and does not establish current source availability.')}</p>}

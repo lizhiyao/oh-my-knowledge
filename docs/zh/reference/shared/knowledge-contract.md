@@ -7,11 +7,11 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v2` |
-| 正文 prompt | `knowledge-body-generation/v5` |
-| 关联 prompt | `knowledge-association-generation/v4` |
-| 正文 profile 摘要 | `sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186` |
-| 关联 profile 摘要 | `sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee` |
+| 生产流程 | `knowledge-body-first/v3` |
+| 正文 prompt | `knowledge-body-generation/v8` |
+| 关联 prompt | `knowledge-association-generation/v7` |
+| 正文 profile 摘要 | `sha256:5455186952f8a76b587b749f46385a770c17ffa2dc22a328c3181ce65ba91cea` |
+| 关联 profile 摘要 | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
 | 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | 正文响应 Schema | `2` |
@@ -19,8 +19,12 @@
 | 知识历史 Schema | `3` |
 | 关联历史 Schema | `2` |
 | 复核与使用反馈历史 Schema | `1` |
-| 生成日志 Schema | `2` |
+| 生成日志 Schema | `3` |
 | 实体历史 Schema | `2` |
+| 来源快照 Schema | `3` |
+| 来源投影 | `knowledge-window-v3` |
+| 来源生成输入 | `knowledge-source-generation-input/v1` |
+| 默认来源导入运行身份 | `knowledge-source-set-import-run/v1` |
 | 完整原生归档容量 | 536,870,887 字节 |
 | 默认检索响应预算（可调） | 65,536 字节 |
 | 最小检索响应预算 | 1,024 字节 |

@@ -3,6 +3,7 @@ import { ConfigProvider } from 'antd';
 import type { PropsWithChildren } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileSourceFixture, sourceSummaryFixture } from './source-fixture';
 import { KnowledgeTaskSearch } from '../../../src/studio/web/components/knowledge/task-search';
 import type { KnowledgeTaskRetrieval } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
 
@@ -11,10 +12,10 @@ const digest = `sha256:${'a'.repeat(64)}`;
 const source = { snapshotId: uuid(3), sourceVersion: digest };
 function result(): KnowledgeTaskRetrieval {
   const bodyRef = { knowledgeId: uuid(1), revisionId: uuid(2), bodyDigest: digest };
-  return { projectionKind: 'knowledge-body-segments', schemaVersion: 2, rankingPolicyId: 'knowledge-body-literal-topic-priority/v3',
+  return { projectionKind: 'knowledge-body-segments', schemaVersion: 3, rankingPolicyId: 'knowledge-body-literal-topic-priority/v3',
     omitted: { oversizedSegments: 0, budgetSegments: 2 }, scopeDiagnostics: { source: { status: 'available' } },
     knowledge: [{ bodyRef, generation: 1, title: 'Conditions for reusing diagnostics', choice: null, reviewStatus: 'pending', segmentScope: { returned: 1, total: 3 },
-      derivedAssociations: { status: 'absent', reviewStatus: 'pending', bodyRef } }], sources: [{ ...source, status: 'available', sourceKind: 'codex' }],
+      derivedAssociations: { status: 'absent', reviewStatus: 'pending', bodyRef } }], sources: [{ ...source, status: 'available', sourceKind: 'project_file', source: sourceSummaryFixture(fileSourceFixture(source, 'Alpha', { relativePath: 'config/diagnostics.json', materialType: 'configuration' })) }],
     items: [{ knowledge: 0, segmentIndex: 1, segment: { segmentId: 's2', text: 'Reuse only when source, model and configuration match. <script>not markup</script>',
       evidence: [{ source, selection: { evidenceRef: 'record-1', start: 6, end: 11, quote: 'Alpha' }, basis: 'source_assertion' }] },
       evidenceChecks: [{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }] }] };
@@ -45,6 +46,8 @@ describe('task-driven knowledge search', () => {
       includeCandidates: true, maxBytes: 8192, snapshot: source.snapshotId, sourceVersion: source.sourceVersion }]);
     expect(screen.getByText(/2 omitted by budget; 0 oversized/)).toBeTruthy();
     expect(screen.getByText(/1\/3 segments provided/)).toBeTruthy();
+    expect(screen.getAllByText(/config\/diagnostics.json/).length).toBeGreaterThan(0); expect(screen.getByText(/Configuration material/)).toBeTruthy();
+    expect(view.container.querySelector('a[href*="observe/conversations"]')).toBeNull();
     expect(screen.getByText(result().items[0].segment.text)).toBeTruthy(); expect(view.container.querySelector('script')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Open complete content' }));
     expect(open).toHaveBeenLastCalledWith(result().knowledge[0].bodyRef, { tab: 'body', segmentId: 's2' });

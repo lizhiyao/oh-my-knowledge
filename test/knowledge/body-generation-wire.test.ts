@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies } from '../../src/knowledge/extraction/body-generation-wire.js';
-import type { EvidenceWindow } from '../../src/knowledge/extraction/evidence.js';
+import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
 
-const window: EvidenceWindow = {
-  snapshotId: '00000000-0000-4000-8000-000000000001', sourceVersion: `sha256:${'a'.repeat(64)}`,
-  sourcePath: '/authored-wire-fixture', sourceKind: 'codex', projectionVersion: 'knowledge-window-v2',
-  capturedAt: '2026-10-30T00:00:00Z', startRecord: 0, endRecord: 0,
-  excerpts: [{ evidenceRef: 'record-1', text: 'Alpha SDK 0.165.0. Use only with a matching build. Result unknown.', recordIndex: 0, eventKind: 'message', role: 'user' }],
-  records: [{ recordIndex: 0, raw: 'Authored wire fixture; not a native quality result.' }], limitations: [],
-};
+const window = traceSnapshotFixture('Alpha SDK 0.165.0. Use only with a matching build. Result unknown.', { snapshotId: '00000000-0000-4000-8000-000000000001', evidenceRef: 'record-1' });
 const locator = (quote: string, contextBefore: string | null = null, contextAfter: string | null = null) => ({ evidenceRef: 'record-1', quote, contextBefore, contextAfter });
 const evidence = (quote: string) => ({ ...locator(quote), basis: 'source_assertion' as const, interpretation: null as string | null });
 function body() {
@@ -34,8 +28,8 @@ function association() {
 
 describe('versioned body and association generation wire', () => {
   it('publishes new strict identities without exposing the ordinal or model-supplied mention ID', () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v5', outputName: 'knowledge_body_v2' });
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v4', outputName: 'knowledge_association_v3' });
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v8', outputName: 'knowledge_body_v2' });
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v7', outputName: 'knowledge_association_v3' });
     for (const profile of [BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile)).toBe(true);
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);
@@ -47,7 +41,7 @@ describe('versioned body and association generation wire', () => {
 
   it('attaches declared source context to each segment without rewriting content or upgrading attribution', () => {
     const response = body(), original = JSON.stringify(response);
-    const result = checkGeneratedBodies(original, window);
+    const result = checkGeneratedBodies(original, [window]);
     expect(result.rejected).toEqual([]);
     expect(result.accepted[0].draft.content.segments.map(segment => segment.text)).toEqual(response.proposals[0].segments.map(segment => segment.text));
     for (const segment of result.accepted[0].draft.content.segments) {
@@ -63,7 +57,7 @@ describe('versioned body and association generation wire', () => {
     const response = body(), anchor = response.proposals[0].requiredContexts[0].evidence;
     response.proposals[0].segments = [{ segmentId: 's1', text: 'Alpha SDK 0.165.0', evidence: [anchor,
       { ...anchor, interpretation: 'A separate source interpretation, retained as such.' }] }];
-    const result = checkGeneratedBodies(JSON.stringify(response), window);
+    const result = checkGeneratedBodies(JSON.stringify(response), [window]);
     expect(result.rejected).toEqual([]);
     expect(result.accepted[0].draft.content.segments[0].evidence.map(item => item.interpretation))
       .toEqual(['Historical source scope.', 'A separate source interpretation, retained as such.']);
@@ -76,7 +70,7 @@ describe('versioned body and association generation wire', () => {
     if (target === 'segment') invalid.segments[1].text = 'The result remains unknown.';
     if (target === 'blank') invalid.requiredContexts[0].literal = ' ';
     response.proposals.push(invalid);
-    const before = JSON.stringify(response), result = checkGeneratedBodies(before, window);
+    const before = JSON.stringify(response), result = checkGeneratedBodies(before, [window]);
     expect(result.accepted.map(item => item.proposalId)).toEqual(['p1']);
     expect(result.rejected).toEqual([{ index: 1, reasons: [expect.stringContaining('Required context literal')] }]);
     expect(JSON.stringify(response)).toBe(before);
@@ -88,19 +82,19 @@ describe('versioned body and association generation wire', () => {
     response.proposals[0].requiredContexts = [];
     response.proposals[0].segments = [{ segmentId: 's1', text: 'The selected CLI version is 0.165.0.',
       evidence: [{ ...evidence('0.165.0'), contextBefore: 'CLI ', contextAfter: '.' }] }];
-    const result = checkGeneratedBodies(JSON.stringify(response), selected);
+    const result = checkGeneratedBodies(JSON.stringify(response), [selected]);
     expect(result.rejected).toEqual([]);
     expect(result.accepted[0].draft.content.segments[0].evidence[0].selection).toEqual({ evidenceRef: 'record-1', quote: '0.165.0', start: 20, end: 27 });
     response.proposals[0].segments[0].evidence[0].contextBefore = null;
     response.proposals[0].segments[0].evidence[0].contextAfter = null;
-    expect(checkGeneratedBodies(JSON.stringify(response), selected).rejected[0].reasons[0]).toContain('ambiguous');
+    expect(checkGeneratedBodies(JSON.stringify(response), [selected]).rejected[0].reasons[0]).toContain('ambiguous');
   });
 
   it('enforces the combined evidence capacity instead of silently truncating claims or shared contexts', () => {
     const response = body(), anchor = response.proposals[0].requiredContexts[0].evidence;
     response.proposals[0].segments = [{ segmentId: 's1', text: 'Alpha SDK 0.165.0',
       evidence: Array.from({ length: 512 }, (_, index) => ({ ...anchor, interpretation: `Authored capacity entry ${index}.` })) }];
-    expect(checkGeneratedBodies(JSON.stringify(response), window)).toEqual({ accepted: [], rejected: [{ index: 0, reasons: ['Combined body evidence capacity exceeded.'] }] });
+    expect(checkGeneratedBodies(JSON.stringify(response), [window])).toEqual({ accepted: [], rejected: [{ index: 0, reasons: ['Combined body evidence capacity exceeded.'] }] });
   });
 
   it.each(['proposal', 'stage'] as const)('rejects shared evidence amplification at the compiled %s byte limit without charging rejected drafts', scope => {
@@ -116,7 +110,7 @@ describe('versioned body and association generation wire', () => {
     const raw = JSON.stringify(response);
     // Input stays small; each segment is < 256 KiB, but shared quotations amplify its total UTF-8 size.
     expect(Buffer.byteLength(raw)).toBeLessThan(512 * 1024);
-    const result = checkGeneratedBodies(raw, selected);
+    const result = checkGeneratedBodies(raw, [selected]);
     expect(result.rejected).toEqual([{ index: scope === 'proposal' ? 0 : 1, reasons: ['Compiled body capacity exceeded.'] }]);
     expect(result.accepted.map(item => item.proposalId)).toEqual(scope === 'proposal' ? ['small'] : ['first', 'small']);
     expect(result.accepted.reduce((bytes, item) => bytes + Buffer.byteLength(JSON.stringify(item.draft)), 0)).toBeLessThanOrEqual(16 * 1024 * 1024);
@@ -125,9 +119,9 @@ describe('versioned body and association generation wire', () => {
 
   it('rejects old response versions and old locator fields rather than interpreting them under the new wire', () => {
     const response = body();
-    expect(() => checkGeneratedBodies(JSON.stringify({ ...response, schemaVersion: 1 }), window)).toThrow('body generation wire rejected.');
+    expect(() => checkGeneratedBodies(JSON.stringify({ ...response, schemaVersion: 1 }), [window])).toThrow('body generation wire rejected.');
     expect(() => checkGeneratedBodies(JSON.stringify({ ...response, proposals: response.proposals.map(proposal => ({ ...proposal,
-      segments: proposal.segments.map(segment => ({ ...segment, evidence: segment.evidence.map(item => ({ ...item, occurrence: 0 })) })) })) }), window)).toThrow('body generation wire rejected.');
+      segments: proposal.segments.map(segment => ({ ...segment, evidence: segment.evidence.map(item => ({ ...item, occurrence: 0 })) })) })) }), [window])).toThrow('body generation wire rejected.');
     expect(() => checkGeneratedAssociations(JSON.stringify({ ...association(), schemaVersion: 2 }))).toThrow('association generation wire rejected.');
   });
 

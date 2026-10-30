@@ -4,7 +4,7 @@ import { Alert, Button, Input, Select, Tag } from 'antd';
 import type { Language } from '../layout/shell';
 import type { KnowledgeEntityAnalysisDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
-import { displayTime } from '../../../application/display/format';
+import { sourceCoordinateLabel } from './source-locator';
 
 type Revision = KnowledgeEntityAnalysisDetail['revision'];
 type Entity = Revision['entities'][number];
@@ -104,10 +104,10 @@ export function EntityRelations({ detail, entity, workspace, lang }: {
   function evidence(ids: string[], rationale: string) {
     return <><p>{rationale}</p>{ids.map(id => {
       const mention = revision.mentions.find(value => value.mentionId === id)!;
-      const excerpt = detail.source.status === 'available' ? detail.source.excerpts.find(value => value.evidenceRef === mention.selection.evidenceRef) : undefined;
+      const excerpt = detail.source.status === 'available' ? detail.source.snapshot.excerpts.find(value => value.evidenceRef === mention.selection.evidenceRef) : undefined;
       const matches = excerpt?.text.slice(mention.selection.start, mention.selection.end) === mention.selection.quote;
       return <section className="entity-mention" key={id}><p>{t('判断依据：', 'Evidence: ')}<Tag>{mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断对应', 'Inferred assignment')}</Tag><q>{mention.selection.quote}</q> · {link(mention.entityId)}</p><p>{mention.rationale}</p>
-        {excerpt && <><p className="candidate-help">{t('来源消息', 'Source message')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind}{excerpt.timestamp ? ` · ${displayTime(excerpt.timestamp)}` : ''}</p>
+        {excerpt && <><p className="candidate-help">{sourceCoordinateLabel(excerpt.coordinate, lang)}</p>
           {!matches && <Alert type="warning" title={t('依据与快照位置不匹配，不能当作已核对。', 'Evidence does not match the snapshot span; it is not verified.')}/>}
           <details><summary>{t('展开关联依据原文', 'Show original link evidence')}</summary><pre>{matches ? <>{excerpt.text.slice(0, mention.selection.start)}<mark>{mention.selection.quote}</mark>{excerpt.text.slice(mention.selection.end)}</> : excerpt.text}</pre></details></>}
       </section>;

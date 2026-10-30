@@ -8,6 +8,9 @@ import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
 import { KnowledgeReviewSummary } from './review-summary';
 import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
+import type { SourceRef } from '../../../../knowledge/sources';
+import { SourceLocator, SourceOriginalContext } from './source-locator';
+import { SourceUpdates } from './source-updates';
 
 export type KnowledgeReaderSelection = {
   tab?: 'body' | 'evidence' | 'associations' | 'history'; segmentId?: string; mentionId?: string; relationId?: string;
@@ -34,7 +37,7 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
 export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent }: {
   detail: KnowledgeCandidateDetail; lang: Language; busy?: boolean; header?: ReactNode; tools?: ReactNode; footer?: ReactNode;
   onReviewContent?(): void; workspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
-  onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(snapshot: string): void; onRetry(): void;
+  onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(source: SourceRef): void; onRetry(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [localSelection, setLocalSelection] = useState<KnowledgeReaderSelection>({ tab: 'body' });
@@ -77,8 +80,8 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
       evidenceRef: item.selection.evidenceRef, start: item.selection.start, end: item.selection.end } });
   }
   const source = detail.sources.find(entry => entry.status === 'available'
-    && entry.window.snapshotId === selected?.source.snapshotId && entry.window.sourceVersion === selected?.source.sourceVersion);
-  const excerpt = source?.status === 'available' ? source.window.excerpts.find(item => item.evidenceRef === selected?.selection.evidenceRef) : undefined;
+    && entry.snapshot.snapshotId === selected?.source.snapshotId && entry.snapshot.sourceVersion === selected?.source.sourceVersion);
+  const excerpt = source?.status === 'available' ? source.snapshot.excerpts.find(item => item.evidenceRef === selected?.selection.evidenceRef) : undefined;
   const organization = detail.revision.content.organization;
   const sourceMatches = !!excerpt && !!selected && excerpt.text.slice(selected.selection.start, selected.selection.end) === selected.selection.quote;
   const evidenceReady = tab === 'evidence' && sourceMatches;
@@ -123,7 +126,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
     requestedEvidence?.evidenceRef, requestedEvidence?.start, requestedEvidence?.end, evidenceReady]);
   const entityLabel = (ref: { analysisId: string; entityRevisionId: string; entityId: string }) => { const catalog = catalogFor(ref); return catalog?.status === 'available' ? catalog.entities.find(entity => entity.entityId === ref.entityId)?.label ?? ref.entityId : ref.entityId; };
   const referencesUnavailable = (derived.revision?.catalogRefs ?? []).some(ref => { const catalog = catalogFor(ref); return catalog?.status !== 'available'
-    || !detail.sources.some(source => source.status === 'available' && source.window.snapshotId === catalog.snapshotId && source.window.sourceVersion === catalog.sourceVersion); });
+    || !detail.sources.some(source => source.status === 'available' && source.snapshot.snapshotId === catalog.snapshotId && source.snapshot.sourceVersion === catalog.sourceVersion); });
   const tabs = [{ key: 'body', label: t('正文', 'Content') }, { key: 'evidence', label: t('依据', 'Evidence') },
     { key: 'associations', label: t('实体与关联', 'Entities and associations') }, { key: 'history', label: t('修订历史', 'Revision history') }];
   return <article className="knowledge-reader">
@@ -209,19 +212,22 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
             label: `${index + 1} · ${item.relationId ? t('关系依据', 'Relation evidence') : item.mentionId ? t('实体提及', 'Entity mention') : t('正文引文', 'Content citation')} · ${t('段落', 'Segment')} ${segments.findIndex(segment => segment.segmentId === item.segmentId) + 1} · ${item.selection.quote.slice(0, 90)}` }))} onChange={inspect}/>
           {hasTarget && !selected && <Alert type="warning" title={t('在指定的段落、提及、关系和来源范围中未找到精确依据，未替换为其他引文。请核对修订身份。', 'The requested exact evidence is absent from the specified segment, mention, relation and source scope. No other quotation was substituted. Check the revision identity.')}/>}
           {selected && <p className="candidate-help">{({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[selected.basis]}{selected.interpretation ? ` · ${selected.interpretation}` : ''}</p>}
-          {excerpt && selected ? <><p className="candidate-help">{t('记录', 'Record')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('来源时间未知', 'Source time unknown')}</p>
+          {excerpt && selected && source?.status === 'available' ? <><SourceLocator source={source.snapshot} excerpt={excerpt} lang={lang} workspace={workspace}/>
             {!sourceMatches && <Alert type="warning" title={t('保存的引文与此快照位置不匹配，不能当作已核对；原文与保存引文分别保留。', 'The saved quotation does not match this snapshot span. It is not verified; original text and saved quotation remain separate.')}/>}
             <pre className="knowledge-source">{sourceMatches ? <>{excerpt.text.slice(0, selected.selection.start)}<mark data-focused="true">{excerpt.text.slice(selected.selection.start, selected.selection.end)}</mark>{excerpt.text.slice(selected.selection.end)}</> : excerpt.text}</pre>
             {!sourceMatches && <blockquote>{selected.selection.quote}</blockquote>}
             {selected.segmentId && <Button type="link" disabled={busy} onClick={() => choose({ ...active, tab: 'body', segmentId: selected.segmentId })}>{t('返回对应正文段落', 'Return to this content segment')}</Button>}
-            {source?.status === 'available' && <><p className="candidate-help">{source.window.limitations.join(' ')}</p><details><summary>{t('原始记录及相邻上下文', 'Original record and adjacent context')}</summary>{source.window.records.filter(record => Math.abs(record.recordIndex - excerpt.recordIndex) <= 1).map(record => <pre className="knowledge-source" key={record.recordIndex}>{record.recordIndex}: {record.raw}</pre>)}</details></>}
+            <p className="candidate-help">{source.snapshot.limitations.join(' ')}</p><SourceOriginalContext snapshot={source.snapshot} excerpt={excerpt} lang={lang} workspace={workspace}/>
           </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={!selected
             ? t('指定依据尚未定位。请核对段落、提及、关系与修订身份。', 'Requested evidence was not located. Check the segment, mention, relation and revision identity.')
             : t('此来源不可用，不能核对完整证据。已保存引文仍可阅读。', 'This source is unavailable. Saved quotations remain readable, but full evidence cannot be checked.')}>
             {selected && <blockquote>{selected.selection.quote}</blockquote>}<Button disabled={busy} onClick={onRetry}>{t('重试读取', 'Retry reading')}</Button></Empty>}
           {selected && <details><summary>{t('精确依据身份', 'Exact evidence identity')}</summary><p className="candidate-help"><code>{selected.source.snapshotId} / {selected.source.sourceVersion}</code> · {selected.selection.evidenceRef} · {selected.selection.start}–{selected.selection.end}{selected.mentionId && <> · <code>{selected.mentionId}</code></>}{selected.relationId && <> · <code>{selected.relationId}</code></>}</p></details>}
+          {selected && <details><summary>{t('核对已保存来源的变化影响', 'Check changes affecting the saved source')}</summary>
+            <SourceUpdates source={selected.source} snapshot={source?.status === 'available' ? source.snapshot : undefined} workspace={workspace} lang={lang} busy={busy}/>
+          </details>}
           {detail.sources.map((entry, index) => entry.status === 'unavailable' ? <Alert key={index} type="warning" title={`${t('来源不可用', 'Source unavailable')}: ${entry.reason}`}/>
-            : onDeleteSource && <Button key={index} danger size="small" disabled={busy} onClick={() => onDeleteSource(entry.window.snapshotId)}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}
+            : onDeleteSource && <Button key={index} danger size="small" disabled={busy} onClick={() => onDeleteSource({ snapshotId: entry.snapshot.snapshotId, sourceVersion: entry.snapshot.sourceVersion })}>{t('删除来源快照', 'Delete source snapshot')}</Button>)}
         </>}
         {tab === 'history' && <>
           <h3>{t('修订历史', 'Revision history')}</h3>

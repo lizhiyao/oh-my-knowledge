@@ -1,3 +1,6 @@
+import type { LocalSourceScope } from '../../../knowledge/application/local-source-host.js';
+import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
+import { executeSourcePickerAction } from '../../application/knowledge/source-picker.js';
 import type { ConversationCatalog } from '../../../observability/application.js';
 import type { ConversationAutoExtraction } from '../../../knowledge/application/auto-extraction.js';
 import { autoExtractionStatusEtag, executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
@@ -9,8 +12,8 @@ import { readJsonObjectBody } from '../request-errors.js';
 import { createStudioRouter } from './router.js';
 import type { LiveStreamRegistry } from './contracts.js';
 
-export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction) {
-  return createStudioRouter(['candidates', 'auto-extraction', 'library'].map(resource => ({
+export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, catalog?: ConversationCatalog, automation?: ConversationAutoExtraction, sourceScope?: LocalSourceScope) {
+  return createStudioRouter(['candidates', 'sources', 'auto-extraction', 'library'].map(resource => ({
     pattern: `/api/knowledge/${resource}`, method: 'POST', mutation: true,
     async handler({ request, response }) {
       const input = await readJsonObjectBody(request);
@@ -19,10 +22,10 @@ export function createKnowledgeCandidateRoutes(liveStreams: LiveStreamRegistry, 
       response.once('close', cancel); liveStreams.add(cancel);
       try {
         if (resource === 'auto-extraction' && !automation) throw new Error('Automation service unavailable.');
-        const result = resource === 'library' ? executeKnowledgeLibraryAction(input)
+        const result = resource === 'sources' ? await executeSourcePickerAction(input, sourceScope, controller.signal) : resource === 'library' ? executeKnowledgeLibraryAction(input)
           : resource === 'auto-extraction' && automation
             ? await executeAutoExtractionAction(input, automation, controller.signal)
-            : await executeKnowledgeCandidateAction(input, controller.signal, undefined, catalog);
+            : await executeKnowledgeCandidateAction(input, controller.signal, root => createLocalKnowledgeApplication(root, { sourceScope }), catalog);
         if (!response.destroyed) {
           const status = resource === 'auto-extraction' && input.operation === 'status';
           const etag = status && typeof input.workspace === 'string' && typeof input.threadId === 'string'

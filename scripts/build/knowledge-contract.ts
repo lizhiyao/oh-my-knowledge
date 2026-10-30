@@ -8,6 +8,7 @@ export interface CurrentKnowledgeContract {
   bodyResponseSchemaVersion: number; associationResponseSchemaVersion: number;
   knowledgeHistorySchemaVersion: number; associationHistorySchemaVersion: number; reviewHistorySchemaVersion: number; journalSchemaVersion: number;
   entityHistorySchemaVersion: number; outcomeMaxBytes: number;
+  sourceSnapshotSchemaVersion: number; sourceProjectionVersion: string; sourceInputVersion: string; sourceImportRunIdentity: string;
   retrievalDefaultBytes: number; retrievalMinBytes: number; retrievalMaxBytes: number;
   studyPlanMaxBytes: number; studyInspectionMaxBytes: number;
 }
@@ -15,10 +16,11 @@ export interface CurrentKnowledgeContract {
 /** Current production identities and separately labelled historical-study capacities. */
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
-  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection] = await Promise.all([
+  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput] = await Promise.all([
     load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews.js'), load('extraction/generation-journal.js'),
     load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
     load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
+    load('sources.js'), load('adapters/source-store.js'), load('extraction/source-input.js'),
   ]);
   const body = wire.BODY_GENERATION_PROFILE, association = wire.ASSOCIATION_GENERATION_PROFILE;
   return {
@@ -32,6 +34,8 @@ export async function loadCurrentKnowledgeContract(root: string): Promise<Curren
     reviewHistorySchemaVersion: reviews.KnowledgeReviewEnvelopeSchema.shape.schemaVersion.value,
     journalSchemaVersion: journal.GenerationJournalSchema.shape.schemaVersion.value,
     entityHistorySchemaVersion: entities.EntityAnalysisEnvelopeSchema.shape.schemaVersion.value,
+    sourceSnapshotSchemaVersion: sourceStore.SOURCE_SNAPSHOT_SCHEMA_VERSION, sourceProjectionVersion: sources.SOURCE_PROJECTION_VERSION,
+    sourceInputVersion: sourceInput.SOURCE_GENERATION_INPUT_VERSION, sourceImportRunIdentity: sourceInput.SOURCE_IMPORT_RUN_IDENTITY,
     outcomeMaxBytes: archive.MAX_GENERATION_OUTCOME_BYTES,
     retrievalDefaultBytes: retrieval.KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES, retrievalMinBytes: retrieval.KNOWLEDGE_RETRIEVAL_MIN_BYTES,
     retrievalMaxBytes: retrieval.KNOWLEDGE_RETRIEVAL_MAX_BYTES,
@@ -67,6 +71,10 @@ export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract,
     ['Review and use feedback history Schema', '复核与使用反馈历史 Schema', code(values.reviewHistorySchemaVersion)],
     ['Generation journal Schema', '生成日志 Schema', code(values.journalSchemaVersion)],
     ['Entity history Schema', '实体历史 Schema', code(values.entityHistorySchemaVersion)],
+    ['Source snapshot Schema', '来源快照 Schema', code(values.sourceSnapshotSchemaVersion)],
+    ['Source projection', '来源投影', code(values.sourceProjectionVersion)],
+    ['Source generation input', '来源生成输入', code(values.sourceInputVersion)],
+    ['Default source import run identity', '默认来源导入运行身份', code(values.sourceImportRunIdentity)],
     ['Complete native archive capacity', '完整原生归档容量', bytes(values.outcomeMaxBytes)],
     ['Default retrieval response budget (adjustable)', '默认检索响应预算（可调）', bytes(values.retrievalDefaultBytes)],
     ['Minimum retrieval response budget', '最小检索响应预算', bytes(values.retrievalMinBytes)],

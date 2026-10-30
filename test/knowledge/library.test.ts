@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication, createLocalKnowledgeLibrary } from '../../src/knowledge/application/local.js';
-import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
@@ -19,7 +20,7 @@ function fixture() {
   const app = createLocalKnowledgeApplication(root), library = createLocalKnowledgeLibrary(root);
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root), entities = new FileEntityAnalysisStore(join(root, 'entities'), root);
   const associations = new FileKnowledgeAssociationStore(join(root, 'associations'), 'local', knowledge, entities, root);
-  const source = app.capture({ path: join(root, 'authored.jsonl'), origin: { threadId: 'authored', title: 'Authored source' }, records: [{ recordIndex: 1,
+  const source = captureTraceFixture(root, { path: join(root, 'authored.jsonl'), origin: { threadId: 'authored', title: 'Authored source' }, records: [{ recordIndex: 1,
     raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
   const analysisId = randomUUID(), entityRevisionId = randomUUID(), entityIds = [randomUUID(), randomUUID()], mentionIds = [randomUUID(), randomUUID()];
   const catalog = { entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: entityIds[index], label, description: `来源内的${label}对象`, qualifiers: [],
@@ -76,7 +77,7 @@ describe('body canonical knowledge library projections', () => {
     expect(f.library.knowledgeCatalog().rows).toMatchObject([{ revisionId: edited.revision.revisionId, title: '新的正文限定', choice: null, objects: [] }]);
   });
   it('keeps source-loss knowledge readable and permits removing organization links without deleting body history', () => {
-    const f = fixture(), object = f.save(); f.review('accept'); f.app.deleteSource(f.source.snapshotId);
+    const f = fixture(), object = f.save(); f.review('accept'); f.app.deleteSource(sourceRef(f.source));
     expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('unavailable');
     const saved = f.library.save({ objectId: object.objectId, requestId: randomUUID(), generation: object.generation, headRevisionId: object.writeHeadRevisionId,
       draft: { ...object.revisions[0].draft, members: [] }, reason: '解除组织关联', identityConfirmed: true });
@@ -104,10 +105,10 @@ describe('body canonical knowledge library projections', () => {
   });
   it('keeps the knowledge catalog source-free and deduplicates exact source reads within an object request', () => {
     const f = fixture(), object = f.save(); f.review('accept');
-    const source = vi.spyOn(TraceEvidenceStore.prototype, 'read');
+    const source = vi.spyOn(FileSourceStore.prototype, 'read');
     expect(f.library.knowledgeCatalog().rows).toHaveLength(1); expect(source).not.toHaveBeenCalled();
     expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('available'); expect(source).toHaveBeenCalledTimes(1);
-    f.app.deleteSource(f.source.snapshotId); source.mockClear();
+    f.app.deleteSource(sourceRef(f.source)); source.mockClear();
     expect(f.library.detail(object.objectId).knowledge[0].sourceStatus).toBe('unavailable'); expect(source).toHaveBeenCalledTimes(1);
   });
   it('keeps known object knowledge during unrelated association failures and restores counts after repair', () => {
@@ -115,7 +116,7 @@ describe('body canonical knowledge library projections', () => {
     const ownProjectionFile = join(f.root, 'associations', readdirSync(join(f.root, 'associations'))[0]);
     f.app.maintain(f.body.knowledgeId, f.body.revision.revisionId, 'retain', '保留健康对象知识', 1);
     const quote = 'Gamma 使用 Delta';
-    const source = f.app.capture({ path: join(f.root, 'unrelated.jsonl'), records: [{ recordIndex: 1,
+    const source = captureTraceFixture(f.root, { path: join(f.root, 'unrelated.jsonl'), records: [{ recordIndex: 1,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: quote }] } }) }] });
     const unrelated = bodyWrite(); unrelated.knowledgeId = unrelated.revision.knowledgeId = 'unrelated-knowledge';
     unrelated.requestId = randomUUID(); unrelated.revision.revisionId = 'unrelated-revision'; unrelated.revision.title = 'Gamma 的来源报告';

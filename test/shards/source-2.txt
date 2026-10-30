@@ -63,6 +63,16 @@ test/knowledge/artifacts/authoring/scaffold.test.ts
 test/knowledge/artifacts/doctor/report-parser.test.ts
 test/knowledge/artifacts/sources/deploy-artifact.test.ts
 test/knowledge/executor.test.ts
+test/knowledge/sources.test.ts
+test/knowledge/project-source-reader.test.ts
+test/knowledge/trace-source-reader.test.ts
+test/knowledge/source-store.test.ts
+test/knowledge/source-capture.test.ts
+test/knowledge/source-updates.test.ts
+test/knowledge/local-source-updates.test.ts
+test/knowledge/source-migration.test.ts
+test/knowledge/source-workspace.test.ts
+test/knowledge/generation-host.test.ts
 test/mcp/http.test.ts
 test/observability/conversation-turn-index.test.ts
 test/mcp/trigger-samples.test.ts

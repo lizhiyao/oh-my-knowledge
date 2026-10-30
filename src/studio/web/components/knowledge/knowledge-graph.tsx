@@ -1,12 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { Alert, Button, Empty, Space } from 'antd';
 import type { KnowledgeGraph, KnowledgeCandidateDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import type { Language } from '../layout/shell';
 import type { KnowledgeReaderEntityTarget, KnowledgeReaderSelection } from './reader';
-import { conversationPath } from '../conversation-link';
-import { workspaceHref } from '../layout/workspace-link';
+import { SourceLocator, sourceTitle } from './source-locator';
 
 type Node = KnowledgeGraph['nodes'][number];
 type Edge = KnowledgeGraph['edges'][number];
@@ -18,7 +16,7 @@ type Citation = { source?: SourceNode; selection: Selection; basis: string; rati
 
 function nodeLabel(node: Node, lang: Language) {
   return node.nodeKind === 'knowledge' ? node.title : node.nodeKind === 'entity' ? node.label
-    : node.origin?.title || (lang === 'zh' ? '来源窗口' : 'Source window');
+    : sourceTitle(node.source, lang);
 }
 function kindLabel(node: Node, lang: Language) {
   return lang === 'zh' ? ({ knowledge: '知识', entity: '实体', source: '来源' })[node.nodeKind]
@@ -231,7 +229,7 @@ export function KnowledgeGraphInspection({ graph, selectedId, detail, loading, w
       {node?.nodeKind === 'knowledge' && !!node.associationHistory?.length && <details><summary>{t('关联修订历史', 'Association revision history')}</summary>{node.associationHistory.map(revision => <section className="knowledge-network-citation" key={revision.revisionId}><p>{associationLabel(revision.status, lang)} · {revision.revisionReason}</p><p className="candidate-help">{revision.revisedAt} · {revision.reviewStatus === 'accepted' ? t('已接受关联', 'Associations accepted') : revision.reviewStatus === 'rejected' ? t('已拒绝关联', 'Associations rejected') : t('关联待核对', 'Associations pending review')}</p><p><code>{revision.revisionId}</code></p><p className="candidate-help">{t('绑定正文修订：', 'Bound content revision: ')}<code>{revision.bodyRef.revisionId}</code></p>{revision.issues.map((issue, index) => <p key={index}>{issue}</p>)}</section>)}</details>}
       {entity && <><p>{entity.description}</p>{!!entity.qualifiers.length && <p>{entity.qualifiers.join(' · ')}</p>}<p className="candidate-help">{entity.current ? t('当前实体修订', 'Current entity revision') : t('此处保留原绑定的实体修订', 'The originally bound entity revision is shown')} · {entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Identity unresolved') : t('提出对应，待核对', 'Proposed identity, needs review')}</p>
         {entity.uncertainties.map((value, index) => <p key={index}>{value}</p>)}<details><summary>{t('精确实体身份', 'Exact entity identity')}</summary><code>{entity.analysisId} / {entity.entityRevisionId} / {entity.entityId}</code></details></>}
-      {source && <><p>{source.origin ? <Link href={workspaceHref(conversationPath(source.origin.threadId, source.origin.turnId), workspace)}>{source.origin.title || t('打开原始对话', 'Open original conversation')}</Link> : t('所选来源窗口', 'Selected source window')}</p>{source.limitations.map((value, index) => <p key={index}>{value}</p>)}<p className="candidate-help">{source.status === 'unavailable' ? t('来源不可用，保存的引文仍可读。', 'Source unavailable; saved quotations remain readable.') : t('以下依据属于当前打开的精确知识修订。', 'The evidence below belongs to the exact knowledge revision currently open.')}</p><details><summary>{t('精确来源身份', 'Exact source identity')}</summary><code>{source.snapshotId} / {source.sourceVersion}</code></details></>}
+      {source && <>{source.source && <SourceLocator source={source.source} sourceRef={source} lang={lang} workspace={workspace}/>}{source.limitations.map((value, index) => <p key={index}>{value}</p>)}<p className="candidate-help">{source.status === 'unavailable' ? t('来源不可用，保存的引文仍可读。', 'Source unavailable; saved quotations remain readable.') : t('以下依据属于当前打开的精确知识修订。', 'The evidence below belongs to the exact knowledge revision currently open.')}</p><details><summary>{t('精确来源身份', 'Exact source identity')}</summary><code>{source.snapshotId} / {source.sourceVersion}</code></details></>}
       {edge && <><p className="candidate-help">{edgeStateLabel(edge, lang)}{'reviewStatus' in edge && ` · ${edge.reviewStatus === 'accepted' ? t('关联已接受', 'Associations accepted') : edge.reviewStatus === 'rejected' ? t('关联已拒绝', 'Associations rejected') : t('关联待核对', 'Associations pending review')}`}</p>
         <p>{nodeLabel(graph.nodes.find(node => node.nodeId === edge.from)!, lang)} → {nodeLabel(graph.nodes.find(node => node.nodeId === edge.to)!, lang)}</p>
         {'catalogCurrent' in edge && !edge.catalogCurrent && <p className="candidate-help">{t('绑定的实体目录已有新修订；此处仍保留原精确绑定，需明确核对与应用。', 'The bound entity catalog has a newer revision. The exact original binding is retained until explicitly reviewed and applied.')}</p>}
@@ -241,15 +239,16 @@ export function KnowledgeGraphInspection({ graph, selectedId, detail, loading, w
         {segmentIds.map(id => <div key={id} className="knowledge-network-segment"><p>{owner?.segments.find(segment => segment.segmentId === id)?.text ?? id}</p><Button type="link" size="small" onClick={() => onLocate({ tab: 'body', segmentId: id, relationId: edge.edgeKind === 'typed_relation' ? edge.relationId : undefined })}>{t('在正文中定位', 'Locate in content')}</Button></div>)}
       </>}
         {refs.map((ref, index) => {
-          const loaded = detail?.sources.find(entry => entry.status === 'available' && entry.window.snapshotId === ref.source?.snapshotId && entry.window.sourceVersion === ref.source?.sourceVersion);
-          const excerpt = loaded?.status === 'available' ? loaded.window.excerpts.find(value => value.evidenceRef === ref.selection.evidenceRef) : undefined;
+          const loaded = detail?.sources.find(entry => entry.status === 'available' && entry.snapshot.snapshotId === ref.source?.snapshotId && entry.snapshot.sourceVersion === ref.source?.sourceVersion);
+          const excerpt = loaded?.status === 'available' ? loaded.snapshot.excerpts.find(value => value.evidenceRef === ref.selection.evidenceRef) : undefined;
           const matched = excerpt?.text.slice(ref.selection.start, ref.selection.end) === ref.selection.quote;
+          const original = excerpt && <>{loaded?.status === 'available' && <SourceLocator source={loaded.snapshot} excerpt={excerpt} lang={lang} workspace={workspace}/>}
+            {!matched && <Alert type="warning" title={t('引文位置不匹配，不能作为已核对原文。', 'Quotation position does not match; it is not verified source evidence.')}/>}<pre className="knowledge-source">{matched ? <>{excerpt.text.slice(0, ref.selection.start)}<mark>{ref.selection.quote}</mark>{excerpt.text.slice(ref.selection.end)}</> : excerpt.text}</pre></>;
           return <section className="knowledge-network-citation" key={`${ref.mentionId ?? ref.selection.evidenceRef}:${index}`}>
             <blockquote>{ref.selection.quote}</blockquote><p className="candidate-help">{ref.basis === 'inference' ? t('推断', 'Inference') : ref.basis === 'direct_observation' ? t('直接观测', 'Direct observation') : ref.basis === 'explicit' ? t('明确提及', 'Explicit mention') : ref.basis === 'inferred' ? t('推断对应', 'Inferred identity') : t('来源中的说法', 'Source assertion')}{ref.rationale ? ` · ${ref.rationale}` : ''}</p>
-            <p className="candidate-help">{ref.source?.origin?.title || t('精确来源窗口', 'Exact source window')} · {ref.selection.evidenceRef} · {ref.selection.start}–{ref.selection.end}</p>
+            <p className="candidate-help">{ref.source?.source ? sourceTitle(ref.source.source, lang) : t('精确来源快照', 'Exact source snapshot')} · {ref.selection.evidenceRef} · {ref.selection.start}–{ref.selection.end}</p>
             {ref.source && <Button type="link" size="small" onClick={() => onLocate({ tab: 'evidence', segmentId: segmentIds[0], mentionId: ref.mentionId, relationId: ref.relationId, ...(ref.catalogRef ? { catalogRef: ref.catalogRef } : {}), evidence: { snapshotId: ref.source!.snapshotId, sourceVersion: ref.source!.sourceVersion, evidenceRef: ref.selection.evidenceRef, start: ref.selection.start, end: ref.selection.end } })}>{t('在阅读器回查依据', 'Inspect evidence in reader')}</Button>}
-            {excerpt ? <details><summary>{t('展开这处依据的完整原文', 'Show this evidence in the full source message')}</summary><p className="candidate-help">{t('来源消息', 'Source message')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind} · {excerpt.timestamp ?? t('来源时间未知', 'Source time unknown')}</p>
-              {!matched && <Alert type="warning" title={t('引文位置不匹配，不能作为已核对原文。', 'Quotation position does not match; it is not verified source evidence.')}/>}<pre className="knowledge-source">{matched ? <>{excerpt.text.slice(0, ref.selection.start)}<mark>{ref.selection.quote}</mark>{excerpt.text.slice(ref.selection.end)}</> : excerpt.text}</pre></details>
+            {excerpt ? matched ? <details><summary>{t('展开这处依据的完整原文', 'Show this evidence in the full source excerpt')}</summary>{original}</details> : original
               : <p className="candidate-help">{loading ? t('正在读取所选知识的来源。', 'Loading the selected knowledge source.') : ref.source?.status === 'unavailable' ? t('原文不可用，不能完整核对。', 'Source unavailable; full review is not possible.') : t('此来源原文尚未载入当前正文；可先打开对应的精确知识修订。', 'This source is not loaded with the current content. Open its exact knowledge revision first.')}</p>}
           </section>;
         })}

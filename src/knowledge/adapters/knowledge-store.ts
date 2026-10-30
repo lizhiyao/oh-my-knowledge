@@ -8,7 +8,7 @@ import { applyKnowledgeWrite, validateKnowledgeHistory } from '../history.js';
 import {
   canonicalJson, KnowledgeEnvelopeSchema, KnowledgeWriteSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../store.js';
-import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
 import { assertCurrentStorage } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -17,7 +17,8 @@ const digest = (value: unknown): string => `sha256:${createHash('sha256').update
 /** Adapter roots and actor identity come from trusted host composition, not request payloads. */
 export class FileKnowledgeStore implements KnowledgeStore {
   private readonly root: string;
-  constructor(root: string, private readonly namespace: string, private readonly workspaceRoot = root) {
+  constructor(root: string, private readonly namespace: string, private readonly workspaceRoot = root,
+    private readonly migrationWriteContext?: SourceMigrationWriteContext) {
     if (!root.trim() || !namespace.trim()) throw new Error('Explicit knowledge root and namespace required.');
     this.root = resolve(root);
   }
@@ -70,6 +71,6 @@ export class FileKnowledgeStore implements KnowledgeStore {
       if (Buffer.byteLength(JSON.stringify(next, null, 2)) > MAX_BYTES) throw new Error('capacity_exceeded');
       publishKnowledgeBytes(path, JSON.stringify(next, null, 2), this.workspaceRoot, !existing);
       return next.receipts.at(-1)!;
-    });
+    }, this.migrationWriteContext);
   }
 }

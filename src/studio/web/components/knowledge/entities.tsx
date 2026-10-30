@@ -5,7 +5,6 @@ import { Alert, Button, Empty, Input, Pagination, Select, Space, Spin, Tag } fro
 import type { Language } from '../layout/shell';
 import type { KnowledgeEntityCatalog, KnowledgeEntityLibraryDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_ENTITIES_PATH, KNOWLEDGE_LIBRARY_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
-import { conversationPath } from '../conversation-link';
 import { workspaceHref } from '../layout/workspace-link';
 import { displayTime } from '../../../application/display/format';
 import { KnowledgeSectionNav } from './section-nav';
@@ -15,6 +14,7 @@ import { notifyKnowledgeChange, resolveKnowledgeDirectory } from './workspace';
 import { requestKnowledge } from './request';
 import { LibraryEntityEntry } from './library-entry';
 import { EntityLinksDrawer } from './entity-links';
+import { SourceLocator, sourceCoordinateLabel, sourceTitle } from './source-locator';
 
 type Target = { analysisId: string; entityId: string; revision?: string };
 function entityUrl(workspace: string, target: Target) {
@@ -100,8 +100,8 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
         <div className="entity-library-summary">{catalog && t(`${catalog.total} 个匹配对象 · 工作区 ${catalog.analysisCount} 份分析`, `${catalog.total} matching entities · ${catalog.analysisCount} workspace analyses`)} {loading && <Spin size="small"/>}</div>
         <div className="entity-library-scroll">{catalog?.rows.map(row => <button className={`entity-library-row ${target?.analysisId === row.analysisId && target.entityId === row.entityId ? 'selected' : ''}`} key={`${row.analysisId}:${row.entityId}`} onClick={() => select(row)}>
           <span className="entity-library-row-title" title={row.label}>{row.label}</span><Tag>{row.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应', 'Proposed')}</Tag>
-          <span className="entity-library-row-meta" title={[...row.qualifiers, row.origin?.title ?? ''].join(' · ')}>{referentLabel(row.referentKind, lang)} · {row.qualifiers.join(' / ') || row.description}</span>
-          <span className="entity-library-row-meta">{row.origin?.title || t('导入来源', 'Imported source')} · {row.mentionCount} {t('处提及', 'mentions')} · {row.knowledgeCount ?? '—'} {t('条知识', 'knowledge items')}{row.sourceStatus === 'unavailable' ? ` · ${t('原文不可用', 'Source unavailable')}` : ''}</span>
+          <span className="entity-library-row-meta" title={[...row.qualifiers, row.source ? sourceTitle(row.source, lang) : ''].join(' · ')}>{referentLabel(row.referentKind, lang)} · {row.qualifiers.join(' / ') || row.description}</span>
+          <span className="entity-library-row-meta">{sourceTitle(row.source, lang)} · {row.mentionCount} {t('处提及', 'mentions')} · {row.knowledgeCount ?? '—'} {t('条知识', 'knowledge items')}{row.sourceStatus === 'unavailable' ? ` · ${t('原文不可用', 'Source unavailable')}` : ''}</span>
         </button>)}
           {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={workspaceHref(OBSERVE_INDEX_PATH, workspace || initialWorkspace)}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
         {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
@@ -130,7 +130,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const { entity, revision, history } = detail;
   const mentions = revision.mentions.filter(mention => mention.entityId === entity.entityId);
-  const excerpts = detail.source.status === 'available' ? detail.source.excerpts : [];
+  const excerpts = detail.source.status === 'available' ? detail.source.snapshot.excerpts : [];
   return <article className="entity-library-article"><h2>{entity.label}</h2>
     <LibraryEntityEntry workspace={workspace} analysisId={history.analysisId} entityId={entity.entityId} entityRevisionId={revision.revisionId}
       current={revision.revisionId === history.writeHeadRevisionId} lang={lang}/>
@@ -146,7 +146,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
       options={history.revisions.map((value, index) => ({ value: value.revisionId, label: `${index + 1} · ${displayTime(value.revisedAt)} · ${value.revisionReason}` }))}/></label>
     {revision.revisionId !== history.writeHeadRevisionId && <Alert type="info" title={t('正在查看历史修订。', 'Viewing a historical revision.')}/>}
     <p className="candidate-help">{displayTime(revision.revisedAt)} · {revision.revisedBy.actorId} · {revision.revisionReason}</p>
-    {detail.origin && <p><Link href={workspaceHref(conversationPath(detail.origin.threadId), workspace)}>{detail.origin.title || t('来源对话', 'Source conversation')}</Link></p>}
+    {detail.source.status === 'available' && <SourceLocator source={detail.source.snapshot} lang={lang} workspace={workspace}/>}
     <h3>{t('原文提及', 'Source mentions')}</h3>
     {detail.source.status === 'unavailable' && <Alert type="warning" title={t('原文快照不可用。以下仅为已保存的提及，无法重新核对或纠正。', 'Source snapshot unavailable. These are saved mentions; rechecking and corrections are unavailable.')}/>}
     {revision.limitations.map((value, index) => <p className="candidate-help" key={index}>{value}</p>)}
@@ -156,7 +156,7 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
       const matches = detail.mentionChecks.some(check => check.mentionId === mention.mentionId && check.positionStatus === 'matched');
       return <section className="entity-mention" key={mention.mentionId}><p><Tag>{mention.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断对应', 'Inferred assignment')}</Tag><q>{quote}</q></p>
         <p>{mention.rationale}</p>
-        {excerpt && <><p className="candidate-help">{t('来源消息', 'Source message')} {excerpt.recordIndex} · {excerpt.role ?? excerpt.eventKind}{excerpt.timestamp ? ` · ${displayTime(excerpt.timestamp)}` : ''}</p>
+        {excerpt && <><p className="candidate-help">{sourceCoordinateLabel(excerpt.coordinate, lang)}</p>
           {!matches && <Alert type="warning" title={t('保存的提及与当前快照位置不匹配，不能当作已核对。', 'Saved mention does not match this snapshot span; it is not verified.')}/ >}
           <details onToggle={event => {
             if (!event.currentTarget.open) return;

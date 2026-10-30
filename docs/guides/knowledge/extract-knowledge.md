@@ -1,6 +1,6 @@
 # Accumulate, maintain, and use knowledge
 
-Form candidates from selected work records, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow. To use saved knowledge in a new task, see [complete a task with existing knowledge](#task-knowledge-reuse).
+Form candidates from selected conversation records, UTF-8 project files or fixed local Git files, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow. To use saved knowledge in a new task, see [complete a task with existing knowledge](#task-knowledge-reuse).
 
 This guide describes current main. Check the capability’s version boundary before choosing an installed package or source build. Run `omk --version` after installation and read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
 
@@ -9,7 +9,7 @@ This guide describes current main. Check the capability’s version boundary bef
 | Capability | Availability boundary |
 |---|---|
 | Core library, artifact authoring, ongoing revision and change review | Available since published `1.0.0-beta.14`; Beta.13 does not include this maintenance UI. |
-| Canonical body-first generation, independent derived associations, current journals, complete native archives, task retrieval and explicit migration adapters | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
+| Source3 project/trace selection, body-first generation with separate request confirmation, independent derived associations, current journals and explicit copy migration | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source, and inspect release notes when subsequent versions ship. |
 | Later read-retry, save-recovery and CLI-guidance fixes | Also described against current main; the published Beta.14 version is not evidence that these fixes are present. |
 
 The [current knowledge extraction contract](../../reference/shared/knowledge-contract.md) generates prompt, Schema and capacity values from runtime code. It identifies the build rather than replacing [release records](https://github.com/lizhiyao/oh-my-knowledge/releases). `@next` is a release channel and does not automatically contain unpublished main changes.
@@ -20,9 +20,9 @@ The [current knowledge extraction contract](../../reference/shared/knowledge-con
 omk studio
 ```
 
-Use the returned address and check the current knowledge location first. Changing the default directory does not move saved data.
+Use the returned address and check the current knowledge location first. Changing the default directory does not move saved data. Connected conversations use the host's conversation catalog. For project files, local Git files or configured trace files, the host first supplies a [finite source scope](#source-scope), then starts Studio with `omk studio --source-scope ./scope.json`. The browser chooses configured IDs and relative paths; it cannot grant an arbitrary project root.
 
-1. **Select a source**: Open a conversation and choose extraction for a turn, or select a conversation from the knowledge page. Review messages, location, executor, and model before confirming. Only then is a model called, potentially incurring cost.
+1. **Select and preview sources**: Open extraction for a conversation turn, or choose **Choose sources and extract knowledge** from the knowledge page. Select connected conversation records, project files, fixed Git files or configured original Agent records. Read the complete selected excerpts and separate read/save/send scopes. **Capture selected sources only** saves locally without calling a model. Then choose the executor/model, prepare and inspect the complete request, and explicitly send that content request. After content is saved, inspect and separately confirm the association request; each send can incur cost.
 2. **Review candidates**: Read complete body segments, conditions, attribution, exceptions and unknowns; open source evidence. Record a reason to retain, discard, or revise. New revisions require review again.
 3. **Review entities as needed**: Check names, references, levels, and original text from a candidate or entity list. Entity corrections do not rewrite body; independently apply and review exact segment/entity associations.
 4. **Accumulate across records**: Create an object in the knowledge library, check whether source entities from different windows refer to the same object, and confirm with reasons. Equal names do not merge identities; resolve ambiguity and missing sources first.
@@ -32,7 +32,7 @@ Use the returned address and check the current knowledge location first. Changin
 
 Candidate pages switch between content and source evidence; entity/library lists support narrow-screen switching. Failure, zero candidates, cancellation, and missing sources have explicit states. Extraction records and knowledge todos reopen saved content.
 
-Manual and automatic extraction previews explicitly cover user and assistant messages from the selected turns. Separate tool calls and results, project files and original attachments are excluded; content quoted within messages is still sent. The manual preview can expand its source version; message selection and the pre-generation version check remain separate. This does not establish complete project coverage or turn assistant-reported results into direct execution evidence.
+Conversation selection retains the selected messages' complete original records. Every readable event projected from those records appears in the preview and proposed model material. For example, a Claude record can contain both a message and tool events; those same-record events are included. Independent unselected records, project files and attachment originals are not added automatically. Readable previews, raw records retained locally and the complete prepared model request have separate views. Host root paths stay outside model metadata, while paths already written in source text remain source text. This establishes neither complete project coverage nor the truth of assistant-reported execution.
 
 Library, entity, and artifact pages show the selected knowledge directory; reading an explicit directory does not require model settings. Retry failed reads in place while preserving organization entries. Association conflicts preserve the body and draft; reread exact body/catalog/projection heads before applying again. Generic server failures or unreadable acknowledgements do not prove no write occurred. Choose “Check saved version”: organization checks the request receipt, while artifacts check content and exact references, avoiding duplicate saves. Pending content stays read-only and copyable; saving and checking make no extra model calls.
 
@@ -96,36 +96,101 @@ In **Knowledge → Knowledge library**, first find knowledge by title, tags and 
 
 Incomplete coverage still shows known readable associations in the graph, entity detail and library object detail, alongside unknown counts, failed, stale, rejected or unavailable-source states. Historical edges describe their exact past bindings and do not apply to current content. Multi-source content can trace each source; manual mapping can retain several exact source catalogs, selecting entities and mentions per catalog before saving them together. A source without a catalog is not replaced by a same-name entity from another source. Browsing, manual correction and reopening call no generation model. Separately requesting model-assisted rebuilding requires reviewing the transmission scope.
 
-### Automatic conversation extraction and project todos
+### Automatic conversation extraction and project todos {#automatic-extraction}
 
-Automatic extraction is optional. Preview the selected conversation's messages, location, model, and invocation/budget limits before authorizing transmission. Authorization is limited to that conversation, 24 hours, and the current service lifecycle. Every initial invocation, retry and validation reask consumes one slot from the conversation-wide `maxCalls`; a run with three invocations consumes three slots. An opted-in token reservation allowance also accumulates across all windows, while capping each run. Reservations are durable before dispatch, recovered from immutable receipts and never refunded, including unknown usage or interruption before sending. Changing the displayed scope, model or limits clears approval. Existing permissions without a policy remain single-invocation permissions; retries require a new explicit approval. Hard failure/interruption stops automation; a terminal transient failure can leave it waiting for a new stable window, without resending that source. An archived server Retry-After is persisted and checked before every dispatch, including new windows and renewed permissions; a wait exceeding the run retry cap is not shortened, and permission expiry still prevents dispatch. Invalid waits stop automation. A fully validated empty dispatch ledger can release a locally rejected source window for fresh explicit approval, without deleting its failed run or evidence; any reservation or uncertain acknowledgement retains source deduplication. Restarting does not resume it automatically. Todos gather candidates for review without deciding retention or rewriting carriers.
+Automatic extraction is optional and uses a fresh Source3 permission. Preview the conversation, selected-record events, destination, executor/model, two-phase workflow and total invocation limit before enabling it. Permission covers this conversation for 24 hours while the current Studio service runs; restarting requires enabling again. Existing permissions, reservations and ledgers from an older workflow do not authorize Source3, and migration does not transfer them.
 
-## Select and generate a source
+The initial window covers up to the latest three finished turns. Later windows use up to three new finished turns plus two preceding context turns, after records remain stable for 30 seconds. One window can use two model calls: body generation and association generation, which also receives the saved body. Each phase consumes one slot from the conversation-wide `maxCalls`; set the allowance in the displayed range of 1–20. The initial permission explicitly covers these future windows and both phases; their future content does not yet exist, so their exact complete requests are recorded when prepared, before dispatch. This differs from manually confirming one prepared request at a time.
 
-CLI and Studio use the same explicitly selected workspace. Capture archives selected records locally; generate sends only the selected excerpts, limitations and explicit source attribution to the configured model.
+Reservations bind the exact source set, complete request and invocation before dispatch, and unknown usage does not refund a slot. Changed scope, destination, model or limits require fresh approval. Stop or inspect failed/interrupted/unknown work before deciding what to do next; the same source or an unknown claim is not automatically resent. Expiry, quota and recorded server cooldowns still block new dispatch. Todos gather candidates for review without deciding retention or rewriting carriers.
 
-```bash
-omk observe knowledge capture --workspace ./knowledge --source ./session.jsonl --json
-omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --json
-omk observe knowledge generate --workspace ./knowledge --snapshot <snapshot-id> --executor codex --model <model> --run-id <uuid> --json
+## Select sources and generate knowledge {#select-sources}
+
+CLI and Studio use the same selected knowledge workspace. Preview reads; capture saves; preparing a request makes it inspectable; sending requires an explicit confirmation. See the [source contract](../../specs/knowledge/knowledge-sources.md) for exact formats and limits.
+
+### Configure trusted source bindings {#source-scope}
+
+Create `scope.json` on the host. Replace these paths with actual authorized locations:
+
+```json
+{
+  "scopeVersion": "knowledge-source-scope/v1",
+  "projects": [{ "projectId": "project", "root": "/absolute/project" }],
+  "traces": [{ "sourceId": "worklog", "traceKind": "codex", "path": "/absolute/session.jsonl" }]
+}
 ```
 
-Use `--start-record`/`--end-record` for zero-based inclusive record ranges. Review privacy and scope before generating. Unsupported capabilities or unarchivable requests fail before dispatch; source text is not truncated. The host source file path is not sent as semantic metadata.
+Only this host configuration contains filesystem roots and trace paths. Selection JSON contains logical IDs, relative paths and explicit ranges. Optional material declarations apply to exact relative paths; undeclared material stays unknown. Reading test code does not establish that a test ran. Binary files, invalid UTF-8 and paths escaping the configured root are rejected.
 
-The current `knowledge-body-first/v2` workflow first calls the body model, archives its complete returned outcome, checks exact evidence and saves admitted complete body revisions **pending and unretained**. Only then does a separate association call propose entities and optional typed relations. Each phase defaults to 300 seconds and has its own request/profile/wire/producer/original outcome. A failed or unresolved projection does not remove the saved body. There is no automatic model retry, validation reask or provider fallback; old `--generation-policy` flags are no longer current generation contracts.
+For example, `selections.json` selects real lines from one project file:
 
-Export either current structural wire without accessing a workspace or invoking a model:
+```json
+{
+  "selections": [{
+    "sourceKind": "project_file",
+    "projectId": "project",
+    "relativePath": "PRODUCT.md",
+    "lineRanges": [{ "startLine": 1, "endLine": 20 }]
+  }]
+}
+```
+
+Adjust the file and range to existing content. File/Git line ranges are one-based and inclusive; `lineRanges: null` explicitly selects the whole bounded file. A `git_blob` selector also supplies `revision`, such as `HEAD`, which preview resolves to fixed local objects. An `agent_trace` selector uses `sourceId`, `traceKind` and zero-based inclusive `recordRanges`; it selects whole original nonempty records and all their readable events. Disjoint selections remain separate. No remote Git fetch or whole-project scan occurs.
+
+### Preview and save {#source-preview}
+
+```bash
+omk observe knowledge preview-sources --workspace ./knowledge --scope ./scope.json --input ./selections.json --json > preview.json
+omk observe knowledge capture --workspace ./knowledge --scope ./scope.json --input ./preview.json --json > capture.json
+```
+
+Read `preview.json` before saving: it contains literal selected text, original records and separate actual-read, proposed-send and save manifests. A reader may read a whole file or scan a trace prefix to locate the selection; only selected units are retained. Preview saves no formal snapshot and calls no model. Capture rebuilds the fixed selection and checks the preview digest and host scope. Source changes require a new preview; a moving Git branch cannot replace the pinned preview silently. Capacity failures reject rather than truncate. These exports can contain private source text.
+
+Capture also calls no model and grants no send permission. From `capture.json` → `saveManifest.items`, copy each exact `snapshotId` and `sourceVersion` into `sources.json`, with no availability or ordinal fields:
+
+```json
+{
+  "sources": [{ "snapshotId": "<saved-snapshot-uuid>", "sourceVersion": "sha256:<saved-source-digest>" }]
+}
+```
+
+Use actual saved values. The two fields together form the `SourceRef`; an ID alone cannot select or delete a captured version.
+
+### Prepare and confirm each model request {#source-generation}
+
+```bash
+omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <body-request-digest> --json
+```
+
+Preparation creates a journal without a model call. Inspect its executor/model, complete `system` and `input`, producer context and `requestDigest`; copy the actual prepared body request digest into `--confirm-request`. Source selection or capture approval does not approve this transmission. Unsupported execution or archive capabilities fail before dispatch.
+
+<details>
+<summary>What to inspect in the complete request</summary>
+
+Read `journal.stages[0]` in `request.json`: `system` supplies the fixed instructions, `input` contains the complete ordered source material, `producer` identifies the inspected execution context, and `requestDigest` binds this request. Model material includes the selected readable excerpts and portable attribution/limitations. Raw envelopes and host roots stay outside that input. Source text already containing a path is still source text. Retain the original conversation title, attribution and unknowns rather than replacing them with a project label or inferred fact time.
+
+</details>
+
+`generate` sends only the confirmed body request. It archives the complete returned outcome and saves admitted complete bodies **pending and unretained**. Association is then prepared from those exact saved bodies; it is not sent automatically. Read the resulting run with `inspect`, review its complete prepared association request and confirm that phase separately:
+
+```bash
+omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
+omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <association-request-digest> --json
+```
+
+A failed or unresolved association does not remove saved content. Each phase defaults to 300 seconds and preserves its own original result. There is no automatic model retry, validation reask or provider fallback. Default import reuses the journal for the same sorted, deduplicated exact source set, including failed or unknown results; a completed default reimport makes zero new model calls and no duplicate body. Use an explicit new `--run-id` only when deliberately authorizing an independent new generation, not to bypass an unknown prior outcome.
+
+Export the current structural wires without a workspace or model call:
 
 ```bash
 omk observe knowledge schema --stage body --json
 omk observe knowledge schema --stage association --json
 ```
 
-The result includes profile/prompt/wire identities and Schema. Current body output v2 / prompt v5 and association output v3 / prompt v4 use exact quotes with nullable adjacent `contextBefore`/`contextAfter`; the host requires a unique match and computes UTF-16 positions. Body proposals declare source-backed shared `requiredContexts`, whose literals must occur in every segment; the host adds their evidence without rewriting text. Association proposals own mentions within each entity and explicitly map or abstain for every segment with a reason. These checks neither recover omitted content nor establish complete entity coverage, source fidelity or truth. Quotes, titles and catalogs cannot replace missing body meaning. See the [generated contract](../../reference/shared/knowledge-contract.md) and [extraction specification](../../specs/entities/entity-extraction.md).
+Current body output v2 / prompt v8 and association output v3 / prompt v7 use exact quotes with nullable adjacent `contextBefore`/`contextAfter`; the host requires a unique match and computes UTF-16 positions. Body proposals preserve required shared contexts; association proposals own their mentions and map or abstain for each segment. These checks do not prove complete meaning, entity coverage or truth. Source storage and journals use Schema 3 / workflow v3; body Schema 3, entity/association Schema 2 and review Schema 1 remain independent contracts. Current values come from the [generated contract](../../reference/shared/knowledge-contract.md).
 
-An active run from an older generation profile requires its matching preserved build: the current build does not decode its archived output or redispatch its requests. Already prepared publication intents can still replay exactly with zero model calls; completed and failed runs remain inspectable. Independent historical extraction/measurement protocols retain their frozen locator rules and identities.
-
-Required parameters and JSON syntax are checked before settings/storage access. Parameter errors exit 2, business failures exit 1 and success exits 0. `--json` emits machine output without prose guidance. Inspect saved state after an unknown acknowledgement rather than blindly invoking again.
+An unsupported older source/journal requires its preserved matching build and explicit copy migration; it is not decoded by a compatibility reader. Independent historical studies retain their frozen sources, requests and measurement identities. Parameter errors exit 2, business failures exit 1 and success exits 0. `--json` emits one machine result; after an unclear acknowledgement, inspect saved state before repeating a mutation.
 
 ## Inspect and maintain {#inspect-and-maintain}
 
@@ -179,12 +244,12 @@ Topic tags organize content without changing its body or maintenance. For task c
 
 ```bash
 omk observe knowledge retrieve --workspace ./knowledge --query 'What are the initialization conditions?' --max-bytes 65536
-omk observe knowledge retrieve --workspace ./knowledge --query 'What remains unknown?' --include-candidates --snapshot <snapshot-id>
+omk observe knowledge retrieve --workspace ./knowledge --query 'What remains unknown?' --include-candidates --snapshot <snapshot-id> --source-version sha256:<source-digest>
 ```
 
 For the default JSON view, **65536 UTF-8 bytes counts the entire single-line JSON plus newline**, not stored knowledge or a model context limit. Explicit `--max-bytes 8192` remains supported; the maximum stays 1 MiB. Complete segments and their inline evidence are atomic: oversized or budget-excluded segments are reported in `omitted`, never condition-truncated. This initial budget does not establish complete task coverage or optimal selection, and does not upgrade previously recorded smaller-budget failures. The optional text view below is budgeted against its own complete output.
 
-Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and optional `--source-version` scope exact source references. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
+Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and `--source-version` must be provided together to scope an exact source reference. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
 
 ### Complete a task with existing knowledge {#task-knowledge-reuse}
 
@@ -220,9 +285,11 @@ Follow Studio step 7 to preview and run. Check status before repeating a start r
 OMK uses `codex` from the current process PATH. Check `codex --version`; if the server reports that the model requires a newer client, update or explicitly select an existing compatible client rather than changing models or APIs. The desktop app and shell may use different versions.
 
 
+## Migrate an older workspace {#workspace-migration}
+
 ### Migrate association Schema 1 into a separate copy {#association-migration}
 
-Preserve the old workspace and its matching installed package, and stop old writers. The new version reads only association/journal Schema 2 without automatic upgrades. Run explicitly:
+Preserve the old workspace and its matching installed package, and stop old writers. An association Schema 1 workspace first needs its explicit Schema 2 copy migration; that operation does not create Source3 or make an old journal current. Run explicitly:
 
 ```bash
 omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <stable-uuid> --json
@@ -232,9 +299,22 @@ The new target must be empty and neither root may contain the other. The operati
 
 After interruption, preserve the plan and replay the same roots and --operation-id. Source drift or target edits reject replay without overwrite. Completed replay verifies its plan; later additions, edits and deletions must not be resurrected or overwritten. Rollback uses the old workspace and matching binary; the new copy retains originals and mappings. Mechanical migration, readability and successful saves do not establish semantic acceptance.
 
+### Migrate Source2 into a separate Source3 copy {#source-migration}
+
+Keep the original workspace and matching installable build archive, and stop its writers. The Source3 migration slice accepts a healthy body Schema 3 / Source2 workspace with current entity/association formats; it refuses missing or deleted required sources, corrupt data and unsupported versions. Resolve earlier format boundaries with their explicit migration procedures and matching builds; do not upgrade the original in place.
+
+```bash
+omk observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > migration-plan.json
+omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan <plan-digest> --json
+```
+
+The first command is read-only. Review its actual source/target, archive and limitations, then copy the exported `planDigest` into the second command. The target is an independent non-overlapping copy. Old raw material, journals/outcomes, review records, permissions, library/carrier references and the matching build retain their bytes in the archive; the original remains unchanged. New source/body/catalog/projection references are mapped explicitly and remain pending. Old retention, identity acceptance, reviews, task feedback and automatic grants are not transferred; ordinary organization tags stay separate.
+
+After interruption, preserve the fixed plan and replay that same input and digest. An incomplete target cannot open as a normal workspace. Changed target data is not overwritten, and deleted completed output is not resurrected. A crash before durable target ownership can require owner inspection rather than automatic recovery. Rollback uses the untouched old workspace and matching build. Copying an archive does not prove that installation or rollback has been tested; see the [source migration contract](../../specs/knowledge/knowledge-sources.md#migration).
+
 ## Recovery and data {#recovery-and-data}
 
-Use `generate --run-id <UUID>` to pin one request. An identical request only restores its journal and makes zero new model calls; a different source/model/runtime cannot reuse that identity.
+Default imports already reuse the exact source set's journal. If an explicit run UUID was chosen, keep it for the same request. A different source/model/runtime cannot reuse that identity.
 
 ```bash
 omk observe knowledge runs --workspace ./knowledge --json
@@ -242,19 +322,45 @@ omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
 omk observe knowledge resume --workspace ./knowledge --id <run-id> --json
 ```
 
-`resume` archives an original still held in the same process, attaches a persisted original or completes fixed publication intents using the same request IDs. It never calls models. A claimed phase without recoverable output remains `outcome_unknown_do_not_redispatch`; process exit proves neither no dispatch nor zero cost. If body is already saved and association remains never-claimed, only an explicit `continue-stage --id <run-id> --generation <journal-generation>` can send that stage. The original model configuration must match.
+`resume` can archive an original still held in the same process, attach a persisted original or finish fixed writes, without calling a model. A claimed phase without recoverable output stays `outcome_unknown_do_not_redispatch`; process exit proves neither no dispatch nor zero cost. Only a never-claimed prepared phase can be sent after reviewing and explicitly confirming its exact `requestDigest`, with the original model configuration.
 
-Rebuild associations for an existing exact body without generating another body:
+Prepare association rebuilding for an existing exact body, inspect the complete request, then send only that confirmed request. Reuse the same explicit new run UUID across these two commands:
 
 ```bash
-omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-uuid> --executor codex --model <model>
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
+omk observe knowledge rebuild-associations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
 ```
 
-This creates a new independent pending projection. Association generation/rebuild supports all exact available body sources, keeping an independent catalog per source; review all sources before sending. Invalid catalog output fails dependent body projections while preserving healthy catalogs and stored bodies. Later catalog read failures expose local gaps while retaining other readable mappings.
+This creates an independent pending projection without regenerating the body. Each exact available body source retains its own catalog. Invalid catalog output fails dependent projections while preserving healthy catalogs and stored bodies; later missing catalogs expose local gaps.
 
-Current journals live at `generation-journals/<run-id>.json`; each complete original is at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Body histories use Schema 3. Old typed knowledge v2 and run5 are explicitly unsupported, not a healthy empty workspace. See the [explicit new-workspace migration](../../specs/knowledge/knowledge-domain-model.md#body-migration); use `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge` with both paths explicit. There is no automatic overwrite. Keep the old workspace and matching binary for rollback.
+Current journals live at `generation-journals/<run-id>.json`, with complete originals in `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Earlier typed-body and source/journal formats are explicitly unsupported, not healthy empty data. Preserve their original workspace/build and follow the [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) and [source migration](#source-migration) boundaries rather than overwriting them.
 
-`delete-source` leaves a deletion marker without changing the original log, saved body quotes or archived model output. It is not a complete data wipe. All workspace material may contain private data. Missing/corrupt/deleted evidence is explicitly unavailable; saving, quote matching and reopening are not semantic acceptance.
+### Check source changes {#source-updates}
+
+Save an exact check request as `source-check.json`:
+
+```json
+{ "source": { "snapshotId": "<saved-snapshot-uuid>", "sourceVersion": "sha256:<saved-source-digest>" } }
+```
+
+```bash
+omk observe knowledge source-updates --workspace ./knowledge --scope ./scope.json --input ./source-check.json --json
+```
+
+This reads current material and known exact body/catalog/projection references without a model call or knowledge change. Read both currentness and impact completeness: a partial inventory cannot establish zero impact. A changed file can leave selected bytes unchanged; review conditions before creating a new pending revision. Default Git checking reopens the captured objects, not the latest branch; checking a branch needs an explicit `replacementSelection`. A different path is only a possible move for review, even if bytes match. An unavailable root does not prove the original file was deleted.
+
+After capturing a Git source in Studio, explicitly enter another local commit or branch under “Source change impact” and choose “Compare revision and check impact”. This keeps the old source reference and its original project, path and fixed line ranges, without automatically selecting `HEAD` or recapturing the new version. The interface keeps the old fixed commit visible and shows the entered revision, actual resolved commit, source state, exact body/entity catalog/association version reference counts and review suggestions separately. Checking preserves model-send approval; suggestions do not mean knowledge has been updated. Comparing does not replace this capture or model input; to use the new version, preview and capture it separately.
+
+For existing knowledge, expand “Check changes affecting the saved source” below the quotation in the “Evidence” tab to check that exact source reference without recapturing. A saved snapshot can still be checked after its upstream file is deleted. An unreadable historical snapshot retains its unavailable state and incomplete-impact limitations; it is not treated as confirmed upstream deletion. Explicit Git comparison is offered only when the saved Git identity and selection for that reference are available.
+
+### Read or delete captured evidence {#source-data}
+
+```bash
+omk observe knowledge source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --json
+omk observe knowledge delete-source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --json
+```
+
+Historical captured evidence remains readable after upstream changes or deletion. Explicit `delete-source` leaves a content-free marker; it changes neither upstream files, stored quotations nor archived model outcomes, and is not a complete data wipe. Default recapture of that deleted version is refused. An explicit `afterDeletion: "new_snapshot"` in a fresh selection preview can authorize a new reference without reviving the old one. All source and workspace exports can contain private data; saving, quote matching and reopening are not semantic acceptance.
 
 ## Admission statistics
 

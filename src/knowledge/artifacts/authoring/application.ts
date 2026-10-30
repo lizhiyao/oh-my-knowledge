@@ -23,10 +23,10 @@ export interface CarrierAuthoringKnowledge {
   history: { generation: number };
   tagging: { generation: number; tags: string[] };
   maintenance: { choice: 'retain' | 'discard' } | null;
-  sources: ({ status: 'available'; window: { limitations: string[] } } | { status: 'unavailable'; reason: string })[];
+  sources: ({ status: 'available'; snapshot: { limitations: string[] } } | { status: 'unavailable'; reason: string })[];
 }
 export interface CarrierAuthoringPorts {
-  knowledge: { detail(id: string, revisionId?: string): CarrierAuthoringKnowledge };
+  knowledge: { detail(id: string, revisionId?: string): CarrierAuthoringKnowledge; assertWritable?(): void };
   library: Pick<CarrierLibrary, 'list' | 'show' | 'baseline' | 'save'>;
   id(): string;
   now(): string;
@@ -39,7 +39,7 @@ export function parseCarrierAuthoringRequest(input: unknown) { return schema.par
 export function executeCarrierAuthoring(request: ReturnType<typeof parseCarrierAuthoringRequest>, ports: CarrierAuthoringPorts, lang: 'zh' | 'en', signal?: AbortSignal) {
   signal?.throwIfAborted();
   const { library, knowledge: app } = ports;
-  const render = (item: ReturnType<typeof app.detail>, language: 'zh' | 'en') => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.window.limitations : [`${language === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) });
+  const render = (item: ReturnType<typeof app.detail>, language: 'zh' | 'en') => ({ ...item, sourceWarnings: item.sources.flatMap(source => source.status === 'available' ? source.snapshot.limitations : [`${language === 'zh' ? '来源不可用' : 'Source unavailable'}: ${source.reason}`]) });
   const reviewed = (detail: CarrierDetail, includeContent = true) => ({ ...detail, knowledgeReview: reviewCarrierKnowledge(detail.knowledgeRefs, (id, revisionId) => {
     const item = app.detail(id, revisionId);
     return { ...render(item, lang), choice: item.maintenance?.choice ?? null, sourceAvailable: item.sources.every(source => source.status === 'available') };
@@ -72,6 +72,7 @@ export function executeCarrierAuthoring(request: ReturnType<typeof parseCarrierA
     }) };
     return draft;
   }
+  app.assertWritable?.();
   const validateSelection = () => { for (const ref of request.selectedRefs) {
     const current = app.detail(ref.knowledgeId);
     if (current.revision.revisionId !== ref.revisionId || current.history.generation !== ref.generation || current.maintenance?.choice !== 'retain') throw new Error('carrier_knowledge_conflict');
