@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Space } from 'antd';
+import Link from 'next/link';
+import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
 import type { SourceRef } from '../../../../knowledge/sources';
 import type { KnowledgeSourceUpdates, SourceViewSnapshot } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
@@ -9,9 +11,10 @@ import { workspaceHref } from '../layout/workspace-link';
 import { requestKnowledge } from './request';
 
 /** The saved reference owns the check. Optional metadata only enables an explicit Git comparison. */
-export function SourceUpdates({ source, snapshot, workspace, lang, busy = false, run }: {
+export function SourceUpdates({ source, snapshot, workspace, lang, busy = false, run, onReviewBody }: {
   source: SourceRef; snapshot?: SourceViewSnapshot; workspace?: string; lang: Language; busy?: boolean;
   run?(action: (signal: AbortSignal) => Promise<void>): Promise<void>;
+  onReviewBody?(bodyRef: KnowledgeBodyRef): void;
 }) {
   const t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   const stateLabels: Record<KnowledgeSourceUpdates['current']['state'], string> = {
@@ -78,8 +81,9 @@ export function SourceUpdates({ source, snapshot, workspace, lang, busy = false,
       <p>{t(`需要核对：正文版本 ${reviewCount('review_body')} 个 · 实体目录版本 ${reviewCount('review_catalog')} 个 · 关联版本 ${reviewCount('review_projection')} 个；不表示语义已核实。`, `Review needed: ${reviewCount('review_body')} body versions · ${reviewCount('review_catalog')} entity catalog versions · ${reviewCount('review_projection')} association versions; semantic validity is not established.`)}</p>
       {(report.inventoryCompleteness !== 'complete' || report.impactCompleteness !== 'complete') && <Alert type="warning" title={t('影响清单尚未完整，不能据此判断没有影响。', 'The impact inventory is incomplete; absence of impact cannot be inferred.')}/>}
       {workspace && bodyReviews.length > 0 && <ol>{bodyReviews.map(({ bodyRef, reason }, index) => <li key={JSON.stringify(bodyRef)}>
-        <a href={workspaceHref(`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ knowledge: bodyRef.knowledgeId, revision: bodyRef.revisionId })}`, workspace)}
-          aria-label={t(`核对受影响知识（第 ${index + 1} 项）`, `Review affected knowledge (item ${index + 1})`)}>{t('核对受影响知识', 'Review affected knowledge')}</a>
+        <Link href={workspaceHref(`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ knowledge: bodyRef.knowledgeId, revision: bodyRef.revisionId })}`, workspace)}
+          onNavigate={onReviewBody ? event => { event.preventDefault(); onReviewBody(bodyRef); } : undefined}
+          aria-label={t(`核对受影响知识（第 ${index + 1} 项）`, `Review affected knowledge (item ${index + 1})`)}>{t('核对受影响知识', 'Review affected knowledge')}</Link>
         <details><summary>{t('修订详情', 'Revision details')}</summary>
           <p>{t('知识：', 'Knowledge: ')}<code>{bodyRef.knowledgeId}</code></p><p>{t('修订：', 'Revision: ')}<code>{bodyRef.revisionId}</code></p><p>{reason}</p>
         </details>
