@@ -7,6 +7,7 @@ import { requestKnowledge } from './request';
 import { RevisionSaveFeedback, useRevisionSave } from './revision-save';
 import { displayTime } from '../../../application/display/format';
 import { AssociationRelationEditor, associationRelationsReady, type AssociationRelationDraft } from './association-relations';
+import { SourceLocator, sourceMaterialLabel, sourceTitle } from './source-locator';
 
 type Mapping = NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>['segmentEntityRefs'];
 type CatalogRef = NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>['catalogRefs'][number];
@@ -70,8 +71,8 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
   const selectedCatalog = catalog;
   const analysisOptions = catalogs?.catalogs.map((item, index) => {
     const current = item.revisions.find(revision => revision.revisionId === item.writeHeadRevisionId), source = item.sourceSummary;
-    return { value: item.analysisId, label: [source?.title || t(`来源分析 ${index + 1}（未记录标题）`, `Source analysis ${index + 1} (untitled)`),
-      ...(source ? [`${source.sourceKind} · ${t(`${source.excerptCount} 条来源消息`, `${source.excerptCount} source messages`)}`] : []),
+    return { value: item.analysisId, label: [source ? sourceTitle(source, lang) : t(`来源分析 ${index + 1}（未记录标题）`, `Source analysis ${index + 1} (untitled)`),
+      ...(source ? [`${sourceMaterialLabel(source.material.materialType, lang)} · ${t(`${source.excerptCount} 个来源片段`, `${source.excerptCount} source ${source.excerptCount === 1 ? 'excerpt' : 'excerpts'}`)}`] : []),
       ...(current ? [t(`${current.entityCount} 个对象`, `${current.entityCount} ${current.entityCount === 1 ? 'entity' : 'entities'}`), displayTime(current.revisedAt)] : [])].join(' · ') };
   });
   const unavailableSources = catalogs?.sources.filter(source => source.status !== 'available').length ?? 0;
@@ -82,11 +83,11 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
   function resolved(ref: CatalogRef) {
     const loaded = loadedCatalogs.current.get(catalogKey(ref));
     if (loaded) return loaded.source.status === 'available' && detail.sources.some(source => source.status === 'available'
-      && source.window.snapshotId === loaded.history.snapshotId && source.window.sourceVersion === loaded.history.sourceVersion)
+      && source.snapshot.snapshotId === loaded.history.snapshotId && source.snapshot.sourceVersion === loaded.history.sourceVersion)
       ? { entities: loaded.revision.entities, mentions: loaded.revision.mentions } : undefined;
     const existing = detail.derivedCatalogs.find(item => sameCatalog(item, ref));
     return existing?.status === 'available' && detail.sources.some(source => source.status === 'available'
-      && source.window.snapshotId === existing.snapshotId && source.window.sourceVersion === existing.sourceVersion) ? existing : undefined;
+      && source.snapshot.snapshotId === existing.snapshotId && source.snapshot.sourceVersion === existing.sourceVersion) ? existing : undefined;
   }
   const invalid = catalogsReading || !!catalogsError
     || !associationRelationsReady(relations, detail.revision.content.segments, mappings)
@@ -130,7 +131,7 @@ export function AssociationMappingDrawer({ detail: initialDetail, workspace, lan
       {catalogs.sources.map((source, index) => <p className="candidate-help" key={`${source.snapshotId}/${source.sourceVersion}`}>{t(`来源 ${index + 1}：`, `Source ${index + 1}: `)}{source.status !== 'available'
         ? t('来源不可用，无法完整核对。', 'Source unavailable; evidence cannot be fully checked.') : catalogs.catalogs.some(item => item.snapshotId === source.snapshotId && item.sourceVersion === source.sourceVersion)
           ? t('有精确来源匹配的分析。', 'Exact-source analyses available.') : t('尚无可读的精确来源匹配分析；不会按名称或路径代替。', 'No readable exact-source analysis. Names or paths are not substituted.')}<br/><code>{source.snapshotId} / {source.sourceVersion}</code></p>)}
-      {catalogs.catalogs.map((item, index) => <p className="candidate-help" key={item.analysisId}>{analysisOptions?.[index].label}<br/><code>{item.analysisId}</code>{item.sourceSummary?.firstRecordIndex !== undefined && <> · {t('来源记录范围：', 'Source record range: ')}{item.sourceSummary.firstRecordIndex}–{item.sourceSummary.lastRecordIndex ?? item.sourceSummary.firstRecordIndex}</>}</p>)}
+      {catalogs.catalogs.map((item, index) => <section key={item.analysisId}><p className="candidate-help">{analysisOptions?.[index].label}<br/><code>{item.analysisId}</code></p>{item.sourceSummary && <SourceLocator source={item.sourceSummary} sourceRef={item} lang={lang}/>}</section>)}
     </details>}
     <div className="candidate-form">
       <label>{t('选择精确来源的实体分析', 'Choose entity analysis from exact sources')}<Select aria-label={t('选择精确来源的实体分析', 'Choose entity analysis from exact sources')} value={analysisOptions?.some(item => item.value === analysisId) ? analysisId : undefined} loading={catalogsReading} disabled={locked || catalogsReading || !!catalogsError}

@@ -4,6 +4,7 @@ import type { KnowledgeAssociationSelection } from '../associations.js';
 import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
 import { formatKnowledgeRetrievalText } from './retrieval-text.js';
+import { sourceSummary, type SourceSummary } from './source-summary.js';
 
 export const KNOWLEDGE_RETRIEVAL_MIN_BYTES = 1024;
 export const KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES = 65536;
@@ -21,14 +22,14 @@ export const KnowledgeRetrievalRequestSchema = z.strictObject({
   entityRevisionId: z.string().uuid().optional(),
   entityId: z.string().min(1).max(256).refine(value => value.trim().length > 0).optional(),
 }).refine(value => [value.analysisId, value.entityRevisionId, value.entityId].filter(value => value !== undefined).length % 3 === 0,
-  { message: 'Entity scope requires analysisId, entityRevisionId and entityId.' }).refine(value => !value.sourceVersion || !!value.snapshot, { path: ['sourceVersion'], message: 'sourceVersion requires snapshot.' });
+  { message: 'Entity scope requires analysisId, entityRevisionId and entityId.' }).refine(value => !!value.sourceVersion === !!value.snapshot, { path: ['sourceVersion'], message: 'Source scope requires both snapshot and sourceVersion.' });
 export type KnowledgeRetrievalRequest = z.input<typeof KnowledgeRetrievalRequestSchema>;
 type Detail = ReturnType<KnowledgeApplication['detail']>;
 type Segment = KnowledgeDraft['content']['segments'][number];
 type Resolution = ReturnType<KnowledgeApplication['source']>;
 type Unit = { detail: Detail; segment: Segment; segmentIndex: number; hits: Set<string>; documentHits: Set<string>; topicHits: Set<string> };
 type SourceContext = { snapshotId: string; sourceVersion: string } & (
-  { status: 'available'; sourceKind: Extract<Resolution, { status: 'available' }>['window']['sourceKind'] }
+  { status: 'available'; sourceKind: Extract<Resolution, { status: 'available' }>['snapshot']['sourceKind']; source: SourceSummary }
   | { status: 'unavailable'; reason: string }
 );
 type ScopeDiagnostics = { source?: { status: 'available' | 'unavailable'; reason?: string };
@@ -37,7 +38,7 @@ type DerivedSummary = { status: KnowledgeAssociationSelection['status']; reviewS
   revision?: { revisionId: string; bodyRef: KnowledgeBodyRef; status: 'available' | 'failed'; reviewStatus: 'pending';
     catalogRefs: { analysisId: string; entityRevisionId: string }[]; issueCount: number } };
 export interface KnowledgeRetrievalResult {
-  projectionKind: 'knowledge-body-segments'; schemaVersion: 2;
+  projectionKind: 'knowledge-body-segments'; schemaVersion: 3;
   rankingPolicyId: typeof KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID;
   omitted: { oversizedSegments: number; budgetSegments: number };
   scopeDiagnostics?: ScopeDiagnostics;
@@ -91,7 +92,7 @@ function stableOrder(a: Unit, b: Unit): number {
     || compareId(a.detail.revision.knowledgeId, b.detail.revision.knowledgeId) || a.segmentIndex - b.segmentIndex;
 }
 function project(units: Unit[], matched: number, oversized: number, resolutions: Map<string, Resolution>, scopeDiagnostics: ScopeDiagnostics): KnowledgeRetrievalResult {
-  const result: KnowledgeRetrievalResult = { projectionKind: 'knowledge-body-segments', schemaVersion: 2,
+  const result: KnowledgeRetrievalResult = { projectionKind: 'knowledge-body-segments', schemaVersion: 3,
     rankingPolicyId: KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID,
     omitted: { oversizedSegments: oversized, budgetSegments: matched - oversized - units.length },
     ...(Object.keys(scopeDiagnostics).length ? { scopeDiagnostics } : {}), knowledge: [], sources: [], items: [] };
@@ -114,11 +115,11 @@ function project(units: Unit[], matched: number, oversized: number, resolutions:
       if (index === undefined) {
         index = result.sources.length; sources.set(key, index);
         result.sources.push({ ...evidence.source, ...(resolution.status === 'available'
-          ? { status: 'available' as const, sourceKind: resolution.window.sourceKind }
+          ? { status: 'available' as const, sourceKind: resolution.snapshot.sourceKind, source: sourceSummary(resolution.snapshot) }
           : { status: 'unavailable' as const, reason: resolution.reason }) });
       }
       return { evidenceIndex, source: index, positionStatus: resolution.status === 'unavailable' ? 'unavailable' as const
-        : validateEvidenceSelection(evidence.selection, resolution.window.excerpts).length ? 'mismatch' as const : 'matched' as const };
+        : validateEvidenceSelection(evidence.selection, resolution.snapshot.excerpts).length ? 'mismatch' as const : 'matched' as const };
     });
     // The complete stored segment, including every evidence field, is the budget unit.
     result.items.push({ knowledge: knowledgeIndex, segmentIndex, segment, evidenceChecks });
@@ -132,7 +133,7 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
   const asciiTerms = terms.filter(term => /^[a-z0-9_$]+(?:[.:/#-][a-z0-9_$]+)*$/.test(term));
   const fullHanRuns = new Set([...request.query.normalize('NFKC').toLowerCase().matchAll(/\p{Script=Han}+/gu)].map(match => match[0]));
   const derivedBigrams = new Set(terms.filter(term => /^\p{Script=Han}{2}$/u.test(term) && !fullHanRuns.has(term)));
-  const source = request.snapshot ? app.source(request.snapshot, request.sourceVersion) : undefined;
+  const source = request.snapshot ? app.source({ snapshotId: request.snapshot, sourceVersion: request.sourceVersion! }) : undefined;
   const scopeDiagnostics: ScopeDiagnostics = source ? { source: source.status === 'available' ? { status: 'available' }
     : { status: 'unavailable', reason: source.reason } } : {};
   const candidates: Unit[] = [], resolutions = new Map<string, Resolution>(); let entityMatched = false;
@@ -155,7 +156,7 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
       if (!local.size && !recalled.size) return;
       for (const evidence of segment.evidence) {
         const key = sourceKey(evidence.source);
-        if (!resolutions.has(key)) resolutions.set(key, app.source(evidence.source.snapshotId, evidence.source.sourceVersion));
+        if (!resolutions.has(key)) resolutions.set(key, app.source(evidence.source));
       }
       candidates.push({ detail, segment, segmentIndex, hits: local, documentHits: recalled, topicHits });
     });

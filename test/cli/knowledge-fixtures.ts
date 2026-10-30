@@ -6,6 +6,8 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { EvidenceExcerpt } from '../../src/knowledge/contracts.js';
+import { readTraceSource } from '../../src/knowledge/adapters/trace-source-reader.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 
 /** Authored protocol responses, never a model quality observation. */
 export function authoredKnowledgeResponse(input: string, stage: 'body' | 'association') {
@@ -27,8 +29,10 @@ export function authoredKnowledgeResponse(input: string, stage: 'body' | 'associ
 
 /** Legal public-store seed for independent CLI/host tests; no fake extraction run or native output. */
 export function seedKnowledgeWorkspace(workspace: string, name: string) {
-  const app = createLocalKnowledgeApplication(workspace), source = app.capture({ path: join(workspace, `${name}.jsonl`), origin: { threadId: name, title: name }, records: [{ recordIndex: 1,
-    raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] });
+  const app = createLocalKnowledgeApplication(workspace), projection = readTraceSource({ sourceKind: 'agent_trace', sourceId: `fixture:${name}`, traceKind: 'codex', recordRanges: [{ startRecord: 1, endRecord: 1 }] },
+    { sourceId: `fixture:${name}`, traceKind: 'codex', origin: { threadId: name, title: name }, source: { sourceType: 'records', records: [{ recordIndex: 1,
+      raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) }] } }).projection;
+  const source = new FileSourceStore(join(workspace, 'sources'), workspace).capture(projection).snapshot;
   const actor = { actorKind: 'human' as const, actorId: 'authored-cli-fixture' }, at = '2026-10-28T00:00:00Z', analysisId = randomUUID(), entityRevisionId = randomUUID();
   const entityIds = [randomUUID(), randomUUID()], mentionIds = [randomUUID(), randomUUID()];
   const catalog = { entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: entityIds[index], label, description: `此窗口中的${label}`, qualifiers: [], identityStatus: 'proposed' as const,

@@ -300,7 +300,7 @@ omk agents extract --session <runId>     # draft candidate knowledge from one co
 
 ```text
   --dir <value>           Inventory and collection dir; defaults to the global ~/.oh-my-knowledge/observe/agents.
-  --end-record <value>    extract: last record index, inclusive.
+  --end-record <value>    Required for extract: last nonempty original record index, inclusive; provide both range bounds.
   --executor <value>      extract: generation executor, using OMK runtime configuration.
   --json                  Print complete JSON instead of a readable summary.
   --knowledge <value>     extract: knowledge workspace; defaults to the global knowledge dir.
@@ -308,7 +308,7 @@ omk agents extract --session <runId>     # draft candidate knowledge from one co
   --limit <value>         Per-run session file cap for collect.
   --model <value>         extract: generation model, using the configured model.
   --session <value>       extract: a runId from the collection report.
-  --start-record <value>  extract: zero-based nonempty record index, inclusive.
+  --start-record <value>  Required for extract: zero-based nonempty original record index, inclusive; retains every event in the record.
 ```
 
 For full descriptions: `omk agents --help`.
@@ -432,6 +432,7 @@ omk studio --port 7799 --takeover                  # explicitly replace a verifi
   --observations-dir <value>  Observe-inbox data dir (optional, default .omk/observe/inbox)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
   --reports-dir <value>       View only this Core reports dir (optional; default aggregates current project + global)
+  --source-scope <value>      Explicit trusted source bindings JSON within 1 MiB, read only at host startup; browsers cannot supply project roots or trace paths.
   --takeover                  Explicitly replace a verified OMK service on the same address/port; by default, port conflicts fail without stopping it
 ```
 

@@ -18,7 +18,10 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       ...journal.stages.map(s => `${s.stageKind}: ${s.state} · ${s.invocationId} · ${s.outcomeRef?.digest ?? 'archive pending'}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`),
       `nextAction: ${result.nextAction}`, knowledgeCommand(workspace, 'inspect', { id: journal.runId, json: true }));
     if (result.nextAction === 'continue_stage') lines.push(t('仅显式 continue-stage 可发送尚未 claim 的阶段；resume 永不调用模型。', 'Only explicit continue-stage may dispatch a never-claimed phase; resume never calls a model.'),
-      knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation }));
+      JSON.stringify(journal.stages.filter(stage => stage.state === 'prepared').map(stage => ({ stageKind: stage.stageKind, requestDigest: stage.requestDigest,
+        system: stage.system, input: stage.input, wireId: stage.wireId })), null, 2),
+      knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation, executor: journal.executor, model: journal.model,
+        'confirm-request': journal.stages.at(-1)!.requestDigest }));
     if (result.nextAction === 'outcome_unknown_do_not_redispatch') lines.push(t('已 claim 但没有可读原件；发送/费用未知，禁止自动重发。', 'Claimed without a readable original; dispatch/cost unknown, do not redispatch.'));
     if (result.nextAction === 'unsupported') lines.push(t('此任务使用旧生成协议，请使用保留的匹配构建恢复。当前程序不重新解释原件，也不重新派发旧请求。',
       'This run uses an older generation protocol. Recover it with the preserved matching build; originals are not reinterpreted and old requests are not redispatched.'));
@@ -29,6 +32,12 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       t(`正文维护：${detail.maintenance?.choice ?? 'pending'}；派生：${detail.derivedAssociations.status}。均不证明真值。`, `Body maintenance: ${detail.maintenance?.choice ?? 'pending'}; derived: ${detail.derivedAssociations.status}. Neither verifies truth.`),
       JSON.stringify({ sources: detail.sources, derivedAssociations: detail.derivedAssociations }, null, 2));
   } else lines.push(JSON.stringify(value, null, 2));
-  if (operation.operation === 'capture') lines.push(knowledgeCommand(workspace, 'source', { snapshot: String(item.snapshotId) }), knowledgeCommand(workspace, 'generate', { snapshot: String(item.snapshotId) }));
+  if (operation.operation === 'capture') {
+    const captured = value as ReturnType<KnowledgeApplication['captureSources']>;
+    const sources = captured.saveManifest.items.map(source => ({ snapshotId: source.snapshotId, sourceVersion: source.sourceVersion }));
+    lines.push(t('保存不授权发送模型。将以下精确引用保存为 sources.json，再 prepare-generation 核对完整请求。', 'Saving does not authorize model dispatch. Save these exact references as sources.json, then prepare-generation to inspect the complete request.'), JSON.stringify({ sources }, null, 2),
+      ...sources.map(source => knowledgeCommand(workspace, 'source', { snapshot: source.snapshotId, 'source-version': source.sourceVersion })),
+      knowledgeCommand(workspace, 'prepare-generation', { input: 'sources.json', json: true }));
+  }
   return [...lines, `${t('知识工作区', 'Knowledge workspace')}: ${workspace}`].join('\n\n');
 }

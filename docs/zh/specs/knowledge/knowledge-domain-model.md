@@ -63,7 +63,7 @@ flowchart LR
 
 Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], organization?}, reuseRationale}`。每个 segment 是可独立消费的完整正文单元；text 自含必要条件、归因、否定、时间、例外与未知，不能靠引文、标题或目录补义。每条 evidence 含 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 及可选 `interpretation`。生成与修订时，宿主从来源核对连续逐字 UTF-16 位置。
 
-当前正文生成输出 v2／prompt v5 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v4 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v2／prompt v8 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v7 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
@@ -93,7 +93,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；其 `application/` 拥有 CLI／Studio 共用用例与本地装配，`adapters/` 负责来源读取、模型传输和文件持久化。观测层提供轨迹解析，交付层负责宿主配置与展示。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 2，不把两个原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 3，不把两个原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -149,13 +149,13 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 | [OWASP Agentic Top 10 2026，ASI06：Memory & Context Poisoning（2025-12-09）](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | 持久污染会影响后续会话；缓解措施包括来源归属、记忆隔离、写入前校验、版本恢复和高风险动作的人工复核。 | **改编**来源追溯、明确来源范围、保留修订与分开的晋升门槛。候选写入和 Agent 修订不要求独立人工复核；跨窗口知识库发布需要明确人工决定，载体预览选择当前已保留的精确修订，保存前重新核对这些引用并生成新版本。这些边界不证明抗投毒效果，也不表示已实现全部 ASI06 缓解措施。 |
 | [ACE v3，§§3.1–3.2（2026-03-29）](https://arxiv.org/html/2510.04618v3) | 结构化条目接收局部增量，生成、反思与整理分离；精炼可更新条目并去除冗余。 | **改编**逐条维护与精确知识修订的明确选择。OMK 当前重建所选载体知识区段并保存新版本，没有实现 ACE 的增量合并／裁剪或自主在线适应；载体收益仍须受控测量。 |
 
-## 8. 后续扩展的架构决定（设计，尚未实施） {#extension-boundaries}
+## 8. 后续扩展的架构决定 {#extension-boundaries}
 
-本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；来源中立适配器与可信公共操作者上下文仍是设计。** 当时多目录改造保持来源窗口、正文、实体历史、载体及操作者数据形状，关联 profile／wire 与日志独立版本化；后续第 3 节的生成升级另改正文／关联模型契约，不回写这些存储或历史测量。
+本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；Source3 中立来源适配器与独立副本迁移也已实施，公共操作者上下文的进一步扩展仍是设计。** 当时多目录改造保持来源窗口、正文、实体历史、载体及操作者数据形状，关联 profile／wire 与日志独立版本化；后续第 3 节的生成升级另改正文／关联模型契约，不回写这些存储或历史测量。
 
 ### 8.1 来源中立的快照与适配器 {#neutral-source-design}
 
-未来由 knowledge 纯契约层拥有来源引用、不可变快照、选区与解析状态；文件读取、Git 解析、日志投影和授权检查由各自适配器实现，应用层编排捕获与模型调用。公共 DTO 采用 SourceSnapshot 替换 EvidenceWindow，并明确 SourceExcerpt、SourceSelection、SourceResolution 及 EvidenceStore 的新版端口；通用端口不再用 TraceSourceKind、记录序号或 thread／turn 定义所有来源。
+由 knowledge 纯契约层拥有来源引用、不可变快照、选区与解析状态；文件读取、Git 解析、日志投影和授权检查由各自适配器实现，应用层编排捕获与模型调用。公共 DTO 采用 SourceSnapshot 替换 EvidenceWindow，并明确 SourceExcerpt、SourceSelection、SourceResolution 及 SourceStore 端口；通用端口不再用 TraceSourceKind、记录序号或 thread／turn 定义所有来源。已实施的选区、scope、幂等、更新与迁移以 [Source3 契约](knowledge-sources.md)为准。
 
 | 契约 | 已确定的设计职责 |
 |---|---|
@@ -166,7 +166,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 首批 sourceKind 固定为 agent_trace、project_file 和 git_blob，选区分别描述日志记录范围、选定文件范围、固定提交中的文件范围。trace 适配器保留原 TraceSourceKind、原始记录和会话归因；file 记录选定工作区内的相对位置与捕获内容版本；git 解析为固定 commit／tree／blob 和路径，分支名仅是选择输入，工作区未提交内容单独捕获。首批 file／git 只接入选定的 UTF-8 文本，二进制或需转换的资料明确 unsupported，不调用模型；转换器另行版本化。文档的设计陈述、代码实现、测试预期与实际执行结果保留材料类型和依据层级，不把测试源码当成已执行结果。
 
-读取授权、向模型发送和保存知识分别检查；快照存在不能代替本次发送权限。权限撤回或删除标记使新读取／派发明确不可用，已保存正文仍保留历史及来源状态。沿用历史保全与删除标记的范围，彻底擦除须独立定义；不把删除来源说成所有派生内容已清除。新资料版本只产生受影响知识／目录／投影的待复核线索，不自动修改知识正文、接受关系或覆盖维护决定。
+读取授权、向模型发送和保存知识分别检查；快照存在不能代替本次发送权限。可信宿主 scope 变化使现行捕获预览失效，已捕获来源的删除标记使该精确引用的新读取／派发不可用，已保存正文仍保留历史及来源状态。沿用历史保全与删除标记的范围，彻底擦除须独立定义；不把删除来源说成所有派生内容已清除。新资料版本只产生受影响知识／目录／投影的待复核线索，不自动修改知识正文、接受关系或覆盖维护决定。
 
 ### 8.2 多来源正文与多个实体目录 {#multi-catalog-design}
 
@@ -189,13 +189,13 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ### 8.4 版本、迁移与实施交接 {#extension-migration-plan}
 
-多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的来源窗口 v3 升级及独立副本迁移已批准、尚未实施；其余既有维护入口的公共操作者扩展仍须单独确认。两项扩展均不随关联 Schema 2 或新增复核记录一并更换。
+多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的 Source3 升级及独立副本迁移已实施；其余既有维护入口的公共操作者扩展仍须单独确认。两项扩展均不随关联 Schema 2 或新增复核记录一并更换。
 
 | 受影响面 | 版本与迁移决定 |
 |---|---|
-| 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、EvidenceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
+| 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 当前多目录关联采用 association history Schema 2，生成日志采用 journal Schema 2、knowledge-body-first/v2。早先多目录迁移更换关联 profile／wire identity，保持当时正文 profile；它将旧 v1 投影显式转换为单元素 catalogRefs 的新待审投影，保留旧原件、回执及未知派发身份，不调用模型或恢复派发旧请求。迁移旧日志保持 unsupported，旧自动授权／调度只归档。后续正文输出 v2／关联输出 v3 升级在相同存储下同时更换两阶段 profile；旧 profile 的 active 运行须用匹配旧构建恢复，已准备的固定发布意图可精确重放。 |
+| 关联与生成日志 | 当前多目录关联采用 association history Schema 2；Source3 生成采用 journal Schema 3、knowledge-body-first/v3，明确多来源输入并逐阶段确认。早先多目录迁移更换关联 profile／wire identity，保持当时正文 profile；它将旧 v1 投影显式转换为单元素 catalogRefs 的新待审投影，保留旧原件、回执及未知派发身份，不调用模型或恢复派发旧请求。迁移旧日志保持 unsupported，旧自动授权／调度只归档。后续正文输出 v2／关联输出 v3 升级在相同存储下同时更换两阶段 profile；旧 profile 的 active 运行须用匹配旧构建恢复，已准备的固定发布意图可精确重放。 |
 | 操作者上下文 | 复用 human／agent 数据形状；公共 CLI／服务的可信上下文输入与缺失时拒绝行为需明确发布影响。旧 actor 和回执不回写；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 

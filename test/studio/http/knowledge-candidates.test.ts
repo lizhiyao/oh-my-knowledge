@@ -1,11 +1,15 @@
+import { FileSourceStore } from '../../../src/knowledge/adapters/source-store.js';
+import { readTraceSource } from '../../../src/knowledge/adapters/trace-source-reader.js';
+import type { SourceSnapshot, TraceOrigin } from '../../../src/knowledge/sources.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
+import { executeKnowledgeCandidateAction } from '../../../src/studio/application/knowledge/knowledge-candidates.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
 import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
 import { KnowledgeApplication } from '../../../src/knowledge/application/application.js';
@@ -35,6 +39,20 @@ function currentModel(multiple = false, outcome?: GenerationOutcome): KnowledgeG
     } };
 }
 
+function captureAuthoredSource(workspace: string, input: { path: string; records?: { recordIndex: number; raw: string }[]; origin?: TraceOrigin }) {
+  const records = input.records ?? (readFileSync(input.path, 'utf8').match(/[^\n]*\n|[^\n]+$/gu) ?? []).filter(raw => raw.trim()).map((raw, recordIndex) => ({ recordIndex, raw }));
+  const sourceId = `fixture:${basename(input.path)}`, selection = { sourceKind: 'agent_trace' as const, sourceId, traceKind: 'codex', recordRanges: records.map(record => ({ startRecord: record.recordIndex, endRecord: record.recordIndex })) };
+  const reading = readTraceSource(selection, { sourceId, traceKind: 'codex', source: { sourceType: 'records', records }, ...(input.origin ? { origin: input.origin } : {}) });
+  return new FileSourceStore(join(workspace, 'sources'), workspace).capture(reading.projection).snapshot;
+}
+async function generateAuthored(app: KnowledgeApplication, snapshot: SourceSnapshot, model: KnowledgeGenerationModel) {
+  const sources = [{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }], prepared = await app.prepareGeneration(sources, model);
+  let result = await app.generate(sources, model, prepared.journal.runId, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
+  const stage = result.journal.stages.at(-1)!;
+  if (stage.stageKind === 'association' && stage.state === 'prepared') result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+  return result;
+}
+
 describe('Studio candidate action boundary', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-candidate-api-'));
   const workspace = join(root, 'knowledge');
@@ -55,13 +73,16 @@ describe('Studio candidate action boundary', () => {
   let url: string;
   beforeAll(async () => {
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '项目约束' }] } }));
-    server = createReportServer({ port: 0, conversationCatalog: catalog, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
+    server = createReportServer({ sourceScope: { scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'authored-project', root }], traces: [] }, port: 0, conversationCatalog: catalog, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
     url = await server.start();
   });
   afterAll(async () => { await server?.stop(); rmSync(root, { recursive: true, force: true }); });
   const post = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/candidates`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace, ...body }),
   });
+  const postSource = (body: Record<string, unknown>) => fetch(`${url}/api/knowledge/sources`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workspace, ...body }) });
+  const previewFile = async (relativePath: string, selected = workspace) => (await postSource({ operation: 'preview-sources', workspace: selected,
+    selections: [{ sourceKind: 'project_file', projectId: 'authored-project', relativePath, lineRanges: null }] })).json();
   const postReview = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/reviews`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
   });
@@ -70,7 +91,7 @@ describe('Studio candidate action boundary', () => {
       method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body),
     });
     expect((await auto({ operation: 'status', workspace, threadId: 'thread' }, 'https://untrusted.example')).status).toBe(403);
-    const preview = await (await auto({ operation: 'preview', threadId: 'thread' })).json();
+    const preview = await (await auto({ operation: 'preview', threadId: 'thread', executor: 'codex', model: 'not-invoked' })).json();
     expect(preview.turnCount).toBe(1); expect(preview.messages).toHaveLength(2);
     expect(await (await auto({ operation: 'status', workspace, threadId: 'thread' })).json()).toBeNull();
     const consent = { workflowId: AUTO_EXTRACTION_WORKFLOW, operation: 'enable', workspace, threadId: 'thread', token: preview.token, executor: 'codex', model: 'not-invoked', maxCalls: 1 };
@@ -81,7 +102,7 @@ describe('Studio candidate action boundary', () => {
     expect((await auto(consent)).status).toBe(200);
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
     // Schema2 explicitly authorizes both phases, each charged separately; preview/enable never constructs a model.
-    expect(await (await auto(consent)).json()).toMatchObject({ schemaVersion: 2, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 0 });
+    expect(await (await auto(consent)).json()).toMatchObject({ schemaVersion: 3, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 0 });
     expect(await (await auto({ operation: 'stop', workspace, threadId: 'thread' })).json()).toMatchObject({ enabled: false, reason: 'stopped', callsUsed: 0 });
     expect(createLocalKnowledgeApplication(workspace).runs()).toEqual({ current: [], unsupported: [], unavailable: [], archiveChecks: [] });
   });
@@ -126,8 +147,8 @@ describe('Studio candidate action boundary', () => {
 
   it('retrieves task content through the production read path with candidate/source/budget boundaries and no new generation', async () => {
     const selected = join(root, 'task-retrieval'), app = createLocalKnowledgeApplication(selected);
-    const captured = app.capture({ path: join(root, 'task-source.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha uses Beta diagnostics only with matching source, model and configuration. ' + 'This limitation remains specific. '.repeat(70)) }] });
-    const run = await app.generate(captured.snapshotId, currentModel(true));
+    const captured = captureAuthoredSource(selected, { path: join(root, 'task-source.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha uses Beta diagnostics only with matching source, model and configuration. ' + 'This limitation remains specific. '.repeat(70)) }] });
+    const run = await generateAuthored(app, captured, currentModel(true));
     const request = { operation: 'retrieve', workspace: selected, format: 'json', query: 'Alpha diagnostics', maxBytes: 8192,
       snapshot: captured.snapshotId, sourceVersion: captured.sourceVersion };
     const defaultResult = await (await post(request)).json();
@@ -259,9 +280,9 @@ describe('Studio candidate action boundary', () => {
   it('loads only scoped committed knowledge while preserving queue order, tags, missing rows and selected corruption failures', async () => {
     const selected = join(root, 'scoped-queue'), app = createLocalKnowledgeApplication(selected);
     const generate = async (threadId: string, multiple = false) => {
-      const snapshot = app.capture({ path: join(root, `${threadId}.jsonl`), origin: { threadId, title: threadId },
+      const snapshot = captureAuthoredSource(selected, { path: join(root, `${threadId}.jsonl`), origin: { threadId, title: threadId },
         records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
-      return app.generate(snapshot.snapshotId, currentModel(multiple));
+      return generateAuthored(app, snapshot, currentModel(multiple));
     };
     const chosen = await generate('chosen-thread', true), other = await generate('other-thread');
     const id = chosen.journal.bodies[0].knowledgeId, detail = app.detail(id);
@@ -297,24 +318,47 @@ describe('Studio candidate action boundary', () => {
     } finally { writeFileSync(journalPath, originalJournal); }
   });
 
+  it('includes only exact declared project sources when no Observe project matches', async () => {
+    const selected = join(root, 'explicit-project-scope'), app = createLocalKnowledgeApplication(selected, { sourceScope: {
+      scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'explicit-project', root }], traces: [],
+    } });
+    writeFileSync(join(root, 'project-source.md'), 'Alpha 使用 Beta，仅作为合成来源。');
+    const preview = app.previewSources([{ sourceKind: 'project_file', projectId: 'explicit-project', relativePath: 'project-source.md', lineRanges: null }]);
+    const captured = app.captureSources({ previewId: preview.previewId, previewDigest: preview.previewDigest }).sources[0].snapshot;
+    const run = await generateAuthored(app, captured, currentModel());
+    const response = await post({ workspace: selected, operation: 'queue', projectId: 'explicit-project' }); expect(response.status).toBe(200);
+    const queue = await response.json(); expect(queue.rows.map((row: { knowledgeId: string }) => row.knowledgeId)).toEqual(run.journal.bodies.map(body => body.knowledgeId));
+    expect(queue.runs[0].sources).toEqual([expect.objectContaining({ sourceKind: 'project_file', projectId: 'explicit-project' })]);
+    const unrelated = await (await post({ workspace: selected, operation: 'queue', projectId: root })).json();
+    expect(unrelated.rows).toEqual([]); expect(unrelated.runs).toEqual([]); // A host path is not a project-ID alias.
+    const trace = captureAuthoredSource(selected, { path: join(root, 'unconfirmed-project.jsonl'), origin: { threadId: 'unconfirmed-thread', title: 'Unconfirmed project membership' }, records: [{ recordIndex: 0, raw: message('user', 'Alpha 使用 Beta') }] });
+    const traceRun = await generateAuthored(app, trace, currentModel());
+    const uncertain = await executeKnowledgeCandidateAction({ operation: 'queue', workspace: selected, projectId: 'explicit-project' }, undefined,
+      undefined, { ...catalog, async listConversations() { throw new Error('private catalog unavailable'); } }) as import('../../../src/studio/view-models/knowledge/knowledge-candidates.js').KnowledgeCandidateQueue;
+    expect(uncertain.rows.map(row => row.knowledgeId)).toEqual(run.journal.bodies.map(body => body.knowledgeId));
+    expect(uncertain.runs).toContainEqual(expect.objectContaining({ runId: traceRun.journal.runId, schemaStatus: 'unavailable', unavailableReason: 'project_membership_unavailable' }));
+
+  });
   it('uses the selected local workspace and shared capture operation', async () => {
     expect(await (await post({ operation: 'list' })).json()).toEqual([]);
-    const captured = await post({ operation: 'capture', source });
+    const preview = await previewFile('source.jsonl');
+    const captured = await postSource({ operation: 'capture', selections: preview.items.map((item: { resolvedSelection: unknown }) => item.resolvedSelection), previewDigest: preview.previewDigest });
     expect(captured.status).toBe(200);
-    const snapshot = await captured.json() as { snapshotId: string };
+    const snapshot = (await captured.json()).sources[0].snapshot as SourceSnapshot;
     expect(snapshot.snapshotId).toBeTruthy();
-    expect((await post({ operation: 'delete-source', snapshot: snapshot.snapshotId })).status).toBe(200);
+    expect((await post({ operation: 'delete-source', source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion } })).status).toBe(200);
   });
   it('previews catalog messages, captures only the selection, and preserves the return identity', async () => {
     const preview = await (await post({ operation: 'preview-conversation', threadId: 'thread', turnId: 'turn' })).json() as { sourceVersion: string; messages: { text: string }[] };
     expect(preview.messages.map(message => message.text)).toEqual(['选择这条约束', '不要自动带上这条回复']);
-    const input = { operation: 'capture-conversation', threadId: 'thread', turnId: 'turn', sourceVersion: preview.sourceVersion, recordIndexes: [10] };
-    expect((await post({ ...input, recordIndexes: [999] })).status).toBe(400);
+    const narrowed = await (await post({ operation: 'preview-conversation', threadId: 'thread', turnId: 'turn', recordIndexes: [10] })).json();
+    const input = { operation: 'capture-conversation', threadId: 'thread', turnId: 'turn', previewDigest: narrowed.preview.previewDigest, recordIndexes: [10] };
+    expect((await post({ ...input, recordIndexes: [999] })).status).toBe(409);
     expect((await post({ ...input, turnId: 'other' })).status).toBe(400);
-    const captured = await (await post(input)).json() as { snapshotId: string; excerpts: { text: string }[] };
+    const captured = (await (await post(input)).json()).sources[0].snapshot as SourceSnapshot;
     expect(captured.excerpts.map(entry => entry.text)).toEqual(['选择这条约束']);
-    const stored = createLocalKnowledgeApplication(workspace).source(captured.snapshotId);
-    expect(stored.status === 'available' && stored.window.origin).toEqual({ threadId: 'thread', turnId: 'turn', title: '项目对话', cwd: '/project' });
+    const stored = createLocalKnowledgeApplication(workspace).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion });
+    expect(stored.status === 'available' && stored.snapshot.sourceKind === 'agent_trace' && stored.snapshot.origin).toEqual({ threadId: 'thread', turnId: 'turn', title: '项目对话' });
     changed = true;
     expect((await post(input)).status).toBe(409);
     changed = false;
@@ -325,12 +369,12 @@ describe('Studio candidate action boundary', () => {
       const preview = await (await post({ operation: 'preview-conversation', threadId: 'thread' })).json();
       expect(preview.messages.map((item: { recordIndex: number }) => item.recordIndex)).toEqual([10, 11, 20]);
       expect(preview.origin).not.toHaveProperty('turnId');
-      const input = { operation: 'capture-conversation', threadId: 'thread', sourceVersion: preview.sourceVersion, recordIndexes: [10, 11, 20] };
+      const input = { operation: 'capture-conversation', threadId: 'thread', previewDigest: preview.preview.previewDigest, recordIndexes: [10, 11, 20] };
       const response = await post(input);
       expect(response.status).toBe(200);
-      const captured = await response.json();
+      const captured = (await response.json()).sources[0].snapshot;
       expect(captured.excerpts).toHaveLength(3);
-      expect(createLocalKnowledgeApplication(workspace).source(captured.snapshotId).status).toBe('available');
+      expect(createLocalKnowledgeApplication(workspace).source({ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }).status).toBe('available');
       whole = false;
       expect((await post(input)).status).toBe(409);
       incomplete = true;
@@ -349,8 +393,8 @@ describe('Studio candidate action boundary', () => {
   });
   it('lists archive metadata without native decoding and keeps full inspection fail-closed', async () => {
     const selected = join(root, 'native-summary'); const app = createLocalKnowledgeApplication(selected);
-    const source = app.capture({ path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
-    const run = await app.generate(source.snapshotId, currentModel(false, {
+    const source = captureAuthoredSource(selected, { path: join(root, 'native-summary.jsonl'), records: [{ recordIndex: 1, raw: message('user', 'Alpha 使用 Beta') }] });
+    const run = await generateAuthored(app, source, currentModel(false, {
       outcomeKind: 'result', result: { ok: false, output: 'private-native-output', error: 'private-native-diagnostic', durationMs: 2,
         failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }));
     const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
@@ -384,11 +428,14 @@ describe('Studio candidate action boundary', () => {
     const entitySource = join(root, 'entity.jsonl');
     writeFileSync(entitySource, [message('user', 'Alpha 使用 Beta'), message('user', '仅在隔离环境中使用 Beta，语义质量尚未验收。'),
       JSON.stringify({ type: 'unknown_event', payload: { privateMetadata: 'private-raw-value' } })].join('\n'));
-    const app = createLocalKnowledgeApplication(workspace), snapshot = app.capture({ path: entitySource }), run = await app.generate(snapshot.snapshotId, currentModel());
+    const app = createLocalKnowledgeApplication(workspace), snapshot = captureAuthoredSource(workspace, { path: entitySource }), run = await generateAuthored(app, snapshot, currentModel());
     const analysisId = run.journal.stages.find(stage => stage.stageKind === 'association')!.entityWrites![0].analysisId, bodyRef = run.journal.bodies[0];
     const inspection = await post({ operation: 'entities', analysisId }); expect(inspection.status).toBe(200);
     const text = await inspection.text(); expect(text).not.toContain(root); expect(text).not.toContain('private-raw-value');
-    const before = JSON.parse(text); expect(before.source.excerpts[0].text).toBe('Alpha 使用 Beta');
+    const before = JSON.parse(text); expect(before.source.snapshot.excerpts[0].text).toBe('Alpha 使用 Beta');
+    expect(before.source.snapshot).not.toHaveProperty('rawUnits');
+    const originalRead = await post({ operation: 'source', source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion } });
+    expect(originalRead.status).toBe(200); expect((await originalRead.json()).snapshot.rawUnits.some((unit: { text: string }) => unit.text.includes('private-raw-value'))).toBe(true);
     const graphResponse = await post({ operation: 'graph', knowledgeIds: [bodyRef.knowledgeId] });
     expect(graphResponse.status).toBe(200); const graphText = await graphResponse.text(), graph = JSON.parse(graphText);
     expect(graphText).not.toContain(root); expect(graphText).not.toContain('private-raw-value'); expect(graphText).not.toContain('sourcePath');
@@ -458,7 +505,7 @@ describe('Studio candidate action boundary', () => {
     expect(relationHistory.revisions.find(revision => revision.revisionId === editedProjection.derivedAssociations.revision.revisionId)?.typedRelations).toEqual([changedRelation]);
     expect(relationHistory.revisions.at(-1)?.typedRelations).toEqual([]);
     expect(createLocalKnowledgeApplication(workspace).detail(bodyRef.knowledgeId).revision).toEqual(original.revision);
-    const conditions = before.source.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
+    const conditions = before.source.snapshot.excerpts[1], draft = { title: candidate.revision.title, content: structuredClone(candidate.revision.content), reuseRationale: candidate.revision.reuseRationale };
     draft.content.segments[0].text += ` ${conditions.text}`;
     draft.content.segments[0].evidence.push({ source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }, basis: 'source_assertion',
       selection: { evidenceRef: conditions.evidenceRef, quote: conditions.text, start: 0, end: conditions.text.length } });
@@ -483,7 +530,7 @@ describe('Studio candidate action boundary', () => {
     finally { writeFileSync(runPath, saved); }
     const summaries = await (await post({ operation: 'runs' })).json(); expect(JSON.stringify(summaries)).not.toContain('rawOutput');
     expect(summaries.find((entry: { runId: string }) => entry.runId === run.journal.runId).entityAnalyses[0].entityCount).toBe(2);
-    await post({ operation: 'delete-source', snapshot: snapshot.snapshotId }); const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
+    await post({ operation: 'delete-source', source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion } }); const deleted = await post({ ...request, revision: corrected.revision.revisionId, generation: 2 });
     expect(deleted.status).toBe(400); expect(await deleted.text()).not.toContain(root);
   });
   it('organizes exact entity revisions through the real library API and retains history without exposing source paths', async () => {
@@ -521,12 +568,13 @@ describe('Studio candidate action boundary', () => {
     const current = app.detail(seeded.body.knowledgeId);
     app.maintain(current.revision.knowledgeId, current.revision.revisionId, 'retain', '已核对', current.history.generation);
     const draft = executeArtifactAuthoring({ operation: 'preview', workspace: selected, source: { sourceKind: 'new' }, artifactKind: 'prompt', name: '当前知识', ids: [current.revision.knowledgeId] }, 'zh');
+    const sourcePreview = await previewFile('busy-source.jsonl', selected);
     const lock = join(selected, WORKSPACE_LOCK_FILE); const owner = JSON.stringify({ owner: randomUUID(), pid: process.pid, hostname: (await import('node:os')).hostname(), acquiredAt: new Date().toISOString() });
     writeFileSync(lock, owner); const clock = vi.spyOn(Date, 'now'); let tick = 0; clock.mockImplementation(() => tick += 6000);
     try {
-      for (const fields of [{ operation: 'capture', source: fixture }, { operation: 'delete-source', snapshot: snapshot.snapshotId },
+      for (const fields of [{ operation: 'capture', selections: sourcePreview.items.map((item: { resolvedSelection: unknown }) => item.resolvedSelection), previewDigest: sourcePreview.previewDigest }, { operation: 'delete-source', source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion } },
         { operation: 'tag', id: current.revision.knowledgeId, generation: 0, tags: ['tag'] }]) {
-        const response = await post({ workspace: selected, ...fields }); expect(response.status).toBe(409);
+        const response = await (fields.operation === 'capture' ? postSource({ workspace: selected, ...fields }) : post({ workspace: selected, ...fields })); expect(response.status).toBe(409);
         expect(await response.json()).toEqual({ error: 'knowledge_workspace_busy' });
       }
       const fields = draft as import('../../../src/studio/view-models/knowledge/artifact-authoring.js').ReviewedCarrierDraft;
@@ -534,7 +582,7 @@ describe('Studio candidate action boundary', () => {
         body: JSON.stringify({ operation: 'save', workspace: selected, artifactId: fields.artifactId, source: fields.source, artifactKind: fields.artifactKind, name: fields.name,
           directoryName: fields.directoryName, baselineRevisionId: fields.baselineRevisionId, baselineHash: fields.baselineHash, content: fields.content, selectedRefs: fields.selectedRefs, tagSelections: fields.tagSelections }) });
       expect(response.status).toBe(409); expect(await response.json()).toEqual({ error: 'knowledge_workspace_busy' });
-      expect(readFileSync(lock, 'utf8')).toBe(owner); expect(app.source(snapshot.snapshotId).status).toBe('available');
+      expect(readFileSync(lock, 'utf8')).toBe(owner); expect(app.source({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }).status).toBe('available');
       expect(app.detail(current.revision.knowledgeId).tagging).toEqual({ generation: 0, tags: [] });
       expect(existsSync(join(selected, 'artifacts'))).toBe(false);
     } finally { clock.mockRestore(); unlinkSync(lock); }

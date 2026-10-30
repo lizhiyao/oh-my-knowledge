@@ -17,8 +17,9 @@ const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
 // #1299 移除观测入口对知识用例的聚合后，仅登记知识内部的四域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
 const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
-  // Canonical body orchestration and archive adapters consume exact pure DTO/checker leaves.
-  // Frozen study inspection/replay remains isolated; retired typed workflow hosts are absent.
+  // Source3 host composition stays in application; adapters never instantiate its use cases.
+  // Migration alone decodes historical Source2. Normal extraction resolves current Source3.
+  // Exact four-domain topology remains audited per edge, with no directory-level exemptions.
   'knowledge/adapters/entity-link-api-producer.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/adapters/entity-link-executor.ts → knowledge/entity-linking/entity-link-prompt.ts',
@@ -33,6 +34,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/run-store.ts → knowledge/extraction/model-wire.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/run-sealing.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/runs.ts',
+  'knowledge/adapters/source-migration.ts → knowledge/extraction/evidence.ts',
   'knowledge/adapters/study-files.ts → knowledge/extraction/study-corpus.ts',
   'knowledge/adapters/study-files.ts → knowledge/extraction/study-plan.ts',
   'knowledge/adapters/study-inspection-input.ts → knowledge/extraction/study-capacity.ts',
@@ -41,6 +43,10 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/application.ts → knowledge/extraction/entities.ts',
   'knowledge/application/auto-extraction.ts → knowledge/adapters/durable-publication.ts',
   'knowledge/application/auto-extraction.ts → knowledge/adapters/generation-journal-store.ts',
+  'knowledge/application/auto-extraction.ts → knowledge/adapters/source-store.ts',
+  'knowledge/application/auto-extraction.ts → knowledge/adapters/source-workspace.ts',
+  'knowledge/application/auto-extraction.ts → knowledge/adapters/trace-source-reader.ts',
+  'knowledge/application/auto-extraction.ts → knowledge/extraction/body-generation-wire.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/conversation-source.ts',
   'knowledge/application/auto-extraction.ts → knowledge/extraction/native-outcome.ts',
   'knowledge/application/body-generation.ts → knowledge/adapters/body-digest.ts',
@@ -48,7 +54,18 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/body-generation.ts → knowledge/extraction/association-catalog.ts',
   'knowledge/application/body-generation.ts → knowledge/extraction/body-generation-wire.ts',
   'knowledge/application/body-generation.ts → knowledge/extraction/native-outcome.ts',
+  'knowledge/application/body-generation.ts → knowledge/extraction/source-input.ts',
   'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
+  'knowledge/application/local-source-host.ts → knowledge/adapters/project-source-reader.ts',
+  'knowledge/application/local-source-host.ts → knowledge/adapters/source-store.ts',
+  'knowledge/application/local-source-host.ts → knowledge/adapters/trace-source-reader.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/association-store.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/body-digest.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/entity-store.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/knowledge-store.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/project-source-reader.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/source-store.ts',
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/trace-source-reader.ts',
   'knowledge/application/local.ts → knowledge/adapters/association-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/application/local.ts → knowledge/adapters/entity-link-store.ts',
@@ -58,9 +75,11 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/knowledge-tags.ts',
   'knowledge/application/local.ts → knowledge/adapters/library-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/review-store.ts',
-  'knowledge/application/local.ts → knowledge/adapters/trace-evidence.ts',
+  'knowledge/application/local.ts → knowledge/adapters/source-store.ts',
+  'knowledge/application/local.ts → knowledge/adapters/source-workspace.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-link-hash.ts',
   'knowledge/application/local.ts → knowledge/entity-linking/entity-links.ts',
+  'knowledge/application/operations.ts → knowledge/adapters/source-store.ts',
   'knowledge/application/read-context.ts → knowledge/adapters/body-digest.ts',
   'knowledge/application/study-inspection-service.ts → knowledge/adapters/study-inspection-errors.ts',
   'knowledge/application/study-inspection-worker.ts → knowledge/adapters/study-inspection-errors.ts',
@@ -95,7 +114,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-api-producer.ts',
   'knowledge/entity-linking/entity-links.ts → knowledge/adapters/entity-link-executor.ts',
   'knowledge/entity-linking/entity-links.ts → knowledge/application/library.ts',
-  'knowledge/extraction/conversation-source.ts → knowledge/adapters/trace-evidence.ts',
+  'knowledge/extraction/conversation-source.ts → knowledge/adapters/trace-source-reader.ts',
 ] as const;
 
 const KNOWLEDGE_AGGREGATE_TYPE_EDGES = [
@@ -126,7 +145,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
   {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
-    rationale: '正文生成应用装配独立 journal/custody 适配器；既有 local 组合根另装配独立复核账本，复核用例只消费端口，不引入新的适配器反向调用；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
+    rationale: '正文生成应用装配独立 journal/custody 适配器；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核账本；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
   },
 ] as const;
 
@@ -230,8 +249,8 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: '33b33d8ed0b1354b14f99e91a7eed267f9ffaa99599fc17a2bb139a424d5bb1a',
-    rationale: 'Documentation generation loads only fixed compiled current body and independent review contract modules to derive identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
+    sourceSha256: 'c4ae2e414475a1fa8f21205ae9b5be13802e3ce95397d5e6164decc84f0d6d05',
+    rationale: 'Documentation generation loads only fixed compiled current body, Source3 and independent review contract modules to derive identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',

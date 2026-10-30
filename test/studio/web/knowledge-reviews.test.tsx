@@ -3,10 +3,11 @@ import { ConfigProvider } from 'antd';
 import type { PropsWithChildren } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { traceSourceFixture } from './source-fixture';
 import { KnowledgeReviewDrawer } from '../../../src/studio/web/components/knowledge/review-drawer';
 import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader';
 import type { KnowledgeCandidateDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates';
-import type { KnowledgeReviewContentInput, KnowledgeReviewEvent, KnowledgeReviewReceipt, KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews';
+import type { KnowledgeReviewContentInput, KnowledgeReviewEvent, KnowledgeReviewReceipt, KnowledgeReviewStatus, KnowledgeReviewUseInput } from '../../../src/studio/view-models/knowledge/knowledge-reviews';
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const digest = `sha256:${'a'.repeat(64)}`;
@@ -34,9 +35,7 @@ function fixture(historical = false) {
       ...source, entities: [{ entityId: mapping.entityId, label: 'Alpha', description: 'Only this source-local object', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [],
         uncertainties: [], referentKind: 'object', componentRef: null, collection: null }],
       mentions: [{ mentionId: uuid(5), entityId: mapping.entityId, selection: { evidenceRef: 'record-1', quote: 'Alpha', start: 1, end: 6 }, basis: 'explicit', rationale: 'Exact fixture mention' }] }],
-    sources: [{ status: 'available', window: { ...source, sourcePath: '/authored-ui-fixture', sourceKind: 'codex', projectionVersion: 'knowledge-window-v2', capturedAt: at,
-      startRecord: 0, endRecord: 0, excerpts: [{ evidenceRef: 'record-1', text: ' Alpha project condition ', recordIndex: 0, eventKind: 'message', role: 'user' }],
-      records: [{ recordIndex: 0, raw: 'Authored source fixture' }], limitations: ['Source-local fixture, not a quality observation'] } }] };
+    sources: [{ status: 'available', snapshot: traceSourceFixture(source, [{ evidenceRef: 'record-1', text: ' Alpha project condition ', recordIndex: 0, eventKind: 'message', role: 'user' }], { limitations: ['Source-local fixture, not a quality observation'] }) }] };
   const baseline: KnowledgeReviewStatus = { storageStatus: 'absent', bodyRef, generation: 0, headEventId: null, sources: [{ ...source, status: 'available' }], history: null,
     content: { status: 'not_reviewed', events: [] }, coverage: { status: 'not_reviewed', projectionRevisionId: projection.revisionId, events: [],
       decisions: revision.content.segments.map(segment => ({ segmentId: segment.segmentId, status: 'unknown', opinions: [] })) }, usage: [] };
@@ -188,6 +187,46 @@ describe('independent knowledge review interactions', () => {
     pane.scrollTop = 0; act(unmounted); expect(pane.scrollTop).toBe(0);
   });
 
+  it.each(['content', 'use'] as const)('saves %s multiline review quotes at the chosen occurrence with exact original CRLF ranges', async initialMode => {
+    const data = fixture(), calls: Record<string, unknown>[] = [], text = '😀 header\r\nAlpha\nBeta\r\nseparator\r\nAlpha\r\nBeta\r\ntail';
+    const snapshot = traceSourceFixture(source, [{ evidenceRef: 'record-1', text, recordIndex: 0, eventKind: 'message', role: 'user' }]);
+    data.detail.sources = [{ status: 'available', snapshot }];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const call = JSON.parse(String(init.body)); calls.push(call); return response(call.operation === 'review-status' ? data.baseline : receiptFor(call));
+    }));
+    render(<KnowledgeReviewDrawer detail={data.detail} workspace="/crlf-review" lang="en" initialMode={initialMode} segmentId="s1" query="Inspect the fixed original quotation." onClose={vi.fn()}/>, { wrapper });
+    await screen.findByRole('textbox', { name: 'Reason for this record' });
+    change('Reason for this record', 'Keep the exact original quotation and position.');
+    if (initialMode === 'content') {
+      fireEvent.click(screen.getByRole('button', { name: 'Add a finding' })); change('Finding 1 description', 'Preserve source line endings.');
+    } else change('Actual task reference', 'task://crlf-source-review');
+    fireEvent.click(screen.getByText('Original-source evidence (optional, 0 selected)', { exact: true }));
+    expect((screen.getByRole('textbox', { name: 'Original review excerpt (read-only)' }) as HTMLTextAreaElement).value).toBe(text.replace(/\r\n/gu, '\n'));
+    change('Exact review quotation', 'Alpha\nBeta');
+    const add = screen.getByRole('button', { name: 'Add this exact evidence' }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    const occurrence = screen.getByRole('spinbutton', { name: 'Review quotation occurrence' });
+    fireEvent.change(occurrence, { target: { value: '1' } }); fireEvent.blur(occurrence);
+    change('Evidence interpretation (optional)', 'The second displayed occurrence.');
+    expect(add.disabled).toBe(false); fireEvent.click(add);
+    change('Exact review quotation', 'separator\nAlpha\nBeta');
+    expect(add.disabled).toBe(true);
+    fireEvent.change(occurrence, { target: { value: '' } }); fireEvent.blur(occurrence);
+    change('Evidence interpretation (optional)', 'One uniquely displayed multiline excerpt.');
+    expect(add.disabled).toBe(false); fireEvent.click(add);
+    fireEvent.click(saveButton()); await screen.findByText(/A save receipt identifies this review event/);
+    const writes = calls.filter(call => call.operation !== 'review-status'); expect(writes).toHaveLength(1);
+    const command = writes[0] as unknown as ({ operation: 'review-content' } & KnowledgeReviewContentInput) | ({ operation: 'record-use' } & KnowledgeReviewUseInput);
+    expect(command.operation).toBe(initialMode === 'content' ? 'review-content' : 'record-use');
+    const evidence = command.operation === 'review-content' ? command.findings[0].evidence ?? [] : command.evidence ?? [];
+    const repeated = 'Alpha\r\nBeta', start = text.lastIndexOf(repeated), unique = 'separator\r\nAlpha\r\nBeta', uniqueStart = text.indexOf(unique);
+    expect(evidence).toEqual([
+      { source, basis: 'source_assertion', interpretation: 'The second displayed occurrence.', selection: { evidenceRef: 'record-1', quote: repeated, start, end: start + repeated.length } },
+      { source, basis: 'source_assertion', interpretation: 'One uniquely displayed multiline excerpt.', selection: { evidenceRef: 'record-1', quote: unique, start: uniqueStart, end: uniqueStart + unique.length } },
+    ]);
+    for (const { selection } of evidence) expect(text.slice(selection.start, selection.end)).toBe(selection.quote);
+    expect(snapshot.excerpts[0].text).toBe(text);
+  });
   it('keeps content readable when its ledger is unavailable and ignores the cancelled old-workspace response instead of calling it unreviewed', async () => {
     const data = fixture(), calls: Record<string, unknown>[] = []; let releaseOld!: (value: Response) => void, oldSignal: AbortSignal | undefined;
     const unavailable: KnowledgeReviewStatus = { storageStatus: 'unavailable', bodyRef: data.bodyRef, generation: null, headEventId: null, sources: data.baseline.sources,
@@ -344,9 +383,8 @@ describe('independent knowledge review interactions', () => {
     const data = fixture(), calls: Record<string, unknown>[] = [], events: KnowledgeReviewEvent[] = [], receipts: KnowledgeReviewReceipt[] = [];
     const secondSource = { snapshotId: uuid(30), sourceVersion: `sha256:${'b'.repeat(64)}` };
     const firstWindow = data.detail.sources[0]; if (firstWindow.status !== 'available') throw new Error('Missing authored source.');
-    const secondWindow = structuredClone(firstWindow.window);
-    Object.assign(secondWindow, secondSource); secondWindow.excerpts = [{ evidenceRef: 'record-2', text: 'Original: Alpha context.', recordIndex: 0, eventKind: 'message', role: 'user' }];
-    data.detail.sources.push({ status: 'available', window: secondWindow });
+    const secondSnapshot = traceSourceFixture(secondSource, [{ evidenceRef: 'record-2', text: 'Original: Alpha context.', recordIndex: 0, eventKind: 'message', role: 'user' }], { origin: { threadId: 'second-thread', title: 'Second source' } });
+    data.detail.sources.push({ status: 'available', snapshot: secondSnapshot });
     data.detail.revision.content.segments[0].evidence.push({ source: secondSource, basis: 'source_assertion', selection: { evidenceRef: 'record-2', quote: 'Alpha', start: 10, end: 15 } });
     const baseline: KnowledgeReviewStatus = { ...data.baseline, sources: [...data.baseline.sources, { ...secondSource, status: 'available' }] };
     const current = (): KnowledgeReviewStatus => ({ ...baseline, storageStatus: events.length ? 'available' : 'absent', generation: events.length, headEventId: events.at(-1)?.eventId ?? null,
@@ -367,7 +405,7 @@ describe('independent knowledge review interactions', () => {
       fireEvent.click(screen.getByText('Original-source evidence (optional, 0 selected)', { exact: true }));
       change('Exact review quotation', 'Alpha'); change('Evidence interpretation (optional)', 'First-source assertion only.');
       fireEvent.click(screen.getByRole('button', { name: 'Add this exact evidence' }));
-      await choose('Original message for review evidence', `Source 2 · ${secondSource.snapshotId.slice(0, 8)} · 0 · user · Original: Alpha context.`);
+      await choose('Original source excerpt for review evidence', 'Source 2 · Second source · Source record 0 · user · Discussion material · Original: Alpha context.');
       await choose('Review evidence basis', 'Inference'); change('Exact review quotation', 'Alpha'); change('Evidence interpretation (optional)', 'Second-source inference; identity is unconfirmed.');
       fireEvent.click(screen.getByRole('button', { name: 'Add this exact evidence' }));
     }

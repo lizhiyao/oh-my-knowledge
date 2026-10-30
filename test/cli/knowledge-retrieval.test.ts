@@ -5,7 +5,6 @@ import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
-import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { knowledgeBodyDigest } from '../../src/knowledge/adapters/body-digest.js';
@@ -13,6 +12,7 @@ import type { KnowledgeActor, KnowledgeDraft } from '../../src/knowledge/contrac
 import * as executor from '../../src/knowledge/adapters/generation-executor.js';
 import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
 import { runCommand } from '../helpers/run-command.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -25,7 +25,7 @@ function persistedBody() {
   const root = mkdtempSync(join(tmpdir(), 'omk-body-retrieve-cli-')); roots.push(root);
   const workspace = join(root, 'workspace'), source = join(root, 'source.jsonl'), text = '🙂 用户报告仅初始化时 v-model 不更新；用户输入不受影响，成本未知。';
   writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }));
-  const evidence = new TraceEvidenceStore(join(workspace, 'sources'), workspace), snapshot = evidence.capture({ path: source });
+  const snapshot = captureTraceFixture(workspace, { path: source });
   const quote = snapshot.excerpts[0].text;
   const draft: KnowledgeDraft = { title: '初始化时的 v-model 报告', reuseRationale: '保留已报告条件与待验证边界。',
     content: { segments: [{ segmentId: 'initialization', text, evidence: [{ source: { snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion },
@@ -38,7 +38,7 @@ function persistedBody() {
   vi.stubEnv('OMK_HOME', join(root, 'home')); vi.stubEnv('OMK_SKIP_UPDATE_CHECK', '1');
   vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Retrieval must not configure an executor.'); });
   const command = (extra: string[] = []) => runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, '--query', '初始化时 v-model 的条件是什么？', ...extra], { cwd: root });
-  return { root, workspace, snapshot, draft, evidence, knowledgeId, revisionId, command,
+  return { root, workspace, snapshot, draft, knowledgeId, revisionId, command,
     failedAssociations() {
       const directory = join(workspace, 'associations'), associations = new FileKnowledgeAssociationStore(directory, 'local', store,
         new FileEntityAnalysisStore(join(workspace, 'entities'), workspace), workspace);
@@ -59,7 +59,7 @@ describe('body retrieve command wiring', () => {
     expect(JSON.parse((await f.command()).stdout).items).toEqual([]);
     const output = await f.command(['--include-candidates', '--json', '--snapshot', f.snapshot.snapshotId, '--source-version', f.snapshot.sourceVersion]);
     const result = JSON.parse(output.stdout);
-    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 2,
+    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 3,
       knowledge: [{ bodyRef: { knowledgeId: f.knowledgeId, revisionId: f.revisionId, bodyDigest: knowledgeBodyDigest(f.draft) }, choice: null,
         derivedAssociations: { status: 'absent', reviewStatus: 'pending' } }], items: [{ evidenceChecks: [{ positionStatus: 'matched' }] }] });
     expect(result.items[0].segment).toEqual(f.draft.content.segments[0]);
@@ -70,8 +70,14 @@ describe('body retrieve command wiring', () => {
     expect(workspaceBytes(f.workspace)).toEqual(retained);
   });
   it('keeps the stored body readable after source deletion while marking citation availability honestly', async () => {
-    const f = persistedBody(); f.retain(); f.evidence.delete(f.snapshot.snapshotId); const before = workspaceBytes(f.workspace);
-    const result = JSON.parse((await f.command(['--snapshot', f.snapshot.snapshotId])).stdout);
+    const f = persistedBody(); f.retain();
+    const exactSource = ['--snapshot', f.snapshot.snapshotId, '--source-version', f.snapshot.sourceVersion];
+    const deleted = await runCommand(ObserveKnowledge, ['delete-source', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
+    expect(JSON.parse(deleted.stdout)).toEqual({ deleted: sourceRef(f.snapshot) });
+    const before = workspaceBytes(f.workspace);
+    const source = await runCommand(ObserveKnowledge, ['source', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
+    expect(JSON.parse(source.stdout)).toMatchObject({ status: 'unavailable', reason: 'deleted' });
+    const result = JSON.parse((await f.command(exactSource)).stdout);
     expect(result).toMatchObject({ sources: [{ status: 'unavailable', reason: 'deleted' }], items: [{ evidenceChecks: [{ positionStatus: 'unavailable' }] }] });
     expect(result.items[0].segment).toEqual(f.draft.content.segments[0]); expect(workspaceBytes(f.workspace)).toEqual(before);
   });
@@ -115,12 +121,15 @@ describe('body retrieve command wiring', () => {
     const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve');
     const invoke = (args: string[]) => runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, ...args], { cwd: root });
     for (const args of [[], ['--query', 'x', '--max-bytes', '1023'], ['--query', 'x', '--source-version', `sha256:${'a'.repeat(64)}`],
+      ['--query', 'x', '--snapshot', randomUUID()],
       ['--query', 'x', '--executor', 'codex'], ['--query', 'x', '--reason', 'must not mutate'],
       ['--query', 'x', '--format', 'text', '--json'], ['--query', 'x', '--format', 'yaml']]) {
       await expect(invoke(args)).rejects.toMatchObject({ code: 2 });
     }
     for (const args of [['list', '--workspace', workspace, '--format', 'json'], ['schema', '--format', 'text'],
-      ['study', '--format', 'text', '--evidence', join(root, 'absent-evidence.json')]]) {
+      ['study', '--format', 'text', '--evidence', join(root, 'absent-evidence.json')],
+      ['source', '--workspace', workspace, '--snapshot', randomUUID()],
+      ['delete-source', '--workspace', workspace, '--snapshot', randomUUID()]]) {
       await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
     expect(settings).not.toHaveBeenCalled();

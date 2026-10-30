@@ -8,19 +8,23 @@ import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, ob
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
 import { generationTextDigest } from '../extraction/body-generation-wire.js';
+import { sourceSetPreimage } from '../sources.js';
 
 const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
 const uuid = z.string().uuid();
 function validateJournal(j: GenerationJournal): void {
   const sourceKeys = j.sources.map(source => canonicalJson([source.snapshotId, source.sourceVersion]));
-  if (new Set(sourceKeys).size !== sourceKeys.length || j.mode === 'generate' && j.sources.length !== 1) throw new Error('Invalid generation source identities.');
+  const sourceSet = sourceSetPreimage(j.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })));
+  if (new Set(sourceKeys).size !== sourceKeys.length || generationTextDigest(canonicalJson(sourceSet)) !== j.sourceSetId
+    || canonicalJson(sourceSet.sources) !== canonicalJson(j.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })))) throw new Error('Invalid generation source set identity.');
   if (j.mode === 'generate' && j.stages[0].stageKind !== 'body'
     || j.mode === 'rebuild_associations' && (j.stages.length !== 1 || j.stages[0].stageKind !== 'association' || j.bodies.length !== 1)
     || j.stages.length === 2 && (j.stages[0].state !== 'completed' || j.stages[1].stageKind !== 'association' || !j.bodies.length)) throw new Error('Invalid generation phase order.');
   for (const s of j.stages) {
-    const input = JSON.parse(s.input) as { source?: { snapshotId?: unknown; sourceVersion?: unknown }; sources?: { sourceKey?: unknown; source?: { snapshotId?: unknown; sourceVersion?: unknown } }[] };
-    const refs = s.stageKind === 'body' ? [input.source] : Array.isArray(input.sources) ? input.sources.map((item, index) => {
+    const input = JSON.parse(s.input) as { inputVersion?: unknown; sourceSetId?: unknown; sources?: { sourceKey?: unknown; source?: { snapshotId?: unknown; sourceVersion?: unknown } }[] };
+    if (input.inputVersion !== j.inputVersion || input.sourceSetId !== j.sourceSetId) throw new Error('Generation source input version or set mismatch.');
+    const refs = Array.isArray(input.sources) ? input.sources.map((item, index) => {
       if (item.sourceKey !== `s${index}`) throw new Error('Invalid generation input source keys.'); return item.source;
     }) : [];
     if (canonicalJson(refs.map(ref => ({ snapshotId: ref?.snapshotId, sourceVersion: ref?.sourceVersion })))
@@ -72,7 +76,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 2) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 3) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -136,7 +140,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
-      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v2 does not decode run5.' });
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v3 does not decode run5.' });
     }
     return { current, unsupported, unavailable, archiveChecks };
   }

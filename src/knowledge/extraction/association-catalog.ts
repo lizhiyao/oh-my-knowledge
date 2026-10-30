@@ -4,7 +4,6 @@ import { mapEntityIdentity } from '../entities/identity.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
 import { canonicalJson } from '../store.js';
 import type { AssociationGenerationResponse } from './body-generation-wire.js';
-import type { EvidenceWindow } from './evidence.js';
 import { EntityModelSchema } from './entities.js';
 import { locateQuoteContext } from './quote-context.js';
 
@@ -12,7 +11,7 @@ import { locateQuoteContext } from './quote-context.js';
 export const associationMentionKey = (entityId: string, mentionKey: string) => canonicalJson([entityId, mentionKey]);
 
 /** Compile request-local declarations; do not infer types, repair claims or relax domain validation. */
-export function compileAssociationCatalog(catalog: AssociationGenerationResponse['catalogs'][number], window: EvidenceWindow, id: () => string): {
+export function compileAssociationCatalog(catalog: AssociationGenerationResponse['catalogs'][number], window: { excerpts: readonly { evidenceRef: string; text: string }[] }, id: () => string): {
   draft: EntityAnalysisDraft; entityIds: Map<string, string>; mentionIds: Map<string, string>;
 } {
   const entityIds = new Map(catalog.entities.map(entity => [entity.entityId, id()]));

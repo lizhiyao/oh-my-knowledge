@@ -5,9 +5,11 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeTaskQuery, KnowledgeTaskRetrieval } from '../../../view-models/knowledge/knowledge-candidates';
 import type { KnowledgeReaderSelection } from './reader';
 import { requestTaskKnowledge } from './library-request';
+import type { SourceSummary } from '../../../../knowledge/application/source-summary';
+import { SourceLocator, sourceTitle } from './source-locator';
 
 type BodyRef = KnowledgeTaskRetrieval['knowledge'][number]['bodyRef'];
-type SourceRef = { snapshotId: string; sourceVersion: string; title?: string };
+type SourceRef = { snapshotId: string; sourceVersion: string; title?: string; source?: SourceSummary };
 type Props = {
   workspace: string; lang: Language; sources?: SourceRef[];
   onOpen(ref: BodyRef, selection: KnowledgeReaderSelection): void;
@@ -55,8 +57,8 @@ function TaskSearchSession({ workspace, lang, sources = [], onOpen, onFeedback }
       <p className="candidate-help">{t('默认查找已保留正文；已舍弃修订不纳入。候选或保留均不代表内容已证实。', 'Search retained content by default; discarded revisions are excluded. Candidates and retained content are not verified truth.')}</p>
       <details><summary>{t('来源范围与响应预算', 'Source scope and response budget')}</summary>
         <label className="knowledge-field">{t('来源快照', 'Source snapshot')}<Select aria-label={t('任务检索来源快照', 'Task retrieval source snapshot')} value={scope ? sourceKey(scope) : ''}
-          options={[{ value: '', label: t('当前工作区全部来源', 'All sources in this workspace') }, ...[...knownSources.values()].map((source, index) => ({ value: sourceKey(source), label: `${source.title || t(`来源 ${index + 1}`, `Source ${index + 1}`)} · ${source.snapshotId.slice(0, 8)}` }))]}
-          onChange={value => { const next = knownSources.get(value); invalidate(); setScope(next ? { snapshotId: next.snapshotId, sourceVersion: next.sourceVersion, ...('title' in next ? { title: next.title } : {}) } : undefined); }}/></label>
+          options={[{ value: '', label: t('当前工作区全部来源', 'All sources in this workspace') }, ...[...knownSources.values()].map((source, index) => ({ value: sourceKey(source), label: `${source.source ? sourceTitle(source.source, lang) : source.title || t(`来源 ${index + 1}`, `Source ${index + 1}`)} · ${source.snapshotId.slice(0, 8)}` }))]}
+          onChange={value => { const next = knownSources.get(value); invalidate(); setScope(next ? { ...next } : undefined); }}/></label>
         <p className="candidate-help">{t('来源选项来自当前打开知识和上次检索；限定的是精确快照与版本，不按对象名称推断归属。', 'Source choices come from the open knowledge and the last search. Scope uses an exact snapshot and version, without inferring identity from names.')}</p>
         {scope && <p className="candidate-help"><code>{scope.snapshotId} / {scope.sourceVersion}</code></p>}
         <label className="knowledge-field">{t('响应预算（UTF-8 字节）', 'Response budget (UTF-8 bytes)')}<InputNumber aria-label={t('任务检索响应预算', 'Task retrieval response budget')} min={1024} max={1_048_576} step={1024} value={maxBytes} onChange={value => { invalidate(); setMaxBytes(value); }}/></label>
@@ -85,8 +87,8 @@ function TaskSearchSession({ workspace, lang, sources = [], onOpen, onFeedback }
             <details><summary>{t('核对依据与精确修订', 'Inspect evidence and exact revision')}</summary><p className="candidate-help"><code>{knowledge.bodyRef.knowledgeId} / {knowledge.bodyRef.revisionId}</code></p>
               {item.evidenceChecks.map(check => {
                 const evidence = item.segment.evidence[check.evidenceIndex], source = answer.result.sources[check.source];
-                return <p className="candidate-help" key={check.evidenceIndex}>{check.positionStatus === 'matched' ? t('引文位置匹配，含义仍需核对', 'Quotation position matches; meaning still needs review') : check.positionStatus === 'mismatch' ? t('引文位置不匹配', 'Quotation position mismatch') : t('来源不可读', 'Source unavailable')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[evidence.basis]}<br/>
-                  <Button type="link" size="small" onClick={() => onOpen(knowledge.bodyRef, { tab: 'evidence', segmentId: item.segment.segmentId, evidence: { ...evidence.source, evidenceRef: evidence.selection.evidenceRef, start: evidence.selection.start, end: evidence.selection.end } })}>{source.status === 'available' ? t('打开精确依据', 'Open exact evidence') : t('查看保存引文', 'Read saved quotation')}</Button></p>;
+                return <section key={check.evidenceIndex}><p className="candidate-help">{check.positionStatus === 'matched' ? t('引文位置匹配，含义仍需核对', 'Quotation position matches; meaning still needs review') : check.positionStatus === 'mismatch' ? t('引文位置不匹配', 'Quotation position mismatch') : t('来源不可读', 'Source unavailable')} · {({ direct_observation: t('直接观测', 'Direct observation'), source_assertion: t('来源中的说法', 'Source assertion'), inference: t('推断', 'Inference') })[evidence.basis]}<br/>
+                  <Button type="link" size="small" onClick={() => onOpen(knowledge.bodyRef, { tab: 'evidence', segmentId: item.segment.segmentId, evidence: { ...evidence.source, evidenceRef: evidence.selection.evidenceRef, start: evidence.selection.start, end: evidence.selection.end } })}>{source.status === 'available' ? t('打开精确依据', 'Open exact evidence') : t('查看保存引文', 'Read saved quotation')}</Button></p>{source.status === 'available' && <SourceLocator source={source.source} sourceRef={source} lang={lang} identity={false}/>}</section>;
               })}
             </details>
           </section>;

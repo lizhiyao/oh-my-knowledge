@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { describe, it, vi, beforeEach, afterEach, expect } from 'vitest';
 import { runCommand } from '../helpers/run-command.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 interface CapturedSpawn {
   command: string;
@@ -14,6 +17,7 @@ interface CapturedExecFile {
 
 const spawnCalls: CapturedSpawn[] = [];
 const execFileCalls: CapturedExecFile[] = [];
+const roots: string[] = [];
 let platformName = 'darwin';
 let execFileError: Error | null = null;
 let spawnError: Error | null = null;
@@ -90,10 +94,13 @@ describe('studio --dev child spawn argv', () => {
   afterEach(() => {
     restoreStdoutIsTTY();
     vi.clearAllMocks();
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
 
   it('uses cli/index.js as child entrypoint and re-enters studio', async () => {
     const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const root = mkdtempSync(join(tmpdir(), 'omk-studio-source-scope-')); roots.push(root);
+    const path = join(root, 'scope.json'); writeFileSync(path, JSON.stringify({ scopeVersion: 'knowledge-source-scope/v1', projects: [], traces: [] }));
     await runStudio({}, {
       lang: 'zh',
       global: false,
@@ -101,6 +108,7 @@ describe('studio --dev child spawn argv', () => {
       host: '0.0.0.0',
       takeover: true,
       'reports-dir': 'tmp-reports',
+      'source-scope': path,
       'no-open': true,
       dev: true,
     }, 'zh');
@@ -112,7 +120,20 @@ describe('studio --dev child spawn argv', () => {
     expect(cliPath).toMatch(/[\\/]cli[\\/]index\.(js|ts)$/);
     expect(cliPath).not.toMatch(/[\\/]commands[\\/]/);
     expect(command).toBe('studio');
-    expect(rest).toEqual(['--port', '8080', '--lang', 'zh', '--host', '0.0.0.0', '--takeover', '--reports-dir', 'tmp-reports', '--no-open']);
+    expect(rest).toEqual(['--port', '8080', '--lang', 'zh', '--host', '0.0.0.0', '--takeover', '--reports-dir', 'tmp-reports', '--source-scope', path, '--no-open']);
+  });
+
+  it('injects only parsed startup source scope and refuses malformed scope before server construction', async () => {
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const { createNextStudioServer } = await import('../../src/studio/http/next-server.js');
+    const root = mkdtempSync(join(tmpdir(), 'omk-studio-trusted-scope-')); roots.push(root);
+    const scope = { scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'project', root }], traces: [] }, path = join(root, 'scope.json'); writeFileSync(path, JSON.stringify(scope));
+    const flags = { lang: 'zh' as const, global: false, takeover: false, port: '7799', 'no-open': true, dev: false, 'source-scope': path };
+    await runStudio({}, flags, 'zh'); expect(vi.mocked(createNextStudioServer).mock.calls.at(-1)?.[0]?.sourceScope).toEqual(scope);
+    vi.mocked(createNextStudioServer).mockClear(); writeFileSync(path, '{invalid');
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try { await expect(runStudio({}, flags, 'zh')).rejects.toMatchObject({ code: 2 }); expect(createNextStudioServer).not.toHaveBeenCalled(); }
+    finally { stderr.mockRestore(); }
   });
 
   it('启动错误通过命令边界返回，不变成未捕获事件', async () => {

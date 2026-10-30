@@ -6,9 +6,8 @@ import type { Language } from '../layout/shell';
 import type { KnowledgeLibraryDetail } from '../../../view-models/knowledge/knowledge-library';
 import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
-import { conversationPath } from '../conversation-link';
-import { workspaceHref } from '../layout/workspace-link';
 import { libraryEntityUrl, libraryUrl } from './library-request';
+import { SourceLocator } from './source-locator';
 
 export function LibraryObjectDetail({ detail, workspace, lang, onRevision, onKnowledge, footer, initialTab = 'knowledge' }: {
   detail: KnowledgeLibraryDetail; workspace: string; lang: Language; onRevision(id: string): void; onKnowledge(id: string): void;
@@ -45,7 +44,7 @@ export function LibraryObjectDetail({ detail, workspace, lang, onRevision, onKno
           {member.status === 'available' ? <>
             {!member.current && <Alert type="warning" title={t('实体已有新修订。更新组织关联前需核对身份。', 'Entity has a new revision. Review identity before updating the organization link.')}/>}
             {member.sourceStatus === 'unavailable' && <Alert type="warning" title={t('原文不可用，不能完整核对身份。', 'Source unavailable; identity cannot be fully reviewed.')}/>}
-            {member.origin && <Link href={workspaceHref(conversationPath(member.origin.threadId), workspace)}>{member.origin.title || t('来源对话', 'Source conversation')}</Link>}
+            {member.source && <SourceLocator source={member.source} lang={lang} workspace={workspace}/>}
             <p>{member.entity.qualifiers.join(' · ')}</p>
             {member.evidence.map(evidence => <div key={evidence.mentionId}><blockquote>{evidence.quote}</blockquote><p>{evidence.rationale} · {evidence.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断对应', 'Inferred assignment')}</p>
               {evidence.positionStatus === 'mismatch' && <Alert type="warning" title={t('提及与当前来源不匹配，不能当作已核对。', 'Mention no longer matches the source; it is not verified.')}/>}</div>)}

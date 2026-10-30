@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { canonicalJson, type KnowledgeStore } from '../store.js';
@@ -15,7 +15,7 @@ const digest = (value: unknown) => `sha256:${createHash('sha256').update(canonic
 export class FileKnowledgeAssociationStore implements KnowledgeAssociationStore {
   private readonly root: string;
   constructor(root: string, private readonly namespace: string, private readonly knowledge: KnowledgeStore,
-    private readonly entities: EntityAnalysisStore, private readonly workspaceRoot = root) {
+    private readonly entities: EntityAnalysisStore, private readonly workspaceRoot = root, private readonly migrationWriteContext?: SourceMigrationWriteContext) {
     if (!root.trim() || !namespace.trim()) throw new Error('Explicit association root and namespace required.');
     this.root = resolve(root);
   }
@@ -80,6 +80,6 @@ export class FileKnowledgeAssociationStore implements KnowledgeAssociationStore 
         publishKnowledgeBytes(path, bytes, this.workspaceRoot, !existing);
       }
       return next.receipts.find(receipt => receipt.requestId === command.requestId)!;
-    });
+    }, this.migrationWriteContext);
   }
 }

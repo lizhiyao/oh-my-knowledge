@@ -25,7 +25,8 @@ function eventText(event: TraceEvent): string | undefined {
 /** 归档用户显式选中的记录；格式归因复用 Trace 层的同源判定。 */
 export class TraceEvidenceStore implements EvidenceStore {
   private readonly root: string;
-  constructor(root: string, private readonly workspaceRoot = root) {
+  constructor(root: string, private readonly workspaceRoot = root,
+    private readonly assertCaptureWritable?: (signal?: AbortSignal) => void) {
     if (!root.trim()) throw new Error('Explicit evidence root required.');
     this.root = resolve(root);
   }
@@ -41,6 +42,8 @@ export class TraceEvidenceStore implements EvidenceStore {
     if (Buffer.byteLength(serialized) > MAX_BYTES) throw new Error('Projected source exceeds capacity; choose a smaller range.');
     withWorkspaceFileWrite(this.workspaceRoot, join(this.root, '.write'), () => {
       checkStorageDirectory(this.root);
+      // Recheck host format admission under both original locks, before any publication.
+      this.assertCaptureWritable?.(signal);
       const total = readdirSync(this.root).filter((name) => name.endsWith('.json'))
         .reduce((sum, name) => sum + lstatSync(join(this.root, name)).size, 0);
       if (total + Buffer.byteLength(serialized) + 256 > MAX_TOTAL_BYTES) throw new Error('Evidence storage capacity exceeded; delete unneeded snapshots.');

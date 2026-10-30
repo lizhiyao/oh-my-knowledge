@@ -7,11 +7,11 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v2` |
-| Body prompt | `knowledge-body-generation/v5` |
-| Association prompt | `knowledge-association-generation/v4` |
-| Body profile digest | `sha256:1b0c6da6017dd136efb9636647b9cf3b5b1b8b0f52515d0caacc9f0d1c4c9186` |
-| Association profile digest | `sha256:c4b38ba8c66090eb713506653aece218f0581ac505ee4e043c62346a084a00ee` |
+| Production workflow | `knowledge-body-first/v3` |
+| Body prompt | `knowledge-body-generation/v8` |
+| Association prompt | `knowledge-association-generation/v7` |
+| Body profile digest | `sha256:5455186952f8a76b587b749f46385a770c17ffa2dc22a328c3181ce65ba91cea` |
+| Association profile digest | `sha256:72cc6f3f6dd514cad1c2307a30f3b80df57215625d8ac30348602d745663ce9c` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | Body response Schema | `2` |
@@ -19,8 +19,12 @@ This page is generated from the current source build’s runtime constants and S
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
 | Review and use feedback history Schema | `1` |
-| Generation journal Schema | `2` |
+| Generation journal Schema | `3` |
 | Entity history Schema | `2` |
+| Source snapshot Schema | `3` |
+| Source projection | `knowledge-window-v3` |
+| Source generation input | `knowledge-source-generation-input/v1` |
+| Default source import run identity | `knowledge-source-set-import-run/v1` |
 | Complete native archive capacity | 536,870,887 bytes |
 | Default retrieval response budget (adjustable) | 65,536 bytes |
 | Minimum retrieval response budget | 1,024 bytes |

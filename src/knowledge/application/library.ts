@@ -95,7 +95,8 @@ export class KnowledgeLibraryApplication {
       const detail = query.entityBasis(member.analysisId, member.entityId, member.entityRevisionId);
       const mentions = detail.revision.mentions.filter(mention => member.mentionIds.includes(mention.mentionId));
       return { ...member, status: 'available' as const, entity: detail.entity, current: detail.revision.revisionId === detail.history.writeHeadRevisionId,
-        sourceStatus: detail.source.status, origin: detail.origin ? { threadId: detail.origin.threadId, title: detail.origin.title } : undefined,
+        sourceStatus: detail.source.status, ...(detail.sourceSummary ? { source: detail.sourceSummary } : {}),
+        origin: detail.origin ? { threadId: detail.origin.threadId, title: detail.origin.title } : undefined,
         evidence: mentions.map(mention => ({ mentionId: mention.mentionId, quote: mention.selection.quote,
           basis: mention.basis, rationale: mention.rationale, positionStatus: detail.mentionChecks.find(value => value.mentionId === mention.mentionId)?.positionStatus ?? 'unavailable' })),
       };
@@ -166,6 +167,7 @@ export class KnowledgeLibraryApplication {
   }
 
   save(input: z.input<typeof LibrarySaveSchema>) {
+    this.knowledge.assertWritable();
     const request = LibrarySaveSchema.parse(input);
     const previous = this.store.list().find(history => history.objectId === request.objectId);
     const priorReceipt = previous?.receipts.find(receipt => receipt.requestId === request.requestId);
@@ -188,6 +190,7 @@ export class KnowledgeLibraryApplication {
 
   /** Stable reviewed intent; the lock-bound store validates both sides, including unchanged members. */
   applyLinkIntent(input: LibraryWrite, endpoints: readonly EntityLinkEndpoint[]) {
+    this.knowledge.assertWritable();
     const command = LibraryWriteSchema.parse(input);
     if (this.actor.actorKind !== 'human' || canonicalJson(command.revision.revisedBy) !== canonicalJson(this.actor)) throw new Error('Entity-link author mismatch.');
     return this.store.write(command, (existing, all) => {
@@ -223,7 +226,7 @@ export class KnowledgeLibraryApplication {
     if (detail.source.status !== 'available') throw new Error('Library source unavailable.');
     for (const id of member.mentionIds) {
       const mention = detail.revision.mentions.find(value => value.mentionId === id && value.entityId === member.entityId);
-      if (!mention || validateEvidenceSelection(mention.selection, detail.source.window.excerpts).length) throw new Error('Library evidence mismatch.');
+      if (!mention || validateEvidenceSelection(mention.selection, detail.source.snapshot.excerpts).length) throw new Error('Library evidence mismatch.');
     }
   }
 }

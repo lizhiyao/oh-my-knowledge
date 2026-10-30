@@ -1,3 +1,4 @@
+import type { LocalSourceScope } from '../../knowledge/application/local-source-host.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 import type { KnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import type { ConversationCatalog } from '../../observability/application.js';
@@ -5,6 +6,8 @@ import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 import type { KnowledgeActor } from '../../knowledge/contracts.js';
 
 export interface ReportServerOptions {
+  /** Startup-only project/trace bindings. Browser requests cannot replace roots or source paths. */
+  sourceScope?: LocalSourceScope;
   /** Shared knowledge query for page and API adapters, scoped to this server. */
   knowledgeQuery?: KnowledgeQuery;
   /** Delivery-owned concrete archive producer; defaults to the proven API producer. */

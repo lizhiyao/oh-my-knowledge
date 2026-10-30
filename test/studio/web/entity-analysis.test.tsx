@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { EntityAnalysisContext, EntityAnalysisEditor, EntityAnalysisSummary, EntityAnalysisFeedback } from '../../../src/studio/web/components/knowledge/entity-analysis.js';
 import { EntityLibraryDetail } from '../../../src/studio/web/components/knowledge/entities.js';
 import { KnowledgeCandidateStart } from '../../../src/studio/web/components/knowledge/candidates.js';
+import { traceSourceFixture, fileSourceFixture } from './source-fixture';
 import type { KnowledgeCandidateRun, KnowledgeEntityAnalysisDetail } from '../../../src/studio/view-models/knowledge/knowledge-candidates.js';
 
 const revision = { revisionId: 'revision-1', revisedAt: '2026-10-08T00:00:00Z', revisedBy: { actorKind: 'agent' as const, actorId: 'fixture', executionRef: 'run' }, revisionReason: '等待核对', limitations: ['仅所选消息'],
@@ -13,7 +14,7 @@ const revision = { revisionId: 'revision-1', revisedAt: '2026-10-08T00:00:00Z', 
 const detail: KnowledgeEntityAnalysisDetail = { revision, history: { storeKind: 'entity-analysis-history', schemaVersion: 2,
   analysisId: 'analysis', snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}`, generation: 1, writeHeadRevisionId: revision.revisionId, revisions: [revision],
   receipts: [{ requestId: 'request', commandDigest: 'digest', committedGeneration: 1, revisionId: revision.revisionId }] },
-  source: { status: 'available', excerpts: [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], limitations: ['仅所选消息'] } };
+  source: { status: 'available', snapshot: traceSourceFixture({ snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}` }, [{ evidenceRef: 'record-1', text: 'Alpha 使用 Beta', recordIndex: 0, eventKind: 'message', role: 'user' }], { limitations: ['仅所选消息'] }) } };
 const run: KnowledgeCandidateRun = { runId: 'analysis', schemaStatus: 'current', status: 'completed', bodies: [], phases: [], nextAction: 'none', archiveChecks: [], archiveVerification: 'not_verified',
   entityAnalyses: [{ analysisId: 'analysis', revisionId: 'revision-1', entityCount: 2, mentionCount: 1, unresolvedCount: 1, reviewStatus: 'pending' }] };
 
@@ -73,7 +74,7 @@ describe('entity analysis user views', () => {
     const value = { ...detail, revision: { ...revision, entities: [component, instance, group], mentions: [...revision.mentions,
       { ...revision.mentions[0], mentionId: 'instance-mention', entityId: 'instance', selection: { evidenceRef: 'record-1', start: 9, end: 13, quote: 'Beta' } },
       { ...revision.mentions[0], mentionId: 'group-mention', entityId: 'group', selection: { evidenceRef: 'record-1', start: 14, end: 16, quote: '它们' } }] },
-      source: { status: 'available' as const, excerpts: [{ evidenceRef: 'record-1', recordIndex: 0, eventKind: 'message', text: 'Alpha 使用 Beta；它们' }], limitations: [] },
+      source: { status: 'available' as const, snapshot: traceSourceFixture({ snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}` }, [{ evidenceRef: 'record-1', recordIndex: 0, eventKind: 'message', text: 'Alpha 使用 Beta；它们' }]) },
       entity: group, mentionChecks: [], knowledge: [], knowledgeStatus: 'available' as const };
     for (const lang of ['zh', 'en'] as const) {
       const html = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: value, workspace: '/space <script>', lang, onRevision() {} }));
@@ -128,4 +129,15 @@ it.each(['zh', 'en'] as const)('renders the entity capacity diagnosis without bl
   expect(html).toContain(lang === 'zh' ? '草稿仍保留' : 'your draft is preserved');
   expect(html).toContain(lang === 'zh' ? '历史已满时不能继续追加' : 'cannot free a full history');
   expect(html).not.toContain('knowledge_capacity_exceeded');
+});
+
+it.each(['project_file', 'git_blob'] as const)('keeps %s entity evidence source-neutral and tied to its saved locator', sourceKind => {
+  const snapshot = fileSourceFixture({ snapshotId: '00000000-0000-4000-8000-000000000003', sourceVersion: `sha256:${'a'.repeat(64)}` }, 'Alpha 使用 Beta',
+    { sourceKind, relativePath: 'src/alpha.ts', materialType: 'test_expectation' });
+  const value = { ...detail, source: { status: 'available' as const, snapshot }, entity: revision.entities[0],
+    revision: { ...revision, mentions: revision.mentions.map(mention => ({ ...mention, selection: { ...mention.selection, evidenceRef: snapshot.excerpts[0].evidenceRef } })) },
+    knowledgeStatus: 'available' as const, knowledge: [], mentionChecks: [{ mentionId: 'mention-1', positionStatus: 'matched' as const }] };
+  const html = renderToStaticMarkup(createElement(EntityLibraryDetail, { detail: value, workspace: '/isolated', lang: 'zh', onRevision() {} }));
+  expect(html).toContain('src/alpha.ts'); expect(html).toContain('测试预期'); expect(html).toContain('UTF-8 字节'); expect(html).toContain('<mark>Alpha</mark>');
+  expect(html).not.toContain('/observe/conversations/'); expect(html).not.toContain('来源记录'); expect(html).toContain('不证明当前实现或真实执行。');
 });

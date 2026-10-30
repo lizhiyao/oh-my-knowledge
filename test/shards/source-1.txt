@@ -192,6 +192,7 @@ test/studio/web/agents-view-render.test.tsx
 test/studio/web/conversation-link.test.tsx
 test/studio/web/knowledge-candidates-start.test.tsx
 test/studio/web/knowledge-generation-history.test.tsx
+test/studio/web/source-picker.test.tsx
 test/studio/web/knowledge-display.test.tsx
 test/studio/web/knowledge-observe-guard.test.tsx
 test/studio/web/knowledge-workspace.test.ts

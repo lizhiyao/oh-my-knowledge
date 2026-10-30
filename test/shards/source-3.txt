@@ -2,6 +2,7 @@ test/cli/codex-model-hint.test.ts
 test/cli/doctor.test.ts
 test/cli/eval-cancellation.test.ts
 test/cli/knowledge.test.ts
+test/cli/knowledge-source.test.ts
 test/cli/lib/evaluation-application.test.ts
 test/cli/observation-window.test.ts
 test/cli/observe-inbox-global.test.ts

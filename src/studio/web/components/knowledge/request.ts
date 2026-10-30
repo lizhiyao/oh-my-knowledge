@@ -15,7 +15,7 @@ export class KnowledgeRequestError extends Error {
   }
 }
 
-export async function requestKnowledge<T>(resource: 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links' | 'study' | 'reviews',
+export async function requestKnowledge<T>(resource: 'sources' | 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links' | 'study' | 'reviews',
   payload: object, signal?: AbortSignal, onResponse?: (metadata: { etag: string | null }) => void): Promise<T> {
   signal?.throwIfAborted();
   const response = await fetch(`/api/knowledge/${resource}`, { method: 'POST', headers: { 'content-type': 'application/json' },

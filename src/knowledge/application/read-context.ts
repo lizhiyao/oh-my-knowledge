@@ -3,16 +3,17 @@ import type { EntityAnalysisEnvelope, EntityAnalysisStore } from '../entities/co
 import type { KnowledgeEnvelope, KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
-import type { EvidenceStore } from '../extraction/evidence.js';
+import type { SourceStore } from '../source-store.js';
 import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationSelection, type KnowledgeAssociationStore } from '../associations.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { knowledgeBodyRef } from '../adapters/body-digest.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { EntityQuerySchema, queryEntityRows, type EntityKnowledgeLink, type EntityQuery, type EntitySearchRow } from './entity-catalog.js';
 import { buildKnowledgeGraph, type KnowledgeGraphRequest } from './graph.js';
+import { sourceOrigin, sourceSummary } from './source-summary.js';
 
 interface ReadPorts {
-  evidence: EvidenceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
+  sources: SourceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
   associations: KnowledgeAssociationStore; tags: KnowledgeTagStore;
 }
 type Cached<T> = { value: T } | { error: unknown };
@@ -30,7 +31,7 @@ function once<T>(cache: Map<string, Cached<T>>, key: string, read: () => T): T {
 export class KnowledgeReadContext {
   private readonly bodies = new Map<string, Cached<KnowledgeEnvelope>>();
   private readonly catalogs = new Map<string, Cached<EntityAnalysisEnvelope>>();
-  private readonly sources = new Map<string, Cached<ReturnType<EvidenceStore['read']>>>();
+  private readonly sources = new Map<string, Cached<ReturnType<SourceStore['read']>>>();
   private readonly tags = new Map<string, Cached<ReturnType<KnowledgeTagStore['read']>>>();
   private readonly projections = new Map<string, ReturnType<KnowledgeReadContext['readAssociation']>>();
   private readonly associationHistories = new Map<string, Cached<ReturnType<KnowledgeAssociationStore['read']>>>();
@@ -51,7 +52,7 @@ export class KnowledgeReadContext {
     return this.histories.value;
   }
   source(snapshotId: string, sourceVersion: string) {
-    return once(this.sources, canonicalJson([snapshotId, sourceVersion]), () => this.ports.evidence.read(snapshotId, sourceVersion));
+    return once(this.sources, canonicalJson([snapshotId, sourceVersion]), () => this.ports.sources.read(snapshotId, sourceVersion));
   }
   catalog(analysisId: string, revisionId?: string) {
     const history = once(this.catalogs, analysisId, () => this.ports.entities.read(analysisId));
@@ -132,7 +133,7 @@ export class KnowledgeReadContext {
     const refs = [...new Map(body.revision.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
     return { ...body, sources: refs.map(ref => {
       try { return this.source(ref.snapshotId, ref.sourceVersion); }
-      catch { return { status: 'unavailable' as const, reason: 'invalid_source' as const, detail: 'The exact source snapshot could not be read.' }; }
+      catch { return { status: 'unavailable' as const, reason: 'corrupt' as const, detail: 'The exact source snapshot could not be read.' }; }
     }) };
   }
   graph(input: KnowledgeGraphRequest = {}) {
@@ -158,9 +159,7 @@ export class KnowledgeReadContext {
     const sourceSummaries = new Map(refs.map(ref => {
       try {
         const resolution = this.source(ref.snapshotId, ref.sourceVersion);
-        const summary = resolution.status === 'available' ? { ...(resolution.window.origin?.title ? { title: resolution.window.origin.title } : {}),
-          sourceKind: resolution.window.sourceKind, excerptCount: resolution.window.excerpts.length,
-          firstRecordIndex: resolution.window.startRecord, lastRecordIndex: resolution.window.endRecord } : undefined;
+        const summary = resolution.status === 'available' ? sourceSummary(resolution.snapshot) : undefined;
         return [canonicalJson(ref), summary] as const;
       } catch { return [canonicalJson(ref), undefined] as const; }
     }));
@@ -182,10 +181,11 @@ export class KnowledgeReadContext {
     if (!entity) throw new Error('Entity is absent from the selected revision.');
     const source = this.source(detail.history.snapshotId, detail.history.sourceVersion);
     return { ...detail, entity, source,
-      ...(source.status === 'available' && source.window.origin ? { origin: source.window.origin } : {}),
+      ...(source.status === 'available' ? { sourceSummary: sourceSummary(source.snapshot),
+        ...(sourceOrigin(source.snapshot) ? { origin: sourceOrigin(source.snapshot) } : {}) } : {}),
       mentionChecks: detail.revision.mentions.filter(m => m.entityId === entityId).map(m => ({ mentionId: m.mentionId,
         positionStatus: source.status === 'unavailable' ? 'unavailable' as const
-          : validateEvidenceSelection(m.selection, source.window.excerpts).length ? 'mismatch' as const : 'matched' as const })) };
+          : validateEvidenceSelection(m.selection, source.snapshot.excerpts).length ? 'mismatch' as const : 'matched' as const })) };
   }
   private knowledgeLinks() {
     if (this.links) return this.links;
@@ -228,7 +228,8 @@ export class KnowledgeReadContext {
         const mentions = revision.mentions.filter(m => m.entityId === entity.entityId);
         return { ...entity, analysisId: history.analysisId, revisionId: revision.revisionId, generation: history.generation,
           revisedAt: revision.revisedAt, mentionCount: mentions.length, surfaces: [...new Set(mentions.map(m => m.selection.quote))],
-          sourceStatus: source.status, ...(source.status === 'available' && source.window.origin ? { origin: source.window.origin } : {}),
+          sourceStatus: source.status, ...(source.status === 'available' ? { source: sourceSummary(source.snapshot),
+            ...(sourceOrigin(source.snapshot) ? { origin: sourceOrigin(source.snapshot) } : {}) } : {}),
           knowledgeCount: null, outdatedKnowledgeCount: null };
       });
     });

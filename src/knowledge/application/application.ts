@@ -9,7 +9,10 @@ import { validateKnowledgeDraft } from '../validation.js';
 import type { KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
-import type { EvidenceStore, EvidenceWindow, SourceSelection } from '../extraction/evidence.js';
+import type { SourceStore } from '../source-store.js';
+import { SourceRefSchema, type SourceRef, type SourceSelection, type ResolvedSourceSelection } from '../sources.js';
+import type { SourceCaptureService, SourcePreviewOptions } from './source-capture.js';
+import type { SourceUpdatesService } from './source-updates.js';
 import type { GenerationJournalStore } from '../extraction/generation-journal.js';
 import { KnowledgeAssociationRevisionSchema, type KnowledgeAssociationStore } from '../associations.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../adapters/body-digest.js';
@@ -22,17 +25,30 @@ import type { KnowledgeGraphRequest } from './graph.js';
 export type { KnowledgeGenerationModel } from '../adapters/generation-executor.js';
 export type { KnowledgeGenerationOptions } from './body-generation.js';
 export interface KnowledgeApplicationPorts {
-  evidence: EvidenceStore; knowledge: KnowledgeStore; journals: GenerationJournalStore; tags: KnowledgeTagStore;
+  sources: SourceStore; sourceCapture?: SourceCaptureService; sourceUpdates?: Pick<SourceUpdatesService, 'check'>;
+  knowledge: KnowledgeStore; journals: GenerationJournalStore; tags: KnowledgeTagStore;
   entities: EntityAnalysisStore; associations: KnowledgeAssociationStore;
   id(): string; now(): string; hash(value: unknown): string; actor: KnowledgeActor;
+  assertWritable?(): void;
 }
 /** Canonical body reads never depend on a successful entity or typed projection. */
 export class KnowledgeApplication {
   private readonly generation: BodyGenerationApplication;
   constructor(private readonly ports: KnowledgeApplicationPorts) { this.generation = new BodyGenerationApplication(ports); }
-  capture(selection: SourceSelection, signal?: AbortSignal): EvidenceWindow { return this.ports.evidence.capture(selection, signal); }
-  source(snapshotId: string, version?: string) { return this.ports.evidence.read(snapshotId, version); }
-  deleteSource(snapshotId: string): void { this.ports.evidence.delete(snapshotId); }
+  assertWritable(): void { this.ports.assertWritable?.(); }
+  private captureService() {
+    if (!this.ports.sourceCapture) throw new Error('Source selection requires explicit trusted host bindings.');
+    return this.ports.sourceCapture;
+  }
+  previewSources(selections: SourceSelection[], options?: SourcePreviewOptions) { return this.captureService().preview(selections, options); }
+  previewResolvedSources(selections: ResolvedSourceSelection[], options?: SourcePreviewOptions) { return this.captureService().previewResolved(selections, options); }
+  captureSources(confirmation: { previewId: string; previewDigest: string }, signal?: AbortSignal) { this.ports.assertWritable?.(); return this.captureService().capture(confirmation, { signal }); }
+  source(source: SourceRef) { const ref = SourceRefSchema.parse(source); return this.ports.sources.read(ref.snapshotId, ref.sourceVersion); }
+  sourceUpdates(source: SourceRef, replacementSelection?: SourceSelection, signal?: AbortSignal) {
+    if (!this.ports.sourceUpdates) throw new Error('Source changes require explicit trusted host bindings.');
+    return this.ports.sourceUpdates.check(SourceRefSchema.parse(source), { replacementSelection, signal });
+  }
+  deleteSource(source: SourceRef): void { const ref = SourceRefSchema.parse(source); this.ports.assertWritable?.(); this.ports.sources.delete(ref.snapshotId, ref.sourceVersion); }
   runs() { return this.ports.journals.list(); }
   inspect(runId: string) { return this.generation.inspect(runId); }
   quality() {
@@ -42,11 +58,15 @@ export class KnowledgeApplication {
         phases: j.stages.map(s => ({ stageKind: s.stageKind, state: s.state, rejected: s.rejected?.length ?? null, issues: s.issues })) })),
       unsupported: inventory.unsupported, unavailable: inventory.unavailable, archiveChecks: inventory.archiveChecks, semanticQuality: 'not_assessed' as const };
   }
-  generate(snapshot: string, model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.generate(snapshot, model, runId, signal, options); }
+  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) { return this.generation.prepareGeneration(sources, model, runId, signal); }
+  generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.generate(sources, model, runId, signal, options); }
   resume(runId: string, signal?: AbortSignal) { signal?.throwIfAborted(); return this.generation.resume(runId); }
-  continueStage(runId: string, generation: number, model: KnowledgeGenerationModel, signal?: AbortSignal) { return this.generation.continueStage(runId, generation, model, signal); }
-  rebuildAssociations(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
-    return this.generation.rebuild(ref, model, runId, signal);
+  continueStage(runId: string, generation: number, model: KnowledgeGenerationModel, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.continueStage(runId, generation, model, signal, options); }
+  prepareAssociationRebuild(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
+    return this.generation.prepareAssociationRebuild(ref, model, runId, signal);
+  }
+  rebuildAssociations(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
+    return this.generation.rebuild(ref, model, runId, signal, options);
   }
   readContext() { return new KnowledgeReadContext(this.ports); }
   list(knowledgeIds?: ReadonlySet<string>) { return this.readContext().list(knowledgeIds); }
@@ -54,13 +74,16 @@ export class KnowledgeApplication {
   graph(input: KnowledgeGraphRequest = {}) { return this.readContext().graph(input); }
   associationCatalogs(knowledgeId: string, revisionId?: string) { return this.readContext().associationCatalogs(knowledgeId, revisionId); }
   tag(knowledgeId: string, generation: number, tags: unknown) {
+    this.ports.assertWritable?.();
     this.ports.knowledge.read(knowledgeId); return this.ports.tags.write(knowledgeId, generation, tags, this.ports.actor);
   }
   maintain(knowledgeId: string, revisionId: string, choice: 'retain' | 'discard', reason: string, expectedGeneration: number, requestId = this.ports.id()) {
+    this.ports.assertWritable?.();
     return this.ports.knowledge.write({ knowledgeId, requestId, expectedGeneration, commandKind: 'record_maintenance',
       maintenance: { revisionId, choice, reason, actor: this.ports.actor, at: this.ports.now() } }, this.ports.actor);
   }
   reviewAssociations(knowledgeId: string, projectionRevisionId: string, expectedGeneration: number, choice: 'accept' | 'reject', reason: string) {
+    this.ports.assertWritable?.();
     if (choice === 'accept') {
       const projection = this.ports.associations.read(knowledgeId).revisions.find(value => value.revisionId === projectionRevisionId);
       if (!projection) throw new Error('Unknown association projection.');
@@ -70,7 +93,7 @@ export class KnowledgeApplication {
         for (const mapping of projection.segmentEntityRefs.filter(value => value.analysisId === ref.analysisId && value.entityRevisionId === ref.entityRevisionId)) {
           for (const id of mapping.mentionIds) {
             const mention = catalog.revision.mentions.find(value => value.mentionId === id && value.entityId === mapping.entityId);
-            if (!mention || validateEntityMentionSelection(mention.selection, catalog.source.window.excerpts).length) throw new Error('Association mention evidence is invalid.');
+            if (!mention || validateEntityMentionSelection(mention.selection, catalog.source.snapshot.excerpts).length) throw new Error('Association mention evidence is invalid.');
           }
         }
       }
@@ -81,6 +104,7 @@ export class KnowledgeApplication {
   }
   applyAssociations(knowledgeId: string, revisionId: string, bodyDigest: string,
     expectedGeneration: number, input: unknown, reason: string) {
+    this.ports.assertWritable?.();
     const body = this.detail(knowledgeId, revisionId).revision;
     if (body.bodyDigest !== bodyDigest) throw new Error('Association body digest conflict.');
     const draft = KnowledgeAssociationRevisionSchema.pick({ catalogRefs: true, segmentEntityRefs: true, typedRelations: true, issues: true }).parse(input);
@@ -93,7 +117,7 @@ export class KnowledgeApplication {
       const catalog = catalogs.get(canonicalJson([ref.analysisId, ref.entityRevisionId]));
       const mention = catalog?.revision.mentions.find(m => m.mentionId === id && m.entityId === ref.entityId);
       if (!catalog || !mention || catalog.source.status !== 'available'
-        || validateEntityMentionSelection(mention.selection, catalog.source.window.excerpts).length) throw new Error('Association mention evidence is invalid.');
+        || validateEntityMentionSelection(mention.selection, catalog.source.snapshot.excerpts).length) throw new Error('Association mention evidence is invalid.');
     }
     const previous = (() => { try { return this.ports.associations.read(knowledgeId); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; return undefined; } })();
     this.ports.associations.write({ commandKind: 'append_revision', requestId: this.ports.id(), knowledgeId, expectedGeneration,
@@ -103,11 +127,12 @@ export class KnowledgeApplication {
     return this.detail(knowledgeId, revisionId);
   }
   revise(knowledgeId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
+    this.ports.assertWritable?.();
     const previous = this.detail(knowledgeId, expectedRevisionId), draft = KnowledgeDraftSchema.parse(input);
     const refs = [...new Map(draft.content.segments.flatMap(s => s.evidence).map(e => [canonicalJson(e.source), e.source])).values()];
-    const sources = refs.map(ref => { const source = this.source(ref.snapshotId, ref.sourceVersion);
+    const sources = refs.map(ref => { const source = this.source(ref);
       if (source.status !== 'available') throw new Error(`Revision source unavailable: ${source.reason}.`);
-      return { ...ref, excerpts: source.window.excerpts };
+      return { ...ref, excerpts: source.snapshot.excerpts };
     });
     if (!validateKnowledgeDraft(draft, sources).accepted) throw new Error('Revision evidence is invalid.');
     const revisionId = this.ports.id(), at = this.ports.now();
@@ -121,12 +146,13 @@ export class KnowledgeApplication {
   entities(analysisId: string, revisionId?: string) {
     const history = this.ports.entities.read(analysisId), revision = history.revisions.find(r => r.revisionId === (revisionId ?? history.writeHeadRevisionId));
     if (!revision) throw new Error('Entity analysis revision is missing.');
-    return { history, revision, source: this.source(history.snapshotId, history.sourceVersion) };
+    return { history, revision, source: this.source({ snapshotId: history.snapshotId, sourceVersion: history.sourceVersion }) };
   }
   entityBasis(analysisId: string, entityId: string, revisionId?: string) { return this.readContext().entityBasis(analysisId, entityId, revisionId); }
   queryEntities(input: EntityQuery = {}) { return this.readContext().queryEntities(input); }
   entityDetail(analysisId: string, entityId: string, revisionId?: string) { return this.readContext().entityDetail(analysisId, entityId, revisionId); }
   correctEntities(analysisId: string, expectedRevisionId: string, expectedGeneration: number, input: unknown, reason: string) {
+    this.ports.assertWritable?.();
     const previous = this.entities(analysisId, expectedRevisionId);
     if (previous.source.status !== 'available') throw new Error('Entity source unavailable.');
     const edit = z.strictObject({ entities: z.array(EntityModelSchema).max(256), mentions: z.array(EntityMentionSchema).max(512) }).parse(input);
@@ -146,7 +172,7 @@ export class KnowledgeApplication {
       mentions: edit.mentions.map(mention => ({ ...mention, mentionId: mentionIds.get(mention.mentionId), entityId: entityIds.get(mention.entityId) })),
       limitations: previous.revision.limitations,
     });
-    const problems = [...validateEntityAnalysis(draft), ...draft.mentions.flatMap(mention => validateEntityMentionSelection(mention.selection, previous.source.status === 'available' ? previous.source.window.excerpts : []))];
+    const problems = [...validateEntityAnalysis(draft), ...draft.mentions.flatMap(mention => validateEntityMentionSelection(mention.selection, previous.source.status === 'available' ? previous.source.snapshot.excerpts : []))];
     if (problems.length) throw new Error(`Invalid entity correction: ${problems.join(',')}`);
     this.ports.entities.write({ analysisId, snapshotId: previous.history.snapshotId, sourceVersion: previous.history.sourceVersion,
       requestId: this.ports.id(), expectedGeneration, expectedHeadRevisionId: expectedRevisionId,

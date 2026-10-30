@@ -33,10 +33,10 @@ omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$know
 
 ```bash
 omk observe knowledge show --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --json
-omk observe knowledge source --workspace "$knowledge_workspace" --snapshot "$snapshot_id" --json
+omk observe knowledge source --workspace "$knowledge_workspace" --snapshot "$snapshot_id" --source-version "$source_version" --json
 ```
 
-`source` 用于需要时核对原文、引用或来源状态；核对其 `window.sourceVersion` 与所选 evidence 的 `sourceVersion` 一致。来源 unavailable、定位 mismatch 或版本不符时如实说明，不能称证据已核实。若任务确需正文之外的来源补充，明确区分它与已保存知识，不能拿原文悄悄补正文遗漏并称提炼完整。引文 matched 只证明定位匹配，`source_assertion`、`direct_observation` 和 `inference` 的依据性质仍须区分。
+`source` 用于需要时核对原文、引用或来源状态；snapshot ID 与 source version 均从所选 evidence 的精确 `source` 引用取值，核对返回的 `snapshot.sourceVersion`。来源 unavailable、定位 mismatch 或版本不符时如实说明，不能称证据已核实。若任务确需正文之外的来源补充，明确区分它与已保存知识，不能拿原文悄悄补正文遗漏并称提炼完整。引文 matched 只证明定位匹配，`source_assertion`、`direct_observation` 和 `inference` 的依据性质仍须区分。
 
 ## 核对已记录的复核意见
 

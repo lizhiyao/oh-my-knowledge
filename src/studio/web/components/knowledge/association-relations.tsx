@@ -2,6 +2,7 @@
 import { Alert, Button, Input, Select, Space } from 'antd';
 import type { KnowledgeCandidateDetail } from '../../../view-models/knowledge/knowledge-candidates';
 import type { Language } from '../layout/shell';
+import { sourceCoordinateLabel, sourceTitle } from './source-locator';
 
 type Projection = NonNullable<KnowledgeCandidateDetail['derivedAssociations']['revision']>;
 type Relation = NonNullable<Projection['typedRelations']>[number];
@@ -51,9 +52,9 @@ export function AssociationRelationEditor({ relations, segments, sources, mappin
   const sourceKeys = [...new Set(segments.flatMap(segment => segment.evidence.map(sourceKey)))];
   function evidenceLabel(item: Evidence) {
     const sourceIndex = sourceKeys.indexOf(sourceKey(item)) + 1;
-    const source = sources.find(value => value.status === 'available' && value.window.snapshotId === item.source.snapshotId && value.window.sourceVersion === item.source.sourceVersion);
-    const excerpt = source?.status === 'available' ? source.window.excerpts.find(value => value.evidenceRef === item.selection.evidenceRef) : undefined;
-    return `${t('来源', 'Source')} ${sourceIndex}${excerpt ? ` · ${t('记录', 'Record')} ${excerpt.recordIndex}` : ''} · ${item.selection.start}–${item.selection.end} · ${basisLabel(item.basis)} · ${item.selection.quote.slice(0, 90)}${item.interpretation ? ` · ${item.interpretation}` : ''}`;
+    const source = sources.find(value => value.status === 'available' && value.snapshot.snapshotId === item.source.snapshotId && value.snapshot.sourceVersion === item.source.sourceVersion);
+    const excerpt = source?.status === 'available' ? source.snapshot.excerpts.find(value => value.evidenceRef === item.selection.evidenceRef) : undefined;
+    return `${t('来源', 'Source')} ${sourceIndex}${source?.status === 'available' ? ` · ${sourceTitle(source.snapshot, lang)}` : ''}${excerpt ? ` · ${sourceCoordinateLabel(excerpt.coordinate, lang)}` : ''} · ${item.selection.start}–${item.selection.end} · ${basisLabel(item.basis)} · ${item.selection.quote.slice(0, 90)}${item.interpretation ? ` · ${item.interpretation}` : ''}`;
   }
   const descriptions: Record<RelationProblem, string> = {
     segments: t('请选择本关系涉及的正文段落。', 'Choose the content segments for this relation.'),

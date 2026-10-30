@@ -3,15 +3,16 @@ import { KnowledgeBodyRefSchema, type KnowledgeActor, type KnowledgeBodyEvidence
 import type { KnowledgeStore } from '../store.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
-import type { EvidenceStore } from '../extraction/evidence.js';
+import type { SourceStore } from '../source-store.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { KnowledgeReviewActorSchema, KnowledgeContentReviewInputSchema, KnowledgeCoverageReviewInputSchema, KnowledgeUseInputSchema, KnowledgeReviewWriteSchema,
   knowledgeReviewSources, sameReviewBody, selectKnowledgeReviews, type KnowledgeContentReviewInput, type KnowledgeCoverageReviewInput, type KnowledgeUseInput, type KnowledgeReviewStore, type KnowledgeReviewWrite } from '../reviews.js';
 import { validateKnowledgeReviewBodyReferences, validateKnowledgeReviewReferences } from '../review-history.js';
 
 export interface KnowledgeReviewPorts {
-  knowledge: KnowledgeStore; associations: KnowledgeAssociationStore; entities: EntityAnalysisStore; evidence: EvidenceStore;
+  knowledge: KnowledgeStore; associations: KnowledgeAssociationStore; entities: EntityAnalysisStore; sources: SourceStore;
   reviews: KnowledgeReviewStore; actor?: KnowledgeActor; now(): string;
+  assertWritable?(): void;
 }
 /** Review events describe explicit opinions and use signals, never an automatic semantic pass. */
 export class KnowledgeReviewApplication {
@@ -40,10 +41,10 @@ export class KnowledgeReviewApplication {
   private sourceStates(body: ReturnType<KnowledgeReviewApplication['body']>) {
     return knowledgeReviewSources(body).map(ref => {
       try {
-        const source = this.ports.evidence.read(ref.snapshotId, ref.sourceVersion);
+        const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
         return source.status === 'available' ? { ...ref, status: 'available' as const }
           : { ...ref, status: 'unavailable' as const, reason: source.reason };
-      } catch { return { ...ref, status: 'unavailable' as const, reason: 'invalid_source' }; }
+      } catch { return { ...ref, status: 'unavailable' as const, reason: 'corrupt' }; }
     });
   }
   status(input: KnowledgeBodyRef, projectionRevisionId?: string | null) {
@@ -76,12 +77,13 @@ export class KnowledgeReviewApplication {
   }
   private validateInline(evidence: KnowledgeBodyEvidence[]) {
     for (const value of evidence) {
-      const source = this.ports.evidence.read(value.source.snapshotId, value.source.sourceVersion);
-      if (source.status !== 'available' || validateEvidenceSelection(value.selection, source.window.excerpts).length) throw new Error('Knowledge review evidence does not match its exact source.');
+      const source = this.ports.sources.read(value.source.snapshotId, value.source.sourceVersion);
+      if (source.status !== 'available' || validateEvidenceSelection(value.selection, source.snapshot.excerpts).length) throw new Error('Knowledge review evidence does not match its exact source.');
     }
   }
   private write(input: KnowledgeReviewWrite) {
     if (!this.ports.actor) throw new Error('A trusted review actor is required for writes.');
+    this.ports.assertWritable?.();
     const actor = KnowledgeReviewActorSchema.parse(this.ports.actor), command = KnowledgeReviewWriteSchema.parse(input);
     return this.ports.reviews.write(command, actor, this.ports.now(), () => {
       // This callback is invoked after CAS/receipt checks while holding the shared workspace lock.

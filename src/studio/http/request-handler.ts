@@ -1,6 +1,7 @@
+import { createExtractionArchiveProducer } from '../../executors/archive.js';
+import { LocalSourceScopeSchema } from '../../knowledge/application/local-source-host.js';
 import { createOpenAiArchiveProducer } from '../../executors/openai/archive.js';
 import { createEntityLinkRoutes } from './routes/entity-links.js';
-import { createExtractionArchiveProducer } from '../../executors/archive.js';
 import { FALLBACK_LANG } from '../../shared/language-preference.js';
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
@@ -8,7 +9,7 @@ import { createSettingsRoutes } from './routes/settings.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createCodexConversationCatalog, ObservationReviewStateValidationError } from '../../observability/application.js';
 import { ConversationAutoExtraction } from '../../knowledge/application/auto-extraction.js';
-import { configuredKnowledgeGenerationModel } from '../../knowledge/adapters/generation-executor.js';
+import { createLocalKnowledgeGenerationModel } from '../../knowledge/adapters/generation-host.js';
 
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createCoreStudioRouteHandler } from './routes/core-runs.js';
@@ -43,18 +44,20 @@ export function createStudioRequestHandler({
   conversationCatalog,
   entityLinkProducer,
   knowledgeReviewActor,
+  sourceScope,
   coreStudioCatalog,
   includeObserveCards = false,
   includeDoctorCards = false,
   observationInbox = true,
   studioPages = true,
 }: RequestHandlerOptions): StudioRequestHandler {
+  const trustedSourceScope = sourceScope === undefined ? undefined : LocalSourceScopeSchema.parse(sourceScope);
   const liveStreamClosers = new Set<() => void>();
   const catalog = conversationCatalog ?? createCodexConversationCatalog();
   const settingsRoutes = createSettingsRoutes();
-  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => configuredKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer(process.env)) });
+  const automation = new ConversationAutoExtraction(catalog, { model: (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer) });
   const entityLinkRoutes = createEntityLinkRoutes(liveStreamClosers, entityLinkProducer ?? createOpenAiArchiveProducer({ ...process.env }));
-  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation);
+  const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation, trustedSourceScope);
   const reviewRoutes = createKnowledgeReviewRoutes(knowledgeReviewActor);
   const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);
   const artifactRoutes = createArtifactAuthoringRoutes();

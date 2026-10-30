@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -36,7 +37,7 @@ function fixture() {
       if (failure) return { outcomeKind: 'result', result: { ok: false, output: null, failure: { failureKind: 'rate_limit', ...failure } } };
       const source = JSON.parse(input);
       const output = profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{
-        proposalId: 'p1', title: '有条件的来源报告', requiredContexts: [], segments: [{ segmentId: 's1', text: source.excerpts[0].text, evidence: [{ evidenceRef: source.excerpts[0].evidenceRef,
+        proposalId: 'p1', title: '有条件的来源报告', requiredContexts: [], segments: [{ segmentId: 's1', text: source.sources[0].excerpts[0].text, evidence: [{ evidenceRef: source.sources[0].excerpts[0].evidenceRef,
           quote: 'Alpha', contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '核对相同环境时复用' }] }
         : { responseKind: 'knowledge-association-generation', schemaVersion: 3, catalogs: [{ sourceKey: 's0', entities: [] }], associations: [{ bodyKey: 'b0',
           segmentDecisions: [{ segmentId: 's1', decisionKind: 'abstained', entityRefs: [], reason: '无可确认关联' }], typedRelations: [], issues: ['无可确认关联'] }] };
@@ -46,24 +47,27 @@ function fixture() {
   const create = () => { const service = new ConversationAutoExtraction(catalog, { intervalMs: 0, stableMs: 30_000, now: () => now, model: () => model }); cleanups.push(() => service.close()); return service; };
   const service = create();
   const enable = async (maxCalls = 5, target = service) => target.enable(workspace, 'thread', { workflowId: AUTO_EXTRACTION_WORKFLOW,
-    token: (await target.preview('thread')).token, executor: 'codex', model: model.model, maxCalls });
+    token: (await target.preview('thread', { executor: model.executor, model: model.model })).token, executor: 'codex', model: model.model, maxCalls });
   const tick = async () => { await service.tick(); now += 30_000; await service.tick(); };
-  const state = () => { const value = service.status(workspace, 'thread'); if (value?.schemaStatus !== 'current') throw new Error('Expected schema2 state.'); return value; };
+  const state = () => { const value = service.status(workspace, 'thread'); if (value?.schemaStatus !== 'current') throw new Error('Expected Source3 state.'); return value; };
   const directory = () => join(workspace, 'auto-extraction');
   return { root, workspace, tasks, catalog, model, service, create, enable, tick, inputs, state, directory,
     advance: (ms: number) => { now += ms; }, change: () => { suffix += ' changed'; }, setFailure: (value: typeof failure) => { failure = value; }, setAfterGate: (value: typeof afterGate) => { afterGate = value; } };
 }
-describe('explicit schema2 body-first conversation auto permission', () => {
+describe('explicit Source3 body-first conversation auto permission', () => {
   it('previews bounded stable turns and separately charges body and association while leaving both candidate states pending', async () => {
-    const f = fixture(), preview = await f.service.preview('thread'); expect(preview.messages.map(item => item.recordIndex)).toEqual([1, 2, 3]);
+    const f = fixture(), preview = await f.service.preview('thread', { executor: f.model.executor, model: f.model.model }); expect(preview.messages.map(item => item.recordIndex)).toEqual([1, 2, 3]);
     expect(existsSync(f.workspace)).toBe(false); await f.service.tick(); expect(f.inputs).toEqual([]);
     f.change(); await expect(f.service.enable(f.workspace, 'thread', { workflowId: AUTO_EXTRACTION_WORKFLOW, token: preview.token, executor: 'codex', model: f.model.model, maxCalls: 2 })).rejects.toThrow('conflict');
     await f.enable(2); await f.tick(); expect(f.inputs.map(input => input.stageKind)).toEqual(['body', 'association']);
-    expect(f.state()).toMatchObject({ schemaVersion: 2, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 2, maxCalls: 2, enabled: false, reason: 'quota' });
+    expect(f.state()).toMatchObject({ schemaVersion: 3, workflowId: AUTO_EXTRACTION_WORKFLOW, callsUsed: 2, maxCalls: 2, enabled: false, reason: 'quota' });
     const app = createLocalKnowledgeApplication(f.workspace), body = app.list()[0]; expect(body.choice).toBeNull();
     expect(app.detail(body.knowledgeId).derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
     expect(JSON.parse(f.inputs[1].input).bodies[0].bodyRef.bodyDigest).toBeTruthy();
     const receipts = readdirSync(f.directory()).filter(name => name.startsWith('phase-')).map(name => JSON.parse(readFileSync(join(f.directory(), name), 'utf8')));
+    expect(receipts.every(receipt => receipt.sources.length === 1 && receipt.sourceSetId && receipt.request.input && receipt.request.system && receipt.request.wireSchema)).toBe(true);
+    const journals = app.runs().current;
+    for (const receipt of receipts) { const stage = journals.find(journal => journal.runId === receipt.runId)!.stages.find(stage => stage.invocationId === receipt.invocationId)!; expect(receipt.request.input).toBe(stage.input); expect(receipt.requestDigest).toBe(stage.requestDigest); }
     expect(receipts.map(receipt => receipt.callNumber).sort()).toEqual([1, 2]); expect(receipts.every(receipt => receipt.evidenceKind === 'dispatch-reservation')).toBe(true);
   });
   it('saves body when the last slot is spent and refuses association without claiming or producing a second original', async () => {
@@ -78,7 +82,7 @@ describe('explicit schema2 body-first conversation auto permission', () => {
     const f = fixture(); await f.enable(6); await f.tick(); await f.tick(); expect(f.inputs).toHaveLength(2);
     f.tasks.push({ ...f.tasks[0], turnId: 'turn-4', status: 'open' }); await f.tick(); expect(f.inputs).toHaveLength(2);
     f.tasks[4].status = 'completed'; await f.tick(); expect(f.inputs).toHaveLength(4);
-    expect(JSON.parse(f.inputs[2].input).excerpts.map((item: { recordIndex: number }) => item.recordIndex)).toEqual([2, 3, 4]);
+    expect(JSON.parse(f.inputs[2].input).sources[0].excerpts.map((item: { coordinate: { recordIndex: number } }) => item.coordinate.recordIndex)).toEqual([2, 3, 4]);
   });
   it('recovers missing counting/cooldown receipts from the actual journal originals with zero new invocations', async () => {
     const f = fixture(); await f.enable(4); await f.tick();
@@ -104,7 +108,7 @@ describe('explicit schema2 body-first conversation auto permission', () => {
     writeFileSync(stateFile, raw);
     expect(f.service.status(f.workspace, 'thread')).toEqual({ schemaStatus: 'unsupported', threadId: 'thread', enabled: false, reason: 'permission_upgrade_required' });
     expect(readFileSync(stateFile, 'utf8')).toBe(raw);
-    const token = (await f.service.preview('thread')).token;
+    const token = (await f.service.preview('thread', { executor: f.model.executor, model: f.model.model })).token;
     expect(() => executeAutoExtractionAction({ operation: 'enable', workspace: f.workspace, threadId: 'thread', token,
       executor: 'codex', model: f.model.model, maxCalls: 4 }, f.service)).toThrow();
     await expect(f.enable(4)).rejects.toThrow('Migrate to a separate workspace');
@@ -135,4 +139,44 @@ describe('explicit schema2 body-first conversation auto permission', () => {
     const renewed = next.status(f.workspace, 'thread'); expect(renewed).toMatchObject({ enabled: true, callsUsed: 0 });
     expect(renewed?.schemaStatus === 'current' && renewed.notBefore).toBeTruthy(); expect(f.inputs).toHaveLength(1);
   });
+  it('refuses an old Source2 workspace before creating new permission, ledger or captures', async () => {
+    const f = fixture(), directory = join(f.workspace, 'sources'); mkdirSync(directory, { recursive: true });
+    const path = join(directory, '00000000-0000-4000-8000-000000000001.json'), original = JSON.stringify({ schemaVersion: 2, storeKind: 'trace-evidence-snapshot', privateText: 'old original' });
+    writeFileSync(path, original);
+    await expect(f.enable()).rejects.toThrow();
+    expect(readFileSync(path, 'utf8')).toBe(original); expect(existsSync(f.directory())).toBe(false); expect(f.inputs).toHaveLength(0);
+  });
+  it('stops on producer scope drift before a native phase is claimed', async () => {
+    const f = fixture(); await f.enable();
+    const original = f.model.inspect; f.model.inspect = (profile, input) => ({ ...original(profile, input), proof: { environmentDigest: 'changed' } });
+    await f.tick(); expect(f.inputs).toHaveLength(0); expect(f.state()).toMatchObject({ enabled: false, callsUsed: 0, reason: 'failed' });
+    expect(readdirSync(f.directory()).filter(name => name.startsWith('phase-'))).toHaveLength(0);
+  });
+
+  it('shows and binds all readable events in a selected mixed original record, including tool text unchanged by the message preview', async () => {
+    const f = fixture(), original = f.catalog.getConversation.bind(f.catalog); let command = 'authored tool context';
+    f.catalog.getConversation = async id => ({ ...(await original(id))!, sourceKind: 'claude' });
+    f.catalog.loadTaskMessageRecords = async (_thread, turnId) => ({ path: join(f.root, 'authored-claude.jsonl'), records: [{ recordIndex: Number(turnId.split('-')[1]), raw: JSON.stringify({ type: 'assistant', sessionId: 'authored-claude', message: { role: 'assistant', content: [
+      { type: 'text', text: 'Alpha 只是合成消息' }, { type: 'tool_use', id: `tool-${turnId}`, name: 'Bash', input: { command } },
+    ] } }) }] });
+    const target = { executor: 'codex' as const, model: f.model.model }, preview = await f.service.preview('thread', target);
+    expect(preview.sourcePreview?.projection.rawUnits).toHaveLength(3);
+    expect(preview.sourcePreview?.projection.excerpts.some(excerpt => excerpt.coordinate.coordinateKind === 'trace_event' && excerpt.coordinate.eventKind === 'tool_call')).toBe(true);
+    expect(preview.sourcePreview?.projection.excerpts.some(excerpt => excerpt.text.includes(command))).toBe(true);
+    command = 'changed tool context with unchanged message';
+    const changed = await f.service.preview('thread', target); expect(changed.messages.map(message => message.text)).toEqual(preview.messages.map(message => message.text));
+    expect(changed.sourceVersion).not.toBe(preview.sourceVersion); expect(changed.token).not.toBe(preview.token);
+    await expect(f.service.enable(f.workspace, 'thread', { workflowId: AUTO_EXTRACTION_WORKFLOW, token: preview.token, ...target, maxCalls: 2 })).rejects.toThrow('conflict');
+    expect(existsSync(f.directory())).toBe(false); expect(f.inputs).toHaveLength(0);
+  });
+
+  it('rejects an oversized selected window before model inspection, permission or workspace creation', async () => {
+    const f = fixture(), inspect = vi.spyOn(f.model, 'inspect');
+    f.catalog.loadTaskMessageRecords = async (_thread, turnId) => ({ path: join(f.root, 'authored-large.jsonl'), records: [{ recordIndex: Number(turnId.split('-')[1]), raw: JSON.stringify({
+      type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha ' + 'x'.repeat(1_500_000) }] },
+    }) }] });
+    await expect(f.service.preview('thread', { executor: 'codex', model: f.model.model })).rejects.toThrow('capacity');
+    expect(inspect).toHaveBeenCalledTimes(0); expect(f.inputs).toHaveLength(0); expect(existsSync(f.workspace)).toBe(false);
+  });
+
 });

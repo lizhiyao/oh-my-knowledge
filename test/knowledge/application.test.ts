@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
-import { TraceEvidenceStore } from '../../src/knowledge/adapters/trace-evidence.js';
+import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import type { EntityAnalysisDraft } from '../../src/knowledge/entities/contracts.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
@@ -20,7 +21,7 @@ function setup(text = 'Alpha 使用 Beta', options: { prefix?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'omk-current-body-app-')); roots.push(root);
   const app = createLocalKnowledgeApplication(root), source = join(root, 'authored.jsonl');
   writeFileSync(source, JSON.stringify({ timestamp: '2026-10-27T00:00:00Z', type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }));
-  const snapshot = app.capture({ path: source, origin: { threadId: 'authored-thread', title: 'Authored source' } });
+  const snapshot = captureTraceFixture(root, { path: source, origin: { threadId: 'authored-thread', title: 'Authored source' } });
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root), entities = new FileEntityAnalysisStore(join(root, 'entities'), root);
   const associations = new FileKnowledgeAssociationStore(join(root, 'associations'), 'local', knowledge, entities, root);
   const analysisId = randomUUID(), entityRevisionId = randomUUID(), entityIds = [randomUUID(), randomUUID()];
@@ -104,7 +105,7 @@ describe('shared canonical body application', () => {
   });
   it('keeps colliding entity identities qualified across two sources and degrades only a missing catalog before explicit repair', () => {
     const f = setup(), beforeBody = f.knowledge.read(f.body.knowledgeId);
-    const secondSource = f.app.capture({ path: join(f.root, 'second-authored.jsonl'), records: [{ recordIndex: 2,
+    const secondSource = captureTraceFixture(f.root, { path: join(f.root, 'second-authored.jsonl'), records: [{ recordIndex: 2,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 属于另一个环境' }] } }) }] });
     const analysisId = randomUUID(), entityRevisionId = randomUUID(), entityId = f.entityIds[0], mentionId = f.catalog.mentions[0].mentionId;
     const second = { ...f.catalog, entities: [{ ...f.catalog.entities[0], description: '另一个精确来源内的 Alpha，不表示同一对象' }],
@@ -152,7 +153,7 @@ describe('shared canonical body application', () => {
     expect(() => f.app.revise(f.body.knowledgeId, f.body.revision.revisionId, 2, invalid, '错误引用')).toThrow('evidence');
     const after = f.app.revise(f.body.knowledgeId, f.body.revision.revisionId, 2, draft, '正文修订');
     expect(after.maintenance).toBeNull(); expect(after.derivedAssociations.status).toBe('stale'); expect(f.app.detail(f.body.knowledgeId, f.body.revision.revisionId).maintenance?.choice).toBe('retain');
-    f.app.deleteSource(f.snapshot.snapshotId); expect(f.app.detail(f.body.knowledgeId).sources[0].status).toBe('unavailable');
+    f.app.deleteSource(sourceRef(f.snapshot)); expect(f.app.detail(f.body.knowledgeId).sources[0].status).toBe('unavailable');
     expect(() => f.app.reviewAssociations(f.body.knowledgeId, f.projectionId, 2, 'accept', '缺来源不能再次接受')).toThrow('source unavailable');
     expect(() => f.app.revise(f.body.knowledgeId, after.revision.revisionId, after.history.generation, draft, '缺来源')).toThrow('unavailable');
   });
@@ -174,13 +175,13 @@ describe('shared canonical body application', () => {
     expect(detail.revision).toEqual(f.body.revision); expect(detail.derivedCatalogs[0].status).toBe('unavailable');
     expect(f.app.graph().coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'catalog_unavailable', analysisId: f.analysisId }));
     expect(() => f.app.reviewAssociations(f.body.knowledgeId, f.projectionId, 1, 'accept', '坏引用不能接受')).toThrow('mention evidence');
-    const originalRead = TraceEvidenceStore.prototype.read;
-    vi.spyOn(TraceEvidenceStore.prototype, 'read').mockImplementation(function (this: TraceEvidenceStore, id, version) {
+    const originalRead = FileSourceStore.prototype.read;
+    vi.spyOn(FileSourceStore.prototype, 'read').mockImplementation(function (this: FileSourceStore, id, version) {
       if (id === f.snapshot.snapshotId) throw new Error('private source failure');
       return originalRead.call(this, id, version);
     });
     const unreadable = f.app.detail(f.body.knowledgeId);
-    expect(unreadable.revision).toEqual(f.body.revision); expect(unreadable.sources).toMatchObject([{ status: 'unavailable', reason: 'invalid_source' }]);
+    expect(unreadable.revision).toEqual(f.body.revision); expect(unreadable.sources).toMatchObject([{ status: 'unavailable', reason: 'corrupt' }]);
     expect(JSON.stringify(unreadable)).not.toContain('private source failure');
   });
   it('isolates healthy entity identity and source from an unrelated corrupt knowledge file', () => {
@@ -194,7 +195,7 @@ describe('shared canonical body application', () => {
   });
   it('shares one knowledge/association projection per page and skips it for a search with no matches', () => {
     const f = setup(), knowledge = vi.spyOn(FileKnowledgeStore.prototype, 'list');
-    const associations = vi.spyOn(FileKnowledgeAssociationStore.prototype, 'read'), source = vi.spyOn(TraceEvidenceStore.prototype, 'read');
+    const associations = vi.spyOn(FileKnowledgeAssociationStore.prototype, 'read'), source = vi.spyOn(FileSourceStore.prototype, 'read');
     expect(f.app.queryEntities({ pageSize: 1 })).toMatchObject({ total: 2, knowledgeStatus: 'available', rows: [{ knowledgeCount: 1 }] });
     expect(knowledge).toHaveBeenCalledTimes(1); expect(associations).toHaveBeenCalledTimes(1); expect(source).toHaveBeenCalledTimes(1);
     knowledge.mockClear(); associations.mockClear(); source.mockClear();

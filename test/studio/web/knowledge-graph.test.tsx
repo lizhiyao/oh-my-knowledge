@@ -10,6 +10,7 @@ import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail, Knowledge
 import type { KnowledgeLibraryKnowledge } from '../../../src/studio/view-models/knowledge/knowledge-library';
 import type { KnowledgeReviewStatus } from '../../../src/studio/view-models/knowledge/knowledge-reviews';
 import { bodyWrite } from '../../knowledge/body-fixtures';
+import { fileSourceFixture, traceSourceFixture, sourceSummaryFixture } from './source-fixture';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search), useRouter: () => ({ push: vi.fn() }) }));
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -27,10 +28,11 @@ function fixture() {
   const mentions = [{ mentionId: uuid(5), entityId: entity.entityId, selection: { evidenceRef: 'record-1', start: 0, end: 5, quote: 'Alpha' }, basis: 'explicit' as const, rationale: '首次名称' },
     { mentionId: uuid(6), entityId: entity.entityId, selection: { evidenceRef: 'record-1', start: 6, end: 11, quote: 'Alpha' }, basis: 'inference' as const, rationale: '第二次名称，保持精确位置' }];
   const excerpts = [{ evidenceRef: 'record-1', text: 'Alpha；Alpha\n<script>来源原文</script>', recordIndex: 0, eventKind: 'message', role: 'user' }];
+  const snapshot = traceSourceFixture(source, excerpts, { limitations: ['仅选定消息'], origin: { threadId: uuid(15), title: '项目接续记录' } });
   const entityRevision = { revisionId: uuid(8), entities: [entity], mentions, limitations: ['仅选定消息'], revisedAt: at,
     revisedBy: { actorKind: 'human' as const, actorId: 'reviewer' }, revisionReason: '核对窗口内身份' };
   const analysis: KnowledgeEntityAnalysisDetail = { history: { storeKind: 'entity-analysis-history', schemaVersion: 2, analysisId: uuid(7), ...source,
-    generation: 1, writeHeadRevisionId: entityRevision.revisionId, revisions: [entityRevision], receipts: [] }, revision: entityRevision, source: { status: 'available', excerpts, limitations: [] } };
+    generation: 1, writeHeadRevisionId: entityRevision.revisionId, revisions: [entityRevision], receipts: [] }, revision: entityRevision, source: { status: 'available', snapshot } };
   const bodyRef = { knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, bodyDigest: revision.bodyDigest };
   const association = { revisionId: uuid(9), bodyRef, status: 'available' as const, reviewStatus: 'pending' as const,
     catalogRefs: [{ analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId }],
@@ -43,14 +45,13 @@ function fixture() {
     derivedAssociations: { status: 'available', reviewStatus: 'pending', bodyRef, generation: 1, headRevisionId: association.revisionId, revision: association },
     derivedCatalogs: [{ status: 'available', analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId, currentHeadRevisionId: entityRevision.revisionId,
       snapshotId: source.snapshotId, sourceVersion: source.sourceVersion, entities: [entity], mentions }],
-    sources: [{ status: 'available', window: { ...source, sourcePath: '/fixture-only', sourceKind: 'codex', projectionVersion: 'knowledge-window-v2', capturedAt: at,
-      startRecord: 0, endRecord: 0, excerpts, records: [{ recordIndex: 0, raw: '原始记录夹具' }], limitations: ['仅选定消息'], origin: { threadId: uuid(15), title: '项目接续记录' } } }] };
-  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 1, scope: { knowledgeIds: [revision.knowledgeId], includeHistory: false },
+    sources: [{ status: 'available', snapshot }] };
+  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 2, scope: { knowledgeIds: [revision.knowledgeId], includeHistory: false },
     coverage: { status: 'available', gaps: [] }, nodes: [
       { nodeKind: 'knowledge', nodeId: 'knowledge-current', bodyRef, current: true, title: revision.title, choice: 'retain', reviewStatus: 'pending', revisedAt: at,
         revisionReason: '首次保存', segments: revision.content.segments, association: { status: 'available', reviewStatus: 'pending', revisionId: association.revisionId, bodyRef, issues: [] } },
       { ...entity, nodeKind: 'entity', nodeId: 'entity-window-1', analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId, current: true },
-      { nodeKind: 'source', nodeId: 'source-window-1', ...source, status: 'available', origin: { threadId: uuid(15), title: '项目接续记录' }, limitations: ['仅选定消息'] },
+      { nodeKind: 'source', nodeId: 'source-window-1', ...source, status: 'available', source: sourceSummaryFixture(snapshot), origin: { threadId: uuid(15), title: '项目接续记录' }, limitations: ['仅选定消息'] },
     ], edges: [
       { edgeKind: 'segment_entity', edgeId: 'mapping-current', from: 'knowledge-current', to: 'entity-window-1', current: true, projectionRevisionId: association.revisionId,
         segmentId: 's1', mentionIds: [mentions[0].mentionId], reviewStatus: 'pending', catalogCurrent: true, mentions: [mentions[0]] },
@@ -60,7 +61,7 @@ function fixture() {
     ] };
   const catalog: KnowledgeLibraryKnowledge = { objects: [], rows: [{ knowledgeId: revision.knowledgeId, revisionId: revision.revisionId,
     bodyDigest: revision.bodyDigest, generation: 2, title: revision.title, knowledgeKind: 'fact', reviewStatus: 'pending', choice: 'retain', revisedAt: at, objects: [] }] };
-  return { detail, graph, analysis, catalog, mentions, source };
+  return { detail, graph, analysis, catalog, mentions, source, snapshot };
 }
 function absentReviews(detail: KnowledgeCandidateDetail): KnowledgeReviewStatus {
   const { knowledgeId, revisionId, bodyDigest } = detail.revision;
@@ -116,6 +117,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('knowledge graph browsing and evidence', () => {
+  it.each(['project_file', 'git_blob'] as const)('labels %s graph evidence with portable path and real coordinates without fabricating a thread', sourceKind => {
+    const { detail, graph, source } = fixture();
+    const snapshot = fileSourceFixture(source, 'Alpha；Alpha\n<script>来源原文</script>', { sourceKind, relativePath: 'docs/graph.md', materialType: 'implementation' });
+    detail.sources = [{ status: 'available', snapshot }];
+    const node = graph.nodes.find(node => node.nodeKind === 'source')!;
+    if (node.nodeKind === 'source') node.source = sourceSummaryFixture(snapshot);
+    const edge = graph.edges.find(edge => edge.edgeKind === 'source_evidence')!;
+    if (edge.edgeKind === 'source_evidence') edge.evidence = { ...edge.evidence, selection: { ...edge.evidence.selection, evidenceRef: snapshot.excerpts[0].evidenceRef } };
+    render(<KnowledgeGraphInspection graph={graph} selectedId="source-evidence" detail={detail} loading={false} workspace="/isolated" lang="zh" onLocate={vi.fn()} onEntity={vi.fn()} onMapping={vi.fn()} onKnowledge={vi.fn()}/>);
+    fireEvent.click(screen.getByText('展开这处依据的完整原文'));
+    expect(screen.getAllByText(/docs\/graph.md/).length).toBeGreaterThan(0); expect(screen.getByText(/实现材料/)).toBeTruthy();
+    expect(screen.getByText(/第 3–4 行/)).toBeTruthy(); expect(document.querySelector('.knowledge-network-citation mark')?.previousSibling?.textContent).toBe('Alpha；');
+    expect(document.querySelector('a[href*="observe/conversations"]')).toBeNull(); expect(screen.queryByText(/来源记录/)).toBeNull();
+  });
   it('reveals the current knowledge in a tall neighborhood without scrolling the page or changing selection', () => {
     const { graph, detail } = crowdedGraph(), viewport = graphViewport(280), choose = vi.fn();
     const pageScroll = vi.spyOn(window, 'scrollTo');
@@ -279,11 +294,11 @@ describe('knowledge graph browsing and evidence', () => {
       const call = JSON.parse(String(init.body)); calls.push(call);
       let value: unknown;
       if (call.operation === 'knowledge') value = catalog;
-      else if (call.operation === 'retrieve') value = { projectionKind: 'knowledge-body-segments', schemaVersion: 2,
+      else if (call.operation === 'retrieve') value = { projectionKind: 'knowledge-body-segments', schemaVersion: 3,
         rankingPolicyId: 'knowledge-body-literal-topic-priority/v3', omitted: { oversizedSegments: 0, budgetSegments: 0 },
         knowledge: [{ bodyRef: data.detail.derivedAssociations.bodyRef, generation: 1, title: data.detail.revision.title, choice: 'retain', reviewStatus: 'pending',
           segmentScope: { returned: 1, total: 1 }, derivedAssociations: data.detail.derivedAssociations }],
-        sources: [{ ...data.source, status: 'available', sourceKind: 'codex' }],
+        sources: [{ ...data.source, status: 'available', sourceKind: 'agent_trace', source: sourceSummaryFixture(data.snapshot) }],
         items: [{ knowledge: 0, segmentIndex: 0, segment: data.detail.revision.content.segments[0], evidenceChecks: [{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }] }] };
       else if (call.operation === 'review-status') value = absentReviews(data.detail);
       else if (call.operation === 'show') value = call.revision === data.detail.revision.revisionId ? data.detail : latest;
@@ -358,7 +373,7 @@ describe('knowledge graph browsing and evidence', () => {
     render(<KnowledgeGraphInspection graph={graph} selectedId="source-evidence" detail={detail} loading={false} workspace="/isolated" lang="zh" onLocate={locate} onEntity={entity} onMapping={mapping} onKnowledge={vi.fn()}/>);
     fireEvent.click(screen.getByText('展开这处依据的完整原文'));
     expect(document.querySelector('.knowledge-network-citation mark')?.textContent).toBe('Alpha');
-    expect(document.querySelector('.knowledge-network-citation pre')?.textContent).toBe('Alpha；Alpha\n<script>来源原文</script>');
+    expect(document.querySelector('.knowledge-network-citation pre.knowledge-source')?.textContent).toBe('Alpha；Alpha\n<script>来源原文</script>');
     expect(document.querySelector('.knowledge-network-citation script')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '在阅读器回查依据' }));
     expect(locate).toHaveBeenLastCalledWith(expect.objectContaining({ tab: 'evidence', segmentId: 's1', evidence: expect.objectContaining({ start: 6, end: 11 }) }));
@@ -410,7 +425,7 @@ describe('knowledge graph browsing and evidence', () => {
       else if (call.operation === 'entities') value = data.analysis;
       else if (call.operation === 'association-catalogs') value = { bodyRef: persisted.derivedAssociations.bodyRef, unavailableAnalyses: 0,
         sources: [{ ...data.source, status: 'available' }], catalogs: [{ analysisId: data.analysis.history.analysisId, ...data.source,
-          writeHeadRevisionId: data.analysis.revision.revisionId, sourceSummary: { title: '项目接续记录', sourceKind: 'codex', excerptCount: 1, firstRecordIndex: 0, lastRecordIndex: 0 },
+          writeHeadRevisionId: data.analysis.revision.revisionId, sourceSummary: sourceSummaryFixture(data.analysis.source.status === 'available' ? data.analysis.source.snapshot : (() => { throw new Error('Missing source fixture'); })()),
           revisions: [{ revisionId: data.analysis.revision.revisionId, revisionReason: '核对窗口内身份', revisedAt: at, entityCount: 1, mentionCount: 2 }] }] };
       else if (call.operation === 'apply-associations') {
         persisted = structuredClone(persisted);
@@ -461,7 +476,7 @@ describe('knowledge graph browsing and evidence', () => {
     const identity = identitySummary.closest<HTMLDetailsElement>('details')!;
     expect(identity.open).toBe(false);
     expect(within(article).getByText('推断 · 第二次名称，保持精确位置').closest('details')).toBeNull();
-    expect(within(article).getByText('记录 0 · user · 来源时间未知').closest('details')).toBeNull();
+    expect(within(article).getByText('来源记录 0 · user').closest('details')).toBeNull();
     const marked = article.querySelector('pre.knowledge-source mark')!;
     expect(marked.textContent).toBe('Alpha'); expect(marked.previousSibling?.textContent).toBe('Alpha；');
     expect(marked.closest('details')).toBeNull();
@@ -549,14 +564,14 @@ describe('knowledge graph browsing and evidence', () => {
     const { detail, source } = fixture();
     const available = detail.sources[0];
     if (available.status !== 'available') throw new Error('Missing available source fixture');
-    available.window.excerpts[0].text = '来源后来包含的不同原话，不能当作已匹配引文。';
+    available.snapshot.excerpts[0].text = '来源后来包含的不同原话，不能当作已匹配引文。';
     const selection = { tab: 'evidence' as const, segmentId: 's1', evidence: { ...source, evidenceRef: 'record-1', start: 6, end: 11 } };
     const props = { detail, selection, onRevision: vi.fn(), onRetry: vi.fn() };
     const view = render(<KnowledgeReader {...props} lang="zh"/>, { wrapper });
     const identity = screen.getByText('精确依据身份').closest<HTMLDetailsElement>('details')!;
     expect(identity.open).toBe(false);
     const original = document.querySelector('pre.knowledge-source')!;
-    expect(original.textContent).toBe(available.window.excerpts[0].text); expect(original.closest('details')).toBeNull();
+    expect(original.textContent).toBe(available.snapshot.excerpts[0].text); expect(original.closest('details')).toBeNull();
     expect(screen.getByText('保存的引文与此快照位置不匹配，不能当作已核对；原文与保存引文分别保留。').closest('details')).toBeNull();
     expect(document.querySelector('blockquote')?.textContent).toBe('Alpha');
     expect(document.querySelector('blockquote')?.closest('details')).toBeNull();

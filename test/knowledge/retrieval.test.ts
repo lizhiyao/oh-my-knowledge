@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID, KnowledgeRetrievalRequestSchema, knowledgeRetrievalTerms, retrieveKnowledge, retrieveKnowledgeText } from '../../src/knowledge/application/retrieval.js';
+import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
+import type { SourceRef } from '../../src/knowledge/sources.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;
 function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适用于用户输入，成本未知。']) {
-  const knowledgeId = randomUUID(), revisionId = randomUUID(), snapshotId = randomUUID(), sourceVersion = digest;
+  const knowledgeId = randomUUID(), revisionId = randomUUID(), snapshotId = randomUUID();
   const quote = '🙂 用户报告初始化问题，尚未独立验证。';
+  const snapshot = traceSnapshotFixture(quote, { snapshotId, evidenceRef: 'record:0' }), sourceVersion = snapshot.sourceVersion;
   const segments = texts.map((text, index) => ({ segmentId: `segment-${index}`, text, evidence: [{
     source: { snapshotId, sourceVersion }, selection: { evidenceRef: 'record:0', start: 0, end: quote.length, quote },
     basis: 'source_assertion' as const, interpretation: '用户报告，未经独立复现。',
@@ -24,9 +27,8 @@ function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适�
     derivedAssociations, derivedCatalogs: [] as { status: 'available' | 'unavailable'; analysisId: string; entityRevisionId: string }[],
   };
   const row = { knowledgeId, revisionId, choice: null as 'retain' | 'discard' | null };
-  const window = { sourceKind: 'codex', excerpts: [{ evidenceRef: 'record:0', text: quote }] };
-  const source = vi.fn((id: string, version?: string) => id === snapshotId && (!version || version === sourceVersion)
-    ? { status: 'available' as const, window } : { status: 'unavailable' as const, reason: 'missing' });
+  const source = vi.fn((ref: SourceRef) => ref.snapshotId === snapshotId && ref.sourceVersion === sourceVersion
+    ? { status: 'available' as const, snapshot } : { status: 'unavailable' as const, reason: 'missing' });
   const app = { list: vi.fn(() => [row]), detail: vi.fn(() => detail), source } as unknown as Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>;
   return { app, row, detail, source, snapshotId, sourceVersion, segments,
     retain() { row.choice = 'retain'; detail.maintenance = { choice: 'retain' }; } };
@@ -34,7 +36,7 @@ function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适�
 function corpus(...entries: ReturnType<typeof fixture>[]) {
   entries.forEach(entry => entry.retain());
   return { list: () => entries.map(entry => entry.row), detail: (id: string) => entries.find(entry => entry.row.knowledgeId === id)!.detail,
-    source: (id: string, version?: string) => entries.find(entry => entry.snapshotId === id)!.source(id, version) } as unknown as Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>;
+    source: (ref: SourceRef) => entries.find(entry => entry.snapshotId === ref.snapshotId)!.source(ref) } as unknown as Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>;
 }
 
 describe('canonical body segment retrieval', () => {
@@ -42,7 +44,7 @@ describe('canonical body segment retrieval', () => {
     const f = fixture(), before = structuredClone(f.detail);
     expect(retrieveKnowledge(f.app, { query: 'v-model' }).items).toEqual([]);
     const result = retrieveKnowledge(f.app, { query: 'v-model', includeCandidates: true });
-    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 2,
+    expect(result).toMatchObject({ projectionKind: 'knowledge-body-segments', schemaVersion: 3,
       knowledge: [{ bodyRef: { revisionId: f.row.revisionId, bodyDigest: digest }, choice: null, reviewStatus: 'pending' }] });
     expect(result.items[0].segment).toEqual(f.segments[0]);
     expect(result.items[0].evidenceChecks).toEqual([{ evidenceIndex: 0, source: 0, positionStatus: 'matched' }]);
@@ -106,7 +108,7 @@ describe('canonical body segment retrieval', () => {
     expect(scoped.items).toHaveLength(1); expect(scoped.sources).toMatchObject([{ snapshotId: f.snapshotId, sourceVersion: f.sourceVersion, status: 'available' }]);
     expect(retrieveKnowledge(f.app, { query: 'v-model', snapshot: f.snapshotId, sourceVersion: `sha256:${'b'.repeat(64)}` }).items).toEqual([]);
     f.source.mockReturnValue({ status: 'unavailable', reason: 'deleted' });
-    const missing = retrieveKnowledge(f.app, { query: 'v-model', snapshot: f.snapshotId });
+    const missing = retrieveKnowledge(f.app, { query: 'v-model', snapshot: f.snapshotId, sourceVersion: f.sourceVersion });
     expect(missing).toMatchObject({ scopeDiagnostics: { source: { status: 'unavailable', reason: 'deleted' } },
       sources: [{ status: 'unavailable', reason: 'deleted' }], items: [{ evidenceChecks: [{ positionStatus: 'unavailable' }] }] });
     expect(missing.items[0].segment).toEqual(f.segments[0]);
@@ -124,7 +126,7 @@ describe('canonical body segment retrieval', () => {
   });
   it('validates requests before reads and fails closed on a changed current revision or maintenance choice', () => {
     const f = fixture();
-    for (const input of [{ query: '' }, { query: '???' }, { query: 'x', maxBytes: 1023 }, { query: 'x', sourceVersion: digest }, { query: 'x', snapshot: 'invalid' }, { query: 'x', entityId: randomUUID() }, { query: 'x', analysisId: randomUUID(), entityRevisionId: randomUUID() }]) {
+    for (const input of [{ query: '' }, { query: '???' }, { query: 'x', maxBytes: 1023 }, { query: 'x', sourceVersion: digest }, { query: 'x', snapshot: 'invalid' }, { query: 'x', snapshot: randomUUID() }, { query: 'x', entityId: randomUUID() }, { query: 'x', analysisId: randomUUID(), entityRevisionId: randomUUID() }]) {
       expect(() => retrieveKnowledge(f.app, input)).toThrow();
     }
     expect(f.app.list).not.toHaveBeenCalled(); expect(f.app.detail).not.toHaveBeenCalled();
@@ -154,7 +156,7 @@ describe('canonical body segment retrieval', () => {
     const matching = fixture(['Vue Transition 初始化条件仍需独立核对。']);
     scoped.segments[1].evidence[0].source.snapshotId = randomUUID();
     matching.segments[0].evidence[0].source.snapshotId = scoped.snapshotId;
-    const result = retrieveKnowledge(corpus(scoped, matching), { query: 'Vue Transition v-model 初始化条件', snapshot: scoped.snapshotId });
+    const result = retrieveKnowledge(corpus(scoped, matching), { query: 'Vue Transition v-model 初始化条件', snapshot: scoped.snapshotId, sourceVersion: scoped.sourceVersion });
     expect(result.knowledge.map(item => item.bodyRef.knowledgeId)).toEqual([matching.row.knowledgeId, scoped.row.knowledgeId]);
     expect(result.items.map(item => item.segment.text)).toEqual([matching.segments[0].text, scoped.segments[0].text]);
   });
@@ -183,7 +185,8 @@ describe('canonical body segment retrieval', () => {
     const f = fixture(['v-model 完整必要约束：初始化才适用，后续行为未知。']); f.retain();
     const quote = '仅作为来源引用，不代替知识正文。'.repeat(1000), evidence = f.segments[0].evidence[0];
     evidence.selection.quote = quote; evidence.selection.end = quote.length;
-    f.source.mockReturnValue({ status: 'available', window: { sourceKind: 'codex', excerpts: [{ evidenceRef: 'record:0', text: quote }] } });
+    const snapshot = traceSnapshotFixture(quote, { snapshotId: f.snapshotId, evidenceRef: 'record:0' });
+    evidence.source.sourceVersion = snapshot.sourceVersion; f.source.mockReturnValue({ status: 'available', snapshot });
     const request = { query: 'v-model', maxBytes: 8192 }, jsonBefore = JSON.stringify(retrieveKnowledge(f.app, request));
     expect(JSON.parse(jsonBefore)).toMatchObject({ items: [], omitted: { oversizedSegments: 1 } });
     const text = retrieveKnowledgeText(f.app, request);

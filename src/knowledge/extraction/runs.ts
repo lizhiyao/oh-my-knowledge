@@ -1,5 +1,5 @@
 import type { ExtractionRunSealPreview, ExtractionRunSealRequest, ExtractionRunSealSummary } from './run-sealing.js';
-import { EvidenceWindowSchema } from './evidence.js';
+import { TraceOriginSchema } from '../sources.js';
 import { z } from 'zod';
 import { KnowledgeActorSchema } from '../contracts.js';
 import { canonicalJson } from '../store.js';
@@ -116,7 +116,7 @@ export const ExtractionRunSchema = z.strictObject({
   runKind: z.literal('knowledge-extraction-run'), schemaVersion: z.literal(5),
   runId: z.string().uuid(), requestDigest: z.string(), generation: z.number().int().positive(),
   snapshotId: z.string().uuid(), sourceVersion: z.string(),
-  origin: EvidenceWindowSchema.shape.origin,
+  origin: TraceOriginSchema.optional(),
   executor: z.string().min(1), model: z.string().min(1),
   promptVersion: z.string().regex(/^knowledge-extraction-v[1-9]\d*(?![\s\S])/), promptHash: z.string(), inputDigest: z.string(),
   actor: KnowledgeActorSchema,

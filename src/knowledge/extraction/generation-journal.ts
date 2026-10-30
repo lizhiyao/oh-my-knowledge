@@ -4,6 +4,7 @@ import { KnowledgeWriteSchema } from '../store.js';
 import { EntityAnalysisWriteSchema } from '../entities/contracts.js';
 import { KnowledgeAssociationRevisionSchema } from '../associations.js';
 import { GenerationOutcomeRefSchema, type GenerationOutcome } from './native-outcome.js';
+import { SOURCE_GENERATION_INPUT_VERSION } from './source-input.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const associationWrite = z.strictObject({ commandKind: z.literal('append_revision'), requestId: uuid,
@@ -24,7 +25,8 @@ export const GenerationStageSchema = z.strictObject({
   associationWrites: z.array(associationWrite).optional(), committed: z.number().int().nonnegative(),
 });
 export const GenerationJournalSchema = z.strictObject({
-  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(2), workflowId: z.literal('knowledge-body-first/v2'),
+  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(3), workflowId: z.literal('knowledge-body-first/v3'),
+  inputVersion: z.literal(SOURCE_GENERATION_INPUT_VERSION), sourceSetId: digest,
   runId: uuid, generation: z.number().int().positive(), mode: z.enum(['generate', 'rebuild_associations']),
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,
   sources: z.array(z.strictObject({ snapshotId: uuid, sourceVersion: digest, sourceDigest: digest })).min(1).max(256),

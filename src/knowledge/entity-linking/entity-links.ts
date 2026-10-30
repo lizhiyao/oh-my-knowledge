@@ -88,6 +88,7 @@ export class EntityLinkApplication {
     return { reviewId, requestId, eventId: this.id(), at: this.at(), actor, expectedGeneration: generation, ...body } as unknown as EntityLinkInvocationCommand;
   }
   private transition(transaction: EntityLinkInvocationTransaction, previous: EntityLinkInvocation | undefined, command: EntityLinkInvocationCommand, ports = this.ports()) {
+    this.knowledge.assertWritable();
     const next = transitionEntityLinkInvocation(previous, command, ports);
     transaction.save(next.history, previous?.generation ?? 0);
     return next;
@@ -105,7 +106,7 @@ export class EntityLinkApplication {
       const owner = ownerOf(all, right), selectedOwner = ownerOf(all, left);
       if (owner && owner.objectId === selectedOwner?.objectId) return [];
       return [{ ...right, label: entity.label, description: entity.description, referentKind: entity.referentKind, identityStatus: entity.identityStatus,
-        sourceStatus: this.knowledge.source(history.snapshotId, history.sourceVersion).status, ownerConflict: !!owner && !!selectedOwner && owner.objectId !== selectedOwner.objectId }];
+        sourceStatus: this.knowledge.source({ snapshotId: history.snapshotId, sourceVersion: history.sourceVersion }).status, ownerConflict: !!owner && !!selectedOwner && owner.objectId !== selectedOwner.objectId }];
     })).sort((a, b) => memberKey(a).localeCompare(memberKey(b)));
     if (rows.length > 100) throw new Error('Entity-link candidate capacity exceeded. Choose a more specific source entity.');
     return { retrievalPolicy: 'entity-link-retrieval/v1' as const, rows, unavailableAnalyses: histories.unavailable };

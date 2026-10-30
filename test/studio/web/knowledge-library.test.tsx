@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { LibraryObjectDetail } from '../../../src/studio/web/components/knowledge/library-detail.js';
 import type { KnowledgeLibraryDetail } from '../../../src/studio/view-models/knowledge/knowledge-library.js';
+import { traceSourceFixture, sourceSummaryFixture } from './source-fixture';
 import { bodyDraft } from '../../knowledge/body-fixtures.js';
 
 function detail(): KnowledgeLibraryDetail {
@@ -14,7 +15,7 @@ function detail(): KnowledgeLibraryDetail {
     members: [{ ...member, status: 'available', entity: { ...entities[0], label: 'Alpha <script>', qualifiers: ['仅本项目'], identityStatus: 'proposed',
       possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentRef: null, collection: null }, current: false, sourceStatus: 'unavailable',
       evidence: [{ mentionId: 'mention', quote: 'Alpha', basis: 'explicit', rationale: '原文项目名称', positionStatus: 'unavailable' }],
-      origin: { threadId: 'thread', title: '来源对话' } }],
+      origin: { threadId: 'thread', title: '来源对话' }, source: sourceSummaryFixture(traceSourceFixture({ snapshotId: 'snapshot', sourceVersion: `sha256:${'a'.repeat(64)}` }, [{ evidenceRef: 'record-1', text: 'Alpha', recordIndex: 0, eventKind: 'message' }], { origin: { threadId: 'thread', title: '来源对话' } })) }],
     knowledge: [{ knowledgeId: 'knowledge', revisionId: 'knowledge-revision', title: '来源中关于 Alpha 的说法 <script>', choice: 'retain', associationStatus: 'matched',
       content: knowledge.content, entities: entities.map(entity => ({ ...entity, analysisId: member.analysisId, entityRevisionId: member.entityRevisionId, currentCatalog: false })), tags: ['排障'], revisedAt: '2026-10-12T00:00:00Z', revisionCount: 2,
       evidence: knowledge.content.segments.flatMap(segment => segment.evidence.map(evidence => ({ ...evidence, segmentId: segment.segmentId }))), sourceStatus: 'unavailable',

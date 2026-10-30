@@ -20,6 +20,7 @@ import { ArtifactAuthoringDialog } from './artifact-authoring';
 import { KnowledgeGraphInspection, KnowledgeGraphView } from './knowledge-graph';
 import { AssociationMappingDrawer } from './association-mapping';
 import { EntityAnalysisDrawer } from './entity-analysis';
+import { sourceTitle } from './source-locator';
 import { KnowledgeTaskSearch } from './task-search';
 import { KnowledgeReviewDrawer } from './review-drawer';
 
@@ -64,8 +65,8 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const currentId = view === 'task' ? active : visible.some(row => row.knowledgeId === active) ? active : visible[0]?.knowledgeId;
   const expectedTaskBody = view === 'task' && taskBodyRef && taskBodyRef.knowledgeId === currentId && taskBodyRef.revisionId === knowledgeRevision ? taskBodyRef : undefined;
   const taskSources = [...new Map<string, { snapshotId: string; sourceVersion: string; title?: string }>((detail?.revision.content.segments.flatMap(segment => segment.evidence) ?? []).map(evidence => {
-    const source = detail?.sources.find(value => value.status === 'available' && value.window.snapshotId === evidence.source.snapshotId && value.window.sourceVersion === evidence.source.sourceVersion);
-    return [`${evidence.source.snapshotId}/${evidence.source.sourceVersion}`, { ...evidence.source, ...(source?.status === 'available' && source.window.origin?.title ? { title: source.window.origin.title } : {}) }] as const;
+    const source = detail?.sources.find(value => value.status === 'available' && value.snapshot.snapshotId === evidence.source.snapshotId && value.snapshot.sourceVersion === evidence.source.sourceVersion);
+    return [`${evidence.source.snapshotId}/${evidence.source.sourceVersion}`, { ...evidence.source, ...(source?.status === 'available' ? { title: sourceTitle(source.snapshot, lang) } : {}) }] as const;
   })).values()];
   const graphIds = JSON.stringify(visible.map(row => row.knowledgeId));
   const matchingGraph = catalog && graph && JSON.stringify(graph.scope.knowledgeIds) === graphIds && graph.scope.includeHistory === graphHistory ? graph : undefined;

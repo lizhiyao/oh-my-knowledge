@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { EntityMention, EvidenceSelection, KnowledgeBodyEvidence, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { AnalyzedEntity, EntityAnalysisEnvelope, EntityAnalysisRevisionSchema } from '../entities/contracts.js';
-import type { EvidenceStore, EvidenceWindow, SourceResolution } from '../extraction/evidence.js';
+import type { SourceStore } from '../source-store.js';
+import type { TraceOrigin, SourceResolution } from '../sources.js';
+import { sourceOrigin, sourceSummary, type SourceSummary } from './source-summary.js';
 import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationEnvelope, type KnowledgeAssociationRevision, type KnowledgeAssociationSelection } from '../associations.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { canonicalJson, type KnowledgeEnvelope } from '../store.js';
@@ -33,8 +35,8 @@ export interface KnowledgeGraphEntityNode extends AnalyzedEntity {
 export interface KnowledgeGraphSourceNode {
   nodeKind: 'source'; nodeId: string; snapshotId: string; sourceVersion: string;
   status: 'available' | 'unavailable'; reason?: string;
-  origin?: Pick<NonNullable<EvidenceWindow['origin']>, 'threadId' | 'turnId' | 'title'>;
-  limitations: string[];
+  origin?: Pick<TraceOrigin, 'threadId' | 'turnId' | 'title'>;
+  limitations: string[]; source?: SourceSummary;
 }
 export type KnowledgeGraphNode = KnowledgeGraphKnowledgeNode | KnowledgeGraphEntityNode | KnowledgeGraphSourceNode;
 interface GraphEdge { edgeId: string; from: string; to: string; current: boolean }
@@ -57,7 +59,7 @@ export interface KnowledgeGraphGap {
   knowledgeId?: string; analysisId?: string; snapshotId?: string; sourceVersion?: string; revisionId?: string; detail: string;
 }
 export interface KnowledgeGraph {
-  projectionKind: 'knowledge-graph'; schemaVersion: 1;
+  projectionKind: 'knowledge-graph'; schemaVersion: 2;
   scope: { knowledgeIds: string[] | null; includeHistory: boolean };
   coverage: { status: 'available' | 'unavailable'; gaps: KnowledgeGraphGap[] };
   nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[];
@@ -68,7 +70,7 @@ export interface KnowledgeGraphReader {
   knowledge(id: string): KnowledgeEnvelope;
   associations(id: string): KnowledgeAssociationEnvelope;
   catalog(analysisId: string): EntityAnalysisEnvelope;
-  source: EvidenceStore['read'];
+  source: SourceStore['read'];
 }
 const bodyRef = ({ knowledgeId, revisionId, bodyDigest }: KnowledgeRevision): KnowledgeBodyRef => ({ knowledgeId, revisionId, bodyDigest });
 const nodeId = (domain: string, parts: string[]) => `${domain}:${canonicalJson(parts)}`;
@@ -85,7 +87,7 @@ const reviewFor = (history: KnowledgeAssociationEnvelope, revisionId: string): R
 export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: KnowledgeGraphRequest = {}): KnowledgeGraph {
   const request = KnowledgeGraphRequestSchema.parse(input);
   const selectedIds = request.knowledgeIds ? [...new Set(request.knowledgeIds)] : undefined;
-  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 1,
+  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 2,
     scope: { knowledgeIds: selectedIds ?? null, includeHistory: request.includeHistory },
     coverage: { status: 'available', gaps: [] }, nodes: [], edges: [] };
   const nodes = new Map<string, KnowledgeGraphNode>(), edges = new Map<string, KnowledgeGraphEdge>(), gaps = new Set<string>();
@@ -106,22 +108,23 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
     let resolution: SourceResolution;
     try {
       resolution = reader.source(ref.snapshotId, ref.sourceVersion);
-      if (resolution.status === 'available' && (resolution.window.snapshotId !== ref.snapshotId || resolution.window.sourceVersion !== ref.sourceVersion)) {
+      if (resolution.status === 'available' && (resolution.snapshot.snapshotId !== ref.snapshotId || resolution.snapshot.sourceVersion !== ref.sourceVersion)) {
         resolution = { status: 'unavailable', reason: 'version_mismatch', detail: 'Source identity does not match.' };
       }
-    } catch { resolution = { status: 'unavailable', reason: 'invalid_source', detail: 'Source could not be read.' }; }
+    } catch { resolution = { status: 'unavailable', reason: 'corrupt', detail: 'Source could not be read.' }; }
     resolutions.set(id, resolution);
-    const origin = resolution.status === 'available' ? resolution.window.origin : undefined;
+    const origin = resolution.status === 'available' ? sourceOrigin(resolution.snapshot) : undefined;
     nodes.set(id, { nodeKind: 'source', nodeId: id, ...ref, status: resolution.status,
       ...(resolution.status === 'unavailable' ? { reason: resolution.reason } : {}),
       ...(origin ? { origin: { threadId: origin.threadId, title: origin.title, ...(origin.turnId ? { turnId: origin.turnId } : {}) } } : {}),
-      limitations: resolution.status === 'available' ? resolution.window.limitations : [] });
+      ...(resolution.status === 'available' ? { source: sourceSummary(resolution.snapshot) } : {}),
+      limitations: resolution.status === 'available' ? resolution.snapshot.limitations : [] });
     if (resolution.status === 'unavailable') gap({ gapKind: 'source_unavailable', ...ref, detail: 'The exact source snapshot is unavailable.' });
     return resolution;
   }
   function position(selection: EvidenceSelection, resolution: SourceResolution, snapshotId: string): PositionStatus {
     if (resolution.status === 'unavailable') return 'unavailable';
-    if (!validateEvidenceSelection(selection, resolution.window.excerpts).length) return 'matched';
+    if (!validateEvidenceSelection(selection, resolution.snapshot.excerpts).length) return 'matched';
     gap({ gapKind: 'evidence_mismatch', snapshotId, detail: 'A saved quotation does not match the exact source position.' });
     return 'mismatch';
   }
