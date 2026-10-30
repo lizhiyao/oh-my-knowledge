@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Space } from 'antd';
 import type { SourceRef } from '../../../../knowledge/sources';
 import type { KnowledgeSourceUpdates, SourceViewSnapshot } from '../../../view-models/knowledge/knowledge-candidates';
+import { KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
 import type { Language } from '../layout/shell';
+import { workspaceHref } from '../layout/workspace-link';
 import { requestKnowledge } from './request';
 
 /** The saved reference owns the check. Optional metadata only enables an explicit Git comparison. */
@@ -52,6 +54,8 @@ export function SourceUpdates({ source, snapshot, workspace, lang, busy = false,
   const current = result?.context === context ? result : undefined;
   const report = current?.report, disabled = busy || checking || !workspace?.trim();
   const reviewCount = (reviewKind: 'review_body' | 'review_catalog' | 'review_projection') => report?.reviewSuggestions.filter(item => item.reviewKind === reviewKind).length ?? 0;
+  const bodyReviews = report?.reviewSuggestions.flatMap(item => item.reviewKind === 'review_body' && item.target.targetKind === 'body'
+    ? [{ bodyRef: item.target.bodyRef, reason: item.reason }] : []) ?? [];
   return <section className="candidate-form">
     <h3>{t('来源变化影响', 'Source change impact')}{saved && <> · {saved.sourceKind === 'agent_trace' ? saved.identity.sourceId : `${saved.identity.projectId} / ${saved.identity.relativePath}`}</>}</h3>
     <p>{t('只读取变化与依赖，不调用模型、不改原捕获、正文或发送授权；复核建议不表示知识已更新。', 'Read changes and dependencies without a model call or changes to the capture, content or send approval. Review suggestions do not mean knowledge has been updated.')}</p>
@@ -73,6 +77,13 @@ export function SourceUpdates({ source, snapshot, workspace, lang, busy = false,
       <p>{t(`已知引用：正文版本 ${report.affectedExactBodyRefs.length} 个 · 实体目录版本 ${report.catalogRefs.length} 个 · 关联版本 ${report.projectionRefs.length} 个。`, `Known references: ${report.affectedExactBodyRefs.length} body versions · ${report.catalogRefs.length} entity catalog versions · ${report.projectionRefs.length} association versions.`)}</p>
       <p>{t(`需要核对：正文版本 ${reviewCount('review_body')} 个 · 实体目录版本 ${reviewCount('review_catalog')} 个 · 关联版本 ${reviewCount('review_projection')} 个；不表示语义已核实。`, `Review needed: ${reviewCount('review_body')} body versions · ${reviewCount('review_catalog')} entity catalog versions · ${reviewCount('review_projection')} association versions; semantic validity is not established.`)}</p>
       {(report.inventoryCompleteness !== 'complete' || report.impactCompleteness !== 'complete') && <Alert type="warning" title={t('影响清单尚未完整，不能据此判断没有影响。', 'The impact inventory is incomplete; absence of impact cannot be inferred.')}/>}
+      {workspace && bodyReviews.length > 0 && <ol>{bodyReviews.map(({ bodyRef, reason }, index) => <li key={JSON.stringify(bodyRef)}>
+        <a href={workspaceHref(`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ knowledge: bodyRef.knowledgeId, revision: bodyRef.revisionId })}`, workspace)}
+          aria-label={t(`核对受影响知识（第 ${index + 1} 项）`, `Review affected knowledge (item ${index + 1})`)}>{t('核对受影响知识', 'Review affected knowledge')}</a>
+        <details><summary>{t('修订详情', 'Revision details')}</summary>
+          <p>{t('知识：', 'Knowledge: ')}<code>{bodyRef.knowledgeId}</code></p><p>{t('修订：', 'Revision: ')}<code>{bodyRef.revisionId}</code></p><p>{reason}</p>
+        </details>
+      </li>)}</ol>}
       {[...report.current.limitations, ...report.impactLimitations].map((limitation, index) => <p key={index}>{limitation}</p>)}
       <details><summary>{t('影响与复核建议', 'Impact and review suggestions')}</summary><pre style={{ maxHeight: '28vh', overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(report, null, 2)}</pre></details></>}
   </section>;
