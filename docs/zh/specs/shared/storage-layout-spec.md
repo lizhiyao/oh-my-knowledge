@@ -113,6 +113,8 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3：不可变正文修订、inline evidence、`bodyDigest`、维护及收据 |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
 | `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1：精确正文的内容复核、逐段关联覆盖、任务使用反馈及独立收据；[详细契约](../knowledge/knowledge-reviews.md) |
+| `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1：来源盘点分析及模型原件引用；[详细契约](../knowledge/knowledge-source-review.md) |
+| `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1：绑定精确清单／正文的覆盖分析、实际决定、撤销及收据；[详细契约](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
 | `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 3、流程 `knowledge-body-first/v3`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变正文或关联原生完整返回，分别绑定请求与摘要 |
@@ -120,6 +122,8 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | `entity-links/<review-id>.json` | 既有 `entity-link-invocation-history` Schema 1，独立跨窗建议／决定／应用日志 |
 
 来源、标签和载体版本各有契约。读取已存正文不以实体目录或投影成功为前提。投影绑定 `{knowledgeId, revisionId, bodyDigest}`，修改／重建／审查投影不改正文、不继承正文 retain。损坏／过期／被拒投影明确显示。
+
+来源盘点／覆盖记录是独立基础，尚不改变默认 workflow3、journal3 或 Source3；切换默认流程前须一并接通 workflow4 与独立副本迁移。
 
 Prepare 零模型记录完整请求，每次派发确认精确请求摘要。Generate 先归档正文原件、把接纳正文保存待审，再准备需要独立确认的关联请求。每个原生阶段派发前 claim、接纳前归档；宿主组合不冒充原生原件。`resume` 只挂接原证据并重放精确写入意图／收据。已 claim 而无原件的阶段保持未知，禁止自动重发；从未 claim 的关联可显式继续，完全相同的 completed 运行重放零调用。流程完成不证明关联成功、来源保真或真值。
 

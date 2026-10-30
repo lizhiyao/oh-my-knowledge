@@ -109,3 +109,4 @@ test/architecture/study-host-import-coverage.test.ts
 test/scripts/knowledge-study-workers.test.ts
 test/studio/http/fault-page.test.ts
 test/studio/web/page-fault.test.tsx
+test/knowledge/source-review-application.test.ts

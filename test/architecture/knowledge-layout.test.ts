@@ -10,7 +10,7 @@ describe('knowledge 领域布局', () => {
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
       .toEqual(['adapters', 'application', 'artifacts', 'entities', 'entity-library', 'entity-linking', 'extraction', 'measurement', 'migration']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
-      .toEqual(['AGENTS.md', 'associations.ts', 'contracts.ts', 'history.ts', 'review-history.ts', 'reviews.ts', 'source-store.ts', 'sources.ts', 'store.ts', 'tags.ts', 'validation.ts']);
+      .toEqual(['AGENTS.md', 'associations.ts', 'contracts.ts', 'history.ts', 'review-history.ts', 'reviews.ts', 'source-review-history.ts', 'source-review.ts', 'source-store.ts', 'sources.ts', 'store.ts', 'tags.ts', 'validation.ts']);
   });
 
   it('载体按生命周期子域表达稳定所有权', () => {

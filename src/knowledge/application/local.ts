@@ -4,6 +4,8 @@ import { join, resolve } from 'node:path';
 import { canonicalJson } from '../store.js';
 import { KnowledgeApplication } from './application.js';
 import { KnowledgeReviewApplication } from './review.js';
+import { SourceReviewApplication, type SourceReviewPorts } from './source-review.js';
+import { FileSourceLedgerStore, FileSourceCoverageStore } from '../adapters/source-review-store.js';
 import type { KnowledgeActor } from '../contracts.js';
 import { FileKnowledgeReviewStore } from '../adapters/review-store.js';
 import { FileSourceStore } from '../adapters/source-store.js';
@@ -112,4 +114,18 @@ export function createLocalKnowledgeReview(root: string, actor?: KnowledgeActor)
   return new KnowledgeReviewApplication({ knowledge, entities, associations: new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace),
     sources: new FileSourceStore(join(workspace, 'sources'), workspace), reviews: new FileKnowledgeReviewStore(join(workspace, 'reviews'), 'local', workspace),
     actor, now: () => new Date().toISOString(), assertWritable: () => assertSourceWorkspaceWritable(workspace) });
+}
+
+/** Source analyses require a trusted original reader; an omitted actual actor keeps the host read-only. */
+export function createLocalKnowledgeSourceReview(root: string, options: Pick<SourceReviewPorts, 'actor' | 'readOriginal'> = {}): SourceReviewApplication {
+  if (!root.trim()) throw new Error('Explicit source review workspace required.');
+  const workspace = resolve(root);
+  assertSourceMigrationComplete(workspace);
+  return new SourceReviewApplication({
+    sources: new FileSourceStore(join(workspace, 'sources'), workspace),
+    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
+    ledgers: new FileSourceLedgerStore(join(workspace, 'source-ledgers'), 'local', workspace),
+    coverage: new FileSourceCoverageStore(join(workspace, 'source-coverage'), 'local', workspace),
+    ...options, now: () => new Date().toISOString(), assertWritable: () => assertSourceWorkspaceWritable(workspace),
+  });
 }

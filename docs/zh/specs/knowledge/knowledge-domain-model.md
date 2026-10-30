@@ -196,6 +196,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
 | 关联与生成日志 | 当前多目录关联采用 association history Schema 2；Source3 生成采用 journal Schema 3、knowledge-body-first/v3，明确多来源输入并逐阶段确认。早先多目录迁移更换关联 profile／wire identity，保持当时正文 profile；它将旧 v1 投影显式转换为单元素 catalogRefs 的新待审投影，保留旧原件、回执及未知派发身份，不调用模型或恢复派发旧请求。迁移旧日志保持 unsupported，旧自动授权／调度只归档。后续正文输出 v2／关联输出 v3 升级在相同存储下同时更换两阶段 profile；旧 profile 的 active 运行须用匹配旧构建恢复，已准备的固定发布意图可精确重放。 |
+| 来源盘点与覆盖 | 已批准的来源优先扩展新增独立[来源清单／覆盖历史](knowledge-source-review.md)，均为 Schema 1；基础层分开保存原生分析与可信实际操作者决定。默认生成暂保持 v3，待 workflow4、claim 时决定复核、旧自动许可拒绝及独立副本迁移一并接通后切换；保留既有来源／正文／复核身份与历史测量。 |
 | 操作者上下文 | 复用 human／agent 数据形状；公共 CLI／服务的可信上下文输入与缺失时拒绝行为需明确发布影响。旧 actor 和回执不回写；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 

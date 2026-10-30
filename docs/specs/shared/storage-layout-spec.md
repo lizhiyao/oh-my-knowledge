@@ -113,6 +113,8 @@ The workspace is explicitly selected through settings or `--workspace`, separate
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3: immutable canonical body revisions, inline evidence, `bodyDigest`, maintenance and receipts |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2: exact body/catalog refs, segment/entity links, optional typed relations, pending projections and independent review ledger |
 | `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1: exact-body content review, per-segment association coverage, task use feedback and independent receipts; [contract](../knowledge/knowledge-reviews.md) |
+| `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1: source inventory analyses and native-original references; [contract](../knowledge/knowledge-source-review.md) |
+| `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1: exact-ledger/body coverage analyses, actual decisions, revocations and receipts; [contract](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2: window entities, mentions and immutable revisions |
 | `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 3, workflow `knowledge-body-first/v3`: source/request/profile/wire/producer identities, native references and fixed publication intents |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | Immutable complete native body or association outcome, separately bound to its request and digest |
@@ -120,6 +122,8 @@ The workspace is explicitly selected through settings or `--workspace`, separate
 | `entity-links/<review-id>.json` | Existing `entity-link-invocation-history` Schema 1, independent cross-window suggestion/decision/application journal |
 
 Sources, tags and carrier versions keep their own contracts. An entity catalog or projection is never a prerequisite for reading a stored body. A projection binds `{knowledgeId, revisionId, bodyDigest}`; changing/rebuilding/reviewing it does not revise body or inherit its retain decision. Damaged/stale/rejected projections are explicit.
+
+Source ledger/coverage records are an independent foundation. They do not yet change default workflow3, journal3 or Source3; coordinated workflow4 integration and independent-copy migration must precede any default switch.
 
 Prepare records the complete request without invoking a model. Each dispatch confirms its exact request digest. Generate archives the body original and persists admitted bodies pending before preparing a separately confirmed association. Each native phase is claimed before dispatch and archived before admission; host composition is not a native original. `resume` only attaches original evidence and replays exact prepared writes/receipts. A claimed phase with no original remains unknown and cannot be automatically resent. A never-claimed association can be continued explicitly; completed identical run replay makes zero calls. A completed workflow does not prove successful associations, source fidelity or truth.
 
