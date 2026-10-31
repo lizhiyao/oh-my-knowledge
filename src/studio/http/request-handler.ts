@@ -22,6 +22,7 @@ import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { createArtifactAuthoringRoutes } from './routes/artifact-authoring.js';
 import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createKnowledgeReviewRoutes } from './routes/knowledge-reviews.js';
+import { createKnowledgeRelationRoutes } from './routes/knowledge-relations.js';
 import { createKnowledgeStudyRoutes } from './routes/knowledge-study.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
@@ -60,6 +61,7 @@ export function createStudioRequestHandler({
   const actualReviewActor = knowledgeReviewActor ?? { actorKind: 'human' as const, actorId: 'local-user' };
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation, trustedSourceScope, actualReviewActor);
   const reviewRoutes = createKnowledgeReviewRoutes(actualReviewActor);
+  const relationRoutes = createKnowledgeRelationRoutes(actualReviewActor);
   const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
@@ -146,6 +148,7 @@ export function createStudioRequestHandler({
         if (await settingsRoutes(routeContext)) return;
         if (await candidateRoutes(routeContext)) return;
         if (await reviewRoutes(routeContext)) return;
+        if (await relationRoutes(routeContext)) return;
         if (await entityLinkRoutes(routeContext)) return;
         if (await artifactRoutes(routeContext)) return;
         if (await measurements.handle(routeContext)) return;

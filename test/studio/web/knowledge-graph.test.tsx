@@ -47,7 +47,7 @@ function fixture() {
     derivedCatalogs: [{ status: 'available', analysisId: analysis.history.analysisId, entityRevisionId: entityRevision.revisionId, currentHeadRevisionId: entityRevision.revisionId,
       snapshotId: source.snapshotId, sourceVersion: source.sourceVersion, entities: [entity], mentions }],
     sources: [{ status: 'available', snapshot }] };
-  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 2, scope: { knowledgeIds: [revision.knowledgeId], includeHistory: false },
+  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 3, scope: { knowledgeIds: [revision.knowledgeId], includeHistory: false },
     coverage: { status: 'available', gaps: [] }, nodes: [
       { nodeKind: 'knowledge', nodeId: 'knowledge-current', bodyRef, current: true, title: revision.title, choice: 'retain', reviewStatus: 'pending', revisedAt: at,
         revisionReason: '首次保存', segments: revision.content.segments, association: { status: 'available', reviewStatus: 'pending', revisionId: association.revisionId, bodyRef, issues: [] } },
@@ -118,6 +118,66 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('knowledge graph browsing and evidence', () => {
+  it('presents cross-knowledge opinions with exact selectors and keeps derivation authorship separate', () => {
+    const data = fixture(), first = data.graph.nodes.find(node => node.nodeKind === 'knowledge')!;
+    const second = { ...first, nodeId: 'knowledge-second', bodyRef: { ...first.bodyRef, knowledgeId: uuid(70), revisionId: uuid(71) }, title: '另一篇限定知识' };
+    data.graph.nodes.push(second); data.graph.scope.knowledgeIds!.push(second.bodyRef.knowledgeId);
+    const actor = { actorKind: 'human' as const, actorId: 'proposal-author' }, eventId = uuid(73), relationId = uuid(74);
+    const revision = { eventKind: 'relation_proposed' as const, eventId, parentEventId: null, actor, at, parentRelationRevisionId: null,
+      relationType: 'supplements' as const, from: { bodyRef: first.bodyRef }, to: { bodyRef: second.bodyRef }, question: '适用限制是否互补？', conditions: ['固定来源范围'],
+      comparisonScope: { status: 'unknown' as const, subject: 'Alpha', modality: '来源说法', time: '未知时间', version: '未知版本', reason: '尚未确认同版本' },
+      basis: 'inference' as const, reason: '<script>补充意见仍待核对</script>', limitations: ['不是事实裁决'], evidence: [{ ...data.detail.revision.content.segments[0].evidence[0],
+        side: 'from' as const, bodySelection: { segmentId: 's1', start: 0, end: first.segments[0].text.length, quote: first.segments[0].text } }] };
+    const relation = { relationId, storageStatus: 'available' as const, generation: 1, headEventId: eventId, revision, isCurrentRevision: true, activeReviews: [], withdrawn: false,
+      opinionStatus: 'pending' as const, bodyStatus: 'stale' as const, sourceStatus: 'available' as const, endpoints: { from: { ...revision.from, status: 'stale' as const }, to: { ...revision.to, status: 'current' as const } },
+      sources: [], issues: [], permissions: { canReview: false, canWithdraw: false, canAccept: false, supersedableReviewEventIds: [] }, hiddenEvidenceCount: 0 };
+    data.graph.edges.push({ edgeKind: 'knowledge_relation', edgeId: 'knowledge-opinion', from: first.nodeId, to: second.nodeId, current: false, relation, endpointVisibility: { from: true, to: true } });
+    const onLocate = vi.fn(), onKnowledge = vi.fn();
+    const view = render(<KnowledgeGraphInspection graph={data.graph} selectedId="knowledge-opinion" detail={data.detail} workspace="/workspace" loading={false} lang="zh" onLocate={onLocate} onKnowledge={onKnowledge} onEntity={vi.fn()} onMapping={vi.fn()}/>, { wrapper });
+    expect(screen.getByText(/待核对 · 精确版本上的有条件意见/)).toBeTruthy();
+    expect(screen.getByText(/未知，尚未确认可比 · 尚未确认同版本/)).toBeTruthy();
+    expect(screen.getByText('关系依据：推断意见')).toBeTruthy();
+    expect(view.container.querySelector('script')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: '核对完整正文与关系' })[1]);
+    expect(onKnowledge).toHaveBeenCalledWith(second.bodyRef);
+    expect(onLocate).toHaveBeenCalledWith({ tab: 'related', relationId, relationRevisionId: eventId });
+    const opinion = data.graph.edges.find(edge => edge.edgeKind === 'knowledge_relation')!;
+    opinion.relation.revision.basis = 'source_assertion';
+    view.rerender(<KnowledgeGraphInspection graph={data.graph} selectedId="knowledge-opinion" detail={data.detail} workspace="/workspace" loading={false} lang="en" onLocate={onLocate} onKnowledge={onKnowledge} onEntity={vi.fn()} onMapping={vi.fn()}/>);
+    expect(screen.getByText('Relation basis: Asserted by a source')).toBeTruthy();
+    opinion.relation.hiddenEvidenceCount = revision.evidence.length;
+    opinion.relation.revision = { ...opinion.relation.revision, evidence: [] };
+    opinion.endpointVisibility.to = false;
+    view.rerender(<KnowledgeGraphInspection graph={data.graph} selectedId="knowledge-opinion" detail={data.detail} workspace="/workspace" loading={false} lang="zh" onLocate={onLocate} onKnowledge={onKnowledge} onEntity={vi.fn()} onMapping={vi.fn()}/>);
+    expect(screen.getByText(/依据未展开，请显式选择两端精确正文或展开历史/)).toBeTruthy();
+    expect(screen.queryByText(revision.evidence[0].bodySelection.quote)).toBeNull();
+    const derivation = { edgeKind: 'knowledge_derivation' as const, edgeId: 'derivation', from: first.nodeId, to: second.nodeId, current: true, relation: 'derived_from' as const,
+      source: { knowledgeId: second.bodyRef.knowledgeId, revisionId: second.bodyRef.revisionId }, sourceBodyRef: second.bodyRef, targetStatus: 'visible' as const, reason: '原修订记录的演变原因',
+      recordedIn: { bodyRef: first.bodyRef, revisedBy: actor, revisedAt: at } };
+    data.graph.edges.push(derivation);
+    view.rerender(<KnowledgeGraphInspection graph={data.graph} selectedId="derivation" detail={data.detail} workspace="/workspace" loading={false} lang="zh" onLocate={onLocate} onKnowledge={onKnowledge} onEntity={vi.fn()} onMapping={vi.fn()}/>);
+    expect(screen.getByText(/此修订中的来源演变记录：human \/ proposal-author/)).toBeTruthy();
+    expect(screen.queryByText(/提出者：human \/ proposal-author/)).toBeNull();
+  });
+
+  it('lists an unselected derivation endpoint without manufacturing a node or assuming the missing source is absent', () => {
+    const data = fixture(), owner = data.graph.nodes.find(node => node.nodeKind === 'knowledge')!;
+    const edge = { edgeKind: 'knowledge_derivation' as const, edgeId: 'outside-derivation', from: owner.nodeId, to: `knowledge_reference:${uuid(91)}`, current: true,
+      relation: 'split_from' as const, source: { knowledgeId: uuid(91), revisionId: uuid(92) }, targetStatus: 'out_of_scope' as const, reason: '仅保留显式演变出处',
+      recordedIn: { bodyRef: owner.bodyRef, revisedBy: { actorKind: 'human' as const, actorId: 'recorder' }, revisedAt: at } };
+    data.graph.edges.push(edge);
+    const onSelect = vi.fn();
+    const view = render(<KnowledgeGraphView graph={data.graph} lang="zh" activeKnowledgeId={owner.bodyRef.knowledgeId} scope="current" includeHistory={false} onScope={vi.fn()} onHistory={vi.fn()} onSelect={onSelect}/>, { wrapper });
+    expect(view.container.querySelector('.knowledge-network-edge.knowledge_derivation')).toBeNull();
+    expect(view.container.querySelectorAll('.knowledge-network-node.knowledge')).toHaveLength(1);
+    fireEvent.click(screen.getByText('未绘制的知识关系与演变（端点未展开）'));
+    fireEvent.click(screen.getByRole('button', { name: `拆分自 · ${uuid(91)} / ${uuid(92)}` }));
+    expect(onSelect).toHaveBeenCalledWith(edge.edgeId, { knowledgeId: owner.bodyRef.knowledgeId, revisionId: owner.bodyRef.revisionId });
+    view.rerender(<KnowledgeGraphInspection graph={data.graph} selectedId={edge.edgeId} workspace="/workspace" loading={false} lang="zh" onLocate={vi.fn()} onKnowledge={vi.fn()} onEntity={vi.fn()} onMapping={vi.fn()}/>);
+    expect(screen.getByText('来源不在当前显式选择范围，未自动加入节点。')).toBeTruthy();
+    expect(screen.getByText(`${uuid(91)} / ${uuid(92)}`)).toBeTruthy();
+  });
+
   it('reads the exact affected historical body in the same workspace after clearing filters and the evidence tab', async () => {
     const data = fixture(), workspace = '/source update navigation';
     data.detail.revision.title = 'Visible source knowledge'; data.catalog.rows[0].title = data.detail.revision.title;

@@ -12,9 +12,10 @@ import type { SourceRef } from '../../../../knowledge/sources';
 import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
 import { SourceLocator, SourceOriginalContext } from './source-locator';
 import { SourceUpdates } from './source-updates';
+import { RelatedKnowledge } from './related-knowledge';
 
 export type KnowledgeReaderSelection = {
-  tab?: 'body' | 'evidence' | 'associations' | 'history'; segmentId?: string; mentionId?: string; relationId?: string;
+  tab?: 'body' | 'evidence' | 'associations' | 'related' | 'history'; segmentId?: string; mentionId?: string; relationId?: string; relationRevisionId?: string;
   catalogRef?: { analysisId: string; entityRevisionId: string };
   evidence?: { snapshotId: string; sourceVersion: string; evidenceRef: string; start: number; end: number };
 };
@@ -130,7 +131,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
   const referencesUnavailable = (derived.revision?.catalogRefs ?? []).some(ref => { const catalog = catalogFor(ref); return catalog?.status !== 'available'
     || !detail.sources.some(source => source.status === 'available' && source.snapshot.snapshotId === catalog.snapshotId && source.snapshot.sourceVersion === catalog.sourceVersion); });
   const tabs = [{ key: 'body', label: t('正文', 'Content') }, { key: 'evidence', label: t('依据', 'Evidence') },
-    { key: 'associations', label: t('实体与关联', 'Entities and associations') }, { key: 'history', label: t('修订历史', 'Revision history') }];
+    { key: 'associations', label: t('实体与关联', 'Entities and associations') }, { key: 'related', label: t('相关知识', 'Related knowledge') }, { key: 'history', label: t('修订历史', 'Revision history') }];
   return <article className="knowledge-reader">
     <header className="knowledge-reader-heading">
       <CandidateDecisionHeader title={detail.revision.title} maintenance={detail.maintenance} lang={lang}/>
@@ -141,12 +142,14 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
       </div>
       {header}
       <nav className="knowledge-reader-tabs" aria-label={t('知识阅读视图', 'Knowledge reading view')}>
-        {tabs.map(item => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => choose({ ...active, tab: item.key as KnowledgeReaderSelection['tab'] })}>{item.label}</button>)}
+        {tabs.map(item => <button type="button" key={item.key} aria-pressed={tab === item.key} onClick={() => choose(item.key === 'related' && tab !== 'related' ? { tab: 'related' } : { ...active, tab: item.key as KnowledgeReaderSelection['tab'] })}>{item.label}</button>)}
       </nav>
     </header>
-    <div className="knowledge-reader-scroll" ref={scroll} key={`${detail.revision.knowledgeId}/${detail.revision.revisionId}/${tab}`}>
+    <div className="knowledge-reader-scroll" ref={scroll} key={`${detail.revision.knowledgeId}/${detail.revision.revisionId}`}>
       <div className="knowledge-reading">
         <KnowledgeReviewSummary detail={detail} workspace={workspace} lang={lang} onOpen={onReviewContent}/>
+        {workspace && <div hidden={tab !== 'related'}><RelatedKnowledge key={`${workspace}/${detail.revision.knowledgeId}/${detail.revision.revisionId}/${detail.revision.bodyDigest}`} detail={detail} workspace={workspace} lang={lang} active={tab === 'related'} selectionId={tab === 'related' ? active.relationId : undefined} selectionRevisionId={tab === 'related' ? active.relationRevisionId : undefined}/></div>}
+        {tab === 'related' && !workspace && <Alert type="info" title={t('请先选择知识工作区，再核对两篇知识的关系。', 'Select a knowledge workspace to inspect relationships between two knowledge items.')}/>}
         {tab === 'body' && <>
           {detail.sources.some(entry => entry.status === 'unavailable') && <Alert type="warning" title={t('来源不可用；已保存正文可读，依据无法完整核对。', 'Source unavailable. Saved content remains readable; evidence cannot be fully reviewed.')} action={<Button disabled={busy} onClick={onRetry}>{t('重试读取', 'Retry reading')}</Button>}/>}
           {segments.map(segment => <section key={segment.segmentId} className="knowledge-statement" data-segment-id={segment.segmentId} data-focused={active.segmentId === segment.segmentId}>

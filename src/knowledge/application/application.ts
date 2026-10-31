@@ -10,6 +10,7 @@ import { validateKnowledgeDraft } from '../validation.js';
 import type { KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
+import type { KnowledgeRelationStore } from '../relations.js';
 import type { SourceStore } from '../source-store.js';
 import { SourceRefSchema, type SourceRef, type SourceSelection, type ResolvedSourceSelection } from '../sources.js';
 import type { SourceCaptureService, SourcePreviewOptions } from './source-capture.js';
@@ -29,6 +30,7 @@ export interface KnowledgeApplicationPorts {
   sources: SourceStore; sourceCapture?: SourceCaptureService; sourceUpdates?: Pick<SourceUpdatesService, 'check'>;
   knowledge: KnowledgeStore; journals: GenerationJournalStore; tags: KnowledgeTagStore;
   entities: EntityAnalysisStore; associations: KnowledgeAssociationStore;
+  relations?: KnowledgeRelationStore;
   ledgers: SourceLedgerStore; coverage: SourceCoverageStore;
   reviewActor?: KnowledgeActor;
   id(): string; now(): string; hash(value: unknown): string; actor: KnowledgeActor;

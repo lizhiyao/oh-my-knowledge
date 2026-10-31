@@ -24,6 +24,8 @@ function kindLabel(node: Node, lang: Language) {
 }
 function edgeLabel(edge: Edge, lang: Language) {
   if (edge.edgeKind === 'typed_relation') return edge.relation;
+  if (edge.edgeKind === 'knowledge_relation') return edge.relation.revision.relationType === 'supplements' ? lang === 'zh' ? '知识补充意见' : 'Knowledge supplement opinion' : lang === 'zh' ? '知识冲突意见' : 'Knowledge conflict opinion';
+  if (edge.edgeKind === 'knowledge_derivation') return ({ derived_from: ['派生自', 'Derived from'], split_from: ['拆分自', 'Split from'], merged_from: ['合并自', 'Merged from'], replaces: ['替代', 'Replaces'] })[edge.relation][lang === 'zh' ? 0 : 1];
   const labels: Record<string, [string, string]> = {
     source_evidence: ['正文依据', 'Content evidence'], segment_entity: ['段落涉及对象', 'Segment concerns entity'],
     entity_mention: ['原文提及', 'Source mention'], component: ['组件关联', 'Component link'], collection: ['集合成员', 'Collection member'],
@@ -38,6 +40,11 @@ function associationLabel(status: string, lang: Language) {
 }
 function edgeStateLabel(edge: Edge, lang: Language) {
   if (edge.edgeKind === 'revision_parent') return lang === 'zh' ? '仅表示修订前后沿袭，不是知识关系或身份确认。' : 'Revision lineage only; not a knowledge relationship or identity confirmation.';
+  if (edge.edgeKind === 'knowledge_derivation') return lang === 'zh' ? '此修订中的来源演变记录；不表示补充／冲突意见或已核对真值。' : 'A derivation recorded in this revision; not a supplement/conflict opinion or a truth verification.';
+  if (edge.edgeKind === 'knowledge_relation') {
+    const labels = { pending: ['待核对', 'Pending'], accepted: ['有限接受', 'Accepted with limits'], rejected: ['已拒绝', 'Rejected'], disputed: ['意见有争议', 'Disputed'], withdrawn: ['已撤回', 'Withdrawn'] };
+    return `${labels[edge.relation.opinionStatus][lang === 'zh' ? 0 : 1]} · ${lang === 'zh' ? '精确版本上的有条件意见，不自动裁决事实。' : 'A conditional opinion on exact revisions; it does not arbitrate truth.'}`;
+  }
   const bodyEdge = edge.edgeKind === 'segment_entity' || edge.edgeKind === 'typed_relation' || edge.edgeKind === 'source_evidence';
   if (bodyEdge) return edge.current ? (lang === 'zh' ? '当前正文的关联' : 'Link for the current content')
     : (lang === 'zh' ? '历史或已替换的关联；不会自动应用到当前正文' : 'Historical or replaced link; not automatically applied to current content');
@@ -48,7 +55,9 @@ function gapLabel(gap: KnowledgeGraph['coverage']['gaps'][number], lang: Languag
   if (lang !== 'zh') return gap.detail;
   const labels: Record<string, string> = { knowledge_list_unavailable: '知识目录不可读，图谱覆盖不完整。', knowledge_unavailable: '部分知识修订不可读。', association_unavailable: '部分关联历史不可读。',
     association_failed: '部分知识的关联未完成。', association_stale: '部分关联对应旧正文，当前正文保持可读。', association_absent: '部分知识尚无关联。', association_rejected: '部分关联已被拒绝，不作为当前关联。',
-    catalog_unavailable: '绑定的精确实体目录不可读。', catalog_outdated: '绑定的实体目录已有新修订，需明确核对与应用。', entity_unavailable: '绑定修订中的部分实体不可读。', source_unavailable: '部分精确来源快照不可用。', evidence_mismatch: '部分引文与来源位置不匹配，不能当作已核对。' };
+    catalog_unavailable: '绑定的精确实体目录不可读。', catalog_outdated: '绑定的实体目录已有新修订，需明确核对与应用。', entity_unavailable: '绑定修订中的部分实体不可读。', source_unavailable: '部分精确来源快照不可用。', evidence_mismatch: '部分引文与来源位置不匹配，不能当作已核对。',
+    derivation_unavailable: '演变记录指向的精确修订不可读。', derivation_out_of_scope: '演变来源不在当前显式选择范围；没有自动加入图谱。', derivation_history_hidden: '演变来源是未展开的历史修订。',
+    relation_inventory_unavailable: '知识关系目录不可完整读取。', relation_unavailable: '部分关系记录不可读。', relation_endpoint_unavailable: '知识关系的部分精确端点不可读。', relation_out_of_scope: '知识关系的另一端不在当前显式选择范围；没有自动加入图谱。', relation_stale: '部分知识关系绑定旧正文，不自动套用到新版本。', relation_source_unavailable: '知识关系的部分精确依据来源不可用。' };
   return labels[gap.gapKind] ?? gap.detail;
 }
 function knowledgeOwner(graph: KnowledgeGraph, selected: Node | Edge | undefined, preferred?: string): KnowledgeNode | undefined {
@@ -87,7 +96,10 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
   }
   const nodes = graph.nodes.filter(node => displayed.has(node.nodeId));
   const selectedNodeId = nodes.find(node => node.nodeId === selectedId)?.nodeId;
-  const edges = graph.edges.filter(edge => displayed.has(edge.from) && displayed.has(edge.to));
+  const visibleNodeIds = new Set(nodes.map(node => node.nodeId));
+  const edges = graph.edges.filter(edge => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
+  const unplotted = graph.edges.filter(edge => (edge.edgeKind === 'knowledge_relation' || edge.edgeKind === 'knowledge_derivation')
+    && (visibleNodeIds.has(edge.from) || visibleNodeIds.has(edge.to)) && (!visibleNodeIds.has(edge.from) || !visibleNodeIds.has(edge.to)));
   const groups = (['source', 'knowledge', 'entity'] as const).map(kind => nodes.filter(node => node.nodeKind === kind));
   const height = Math.max(...groups.map(group => group.length), 1) * 76 + 70;
   const positions = new Map(groups.flatMap((group, column) => group.map((node, index) => [node.nodeId,
@@ -143,7 +155,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
           {edges.map(edge => {
             const from = positions.get(edge.from), to = positions.get(edge.to); if (!from || !to) return null;
             const label = edgeLabel(edge, lang); const selected = selectedId === edge.edgeId;
-            const pending = 'reviewStatus' in edge && edge.reviewStatus !== 'accepted';
+            const pending = 'reviewStatus' in edge && edge.reviewStatus !== 'accepted' || edge.edgeKind === 'knowledge_relation' && (edge.relation.opinionStatus !== 'accepted' || edge.relation.bodyStatus !== 'current' || edge.relation.sourceStatus !== 'available') || edge.edgeKind === 'knowledge_derivation';
             const path = from.x === to.x ? `M${from.x},${from.y} Q${from.x + 105},${(from.y + to.y) / 2} ${to.x},${to.y}`
               : `M${from.x},${from.y} C${(from.x + to.x) / 2},${from.y} ${(from.x + to.x) / 2},${to.y} ${to.x},${to.y}`;
             return <g key={edge.edgeId} className={`knowledge-network-edge ${edge.edgeKind}${selected ? ' selected' : ''}${!edge.current || pending ? ' provisional' : ''}`} role="button" tabIndex={0}
@@ -179,6 +191,7 @@ export function KnowledgeGraphView({ graph, lang, activeKnowledgeId, activeRevis
         {edges.map(edge => <option value={edge.edgeId} key={edge.edgeId}>{edgeLabel(edge, lang)} · {nodeLabel(nodes.find(node => node.nodeId === edge.from)!, lang)} → {nodeLabel(nodes.find(node => node.nodeId === edge.to)!, lang)}{'segmentId' in edge ? ` · ${edge.segmentId}` : ''}{!edge.current ? ` · ${t('历史', 'Historical')}` : ''}</option>)}
       </select></label>
     </div>
+    {!!unplotted.length && <details className="knowledge-network-unplotted"><summary>{t('未绘制的知识关系与演变（端点未展开）', 'Unplotted knowledge relations and derivations (endpoint not expanded)')}</summary>{unplotted.map(edge => <p key={edge.edgeId}><Button type="link" size="small" onClick={() => choose(edge.edgeId)}>{edgeLabel(edge, lang)} · {edge.edgeKind === 'knowledge_derivation' ? `${edge.source.knowledgeId} / ${edge.source.revisionId}` : edge.edgeKind === 'knowledge_relation' ? `${edge.relation.revision.from.bodyRef.knowledgeId} → ${edge.relation.revision.to.bodyRef.knowledgeId}` : edge.edgeId}</Button></p>)}</details>}
   </section>;
 }
 
@@ -231,7 +244,27 @@ export function KnowledgeGraphInspection({ graph, selectedId, detail, loading, w
         {entity.uncertainties.map((value, index) => <p key={index}>{value}</p>)}<details><summary>{t('精确实体身份', 'Exact entity identity')}</summary><code>{entity.analysisId} / {entity.entityRevisionId} / {entity.entityId}</code></details></>}
       {source && <>{source.source && <SourceLocator source={source.source} sourceRef={source} lang={lang} workspace={workspace}/>}{source.limitations.map((value, index) => <p key={index}>{value}</p>)}<p className="candidate-help">{source.status === 'unavailable' ? t('来源不可用，保存的引文仍可读。', 'Source unavailable; saved quotations remain readable.') : t('以下依据属于当前打开的精确知识修订。', 'The evidence below belongs to the exact knowledge revision currently open.')}</p><details><summary>{t('精确来源身份', 'Exact source identity')}</summary><code>{source.snapshotId} / {source.sourceVersion}</code></details></>}
       {edge && <><p className="candidate-help">{edgeStateLabel(edge, lang)}{'reviewStatus' in edge && ` · ${edge.reviewStatus === 'accepted' ? t('关联已接受', 'Associations accepted') : edge.reviewStatus === 'rejected' ? t('关联已拒绝', 'Associations rejected') : t('关联待核对', 'Associations pending review')}`}</p>
-        <p>{nodeLabel(graph.nodes.find(node => node.nodeId === edge.from)!, lang)} → {nodeLabel(graph.nodes.find(node => node.nodeId === edge.to)!, lang)}</p>
+        <p>{graph.nodes.find(node => node.nodeId === edge.from) ? nodeLabel(graph.nodes.find(node => node.nodeId === edge.from)!, lang) : edge.from} → {graph.nodes.find(node => node.nodeId === edge.to) ? nodeLabel(graph.nodes.find(node => node.nodeId === edge.to)!, lang) : edge.to}</p>
+        {edge.edgeKind === 'knowledge_derivation' && <><p>{edge.reason}</p><p className="candidate-help">{t('此修订中的来源演变记录：', 'Derivation recorded in this revision: ')}{edge.recordedIn.revisedBy.actorKind} / {edge.recordedIn.revisedBy.actorId} · {edge.recordedIn.revisedAt}</p>
+          <p><code>{edge.source.knowledgeId} / {edge.source.revisionId}</code></p>{edge.sourceBodyRef && <p><code>{edge.sourceBodyRef.bodyDigest}</code></p>}
+          {edge.targetStatus !== 'visible' && <p className="candidate-help">{edge.targetStatus === 'out_of_scope' ? t('来源不在当前显式选择范围，未自动加入节点。', 'The source is outside the explicit selection; no node was added.') : edge.targetStatus === 'history_hidden' ? t('来源是历史修订；可显式开启历史查看。', 'The source is a historical revision. Enable history explicitly to view it.') : t('来源修订不可读，仅保留原记录。', 'The source revision is unavailable; its original reference is retained.')}</p>}</>}
+        {edge.edgeKind === 'knowledge_relation' && <div className="knowledge-graph-relation"><p><strong>{edge.relation.revision.question}</strong></p><p>{edge.relation.revision.reason}</p>
+          <p>{t('关系依据：', 'Relation basis: ')}{edge.relation.revision.basis === 'source_assertion' ? t('来源明确提出', 'Asserted by a source') : t('推断意见', 'Inferred relation')}</p>
+          <p className="candidate-help">{t('这是当前图选择的有限关系视图；完整历史请打开关系详情。', 'This is a limited relation view for the current graph selection. Open relation details for complete history.')}</p>
+          <p className="candidate-help">{t('正文绑定：', 'Content binding: ')}{edge.relation.bodyStatus} · {t('来源：', 'Sources: ')}{edge.relation.sourceStatus}</p>
+          <p>{t('适用条件：', 'Conditions: ')}{edge.relation.revision.conditions.join('；')}</p>
+          <p>{t('比较条件：', 'Comparison scope: ')}{edge.relation.revision.comparisonScope.status === 'unknown' ? t('未知，尚未确认可比', 'Unknown; comparability not established') : edge.relation.revision.comparisonScope.status === 'same' ? t('可比', 'Same') : t('不同', 'Different')} · {edge.relation.revision.comparisonScope.reason}</p>
+          <p>{[edge.relation.revision.comparisonScope.subject, edge.relation.revision.comparisonScope.modality, edge.relation.revision.comparisonScope.time, edge.relation.revision.comparisonScope.version].join(' · ')}</p>
+          {edge.relation.revision.limitations.map((value, index) => <p key={index}>{value}</p>)}
+          <p className="candidate-help">{t('提出者：', 'Proposed by: ')}{edge.relation.revision.actor.actorKind} / {edge.relation.revision.actor.actorId} · {edge.relation.revision.at}</p>
+          {(['from', 'to'] as const).map(side => { const endpoint = edge.relation.endpoints[side], visible = edge.endpointVisibility[side]; return <section key={side} className="knowledge-network-citation">
+            <p>{side === 'from' ? t('从端', 'From') : t('到端', 'To')} · {endpoint.status}</p><p><code>{endpoint.bodyRef.knowledgeId} / {endpoint.bodyRef.revisionId}</code></p><p><code>{endpoint.bodyRef.bodyDigest}</code></p>{endpoint.segmentIds && <p>{endpoint.segmentIds.join(' · ')}</p>}
+            {visible ? <Button type="link" size="small" onClick={() => { onKnowledge(endpoint.bodyRef); onLocate({ tab: 'related', relationId: edge.relation.relationId, relationRevisionId: edge.relation.revision.eventId }); }}>{t('核对完整正文与关系', 'Inspect complete content and relation')}</Button> : <p className="candidate-help">{t('端点未在当前图谱展开；不自动加入范围。', 'This endpoint is not expanded in the graph; scope is not widened automatically.')}</p>}
+          </section>; })}
+          {edge.relation.hiddenEvidenceCount > 0 && <p role="status" className="candidate-help">{t(`有 ${edge.relation.hiddenEvidenceCount} 条依据未展开，请显式选择两端精确正文或展开历史。`, `${edge.relation.hiddenEvidenceCount} evidence items are not expanded. Explicitly select both exact bodies or expand history to inspect them.`)}</p>}
+          {edge.relation.revision.evidence.map((evidence, index) => <details key={index}><summary>{evidence.side === 'from' ? t('从端依据', 'From evidence') : t('到端依据', 'To evidence')}</summary><p>{evidence.bodySelection.quote}</p><blockquote>{evidence.selection.quote}</blockquote><p className="candidate-help">{evidence.basis} · {evidence.selection.evidenceRef} · {evidence.selection.start}–{evidence.selection.end}</p><p><code>{evidence.source.snapshotId} / {evidence.source.sourceVersion}</code></p>{evidence.interpretation && <p>{evidence.interpretation}</p>}</details>)}
+          {edge.relation.activeReviews.map(review => <section className="knowledge-network-citation" key={review.eventId}><p>{review.choice === 'accept' ? t('有限接受意见', 'Acceptance opinion') : t('拒绝意见', 'Rejection opinion')} · {review.actor.actorKind} / {review.actor.actorId} · {review.at}</p><p>{review.reason}</p>{review.limitations.map((value, index) => <p key={index}>{value}</p>)}</section>)}
+        </div>}
         {'catalogCurrent' in edge && !edge.catalogCurrent && <p className="candidate-help">{t('绑定的实体目录已有新修订；此处仍保留原精确绑定，需明确核对与应用。', 'The bound entity catalog has a newer revision. The exact original binding is retained until explicitly reviewed and applied.')}</p>}
         {edge.edgeKind === 'typed_relation' && <p>{edge.modality} / {edge.polarity} · {t('已有明确派生关系', 'Explicit derived relation')}</p>}
         {(edge.edgeKind === 'component' || edge.edgeKind === 'collection') && <><p>{edge.rationale}</p>{edge.edgeKind === 'collection' && <p className="candidate-help">{edge.completeness === 'complete' ? t('来源声明成员完整', 'Source declares complete membership') : edge.completeness === 'partial' ? t('仅部分成员已知', 'Only partial membership is known') : t('成员完整性未知', 'Membership completeness is unknown')} · {t('集合知识不会自动归属每个成员。', 'Collection knowledge is not automatically attributed to every member.')}</p>}</>}

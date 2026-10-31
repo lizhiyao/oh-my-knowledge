@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { EntityMention, EvidenceSelection, KnowledgeBodyEvidence, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
+import type { EntityMention, EvidenceSelection, KnowledgeActor, KnowledgeBodyEvidence, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { AnalyzedEntity, EntityAnalysisEnvelope, EntityAnalysisRevisionSchema } from '../entities/contracts.js';
 import type { SourceStore } from '../source-store.js';
 import type { TraceOrigin, SourceResolution } from '../sources.js';
@@ -8,7 +8,9 @@ import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type Knowle
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { canonicalJson, type KnowledgeEnvelope } from '../store.js';
 import { validateEvidenceSelection } from '../validation.js';
+import type { KnowledgeRelationProjection, KnowledgeRelationsApplication } from './relations.js';
 
+export const KNOWLEDGE_GRAPH_SCHEMA_VERSION = 3;
 export const KnowledgeGraphRequestSchema = z.strictObject({
   knowledgeIds: z.array(z.string().min(1).max(256)).max(1000).optional(),
   includeHistory: z.boolean().default(false),
@@ -40,6 +42,19 @@ export interface KnowledgeGraphSourceNode {
 }
 export type KnowledgeGraphNode = KnowledgeGraphKnowledgeNode | KnowledgeGraphEntityNode | KnowledgeGraphSourceNode;
 interface GraphEdge { edgeId: string; from: string; to: string; current: boolean }
+export interface KnowledgeGraphDerivationEdge extends GraphEdge {
+  edgeKind: 'knowledge_derivation'; relation: KnowledgeRevision['derivations'][number]['relation'];
+  source: KnowledgeRevision['derivations'][number]['source']; sourceBodyRef?: KnowledgeBodyRef; reason: string;
+  targetStatus: 'visible' | 'history_hidden' | 'out_of_scope' | 'unavailable';
+  /** Derivations have no separate author/time; these identify the immutable revision recording them. */
+  recordedIn: { bodyRef: KnowledgeBodyRef; revisedBy: KnowledgeActor; revisedAt: string };
+}
+export interface KnowledgeGraphRelationEdge extends GraphEdge {
+  edgeKind: 'knowledge_relation';
+  /** The relation application owns opinion, body and source status; graph does not reinterpret them. */
+  relation: Omit<KnowledgeRelationProjection, 'history'> & { hiddenEvidenceCount: number };
+  endpointVisibility: { from: boolean; to: boolean };
+}
 export type KnowledgeGraphEdge = GraphEdge & (
   | { edgeKind: 'source_evidence'; segmentId: string; evidence: KnowledgeBodyEvidence; positionStatus: PositionStatus }
   | { edgeKind: 'entity_mention'; mentionId: string; selection: EvidenceSelection; basis: EntityMention['basis']; rationale: string; positionStatus: PositionStatus }
@@ -50,16 +65,23 @@ export type KnowledgeGraphEdge = GraphEdge & (
   | { edgeKind: 'component' | 'collection'; mentionIds: string[]; rationale: string; completeness?: 'complete' | 'partial' | 'unknown' }
   | { edgeKind: 'possible_identity' }
   | { edgeKind: 'revision_parent'; revisionDomain: 'knowledge' | 'entity' }
+  | Omit<KnowledgeGraphDerivationEdge, keyof GraphEdge>
+  | Omit<KnowledgeGraphRelationEdge, keyof GraphEdge>
 );
 type GraphEdgeInput = KnowledgeGraphEdge extends infer Edge ? Edge extends unknown ? Omit<Edge, 'edgeId'> : never : never;
 export interface KnowledgeGraphGap {
   gapKind: 'knowledge_list_unavailable' | 'knowledge_unavailable' | 'association_unavailable' | 'association_failed'
     | 'association_stale' | 'association_absent' | 'association_rejected' | 'catalog_unavailable' | 'catalog_outdated'
-    | 'entity_unavailable' | 'source_unavailable' | 'evidence_mismatch';
+    | 'entity_unavailable' | 'source_unavailable' | 'evidence_mismatch'
+    | 'derivation_unavailable' | 'derivation_out_of_scope' | 'derivation_history_hidden'
+    | 'relation_inventory_unavailable' | 'relation_unavailable' | 'relation_endpoint_unavailable' | 'relation_out_of_scope'
+    | 'relation_stale' | 'relation_source_unavailable';
   knowledgeId?: string; analysisId?: string; snapshotId?: string; sourceVersion?: string; revisionId?: string; detail: string;
+  derivationSource?: KnowledgeRevision['derivations'][number]['source'];
+  relationId?: string; relationRevisionId?: string; relationSide?: 'from' | 'to';
 }
 export interface KnowledgeGraph {
-  projectionKind: 'knowledge-graph'; schemaVersion: 2;
+  projectionKind: 'knowledge-graph'; schemaVersion: typeof KNOWLEDGE_GRAPH_SCHEMA_VERSION;
   scope: { knowledgeIds: string[] | null; includeHistory: boolean };
   coverage: { status: 'available' | 'unavailable'; gaps: KnowledgeGraphGap[] };
   nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[];
@@ -71,6 +93,7 @@ export interface KnowledgeGraphReader {
   associations(id: string): KnowledgeAssociationEnvelope;
   catalog(analysisId: string): EntityAnalysisEnvelope;
   source: SourceStore['read'];
+  relations?: Pick<KnowledgeRelationsApplication, 'inventory' | 'project'>;
 }
 const bodyRef = ({ knowledgeId, revisionId, bodyDigest }: KnowledgeRevision): KnowledgeBodyRef => ({ knowledgeId, revisionId, bodyDigest });
 const nodeId = (domain: string, parts: string[]) => `${domain}:${canonicalJson(parts)}`;
@@ -87,7 +110,7 @@ const reviewFor = (history: KnowledgeAssociationEnvelope, revisionId: string): R
 export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: KnowledgeGraphRequest = {}): KnowledgeGraph {
   const request = KnowledgeGraphRequestSchema.parse(input);
   const selectedIds = request.knowledgeIds ? [...new Set(request.knowledgeIds)] : undefined;
-  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: 2,
+  const graph: KnowledgeGraph = { projectionKind: 'knowledge-graph', schemaVersion: KNOWLEDGE_GRAPH_SCHEMA_VERSION,
     scope: { knowledgeIds: selectedIds ?? null, includeHistory: request.includeHistory },
     coverage: { status: 'available', gaps: [] }, nodes: [], edges: [] };
   const nodes = new Map<string, KnowledgeGraphNode>(), edges = new Map<string, KnowledgeGraphEdge>(), gaps = new Set<string>();
@@ -230,6 +253,9 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
     try { histories.push(reader.knowledge(id)); }
     catch { gap({ gapKind: 'knowledge_unavailable', knowledgeId: id, detail: 'A selected knowledge history could not be read.' }); }
   }
+  // Even an injected reader must not turn an explicit graph selection into a wider inventory.
+  if (selectedIds) histories = histories.filter(history => selectedIds.includes(history.knowledgeId));
+  const historyById = new Map(histories.map(history => [history.knowledgeId, history]));
   for (const history of histories) {
     let associations: KnowledgeAssociationEnvelope | undefined;
     let associationUnreadable = false;
@@ -275,6 +301,80 @@ export function buildKnowledgeGraph(reader: KnowledgeGraphReader, input: Knowled
       const parent = revision.parentRevision && revisions.find(item => item.revisionId === revision.parentRevision!.revisionId);
       if (parent) edge({ edgeKind: 'revision_parent', revisionDomain: 'knowledge', from: knowledgeNodeId(bodyRef(revision)), to: knowledgeNodeId(bodyRef(parent)), current: false },
         [knowledgeNodeId(bodyRef(revision)), knowledgeNodeId(bodyRef(parent))]);
+    }
+  }
+  // Explicit relation opinions keep their own lifecycle; rejected, disputed and withdrawn
+  // opinions remain visible, and a body/head change never silently rebinds their endpoints.
+  if (selectedIds?.length !== 0) {
+    if (!reader.relations) gap({ gapKind: 'relation_inventory_unavailable', detail: 'Relation read capability is unavailable; no absence can be inferred.' });
+    else {
+      try {
+        const selection = selectedIds ? new Set(selectedIds) : undefined;
+        const inventory = reader.relations.inventory(selection);
+        if (inventory.completeness === 'partial' || inventory.unavailable.length) {
+          if (!inventory.unavailable.length) gap({ gapKind: 'relation_inventory_unavailable', detail: 'The relation inventory is incomplete.' });
+          for (const unavailable of inventory.unavailable) gap({ gapKind: 'relation_unavailable',
+            ...(unavailable.relationId ? { relationId: unavailable.relationId } : {}), detail: 'A relation ledger could not be read; healthy graph content remains available.' });
+        }
+        for (const history of inventory.histories) {
+          const proposals = history.events.filter(event => event.eventKind === 'relation_proposed');
+          // Defensive scope check before invoking the shared resolver, even for injected inventories.
+          if (selection && !proposals.some(event => selection.has(event.from.bodyRef.knowledgeId) || selection.has(event.to.bodyRef.knowledgeId))) continue;
+          const revisions = request.includeHistory ? proposals.map(event => event.eventId) : [undefined];
+          for (const relationRevisionId of revisions) {
+            try {
+              const relation = reader.relations.project(history, relationRevisionId, selection);
+              const proposal = relation.revision, from = knowledgeNodeId(proposal.from.bodyRef), to = knowledgeNodeId(proposal.to.bodyRef);
+              const identity = { relationId: relation.relationId, relationRevisionId: proposal.eventId };
+              for (const side of ['from', 'to'] as const) {
+                const endpoint = relation.endpoints[side];
+                if (endpoint.status === 'unavailable' || endpoint.status === 'out_of_scope') gap({
+                  gapKind: endpoint.status === 'out_of_scope' ? 'relation_out_of_scope' : 'relation_endpoint_unavailable', ...identity,
+                  relationSide: side, knowledgeId: endpoint.bodyRef.knowledgeId, revisionId: endpoint.bodyRef.revisionId,
+                  detail: endpoint.status === 'out_of_scope' ? 'The exact relation endpoint is outside the explicit graph selection; it was not read.'
+                    : 'The exact relation endpoint or selected segments could not be read.' });
+              }
+              if (relation.bodyStatus === 'stale') gap({ gapKind: 'relation_stale', ...identity,
+                detail: 'This relation opinion still binds earlier body revisions; it was not rebound to current content.' });
+              if (relation.sources.some(value => value.status === 'unavailable')) gap({ gapKind: 'relation_source_unavailable', ...identity,
+                detail: 'An exact supporting source is unavailable; the stored relation opinion remains readable.' });
+              const endpointVisibility = { from: nodes.has(from) && ['current', 'stale'].includes(relation.endpoints.from.status),
+                to: nodes.has(to) && ['current', 'stale'].includes(relation.endpoints.to.status) };
+              const evidenceVisible = endpointVisibility.from && endpointVisibility.to;
+              // Graph is a selected opinion view, not the complete proposal/history read API.
+              // Stored evidence may quote an excluded body even when no filesystem read was needed.
+              const { history: ledger, ...opinion } = relation; void ledger;
+              edge({ edgeKind: 'knowledge_relation', from, to,
+                current: proposal.eventId === proposals.at(-1)?.eventId && relation.bodyStatus === 'current',
+                relation: { ...opinion, revision: { ...proposal, evidence: evidenceVisible ? proposal.evidence : [] },
+                  hiddenEvidenceCount: evidenceVisible ? 0 : proposal.evidence.length }, endpointVisibility }, [relation.relationId, proposal.eventId]);
+            } catch { gap({ gapKind: 'relation_unavailable', relationId: history.relationId,
+              ...(relationRevisionId ? { relationRevisionId } : {}), detail: 'A relation revision could not be projected; healthy graph content remains available.' }); }
+          }
+        }
+      } catch { gap({ gapKind: 'relation_inventory_unavailable', detail: 'The relation inventory could not be read; no absence can be inferred.' }); }
+    }
+  }
+  // A derivation is stored provenance, not an independently reviewed relation opinion.
+  // Resolve only histories already admitted by the graph selection; never invent a digest.
+  for (const history of histories) {
+    const revisions = request.includeHistory ? history.revisions : history.revisions.filter(item => item.revisionId === history.writeHeadRevisionId);
+    for (const revision of revisions) for (const [index, derivation] of revision.derivations.entries()) {
+      const ref = bodyRef(revision), from = knowledgeNodeId(ref);
+      const inScope = !selectedIds || selectedIds.includes(derivation.source.knowledgeId);
+      const target = inScope ? historyById.get(derivation.source.knowledgeId)?.revisions.find(item => item.revisionId === derivation.source.revisionId) : undefined;
+      const sourceRef = target ? bodyRef(target) : undefined;
+      const to = sourceRef ? knowledgeNodeId(sourceRef) : nodeId('knowledge_reference', [derivation.source.knowledgeId, derivation.source.revisionId]);
+      const targetStatus = !inScope ? 'out_of_scope' : !target ? 'unavailable' : nodes.has(to) ? 'visible' : 'history_hidden';
+      if (targetStatus !== 'visible') gap({ gapKind: targetStatus === 'out_of_scope' ? 'derivation_out_of_scope'
+        : targetStatus === 'history_hidden' ? 'derivation_history_hidden' : 'derivation_unavailable',
+      knowledgeId: revision.knowledgeId, revisionId: revision.revisionId, derivationSource: derivation.source,
+      detail: targetStatus === 'out_of_scope' ? 'The derivation source is outside the explicit graph selection; it was not read.'
+        : targetStatus === 'history_hidden' ? 'The exact derivation source is historical; enable history to display its node.'
+          : 'The exact derivation source revision could not be resolved; its stored IDs are retained.' });
+      edge({ edgeKind: 'knowledge_derivation', from, to, current: revision.revisionId === history.writeHeadRevisionId,
+        relation: derivation.relation, source: derivation.source, ...(sourceRef ? { sourceBodyRef: sourceRef } : {}), reason: derivation.reason,
+        targetStatus, recordedIn: { bodyRef: ref, revisedBy: revision.revisedBy, revisedAt: revision.revisedAt } }, [from, String(index)]);
     }
   }
   graph.nodes = [...nodes.values()]; graph.edges = [...edges.values()];

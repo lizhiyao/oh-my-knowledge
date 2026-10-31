@@ -220,3 +220,5 @@ test/knowledge/legacy-migration.test.ts
 test/knowledge/association-migration.test.ts
 test/knowledge/source-review.test.ts
 test/knowledge/workflow-migration.test.ts
+test/cli/knowledge-relations.test.ts
+test/knowledge/relations-application.test.ts

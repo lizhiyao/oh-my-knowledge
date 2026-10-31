@@ -72,6 +72,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/knowledge-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/knowledge-tags.ts',
   'knowledge/application/local.ts → knowledge/adapters/library-store.ts',
+  'knowledge/application/local.ts → knowledge/adapters/relation-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/review-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/source-store.ts',
   // Source review host composes storage; the application verifies strict extraction input/output.
@@ -82,6 +83,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/entity-linking/entity-links.ts',
   'knowledge/application/operations.ts → knowledge/adapters/source-store.ts',
   'knowledge/application/read-context.ts → knowledge/adapters/body-digest.ts',
+  'knowledge/application/relations.ts → knowledge/adapters/body-digest.ts',
   'knowledge/application/source-review.ts → knowledge/extraction/body-generation-wire.ts',
   'knowledge/application/source-review.ts → knowledge/extraction/source-review-wire.ts',
   'knowledge/application/study-inspection-service.ts → knowledge/adapters/study-inspection-errors.ts',
@@ -151,7 +153,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
   {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
-    rationale: '正文生成应用装配独立 journal/custody 适配器；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核账本；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
+    rationale: '正文生成应用装配独立 journal/custody 适配器；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核／关系账本；关系应用只复用既有正文摘要叶子，纯关系契约不反向依赖宿主；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
   },
 ] as const;
 
@@ -255,8 +257,8 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: '2efa480384deeb3993653d04b48f299b8c166e99927f08b56a40d191c5d8cad0',
-    rationale: 'Documentation generation loads only fixed compiled current body, Source3 and independent review contract modules to derive identities and limits. All file arguments are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
+    sourceSha256: '813d8c2e625bc1f131b4df2ae9ee4064205adcc217f10de15715c2f0f009b081',
+    rationale: 'Documentation generation loads only fixed compiled current body, Source3, independent review/relation contracts and the Graph3 version constant to derive identities and limits. All file arguments, including relations.js and application/graph.js, are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',

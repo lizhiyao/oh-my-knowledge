@@ -44,6 +44,10 @@ Expand **Source scope and response budget** to select an exact source version an
 
 Task retrieval uses the same deterministic literal search as the CLI, without a generation model call; different wording can still miss relevant content. A search hit, matching quotation position or retain decision does not establish truth or applicability to the current task. Follow content omissions, wrong associations and insufficient sources back to their respective revision or review entry points.
 
+### Connect related knowledge {#related-knowledge}
+
+Open **Related knowledge** on an exact body, explicitly select another body in the same workspace and the relevant paragraphs, then inspect both complete bodies and their sources. Record a supplement or possible conflict with the question, applicability, reason and limits. A new proposal is pending. Unknown comparison conditions prevent accepting a conflict; acceptance records an operator opinion, not truth. Review, rejection, author-only withdrawal and historical reopening preserve the original bodies. See the [relation contract](../../specs/knowledge/knowledge-relations.md) for CLI commands, evidence and copy activation.
+
 ### Record reviews and task feedback {#review-feedback}
 
 Open an exact body and enter **Content review**. Content opinions remain separate from retain/discard choices, association acceptance and independent human acceptance. A new record changes neither content nor carriers automatically.
