@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
-import { createLocalKnowledgeApplication, createLocalKnowledgeReview } from '../../../knowledge/application/local.js';
+import { createLocalKnowledgeApplication, createLocalKnowledgeReview, createLocalKnowledgeRelations } from '../../../knowledge/application/local.js';
 import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-host.js';
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../../knowledge/extraction/body-generation-wire.js';
@@ -28,6 +28,8 @@ import { KnowledgeRetrievalBudgetError } from '../../../knowledge/application/re
 import { formatKnowledgeResult } from '../../lib/knowledge-output.js';
 import { knowledgeReviewCliActor } from '../../lib/knowledge-review-actor.js';
 import { KnowledgeReviewOperationSchema, executeKnowledgeReviewOperation } from '../../../knowledge/application/review-operations.js';
+import { KnowledgeRelationOperationSchema, executeKnowledgeRelationOperation, knowledgeRelationFailureCode } from '../../../knowledge/application/relation-operations.js';
+import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
@@ -48,7 +50,7 @@ function readInputJson(path: string, maxBytes = 16 * 1024 * 1024): unknown {
 }
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。', 'Generate and maintain complete knowledge bodies, with separately reviewed derived associations. Saved bodies are pending; matching quotes does not verify truth.');
-  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow', 'source-ledger', 'source-coverage-status', 'review-source-coverage', 'prepare-source-review', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use'],
+  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow', 'source-ledger', 'source-coverage-status', 'review-source-coverage', 'prepare-source-review', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use', 'graph', 'relations', 'relation', 'propose-relation', 'review-relation', 'withdraw-relation'],
     description: description('preview 只读，capture 仅保存；prepare 展示完整模型请求，generate／continue-stage 须逐阶段确认摘要；resume 零模型恢复。', 'Preview reads only; capture saves only. Prepare displays the complete model request; generate/continue-stage require per-stage digest confirmation. Resume never calls a model.') }) };
   static flags = {
     lang: LANG_FLAG,
@@ -74,7 +76,7 @@ export default class ObserveKnowledge extends BaseCommand {
     snapshot: Flags.string({ description: description('source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。', 'source/delete-source/retrieve: source snapshot UUID, requiring --source-version.') }),
     id: Flags.string({ description: description('知识 ID；inspect/resume/continue-stage 为运行 UUID。', 'Knowledge ID; run UUID for inspect/resume/continue-stage.') }),
     revision: Flags.string({ description: description('明确知识或派生修订身份。', 'Exact knowledge or projection revision identity.') }),
-    'body-digest': Flags.string({ description: description('rebuild/apply-associations：精确正文 sha256 摘要。', 'rebuild/apply-associations: exact body sha256 digest.') }),
+    'body-digest': Flags.string({ description: description('relations／rebuild/apply-associations：精确正文 sha256 摘要。', 'relations/rebuild/apply-associations: exact body sha256 digest.') }),
     analysis: Flags.string({ description: description('明确实体分析 UUID，省略时 entities 搜索目录。', 'Exact entity analysis UUID; entities searches catalog when omitted.') }),
     'entity-revision': Flags.string({ description: description('明确实体分析修订 UUID。', 'Exact entity analysis revision UUID.') }),
     query: Flags.string({ description: description('retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。', 'Required natural question for retrieve; literal ASCII/code and Han run/bigram recall, without semantic inference.') }),
@@ -118,6 +120,10 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates',
     '<%= config.bin %> observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json',
     '<%= config.bin %> observe knowledge review-content --workspace ./knowledge --input ./review.json --json',
+    '<%= config.bin %> observe knowledge relations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json',
+    '<%= config.bin %> observe knowledge propose-relation --workspace ./knowledge --input ./relation.json --json',
+    '<%= config.bin %> observe knowledge relation --workspace ./knowledge --id <relation-id> --json',
+    '<%= config.bin %> observe knowledge graph --workspace ./knowledge --input ./graph-scope.json --json',
     '<%= config.bin %> observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./body.json --reason "核对来源"',
   ];
   async run(): Promise<void> {
@@ -297,6 +303,32 @@ export default class ObserveKnowledge extends BaseCommand {
     const draft = () => { const path = need(flags.input, 'input'); try {
       return readInputJson(path);
     } catch { this.error(t('--input 必须是 16 MiB 内的普通 UTF-8 JSON 文件。', '--input must be a regular UTF-8 JSON file within 16 MiB.'), { exit: 2 }); } };
+    if (args.operation === 'graph') {
+      const allowed = new Set(['workspace', 'input', 'json', 'lang']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('graph 只接受工作区及可选范围 JSON，不接受模型或写入参数。', 'graph accepts a workspace and optional scope JSON, without model or write flags.'), { exit: 2 });
+      const parsed = KnowledgeGraphRequestSchema.safeParse(flags.input ? draft() : {});
+      if (!parsed.success) this.error(t('图谱范围无效，仅接受 knowledgeIds 和 includeHistory。', 'Invalid graph scope; only knowledgeIds and includeHistory are accepted.'), { exit: 2 });
+      const workspace = flags.workspace?.trim() ? resolve(flags.workspace.trim()) : new UserSettingsStore().resolve({}).workspace;
+      try { this.log(JSON.stringify(createLocalKnowledgeApplication(workspace).graph(parsed.data), null, 2)); }
+      catch (cause) { this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}`, { exit: 1 }); }
+      return;
+    }
+    if (['relations', 'relation', 'propose-relation', 'review-relation', 'withdraw-relation'].includes(args.operation)) {
+      const reading = args.operation === 'relations' || args.operation === 'relation';
+      const allowed = new Set(reading ? ['workspace', 'id', 'json', 'lang', ...(args.operation === 'relations' ? ['revision', 'body-digest'] : ['revision'])] : ['workspace', 'input', 'json', 'lang']);
+      if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))) this.error(t('关系操作仅接受精确读取参数或完整 --input，不接受模型参数或操作者自报。', 'Relation operations accept exact read flags or a complete --input, without model or self-declared actor flags.'), { exit: 2 });
+      const actor = reading ? undefined : knowledgeReviewCliActor(process.env);
+      if (!reading && !actor) this.error(t('关系写入需要可信宿主的实际操作者上下文；不能回落为真人。', 'Relation writes require actual-actor context from a trusted host; no human fallback is inferred.'), { exit: 2 });
+      const input = args.operation === 'relations' ? { bodyRef: { knowledgeId: need(flags.id, 'id'), revisionId: need(flags.revision, 'revision'), bodyDigest: need(flags['body-digest'], 'body-digest') } }
+        : args.operation === 'relation' ? { relationId: need(flags.id, 'id'), ...(flags.revision ? { relationRevisionId: flags.revision } : {}) } : draft();
+      if (!input || typeof input !== 'object' || Array.isArray(input) || 'operation' in input) this.error(t('--input 必须是关系草稿对象，operation 由命令指定。', '--input must be a relation draft object; the command supplies operation.'), { exit: 2 });
+      const parsed = KnowledgeRelationOperationSchema.safeParse({ ...input as Record<string, unknown>, operation: args.operation });
+      if (!parsed.success) this.error(t('关系参数无效：', 'Invalid relation input: ') + parsed.error.issues.map(issue => issue.path.join('.')).join(', '), { exit: 2 });
+      const workspace = flags.workspace?.trim() ? resolve(flags.workspace.trim()) : new UserSettingsStore().resolve({}).workspace;
+      try { this.log(JSON.stringify(executeKnowledgeRelationOperation(createLocalKnowledgeRelations(workspace, actor), parsed.data), null, 2)); }
+      catch (cause) { this.error(`${knowledgeRelationFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${t('先用 relation --id 核对同一 requestId 的收据与历史；不自动重发未知写入。', 'Inspect the same requestId in relation --id receipts and history first; do not automatically redispatch an unknown write.')}`, { exit: 1 }); }
+      return;
+    }
     if (['review-status', 'review-content', 'review-coverage', 'record-use'].includes(args.operation)) {
       const reading = args.operation === 'review-status';
       const allowed = new Set(reading ? ['workspace', 'id', 'revision', 'body-digest', 'projection-revision', 'json', 'lang'] : ['workspace', 'input', 'json', 'lang']);

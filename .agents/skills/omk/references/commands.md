@@ -610,7 +610,7 @@ omk observe knowledge <operation> [flags]
 
 - `--analysis` `option`:明确实体分析 UUID，省略时 entities 搜索目录。
 - `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
-- `--body-digest` `option`:rebuild/apply-associations：精确正文 sha256 摘要。
+- `--body-digest` `option`:relations／rebuild/apply-associations：精确正文 sha256 摘要。
 - `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
 - `--confirm-plan` `option`:migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
 - `--confirm-request` `option`:generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。
@@ -727,6 +727,22 @@ omk observe knowledge review-status --workspace ./knowledge --id <knowledge-id> 
 
 ```bash
 omk observe knowledge review-content --workspace ./knowledge --input ./review.json --json
+```
+
+```bash
+omk observe knowledge relations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
+```
+
+```bash
+omk observe knowledge propose-relation --workspace ./knowledge --input ./relation.json --json
+```
+
+```bash
+omk observe knowledge relation --workspace ./knowledge --id <relation-id> --json
+```
+
+```bash
+omk observe knowledge graph --workspace ./knowledge --input ./graph-scope.json --json
 ```
 
 ```bash

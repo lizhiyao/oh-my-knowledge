@@ -10,3 +10,5 @@
 - [内容复核、关联覆盖与任务反馈](knowledge-reviews.md)
 - [来源盘点、覆盖分析与实际决定](knowledge-source-review.md)
 - [项目与轨迹来源的版本契约](knowledge-sources.md)
+
+- [跨知识关系意见](knowledge-relations.md)

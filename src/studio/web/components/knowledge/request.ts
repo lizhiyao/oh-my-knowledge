@@ -2,6 +2,7 @@ const rejectedCodes = new Set([
   'knowledge_conflict', 'knowledge_storage_unsupported', 'knowledge_workspace_busy', 'knowledge_tags_invalid', 'knowledge_capacity_exceeded', 'knowledge_citations_invalid',
   'carrier_conflict', 'carrier_knowledge_region_conflict', 'carrier_invalid_skill', 'carrier_source_contains_destination', 'carrier_capacity_exceeded',
   'request_body_too_large',
+  'knowledge_relation_invalid', 'knowledge_relation_forbidden', 'knowledge_relation_unavailable',
   'knowledge_study_input_invalid', 'knowledge_study_capacity_exceeded', 'knowledge_study_host_mismatch', 'knowledge_study_evidence_invalid',
 ]);
 const responseCodes = new Set([...rejectedCodes, 'knowledge_study_busy', 'knowledge_study_unavailable', 'entity_link_input_invalid', 'entity_link_confirmation_invalid', 'entity_link_outcome_unconfirmed', 'entity_link_identity_unresolved', 'entity_link_kind_mismatch', 'knowledge_request_failed', 'carrier_request_failed', 'carrier_invalid_metadata']);
@@ -15,7 +16,7 @@ export class KnowledgeRequestError extends Error {
   }
 }
 
-export async function requestKnowledge<T>(resource: 'sources' | 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links' | 'study' | 'reviews',
+export async function requestKnowledge<T>(resource: 'sources' | 'candidates' | 'library' | 'artifacts' | 'auto-extraction' | 'entity-links' | 'study' | 'reviews' | 'relations',
   payload: object, signal?: AbortSignal, onResponse?: (metadata: { etag: string | null }) => void): Promise<T> {
   signal?.throwIfAborted();
   const response = await fetch(`/api/knowledge/${resource}`, { method: 'POST', headers: { 'content-type': 'application/json' },

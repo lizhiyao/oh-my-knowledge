@@ -4,6 +4,8 @@ import { join, resolve } from 'node:path';
 import { canonicalJson } from '../store.js';
 import { KnowledgeApplication } from './application.js';
 import { KnowledgeReviewApplication } from './review.js';
+import { KnowledgeRelationsApplication } from './relations.js';
+import { FileKnowledgeRelationStore } from '../adapters/relation-store.js';
 import { SourceReviewApplication, type SourceReviewPorts } from './source-review.js';
 import { FileSourceLedgerStore, FileSourceCoverageStore } from '../adapters/source-review-store.js';
 import { readSourceReviewOriginal } from '../adapters/source-review-original.js';
@@ -44,6 +46,7 @@ export function createLocalKnowledgeApplication(root: string, options: { sourceC
     ...(sourceCapture ? { sourceCapture } : {}),
     ...(options.sourceScope ? { sourceUpdates: createLocalSourceUpdates(workspace, options.sourceScope) } : {}),
     knowledge,
+    relations: new FileKnowledgeRelationStore(join(workspace, 'knowledge-relations'), 'local', workspace),
     journals: new FileGenerationJournalStore(join(workspace, 'generation-journals'), workspace),
     ledgers: new FileSourceLedgerStore(join(workspace, 'source-ledgers'), 'local', workspace),
     coverage: new FileSourceCoverageStore(join(workspace, 'source-coverage'), 'local', workspace),
@@ -87,7 +90,7 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
       const stat = lstatSync(workspace);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return undefined;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined; }
-    const heads = ['items', 'generation-journals', 'associations', 'tags', 'entities', 'source-ledgers', 'source-coverage'].map(name => {
+    const heads = ['items', 'generation-journals', 'associations', 'tags', 'entities', 'source-ledgers', 'source-coverage', 'knowledge-relations'].map(name => {
       const directory = join(workspace, name);
       try {
         const stat = lstatSync(directory);
@@ -107,6 +110,19 @@ export function knowledgeWorkspaceRefreshToken(root: string, scope: string, stat
     const value = createHash('sha256').update(JSON.stringify([workspace, scope.trim(), state, heads])).digest('hex');
     return `W/"omk-ui-${value}"`;
   } catch { return undefined; } // A missing hint means conservative UI refresh, never a cached acceptance.
+}
+
+/** Unknown actors receive read-only relation capabilities; existing maintenance defaults are unchanged. */
+export function createLocalKnowledgeRelations(root: string, actor?: KnowledgeActor): KnowledgeRelationsApplication {
+  if (!root.trim()) throw new Error('Explicit relation workspace required.');
+  const workspace = resolve(root);
+  assertSourceMigrationComplete(workspace);
+  return new KnowledgeRelationsApplication({
+    knowledge: new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace),
+    sources: new FileSourceStore(join(workspace, 'sources'), workspace),
+    relations: new FileKnowledgeRelationStore(join(workspace, 'knowledge-relations'), 'local', workspace),
+    actor, now: () => new Date().toISOString(), assertWritable: () => assertSourceWorkspaceWritable(workspace),
+  });
 }
 
 /** The host supplies the actual actor. An omitted actor deliberately creates a read-only instance. */

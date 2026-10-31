@@ -10,9 +10,11 @@ import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
+import { FileKnowledgeRelationStore } from '../../src/knowledge/adapters/relation-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeGraph } from '../../src/knowledge/application/graph.js';
+import { relationOtherActor, relationsFixture } from './relations-fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -43,7 +45,7 @@ describe('exact knowledge graph read projection', () => {
     const before = diskBytes(f.root), writes = [vi.spyOn(FileKnowledgeStore.prototype, 'write'), vi.spyOn(FileEntityAnalysisStore.prototype, 'write'), vi.spyOn(FileKnowledgeAssociationStore.prototype, 'write')];
     const generation = vi.spyOn(KnowledgeApplication.prototype, 'generate'), rebuild = vi.spyOn(KnowledgeApplication.prototype, 'rebuildAssociations');
     const graph = f.app.graph({ knowledgeIds: [first.body.knowledgeId, second.body.knowledgeId] });
-    expect(graph).toMatchObject({ projectionKind: 'knowledge-graph', schemaVersion: 2 });
+    expect(graph).toMatchObject({ projectionKind: 'knowledge-graph', schemaVersion: 3 });
     expect(graph.coverage).toEqual({ status: 'available', gaps: [] });
     expect(knowledgeNodes(graph)).toHaveLength(2); expect(sourceNodes(graph)).toHaveLength(2);
     const alphas = entityNodes(graph).filter(node => node.label === 'Alpha');
@@ -206,5 +208,132 @@ describe('exact knowledge graph read projection', () => {
     expect(missing.sources[0].status).toBe('unavailable'); expect(missing.catalogs[0].sourceSummary).toBeUndefined();
     list.mockImplementation(() => { throw new Error('catalog capacity'); });
     expect(() => f.app.associationCatalogs(selected.body.knowledgeId)).toThrow('catalog capacity');
+  });
+
+  it('shows stored derivations with exact source revisions and revision provenance without expanding an explicit selection', () => {
+    const f = workspace(), derived = seedKnowledgeWorkspace(f.root, 'derived'), original = seedKnowledgeWorkspace(f.root, 'original');
+    const revision = { ...derived.body, revisionId: randomUUID(), parentRevision: { knowledgeId: derived.body.knowledgeId, revisionId: derived.body.revisionId },
+      derivations: (['derived_from', 'split_from', 'merged_from', 'replaces'] as const).map(relation => ({ relation,
+        source: { knowledgeId: original.body.knowledgeId, revisionId: original.body.revisionId }, reason: `作者夹具的 ${relation} 来源演变；不表示事实更真。` })) };
+    f.knowledge.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: derived.body.knowledgeId,
+      expectedGeneration: 1, expectedHeadRevisionId: derived.body.revisionId, revision }, revision.revisedBy);
+    const before = diskBytes(f.root), ids = [derived.body.knowledgeId, original.body.knowledgeId];
+    const graph = f.app.graph({ knowledgeIds: ids });
+    const derivations = graph.edges.filter(edge => edge.edgeKind === 'knowledge_derivation');
+    expect(derivations.map(edge => edge.relation)).toEqual(['derived_from', 'split_from', 'merged_from', 'replaces']);
+    expect(derivations.every(edge => edge.current && edge.targetStatus === 'visible')).toBe(true);
+    expect(derivations[0]).toMatchObject({ sourceBodyRef: knowledgeBodyRef(original.body),
+      recordedIn: { bodyRef: knowledgeBodyRef(revision), revisedBy: revision.revisedBy, revisedAt: revision.revisedAt } });
+    expect(derivations[0]).not.toHaveProperty('opinionStatus');
+    const read = vi.spyOn(FileKnowledgeStore.prototype, 'read');
+    const scoped = f.app.graph({ knowledgeIds: [derived.body.knowledgeId] });
+    expect(knowledgeNodes(scoped).map(node => node.bodyRef.knowledgeId)).toEqual([derived.body.knowledgeId]);
+    expect(read.mock.calls.some(([id]) => id === original.body.knowledgeId)).toBe(false);
+    const excluded = scoped.edges.find(edge => edge.edgeKind === 'knowledge_derivation')!;
+    expect(excluded).toMatchObject({ targetStatus: 'out_of_scope', source: revision.derivations[0].source });
+    expect(excluded).not.toHaveProperty('sourceBodyRef');
+    expect(scoped.coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'derivation_out_of_scope', derivationSource: revision.derivations[0].source }));
+    expect(f.app.graph({ knowledgeIds: [] })).toMatchObject({ nodes: [], edges: [] });
+    expect(diskBytes(f.root)).toEqual(before);
+  });
+
+  it('distinguishes hidden derivation history from an unresolved source and never manufactures a missing digest', () => {
+    const f = workspace(), derived = seedKnowledgeWorkspace(f.root, 'derived-history'), original = seedKnowledgeWorkspace(f.root, 'original-history');
+    const missing = { knowledgeId: original.body.knowledgeId, revisionId: randomUUID() };
+    const revision = { ...derived.body, revisionId: randomUUID(), parentRevision: { knowledgeId: derived.body.knowledgeId, revisionId: derived.body.revisionId },
+      derivations: [{ relation: 'derived_from' as const, source: { knowledgeId: original.body.knowledgeId, revisionId: original.body.revisionId }, reason: '作者夹具：来自精确旧修订。' },
+        { relation: 'merged_from' as const, source: missing, reason: '作者夹具：来源修订现不可读，保留原ID。' }] };
+    f.knowledge.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: derived.body.knowledgeId,
+      expectedGeneration: 1, expectedHeadRevisionId: derived.body.revisionId, revision }, revision.revisedBy);
+    f.app.revise(original.body.knowledgeId, original.body.revisionId, 1,
+      { title: original.body.title, content: original.body.content, reuseRationale: original.body.reuseRationale }, '作者夹具：新增修订，不升级旧来源。');
+    const graph = f.app.graph();
+    const edges = graph.edges.filter(edge => edge.edgeKind === 'knowledge_derivation');
+    expect(edges).toEqual([expect.objectContaining({ relation: 'derived_from', targetStatus: 'history_hidden', sourceBodyRef: knowledgeBodyRef(original.body) }),
+      expect.objectContaining({ relation: 'merged_from', targetStatus: 'unavailable', source: missing })]);
+    expect(edges[1]).not.toHaveProperty('sourceBodyRef');
+    expect(graph.coverage.gaps).toEqual(expect.arrayContaining([expect.objectContaining({ gapKind: 'derivation_history_hidden' }), expect.objectContaining({ gapKind: 'derivation_unavailable' })]));
+    const history = f.app.graph({ includeHistory: true });
+    expect(history.edges).toContainEqual(expect.objectContaining({ edgeKind: 'knowledge_derivation', relation: 'derived_from', targetStatus: 'visible' }));
+    expect(history.edges).toContainEqual(expect.objectContaining({ edgeKind: 'revision_parent', revisionDomain: 'knowledge' }));
+    expect(history.edges.some(edge => edge.edgeKind === 'knowledge_relation')).toBe(false);
+  });
+
+  it('keeps all relation opinion states visible and separate from body truth without rewriting stored knowledge', () => {
+    const f = relationsFixture(), app = createLocalKnowledgeApplication(f.root);
+    const bodies = f.bodyRefs.map(ref => f.knowledge.read(ref.knowledgeId));
+    const read = () => app.graph().edges.filter(edge => edge.edgeKind === 'knowledge_relation');
+    f.app.propose(f.propose());
+    expect(read()).toEqual([expect.objectContaining({ current: true, endpointVisibility: { from: true, to: true },
+      relation: expect.objectContaining({ opinionStatus: 'pending', bodyStatus: 'current', sourceStatus: 'available' }) })]);
+    const accepted = f.app.review(f.review());
+    expect(read()[0].relation.opinionStatus).toBe('accepted');
+    f.appFor(relationOtherActor).review(f.review('reject'));
+    expect(read()[0].relation.opinionStatus).toBe('disputed');
+    f.app.review(f.review('reject', { supersedesReviewEventIds: [accepted.eventId] }));
+    expect(read()[0].relation.opinionStatus).toBe('rejected');
+    f.app.withdraw(f.withdraw());
+    const before = diskBytes(f.root), withdrawn = read();
+    expect(withdrawn[0].relation.opinionStatus).toBe('withdrawn');
+    expect(withdrawn[0].relation.revision.reason).toContain('bounded report');
+    expect(withdrawn[0].relation.revision.actor.actorKind).toBe('agent');
+    expect(withdrawn[0].relation).not.toHaveProperty('history');
+    expect(withdrawn[0].relation).not.toHaveProperty('receipts');
+    expect(withdrawn[0].relation.hiddenEvidenceCount).toBe(0);
+    expect(f.bodyRefs.map(ref => f.knowledge.read(ref.knowledgeId))).toEqual(bodies);
+    expect(diskBytes(f.root)).toEqual(before);
+  });
+
+  it('projects exact stale and rebound relation versions while leaving excluded knowledge and sources unread', () => {
+    const f = relationsFixture(), app = createLocalKnowledgeApplication(f.root), historicalReason = 'Only the old proposal: authored historical marker.';
+    const proposed = f.app.propose(f.propose({ reason: historicalReason }));
+    f.app.review(f.review('accept', { reason: 'Only the old review: authored historical marker.' }));
+    const next = f.appendBody(0), newRef = knowledgeBodyRef(next);
+    const stale = app.graph();
+    expect(stale.edges).toContainEqual(expect.objectContaining({ edgeKind: 'knowledge_relation', current: false,
+      endpointVisibility: { from: false, to: true }, relation: expect.objectContaining({ opinionStatus: 'accepted', bodyStatus: 'stale',
+        hiddenEvidenceCount: 2, revision: expect.objectContaining({ evidence: [] }) }) }));
+    expect(stale.coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'relation_stale', relationId: f.relationId }));
+    const rebound = f.propose({ from: { bodyRef: newRef } }); f.app.propose(rebound);
+    const currentGraph = app.graph(), current = currentGraph.edges.filter(edge => edge.edgeKind === 'knowledge_relation');
+    expect(current).toHaveLength(1); expect(current[0].relation).toMatchObject({ opinionStatus: 'pending', bodyStatus: 'current', revision: { from: { bodyRef: newRef } } });
+    expect(current[0].relation.revision.evidence).toEqual(rebound.evidence);
+    expect(current[0].relation.hiddenEvidenceCount).toBe(0);
+    expect(JSON.stringify(currentGraph)).not.toContain(historicalReason);
+    expect(JSON.stringify(currentGraph)).not.toContain('Only the old review: authored historical marker.');
+    expect(JSON.stringify(currentGraph)).not.toContain('"receipts"');
+    const history = app.graph({ includeHistory: true }).edges.filter(edge => edge.edgeKind === 'knowledge_relation');
+    expect(history).toHaveLength(2);
+    expect(history).toContainEqual(expect.objectContaining({ current: false, endpointVisibility: { from: true, to: true },
+      relation: expect.objectContaining({ revision: expect.objectContaining({ eventId: proposed.eventId }), opinionStatus: 'accepted', bodyStatus: 'stale' }) }));
+    expect(JSON.stringify(history)).toContain(historicalReason);
+    expect(history.every(edge => !('history' in edge.relation) && edge.relation.hiddenEvidenceCount === 0)).toBe(true);
+    const knowledgeReads = vi.spyOn(FileKnowledgeStore.prototype, 'read'), sourceReads = vi.spyOn(FileSourceStore.prototype, 'read');
+    const scoped = app.graph({ knowledgeIds: [newRef.knowledgeId] });
+    expect(knowledgeNodes(scoped).map(node => node.bodyRef.knowledgeId)).toEqual([newRef.knowledgeId]);
+    expect(knowledgeReads.mock.calls.some(([id]) => id === f.bodyRefs[1].knowledgeId)).toBe(false);
+    expect(sourceReads.mock.calls.some(([id]) => id === f.snapshots[1].snapshotId)).toBe(false);
+    expect(scoped.edges).toContainEqual(expect.objectContaining({ edgeKind: 'knowledge_relation', endpointVisibility: { from: true, to: false },
+      relation: expect.objectContaining({ hiddenEvidenceCount: rebound.evidence.length, revision: expect.objectContaining({ evidence: [] }),
+        endpoints: expect.objectContaining({ to: expect.objectContaining({ status: 'out_of_scope', bodyRef: f.bodyRefs[1] }) }) }) }));
+    expect(JSON.stringify(scoped)).not.toContain(f.commands[1].revision.content.segments[0].text);
+    expect(scoped.coverage.gaps).toContainEqual(expect.objectContaining({ gapKind: 'relation_out_of_scope', relationSide: 'to' }));
+    const inventories = vi.spyOn(FileKnowledgeRelationStore.prototype, 'inventory');
+    expect(app.graph({ knowledgeIds: [] })).toMatchObject({ nodes: [], edges: [], coverage: { status: 'available', gaps: [] } });
+    expect(inventories).not.toHaveBeenCalled();
+  });
+
+  it('retains healthy graph content and relation opinions through a missing supporting source or corrupt local ledger', () => {
+    const f = relationsFixture(), app = createLocalKnowledgeApplication(f.root);
+    f.app.propose(f.propose());
+    f.sources.delete(f.snapshots[0].snapshotId, f.snapshots[0].sourceVersion);
+    writeFileSync(join(f.root, 'knowledge-relations', `${randomUUID()}.json`), '{bad');
+    const graph = app.graph();
+    expect(knowledgeNodes(graph)).toHaveLength(2);
+    expect(graph.edges).toContainEqual(expect.objectContaining({ edgeKind: 'knowledge_relation',
+      relation: expect.objectContaining({ opinionStatus: 'pending', sourceStatus: 'unavailable' }) }));
+    expect(graph.coverage.gaps).toEqual(expect.arrayContaining([expect.objectContaining({ gapKind: 'relation_source_unavailable' }), expect.objectContaining({ gapKind: 'relation_unavailable' })]));
+    expect(sourceNodes(graph)).toContainEqual(expect.objectContaining({ snapshotId: f.snapshots[1].snapshotId, status: 'available' }));
+    expect(JSON.stringify(graph)).not.toContain(f.root);
   });
 });

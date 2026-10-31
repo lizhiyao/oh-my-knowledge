@@ -110,3 +110,5 @@ test/scripts/knowledge-study-workers.test.ts
 test/studio/http/fault-page.test.ts
 test/studio/web/page-fault.test.tsx
 test/knowledge/source-review-application.test.ts
+test/studio/http/knowledge-relations.test.ts
+test/studio/web/knowledge-relations.test.tsx

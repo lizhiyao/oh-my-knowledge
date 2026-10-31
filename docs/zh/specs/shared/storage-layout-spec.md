@@ -113,6 +113,7 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3：不可变正文修订、inline evidence、`bodyDigest`、维护及收据 |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2：精确正文／目录引用、段落／实体关联、可选 typed 关系、待审投影及独立审查账本 |
 | `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1：精确正文的内容复核、逐段关联覆盖、任务使用反馈及独立收据；[详细契约](../knowledge/knowledge-reviews.md) |
+| `knowledge-relations/<relation-id>.json` | `knowledge-relation-history` Schema 1：精确跨知识补充／冲突意见、复核、撤回及收据；[详细契约](../knowledge/knowledge-relations.md) |
 | `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1：来源盘点分析及模型原件引用；[详细契约](../knowledge/knowledge-source-review.md) |
 | `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1：绑定精确清单／正文的覆盖分析、实际决定、撤销及收据；[详细契约](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |

@@ -113,6 +113,7 @@ The workspace is explicitly selected through settings or `--workspace`, separate
 | `items/<identity-digest>.json` | `knowledge-item-history` Schema 3: immutable canonical body revisions, inline evidence, `bodyDigest`, maintenance and receipts |
 | `associations/<identity-digest>.json` | `knowledge-association-history` Schema 2: exact body/catalog refs, segment/entity links, optional typed relations, pending projections and independent review ledger |
 | `reviews/<identity-digest>.json` | `knowledge-review-history` Schema 1: exact-body content review, per-segment association coverage, task use feedback and independent receipts; [contract](../knowledge/knowledge-reviews.md) |
+| `knowledge-relations/<relation-id>.json` | `knowledge-relation-history` Schema 1: exact cross-knowledge supplement/conflict opinions, reviews, withdrawal and receipts; [contract](../knowledge/knowledge-relations.md) |
 | `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1: source inventory analyses and native-original references; [contract](../knowledge/knowledge-source-review.md) |
 | `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1: exact-ledger/body coverage analyses, actual decisions, revocations and receipts; [contract](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2: window entities, mentions and immutable revisions |

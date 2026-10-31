@@ -26,13 +26,13 @@ import { KnowledgeReviewDrawer } from './review-drawer';
 
 export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisionId, knowledgeId, seed, initialView = 'list', initialGraphSelection,
   initialGraphScope = 'current', initialReaderTab = 'body', initialKnowledgeRevision, initialQuery = '', initialChoice = 'all', initialKind = 'all', initialObjects = [],
-  initialGraphHistory = false, initialGraphEntity, initialSegmentId, initialMentionId, initialRelationId, initialCatalogRef, initialEvidence, initialReaderSelectionInvalid = false, onTaskFeedback }: {
+  initialGraphHistory = false, initialGraphEntity, initialSegmentId, initialMentionId, initialRelationId, initialRelationRevisionId, initialCatalogRef, initialEvidence, initialReaderSelectionInvalid = false, onTaskFeedback }: {
   lang: Language; initialWorkspace?: string; objectId?: string; revisionId?: string; knowledgeId?: string; seed?: LibrarySeed;
   initialView?: 'list' | 'graph' | 'task'; initialGraphSelection?: string; initialGraphScope?: 'current' | 'filtered'; initialGraphHistory?: boolean;
   onTaskFeedback?(ref: KnowledgeTaskRetrieval['knowledge'][number]['bodyRef'], segmentId: string, query: string): void;
-  initialReaderTab?: 'body' | 'evidence' | 'associations' | 'history'; initialKnowledgeRevision?: string;
+  initialReaderTab?: 'body' | 'evidence' | 'associations' | 'related' | 'history'; initialKnowledgeRevision?: string;
   initialQuery?: string; initialChoice?: 'all' | 'pending' | 'retain' | 'discard'; initialKind?: 'all' | 'fact' | 'case' | 'method'; initialObjects?: string[];
-  initialGraphEntity?: KnowledgeReaderEntityTarget; initialSegmentId?: string; initialMentionId?: string; initialRelationId?: string; initialCatalogRef?: KnowledgeReaderSelection['catalogRef']; initialEvidence?: KnowledgeReaderSelection['evidence']; initialReaderSelectionInvalid?: boolean;
+  initialGraphEntity?: KnowledgeReaderEntityTarget; initialSegmentId?: string; initialMentionId?: string; initialRelationId?: string; initialRelationRevisionId?: string; initialCatalogRef?: KnowledgeReaderSelection['catalogRef']; initialEvidence?: KnowledgeReaderSelection['evidence']; initialReaderSelectionInvalid?: boolean;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [workspace, setWorkspace] = useState('');
@@ -50,7 +50,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   const [graphScope, setGraphScope] = useState(initialGraphScope), [graphHistory, setGraphHistory] = useState(initialGraphHistory);
   const [graph, setGraph] = useState<KnowledgeGraph>(), [graphLoading, setGraphLoading] = useState(false), [graphError, setGraphError] = useState('');
   const [readerSelection, setReaderSelection] = useState<KnowledgeReaderSelection>(initialReaderSelectionInvalid ? { tab: 'body' }
-    : { tab: initialReaderTab, segmentId: initialSegmentId, mentionId: initialMentionId, relationId: initialRelationId, catalogRef: initialCatalogRef, evidence: initialEvidence });
+    : { tab: initialReaderTab, segmentId: initialSegmentId, mentionId: initialMentionId, relationId: initialRelationId, relationRevisionId: initialRelationRevisionId, catalogRef: initialCatalogRef, evidence: initialEvidence });
   const [selectionInvalid, setSelectionInvalid] = useState(initialReaderSelectionInvalid);
   const [mapping, setMapping] = useState<{ detail: KnowledgeCandidateDetail; target?: { analysisId: string; entityRevisionId: string } }>();
   const [entityTarget, setEntityTarget] = useState<Omit<KnowledgeReaderEntityTarget, 'entityId'> & { entityId?: string }>();
@@ -151,6 +151,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
     if (readerSelection.segmentId) params.set('segment', readerSelection.segmentId);
     if (readerSelection.mentionId) params.set('mention', readerSelection.mentionId);
     if (readerSelection.relationId) params.set('relation', readerSelection.relationId);
+    if (readerSelection.relationRevisionId) params.set('relationRevision', readerSelection.relationRevisionId);
     if (readerSelection.catalogRef) params.set('catalog', JSON.stringify(readerSelection.catalogRef));
     if (readerSelection.evidence) {
       const { snapshotId, sourceVersion, evidenceRef, start, end } = readerSelection.evidence;

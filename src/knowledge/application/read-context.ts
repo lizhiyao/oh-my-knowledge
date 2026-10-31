@@ -4,6 +4,7 @@ import type { KnowledgeEnvelope, KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
 import type { SourceStore } from '../source-store.js';
+import type { KnowledgeRelationStore } from '../relations.js';
 import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationSelection, type KnowledgeAssociationStore } from '../associations.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { knowledgeBodyRef } from '../adapters/body-digest.js';
@@ -11,10 +12,12 @@ import { validateEvidenceSelection } from '../validation.js';
 import { EntityQuerySchema, queryEntityRows, type EntityKnowledgeLink, type EntityQuery, type EntitySearchRow } from './entity-catalog.js';
 import { buildKnowledgeGraph, type KnowledgeGraphRequest } from './graph.js';
 import { sourceOrigin, sourceSummary } from './source-summary.js';
+import { KnowledgeRelationsApplication } from './relations.js';
 
 interface ReadPorts {
   sources: SourceStore; knowledge: KnowledgeStore; entities: EntityAnalysisStore;
   associations: KnowledgeAssociationStore; tags: KnowledgeTagStore;
+  relations?: KnowledgeRelationStore;
 }
 type Cached<T> = { value: T } | { error: unknown };
 function once<T>(cache: Map<string, Cached<T>>, key: string, read: () => T): T {
@@ -35,6 +38,7 @@ export class KnowledgeReadContext {
   private readonly tags = new Map<string, Cached<ReturnType<KnowledgeTagStore['read']>>>();
   private readonly projections = new Map<string, ReturnType<KnowledgeReadContext['readAssociation']>>();
   private readonly associationHistories = new Map<string, Cached<ReturnType<KnowledgeAssociationStore['read']>>>();
+  private readonly relationInventories = new Map<string, Cached<ReturnType<KnowledgeRelationStore['inventory']>>>();
   private entityInventory?: Cached<ReturnType<EntityAnalysisStore['list']>>;
   private histories?: Cached<KnowledgeEnvelope[]>;
   private links?: { status: 'available' | 'unavailable'; byEntity: Map<string, EntityKnowledgeLink[]> };
@@ -137,6 +141,11 @@ export class KnowledgeReadContext {
     }) };
   }
   graph(input: KnowledgeGraphRequest = {}) {
+    const relations = this.ports.relations ? new KnowledgeRelationsApplication({
+      knowledge: { read: id => once(this.bodies, id, () => this.ports.knowledge.read(id)) },
+      sources: { read: (id, version) => this.source(id, version!) }, relations: this.ports.relations,
+      now: () => { throw new Error('Read context cannot timestamp relation writes.'); },
+    }) : undefined;
     return buildKnowledgeGraph({
       listKnowledge: ids => {
         if (!ids) return this.allKnowledge();
@@ -147,6 +156,10 @@ export class KnowledgeReadContext {
       knowledge: id => once(this.bodies, id, () => this.ports.knowledge.read(id)),
       associations: id => this.associationHistory(id), catalog: id => this.catalog(id).history,
       source: (id, version) => this.source(id, version!),
+      ...(relations ? { relations: {
+        inventory: ids => once(this.relationInventories, canonicalJson(ids ? [...ids].sort() : null), () => relations.inventory(ids)),
+        project: relations.project.bind(relations),
+      } } : {}),
     }, input);
   }
   /** Catalog discovery is exact source membership, never name or path similarity. */

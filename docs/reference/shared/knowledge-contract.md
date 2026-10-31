@@ -25,6 +25,8 @@ This page is generated from the current source build’s runtime constants and S
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
 | Review and use feedback history Schema | `1` |
+| Cross-knowledge relation history Schema | `1` |
+| Knowledge graph projection Schema | `3` |
 | Generation journal Schema | `4` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |

@@ -11,7 +11,7 @@ const readerCatalogSchema = z.strictObject({ analysisId: z.string().uuid(), enti
 export const dynamic = 'force-dynamic';
 export async function generateMetadata(): Promise<Metadata> { return pageTitle('library', await requestStudioLang()); }
 export default async function Page({ searchParams }: { searchParams: Promise<{ workspace?: string; knowledge?: string; object?: string; revision?: string; analysis?: string; entity?: string; entityRevision?: string;
-  view?: string; selection?: string; scope?: string; section?: string; segment?: string; mention?: string; relation?: string; catalog?: string; evidence?: string;
+  view?: string; selection?: string; scope?: string; section?: string; segment?: string; mention?: string; relation?: string; relationRevision?: string; catalog?: string; evidence?: string;
   history?: string; query?: string; choice?: string; kind?: string; objects?: string }> }) {
   const params = await searchParams; const lang = await requestStudioLang();
   let evidence: ReturnType<typeof readerEvidenceSchema.parse> | undefined;
@@ -37,9 +37,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ w
     initialChoice={params.choice === 'pending' || params.choice === 'retain' || params.choice === 'discard' ? params.choice : 'all'}
     initialKind={params.kind === 'fact' || params.kind === 'case' || params.kind === 'method' ? params.kind : 'all'}
     initialObjects={params.objects?.split(',').filter(Boolean)}
-    initialReaderTab={invalidEvidence ? 'body' : params.section === 'body' || params.section === 'evidence' || params.section === 'associations' || params.section === 'history' ? params.section : undefined}
+    initialReaderTab={invalidEvidence ? 'body' : params.section === 'body' || params.section === 'evidence' || params.section === 'associations' || params.section === 'related' || params.section === 'history' ? params.section : undefined}
     initialSegmentId={invalidEvidence ? undefined : params.segment} initialMentionId={invalidEvidence ? undefined : params.mention}
     initialRelationId={invalidEvidence ? undefined : params.relation} initialCatalogRef={invalidEvidence ? undefined : catalogRef}
+    initialRelationRevisionId={!invalidEvidence && params.section === 'related' && z.string().uuid().safeParse(params.relationRevision).success ? params.relationRevision : undefined}
     initialEvidence={evidence} initialReaderSelectionInvalid={invalidEvidence}
     initialKnowledgeRevision={!params.object ? params.revision : undefined} seed={params.view !== 'graph' && params.analysis && params.entity ? {
       analysisId: params.analysis, entityId: params.entity, revision: params.entityRevision } : undefined}/></StudioShell>;

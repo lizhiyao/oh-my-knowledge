@@ -10,3 +10,5 @@ Start with the end-to-end construction design for extraction, host admission, cr
 - [Content review, association coverage and task feedback](knowledge-reviews.md)
 - [Source inventory, coverage analyses and actual decisions](knowledge-source-review.md)
 - [Versioned project and trace sources](knowledge-sources.md)
+
+- [Cross-knowledge relation opinions](knowledge-relations.md)

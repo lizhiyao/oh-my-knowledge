@@ -125,3 +125,4 @@ test/studio/web/entity-links-lifecycle.test.tsx
 test/scripts/entity-extraction-real-baseline.test.ts
 test/scripts/entity-historical-assets.test.ts
 test/knowledge/source-review-wire.test.ts
+test/knowledge/relation-store.test.ts

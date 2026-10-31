@@ -25,6 +25,8 @@
 | 知识历史 Schema | `3` |
 | 关联历史 Schema | `2` |
 | 复核与使用反馈历史 Schema | `1` |
+| 跨知识关系历史 Schema | `1` |
+| 知识图谱投影 Schema | `3` |
 | 生成日志 Schema | `4` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |

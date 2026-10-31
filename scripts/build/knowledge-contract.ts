@@ -9,7 +9,7 @@ export interface CurrentKnowledgeContract {
   bodyProfileId: string; associationProfileId: string; bodyWireId: string; associationWireId: string;
   bodyResponseSchemaVersion: number; associationResponseSchemaVersion: number;
   knowledgeHistorySchemaVersion: number; associationHistorySchemaVersion: number; reviewHistorySchemaVersion: number; journalSchemaVersion: number;
-  entityHistorySchemaVersion: number; outcomeMaxBytes: number;
+  entityHistorySchemaVersion: number; relationHistorySchemaVersion: number; graphProjectionSchemaVersion: number; outcomeMaxBytes: number;
   sourceSnapshotSchemaVersion: number; sourceProjectionVersion: string; sourceInputVersion: string; sourceImportRunIdentity: string;
   associationInputVersion: string;
   retrievalDefaultBytes: number; retrievalMinBytes: number; retrievalMaxBytes: number;
@@ -19,12 +19,12 @@ export interface CurrentKnowledgeContract {
 /** Current production identities and separately labelled historical-study capacities. */
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
-  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput, sourceReview, reviewWire] = await Promise.all([
+  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput, sourceReview, reviewWire, relations, graph] = await Promise.all([
     load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews.js'), load('extraction/generation-journal.js'),
     load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
     load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
     load('sources.js'), load('adapters/source-store.js'), load('extraction/source-input.js'),
-    load('source-review.js'), load('extraction/source-review-wire.js'),
+    load('source-review.js'), load('extraction/source-review-wire.js'), load('relations.js'), load('application/graph.js'),
   ]);
   const body = wire.BODY_GENERATION_PROFILE, association = wire.ASSOCIATION_GENERATION_PROFILE;
   return {
@@ -41,6 +41,8 @@ export async function loadCurrentKnowledgeContract(root: string): Promise<Curren
     knowledgeHistorySchemaVersion: knowledge.KnowledgeEnvelopeSchema.shape.schemaVersion.value,
     associationHistorySchemaVersion: associations.KnowledgeAssociationEnvelopeSchema.shape.schemaVersion.value,
     reviewHistorySchemaVersion: reviews.KnowledgeReviewEnvelopeSchema.shape.schemaVersion.value,
+    relationHistorySchemaVersion: relations.KnowledgeRelationEnvelopeSchema.shape.schemaVersion.value,
+    graphProjectionSchemaVersion: graph.KNOWLEDGE_GRAPH_SCHEMA_VERSION,
     journalSchemaVersion: journal.GenerationJournalSchema.shape.schemaVersion.value,
     entityHistorySchemaVersion: entities.EntityAnalysisEnvelopeSchema.shape.schemaVersion.value,
     sourceSnapshotSchemaVersion: sourceStore.SOURCE_SNAPSHOT_SCHEMA_VERSION, sourceProjectionVersion: sources.SOURCE_PROJECTION_VERSION,
@@ -85,6 +87,8 @@ export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract,
     ['Knowledge history Schema', '知识历史 Schema', code(values.knowledgeHistorySchemaVersion)],
     ['Association history Schema', '关联历史 Schema', code(values.associationHistorySchemaVersion)],
     ['Review and use feedback history Schema', '复核与使用反馈历史 Schema', code(values.reviewHistorySchemaVersion)],
+    ['Cross-knowledge relation history Schema', '跨知识关系历史 Schema', code(values.relationHistorySchemaVersion)],
+    ['Knowledge graph projection Schema', '知识图谱投影 Schema', code(values.graphProjectionSchemaVersion)],
     ['Generation journal Schema', '生成日志 Schema', code(values.journalSchemaVersion)],
     ['Source ledger history Schema', '来源清单历史 Schema', code(values.ledgerHistorySchemaVersion)],
     ['Source coverage history Schema', '来源覆盖历史 Schema', code(values.coverageHistorySchemaVersion)],
