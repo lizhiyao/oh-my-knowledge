@@ -222,6 +222,8 @@ omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revis
 
 使用最新详情里的实际修订与 `history.generation`；`discard` 同样绑定精确修订，不删除历史。保留不证明真值。
 
+CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associations`、`review-associations` 在识别到 Codex Desktop 启动归属及有效线程身份时，将新维护写入记为实际 Agent；其它上下文保持既有 `human/local-user` 默认，该回退不证明操作者是真人。这是启动归属记录，不是身份认证或其它 Agent 宿主支持。旧 actor／回执和知识创建归属不变，capture、生成及独立复核入口也不改变；不新增 actor flag 或草稿自报字段。精确范围见[操作者归属契约](../../specs/knowledge/knowledge-domain-model.md#actor-context-design)。
+
 修订草稿只复制 `title`、`content`、`reuseRationale`。保留各段稳定 `segmentId`、完整 `text` 与 inline `evidence`。Evidence 包含精确 `source: {snapshotId, sourceVersion}`、`selection: {evidenceRef, start, end, quote}`、`basis` 和可选 `interpretation`。位置为精确 excerpt 中的零基 UTF-16；修改前读原文，宿主也会重新读取每个 source／version 并拒绝不匹配。
 
 ```bash

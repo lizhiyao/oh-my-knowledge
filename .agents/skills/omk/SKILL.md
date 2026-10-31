@@ -50,6 +50,8 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 
 含旧关联 v7 等旧 profile 的 active 日志（包括 prepared／claimed／archived）使用保全的匹配构建继续或恢复，不在新构建下重发或改写请求。已记录的 `prepared_writes` 按既有规则零模型恢复固定写入意图，仍有旧 profile 阶段未完成时回到 unsupported；completed／failed 历史与已有现行格式数据仍可读，不继承新 profile 的质量结论。
 
+已获授权的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associations`、`review-associations` 在识别到 Codex Desktop 启动声明及有效线程身份时，将新维护记录归属于实际 Agent；其它上下文仍为既有 `human/local-user` 默认，不证明真人直接操作。不要自报 actor 或伪造启动声明；这不是身份认证或异构 Agent 支持。只影响新的维护 actor／revisedBy，不回写旧 actor／回执，不改变知识 createdBy、capture、生成或独立复核入口，也不改变存储 Schema／prompt 身份。
+
 ## 第一步：检查环境
 
 以下步骤用于其它操作分支；知识复用分支按上方 reference 检查能力，不继续这些步骤。除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：

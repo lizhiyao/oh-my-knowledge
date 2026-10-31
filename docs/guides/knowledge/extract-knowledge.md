@@ -222,6 +222,8 @@ omk observe knowledge retain --workspace ./knowledge --id <knowledge-id> --revis
 
 Use the actual revision and `history.generation` from the latest detail; `discard` records the same exact-revision decision without deleting history. Retention is not truth verification.
 
+For CLI `retain`, `discard`, `revise`, `correct-entities`, `apply-associations` and `review-associations`, a recognized Codex Desktop launcher with a valid thread identity records the actual Agent on new maintenance writes. Other contexts retain the existing `human/local-user` default; that fallback does not certify a human operator. This is launcher attribution, not identity authentication or support for other Agent hosts. Old actors/receipts and knowledge creation attribution stay unchanged, as do capture, generation and the independent review entries. No actor flag or self-declared draft field is added. See the [exact attribution boundary](../../specs/knowledge/knowledge-domain-model.md#actor-context-design).
+
 For a revision draft copy only `title`, `content` and `reuseRationale`. Preserve every segment's stable `segmentId`, complete `text` and inline `evidence`. Evidence includes exact `source: {snapshotId, sourceVersion}`, `selection: {evidenceRef, start, end, quote}`, `basis` and optional `interpretation`. Positions are zero-based UTF-16 into the exact excerpt. Read the source before changing them; the host independently rereads each source/version and rejects mismatches.
 
 ```bash
