@@ -18,6 +18,9 @@ import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKno
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
 import { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/contracts.js';
+import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
+import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
+import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { authoredKnowledgeResponse, authoredSourceDecision, seedKnowledgeWorkspace } from './knowledge-fixtures.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
@@ -89,6 +92,7 @@ describe('observe knowledge command wiring', () => {
   }, 120_000);
   it('confirms four stages and an actual source decision through the actual CLI producer, persists both originals and resumes without dispatch', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-body-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    const threadId = randomUUID(); vi.stubEnv('CODEX_THREAD_ID', threadId); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'Codex Desktop');
     vi.stubEnv('OPENAI_API_KEY', 'isolated-loopback-fixture-key'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9321');
     const workspace = join(root, 'knowledge'), source = join(root, 'source.jsonl');
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }));
@@ -105,6 +109,7 @@ describe('observe knowledge command wiring', () => {
     const runId = randomUUID(), input = join(root, 'sources.json'); writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }] }));
     const base = ['--workspace', workspace, '--input', input, '--executor', 'openai-api', '--model', 'authored-loopback-test', '--run-id', runId, '--json'];
     const prepared = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout); expect(fetch).not.toHaveBeenCalled();
+    expect(prepared.journal.actor).toEqual({ actorKind: 'human', actorId: 'local-user' });
     const args = ['generate', ...base, '--confirm-request', prepared.journal.stages[0].requestDigest];
     let run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout); expect(fetch).toHaveBeenCalledTimes(1);
     const dispatch = async (prepared: typeof run) => JSON.parse((await runCommand(ObserveKnowledge, ['continue-stage', '--workspace', workspace, '--id', runId, '--generation', String(prepared.journal.generation),
@@ -119,7 +124,7 @@ describe('observe knowledge command wiring', () => {
     const decision = authoredSourceDecision(status), decisionPath = join(root, 'decision.json'); writeFileSync(decisionPath, JSON.stringify(decision));
     vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'unknown');
     await expect(runCommand(ObserveKnowledge, ['review-source-coverage', '--workspace', workspace, '--input', decisionPath, '--json'], { cwd: root })).rejects.toMatchObject({ code: 2 });
-    vi.stubEnv('CODEX_THREAD_ID', randomUUID()); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'Codex Desktop');
+    vi.stubEnv('CODEX_THREAD_ID', threadId); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'Codex Desktop');
     const receipt = JSON.parse((await runCommand(ObserveKnowledge, ['review-source-coverage', '--workspace', workspace, '--input', decisionPath, '--json'], { cwd: root })).stdout);
     expect(JSON.parse((await runCommand(ObserveKnowledge, ['review-source-coverage', '--workspace', workspace, '--input', decisionPath, '--json'], { cwd: root })).stdout)).toEqual(receipt);
     const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision.decision;
@@ -129,6 +134,7 @@ describe('observe knowledge command wiring', () => {
       stages: ['source_ledger', 'body', 'source_coverage', 'association'].map(stageKind => ({ stageKind, state: 'completed', outcomeRef: expect.any(Object) })) });
     expect(fetch).toHaveBeenCalledTimes(4); expect(requests[0].messages).not.toEqual(requests[1].messages);
     const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(4);
+    expect(app.inspect(runId).journal.actor).toEqual({ actorKind: 'human', actorId: 'local-user' });
     expect(app.detail(run.journal.bodies[0].knowledgeId)).toMatchObject({ maintenance: null, derivedAssociations: { status: 'available', reviewStatus: 'pending' } });
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }] }));
     expect(JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout)).toEqual(run);
@@ -212,32 +218,59 @@ describe('observe knowledge command wiring', () => {
     const json = await runCommand(ObserveKnowledge, ['list', '--workspace', join(root, 'empty'), '--json'], { cwd: root });
     expect(JSON.parse(json.stdout)).toEqual([]); expect(json.stdout).not.toContain('Next');
   });
-  it('corrects an independent entity catalog and explicitly revises/reviews associations without modifying the complete body', async () => {
+  it.each(['desktop', 'ordinary'] as const)('attributes all six maintenance commands in %s context without rewriting history or creation identity', async context => {
     const root = mkdtempSync(join(tmpdir(), 'omk-current-entity-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root);
+    const threadId = randomUUID();
+    vi.stubEnv('CODEX_THREAD_ID', context === 'desktop' ? threadId : undefined);
+    vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', context === 'desktop' ? 'Codex Desktop' : undefined);
+    const actor = context === 'desktop' ? { actorKind: 'agent', actorId: `codex:${threadId}`, executionRef: `codex-thread:${threadId}` }
+      : { actorKind: 'human', actorId: 'local-user' };
     const workspace = join(root, 'knowledge'), seeded = seedKnowledgeWorkspace(workspace, 'cli');
     const app = createLocalKnowledgeApplication(workspace), analysisId = seeded.ref().analysisId, base = ['--workspace', workspace, '--lang', 'zh'];
+    const knowledge = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace), entities = new FileEntityAnalysisStore(join(workspace, 'entities'), workspace);
+    const associations = new FileKnowledgeAssociationStore(join(workspace, 'associations'), 'local', knowledge, entities, workspace);
+    const oldBody = knowledge.read(seeded.body.knowledgeId), oldCatalog = entities.read(analysisId), oldAssociation = associations.read(seeded.body.knowledgeId);
     const found = JSON.parse((await runCommand(ObserveKnowledge, ['entities', ...base, '--query', 'Alpha', '--page-size', '1', '--json'], { cwd: root })).stdout);
     expect(found).toMatchObject({ total: 1, pageSize: 1, rows: [{ label: 'Alpha', knowledgeCount: 1 }] });
     const before = app.entities(analysisId), edit = structuredClone({ entities: before.revision.entities, mentions: before.revision.mentions }); edit.entities[0].label = '项目 Alpha';
     const input = join(root, 'correction.json'); writeFileSync(input, JSON.stringify(edit));
     const correction = ['correct-entities', ...base, '--analysis', analysisId, '--entity-revision', before.revision.revisionId, '--generation', '1', '--input', input, '--reason', '核对名称', '--json'];
     const corrected = JSON.parse((await runCommand(ObserveKnowledge, correction, { cwd: root })).stdout); expect(corrected.history.generation).toBe(2);
+    expect(entities.read(analysisId).revisions.at(-1)?.revisedBy).toEqual(actor);
+    const correctedHistory = entities.read(analysisId);
     await expect(runCommand(ObserveKnowledge, correction, { cwd: root })).rejects.toMatchObject({ code: 1 });
+    expect(entities.read(analysisId)).toEqual(correctedHistory);
     const draft = { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }], segmentEntityRefs: [{ segmentId: 's1', analysisId, entityRevisionId: corrected.revision.revisionId, entityId: edit.entities[0].entityId, mentionIds: [edit.mentions[0].mentionId] }], typedRelations: [], issues: [] };
     writeFileSync(input, JSON.stringify(draft));
     const applied = JSON.parse((await runCommand(ObserveKnowledge, ['apply-associations', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId,
       '--body-digest', seeded.body.bodyDigest, '--generation', '1', '--input', input, '--reason', '明确修订关联', '--json'], { cwd: root })).stdout);
     expect(applied.revision).toEqual(seeded.body); expect(applied.derivedAssociations).toMatchObject({ reviewStatus: 'pending', revision: { catalogRefs: [{ analysisId, entityRevisionId: corrected.revision.revisionId }] } });
+    expect(associations.read(seeded.body.knowledgeId).revisions.at(-1)?.revisedBy).toEqual(actor);
     const reviewed = JSON.parse((await runCommand(ObserveKnowledge, ['review-associations', ...base, '--id', seeded.body.knowledgeId,
       '--revision', applied.derivedAssociations.revision.revisionId, '--generation', '2', '--choice', 'accept', '--reason', '逐项核对', '--json'], { cwd: root })).stdout);
     expect(reviewed.derivedAssociations.reviewStatus).toBe('accepted'); expect(reviewed.maintenance).toBeNull();
+    expect(associations.read(seeded.body.knowledgeId).reviews.at(-1)?.actor).toEqual(actor);
     await runCommand(ObserveKnowledge, ['retain', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId, '--generation', '1', '--reason', '保留正文'], { cwd: root });
+    expect(knowledge.read(seeded.body.knowledgeId).maintenance.at(-1)).toMatchObject({ choice: 'retain', actor });
     const bodyDraft = { title: '新的正文限定', content: seeded.body.content, reuseRationale: seeded.body.reuseRationale }; writeFileSync(input, JSON.stringify(bodyDraft));
     const revise = ['revise', ...base, '--id', seeded.body.knowledgeId, '--revision', seeded.body.revisionId, '--generation', '2', '--input', input, '--reason', '核对正文', '--json'];
     const revised = JSON.parse((await runCommand(ObserveKnowledge, revise, { cwd: root })).stdout);
     expect(revised.maintenance).toBeNull(); expect(revised.derivedAssociations.status).toBe('stale'); expect(revised.revision.content).toEqual(seeded.body.content);
+    expect(knowledge.read(seeded.body.knowledgeId).revisions.at(-1)).toMatchObject({ revisedBy: actor, createdBy: seeded.body.createdBy, createdAt: seeded.body.createdAt });
+    const revisedHistory = knowledge.read(seeded.body.knowledgeId);
+    await expect(runCommand(ObserveKnowledge, revise, { cwd: root })).rejects.toMatchObject({ code: 1 });
+    expect(knowledge.read(seeded.body.knowledgeId)).toEqual(revisedHistory);
+    await runCommand(ObserveKnowledge, ['discard', ...base, '--id', seeded.body.knowledgeId, '--revision', revised.revision.revisionId,
+      '--generation', '3', '--reason', '该修订暂不复用'], { cwd: root });
+    expect(knowledge.read(seeded.body.knowledgeId).maintenance.at(-1)).toMatchObject({ revisionId: revised.revision.revisionId, choice: 'discard', actor });
     expect(app.detail(seeded.body.knowledgeId, seeded.body.revisionId).revision).toEqual(seeded.body);
     expect(app.detail(seeded.body.knowledgeId, seeded.body.revisionId).maintenance?.choice).toBe('retain');
+    for (const { before, after } of [{ before: oldBody, after: knowledge.read(seeded.body.knowledgeId) },
+      { before: oldCatalog, after: entities.read(analysisId) }, { before: oldAssociation, after: associations.read(seeded.body.knowledgeId) }]) {
+      expect(after.revisions.slice(0, before.revisions.length)).toEqual(before.revisions);
+      expect(after.receipts.slice(0, before.receipts.length)).toEqual(before.receipts);
+    }
   });
   it.each(['history', 'file'] as const)('reports a known entity %s capacity refusal instead of invalid draft fields', async scope => {
     const root = mkdtempSync(join(tmpdir(), 'omk-entity-capacity-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);

@@ -158,7 +158,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ## 8. 后续扩展的架构决定 {#extension-boundaries}
 
-本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；Source3 中立来源适配器与独立副本迁移也已实施，公共操作者上下文的进一步扩展仍是设计。** 当时多目录改造保持来源窗口、正文、实体历史、载体及操作者数据形状，关联 profile／wire 与日志独立版本化；后续第 3 节的生成升级另改正文／关联模型契约，不回写这些存储或历史测量。
+本节记录 [#1392](https://github.com/lizhiyao/oh-my-knowledge/issues/1392) 的扩展边界。**第 8.2 节多目录关联及第 8.4 节相应 Schema 2／副本迁移已实施；Source3 中立来源适配器、独立副本迁移及第 8.3 节六命令 CLI 维护归属也已实施。更广的未知操作者拒绝与服务上下文仍是设计。** 当时多目录改造保持来源窗口、正文、实体历史、载体及操作者数据形状，关联 profile／wire 与日志独立版本化；后续第 3 节的生成升级另改正文／关联模型契约，不回写这些存储或历史测量。
 
 ### 8.1 来源中立的快照与适配器 {#neutral-source-design}
 
@@ -186,17 +186,17 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 
 ### 8.3 实际操作者与委托用户 {#actor-context-design}
 
-独立 reviews v1 已在其新增操作内落实可信宿主 actor：CLI 写入识别 Codex Desktop 启动归属，未知上下文拒绝；Studio 与受信任应用构造分别注入其实际操作者，浏览器 payload 不能自报。该实现不改变下面既有知识维护入口的默认值，也不是身份认证系统，详见[复核操作边界](knowledge-reviews.md#review-operations)。
+独立 reviews v1 已在其新增操作内落实可信宿主 actor：CLI 写入识别 Codex Desktop 启动归属，未知上下文拒绝；Studio 与受信任应用构造分别注入其实际操作者，浏览器 payload 不能自报。这些独立复核规则保持不变，也不是身份认证系统，详见[复核操作边界](knowledge-reviews.md#review-operations)。
 
-当前 KnowledgeActor 已区分 human 与带 executionRef 的 agent，但本地装配把维护调用者固定为 human/local-user；生成阶段另记 extractor Agent。该默认值不能证明每次 CLI 维护都由真人直接执行，旧记录也不能据此自动重标。
+CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associations`、`review-associations` 复用现有启动归属识别。当 `CODEX_INTERNAL_ORIGINATOR_OVERRIDE` 为 `Codex Desktop`，且 `CODEX_THREAD_ID` 是有效 UUID 时，新维护写入记录 `{actorKind: "agent", actorId: "codex:<thread-id>", executionRef: "codex-thread:<thread-id>"}`，仅作用于新的 `maintenance.actor`、知识／实体／关联修订的 `revisedBy` 及关联复核的 `actor` 字段。其它上下文保持既有 `human/local-user` 默认；该回退不证明真人直接操作。启动声明用于归属记录，不是身份认证，也不表示支持其它 Agent 宿主。
 
-后续决定：知识修订的 createdBy／revisedBy 和维护 actor 记录**实际执行写入的主体**；委托用户与授权范围由可信宿主 principal／授权记录保存，使用精确 requestId 与写入回执关联。Agent 代用户写入时记录 agent 及稳定 executionRef，真人委托不将执行者改记为 human。跨窗口发布需要的人工身份决定仍独立保留。
+本项维护归属调整仅为这六个 CLI 入口注入 actor。读取、capture、生成／恢复、迁移及独立关系／复核入口均保持既有归属规则。知识创建归属不变，正文修订继续保留原 `createdBy`；旧 actor 字段和回执不回写、不重标。不新增 CLI flag 或请求 DTO，不改变持久化 Schema、提示词或生成身份，也不要求数据迁移。
 
-可信身份由 CLI 启动上下文、已认证的服务会话或受信任 Agent runtime 注入应用端口；浏览器请求、模型生成内容和任意请求 payload 的自报 actor 不作身份依据。无法确定实际操作者的写调用应显式拒绝并要求补足宿主上下文，读取仍可按原权限进行。现有 KnowledgeActor 形状可复用；这不是当前 CLI 已提供的新参数或认证能力，也不扩大操作授权。
+更广的设计仍是记录**实际执行写入的主体**，由可信宿主记录分别保存委托用户与授权范围，并以精确 requestId 关联。普遍拒绝未知写入者、已认证服务上下文及更多可信 Agent 宿主仍须单独确认和实施，不替换这六个入口保留的终端回退。浏览器 payload 和模型生成内容不能证明身份；如需新增落盘授权记录，先单独版本化其契约与保留范围。跨窗口发布需要的人工身份决定仍独立保留，归属记录不扩大操作授权。
 
 ### 8.4 版本、迁移与实施交接 {#extension-migration-plan}
 
-多目录关联与副本迁移、独立 reviews v1 已获明确批准并实施。下表的 Source3 升级及独立副本迁移已实施；其余既有维护入口的公共操作者扩展仍须单独确认。两项扩展均不随关联 Schema 2 或新增复核记录一并更换。
+多目录关联与副本迁移、独立 reviews v1 及 Source3 已获明确批准并实施。第 8.3 节六命令 CLI 维护归属也已单独获批并实施，保留既有终端回退；更广的未知操作者拒绝、服务上下文及其它公共操作者扩展仍须分别确认。关联 Schema 2 或独立复核记录不构成这些剩余扩展的授权。
 
 | 受影响面 | 版本与迁移决定 |
 |---|---|
@@ -204,7 +204,7 @@ Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被�
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
 | 关联与生成日志 | 关联历史保持 Schema 2。prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 及阶段 v1 envelope 不变，不要求数据迁移。默认 journal Schema 4／knowledge-body-first/v4 仍绑定四阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal3／自动许可；旧 profile 的 active 工作使用保全的匹配构建恢复，固定 prepared_writes 按既有规则恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
 | 来源盘点与覆盖 | 默认 workflow4 使用 journal4／input2：source_ledger → body → source_coverage → 明确批准的关联。独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开表达模型意见与实际决定；claim 锁内重验精确决定，拒绝旧自动授权，仅迁移受支持独立副本。Source3、未改正文／实体／关联／review／tag 身份及历史测量保留。 |
-| 操作者上下文 | 复用 human／agent 数据形状；公共 CLI／服务的可信上下文输入与缺失时拒绝行为需明确发布影响。旧 actor 和回执不回写；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
+| 操作者上下文 | 第 8.3 节六命令 CLI 维护范围仅为新写入复用 human／agent 数据形状，不改变创建归属、旧 actor／回执、请求 DTO、存储 Schema 或生成身份，无需迁移。未知操作者拒绝与更广服务上下文保持独立设计及确认边界；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 
 实施交接须提交来源支持清单、DTO／落盘 Schema 差异、引用映射、保存位置、迁移前检查及回退方式，超出已确认边界的写入仍须先确认。回退使用保全的旧工作区及匹配旧 binary；新工作区保留迁移原件和映射。多目录图谱与直接项目资料接入分别验收；前者不证明文件／Git 摄取或存量项目建库已完成。

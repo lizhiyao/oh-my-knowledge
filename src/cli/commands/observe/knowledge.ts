@@ -398,7 +398,9 @@ export default class ObserveKnowledge extends BaseCommand {
     if (['prepare-generation', 'prepare-source-review', 'generate', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations'].includes(operation.operation)) operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') } as KnowledgeOperation;
     const reviewActor = operation.operation === 'review-source-coverage' ? knowledgeReviewCliActor(process.env) : undefined;
     if (operation.operation === 'review-source-coverage' && !reviewActor) this.error(t('来源决定需要可信宿主的实际操作者上下文，不能回落为真人。', 'Source decisions require actual-actor context from a trusted host; no human fallback is inferred.'), { exit: 2 });
-    const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope, reviewActor });
+    const actor = ['retain', 'discard', 'revise', 'correct-entities', 'apply-associations', 'review-associations'].includes(args.operation)
+      ? knowledgeReviewCliActor(process.env) : undefined;
+    const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope, reviewActor, actor });
     await this.runWithCancellation(async signal => {
       let result: unknown;
       try { result = await executeKnowledgeOperation(app, operation, signal, (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer)); }
