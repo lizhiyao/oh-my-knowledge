@@ -5,11 +5,12 @@ import { sourceSnapshotProjection, sourceVersionPreimage } from '../../src/knowl
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
 import { sourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
+import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { checkGeneratedSourceCoverage, checkGeneratedSourceLedger, sourceCoverageModelInput, sourceLedgerModelInput,
   SOURCE_COVERAGE_GENERATION_PROFILE, SOURCE_LEDGER_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
 import { sourceReviewModelFixture } from './source-review-model-fixtures.js';
 
-const { source, input, metadataQuote, originalQuote, locator, ledgerOutput, body, bodyQuote,
+const { source, metadataQuote, originalQuote, locator, ledgerOutput, body, bodyQuote,
   coverageOutput, emptyCoverageOutput, ledger } = sourceReviewModelFixture();
 
 describe('source review wire and deterministic unit compilation', () => {
@@ -34,7 +35,9 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v2', promptVersion: 'knowledge-source-ledger-generation/v3',
       profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
       wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v2', promptVersion: 'knowledge-source-coverage-generation/v3' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v4' });
+    expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2');
+    expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80');
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);
@@ -49,7 +52,9 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(() => checkGeneratedSourceLedger(JSON.stringify(offset), [source])).toThrow(/wire rejected/);
     expect(JSON.stringify(SOURCE_COVERAGE_GENERATION_PROFILE.wireSchema)).toContain('"targetKey"');
     expect(JSON.stringify(SOURCE_COVERAGE_GENERATION_PROFILE.wireSchema)).not.toMatch(/"(?:target|targetKind|itemId|facetId|bodyRef)"/);
-    expect(() => checkGeneratedSourceCoverage(JSON.stringify({ ...coverageOutput(), schemaVersion: 1 }), [source], ledger(), [body()])).toThrow(/wire rejected/);
+    for (const schemaVersion of [1, 2]) {
+      expect(() => checkGeneratedSourceCoverage(JSON.stringify({ ...coverageOutput(), schemaVersion }), [source], ledger(), [body()])).toThrow(/wire rejected/);
+    }
     const oldTarget = coverageOutput(); Object.assign(oldTarget.checks[4], { target: { targetKind: 'ledger_facet', itemId: null, facetId: 'amount-value' } });
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(oldTarget), [source], ledger(), [body()])).toThrow(/wire rejected/);
   });
@@ -126,7 +131,7 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(() => sourceCoverageModelInput([source, otherSource], currentLedger, [body()])).toThrow(/manifest mismatch/);
   });
 
-  it('separates a preserved unknown from a known factual value and binds a bounded-input witness to actual fields', () => {
+  it('separates a preserved unknown from a known factual value without weakening quote validation', () => {
     const currentLedger = ledger(), unknown = coverageOutput();
     unknown.checks[4].coverageTarget = 'factual_value'; unknown.checks[4].factualValue = 'unknown';
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(unknown), [source], currentLedger, [body()])).toThrow(/Unknown factual value/);
@@ -136,14 +141,50 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(checkGeneratedSourceCoverage(JSON.stringify(separateMetrics), [source], currentLedger, [body()]).checks).toHaveLength(7);
     separateMetrics.checks.push({ ...unknown.checks[4], checkId: 'duplicate-factual-value' });
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(separateMetrics), [source], currentLedger, [body()])).toThrow(/duplicate/i);
-    const bounded = coverageOutput(); bounded.checks[4].coverageTarget = 'preserved_bounded_input_limitation'; bounded.checks[4].sourceEvidence = [];
-    bounded.checks[4].bodyEvidence = [bodyQuote('本次选定输入没有给出金额值')];
-    bounded.checks[4].boundedInput = { unitKeys: input.manifest.units.map(unit => unit.unitKey), inspectedFields: ['/excerpts/0/text'], scope: 'Only this complete selected input is inspected.' };
-    const checked = checkGeneratedSourceCoverage(JSON.stringify(bounded), [source], currentLedger, [body()]);
-    expect(checked.checks[4].boundedInput?.sourceInputDigest).toBe(input.manifest.sourceInputDigest);
-    expect(checked.checks[4].factualValue).toBe('not_applicable');
-    bounded.checks[4].boundedInput.inspectedFields = ['/invented/privateField'];
-    expect(() => checkGeneratedSourceCoverage(JSON.stringify(bounded), [source], currentLedger, [body()])).toThrow(/field/);
+    const sourceSpoof = coverageOutput(); sourceSpoof.checks[0].sourceEvidence[0].quote = 'Not in the source.';
+    expect(() => checkGeneratedSourceCoverage(JSON.stringify(sourceSpoof), [source], currentLedger, [body()])).toThrow('quote_mismatch');
+    const bodySpoof = coverageOutput(); bodySpoof.checks[5].bodyEvidence[0].quote = 'Not in the body.';
+    expect(() => checkGeneratedSourceCoverage(JSON.stringify(bodySpoof), [source], currentLedger, [body()])).toThrow('quote_mismatch');
+  });
+
+  it('compiles a complete two-source inspection declaration into the exact host manifest witness', () => {
+    const other = traceSnapshotFixture('Another explicitly selected source.', { snapshotId: '00000000-0000-4000-8000-000000000012' });
+    const sources = [other, source], completeInput = sourceReviewInput(sources), proposedLedger = ledgerOutput();
+    proposedLedger.unitDispositions.push(...completeInput.manifest.units.slice(2).map(unit => ({ unitKey: unit.unitKey,
+      disposition: 'pending', reason: 'This additional selected source remains unresolved.' })));
+    const completeLedger = { ref: ledger().ref, data: checkGeneratedSourceLedger(JSON.stringify(proposedLedger), sources) };
+    const priorTargets = JSON.parse(sourceCoverageModelInput([source], ledger(), [body()])).targets as { targetKey: string; target: unknown }[];
+    const targets = JSON.parse(sourceCoverageModelInput(sources, completeLedger, [body()])).targets as typeof priorTargets;
+    const priorChecks = coverageOutput().checks, response = coverageOutput();
+    response.checks = targets.map(({ targetKey, target }): typeof priorChecks[number] => {
+      const prior = priorTargets.find(entry => canonicalJson(entry.target) === canonicalJson(target));
+      const check = priorChecks.find(check => check.targetKey === prior?.targetKey);
+      return check ? { ...check, targetKey } : { checkId: targetKey, targetKey, coverageTarget: 'knowledge_meaning', status: 'unassessable',
+        factualValue: 'not_applicable', reason: 'Additional source remains unresolved.', sourceEvidence: [], bodyEvidence: [], boundedInput: null };
+    });
+    const bounded = response.checks.at(-1)!;
+    bounded.coverageTarget = 'preserved_bounded_input_limitation'; bounded.sourceEvidence = [];
+    bounded.bodyEvidence = [bodyQuote('本次选定输入没有给出金额值')];
+    const unitKeys = completeInput.manifest.units.map(unit => unit.unitKey), scope = 'Only this complete selected input is inspected.';
+    bounded.boundedInput = { inspectionKind: 'complete_manifest_units', inspectedUnitKeys: [...unitKeys].reverse(), scope };
+    const raw = JSON.stringify(response), checked = checkGeneratedSourceCoverage(raw, sources, completeLedger, [body()]);
+    expect(checked.checks.at(-1)?.boundedInput).toEqual({ sourceInputDigest: completeInput.manifest.sourceInputDigest, unitKeys,
+      inspectedFields: [...new Set(completeInput.manifest.units.flatMap(unit => unit.fieldPaths))].sort(), scope });
+    expect(checked.checks.at(-1)?.factualValue).toBe('not_applicable');
+    expect(JSON.stringify(response)).toBe(raw);
+
+    for (const inspectedUnitKeys of [unitKeys.slice(0, -1), [...unitKeys.slice(0, -1), 'unknown-unit'], [...unitKeys, unitKeys[0]],
+      [...unitKeys.slice(0, -1), unitKeys[0]]]) {
+      bounded.boundedInput = { inspectionKind: 'complete_manifest_units', inspectedUnitKeys, scope };
+      expect(() => checkGeneratedSourceCoverage(JSON.stringify(response), sources, completeLedger, [body()])).toThrow(/every exact manifest unit once/);
+    }
+    bounded.boundedInput = null;
+    expect(() => checkGeneratedSourceCoverage(JSON.stringify(response), sources, completeLedger, [body()])).toThrow(/exact inspected input/);
+    for (const declaration of [{ inspectedUnitKeys: unitKeys, scope }, { inspectionKind: 'complete_manifest_units', inspectedUnitKeys: unitKeys,
+      inspectedFields: ['s0/metadata.text: complete JSON'], scope }]) {
+      Object.assign(bounded, { boundedInput: declaration });
+      expect(() => checkGeneratedSourceCoverage(JSON.stringify(response), sources, completeLedger, [body()])).toThrow(/wire rejected/);
+    }
   });
 
   it('retains independent findings about omissions in the ledger without rewriting that original ledger', () => {

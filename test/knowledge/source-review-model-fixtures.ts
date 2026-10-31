@@ -36,7 +36,7 @@ export function sourceReviewModelFixture() {
   function coverageOutput(): z.infer<typeof SourceCoverageResponseSchema> {
     const base = { coverageTarget: 'knowledge_meaning' as const, status: 'covered' as const, factualValue: 'not_applicable' as const,
       reason: 'The paragraph retains this source meaning.', boundedInput: null };
-    return structuredClone({ responseKind: 'knowledge-source-coverage', schemaVersion: 2, checks: [
+    return structuredClone({ responseKind: 'knowledge-source-coverage', schemaVersion: 3, checks: [
       { ...base, checkId: 'source-metadata', targetKey: 't0', sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },
       { ...base, checkId: 'source-text', targetKey: 't1', sourceEvidence: [quotedSource], bodyEvidence: [bodyQuote(originalQuote)] },
       { ...base, checkId: 'identity', targetKey: 't2', sourceEvidence: [quotedMetadata], bodyEvidence: [bodyQuote('authored:wire')] },

@@ -86,7 +86,7 @@ try {
     const base = { coverageTarget: 'knowledge_meaning', status: 'unassessable', factualValue: 'not_applicable',
       reason: 'Authored demonstration only; this check does not establish semantic coverage.', bodyEvidence: [], boundedInput: null };
     const sourceQuote = unitKey => quote(unitKey, input.units.find(unit => unit.unitKey === unitKey).text);
-    return { responseKind: 'knowledge-source-coverage', schemaVersion: 2,
+    return { responseKind: 'knowledge-source-coverage', schemaVersion: 3,
       checks: input.targets.map(({ targetKey, target }) => {
         const result = { ...base, checkId: `check-${targetKey}`, targetKey, sourceEvidence: [] };
         if (target.targetKind === 'source_unit') return { ...result, sourceEvidence: [sourceQuote(target.unitKey)] };

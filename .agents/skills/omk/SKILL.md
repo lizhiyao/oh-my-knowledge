@@ -44,7 +44,9 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 - `source-updates` 只读核对完整 SourceRef 及可选 replacementSelection，不保存、生成或改知识；固定 Git 不代表最新，部分清单不证明零影响。
 - 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；旧 journal3／auto 仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。当前构建不提供自动调度或重新授权入口，只逐阶段确认。
 
-所有命令使用已选 `--workspace`。journal4／默认 input2、正文 prompt9／wire2、来源清单 prompt3／wire2、覆盖 prompt3／wire2 与两份 store1 各有身份。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**）；wire3、阶段 v1 envelope 和 Source3／正文3／实体2／关联2／reviews1 不变，不要求数据迁移。以实际 schema／请求／日志为准，不用新身份回算历史实验。接纳、quote 定位、覆盖意见、retain 与保存载体都不证明来源真值、完整生成质量或任务效果通过；缺少真实验收时如实报告。
+所有命令使用已选 `--workspace`。journal4／默认 input2、正文 prompt9／wire2、来源清单 prompt3／wire2、覆盖 prompt4／wire3 与两份 store1 各有身份。覆盖 C4 要求模型显式声明完整 manifest unit 集合，宿主校验后派生字段路径；这是模型自报范围，不证明实际逐项阅读或主张真实。此升级改变覆盖 prompt／wire／profile／request 身份（**BREAKING-WIRE／BREAKING-COMPARABILITY**），覆盖存储 Schema1 不变。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**）；wire3、阶段 v1 envelope 和 Source3／正文3／实体2／关联2／reviews1 不变，不要求数据迁移。以实际 schema／请求／日志为准，不用新身份回算历史实验。接纳、quote 定位、覆盖意见、retain 与保存载体都不证明来源真值、完整生成质量或任务效果通过；缺少真实验收时如实报告。
+
+旧 C3 编译记录可被动读取，原件状态为 `not_verified`，不继承 C4 原件验证、新覆盖决定、关联准备或 claim 资格。保留旧目录及匹配构建供旧执行／回退；C4 仅在获准的独立完整副本中启用，不改写历史原件或重算旧实验。
 
 含旧关联 v7 等旧 profile 的 active 日志（包括 prepared／claimed／archived）使用保全的匹配构建继续或恢复，不在新构建下重发或改写请求。已记录的 `prepared_writes` 按既有规则零模型恢复固定写入意图，仍有旧 profile 阶段未完成时回到 unsupported；completed／failed 历史与已有现行格式数据仍可读，不继承新 profile 的质量结论。
 

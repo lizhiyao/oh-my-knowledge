@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-默认 `knowledge-body-first/v4` 按来源盘点、正文、来源覆盖、关联四阶段执行；journal 为 Schema 4，默认输入为 `knowledge-source-generation-input/v2`。每阶段独立准备、核对完整请求、确认摘要并 claim，完整原件先归档再解码；不会自动串行发送或批准。正文仍为 wire2／prompt9；关联 prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 和阶段 v1 envelope 保持不变，不要求数据迁移。该流程不证明原始生成质量或任务效果已通过。
+默认 `knowledge-body-first/v4` 按来源盘点、正文、来源覆盖、关联四阶段执行；journal 为 Schema 4，默认输入为 `knowledge-source-generation-input/v2`。每阶段独立准备、核对完整请求、确认摘要并 claim，完整原件先归档再解码；不会自动串行发送或批准。清单仍为 wire2／prompt3，正文为 wire2／prompt9，关联为 wire3／prompt8 及阶段 v1 envelope。覆盖 wire3／prompt4 替换覆盖 wire2／prompt3（**BREAKING-WIRE**、**BREAKING-COMPARABILITY**）；来源复核 input2 和两份持久化历史 Schema 保持不变。该流程不证明原始生成质量或任务效果已通过。
 
 ## 身份与证据 {#identity}
 
@@ -16,13 +16,17 @@
 
 ### 来源清单 {#ledger}
 
-`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。 当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。覆盖使用 wire2／prompt3。宿主从本次精确输入枚举完整单元／item／facet／正文段落目标目录，模型检查只返回 targetKey，宿主恢复完整目标身份。未知键和覆盖不全仍拒收，同一目标仍可分别检查不同覆盖对象。阶段请求绑定派生目录，来源 manifest 与两份存储领域 Schema 保持。
+`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。
 
 ### 来源覆盖 {#coverage}
 
 `source-coverage/<identity-digest>.json` 保存 `knowledge-source-coverage-history` Schema 1。分析绑定精确清单修订／摘要与正文引用，逐项覆盖来源单元、候选、要点和正文段落，并保留对清单错误、遗漏或正文无据主张的独立发现。
 
-覆盖对象区分知识含义、已保留的来源声明未知、已保留的输入范围限制，以及事实值。正文写清“数值未知”不等于数值已知。输入范围限制绑定已发送输入摘要、完整单元清单与实际核对字段，语义是否充分仍需复核。零正文也能保存查漏结果，不造占位知识、不自动批准。
+当前覆盖输出为 wire3／prompt4。宿主从本次精确输入枚举完整单元／item／facet／正文段落目标目录，模型检查只返回 targetKey，宿主恢复完整目标身份。未知键和目标覆盖不全仍拒收，同一目标仍可分别检查不同覆盖对象。阶段请求绑定派生目录，来源 manifest 保持不变。
+
+覆盖对象区分知识含义、已保留的来源声明未知、已保留的输入范围限制，以及事实值。正文写清“数值未知”不等于数值已知；事实值为 `unknown` 的检查不能 covered。对于输入范围限制，模型返回的 `boundedInput` 须含 `inspectionKind: "complete_manifest_units"`、将 manifest 每个精确 unitKey 各列一次的 `inspectedUnitKeys`，以及仅限本次交付输入的 scope。未知、遗漏或重复单元键均拒收。模型不能声明完整检查时，`boundedInput` 为 null，该限制不能 covered。
+
+宿主从已验证的完整 manifest 派生 `sourceInputDigest`、按 manifest 顺序排列的 `unitKeys` 及各单元精确 `fieldPaths` 的去重排序并集，按不变的持久化 Schema 1 保存为 `boundedInput.inspectedFields`。模型不填写字段路径，宿主不将说明文字清洗或猜测成有效路径。该声明记录模型自报的完整检查范围，不证明实际读过每个单元、不将本次输入缺失推广为全局不存在，也不证明事实真值。精确来源／正文 quote、完整目标检查与语义复核仍不可省略。零正文也能保存查漏结果，不造占位知识、不自动批准。
 
 ## 实际决定 {#decisions}
 
@@ -49,3 +53,9 @@
 `source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command：共同携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不在 payload 自报 actor。关联在准备时及共享锁内 claim 前重验决定和所有上游绑定。claim 后的撤销保留已发送请求及原件，投影仍 pending，并显示失效的复核语境。手工实体／关联维护不自动产生来源覆盖批准。
 
 Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal3 和自动许可仅归档。当前构建不提供 workflow4 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
+
+### 覆盖 profile 边界 {#coverage-profile}
+
+旧 wire2／prompt3 生成的 Schema 1 覆盖记录仍可被动读取，显示 `originalVerification=not_verified`；这不使其原件或决定具备当前执行资格。当前原件重验只接纳 wire3／prompt4，新决定、关联准备及共享锁内 claim 均不继承旧 wire2／prompt3 覆盖的资格。不提供旧生成 wire 的兼容 decoder 或自动迁移，不重新解释或修补旧原生输出。
+
+继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt4 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。

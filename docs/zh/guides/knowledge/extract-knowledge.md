@@ -207,7 +207,9 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-当前清单 wire2／prompt3、覆盖 wire2／prompt3，两份历史仍为 v1；正文 wire2／prompt9，journal4／workflow4／默认 input2，Source3 和正文3／实体2／关联2／reviews1。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**），wire3 及其 v1 输入 envelope 保持不变，与 journal 的 input2 分别表达；本次提示词变更不要求数据迁移。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整或真值；当前值见[生成契约](../../reference/shared/knowledge-contract.md)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
+当前清单 wire2／prompt3、覆盖 wire3／prompt4，两份历史仍为 v1。正文保持 wire2／prompt9，关联保持 wire3／prompt8 及 v1 输入 envelope，journal4／workflow4／默认 input2、Source3 和正文3／实体2／关联2／reviews1 均不变。覆盖替换改变 wire、提示词、profile 和 request 身份（**BREAKING-WIRE**、**BREAKING-COMPARABILITY**）。其输入范围声明须明确列出全部 manifest 单元各一次，宿主派生精确字段路径；这只是模型自报检查范围，不证明实际阅读或事实真值。精确 quote 与宿主 UTF-16 定位只证明位置，不证明语义完整；当前值见[生成契约](../../reference/shared/knowledge-contract.md)，具体限制见[覆盖契约](../../specs/knowledge/knowledge-source-review.md#coverage)。历史来源、原件、分数及测量身份不变，本实现不证明旧原始质量已通过。
+
+旧 wire2／prompt3 覆盖仍可被动读取，显示 `originalVerification=not_verified`；在当前构建中不能用于新决定、关联准备或派发 claim，不提供旧 wire decoder 或自动迁移。保留原工作区和匹配可安装构建，用于旧 profile 执行与回退。要使用当前覆盖，先创建完整、独立的工作区副本，再按[修订后重新查漏](#source-review-corrections)，明确使用新的 review-run UUID、完整原来源、匹配清单及精确 bodyRefs，准备新的 wire3／prompt4 分析并记录实际决定。复用已完成的匹配清单／正文；原件／请求 custody 不能重验则停止。不修补旧 raw 或改判失败运行；该边界不表示已经发版。
 
 含旧 profile 的 active 日志（包括关联 v7 的 prepared／claimed／archived）使用保全的匹配构建，不在新 profile 下重发或改写请求。已记录的 `prepared_writes` 按既有规则零模型恢复固定发布意图，仍有旧 profile 工作未完成时回到 unsupported；completed／failed 历史和已有现行格式数据仍可读。旧日志格式另按[受支持流程副本](#workflow-migration)处理。参数错误退出 2、业务失败退出 1、成功退出 0；回执不明确时先检视持久状态，再决定是否重入写操作。
 

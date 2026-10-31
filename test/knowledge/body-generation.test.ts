@@ -53,7 +53,7 @@ function coverageOutput(input: string): CoverageResponse {
   const base = { coverageTarget: 'knowledge_meaning' as const, status: 'unassessable' as const, factualValue: 'not_applicable' as const,
     reason: 'The fixture keeps this inventory unresolved for the actual test actor; it does not infer semantic acceptance.', bodyEvidence: [], boundedInput: null };
   const sourceQuote = (unitKey: string) => locator(unitKey, request.units.find(unit => unit.unitKey === unitKey)!.text);
-  return { responseKind: 'knowledge-source-coverage', schemaVersion: 2,
+  return { responseKind: 'knowledge-source-coverage', schemaVersion: 3,
     checks: request.targets.map(({ targetKey, target }) => {
       const result = { ...base, checkId: `check:${targetKey}`, targetKey, sourceEvidence: [] as ReturnType<typeof locator>[] };
       if (target.targetKind === 'source_unit') return { ...result, sourceEvidence: [sourceQuote(target.unitKey)] };

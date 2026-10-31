@@ -21,7 +21,7 @@ function decisionRef(command: SourceCoverageWrite) {
   const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = command.decision;
   return { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: command.requestId };
 }
-function fixture(empty = false) {
+function fixture(empty = false, legacyCoverage = false) {
   const f = sourceReviewModelFixture(), root = testDirectory('omk-source-review-application-');
   const knowledge = new FileKnowledgeStore(join(root, 'items'), 'local', root);
   const bodies = empty ? [] : [f.body()];
@@ -31,17 +31,17 @@ function fixture(empty = false) {
   let currentSource = f.source, originalAvailable = true;
   const sources: SourceStore = { read: () => ({ status: 'available', snapshot: currentSource }),
     capture: vi.fn(), captureBatch: vi.fn(), delete: vi.fn() };
-  const originals = new Map<string, { original: SourceLedgerWrite['revision']['modelOriginal']; request: SourceReviewOriginalRequest; raw: string }>();
-  function original(n: number, request: SourceReviewOriginalRequest, raw: string) {
+  const originals = new Map<string, { original: SourceLedgerWrite['revision']['modelOriginal']; input: string; profileId: string; raw: string }>();
+  function original(n: number, request: SourceReviewOriginalRequest, raw: string, profileId = request.profile.profileId) {
     const value = { runId: id(n), invocationId: id(n + 1), requestDigest: generationTextDigest(request.input),
       archiveRef: `outcomes/${id(n)}/${id(n + 1)}.json`, archiveDigest: generationTextDigest(`native:${raw}`), outputDigest: generationTextDigest(raw) };
-    originals.set(value.invocationId, { original: value, request, raw }); return value;
+    originals.set(value.invocationId, { original: value, input: request.input, profileId, raw }); return value;
   }
   const readOriginal = vi.fn((ref: SourceLedgerWrite['revision']['modelOriginal'], request: SourceReviewOriginalRequest) => {
     if (!originalAvailable) throw new Error('Native original unavailable.');
     const saved = originals.get(ref.invocationId);
     if (!saved || JSON.stringify(saved.original) !== JSON.stringify(ref)) throw new Error('Native custody mismatch.');
-    if (saved.request.input !== request.input || saved.request.profile.profileId !== request.profile.profileId) throw new Error('Native request scope mismatch.');
+    if (saved.input !== request.input || saved.profileId !== request.profile.profileId) throw new Error('Native request scope mismatch.');
     return saved.raw;
   });
   const ports = { sources, knowledge, ledgers, coverage, actor, now: () => bodyAt, readOriginal };
@@ -53,9 +53,14 @@ function fixture(empty = false) {
   const ledgerRef = { ledgerId: id(11), revisionId: ledgerRevision.revisionId, digest: ledgerRevision.digest };
   const ledgerCommand: SourceLedgerWrite = { commandKind: 'append_analysis', ledgerId: ledgerRef.ledgerId,
     requestId: id(13), expectedGeneration: 0, expectedHeadEventId: null, revision: ledgerRevision };
-  const ledger = { ref: ledgerRef, data: ledgerRevision.data }, rawCoverage = JSON.stringify(empty ? f.emptyCoverageOutput() : f.coverageOutput());
+  const ledger = { ref: ledgerRef, data: ledgerRevision.data }, response = empty ? f.emptyCoverageOutput() : f.coverageOutput();
+  const rawCoverage = JSON.stringify(response);
+  // Schema1 without a bounded witness is identical after compilation; retain a historical wire2 original, never decode it as wire3.
+  const originalCoverage = legacyCoverage ? JSON.stringify({ ...response, schemaVersion: 2 }) : rawCoverage;
+  const coverageProfileId = legacyCoverage ? 'sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09'
+    : SOURCE_COVERAGE_GENERATION_PROFILE.profileId;
   const coverageContent = { revisionId: id(22), parentRevisionId: null, revisedAt: bodyAt, revisedBy: actor,
-    modelOriginal: original(200, { profile: SOURCE_COVERAGE_GENERATION_PROFILE, input: sourceCoverageModelInput([f.source], ledger, bodies) }, rawCoverage),
+    modelOriginal: original(200, { profile: SOURCE_COVERAGE_GENERATION_PROFILE, input: sourceCoverageModelInput([f.source], ledger, bodies) }, originalCoverage, coverageProfileId),
     data: checkGeneratedSourceCoverage(rawCoverage, [f.source], ledger, bodies) };
   const coverageRevision = { ...coverageContent, digest: sourceReviewRevisionDigest(coverageContent) };
   const coverageRef = { coverageId: id(21), revisionId: coverageRevision.revisionId, digest: coverageRevision.digest };
@@ -124,5 +129,22 @@ describe('trusted source review application', () => {
     expect(status.revision.data.bodyRefs).toEqual([]); expect(status.decision.status).toBe('needs_revision');
     expect(status.revision.data.checks.every(check => check.status === 'omitted')).toBe(true);
     expect(() => f.app.assertDecision(decisionRef(command))).toThrow('active nonconflicting');
+  });
+  it('passively reads an old compiled Schema1 analysis without inheriting its wire2 decision eligibility', () => {
+    const f = fixture(false, true); f.app.writeLedger(f.ledgerCommand);
+    // Seed already committed historical domain events; the current application must not republish the old model original.
+    f.coverage.write(f.coverageCommand, actor, bodyAt, () => {});
+    const command = f.decision(); f.coverage.write(command, actor, bodyAt, () => {});
+    const status = f.app.coverage(f.coverageRef.coverageId);
+    expect(status).toMatchObject({ originalVerification: 'not_verified', decision: { status: 'proceed_with_limits' },
+      revision: { data: f.coverageCommand.revision.data } });
+    expect(status.history.generation).toBe(2);
+    expect(() => f.app.assertDecision(decisionRef(command))).toThrow('Native request scope mismatch');
+    if (command.commandKind !== 'record_decision') throw new Error('Fixture decision missing.');
+    const newDecision = structuredClone(command);
+    newDecision.requestId = id(26); newDecision.expectedGeneration = 2; newDecision.expectedHeadEventId = command.requestId;
+    newDecision.decision.supersedesEventIds = [command.requestId];
+    expect(() => f.app.writeCoverage(newDecision)).toThrow('Native request scope mismatch');
+    expect(f.coverage.read(f.coverageRef.coverageId)?.generation).toBe(2);
   });
 });
