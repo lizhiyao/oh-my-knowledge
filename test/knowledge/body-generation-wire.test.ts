@@ -38,9 +38,10 @@ describe('versioned body and association generation wire', () => {
     expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-ledger-generation/v3',
       profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
       wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-coverage-generation/v3',
-      profileId: 'sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09',
-      wireId: 'sha256:ed4e02bfa494a549aa31cd5880a2426eb7b1ba18b74ab1f7b06782733a14ba08' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-coverage-generation/v4',
+      outputName: 'knowledge_source_coverage_v3',
+      profileId: 'sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8',
+      wireId: 'sha256:051de277225cfb10d2016a269ec2ec04dad3a72ea2ccf89cd1e7bd4c15abe3a8' });
     for (const profile of [BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile)).toBe(true);
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);

@@ -38,7 +38,7 @@ export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' 
       }
       return { targetKey, sourceEvidence: units.length ? [source(units[0].unitKey)] : [] };
     });
-    return { responseKind: 'knowledge-source-coverage', schemaVersion: 2, checks: targets.map((value, index) => ({ ...value, checkId: `check-${index}`, coverageTarget: 'knowledge_meaning',
+    return { responseKind: 'knowledge-source-coverage', schemaVersion: 3, checks: targets.map((value, index) => ({ ...value, checkId: `check-${index}`, coverageTarget: 'knowledge_meaning',
       status: 'unassessable', factualValue: 'not_applicable', reason: 'Authored protocol check requiring an explicit actual disposition.', bodyEvidence, boundedInput: null })), findings: [], limitations: ['Authored fixture has no semantic or factual acceptance.'] };
   }
   const excerpt = (data.excerpts ?? data.sources?.[0].excerpts ?? [])[0];

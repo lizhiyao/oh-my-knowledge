@@ -10,16 +10,16 @@
 | 生产流程 | `knowledge-body-first/v4` |
 | 来源清单 prompt | `knowledge-source-ledger-generation/v3` |
 | 正文 prompt | `knowledge-body-generation/v9` |
-| 来源覆盖 prompt | `knowledge-source-coverage-generation/v3` |
+| 来源覆盖 prompt | `knowledge-source-coverage-generation/v4` |
 | 关联 prompt | `knowledge-association-generation/v8` |
 | 正文 profile 摘要 | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
 | 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | 来源清单 profile 摘要 | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
-| 来源覆盖 profile 摘要 | `sha256:7a8fe731bee5b2490f8caf1d694b126bb9632300253e095087ccfce302d10c09` |
+| 来源覆盖 profile 摘要 | `sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8` |
 | 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | 来源清单结构线协议摘要 | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
-| 来源覆盖结构线协议摘要 | `sha256:ed4e02bfa494a549aa31cd5880a2426eb7b1ba18b74ab1f7b06782733a14ba08` |
+| 来源覆盖结构线协议摘要 | `sha256:051de277225cfb10d2016a269ec2ec04dad3a72ea2ccf89cd1e7bd4c15abe3a8` |
 | 正文响应 Schema | `2` |
 | 关联响应 Schema | `3` |
 | 知识历史 Schema | `3` |
