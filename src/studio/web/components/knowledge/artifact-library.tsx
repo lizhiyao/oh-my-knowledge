@@ -15,7 +15,7 @@ import { CarrierDocument } from './carrier-document';
 
 export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lang: Language; reports: ReactNode; initialTab?: 'library' | 'reports' }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
-  const [workspace, setWorkspace] = useState(''); const [rows, setRows] = useState<ReviewedCarrierRow[]>([]);
+  const [workspace, setWorkspace] = useState(''); const [navigationWorkspace, setNavigationWorkspace] = useState(''); const [rows, setRows] = useState<ReviewedCarrierRow[]>([]);
   const [detail, setDetail] = useState<ReviewedCarrierDetail | null>(null); const [target, setTarget] = useState<string>();
   const [busy, setBusy] = useState(true); const [error, setError] = useState('');
   const [editing, setEditing] = useState(false); const [measuring, setMeasuring] = useState(false);
@@ -40,7 +40,7 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
         const id = url.searchParams.get('artifact'); const version = Number(url.searchParams.get('version'));
         const selected = id ? await requestArtifact<ReviewedCarrierDetail>(root, 'show', { id, ...(Number.isSafeInteger(version) && version > 0 ? { version } : {}) }, controller.signal) : null;
         if (controller.signal.aborted) return;
-        setWorkspace(root); setRows(list); setTarget(id ?? undefined); setDetail(selected);
+        setWorkspace(root); setNavigationWorkspace(url.searchParams.get('workspace') ?? ''); setRows(list); setTarget(id ?? undefined); setDetail(selected);
       } catch { if (!controller.signal.aborted) setError(t('未能读取载体目录。请核对知识目录后重新读取。', 'Could not load artifacts. Check the knowledge directory, then reload.')); }
       finally { if (!controller.signal.aborted) { setBusy(false); request.current = null; } }
     })();
@@ -58,11 +58,11 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
   }
   const current = detail ? rows.find(row => row.artifactId === detail.artifactId) : undefined;
   const historical = detail && detail.version !== detail.versions[0].version;
-  const select = (id: string) => { const url = new URL(window.location.href); url.searchParams.set('artifact', id); url.searchParams.delete('version'); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url); void show(id); };
+  const select = (id: string) => { const url = new URL(window.location.href); url.searchParams.set('artifact', id); url.searchParams.delete('version'); if (navigationWorkspace) url.searchParams.set('workspace', navigationWorkspace); window.history.replaceState(null, '', url); void show(id); };
   const list = <div className="carrier-library-panel">
     <Space className="carrier-library-actions" wrap><Button type="primary" disabled={busy || !workspace || !!error} onClick={() => setEditing(true)}>{t('从已保留知识生成', 'Generate from retained knowledge')}</Button>
       <Button disabled={busy || !workspace} onClick={() => void refresh()}>{t('重新核对知识变化', 'Recheck knowledge changes')}</Button>
-      <Link href={workspaceHref(KNOWLEDGE_CANDIDATES_PATH, workspace)}>{t('候选核对', 'Candidate review')}</Link></Space>
+      <Link href={workspaceHref(KNOWLEDGE_CANDIDATES_PATH, navigationWorkspace)}>{t('候选核对', 'Candidate review')}</Link></Space>
     <Table<ReviewedCarrierRow> className="studio-table carrier-table" rowKey="artifactId" loading={busy} dataSource={rows} size="small" scroll={{ x: 880 }} tableLayout="fixed" pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('保留知识后，可在这里生成并保存载体。', 'Retain knowledge, then generate and save an artifact here.')}/> }} columns={[
       { title: t('载体名称', 'Artifact name'), dataIndex: 'name', ellipsis: true, render: (name: string, row) => <Button type="link" title={name} onClick={() => select(row.artifactId)}>{name}</Button> },
       { title: t('形式', 'Form'), dataIndex: 'artifactKind', width: 100 },
@@ -83,7 +83,7 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
         <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : t('载体目录', 'Artifact directory')}</Button></div>
       <div className={`knowledge-workbench${directory ? ' knowledge-directory-open' : ''}`}>
         <aside className="knowledge-directory"><div className="knowledge-directory-scroll">{rows.map(row => <button type="button" className={`knowledge-directory-row${target === row.artifactId ? ' selected' : ''}`} key={row.artifactId} disabled={busy} onClick={event => { if (directory) event.currentTarget.closest('.knowledge-core')?.querySelector<HTMLButtonElement>('.knowledge-directory-toggle')?.focus(); select(row.artifactId); }}><strong>{row.name}</strong><span>{row.artifactKind} · v{row.version}</span></button>)}</div>
-          <footer className="knowledge-directory-footer">{t('历史内容与精确引用完整保留。', 'Historical content and exact references are preserved.')}<Link href={workspaceHref(KNOWLEDGE_LIBRARY_PATH, workspace)}>{t('返回知识库', 'Knowledge library')}</Link></footer></aside>
+          <footer className="knowledge-directory-footer">{t('历史内容与精确引用完整保留。', 'Historical content and exact references are preserved.')}<Link href={workspaceHref(KNOWLEDGE_LIBRARY_PATH, navigationWorkspace)}>{t('返回知识库', 'Knowledge library')}</Link></footer></aside>
         {detail ? <article className="knowledge-reader">
           <header className="knowledge-reader-heading"><h2>{detail.name}</h2><p className="knowledge-reader-meta">v{detail.version} · {historical ? t('历史版本', 'Historical version') : t('当前版本', 'Current version')} · {detail.artifactKind}</p>
             {detail.knowledgeReview.needsReviewCount > 0 && <div className="knowledge-reader-warning"><span>{t(`${detail.knowledgeReview.needsReviewCount} 条引用知识需复核，载体尚未更新。`, `${detail.knowledgeReview.needsReviewCount} references need review; the artifact has not been updated.`)}</span><Button type="link" onClick={() => setDetailTab('review')}>{t('核对变化', 'Review changes')}</Button></div>}
@@ -95,7 +95,7 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
             {detailTab === 'review' && <CarrierKnowledgeReviewPanel review={detail.knowledgeReview} workspace={workspace} lang={lang}/>}
             {detailTab === 'measurements' && <CarrierMeasurementHistory key={measurementRefresh} workspace={workspace} detail={detail} lang={lang}/>}
             {detailTab === 'sources' && <><p>{t('本版本只引用以下精确知识修订；当前维护状态和内容另见变化核对。', 'This version references these exact knowledge revisions. Review changes for current content and maintenance decisions.')}</p>
-              {detail.knowledgeRefs.map(ref => <section className="knowledge-statement" key={`${ref.knowledgeId}/${ref.revisionId}`}><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${ref.knowledgeId}&revision=${ref.revisionId}`, workspace)}>{detail.knowledgeReview.checks.find(check => check.knowledgeId === ref.knowledgeId && check.incorporatedRevisionId === ref.revisionId)?.title ?? t('回看精确知识修订', 'Inspect exact knowledge revision')}</Link>
+              {detail.knowledgeRefs.map(ref => <section className="knowledge-statement" key={`${ref.knowledgeId}/${ref.revisionId}`}><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${ref.knowledgeId}&revision=${ref.revisionId}`, navigationWorkspace)}>{detail.knowledgeReview.checks.find(check => check.knowledgeId === ref.knowledgeId && check.incorporatedRevisionId === ref.revisionId)?.title ?? t('回看精确知识修订', 'Inspect exact knowledge revision')}</Link>
                 <details><summary>{t('精确知识身份', 'Exact knowledge identity')}</summary><code>{ref.knowledgeId} / {ref.revisionId}</code></details></section>)}</>}
           </div></div>
           <footer className="knowledge-reader-footer"><span>{t('已保存；引用检查不代表效果已验证。', 'Saved; reference checks do not verify effectiveness.')}</span><Space wrap>
@@ -105,6 +105,6 @@ export function ArtifactLibrary({ lang, reports, initialTab = 'library' }: { lan
       </div>
     </> : <Tabs className="studio-detail-tabs carrier-library-tabs" activeKey={tab} onChange={value => { setTab(value); const url = new URL(window.location.href); if (value === 'reports') url.searchParams.set('view', 'reports'); else url.searchParams.delete('view'); window.history.replaceState(null, '', url); }} items={[{ key: 'library', label: t('已保存载体', 'Saved artifacts'), children: list }, { key: 'reports', label: t('体检与观测', 'Doctor and observe'), children: reports }]}/>}
     {measuring && detail && <CarrierMeasurementDialog workspace={workspace} detail={detail} lang={lang} onClose={() => setMeasuring(false)} onStarted={() => { setMeasurementRefresh(value => value + 1); setDetailTab('measurements'); }}/>}
-    {editing && <ArtifactAuthoringDialog key={`${workspace}:${detail?.artifactId ?? 'new'}`} workspace={workspace} lang={lang} existing={detail ? current : undefined} onClose={() => setEditing(false)} onSaved={saved => { setTarget(saved.artifactId); setDetail(saved); setDetailTab('content'); setRows(previous => [{ ...saved }, ...previous.filter(row => row.artifactId !== saved.artifactId)]); const url = new URL(window.location.href); url.searchParams.set('artifact', saved.artifactId); url.searchParams.delete('version'); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url); }}/ >}
+    {editing && <ArtifactAuthoringDialog key={`${workspace}:${detail?.artifactId ?? 'new'}`} workspace={workspace} lang={lang} existing={detail ? current : undefined} onClose={() => setEditing(false)} onSaved={saved => { setTarget(saved.artifactId); setDetail(saved); setDetailTab('content'); setRows(previous => [{ ...saved }, ...previous.filter(row => row.artifactId !== saved.artifactId)]); const url = new URL(window.location.href); url.searchParams.set('artifact', saved.artifactId); url.searchParams.delete('version'); if (navigationWorkspace) url.searchParams.set('workspace', navigationWorkspace); window.history.replaceState(null, '', url); }}/ >}
   </div>;
 }

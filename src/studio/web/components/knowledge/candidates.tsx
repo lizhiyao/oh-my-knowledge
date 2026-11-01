@@ -34,6 +34,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [showExtraction, setShowExtraction] = useState(false);
   const chooseConversation = () => setShowExtraction(true);
   const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [navigationWorkspace, setNavigationWorkspace] = useState(initialWorkspace);
   const [defaultWorkspace, setDefaultWorkspace] = useState('');
   const [workspaceDraft, setWorkspaceDraft] = useState(initialWorkspace);
   const [showSettings, setShowSettings] = useState(false);
@@ -122,13 +123,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     setDetail(next); setReaderSelection({ tab: 'body', ...(id === initialId && revision === initialRevision && initialSegmentId ? { segmentId: initialSegmentId } : {}) }); setReason(''); setShowBatchSummary(false); setNeedsRefresh(false);
     if (activateBatch) { setBatchRunId(candidateReviewRun(runs, id)?.runId ?? null); setPreviousId(null); }
     if (embedded) return;
-    const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); url.searchParams.set('workspace', root); if (id !== initialId || revision !== initialRevision) { for (const key of ['edit', 'segment', 'reason']) url.searchParams.delete(key); } window.history.replaceState(null, '', url);
+    const url = new URL(window.location.href); url.searchParams.set('id', id); if (revision) url.searchParams.set('revision', revision); else url.searchParams.delete('revision'); if (navigationWorkspace || url.searchParams.has('workspace')) url.searchParams.set('workspace', root); if (id !== initialId || revision !== initialRevision) { for (const key of ['edit', 'segment', 'reason']) url.searchParams.delete(key); } window.history.replaceState(null, '', url);
   }
   function readbackDetail(latest: KnowledgeCandidateDetail) {
     setEditing(false); setMapping(false); setDetail(latest); setNeedsRefresh(false); setError(''); setReason('');
     if (!embedded) {
       const url = new URL(window.location.href); url.searchParams.set('id', latest.revision.knowledgeId);
-      url.searchParams.set('revision', latest.revision.revisionId); url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url);
+      url.searchParams.set('revision', latest.revision.revisionId); if (navigationWorkspace || url.searchParams.has('workspace')) url.searchParams.set('workspace', workspace); window.history.replaceState(null, '', url);
     }
   }
   function closeRevisionEditor(needsReadback: boolean) {
@@ -254,7 +255,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     if (visibleRows[0]) void work(() => open(visibleRows[0].knowledgeId));
     else setDetail(null);
   }, [busy, error, needsRefresh, batchRunId, query, filter, kind, rows, detail?.revision.knowledgeId]);
-  const originHref = detail?.origin ? `${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}` : undefined;
+  const originHref = detail?.origin ? `${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams(navigationWorkspace ? { workspace: navigationWorkspace } : {})}` : undefined;
   return <section className="knowledge-candidates knowledge-core">
     {!embedded && <KnowledgeSectionNav active="candidates" lang={lang}/>}
     <header className="candidate-heading"><div><h1>{scope ? t('知识待办', 'Knowledge inbox') : t('候选核对', 'Candidate review')}</h1></div>
@@ -273,7 +274,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       </Space></header>
     {error && <Alert type="error" showIcon title={error} closable onClose={() => setError('')} action={needsRefresh && detail ? <Button disabled={busy} onClick={() => void work(async () => { await continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId); setError(''); })}>{t('重新读取', 'Reload')}</Button> : undefined}/>}
     {needsRefresh && !error && detail && <Button disabled={busy} onClick={() => void work(() => continueReview(detail.revision.knowledgeId, detail.revision.revisionId, detail.revision.revisionId === detail.history.writeHeadRevisionId))}>{t('重新读取后继续', 'Reload to continue')}</Button>}
-    {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams({ workspace })}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
+    {detail?.origin && !summary && <Link href={`${conversationPath(detail.origin.threadId, detail.origin.turnId)}?${new URLSearchParams(navigationWorkspace ? { workspace: navigationWorkspace } : {})}`}>{t('返回原始对话：', 'Back to conversation: ')}{conversationLabel(detail.origin.title, t('系统或附件记录', 'System or attachment record'))}</Link>}
     {notice && <Alert type="info" title={notice} closable onClose={() => setNotice('')}/>}
     {batch && !summary && <CandidateReviewProgress batch={batch} lang={lang} busy={busy} previous={!!previousId && previousId !== detail?.revision.knowledgeId} onPrevious={() => { if (previousId) void work(() => open(previousId)); }} onLibrary={leaveBatch}/>}
     {rows.length > 0 && <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : t('知识目录', 'Knowledge directory')}</Button>}
@@ -298,7 +299,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           <strong title={row.title}>{row.title}</strong><CandidateRowStatus choice={row.choice} lang={lang}/></button>) : <Empty description={t('没有匹配的知识，请调整搜索或处理状态。', 'No matching knowledge. Adjust the search or decision filter.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/>}
       </div><footer className="knowledge-directory-footer" role="status">{t(`${visibleRows.length} 条结果`, `${visibleRows.length} results`)}</footer></aside>
       {summary && batch ? <article className="knowledge-reader"><div className="knowledge-reader-scroll"><div className="knowledge-reading"><CandidateReviewSummary batch={batch} lang={lang} workspace={workspace} originHref={originHref} busy={busy} onRevisit={() => { if (previousId || detail) void work(() => open(previousId ?? detail!.revision.knowledgeId)); }} onLibrary={leaveBatch} onGenerate={() => setAuthoringIds(rows.filter(row => row.choice === 'retain' && runs.find(run => run.runId === batchRunId)?.bodies.some(item => item.knowledgeId === row.knowledgeId)).map(row => row.knowledgeId))}/></div></div></article>
-        : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh} workspace={workspace} selection={readerSelection} onSelectionChange={setReaderSelection} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
+        : detail ? <KnowledgeReader detail={detail} lang={lang} busy={busy || needsRefresh} workspace={workspace} navigationWorkspace={navigationWorkspace} selection={readerSelection} onSelectionChange={setReaderSelection} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
           onRevision={revision => void work(() => open(detail.revision.knowledgeId, revision))}
           onRetry={() => void work(() => open(detail.revision.knowledgeId, detail.revision.revisionId))}
           onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, revision: ref.entityRevisionId }); } : undefined}
@@ -333,7 +334,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         await refresh(root, changed); setWorkspace(root); setWorkspaceDraft(root);
         if (changed) {
           leaveBatch(); setNeedsRefresh(false); setNotice('');
-          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
+          const url = new URL(window.location.href); setNavigationWorkspace(root); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         }
       });
     }} onReview={async (root, id, signal) => {
@@ -345,7 +346,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       setRows(nextRows); setRuns(nextRuns); setDetail(nextDetail); setReason('');
       setBatchRunId(candidateReviewRun(nextRuns, id)?.runId ?? null); setPreviousId(null); setShowBatchSummary(false); setNeedsRefresh(false);
       setWorkspace(root); setWorkspaceDraft(root); setQuery(''); setFilter('all'); setError(''); setNotice(''); setShowExtraction(false);
-      const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
+      const url = new URL(window.location.href); setNavigationWorkspace(root); url.searchParams.set('workspace', root); url.searchParams.set('id', id); window.history.replaceState(null, '', url);
     }}/>}
     <Drawer title={t('保存位置', 'Save location')} open={showSettings} onClose={() => !busy && setShowSettings(false)} size={560}>
       <div className="candidate-form">{error && <Alert type="error" title={error}/>}<p>{t('这里仅调整本次操作的保存位置。长期默认目录请在侧栏“设置与帮助”中修改；已有数据不会移动。', 'Change the folder for this operation only. Edit global Settings for the long-term default; existing data will not move.')}</p>
@@ -354,7 +355,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         <Button type="primary" loading={busy} disabled={!workspaceDraft.trim()} onClick={() => void work(async () => {
           const root = workspaceDraft.trim();
           await refresh(root, true); leaveBatch(); setNeedsRefresh(false); setWorkspace(root); setNotice(''); setShowSettings(false);
-          const url = new URL(window.location.href); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
+          const url = new URL(window.location.href); setNavigationWorkspace(root); url.searchParams.set('workspace', root); url.searchParams.delete('id'); url.searchParams.delete('revision'); window.history.replaceState(null, '', url);
         })}>{t('使用此保存位置', 'Use this location')}</Button>
       </div>
     </Drawer>

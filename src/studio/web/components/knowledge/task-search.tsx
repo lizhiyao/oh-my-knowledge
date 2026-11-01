@@ -11,7 +11,7 @@ import { SourceLocator, sourceTitle } from './source-locator';
 type BodyRef = KnowledgeTaskRetrieval['knowledge'][number]['bodyRef'];
 type SourceRef = { snapshotId: string; sourceVersion: string; title?: string; source?: SourceSummary };
 type Props = {
-  workspace: string; lang: Language; sources?: SourceRef[];
+  workspace: string; lang: Language; sources?: SourceRef[]; suggestions?: { title: string; bodyRef: BodyRef }[];
   onOpen(ref: BodyRef, selection: KnowledgeReaderSelection): void;
   onFeedback?(ref: BodyRef, segmentId: string, query: string): void;
 };
@@ -22,7 +22,7 @@ export function KnowledgeTaskSearch(props: Props) {
   return <TaskSearchSession key={props.workspace} {...props}/>;
 }
 
-function TaskSearchSession({ workspace, lang, sources = [], onOpen, onFeedback }: Props) {
+function TaskSearchSession({ workspace, lang, sources = [], suggestions = [], onOpen, onFeedback }: Props) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [query, setQuery] = useState(''), [includeCandidates, setIncludeCandidates] = useState(false);
   const [maxBytes, setMaxBytes] = useState<number | null>(65_536), [scope, setScope] = useState<SourceRef>();
@@ -49,13 +49,17 @@ function TaskSearchSession({ workspace, lang, sources = [], onOpen, onFeedback }
     } finally { if (controller.current === active) { controller.current = null; setBusy(false); } }
   }
   return <section className="knowledge-task-search" aria-label={t('按任务查找知识', 'Find knowledge for a task')}>
+    <h2>{t('你想解决什么问题？', 'What are you working on?')}</h2>
+    <p className="candidate-help">{t('输入问题中的关键词，查找已有知识，再打开正文核对来源。也可以切换到目录浏览全部知识。', 'Enter keywords from your task to find existing knowledge, then open the content and inspect its sources. Use the directory to browse all knowledge.')}</p>
     <form className="knowledge-task-form" onSubmit={event => { event.preventDefault(); void search(); }}>
       <label className="knowledge-field">{t('当前要解决的问题', 'Question for the current task')}<Input.TextArea aria-label={t('当前要解决的问题', 'Question for the current task')} rows={2} maxLength={512} value={query}
-        placeholder={t('例如：什么情况下应复用已有诊断结果？', 'For example: when should existing diagnostic results be reused?')}
+        placeholder={t('输入与你的问题相关的词语', 'Enter words related to your task')}
         onChange={event => { invalidate(); setQuery(event.target.value); }}/></label>
+      <Space wrap><Button type="primary" htmlType="submit" disabled={!valid || busy} loading={busy}>{t('查找适用知识', 'Find applicable knowledge')}</Button>{busy && <Button onClick={invalidate}>{t('取消查找', 'Cancel search')}</Button>}</Space>
+      <details><summary>{t('更多查找选项', 'More search options')}</summary>
       <Checkbox checked={includeCandidates} onChange={event => { invalidate(); setIncludeCandidates(event.target.checked); }}>{t('同时查找未保留候选', 'Include candidates without a retain decision')}</Checkbox>
       <p className="candidate-help">{t('默认查找已保留正文；已舍弃修订不纳入。候选或保留均不代表内容已证实。', 'Search retained content by default; discarded revisions are excluded. Candidates and retained content are not verified truth.')}</p>
-      <details><summary>{t('来源范围与响应预算', 'Source scope and response budget')}</summary>
+
         <label className="knowledge-field">{t('来源快照', 'Source snapshot')}<Select aria-label={t('任务检索来源快照', 'Task retrieval source snapshot')} value={scope ? sourceKey(scope) : ''}
           options={[{ value: '', label: t('当前工作区全部来源', 'All sources in this workspace') }, ...[...knownSources.values()].map((source, index) => ({ value: sourceKey(source), label: `${source.source ? sourceTitle(source.source, lang) : source.title || t(`来源 ${index + 1}`, `Source ${index + 1}`)} · ${source.snapshotId.slice(0, 8)}` }))]}
           onChange={value => { const next = knownSources.get(value); invalidate(); setScope(next ? { ...next } : undefined); }}/></label>
@@ -64,13 +68,13 @@ function TaskSearchSession({ workspace, lang, sources = [], onOpen, onFeedback }
         <label className="knowledge-field">{t('响应预算（UTF-8 字节）', 'Response budget (UTF-8 bytes)')}<InputNumber aria-label={t('任务检索响应预算', 'Task retrieval response budget')} min={1024} max={1_048_576} step={1024} value={maxBytes} onChange={value => { invalidate(); setMaxBytes(value); }}/></label>
         <p className="candidate-help">{t('预算包含正文与引用元信息；装不下时整段省略，不截断适用条件。', 'The budget includes content and reference metadata. Segments that do not fit are omitted whole, preserving their conditions.')}</p>
       </details>
-      <Space wrap><Button type="primary" htmlType="submit" disabled={!valid || busy} loading={busy}>{t('查找适用知识', 'Find applicable knowledge')}</Button>{busy && <Button onClick={invalidate}>{t('取消查找', 'Cancel search')}</Button>}</Space>
+
       <p className="candidate-help">{t('本地字面检索，0 次模型调用；措辞不同可能漏召回。', 'Local literal retrieval, with zero model calls; different wording can miss relevant content.')}</p>
     </form>
     <div className="knowledge-task-results" aria-live="polite" aria-busy={busy}>
       {busy && <Spin tip={t('正在查找正文…', 'Searching content…')}><div className="knowledge-task-loading"/></Spin>}
       {error && <Alert type="warning" title={error}/>}
-      {!busy && !error && !answer && <p className="candidate-help">{t('输入任务问题后查找；结果可直接打开精确正文和依据。', 'Enter a task question to find content and open its exact revision and evidence.')}</p>}
+      {!busy && !error && !answer && <><p className="candidate-help">{t('输入任务问题后查找；结果可直接打开精确正文和依据。', 'Enter a task question to find content and open its exact revision and evidence.')}</p>{!!suggestions.length && <section aria-label={t('从已有知识开始', 'Start with existing knowledge')}><h3>{t('也可以先读一条已有知识', 'Or start with saved knowledge')}</h3><ul>{suggestions.map(item => <li key={item.bodyRef.knowledgeId}><Button type="link" onClick={() => onOpen(item.bodyRef, { tab: 'body' })}>{item.title}</Button></li>)}</ul></section>}</>}
       {answer && <>
         <p role="status">{t(`返回 ${answer.result.items.length} 个完整段落，来自 ${answer.result.knowledge.length} 条知识。`, `${answer.result.items.length} complete segments from ${answer.result.knowledge.length} knowledge items.`)}</p>
         <p className="candidate-help">{answer.request.snapshot ? t('范围：选定来源的精确版本', 'Scope: the selected exact source version') : t('范围：当前工作区全部来源', 'Scope: all sources in this workspace')} · {t(`预算 ${answer.request.maxBytes} 字节`, `Budget ${answer.request.maxBytes} bytes`)} · {answer.request.includeCandidates ? t('含未保留候选', 'Includes candidates') : t('仅已保留知识', 'Retained knowledge only')}</p>
