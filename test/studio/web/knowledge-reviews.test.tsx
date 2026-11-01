@@ -166,7 +166,7 @@ describe('independent knowledge review interactions', () => {
     await screen.findByText('Content review: Reviewed with limits'); layout.resize();
     const pane = mounted.container.querySelector<HTMLElement>('.knowledge-reader-scroll')!, before = pane.scrollTop;
     fireEvent.click(screen.getByText('Inspect segment coverage and use signals'));
-    await waitFor(() => expect(pane.querySelector('details')?.open).toBe(true));
+    await waitFor(() => expect(screen.getByText('Inspect segment coverage and use signals').closest('details')?.open).toBe(true));
     layout.resize(); expect(pane.scrollTop).toBe(before); expect(pane.querySelector('mark')?.textContent).toBe('Alpha');
   });
 

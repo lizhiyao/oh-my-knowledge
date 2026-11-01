@@ -18,7 +18,7 @@ import { SourceLocator, sourceCoordinateLabel, sourceTitle } from './source-loca
 
 type Target = { analysisId: string; entityId: string; revision?: string };
 function entityUrl(workspace: string, target: Target) {
-  const params = new URLSearchParams({ workspace, analysis: target.analysisId, entity: target.entityId });
+  const params = new URLSearchParams({ ...(workspace ? { workspace } : {}), analysis: target.analysisId, entity: target.entityId });
   if (target.revision) params.set('revision', target.revision);
   return `${KNOWLEDGE_ENTITIES_PATH}?${params}`;
 }
@@ -77,14 +77,14 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
   }, [workspace]);
   function select(row: KnowledgeEntityCatalog['rows'][number]) {
     setLinkDetail(undefined); const value = { analysisId: row.analysisId, entityId: row.entityId }; setTarget(value); setPane('detail');
-    window.history.replaceState(null, '', entityUrl(workspace, value));
+    window.history.replaceState(null, '', entityUrl(initialWorkspace, value));
   }
   return <section className="entity-library">
     <KnowledgeSectionNav active="entities" lang={lang}/>
     <div className="entity-library-heading"><div><h1>{t('实体', 'Entities')}</h1><p>{t('找到知识谈论的对象，核对原文、身份歧义与知识关联。', 'Find the entities knowledge concerns; inspect source, ambiguity, and linked knowledge.')}</p></div>
       <Button onClick={() => workspace ? setRefresh(value => value + 1) : setWorkspaceRetry(value => value + 1)} disabled={loading}>{t('刷新', 'Refresh')}</Button></div>
     <p className="candidate-help">{t('身份仅在各自来源窗口内对应；名称相同的结果保持分开。提出对应仍需核对。', 'Identities belong to their source windows. Same-name results stay separate; proposed assignments still need review.')}</p>
-    {(initialAnalysisId || threadId) && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace })}`}>{t('查看工作区全部实体', 'View all workspace entities')}</Link>}
+    {(initialAnalysisId || threadId) && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams(initialWorkspace ? { workspace: initialWorkspace } : {})}`}>{t('查看工作区全部实体', 'View all workspace entities')}</Link>}
     <div className="entity-library-tools"><Input.Search allowClear aria-label={t('搜索实体', 'Search entities')} placeholder={t('名称、原文提及、限定条件或来源', 'Name, source mention, qualifiers, or conversation')} onSearch={value => { setQuery(value); setPage(1); }}/>
       <Select aria-label={t('身份筛选', 'Identity filter')} value={identityStatus} onChange={value => { setIdentityStatus(value); setPage(1); }} options={[
         { value: 'all', label: t('全部身份', 'All identities') }, { value: 'proposed', label: t('提出对应', 'Proposed') }, { value: 'unresolved', label: t('身份有歧义', 'Unresolved') }]}/>
@@ -103,14 +103,14 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
           <span className="entity-library-row-meta" title={[...row.qualifiers, row.source ? sourceTitle(row.source, lang) : ''].join(' · ')}>{referentLabel(row.referentKind, lang)} · {row.qualifiers.join(' / ') || row.description}</span>
           <span className="entity-library-row-meta">{sourceTitle(row.source, lang)} · {row.mentionCount} {t('处提及', 'mentions')} · {row.knowledgeCount ?? '—'} {t('条知识', 'knowledge items')}{row.sourceStatus === 'unavailable' ? ` · ${t('原文不可用', 'Source unavailable')}` : ''}</span>
         </button>)}
-          {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={workspaceHref(OBSERVE_INDEX_PATH, workspace || initialWorkspace)}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
+          {!loading && !error && !catalog?.rows.length && <Empty description={t('没有匹配的实体。更改筛选，或先从对话提炼。', 'No matching entities. Change filters or extract from a conversation.')}><Link href={workspaceHref(OBSERVE_INDEX_PATH, initialWorkspace)}>{t('浏览对话', 'Browse conversations')}</Link></Empty>}</div>
         {catalog && <Pagination size="small" current={catalog.page} total={catalog.total} pageSize={catalog.pageSize} showSizeChanger={false} onChange={setPage}/>}
       </div>
       <div className={`entity-library-detail ${pane === 'detail' ? 'entity-pane-active' : ''}`}>
         {target && <div className="entity-library-detail-actions"><Button disabled={detailLoading} onClick={() => setEditing(true)}>{t('核对／纠正实体与指代', 'Inspect / correct entities and references')}</Button></div>}
         <div className="entity-library-scroll">{detailLoading ? <Spin/> : detailError ? <Alert type="warning" title={detailError}/>
-          : detail ? <EntityLibraryDetail detail={detail} workspace={workspace} lang={lang} onLink={() => setLinkDetail(structuredClone(detail))} onRevision={revision => {
-            if (target) { const value = { ...target, revision }; setTarget(value); window.history.replaceState(null, '', entityUrl(workspace, value)); }
+          : detail ? <EntityLibraryDetail detail={detail} workspace={workspace} navigationWorkspace={initialWorkspace} lang={lang} onLink={() => setLinkDetail(structuredClone(detail))} onRevision={revision => {
+            if (target) { const value = { ...target, revision }; setTarget(value); window.history.replaceState(null, '', entityUrl(initialWorkspace, value)); }
           }}/>
             : <Empty description={t('选择一个实体，查看原文与关联知识。', 'Choose an entity to inspect its source and linked knowledge.')}/>}</div>
       </div>
@@ -119,20 +119,20 @@ export function KnowledgeEntities({ lang, initialWorkspace = '', initialAnalysis
     {editing && target && <EntityAnalysisDrawer key={`${workspace}:${target.analysisId}:${target.revision ?? ''}:${target.entityId}`} workspace={workspace} analysisId={target.analysisId} initialRevision={target.revision} initialEntityId={target.entityId} lang={lang}
       onClose={() => setEditing(false)} onSaved={() => {
         const value = { analysisId: target.analysisId, entityId: target.entityId };
-        setTarget(value); window.history.replaceState(null, '', entityUrl(workspace, value)); notifyKnowledgeChange(workspace);
+        setTarget(value); window.history.replaceState(null, '', entityUrl(initialWorkspace, value)); notifyKnowledgeChange(workspace);
       }}/ >}
   </section>;
 }
 
-export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLink }: {
-  detail: KnowledgeEntityLibraryDetail; workspace: string; lang: Language; onRevision(revision: string): void; onLink?(): void;
+export function EntityLibraryDetail({ detail, workspace, navigationWorkspace = workspace, lang, onRevision, onLink }: {
+  detail: KnowledgeEntityLibraryDetail; workspace: string; navigationWorkspace?: string; lang: Language; onRevision(revision: string): void; onLink?(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const { entity, revision, history } = detail;
   const mentions = revision.mentions.filter(mention => mention.entityId === entity.entityId);
   const excerpts = detail.source.status === 'available' ? detail.source.snapshot.excerpts : [];
   return <article className="entity-library-article"><h2>{entity.label}</h2>
-    <LibraryEntityEntry workspace={workspace} analysisId={history.analysisId} entityId={entity.entityId} entityRevisionId={revision.revisionId}
+    <LibraryEntityEntry workspace={workspace} navigationWorkspace={navigationWorkspace} analysisId={history.analysisId} entityId={entity.entityId} entityRevisionId={revision.revisionId}
       current={revision.revisionId === history.writeHeadRevisionId} lang={lang}/>
     <Button disabled={!onLink || revision.revisionId !== history.writeHeadRevisionId} onClick={onLink}>{t('查找跨窗口对应', 'Find cross-window identities')}</Button>
     <Tag>{entity.identityStatus === 'unresolved' ? t('身份有歧义', 'Unresolved') : t('提出对应，待核对', 'Proposed assignment, needs review')}</Tag>
@@ -140,13 +140,13 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
     {entity.uncertainties.map((value, index) => <Alert key={index} type="warning" title={value}/>)}
     {!!entity.possibleEntityIds.length && <p>{t('可能对应：', 'Possible identities: ')}{entity.possibleEntityIds.map(id => {
       const value = revision.entities.find(value => value.entityId === id)!;
-      return <Link className="entity-possible-link" key={id} href={entityUrl(workspace, { analysisId: history.analysisId, entityId: id, revision: revision.revisionId })}>{value.label} {value.qualifiers.join(' / ')}</Link>;
+      return <Link className="entity-possible-link" key={id} href={entityUrl(navigationWorkspace, { analysisId: history.analysisId, entityId: id, revision: revision.revisionId })}>{value.label} {value.qualifiers.join(' / ')}</Link>;
     })}</p>}
     <label className="entity-history-label">{t('实体修订', 'Entity revision')}<Select value={revision.revisionId} onChange={onRevision}
       options={history.revisions.map((value, index) => ({ value: value.revisionId, label: `${index + 1} · ${displayTime(value.revisedAt)} · ${value.revisionReason}` }))}/></label>
     {revision.revisionId !== history.writeHeadRevisionId && <Alert type="info" title={t('正在查看历史修订。', 'Viewing a historical revision.')}/>}
     <p className="candidate-help">{displayTime(revision.revisedAt)} · {revision.revisedBy.actorId} · {revision.revisionReason}</p>
-    {detail.source.status === 'available' && <SourceLocator source={detail.source.snapshot} lang={lang} workspace={workspace}/>}
+    {detail.source.status === 'available' && <SourceLocator source={detail.source.snapshot} lang={lang} workspace={navigationWorkspace}/>}
     <h3>{t('原文提及', 'Source mentions')}</h3>
     {detail.source.status === 'unavailable' && <Alert type="warning" title={t('原文快照不可用。以下仅为已保存的提及，无法重新核对或纠正。', 'Source snapshot unavailable. These are saved mentions; rechecking and corrections are unavailable.')}/>}
     {revision.limitations.map((value, index) => <p className="candidate-help" key={index}>{value}</p>)}
@@ -171,11 +171,11 @@ export function EntityLibraryDetail({ detail, workspace, lang, onRevision, onLin
       : t('关联知识不可读，无法判断是否存在关联。', 'Linked knowledge unavailable; associations are unknown.')}/>}
     {detail.knowledgeStatus === 'available' && !detail.knowledge.length && <p>{t('没有当前知识修订引用此实体。实体提取可以独立于知识提炼存在。', 'No current knowledge revision references this entity. Entity extraction can exist without knowledge proposals.')}</p>}
     {detail.knowledge.map(link => <section className="entity-mention" key={`${link.knowledgeId}/${link.revisionId}/${link.entityRevisionId}`}>
-          <Link href={`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ workspace, view: 'graph', knowledge: link.knowledgeId, revision: link.revisionId,
+          <Link href={`${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ ...(navigationWorkspace ? { workspace: navigationWorkspace } : {}), view: 'graph', knowledge: link.knowledgeId, revision: link.revisionId,
             section: 'associations', analysis: history.analysisId, entity: entity.entityId, entityRevision: link.entityRevisionId, ...(link.segmentIds[0] ? { segment: link.segmentIds[0] } : {}) })}`}>{link.title}</Link>
           <p>{t(`关联 ${link.segmentIds.length} 个正文段落`, `Associated with ${link.segmentIds.length} content segments`)} · {link.projectionReviewStatus === 'pending' ? t('关联待核对', 'Associations pending review') : t('关联已接受', 'Associations accepted')}</p>
           {!link.currentEntityRevision && <Alert type="info" title={t('此知识仍绑定实体旧修订。打开知识后重新生成或维护关联；正文不会自动改写。', 'This knowledge still binds an older entity revision. Regenerate or maintain associations from knowledge; content is not rewritten.')}/>}
-          <Link href={entityUrl(workspace, { analysisId: history.analysisId, entityId: entity.entityId, revision: link.entityRevisionId })}>{t('查看知识绑定的实体修订', 'Inspect the entity revision bound by knowledge')}</Link>
+          <Link href={entityUrl(navigationWorkspace, { analysisId: history.analysisId, entityId: entity.entityId, revision: link.entityRevisionId })}>{t('查看知识绑定的实体修订', 'Inspect the entity revision bound by knowledge')}</Link>
           <p className="candidate-help">{link.choice === 'retain' ? t('已保留；不等于语义已验证。', 'Retained; semantic validity is not verified.') : link.choice === 'discard' ? t('已舍弃；历史关联仍保留。', 'Discarded; its historical association remains.') : t('等待处理；不等于语义已验证。', 'Pending; semantic validity is not verified.')}</p>
         </section>)}
     <details><summary>{t('身份层次与关联', 'Referent level and links')}</summary>

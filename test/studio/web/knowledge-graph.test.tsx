@@ -118,6 +118,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('knowledge graph browsing and evidence', () => {
+  it('starts from a task in the configured directory and opens a saved exact revision without expanding its filesystem path into navigation', async () => {
+    window.history.replaceState(null, '', '/knowledge/library');
+    const data = fixture(), calls: Record<string, unknown>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/settings') return new Response(JSON.stringify({ effective: { workspace: '/configured/private knowledge', executor: 'codex', model: '' } }));
+      const body = JSON.parse(String(init?.body)); calls.push(body);
+      const value = body.operation === 'knowledge' ? data.catalog : body.operation === 'show' ? data.detail
+        : body.operation === 'review-status' ? absentReviews(data.detail) : null;
+      if (!value) throw new Error(`Unexpected operation: ${body.operation}`);
+      return new Response(JSON.stringify(value));
+    }));
+    render(<KnowledgeLibrary lang="en"/>);
+    await screen.findByRole('heading', { name: 'What are you working on?' });
+    const saved = await screen.findByRole('button', { name: data.detail.revision.title });
+    expect(calls.every(call => call.workspace === '/configured/private knowledge')).toBe(true);
+    expect(calls.some(call => call.operation === 'show')).toBe(false);
+    expect(window.location.search).toBe('');
+    fireEvent.click(saved);
+    await screen.findByRole('heading', { name: data.detail.revision.title });
+    expect(calls.find(call => call.operation === 'show')).toMatchObject({ workspace: '/configured/private knowledge', id: data.detail.revision.knowledgeId, revision: data.detail.revision.revisionId });
+    const params = new URLSearchParams(window.location.search);
+    expect(params.has('workspace')).toBe(false);
+    expect(params.get('revision')).toBe(data.detail.revision.revisionId);
+    const candidate = screen.getByRole('link', { name: 'Review candidate' });
+    expect(candidate.getAttribute('href')).not.toContain('workspace');
+    expect(candidate.getAttribute('href')).toContain(data.detail.revision.revisionId);
+    expect(calls.every(call => ['knowledge', 'show', 'review-status'].includes(String(call.operation)))).toBe(true);
+  });
+
   it('presents cross-knowledge opinions with exact selectors and keeps derivation authorship separate', () => {
     const data = fixture(), first = data.graph.nodes.find(node => node.nodeKind === 'knowledge')!;
     const second = { ...first, nodeId: 'knowledge-second', bodyRef: { ...first.bodyRef, knowledgeId: uuid(70), revisionId: uuid(71) }, title: '另一篇限定知识' };

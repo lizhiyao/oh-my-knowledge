@@ -24,7 +24,7 @@ import { sourceTitle } from './source-locator';
 import { KnowledgeTaskSearch } from './task-search';
 import { KnowledgeReviewDrawer } from './review-drawer';
 
-export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisionId, knowledgeId, seed, initialView = 'list', initialGraphSelection,
+export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisionId, knowledgeId, seed, initialView = knowledgeId || objectId || seed ? 'list' : 'task', initialGraphSelection,
   initialGraphScope = 'current', initialReaderTab = 'body', initialKnowledgeRevision, initialQuery = '', initialChoice = 'all', initialKind = 'all', initialObjects = [],
   initialGraphHistory = false, initialGraphEntity, initialSegmentId, initialMentionId, initialRelationId, initialRelationRevisionId, initialCatalogRef, initialEvidence, initialReaderSelectionInvalid = false, onTaskFeedback }: {
   lang: Language; initialWorkspace?: string; objectId?: string; revisionId?: string; knowledgeId?: string; seed?: LibrarySeed;
@@ -142,10 +142,11 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   function locate(selection: KnowledgeReaderSelection) { setReaderSelection(selection); setSelectionInvalid(false); }
   useEffect(() => {
     if (!workspace || object) return;
-    const params = new URLSearchParams({ workspace });
+    const params = new URLSearchParams(initialWorkspace ? { workspace: initialWorkspace } : {});
     if (currentId) params.set('knowledge', currentId);
     if (knowledgeRevision && active === currentId) params.set('revision', knowledgeRevision);
-    if (view === 'task') params.set('view', 'task');
+    if (view === 'list' && !currentId) params.set('view', 'list');
+    if (view === 'task' && currentId) params.set('view', 'task');
     if (view === 'graph') { params.set('view', 'graph'); params.set('scope', graphScope); if (graphSelection) params.set('selection', graphSelection); if (graphHistory) params.set('history', 'true'); }
     if (readerSelection.tab && readerSelection.tab !== 'body') params.set('section', readerSelection.tab);
     if (readerSelection.segmentId) params.set('segment', readerSelection.segmentId);
@@ -158,8 +159,8 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
       params.set('evidence', JSON.stringify({ snapshotId, sourceVersion, evidenceRef, start, end }));
     }
     if (query) params.set('query', query); if (choice !== 'all') params.set('choice', choice); if (kind !== 'all') params.set('kind', kind); if (objects.length) params.set('objects', objects.join(','));
-    window.history.replaceState(null, '', `${KNOWLEDGE_LIBRARY_PATH}?${params}`);
-  }, [workspace, object?.id, currentId, active, knowledgeRevision, view, graphScope, graphSelection, graphHistory, readerSelection, query, choice, kind, JSON.stringify(objects)]);
+    window.history.replaceState(null, '', `${KNOWLEDGE_LIBRARY_PATH}${params.size ? `?${params}` : ''}`);
+  }, [workspace, initialWorkspace, object?.id, currentId, active, knowledgeRevision, view, graphScope, graphSelection, graphHistory, readerSelection, query, choice, kind, JSON.stringify(objects)]);
   useEffect(() => {
     if (!taskReview || taskReview.detail || !detail || taskReview.workspace !== workspace) return;
     const ref = taskReview.bodyRef;
@@ -176,7 +177,7 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
   }
   function selectObject(id: string, revision?: string) {
     if (directory) core.current?.querySelector<HTMLButtonElement>('.knowledge-directory-toggle')?.focus();
-    setObject({ id, revision }); setDirectory(false); window.history.replaceState(null, '', libraryUrl(workspace, id, revision));
+    setObject({ id, revision }); setDirectory(false); window.history.replaceState(null, '', libraryUrl(initialWorkspace, id, revision));
   }
   const historical = objectDetail && objectDetail.revision.revisionId !== objectDetail.history.writeHeadRevisionId;
   return <section ref={core} className="knowledge-library knowledge-core">
@@ -184,12 +185,12 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
     <header className="knowledge-page-heading"><h1>{t('知识库', 'Knowledge library')}</h1><Space wrap>
       <Button disabled={!workspace || loading} onClick={() => setRefresh(value => value + 1)}>{t('刷新', 'Refresh')}</Button>
       <Button disabled={!workspace} onClick={() => setEditing('new')}>{t('从实体建立对象', 'Create from entities')}</Button>
-      <Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, workspace)}>{t('查看载体', 'View artifacts')}</Link></Space></header>
-    <p className="candidate-help knowledge-workspace" title={workspace}>{t('知识目录：', 'Knowledge directory: ')}{workspace || t('尚未读取', 'Not yet read')}</p>
+      <Link href={workspaceHref(KNOWLEDGE_INDEX_PATH, initialWorkspace)}>{t('查看载体', 'View artifacts')}</Link></Space></header>
+    <details className="candidate-help knowledge-workspace"><summary>{t('当前知识目录', 'Current knowledge directory')}</summary><p>{workspace || t('尚未读取', 'Not yet read')}</p></details>
     {error && <Alert type="error" title={error} action={<Button disabled={loading} onClick={() => workspace ? setRefresh(value => value + 1) : setWorkspaceRetry(value => value + 1)}>{t('重新读取', 'Reload')}</Button>}/>}
     {selectionInvalid && <Alert type="warning" showIcon closable onClose={() => setSelectionInvalid(false)} title={t('未能恢复指定的精确依据。已回到正文；请重新选择段落、提及或来源。', 'The requested exact evidence could not be restored. Content is open; select a segment, mention or source again.')}/>}
     <div className="knowledge-context">
-      {object ? <><strong>{t('对象详情', 'Object detail')}</strong><Button onClick={() => { setObject(undefined); clearFilters(); window.history.replaceState(null, '', workspaceHref(KNOWLEDGE_LIBRARY_PATH, workspace)); }}>{t('返回全部知识', 'All knowledge')}</Button></>
+      {object ? <><strong>{t('对象详情', 'Object detail')}</strong><Button onClick={() => { setObject(undefined); clearFilters(); window.history.replaceState(null, '', workspaceHref(KNOWLEDGE_LIBRARY_PATH, initialWorkspace)); }}>{t('返回全部知识', 'All knowledge')}</Button></>
         : view === 'task' ? <strong>{t('当前工作区', 'Current workspace')}</strong> : <details ref={objectMenu} className="knowledge-object-filter" onKeyDown={event => { if (event.key === 'Escape' && objectMenu.current) { objectMenu.current.open = false; objectMenu.current.querySelector('summary')?.focus(); } }}>
           <summary>{objects.length ? t(`对象：已选 ${objects.length} 个`, `Objects: ${objects.length} selected`) : t('对象：全部', 'Objects: all')}</summary>
           <div className="knowledge-object-menu"><Button size="small" onClick={() => { setObjects([]); setKnowledgeRevision(undefined); }}>{t('清除对象筛选', 'Clear object filter')}</Button>
@@ -204,15 +205,15 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
         <button type="button" aria-pressed={view === 'task'} onClick={() => { setView('task'); setDirectory(true); }}>{t('按任务查找', 'Find for a task')}</button>
         <button type="button" aria-pressed={view === 'graph'} onClick={() => { setView('graph'); setDirectory(true); }}>{t('图谱', 'Graph')}</button>
       </div>}
-      <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : object ? t('对象目录', 'Object directory') : view === 'graph' ? t('浏览图谱', 'Browse graph') : view === 'task' ? t('查看检索结果', 'Search results') : t('知识目录', 'Knowledge directory')}</Button>
+      {(view !== 'task' || currentId) && <Button className="knowledge-directory-toggle" aria-expanded={directory} onClick={() => setDirectory(value => !value)}>{directory ? t('返回正文', 'Back to content') : object ? t('对象目录', 'Object directory') : view === 'graph' ? t('浏览图谱', 'Browse graph') : view === 'task' ? t('查看检索结果', 'Search results') : t('知识目录', 'Knowledge directory')}</Button>}
       {!object && view !== 'task' && <Button disabled={!selected.length || loading || !!error} onClick={() => setAuthoring(selected)}>{t(`生成载体（${selected.length}）`, `Generate artifact (${selected.length})`)}</Button>}
     </div>
-    <div className={`knowledge-workbench${!object && view === 'graph' ? ' knowledge-workbench-graph' : !object && view === 'task' ? ' knowledge-workbench-task' : ''}${directory ? ' knowledge-directory-open' : ''}`}>
+    <div className={`knowledge-workbench${!object && view === 'graph' ? ' knowledge-workbench-graph' : !object && view === 'task' ? ' knowledge-workbench-task' : ''}${directory ? ' knowledge-directory-open' : ''}${!object && view === 'task' && !currentId ? ' knowledge-task-start' : ''}`}>
       <aside className={`knowledge-directory${!object && view === 'graph' ? ' knowledge-graph-directory' : ''}`} aria-busy={!object && view === 'graph' ? graphLoading || loading : undefined} aria-label={object ? t('知识库对象目录', 'Library object directory') : view === 'graph' ? t('知识图谱目录', 'Knowledge graph directory') : view === 'task' ? t('任务检索结果', 'Task retrieval results') : t('知识目录', 'Knowledge directory')}>
         {!object && view !== 'task' && <div className="knowledge-directory-filters"><label>{t('查找知识', 'Find knowledge')}<Input aria-label={t('搜索知识标题或标签', 'Search knowledge titles or tags')} allowClear value={query} onChange={event => { setQuery(event.target.value); setKnowledgeRevision(undefined); }}/></label>
           <div><label>{t('维护状态', 'Maintenance')}<Select aria-label={t('维护状态', 'Maintenance')} value={choice} onChange={value => { setChoice(value); setKnowledgeRevision(undefined); }} options={[{ value: 'all', label: t('全部', 'All') }, { value: 'pending', label: t('待定', 'Pending') }, { value: 'retain', label: t('已保留', 'Retained') }, { value: 'discard', label: t('已舍弃', 'Discarded') }]}/></label>
             <label>{t('知识类型', 'Knowledge type')}<Select aria-label={t('知识类型', 'Knowledge type')} value={kind} onChange={value => { setKind(value); setKnowledgeRevision(undefined); }} options={[{ value: 'all', label: t('全部', 'All') }, { value: 'fact', label: t('事实', 'Fact') }, { value: 'case', label: t('案例', 'Case') }, { value: 'method', label: t('方法', 'Method') }]}/></label></div></div>}
-        {!object && view === 'task' ? workspace ? <KnowledgeTaskSearch workspace={workspace} lang={lang} sources={taskSources} onOpen={openTaskKnowledge} onFeedback={(ref, segmentId, query) => { openTaskKnowledge(ref, { tab: 'body', segmentId }); setTaskReview({ bodyRef: ref, segmentId, query, workspace }); onTaskFeedback?.(ref, segmentId, query); }}/> : <div className="knowledge-directory-scroll"><Skeleton active paragraph={{ rows: 3 }}/></div>
+        {!object && view === 'task' ? workspace ? <KnowledgeTaskSearch workspace={workspace} lang={lang} sources={taskSources} suggestions={currentId ? [] : (catalog?.rows ?? []).filter(row => row.choice === 'retain').slice(0, 3).map(row => ({ title: row.title, bodyRef: { knowledgeId: row.knowledgeId, revisionId: row.revisionId, bodyDigest: row.bodyDigest } }))} onOpen={openTaskKnowledge} onFeedback={(ref, segmentId, query) => { openTaskKnowledge(ref, { tab: 'body', segmentId }); setTaskReview({ bodyRef: ref, segmentId, query, workspace }); onTaskFeedback?.(ref, segmentId, query); }}/> : <div className="knowledge-directory-scroll"><Skeleton active paragraph={{ rows: 3 }}/></div>
           : !object && view === 'graph' ? graphError && !graphLoading && !loading ? <div className="knowledge-directory-scroll"><Alert type="warning" title={graphError} action={<Button onClick={() => setRefresh(value => value + 1)}>{t('重新读取图谱', 'Reload graph')}</Button>}/></div>
             : matchingGraph ? <>{(graphLoading || loading) && <p className="knowledge-network-limitation" role="status">{t('正在刷新图谱，当前显示上次读取的关联。', 'Refreshing graph; showing the last loaded relationships.')}</p>}<KnowledgeGraphView graph={matchingGraph} lang={lang} activeKnowledgeId={currentId} activeRevisionId={active === currentId ? knowledgeRevision : undefined} selectedId={graphSelection} scope={graphScope} includeHistory={graphHistory}
               onScope={setGraphScope} onHistory={setGraphHistory} onSelect={(id, owner) => { setGraphSelection(id); setDirectory(false); if (owner) selectKnowledge(owner.knowledgeId, owner.revisionId, true); }}/></>
@@ -231,18 +232,18 @@ export function KnowledgeLibrary({ lang, initialWorkspace = '', objectId, revisi
       {!object && view === 'graph' && matchingGraph && !graphLoading && <KnowledgeGraphInspection graph={matchingGraph} selectedId={graphSelection} detail={detail} loading={reading} workspace={workspace} lang={lang}
         onKnowledge={ref => selectKnowledge(ref.knowledgeId, ref.revisionId, true)} onLocate={locate} onEntity={setEntityTarget} onMapping={openMapping}/>}
       {reading ? <div className="knowledge-reader knowledge-reader-empty"><Skeleton active/></div> : readError ? <div className="knowledge-reader knowledge-reader-empty"><Alert type="warning" title={readError} action={<Button onClick={() => setRefresh(value => value + 1)}>{t('重试读取', 'Retry reading')}</Button>}/></div>
-        : object && objectDetail ? <LibraryObjectDetail detail={objectDetail} workspace={workspace} lang={lang}
+        : object && objectDetail ? <LibraryObjectDetail detail={objectDetail} workspace={workspace} navigationWorkspace={initialWorkspace} lang={lang}
           onRevision={revision => selectObject(object.id, revision)} onKnowledge={id => { clearFilters(); setObjects([object.id]); selectKnowledge(id); }}
           footer={<><Button disabled={!!historical} onClick={() => setEditing('edit')}>{t('维护对象与来源关联', 'Maintain object and source links')}</Button><Button type="primary" onClick={() => { clearFilters(); setObjects([object.id]); setObject(undefined); }}>{t('按此对象筛选知识', 'Filter knowledge by this object')}</Button></>}/>
-          : !object && currentId && detail?.revision.knowledgeId === currentId ? <KnowledgeReader detail={detail} lang={lang} workspace={workspace} selection={readerSelection} onSelectionChange={locate}
+          : !object && currentId && detail?.revision.knowledgeId === currentId ? <KnowledgeReader detail={detail} lang={lang} workspace={workspace} navigationWorkspace={initialWorkspace} selection={readerSelection} onSelectionChange={locate}
             onReviewBody={ref => { clearFilters(); selectKnowledge(ref.knowledgeId, ref.revisionId); setView('list'); }}
             onRevision={revision => { setActive(currentId); setKnowledgeRevision(revision); setSelectionInvalid(false); }} onRetry={() => setRefresh(value => value + 1)}
             onMapAssociations={() => openMapping()} onEntity={setEntityTarget} onReviewContent={() => setContentReview({ detail: structuredClone(detail), workspace })}
             onEntities={detail.derivedAssociations.revision?.catalogRefs.length === 1 ? () => { const ref = detail.derivedAssociations.revision!.catalogRefs[0]; setEntityTarget({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId }); } : undefined}
             header={<div className="knowledge-reader-associations">{catalog?.rows.find(row => row.knowledgeId === currentId)?.objects.length ? catalog.rows.find(row => row.knowledgeId === currentId)!.objects.map(item => <span key={item.objectId}><Button type="link" onClick={() => selectObject(item.objectId)}>{item.label}</Button>{item.associationStatus === 'needs_review' && t('（关联待核对）', ' (association needs review)')}</span>) : t('尚未关联知识库对象', 'Not associated with a library object')}</div>}
-            footer={<><span>{t('保留表示愿意维护，效果尚未验证。', 'Retention is a maintenance decision; effectiveness is unverified.')}</span><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${currentId}&revision=${detail.revision.revisionId}`, workspace)}>{t('进入候选核对', 'Review candidate')}</Link></>}/>
+            footer={<><span>{t('保留表示愿意维护，效果尚未验证。', 'Retention is a maintenance decision; effectiveness is unverified.')}</span><Link href={workspaceHref(`${KNOWLEDGE_CANDIDATES_PATH}?id=${currentId}&revision=${detail.revision.revisionId}`, initialWorkspace)}>{t('进入候选核对', 'Review candidate')}</Link></>}/>
             : <div className="knowledge-reader knowledge-reader-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? t('修复读取问题后继续。', 'Resolve the reading error to continue.') : view === 'task' ? t('输入任务问题，从结果打开正文或依据。', 'Enter a task question, then open content or evidence from the results.') : t('没有匹配知识，请调整筛选或提炼新知识。', 'No matching knowledge. Adjust filters or extract new knowledge.')}>
-              {view !== 'task' && <Button onClick={clearFilters}>{t('清除全部筛选', 'Clear all filters')}</Button>}<Link href={workspaceHref(KNOWLEDGE_CANDIDATES_PATH, workspace)}>{t('提炼新知识', 'Extract new knowledge')}</Link></Empty></div>}
+              {view !== 'task' && <Button onClick={clearFilters}>{t('清除全部筛选', 'Clear all filters')}</Button>}<Link href={workspaceHref(KNOWLEDGE_CANDIDATES_PATH, initialWorkspace)}>{t('提炼新知识', 'Extract new knowledge')}</Link></Empty></div>}
       </div>
     </div>
     {!!editing && workspace && <LibraryEditor key={`${workspace}:${editing}:${editing === 'edit' ? object?.id : seed ? `${seed.analysisId}:${seed.entityId}:${seed.revision ?? ''}` : 'new'}`} workspace={workspace} lang={lang} detail={editing === 'edit' ? objectDetail : undefined} seed={editing === 'new' ? seed : undefined} onClose={() => setEditing('')} onSaved={id => { setEditing(''); selectObject(id); notifyKnowledgeChange(workspace); }}/ >}

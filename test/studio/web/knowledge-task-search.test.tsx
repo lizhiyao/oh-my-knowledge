@@ -35,8 +35,8 @@ describe('task-driven knowledge search', () => {
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => { calls.push(JSON.parse(String(init.body))); return new Response(JSON.stringify(result()), { status: 200 }); }));
     const view = render(<KnowledgeTaskSearch workspace="/task-workspace" lang="en" sources={[{ ...source, title: 'Selected frozen record' }]} onOpen={open} onFeedback={feedback}/>, { wrapper });
     fireEvent.change(screen.getByRole('textbox', { name: 'Question for the current task' }), { target: { value: 'When can diagnostics be reused?' } });
+    fireEvent.click(screen.getByText('More search options'));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include candidates without a retain decision' }));
-    fireEvent.click(screen.getByText('Source scope and response budget'));
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Task retrieval response budget' }), { target: { value: '8192' } });
     fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Task retrieval source snapshot' }));
     fireEvent.click(await screen.findByText(/Selected frozen record · 00000000/));

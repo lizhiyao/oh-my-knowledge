@@ -9,8 +9,8 @@ import { candidateDecisionLabel } from '../../../application/knowledge/candidate
 import { libraryEntityUrl, libraryUrl } from './library-request';
 import { SourceLocator } from './source-locator';
 
-export function LibraryObjectDetail({ detail, workspace, lang, onRevision, onKnowledge, footer, initialTab = 'knowledge' }: {
-  detail: KnowledgeLibraryDetail; workspace: string; lang: Language; onRevision(id: string): void; onKnowledge(id: string): void;
+export function LibraryObjectDetail({ detail, workspace, navigationWorkspace = workspace, lang, onRevision, onKnowledge, footer, initialTab = 'knowledge' }: {
+  detail: KnowledgeLibraryDetail; workspace: string; navigationWorkspace?: string; lang: Language; onRevision(id: string): void; onKnowledge(id: string): void;
   footer?: ReactNode; initialTab?: 'knowledge' | 'sources' | 'history';
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
@@ -35,16 +35,16 @@ export function LibraryObjectDetail({ detail, workspace, lang, onRevision, onKno
           <span>{candidateDecisionLabel(item.choice, lang)}</span>{item.associationStatus === 'needs_review' && <Alert type="warning" title={t('知识绑定的实体修订与组织确认不一致，需核对关联。', 'Knowledge and confirmed entity revisions differ; review the association.')}/>}
           {item.sourceStatus === 'unavailable' && <p className="candidate-help">{t('原文不可用；知识仍保留。', 'Source unavailable; knowledge remains.')}</p>}</section>)}
         {!!detail.relatedEntities.length && <details><summary>{t('知识涉及的其它对象', 'Other entities in this knowledge')}</summary>
-          {detail.relatedEntities.map(entity => <p key={`${entity.analysisId}:${entity.entityId}:${entity.entityRevisionId}`}><Link href={entity.object ? libraryUrl(workspace, entity.object.objectId) : libraryEntityUrl(workspace, entity)}>{entity.object?.label ?? entity.label}</Link></p>)}</details>}
+          {detail.relatedEntities.map(entity => <p key={`${entity.analysisId}:${entity.entityId}:${entity.entityRevisionId}`}><Link href={entity.object ? libraryUrl(navigationWorkspace, entity.object.objectId) : libraryEntityUrl(navigationWorkspace, entity)}>{entity.object?.label ?? entity.label}</Link></p>)}</details>}
       </>}
       {tab === 'sources' && <>
         {!detail.members.length && <Empty description={t('当前没有来源关联；旧关联仍在组织历史中。', 'No current source links; previous links remain in organization history.')}/>}
         {detail.members.map(member => <section className="knowledge-statement" key={`${member.analysisId}:${member.entityId}`}>
-          <Link href={libraryEntityUrl(workspace, member)}>{member.status === 'available' ? member.entity.label : t('来源实体不可读', 'Source entity unavailable')}</Link><p>{member.rationale}</p>
+          <Link href={libraryEntityUrl(navigationWorkspace, member)}>{member.status === 'available' ? member.entity.label : t('来源实体不可读', 'Source entity unavailable')}</Link><p>{member.rationale}</p>
           {member.status === 'available' ? <>
             {!member.current && <Alert type="warning" title={t('实体已有新修订。更新组织关联前需核对身份。', 'Entity has a new revision. Review identity before updating the organization link.')}/>}
             {member.sourceStatus === 'unavailable' && <Alert type="warning" title={t('原文不可用，不能完整核对身份。', 'Source unavailable; identity cannot be fully reviewed.')}/>}
-            {member.source && <SourceLocator source={member.source} lang={lang} workspace={workspace}/>}
+            {member.source && <SourceLocator source={member.source} lang={lang} workspace={navigationWorkspace}/>}
             <p>{member.entity.qualifiers.join(' · ')}</p>
             {member.evidence.map(evidence => <div key={evidence.mentionId}><blockquote>{evidence.quote}</blockquote><p>{evidence.rationale} · {evidence.basis === 'explicit' ? t('明确提及', 'Explicit mention') : t('推断对应', 'Inferred assignment')}</p>
               {evidence.positionStatus === 'mismatch' && <Alert type="warning" title={t('提及与当前来源不匹配，不能当作已核对。', 'Mention no longer matches the source; it is not verified.')}/>}</div>)}

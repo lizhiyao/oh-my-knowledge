@@ -28,17 +28,17 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
   const t = (cn: string, en: string) => zh ? cn : en;
   return <>
     <h2>{title}</h2><Tag>{candidateDecisionLabel(maintenance?.choice ?? null, lang)}</Tag>
-    {maintenance && <p className="candidate-help">{zh
+    {maintenance && <details className="candidate-help"><summary>{t('查看保留／舍弃理由与记录', 'Inspect decision reason and record')}</summary><p>{zh
       ? `决定理由：「${maintenance.reason}」 · 决定人 ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`
-      : `Decision reason: "${maintenance.reason}" · by ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`}</p>}
+      : `Decision reason: "${maintenance.reason}" · by ${maintenance.actor.actorId} · ${displayTime(maintenance.at)}`}</p></details>}
     <Typography.Paragraph type="secondary">{t('保留表示愿意维护，不等于内容已得到证实。', 'Retaining means choosing to maintain this content, not verifying its truth.')}</Typography.Paragraph>
   </>;
 }
 
 /** Canonical text remains readable independently of source availability and derived associations. */
-export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent, onReviewBody }: {
+export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, navigationWorkspace = workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent, onReviewBody }: {
   detail: KnowledgeCandidateDetail; lang: Language; busy?: boolean; header?: ReactNode; tools?: ReactNode; footer?: ReactNode;
-  onReviewContent?(): void; workspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
+  onReviewContent?(): void; workspace?: string; navigationWorkspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
   onReviewBody?(bodyRef: KnowledgeBodyRef): void;
   onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(source: SourceRef): void; onRetry(): void;
 }) {
@@ -179,7 +179,7 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
               <details><summary>{t('此映射的精确目录身份', 'Exact catalog identity for this mapping')}</summary><code>{ref.analysisId} / {ref.entityRevisionId}</code></details>
               <Space wrap><Button type="link" disabled={busy} onClick={() => choose({ tab: 'body', segmentId: ref.segmentId })}>{t('定位正文段落', 'Locate content segment')}</Button>
                 {onEntity ? <Button type="link" disabled={busy} onClick={() => onEntity({ analysisId: ref.analysisId, entityRevisionId: ref.entityRevisionId, entityId: ref.entityId })}>{t('核对这个实体', 'Inspect this entity')}</Button>
-                  : workspace && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace, analysis: ref.analysisId, revision: ref.entityRevisionId, entity: ref.entityId })}`}>{t('核对这个实体', 'Inspect this entity')}</Link>}</Space>
+                  : workspace && <Link href={`${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ ...(navigationWorkspace ? { workspace: navigationWorkspace } : {}), analysis: ref.analysisId, revision: ref.entityRevisionId, entity: ref.entityId })}`}>{t('核对这个实体', 'Inspect this entity')}</Link>}</Space>
               {ref.mentionIds.map(id => { const mention = catalog?.status === 'available' ? catalog.mentions.find(item => item.mentionId === id && item.entityId === ref.entityId) : undefined;
                 const index = selections.findIndex(item => item.mentionId === id && item.segmentId === ref.segmentId && item.catalogRef?.analysisId === ref.analysisId && item.catalogRef.entityRevisionId === ref.entityRevisionId);
                 return <div className="knowledge-mention" key={id} data-mention-id={id} data-focused={active.mentionId === id && (!active.catalogRef || (active.catalogRef.analysisId === ref.analysisId && active.catalogRef.entityRevisionId === ref.entityRevisionId))}>{mention ? <><blockquote>{mention.selection.quote}</blockquote><p className="candidate-help"><code>{id}</code> · {mention.selection.evidenceRef} · {mention.selection.start}–{mention.selection.end} · {mention.rationale}</p>

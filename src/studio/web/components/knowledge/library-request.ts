@@ -13,8 +13,8 @@ export async function requestLibraryEntity<T>(workspace: string, operation: stri
   return requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal);
 }
 export function libraryUrl(workspace: string, objectId: string, revision?: string) {
-  return `${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ workspace, object: objectId, ...(revision ? { revision } : {}) })}`;
+  return `${KNOWLEDGE_LIBRARY_PATH}?${new URLSearchParams({ ...(workspace ? { workspace } : {}), object: objectId, ...(revision ? { revision } : {}) })}`;
 }
 export function libraryEntityUrl(workspace: string, ref: { analysisId: string; entityId: string; entityRevisionId: string }) {
-  return `${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ workspace, analysis: ref.analysisId, entity: ref.entityId, revision: ref.entityRevisionId })}`;
+  return `${KNOWLEDGE_ENTITIES_PATH}?${new URLSearchParams({ ...(workspace ? { workspace } : {}), analysis: ref.analysisId, entity: ref.entityId, revision: ref.entityRevisionId })}`;
 }
