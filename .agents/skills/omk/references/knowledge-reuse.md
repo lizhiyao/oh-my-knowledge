@@ -21,9 +21,9 @@ omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$know
 
 ## 阅读完整结果，再按缺口读回
 
-首选 text 派生阅读视图：阅读每条知识内按原保存顺序排列的 `segmentIndex`、`segmentId` 和完整正文；同时核对 `knowledgeId`、`revisionId`、`bodyDigest`、维护／派生状态、`segments: returned/total` 与 `omitted`。证据保留精确 snapshot／sourceVersion／evidenceRef／UTF-16 范围、basis、interpretation 及来源／定位状态。text 不内联 quote，完整引文可用 JSON 精确读回；它不改写已保存正文，也不以证据定位替代正文含义。
+首选 text 派生阅读视图：阅读每条知识内按原保存顺序排列的 `segmentIndex`、`segmentId` 和完整正文；同时核对 `knowledgeId`、`revisionId`、`bodyDigest`、维护／派生状态、`segments: returned/total` 与 `omitted`。text v2／packing v2 将精确来源身份集中列一次；逐引用保留 evidenceIndex、来源索引、basis、定位状态及解释索引，全部不同 interpretation 在末尾原样展示。S／I 只在本视图内索引来源与解释，不是对象身份。完整 quote、evidenceRef 和 UTF-16 范围用所选知识的精确 show JSON 按 segmentId／evidenceIndex 读回；它不改写已保存正文，也不以证据定位替代正文含义。
 
-确认最后一行是 `endView: knowledge-body-text/v1`，并检查工具本身的截断提示。若有截断、缺少结尾标记或无法确认已读完，降低单次预算、缩小自然子问题，或按选中知识的精确修订读回必要段落。CLI 预算合规、native 归档完整和可见结尾都不证明 Agent 已保有全部历史；工具层截断也不同于检索的 `omitted`。未读到的内容不能当成已完整阅读，仍有缺口时要说明。
+确认最后一行是 `endView: knowledge-body-text/v2`，并检查工具本身的截断提示。若有截断、缺少结尾标记或无法确认已读完，降低单次预算、缩小自然子问题，或按选中知识的精确修订读回必要段落。CLI 预算合规、native 归档完整和可见结尾都不证明 Agent 已保有全部历史；工具层截断也不同于检索的 `omitted`。未读到的内容不能当成已完整阅读，仍有缺口时要说明。
 
 默认预算是整个所选视图加一个换行的 **65536 UTF-8 字节**，最大 1 MiB；这不是正文存储或模型上限。text 按实际输出字节容纳完整段落，超大或预算排除会记录在 `omitted`；不能为凑预算改写正文或截去条件。部分返回不自动证明任务所需信息缺失；零命中也不能证明库内没有相关知识。
 
