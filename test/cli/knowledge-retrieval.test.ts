@@ -88,15 +88,17 @@ describe('body retrieve command wiring', () => {
     const readback = JSON.parse(json.stdout), segment = f.draft.content.segments[0], evidence = segment.evidence[0];
     expect(readback.items[0].segment).toEqual(segment);
     const output = await f.command(['--format', 'text', '--max-bytes', '8192']);
-    expect(output.stdout).toContain('viewKind: knowledge-body-text/v1');
-    expect(output.stdout).toContain('packingPolicyId: knowledge-body-text-packing/v1');
+    expect(output.stdout).toContain('viewKind: knowledge-body-text/v2');
+    expect(output.stdout).toContain('packingPolicyId: knowledge-body-text-packing/v2');
     expect(output.stdout).toContain('quoteDisplay: omitted');
     for (const value of [segment.text, f.knowledgeId, f.revisionId, knowledgeBodyDigest(f.draft), f.snapshot.snapshotId,
-      f.snapshot.sourceVersion, evidence.selection.evidenceRef, evidence.basis, `utf16=[${evidence.selection.start},${evidence.selection.end})`]) {
+      f.snapshot.sourceVersion, evidence.basis, JSON.stringify(evidence.interpretation)]) {
       expect(output.stdout).toContain(value);
     }
     expect(output.stdout).toContain('matched');
-    expect(output.stdout.endsWith('endView: knowledge-body-text/v1\n')).toBe(true);
+    expect(output.stdout).not.toContain(`utf16=[${evidence.selection.start},${evidence.selection.end})`);
+    expect(output.stdout).toContain('evidenceIndex=0; source=S0');
+    expect(output.stdout.endsWith('endView: knowledge-body-text/v2\n')).toBe(true);
     expect(output.stdout.endsWith('\n')).toBe(true); expect(output.stdout.endsWith('\n\n')).toBe(false);
     expect(Buffer.byteLength(output.stdout, 'utf8')).toBeLessThanOrEqual(8192);
     expect(workspaceBytes(f.workspace)).toEqual(before); expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();

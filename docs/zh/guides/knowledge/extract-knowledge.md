@@ -10,6 +10,7 @@
 |---|---|
 | 知识库、载体生成、持续修订与变化核对的核心流程 | 从已发布的 `1.0.0-beta.14` 开始提供；Beta.13 不包含该维护界面。 |
 | Source3 项目／轨迹选区、逐请求确认的来源清单／正文／覆盖／关联四阶段生成、独立派生关联、当前日志及显式副本迁移 | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
+| 按任务 `retrieve`、text v2 阅读与官方 Skill 的已有知识维护分支 | 当前 main；已发布 Beta.14 没有 retrieve/text v1 或 v2，不能只按相同包版本号判断能力。 |
 | 读取重试、保存恢复与 CLI 操作指引的后续修复 | 同样以当前 main 为准；不把已发布 Beta.14 当作修复完成的证据。 |
 
 当前 prompt、Schema 和容量由[当前知识提炼契约](../../reference/shared/knowledge-contract.md)从运行时代码生成。该页描述构建身份，不代替[发行记录](https://github.com/lizhiyao/oh-my-knowledge/releases)；`@next` 是发行通道，不会自动包含未发布的 main 改动。
@@ -292,7 +293,7 @@ omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未�
 omk observe knowledge retrieve --workspace <selected-workspace> --query '<current-task>' --format text --max-bytes 16384
 ```
 
-`16384` 仅为示例，不是产品默认、知识或模型上限，也不保证任意工具都完整展示。工具若支持 `max_output_tokens` 等展示上限，也要与预计返回量匹配。默认预算仍是整个所选视图加一个换行的 65536 UTF-8 字节，最大 1 MiB。text 按每条知识原保存顺序的 `segmentIndex` 展示完整正文，保留稳定的知识／修订／摘要／状态及精确证据定位、basis 和 interpretation；quote 文本不显示，可用 JSON 精确读回。核对维护／来源／定位状态、`omitted`、返回／总段数、末尾 `endView: knowledge-body-text/v1` 及工具截断提示。归档完整或 CLI 字节预算合规不证明 Agent 已看全；出现截断或无法确认结尾时，降低单次预算、缩小自然子问题或读回选中精确修订，不为凑预算改写条件。部分返回不自动等于任务缺口。
+`16384` 仅为示例，不是产品默认、知识或模型上限，也不保证任意工具都完整展示。工具若支持 `max_output_tokens` 等展示上限，也要与预计返回量匹配。默认预算仍是整个所选视图加一个换行的 65536 UTF-8 字节，最大 1 MiB。text v2／packing v2 按每条知识原保存顺序的 `segmentIndex` 展示完整正文，保留稳定的知识／修订／摘要／状态；精确来源身份集中列一次，每条引用保留 evidenceIndex、来源索引、basis、定位状态及解释索引，全部不同 interpretation 在末尾原样展示。S／I 只是本视图索引，不是对象身份。完整 quote、evidenceRef 和 UTF-16 定位由精确 `show --id … --revision … --json` 按 segmentId／evidenceIndex 读回。独立内容复核另用 `review-status` 读取。核对维护／来源／定位状态、`omitted`、返回／总段数、末尾 `endView: knowledge-body-text/v2` 及工具截断提示。归档完整或 CLI 字节预算合规不证明 Agent 已看全；出现截断或无法确认结尾时，降低单次预算、缩小自然子问题或读回选中精确修订，不为凑预算改写条件。部分返回不自动等于任务缺口。
 
 `retrieve` 默认仍为 JSON；`--format json` 或 `--json` 可读完整机器／evidence 结构，`--format text` 与 `--json` 互斥。各格式按自身完整表示预算，重新用 JSON 检索可能选中不同段落。有具体缺口时，用实际 `knowledgeId` 和 `revisionId` 执行 `show --id <knowledge-id> --revision <revision-id> --json`，保留正文摘要和来源版本。默认使用已保留知识，只有任务明确需要时才纳入 pending 候选。读原文用于核对引用或提供明确标注的来源补充，不悄悄替代知识正文遗漏。
 
