@@ -30,7 +30,7 @@
 
 当前默认使用 `knowledge-body-first/v4` 四阶段：source_ledger、body、source_coverage、association。模型分析与实际操作者决定分开，完整范围及门禁见[来源复核契约](../knowledge/knowledge-source-review.md)，版本与容量见[生成契约](../../reference/shared/knowledge-contract.md)。
 
-来源清单为 wire2／prompt3、覆盖为 wire2／prompt3，两份历史仍为 store1；正文 wire2 使用 prompt9。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**），wire3、阶段 v1 envelope 及既有数据格式不变，不要求数据迁移。此前 journal4／默认 input2 替换旧 workflow3 属于 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 保持不变。旧原件、分数和历史 occurrence 协议保持冻结，此前转换按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
+来源清单为 wire2／prompt3、覆盖为 wire3／prompt4，两份历史仍为 store1；正文 wire2 使用 prompt10，仅其 prompt／profile／request 身份改变（**BREAKING-COMPARABILITY**）；正文存储、来源时间、wire2 和历史结果不变，无需迁移。关联现为 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**），wire3、阶段 v1 envelope 及既有数据格式不变，不要求数据迁移。此前 journal4／默认 input2 替换旧 workflow3 属于 **BREAKING-SCHEMA/API/COMPARABILITY**；Source3／正文3／实体2／关联2／reviews1 保持不变。旧原件、分数和历史 occurrence 协议保持冻结，此前转换按[独立副本迁移](../knowledge/knowledge-sources.md#migration)明确处理，不回算历史质量。
 
 正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及，再按已识别对象回查相关同源段落中的定义、属性、条件、维护或存储职责；已有合法自身提及可跨段复用，不要求各段重复名称或 objectId，无关段仍不映射。同一声明位置不能同时作为一般对象与版本的各自提及：Git 元数据可限定对象，独立版本对象仍须自己的来源提及。来源独立指认的工件／代码状态及必要的组件、版本映射仍分别判断。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
@@ -47,7 +47,7 @@
 
 每个完整正文段直接引用支持重要条件、纠正、例外和未知的来源位置；归属依赖较早原文上下文时，将该锚点与主张证据一起保留。metadata 限定仍明确为 metadata，不伪造成原文 quote，也不将来源时间当事实时间。可读全文、目录描述或 rationale 不是该主张的直接依据。正文还必须表达内容本身，不能只存引文。
 
-对于会变化的实现、生产默认、版本或完成状态，生成 prompt 要求每个受影响段落保留承载该说法的 `excerpt.coordinate.timestamp` 所示报告日期及说话者归因。正文明确日期来自消息 metadata，并保留其 UTC／时区性质；它不是事实发生、生效或本轮核验时间。evidence 仍逐字引用实际说法，在 `interpretation` 中标明日期来自同一 excerpt 的 `coordinate.timestamp` 及其原值，不将 metadata 日期伪造成 quote 或放进要求原文字面的 `requiredContexts`。轨迹没有 timestamp 时明确报告日期未知；文件／Git 按实际 provenance 和提交时间保留归因，不伪造消息或事实时间；不依赖历史状态的稳定方法不必增加日期。这项 prompt 要求不等于宿主已确定性校验日期归属的语义。
+正文 prompt10 先组织可复用结论、行动前提与最终状态，再保留必要案例，避免操作流水和重复审计说明。每段仍须独立可读，保留必要的对象、版本、归因、条件、否定、例外与未知。讨论变化中的实现、生产默认、版本或完成状态时，每个受影响段保留报告日期、UTC／时区性质和说话者，可简写为某日对话中的报告；时分秒或中间阶段会改变判断时仍须进入正文。来源日期不是事实发生、生效或本轮核验时间。evidence 仍逐字引用实际说法，interpretation 保留同一 excerpt.coordinate.timestamp 原值及消息元数据性质，不把日期伪造成 quote 或 requiredContexts literal。缺失日期影响采用时明确未知；文件／Git 保留实际来源归属与提交时间性质，不伪造消息或事实时间。不依赖历史状态的稳定方法不必强加日期。这些是 prompt 要求，不是确定性语义检查或普遍质量证明。
 
 对象提及是独立的身份导航义务。可选范围是该段已绑定的完整精确来源窗口，不仅限其引用的 excerpt 或 quote；同一 sourceKey 的其它片段中已有且支持该段指代的提及也可用于导航。这不补救主张证据缺失，也不允许借用其它 sourceKey 或仅靠标题确认身份。普通重复名称不必全部变成 mention，必要的身份出现位置仍需可核对。可选 typed 派生证据只能复用其引用正文段已有来源范围。精确位置匹配与来源保真判断分别检查。
 
