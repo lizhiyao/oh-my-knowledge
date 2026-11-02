@@ -9,10 +9,10 @@ This page is generated from the current source build’s runtime constants and S
 |---|---|
 | Production workflow | `knowledge-body-first/v4` |
 | Source ledger prompt | `knowledge-source-ledger-generation/v3` |
-| Body prompt | `knowledge-body-generation/v9` |
+| Body prompt | `knowledge-body-generation/v10` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v4` |
 | Association prompt | `knowledge-association-generation/v8` |
-| Body profile digest | `sha256:3ea3324c1b8a537eca2c94ea6a6b40e8267ae5427435980c007f082b87887dc2` |
+| Body profile digest | `sha256:46fb6f7ecb1441950644cf09092383f5f97d656f5af3bcc735f50145b7ecd35a` |
 | Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | Source coverage profile digest | `sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8` |
