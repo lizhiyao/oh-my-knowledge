@@ -7036,7 +7036,7 @@ __metadata:
     vitest: "npm:5.0.5"
     zod: "npm:^4.4.3"
   peerDependencies:
-    "@openai/codex-sdk": ^0.165.0
+    "@openai/codex-sdk": ">=0.165.0"
   peerDependenciesMeta:
     "@openai/codex-sdk":
       optional: true
