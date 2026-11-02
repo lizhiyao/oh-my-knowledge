@@ -151,7 +151,7 @@
     "ajv": "^8.18.0",
     "antd": "^6.6.3",
     "js-yaml": "^4.1.1",
-    "next": "16.4.2",
+    "next": "16.4.3",
     "react": "19",
     "react-dom": "19",
     "react-markdown": "^10.1.0",
@@ -171,7 +171,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
-    "@openai/codex-sdk": "0.165.0",
+    "@openai/codex-sdk": "0.166.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/js-yaml": "^4.0.9",
