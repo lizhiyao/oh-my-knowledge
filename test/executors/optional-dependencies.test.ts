@@ -24,10 +24,10 @@ describe('optional executor dependencies', () => {
     }));
   });
 
-  it('uses the compatible Codex SDK patch range in the install command', () => {
+  it('suggests the latest stable Codex SDK in the install command', () => {
     assert.throws(
       () => assertOptionalExecutorDependency('codex-sdk', () => false),
-      /npm install @openai\/codex-sdk@\^0\.165\.0/,
+      /npm install @openai\/codex-sdk@latest/,
     );
   });
 
@@ -41,18 +41,18 @@ describe('optional executor dependencies', () => {
     for (const executorName of ['codex-sdk'] as const) {
       const dependency = getOptionalExecutorDependency(executorName)!;
       const peerRange = packageJson.peerDependencies?.[dependency.packageName];
-      assert.equal(dependency.installSpec, `${dependency.packageName}@${peerRange}`);
+      assert.equal(dependency.installSpec, `${dependency.packageName}@latest`);
+      assert.equal(peerRange, '>=0.165.0');
       assert.equal(packageJson.peerDependenciesMeta?.[dependency.packageName]?.optional, true);
       assert.equal(packageJson.dependencies?.[dependency.packageName], undefined);
       const developmentVersion = packageJson.devDependencies?.[dependency.packageName] ?? '';
       assert.match(developmentVersion, /^\d+\.\d+\.\d+$/);
-      // 仅覆盖当前 0.x 同 minor 的 patch 支持策略；政策改变须显式更新，不是通用 semver 判定。
-      const patchRange = /^\^0\.([1-9]\d*)\.(\d+)$/.exec(peerRange ?? '');
-      assert.ok(patchRange, 'The public Codex SDK contract must use the current 0.x patch policy.');
-      const [developmentMajor, developmentMinor, developmentPatch] = developmentVersion.split('.').map(Number);
-      assert.equal(developmentMajor, 0);
-      assert.equal(developmentMinor, Number(patchRange[1]));
-      assert.ok(developmentPatch >= Number(patchRange[2]), 'The tested SDK must be within the public patch range.');
+      // 仅检查稳定版本下限；不再限制 minor，也不是通用 semver 解析器。
+      const minimum = peerRange.slice(2).split('.').map(Number);
+      const development = developmentVersion.split('.').map(Number);
+      const difference = development.findIndex((part, index) => part !== minimum[index]);
+      assert.ok(difference === -1 || development[difference] > minimum[difference],
+        'The tested SDK must meet the public minimum version.');
     }
   });
 });
