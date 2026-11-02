@@ -274,6 +274,14 @@ omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未�
 
 召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和 `--source-version` 必须成对提供，限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
 
+### 用新材料维护已有认识 {#maintain-existing-knowledge}
+
+更新已有知识时，先按实际任务检索并用 `show` 固定 `knowledgeId`、`revisionId`、`bodyDigest` 及正文 `history.generation`，读有关复核意见。同名不自动认作同一知识；区分补充条件、纠正、不同立场及独立新案例。稳定方法与有时间／版本的案例分别表达，不让历史版本变成永久要求，也不按新旧时间裁决矛盾。
+
+只有具体缺口需要时，才用获准的有限 scope 预览并捕获 manifest、执行结果、说明文档或固定源码；保存旧查询输出不代表重新查询，材料类型与推断边界须如实说明。由实际来源 excerpt 起草完整 KnowledgeDraft，保留仍适用段落、逐字引用、归因、条件、否定及未知，再通过 `revise --id … --revision … --generation … --input … --reason … --json` 追加新修订；`--input` 是完整正文，不是局部 patch。并发冲突先读当前写头，回执未知先核对历史，不盲目重发。
+
+按回执读回新正文及父修订，再用下一次真实任务检索并核对新增依据。新修订不继承旧保留、关联接受、内容复核或使用收益；不要为了检索命中自动 retain。宿主 Agent 起草属于 Agent 维护，不能据此改判原生提炼质量。官方 Skill 的[维护流程](https://github.com/lizhiyao/oh-my-knowledge/blob/main/.agents/skills/omk/references/knowledge-maintenance.md)复用这些现有接口，不另开模型阶段或新增 Schema。实际采用、真人反馈及受控效果分别报告；与普通笔记比较必要的查找、核对和修订负担，结果不值得时简化或停止。
+
 ### 从已有知识完成任务 {#task-knowledge-reuse}
 
 官方 OMK Agent Skill 首选 `retrieve --format text` 阅读历史知识，必要时用 JSON、`show` 和 `source` 精确读回；该分支跳过评测项目与 `eval-samples` 扫描。沿用用户已选工作区或 CLI 已配置默认，不猜新目录，不自动安装、升级、迁移或改写知识。先按上方版本边界核对已安装命令的能力。
