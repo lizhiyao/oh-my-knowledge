@@ -50,6 +50,7 @@ describe('oclif install', () => {
       assert.ok(stdout.includes('现在可以在 coding agent 中说'), `stdout missing next hint:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
       assert.ok(existsSync(join(dest, 'omk', 'references', 'commands.md')), 'commands reference not installed');
+      assert.ok(existsSync(join(dest, 'omk', 'references', 'knowledge-maintenance.md')), 'knowledge maintenance reference not installed');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
