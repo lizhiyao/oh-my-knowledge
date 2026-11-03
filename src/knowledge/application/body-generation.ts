@@ -3,7 +3,7 @@ import type { KnowledgeStore, KnowledgeWrite } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { SourceStore } from '../source-store.js';
 import { sourceSetPreimage, type SourceRef, type SourceSnapshot } from '../sources.js';
-import { generationImportRunId, generationSourceInput, SOURCE_GENERATION_INPUT_VERSION, WORKFLOW_ID } from '../extraction/source-input.js';
+import { generationImportRunId, generationSourceInput, SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, WORKFLOW_ID } from '../extraction/source-input.js';
 import type { EntityAnalysisStore, EntityAnalysisWrite } from '../entities/contracts.js';
 import type { KnowledgeAssociationStore, KnowledgeAssociationWrite } from '../associations.js';
 import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferences } from '../associations.js';
@@ -13,6 +13,7 @@ import { MAX_GENERATION_OUTCOME_BYTES } from '../adapters/generation-journal-sto
 import type { GenerationJournal, GenerationJournalStore, GenerationStage } from '../extraction/generation-journal.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies,
   generationTextDigest } from '../extraction/body-generation-wire.js';
+import { WRITING_DRAFT_PROFILE, checkWritingDraft } from '../extraction/writing-draft.js';
 import { associationMentionKey, compileAssociationCatalog } from '../extraction/association-catalog.js';
 import { observeGenerationException, type GenerationOutcome, type GenerationOutcomeRef } from '../extraction/native-outcome.js';
 
@@ -41,7 +42,7 @@ const message = (error: unknown) => observeGenerationException(error).message ||
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 type AssociationAppend = Extract<KnowledgeAssociationWrite, { commandKind: 'append_revision' }>;
 const profiles: Record<GenerationStage['stageKind'], KnowledgeGenerationProfile> = {
-  source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body: BODY_GENERATION_PROFILE,
+  source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body_draft: WRITING_DRAFT_PROFILE, body: BODY_GENERATION_PROFILE,
   source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE, association: ASSOCIATION_GENERATION_PROFILE,
 };
 function currentStage(stage: GenerationStage): boolean {
@@ -122,9 +123,26 @@ export class BodyGenerationApplication {
     const result = this.review().assertLedger(journal.ledgerRef);
     return { ref: result.ref, data: result.revision.data };
   }
+  private writingInput(journal: GenerationJournal): string {
+    return canonicalJson({ inputVersion: WRITING_DRAFT_INPUT_VERSION, sourceSetId: journal.sourceSetId,
+      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput) });
+  }
+  private writingDraft(journal: GenerationJournal) {
+    const stage = journal.stages.find(s => s.stageKind === 'body_draft'), ref = journal.writingDraftRef;
+    if (!stage || stage.state !== 'completed' || !currentStage(stage) || !ref || !stage.outcomeRef
+      || ref.runId !== journal.runId || ref.invocationId !== stage.invocationId || ref.requestDigest !== stage.requestDigest
+      || ref.archiveDigest !== stage.outcomeRef.digest || stage.input !== this.writingInput(journal)) throw new Error('Exact archived writing draft is required.');
+    const outcome = this.ports.journals.outcome(journal, stage);
+    if (!outcome || outcome.outcomeKind !== 'result' || !outcome.result.ok || outcome.result.refusal !== undefined
+      || outcome.result.failure !== undefined || outcome.cleanupFailure || stage.issues.length
+      || Array.isArray(outcome.result.toolCalls) && outcome.result.toolCalls.length || typeof outcome.result.output !== 'string'
+      || generationTextDigest(outcome.result.output) !== ref.outputDigest) throw new Error('Writing draft native identity mismatch.');
+    return { ref, text: checkWritingDraft(outcome.result.output) };
+  }
   private bodyInput(journal: GenerationJournal): string {
-    return canonicalJson({ inputVersion: SOURCE_REVIEW_INPUT_VERSION, sourceSetId: journal.sourceSetId,
-      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput), ledger: this.ledger(journal) });
+    return canonicalJson({ inputVersion: BODY_GENERATION_INPUT_VERSION, sourceSetId: journal.sourceSetId,
+      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput), ledger: this.ledger(journal),
+      writingDraft: this.writingDraft(journal) });
   }
   private coverageInput(journal: GenerationJournal): string {
     return sourceCoverageModelInput(journal.sources.map(source => this.snapshot(source)), this.ledger(journal), this.bodies(journal));
@@ -139,12 +157,13 @@ export class BodyGenerationApplication {
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
   }
   private seed(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId: string, mode: GenerationJournal['mode'], bodies: KnowledgeBodyRef[] = []) {
+    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow5 run.');
     const sourceSet = sourceSetPreimage(sources);
     const snapshots = sourceSet.sources.map(ref => {
       const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
       if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`); return source.snapshot;
     });
-    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 4 as const, workflowId: WORKFLOW_ID,
+    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 5 as const, workflowId: WORKFLOW_ID,
       inputVersion: SOURCE_REVIEW_INPUT_VERSION, sourceSetId: generationTextDigest(canonicalJson(sourceSet)),
       runId, generation: 1, mode, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
       sources: snapshots.map(snapshot => ({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(snapshot)) })),
@@ -171,8 +190,8 @@ export class BodyGenerationApplication {
       if (existing.status !== 'active' || generationNextAction(existing) === 'unsupported' || existing.stages.at(-1)!.state !== 'completed') return this.state(existing);
       this.idle(signal); const last = existing.stages.at(-1)!;
       if (last.stageKind === 'source_coverage') return this.state(decision ? this.prepareAssociation(existing, model, decision) : existing);
-      const profile = last.stageKind === 'source_ledger' ? BODY_GENERATION_PROFILE : SOURCE_COVERAGE_GENERATION_PROFILE;
-      const input = last.stageKind === 'source_ledger' ? this.bodyInput(existing) : this.coverageInput(existing);
+      const profile = last.stageKind === 'source_ledger' ? WRITING_DRAFT_PROFILE : last.stageKind === 'body_draft' ? BODY_GENERATION_PROFILE : SOURCE_COVERAGE_GENERATION_PROFILE;
+      const input = last.stageKind === 'source_ledger' ? this.writingInput(existing) : last.stageKind === 'body_draft' ? this.bodyInput(existing) : this.coverageInput(existing);
       return this.state(this.persist({ ...existing, stages: [...existing.stages, this.phase(model, profile, input)] }));
     }
     this.idle(signal); if (decision) throw new Error('A new generation cannot inherit a source coverage decision.');
@@ -239,7 +258,7 @@ export class BodyGenerationApplication {
   private validateClaim(j: GenerationJournal, stage: GenerationStage) {
     if (!currentStage(stage)) throw new Error('Generation profile changed before claim.');
     const sources = j.sources.map(source => this.snapshot(source));
-    const input = stage.stageKind === 'source_ledger' ? sourceLedgerModelInput(sources) : stage.stageKind === 'body' ? this.bodyInput(j)
+    const input = stage.stageKind === 'source_ledger' ? sourceLedgerModelInput(sources) : stage.stageKind === 'body_draft' ? this.writingInput(j) : stage.stageKind === 'body' ? this.bodyInput(j)
       : stage.stageKind === 'source_coverage' ? this.coverageInput(j) : this.associationInput(j);
     if (input !== stage.input) throw new Error('Generation complete request changed before claim.');
     if (stage.stageKind === 'association') {
@@ -299,7 +318,15 @@ export class BodyGenerationApplication {
       const output = outcome.outcomeKind === 'result' && outcome.result.ok && outcome.result.refusal === undefined
         && outcome.result.failure === undefined && (!Array.isArray(outcome.result.toolCalls) || outcome.result.toolCalls.length === 0)
         && typeof outcome.result.output === 'string' ? outcome.result.output : undefined;
-      if (stage.stageKind === 'body') {
+      if (stage.stageKind === 'body_draft') {
+        try {
+          if (output === undefined || outcome.cleanupFailure || stage.issues.length || !stage.outcomeRef) throw new Error('Writing draft native execution did not complete cleanly.');
+          checkWritingDraft(output);
+          j = { ...j, writingDraftRef: { runId: j.runId, invocationId: stage.invocationId,
+            requestDigest: stage.requestDigest, archiveDigest: stage.outcomeRef.digest, outputDigest: generationTextDigest(output) } };
+          stage = { ...stage, state: 'completed' };
+        } catch (error) { stage = { ...stage, state: 'failed', issues: [...stage.issues, message(error)] }; }
+      } else if (stage.stageKind === 'body') {
         try {
           if (output === undefined || outcome.cleanupFailure || stage.issues.length) throw new Error('Body native execution did not complete cleanly.');
           const checked = checkGeneratedBodies(output, j.sources.map(source => this.snapshot(source))), actor = this.actor(j, stage), at = this.ports.now();

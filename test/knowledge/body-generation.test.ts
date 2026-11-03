@@ -17,6 +17,7 @@ import type { SourceCoverageData, SourceCoverageDecisionRef, SourceLedgerData } 
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
+import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
 import { generationImportRunId, WORKFLOW_ID } from '../../src/knowledge/extraction/source-input.js';
 import { sourceSetPreimage, type SourceRef } from '../../src/knowledge/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
@@ -31,7 +32,7 @@ import type { ExecResult } from '../../src/executors/contracts/result.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const stages = ['source_ledger', 'body', 'source_coverage', 'association'] as const;
+const stages = ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'] as const;
 const testReviewActor = { actorKind: 'agent' as const, actorId: 'explicit-test-source-reviewer', executionRef: 'test:actual-review-operation' };
 type State = ReturnType<BodyGenerationApplication['resume']>;
 type CoverageResponse = z.infer<typeof SourceCoverageResponseSchema>;
@@ -86,7 +87,7 @@ function setup(splitMentionContext = false) {
   const association: AssociationGenerationResponse = { responseKind: 'knowledge-association-generation', schemaVersion: 3, catalogs: [{ sourceKey: 's0', entities: [] }], associations: [{ bodyKey: 'b0',
     segmentDecisions: [{ segmentId: 's1', decisionKind: 'abstained', entityRefs: [], reason: 'No reliable object in this authored fixture.' }], typedRelations: [], issues: [] }] };
   const output = (stage: GenerationStage['stageKind'], input: string): unknown => stage === 'source_ledger' ? ledgerOutput(input)
-    : stage === 'source_coverage' ? coverageOutput(input) : stage === 'body' ? body : association;
+    : stage === 'source_coverage' ? coverageOutput(input) : stage === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified Alpha writing fixture.' } : stage === 'body' ? body : association;
   const dispatched: GenerationStage['stageKind'][] = [];
   const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (profile, input, _signal, gate) => {
     gate?.(); dispatched.push(profile.stageKind);
@@ -105,7 +106,7 @@ async function dispatch(f: Fixture, prepared: State, model = f.model, options: K
 /** Stops at coverage. This helper never records a decision or starts association. */
 async function runAnalyses(f: Fixture, model = f.model, runId?: string, refs: SourceRef[] = [sourceRef(f.window)]) {
   let state = f.app.prepareGeneration(refs, model, runId);
-  for (const stage of stages.slice(0, 3)) {
+  for (const stage of stages.slice(0, 4)) {
     if (state.journal.stages.at(-1)!.stageKind !== stage) state = f.app.prepareGeneration(refs, model, state.journal.runId);
     state = await dispatch(f, state, model);
     if (state.journal.status === 'failed') return state;
@@ -167,10 +168,10 @@ async function prepareTwoSourceRebuildWithActualReview(f: Fixture) {
 const archivePath = (f: Fixture, j: GenerationJournal, stage: GenerationStage) => join(f.root, 'generation-journals', 'outcomes', j.runId, `${stage.invocationId}.json`);
 
 describe('source-first generation and zero-model recovery', () => {
-  it('prepares exact four-stage requests separately, requires an actual decision, and replays completed identity with zero calls', async () => {
+  it('prepares exact five-stage requests separately, requires an actual decision, and replays completed identity with zero calls', async () => {
     const f = setup(), refs = [sourceRef(f.window)], prepared = f.app.prepareGeneration(refs, f.model);
     expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
-    expect(prepared.journal).toMatchObject({ schemaVersion: 4, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
+    expect(prepared.journal).toMatchObject({ schemaVersion: 5, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
       runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'source_ledger', state: 'prepared', system: SOURCE_LEDGER_GENERATION_PROFILE.system }] });
     const input = JSON.parse(prepared.journal.stages[0].input);
     expect(input.manifest.sources).toMatchObject([{ sourceKey: 's0', sourceRef: refs[0] }]);
@@ -183,33 +184,38 @@ describe('source-first generation and zero-model recovery', () => {
     let state = await f.app.generate(refs, f.model, undefined, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
     expect(state.journal.stages).toHaveLength(1); expect(state.journal.ledgerRef).toBeDefined(); expect(state.journal.bodies).toEqual([]);
     state = f.app.prepareGeneration(refs, f.model, state.journal.runId);
-    expect(JSON.parse(state.journal.stages[1].input).ledger.ref).toEqual(state.journal.ledgerRef);
+    expect(state.journal.stages[1].system).toBe(WRITING_DRAFT_PROFILE.system);
+    expect(JSON.parse(state.journal.stages[1].input).ledger).toBeUndefined();
     await expect(f.app.continueStage(state.journal.runId, state.journal.generation, f.model, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest })).rejects.toThrow('Confirm the exact');
-    state = await dispatch(f, state); expect(f.library.list()).toHaveLength(1); expect(state.journal.stages).toHaveLength(2);
-    state = f.app.prepareGeneration(refs, f.model, state.journal.runId); expect(state.journal.stages[2].system).toBe(SOURCE_COVERAGE_GENERATION_PROFILE.system);
+    state = await dispatch(f, state); expect(f.library.list()).toHaveLength(0); expect(state.journal.writingDraftRef).toBeDefined();
+    state = f.app.prepareGeneration(refs, f.model, state.journal.runId);
+    expect(JSON.parse(state.journal.stages[2].input).writingDraft).toEqual({ ref: state.journal.writingDraftRef, text: 'Unverified Alpha writing fixture.' });
+    expect(JSON.parse(state.journal.stages[2].input).ledger.ref).toEqual(state.journal.ledgerRef);
+    state = await dispatch(f, state); expect(f.library.list()).toHaveLength(1); expect(state.journal.stages).toHaveLength(3);
+    state = f.app.prepareGeneration(refs, f.model, state.journal.runId); expect(state.journal.stages[3].system).toBe(SOURCE_COVERAGE_GENERATION_PROFILE.system);
     state = await dispatch(f, state);
-    expect(state.nextAction).toBe('review_source_coverage'); expect(state.journal.stages).toHaveLength(3); expect(f.dispatched).toEqual(stages.slice(0, 3));
+    expect(state.nextAction).toBe('review_source_coverage'); expect(state.journal.stages).toHaveLength(4); expect(f.dispatched).toEqual(stages.slice(0, 4));
     expect(f.app.sourceCoverageStatus(state.journal.coverageRef!.coverageId).decision.status).toBe('not_reviewed');
-    expect(f.app.prepareGeneration(refs, f.model, state.journal.runId)).toEqual(state); expect(f.dispatched).toHaveLength(3);
+    expect(f.app.prepareGeneration(refs, f.model, state.journal.runId)).toEqual(state); expect(f.dispatched).toHaveLength(4);
     const decision = recordActualTestDecision(f, state, 'proceed_with_limits');
     state = f.app.prepareGeneration(refs, f.model, state.journal.runId, undefined, decision);
     expect(state.journal.sourceCoverageDecisionRef).toEqual(decision); expect(state.journal.stages.at(-1)?.stageKind).toBe('association');
     state = await dispatch(f, state); expect(state.journal.status).toBe('completed'); expect(f.dispatched).toEqual(stages);
     const detail = f.library.detail(state.journal.bodies[0].knowledgeId); expect(detail.maintenance).toBeNull();
     expect(detail.derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
-    expect(f.reopen().inspect(state.journal.runId).nativeOutcomes).toHaveLength(4);
-    expect(await f.app.generate(refs, f.model)).toEqual(f.reopen().resume(state.journal.runId)); expect(f.dispatched).toHaveLength(4);
+    expect(f.reopen().inspect(state.journal.runId).nativeOutcomes).toHaveLength(5);
+    expect(await f.app.generate(refs, f.model)).toEqual(f.reopen().resume(state.journal.runId)); expect(f.dispatched).toHaveLength(5);
   });
 
   it('reviews zero saved bodies against the full ledger and does not invent a body, approval or association call', async () => {
     const f = setup(); f.body.proposals = [];
     const state = await runAnalyses(f);
-    expect(state.journal.bodies).toEqual([]); expect(f.library.list()).toEqual([]); expect(f.dispatched).toEqual(stages.slice(0, 3));
+    expect(state.journal.bodies).toEqual([]); expect(f.library.list()).toEqual([]); expect(f.dispatched).toEqual(stages.slice(0, 4));
     const status = f.app.sourceCoverageStatus(state.journal.coverageRef!.coverageId);
     expect(status.revision.data.bodyRefs).toEqual([]); expect(status.unresolvedIds!.length).toBeGreaterThan(0); expect(status.decision.status).toBe('not_reviewed');
     const decision = recordActualTestDecision(f, state, 'proceed_with_limits');
     const done = f.app.prepareGeneration([sourceRef(f.window)], f.model, state.journal.runId, undefined, decision);
-    expect(done.journal.status).toBe('completed'); expect(done.journal.stages).toHaveLength(3); expect(f.dispatched).toHaveLength(3);
+    expect(done.journal.status).toBe('completed'); expect(done.journal.stages).toHaveLength(4); expect(f.dispatched).toHaveLength(4);
   });
 
   it.each(['source_ledger', 'source_coverage'] as const)('archives and rejects a %s response that tries to self-approve instead of silently coercing it', async kind => {
@@ -265,6 +271,42 @@ describe('source-first generation and zero-model recovery', () => {
     else if (kind === 'source_ledger') expect(f.ports.ledgers.read(resumed.journal.ledgerRef!.ledgerId)!.events).toHaveLength(1);
     else expect(f.ports.coverage.read(resumed.journal.coverageRef!.coverageId)!.events).toHaveLength(1);
     expect(f.reopen().resume(resumed.journal.runId)).toEqual(resumed);
+  });
+
+  it('recovers the archived writing draft after completion persistence fails without a second model call or canonical write', async () => {
+    const f = setup(), prepared = await preparePhase(f, 'body_draft'), before = f.dispatched.length;
+    const write = f.ports.journals.write.bind(f.ports.journals);
+    vi.spyOn(f.ports.journals, 'write').mockImplementation((journal, ...args) => {
+      if (journal.writingDraftRef) throw new Error('draft completion disk failure');
+      return write(journal, ...args);
+    });
+    await expect(dispatch(f, prepared)).rejects.toThrow('draft completion disk failure');
+    const reopened = f.reopen(), recovered = reopened.resume(prepared.journal.runId), stage = recovered.journal.stages.at(-1)!;
+    expect(stage).toMatchObject({ stageKind: 'body_draft', state: 'completed', committed: 0 });
+    expect(recovered.journal.writingDraftRef).toMatchObject({ invocationId: stage.invocationId, requestDigest: stage.requestDigest, archiveDigest: stage.outcomeRef!.digest });
+    expect(f.library.list()).toEqual([]); expect(f.dispatched).toHaveLength(before + 1);
+    expect(reopened.resume(recovered.journal.runId)).toEqual(recovered);
+    const grounded = reopened.prepareGeneration([sourceRef(f.window)], f.model, recovered.journal.runId);
+    expect(JSON.parse(grounded.journal.stages.at(-1)!.input).writingDraft.ref).toEqual(recovered.journal.writingDraftRef);
+    expect(() => new FileGenerationJournalStore(join(f.root, 'generation-journals'), f.root).write({ ...grounded.journal,
+      generation: grounded.journal.generation + 1, writingDraftRef: { ...grounded.journal.writingDraftRef!, outputDigest: `sha256:${'0'.repeat(64)}` } }, grounded.journal.generation)).toThrow('writing draft reference');
+  });
+
+  it('rejects draft-only evidence rather than publishing an ungrounded draft as canonical knowledge', async () => {
+    const f = setup(), prepared = await preparePhase(f, 'body');
+    f.body.proposals[0].segments[0].evidence[0].quote = 'Unverified Alpha writing fixture.';
+    const result = await dispatch(f, prepared);
+    expect(result.journal.stages.at(-1)!.rejected).toHaveLength(1);
+    expect(result.journal.bodies).toEqual([]); expect(f.library.list()).toEqual([]);
+    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: JSON.stringify(f.body) } });
+  });
+
+  it('refuses a new workflow5 run in an unmigrated journal4 workspace without changing the old claim', () => {
+    const f = setup(), runId = randomUUID(); mkdirSync(join(f.root, 'generation-journals'));
+    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 4, unknownClaim: true });
+    writeFileSync(path, bytes);
+    expect(() => f.app.prepareGeneration([sourceRef(f.window)], f.model)).toThrow('explicit independent-copy');
+    expect(readFileSync(path, 'utf8')).toBe(bytes); expect(f.invoke).not.toHaveBeenCalled();
   });
 
   it('retains a returned native outcome under archive backpressure and resumes without another dispatch', async () => {
@@ -334,7 +376,7 @@ describe('source-first generation and zero-model recovery', () => {
     const history = f.ports.coverage.read(state.journal.coverageRef!.coverageId)!;
     expect(() => f.app.reviewSourceCoverage({ commandKind: 'revoke_decision', coverageId: history.coverageId, requestId: randomUUID(),
       expectedGeneration: history.generation - 1, expectedHeadEventId: history.writeHeadEventId, targetEventId: decision.eventId, reason: 'Stale actual write.' })).toThrow('revision conflict');
-    expect(f.dispatched).toEqual(stages.slice(0, 3));
+    expect(f.dispatched).toEqual(stages.slice(0, 4));
   });
 
   it('preserves a full authorized source set through revise, coverage-only review and rebuild even when one source has no body citation', async () => {
@@ -363,7 +405,7 @@ describe('source-first generation and zero-model recovery', () => {
     const done = await dispatch(f, rebuild); expect(done.journal.status).toBe('completed');
     expect(f.library.detail(ref.knowledgeId, original.revision.revisionId).revision).toEqual(original.revision);
     expect(f.library.detail(ref.knowledgeId).derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
-    expect(f.dispatched).toEqual(['source_ledger', 'body', 'source_coverage', 'association', 'source_coverage', 'association']);
+    expect(f.dispatched).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage', 'association', 'source_coverage', 'association']);
   });
 
   it('replays an interrupted second catalog publication without merging identities or adding another native call', async () => {
@@ -399,13 +441,13 @@ describe('source-first generation and zero-model recovery', () => {
     f.association.associations[0].segmentDecisions = [{ segmentId, decisionKind: 'abstained', entityRefs: [], reason }];
     const result = await generateWithActualTestReview(f), detail = f.library.detail(result.journal.bodies[0].knowledgeId);
     expect(detail.derivedAssociations.revision?.issues).toEqual([`AI association abstained for ${segmentId}; reason follows.`, reason]);
-    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes[3].outcome).toMatchObject({ result: { output: JSON.stringify(f.association) } });
+    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes[4].outcome).toMatchObject({ result: { output: JSON.stringify(f.association) } });
     expect(f.reopen().resume(result.journal.runId)).toEqual(result); expect(f.dispatched).toEqual(stages);
   });
 
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v10', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:46fb6f7ecb1441950644cf09092383f5f97d656f5af3bcc735f50145b7ecd35a',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v16', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
@@ -419,12 +461,12 @@ describe('source-first generation and zero-model recovery', () => {
     const paths: string[] = [], execute = vi.fn(async request => {
       paths.push(request.cwd); expect(request.cwd).toMatch(/omk-knowledge-text-[A-Za-z0-9]{6}$/); expect(request.timeoutMs).toBe(300000);
       if (request.outputFormat.name.includes('association')) expect(request.system).toContain(KNOWLEDGE_RECORD_SCOPE_POLICY);
-      const kind = request.outputFormat.name.includes('source_ledger') ? 'source_ledger' : request.outputFormat.name.includes('source_coverage') ? 'source_coverage' : request.outputFormat.name.includes('association') ? 'association' : 'body';
+      const kind = request.outputFormat.name.includes('source_ledger') ? 'source_ledger' : request.outputFormat.name.includes('source_coverage') ? 'source_coverage' : request.outputFormat.name.includes('body_draft') ? 'body_draft' : request.outputFormat.name.includes('association') ? 'association' : 'body';
       return { ok: true, output: JSON.stringify(f.output(kind, request.prompt)), opaqueNestedField: { preserved: ['original', 1] } } as unknown as ExecResult;
     });
     const model = configuredKnowledgeGenerationModel('codex', 'fixture-model', createCodexArchiveProducer({}, () => execute));
     const result = await generateWithActualTestReview(f, model), detail = f.library.detail(result.journal.bodies[0].knowledgeId);
-    expect(execute).toHaveBeenCalledTimes(4); expect(paths.every(path => !existsSync(path))).toBe(true); expect(result.journal.bodies).toHaveLength(2);
+    expect(execute).toHaveBeenCalledTimes(5); expect(paths.every(path => !existsSync(path))).toBe(true); expect(result.journal.bodies).toHaveLength(2);
     const projection = detail.derivedAssociations.revision!, entityId = projection.segmentEntityRefs[0].entityId;
     expect(f.library.entityDetail(projection.catalogRefs[0].analysisId, entityId).knowledge.map(item => item.knowledgeId).sort()).toEqual(result.journal.bodies.map(ref => ref.knowledgeId).sort());
     for (const ref of result.journal.bodies) {

@@ -651,7 +651,7 @@ omk observe knowledge <operation> [flags]
 - `--snapshot` `option`:source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。
 - `--source-status` `all|available|unavailable`:entities 来源可读状态筛选。
 - `--source-version` `option`:source／delete-source／retrieve：精确来源 sha256，须配 --snapshot。
-- `--stage` `source_ledger|body|source_coverage|association`:schema：响应阶段，默认 body。
+- `--stage` `source_ledger|body_draft|body|source_coverage|association`:schema：响应阶段，默认 body。
 - `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
 - `--workspace` `option`:显式知识工作区，省略使用设置。
 

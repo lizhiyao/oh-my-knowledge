@@ -1,3 +1,4 @@
+import { WRITING_DRAFT_PROFILE, checkWritingDraft } from '../../src/knowledge/extraction/writing-draft.js';
 import { describe, expect, it } from 'vitest';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
@@ -28,9 +29,22 @@ function association() {
 }
 
 describe('versioned body and association generation wire', () => {
+  it('pins the unverified writing contract and rejects extra authority fields or malformed native responses', () => {
+    expect(WRITING_DRAFT_PROFILE).toMatchObject({ stageKind: 'body_draft', promptVersion: 'knowledge-writing-draft/v1', outputName: 'knowledge_body_draft_v1',
+      profileId: 'sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574',
+      wireId: 'sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8' });
+    expect(Object.isFrozen(WRITING_DRAFT_PROFILE.wireSchema.properties)).toBe(true);
+    const draft = { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: '# 未核验草稿\n\n来源说法仍须回原文定位。' };
+    expect(checkWritingDraft(JSON.stringify(draft))).toBe(draft.text);
+    expect(checkWritingDraft(JSON.stringify({ ...draft, text: '' }))).toBe('');
+    for (const raw of ['not JSON', JSON.stringify({ ...draft, schemaVersion: 2 }), JSON.stringify({ ...draft, approved: true }), JSON.stringify({ ...draft, text: null })]) {
+      expect(() => checkWritingDraft(raw)).toThrow();
+    }
+  });
+
   it('publishes new strict identities without exposing the ordinal or model-supplied mention ID', () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v10', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:46fb6f7ecb1441950644cf09092383f5f97d656f5af3bcc735f50145b7ecd35a',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v16', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8', outputName: 'knowledge_association_v3',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
@@ -38,9 +52,9 @@ describe('versioned body and association generation wire', () => {
     expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-ledger-generation/v3',
       profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
       wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-coverage-generation/v4',
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-source-coverage-generation/v6',
       outputName: 'knowledge_source_coverage_v3',
-      profileId: 'sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8',
+      profileId: 'sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686',
       wireId: 'sha256:051de277225cfb10d2016a269ec2ec04dad3a72ea2ccf89cd1e7bd4c15abe3a8' });
     for (const profile of [BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile)).toBe(true);

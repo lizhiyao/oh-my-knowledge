@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 type Language = 'en' | 'zh';
 export interface CurrentKnowledgeContract {
+  writingPromptVersion: string; writingProfileId: string; writingWireId: string; writingInputVersion: string; bodyInputVersion: string;
   workflowId: string; bodyPromptVersion: string; associationPromptVersion: string;
   ledgerPromptVersion: string; coveragePromptVersion: string; ledgerProfileId: string; coverageProfileId: string;
   ledgerWireId: string; coverageWireId: string; ledgerHistorySchemaVersion: number; coverageHistorySchemaVersion: number;
@@ -19,15 +20,17 @@ export interface CurrentKnowledgeContract {
 /** Current production identities and separately labelled historical-study capacities. */
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
-  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput, sourceReview, reviewWire, relations, graph] = await Promise.all([
+  const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput, sourceReview, reviewWire, relations, graph, writing] = await Promise.all([
     load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews.js'), load('extraction/generation-journal.js'),
     load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
     load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
     load('sources.js'), load('adapters/source-store.js'), load('extraction/source-input.js'),
-    load('source-review.js'), load('extraction/source-review-wire.js'), load('relations.js'), load('application/graph.js'),
+    load('source-review.js'), load('extraction/source-review-wire.js'), load('relations.js'), load('application/graph.js'), load('extraction/writing-draft.js'),
   ]);
   const body = wire.BODY_GENERATION_PROFILE, association = wire.ASSOCIATION_GENERATION_PROFILE;
   return {
+    writingPromptVersion: writing.WRITING_DRAFT_PROFILE.promptVersion, writingProfileId: writing.WRITING_DRAFT_PROFILE.profileId,
+    writingWireId: writing.WRITING_DRAFT_PROFILE.wireId, writingInputVersion: sourceInput.WRITING_DRAFT_INPUT_VERSION, bodyInputVersion: sourceInput.BODY_GENERATION_INPUT_VERSION,
     workflowId: journal.GenerationJournalSchema.shape.workflowId.value,
     bodyPromptVersion: body.promptVersion, associationPromptVersion: association.promptVersion,
     ledgerPromptVersion: reviewWire.SOURCE_LEDGER_GENERATION_PROFILE.promptVersion, coveragePromptVersion: reviewWire.SOURCE_COVERAGE_GENERATION_PROFILE.promptVersion,
@@ -71,6 +74,11 @@ export function renderCurrentKnowledgeContract(values: CurrentKnowledgeContract,
   const rows: [string, string, string][] = [
     ['Production workflow', '生产流程', code(values.workflowId)],
     ['Source ledger prompt', '来源清单 prompt', code(values.ledgerPromptVersion)],
+    ['Writing draft prompt', '写作稿 prompt', code(values.writingPromptVersion)],
+    ['Writing draft profile digest', '写作稿 profile 摘要', code(values.writingProfileId)],
+    ['Writing draft structural wire digest', '写作稿结构线协议摘要', code(values.writingWireId)],
+    ['Writing draft input', '写作稿输入', code(values.writingInputVersion)],
+    ['Grounded body input', '有据正文输入', code(values.bodyInputVersion)],
     ['Body prompt', '正文 prompt', code(values.bodyPromptVersion)],
     ['Source coverage prompt', '来源覆盖 prompt', code(values.coveragePromptVersion)],
     ['Association prompt', '关联 prompt', code(values.associationPromptVersion)],

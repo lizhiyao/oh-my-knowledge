@@ -106,16 +106,16 @@ describe('Source3 manual transmission boundary', () => {
     fireEvent.click(approval()); fireEvent.click(sendBody);
     await screen.findByRole('button', { name: 'Prepare and review the next stage' });
     expect(invocations).toEqual(['source_ledger']);
-    for (const [title, invoked] of [['Confirm content request', 'body'], ['Confirm Source coverage request', 'source_coverage']]) {
+    for (const [title, invoked] of [['Confirm Writing draft request', 'body_draft'], ['Confirm content request', 'body'], ['Confirm Source coverage request', 'source_coverage']]) {
       fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
       await screen.findByText(title);
       const send = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
       expect(send.disabled).toBe(true); expect(approval().checked).toBe(false);
       fireEvent.click(approval()); fireEvent.click(send);
-      if (invoked === 'body') await screen.findByRole('button', { name: 'Prepare and review the next stage' });
+      if (invoked !== 'source_coverage') await screen.findByRole('button', { name: 'Prepare and review the next stage' });
       else await screen.findByRole('combobox', { name: 'Source decision' });
     }
-    expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage']);
+    expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
     fireEvent.change(screen.getByRole('combobox', { name: 'Source decision' }), { target: { value: 'proceed_with_limits' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Source decision reason' }), { target: { value: 'Explicit authored browser operator review.' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Preserved limitations' }), { target: { value: 'Authored protocol fixture, not verified factual quality.' } });
@@ -127,7 +127,7 @@ describe('Source3 manual transmission boundary', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: 'Save this decision' }));
     const proceed = await screen.findByRole('button', { name: empty ? 'End this run with this opinion (no content)' : 'Prepare associations with this opinion' });
-    expect(invocations).toHaveLength(3);
+    expect(invocations).toHaveLength(4);
     if (empty) {
       expect(createLocalKnowledgeApplication(workspace).runs().current[0].status).toBe('active');
       expect(screen.getByText('No content was saved in this run; source omissions still require review.')).toBeTruthy();
@@ -137,19 +137,19 @@ describe('Source3 manual transmission boundary', () => {
       await screen.findByText('This run ended with an actual review decision; no content was saved.');
       const completed = createLocalKnowledgeApplication(workspace).runs().current[0];
       expect(completed).toMatchObject({ status: 'completed', bodies: [], sourceCoverageDecisionRef: expect.any(Object) });
-      expect(completed.stages.map(stage => stage.stageKind)).toEqual(['source_ledger', 'body', 'source_coverage']);
-      expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage']);
+      expect(completed.stages.map(stage => stage.stageKind)).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
+      expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
       expect(existsSync(join(workspace, 'associations'))).toBe(false);
     } else {
       await screen.findByText('Confirm entity association request');
       const sendAssociation = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
-      expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(3);
+      expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(4);
       fireEvent.click(approval()); fireEvent.click(sendAssociation);
       await screen.findByText('This run ended. Review the candidate content.');
-      expect(invocations).toEqual(['source_ledger', 'body', 'source_coverage', 'association']);
+      expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']);
     }
     const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
-    expect(dispatches).toHaveLength(empty ? 3 : 4); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(empty ? 3 : 4);
+    expect(dispatches).toHaveLength(empty ? 4 : 5); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(empty ? 4 : 5);
     expect(dispatches.every(item => item.id === dispatches[0].id)).toBe(true);
     expect(requests.filter(item => item.body.operation === 'review-source-coverage')).toHaveLength(1);
     expect(requests.some(item => item.body.operation === 'generate')).toBe(false);

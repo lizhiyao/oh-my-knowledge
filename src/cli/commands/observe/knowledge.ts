@@ -5,6 +5,7 @@ import { prepareAssociationMigration, applyAssociationMigration, type Associatio
 import { prepareSourceMigration, applySourceMigration, SOURCE_MIGRATION_PLAN_MAX_BYTES, type SourceMigrationPlan } from '../../../knowledge/adapters/source-migration.js';
 import { planKnowledgeWorkflowMigration, applyKnowledgeWorkflowMigration, type KnowledgeWorkflowMigrationPlan } from '../../../knowledge/adapters/workflow-migration.js';
 import { SourceCoverageDecisionRefSchema } from '../../../knowledge/source-review.js';
+import { WRITING_DRAFT_PROFILE } from '../../../knowledge/extraction/writing-draft.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../../knowledge/extraction/source-review-wire.js';
 import { readLocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { SourceDigestSchema, SourceRefSchema, ResolvedSourceSelectionSchema } from '../../../knowledge/sources.js';
@@ -98,7 +99,7 @@ export default class ObserveKnowledge extends BaseCommand {
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
     'confirm-request': Flags.string({ description: description('generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。', 'generate/continue-stage/rebuild-associations: confirm the requestDigest for the complete system/input shown by prepare/inspect; each phase requires separate confirmation.') }),
-    stage: Flags.string({ options: ['source_ledger', 'body', 'source_coverage', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
+    stage: Flags.string({ options: ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
     json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。', 'Complete JSON; retrieve defaults to budgeted single-line JSON, also selected by --format json. Cannot be combined with --format text.') }),
   };
   static examples = [
@@ -152,7 +153,7 @@ export default class ObserveKnowledge extends BaseCommand {
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
         || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
         || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
-        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow4 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow4 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow5 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow5 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
       }
       try {
         const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),
@@ -288,7 +289,7 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     const need = (value: string | undefined, name: string) => { if (!value?.trim()) this.error(`--${name} ${t('必填', 'is required')}`, { exit: 2 }); return value!; };
     if (args.operation === 'schema') {
-      const profile = { source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body: BODY_GENERATION_PROFILE, source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE, association: ASSOCIATION_GENERATION_PROFILE }[(flags.stage ?? 'body') as 'source_ledger' | 'body' | 'source_coverage' | 'association'];
+      const profile = { source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body_draft: WRITING_DRAFT_PROFILE, body: BODY_GENERATION_PROFILE, source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE, association: ASSOCIATION_GENERATION_PROFILE }[(flags.stage ?? 'body') as 'source_ledger' | 'body_draft' | 'body' | 'source_coverage' | 'association'];
       this.log(JSON.stringify({ profileId: profile.profileId, promptVersion: profile.promptVersion, wireId: profile.wireId, schema: profile.wireSchema }, null, 2)); return;
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });

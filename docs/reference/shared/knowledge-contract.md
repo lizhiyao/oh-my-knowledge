@@ -7,15 +7,20 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v4` |
+| Production workflow | `knowledge-body-first/v5` |
 | Source ledger prompt | `knowledge-source-ledger-generation/v3` |
-| Body prompt | `knowledge-body-generation/v10` |
-| Source coverage prompt | `knowledge-source-coverage-generation/v4` |
+| Writing draft prompt | `knowledge-writing-draft/v1` |
+| Writing draft profile digest | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
+| Writing draft structural wire digest | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
+| Writing draft input | `knowledge-writing-draft-input/v1` |
+| Grounded body input | `knowledge-body-generation-input/v3` |
+| Body prompt | `knowledge-body-generation/v16` |
+| Source coverage prompt | `knowledge-source-coverage-generation/v6` |
 | Association prompt | `knowledge-association-generation/v8` |
-| Body profile digest | `sha256:46fb6f7ecb1441950644cf09092383f5f97d656f5af3bcc735f50145b7ecd35a` |
+| Body profile digest | `sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1` |
 | Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
-| Source coverage profile digest | `sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8` |
+| Source coverage profile digest | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | Source ledger structural wire digest | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
@@ -27,7 +32,7 @@ This page is generated from the current source build’s runtime constants and S
 | Review and use feedback history Schema | `1` |
 | Cross-knowledge relation history Schema | `1` |
 | Knowledge graph projection Schema | `3` |
-| Generation journal Schema | `4` |
+| Generation journal Schema | `5` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |
 | Entity history Schema | `2` |
@@ -35,7 +40,7 @@ This page is generated from the current source build’s runtime constants and S
 | Source projection | `knowledge-window-v3` |
 | Source generation input | `knowledge-source-generation-input/v2` |
 | Preserved association input envelope | `knowledge-source-generation-input/v1` |
-| Default source import run identity | `knowledge-source-set-import-run/v2` |
+| Default source import run identity | `knowledge-source-set-import-run/v3` |
 | Complete native archive capacity | 536,870,887 bytes |
 | Default retrieval response budget (adjustable) | 65,536 bytes |
 | Minimum retrieval response budget | 1,024 bytes |

@@ -24,6 +24,7 @@ import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/asso
 import { authoredKnowledgeResponse, authoredSourceDecision, seedKnowledgeWorkspace } from './knowledge-fixtures.js';
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
+import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
 import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 
 const roots: string[] = [];
@@ -90,7 +91,7 @@ describe('observe knowledge command wiring', () => {
     expect(JSON.parse((await runCli([...opaque, '--offline'], options)).stdout)).toMatchObject({ state: 'sealed', evidenceScope: 'opaque-unsupported-schema',
       executionStatus: 'unknown', request: { offlineDeclared: true } });
   }, 120_000);
-  it('confirms four stages and an actual source decision through the actual CLI producer, persists both originals and resumes without dispatch', async () => {
+  it('confirms five stages and an actual source decision through the actual CLI producer, persists both originals and resumes without dispatch', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-body-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
     const threadId = randomUUID(); vi.stubEnv('CODEX_THREAD_ID', threadId); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'Codex Desktop');
     vi.stubEnv('OPENAI_API_KEY', 'isolated-loopback-fixture-key'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9321');
@@ -102,7 +103,7 @@ describe('observe knowledge command wiring', () => {
       expect(_url).toBe('http://127.0.0.1:9321/v1/chat/completions'); expect(init?.redirect).toBe('error');
       const request = JSON.parse(String(init?.body)); requests.push(request);
       expect(request).toMatchObject({ model: 'authored-loopback-test', n: 1, stream: false }); expect(request.max_completion_tokens).toBeUndefined();
-      const name = request.response_format.json_schema.name as string, stage = name.includes('source_ledger') ? 'source_ledger' : name.includes('source_coverage') ? 'source_coverage' : name.includes('association') ? 'association' : 'body';
+      const name = request.response_format.json_schema.name as string, stage = name.includes('source_ledger') ? 'source_ledger' : name.includes('source_coverage') ? 'source_coverage' : name.includes('body_draft') ? 'body_draft' : name.includes('association') ? 'association' : 'body';
       const output = authoredKnowledgeResponse(request.messages.at(-1).content, stage);
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 3, prompt_tokens_details: { cached_tokens: 2 } } }));
     }); vi.stubGlobal('fetch', fetch);
@@ -114,12 +115,12 @@ describe('observe knowledge command wiring', () => {
     let run = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout); expect(fetch).toHaveBeenCalledTimes(1);
     const dispatch = async (prepared: typeof run) => JSON.parse((await runCommand(ObserveKnowledge, ['continue-stage', '--workspace', workspace, '--id', runId, '--generation', String(prepared.journal.generation),
       '--executor', 'openai-api', '--model', 'authored-loopback-test', '--confirm-request', prepared.journal.stages.at(-1).requestDigest, '--json'], { cwd: root })).stdout);
-    for (const expected of ['body', 'source_coverage']) {
+    for (const expected of ['body_draft', 'body', 'source_coverage']) {
       expect(run.nextAction).toBe('prepare_next_stage');
       const next = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout);
       expect(next.journal.stages.at(-1).stageKind).toBe(expected); run = await dispatch(next);
     }
-    expect(run.nextAction).toBe('review_source_coverage'); expect(fetch).toHaveBeenCalledTimes(3);
+    expect(run.nextAction).toBe('review_source_coverage'); expect(fetch).toHaveBeenCalledTimes(4);
     const status = JSON.parse((await runCommand(ObserveKnowledge, ['source-coverage-status', '--workspace', workspace, '--id', run.journal.coverageRef.coverageId, '--json'], { cwd: root })).stdout);
     const decision = authoredSourceDecision(status), decisionPath = join(root, 'decision.json'); writeFileSync(decisionPath, JSON.stringify(decision));
     vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'unknown');
@@ -130,21 +131,21 @@ describe('observe knowledge command wiring', () => {
     const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision.decision;
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], sourceCoverageDecisionRef: { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: decision.requestId } }));
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout));
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v4', status: 'completed', bodies: [expect.anything()],
-      stages: ['source_ledger', 'body', 'source_coverage', 'association'].map(stageKind => ({ stageKind, state: 'completed', outcomeRef: expect.any(Object) })) });
-    expect(fetch).toHaveBeenCalledTimes(4); expect(requests[0].messages).not.toEqual(requests[1].messages);
-    const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(4);
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v5', status: 'completed', bodies: [expect.anything()],
+      stages: ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'].map(stageKind => ({ stageKind, state: 'completed', outcomeRef: expect.any(Object) })) });
+    expect(fetch).toHaveBeenCalledTimes(5); expect(requests[0].messages).not.toEqual(requests[1].messages);
+    const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(5);
     expect(app.inspect(runId).journal.actor).toEqual({ actorKind: 'human', actorId: 'local-user' });
     expect(app.detail(run.journal.bodies[0].knowledgeId)).toMatchObject({ maintenance: null, derivedAssociations: { status: 'available', reviewStatus: 'pending' } });
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }] }));
     expect(JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout)).toEqual(run);
-    expect(JSON.parse((await runCommand(ObserveKnowledge, ['resume', '--workspace', workspace, '--id', runId, '--json'], { cwd: root })).stdout)).toEqual(run); expect(fetch).toHaveBeenCalledTimes(4);
+    expect(JSON.parse((await runCommand(ObserveKnowledge, ['resume', '--workspace', workspace, '--id', runId, '--json'], { cwd: root })).stdout)).toEqual(run); expect(fetch).toHaveBeenCalledTimes(5);
     const quality = JSON.parse((await runCommand(ObserveKnowledge, ['quality', '--workspace', workspace, '--json'], { cwd: root })).stdout);
     expect(quality).toMatchObject({ current: [{ runId, savedBodies: 1 }], unsupported: [], semanticQuality: 'not_assessed' });
     const completed = formatKnowledgeResult(run, 'zh', { operation: 'resume', id: runId }, workspace);
     expect(completed).toContain('body: completed'); expect(completed).toContain('association: completed'); expect(completed).toContain('--workspace'); expect(completed).not.toContain('重问');
     const waiting = formatKnowledgeResult({ ...run, nextAction: 'continue_stage', journal: { ...run.journal, status: 'active',
-      stages: [...run.journal.stages.slice(0, 3), { ...run.journal.stages[3], state: 'prepared', outcomeRef: undefined }] } }, 'zh', { operation: 'resume', id: runId }, workspace);
+      stages: [...run.journal.stages.slice(0, 4), { ...run.journal.stages[4], state: 'prepared', outcomeRef: undefined }] } }, 'zh', { operation: 'resume', id: runId }, workspace);
     expect(waiting).toContain('association: prepared'); expect(waiting).toContain('resume 永不调用模型'); expect(waiting).toContain('continue-stage');
   });
   it('exports the exact wire schema and identity before reading settings or creating a workspace', async () => {
@@ -152,7 +153,7 @@ describe('observe knowledge command wiring', () => {
     vi.stubEnv('OMK_HOME', root);
     const settings = join(root, 'settings.json'); writeFileSync(settings, '{invalid');
     const workspace = join(root, 'unused-workspace');
-    for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, BODY_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
+    for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, WRITING_DRAFT_PROFILE, BODY_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       const args = ['schema', '--workspace', workspace, '--stage', profile.stageKind];
       const raw = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
       const bundle = JSON.parse((await runCommand(ObserveKnowledge, [...args, '--json'], { cwd: root })).stdout);
