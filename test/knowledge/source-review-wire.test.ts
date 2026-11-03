@@ -35,7 +35,7 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v2', promptVersion: 'knowledge-source-ledger-generation/v3',
       profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
       wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
-    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v5' });
+    expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v6' });
     expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1');
     expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80');
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
@@ -143,6 +143,11 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(separateMetrics), [source], currentLedger, [body()])).toThrow(/duplicate/i);
     const sourceSpoof = coverageOutput(); sourceSpoof.checks[0].sourceEvidence[0].quote = 'Not in the source.';
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(sourceSpoof), [source], currentLedger, [body()])).toThrow('quote_mismatch');
+    const repeatedQuote = coverageOutput(); repeatedQuote.checks[1].sourceEvidence = [locator('s0/excerpt/0', 'Alpha')];
+    expect(() => checkGeneratedSourceCoverage(JSON.stringify(repeatedQuote), [source], currentLedger, [body()])).toThrow('ambiguous_quote');
+    repeatedQuote.checks[1].sourceEvidence = [locator('s0/excerpt/0', 'Alpha', '🙂 ', ' happens')];
+    expect(checkGeneratedSourceCoverage(JSON.stringify(repeatedQuote), [source], currentLedger, [body()]).checks[1].sourceEvidence[0])
+      .toMatchObject({ quote: 'Alpha', start: 3, end: 8 });
     const bodySpoof = coverageOutput(); bodySpoof.checks[5].bodyEvidence[0].quote = 'Not in the body.';
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(bodySpoof), [source], currentLedger, [body()])).toThrow('quote_mismatch');
   });

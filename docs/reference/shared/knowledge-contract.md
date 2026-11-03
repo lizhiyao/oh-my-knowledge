@@ -15,12 +15,12 @@ This page is generated from the current source build’s runtime constants and S
 | Writing draft input | `knowledge-writing-draft-input/v1` |
 | Grounded body input | `knowledge-body-generation-input/v3` |
 | Body prompt | `knowledge-body-generation/v16` |
-| Source coverage prompt | `knowledge-source-coverage-generation/v5` |
+| Source coverage prompt | `knowledge-source-coverage-generation/v6` |
 | Association prompt | `knowledge-association-generation/v8` |
 | Body profile digest | `sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1` |
 | Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
-| Source coverage profile digest | `sha256:f9b081a4a7511c7424e6f9116a9e5cad418d18f0626403620d37f399650c022e` |
+| Source coverage profile digest | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
 | Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | Source ledger structural wire digest | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |

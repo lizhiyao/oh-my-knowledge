@@ -4,7 +4,9 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt6，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+
+覆盖 prompt6 还要求：同一完整来源单位或正文段落内重复的引文，必须扩为唯一连续原文或给出真实紧邻的消歧上下文。宿主继续拒收模糊位置；prompt5 的失败原件仍失败，不修补历史结果。
 
 ## 身份与证据 {#identity}
 
@@ -22,7 +24,7 @@
 
 `source-coverage/<identity-digest>.json` 保存 `knowledge-source-coverage-history` Schema 1。分析绑定精确清单修订／摘要与正文引用，逐项覆盖来源单元、候选、要点和正文段落，并保留对清单错误、遗漏或正文无据主张的独立发现。
 
-当前覆盖输出为 wire3／prompt5。宿主从本次精确输入枚举完整单元／item／facet／正文段落目标目录，模型检查只返回 targetKey，宿主恢复完整目标身份。未知键和目标覆盖不全仍拒收，同一目标仍可分别检查不同覆盖对象。阶段请求绑定派生目录，来源 manifest 保持不变。
+当前覆盖输出为 wire3／prompt6。宿主从本次精确输入枚举完整单元／item／facet／正文段落目标目录，模型检查只返回 targetKey，宿主恢复完整目标身份。未知键和目标覆盖不全仍拒收，同一目标仍可分别检查不同覆盖对象。阶段请求绑定派生目录，来源 manifest 保持不变。
 
 覆盖对象区分知识含义、已保留的来源声明未知、已保留的输入范围限制，以及事实值。正文写清“数值未知”不等于数值已知；事实值为 `unknown` 的检查不能 covered。对于输入范围限制，模型返回的 `boundedInput` 须含 `inspectionKind: "complete_manifest_units"`、将 manifest 每个精确 unitKey 各列一次的 `inspectedUnitKeys`，以及仅限本次交付输入的 scope。未知、遗漏或重复单元键均拒收。模型不能声明完整检查时，`boundedInput` 为 null，该限制不能 covered。
 
@@ -56,8 +58,8 @@ Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migr
 
 ### 覆盖 profile 边界 {#coverage-profile}
 
-旧 wire2／prompt3 生成的 Schema 1 覆盖记录仍可被动读取，显示 `originalVerification=not_verified`；这不使其原件或决定具备当前执行资格。当前原件重验只接纳 wire3／prompt5，新决定、关联准备及共享锁内 claim 均不继承旧 wire2／prompt3 覆盖的资格。不提供旧生成 wire 的兼容 decoder 或自动迁移，不重新解释或修补旧原生输出。
+旧 wire2／prompt3 及 wire3／prompt4—5 生成的 Schema 1 覆盖记录仍可被动读取，显示 `originalVerification=not_verified`；这不使其原件或决定具备当前执行资格。当前原件重验只接纳 wire3／prompt6，新决定、关联准备及共享锁内 claim 均不继承这些旧覆盖的资格。不提供旧生成 wire 的兼容 decoder 或自动迁移，不重新解释或修补旧原生输出。
 
-继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt5 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
+继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt6 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
 
 只替换覆盖时，复用的清单必须能通过当前 journal5 原件核验。journal4 的清单／覆盖在 4→5 副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。

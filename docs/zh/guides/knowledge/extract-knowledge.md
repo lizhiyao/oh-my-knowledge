@@ -209,9 +209,9 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt6，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
 
-旧 wire2／prompt3 覆盖仍可被动读取，显示 `originalVerification=not_verified`；在当前构建中不能用于新决定、关联准备或派发 claim，不提供旧 wire decoder 或自动迁移。保留原工作区和匹配可安装构建，用于旧 profile 执行与回退。要使用当前覆盖，先创建完整、独立的工作区副本，再按[修订后重新查漏](#source-review-corrections)，明确使用新的 review-run UUID、完整原来源、匹配清单及精确 bodyRefs，准备新的 wire3／prompt5 分析并记录实际决定。复用已完成的匹配清单／正文；原件／请求 custody 不能重验则停止。不修补旧 raw 或改判失败运行；该边界不表示已经发版。
+旧 wire2／prompt3 及 wire3／prompt4—5 覆盖仍可被动读取，显示 `originalVerification=not_verified`；在当前构建中不能用于新决定、关联准备或派发 claim，不提供旧 wire decoder 或自动迁移。保留原工作区和匹配可安装构建，用于旧 profile 执行与回退。要使用当前覆盖，先创建完整、独立的工作区副本，再按[修订后重新查漏](#source-review-corrections)，明确使用新的 review-run UUID、完整原来源、匹配清单及精确 bodyRefs，准备新的 wire3／prompt6 分析并记录实际决定。复用已完成的匹配清单／正文；原件／请求 custody 不能重验则停止。不修补旧 raw 或改判失败运行；该边界不表示已经发版。
 
 含旧 profile 的 active 日志（包括关联 v7 的 prepared／claimed／archived）使用保全的匹配构建，不在新 profile 下重发或改写请求。已记录的 `prepared_writes` 按既有规则零模型恢复固定发布意图，仍有旧 profile 工作未完成时回到 unsupported；completed／failed 历史和已有现行格式数据仍可读。旧日志格式另按[受支持流程副本](#workflow-migration)处理。参数错误退出 2、业务失败退出 1、成功退出 0；回执不明确时先检视持久状态，再决定是否重入写操作。
 
