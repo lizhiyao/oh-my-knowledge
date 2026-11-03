@@ -8,7 +8,7 @@ import {
   type SkillHealth,
   type SkillHealthReport,
   parseSkillHealthReport,
-} from '../../../observability/application.js';
+} from '../../../observe/application.js';
 
 import { ownRecordValue } from '../../../shared/record-count.js';
 import type { AnalysisListItem, SkillTrendPoint, SkillTrendResult, SkillDiffRow, SkillDiffResult } from '../../view-models/knowledge/knowledge-reports.js';

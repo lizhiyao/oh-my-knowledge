@@ -1,6 +1,6 @@
 'use client';
 import { Card, Descriptions, Empty, Space, Tag, Typography } from 'antd';
-import type { ObservationSkillChain } from '../../../../../observability/contracts/skill-chain';
+import type { ObservationSkillChain } from '../../../../../observe/contracts/skill-chain';
 import type { Language } from '../../layout/shell';
 
 /** Skill 链路（#839 批次 5）：每个 skill 的定义与体检链路状态概要。 */

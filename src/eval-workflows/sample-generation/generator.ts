@@ -10,7 +10,7 @@ import { detailedSchemaIssue } from '../inputs/schemas/error.js';
 import { MockSchema } from '../inputs/schemas/mock.js';
 import type { ExecutorFn } from '../../executors/contracts/ports.js';
 import type { Assertion } from '../inputs/contracts/assertion.js';
-import type { ObservationInboxItem } from '../../observability/contracts/inbox.js';
+import type { ObservationInboxItem } from '../../observe/contracts/inbox.js';
 
 const SYSTEM_PROMPT = `版本：omk.sample-generation/v3
 你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。

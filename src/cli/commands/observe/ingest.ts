@@ -4,7 +4,7 @@ import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
-import type { ObservationInboxReport } from '../../../observability/contracts/inbox.js';
+import type { ObservationInboxReport } from '../../../observe/contracts/inbox.js';
 
 export function formatIngestSummary(report: ObservationInboxReport, lang: 'zh' | 'en'): string {
   const severityCounts = {
@@ -96,24 +96,24 @@ export default class ObserveIngest extends BaseCommand {
         saveObservationInboxReport,
         projectObservationsDir,
         globalObservationsDir,
-      } = await import('../../../observability/inbox/index.js');
+      } = await import('../../../observe/inbox/index.js');
       // 显式 --output-dir 最高;否则 --global 写全局、默认写项目。
       const outDir = resolve(outDirRaw ?? (flags.global ? globalObservationsDir() : projectObservationsDir()));
       // 读侧兜底只在默认目标上生效：显式 --output-dir 与 --global 都照读给定目录，与 inbox 读侧同口径。
       const reviewStateSource = outDirRaw || flags.global ? outDir : undefined;
-      const { loadObservationReviewState } = await import('../../../observability/inbox/review-state.js');
+      const { loadObservationReviewState } = await import('../../../observe/inbox/review-state.js');
       const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(reviewStateSource) });
-      // 链由 observability 侧单一生产者按报告内的 cwd 证据构建，歧义即跳过；诊断层只消费。
+      // 链由 observe 侧单一生产者按报告内的 cwd 证据构建，歧义即跳过；诊断层只消费。
       const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(
-        '../../../observability/inbox/skill-chains.js');
+        '../../../observe/inbox/skill-chains.js');
       const { chains } = buildSkillChainsForEvidence(skillNamesFromReports([report]), [report]);
       report.diagnostics = buildObserveDiagnosticsFromReport(report, { skillChains: chains });
       const path = saveObservationInboxReport(report, outDir);
       console.log(flags.json
         ? JSON.stringify(compactObservationInboxReport(report), null, 2)
         : formatIngestSummary(report, lang));
-      const { traceIngestionNotices } = await import('../../../observability/trace/ingestion.js');
+      const { traceIngestionNotices } = await import('../../../observe/trace/ingestion.js');
       for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
         process.stderr.write(`${notice.text}\n`);
       }

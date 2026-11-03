@@ -14,7 +14,7 @@ import {
   listPage,
   visibleProjectIds,
 } from '../../../src/studio/application/conversations/sidebar-window.js';
-import type { ConversationListItem } from '../../../src/observability/view-models/conversation.js';
+import type { ConversationListItem } from '../../../src/observe/view-models/conversation.js';
 
 const item = (threadId: string): ConversationListItem => ({ threadId } as ConversationListItem);
 const ids = (count: number): string[] => Array.from({ length: count }, (_, index) => `project-${index}`);

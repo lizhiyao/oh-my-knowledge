@@ -15,7 +15,7 @@ import {
   type AgentCollectionReport,
   type AgentInventoryReport,
   type AgentStorageLayout,
-} from '../../../observability/agents/index.js';
+} from '../../../observe/agents/index.js';
 
 /**
  * 单份报告的可读状态。`unreadable` 只说读不动，不猜原因，也不拿旧数据顶替；

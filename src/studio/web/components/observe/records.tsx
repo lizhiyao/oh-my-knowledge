@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { Button, Descriptions, Drawer, Empty, Input, Space, Table, Tag, Typography } from 'antd';
-import type { ExperienceTimelineEvent } from '../../../../observability/contracts/experience';
-import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
+import type { ExperienceTimelineEvent } from '../../../../observe/contracts/experience';
+import type { ObservationSourceRecordArchiveView } from '../../../../observe/contracts/inbox';
 import type { Language } from '../layout/shell';
 import { displayTime } from '../../../application/display/format';
 

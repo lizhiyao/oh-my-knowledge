@@ -234,7 +234,7 @@ need not become a public API. This inventory records domain boundaries without f
 | Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
 | Knowledge | Internal consumers in CLI, Studio, Workflow and observation | Pure content/entity/library contracts; extraction, linking and persistence; carrier authoring, health checks and source resolution; verify immutable histories, source identity, recovery, isolated copies, installation and doctor |
-| Observability / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
+| Observe / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
 | Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
 | Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
@@ -300,18 +300,18 @@ or decide knowledge lifecycle actions. Public package entrypoints live at their 
 natural `index.ts` or semantic file; `package.json#exports` is the only publication allowlist.
 Internal production modules import concrete domain files rather than those package barrels.
 
-Diagnosis and Observability have an explicit boundary. Observability produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observability facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
+Diagnosis and Observe have an explicit boundary. Observe produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observe facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
 
-## Observability subdomains
+## Observe subdomains
 
-The `src/observability` root provides three stable entrypoints: `experience.ts`, server-side
+The `src/observe` root provides three stable entrypoints: `experience.ts`, server-side
 `application.ts`, and browser-safe `presentation.ts`. Studio consumes domain queries, review
 operations and display semantics through these entrypoints; local Agent inventory retains
 `agents/index.ts`, and type contracts are consumed through `contracts/` and `view-models/`.
 Private implementations belong to vertical subdomains:
 
 ```text
-observability/
+observe/
 ├── agents/  # local Agent discovery, inventory and log collection
 ├── analysis/  # coverage, gap signals and observation analysis
 ├── contracts/  # stable facts and data contracts
@@ -331,7 +331,7 @@ subdomains cannot import the root application/presentation entrypoints. The clie
 closure guard separately prevents Node capabilities from reaching presentation consumers;
 `view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles every directory tree listed in this
 document (`knowledge`, `knowledge/artifacts`, `eval-workflows`, `executors`, `eval-workflows/hosts`,
-`evidence`, `observability`) with the source tree, in both languages.
+`evidence`, `observe`) with the source tree, in both languages.
 
 Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
 

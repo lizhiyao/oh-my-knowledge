@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'vitest';
-import { buildObservationInboxReport } from '../../src/observability/inbox/index.js';
-import { buildKnowledgeDebuggerViewModel } from '../../src/observability/conversation/knowledge-debugger.js';
+import { buildObservationInboxReport } from '../../src/observe/inbox/index.js';
+import { buildKnowledgeDebuggerViewModel } from '../../src/observe/conversation/knowledge-debugger.js';
 import { projectReplay } from '../../src/studio/application/conversations/replay/projection.js';
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');

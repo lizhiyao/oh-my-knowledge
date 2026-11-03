@@ -16,7 +16,7 @@ describe('CI change scope', () => {
     [['CONTRIBUTING.md', 'CLAUDE.md', 'CODE_REVIEW.md', '.github/PULL_REQUEST_TEMPLATE.md'], 'rules'],
     // 模块级维护文档与根规则文件同档；与源码混排时仍按最强门禁。
     [['src/studio/README.md'], 'rules'],
-    [['src/studio/README.md', 'src/observability/README.md'], 'rules'],
+    [['src/studio/README.md', 'src/observe/README.md'], 'rules'],
     [['src/studio/README.md', 'AGENTS.md'], 'rules'],
     [['src/studio/README.md', 'src/studio/web/components/knowledge/knowledge.tsx'], 'full'],
     [['src/studio/README.md', 'docs/guides/a.md'], 'docs'],
@@ -26,7 +26,7 @@ describe('CI change scope', () => {
     [['docs/guides/a.md', 'docs/zh/guides/a.md'], 'docs'],
     [['AGENTS.md', 'README.zh.md'], 'docs'],
     [['docs/guides/a.md', 'src/a.ts'], 'full'],
-    [['src/observability/prompts/a.prompt.md'], 'full'],
+    [['src/observe/prompts/a.prompt.md'], 'full'],
     [['.agents/skills/omk/SKILL.md'], 'full'],
     [['examples/skill/SKILL.md'], 'full'],
     [['docs/reference/cli.md'], 'full'],

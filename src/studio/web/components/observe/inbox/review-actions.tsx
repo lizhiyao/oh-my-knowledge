@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { Button, Input, message, Space, Tag, Typography } from 'antd';
-import type { ObservationReviewVerdict } from '../../../../../observability/contracts/review';
-import { reviewActionLabels, reviewActionRequest, reviewVerdictBadge } from '../../../../../observability/presentation';
+import type { ObservationReviewVerdict } from '../../../../../observe/contracts/review';
+import { reviewActionLabels, reviewActionRequest, reviewVerdictBadge } from '../../../../../observe/presentation';
 import type { Language } from '../../layout/shell';
 
 const REVIEW_ENDPOINT = '/api/observe-inbox/review-state';

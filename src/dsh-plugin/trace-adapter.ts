@@ -1,4 +1,4 @@
-import type { ExperienceTurnStatus } from '../observability/contracts/experience.js';
+import type { ExperienceTurnStatus } from '../observe/contracts/experience.js';
 import { normalizeToolIdentity } from '../executors/contracts/tool-identity.js';
 import {
   correlateTraceToolEvents,
@@ -8,7 +8,7 @@ import {
   type TraceEvent,
   type TraceMessageOrigin,
   type TraceSession,
-} from '../observability/trace/trace-ir.js';
+} from '../observe/trace/trace-ir.js';
 
 type UnknownRecord = Record<string, unknown>;
 

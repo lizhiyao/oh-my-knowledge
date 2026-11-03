@@ -8,7 +8,7 @@ import {
   buildObservationInboxReport,
   loadObservationInboxReports,
   saveObservationInboxReport,
-} from '../../src/observability/inbox/index.js';
+} from '../../src/observe/inbox/index.js';
 describe('observe inbox v2 layout', () => {
   it('recognizes a canonical v2 inbox independently of process.cwd()', () => {
     const root = testDirectory('omk-observe-layout-');

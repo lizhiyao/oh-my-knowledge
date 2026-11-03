@@ -2,7 +2,7 @@ import type { KnowledgeActor } from '../../../knowledge/contracts.js';
 import type { LocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { executeSourcePickerAction } from '../../application/knowledge/source-picker.js';
-import type { ConversationCatalog } from '../../../observability/application.js';
+import type { ConversationCatalog } from '../../../observe/application.js';
 import type { ConversationAutoExtraction } from '../../../knowledge/application/auto-extraction.js';
 import { autoExtractionStatusEtag, executeAutoExtractionAction } from '../../application/knowledge/auto-extraction.js';
 import { knowledgeFailureCode } from '../../../knowledge/application/operations.js';

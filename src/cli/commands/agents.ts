@@ -8,7 +8,7 @@ import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { knowledgeCommand } from '../lib/knowledge-output.js';
 import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
 import { globalLayout } from '../../evidence/storage/layout.js';
-import type { AgentCollectionEntry } from '../../observability/agents/index.js';
+import type { AgentCollectionEntry } from '../../observe/agents/index.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
 
@@ -105,7 +105,7 @@ export default class AgentsCommand extends BaseCommand {
       resolveAgentCatalog,
       saveAgentCollectionReport,
       saveAgentInventoryReport,
-    } = await import('../../observability/agents/index.js');
+    } = await import('../../observe/agents/index.js');
     const layout = layoutOf(flags.dir ?? globalLayout().observeAgentsDir);
     // 登记表是内置表与本机扩展文件的合并结果；扩展文件读不动时按业务失败处理，
     // 因为拿半份表探测会让清单静默少一个宿主，比直接报错更难发现。

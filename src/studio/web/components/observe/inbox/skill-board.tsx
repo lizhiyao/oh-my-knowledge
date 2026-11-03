@@ -6,9 +6,9 @@ import {
   skillReviewLabel,
   type ObservationSkillRollup,
   type IndicatorHelpKey,
-} from '../../../../../observability/presentation';
+} from '../../../../../observe/presentation';
 
-import type { ObservationInboxViewModel } from '../../../../../observability/view-models/index';
+import type { ObservationInboxViewModel } from '../../../../../observe/view-models/index';
 import type { Language } from '../../layout/shell';
 import { tagStatus } from '../../tag-color';
 import { displayTime } from '../../../../application/display/format';

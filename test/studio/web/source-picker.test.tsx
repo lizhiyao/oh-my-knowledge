@@ -19,7 +19,7 @@ import { executeKnowledgeCandidateAction } from '../../../src/studio/application
 import { executeKnowledgeReviewAction } from '../../../src/studio/application/knowledge/knowledge-reviews';
 import type { KnowledgeGenerationModel } from '../../../src/knowledge/adapters/generation-executor';
 import type { LocalSourceScope } from '../../../src/knowledge/application/local-source-host';
-import type { ConversationCatalog } from '../../../src/observability/conversation/catalog';
+import type { ConversationCatalog } from '../../../src/observe/conversation/catalog';
 import { authoredKnowledgeResponse } from '../../cli/knowledge-fixtures';
 import { bodyActor, bodyWrite } from '../../knowledge/body-fixtures';
 import { knowledgeBodyDigest } from '../../../src/knowledge/adapters/body-digest';

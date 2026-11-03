@@ -7,9 +7,9 @@ import { buildObserveDiagnosticsFromReport } from '../../src/diagnosis/observe-p
 import {
   buildSkillChainsForEvidence,
   skillNamesFromReports,
-} from '../../src/observability/inbox/skill-chains.js';
-import { buildObservationSkillChains } from '../../src/observability/skill-health/skill-chain.js';
-import type { ObservationInboxReport } from '../../src/observability/inbox/index.js';
+} from '../../src/observe/inbox/skill-chains.js';
+import { buildObservationSkillChains } from '../../src/observe/skill-health/skill-chain.js';
+import type { ObservationInboxReport } from '../../src/observe/inbox/index.js';
 
 /** 宿主接线：链由上游单一生产者按报告内的 cwd 证据构建，诊断层只消费结果。 */
 function chainsOf(report: ObservationInboxReport): Record<string, never> | ReturnType<typeof buildSkillChainsForEvidence>['chains'] {

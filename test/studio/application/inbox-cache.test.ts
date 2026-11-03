@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
-import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observability/inbox/index.js';
+import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observe/inbox/index.js';
 import { createKnowledgeQuery } from '../../../src/studio/application/knowledge/knowledge-query.js';
 import { loadKnowledgePage } from '../../../src/studio/http/pages/knowledge-page.js';
 

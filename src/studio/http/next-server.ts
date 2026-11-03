@@ -11,7 +11,7 @@ import { nextAgentsContext, nextHealthContext, nextInboxContext, nextMeasureRunC
 import { CORE_STUDIO_SOURCE_UNAVAILABLE, STUDIO_SOURCE_UNAVAILABLE, TEXT_HEADERS } from './errors.js';
 import {
   createCodexConversationCatalog,
-} from '../../observability/application.js';
+} from '../../observe/application.js';
 import { isMeasurePath, loadMeasurePage, type MeasurePage } from './pages/measure-page.js';
 import { isObservePath, loadObservePage, type ObservePage } from './pages/observe-page.js';
 

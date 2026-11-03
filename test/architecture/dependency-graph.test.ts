@@ -337,15 +337,15 @@ describe('src 与 scripts 依赖图', () => {
     const fixture: ModuleEdge[] = [
       {
         importer: 'diagnosis/index.ts',
-        target: 'observability/contracts/value.ts',
+        target: 'observe/contracts/value.ts',
         importerDomain: 'diagnosis',
-        targetDomain: 'observability',
+        targetDomain: 'observe',
         typeOnly: false,
       },
       {
-        importer: 'observability/index.ts',
+        importer: 'observe/index.ts',
         target: 'diagnosis/contracts/value.ts',
-        importerDomain: 'observability',
+        importerDomain: 'observe',
         targetDomain: 'diagnosis',
         typeOnly: false,
       },
@@ -361,9 +361,9 @@ describe('src 与 scripts 依赖图', () => {
       },
       {
         importer: 'evidence/index.ts',
-        target: 'observability/index.ts',
+        target: 'observe/index.ts',
         importerDomain: 'evidence',
-        targetDomain: 'observability',
+        targetDomain: 'observe',
         typeOnly: false,
       },
     ];
@@ -371,7 +371,7 @@ describe('src 与 scripts 依赖图', () => {
     expect(runtimeCycles(expandedFixture)[0]?.domains).toEqual([
       'diagnosis',
       'evidence',
-      'observability',
+      'observe',
     ]);
     expect(runtimeCycles(expandedFixture)).not.toEqual(runtimeCycles(fixture));
     const typeOnlyExpansion = expandedFixture.map((edge) =>

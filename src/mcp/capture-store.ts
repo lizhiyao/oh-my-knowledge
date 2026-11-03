@@ -6,8 +6,8 @@ import {
   type ExplicitObservationCaptureInput,
   type ExplicitObservationCaptureOptions,
   type ExplicitObservationCaptureResult,
-} from '../observability/inbox/explicit-capture.js';
-import { projectObservationsDir } from '../observability/inbox/paths.js';
+} from '../observe/inbox/explicit-capture.js';
+import { projectObservationsDir } from '../observe/inbox/paths.js';
 import {
   validateObservationPrincipal,
   type ObservationPrincipal,

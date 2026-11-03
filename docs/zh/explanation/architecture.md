@@ -220,7 +220,7 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | Workflow | `eval-samples`、`projections`；CLI、DSH、Studio、载体改进 | 产品声明、版本化评分／分析、编排与评测产物存储；验证编译、结果投影及发布判断 |
 | Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
 | Knowledge | 内部调用；CLI、Studio、Workflow 与观测 | 纯内容／实体／知识库契约，提炼、关联及持久化，载体编写、健康检查与来源解析；验证不可变历史、来源身份、恢复、隔离副本、安装与 doctor |
-| Observability／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
+| Observe／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
 | Evidence | 各产品领域与交付入口 | 跨来源证据布局与关联；不替代 Workflow 的评测产物校验，不决定评分或发布 |
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
 | Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
@@ -277,17 +277,17 @@ Evidence 只保存、验证、定位和关联事实，不评分、不派生诊�
 公开 package 入口位于所属领域的自然 `index.ts` 或语义文件，`package.json#exports` 是唯一公开清单。
 内部生产模块直接依赖具体领域文件，不经这些 package barrel 跨域。
 
-Diagnosis 与 Observability 是一个显式建模的边界：Observability 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observability 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
+Diagnosis 与 Observe 是一个显式建模的边界：Observe 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observe 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
 
-## Observability 子域
+## Observe 子域
 
-`src/observability` 根目录提供 `experience.ts`、服务端 `application.ts` 与浏览器可用的
+`src/observe` 根目录提供 `experience.ts`、服务端 `application.ts` 与浏览器可用的
 `presentation.ts` 三个稳定入口。Studio 通过这些领域入口消费查询、复核与展示语义；
 本机 Agent 清单继续使用 `agents/index.ts`，类型契约通过 `contracts/` 与 `view-models/` 消费。
 私有实现按垂直子域归属：
 
 ```text
-observability/
+observe/
 ├── agents/  # 本机 Agent 发现、登记与日志采集
 ├── analysis/  # 覆盖、缺口与观测分析
 ├── contracts/  # 稳定事实与数据契约
@@ -305,7 +305,7 @@ observability/
 覆盖 `.js` 和 Next 无扩展名 import、再导出及字面量模块加载。私有子域不能反向导入根应用／展示入口。
 客户端运行时闭包守卫另行保证展示入口不引入 Node 能力；`view-models/` 只提供类型。
 `test/architecture/architecture-docs.test.ts` 对账本文列出的全部目录树
-（`knowledge`、`knowledge/artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`observability`）
+（`knowledge`、`knowledge/artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`observe`）
 与源码目录，中英文同步。
 
 Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。

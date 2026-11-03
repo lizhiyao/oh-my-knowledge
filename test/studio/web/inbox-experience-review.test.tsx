@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, it } from 'vitest';
-import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
-import type { ObservationReviewState } from '../../../src/observability/contracts/review.js';
-import { buildObservationInboxViewModel } from '../../../src/observability/inbox/view-model.js';
+import { buildObservationInboxReport } from '../../../src/observe/inbox/index.js';
+import type { ObservationReviewState } from '../../../src/observe/contracts/review.js';
+import { buildObservationInboxViewModel } from '../../../src/observe/inbox/view-model.js';
 import { InboxView } from '../../../src/studio/web/components/observe/inbox/inbox';
 import { ExperienceReviewSection } from '../../../src/studio/web/components/observe/inbox/experience-review';
 

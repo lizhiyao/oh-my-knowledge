@@ -1,6 +1,6 @@
 import type {
   ExperienceTimelineEvent
-} from '../../../observability/view-models/index.js';
+} from '../../../observe/view-models/index.js';
 import type { TrajectoryEvidenceRef } from './trajectory-evidence.js';
 
 export type ReplayLaneKind = 'conversation' | 'knowledge' | 'action' | 'result';

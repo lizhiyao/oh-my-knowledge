@@ -46,7 +46,7 @@ export default class ObserveShow extends BaseCommand {
         console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
         throw new CliExit(1);
       }
-      const { findObservationInboxItem, formatObservationShow, globalObservationsDir } = await import('../../../observability/inbox/index.js');
+      const { findObservationInboxItem, formatObservationShow, globalObservationsDir } = await import('../../../observe/inbox/index.js');
       // 显式 --input-dir 最高;否则 --global 直读全局、默认交给 inbox 读侧的「项目优先 → 全局兜底」。与 observe inbox 同口径。
       const dir = flags['input-dir']
         ? resolve(flags['input-dir'])

@@ -10,9 +10,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { agentStorageLayout, saveAgentCollectionReport, saveAgentInventoryReport } from '../../../src/observability/agents/index.js';
+import { agentStorageLayout, saveAgentCollectionReport, saveAgentInventoryReport } from '../../../src/observe/agents/index.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
-import type { ConversationCatalog } from '../../../src/observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../../src/observe/conversation/catalog.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
 import { sampleCollectionReport, sampleInventoryReport } from '../_agents-report-fixtures.js';
 

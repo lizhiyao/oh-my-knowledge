@@ -1,5 +1,5 @@
 import { createExecutor } from '../../../executors/index.js';
-import { buildLlmEnhancedRuntimeEvidence, hasLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/runtime-evidence.js';
+import { buildLlmEnhancedRuntimeEvidence, hasLlmEnhancedRuntimeEvidence } from '../../../observe/soft-standards/runtime-evidence.js';
 import { sanitizeCell } from '../../lib/cell-format.js';
 import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
@@ -10,7 +10,7 @@ import { type CliLang } from '../../lib/i18n.js';
 import { resolveRuntimeSelection } from '../../lib/runtime-defaults.js';
 import type { CommandFlags } from '../../lib/cmd-flags.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';
-import { filterInboxReportsBySkill } from '../../../observability/inbox/report-filter.js';
+import { filterInboxReportsBySkill } from '../../../observe/inbox/report-filter.js';
 
 function printText(value: string): void {
   console.log(sanitizeCell(value));
@@ -23,14 +23,14 @@ export async function runObserveInbox(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, globalObservationsDir, projectObservationsDir } = await import('../../../observability/inbox/index.js');
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, globalObservationsDir, projectObservationsDir } = await import('../../../observe/inbox/index.js');
   // 显式 --input-dir 最高;否则 --global 直读全局、默认交给 inbox 读侧的「项目优先 → 全局兜底」。
   const dir = flags['input-dir']
     ? resolve(flags['input-dir'])
     : (flags.global ? globalObservationsDir() : undefined);
   if (flags['llm-enhanced-review']) {
-    const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
-    const { extractSkillSoftStandards } = await import('../../../observability/soft-standards/index.js');
+    const { buildObservationInboxViewModel } = await import('../../../observe/inbox/view-model.js');
+    const { extractSkillSoftStandards } = await import('../../../observe/soft-standards/index.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
     const candidates = Object.values(view.skillChains)
       .map((chain) => ({ chain, runtimeEvidence: buildLlmEnhancedRuntimeEvidence(view, chain.skillName) }))
@@ -109,7 +109,7 @@ export async function runObserveInbox(
     items = items.slice(0, limit);
   }
   if (flags.json) {
-    const { buildObservationInboxViewModel } = await import('../../../observability/inbox/view-model.js');
+    const { buildObservationInboxViewModel } = await import('../../../observe/inbox/view-model.js');
     const { effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations } = buildObservationInboxViewModel(dir, { skill: flags.skill });
     console.log(JSON.stringify({ schemaVersion: 1, kind: 'observe-inbox-query', items, effectiveExperienceReports, resolvedReviewSessions, unappliedMetricAnnotations }, null, 2));
     return;

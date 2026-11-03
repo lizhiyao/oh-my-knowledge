@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../observe/conversation/catalog.js';
 import type { KnowledgeGenerationModel } from './application.js';
 
 /** Legacy grant identity only. It never authorizes workflow4 or a new automatic permission. */

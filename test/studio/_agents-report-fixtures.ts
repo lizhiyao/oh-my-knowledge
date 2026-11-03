@@ -1,14 +1,14 @@
 /**
- * 本机 Agent 页面的报告夹具：只构造符合 `observability/agents/contracts.ts` 的公开契约的对象，
+ * 本机 Agent 页面的报告夹具：只构造符合 `observe/agents/contracts.ts` 的公开契约的对象，
  * 不从内部模块借用私有助手——页面读取的是落盘契约，夹具就必须按同一份契约写盘。
  */
 
-import { AGENT_COLLECTION_VERSION, AGENT_INVENTORY_VERSION } from '../../src/observability/agents/index.js';
-import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
+import { AGENT_COLLECTION_VERSION, AGENT_INVENTORY_VERSION } from '../../src/observe/agents/index.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observe/trace/unknown-disposition.js';
 import type {
   AgentCollectionReport,
   AgentInventoryReport,
-} from '../../src/observability/agents/index.js';
+} from '../../src/observe/agents/index.js';
 
 export function sampleInventoryReport(overrides: Partial<AgentInventoryReport> = {}): AgentInventoryReport {
   return {

@@ -1,7 +1,7 @@
 import type { LocalSourceScope } from '../../knowledge/application/local-source-host.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 import type { KnowledgeQuery } from '../application/knowledge/knowledge-query.js';
-import type { ConversationCatalog } from '../../observability/application.js';
+import type { ConversationCatalog } from '../../observe/application.js';
 import type { CoreStudioCatalog } from '../view-models/measure/core-runs.js';
 import type { KnowledgeActor } from '../../knowledge/contracts.js';
 
@@ -42,7 +42,7 @@ export interface ReportServerOptions {
    * 是否提供观测收件箱路由组（页面 /observe/inbox 与 API /api/observe-inbox/*）。默认 true。
    * 页面与 API 由同一个开关裁剪：Next 宿主据此决定是否接管 /observe/inbox，
    * report-server 据此决定是否注册 API 路由组。
-   * 数据层 observability/inbox 与 CLI observe 子命令不受影响。
+   * 数据层 observe/inbox 与 CLI observe 子命令不受影响。
    */
   observationInbox?: boolean;
   /**

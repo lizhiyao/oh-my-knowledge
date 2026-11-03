@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateTraceDrafts } from '../../../src/eval-workflows/sample-generation/trace-drafts.js';
-import { observationReportsDir, observationDraftsDir } from '../../../src/observability/inbox/paths.js';
+import { observationReportsDir, observationDraftsDir } from '../../../src/observe/inbox/paths.js';
 import { reportFileName } from '../../../src/evidence/storage/file-names.js';
 
 const report = {

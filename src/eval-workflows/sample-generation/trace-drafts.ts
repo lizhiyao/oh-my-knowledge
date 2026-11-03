@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { queryObservationInbox } from '../../observability/inbox/index.js';
+import { queryObservationInbox } from '../../observe/inbox/index.js';
 import {
   hasObservationInboxData,
   observationDraftsDir,
-} from '../../observability/inbox/paths.js';
+} from '../../observe/inbox/paths.js';
 import { createJsonFileAtomic } from '../../shared/atomic-json.js';
 import { createWorkflowSampleSetDocument } from '../inputs/schemas/sample-set.js';
 import type { generateSamplesFromTraces } from './generator.js';

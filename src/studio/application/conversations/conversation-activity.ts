@@ -3,7 +3,7 @@ import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem
-} from '../../../observability/view-models/index.js';
+} from '../../../observe/view-models/index.js';
 import type { ConversationActivitySnapshot, ConversationDetailActivitySnapshot } from '../../view-models/conversations/conversation-activity.js';
 
 export function buildConversationActivitySnapshot(

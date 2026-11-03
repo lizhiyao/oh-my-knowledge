@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const PURE_DOMAIN_TYPE_FILES = [
-  'src/observability/analysis/contracts.ts',
+  'src/observe/analysis/contracts.ts',
   'src/evidence/graph/contracts.ts',
   'src/diagnosis/contracts.ts',
   'src/knowledge/artifacts/doctor/contracts.ts',
@@ -28,21 +28,21 @@ const PURE_DOMAIN_TYPE_FILES = [
   'src/executors/contracts/ports.ts',
   'src/executors/contracts/result.ts',
   'src/executors/contracts/runtime.ts',
-  'src/observability/contracts/trace.ts',
-  'src/observability/contracts/review.ts',
-  'src/observability/contracts/problem-patterns.ts',
-  'src/observability/contracts/skill-chain-advisories.ts',
-  'src/observability/contracts/inbox.ts',
-  'src/observability/contracts/experience.ts',
-  'src/observability/contracts/skill-chain.ts',
-  'src/observability/view-models/index.ts',
-  'src/observability/view-models/conversation.ts',
-  'src/observability/view-models/knowledge-debugger.ts',
+  'src/observe/contracts/trace.ts',
+  'src/observe/contracts/review.ts',
+  'src/observe/contracts/problem-patterns.ts',
+  'src/observe/contracts/skill-chain-advisories.ts',
+  'src/observe/contracts/inbox.ts',
+  'src/observe/contracts/experience.ts',
+  'src/observe/contracts/skill-chain.ts',
+  'src/observe/view-models/index.ts',
+  'src/observe/view-models/conversation.ts',
+  'src/observe/view-models/knowledge-debugger.ts',
 ] as const;
 
 const PURE_DOMAIN_TYPE_FILE_SET = new Set<string>(PURE_DOMAIN_TYPE_FILES);
 
-const EXPERIENCE_ENUM_SCHEMA_FILE = 'src/observability/contracts/experience-enums.ts';
+const EXPERIENCE_ENUM_SCHEMA_FILE = 'src/observe/contracts/experience-enums.ts';
 const EXPERIENCE_ENUM_TYPE_IMPORTS = new Set([
   'zod', './experience-enums.js', './experience-evidence-schema.js',
 ]);
@@ -237,7 +237,7 @@ describe('领域契约所有权', () => {
       'src/eval-workflows/measurement/evaluators/index.ts',
       'src/eval-workflows/orchestration/index.ts',
       'src/executors/contracts/index.ts',
-      'src/observability/contracts/index.ts',
+      'src/observe/contracts/index.ts',
       'src/analysis',
       'src/eval-workflows/grading',
       'src/eval-workflows/analysis/bootstrap.ts',
@@ -248,53 +248,53 @@ describe('领域契约所有权', () => {
       'src/renderer',
       'src/evidence/graph/core.ts',
       'src/evidence/storage/prompt-registry.ts',
-      'src/observability/trace-ir.ts',
-      'src/observability/trace-ingestion.ts',
-      'src/observability/trace-projection.ts',
-      'src/observability/trace-session-index.ts',
-      'src/observability/tool-search.ts',
-      'src/observability/trace-adapter.ts',
-      'src/observability/trace-source.ts',
-      'src/observability/trace-attribution.ts',
-      'src/observability/trace-segmenter.ts',
-      'src/observability/codex-trace-adapter.ts',
-      'src/observability/codex-protocol.ts',
-      'src/observability/codex-tool-status.ts',
-      'src/observability/codex-exec-command.ts',
-      'src/observability/codex-conversation-index.ts',
-      'src/observability/inbox.ts',
-      'src/observability/inbox-identity.ts',
-      'src/observability/inbox-view-model.ts',
-      'src/observability/explicit-capture.ts',
-      'src/observability/capture-coverage.ts',
-      'src/observability/observation-paths.ts',
-      'src/observability/source-record-archive.ts',
-      'src/observability/review-state.ts',
-      'src/observability/resolved-review.ts',
-      'src/observability/feedback-matchers.ts',
-      'src/observability/feedback-projection.ts',
-      'src/observability/problem-patterns.ts',
-      'src/observability/conversation-catalog.ts',
-      'src/observability/conversation-index-process.ts',
-      'src/observability/conversation-view-model.ts',
-      'src/observability/knowledge-debugger.ts',
-      'src/observability/polling-subscription-hub.ts',
-      'src/observability/task-semantic-projection.ts',
-      'src/observability/task-window.ts',
-      'src/observability/turn-index.ts',
-      'src/observability/skill-health-analyzer.ts',
-      'src/observability/skill-health-report.ts',
-      'src/observability/skill-chain.ts',
-      'src/observability/skill-chain-advisories.ts',
-      'src/observability/experience-frontmatter.ts',
-      'src/observability/text-signals.ts',
+      'src/observe/trace-ir.ts',
+      'src/observe/trace-ingestion.ts',
+      'src/observe/trace-projection.ts',
+      'src/observe/trace-session-index.ts',
+      'src/observe/tool-search.ts',
+      'src/observe/trace-adapter.ts',
+      'src/observe/trace-source.ts',
+      'src/observe/trace-attribution.ts',
+      'src/observe/trace-segmenter.ts',
+      'src/observe/codex-trace-adapter.ts',
+      'src/observe/codex-protocol.ts',
+      'src/observe/codex-tool-status.ts',
+      'src/observe/codex-exec-command.ts',
+      'src/observe/codex-conversation-index.ts',
+      'src/observe/inbox.ts',
+      'src/observe/inbox-identity.ts',
+      'src/observe/inbox-view-model.ts',
+      'src/observe/explicit-capture.ts',
+      'src/observe/capture-coverage.ts',
+      'src/observe/observation-paths.ts',
+      'src/observe/source-record-archive.ts',
+      'src/observe/review-state.ts',
+      'src/observe/resolved-review.ts',
+      'src/observe/feedback-matchers.ts',
+      'src/observe/feedback-projection.ts',
+      'src/observe/problem-patterns.ts',
+      'src/observe/conversation-catalog.ts',
+      'src/observe/conversation-index-process.ts',
+      'src/observe/conversation-view-model.ts',
+      'src/observe/knowledge-debugger.ts',
+      'src/observe/polling-subscription-hub.ts',
+      'src/observe/task-semantic-projection.ts',
+      'src/observe/task-window.ts',
+      'src/observe/turn-index.ts',
+      'src/observe/skill-health-analyzer.ts',
+      'src/observe/skill-health-report.ts',
+      'src/observe/skill-chain.ts',
+      'src/observe/skill-chain-advisories.ts',
+      'src/observe/experience-frontmatter.ts',
+      'src/observe/text-signals.ts',
     ]) {
       expect(existsSync(resolve(legacyPath)), legacyPath).toBe(false);
     }
   });
 
-  it('observability 根目录只保留稳定 facade', () => {
-    const rootModules = readdirSync(resolve('src/observability'))
+  it('observe 根目录只保留稳定 facade', () => {
+    const rootModules = readdirSync(resolve('src/observe'))
       .filter((entry) => entry.endsWith('.ts'))
       .sort();
 
@@ -312,7 +312,7 @@ describe('领域契约所有权', () => {
   });
 
   it('Experience 证据结构 Schema 不引入宿主依赖或变换副作用', () => {
-    const file = 'src/observability/contracts/experience-evidence-schema.ts';
+    const file = 'src/observe/contracts/experience-evidence-schema.ts';
     expect(isDeclarativeEvidenceSchemaModule(ts.createSourceFile(
       file, readFileSync(resolve(file), 'utf8'), ts.ScriptTarget.Latest, true,
     ))).toBe(true);
@@ -365,10 +365,10 @@ describe('领域契约所有权', () => {
               process.cwd(),
               resolve(dirname(resolve(file)), specifier.replace(/\.js$/, '.ts')),
             );
-            const declarativeEnumTypeImport = ((file === 'src/observability/contracts/experience.ts' || file === 'src/observability/contracts/problem-patterns.ts')
+            const declarativeEnumTypeImport = ((file === 'src/observe/contracts/experience.ts' || file === 'src/observe/contracts/problem-patterns.ts')
               && EXPERIENCE_ENUM_TYPE_IMPORTS.has(specifier)
             || ((file === 'src/executors/contracts/trace-source.ts' && ['zod', './trace-source-schema.js'].includes(specifier) || (file === 'src/executors/contracts/trace.ts' && ['zod', './tool-call-status-schema.js'].includes(specifier))))
-            || (file === 'src/observability/contracts/trace.ts' && ['zod', './trace-metadata-schema.js'].includes(specifier)));
+            || (file === 'src/observe/contracts/trace.ts' && ['zod', './trace-metadata-schema.js'].includes(specifier)));
             // Authoring DTOs reuse Core JSON/schema identities through type-only imports.
             const coreAuthoringTypeImport = [
               'src/eval-workflows/inputs/contracts/sample.ts',
@@ -402,7 +402,7 @@ describe('领域契约所有权', () => {
 describe('trace leaf schema ownership', () => {
   it.each([
     ['src/executors/contracts/trace-source-schema.ts', 'TraceSourceKindSchema'],
-    ['src/observability/contracts/trace-metadata-schema.ts', 'TraceSourceMetadataSchema'],
+    ['src/observe/contracts/trace-metadata-schema.ts', 'TraceSourceMetadataSchema'],
     ['src/executors/contracts/tool-call-status-schema.ts', 'ToolCallStatusSchema'],
   ])('%s remains a declarative leaf schema', (file, requiredSchema) => {
     const source = ts.createSourceFile(file, readTraceSchemaSource(file, 'utf8'), ts.ScriptTarget.Latest, true);

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
-import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observability/conversation/catalog.js';
+import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observe/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { executeKnowledgeCandidateAction } from '../../../src/studio/application/knowledge/knowledge-candidates.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';

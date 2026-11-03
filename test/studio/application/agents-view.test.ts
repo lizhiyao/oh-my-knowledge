@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
-import { agentStorageLayout, saveAgentCollectionReport, saveAgentInventoryReport } from '../../../src/observability/agents/index.js';
+import { agentStorageLayout, saveAgentCollectionReport, saveAgentInventoryReport } from '../../../src/observe/agents/index.js';
 import { buildAgentsPageModel } from '../../../src/studio/application/agents/agents-view.js';
 import { sampleCollectionReport, sampleInventoryReport } from '../_agents-report-fixtures.js';
 

@@ -4,7 +4,7 @@ import type {
   ExperienceTimelineEvent,
   TaskReplayStep,
   TaskReplayStepKind
-} from '../../../../observability/view-models/index.js';
+} from '../../../../observe/view-models/index.js';
 import type { Lang } from '../../../../shared/language.js';
 import type { ReplayCardTone, ReplayMilestoneTone, ToolResultState } from '../../../view-models/conversations/replay.js';
 import { compactText, parseTimestamp } from './format.js';

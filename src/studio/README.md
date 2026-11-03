@@ -42,7 +42,7 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 ## 观测收件箱页面盘点（React）
 
-默认宿主 `GET /observe/inbox` 由 Next 渲染（`web/app/observe/inbox/page.tsx`，`force-dynamic`），组件在 `web/components/observe/inbox/`；CLI 评测预览从不注册收件箱路由组，DSH 插件以 `observationInbox: false` 退出，因此两者的任意收件箱路径都 404。页面只呈现 `observability/inbox/` 的宿主无关投影与语义，不自算口径。
+默认宿主 `GET /observe/inbox` 由 Next 渲染（`web/app/observe/inbox/page.tsx`，`force-dynamic`），组件在 `web/components/observe/inbox/`；CLI 评测预览从不注册收件箱路由组，DSH 插件以 `observationInbox: false` 退出，因此两者的任意收件箱路径都 404。页面只呈现 `observe/inbox/` 的宿主无关投影与语义，不自算口径。
 
 | 子视图 | 组件 | 数据来源 |
 | --- | --- | --- |

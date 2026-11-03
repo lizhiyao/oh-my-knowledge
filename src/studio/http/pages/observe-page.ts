@@ -5,10 +5,10 @@ import type { Lang } from '../../../shared/language.js';
 import {
   type ConversationCatalog,
   buildKnowledgeDebuggerViewModel,
-} from '../../../observability/application.js';
-import type { ConversationIndexViewModel, ConversationListItem } from '../../../observability/view-models/conversation.js';
-import type { KnowledgeDebuggerViewModel } from '../../../observability/view-models/knowledge-debugger.js';
-import type { ExperienceTurnStatus } from '../../../observability/contracts/experience.js';
+} from '../../../observe/application.js';
+import type { ConversationIndexViewModel, ConversationListItem } from '../../../observe/view-models/conversation.js';
+import type { KnowledgeDebuggerViewModel } from '../../../observe/view-models/knowledge-debugger.js';
+import type { ExperienceTurnStatus } from '../../../observe/contracts/experience.js';
 
 import { buildConversationActivitySnapshot, buildConversationDetailActivitySnapshot } from '../../application/conversations/conversation-activity.js';
 import { OBSERVE_CONVERSATION_PREFIX, OBSERVE_INDEX_PATH } from '../page-paths.js';

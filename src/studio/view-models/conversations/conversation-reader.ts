@@ -1,4 +1,4 @@
-import type { ConversationTaskItem } from '../../../observability/view-models/conversation.js';
+import type { ConversationTaskItem } from '../../../observe/view-models/conversation.js';
 export interface ConversationReaderPage {
   total: number;
   hasOlder: boolean;

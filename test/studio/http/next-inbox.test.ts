@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, it } from 'vitest';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
-import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observability/inbox/index.js';
-import type { ConversationCatalog } from '../../../src/observability/conversation/catalog.js';
+import { buildObservationInboxReport, saveObservationInboxReport } from '../../../src/observe/inbox/index.js';
+import type { ConversationCatalog } from '../../../src/observe/conversation/catalog.js';
 import type { ReportServer } from '../../../src/studio/http/contracts.js';
 
 const servers: ReportServer[] = [];

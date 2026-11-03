@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { computeSkillHealthFromSegments } from '../../../src/observability/skill-health/analyzer.js';
+import { computeSkillHealthFromSegments } from '../../../src/observe/skill-health/analyzer.js';
 import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
 import { querySkillDiff, querySkillTrend } from '../../../src/studio/application/knowledge/knowledge-reports.js';
-import type { SkillSegment } from '../../../src/observability/trace/index.js';
+import type { SkillSegment } from '../../../src/observe/trace/index.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

@@ -1,7 +1,7 @@
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { sourceView } from './source-view.js';
 import { assertSourceWorkspaceWritable } from '../../../knowledge/adapters/source-workspace.js';
-import { type ConversationCatalog } from '../../../observability/application.js';
+import { type ConversationCatalog } from '../../../observe/application.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { generationNextAction } from '../../../knowledge/application/body-generation.js';
 import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-host.js';

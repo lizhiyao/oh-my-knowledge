@@ -3,8 +3,8 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from '
 import { join, resolve } from 'node:path';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
-import { detectJsonlTraceSource, forEachNonEmptyUtf8Line, type CcRecord } from '../../observability/trace/source.js';
-import type { TraceEvent } from '../../observability/trace/trace-ir.js';
+import { detectJsonlTraceSource, forEachNonEmptyUtf8Line, type CcRecord } from '../../observe/trace/source.js';
+import type { TraceEvent } from '../../observe/trace/trace-ir.js';
 import {
   EVIDENCE_PROJECTION_VERSION,
   EvidenceWindowSchema, type EvidenceStore, type EvidenceWindow,

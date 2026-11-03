@@ -1,6 +1,6 @@
-import type { CoverageReport } from '../../../src/observability/analysis/coverage-analyzer.js';
-import type { GapReport } from '../../../src/observability/analysis/contracts.js';
-import type { SkillHealth, SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
+import type { CoverageReport } from '../../../src/observe/analysis/coverage-analyzer.js';
+import type { GapReport } from '../../../src/observe/analysis/contracts.js';
+import type { SkillHealth, SkillHealthReport } from '../../../src/observe/skill-health/analyzer.js';
 import type { SkillTrendPoint } from '../../../src/studio/view-models/knowledge/knowledge-reports.js';
 
 /**

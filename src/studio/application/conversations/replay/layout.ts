@@ -1,6 +1,6 @@
 import type {
   TaskReplayStep
-} from '../../../../observability/view-models/index.js';
+} from '../../../../observe/view-models/index.js';
 import type { Lang } from '../../../../shared/language.js';
 import type { ReplayAxisTick, ReplayGap, ReplayLaneKind, ReplayMilestoneTone, ReplayProjection } from '../../../view-models/conversations/replay.js';
 import { inlineMarkdownText } from './inline-markdown.js';

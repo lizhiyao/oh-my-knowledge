@@ -8,7 +8,7 @@
  * 本测试用 TypeScript AST 扫 `src/**\/*.ts` 里**每个名为 `kind` 的字段声明**
  * (interface / type-literal 的 PropertySignature、class 的 PropertyDeclaration —— 不含
  * 函数 param、`.kind` 读取、普通对象字面量构造点、注释 / 字符串)。
- * 同时检查 observability/contracts 下 z.object／strictObject／looseObject 的 Schema 字段：
+ * 同时检查 observe/contracts 下 z.object／strictObject／looseObject 的 Schema 字段：
  *   - 字段类型是 `ArtifactKind`(或以它为基的类型)→ 放行;
  *   - 否则必须登记在 FROZEN_KIND_EXCEPTIONS —— 这些都是已经序列化进
  *     report / observe / doctor / diagnosis JSON 的判别字段,改名会破坏读取已有落盘文件,
@@ -36,20 +36,20 @@ const SRC_DIR = join(PROJECT_ROOT, 'src');
 // 这是债务登记,不是「允许裸 kind」的背书。
 const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   "src/knowledge/artifacts/doctor/contracts.ts::DoctorReport::'doctor'",
-  "src/observability/contracts/review.ts::ObservationReviewState::'observe-review-state'",
-  "src/observability/contracts/inbox.ts::ObservationInboxReport::'observe-inbox'",
-  "src/observability/contracts/experience-evidence-schema.ts::ObservationExperienceReportSchema::z.literal('observe-experience')",
-  "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
-  "src/observability/skill-health/analyzer.ts::SkillHealthReport::'observe-health'",
+  "src/observe/contracts/review.ts::ObservationReviewState::'observe-review-state'",
+  "src/observe/contracts/inbox.ts::ObservationInboxReport::'observe-inbox'",
+  "src/observe/contracts/experience-evidence-schema.ts::ObservationExperienceReportSchema::z.literal('observe-experience')",
+  "src/observe/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
+  "src/observe/skill-health/analyzer.ts::SkillHealthReport::'observe-health'",
   // —— 持久化 observe / experience JSON ——
-  'src/observability/contracts/experience-evidence-schema.ts::ExperienceEvidenceRefSchema::ExperienceEvidenceKindSchema',
-  'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryNodeSchema::ExperienceSessionStoryNodeKindSchema',
-  "src/observability/contracts/experience-evidence-schema.ts::ExperienceGoalEvidenceRefSchema::ExperienceGoalEvidenceKindSchema",
-  "src/observability/contracts/experience-evidence-schema.ts::ExperienceEpisodeArtifactSchema::ExperienceEpisodeArtifactKindSchema",
-  'src/observability/contracts/experience-evidence-schema.ts::ExperienceSessionStoryGraphNodeSchema::ExperienceSessionStoryNodeKindSchema',
-  "src/observability/contracts/experience-evidence-schema.ts::ExperienceReviewerReportBaseSchema::ExperienceReviewerReportScopeSchema",
-  "src/observability/contracts/experience-evidence-schema.ts::ExperienceProblemEvidenceRefSchema::z.string()",
-  'src/observability/contracts/problem-patterns.ts::ProblemTimelineEvent::string',
+  'src/observe/contracts/experience-evidence-schema.ts::ExperienceEvidenceRefSchema::ExperienceEvidenceKindSchema',
+  'src/observe/contracts/experience-evidence-schema.ts::ExperienceSessionStoryNodeSchema::ExperienceSessionStoryNodeKindSchema',
+  "src/observe/contracts/experience-evidence-schema.ts::ExperienceGoalEvidenceRefSchema::ExperienceGoalEvidenceKindSchema",
+  "src/observe/contracts/experience-evidence-schema.ts::ExperienceEpisodeArtifactSchema::ExperienceEpisodeArtifactKindSchema",
+  'src/observe/contracts/experience-evidence-schema.ts::ExperienceSessionStoryGraphNodeSchema::ExperienceSessionStoryNodeKindSchema',
+  "src/observe/contracts/experience-evidence-schema.ts::ExperienceReviewerReportBaseSchema::ExperienceReviewerReportScopeSchema",
+  "src/observe/contracts/experience-evidence-schema.ts::ExperienceProblemEvidenceRefSchema::z.string()",
+  'src/observe/contracts/problem-patterns.ts::ProblemTimelineEvent::string',
   // —— 持久化 soft-standards JSON（含 enhancedReview 内嵌结构）——
   // ResolvedSkillStandard 非持久（view-model），但与持久 standard 同源、且被 renderer 多处 .kind 消费，
   // 跨模块改名风险高，渐进式留待后续单独处理。
@@ -103,7 +103,7 @@ function findKindFields(absFile: string, text = readFileSync(absFile, 'utf8')): 
       const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
       out.push({ key: `${rel}::${enclosing}::${typeText}`, file: rel, line, enclosing, typeText });
     }
-    if (rel.startsWith('src/observability/contracts/')
+    if (rel.startsWith('src/observe/contracts/')
         && ts.isPropertyAssignment(node)
         && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
         && node.name.text === 'kind'
@@ -138,7 +138,7 @@ function isArtifactKindType(typeText: string): boolean {
 
 describe('issue #206: 裸 kind 护栏', () => {
   it.each(['kind', "'kind'"])('对象 Schema 的 %s 字段仍须登记', (field) => {
-    const file = join(SRC_DIR, 'observability/contracts/unregistered-schema.ts');
+    const file = join(SRC_DIR, 'observe/contracts/unregistered-schema.ts');
     const sites = findKindFields(file, `const NewSchema = z.object({ ${field}: z.literal('new') });`);
     assert.equal(sites.length, 1);
     assert.equal(sites[0].enclosing, 'NewSchema');
@@ -146,7 +146,7 @@ describe('issue #206: 裸 kind 护栏', () => {
   });
 
   it('Schema 字段识别不把普通对象构造误当声明', () => {
-    const file = join(SRC_DIR, 'observability/contracts/example.ts');
+    const file = join(SRC_DIR, 'observe/contracts/example.ts');
     assert.deepEqual(findKindFields(file, "const value = { kind: 'tool_use' };"), []);
   });
 

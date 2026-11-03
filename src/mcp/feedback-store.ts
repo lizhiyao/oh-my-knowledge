@@ -5,17 +5,17 @@ import {
   explicitObservationCaptureResult,
   loadExplicitObservationCaptureRecords,
   type ExplicitObservationCaptureRecord,
-} from '../observability/inbox/explicit-capture.js';
-import { observationDraftsDir } from '../observability/inbox/paths.js';
+} from '../observe/inbox/explicit-capture.js';
+import { observationDraftsDir } from '../observe/inbox/paths.js';
 import {
   loadObservationReviewState,
   observationReviewStateKey,
   updateObservationReviewState,
-} from '../observability/inbox/review-state.js';
+} from '../observe/inbox/review-state.js';
 import { writeJsonFileAtomic } from '../shared/atomic-json.js';
 import { withFileLock } from '../shared/file-lock.js';
-import type { ObservationCaptureCoverage } from '../observability/contracts/inbox.js';
-import type { ObservationReviewStateEntry } from '../observability/contracts/review.js';
+import type { ObservationCaptureCoverage } from '../observe/contracts/inbox.js';
+import type { ObservationReviewStateEntry } from '../observe/contracts/review.js';
 import {
   FileObservationCaptureStore,
   type FileObservationCaptureStoreOptions,

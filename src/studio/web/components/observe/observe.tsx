@@ -9,7 +9,7 @@ import type { ObservePage } from '../../../http/pages/observe-page';
 import { OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { DEFAULT_TRAJECTORY_TAB, type TrajectoryTab } from '../../../http/page-params';
 import { EventRecords, RawRecords } from './records';
-import type { ObservationSourceRecordArchiveView } from '../../../../observability/contracts/inbox';
+import type { ObservationSourceRecordArchiveView } from '../../../../observe/contracts/inbox';
 import { Swimlane } from './swimlane';
 import { ObserveWorkspace } from './workspace';
 import { Status } from './activity';
