@@ -1,6 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../../diagnosis/studio-projection.js';
 import {
   listMeasurementDerivedPaths,
   listMeasurementReportPaths,
@@ -13,6 +12,8 @@ import {
   listLiveObserveCards,
 } from '../../../evidence/storage/discovery-index.js';
 import {
+  buildStudioDiagnosisSummary,
+  mergeDiagnosisBundles,
   confidenceOf,
   effectiveObserveBand,
   toolStabilityOf,
@@ -35,7 +36,7 @@ import type {
   SkillIndexSummary,
   SkillObserveSnapshot,
 } from '../../view-models/knowledge/skill-index.js';
-import type { Diagnosis } from '../../../diagnosis/contracts.js';
+import type { Diagnosis } from '../../../observe/view-models/index.js';
 import type { DoctorReport } from '../../../knowledge/artifacts/doctor/contracts.js';
 import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../evidence/graph/contracts.js';
 import { healthBand } from './skill-health.js';

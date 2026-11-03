@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 const SRC_ROOT = resolve('src');
 const EXPECTED_ROOT_DIRECTORIES = [
   'cli',
-  'diagnosis',
   'dsh-plugin',
   'eval-core',
   'eval-runtime',
@@ -57,6 +56,7 @@ const RETIRED_TOP_LEVEL_DIRECTORIES = [
   'artifact-graph',
   'artifacts',
   'authoring',
+  'diagnosis',
   'doctor',
   'evaluation-core',
   'grading',

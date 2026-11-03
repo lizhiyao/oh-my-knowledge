@@ -13,7 +13,7 @@ import {
   ownRecordValue,
   setOwnRecordValue,
   sumRecordCounts,
-} from '../shared/record-count.js';
+} from '../../shared/record-count.js';
 
 export type { StudioDiagnosisSummary };
 

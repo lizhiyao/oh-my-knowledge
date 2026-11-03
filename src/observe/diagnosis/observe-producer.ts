@@ -1,13 +1,13 @@
-import type { ObservationRuntimeCheck, ObservationSkillChain } from '../observe/skill-health/skill-chain.js';
-import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observe/skill-health/advisories.js';
-import type { ObservationInboxReport } from '../observe/inbox/index.js';
+import type { ObservationRuntimeCheck, ObservationSkillChain } from '../skill-health/skill-chain.js';
+import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../skill-health/advisories.js';
+import type { ObservationInboxReport } from '../inbox/index.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceRuleFinding,
   ExperienceSkillSummary,
   ObservationExperienceReport,
-} from '../observe/experience.js';
-import type { ExperienceProblemPattern } from '../observe/inbox/problem-patterns.js';
+} from '../experience.js';
+import type { ExperienceProblemPattern } from '../inbox/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
 import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
 

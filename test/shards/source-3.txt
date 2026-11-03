@@ -12,7 +12,7 @@ test/cli/runtime-defaults.test.ts
 test/cli/sample-from-traces.test.ts
 test/cli/update-exit-latency.test.ts
 test/cli/update-worker.test.ts
-test/diagnosis/observe-mapper.test.ts
+test/observe/diagnosis/observe-mapper.test.ts
 test/dsh-plugin/judge-runtime-identity.test.ts
 test/dsh-plugin/observe.test.ts
 test/eval-core/analysis/runtime.test.ts

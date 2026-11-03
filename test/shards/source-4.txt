@@ -6,8 +6,8 @@ test/cli/observe-persist.test.ts
 test/cli/oclif-dispatch.test.ts
 test/cli/resolve-skill-input.test.ts
 test/cli/update-notify.test.ts
-test/diagnosis/observe-producer.test.ts
-test/diagnosis/schema.test.ts
+test/observe/diagnosis/observe-producer.test.ts
+test/observe/diagnosis/schema.test.ts
 test/dsh-plugin/core-protocol.test.ts
 test/eval-config.test.ts
 test/eval-core/analysis/builtins.test.ts

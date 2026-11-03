@@ -14,7 +14,7 @@ import {
   ownRecordValue,
   setOwnRecordValue,
   sumRecordCounts,
-} from '../shared/record-count.js';
+} from '../../shared/record-count.js';
 
 const OBSERVE_ONLY_COVERAGE = { observe: true, doctor: false, eval: false } as const;
 

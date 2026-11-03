@@ -277,7 +277,7 @@ async function executeObserveCommand(
     saveObservationInboxReport,
   } = await import('../observe/inbox/index.js');
   const { loadObservationReviewState } = await import('../observe/inbox/review-state.js');
-  const { buildObserveDiagnosticsFromReport } = await import('../diagnosis/observe-producer.js');
+  const { buildObserveDiagnosticsFromReport } = await import('../observe/diagnosis/observe-producer.js');
   const report = buildObservationInboxReportFromTraceSessions(
     `dsh:${group.rootSessionId}`,
     group.traces.map((trace) => trace.session),

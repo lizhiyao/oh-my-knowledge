@@ -17,8 +17,8 @@ import type {
   DiagnosisAudience,
   DiagnosisSeverity,
   DiagnosisType,
-} from '../../../diagnosis/contracts.js';
-import { isActiveDiagnosisLifecycle } from '../../../diagnosis/lifecycle.js';
+} from '../../../observe/view-models/index.js';
+import { isActiveDiagnosisLifecycle } from '../../../observe/application.js';
 import { formatPercent } from '../display/format.js';
 import type { Lang } from '../../../shared/language.js';
 

@@ -234,7 +234,7 @@ need not become a public API. This inventory records domain boundaries without f
 | Workflow | `eval-samples`, `projections`; CLI, DSH, Studio and artifact evolution | Product declarations, versioned scoring/analysis, orchestration and evaluation stores; verify compilation, projections and release decisions |
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
 | Knowledge | Internal consumers in CLI, Studio, Workflow and observation | Pure content/entity/library contracts; extraction, linking and persistence; carrier authoring, health checks and source resolution; verify immutable histories, source identity, recovery, isolated copies, installation and doctor |
-| Observe / Diagnosis | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
+| Observe | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
 | Evidence | Product domains and delivery entrypoints | Cross-source storage layout and association; does not replace evaluation artifact validation or decide scores/releases |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
 | Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
@@ -300,7 +300,7 @@ or decide knowledge lifecycle actions. Public package entrypoints live at their 
 natural `index.ts` or semantic file; `package.json#exports` is the only publication allowlist.
 Internal production modules import concrete domain files rather than those package barrels.
 
-Diagnosis and Observe have an explicit boundary. Observe produces trace, inbox, and experience facts and may read only stable types or parsers under `diagnosis/contracts`. The downstream `diagnosis/observe-producer.ts` consumes those Observe facts to derive Diagnosis. Neither side may access any other private implementation across this boundary.
+Diagnosis belongs to `src/observe/diagnosis/`. Its current producer derives diagnoses from Observe facts; the declared doctor and eval source variants have no producers yet. The facts side consumes only diagnosis contracts and the wire parser; `diagnosis/observe-producer.ts` consumes the registered observation facts to derive diagnoses. The root `application.ts` exposes diagnosis summaries, bundle merging, and active-lifecycle queries to Studio, while `view-models/` exposes the needed types. Dependency guards continue to audit the diagnosis subdomain separately from observation facts.
 
 ## Observe subdomains
 
@@ -316,6 +316,7 @@ observe/
 ├── analysis/  # coverage, gap signals and observation analysis
 ├── contracts/  # stable facts and data contracts
 ├── conversation/  # conversation catalog, windows and debugger projections
+├── diagnosis/  # observation-derived diagnoses, lifecycle and summaries
 ├── experience/  # experience facts, report derivation and text signals
 ├── inbox/  # observation inbox, review and feedback projections
 ├── prompts/  # frozen review prompts and document loading

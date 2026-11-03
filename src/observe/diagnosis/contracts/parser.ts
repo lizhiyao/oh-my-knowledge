@@ -4,7 +4,7 @@ import type {
   DiagnosisEvidenceRef,
   DiagnosisOccurrence,
 } from '../contracts.js';
-import { isRfc3339Timestamp } from '../../shared/timestamp.js';
+import { isRfc3339Timestamp } from '../../../shared/timestamp.js';
 
 const DIAGNOSIS_TYPES = new Set([
   'definition_gap',
