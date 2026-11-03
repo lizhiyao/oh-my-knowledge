@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt15 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
 
 ## 身份与证据 {#identity}
 

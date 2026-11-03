@@ -14,10 +14,10 @@ This page is generated from the current source build’s runtime constants and S
 | Writing draft structural wire digest | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
 | Writing draft input | `knowledge-writing-draft-input/v1` |
 | Grounded body input | `knowledge-body-generation-input/v3` |
-| Body prompt | `knowledge-body-generation/v15` |
+| Body prompt | `knowledge-body-generation/v16` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v5` |
 | Association prompt | `knowledge-association-generation/v8` |
-| Body profile digest | `sha256:e3d01a50ebec1af22b4d30dcf3e6bb15c4bb07f5b8554d99c67c101effff641a` |
+| Body profile digest | `sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1` |
 | Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | Source coverage profile digest | `sha256:f9b081a4a7511c7424e6f9116a9e5cad418d18f0626403620d37f399650c022e` |

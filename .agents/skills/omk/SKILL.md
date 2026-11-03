@@ -48,7 +48,7 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 - `source-updates` 只读核对完整 SourceRef 及可选 replacementSelection，不保存、生成或改知识；固定 Git 不代表最新，部分清单不证明零影响。
 - 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；旧 journal4／来源清单／覆盖／auto 仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。当前构建不提供自动调度或重新授权入口，只逐阶段确认。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt15 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt5，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
 
 所有命令使用已选 `--workspace`。journal 的来源复核 manifest 仍为 input2，不能与写作 input1、正文 input3 或关联阶段 input1 混用。覆盖仅当 bounded target 且 covered 时可带完整 witness，其余 boundedInput=null；模型自报范围不证明实际阅读、内容真值或实际接受。
 

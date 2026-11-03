@@ -70,7 +70,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 任务阅读使用 `knowledge-body-text/v2`／`knowledge-body-text-packing/v2` 派生视图：正文原样，精确来源身份与相同解释去重，逐引用保留来源／解释索引、basis 和定位状态，所有不同解释完整展示。索引仅在本视图有效，不建立对象身份；完整引文、evidenceRef 和 UTF-16 定位由知识／修订／段落／引用序号精确读回 JSON3。独立复核另查精确 bodyRef。text 按实际完整 UTF-8 输出加一个 LF 预算，v1／v2 的装包结果不保证相同；排名身份、持久化正文和历史原件不因此变化。未发布的 v1 归档保留匹配构建，不回写升级。
 
-当前正文生成输出 v2／prompt v15 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v2／prompt v16 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
