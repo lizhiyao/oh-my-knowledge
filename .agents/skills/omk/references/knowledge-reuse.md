@@ -17,7 +17,7 @@ omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$know
 
 `16384` 只是较小的单次读取示例，不是产品默认、模型容量或知识大小上限，也不保证任意工具都能完整展示。按当前工具的可见容量调整；工具若支持 `max_output_tokens` 等展示上限，也要与预计返回量匹配。不要仅把 CLI 预算调大就视为已读完。
 
-保留完整用户任务供阅读和最终核对；每条 `--query` 在去除首尾空白后最多 512 个 JavaScript 字符串单位（UTF-16）。任务在限内时原样查询；长任务按自然子问题忠实拆分，保留相关名称、版本和约束，不截半条件，也不以预期答案或几个挑选的关键词替代它。传参时正确引用 shell 特殊字符。默认只读已保留的当前正文。只有本次任务明确需要检查未保留候选时才加 `--include-candidates`，并说明其 pending 状态；保留也不证明内容为真。用户已明确选择精确来源或实体时可使用对应范围参数，不根据名字自动认同实体身份。
+保留完整用户任务供阅读和最终核对；每条 `--query` 在去除首尾空白后最多 512 个 JavaScript 字符串单位（UTF-16）。任务在限内时先原样查询；长任务按自然子问题忠实拆分，保留相关名称、版本和约束，不截半条件，也不以预期答案或几个挑选的关键词替代它。传参时正确引用 shell 特殊字符。默认只读已保留的当前正文。只有本次任务明确需要检查未保留候选时才加 `--include-candidates`，并说明其 pending 状态；保留也不证明内容为真。用户已明确选择精确来源或实体时可使用对应范围参数，不根据名字自动认同实体身份。
 
 ## 阅读完整结果，再按缺口读回
 
@@ -29,7 +29,9 @@ omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$know
 
 机器处理或读取完整 evidence 时保留 JSON 路径：`retrieve` 默认输出 JSON，也可显式传 `--format json` 或 `--json`；`--format text` 与 `--json` 互斥。JSON 中阅读 `items[].segment.text/evidence`，以 `items[].knowledge` 索引 `knowledge` 的 `bodyRef`、维护状态与 `segmentScope`，并检查 `omitted`、`sources`、`items[].evidenceChecks`。JSON 与 text 各按自身完整表示预算，重新检索可能选中不同段落；精确核对本次选中的正文应使用其知识／修订身份。
 
-只有存在与任务相关的具体缺口时，才补有针对性的检索，或按已选结果的精确修订读回，不无条件重读整库。下列 ID 从本次结果取值，不自行猜测；`show` 的 `--revision` 使用所选 `bodyRef.revisionId`，并核对返回的 `bodyDigest`。
+当前 `retrieve` 只做字面召回，语言或措辞不同可能漏掉已保存的正文。已完整读取返回材料而任务必要信息仍缺失时，先判断这类差异是否可能解释缺口：可用已读正文的语言忠实改写整个问题，或据已读内容形成有明确对象和条件的自然追问，再检索已有正文。保留原问题中的名称、版本、否定、时间与适用条件，不把预期答案、未读来源中的内容或猜测的实体名塞进查询。补查沿用同一工作区、来源／实体范围和候选权限，每条查询仍受 512 UTF-16 单位限制；不扩大读取授权。
+
+已有正文足以支持任务时不追加查询。补查没有带来新的任务依据时停止重复改写，如实说明缺口；确需核对引文、来源状态或补充正文之外的信息时，仍可按已选结果的精确修订读回，不无条件重读整库。下列 ID 从本次结果取值，不自行猜测；`show` 的 `--revision` 使用所选 `bodyRef.revisionId`，并核对返回的 `bodyDigest`。
 
 ```bash
 omk observe knowledge show --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --json
