@@ -102,7 +102,7 @@ export default class ObserveIngest extends BaseCommand {
       // 读侧兜底只在默认目标上生效：显式 --output-dir 与 --global 都照读给定目录，与 inbox 读侧同口径。
       const reviewStateSource = outDirRaw || flags.global ? outDir : undefined;
       const { loadObservationReviewState } = await import('../../../observe/inbox/review-state.js');
-      const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
+      const { buildObserveDiagnosticsFromReport } = await import('../../../observe/diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(reviewStateSource) });
       // 链由 observe 侧单一生产者按报告内的 cwd 证据构建，歧义即跳过；诊断层只消费。
       const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(

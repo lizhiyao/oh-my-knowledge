@@ -310,7 +310,7 @@ function skillSessionCountKey(segment: SkillSegment): string {
 }
 
 /**
- * 不再附带 diagnostics 字段 —— observe 不再反向驱动 diagnosis。
+ * 不附带 diagnostics 字段；事实构建不调用 diagnosis 子域的诊断生产流程。
  * 需要 diagnostics 的调用方(如 CLI observe ingest)拿到 report 后,自行调
  * `buildObserveDiagnosticsFromReport(report)` 写入 `report.diagnostics`。
  */

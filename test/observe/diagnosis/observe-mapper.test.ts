@@ -1,9 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildObserveDiagnostics } from '../../src/diagnosis/observe-mapper.js';
-import { maxDiagnosisLifecycle } from '../../src/diagnosis/lifecycle.js';
-import { activeStudioDiagnostics, buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../src/diagnosis/studio-projection.js';
-import { parseDiagnosisBundle } from '../../src/diagnosis/contracts/parser.js';
+import { buildObserveDiagnostics } from '../../../src/observe/diagnosis/observe-mapper.js';
+import { maxDiagnosisLifecycle } from '../../../src/observe/diagnosis/lifecycle.js';
+import { activeStudioDiagnostics, buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../../src/observe/diagnosis/studio-projection.js';
+import { parseDiagnosisBundle } from '../../../src/observe/diagnosis/contracts/parser.js';
 
 describe('buildObserveDiagnostics', () => {
   it('keeps prototype-shaped skill names as ordinary diagnosis groups', () => {

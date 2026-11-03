@@ -38,7 +38,7 @@ CLI 评测预览以 `studioPages: false` 只挂 `/measure` 与评测 JSON API（
 
 同批从 `StudioApiErrorCode` 删除的 code：`skill_diagnostics_not_found`、`observation_not_found`、`analysis_not_found`、`missing_query_params`。两点边界：`src/mcp/feedback-store.ts` 的 `observation_not_found` 是 MCP 自己的错误联合，与 HTTP 面同名不同契约，未受影响；后两个名字仍留在 `http/pages/health-page.ts` 的装载结果联合里，Next 宿主对它们给的是带恢复入口的 HTML 400／404，不再是 `{ error: <code> }` 契约的一部分。`core_run_not_found` 仍由在跑的 `/api/reports/:runId` 发射，不随 §三 的页面收口退出。
 
-`src/diagnosis/studio-projection.ts` 的 `activeStudioDiagnostics` 随 `/api/observe-inbox/diagnostics` 失去最后一个非测试读者，仍保留：它编码的是「哪些诊断在什么窗口内算活跃」这条领域口径，由 `test/diagnosis/observe-mapper.test.ts` 钉住，不是那条路由的私有投影；要收缩它得单独决定，不跟在这次路由清理里顺手做。
+`src/observe/diagnosis/studio-projection.ts` 的 `activeStudioDiagnostics` 随 `/api/observe-inbox/diagnostics` 失去最后一个非测试读者，仍保留：它编码的是「哪些诊断在什么窗口内算活跃」这条领域口径，由 `test/observe/diagnosis/observe-mapper.test.ts` 钉住，不是那条路由的私有投影；要收缩它得单独决定，不跟在这次路由清理里顺手做。
 
 ## 观测收件箱页面盘点（React）
 

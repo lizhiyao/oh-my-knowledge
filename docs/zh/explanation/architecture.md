@@ -220,7 +220,7 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | Workflow | `eval-samples`、`projections`；CLI、DSH、Studio、载体改进 | 产品声明、版本化评分／分析、编排与评测产物存储；验证编译、结果投影及发布判断 |
 | Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
 | Knowledge | 内部调用；CLI、Studio、Workflow 与观测 | 纯内容／实体／知识库契约，提炼、关联及持久化，载体编写、健康检查与来源解析；验证不可变历史、来源身份、恢复、隔离副本、安装与 doctor |
-| Observe／Diagnosis | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
+| Observe | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
 | Evidence | 各产品领域与交付入口 | 跨来源证据布局与关联；不替代 Workflow 的评测产物校验，不决定评分或发布 |
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
 | Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
@@ -277,7 +277,7 @@ Evidence 只保存、验证、定位和关联事实，不评分、不派生诊�
 公开 package 入口位于所属领域的自然 `index.ts` 或语义文件，`package.json#exports` 是唯一公开清单。
 内部生产模块直接依赖具体领域文件，不经这些 package barrel 跨域。
 
-Diagnosis 与 Observe 是一个显式建模的边界：Observe 产生 trace、inbox 与 experience 事实，只能读取 `diagnosis/contracts` 的稳定类型／解析器；`diagnosis/observe-producer.ts` 作为下游 producer 消费这些 Observe 事实并派生 Diagnosis。双方都不能访问除此以外的私有实现。
+诊断归属 `src/observe/diagnosis/`。当前生产者从 Observe 事实派生诊断；契约声明的 doctor、eval 来源尚无对应生产者。事实侧只消费诊断契约与 wire parser，`diagnosis/observe-producer.ts` 消费已登记的观测事实派生诊断。根 `application.ts` 向 Studio 提供诊断摘要、bundle 合并与活跃生命周期查询，`view-models/` 提供所需类型。依赖守卫继续将诊断子域与观测事实分开审计。
 
 ## Observe 子域
 
@@ -292,6 +292,7 @@ observe/
 ├── analysis/  # 覆盖、缺口与观测分析
 ├── contracts/  # 稳定事实与数据契约
 ├── conversation/  # 对话目录、窗口与调试投影
+├── diagnosis/  # 观测派生诊断、生命周期与摘要
 ├── experience/  # 体验事实、报告派生与文本信号
 ├── inbox/  # 观测收件箱、复核与反馈投影
 ├── prompts/  # 冻结的复盘 prompt 与文档加载

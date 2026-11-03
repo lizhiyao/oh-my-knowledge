@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const PURE_DOMAIN_TYPE_FILES = [
   'src/observe/analysis/contracts.ts',
   'src/evidence/graph/contracts.ts',
-  'src/diagnosis/contracts.ts',
+  'src/observe/diagnosis/contracts.ts',
   'src/knowledge/artifacts/doctor/contracts.ts',
   'src/executors/preflight/contracts.ts',
   'src/knowledge/artifacts/skills/contracts.ts',

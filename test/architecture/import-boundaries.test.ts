@@ -212,7 +212,7 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'evidence/',
-    to: 'diagnosis/',
+    to: 'observe/diagnosis/',
     reason: 'Evidence 保存、验证与关联事实，不派生诊断。',
   },
   {
@@ -252,8 +252,8 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'shared/',
-    to: 'diagnosis/',
-    reason: 'shared 是跨领域叶子依赖；Diagnosis parser 由 diagnosis 领域拥有。',
+    to: 'observe/diagnosis/',
+    reason: 'shared 是跨领域叶子依赖；Diagnosis parser 由 Observe 的 diagnosis 子域拥有。',
   },
   {
     from: 'shared/',
@@ -538,11 +538,12 @@ describe('架构边界守门', () => {
       const text = "import { ignored } from './text'";
       import type { ObservationInboxViewModel } from '../../../observe/view-models/index';
       export { queryObservationInbox } from '../../../observe/inbox/index';
+      export { mergeDiagnosisBundles } from '../../../observe/diagnosis/studio-projection.js';
       const dynamic = import('../../../observe/inbox/review-state.js');
       const commonjs = require('../../../observe/inbox/paths.js');
       import { buildObservationInboxViewModel } from '../../../observe/application.js';
     `);
-    expect(specifiers).toHaveLength(5);
+    expect(specifiers).toHaveLength(6);
     const importer = 'studio/http/routes/observations.ts';
     const forbidden = specifiers.flatMap((specifier) => {
       const target = toSrcRelative(resolveSpecifier(join(SRC_DIR, importer), specifier)!);
@@ -550,6 +551,7 @@ describe('架构边界守门', () => {
     });
     expect(forbidden).toEqual([
       'observe/inbox/index.ts',
+      'observe/diagnosis/studio-projection.ts',
       'observe/inbox/review-state.ts',
       'observe/inbox/paths.ts',
     ]);

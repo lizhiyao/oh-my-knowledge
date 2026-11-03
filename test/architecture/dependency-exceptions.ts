@@ -143,17 +143,19 @@ function isRegisteredKnowledgeBoundary(edge: BoundaryEdge): boolean {
 
 export const REGISTERED_RUNTIME_CYCLES = [
   {
-    domains: ['diagnosis', 'observe'],
-    edges: [
-      'diagnosis/observe-producer.ts → observe/skill-health/advisories.ts',
-      'observe/inbox/report-store.ts → diagnosis/contracts/parser.ts',
-    ],
-    rationale: 'Diagnosis producer 消费观测建议，观测只消费 Diagnosis wire parser；知识用例不再经过观测入口。',
-  },
-  {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
     rationale: '正文生成应用装配独立 journal/custody 适配器；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核／关系账本；关系应用只复用既有正文摘要叶子，纯关系契约不反向依赖宿主；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
+  },
+  {
+    domains: ['observe', 'observe/diagnosis'],
+    edges: [
+      'observe/application.ts → observe/diagnosis/lifecycle.ts',
+      'observe/application.ts → observe/diagnosis/studio-projection.ts',
+      'observe/diagnosis/observe-producer.ts → observe/skill-health/advisories.ts',
+      'observe/inbox/report-store.ts → observe/diagnosis/contracts/parser.ts',
+    ],
+    rationale: '诊断是 Observe 子域，仍单独审计依赖：事实侧只消费诊断契约／parser，诊断 producer 消费观测事实，根应用入口向 Studio 提供诊断摘要与生命周期查询。',
   },
 ] as const;
 
@@ -291,11 +293,15 @@ export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => 
       && edge.typeOnly
       && edge.target === 'knowledge/artifacts/doctor/contracts.ts';
   },
-  'diagnosis↔observe': (edge) => {
+  'observe↔observe/diagnosis': (edge) => {
     if (edge.importerDomain === 'observe') {
-      return edge.target.startsWith('diagnosis/contracts');
+      return edge.target.startsWith('observe/diagnosis/contracts')
+        || (edge.importer === 'observe/application.ts' && [
+          'observe/diagnosis/lifecycle.ts',
+          'observe/diagnosis/studio-projection.ts',
+        ].includes(edge.target));
     }
-    return edge.importer === 'diagnosis/observe-producer.ts'
+    return edge.importer === 'observe/diagnosis/observe-producer.ts'
       && DIAGNOSIS_OBSERVE_PRODUCER_TARGETS.has(edge.target);
   },
 };

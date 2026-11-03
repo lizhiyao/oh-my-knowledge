@@ -1,4 +1,9 @@
 /** 服务端观测用例入口；知识用例直接由 knowledge 所属子域提供。 */
+export { isActiveDiagnosisLifecycle } from './diagnosis/lifecycle.js';
+export {
+  buildStudioDiagnosisSummary,
+  mergeDiagnosisBundles,
+} from './diagnosis/studio-projection.js';
 export {
   createCodexConversationCatalog,
 } from './conversation/catalog.js';

@@ -5,7 +5,7 @@
  * 不直接 import server 装配层。runtime 函数(buildSkillIndex / detectInsights 等)
  * 运行逻辑归属于 src/studio/application/，与 HTTP host 解耦。
  */
-import type { Diagnosis, StudioDiagnosisSummary } from '../../../diagnosis/contracts.js';
+import type { Diagnosis, StudioDiagnosisSummary } from '../../../observe/view-models/index.js';
 import type { DoctorRuleResult, DoctorSkillStatus } from '../../../knowledge/artifacts/doctor/contracts.js';
 import type { Insight } from './insight.js';
 

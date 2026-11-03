@@ -76,6 +76,7 @@ function sourceRelative(path: string): string {
 
 function moduleDomain(path: string): string {
   const [topLevel, subdomain, lifecycle] = path.split('/');
+  if (topLevel === 'observe' && subdomain === 'diagnosis') return 'observe/diagnosis';
   if (topLevel === 'eval-core' && subdomain !== undefined && subdomain.includes('.') === false) {
     return `${topLevel}/${subdomain}`;
   }
@@ -229,6 +230,7 @@ describe('src 与 scripts 依赖图', () => {
     for (const subdomain of ['adapters', 'application', 'entities', 'extraction', 'entity-library', 'entity-linking']) {
       expect(moduleDomain(`knowledge/${subdomain}/module.ts`)).toBe(`knowledge/${subdomain}`);
     }
+    expect(moduleDomain('observe/diagnosis/observe-mapper.ts')).toBe('observe/diagnosis');
     expect(moduleDomain('knowledge/artifacts/contracts.ts')).toBe('knowledge/artifacts');
     expect(moduleDomain('eval-core/contracts/comparability.ts')).toBe('eval-core/contracts');
     expect(moduleDomain('eval-core/compiler/index.ts')).toBe('eval-core/compiler');
@@ -336,26 +338,26 @@ describe('src 与 scripts 依赖图', () => {
   it('已登记边参与新的三领域环时会改变完整拓扑', () => {
     const fixture: ModuleEdge[] = [
       {
-        importer: 'diagnosis/index.ts',
+        importer: 'observe/diagnosis/index.ts',
         target: 'observe/contracts/value.ts',
-        importerDomain: 'diagnosis',
+        importerDomain: 'observe/diagnosis',
         targetDomain: 'observe',
         typeOnly: false,
       },
       {
         importer: 'observe/index.ts',
-        target: 'diagnosis/contracts/value.ts',
+        target: 'observe/diagnosis/contracts/value.ts',
         importerDomain: 'observe',
-        targetDomain: 'diagnosis',
+        targetDomain: 'observe/diagnosis',
         typeOnly: false,
       },
     ];
     const expandedFixture: ModuleEdge[] = [
       ...fixture,
       {
-        importer: 'diagnosis/index.ts',
+        importer: 'observe/diagnosis/index.ts',
         target: 'evidence/index.ts',
-        importerDomain: 'diagnosis',
+        importerDomain: 'observe/diagnosis',
         targetDomain: 'evidence',
         typeOnly: false,
       },
@@ -369,9 +371,9 @@ describe('src 与 scripts 依赖图', () => {
     ];
     expect(runtimeCycles(fixture)).toHaveLength(1);
     expect(runtimeCycles(expandedFixture)[0]?.domains).toEqual([
-      'diagnosis',
       'evidence',
       'observe',
+      'observe/diagnosis',
     ]);
     expect(runtimeCycles(expandedFixture)).not.toEqual(runtimeCycles(fixture));
     const typeOnlyExpansion = expandedFixture.map((edge) =>
@@ -417,6 +419,17 @@ describe('src 与 scripts 依赖图', () => {
   });
 
   it('跨域双向依赖只允许已审计的 contracts／producer 边界', () => {
+    const diagnosisBoundary = MUTUAL_BOUNDARY_VALIDATORS['observe↔observe/diagnosis'];
+    for (const importer of ['observe/inbox/report-building.ts', 'observe/application.ts']) {
+      expect(diagnosisBoundary({
+        importer, target: 'observe/diagnosis/observe-producer.ts',
+        importerDomain: 'observe', targetDomain: 'observe/diagnosis', typeOnly: false,
+      })).toBe(false);
+    }
+    expect(diagnosisBoundary({
+      importer: 'observe/diagnosis/observe-mapper.ts', target: 'observe/skill-health/advisories.ts',
+      importerDomain: 'observe/diagnosis', targetDomain: 'observe', typeOnly: false,
+    })).toBe(false);
     const directionsByPair = new Map<string, Set<string>>();
     for (const edge of edges) {
       const pair = domainPair(edge.importerDomain, edge.targetDomain);

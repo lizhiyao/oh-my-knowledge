@@ -23,7 +23,7 @@ import { durationMsBetween } from '../../shared/time.js';
 import {
   normalizeObservationExperienceReport,
 } from '../experience.js';
-import { parseDiagnosisBundle } from '../../diagnosis/contracts/parser.js';
+import { parseDiagnosisBundle } from '../diagnosis/contracts/parser.js';
 import { parseTraceIngestionSummary } from '../trace/ingestion.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { writeObservationSourceRecordArchives } from './source-record-archive.js';

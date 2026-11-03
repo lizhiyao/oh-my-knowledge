@@ -1,4 +1,4 @@
-import type { Diagnosis } from '../../../diagnosis/contracts.js';
+import type { Diagnosis } from '../../../observe/view-models/index.js';
 import type { Lang } from '../../../shared/language.js';
 
 export type InsightCategory =

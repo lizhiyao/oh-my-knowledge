@@ -16,7 +16,7 @@ import {
 import { claudeTrace } from '../../helpers/claude-trace.js';
 import { buildExperienceProblemPatterns, mergeExperienceProblemPatterns } from '../../../src/observe/inbox/problem-patterns.js';
 import { buildSessionStory } from '../../../src/observe/experience/session-story.js';
-import { buildObserveDiagnostics } from '../../../src/diagnosis/observe-mapper.js';
+import { buildObserveDiagnostics } from '../../../src/observe/diagnosis/observe-mapper.js';
 
 describe('observe inbox - experience report', () => {
   it('preserves distinct counts through invocation, session and repeated pattern merges', () => {
