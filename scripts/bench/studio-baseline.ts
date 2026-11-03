@@ -46,7 +46,7 @@ function timestampAt(index: number): string {
 /**
  * 构造聚合自洽的 observe-health 报告：meta 的 segment/tool 计数与各 skill
  * 之和一致，失败率按解析器要求的 4 位小数以 1/10 精确表示。字段口径见
- * src/observability/skill-health/report.ts 的一致性校验。
+ * src/observe/skill-health/report.ts 的一致性校验。
  */
 export function buildObserveHealthReport(scale: BaselineScale, index: number): unknown {
   const bySkill: Record<string, unknown> = {};
@@ -259,7 +259,7 @@ async function loadDist(): Promise<DistModules> {
   const bundle = await importDist('dist/evidence/storage/report-bundle.js') as {
     writeMeasurementReportBundle: BaselineDatasetWriters['writeMeasurementReportBundle'];
   };
-  const inbox = await importDist('dist/observability/inbox/index.js') as {
+  const inbox = await importDist('dist/observe/inbox/index.js') as {
     saveObservationInboxReport: BaselineDatasetWriters['saveObservationInboxReport'];
   };
   return {

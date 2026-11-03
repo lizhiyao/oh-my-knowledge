@@ -3,7 +3,7 @@ import { mcpDisplayCopy, resolveMcpDisplayLang, type McpDisplayLanguage } from '
 import { z } from 'zod';
 import {
   type ExplicitObservationCaptureOptions,
-} from '../observability/inbox/explicit-capture.js';
+} from '../observe/inbox/explicit-capture.js';
 import {
   type ObservationCaptureStore,
 } from './capture-store.js';

@@ -3,9 +3,9 @@ import type {
   GapSignalRef,
   SkillHealth,
   SkillHealthReport,
-} from '../../../observability/view-models/index.js';
+} from '../../../observe/view-models/index.js';
 
-import { confidenceOf, measuredToolFailureRate, toolStabilityOf } from '../../../observability/application.js';
+import { confidenceOf, measuredToolFailureRate, toolStabilityOf } from '../../../observe/application.js';
 import type { StudioTone } from '../../view-models/display/tone.js';
 import type { AnalysisListItem, SkillDiffRow, SkillTrendPoint, SkillTrendResult } from '../../view-models/knowledge/knowledge-reports.js';
 import { displayTime, formatPercent, formatPercentDelta } from '../display/format.js';

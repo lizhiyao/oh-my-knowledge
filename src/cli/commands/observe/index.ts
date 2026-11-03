@@ -7,7 +7,7 @@ import { tCli } from '../../lib/i18n.js';
 import { sanitizeCell } from '../../lib/cell-format.js';
 import { resolveObservationWindow } from '../../lib/observation-window.js';
 import { projectObserveHealthDir, globalObserveHealthDir } from '../../../evidence/storage/directories.js';
-import { persistObserveHealthReport } from '../../../observability/skill-health/persistence.js';
+import { persistObserveHealthReport } from '../../../observe/skill-health/persistence.js';
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，
 // 由 Studio 健康报告页按需渲染。observe 这条线的另一条产物是观测收件箱(observe-inbox)，走子命令 ingest / inbox / show；knowledge 与 entity-links 负责知识维护及跨窗口关联复核。
@@ -89,7 +89,7 @@ export default class Observe extends BaseCommand {
       const skills = flags.skills ? flags.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
       console.log(lang === 'zh' ? `[omk] 正在分析 ${sanitizeCell(tracePath)}…` : `[omk] analyzing ${sanitizeCell(tracePath)}...`);
-      const { computeSkillHealthReport } = await import('../../../observability/skill-health/analyzer.js');
+      const { computeSkillHealthReport } = await import('../../../observe/skill-health/analyzer.js');
       const report = computeSkillHealthReport(tracePath, {
         kbRoot: flags.kb ? resolve(flags.kb) : undefined,
         from,
@@ -102,7 +102,7 @@ export default class Observe extends BaseCommand {
         ? resolve(flags['output-dir'])
         : (flags.global ? globalObserveHealthDir() : projectObserveHealthDir());
       const { jsonPath } = persistObserveHealthReport(report, outDir);
-      const { traceIngestionNotices } = await import('../../../observability/trace/ingestion.js');
+      const { traceIngestionNotices } = await import('../../../observe/trace/ingestion.js');
       for (const notice of traceIngestionNotices(report.meta.ingestion, lang)) {
         process.stderr.write(`${notice.text}\n`);
       }

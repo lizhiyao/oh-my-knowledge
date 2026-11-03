@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ConversationCatalog } from '../../observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../observe/conversation/catalog.js';
 import { readTraceSource, type TraceSourceReadContext } from '../adapters/trace-source-reader.js';
 import { normalizeRecordRanges, type SourceRecordRange } from '../sources.js';
 

@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import type { ConversationCatalog } from '../../../src/observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../../src/observe/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
-import type { ConversationListItem } from '../../../src/observability/view-models/conversation.js';
+import type { ConversationListItem } from '../../../src/observe/view-models/conversation.js';
 
 describe('Conversation activity server', () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-conversation-activity-'));

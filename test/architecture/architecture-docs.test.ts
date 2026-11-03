@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const trees = [
   { header: 'eval-workflows/', root: 'src/eval-workflows' },
-  { header: 'observability/', root: 'src/observability' },
+  { header: 'observe/', root: 'src/observe' },
   { header: 'knowledge/', root: 'src/knowledge' },
   { header: 'knowledge/artifacts/', root: 'src/knowledge/artifacts' },
   { header: 'executors/', root: 'src/executors' },

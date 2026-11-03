@@ -5,7 +5,7 @@ import { useWorkspaceHref } from '../layout/workspace-link';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Alert, Button, Empty } from 'antd';
-import type { ConversationListItem } from '../../../../observability/view-models/conversation';
+import type { ConversationListItem } from '../../../../observe/view-models/conversation';
 import type { ConversationReaderPage } from '../../../view-models/conversations/conversation-reader';
 import { type Language } from '../layout/shell';
 import { displayTime } from '../../../application/display/format';

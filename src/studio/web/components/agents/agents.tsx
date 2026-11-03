@@ -8,7 +8,7 @@ import type {
   AgentLogRootStatus,
   CollectedSession,
   DetectedAgent,
-} from '../../../../observability/agents/index';
+} from '../../../../observe/agents/index';
 import type { AgentsPage } from '../../../http/pages/agents-page';
 import { KNOWLEDGE_CANDIDATES_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
 import { displayBytes, displayTime } from '../../../application/display/format';
@@ -289,7 +289,7 @@ function SessionTable({ report, lang }: { report: AgentCollectionReport; lang: L
  *
  * 三份报告状态各自独立呈现：清单缺失不影响采集结果的展示，反之亦然。截断与未识别事件
  * 一律显式标出来——计数被容量上限砍过时把它当全量、把未识别事件当无事件，都会让用户
- * 以为看过的是完整事实（口径见 `src/observability/agents/contracts.ts`）。
+ * 以为看过的是完整事实（口径见 `src/observe/agents/contracts.ts`）。
  */
 export function AgentsView({ page, lang }: { page: AgentsPage; lang: Language }) {
   const c = COPY[lang];

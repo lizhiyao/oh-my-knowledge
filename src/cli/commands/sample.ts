@@ -35,7 +35,7 @@ export async function runSampleFromTraces(
   lang: CliLang,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { projectObservationsDir } = await import('../../observability/inbox/paths.js');
+  const { projectObservationsDir } = await import('../../observe/inbox/paths.js');
   const { generateTraceDrafts, TraceDraftPreparationError } = await import('../../eval-workflows/sample-generation/trace-drafts.js');
   const model = flags.model;
   const executorName = flags.executor;

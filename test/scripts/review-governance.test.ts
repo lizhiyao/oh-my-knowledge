@@ -48,7 +48,7 @@ describe('autonomous review governance', () => {
     for (const path of [
       'src/eval-core/AGENTS.md',
       'src/eval-workflows/AGENTS.md',
-      'src/observability/AGENTS.md',
+      'src/observe/AGENTS.md',
       'src/cli/AGENTS.md',
       'src/studio/AGENTS.md',
     ]) {

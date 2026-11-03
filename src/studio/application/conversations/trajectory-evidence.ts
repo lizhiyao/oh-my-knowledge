@@ -1,4 +1,4 @@
-import type { ExperienceTimelineEvent } from '../../../observability/view-models/index.js';
+import type { ExperienceTimelineEvent } from '../../../observe/view-models/index.js';
 import type { TrajectoryEvidenceRef } from '../../view-models/conversations/trajectory-evidence.js';
 
 export function trajectoryEvidenceRef(

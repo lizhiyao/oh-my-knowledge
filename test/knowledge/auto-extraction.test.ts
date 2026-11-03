@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUTO_EXTRACTION_WORKFLOW, AutoExtractionConsentSchema, ConversationAutoExtraction } from '../../src/knowledge/application/auto-extraction.js';
 import { configuredKnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import type { ExecutorArchiveProducer } from '../../src/executors/contracts/archive.js';
-import type { ConversationCatalog } from '../../src/observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../src/observe/conversation/catalog.js';
 import { executeAutoExtractionAction } from '../../src/studio/application/knowledge/auto-extraction.js';
 import { testDirectory } from '../helpers/temp-directory.js';
 

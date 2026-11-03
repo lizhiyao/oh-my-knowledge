@@ -4,11 +4,11 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { buildObservationInboxReport } from '../../../src/observability/inbox/index.js';
+import { buildObservationInboxReport } from '../../../src/observe/inbox/index.js';
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,
-} from '../../../src/observability/conversation/catalog.js';
+} from '../../../src/observe/conversation/catalog.js';
 import { createNextStudioServer } from '../../../src/studio/http/next-server.js';
 
 describe('Live task trajectory server', () => {

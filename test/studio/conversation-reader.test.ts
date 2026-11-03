@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { ConversationCatalog } from '../../src/observability/conversation/catalog.js';
+import type { ConversationCatalog } from '../../src/observe/conversation/catalog.js';
 import { readConversationTurns } from '../../src/studio/application/conversations/conversation-reader.js';
 
 it('pages newest turns, isolates unavailable turns and returns only readable human/assistant text', async () => {

@@ -19,8 +19,8 @@ import {
   loadObservationInboxReports,
   saveObservationInboxReport,
   type ObservationInboxReport,
-} from '../../src/observability/inbox/index.js';
-import { parseSkillHealthReport } from '../../src/observability/skill-health/report.js';
+} from '../../src/observe/inbox/index.js';
+import { parseSkillHealthReport } from '../../src/observe/skill-health/report.js';
 import { buildSkillIndex } from '../../src/studio/application/knowledge/skill-index.js';
 
 const writers: BaselineDatasetWriters = {

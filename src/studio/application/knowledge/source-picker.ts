@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { ConversationCatalog } from '../../../observability/application.js';
+import type { ConversationCatalog } from '../../../observe/application.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { SourceCaptureError, SourceCaptureService } from '../../../knowledge/application/source-capture.js';
 import { FileSourceStore } from '../../../knowledge/adapters/source-store.js';

@@ -4,12 +4,12 @@ import {
   getRagJudgePromptHash,
   getSemanticPromptHash,
 } from '../../src/eval-workflows/instruments/prompts/judge-prompts.js';
-import { readPromptDocument } from '../../src/observability/prompts/document.js';
+import { readPromptDocument } from '../../src/observe/prompts/document.js';
 import {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
-} from '../../src/observability/soft-standards/constants.js';
+} from '../../src/observe/soft-standards/constants.js';
 import { EXTRACTION_PROMPT } from '../../src/knowledge/extraction/prompt.js';
 import { STRICT_EXTRACTION_PROMPT } from '../../src/knowledge/extraction/strict-prompt.js';
 import { EXTRACTION_FEEDBACK_PREAMBLE } from '../../src/knowledge/extraction/generation-policy.js';
@@ -91,7 +91,7 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   {
     promptId: 'observe-llm-enhanced-review',
     purpose: 'observe 运行期软标准抽取 / LLM 增强复盘',
-    module: 'src/observability/prompts/llm-enhanced-review.prompt.md',
+    module: 'src/observe/prompts/llm-enhanced-review.prompt.md',
     measurementInvariant: true,
     getHash: () => readPromptDocument({
       dir: PROMPTS_DIR,
@@ -130,7 +130,7 @@ export const PROMPT_REGISTRY: PromptRegistryEntry[] = [
   },
 
   // —— 其它用途:不在当前冻结范围,仅登记供发现 ——
-  { promptId: 'hedging-classifier', purpose: 'hedging 判定(喂 gap-signal,非评分)', module: 'src/observability/analysis/hedging-classifier.ts', measurementInvariant: false },
+  { promptId: 'hedging-classifier', purpose: 'hedging 判定(喂 gap-signal,非评分)', module: 'src/observe/analysis/hedging-classifier.ts', measurementInvariant: false },
   { promptId: 'sample-generator', purpose: '用例生成(skill / trace → samples)', module: 'src/eval-workflows/sample-generation/generator.ts', measurementInvariant: false },
   { promptId: 'skill-improve', purpose: 'skill 迭代改进(evolve)', module: 'src/knowledge/artifacts/authoring/core-evolver.ts', measurementInvariant: false },
   { promptId: 'doctor-fixer', purpose: 'doctor 健康项修复向导', module: 'src/knowledge/artifacts/doctor/fixer.ts', measurementInvariant: false },

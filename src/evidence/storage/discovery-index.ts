@@ -214,7 +214,7 @@ export function removeDoctorCard(id: string): boolean {
 
 // ── observe-health 域 ─────────────────────────────────────────────────────────
 
-/** observe 报告投影到卡片所需的结构子集(不 import observability/SkillHealthReport,保持产物发现层解耦)。 */
+/** observe 报告投影到卡片所需的结构子集(不 import observe/SkillHealthReport,保持产物发现层解耦)。 */
 interface ObserveCardSkill {
   toolFailureRate: number;
   toolFailureCount?: number;

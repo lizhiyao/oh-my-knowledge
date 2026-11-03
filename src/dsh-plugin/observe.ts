@@ -1,21 +1,21 @@
-import type { ExperienceTimelineEvent, ExperienceTurnSummary } from '../observability/contracts/experience.js';
-import type { ObservationSourceRecord, ObservationSourceRecordArchiveView } from '../observability/contracts/inbox.js';
-import type { TraceIngestionSummary } from '../observability/contracts/trace.js';
+import type { ExperienceTimelineEvent, ExperienceTurnSummary } from '../observe/contracts/experience.js';
+import type { ObservationSourceRecord, ObservationSourceRecordArchiveView } from '../observe/contracts/inbox.js';
+import type { TraceIngestionSummary } from '../observe/contracts/trace.js';
 import type {
   ConversationIndexViewModel,
   ConversationListItem,
   ConversationTaskItem,
-} from '../observability/view-models/conversation.js';
+} from '../observe/view-models/conversation.js';
 import { durationMsBetween } from '../shared/time.js';
 import {
   projectTraceSessionTimeline,
-} from '../observability/experience.js';
-import { reconstructExperienceTurns } from '../observability/conversation/turn-index.js';
-import { observationSourceRecordFromLine } from '../observability/inbox/source-record-archive.js';
+} from '../observe/experience.js';
+import { reconstructExperienceTurns } from '../observe/conversation/turn-index.js';
+import { observationSourceRecordFromLine } from '../observe/inbox/source-record-archive.js';
 import type {
   ConversationCatalog,
   ConversationTaskTrajectory,
-} from '../observability/conversation/catalog.js';
+} from '../observe/conversation/catalog.js';
 import {
   adaptDshSession,
   type DshSessionEventLike,

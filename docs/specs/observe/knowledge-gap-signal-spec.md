@@ -17,7 +17,7 @@ Signals identify reviewable failed-search or uncertainty clues. They prove neith
 | explicit_marker | Explicit inference/unknown/gap markers in output | 0.5 |
 | hedging | Uncertainty phrasing patterns in output | 0.5 |
 
-`observability/analysis/gap-analyzer.ts` and `trace/tool-search.ts` own rule details. Exploratory search, quoted rules, and business hypotheses may cause false positives. Review original context before turning a signal into knowledge or samples.
+`observe/analysis/gap-analyzer.ts` and `trace/tool-search.ts` own rule details. Exploratory search, quoted rules, and business hypotheses may cause false positives. Review original context before turning a signal into knowledge or samples.
 
 ## 3. Aggregation {#current-aggregation}
 

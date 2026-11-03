@@ -1,4 +1,4 @@
-import { measuredToolFailureRate } from '../../../observability/application.js';
+import { measuredToolFailureRate } from '../../../observe/application.js';
 import type { SkillHealthBand, SkillIndexEntry, SkillObserveSnapshot } from '../../view-models/knowledge/skill-index.js';
 import type { Lang } from '../../../shared/language.js';
 import type { Insight } from '../../view-models/knowledge/insight.js';

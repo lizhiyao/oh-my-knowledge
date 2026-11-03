@@ -14,7 +14,7 @@
 
 ## Code Review Rules
 
-- 必须拦截纯核心引入宿主能力或对执行子域、observability、CLI、Studio、eval-workflows 的反向依赖。安全路径：能力声明为窄端口，副作用落在执行子域及适配器；伞形域不构成放宽核心边界的理由。
+- 必须拦截纯核心引入宿主能力或对执行子域、observe、CLI、Studio、eval-workflows 的反向依赖。安全路径：能力声明为窄端口，副作用落在执行子域及适配器；伞形域不构成放宽核心边界的理由。
 - 必须拦截绕过修订不变量的写路径（直写、缺并发检查、丢 receipt）。安全路径：写入统一经对应 `history.ts` 的应用函数，不变量在写路径上强制校验。
 - 必须拦截身份红线的松动（按名称合并、按相似度归并、把未确认关联当作同一对象）。安全路径：关联一律走显式复核流，机器建议只作为候选输入。
 - 新建判别字段使用 `eventKind` 等限定名；裸 `kind` 保留给 `Artifact.kind`（见 docs/specs/shared/terminology-spec.md §5.4）。

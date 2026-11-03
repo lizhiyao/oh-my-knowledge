@@ -1,12 +1,12 @@
 'use client';
 import { Table, Tag, Tooltip, Typography } from 'antd';
-import type { ObservationInboxItem } from '../../../../../observability/contracts/inbox';
+import type { ObservationInboxItem } from '../../../../../observe/contracts/inbox';
 import {
   signalEvidenceConclusion,
   signalRuleDescription,
   signalSeverityMeta,
   signalSourceMeta,
-} from '../../../../../observability/presentation';
+} from '../../../../../observe/presentation';
 import { displayTime } from '../../../../application/display/format';
 import { severityTagColor } from '../../tag-color';
 import type { Language } from '../../layout/shell';

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Space, Tabs, Tag, Typography } from 'antd';
-import type { ObservationInboxViewModel } from '../../../../../observability/view-models/index';
+import type { ObservationInboxViewModel } from '../../../../../observe/view-models/index';
 import { OBSERVE_INBOX_PATH } from '../../../../http/page-paths';
 import { DEFAULT_OBSERVE_INBOX_TAB, type ObserveInboxTab } from '../../../../http/page-params';
 import { type Language } from '../../layout/shell';
@@ -16,7 +16,7 @@ import { SkillChains } from './skill-chains';
 import { ReviewActionsPanel } from './review-actions-panel';
 
 /**
- * 观测收件箱页面外壳（#839 收口后的唯一实现）：子视图只呈现 observability/inbox 投影，
+ * 观测收件箱页面外壳（#839 收口后的唯一实现）：子视图只呈现 observe/inbox 投影，
  * skill 筛选是本地状态，子视图切换由地址承载（#903 D3：初始值来自路由页校验过的 `?tab=`，
  * 之后每次切换浅写回地址，分享与刷新都能回到所见面板），复核 mutation 走 /api/observe-inbox/review-state。
  */

@@ -2,9 +2,9 @@
  * 架构边界守门:用静态扫描固化「哪个 layer 可以 import 哪个 layer」。
  *
  * 历史背景:src/ 内层级关系靠 CR 记忆维护,被反向 import 拉穿过多次:
- *   - observability 反向 driving diagnosis(已修)
+ *   - observe 反向 driving diagnosis(已修)
  *   - Studio application / catalog 散落在交付层与 workflow(已修)
- *   - Studio 直接 import observability 内部（统一经过应用／展示入口与类型契约）
+ *   - Studio 直接 import observe 内部（统一经过应用／展示入口与类型契约）
  * 这个测试把每一条「已修的方向」锁死,新增反向 import 会在 PR 阶段挂掉。
  *
  * 规则形态:每条规则声明 from / to / 稳定契约入口 + 注解。匹配 src-relative
@@ -42,35 +42,35 @@ interface ForbiddenRule {
 
 const RULES: ForbiddenRule[] = [
   {
-    from: 'observability/application.ts', to: 'knowledge/',
+    from: 'observe/application.ts', to: 'knowledge/',
     reason: '观测提供来源和投影，不聚合知识用例；交付层直接消费知识所属领域。',
   },
-  ...['observability/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/entity-linking/'].map((from) => ({
+  ...['observe/', 'knowledge/adapters/', 'knowledge/application/', 'knowledge/extraction/', 'knowledge/entity-linking/'].map((from) => ({
     from, to: 'executors/',
     reason: '观测与知识提炼只依赖 executors/contracts 的稳定协议与纯语义；具体执行器由交付装配层注入。',
     allowedTargets: listTsFiles(join(SRC_DIR, 'executors', 'contracts')).map(toSrcRelative),
   })),
   {
-    from: 'observability/trace/adapters/', to: 'observability/trace/source.ts',
+    from: 'observe/trace/adapters/', to: 'observe/trace/source.ts',
     reason: 'Trace 适配器只暴露证据谓词与 parse 入口；发现、流式读取、session 分组留在 source.ts，单向消费适配器。',
   },
   {
-    from: 'studio/', to: 'observability/',
+    from: 'studio/', to: 'observe/',
     reason: 'Studio 只消费观测应用／展示入口和稳定类型契约，不穿透私有子域。',
     allowedTargets: [
-      'observability/application.ts',
-      'observability/presentation.ts',
-      'observability/agents/index.ts',
+      'observe/application.ts',
+      'observe/presentation.ts',
+      'observe/agents/index.ts',
       ...['contracts', 'view-models'].flatMap((directory) => (
-        listTsFiles(join(SRC_DIR, 'observability', directory)).map(toSrcRelative)
+        listTsFiles(join(SRC_DIR, 'observe', directory)).map(toSrcRelative)
       )),
     ],
   },
   ...['application.ts', 'presentation.ts'].flatMap((entry) => (
-    readdirSync(join(SRC_DIR, 'observability'), { withFileTypes: true })
+    readdirSync(join(SRC_DIR, 'observe'), { withFileTypes: true })
       .filter((directory) => directory.isDirectory())
       .map((directory) => ({
-        from: `observability/${directory.name}/`, to: `observability/${entry}`,
+        from: `observe/${directory.name}/`, to: `observe/${entry}`,
         reason: '观测私有实现不得通过消费方入口反向聚合自身依赖。',
       }))
   )),
@@ -202,12 +202,12 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'executors/',
-    to: 'observability/',
-    reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observability 投影。',
+    to: 'observe/',
+    reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observe 投影。',
   },
   {
     from: 'evidence/storage/',
-    to: 'observability/',
+    to: 'observe/',
     reason: 'Evidence Storage 只拥有产物命名、目录、索引与定位能力；跨域 prompt 冻结属于 CI 测量治理。',
   },
   {
@@ -216,9 +216,9 @@ const RULES: ForbiddenRule[] = [
     reason: 'Evidence 保存、验证与关联事实，不派生诊断。',
   },
   {
-    from: 'observability/',
+    from: 'observe/',
     to: 'studio/',
-    reason: 'observability 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',
+    reason: 'observe 负责采集、分析与复核事实，不依赖 Studio 的应用聚合或呈现。',
   },
   {
     from: 'studio/application/',
@@ -272,7 +272,7 @@ const RULES: ForbiddenRule[] = [
   },
   {
     from: 'shared/',
-    to: 'observability/',
+    to: 'observe/',
     reason: 'shared 是跨领域叶子依赖；观测投影与 prompt 编目由上层能力拥有。',
   },
 ];
@@ -536,11 +536,11 @@ describe('架构边界守门', () => {
     const specifiers = extractSpecifiers(`
       // import { ignored } from './comment';
       const text = "import { ignored } from './text'";
-      import type { ObservationInboxViewModel } from '../../../observability/view-models/index';
-      export { queryObservationInbox } from '../../../observability/inbox/index';
-      const dynamic = import('../../../observability/inbox/review-state.js');
-      const commonjs = require('../../../observability/inbox/paths.js');
-      import { buildObservationInboxViewModel } from '../../../observability/application.js';
+      import type { ObservationInboxViewModel } from '../../../observe/view-models/index';
+      export { queryObservationInbox } from '../../../observe/inbox/index';
+      const dynamic = import('../../../observe/inbox/review-state.js');
+      const commonjs = require('../../../observe/inbox/paths.js');
+      import { buildObservationInboxViewModel } from '../../../observe/application.js';
     `);
     expect(specifiers).toHaveLength(5);
     const importer = 'studio/http/routes/observations.ts';
@@ -549,9 +549,9 @@ describe('架构边界守门', () => {
       return RULES.some((rule) => violatesRule(importer, target, rule)) ? [target] : [];
     });
     expect(forbidden).toEqual([
-      'observability/inbox/index.ts',
-      'observability/inbox/review-state.ts',
-      'observability/inbox/paths.ts',
+      'observe/inbox/index.ts',
+      'observe/inbox/review-state.ts',
+      'observe/inbox/paths.ts',
     ]);
   });
 
@@ -625,7 +625,7 @@ describe('架构边界守门', () => {
       throw new Error(msg);
     }
     expect(violations).toEqual([]);
-    for (const file of ['studio', 'observability'].flatMap(
+    for (const file of ['studio', 'observe'].flatMap(
       (domain) => listTsFiles(join(SRC_DIR, domain, 'view-models')),
     )) {
       const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
@@ -657,7 +657,7 @@ describe('架构边界守门', () => {
       'utf-8',
     );
     const observationSignals = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'text-signals.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'text-signals.ts'),
       'utf-8',
     );
 
@@ -666,9 +666,9 @@ describe('架构边界守门', () => {
   });
 
   it('Experience 时间线投影由独立模块拥有', () => {
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const timeline = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'timeline.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'timeline.ts'),
       'utf-8',
     );
 
@@ -679,13 +679,13 @@ describe('架构边界守门', () => {
   });
 
   it('Experience 报告结构与派生事实由独立模块拥有', () => {
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const reportStructure = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'report-structure.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'report-structure.ts'),
       'utf-8',
     );
     const reportDerivations = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'report-derivations.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'report-derivations.ts'),
       'utf-8',
     );
 
@@ -699,17 +699,17 @@ describe('架构边界守门', () => {
   });
 
   it('Experience 报告编解码与校验由独立模块拥有', () => {
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const codec = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'report-codec.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'report-codec.ts'),
       'utf-8',
     );
     const valueGuards = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'report-value-guards.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'report-value-guards.ts'),
       'utf-8',
     );
     const referenceValidator = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'report-reference-validator.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'report-reference-validator.ts'),
       'utf-8',
     );
 
@@ -723,9 +723,9 @@ describe('架构边界守门', () => {
   });
 
   it('Experience 复核清单由独立模块拥有', () => {
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const checklist = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'review-checklist.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'review-checklist.ts'),
       'utf-8',
     );
 
@@ -736,8 +736,8 @@ describe('架构边界守门', () => {
   });
 
   it('Experience 会话故事按族拆分，族内导出都有真实消费者', () => {
-    const experienceDir = join(SRC_DIR, 'observability', 'experience');
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const experienceDir = join(SRC_DIR, 'observe', 'experience');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const textSignals = readFileSync(join(experienceDir, 'text-signals.ts'), 'utf-8');
     const family = readdirSync(experienceDir)
       .filter((name) => name.startsWith('session-story') && name.endsWith('.ts'))
@@ -807,7 +807,7 @@ describe('架构边界守门', () => {
   });
 
   it('Observation inbox 按构建／存取／呈现拆族，入口只留转口', () => {
-    const inboxDir = join(SRC_DIR, 'observability', 'inbox');
+    const inboxDir = join(SRC_DIR, 'observe', 'inbox');
     const family = readdirSync(inboxDir)
       .filter((name) => name.startsWith('report-') && name.endsWith('.ts'))
       .sort();
@@ -931,7 +931,7 @@ describe('架构边界守门', () => {
   });
 
   it('Codex 会话装配按记录族拆分，入口公开面冻结', () => {
-    const codexDir = join(SRC_DIR, 'observability', 'trace', 'adapters', 'codex');
+    const codexDir = join(SRC_DIR, 'observe', 'trace', 'adapters', 'codex');
     // 会话装配族（12 个模块）：分发契约与状态在最下，四族 handler 平行，orchestrator 与入口在最上。
     // convertCodexRecords 曾经是一条 722 行的 if 链，前置索引、十几种记录、跨视图去重、
     // 运行时状态、终态回填与补发全摊在 trace.ts 的 1,519 行里。
@@ -1098,7 +1098,7 @@ describe('架构边界守门', () => {
   });
 
   it('Claude / OpenClaw / Markdown 适配器按族登记，族内不得回指 source.ts', () => {
-    const adaptersDir = join(SRC_DIR, 'observability', 'trace', 'adapters');
+    const adaptersDir = join(SRC_DIR, 'observe', 'trace', 'adapters');
     // adapters/ 顶层清单整体登记：每个宿主一个目录；跨族共享的 JSONL 记录基元只有 jsonl-records.ts。
     // Claude / OpenClaw / Markdown 的记录→事件映射曾经与发现、流式读取、session 分组
     // 一起摊在 source.ts 的 1,648 行里。
@@ -1159,9 +1159,9 @@ describe('架构边界守门', () => {
   });
 
   it('Experience reviewer report 由独立模块拥有', () => {
-    const facade = readFileSync(join(SRC_DIR, 'observability', 'experience.ts'), 'utf-8');
+    const facade = readFileSync(join(SRC_DIR, 'observe', 'experience.ts'), 'utf-8');
     const reviewerReport = readFileSync(
-      join(SRC_DIR, 'observability', 'experience', 'reviewer-report.ts'),
+      join(SRC_DIR, 'observe', 'experience', 'reviewer-report.ts'),
       'utf-8',
     );
 

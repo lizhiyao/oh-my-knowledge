@@ -15,7 +15,7 @@ import {
   agentStorageLayout,
   saveAgentCollectionReport,
   saveAgentInventoryReport,
-} from '../../../src/observability/agents/index.js';
+} from '../../../src/observe/agents/index.js';
 import { buildAgentsPageModel } from '../../../src/studio/application/agents/agents-view.js';
 import { AgentsView } from '../../../src/studio/web/components/agents/agents.js';
 import { sampleCollectionReport, sampleInventoryReport } from '../_agents-report-fixtures.js';

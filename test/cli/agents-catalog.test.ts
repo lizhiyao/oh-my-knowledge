@@ -20,15 +20,15 @@ import { createExtractionArchiveProducer } from '../../src/executors/archive.js'
 import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
 import type { KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import { SOURCE_CAPTURE_MAX_SELECTED_BYTES } from '../../src/knowledge/application/source-capture.js';
-import { AgentDescriptorSchema, agentStorageLayout, collectAgentLogs } from '../../src/observability/agents/index.js';
+import { AgentDescriptorSchema, agentStorageLayout, collectAgentLogs } from '../../src/observe/agents/index.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
-import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observability/trace/unknown-disposition.js';
+import { UNKNOWN_DISPOSITION_RULES_VERSION } from '../../src/observe/trace/unknown-disposition.js';
 import {
   AGENT_CATALOG_VERSION,
   AGENT_COLLECTION_VERSION,
   type AgentCollectionReport,
   type AgentInventoryReport,
-} from '../../src/observability/agents/contracts.js';
+} from '../../src/observe/agents/contracts.js';
 
 const tempRoots: string[] = [];
 

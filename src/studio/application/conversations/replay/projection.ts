@@ -1,6 +1,6 @@
 import type {
   KnowledgeDebuggerViewModel
-} from '../../../../observability/view-models/index.js';
+} from '../../../../observe/view-models/index.js';
 import type { Lang } from '../../../../shared/language.js';
 import type { ReplayCard, ReplayCardInput, ReplayCardTone, ReplayFacet, ReplayFacetGroup, ReplayLaneKind, ReplayMilestone, ReplayOperation, ReplayProjection, ReplayProjectionOptions } from '../../../view-models/conversations/replay.js';
 import { inlineMarkdownText } from './inline-markdown.js';

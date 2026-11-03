@@ -1,18 +1,18 @@
-import type { ObservationRuntimeCheck, ObservationSkillChain } from '../observability/skill-health/skill-chain.js';
-import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-health/advisories.js';
-import type { ObservationInboxReport } from '../observability/inbox/index.js';
+import type { ObservationRuntimeCheck, ObservationSkillChain } from '../observe/skill-health/skill-chain.js';
+import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observe/skill-health/advisories.js';
+import type { ObservationInboxReport } from '../observe/inbox/index.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceRuleFinding,
   ExperienceSkillSummary,
   ObservationExperienceReport,
-} from '../observability/experience.js';
-import type { ExperienceProblemPattern } from '../observability/inbox/problem-patterns.js';
+} from '../observe/experience.js';
+import type { ExperienceProblemPattern } from '../observe/inbox/problem-patterns.js';
 import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
 import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
 
 export interface BuildObserveDiagnosticsFromReportOptions {
-  /** 由上游单一生产者（observability/inbox/skill-chains.ts）建好的链；诊断层不再碰文件系统。 */
+  /** 由上游单一生产者（observe/inbox/skill-chains.ts）建好的链；诊断层不再碰文件系统。 */
   readonly skillChains: Record<string, ObservationSkillChain>;
 }
 

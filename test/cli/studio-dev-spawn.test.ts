@@ -202,7 +202,7 @@ describe('studio --dev child spawn argv', () => {
   it('server 模式 --global → observationsDir 钉全局(与 observe-health / doctors 一致)', async () => {
     const { runStudio } = await import('../../src/cli/commands/studio.js');
     const { createNextStudioServer } = await import('../../src/studio/http/next-server.js');
-    const { globalObservationsDir } = await import('../../src/observability/inbox/index.js');
+    const { globalObservationsDir } = await import('../../src/observe/inbox/index.js');
     await runStudio({}, { lang: 'zh', global: true, takeover: false, port: '7799', 'no-open': true, dev: false }, 'zh');
     const opts = vi.mocked(createNextStudioServer).mock.calls.at(-1)?.[0];
     expect(opts?.observationsDir).toBe(globalObservationsDir());

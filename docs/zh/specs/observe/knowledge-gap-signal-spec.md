@@ -17,7 +17,7 @@
 | explicit_marker | 输出中的显式推断／未知／缺口标记 | 0.5 |
 | hedging | 输出中的不确定措辞模式 | 0.5 |
 
-规则细节由 `observability/analysis/gap-analyzer.ts` 和 `trace/tool-search.ts` 拥有。探索性搜索、引用规则本身、业务假设等可能造成误报；阅读原上下文后再决定是否形成知识或用例。
+规则细节由 `observe/analysis/gap-analyzer.ts` 和 `trace/tool-search.ts` 拥有。探索性搜索、引用规则本身、业务假设等可能造成误报；阅读原上下文后再决定是否形成知识或用例。
 
 ## 3. 聚合 {#current-aggregation}
 

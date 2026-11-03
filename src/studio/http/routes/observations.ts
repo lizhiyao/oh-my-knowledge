@@ -5,7 +5,7 @@ import {
   loadObservationReviewState,
   updateObservationReviewState,
   type ObservationReviewStateUpdate,
-} from '../../../observability/application.js';
+} from '../../../observe/application.js';
 
 import { readJsonObjectBody } from '../request-errors.js';
 import { JSON_HEADERS } from '../errors.js';

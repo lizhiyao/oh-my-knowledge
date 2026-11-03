@@ -14,7 +14,7 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'executors',
   'knowledge',
   'mcp',
-  'observability',
+  'observe',
   'shared',
   'studio',
 ] as const;
@@ -122,7 +122,7 @@ describe('src 最终领域地图', () => {
   });
 
   it('不恢复任何迁移前的目录或构建产物', () => {
-    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observability/knowledge-extraction'].flatMap((directory) => [
+    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observe/knowledge-extraction'].flatMap((directory) => [
       `src/${directory}`,
       `test/${directory}`,
       ...(existsSync(resolve('dist')) ? [`dist/${directory}`] : []),

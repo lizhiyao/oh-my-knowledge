@@ -17,7 +17,7 @@ import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import {
   buildObservationInboxReport,
   saveObservationInboxReport,
-} from '../../src/observability/inbox/index.js';
+} from '../../src/observe/inbox/index.js';
 import { runCommand } from '../helpers/run-command.js';
 import { runCli, runCliFailing } from '../helpers/cli-process.js';
 

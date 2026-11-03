@@ -58,9 +58,9 @@ const NON_STATIC_ENTRIES: Array<{
     evidence: 'src/cli/lib/update-check.ts',
   },
   {
-    path: 'src/observability/conversation/index-process.ts',
+    path: 'src/observe/conversation/index-process.ts',
     reason: 'subprocess',
-    evidence: 'src/observability/conversation/catalog.ts',
+    evidence: 'src/observe/conversation/catalog.ts',
   },
   {
     path: 'src/eval-workflows/inputs/schemas/json-schema.ts',

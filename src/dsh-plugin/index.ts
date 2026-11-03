@@ -275,8 +275,8 @@ async function executeObserveCommand(
   const {
     buildObservationInboxReportFromTraceSessions,
     saveObservationInboxReport,
-  } = await import('../observability/inbox/index.js');
-  const { loadObservationReviewState } = await import('../observability/inbox/review-state.js');
+  } = await import('../observe/inbox/index.js');
+  const { loadObservationReviewState } = await import('../observe/inbox/review-state.js');
   const { buildObserveDiagnosticsFromReport } = await import('../diagnosis/observe-producer.js');
   const report = buildObservationInboxReportFromTraceSessions(
     `dsh:${group.rootSessionId}`,
@@ -285,7 +285,7 @@ async function executeObserveCommand(
     { reviewState: loadObservationReviewState(observationsDir) },
   );
   const { skillNamesFromReports, buildSkillChainsForEvidence } = await import(
-    '../observability/inbox/skill-chains.js');
+    '../observe/inbox/skill-chains.js');
   const { chains } = buildSkillChainsForEvidence(skillNamesFromReports([report]), [report]);
   report.diagnostics = buildObserveDiagnosticsFromReport(report, { skillChains: chains });
   const inboxPath = saveObservationInboxReport(report, observationsDir);

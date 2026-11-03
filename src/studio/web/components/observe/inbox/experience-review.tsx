@@ -2,12 +2,12 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 import { Empty, Listy, Space, Tag, Typography } from 'antd';
-import type { ExperienceSessionSummary } from '../../../../../observability/contracts/experience';
-import type { ObservationMetricKey, ObservationReviewState } from '../../../../../observability/contracts/review';
+import type { ExperienceSessionSummary } from '../../../../../observe/contracts/experience';
+import type { ObservationMetricKey, ObservationReviewState } from '../../../../../observe/contracts/review';
 import {
   reviewPriorityMeta,
   reviewStateKey,
-} from '../../../../../observability/presentation';
+} from '../../../../../observe/presentation';
 import { ownRecordValue } from '../../../../../shared/record-count';
 import { type Language } from '../../layout/shell';
 import { conversationPath } from '../../conversation-link';

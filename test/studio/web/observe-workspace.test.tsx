@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it, vi } from 'vitest';
 import { ObserveWorkspace } from '../../../src/studio/web/components/observe/workspace.js';
-import type { ConversationListItem } from '../../../src/observability/view-models/conversation.js';
+import type { ConversationListItem } from '../../../src/observe/view-models/conversation.js';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));
 const item: ConversationListItem = {

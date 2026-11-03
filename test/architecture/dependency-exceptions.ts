@@ -7,12 +7,12 @@ interface BoundaryEdge {
   typeOnly: boolean;
 }
 
-const DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS = new Set([
-  'observability/experience.ts',
-  'observability/inbox/index.ts',
-  'observability/inbox/problem-patterns.ts',
-  'observability/skill-health/advisories.ts',
-  'observability/skill-health/skill-chain.ts',
+const DIAGNOSIS_OBSERVE_PRODUCER_TARGETS = new Set([
+  'observe/experience.ts',
+  'observe/inbox/index.ts',
+  'observe/inbox/problem-patterns.ts',
+  'observe/skill-health/advisories.ts',
+  'observe/skill-health/skill-chain.ts',
 ]);
 // #1299 移除观测入口对知识用例的聚合后，仅登记知识内部的四域 SCC。
 // 完整 runtime 边只有这一份登记，同时供 SCC 拓扑与双向边界校验复用；不得扩大为目录级豁免。
@@ -143,10 +143,10 @@ function isRegisteredKnowledgeBoundary(edge: BoundaryEdge): boolean {
 
 export const REGISTERED_RUNTIME_CYCLES = [
   {
-    domains: ['diagnosis', 'observability'],
+    domains: ['diagnosis', 'observe'],
     edges: [
-      'diagnosis/observe-producer.ts → observability/skill-health/advisories.ts',
-      'observability/inbox/report-store.ts → diagnosis/contracts/parser.ts',
+      'diagnosis/observe-producer.ts → observe/skill-health/advisories.ts',
+      'observe/inbox/report-store.ts → diagnosis/contracts/parser.ts',
     ],
     rationale: 'Diagnosis producer 消费观测建议，观测只消费 Diagnosis wire parser；知识用例不再经过观测入口。',
   },
@@ -263,7 +263,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/studio-baseline.ts',
     expression: 'pathToFileURL(resolve(REPO_ROOT, path)).href',
-    sourceSha256: 'e07ca97b9d8660440ba32ff80ef50bfd9d811d20f2a241949845624795ebb27f',
+    sourceSha256: 'fc3508290cbb6f88f56a5a38054c943890b845b9300a6c0c7a15b165ff9e02e0',
     rationale: 'Loads only three fixed built modules for the isolated Studio benchmark; the sealed source fixes all callers and paths.',
   },
 ] as const;
@@ -291,12 +291,12 @@ export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => 
       && edge.typeOnly
       && edge.target === 'knowledge/artifacts/doctor/contracts.ts';
   },
-  'diagnosis↔observability': (edge) => {
-    if (edge.importerDomain === 'observability') {
+  'diagnosis↔observe': (edge) => {
+    if (edge.importerDomain === 'observe') {
       return edge.target.startsWith('diagnosis/contracts');
     }
     return edge.importer === 'diagnosis/observe-producer.ts'
-      && DIAGNOSIS_OBSERVABILITY_PRODUCER_TARGETS.has(edge.target);
+      && DIAGNOSIS_OBSERVE_PRODUCER_TARGETS.has(edge.target);
   },
 };
 

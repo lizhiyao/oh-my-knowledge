@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, type BigIntStats } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { detectJsonlTraceSource, type CcRecord } from '../../observability/trace/source.js';
-import type { TraceEvent } from '../../observability/trace/trace-ir.js';
+import { detectJsonlTraceSource, type CcRecord } from '../../observe/trace/source.js';
+import type { TraceEvent } from '../../observe/trace/trace-ir.js';
 import { canonicalJson } from '../store.js';
 import { ResolvedSourceSelectionSchema, SOURCE_PROJECTION_VERSION, SourceMaterialAttributionSchema,
   SourceProjectionSchema, SourceProvenanceSchema, SourceSelectionSchema, TraceOriginSchema, normalizeRecordRanges, sourceVersionPreimage,

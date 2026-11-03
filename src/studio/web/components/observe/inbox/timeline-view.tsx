@@ -4,7 +4,7 @@ import { Empty, Select, Tag, Timeline, Typography } from 'antd';
 import type {
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from '../../../../../observability/contracts/experience';
+} from '../../../../../observe/contracts/experience';
 import { displayTime } from '../../../../application/display/format';
 import type { Language } from '../../layout/shell';
 

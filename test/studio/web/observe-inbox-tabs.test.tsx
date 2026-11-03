@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, expect, it } from 'vitest';
-import { buildObservationInboxViewModel } from '../../../src/observability/inbox/view-model.js';
+import { buildObservationInboxViewModel } from '../../../src/observe/inbox/view-model.js';
 import { DEFAULT_OBSERVE_INBOX_TAB, type ObserveInboxTab } from '../../../src/studio/http/page-params.js';
 import { InboxView } from '../../../src/studio/web/components/observe/inbox/inbox.js';
 import { activeTabKey } from '../../helpers/react-ssr.js';

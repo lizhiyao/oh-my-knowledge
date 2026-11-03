@@ -1,4 +1,4 @@
-import type { ConversationListItem } from '../../../observability/view-models/conversation.js';
+import type { ConversationListItem } from '../../../observe/view-models/conversation.js';
 
 /**
  * 侧栏与列表的默认视野。截断只是视野收窄，不是内容消失：被截掉的部分必须留下可达入口，

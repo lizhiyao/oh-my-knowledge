@@ -21,7 +21,7 @@ import {
   observationReportsDir,
   resolveObservationsDir,
   parseSkillHealthReport,
-} from '../../../observability/application.js';
+} from '../../../observe/application.js';
 
 import { parseArtifactGraphDocument } from '../../../evidence/graph/schema.js';
 import { parseDoctorReport } from '../../../knowledge/artifacts/doctor/report-parser.js';

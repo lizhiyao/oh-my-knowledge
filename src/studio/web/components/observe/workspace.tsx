@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Empty, Input, Pagination, Select } from 'antd';
 import type { ObservePage } from '../../../http/pages/observe-page';
 import { AGENTS_INDEX_PATH, OBSERVE_INDEX_PATH } from '../../../http/page-paths';
-import type { ConversationListItem } from '../../../../observability/view-models/conversation';
+import type { ConversationListItem } from '../../../../observe/view-models/conversation';
 import { StudioShell, type Language } from '../layout/shell';
 import { ActivityNotice, useActivity } from './activity';
 import { KnowledgeInbox } from '../knowledge/inbox';

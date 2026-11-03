@@ -1,8 +1,8 @@
 'use client';
 import { useMemo } from 'react';
 import { Table, Tag, Typography } from 'antd';
-import { buildReviewActionItems } from '../../../../../observability/presentation';
-import type { ObservationInboxViewModel } from '../../../../../observability/view-models/index';
+import { buildReviewActionItems } from '../../../../../observe/presentation';
+import type { ObservationInboxViewModel } from '../../../../../observe/view-models/index';
 import type { Language } from '../../layout/shell';
 import { tagStatus } from '../../tag-color';
 

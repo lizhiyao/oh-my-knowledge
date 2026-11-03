@@ -9,7 +9,7 @@ import {
   projectTrend,
   type HealthReportFacts,
 } from '../../../src/studio/application/observe/health-format.js';
-import type { SkillHealthReport } from '../../../src/observability/skill-health/analyzer.js';
+import type { SkillHealthReport } from '../../../src/observe/skill-health/analyzer.js';
 import type { SkillDiffRow } from '../../../src/studio/view-models/knowledge/knowledge-reports.js';
 import type { HealthPage } from '../../../src/studio/http/pages/health-page.js';
 import { HealthView } from '../../../src/studio/web/components/observe/health';

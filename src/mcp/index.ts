@@ -12,4 +12,4 @@ export {
   type ExplicitObservationCaptureInput,
   type ExplicitObservationCaptureRecord,
   type ExplicitObservationCaptureResult,
-} from '../observability/inbox/explicit-capture.js';
+} from '../observe/inbox/explicit-capture.js';
