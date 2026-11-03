@@ -156,7 +156,7 @@ describe('Studio candidate action boundary', () => {
     const selected = join(root, 'source-review-http'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });
     const captured = captureAuthoredSource(selected, { path: join(root, 'source-review-http.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha 使用 Beta') }] });
     const model = currentModel(), invoke = vi.spyOn(model, 'invoke'), run = await generateAuthored(app, captured, model);
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
     const coverageRef = run.journal.coverageRef!, ledgerRef = run.journal.ledgerRef!;
     expect(await (await post({ workspace: selected, operation: 'source-ledger', id: ledgerRef.ledgerId, revision: ledgerRef.revisionId })).json()).toMatchObject({ ref: ledgerRef, originalVerification: 'not_verified' });
     const status = await (await post({ workspace: selected, operation: 'source-coverage-status', id: coverageRef.coverageId, revision: coverageRef.revisionId })).json();
@@ -169,7 +169,7 @@ describe('Studio candidate action boundary', () => {
     const current = app.sourceCoverageStatus(coverageRef.coverageId);
     expect(current.decision.status).toBe('not_reviewed');
     expect(current.history.events.at(-1)).toMatchObject({ eventKind: 'revocation', actor: { actorKind: 'human', actorId: 'local-user' } });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
   });
   it('retrieves task content through the production read path with candidate/source/budget boundaries and no new generation', async () => {
     const selected = join(root, 'task-retrieval'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor });

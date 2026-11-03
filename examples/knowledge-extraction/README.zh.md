@@ -19,7 +19,7 @@ node examples/knowledge-extraction/run.mjs
 
 脚本使用该检出的内部构建模块，不是公共 SDK 入口；安装 npm 包后复制此文件不是受支持的集成方法。示例不需要 API 凭证、Codex 或模型账号，也不会选择 provider 执行器。
 
-命令输出一行 JSON，其中包含 `fixtureInvocations: 4`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v4"`、`phaseKinds: ["source_ledger", "body", "source_coverage", "association"]`、`runStatus: "completed"`、`candidateCount: 1`、`entityCount: 2`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。`sourceCoverageDecision: "proceed_with_limits"` 与 `sourceReviewActorKind: "agent"` 表示示例运行器明确记录的演示范围意见；`semanticQuality: "not_assessed"` 保持独立。
+命令输出一行 JSON，其中包含 `fixtureInvocations: 5`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v5"`、`phaseKinds: ["source_ledger", "body_draft", "body", "source_coverage", "association"]`、`runStatus: "completed"`、`candidateCount: 1`、`entityCount: 2`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。`sourceCoverageDecision: "proceed_with_limits"` 与 `sourceReviewActorKind: "agent"` 表示示例运行器明确记录的演示范围意见；`semanticQuality: "not_assessed"` 保持独立。
 
 捕获和准备不调用 fixture。每阶段都需要自己精确的已准备 `requestDigest`，脚本也核对缺少确认时会拒绝发送。覆盖响应逐项记录全部已交付元数据／原文单位、清单项／facet 和已保存段落，保留无法判断状态；事实时间未知仍是未知。运行器只为本次作者演示明确接受这些可见限制，随后再单独准备和确认关联。模型分析或保存成功不会自动产生决定。
 

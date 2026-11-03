@@ -17,10 +17,10 @@ import { FileKnowledgeStore } from './knowledge-store.js';
 import { FileKnowledgeReviewStore } from './review-store.js';
 import { FileSourceStore } from './source-store.js';
 
-const KIND = 'knowledge-workflow3-to4' as const;
+const KIND = 'knowledge-workflow4-to5' as const;
 const MAX_FILES = 16_384, MAX_BYTES = 512 * 1024 * 1024, MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const activeRoots = new Set(['sources', 'items', 'entities', 'associations', 'reviews', 'tags']);
-const archiveRoots = new Set(['generation-journals', 'auto-extraction', 'migration']);
+const archiveRoots = new Set(['generation-journals', 'source-ledgers', 'source-coverage', 'auto-extraction', 'migration']);
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 const sha = (value: string | Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const digest = (value: unknown) => sha(canonicalJson(value));

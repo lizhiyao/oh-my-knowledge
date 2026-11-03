@@ -52,7 +52,7 @@ export function SourcePreviewContent({ preview, capture, lang }: { preview: Know
 }
 
 export function generationStageLabel(stage: KnowledgeCandidateRun['phases'][number]['stageKind'], lang: Language): string {
-  return ({ source_ledger: ['来源清单', 'Source inventory'], body: ['知识正文', 'Knowledge content'],
+  return ({ source_ledger: ['来源清单', 'Source inventory'], body_draft: ['写作草稿', 'Writing draft'], body: ['知识正文', 'Knowledge content'],
     source_coverage: ['来源覆盖核对', 'Source coverage'], association: ['实体关联', 'Entity associations'] })[stage][lang === 'zh' ? 0 : 1];
 }
 
@@ -65,7 +65,7 @@ export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirm
   return <section>
     <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : stage.stageKind === 'association' ? t('确认实体关联请求', 'Confirm entity association request') : t(`确认${generationStageLabel(stage.stageKind, lang)}请求`, `Confirm ${generationStageLabel(stage.stageKind, lang)} request`)}</h3>
     <p>{t('仅发送下面这个精确阶段。每个阶段单独确认，来源复核决定与模型发送分开。', 'Send only this exact stage. Confirm every stage separately; source review decisions and model dispatch are separate.')}</p>
-    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {stage.stageKind === 'body' || stage.stageKind === 'association' ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately')}</p>
+    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {stage.stageKind === 'body_draft' ? t('保存未核验草稿，正文仍须回原来源取证', 'Save an unverified draft; ground content against original sources.') : stage.stageKind === 'body' || stage.stageKind === 'association' ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately')}</p>
     <p>{t('完整输入 UTF-8 字节：', 'Complete input UTF-8 bytes: ')}{new TextEncoder().encode(stage.input).length} · system: {new TextEncoder().encode(stage.system).length}</p>
     <details><summary>{t('请求详情', 'Request details')}</summary><p>{run.workflowId} · {run.inputVersion}</p><dl><dt>runId</dt><dd><code>{run.runId}</code></dd><dt>invocationId</dt><dd><code>{stage.invocationId}</code></dd>
       <dt>requestDigest</dt><dd><code>{stage.requestDigest}</code></dd><dt>inputDigest</dt><dd><code>{stage.inputDigest}</code></dd>

@@ -11,7 +11,7 @@ import { generationTextDigest } from '../extraction/body-generation-wire.js';
 import { sourceSetPreimage } from '../sources.js';
 import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
 import { validateSourceReviewManifest } from '../source-review-history.js';
-import { SOURCE_GENERATION_INPUT_VERSION } from '../extraction/source-input.js';
+import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION } from '../extraction/source-input.js';
 
 const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
@@ -22,7 +22,7 @@ function validateJournal(j: GenerationJournal): void {
   const refs = j.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
   if (sourceSet.sources.length !== j.sources.length || generationTextDigest(canonicalJson(sourceSet)) !== j.sourceSetId
     || !same(sourceSet.sources, refs)) throw new Error('Invalid generation source set identity.');
-  const order = j.mode === 'generate' ? ['source_ledger', 'body', 'source_coverage', 'association']
+  const order = j.mode === 'generate' ? ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']
     : j.mode === 'rebuild_associations' ? ['association']
       : j.stages[0].stageKind === 'source_ledger' ? ['source_ledger', 'source_coverage'] : ['source_coverage'];
   if (j.stages.length > order.length || j.stages.some((stage, index) => stage.stageKind !== order[index]
@@ -40,7 +40,7 @@ function validateJournal(j: GenerationJournal): void {
         return { snapshotId: source?.snapshotId, sourceVersion: source?.sourceVersion };
       }) : [];
     if ((review ? manifest!.sourceSetId : input.sourceSetId) !== j.sourceSetId || !same(inputRefs, refs)
-      || (review ? manifest!.inputVersion : input.inputVersion) !== (s.stageKind === 'association' ? SOURCE_GENERATION_INPUT_VERSION : j.inputVersion)) {
+      || (review ? manifest!.inputVersion : input.inputVersion) !== (s.stageKind === 'association' ? SOURCE_GENERATION_INPUT_VERSION : s.stageKind === 'body_draft' ? WRITING_DRAFT_INPUT_VERSION : s.stageKind === 'body' ? BODY_GENERATION_INPUT_VERSION : j.inputVersion)) {
       throw new Error('Generation source input version or set mismatch.');
     }
     if (review) {
@@ -54,6 +54,7 @@ function validateJournal(j: GenerationJournal): void {
     if (s.stageKind === 'body' || s.stageKind === 'source_coverage') {
       if (!j.ledgerRef || !same(input.ledger?.ref, j.ledgerRef)) throw new Error('Generation exact ledger reference missing.');
     }
+    if (s.stageKind === 'body' && (!j.writingDraftRef || !same(input.writingDraft?.ref, j.writingDraftRef) || typeof input.writingDraft?.text !== 'string')) throw new Error('Generation exact writing draft reference missing.');
     if (s.stageKind === 'source_coverage' || s.stageKind === 'association') {
       if (!Array.isArray(input.bodies) || !same(input.bodies.map((body: { bodyRef: unknown }) => body.bodyRef), j.bodies)) {
         throw new Error('Generation exact input bodies mismatch.');
@@ -74,7 +75,8 @@ function validateJournal(j: GenerationJournal): void {
       : s.stageKind === 'source_ledger' ? s.ledgerWrites : s.coverageWrites;
     const total = (writes?.length ?? 0) + (s.entityWrites?.length ?? 0);
     if (s.committed > total || s.state === 'completed' && s.committed !== total
-      || ['prepared_writes', 'completed'].includes(s.state) && writes === undefined
+      || ['prepared_writes', 'completed'].includes(s.state) && s.stageKind !== 'body_draft' && writes === undefined
+      || s.stageKind === 'body_draft' && s.state === 'prepared_writes'
       || ['archived', 'prepared_writes', 'completed', 'failed'].includes(s.state) !== !!s.outcomeRef
       || s.stageKind !== 'body' && s.bodyWrites || s.stageKind !== 'association' && (s.associationWrites || s.entityWrites)
       || s.stageKind !== 'source_ledger' && s.ledgerWrites || s.stageKind !== 'source_coverage' && s.coverageWrites) throw new Error('Invalid generation publication state.');
@@ -92,6 +94,12 @@ function validateJournal(j: GenerationJournal): void {
       if (!same(j.coverageRef, { coverageId: write.coverageId, revisionId: write.revision.revisionId, digest: write.revision.digest })) throw new Error('Generation committed coverage reference mismatch.');
     }
   }
+  const writer = j.stages.find(s => s.stageKind === 'body_draft');
+  if (writer?.state === 'completed') {
+    const ref = j.writingDraftRef;
+    if (!ref || ref.runId !== j.runId || ref.invocationId !== writer.invocationId || ref.requestDigest !== writer.requestDigest
+      || ref.archiveDigest !== writer.outcomeRef?.digest) throw new Error('Generation completed writing draft identity mismatch.');
+  } else if (j.writingDraftRef) throw new Error('Generation writing draft reference precedes completion.');
   const body = j.stages.find(s => s.stageKind === 'body');
   if (body) {
     const expected = (body.bodyWrites ?? []).slice(0, body.committed).map(w => {
@@ -130,7 +138,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 4) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 5) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -194,7 +202,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
-      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v4 does not decode legacy dispatch claims.' });
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v5 does not decode legacy dispatch claims.' });
     }
     return { current, unsupported, unavailable, archiveChecks };
   }
@@ -208,7 +216,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
       if (old) {
         const immutable = (j: GenerationJournal) => ({ runId: j.runId, mode: j.mode, createdAt: j.createdAt, actor: j.actor,
           sources: j.sources, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
-        for (const key of ['ledgerRef', 'coverageRef', 'sourceCoverageDecisionRef'] as const) {
+        for (const key of ['writingDraftRef', 'ledgerRef', 'coverageRef', 'sourceCoverageDecisionRef'] as const) {
           if (old[key] && !same(old[key], next[key])) throw new Error('Generation pinned review identity changed.');
         }
         if (old.mode !== 'generate' && !same(old.bodies, next.bodies)) throw new Error('Generation review/rebuild bodies changed.');

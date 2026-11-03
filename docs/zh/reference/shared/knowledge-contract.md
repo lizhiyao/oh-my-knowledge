@@ -7,15 +7,20 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v4` |
+| 生产流程 | `knowledge-body-first/v5` |
 | 来源清单 prompt | `knowledge-source-ledger-generation/v3` |
-| 正文 prompt | `knowledge-body-generation/v10` |
-| 来源覆盖 prompt | `knowledge-source-coverage-generation/v4` |
+| 写作稿 prompt | `knowledge-writing-draft/v1` |
+| 写作稿 profile 摘要 | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
+| 写作稿结构线协议摘要 | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
+| 写作稿输入 | `knowledge-writing-draft-input/v1` |
+| 有据正文输入 | `knowledge-body-generation-input/v3` |
+| 正文 prompt | `knowledge-body-generation/v15` |
+| 来源覆盖 prompt | `knowledge-source-coverage-generation/v5` |
 | 关联 prompt | `knowledge-association-generation/v8` |
-| 正文 profile 摘要 | `sha256:46fb6f7ecb1441950644cf09092383f5f97d656f5af3bcc735f50145b7ecd35a` |
+| 正文 profile 摘要 | `sha256:e3d01a50ebec1af22b4d30dcf3e6bb15c4bb07f5b8554d99c67c101effff641a` |
 | 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | 来源清单 profile 摘要 | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
-| 来源覆盖 profile 摘要 | `sha256:969a4c2ae173f3c972eebe3ad09aaeaeb248b964a7c19bee812988c0263e81c8` |
+| 来源覆盖 profile 摘要 | `sha256:f9b081a4a7511c7424e6f9116a9e5cad418d18f0626403620d37f399650c022e` |
 | 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
 | 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
 | 来源清单结构线协议摘要 | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
@@ -27,7 +32,7 @@
 | 复核与使用反馈历史 Schema | `1` |
 | 跨知识关系历史 Schema | `1` |
 | 知识图谱投影 Schema | `3` |
-| 生成日志 Schema | `4` |
+| 生成日志 Schema | `5` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |
 | 实体历史 Schema | `2` |
@@ -35,7 +40,7 @@
 | 来源投影 | `knowledge-window-v3` |
 | 来源生成输入 | `knowledge-source-generation-input/v2` |
 | 保留的关联输入封装 | `knowledge-source-generation-input/v1` |
-| 默认来源导入运行身份 | `knowledge-source-set-import-run/v2` |
+| 默认来源导入运行身份 | `knowledge-source-set-import-run/v3` |
 | 完整原生归档容量 | 536,870,887 字节 |
 | 默认检索响应预算（可调） | 65,536 字节 |
 | 最小检索响应预算 | 1,024 字节 |

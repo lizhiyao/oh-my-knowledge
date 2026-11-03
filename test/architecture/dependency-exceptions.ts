@@ -53,6 +53,7 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/body-generation.ts → knowledge/extraction/source-input.ts',
   'knowledge/application/body-generation.ts → knowledge/extraction/source-review-input.ts',
   'knowledge/application/body-generation.ts → knowledge/extraction/source-review-wire.ts',
+  'knowledge/application/body-generation.ts → knowledge/extraction/writing-draft.ts',
   'knowledge/application/library.ts → knowledge/entity-linking/entity-link-source.ts',
   'knowledge/application/local-source-host.ts → knowledge/adapters/project-source-reader.ts',
   'knowledge/application/local-source-host.ts → knowledge/adapters/source-store.ts',
@@ -145,7 +146,7 @@ export const REGISTERED_RUNTIME_CYCLES = [
   {
     domains: ['knowledge/adapters', 'knowledge/application', 'knowledge/entity-linking', 'knowledge/extraction'],
     edges: KNOWLEDGE_AGGREGATE_RUNTIME_EDGES,
-    rationale: '正文生成应用装配独立 journal/custody 适配器；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核／关系账本；关系应用只复用既有正文摘要叶子，纯关系契约不反向依赖宿主；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
+    rationale: '正文生成应用装配独立 journal/custody 适配器及纯写作 wire/profile 叶子；local 与来源组合根装配 Source3 读取、捕获、变化清单和独立复核／关系账本；关系应用只复用既有正文摘要叶子，纯关系契约不反向依赖宿主；适配器不反向调用应用用例，迁移适配器仅显式消费历史 Source2 decoder；适配器仅消费纯 profile 类型、journal schema 与原始 outcome 校验/序列化叶子，不反向调用生成用例。保留冻结 typed 测量的只读 inspect/replay 与独立实体测量，退役旧默认多阶段生成宿主。完整四域 SCC 及逐边登记保持精确；Trace 仍仅由适配器消费，不引入观测装配反向边。',
   },
   {
     domains: ['observe', 'observe/diagnosis'],
@@ -259,7 +260,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: '813d8c2e625bc1f131b4df2ae9ee4064205adcc217f10de15715c2f0f009b081',
+    sourceSha256: '5d44ebefb9d9feed42e1309a563f28205b19495fc8336e3993884c5e8ffb58b5',
     rationale: 'Documentation generation loads only fixed compiled current body, Source3, independent review/relation contracts and the Graph3 version constant to derive identities and limits. All file arguments, including relations.js and application/graph.js, are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {

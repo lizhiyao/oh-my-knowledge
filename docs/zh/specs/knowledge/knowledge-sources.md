@@ -51,11 +51,11 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 ## 发送与默认导入身份 {#generation}
 
-完整 system 加模型 input 另有 1 MiB 上限，富化后的清单、来源和正文不能静默截断。默认流程使用 journal Schema 4、`knowledge-body-first/v4` 及 `knowledge-source-generation-input/v2`，先盘点完整获准来源，再生成正文、查漏并等待实际决定。关联使用 prompt8，仅提示词／profile／request 身份改变（**BREAKING-COMPARABILITY**）；wire3 和独立的 `knowledge-source-generation-input/v1` envelope 保持不变，它不是 journal 的默认输入版本；本次提示词变更不要求数据迁移。可携带材料／归因与所有已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 不进入模型输入。
+完整 system 加模型 input 另有 1 MiB 上限，富化后的来源、清单、草稿和正文不能静默截断。默认 journal Schema5／workflow5 保留来源复核 manifest input2，新增写作 input1 和有据正文 input3，关联阶段独立使用 input1。先盘点完整获准来源，再写未核验草稿、回原 Source3 生成正文、查漏，等待实际决定后才进入关联。本次属于 **BREAKING-SCHEMA/API/COMPARABILITY**，须使用新工作区或显式独立副本迁移；关联自身的 prompt8／wire3 及数据格式保持不变。可携带材料／归因与所有已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 留在本地。
 
 `prepare-generation` 零模型准备首阶段；核对完整 system、input、模型、producer proof 和 requestDigest 后，`generate --confirm-request` 只发送来源盘点。每个后续阶段单独核对并以 `continue-stage` 确认。覆盖完成后，实际 Agent／人须记录绑定精确清单、覆盖、正文和完整来源的决定；关联准备及 claim 前重验，不能以 capture、摘要确认或模型 all-covered 代替。重建同样要求精确决定，不能只从正文引文推断完整来源。普通宿主继续只移除已观测为逐工具调用变化的 CODEX_TOOL_CALL_ID，proof 与执行环境一致；其它环境值及历史冻结身份保持。
 
-`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v2` 绑定 workflow4 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；旧 journal3 由匹配旧构建处理。
+`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v3` 绑定 workflow5 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；旧 journal4 由匹配旧构建处理。
 
 ## 变化与删除 {#updates}
 
@@ -73,6 +73,6 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 预检在创建目标前核对源／目标身份、容量及完整恢复记录。固定迁移计划文档最多 128 MiB（含 CLI 换行），导出、adapter 接纳与 CLI reader 使用同一容量。已归属的中断迁移复用同一计划恢复，未完成目标不能当普通工作区打开。包括已打开实例在内，普通写入均在共享工作区锁内重验此边界；迁移仅在同步应用期间持有绑定计划的显式临时写入能力。已完成输出被改删时不悄悄复活。启动阶段所有者不明的锁保持拒绝，须明确核实所有者。回退使用未改动的旧工作区与匹配构建，不依靠兼容 reader。周边契约见[存储布局](../shared/storage-layout-spec.md#explicit-knowledge-workspace)。
 
-`migrate-workflow` 是独立的 workflow3→4 复制入口，不改 Source3 摘要算法。仅支持健康的 sources3、items3、entities2、associations2、reviews1 和 tags 六类活动数据，保留所有字节、身份、历史和既有意见；这些意见不变成新的来源覆盖批准。旧 generation-journals（含 outcomes）、auto-extraction、既有 migration 和旧 marker 只归档，匹配旧包一并保留。包含 library、carriers、entity-links 或其它不受支持内容时须保留旧目录并报告 unsupported，不静默丢弃或改指向；并非所有历史工作区都可用此入口。
+`migrate-workflow` 是独立的 workflow4→5 复制入口，不改 Source3 摘要算法。仅支持健康的 sources3、items3、entities2、associations2、reviews1 和 tags 六类活动数据，保留所有字节、身份、历史和既有意见；这些意见不变成新的来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 和旧 marker 只归档，匹配旧包一并保留。包含 library、carriers、entity-links 或其它不受支持内容时须保留旧目录并报告 unsupported，不静默丢弃或改指向；并非所有历史工作区都可用此入口。
 
 计划绑定实际源／目标、完整 inventory／摘要、实际 actor、旧包及容量。`--plan-only` 零写入；应用只认固定 `--input` 和精确 `--confirm-plan`，在双锁及完成哨兵下复制，未知临时文件安全停止。只恢复同计划的已确认步骤／回执；完成后目标增改删均拒绝覆盖，unknown 旧调用不重发。回退用旧目录及匹配构建。

@@ -12,11 +12,12 @@ import { readTraceSource } from '../../src/knowledge/adapters/trace-source-reade
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 
 /** Authored protocol responses, never a model quality observation. */
-export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' | 'body' | 'source_coverage' | 'association') {
+export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' | 'body_draft' | 'body' | 'source_coverage' | 'association') {
   const data = JSON.parse(input) as { excerpts?: EvidenceExcerpt[]; sources?: { sourceKey: string; excerpts: EvidenceExcerpt[] }[];
     manifest?: SourceReviewManifest; units?: { unitKey: string; unitKind: string; text: string }[]; ledger?: { data: SourceLedgerData };
     targets?: { targetKey: string; target: SourceCoverageData['checks'][number]['target'] }[];
     bodies?: { bodyKey: string; segments?: { segmentId: string; text: string }[]; content: { segments: { segmentId: string; text: string }[] } }[] };
+  if (stage === 'body_draft') return { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified authored writing fixture; grounding must read original sources.' };
   if (stage === 'source_ledger') {
     const units = data.units ?? [], retained = units.filter(unit => unit.unitKind === 'excerpt_text');
     return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,

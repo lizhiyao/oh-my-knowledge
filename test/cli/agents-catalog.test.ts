@@ -132,7 +132,7 @@ describe('omk agents 与本机登记表扩展', () => {
     expect(result.capture).toMatchObject({ sendAuthorization: 'not_granted', saveManifest: { items: [{ reused: false }] } });
     expect(result.sources).toEqual(result.capture.saveManifest.items.map(({ snapshotId, sourceVersion }: { snapshotId: string; sourceVersion: string }) => ({ snapshotId, sourceVersion })));
     expect(result.generationInput).toEqual({ sources: result.sources }); expect(result.modelCalls).toBe(0);
-    expect(result.prepared.journal).toMatchObject({ schemaVersion: 4, workflowId: 'knowledge-body-first/v4', status: 'active', bodies: [],
+    expect(result.prepared.journal).toMatchObject({ schemaVersion: 5, workflowId: 'knowledge-body-first/v5', status: 'active', bodies: [],
       sources: result.sources.map((source: unknown) => expect.objectContaining(source)), stages: [{ stageKind: 'source_ledger', state: 'prepared' }] });
     const stage = result.prepared.journal.stages[0];
     expect(stage.input).toContain('Alpha 使用 Beta'); expect(stage.input).not.toContain('中'); expect(stage.system.length).toBeGreaterThan(0);
@@ -161,7 +161,7 @@ describe('omk agents 与本机登记表扩展', () => {
     expect(saved.nextAction).toBe('prepare_next_stage');
     const bodyPrepared = JSON.parse((await runCommand(AgentsCommand, selectedArgs, options)).stdout);
     expect(bodyPrepared.prepared.journal.stages.map((phase: { stageKind: string; state: string }) => [phase.stageKind, phase.state]))
-      .toEqual([['source_ledger', 'completed'], ['body', 'prepared']]);
+      .toEqual([['source_ledger', 'completed'], ['body_draft', 'prepared']]);
     expect(bodyPrepared.nextCommand).toContain('omk observe knowledge continue-stage');
     expect(bodyPrepared.nextCommand).toContain(`--generation ${bodyPrepared.prepared.journal.generation}`);
     expect(bodyPrepared.nextCommand).not.toContain('knowledge generate'); expect(invoke).toHaveBeenCalledOnce();
