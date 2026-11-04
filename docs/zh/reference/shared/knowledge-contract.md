@@ -14,10 +14,10 @@
 | 写作稿结构线协议摘要 | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
 | 写作稿输入 | `knowledge-writing-draft-input/v1` |
 | 有据正文输入 | `knowledge-body-generation-input/v3` |
-| 正文 prompt | `knowledge-body-generation/v16` |
+| 正文 prompt | `knowledge-body-generation/v17` |
 | 来源覆盖 prompt | `knowledge-source-coverage-generation/v6` |
 | 关联 prompt | `knowledge-association-generation/v8` |
-| 正文 profile 摘要 | `sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1` |
+| 正文 profile 摘要 | `sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65` |
 | 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
 | 来源清单 profile 摘要 | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
 | 来源覆盖 profile 摘要 | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |

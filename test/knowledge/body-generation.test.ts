@@ -446,8 +446,8 @@ describe('source-first generation and zero-model recovery', () => {
   });
 
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v16', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:1f2bb6bd287ba3b503f5018e511d691d5cb03f9bc755b75c4c1e66b566a8c4b1',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v17', outputName: 'knowledge_body_v2',
+      profileId: 'sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65',
       wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
