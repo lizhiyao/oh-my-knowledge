@@ -34,7 +34,7 @@ describe('source review wire and deterministic unit compilation', () => {
       profileId: 'sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c',
       wireId: 'sha256:e04d50b8fe84b48339888651df392b10a5580bf37527a7a64ffd2d85877c2e67' });
     expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v6' });
-    expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:d119c1b93870d7588d338f42698e74b3219b5b9e8b539fe77cf8c705fbd23b75');
+    expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:363f93c915f4bf6081a72ba0c4199340edfb942a78cf56f4813c83a1c3df37e1');
     expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80');
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
