@@ -11,7 +11,8 @@ import { generationTextDigest } from '../extraction/body-generation-wire.js';
 import { sourceSetPreimage } from '../sources.js';
 import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
 import { validateSourceReviewManifest } from '../source-review-history.js';
-import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION } from '../extraction/source-input.js';
+import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, assertBodyGenerationSources } from '../extraction/source-input.js';
+import { SOURCE_LEDGER_INPUT_VERSION, restoreSourceLedgerInput } from '../extraction/source-review-input.js';
 
 const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
@@ -40,17 +41,20 @@ function validateJournal(j: GenerationJournal): void {
         return { snapshotId: source?.snapshotId, sourceVersion: source?.sourceVersion };
       }) : [];
     if ((review ? manifest!.sourceSetId : input.sourceSetId) !== j.sourceSetId || !same(inputRefs, refs)
-      || (review ? manifest!.inputVersion : input.inputVersion) !== (s.stageKind === 'association' ? SOURCE_GENERATION_INPUT_VERSION : s.stageKind === 'body_draft' ? WRITING_DRAFT_INPUT_VERSION : s.stageKind === 'body' ? BODY_GENERATION_INPUT_VERSION : j.inputVersion)) {
+      || (s.stageKind === 'source_coverage' ? manifest!.inputVersion : input.inputVersion) !== (s.stageKind === 'source_ledger' ? SOURCE_LEDGER_INPUT_VERSION
+        : s.stageKind === 'association' ? SOURCE_GENERATION_INPUT_VERSION : s.stageKind === 'body_draft' ? WRITING_DRAFT_INPUT_VERSION : s.stageKind === 'body' ? BODY_GENERATION_INPUT_VERSION : j.inputVersion)) {
       throw new Error('Generation source input version or set mismatch.');
     }
     if (review) {
       validateSourceReviewManifest(manifest!);
-      if (!Array.isArray(input.units) || input.units.length !== manifest!.units.length || input.units.some((unit: { text?: unknown }, index: number) => {
+      const units = s.stageKind === 'source_ledger' ? restoreSourceLedgerInput(input).units : input.units;
+      if (!Array.isArray(units) || units.length !== manifest!.units.length || units.some((unit: { text?: unknown }, index: number) => {
         const { text, ...descriptor } = unit;
         return typeof text !== 'string' || !same(descriptor, manifest!.units[index])
           || text.length !== manifest!.units[index].utf16Length || generationTextDigest(text) !== manifest!.units[index].textDigest;
       })) throw new Error('Generation source unit manifest mismatch.');
     }
+    if (s.stageKind === 'body') assertBodyGenerationSources(input);
     if (s.stageKind === 'body' || s.stageKind === 'source_coverage') {
       if (!j.ledgerRef || !same(input.ledger?.ref, j.ledgerRef)) throw new Error('Generation exact ledger reference missing.');
     }
@@ -138,7 +142,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 5) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 6) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -202,7 +206,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
-      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v5 does not decode legacy dispatch claims.' });
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v6 does not decode legacy dispatch claims.' });
     }
     return { current, unsupported, unavailable, archiveChecks };
   }

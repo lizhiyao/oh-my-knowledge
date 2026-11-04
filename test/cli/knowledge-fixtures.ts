@@ -13,18 +13,22 @@ import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 
 /** Authored protocol responses, never a model quality observation. */
 export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' | 'body_draft' | 'body' | 'source_coverage' | 'association') {
-  const data = JSON.parse(input) as { excerpts?: EvidenceExcerpt[]; sources?: { sourceKey: string; excerpts: EvidenceExcerpt[] }[];
-    manifest?: SourceReviewManifest; units?: { unitKey: string; unitKind: string; text: string }[]; ledger?: { data: SourceLedgerData };
+  type Passages = { passageId: string; text: string }[];
+  type Excerpt = EvidenceExcerpt & { passages?: Passages };
+  const data = JSON.parse(input) as { excerpts?: Excerpt[]; sources?: { sourceKey: string; excerpts: Excerpt[] }[];
+    manifest?: SourceReviewManifest; passageIndexDigest?: string; units?: { unitKey: string; unitKind: string; text: string; passages?: Passages }[]; ledger?: { data: SourceLedgerData };
     targets?: { targetKey: string; target: SourceCoverageData['checks'][number]['target'] }[];
     bodies?: { bodyKey: string; segments?: { segmentId: string; text: string }[]; content: { segments: { segmentId: string; text: string }[] } }[] };
   if (stage === 'body_draft') return { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified authored writing fixture; grounding must read original sources.' };
   if (stage === 'source_ledger') {
     const units = data.units ?? [], retained = units.filter(unit => unit.unitKind === 'excerpt_text');
-    return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+    return { responseKind: 'knowledge-source-ledger', schemaVersion: 3,
+      passageIndexDigest: data.passageIndexDigest,
       unitDispositions: units.map(unit => ({ unitKey: unit.unitKey, disposition: unit.unitKind === 'excerpt_text' ? 'retain' : 'pending',
         reason: 'Authored protocol inventory, not semantic acceptance.' })),
       items: retained.map(unit => ({ itemId: unit.unitKey, statement: 'The selected excerpt contains this authored source assertion.', disposition: 'retain',
-        reason: 'Authored wire fixture.', equivalentItemIds: [], evidence: [{ unitKey: unit.unitKey, quote: unit.text, contextBefore: null, contextAfter: null }], facets: [] })), limitations: ['Authored protocol output, not a model quality observation.'] };
+        reason: 'Authored wire fixture.', equivalentItemIds: [], evidence: [{ startPassageId: unit.passages![0].passageId,
+          endPassageId: unit.passages!.at(-1)!.passageId }], facets: [] })), limitations: ['Authored protocol output, not a model quality observation.'] };
   }
   if (stage === 'source_coverage') {
     const units = data.units ?? [], bodies = data.bodies ?? [];
@@ -44,9 +48,10 @@ export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' 
   }
   const excerpt = (data.excerpts ?? data.sources?.[0].excerpts ?? [])[0];
   const sourceKey = data.sources?.[0].sourceKey ?? 's0';
-  if (stage === 'body') return { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{ proposalId: 'p1', title: '选定来源的完整条件', requiredContexts: [],
-    segments: [{ segmentId: 's1', text: `来源报告：${excerpt.text}。事实发生时间及未来适用范围未知。`, evidence: [{ evidenceRef: excerpt.evidenceRef,
-      quote: excerpt.text, contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }] };
+  if (stage === 'body') return { responseKind: 'knowledge-body-generation', schemaVersion: 3, passageIndexDigest: data.passageIndexDigest, proposals: [{ proposalId: 'p1', title: '选定来源的完整条件', requiredContexts: [],
+    segments: [{ segmentId: 's1', text: `来源报告：${excerpt.passages!.map(part => part.text).join('')}。事实发生时间及未来适用范围未知。`,
+      evidence: [{ startPassageId: excerpt.passages![0].passageId, endPassageId: excerpt.passages!.at(-1)!.passageId,
+        basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }] };
   return { responseKind: 'knowledge-association-generation', schemaVersion: 3,
     catalogs: [{ sourceKey, entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: `e${index}`, label, description: `所选来源中的${label}`, qualifiers: [], identityStatus: 'proposed',
       possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentLink: null, collectionLink: null,

@@ -31,7 +31,7 @@ export const GenerationStageSchema = z.strictObject({
   coverageWrites: z.array(SourceCoverageWriteSchema.options[0]).length(1).optional(),
 });
 export const GenerationJournalSchema = z.strictObject({
-  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(5), workflowId: z.literal(WORKFLOW_ID),
+  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(6), workflowId: z.literal(WORKFLOW_ID),
   inputVersion: z.literal(SOURCE_REVIEW_INPUT_VERSION), sourceSetId: digest,
   runId: uuid, generation: z.number().int().positive(), mode: z.enum(['generate', 'review_sources', 'rebuild_associations']),
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,

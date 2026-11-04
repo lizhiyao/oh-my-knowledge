@@ -31,6 +31,8 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/adapters/generation-journal-store.ts → knowledge/extraction/generation-journal.ts',
   'knowledge/adapters/generation-journal-store.ts → knowledge/extraction/native-outcome.ts',
   'knowledge/adapters/generation-journal-store.ts → knowledge/extraction/source-input.ts',
+  // Journal6 restores ledger passages through a pure decoder; it does not dispatch or instantiate a use case.
+  'knowledge/adapters/generation-journal-store.ts → knowledge/extraction/source-review-input.ts',
   'knowledge/adapters/source-review-original.ts → knowledge/extraction/body-generation-wire.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/generation-policy.ts',
   'knowledge/adapters/run-store.ts → knowledge/extraction/model-wire.ts',

@@ -7,32 +7,32 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v5` |
-| Source ledger prompt | `knowledge-source-ledger-generation/v3` |
+| Production workflow | `knowledge-body-first/v6` |
+| Source ledger prompt | `knowledge-source-ledger-generation/v4` |
 | Writing draft prompt | `knowledge-writing-draft/v1` |
 | Writing draft profile digest | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
 | Writing draft structural wire digest | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
 | Writing draft input | `knowledge-writing-draft-input/v1` |
-| Grounded body input | `knowledge-body-generation-input/v3` |
-| Body prompt | `knowledge-body-generation/v17` |
+| Grounded body input | `knowledge-body-generation-input/v4` |
+| Body prompt | `knowledge-body-generation/v18` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v6` |
 | Association prompt | `knowledge-association-generation/v8` |
-| Body profile digest | `sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65` |
+| Body profile digest | `sha256:d119c1b93870d7588d338f42698e74b3219b5b9e8b539fe77cf8c705fbd23b75` |
 | Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
-| Source ledger profile digest | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
+| Source ledger profile digest | `sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c` |
 | Source coverage profile digest | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
-| Body structural wire digest | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
+| Body structural wire digest | `sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d` |
 | Association structural wire digest | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
-| Source ledger structural wire digest | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
+| Source ledger structural wire digest | `sha256:e04d50b8fe84b48339888651df392b10a5580bf37527a7a64ffd2d85877c2e67` |
 | Source coverage structural wire digest | `sha256:051de277225cfb10d2016a269ec2ec04dad3a72ea2ccf89cd1e7bd4c15abe3a8` |
-| Body response Schema | `2` |
+| Body response Schema | `3` |
 | Association response Schema | `3` |
 | Knowledge history Schema | `3` |
 | Association history Schema | `2` |
 | Review and use feedback history Schema | `1` |
 | Cross-knowledge relation history Schema | `1` |
 | Knowledge graph projection Schema | `3` |
-| Generation journal Schema | `5` |
+| Generation journal Schema | `6` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |
 | Entity history Schema | `2` |

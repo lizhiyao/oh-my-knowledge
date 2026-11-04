@@ -3,7 +3,7 @@ import type { KnowledgeStore, KnowledgeWrite } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { SourceStore } from '../source-store.js';
 import { sourceSetPreimage, type SourceRef, type SourceSnapshot } from '../sources.js';
-import { generationImportRunId, generationSourceInput, SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, WORKFLOW_ID } from '../extraction/source-input.js';
+import { generationImportRunId, generationSourceInput, bodyGenerationSources, SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, WORKFLOW_ID } from '../extraction/source-input.js';
 import type { EntityAnalysisStore, EntityAnalysisWrite } from '../entities/contracts.js';
 import type { KnowledgeAssociationStore, KnowledgeAssociationWrite } from '../associations.js';
 import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferences } from '../associations.js';
@@ -141,7 +141,7 @@ export class BodyGenerationApplication {
   }
   private bodyInput(journal: GenerationJournal): string {
     return canonicalJson({ inputVersion: BODY_GENERATION_INPUT_VERSION, sourceSetId: journal.sourceSetId,
-      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput), ledger: this.ledger(journal),
+      ...bodyGenerationSources(journal.sources.map(source => this.snapshot(source))), ledger: this.ledger(journal),
       writingDraft: this.writingDraft(journal) });
   }
   private coverageInput(journal: GenerationJournal): string {
@@ -157,13 +157,13 @@ export class BodyGenerationApplication {
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
   }
   private seed(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId: string, mode: GenerationJournal['mode'], bodies: KnowledgeBodyRef[] = []) {
-    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow5 run.');
+    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow6 run.');
     const sourceSet = sourceSetPreimage(sources);
     const snapshots = sourceSet.sources.map(ref => {
       const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
       if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`); return source.snapshot;
     });
-    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 5 as const, workflowId: WORKFLOW_ID,
+    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 6 as const, workflowId: WORKFLOW_ID,
       inputVersion: SOURCE_REVIEW_INPUT_VERSION, sourceSetId: generationTextDigest(canonicalJson(sourceSet)),
       runId, generation: 1, mode, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
       sources: snapshots.map(snapshot => ({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(snapshot)) })),

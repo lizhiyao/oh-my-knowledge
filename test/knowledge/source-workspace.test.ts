@@ -18,7 +18,7 @@ it('checks an empty explicit workspace without creating it, and refuses old gene
   const parent = temp(), root = join(parent, 'not-created');
   assertSourceWorkspaceWritable(root); expect(existsSync(root)).toBe(false);
   mkdirSync(join(root, 'generation-journals'), { recursive: true });
-  const path = join(root, 'generation-journals', `${randomUUID()}.json`), original = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 2 });
+  const path = join(root, 'generation-journals', `${randomUUID()}.json`), original = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 5 });
   writeFileSync(path, original);
   expect(() => assertSourceWorkspaceWritable(root)).toThrow('knowledge_storage_unsupported'); expect(readFileSync(path, 'utf8')).toBe(original);
   expect(existsSync(join(root, 'sources'))).toBe(false);

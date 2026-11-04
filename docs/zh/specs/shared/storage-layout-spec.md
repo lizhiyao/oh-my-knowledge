@@ -117,14 +117,14 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1：来源盘点分析及模型原件引用；[详细契约](../knowledge/knowledge-source-review.md) |
 | `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1：绑定精确清单／正文的覆盖分析、实际决定、撤销及收据；[详细契约](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
-| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 5、流程 `knowledge-body-first/v5`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
+| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 6、流程 `knowledge-body-first/v6`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变清单、写作稿、正文、覆盖或关联原生完整返回，分别绑定请求与摘要 |
 | `library/<object-id>.json` | 既有 `knowledge-library-object-history` Schema 1，明确确认的跨窗组织 |
 | `entity-links/<review-id>.json` | 既有 `entity-link-invocation-history` Schema 1，独立跨窗建议／决定／应用日志 |
 
 来源、标签和载体版本各有契约。读取已存正文不以实体目录或投影成功为前提。投影绑定 `{knowledgeId, revisionId, bodyDigest}`，修改／重建／审查投影不改正文、不继承正文 retain。损坏／过期／被拒投影明确显示。
 
-默认 workflow5／journal5／input2 依次记录来源盘点、未核验写作稿、有据正文、来源覆盖及关联。两份 Schema1 历史保持模型分析与实际决定分离；关联阶段仍使用原 v1 envelope，不能将其等同于 journal 的默认 input2。准备及 claim 前须核对精确决定，模型分析不自动批准。
+默认 workflow6／journal6 保留 canonical manifest／input2，分别使用独立清单 input1、写作 input1、正文 input4、覆盖 input2 和关联阶段 v1 envelope，依次记录来源盘点、草稿、有据正文、覆盖及关联。两份 Schema1 历史分开模型意见与实际决定；准备及 claim 前须核对精确决定，模型分析不自动批准。
 
 Prepare 零模型记录当前阶段的完整请求；generate 首次只派发来源清单，后续写作稿、有据正文、覆盖及关联分别准备和确认。草稿只归档，不保存为 canonical 知识；正文保持待审。每阶段派发前 claim、接纳前完整归档，宿主组合不冒充原生原件；journal 的 writingDraftRef 将正文输入绑定到同次精确草稿原件。`resume` 只挂接原证据并重放固定写入；已 claim 无原件保持未知，禁止重发，完全相同的 completed 重放零调用。流程完成不证明内容、关联、来源保真或真值。
 
@@ -138,7 +138,7 @@ Source3 还通过[独立副本显式迁移](../knowledge/knowledge-sources.md#mi
 
 所有写入共享 `.knowledge-write.lock` 及适用的 CAS／幂等收据；争用报告 `knowledge_workspace_busy`，只恢复证实本机退出的 owner，拒绝存储目录软链。可调的检索默认 65536 UTF-8 字节计算整个响应及换行，不是存储、正文、模型上下文或金额上限；producer 与 store 容量仍分别显式检查。运行身份来自[生成契约](../../reference/shared/knowledge-contract.md)；历史 typed study 核对／重放保留冻结身份与结论，当前构建零调用拒绝旧 typed 生成计划。工作区记录可能包含私有来源与输出。
 
-`migrate-workflow` 只复制健康 sources3／items3／entities2／associations2／reviews1／tags 六类活动文件，保留全部原字节、历史、身份及既有意见；不将旧 review／retain 当作来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 与旧 marker 仅存于迁移归档，匹配构建一并保留。library／carriers／entity-links 等不在此切片支持范围，应拒绝并保留旧目录。完成哨兵标记 `knowledge-workflow4-to5`，未完成目标拒绝普通访问和写入；固定计划的步骤／回执可续，改删的已完成输出不覆盖或复活。旧自动调度不会因迁移重新启用。
+`migrate-workflow` 只复制健康 sources3／items3／entities2／associations2／reviews1／tags 六类活动文件，保留全部原字节、历史、身份及既有意见；不将旧 review／retain 当作来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 与旧 marker 仅存于迁移归档，匹配构建一并保留。library／carriers／entity-links 等不在此切片支持范围，应拒绝并保留旧目录。完成哨兵标记 `knowledge-workflow5-to6`，未完成目标拒绝普通访问和写入；固定计划的步骤／回执可续，改删的已完成输出不覆盖或复活。旧自动调度不会因迁移重新启用。
 
 ## 为什么这样命名
 

@@ -7,32 +7,32 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v5` |
-| 来源清单 prompt | `knowledge-source-ledger-generation/v3` |
+| 生产流程 | `knowledge-body-first/v6` |
+| 来源清单 prompt | `knowledge-source-ledger-generation/v4` |
 | 写作稿 prompt | `knowledge-writing-draft/v1` |
 | 写作稿 profile 摘要 | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
 | 写作稿结构线协议摘要 | `sha256:ef64aa65dbfd1816b4e8c22160aa9ca579bf0ab550102526db648f788b88fca8` |
 | 写作稿输入 | `knowledge-writing-draft-input/v1` |
-| 有据正文输入 | `knowledge-body-generation-input/v3` |
-| 正文 prompt | `knowledge-body-generation/v17` |
+| 有据正文输入 | `knowledge-body-generation-input/v4` |
+| 正文 prompt | `knowledge-body-generation/v18` |
 | 来源覆盖 prompt | `knowledge-source-coverage-generation/v6` |
 | 关联 prompt | `knowledge-association-generation/v8` |
-| 正文 profile 摘要 | `sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65` |
+| 正文 profile 摘要 | `sha256:d119c1b93870d7588d338f42698e74b3219b5b9e8b539fe77cf8c705fbd23b75` |
 | 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
-| 来源清单 profile 摘要 | `sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db` |
+| 来源清单 profile 摘要 | `sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c` |
 | 来源覆盖 profile 摘要 | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
-| 正文结构线协议摘要 | `sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2` |
+| 正文结构线协议摘要 | `sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d` |
 | 关联结构线协议摘要 | `sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226` |
-| 来源清单结构线协议摘要 | `sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6` |
+| 来源清单结构线协议摘要 | `sha256:e04d50b8fe84b48339888651df392b10a5580bf37527a7a64ffd2d85877c2e67` |
 | 来源覆盖结构线协议摘要 | `sha256:051de277225cfb10d2016a269ec2ec04dad3a72ea2ccf89cd1e7bd4c15abe3a8` |
-| 正文响应 Schema | `2` |
+| 正文响应 Schema | `3` |
 | 关联响应 Schema | `3` |
 | 知识历史 Schema | `3` |
 | 关联历史 Schema | `2` |
 | 复核与使用反馈历史 Schema | `1` |
 | 跨知识关系历史 Schema | `1` |
 | 知识图谱投影 Schema | `3` |
-| 生成日志 Schema | `5` |
+| 生成日志 Schema | `6` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |
 | 实体历史 Schema | `2` |
