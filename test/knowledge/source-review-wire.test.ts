@@ -1,16 +1,14 @@
-import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
-import { sourceSnapshotProjection, sourceVersionPreimage } from '../../src/knowledge/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
-import { sourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
+import { sourceReviewInput, sourceLedgerPassages } from '../../src/knowledge/extraction/source-review-input.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { checkGeneratedSourceCoverage, checkGeneratedSourceLedger, sourceCoverageModelInput, sourceLedgerModelInput,
   SOURCE_COVERAGE_GENERATION_PROFILE, SOURCE_LEDGER_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
 import { sourceReviewModelFixture } from './source-review-model-fixtures.js';
 
-const { source, metadataQuote, originalQuote, locator, ledgerOutput, body, bodyQuote,
+const { source, metadataQuote, locator, passageLocator, ledgerOutput, body, bodyQuote,
   coverageOutput, emptyCoverageOutput, ledger } = sourceReviewModelFixture();
 
 describe('source review wire and deterministic unit compilation', () => {
@@ -32,11 +30,11 @@ describe('source review wire and deterministic unit compilation', () => {
   });
 
   it('publishes strict, immutable new profiles whose model outputs cannot supply host offsets or acceptance', () => {
-    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v2', promptVersion: 'knowledge-source-ledger-generation/v3',
-      profileId: 'sha256:0b30b7aea7c8896434c08b6264d9ce8eefee8e0a3a1738b51ec94a2aa75f16db',
-      wireId: 'sha256:19ef35f73530a37d8ec056989fc5794c936eede9948b7c926438f73d272fc3f6' });
+    expect(SOURCE_LEDGER_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_ledger', outputName: 'knowledge_source_ledger_v3', promptVersion: 'knowledge-source-ledger-generation/v4',
+      profileId: 'sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c',
+      wireId: 'sha256:e04d50b8fe84b48339888651df392b10a5580bf37527a7a64ffd2d85877c2e67' });
     expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v6' });
-    expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65');
+    expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:363f93c915f4bf6081a72ba0c4199340edfb942a78cf56f4813c83a1c3df37e1');
     expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80');
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
@@ -45,7 +43,9 @@ describe('source review wire and deterministic unit compilation', () => {
     }
     expect(() => checkGeneratedSourceLedger(JSON.stringify({ ...ledgerOutput(), decisionKind: 'proceed_with_limits' }), [source])).toThrow(/wire rejected/);
     expect(JSON.stringify(SOURCE_LEDGER_GENERATION_PROFILE.wireSchema)).not.toContain('"itemIds"');
-    expect(() => checkGeneratedSourceLedger(JSON.stringify({ ...ledgerOutput(), schemaVersion: 1 }), [source])).toThrow(/wire rejected/);
+    for (const schemaVersion of [1, 2]) {
+      expect(() => checkGeneratedSourceLedger(JSON.stringify({ ...ledgerOutput(), schemaVersion }), [source])).toThrow(/wire rejected/);
+    }
     const oldIndex = ledgerOutput(); Object.assign(oldIndex.unitDispositions[0], { itemIds: ['identity'] });
     expect(() => checkGeneratedSourceLedger(JSON.stringify(oldIndex), [source])).toThrow(/wire rejected/);
     const offset = ledgerOutput(); Object.assign(offset.items[1].evidence[0], { start: 0 });
@@ -59,26 +59,39 @@ describe('source review wire and deterministic unit compilation', () => {
     expect(() => checkGeneratedSourceCoverage(JSON.stringify(oldTarget), [source], ledger(), [body()])).toThrow(/wire rejected/);
   });
 
-  it('preserves metadata custody and host UTF-16 positions while rejecting ambiguous or substituted units', () => {
-    const output = ledgerOutput(); output.items[1].evidence = [locator('s0/excerpt/0', 'Alpha', '🙂 ', ' happens')];
+  it('preserves metadata custody and host positions while rejecting forged or cross-unit passage references', () => {
+    const output = ledgerOutput();
     const saved = checkGeneratedSourceLedger(JSON.stringify(output), [source]);
-    expect(saved.items[1].evidence[0]).toEqual({ unitKey: 's0/excerpt/0', unitKind: 'excerpt_text', quote: 'Alpha', start: 3, end: 8 });
-    expect(saved.items[0].evidence[0]).toMatchObject({ unitKind: 'source_metadata', quote: metadataQuote });
-    output.items[1].evidence[0] = locator('s0/excerpt/0', 'Alpha');
-    expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow('ambiguous_quote');
-    output.items[1].evidence[0] = locator('s0/excerpt/0', metadataQuote);
-    expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow('quote_mismatch');
-    output.items[1].evidence[0] = locator('invented-unit', originalQuote);
-    expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow(/Unknown source review unit/);
+    expect(saved.items[1].evidence[0]).toEqual({ unitKey: 's0/excerpt/0', unitKind: 'excerpt_text',
+      quote: source.excerpts[0].text, start: 0, end: source.excerpts[0].text.length });
+    expect(saved.items[0].evidence[0]).toMatchObject({ unitKind: 'source_metadata', quote: expect.stringContaining(metadataQuote) });
+    output.items[1].evidence[0].startPassageId = 'invented';
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow('Unknown source passage');
+    output.items[1].evidence[0] = { startPassageId: output.items[0].evidence[0].startPassageId,
+      endPassageId: output.items[1].facets[0].evidence[0].endPassageId };
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(output), [source])).toThrow('Cross-unit');
+  });
 
-    const repeated = { ...source, excerpts: source.excerpts.map(excerpt => ({ ...excerpt, material: source.material })) };
-    repeated.sourceVersion = `sha256:${createHash('sha256').update(canonicalJson(sourceVersionPreimage(sourceSnapshotProjection(repeated)))).digest('hex')}`;
-    const metadata = JSON.parse(sourceReviewInput([repeated]).units[0].text), response = ledgerOutput();
-    response.items[0].evidence = [locator('s0/metadata', repeated.material.reason)];
-    expect(() => checkGeneratedSourceLedger(JSON.stringify(response), [repeated])).toThrow('ambiguous_quote');
-    const scopedQuote = `"source":${canonicalJson(metadata.source)}`;
-    response.items[0].evidence = [locator('s0/metadata', scopedQuote)];
-    expect(checkGeneratedSourceLedger(JSON.stringify(response), [repeated]).items[0].evidence[0]).toMatchObject({ unitKind: 'source_metadata', quote: scopedQuote });
+  it('preserves a complete long selected range and caps both expanded evidence and compiled bytes', () => {
+    const text = '🙂' + 'a'.repeat(34327), selected = traceSnapshotFixture(text), input = sourceReviewInput([selected]);
+    const index = sourceLedgerPassages(input);
+    const response = () => ({ ...ledgerOutput(),
+      passageIndexDigest: index.digest,
+      unitDispositions: input.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain', reason: 'Explicit fixture selection.' })),
+      items: input.units.map((unit, i) => ({ ...ledgerOutput().items[0], itemId: `item-${i}`,
+        evidence: [{ startPassageId: index.passages.get(unit.unitKey)![0].passageId,
+          endPassageId: index.passages.get(unit.unitKey)!.at(-1)!.passageId }] })) });
+    const saved = checkGeneratedSourceLedger(JSON.stringify(response()), [selected]);
+    expect(saved.items[1].evidence).toHaveLength(2);
+    expect(saved.items[1].evidence.map(evidence => evidence.quote).join('')).toBe(text);
+    expect(saved.items[1].evidence[0].start).toBe(0);
+    expect(saved.items[1].evidence[1].end).toBe(text.length);
+    const count = response(); count.items[1].evidence = Array.from({ length: 256 }, () => count.items[1].evidence[0]);
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(count), [selected])).toThrow('Compiled ledger evidence capacity');
+    const bytes = response(), anchor = bytes.items[1].evidence[0];
+    bytes.items = [bytes.items[0], ...Array.from({ length: 4 }, (_, i) => ({ ...bytes.items[1], itemId: `large-${i}`,
+      evidence: Array.from({ length: 128 }, () => anchor) }))];
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(bytes), [selected])).toThrow('Compiled source ledger capacity');
   });
 
   it('derives ordered unit item references from validated item and facet evidence while preserving dispositions', () => {
@@ -91,7 +104,7 @@ describe('source review wire and deterministic unit compilation', () => {
     const indexed = ledgerOutput(), reason = '  Preserve this source opinion exactly.\n';
     indexed.unitDispositions[0].reason = reason; indexed.unitDispositions[0].disposition = 'pending';
     indexed.items[1].evidence.push(structuredClone(indexed.items[1].evidence[0]));
-    indexed.items[1].facets[0].evidence.push(locator('s0/metadata', metadataQuote), locator('s0/metadata', metadataQuote));
+    indexed.items[1].facets[0].evidence.push(passageLocator('s0/metadata', metadataQuote), passageLocator('s0/metadata', metadataQuote));
     indexed.items.unshift({ ...structuredClone(indexed.items[1]), itemId: 'z-first', facets: [] });
     const before = JSON.stringify(indexed), compiled = checkGeneratedSourceLedger(before, [source]);
     expect(compiled.unitDispositions).toEqual([
@@ -155,6 +168,8 @@ describe('source review wire and deterministic unit compilation', () => {
   it('compiles a complete two-source inspection declaration into the exact host manifest witness', () => {
     const other = traceSnapshotFixture('Another explicitly selected source.', { snapshotId: '00000000-0000-4000-8000-000000000012' });
     const sources = [other, source], completeInput = sourceReviewInput(sources), proposedLedger = ledgerOutput();
+    expect(() => checkGeneratedSourceLedger(JSON.stringify(proposedLedger), sources)).toThrow('passage index mismatch');
+    proposedLedger.passageIndexDigest = sourceLedgerPassages(completeInput).digest;
     proposedLedger.unitDispositions.push(...completeInput.manifest.units.slice(2).map(unit => ({ unitKey: unit.unitKey,
       disposition: 'pending', reason: 'This additional selected source remains unresolved.' })));
     const completeLedger = { ref: ledger().ref, data: checkGeneratedSourceLedger(JSON.stringify(proposedLedger), sources) };

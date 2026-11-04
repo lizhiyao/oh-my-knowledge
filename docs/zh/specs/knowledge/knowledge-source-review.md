@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow5／journal Schema5 使用来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作稿为 input1／wire1／prompt1；正文 input3／wire2／prompt16 绑定同次精确草稿原件与原来源／清单，只能引用原 Source3，草稿不是来源或知识接受意见。覆盖为 wire3／prompt6，清单仍为 wire2／prompt3，两份分析历史仍为 store1，关联仍为 wire3／prompt8 及阶段 input1。每个请求单独准备、确认、claim 和归档，增加一次写作模型调用与草稿读取负担；恢复不调用模型。Source3／正文3／实体2／关联2／reviews1 及原始证据不改写，新正文仍待审；历史测量不回算。仅用于新工作区或显式独立副本迁移，旧日志由保全的匹配构建恢复。流程接纳不证明生成质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow6／journal Schema6 保留来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作仍为 input1／wire1／prompt1；正文 input4／wire3／prompt19 绑定同次精确草稿、原来源和清单；清单使用独立的 `knowledge-source-ledger-input/v1`、wire3／prompt4。两者交付完整宿主编号原文，响应逐字回显 passageIndexDigest。只有不可变 Source3 提供依据，草稿和清单都是可错输入，不是知识接受意见。覆盖保留 manifest／input2 及 wire3／prompt6，关联保留阶段 input1／wire3／prompt8。Source3／正文3／实体2／关联2／reviews1 和清单／覆盖历史1 保持。每个模型请求分别准备、确认、claim 和归档，恢复零模型。仅用新工作区或显式 workflow5→6 独立副本迁移，保全旧原件及匹配构建；不将 journal5 或旧原生 profile 解码为新流程。新正文仍待审，历史测量不回算，流程准入不证明语义质量或任务收益。
 
 覆盖 prompt6 还要求：同一完整来源单位或正文段落内重复的引文，必须扩为唯一连续原文或给出真实紧邻的消歧上下文。宿主继续拒收模糊位置；prompt5 的失败原件仍失败，不修补历史结果。
 
@@ -12,13 +12,13 @@
 
 宿主从显式选定的 Source3 快照生成完整 manifest，绑定精确 SourceSet、完整 portable 输入摘要、快照摘要及每个已发送单元。每份来源包含一个 metadata 单元，保存可发送的来源身份、归因、选区、限制及 excerpt 描述；每个 excerpt 正文另为一个单元。不会额外发送原始 envelope、捕获时间或宿主绑定。完整快照的 custody 摘要仍能检测已存快照字节变化。
 
-单元类型、键、UTF-16 长度、文本摘要与字段路径显式保留。metadata 引文指向序列化的 portable metadata，不是原 excerpt 引文。模型只返回逐字 quote 及紧邻上下文，宿主唯一定位并计算位置；重复、缺失、替换单元或歧义 quote 均拒收。请求容量显式校验，不静默截断。
+单元种类、key、UTF-16 长度、文本摘要及字段路径保持显式。清单 input1 将每个完整单元交付为有序 `{passageId,text}` 块，宿主策略及索引摘要绑定完整 SourceSet、单元和精确位置。模型只选择同单元 `{startPassageId,endPassageId}` 范围并回显 passageIndexDigest，宿主恢复逐字引文及 UTF-16 位置；空来源不补造片段。覆盖 input2 仍用逐字 quote 与紧邻 context，歧义匹配拒收。metadata 引文属于可携带元数据 JSON，不冒充 excerpt 原话。缺失、重复、替换单元和非法范围均拒绝，超容量不截断。
 
 ## 分析记录 {#analyses}
 
 ### 来源清单 {#ledger}
 
-`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变分析修订包括 manifest、完整单元处置、候选含义／要点、来源锚点、限制及模型原件引用。每个发送单元都有 retain、exclude 或 pending 意见和理由，单元与候选引用必须闭合。这些是模型意见，不是 Gold，也不授权删除原材料。当前模型输出为清单 wire2／prompt3：模型提供单元处置和理由，宿主从严格定位的全部 item／facet 证据按 item 顺序去重派生每个单元的 itemIds，不要求模型重复填写反向索引。领域／历史 Schema 1 及全部闭合检查保持，旧 wire1 原件不按新口径解释。
+`source-ledgers/<identity-digest>.json` 保存 `knowledge-source-ledger-history` Schema 1。不可变修订保留 manifest、每个单元处置、候选含义／facet、精确来源锚点、限制及模型原件引用；它们是意见，不是 Gold 或删除来源的权限。清单 wire3／prompt4 返回片段范围，宿主按 item 顺序派生每个单元的 itemIds，全部闭合检查保持。过长范围仅沿既有片段边界拆成每条最多 32768 个 UTF-16 单位的相邻引文，顺序拼回恰等于原选区；展开后每组证据仍最多 256 条，编译清单 JSON 最多 16 MiB，超出即拒绝，不丢内容。Schema1 不变，旧 wire1／2 原件不兼容解码或重解释。
 
 ### 来源覆盖 {#coverage}
 
@@ -54,7 +54,7 @@
 
 `source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command：共同携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不在 payload 自报 actor。关联在准备时及共享锁内 claim 前重验决定和所有上游绑定。claim 后的撤销保留已发送请求及原件，投影仍 pending，并显示失效的复核语境。手工实体／关联维护不自动产生来源覆盖批准。
 
-Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal4、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow5 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
+Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal5、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow6 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
 
 ### 覆盖 profile 边界 {#coverage-profile}
 
@@ -62,4 +62,4 @@ Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migr
 
 继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt6 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
 
-只替换覆盖时，复用的清单必须能通过当前 journal5 原件核验。journal4 的清单／覆盖在 4→5 副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。
+只替换覆盖时，复用的清单必须能通过当前 journal6 原件核验。journal5 的清单／覆盖在 5→6 副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。

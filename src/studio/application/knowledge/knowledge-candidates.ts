@@ -6,6 +6,7 @@ import { createLocalKnowledgeApplication } from '../../../knowledge/application/
 import { generationNextAction } from '../../../knowledge/application/body-generation.js';
 import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-host.js';
 import type { GenerationArchiveCheck, GenerationJournal, GenerationJournalInventory } from '../../../knowledge/extraction/generation-journal.js';
+import { restoreSourceLedgerInput } from '../../../knowledge/extraction/source-review-input.js';
 import { type KnowledgeApplication } from '../../../knowledge/application/application.js';
 import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
 import { type KnowledgeOperation, executeKnowledgeOperation, knowledgeOperationSchemas } from '../../../knowledge/application/operations.js';
@@ -27,7 +28,8 @@ const frozenSourceSchema = z.object({ source: z.object({ snapshotId: z.string(),
 function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandidateRun, 'sources' | 'sourceMetadataStatus'> {
   const sources = journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
   try {
-    const input: unknown = JSON.parse(journal.stages[0]!.input);
+    const stored: unknown = JSON.parse(journal.stages[0]!.input);
+    const input = journal.stages[0]!.stageKind === 'source_ledger' ? restoreSourceLedgerInput(stored) : stored;
     const legacyEnvelope = z.object({ sources: z.array(frozenSourceSchema) }).safeParse(input);
     const unitEnvelope = z.object({ manifest: z.object({ sources: z.array(z.object({ sourceKey: z.string(), sourceRef: z.object({ snapshotId: z.string(), sourceVersion: z.string() }) })) }),
       units: z.array(z.object({ sourceKey: z.string(), unitKind: z.string(), text: z.string() })) }).safeParse(input);

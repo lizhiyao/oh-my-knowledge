@@ -50,7 +50,7 @@ flowchart LR
 | 阶段 | 职责与交接 | 权威规范 |
 |---|---|---|
 | 窗口提取 | 固定完整来源及各阶段请求；清单 → 正文 → 覆盖 → 实际决定 → 关联，完整返回先归档再解码，每模型阶段分别确认。 | [实体提取](../entities/entity-extraction.md)及[来源复核](knowledge-source-review.md) |
-| 宿主准入 | 用精确 quote 及相邻原文上下文唯一定位并计算 UTF-16 位置，校验 wire／领域结构及引用闭合；保留合法正文 sibling 与原始结果，派生校验不删除已保存正文。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
+| 宿主准入 | 按宿主片段 ID 恢复正文／清单的精确 UTF-16 位置，关联／覆盖仍按 quote 与相邻上下文唯一定位，校验 wire／领域结构及引用闭合；保留合法正文 sibling 与原始结果，派生校验不删除已保存正文。准入不裁决语义。 | [提取契约](../entities/entity-extraction.md)与[身份规则](../entities/entity-identity.md) |
 | 实体目录 | 查询当前窗口分析，保留分析／实体／修订身份，披露不可读分析和来源。检索不生成共享身份。 | [提取存储与目录](../entities/entity-extraction.md) |
 | 跨窗口核对 | 规范化召回 → 有界预览 → 明确确认后持久准备 → 受治理模型建议 → 结果归档与接纳 → 人工明确接受／拒绝 → 可恢复应用。召回与模型建议均不能发布组织。 | [实体关联日志](../entities/entity-links.md)；[Studio 传输界面](../studio/studio-entity-links.md) |
 | 知识库组织 | 用独立维护的对象引用原窗口身份；确认身份和来源证据；在工作区锁内发布不可变成员修订。 | [实体知识库](knowledge-library.md) |
@@ -70,7 +70,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 任务阅读使用 `knowledge-body-text/v2`／`knowledge-body-text-packing/v2` 派生视图：正文原样，精确来源身份与相同解释去重，逐引用保留来源／解释索引、basis 和定位状态，所有不同解释完整展示。索引仅在本视图有效，不建立对象身份；完整引文、evidenceRef 和 UTF-16 定位由知识／修订／段落／引用序号精确读回 JSON3。独立复核另查精确 bodyRef。text 按实际完整 UTF-8 输出加一个 LF 预算，v1／v2 的装包结果不保证相同；排名身份、持久化正文和历史原件不因此变化。未发布的 v1 归档保留匹配构建，不回写升级。
 
-当前正文生成输出 v2／prompt v16 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。精确相邻上下文定位与这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v3／prompt v19 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。宿主片段选择、关联的精确相邻上下文定位及这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
@@ -100,7 +100,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；其 `application/` 拥有 CLI／Studio 共用用例与本地装配，`adapters/` 负责来源读取、模型传输和文件持久化。观测层提供轨迹解析，交付层负责宿主配置与展示。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 5，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 6，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -204,8 +204,8 @@ CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associatio
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 关联历史保持 Schema 2。prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 及阶段 v1 envelope 不变，不要求数据迁移。默认 journal Schema 5／knowledge-body-first/v5 仍绑定五阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal4／来源分析／自动许可；旧 profile 的 active 工作使用保全的匹配构建恢复，固定 prepared_writes 按既有规则恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
-| 来源盘点与覆盖 | 默认 workflow5 使用 journal5／input2：source_ledger → body_draft → body → source_coverage → 明确批准的关联。独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开表达模型意见与实际决定；claim 锁内重验精确决定，拒绝旧自动授权，仅迁移受支持独立副本。Source3、未改正文／实体／关联／review／tag 身份及历史测量保留。 |
+| 关联与生成日志 | 关联历史保持 Schema 2。prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 及阶段 v1 envelope 不变，不要求数据迁移。默认 journal Schema 6／knowledge-body-first/v6 仍绑定五阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal5／来源分析／自动许可；旧 profile 的 active 工作使用保全的匹配构建恢复，固定 prepared_writes 按既有规则恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
+| 来源盘点与覆盖 | 默认 workflow6 使用 journal6／input2：source_ledger → body_draft → body → source_coverage → 明确批准的关联。独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开表达模型意见与实际决定；claim 锁内重验精确决定，拒绝旧自动授权，仅迁移受支持独立副本。Source3、未改正文／实体／关联／review／tag 身份及历史测量保留。 |
 | 操作者上下文 | 第 8.3 节六命令 CLI 维护范围仅为新写入复用 human／agent 数据形状，不改变创建归属、旧 actor／回执、请求 DTO、存储 Schema 或生成身份，无需迁移。未知操作者拒绝与更广服务上下文保持独立设计及确认边界；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 

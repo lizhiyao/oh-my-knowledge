@@ -57,9 +57,9 @@ try {
   // Authored current responses, not native model captures or semantic-quality annotations.
   const bodyText = '来源报告 Alpha 使用 Beta；仅限本合成窗口，版本、结果和事实发生时间未知。';
   const bodyResponse = {
-    responseKind: 'knowledge-body-generation', schemaVersion: 2,
+    responseKind: 'knowledge-body-generation', schemaVersion: 3, passageIndexDigest: null,
     proposals: [{ proposalId: 'candidate', title: message, requiredContexts: [],
-      segments: [{ segmentId: 'usage', text: bodyText, evidence: [{ evidenceRef, quote: message, contextBefore: null, contextAfter: null,
+      segments: [{ segmentId: 'usage', text: bodyText, evidence: [{ startPassageId: 'p0', endPassageId: 'p0',
         basis: 'source_assertion', interpretation: '只记录来源说法，尚待核对' }] }],
       organization: { knowledgeKind: 'fact' }, reuseRationale: '演示后续核对相同条件下的来源说法' }],
   };
@@ -72,12 +72,12 @@ try {
   };
   const quote = (unitKey, text) => ({ unitKey, quote: text, contextBefore: null, contextAfter: null });
   function authoredLedger(input) {
-    return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+    return { responseKind: 'knowledge-source-ledger', schemaVersion: 3, passageIndexDigest: input.passageIndexDigest,
       unitDispositions: input.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain',
         reason: 'Authored demonstration only; preserve each delivered unit explicitly.' })),
       items: input.units.map((unit, index) => ({ itemId: `item-${index}`,
         statement: unit.unitKind === 'source_metadata' ? 'The metadata identifies this teaching source and its selected range.' : 'The teaching message reports Alpha using Beta.',
-        disposition: 'retain', reason: 'Authored demonstration only, without factual acceptance.', equivalentItemIds: [], evidence: [quote(unit.unitKey, unit.text)],
+        disposition: 'retain', reason: 'Authored demonstration only, without factual acceptance.', equivalentItemIds: [], evidence: [{ startPassageId: unit.passages[0].passageId, endPassageId: unit.passages.at(-1).passageId }],
         facets: unit.unitKind === 'excerpt_text' ? [{ facetId: 'time-unknown', statement: 'The selected message does not supply the fact-occurrence time.',
           epistemicStatus: 'not_stated', evidence: [] }] : [] })),
       limitations: ['Authored demonstration only; the proposed inventory is fallible and is not Gold.'] };
@@ -117,17 +117,20 @@ try {
         assert.equal(parsed.manifest.sourceSetId, prepared.journal.sourceSetId);
         assert.deepEqual(parsed.manifest.sources.map(value => value.sourceRef), sourceRefs);
         assert.deepEqual(parsed.units.map(unit => unit.unitKind), ['source_metadata', 'excerpt_text']);
-        const metadata = JSON.parse(parsed.units[0].text);
+        const unitText = unit => profile.stageKind === 'source_ledger' ? unit.passages.map(part => part.text).join('') : unit.text;
+        const metadata = JSON.parse(unitText(parsed.units[0]));
         assert.deepEqual(metadata.source.identity, snapshot.identity); assert.deepEqual(metadata.source.selection, snapshot.selection);
         assert.deepEqual(metadata.source.material, snapshot.material); assert.deepEqual(metadata.source.provenance, snapshot.provenance);
         assert.deepEqual(metadata.excerpts, snapshot.excerpts.map(({ text, ...descriptor }) => { void text; return descriptor; }));
         assert.deepEqual(metadata.limitations, snapshot.limitations); assert.equal(metadata.source.rawUnits, undefined); assert.equal(metadata.source.capturedAt, undefined);
-        assert.equal(parsed.units[1].text, message); assert.equal(parsed.units[1].evidenceRef, evidenceRef);
+        assert.equal(unitText(parsed.units[1]), message); assert.equal(parsed.units[1].evidenceRef, evidenceRef);
       } else {
-        assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v3' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
+        assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v4' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
         assert.equal(parsed.sourceSetId, prepared.journal.sourceSetId); assert.equal(parsed.sources.length, 1);
         const selected = parsed.sources[0];
-        assert.equal(selected.sourceKey, 's0'); assert.deepEqual(selected.excerpts, snapshot.excerpts); assert.deepEqual(selected.limitations, snapshot.limitations);
+        assert.equal(selected.sourceKey, 's0');
+        const excerpts = profile.stageKind === 'body' ? selected.excerpts.map(({ passages, ...excerpt }) => ({ ...excerpt, text: passages.map(part => part.text).join('') })) : selected.excerpts;
+        assert.deepEqual(excerpts, snapshot.excerpts); assert.deepEqual(selected.limitations, snapshot.limitations);
         assert.equal(selected.source.snapshotId, snapshot.snapshotId); assert.equal(selected.source.sourceVersion, snapshot.sourceVersion);
         assert.equal(selected.source.sourcePath, undefined); assert.equal(selected.source.capturedAt, undefined); assert.equal(selected.rawUnits, undefined);
         assert.equal(selected.source.sourceKind, 'agent_trace'); assert.deepEqual(selected.source.identity, { sourceId: 'authored-teaching-source', traceKind: 'codex' });
@@ -142,6 +145,7 @@ try {
         assert.equal(segments[0].text, bodyText);
         assert.equal(app.detail(parsed.bodies[0].bodyRef.knowledgeId).revision.bodyDigest, parsed.bodies[0].bodyRef.bodyDigest);
       } else assert.equal(parsed.bodies, undefined);
+      if (profile.stageKind === 'body') bodyResponse.passageIndexDigest = parsed.passageIndexDigest;
       const output = profile.stageKind === 'source_ledger' ? authoredLedger(parsed) : profile.stageKind === 'source_coverage' ? authoredCoverage(parsed)
         : profile.stageKind === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified teaching draft; use original source evidence.' } : profile.stageKind === 'body' ? bodyResponse : associationResponse;
       beforeDispatch(); fixtureInvocations++;
@@ -160,7 +164,7 @@ try {
     return result;
   }
   const prepared = app.prepareGeneration(sourceRefs, fixture);
-  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v5'); assert.equal(prepared.journal.schemaVersion, 5);
+  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v6'); assert.equal(prepared.journal.schemaVersion, 6);
   assert.equal(prepared.journal.stages[0].stageKind, 'source_ledger'); assert.equal(prepared.journal.stages[0].state, 'prepared'); assert.equal(fixtureInvocations, 0);
   await assert.rejects(app.generate(sourceRefs, fixture, prepared.journal.runId), /Confirm the exact prepared generation request/);
   assert.equal(fixtureInvocations, 0);
@@ -198,7 +202,7 @@ try {
   const associationPrepared = app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId, undefined, sourceCoverageDecisionRef);
   assert.equal(fixtureInvocations, 4); assert.equal(associationPrepared.journal.stages.at(-1).stageKind, 'association');
   const run = await confirmPhase(associationPrepared);
-  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v5'); assert.equal(run.journal.bodies.length, 1);
+  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v6'); assert.equal(run.journal.bodies.length, 1);
   assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']);
   for (const stage of run.journal.stages) { assert.equal(stage.state, 'completed'); assert.deepEqual(stage.rejected ?? [], []); }
 

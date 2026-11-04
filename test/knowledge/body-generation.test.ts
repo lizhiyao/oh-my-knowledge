@@ -18,11 +18,12 @@ import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.j
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
-import { generationImportRunId, WORKFLOW_ID } from '../../src/knowledge/extraction/source-input.js';
+import { generationImportRunId, bodySourcePassages, WORKFLOW_ID } from '../../src/knowledge/extraction/source-input.js';
+import { passageRange } from '../helpers/source-passages.js';
 import { sourceSetPreimage, type SourceRef } from '../../src/knowledge/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, generationTextDigest, type BodyGenerationResponseSchema, type AssociationGenerationResponse } from '../../src/knowledge/extraction/body-generation-wire.js';
-import { SOURCE_REVIEW_INPUT_VERSION, type SourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
+import { SOURCE_REVIEW_INPUT_VERSION, type sourceLedgerInput, type SourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE,
   type SourceLedgerResponseSchema, type SourceCoverageResponseSchema } from '../../src/knowledge/extraction/source-review-wire.js';
 import { KNOWLEDGE_RECORD_SCOPE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
@@ -42,11 +43,13 @@ type CoverageRequest = SourceReviewInput & { ledger: { data: SourceLedgerData };
 const locator = (unitKey: string, quote: string) => ({ unitKey, quote, contextBefore: null, contextAfter: null });
 /** Authored native fixtures exercise the real strict wires, not model semantic quality. */
 function ledgerOutput(input: string): z.infer<typeof SourceLedgerResponseSchema> {
-  const request = JSON.parse(input) as SourceReviewInput;
-  return { responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+  const request = JSON.parse(input) as ReturnType<typeof sourceLedgerInput>;
+  return { responseKind: 'knowledge-source-ledger', schemaVersion: 3,
+    passageIndexDigest: request.passageIndexDigest,
     unitDispositions: request.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain', reason: 'Explicit delivered-unit inventory fixture.' })),
     items: request.units.map((unit, index) => ({ itemId: `i${index}`, statement: `Authored inventory of ${unit.unitKey}; scope is limited to this delivered unit.`,
-      disposition: 'retain', reason: 'Exercise exact unit custody.', equivalentItemIds: [], evidence: [locator(unit.unitKey, unit.text)], facets: [] })),
+      disposition: 'retain', reason: 'Exercise exact unit custody.', equivalentItemIds: [], evidence: [{
+        startPassageId: unit.passages[0].passageId, endPassageId: unit.passages.at(-1)!.passageId }], facets: [] })),
     limitations: ['Authored protocol fixture; neither semantic quality nor source truth is certified.'] };
 }
 function coverageOutput(input: string): CoverageResponse {
@@ -81,13 +84,16 @@ function setup(splitMentionContext = false) {
     id: randomUUID, now: () => '2026-10-28T00:00:00Z', hash: (v: unknown) => generationTextDigest(canonicalJson(v)),
     actor: { actorKind: 'human' as const, actorId: 'test-maintainer' }, reviewActor: testReviewActor };
   const library = new KnowledgeApplication(ports), app = new BodyGenerationApplication(ports), window = captureTraceFixture(root, { path: source });
-  const body: z.infer<typeof BodyGenerationResponseSchema> = { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [{ proposalId: 'p1', title: 'Limited source report', requiredContexts: [],
-    segments: [{ segmentId: 's1', text: window.excerpts[0].text, evidence: [{ evidenceRef: window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null, basis: 'source_assertion', interpretation: null }] }],
-    organization: null, reuseRationale: 'Retain the limitation for later comparisons.' }] };
+  const body: z.infer<typeof BodyGenerationResponseSchema> = { responseKind: 'knowledge-body-generation', schemaVersion: 3, proposals: [{ proposalId: 'p1', title: 'Limited source report', requiredContexts: [],
+    segments: [{ segmentId: 's1', text: window.excerpts[0].text, evidence: [{ ...passageRange(bodySourcePassages([window]).index, window.excerpts[0].evidenceRef, 'Alpha'), basis: 'source_assertion', interpretation: null }] }],
+    organization: null, reuseRationale: 'Retain the limitation for later comparisons.' }], passageIndexDigest: bodySourcePassages([window]).index.digest };
   const association: AssociationGenerationResponse = { responseKind: 'knowledge-association-generation', schemaVersion: 3, catalogs: [{ sourceKey: 's0', entities: [] }], associations: [{ bodyKey: 'b0',
     segmentDecisions: [{ segmentId: 's1', decisionKind: 'abstained', entityRefs: [], reason: 'No reliable object in this authored fixture.' }], typedRelations: [], issues: [] }] };
-  const output = (stage: GenerationStage['stageKind'], input: string): unknown => stage === 'source_ledger' ? ledgerOutput(input)
-    : stage === 'source_coverage' ? coverageOutput(input) : stage === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified Alpha writing fixture.' } : stage === 'body' ? body : association;
+  const output = (stage: GenerationStage['stageKind'], input: string): unknown => {
+    if (stage === 'body') { body.passageIndexDigest = JSON.parse(input).passageIndexDigest; return body; }
+    return stage === 'source_ledger' ? ledgerOutput(input) : stage === 'source_coverage' ? coverageOutput(input)
+      : stage === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified Alpha writing fixture.' } : association;
+  };
   const dispatched: GenerationStage['stageKind'][] = [];
   const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (profile, input, _signal, gate) => {
     gate?.(); dispatched.push(profile.stageKind);
@@ -171,7 +177,7 @@ describe('source-first generation and zero-model recovery', () => {
   it('prepares exact five-stage requests separately, requires an actual decision, and replays completed identity with zero calls', async () => {
     const f = setup(), refs = [sourceRef(f.window)], prepared = f.app.prepareGeneration(refs, f.model);
     expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
-    expect(prepared.journal).toMatchObject({ schemaVersion: 5, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
+    expect(prepared.journal).toMatchObject({ schemaVersion: 6, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
       runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'source_ledger', state: 'prepared', system: SOURCE_LEDGER_GENERATION_PROFILE.system }] });
     const input = JSON.parse(prepared.journal.stages[0].input);
     expect(input.manifest.sources).toMatchObject([{ sourceKey: 's0', sourceRef: refs[0] }]);
@@ -294,16 +300,16 @@ describe('source-first generation and zero-model recovery', () => {
 
   it('rejects draft-only evidence rather than publishing an ungrounded draft as canonical knowledge', async () => {
     const f = setup(), prepared = await preparePhase(f, 'body');
-    f.body.proposals[0].segments[0].evidence[0].quote = 'Unverified Alpha writing fixture.';
+    f.body.proposals[0].segments[0].evidence[0].startPassageId = 'unverified-draft-only';
     const result = await dispatch(f, prepared);
     expect(result.journal.stages.at(-1)!.rejected).toHaveLength(1);
     expect(result.journal.bodies).toEqual([]); expect(f.library.list()).toEqual([]);
     expect(f.reopen().inspect(result.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: JSON.stringify(f.body) } });
   });
 
-  it('refuses a new workflow5 run in an unmigrated journal4 workspace without changing the old claim', () => {
+  it('refuses a new workflow6 run in an unmigrated journal5 workspace without changing the old claim', () => {
     const f = setup(), runId = randomUUID(); mkdirSync(join(f.root, 'generation-journals'));
-    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 4, unknownClaim: true });
+    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 5, unknownClaim: true });
     writeFileSync(path, bytes);
     expect(() => f.app.prepareGeneration([sourceRef(f.window)], f.model)).toThrow('explicit independent-copy');
     expect(readFileSync(path, 'utf8')).toBe(bytes); expect(f.invoke).not.toHaveBeenCalled();
@@ -382,6 +388,8 @@ describe('source-first generation and zero-model recovery', () => {
   it('preserves a full authorized source set through revise, coverage-only review and rebuild even when one source has no body citation', async () => {
     const f = setup(), second = captureTraceFixture(f.root, { path: join(f.root, 'second.jsonl'), records: [{ recordIndex: 0,
       raw: JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Beta is an independently selected, uncited source.' }] } }) }] });
+    Object.assign(f.body.proposals[0].segments[0].evidence[0],
+      passageRange(bodySourcePassages([second, f.window]).index, f.window.excerpts[0].evidenceRef, 'Alpha'));
     const refs = [sourceRef(second), sourceRef(f.window)], state = await runAnalyses(f, f.model, undefined, refs);
     const reordered = f.app.prepareGeneration([...refs].reverse(), f.model); expect(reordered.journal.runId).toBe(state.journal.runId);
     const oldDecision = recordActualTestDecision(f, state, 'proceed_with_limits');
@@ -446,15 +454,16 @@ describe('source-first generation and zero-model recovery', () => {
   });
 
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v17', outputName: 'knowledge_body_v2',
-      profileId: 'sha256:7f97fb0bec0bc1cdd9eeabcff123a1b4a6f5faff700393c1300e383a1d54da65',
-      wireId: 'sha256:523f048835fb6ddd0df5cfa4e9f84d6b958da95ae00632b847ce053caa7fd5c2' });
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v19', outputName: 'knowledge_body_v3',
+      profileId: 'sha256:363f93c915f4bf6081a72ba0c4199340edfb942a78cf56f4813c83a1c3df37e1',
+      wireId: 'sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
       wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
-    const f = setup(true), proposal = f.body.proposals[0], evidence = { ...proposal.segments[0].evidence[0], evidenceRef: f.window.excerpts[1].evidenceRef };
-    f.body.proposals = [{ ...proposal, proposalId: 'p1', segments: [{ ...proposal.segments[0], text: 'Alpha works only in this test.', evidence: [{ ...evidence, quote: 'works only in this test' }] }] },
-      { ...proposal, proposalId: 'p2', segments: [{ ...proposal.segments[0], text: 'Alpha in other environments remains unknown.', evidence: [{ ...evidence, quote: 'time and other environments remain unknown.' }] }] }];
+    const f = setup(true), proposal = f.body.proposals[0], evidence = { ...proposal.segments[0].evidence[0],
+      ...passageRange(bodySourcePassages([f.window]).index, f.window.excerpts[1].evidenceRef, f.window.excerpts[1].text) };
+    f.body.proposals = [{ ...proposal, proposalId: 'p1', segments: [{ ...proposal.segments[0], text: 'Alpha works only in this test.', evidence: [evidence] }] },
+      { ...proposal, proposalId: 'p2', segments: [{ ...proposal.segments[0], text: 'Alpha in other environments remains unknown.', evidence: [evidence] }] }];
     f.association.catalogs = [{ sourceKey: 's0', entities: [{ entityId: 'e1', label: 'Alpha', description: 'Source-local fixture subject.', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
       referentKind: 'object', componentLink: null, collectionLink: null, mentions: [{ mentionKey: 'm1', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: 'Exact own mention in the uncited excerpt.' }] }] }];
     f.association.associations = ['b0', 'b1'].map(bodyKey => ({ bodyKey, segmentDecisions: [{ segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'The paragraph discusses the exact source-local subject.' }], typedRelations: [], issues: [] }));

@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import { SourceSnapshotSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
 import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
 import { canonicalJson } from '../store.js';
 import { generationSourceInput } from './source-input.js';
+import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema, sourcePassageText, assertSourcePassageInput } from './source-passages.js';
 
-/** Separate identity: the default two-stage input remains unchanged until workflow4 is integrated. */
+/** Canonical full-text manifest and coverage input; ledger delivery has its own identity. */
 export const SOURCE_REVIEW_INPUT_VERSION = 'knowledge-source-generation-input/v2' as const;
+export const SOURCE_LEDGER_INPUT_VERSION = 'knowledge-source-ledger-input/v1' as const;
 export const SOURCE_REVIEW_REQUEST_CAPACITY_BYTES = 1024 * 1024;
 export type SourceReviewUnit = SourceReviewManifest['units'][number] & { text: string };
 export interface SourceReviewInput { manifest: SourceReviewManifest; units: SourceReviewUnit[] }
@@ -49,4 +52,33 @@ export function sourceReviewInput(sources: readonly SourceSnapshot[]): SourceRev
     throw new Error('Source review input capacity_exceeded (1 MiB).');
   }
   return { manifest, units };
+}
+
+export function sourceLedgerPassages(input: SourceReviewInput) {
+  return buildSourcePassages(input.units.map(unit => {
+    const source = input.manifest.sources.find(source => source.sourceKey === unit.sourceKey);
+    if (!source) throw new Error('Unknown source passage owner.');
+    return { unitKey: unit.unitKey, text: unit.text, source: source.sourceRef };
+  }), input.manifest.sources.map(source => source.sourceRef));
+}
+
+export function sourceLedgerInput(sources: readonly SourceSnapshot[]) {
+  const input = sourceReviewInput(sources), index = sourceLedgerPassages(input);
+  return { inputVersion: SOURCE_LEDGER_INPUT_VERSION, manifest: input.manifest,
+    passagePolicy: SOURCE_PASSAGE_POLICY.policyVersion, passageIndexDigest: index.digest,
+    units: input.units.map(({ text, ...unit }) => {
+      void text; return { ...unit, passages: index.passages.get(unit.unitKey)! };
+    }) };
+}
+
+const ledgerPassageInput = z.object({ inputVersion: z.literal(SOURCE_LEDGER_INPUT_VERSION), manifest: SourceReviewManifestSchema,
+  passagePolicy: z.literal(SOURCE_PASSAGE_POLICY.policyVersion), passageIndexDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  units: z.array(SourceReviewManifestSchema.shape.units.element.extend({ passages: SourcePassagesSchema })) });
+
+export function restoreSourceLedgerInput(value: unknown): SourceReviewInput {
+  const input = ledgerPassageInput.parse(value);
+  const units = input.units.map(({ passages, ...unit }) => ({ ...unit, text: sourcePassageText(passages) }));
+  const restored = { manifest: input.manifest, units }, index = sourceLedgerPassages(restored);
+  assertSourcePassageInput(index, input, input.units);
+  return restored;
 }

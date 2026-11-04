@@ -4,7 +4,7 @@ This page owns implemented tags, explicit extraction and retired scheduling, car
 
 ## Conversation auto extraction and project inbox
 
-Current `knowledge-body-first/v5` permits explicit stages only: source ledger → body → source coverage → actual operator decision → association. Preview and confirm each complete model request independently. Source-coverage opinions are not content approval and never retain a body or update a carrier automatically.
+Current `knowledge-body-first/v6` permits explicit stages only: source ledger → unverified writing draft → grounded body → source coverage → actual operator decision → association. Preview and confirm each complete model request independently. Source-coverage opinions are not content approval and never retain a body or update a carrier automatically.
 
 Conversation scheduling is retired. Status returns `unsupported`/`explicit_stages_required`; preview, enable and background tick create no model, configure no executor, dispatch nothing and write no permission. Stop/close do not alter old permissions, reservations, unknown claims or originals; migration archives them. A migrated workspace cannot receive a renewed automatic grant: use explicit stages.
 

@@ -131,7 +131,7 @@ describe('observe knowledge command wiring', () => {
     const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision.decision;
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], sourceCoverageDecisionRef: { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: decision.requestId } }));
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout));
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v5', status: 'completed', bodies: [expect.anything()],
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v6', status: 'completed', bodies: [expect.anything()],
       stages: ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'].map(stageKind => ({ stageKind, state: 'completed', outcomeRef: expect.any(Object) })) });
     expect(fetch).toHaveBeenCalledTimes(5); expect(requests[0].messages).not.toEqual(requests[1].messages);
     const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(5);

@@ -44,7 +44,8 @@ it('confirms a prepared Codex request across distinct host instances while retai
       { confirmedRequestDigest: request.requestDigest })).rejects.toThrow('producer/profile changed');
     expect(fake.execute).not.toHaveBeenCalled();
   }
-  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-source-ledger', schemaVersion: 2,
+  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-source-ledger', schemaVersion: 3,
+    passageIndexDigest: JSON.parse(request.input).passageIndexDigest,
     unitDispositions: sourceReviewInput([source]).units.map(unit => ({ unitKey: unit.unitKey, disposition: 'exclude',
       reason: 'Authored transport fixture only; no semantic acceptance.' })),
     items: [], limitations: ['Transport and native custody verification only.'] }) } as ExecResult);

@@ -58,7 +58,8 @@ describe('Source3 manual transmission boundary', () => {
     native.model = { executor: 'codex', model: 'authored-no-model', timeoutMs: 300_000,
       inspect: () => ({ producerId: 'authored-ui-adapter', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false } }),
       async invoke(profile, input, _signal, gate) { gate?.(); invocations.push(profile.stageKind);
-        const output = empty && profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 2, proposals: [] } : authoredKnowledgeResponse(input, profile.stageKind);
+        const output = empty && profile.stageKind === 'body' ? { responseKind: 'knowledge-body-generation', schemaVersion: 3,
+          passageIndexDigest: JSON.parse(input).passageIndexDigest, proposals: [] } : authoredKnowledgeResponse(input, profile.stageKind);
         return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(output), authoredFixture: true } }; } };
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url === '/api/settings') return json({ effective: { workspace, executor: 'codex', model: 'authored-no-model' } });
