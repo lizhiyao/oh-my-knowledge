@@ -1,6 +1,6 @@
 import { runnerFixture as fixture } from './fixtures/runner.js';
 import { describe, expect, it, vi } from 'vitest';
-import { createEvaluationExecution, EvaluationRuntimeLifecycleError, type EvaluationRunLease } from '../../src/eval-runtime/execution.js';
+import { createEvaluationExecution, EvaluationRuntimeLifecycleError, type EvaluationRunLease } from '../../src/eval-runtime/execution/lifecycle.js';
 import { runEvaluation } from '../../src/eval-runtime/index.js';
 
 import { createMeasurementPolicy } from '../../src/eval-runtime/index.js';

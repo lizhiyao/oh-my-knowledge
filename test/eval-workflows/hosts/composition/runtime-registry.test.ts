@@ -1,4 +1,4 @@
-import { createNodeEvaluationClock } from '../../../../src/eval-runtime/clock.js';
+import { createNodeEvaluationClock } from '../../../../src/eval-runtime/execution/clock.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

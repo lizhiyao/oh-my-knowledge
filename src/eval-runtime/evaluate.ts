@@ -99,7 +99,7 @@ export {
   type ExecutedEvaluationVerifier,
   type LoadExecutedEvaluationInput,
   type SaveExecutedEvaluationInput,
-} from './executed-store.js';
+} from './content/executed-store.js';
 export {
   checkExecutor,
   checkContentStore,

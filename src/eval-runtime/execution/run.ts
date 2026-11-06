@@ -3,7 +3,7 @@ import type {
   EvaluationEvent,
   JsonValue,
   MeasurementPolicy,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   EvaluationEngineClock,
   EvaluationEngineEventWriter,
@@ -11,8 +11,8 @@ import type {
   EvaluationRun,
   EvaluationRunResult,
   PreparedEvaluation,
-} from '../eval-core/engine/index.js';
-import { createEvaluationEngine as createCoreEvaluationEngine } from '../eval-core/engine/index.js';
+} from '../../eval-core/engine/index.js';
+import { createEvaluationEngine as createCoreEvaluationEngine } from '../../eval-core/engine/index.js';
 
 type MaybePromise<Value> = Value | Promise<Value>;
 

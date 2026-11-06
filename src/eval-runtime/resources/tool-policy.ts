@@ -1,9 +1,9 @@
-import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   NonEmptyStringSchema,
   canonicalizeJson,
   deepFreezeCanonicalJson,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export interface AllowedToolsPlan {
   readonly default?: readonly string[];

@@ -4,18 +4,18 @@ import {
   createBuiltinDecisionPolicies,
   createBuiltinMissingPolicies,
   resolveBuiltinAnalysisRuntime,
-} from '../eval-core/analysis/index.js';
+} from '../../eval-core/analysis/index.js';
 import type {
   AnalysisRuntimeRequirement,
   EvaluatorRuntimeRequirement,
   ExecutorRuntimeRequirement,
-} from '../eval-core/compiler/index.js';
+} from '../../eval-core/compiler/index.js';
 import type {
   EvaluationEngineRuntime,
   EvaluationEngineClock,
   Evaluator,
   Executor,
-} from '../eval-core/engine/index.js';
+} from '../../eval-core/engine/index.js';
 import { createNodeEvaluationClock } from './clock.js';
 
 interface RuntimePortRegistrationBase {

@@ -2,8 +2,8 @@ import { buildProductionMeasurementDesign } from '../../../src/eval-workflows/or
 import type { Sample } from '../../../src/eval-workflows/inputs/contracts/sample.js';
 import { executeProductEvaluation } from '../../../src/eval-workflows/orchestration/evaluation-service.js';
 import { parseCliEvaluationRequest } from '../../../src/eval-workflows/input-compilation/index.js';
-import { prepareRuntimeSeries } from '../../../src/eval-runtime/provider.js';
-import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution.js';
+import { prepareRuntimeSeries } from '../../../src/eval-runtime/execution/provider.js';
+import { EvaluationRuntimeLifecycleError } from '../../../src/eval-runtime/execution/lifecycle.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

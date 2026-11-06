@@ -17,20 +17,20 @@ import {
   type WorkspaceInput,
   type WorkspaceAccess,
   type WorkspaceProvider,
-} from '../workspace.js';
+} from '../resources/workspace.js';
 import {
   type AllowedToolsInput,
-} from '../tool-policy.js';
+} from '../resources/tool-policy.js';
 import {
   type McpConfigInput,
   type McpConfigAccess,
   type McpConfigProvider,
-} from '../mcp-config.js';
+} from '../resources/mcp-config.js';
 import {
   type MockInterceptionInput,
   type MockInterceptionAccess,
   type MockInterceptionProvider,
-} from '../mock-interception.js';
+} from '../resources/mock-interception.js';
 import {
   type RuntimeValueParser,
 } from '../adapters/json-executor.js';
@@ -78,10 +78,10 @@ import {
 } from '../../eval-core/engine/index.js';
 import {
   type EvaluationEventObserver,
-} from '../runner.js';
+} from '../execution/run.js';
 import {
   type EvaluationInfrastructure,
-} from '../infrastructure.js';
+} from '../content/infrastructure.js';
 import {
   type ExecutorConformanceResult,
 } from '../conformance/executor.js';

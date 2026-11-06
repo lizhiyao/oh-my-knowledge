@@ -10,7 +10,7 @@ import type {
   ContentResolver,
   ContentStore,
   ContentValue,
-} from '../infrastructure.js';
+} from '../content/infrastructure.js';
 
 export interface ContentStoreCheckInput {
   readonly contentStore: ContentStore;

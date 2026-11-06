@@ -2,7 +2,7 @@ import { readonlyMapSnapshot } from '../adapters/shared/readonly-map-snapshot.js
 import { LLM_ASSERTION_EVALUATOR_IMPLEMENTATION_ID } from '../../measurement/evaluators/llm-assertions.js';
 import { isAbsolute } from 'node:path';
 import type { EvaluationEngineClock } from '../../../eval-core/engine/index.js';
-import { createNodeEvaluationClock } from '../../../eval-runtime/clock.js';
+import { createNodeEvaluationClock } from '../../../eval-runtime/execution/clock.js';
 import type { ExecutionExecutor } from '../../../eval-core/execution/index.js';
 import {
   deepFreezeCanonicalJson,
@@ -292,7 +292,7 @@ export function createProductionRuntimeFactoryRegistry(
   });
 }
 
-export { createNodeEvaluationClock } from '../../../eval-runtime/clock.js';
+export { createNodeEvaluationClock } from '../../../eval-runtime/execution/clock.js';
 
 /** Node support ports share one digest-verifying content store instance. */
 export function createNodeEvaluationRuntimeSupportPorts(input: Readonly<{

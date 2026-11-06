@@ -25,7 +25,7 @@ import {
 import {
   captureEvaluationInfrastructure,
   type ContentValue,
-} from '../infrastructure.js';
+} from '../content/infrastructure.js';
 import {
   ContentValueSchema,
 } from './schemas.js';

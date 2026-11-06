@@ -1,4 +1,4 @@
-import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -8,7 +8,7 @@ import {
   digestCanonicalJson,
   type ExecutionResourceDescriptor,
   type JsonValue,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export type McpConfigDescriptor = Readonly<ExecutionResourceDescriptor>;
 

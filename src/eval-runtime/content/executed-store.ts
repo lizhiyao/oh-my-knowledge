@@ -12,13 +12,13 @@ import {
   type ExecutionBundle,
   type JsonValue,
   type Sha256Digest,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {  parseExecutionBundleDocument,
-} from '../eval-core/verify/index.js';
+} from '../../eval-core/verify/index.js';
 import {
   executedEvaluations,
-} from './evaluation/result-state.js';
-import type { ExecutedEvaluation } from './evaluation/contracts.js';
+} from '../evaluation/result-state.js';
+import type { ExecutedEvaluation } from '../evaluation/contracts.js';
 import type {
   ContentDescriptor,
   ContentResolver,

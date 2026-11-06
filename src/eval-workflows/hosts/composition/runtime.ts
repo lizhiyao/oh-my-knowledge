@@ -1,6 +1,6 @@
 import { readonlyMapSnapshot } from '../adapters/shared/readonly-map-snapshot.js';
-import { prepareRuntimeSeries, type EvaluationRuntimeProvider } from '../../../eval-runtime/provider.js';
-import { createEvaluationExecution, type EvaluationExecutionOptions } from '../../../eval-runtime/execution.js';
+import { prepareRuntimeSeries, type EvaluationRuntimeProvider } from '../../../eval-runtime/execution/provider.js';
+import { createEvaluationExecution, type EvaluationExecutionOptions } from '../../../eval-runtime/execution/lifecycle.js';
 import {
   EvaluationDefinitionSchema,
   IdentifierSchema,

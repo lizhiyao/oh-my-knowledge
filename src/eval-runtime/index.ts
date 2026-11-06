@@ -23,13 +23,13 @@ export {
   EvaluationResultStoreError,
   loadEvaluationResult,
   saveEvaluationResult,
-} from './result-store.js';
+} from './content/result-store.js';
 export {
   EXECUTED_EVALUATION_MEDIA_TYPE,
   ExecutedEvaluationStoreError,
   loadExecutedEvaluation,
   saveExecutedEvaluation,
-} from './executed-store.js';
+} from './content/executed-store.js';
 export {
   RUNTIME_CHECK_RESULT_SCHEMA_VERSION,
   checkRuntime,
@@ -122,14 +122,14 @@ export type {
   EvaluationResultVerifier,
   LoadEvaluationResultInput,
   SaveEvaluationResultInput,
-} from './result-store.js';
+} from './content/result-store.js';
 export type {
   ExecutedEvaluationVerification,
   ExecutedEvaluationVerificationRequest,
   ExecutedEvaluationVerifier,
   LoadExecutedEvaluationInput,
   SaveExecutedEvaluationInput,
-} from './executed-store.js';
+} from './content/executed-store.js';
 export type { ContentStoreConformanceCheck } from './conformance/content-store.js';
 export type {
   CacheRuntimeCheckInput,
@@ -184,7 +184,7 @@ export type {
   ExecutorIdentityVerification,
   ExecutorIdentityVerificationRequest,
   ExecutorIdentityVerifier,
-} from './infrastructure.js';
+} from './content/infrastructure.js';
 export type { RetrievalMetricIds } from './evaluators/retrieval.js';
 export type { ToolTrajectoryMatchMode } from './evaluators/tool-trajectory.js';
 export type {
@@ -197,8 +197,8 @@ export type {
   MockInterceptionPlan,
   MockInterceptionProvider,
   MockInterceptionRequest,
-} from './mock-interception.js';
-export { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from './mock-interception.js';
+} from './resources/mock-interception.js';
+export { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from './resources/mock-interception.js';
 export type {
   McpConfigAccess,
   McpConfigDescriptor,
@@ -207,11 +207,11 @@ export type {
   McpConfigOpenRequest,
   McpConfigPlan,
   McpConfigProvider,
-} from './mcp-config.js';
+} from './resources/mcp-config.js';
 export type {
   AllowedToolsInput,
   AllowedToolsPlan,
-} from './tool-policy.js';
+} from './resources/tool-policy.js';
 export type {
   WorkspaceAccess,
   WorkspaceDescriptor,
@@ -220,7 +220,7 @@ export type {
   WorkspaceOpenRequest,
   WorkspacePlan,
   WorkspaceProvider,
-} from './workspace.js';
+} from './resources/workspace.js';
 export type {
   CustomEvaluator,
   CustomEvaluatorBinding,
@@ -239,8 +239,8 @@ export type {
   CustomEvaluatorScores,
   CreateCustomEvaluatorInput,
 } from './builders/custom-evaluator.js';
-export { debugEvaluator } from './debug-evaluator.js';
-export type { DebugEvaluatorInput, DebugEvaluatorResult, DebugJudgeInvocation, DebugJudgeResponse, DebugRubricReading } from './debug-evaluator.js';
+export { debugEvaluator } from './debug/evaluator.js';
+export type { DebugEvaluatorInput, DebugEvaluatorResult, DebugJudgeInvocation, DebugJudgeResponse, DebugRubricReading } from './debug/evaluator.js';
 export type { EvaluationConfigurationIssue } from './evaluation/errors.js';
 
 // Imperative builders for assembling Definitions, Policies, and Evaluators directly.
@@ -316,11 +316,11 @@ export type {
 export {
   HostEvaluationEventConsumptionError,
   runEvaluation,
-} from './runner.js';
+} from './execution/run.js';
 export type {
   EvaluationEventObserver,
   RunEvaluationInput,
-} from './runner.js';
+} from './execution/run.js';
 export {
   createInvokeExecutorIdentity,
   createRuntimeIdentity,
@@ -334,8 +334,8 @@ export type {
 export {
   EvaluationRuntimeAssemblyError,
   createEvaluationRuntime,
-} from './runtime.js';
-export type { CreateEvaluationRuntimeInput } from './runtime.js';
+} from './execution/assembly.js';
+export type { CreateEvaluationRuntimeInput } from './execution/assembly.js';
 export {
   createJsonExecutorAdapter,
   createJsonSessionExecutorAdapter,
@@ -375,7 +375,7 @@ export type {
   ExecutorConformanceProbeInput,
   ExecutorConformanceResult,
 } from './conformance/executor.js';
-export { createNodeEvaluationClock } from './clock.js';
+export { createNodeEvaluationClock } from './execution/clock.js';
 export {
   INVOKE_JSON_INPUT_SCHEMA,
   INVOKE_JSON_OUTPUT_SCHEMA,
@@ -387,7 +387,7 @@ export {
 export type {
   EvaluationRuntimeSupportPorts,
   RuntimePortRegistration,
-} from './runtime.js';
+} from './execution/assembly.js';
 export { createExecutorFnAdapter } from './adapters/executor-fn.js';
 export type {
   CreateExecutorFnAdapterInput,

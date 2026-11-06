@@ -1,9 +1,9 @@
-import { deepFreezeCanonicalJson, type JsonValue } from '../eval-core/contracts/index.js';
-import type { CustomEvaluator } from './custom-evaluator.js';
-import { evaluate } from './evaluation/prepare.js';
-import { EvaluationConfigurationError } from './evaluation/errors.js';
-import { captureRubricDebug, type DebugJudgeInvocation } from './debug-rubric.js';
-export type { DebugJudgeInvocation, DebugJudgeResponse, DebugRubricReading } from './debug-rubric.js';
+import { deepFreezeCanonicalJson, type JsonValue } from '../../eval-core/contracts/index.js';
+import type { CustomEvaluator } from '../custom-evaluator.js';
+import { evaluate } from '../evaluation/prepare.js';
+import { EvaluationConfigurationError } from '../evaluation/errors.js';
+import { captureRubricDebug, type DebugJudgeInvocation } from './rubric.js';
+export type { DebugJudgeInvocation, DebugJudgeResponse, DebugRubricReading } from './rubric.js';
 import type {
   EvaluateInput,
   EvaluationResult,
@@ -12,7 +12,7 @@ import type {
   Sample,
   Variant,
   RubricJudgeEvaluator,
-} from './evaluation/contracts.js';
+} from '../evaluation/contracts.js';
 
 export interface DebugEvaluatorInput<
   Bindings extends Record<string, JsonValue> = Record<string, JsonValue>,

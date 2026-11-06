@@ -3,25 +3,25 @@ import type {
   JsonValue,
   RuntimeIdentity,
   Sha256Digest,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {
   IdentifierSchema,
   RuntimeIdentitySchema,
   deepFreezeCanonicalJson,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import type {
   ExecutionCache as CoreExecutionCache,
   ExecutionCacheEntry as CoreExecutionCacheEntry,
   ExecutionContentStoreRequest,
-} from '../eval-core/execution/index.js';
+} from '../../eval-core/execution/index.js';
 import type {
   EvaluationCache as CoreEvaluationCache,
   EvaluationCacheEntry as CoreEvaluationCacheEntry,
   EvaluationContent,
   EvaluationContentResolver,
-} from '../eval-core/evaluation/index.js';
-import type { EvaluationExecutor } from './evaluate.js';
-import type { EvaluationRuntimeSupportPorts } from './runtime.js';
+} from '../../eval-core/evaluation/index.js';
+import type { EvaluationExecutor } from '../evaluation/contracts.js';
+import type { EvaluationRuntimeSupportPorts } from '../execution/assembly.js';
 
 export type ContentDescriptor = CoreContentDescriptor;
 export type ContentValue = EvaluationContent;

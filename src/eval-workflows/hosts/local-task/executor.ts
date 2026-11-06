@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { type JsonValue } from '../../../eval-core/contracts/index.js';
 import { ExecutionPortFailure } from '../../../eval-core/execution/index.js';
 import type { Executor } from '../../../eval-runtime/evaluation/contracts.js';
-import type { WorkspaceProvider } from '../../../eval-runtime/workspace.js';
+import type { WorkspaceProvider } from '../../../eval-runtime/resources/workspace.js';
 import { spawnWithSigintPropagation, type SpawnHelperError } from '../../../executors/core/subprocess.js';
 import { buildCodexExecArguments } from '../../../executors/openai/codex/cli-arguments.js';
 import { parseCodexCliStream } from '../adapters/codex/cli-protocol.js';

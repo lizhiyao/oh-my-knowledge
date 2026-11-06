@@ -26,7 +26,7 @@ import {
   type MockInterceptionLease,
   type MockInterceptionProvider,
   type MockInterceptionRequest,
-} from '../mock-interception.js';
+} from '../resources/mock-interception.js';
 import {
   captureMcpConfigProvider,
   validateMcpConfigValue,
@@ -34,14 +34,14 @@ import {
   type McpConfigAccess,
   type McpConfigLease,
   type McpConfigProvider,
-} from '../mcp-config.js';
+} from '../resources/mcp-config.js';
 import {
   captureWorkspaceProvider,
   type CapturedWorkspaceProvider,
   type WorkspaceAccess,
   type WorkspaceLease,
   type WorkspaceProvider,
-} from '../workspace.js';
+} from '../resources/workspace.js';
 import { createSameProcessExecutorAdapter } from './same-process.js';
 import {
   executorProtocol,

@@ -19,7 +19,7 @@ import {
   type ExecutorIdentityVerifier,
   promoteVerifiedExecutorIdentity,
   captureEvaluationInfrastructure,
-} from '../infrastructure.js';
+} from '../content/infrastructure.js';
 import {
   ExperimentSchema,
   AnalysesInputSchema,
@@ -63,7 +63,7 @@ import {
   type EvaluationRuntimeSupportPorts,
   createEvaluationRuntime,
   EvaluationRuntimeAssemblyError,
-} from '../runtime.js';
+} from '../execution/assembly.js';
 import {
   type PreparedEvaluation as CorePreparedEvaluation,
   createEvaluationEngine as createCoreEvaluationEngine,
@@ -74,7 +74,7 @@ import {
 import {
   runPreparedEvaluation,
   HostEvaluationEventConsumptionError as AdvancedEvaluationEventConsumptionError,
-} from '../runner.js';
+} from '../execution/run.js';
 import {
   attachDefinition,
   corePreparedEvaluations,

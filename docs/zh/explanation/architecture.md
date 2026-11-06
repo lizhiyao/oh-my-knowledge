@@ -78,6 +78,18 @@ flowchart TD
 
 Core 各阶段通过 `eval-core/runtime` 共享运行资源的打开与清理、取消信号传递、时长投影和默认事件缓冲。预算结果投影、最低信任与拓扑排序属于共享不变量。Analysis 每次调度一个就绪节点，Series 每次调度一层就绪节点；显式顺序策略保持既有事件顺序。Execution 和 Evaluation 分别拥有自己的记录、缓存身份、超时结果与 Bundle 契约。
 
+`eval-runtime` 内部按职责归拢源码：
+
+| 目录 | 职责 |
+|---|---|
+| `execution/` | Core 端口装配、运行观测、生命周期、执行控制与 provider 注入 |
+| `resources/` | 工作区、MCP、mock 拦截及工具策略的声明与租约 |
+| `content/` | 内容端口、缓存与经注入存储完成的结果序列化，不拥有文件系统布局 |
+| `debug/` | 评分器与 rubric 调试 |
+| `evaluation/` | 公开 façade 后的输入捕获、编译、准备与结果复用 |
+
+执行与资源模块不得依赖输入编译、结果存取、调试或具体评分实现。内部模块消费叶子契约，不反向导入公开 `evaluate.ts` façade。包导出与持久化测量身份独立于这些源码路径。
+
 ```text
 eval-core ← eval-runtime ← 产品编排
                 ↑             ↑

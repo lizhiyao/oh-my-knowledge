@@ -1,4 +1,4 @@
-import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -7,7 +7,7 @@ import {
   deepFreezeCanonicalJson,
   type ExecutionResourceDescriptor,
   type JsonValue,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export type WorkspaceDescriptor = Readonly<ExecutionResourceDescriptor>;
 
