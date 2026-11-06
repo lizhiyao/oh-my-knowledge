@@ -9,15 +9,15 @@ import { EntityLinkExecutionRequestSchema, type EntityLinkInvocation, type Entit
 import { entityLinkConfirmationDigest, entityLinkEvidenceReplacementDigest, projectEntityLinkInvocation, transitionEntityLinkInvocation, validateEntityLinkPreview } from '../entities/link-invocation-state.js';
 import { memberKey, type LibraryEnvelope, type LibraryStore, type LibraryWrite } from '../entity-library/contracts.js';
 import { LibraryWriteCapacityError, LibraryReferentKindConflictError } from '../entity-library/write-errors.js';
-import { entityLinkDigest } from './entity-link-hash.js';
+import { entityLinkDigest } from '../entity-linking/entity-link-hash.js';
 import { canonicalJson } from '../store.js';
-import type { KnowledgeApplication } from '../application/application.js';
-import { KnowledgeLibraryApplication } from '../application/library.js';
+import type { KnowledgeApplication } from './application.js';
+import { KnowledgeLibraryApplication } from './library.js';
 import { currentEntityLinkSource } from './entity-link-source.js';
 import { createEntityLinkExecutionRequest } from '../adapters/entity-link-executor.js';
 import type { ExecutorArchiveProducer } from '../../executors/contracts/archive.js';
 import { configureEntityLinkApiProducer, inspectEntityLinkApiProducer, entityLinkTextHash } from '../adapters/entity-link-api-producer.js';
-import { entityLinkQuality, unreadableEntityLinkQuality } from './entity-link-quality.js';
+import { entityLinkQuality, unreadableEntityLinkQuality } from '../entity-linking/entity-link-quality.js';
 
 const reference = z.strictObject({ analysisId: z.string().uuid(), entityId: z.string().uuid(), mentionIds: z.array(z.string().uuid()).min(1).max(64).optional() });
 const decisionSchema = z.discriminatedUnion('decision', [

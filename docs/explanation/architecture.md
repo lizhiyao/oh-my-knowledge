@@ -114,7 +114,7 @@ knowledge/
 ├── entity-library/      # pure cross-window organization contracts and revisions
 ├── extraction/   # selected windows, model protocols and output admission
 ├── measurement/  # frozen typed measurement DTOs
-├── entity-linking/      # cross-window candidate and review execution
+├── entity-linking/      # cross-window link digests, prompts and quality projections
 ├── application/  # shared use cases and local application assembly
 ├── adapters/     # model transport, source reads and file persistence
 ├── migration/    # explicit legacy workspace conversion contracts
@@ -122,10 +122,12 @@ knowledge/
 ```
 
 The pure core depends only on itself and `zod`, never on execution subdomains or host effects.
-Application flows consume extraction, linking and adapters; linking also consumes library
-application behavior and execution adapters. Existing adapter relationships with extraction and
-linking remain explicit. Runtime and type-only edges are audited separately by architecture
-guards; grouping these subdomains does not make every dependency point only toward the core.
+Application flows consume adapters, extraction and linking mechanisms; adapters consume extraction
+and linking protocol leaves. `application/entity-links.ts` owns link execution use cases, while
+`application/entity-link-source.ts` checks their sources. `adapters/conversation-source.ts` reads
+original conversation records through Observe. Extraction and linking cannot depend back on
+applications or adapters, including type-only imports. Architecture guards retain separate subdomain
+vertices, with no registered runtime cycle or mutual-boundary exception inside Knowledge.
 Entities remain here because window identity, knowledge bindings and library organization form
 one current responsibility; an independent top-level entity lifecycle is not required.
 This source reorganization changes no public exports, model invocations, prompt bytes, Schema

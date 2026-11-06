@@ -1,1 +1,1 @@
-export { conversationExtractionSource } from '../../../knowledge/extraction/conversation-source.js';
+export { conversationExtractionSource } from '../../../knowledge/adapters/conversation-source.js';

@@ -7,7 +7,7 @@ import { validateEvidenceSelection } from '../validation.js';
 import type { KnowledgeApplication } from './application.js';
 import type { KnowledgeReadContext } from './read-context.js';
 import { EntityLinkConflictError, type EntityLinkEndpoint } from '../entities/links.js';
-import { currentEntityLinkSource } from '../entity-linking/entity-link-source.js';
+import { currentEntityLinkSource } from './entity-link-source.js';
 
 export const LibraryQuerySchema = z.strictObject({ query: z.string().trim().max(512).default(''),
   page: z.number().int().min(1).max(100_000).default(1), pageSize: z.number().int().min(1).max(100).default(20) });

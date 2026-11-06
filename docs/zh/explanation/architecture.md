@@ -114,7 +114,7 @@ knowledge/
 ├── entity-library/      # 纯跨窗组织契约与修订
 ├── extraction/   # 选定窗口、模型协议与输出接纳
 ├── measurement/  # 冻结的 typed 测量 DTO
-├── entity-linking/      # 跨窗候选与复核执行
+├── entity-linking/      # 跨窗关联摘要、prompt 与质量投影
 ├── application/  # 共用用例与本地应用装配
 ├── adapters/     # 模型传输、来源读取与文件持久化
 ├── migration/    # 显式旧工作区转换契约
@@ -122,9 +122,11 @@ knowledge/
 ```
 
 纯核心只依赖自身与 `zod`，不能反向依赖执行子域或宿主副作用。
-应用流程消费提炼、关联与适配器；关联还消费知识库应用行为和执行适配器。
-适配器与提炼、关联之间的既有关系继续显式保留。架构守卫分别审计运行时和仅类型依赖；
-目录收拢不意味着所有子域只能向核心单向依赖。
+应用流程消费适配器、提炼与关联机制；适配器消费提炼与关联的协议叶子。
+`application/entity-links.ts` 拥有关联执行用例，`application/entity-link-source.ts` 校验关联来源；
+`adapters/conversation-source.ts` 通过 Observe 读取原始会话记录。
+提炼与关联不得反向依赖应用或适配器，包括仅类型导入。架构守卫保留独立子域节点，
+知识内部不再登记运行时依赖环或双向边界例外。
 实体保留在此，是因为窗口身份、知识绑定和知识库组织属于当前内聚职责，尚无独立顶层实体生命周期需求。
 本次源码组织调整不改变公开 exports、模型调用、prompt 字节、Schema 身份或工作区持久化路径，
 不增加统一聚合入口或兼容 shim。

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ConversationCatalog } from '../../observe/conversation/catalog.js';
-import { readTraceSource, type TraceSourceReadContext } from '../adapters/trace-source-reader.js';
+import { readTraceSource, type TraceSourceReadContext } from './trace-source-reader.js';
 import { normalizeRecordRanges, type SourceRecordRange } from '../sources.js';
 
 /** Resolve original records through Observe. Browser selectors never supply paths, text or offsets. */

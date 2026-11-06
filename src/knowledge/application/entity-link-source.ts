@@ -1,4 +1,4 @@
-import type { KnowledgeApplication } from '../application/application.js';
+import type { KnowledgeApplication } from './application.js';
 import { EntityLinkConflictError, type EntityLinkEndpoint } from '../entities/links.js';
 import { validateEvidenceSelection } from '../validation.js';
 
