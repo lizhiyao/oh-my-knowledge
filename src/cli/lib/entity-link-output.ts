@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from '../../knowledge/store.js';
 import { ENTITY_SCOPE_REVIEW_GUIDANCE } from '../../knowledge/entities/identity.js';
 import { EntityLinkPreviewSchema, type EntityLinkInvocation } from '../../knowledge/entities/link-invocation.js';
-import type { EntityLinkApplication } from '../../knowledge/entity-linking/entity-links.js';
+import type { EntityLinkApplication } from '../../knowledge/application/entity-links.js';
 import type { Lang } from '../../shared/language.js';
 import type { EntityLinkQuality } from '../../knowledge/entity-linking/entity-link-quality.js';
 

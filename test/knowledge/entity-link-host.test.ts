@@ -12,7 +12,7 @@ import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKno
 import { FileEntityLinkStore, entityLinkAllocation, ENTITY_LINK_NAMESPACE_BYTES, ENTITY_LINK_EVENT_RESERVE_BYTES } from '../../src/knowledge/adapters/entity-link-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
 import { FileLibraryStore } from '../../src/knowledge/adapters/library-store.js';
-import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/knowledge/entity-linking/entity-links.js';
+import { EntityLinkApplication, EntityLinkArchiveError } from '../../src/knowledge/application/entity-links.js';
 import { configureEntityLinkApiProducer, entityLinkTextHash } from '../../src/knowledge/adapters/entity-link-api-producer.js';
 import { KnowledgeLibraryApplication } from '../../src/knowledge/application/library.js';
 import { transitionEntityLinkInvocation, projectEntityLinkInvocation } from '../../src/knowledge/entities/link-invocation-state.js';

@@ -45,9 +45,9 @@ const KNOWLEDGE_SUBDOMAIN_DEPENDENCIES: Record<string, { runtime: readonly strin
   'knowledge/artifacts/doctor': { runtime: ['knowledge/artifacts/authoring', 'knowledge/artifacts/skills', 'knowledge/artifacts/sources'], typeOnly: ['knowledge/artifacts'] },
   'knowledge/artifacts/sources': { runtime: ['knowledge/artifacts/skills'], typeOnly: ['knowledge/artifacts'] },
   'knowledge/entities': { runtime: ['knowledge', 'knowledge/entity-library'] },
-  'knowledge/extraction': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/entities'] },
+  'knowledge/extraction': { runtime: ['knowledge', 'knowledge/entities'] },
   'knowledge/entity-library': { runtime: ['knowledge'] },
-  'knowledge/entity-linking': { runtime: ['knowledge', 'knowledge/adapters', 'knowledge/application', 'knowledge/entities', 'knowledge/entity-library'] },
+  'knowledge/entity-linking': { runtime: ['knowledge', 'knowledge/entities', 'knowledge/entity-library'] },
 };
 
 interface ModuleEdge {
@@ -268,6 +268,13 @@ describe('src 与 scripts 依赖图', () => {
     expect(allowed(fixture)).toBe(true);
     expect(allowed({ ...fixture, typeOnly: false })).toBe(false);
     expect(allowed({ importerDomain: 'knowledge', targetDomain: 'knowledge/application', typeOnly: true })).toBe(false);
+    for (const importerDomain of ['knowledge/extraction', 'knowledge/entity-linking']) {
+      for (const targetDomain of ['knowledge/application', 'knowledge/adapters']) {
+        for (const typeOnly of [false, true]) {
+          expect(allowed({ importerDomain, targetDomain, typeOnly })).toBe(false);
+        }
+      }
+    }
     const workspaceGuardEdge = { importerDomain: 'knowledge/artifacts/authoring', targetDomain: 'knowledge/adapters',
       importer: 'knowledge/artifacts/authoring/carrier-library.ts', target: 'knowledge/adapters/workspace-guard.ts', typeOnly: false };
     expect(allowed(workspaceGuardEdge)).toBe(true);

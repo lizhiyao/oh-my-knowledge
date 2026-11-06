@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
 import { createLocalEntityLinks } from '../../../knowledge/application/local.js';
-import { type EntityLinkApplication } from '../../../knowledge/entity-linking/entity-links.js';
+import { type EntityLinkApplication } from '../../../knowledge/application/entity-links.js';
 import type { ExecutorArchiveProducer } from '../../../executors/contracts/archive.js';
 import type { EntityLinkStudioInspection, EntityLinkStudioPreview } from '../../view-models/knowledge/entity-links.js';
 

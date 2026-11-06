@@ -7,7 +7,7 @@ import { FileSourceStore } from '../../../knowledge/adapters/source-store.js';
 import { readTraceSource } from '../../../knowledge/adapters/trace-source-reader.js';
 import { LocalSourceScopeSchema, type LocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { knowledgeOperationSchemas, executeKnowledgeOperation } from '../../../knowledge/application/operations.js';
-import { conversationExtractionSource } from '../../../knowledge/extraction/conversation-source.js';
+import { conversationExtractionSource } from '../../../knowledge/adapters/conversation-source.js';
 
 /** Startup bindings are host data. Browser inventory contains only logical IDs. */
 function sourceCatalog(scope?: LocalSourceScope) {
