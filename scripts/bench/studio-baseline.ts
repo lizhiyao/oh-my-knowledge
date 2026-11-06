@@ -256,7 +256,7 @@ async function loadDist(): Promise<DistModules> {
   const reportServer = await importDist('dist/studio/http/report-server.js') as {
     createReportServer: DistModules['createReportServer'];
   };
-  const bundle = await importDist('dist/evidence/storage/report-bundle.js') as {
+  const bundle = await importDist('dist/storage/report-bundle.js') as {
     writeMeasurementReportBundle: BaselineDatasetWriters['writeMeasurementReportBundle'];
   };
   const inbox = await importDist('dist/observe/inbox/index.js') as {

@@ -4,7 +4,7 @@ import { Args, Errors, Flags } from '@oclif/core';
 import { z } from 'zod';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
-import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../../settings/user-settings.js';
 import { createOpenAiArchiveProducer } from '../../../executors/openai/archive.js';
 import { createLocalEntityLinks, parseEntityLinkPreview } from '../../../knowledge/application/local.js';
 import { shellQuoteArg } from '../../../shared/shell-quote.js';

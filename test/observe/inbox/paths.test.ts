@@ -15,7 +15,7 @@ import {
 } from '../../../src/observe/inbox/paths.js';
 import { loadObservationInboxReports } from '../../../src/observe/inbox/report-store.js';
 import { loadObservationReviewState } from '../../../src/observe/inbox/review-state.js';
-import { reportFileName } from '../../../src/evidence/storage/file-names.js';
+import { reportFileName } from '../../../src/storage/file-names.js';
 import { FileObservationCaptureStore } from '../../../src/mcp/capture-store.js';
 import { OBSERVATION_CAPTURE_SCOPE } from '../../../src/mcp/principal.js';
 

@@ -1,6 +1,6 @@
 import { lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkStorageDirectory } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory } from '../adapters/workspace-guard.js';
 import { SourceUpdatesService, type SourceCurrentReadResult, type SourceUpdateInventory } from './source-updates.js';
 import { canonicalJson, type KnowledgeEnvelope } from '../store.js';
 import { ResolvedSourceSelectionSchema, type SourceRef, type SourceSnapshot } from '../sources.js';

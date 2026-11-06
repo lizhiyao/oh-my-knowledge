@@ -11,10 +11,10 @@ import {
   indexDoctorWrite, listDoctorCards, removeDoctorCard,
   indexObserveWrite, listObserveCards, artifactIndexDir,
   listLiveDoctorCards, listLiveObserveCards, cardTargetSentinel,
-} from '../../../src/evidence/storage/discovery-index.js';
-import { isCanonicalArtifactFileStem } from '../../../src/evidence/storage/file-names.js';
-import { globalDoctorsDir, globalObserveHealthDir } from '../../../src/evidence/storage/directories.js';
-import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+} from '../../src/storage/discovery-index.js';
+import { isCanonicalArtifactFileStem } from '../../src/storage/file-names.js';
+import { globalDoctorsDir, globalObserveHealthDir } from '../../src/storage/directories.js';
+import { writeMeasurementReportBundle } from '../../src/storage/report-bundle.js';
 
 function reportFileName(id: string): string {
   return join(id, 'report.json');

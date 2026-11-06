@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import { assertSourceMigrationComplete, KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { assertSourceMigrationComplete, KnowledgeStorageStateError } from './workspace-guard.js';
 import { FileGenerationJournalStore } from './generation-journal-store.js';
 import { FileSourceStore } from './source-store.js';
 

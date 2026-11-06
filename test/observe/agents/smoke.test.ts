@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { globalLayout } from '../../../src/evidence/storage/layout.js';
+import { globalLayout } from '../../../src/storage/layout.js';
 import { AGENT_TRACE_ARTIFACT_VERSION, agentCollectionReportPath, collectAgentLogs, loadAgentCollectionReport, type AgentTraceArtifact } from '../../../src/observe/agents/collect.js';
 import { detectAgentInventory } from '../../../src/observe/agents/detect.js';
 import { resolveAgentCatalog } from '../../../src/observe/agents/local-catalog.js';

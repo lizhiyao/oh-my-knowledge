@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isReportFileName } from '../../src/evidence/storage/file-names.js';
+import { isReportFileName } from '../../src/storage/file-names.js';
 import ObserveInbox from '../../src/cli/commands/observe/inbox.js';
 import ObserveIngest from '../../src/cli/commands/observe/ingest.js';
 import {

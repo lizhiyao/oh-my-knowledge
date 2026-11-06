@@ -47,8 +47,8 @@ test/eval-workflows/measurement/analysis/bootstrap-family-table.test.ts
 test/eval-workflows/measurement/analysis/dimension-node.test.ts
 test/eval-workflows/resume-disposition.test.ts
 test/eval-workflows/sample-generation/trace-drafts.test.ts
-test/evidence/storage/report-bundle.test.ts
-test/evidence/storage/user-settings.test.ts
+test/storage/report-bundle.test.ts
+test/settings/user-settings.test.ts
 test/examples/catalog.test.ts
 test/executor.test.ts
 test/executors/codex-cli-args.test.ts

@@ -6,7 +6,7 @@ import {
   type EvaluationNotice,
 } from '../../eval-workflows/hosts/application.js';
 import { withLocalizedSampleDiscovery } from './localized-sample-discovery.js';
-import { globalLayout } from '../../evidence/storage/layout.js';
+import { globalLayout } from '../../storage/layout.js';
 import type { PreparedCliEvaluation } from './prepare-evaluation.js';
 import type { CliLang } from './i18n.js';
 import { announceCoreReport } from './core-report-service.js';

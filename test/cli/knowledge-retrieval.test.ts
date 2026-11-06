@@ -10,7 +10,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { knowledgeBodyDigest } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeActor, KnowledgeDraft } from '../../src/knowledge/contracts.js';
 import * as executor from '../../src/knowledge/adapters/generation-executor.js';
-import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../src/settings/user-settings.js';
 import { runCommand } from '../helpers/run-command.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 

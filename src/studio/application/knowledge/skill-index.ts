@@ -4,13 +4,13 @@ import {
   listMeasurementDerivedPaths,
   listMeasurementReportPaths,
   measurementRecordIdFromReportPath,
-} from '../../../evidence/storage/report-bundle.js';
+} from '../../../storage/report-bundle.js';
 import {
   artifactIndexDir,
   cardTargetSentinel,
   listLiveDoctorCards,
   listLiveObserveCards,
-} from '../../../evidence/storage/discovery-index.js';
+} from '../../../storage/discovery-index.js';
 import {
   buildStudioDiagnosisSummary,
   mergeDiagnosisBundles,

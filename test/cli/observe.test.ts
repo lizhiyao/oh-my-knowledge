@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { runObserveInbox } from '../../src/cli/commands/observe/inbox.js';
-import { reportFileName } from '../../src/evidence/storage/file-names.js';
+import { reportFileName } from '../../src/storage/file-names.js';
 
 function writeInboxReport(dir: string, report: unknown): void {
   const reportsDir = join(dir, 'reports');

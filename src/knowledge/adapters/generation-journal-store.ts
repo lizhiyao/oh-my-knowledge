@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { constants as bufferConstants } from 'node:buffer';
-import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
 import { GenerationJournalSchema, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';

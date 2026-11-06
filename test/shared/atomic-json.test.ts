@@ -3,7 +3,7 @@ import { chmodSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, s
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createJsonFileAtomic } from '../../src/shared/atomic-json.js';
-import { writeTextFileAtomic } from '../../src/evidence/storage/atomic-text.js';
+import { writeTextFileAtomic } from '../../src/storage/atomic-text.js';
 import { hashArtifactSource } from '../../src/knowledge/artifacts/sources/content-hash.js';
 
 const fault = vi.hoisted(() => ({

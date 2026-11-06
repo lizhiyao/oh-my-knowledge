@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { isRfc3339Timestamp } from '../../shared/timestamp.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { isRfc3339Timestamp } from '../shared/timestamp.js';
 import { isCanonicalArtifactFileStem } from './file-names.js';
 
 export const MEASUREMENT_BUNDLE_MANIFEST_SCHEMA_VERSION =

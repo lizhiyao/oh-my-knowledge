@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from './workspace-guard.js';
 import { detectJsonlTraceSource, forEachNonEmptyUtf8Line, type CcRecord } from '../../observe/trace/source.js';
 import type { TraceEvent } from '../../observe/trace/trace-ir.js';
 import {

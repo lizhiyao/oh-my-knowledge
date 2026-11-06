@@ -1,4 +1,4 @@
-import { randomRunToken, runTimestamp } from './file-names.js';
+import { randomRunToken, runTimestamp } from '../../storage/file-names.js';
 
 function runIdSuffix(): string {
   return `${runTimestamp()}-${randomRunToken()}`;

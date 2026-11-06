@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { listLiveObserveCards, listObserveCards } from '../../../evidence/storage/discovery-index.js';
-import { listMeasurementReportPaths, measurementRecordIdFromReportPath } from '../../../evidence/storage/report-bundle.js';
+import { listLiveObserveCards, listObserveCards } from '../../../storage/discovery-index.js';
+import { listMeasurementReportPaths, measurementRecordIdFromReportPath } from '../../../storage/report-bundle.js';
 import {
   confidenceOf,
   measuredToolFailureRate,

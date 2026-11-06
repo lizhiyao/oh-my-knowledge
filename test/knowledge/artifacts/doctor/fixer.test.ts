@@ -6,7 +6,7 @@ import type { ExecutorInput } from '../../../../src/executors/contracts/ports.js
 import type { ExecResult } from '../../../../src/executors/contracts/result.js';
 import type { DoctorReport } from '../../../../src/knowledge/artifacts/doctor/contracts.js';
 import { runDoctorFix } from '../../../../src/knowledge/artifacts/doctor/fixer.js';
-import { projectLayout } from '../../../../src/evidence/storage/layout.js';
+import { projectLayout } from '../../../../src/storage/layout.js';
 
 const state = vi.hoisted(() => ({ invoke: vi.fn(), answers: [] as string[], closed: 0 }));
 vi.mock('../../../../src/executors/index.js', () => ({ createExecutor: () => state.invoke }));

@@ -10,6 +10,8 @@ const trees = [
   { header: 'executors/', root: 'src/executors' },
   { header: 'eval-workflows/hosts/', root: 'src/eval-workflows/hosts' },
   { header: 'evidence/', root: 'src/evidence' },
+  { header: 'storage/', root: 'src/storage' },
+  { header: 'settings/', root: 'src/settings' },
 ] as const;
 
 function parseDocumentedTree(markdown: string, header: string) {

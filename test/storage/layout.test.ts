@@ -4,7 +4,7 @@ import { describe, it } from 'vitest';
 import {
   globalLayout,
   projectLayout,
-} from '../../../src/evidence/storage/layout.js';
+} from '../../src/storage/layout.js';
 
 describe('OMK storage layout', () => {
   it('derives every project v2 path from one root', () => {

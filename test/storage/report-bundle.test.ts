@@ -1,4 +1,4 @@
-import { testDirectory } from '../../helpers/temp-directory.js';
+import { testDirectory } from '../helpers/temp-directory.js';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -11,7 +11,7 @@ import {
   measurementRecordIdFromReportPath,
   parseMeasurementBundleManifest,
   writeMeasurementReportBundle,
-} from '../../../src/evidence/storage/report-bundle.js';
+} from '../../src/storage/report-bundle.js';
 
 describe('measurement report bundle', () => {
   it('writes an authoritative report and manifest into one self-contained directory', () => {

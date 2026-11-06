@@ -1,4 +1,4 @@
-import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../settings/user-settings.js';
 import { FALLBACK_LANG } from '../../shared/language-preference.js';
 import type { Lang } from '../../shared/language.js';
 

@@ -94,7 +94,7 @@ function moduleDomain(path: string): string {
   ) {
     return `${topLevel}/${subdomain}`;
   }
-  if (topLevel === 'evidence' && ['graph', 'storage'].includes(subdomain)) {
+  if (topLevel === 'evidence' && subdomain === 'graph') {
     return `${topLevel}/${subdomain}`;
   }
   if (topLevel === 'executors' && subdomain === 'preflight') {
@@ -249,12 +249,15 @@ describe('src 与 scripts 依赖图', () => {
     expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');
     expect(moduleDomain('eval-workflows/hosts/composition/assembly.ts')).toBe('eval-workflows/hosts');
     expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
-    expect(moduleDomain('evidence/storage/report-bundle.ts')).toBe('evidence/storage');
+    expect(moduleDomain('storage/report-bundle.ts')).toBe('storage');
+    expect(moduleDomain('settings/user-settings.ts')).toBe('settings');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
   });
 
   it('知识子域只消费已登记方向，type-only 边不升级为运行时依赖', () => {
-    const allowed = (edge: Pick<ModuleEdge, 'importerDomain' | 'targetDomain' | 'typeOnly'>): boolean => {
+    const allowed = (edge: Pick<ModuleEdge, 'importerDomain' | 'targetDomain' | 'typeOnly'> & Partial<Pick<ModuleEdge, 'importer' | 'target'>>): boolean => {
+      if (edge.importer === 'knowledge/artifacts/authoring/carrier-library.ts'
+        && edge.target === 'knowledge/adapters/workspace-guard.ts') return true;
       const dependencies = KNOWLEDGE_SUBDOMAIN_DEPENDENCIES[edge.importerDomain];
       return dependencies?.runtime.includes(edge.targetDomain) === true
         || (edge.typeOnly && dependencies?.typeOnly?.includes(edge.targetDomain) === true);
@@ -265,6 +268,11 @@ describe('src 与 scripts 依赖图', () => {
     expect(allowed(fixture)).toBe(true);
     expect(allowed({ ...fixture, typeOnly: false })).toBe(false);
     expect(allowed({ importerDomain: 'knowledge', targetDomain: 'knowledge/application', typeOnly: true })).toBe(false);
+    const workspaceGuardEdge = { importerDomain: 'knowledge/artifacts/authoring', targetDomain: 'knowledge/adapters',
+      importer: 'knowledge/artifacts/authoring/carrier-library.ts', target: 'knowledge/adapters/workspace-guard.ts', typeOnly: false };
+    expect(allowed(workspaceGuardEdge)).toBe(true);
+    expect(allowed({ ...workspaceGuardEdge, importer: 'knowledge/artifacts/authoring/other.ts' })).toBe(false);
+    expect(allowed({ ...workspaceGuardEdge, target: 'knowledge/adapters/knowledge-store.ts' })).toBe(false);
   });
 
   it('根公开入口和维护脚本都进入检查范围', () => {

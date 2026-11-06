@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../../src/knowledge/application/local.js';
 import { executeCarrierAuthoring, parseCarrierAuthoringRequest } from '../../../../src/knowledge/artifacts/authoring/application.js';
-import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../../src/evidence/storage/knowledge-workspace.js';
+import { withWorkspaceWrite, storageLockState, WORKSPACE_LOCK_FILE } from '../../../../src/knowledge/adapters/workspace-guard.js';
 import { CarrierLibrary } from '../../../../src/knowledge/artifacts/authoring/carrier-library.js';
 import type { CarrierDetail, CarrierDraft, ReviewedCarrierDetail, ReviewedCarrierDraft } from '../../../../src/knowledge/artifacts/authoring/carrier-contracts.js';
 import { FileKnowledgeStore } from '../../../../src/knowledge/adapters/knowledge-store.js';

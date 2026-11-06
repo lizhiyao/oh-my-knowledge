@@ -11,7 +11,7 @@ import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../s
 import { createReportServer } from '../../../src/studio/http/report-server.js';
 import { executeKnowledgeCandidateAction } from '../../../src/studio/application/knowledge/knowledge-candidates.js';
 import { executeArtifactAuthoring } from '../../../src/studio/application/knowledge/artifact-authoring.js';
-import { WORKSPACE_LOCK_FILE } from '../../../src/evidence/storage/knowledge-workspace.js';
+import { WORKSPACE_LOCK_FILE } from '../../../src/knowledge/adapters/workspace-guard.js';
 import { KnowledgeApplication } from '../../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../../src/knowledge/entities/contracts.js';
 import { authoredKnowledgeResponse, authoredSourceDecision, seedKnowledgeWorkspace } from '../../cli/knowledge-fixtures.js';

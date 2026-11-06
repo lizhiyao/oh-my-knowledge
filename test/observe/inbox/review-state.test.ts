@@ -10,7 +10,7 @@ import {
   projectObservationsDir,
   resolveObservationsDir,
 } from '../../../src/observe/inbox/paths.js';
-import { reportFileName } from '../../../src/evidence/storage/file-names.js';
+import { reportFileName } from '../../../src/storage/file-names.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,

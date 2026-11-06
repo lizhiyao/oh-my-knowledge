@@ -13,7 +13,7 @@ import type {
 import type { StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import type { OmkEvaluationProgressSink } from '../projections/runtime-progress.js';
 import type { CliEvaluationRequest } from '../input-compilation/index.js';
-import { generateRunId } from '../../evidence/storage/run-id.js';
+import { generateRunId } from '../artifact-store/run-id.js';
 
 export type ProductEvaluationResult =
   | { readonly outcomeKind: 'dry-run'; readonly outcome: CoreCliDryRunProjection }

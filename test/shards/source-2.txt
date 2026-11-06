@@ -54,7 +54,7 @@ test/eval-workflows/measurement/analysis/composite-source-adapter.test.ts
 test/eval-workflows/measurement/analysis/dimension-parameters.test.ts
 test/eval-workflows/sample-generation/sample-source-exists.test.ts
 test/eval-workflows/sample-generation/skill-samples.test.ts
-test/evidence/storage/layout-guard.test.ts
+test/storage/layout-guard.test.ts
 test/examples/codex-task-trajectory.test.ts
 test/executors/codex-sdk.test.ts
 test/executors/mock-runtime/runtime.test.ts

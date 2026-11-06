@@ -19,7 +19,7 @@ import { Args, Flags } from '@oclif/core';
 import { z } from 'zod';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
-import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../../settings/user-settings.js';
 import { createLocalKnowledgeApplication, createLocalKnowledgeReview, createLocalKnowledgeRelations } from '../../../knowledge/application/local.js';
 import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-host.js';
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';

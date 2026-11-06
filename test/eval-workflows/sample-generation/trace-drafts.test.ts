@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateTraceDrafts } from '../../../src/eval-workflows/sample-generation/trace-drafts.js';
 import { observationReportsDir, observationDraftsDir } from '../../../src/observe/inbox/paths.js';
-import { reportFileName } from '../../../src/evidence/storage/file-names.js';
+import { reportFileName } from '../../../src/storage/file-names.js';
 
 const report = {
       kind: 'observe-inbox',

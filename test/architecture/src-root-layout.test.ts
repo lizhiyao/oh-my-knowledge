@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const SRC_ROOT = resolve('src');
 const EXPECTED_ROOT_DIRECTORIES = [
   'cli',
+  'settings',
   'dsh-plugin',
   'eval-core',
   'eval-runtime',
@@ -15,6 +16,7 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'mcp',
   'observe',
   'shared',
+  'storage',
   'studio',
 ] as const;
 
@@ -113,16 +115,17 @@ describe('src 最终领域地图', () => {
       .toEqual([...EXPECTED_SHARED_FILES].sort());
   });
 
-  it('Evidence 只由 storage 与 graph 两个事实子域组成', () => {
+  it('Evidence 只保留共用图谱契约与校验', () => {
     const entries = readdirSync(resolve('src/evidence'), { withFileTypes: true });
     expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['graph', 'storage']);
+      .toEqual(['graph']);
+    expect(readdirSync(resolve('src/evidence/graph')).sort()).toEqual(['contracts.ts', 'schema.ts']);
     expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
       .toEqual([]);
   });
 
   it('不恢复任何迁移前的目录或构建产物', () => {
-    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observe/knowledge-extraction'].flatMap((directory) => [
+    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observe/knowledge-extraction', 'evidence/storage'].flatMap((directory) => [
       `src/${directory}`,
       `test/${directory}`,
       ...(existsSync(resolve('dist')) ? [`dist/${directory}`] : []),

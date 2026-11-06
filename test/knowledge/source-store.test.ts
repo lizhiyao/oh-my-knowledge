@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { FileSourceStore, SOURCE_SNAPSHOT_MAX_BYTES, SOURCE_STORAGE_MAX_BYTES, SOURCE_STORAGE_MAX_FILES,
   SourceStoreError } from '../../src/knowledge/adapters/source-store.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { WORKSPACE_LOCK_FILE } from '../../src/evidence/storage/knowledge-workspace.js';
+import { WORKSPACE_LOCK_FILE } from '../../src/knowledge/adapters/workspace-guard.js';
 import type { SourceProjection, SourceSnapshot } from '../../src/knowledge/sources.js';
 
 const fault = vi.hoisted(() => ({ tempWrite: false, tempWriteCountdown: undefined as number | undefined, afterLink: false, denied: false,

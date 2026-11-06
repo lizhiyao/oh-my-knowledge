@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { FileLockTimeoutError } from '../../shared/file-lock.js';
-import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite, type SourceMigrationWriteContext } from './workspace-guard.js';
 import { canonicalJson } from '../store.js';
 import { SOURCE_PROJECTION_VERSION, SourceDeletionMarkerSchema, SourceDigestSchema, SourceProjectionSchema,
   SourceSnapshotSchema, sourceSnapshotProjection, sourceVersionPreimage,

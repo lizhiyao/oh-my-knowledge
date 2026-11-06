@@ -15,7 +15,7 @@ import { FileLibraryStore } from '../../src/knowledge/adapters/library-store.js'
 import { confirmKnowledgePublication, publishKnowledgeBytes } from '../../src/knowledge/adapters/durable-publication.js';
 import type { LibraryWrite } from '../../src/knowledge/entity-library/contracts.js';
 import { recoverStorageLock, storageLockState, withWorkspaceWrite, WORKSPACE_LOCK_FILE, SOURCE_MIGRATION_LOCK_FILE,
-  SOURCE_MIGRATION_STATE_FILE, withSourceMigrationWorkspaceWrite, type SourceMigrationWriteContext } from '../../src/evidence/storage/knowledge-workspace.js';
+  SOURCE_MIGRATION_STATE_FILE, withSourceMigrationWorkspaceWrite, type SourceMigrationWriteContext } from '../../src/knowledge/adapters/workspace-guard.js';
 import { applyEntityAnalysisWrite } from '../../src/knowledge/entities/history.js';
 import { EntityAnalysisWriteCapacityError, type EntityAnalysisWrite } from '../../src/knowledge/entities/contracts.js';
 

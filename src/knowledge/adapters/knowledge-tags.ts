@@ -6,7 +6,7 @@ import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { KnowledgeTagsSchema, type KnowledgeTagState, type KnowledgeTagStore } from '../tags.js';
 import { canonicalJson } from '../store.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { checkStorageDirectory, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite } from './workspace-guard.js';
 
 const envelope = z.strictObject({
   schemaVersion: z.literal('omk-knowledge-tags/v1'), namespace: z.string().min(1), knowledgeId: z.string().min(1).max(256),

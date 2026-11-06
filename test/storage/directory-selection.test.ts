@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveDataDirectory } from '../../../src/evidence/storage/directory-selection.js';
+import { resolveDataDirectory } from '../../src/storage/directory-selection.js';
 
 describe('data directory selection', () => {
   it.each([

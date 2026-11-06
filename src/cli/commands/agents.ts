@@ -6,8 +6,8 @@ import { BaseCommand } from '../oclif/base-command.js';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';
 import { knowledgeCommand } from '../lib/knowledge-output.js';
-import { UserSettingsStore } from '../../evidence/storage/user-settings.js';
-import { globalLayout } from '../../evidence/storage/layout.js';
+import { UserSettingsStore } from '../../settings/user-settings.js';
+import { globalLayout } from '../../storage/layout.js';
 import type { AgentCollectionEntry } from '../../observe/agents/index.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });

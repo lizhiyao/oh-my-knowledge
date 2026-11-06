@@ -1,12 +1,12 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
-import { isReportFileName } from '../../evidence/storage/file-names.js';
-import { resolveDataDirectory } from '../../evidence/storage/directory-selection.js';
+import { globalLayout, projectLayout } from '../../storage/layout.js';
+import { isReportFileName } from '../../storage/file-names.js';
+import { resolveDataDirectory } from '../../storage/directory-selection.js';
 
 /**
  * inbox 根目录一律按**调用时**的 `cwd()` 求值（函数，不是 import 时冻结的常量），与
- * `evidence/storage/directories.ts` 同口径：Studio 与 MCP 是长会话，按请求解析才不会和
+ * `storage/directories.ts` 同口径：Studio 与 MCP 是长会话，按请求解析才不会和
  * CLI 的当前项目分叉。本模块只算路径，不建目录——建目录属于写路径自己的副作用。
  */
 

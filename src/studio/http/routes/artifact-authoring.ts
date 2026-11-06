@@ -1,4 +1,4 @@
-import { KnowledgeStorageStateError } from '../../../evidence/storage/knowledge-workspace.js';
+import { KnowledgeStorageStateError } from '../../../knowledge/adapters/workspace-guard.js';
 import { executeArtifactAuthoring } from '../../application/knowledge/artifact-authoring.js';
 import { JSON_HEADERS } from '../errors.js';
 import { readJsonObjectBody, RequestBodyError } from '../request-errors.js';

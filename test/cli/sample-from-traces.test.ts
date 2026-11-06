@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { queryObservationInbox } from '../../src/observe/inbox/index.js';
 import { observationReportsDir } from '../../src/observe/inbox/paths.js';
 import { runSampleFromTraces } from '../../src/cli/commands/sample.js';
-import { reportFileName } from '../../src/evidence/storage/file-names.js';
+import { reportFileName } from '../../src/storage/file-names.js';
 import { withCapturedStderr } from '../helpers/stderr.js';
 
 describe('sample --from-traces', () => {

@@ -3,7 +3,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, open
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { recoverStorageLock, SOURCE_MIGRATION_STATE_FILE, SOURCE_MIGRATION_LOCK_FILE, WORKSPACE_LOCK_FILE,
-  assertSourceMigrationWriteContext, withSourceMigrationWorkspaceWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+  assertSourceMigrationWriteContext, withSourceMigrationWorkspaceWrite, type SourceMigrationWriteContext } from './workspace-guard.js';
 import { KnowledgeActorSchema, KnowledgeRevisionSchema, type EvidenceSelection, type KnowledgeActor, type KnowledgeBodyRef, type KnowledgeRevision } from '../contracts.js';
 import { KnowledgeAssociationRevisionSchema, applyKnowledgeAssociationWrite, validateKnowledgeAssociationReferences,
   type KnowledgeAssociationEnvelope, type KnowledgeAssociationRevision, type KnowledgeAssociationWrite } from '../associations.js';
@@ -25,7 +25,7 @@ import { FileKnowledgeTags } from './knowledge-tags.js';
 import { FileKnowledgeStore } from './knowledge-store.js';
 import { FileSourceStore, SOURCE_SNAPSHOT_MAX_BYTES, SOURCE_STORAGE_MAX_BYTES } from './source-store.js';
 
-export { SOURCE_MIGRATION_STATE_FILE } from '../../evidence/storage/knowledge-workspace.js';
+export { SOURCE_MIGRATION_STATE_FILE } from './workspace-guard.js';
 export const SOURCE_MIGRATION_IN_PROGRESS = 'in_progress' as const;
 export const SOURCE_MIGRATION_COMPLETE = 'complete' as const;
 export const SOURCE_MIGRATION_PLAN_MAX_BYTES = 128 * 1024 * 1024;

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { KnowledgeGenerationModel, KnowledgeApplication } from './application.js';
 import { KnowledgeBodyRefSchema } from '../contracts.js';
 import { KnowledgeRetrievalRequestSchema, retrieveKnowledge, retrieveKnowledgeText } from './retrieval.js';
-import { KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { KnowledgeStorageStateError } from '../adapters/workspace-guard.js';
 import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources.js';
 import { SourceCaptureError } from './source-capture.js';

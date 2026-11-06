@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { withWorkspaceWrite } from './workspace-guard.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { applyKnowledgeAssociationWrite, KnowledgeAssociationWriteSchema, validateKnowledgeAssociationReferences,
