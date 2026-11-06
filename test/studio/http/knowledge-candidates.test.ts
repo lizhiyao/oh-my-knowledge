@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLocalKnowledgeApplication } from '../../../src/knowledge/application/local.js';
 import type { ConversationCatalog, ConversationTaskTrajectory } from '../../../src/observe/conversation/catalog.js';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
@@ -84,12 +84,14 @@ describe('Studio candidate action boundary', () => {
   };
   let server: ReturnType<typeof createReportServer>;
   let url: string;
-  beforeAll(async () => {
+  // Each case owns its listener: synchronous fixture work must not reuse a prior case's idle socket.
+  beforeEach(async () => {
     writeFileSync(source, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '项目约束' }] } }));
     server = createReportServer({ sourceScope: { scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'authored-project', root }], traces: [] }, port: 0, conversationCatalog: catalog, observationsDir: join(root, 'observations'), analysesDir: join(root, 'analyses'), doctorsDir: join(root, 'doctors') });
     url = await server.start();
   });
-  afterAll(async () => { await server?.stop(); rmSync(root, { recursive: true, force: true }); });
+  afterEach(async () => { await server?.stop(); });
+  afterAll(() => { rmSync(root, { recursive: true, force: true }); });
   const post = (body: Record<string, unknown>, origin?: string) => fetch(`${url}/api/knowledge/candidates`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify({ workspace, ...body }),
   });
