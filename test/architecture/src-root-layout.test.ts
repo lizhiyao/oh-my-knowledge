@@ -10,7 +10,6 @@ const EXPECTED_ROOT_DIRECTORIES = [
   'eval-core',
   'eval-runtime',
   'eval-workflows',
-  'evidence',
   'executors',
   'knowledge',
   'mcp',
@@ -60,6 +59,7 @@ const RETIRED_TOP_LEVEL_DIRECTORIES = [
   'authoring',
   'diagnosis',
   'doctor',
+  'evidence',
   'evaluation-core',
   'grading',
   'inputs',
@@ -115,17 +115,12 @@ describe('src 最终领域地图', () => {
       .toEqual([...EXPECTED_SHARED_FILES].sort());
   });
 
-  it('Evidence 只保留共用图谱契约与校验', () => {
-    const entries = readdirSync(resolve('src/evidence'), { withFileTypes: true });
-    expect(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort())
-      .toEqual(['graph']);
-    expect(readdirSync(resolve('src/evidence/graph')).sort()).toEqual(['contracts.ts', 'schema.ts']);
-    expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort())
-      .toEqual([]);
+  it('图谱存储协议只保留共用契约与校验', () => {
+    expect(readdirSync(resolve('src/storage/artifact-graph')).sort()).toEqual(['contracts.ts', 'schema.ts']);
   });
 
   it('不恢复任何迁移前的目录或构建产物', () => {
-    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observe/knowledge-extraction', 'evidence/storage'].flatMap((directory) => [
+    const violations = [...RETIRED_TOP_LEVEL_DIRECTORIES, 'observe/knowledge-extraction'].flatMap((directory) => [
       `src/${directory}`,
       `test/${directory}`,
       ...(existsSync(resolve('dist')) ? [`dist/${directory}`] : []),

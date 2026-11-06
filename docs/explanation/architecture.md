@@ -235,7 +235,7 @@ need not become a public API. This inventory records domain boundaries without f
 | Executors | Internal calls from host adapters, judges, doctor, sample, evolve and observation analysis | Shared invocation protocols and mechanics, not an obsolete evaluation path; verify arguments, environment, traces, usage and errors |
 | Knowledge | Internal consumers in CLI, Studio, Workflow and observation | Pure content/entity/library contracts; extraction, linking and persistence; carrier authoring, health checks and source resolution; verify immutable histories, source identity, recovery, isolated copies, installation and doctor |
 | Observe | MCP, DSH, CLI and Studio; observation storage parses the diagnosis contract | Separate evidence, signals and diagnoses; verify provenance, coverage and stable contracts |
-| Storage / Settings / Evidence | Product domains and delivery entrypoints | Shared persistence, user preferences and graph protocols; domain producers remain with their owning domains |
+| Storage / Settings | Product domains and delivery entrypoints | Shared persistence, user preferences and graph protocols; domain producers remain with their owning domains |
 | CLI / DSH / MCP / Studio | `omk`, `dsh-plugin`, `mcp` / `omk-mcp`, `studio` | Own entry protocols, context, identity and presentation policy; verify real commands, plugins, services and views |
 | Shared | Internal leaf utilities | No domain decisions; verify atomic files, locks and basic data operations |
 
@@ -287,10 +287,11 @@ Codex argument extraction preserves argument order, prompt bytes and each caller
 
 Any further extraction must verify arguments, environment, output, Trace, usage, cancellation, errors and cleanup together. Reuse existing shared mechanics and retain adaptation where contracts differ; fewer functions are not grounds for merging measurement identities or changing protocols. Relevant regressions live in `test/executors`, `test/eval-workflows/hosts` and `test/eval-runtime`; product scoring and statistics tests live in `test/eval-workflows/measurement`.
 
-Shared persistence and user configuration have separate ownership from evidence graph contracts:
+Storage owns shared persistence and document protocols; settings owns cross-entrypoint user preferences:
 
 ```text
 storage/
+├── artifact-graph/  # shared persisted graph contracts and validation
 ├── layout.ts  # canonical project/global paths
 ├── default-dirs.ts  # global defaults
 ├── directories.ts  # report directory lookup
@@ -307,8 +308,9 @@ settings/
 ```
 
 ```text
-evidence/
-└── graph/  # shared graph contracts and schema validation
+storage/artifact-graph/
+├── contracts.ts  # persisted graph document protocol
+└── schema.ts  # structural validation and normalization
 ```
 
 Knowledge workspace locking and migration guards belong to `knowledge/adapters/workspace-guard.ts`.
@@ -317,6 +319,8 @@ remains in `eval-workflows/projections/artifact-graph.ts`. Run ID allocation bel
 `eval-workflows/artifact-store/run-id.ts`. These source moves preserve stored paths, lock and
 migration protocols, graph identity, report formats, settings precedence and measurement semantics.
 Shared storage does not invoke domain execution; its discovery index consumes only Doctor wire types.
+The graph protocol subdomain does not depend on directory layout, filesystem publication or discovery.
+Doctor and evaluation workflows own graph production; Studio consumes the common document protocol.
 
 Public package entrypoints live at their owning domains'
 natural `index.ts` or semantic file; `package.json#exports` is the only publication allowlist.
@@ -354,7 +358,7 @@ subdomains cannot import the root application/presentation entrypoints. The clie
 closure guard separately prevents Node capabilities from reaching presentation consumers;
 `view-models/` supplies types only. `test/architecture/architecture-docs.test.ts` reconciles every directory tree listed in this
 document (`knowledge`, `knowledge/artifacts`, `eval-workflows`, `executors`, `eval-workflows/hosts`,
-`evidence`, `storage`, `settings`, `observe`) with the source tree, in both languages.
+`storage/artifact-graph`, `storage`, `settings`, `observe`) with the source tree, in both languages.
 
 Trace's `message-classification.ts` decides message origin and protocol semantics. Experience's `text-signals.ts` decides hard-rule, progress, and delivery signals. Adapters therefore do not depend backwards on downstream experience projections. Old root paths are not retained as re-exports or compatibility shims.
 

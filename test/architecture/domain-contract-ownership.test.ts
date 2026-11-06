@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const PURE_DOMAIN_TYPE_FILES = [
   'src/observe/analysis/contracts.ts',
-  'src/evidence/graph/contracts.ts',
+  'src/storage/artifact-graph/contracts.ts',
   'src/observe/diagnosis/contracts.ts',
   'src/knowledge/artifacts/doctor/contracts.ts',
   'src/executors/preflight/contracts.ts',
@@ -246,8 +246,7 @@ describe('领域契约所有权', () => {
       'src/eval-workflows/studio-catalog',
       'src/server',
       'src/renderer',
-      'src/evidence/graph/core.ts',
-      'src/evidence/storage/prompt-registry.ts',
+      'src/storage/artifact-graph/core.ts',
       'src/observe/trace-ir.ts',
       'src/observe/trace-ingestion.ts',
       'src/observe/trace-projection.ts',

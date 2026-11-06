@@ -4,7 +4,7 @@ import {
   type EvaluationRecord,
   type ExecutionRecord,
 } from '../../eval-core/contracts/index.js';
-import { parseArtifactGraphDocument } from '../../evidence/graph/schema.js';
+import { parseArtifactGraphDocument } from '../../storage/artifact-graph/schema.js';
 import type {
   ArtifactGraphDocument,
   ArtifactGraphEdge,
@@ -13,7 +13,7 @@ import type {
   ArtifactGraphNode,
   ArtifactGraphNodeKind,
   ArtifactGraphStatus,
-} from '../../evidence/graph/contracts.js';
+} from '../../storage/artifact-graph/contracts.js';
 import { CORE_RUN_DOCUMENT_FILES, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { CoreDownstreamProjectionError } from './contracts.js';
 import { assertCoreProjectionSource } from './source.js';

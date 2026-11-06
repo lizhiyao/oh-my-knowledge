@@ -9,7 +9,7 @@ const trees = [
   { header: 'knowledge/artifacts/', root: 'src/knowledge/artifacts' },
   { header: 'executors/', root: 'src/executors' },
   { header: 'eval-workflows/hosts/', root: 'src/eval-workflows/hosts' },
-  { header: 'evidence/', root: 'src/evidence' },
+  { header: 'storage/artifact-graph/', root: 'src/storage/artifact-graph' },
   { header: 'storage/', root: 'src/storage' },
   { header: 'settings/', root: 'src/settings' },
 ] as const;

@@ -46,7 +46,7 @@ const RULES: ForbiddenRule[] = [
       from, to, reason: '测量内核与技术叶子不依赖本地持久化、全局路径或用户配置。',
     }))
   )),
-  ...['storage/', 'settings/', 'evidence/graph/'].flatMap((from) => (
+  ...['storage/', 'settings/'].flatMap((from) => (
     ['cli/', 'studio/', 'dsh-plugin/', 'mcp/'].map((to) => ({
       from, to, reason: '共用存储、配置与图谱协议不得反向依赖交付入口。',
     }))
@@ -54,9 +54,14 @@ const RULES: ForbiddenRule[] = [
   ...['storage/', 'settings/'].map((from) => ({
     from, to: 'eval-workflows/', reason: '本地持久化与配置不依赖评测编排。',
   })),
-  ...['storage/', 'knowledge/', 'settings/'].map((to) => ({
-    from: 'evidence/graph/', to, reason: '共用图谱只拥有契约和校验；各领域拥有生产、持久化与配置。',
+  ...['knowledge/', 'settings/'].map((to) => ({
+    from: 'storage/artifact-graph/', to, reason: '共用图谱只拥有契约和校验；各领域拥有生产、持久化与配置。',
   })),
+  {
+    from: 'storage/artifact-graph/', to: 'storage/',
+    allowedTargets: ['storage/artifact-graph/contracts.ts', 'storage/artifact-graph/schema.ts'],
+    reason: '图谱协议只拥有结构与校验，不依赖目录布局、存储写入或发现索引。',
+  },
   {
     from: 'storage/', to: 'settings/', reason: '配置消费存储路径，存储不反向读取用户选项。',
   },
@@ -160,11 +165,6 @@ const RULES: ForbiddenRule[] = [
     })),
   {
     from: 'eval-core/',
-    to: 'evidence/',
-    reason: 'Evaluation Core vNext 是纯计算内核，不依赖文件命名、目录布局或产物发现。',
-  },
-  {
-    from: 'eval-core/',
     to: 'eval-workflows/',
     reason: 'Evaluation Core vNext 是宿主无关内核，不依赖旧 workflow 装配层。',
   },
@@ -214,7 +214,7 @@ const RULES: ForbiddenRule[] = [
     reason: '应用工作流产出事实与存储能力，由 Studio 单向消费；workflow 不反向依赖具体工作台。',
   },
   {
-    from: 'evidence/graph/',
+    from: 'storage/artifact-graph/',
     to: 'eval-workflows/',
     reason: 'Evidence Graph 只拥有图 contracts、schema、持久化与跨来源关联；Core workflow composition 由 production host 拥有。',
   },
@@ -237,11 +237,6 @@ const RULES: ForbiddenRule[] = [
     from: 'storage/',
     to: 'observe/',
     reason: '共用存储只拥有产物命名、目录、索引与定位能力；不依赖观测分析。',
-  },
-  {
-    from: 'evidence/',
-    to: 'observe/diagnosis/',
-    reason: 'Evidence 保存、验证与关联事实，不派生诊断。',
   },
   {
     from: 'observe/',
@@ -272,11 +267,6 @@ const RULES: ForbiddenRule[] = [
     from: 'studio/view-models/',
     to: 'studio/web/',
     reason: '视图类型契约不得依赖 React 页面。',
-  },
-  {
-    from: 'shared/',
-    to: 'evidence/',
-    reason: 'shared 是跨领域叶子依赖；存储布局、产物定位与 Evidence Graph 由 evidence 领域拥有。',
   },
   {
     from: 'shared/',
@@ -593,9 +583,11 @@ describe('架构边界守门', () => {
       ['storage/example.ts', 'knowledge/adapters/workspace-guard.ts'],
       ['storage/example.ts', 'settings/user-settings.ts'],
       ['settings/example.ts', 'studio/http/next-server.ts'],
-      ['evidence/graph/schema.ts', 'knowledge/artifacts/doctor/graph.ts'],
+      ['storage/artifact-graph/schema.ts', 'knowledge/artifacts/doctor/graph.ts'],
+      ['storage/artifact-graph/schema.ts', 'storage/layout.ts'],
     ]) expect(RULES.some(rule => violatesRule(from, to, rule)), `${from} → ${to}`).toBe(true);
     expect(RULES.some(rule => violatesRule('settings/user-settings.ts', 'storage/layout.ts', rule))).toBe(false);
+    expect(RULES.some(rule => violatesRule('storage/artifact-graph/schema.ts', 'storage/artifact-graph/contracts.ts', rule))).toBe(false);
   });
 
   it('迁出的知识执行子域仍只消费执行器契约，载体保留具体执行能力', () => {
