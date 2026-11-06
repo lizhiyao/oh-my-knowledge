@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, opendirSync, readSync, type Stats } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkStorageDirectory, KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError } from '../adapters/workspace-guard.js';
 import { canonicalJson } from '../store.js';
 import type { ExtractionStudyRunnerPorts } from './study-runner.js';
 import { FileExtractionRunStore } from '../adapters/run-store.js';

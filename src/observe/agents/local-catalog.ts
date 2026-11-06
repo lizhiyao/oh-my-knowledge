@@ -16,7 +16,7 @@
 
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import { globalLayout } from '../../evidence/storage/layout.js';
+import { globalLayout } from '../../storage/layout.js';
 import {
   AgentCatalogFileSchema,
   type AgentDescriptor,

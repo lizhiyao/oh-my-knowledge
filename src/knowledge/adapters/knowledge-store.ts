@@ -8,7 +8,7 @@ import { applyKnowledgeWrite, validateKnowledgeHistory } from '../history.js';
 import {
   canonicalJson, KnowledgeEnvelopeSchema, KnowledgeWriteSchema, type KnowledgeEnvelope, type KnowledgeStore, type KnowledgeWrite,
 } from '../store.js';
-import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from './workspace-guard.js';
 import { assertCurrentStorage } from './storage-state.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;

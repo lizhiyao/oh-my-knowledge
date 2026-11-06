@@ -6,7 +6,7 @@ import { describe, it } from 'vitest';
 const ROOT = process.cwd();
 const SOURCE_ROOT = join(ROOT, 'src');
 const ALLOWED = new Set([
-  'src/evidence/storage/layout.ts',
+  'src/storage/layout.ts',
   // Artifact-scoped authoring metadata is explicitly outside project-root layout v2.
   'src/eval-workflows/inputs/sample-locator.ts',
 ]);
@@ -36,7 +36,7 @@ describe('OMK storage layout path assembly guard', () => {
   it('keeps eval materialization and lease directory names in the global layout', () => {
     const violations = sourceFiles(SOURCE_ROOT).flatMap((path) => {
       const projectPath = relative(ROOT, path).split('\\').join('/');
-      if (projectPath === 'src/evidence/storage/layout.ts') return [];
+      if (projectPath === 'src/storage/layout.ts') return [];
       const lines = readFileSync(path, 'utf8').split('\n');
       return lines.flatMap((line, index) => (
         /['"](?:resolved-inputs|runtime-leases|resource-leases)['"]/u.test(line)

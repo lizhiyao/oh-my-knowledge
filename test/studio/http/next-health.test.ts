@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
-import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+import { writeMeasurementReportBundle } from '../../../src/storage/report-bundle.js';
 import { computeSkillHealthFromSegments } from '../../../src/observe/skill-health/analyzer.js';
 import type { SkillSegment } from '../../../src/observe/trace/index.js';
 import type { ConversationCatalog } from '../../../src/observe/conversation/catalog.js';

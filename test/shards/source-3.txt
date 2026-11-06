@@ -49,9 +49,9 @@ test/eval-workflows/orchestration/orchestration.test.ts
 test/eval-workflows/projections-boundary.test.ts
 test/eval-workflows/projections.test.ts
 test/eval-workflows/sample-v3-production.test.ts
-test/evidence/graph/doctor-graph.test.ts
-test/evidence/storage/directories.test.ts
-test/evidence/storage/discovery-index.test.ts
+test/knowledge/artifacts/doctor/graph.test.ts
+test/storage/directories.test.ts
+test/storage/discovery-index.test.ts
 test/examples/codex-observe-router.test.ts
 test/executors/codex-trace.test.ts
 test/executors/runtime-fingerprint.test.ts

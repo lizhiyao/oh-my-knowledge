@@ -90,10 +90,10 @@ test/eval-workflows/orchestration/workflow.test.ts
 test/eval-workflows/projections/runtime-progress.test.ts
 test/eval-workflows/sample-generation/generator.test.ts
 test/evidence/graph/schema.test.ts
-test/evidence/storage/directory-selection.test.ts
-test/evidence/storage/file-names.test.ts
-test/evidence/storage/home-isolation.test.ts
-test/evidence/storage/layout.test.ts
+test/storage/directory-selection.test.ts
+test/storage/file-names.test.ts
+test/storage/home-isolation.test.ts
+test/storage/layout.test.ts
 test/executors/capabilities.test.ts
 test/executors/codex-cli-isolation.test.ts
 test/executors/codex-protocol.test.ts

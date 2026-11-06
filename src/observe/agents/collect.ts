@@ -25,7 +25,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { globalLayout } from '../../evidence/storage/layout.js';
+import { globalLayout } from '../../storage/layout.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { TraceSourceKindSchema } from '../../executors/contracts/trace-source-schema.js';
 import { loadTraceCorpus } from '../trace/source.js';

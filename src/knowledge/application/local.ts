@@ -12,7 +12,7 @@ import { readSourceReviewOriginal } from '../adapters/source-review-original.js'
 import type { KnowledgeActor } from '../contracts.js';
 import { FileKnowledgeReviewStore } from '../adapters/review-store.js';
 import { FileSourceStore } from '../adapters/source-store.js';
-import { assertSourceMigrationComplete } from '../../evidence/storage/knowledge-workspace.js';
+import { assertSourceMigrationComplete } from '../adapters/workspace-guard.js';
 import type { SourceCaptureService } from './source-capture.js';
 import { createLocalSourceCapture, type LocalSourceScope } from './local-source-host.js';
 import { assertSourceWorkspaceWritable } from '../adapters/source-workspace.js';

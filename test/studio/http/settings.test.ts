@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { createReportServer } from '../../../src/studio/http/report-server.js';
-import { UserSettingsStore } from '../../../src/evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../../src/settings/user-settings.js';
 const root = mkdtempSync(join(tmpdir(), 'omk-settings-api-'));
 let server: ReturnType<typeof createReportServer>;
 let url: string;

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, renameSync, rmSync, writeSync, type BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { checkStorageDirectory } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory } from './workspace-guard.js';
 
 function directories(path: string, workspace: string): string[] {
   const root = resolve(workspace), parent = dirname(resolve(path)), within = relative(root, parent);

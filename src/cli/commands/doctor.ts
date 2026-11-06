@@ -7,7 +7,7 @@ import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import { makeDoctorProgress } from '../lib/progress.js';
 import { resolveCliExecutor, resolveRuntimeSelection } from '../lib/runtime-defaults.js';
-import { projectDoctorsDir, globalDoctorsDir } from '../../evidence/storage/directories.js';
+import { projectDoctorsDir, globalDoctorsDir } from '../../storage/directories.js';
 import type { DoctorRule, DoctorRuleLike } from '../../knowledge/artifacts/doctor/contracts.js';
 import { persistDoctorReport } from '../../knowledge/artifacts/doctor/persistence.js';
 import { shellQuoteArg } from '../../shared/shell-quote.js';

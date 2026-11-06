@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { UserSettingsStore } from '../../../src/evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../src/settings/user-settings.js';
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const setup = () => { const root = mkdtempSync(join(tmpdir(), 'omk-settings-')); roots.push(root); return new UserSettingsStore(root); };

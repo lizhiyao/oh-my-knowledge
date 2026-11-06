@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite, type SourceMigrationWriteContext } from './workspace-guard.js';
 import { KnowledgeActorSchema, type KnowledgeActor } from '../contracts.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { canonicalJson, type KnowledgeStore } from '../store.js';

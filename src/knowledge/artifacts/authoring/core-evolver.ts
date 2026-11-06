@@ -14,7 +14,7 @@ import { parseCompositeTableValue } from '../../../eval-workflows/measurement/an
 import { createExecutor } from '../../../executors/index.js';
 import { buildImprovementPrompt, computeEditDelta } from './improvement.js';
 import { distributableCopyFilter, hashArtifactSource } from '../sources/content-hash.js';
-import { writeTextFileAtomic } from '../../../evidence/storage/atomic-text.js';
+import { writeTextFileAtomic } from '../../../storage/atomic-text.js';
 import { applySkillTextEdits, SKILL_EDIT_SYSTEM_PROMPT } from './text-edits.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。请依据真实评测弱项对 skill 做最小、可审查的修改。保留有效内容，不重排无关结构，不添加泛化空话。直接输出改进后的完整 skill，不要添加代码围栏或解释。`;

@@ -1,9 +1,9 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { indexDoctorWrite, removeDoctorCard } from '../../../evidence/storage/discovery-index.js';
-import { doctorReportFileStem } from '../../../evidence/storage/file-names.js';
-import { listMeasurementReportPaths, measurementRecordIdFromReportPath, writeMeasurementReportBundle } from '../../../evidence/storage/report-bundle.js';
-import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from '../../../evidence/graph/doctor.js';
+import { indexDoctorWrite, removeDoctorCard } from '../../../storage/discovery-index.js';
+import { doctorReportFileStem } from '../../../storage/file-names.js';
+import { listMeasurementReportPaths, measurementRecordIdFromReportPath, writeMeasurementReportBundle } from '../../../storage/report-bundle.js';
+import { persistDoctorGraphSidecars, removeDoctorGraphSidecars } from './graph.js';
 import type { DoctorOutcome, DoctorReport } from './contracts.js';
 import { parseDoctorReport } from './report-parser.js';
 

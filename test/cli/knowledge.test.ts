@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../src/settings/user-settings.js';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import ObserveEntityLinks from '../../src/cli/commands/observe/entity-links.js';
 import { createEntityLinkCliPlan, formatEntityLinkInvocation } from '../../src/cli/lib/entity-link-output.js';

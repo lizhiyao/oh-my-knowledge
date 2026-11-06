@@ -8,7 +8,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { persistObserveHealthReport } from '../../src/observe/skill-health/persistence.js';
-import { listObserveCards } from '../../src/evidence/storage/discovery-index.js';
+import { listObserveCards } from '../../src/storage/discovery-index.js';
 import type { SkillHealthReport } from '../../src/observe/skill-health/analyzer.js';
 
 function mkReport(): SkillHealthReport {

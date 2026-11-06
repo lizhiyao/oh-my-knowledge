@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createCarrierMeasurementService, findCarrierMeasurementOrigin } from '../../../eval-workflows/hosts/carrier-measurement.js';
 import { createNodeCoreContentStore, createNodeCoreRunArtifactStore } from '../../../eval-workflows/artifact-store/index.js';
-import { projectLayout } from '../../../evidence/storage/layout.js';
+import { projectLayout } from '../../../storage/layout.js';
 import { join, resolve } from 'node:path';
 import type { CoreStudioCatalog, CoreStudioRunCard } from '../../view-models/measure/core-runs.js';
 import { createCoreStudioCatalog } from './core-run-catalog.js';

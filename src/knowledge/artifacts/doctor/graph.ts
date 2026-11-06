@@ -1,24 +1,24 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { isCanonicalArtifactFileStem } from '../storage/file-names.js';
-import { measurementDerivedDir } from '../storage/report-bundle.js';
-import { hashArtifactSource } from '../../knowledge/artifacts/sources/content-hash.js';
-import { parseArtifactGraphDocument } from './schema.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { writeTextFileAtomic } from '../storage/atomic-text.js';
+import { isCanonicalArtifactFileStem } from '../../../storage/file-names.js';
+import { measurementDerivedDir } from '../../../storage/report-bundle.js';
+import { hashArtifactSource } from '../sources/content-hash.js';
+import { parseArtifactGraphDocument } from '../../../evidence/graph/schema.js';
+import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
+import { writeTextFileAtomic } from '../../../storage/atomic-text.js';
 import {
   extractMarkdownStepWorkflows,
   extractSkillHardRules,
   extractSkillWorkflows,
   parseSkillFrontmatter,
-} from '../../knowledge/artifacts/skills/hard-rules.js';
+} from '../skills/hard-rules.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
   DoctorSkillReport,
-} from '../../knowledge/artifacts/doctor/contracts.js';
-import type { Lang } from '../../shared/language.js';
+} from './contracts.js';
+import type { Lang } from '../../../shared/language.js';
 import type {
   ArtifactGraphBinding,
   ArtifactGraphDocument,
@@ -29,7 +29,7 @@ import type {
   ArtifactGraphNodeKind,
   ArtifactGraphNodeRole,
   ArtifactGraphStatus,
-} from './contracts.js';
+} from '../../../evidence/graph/contracts.js';
 
 export interface BuildDoctorGraphOptions {
   report: DoctorReport;

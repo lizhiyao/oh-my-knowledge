@@ -9,7 +9,7 @@ import {
   type StoredCoreRunArtifacts,
   type OmkLlmJudgeInvocationBinding,
 } from '../eval-workflows/hosts/application.js';
-import { globalLayout, projectLayout } from '../evidence/storage/layout.js';
+import { globalLayout, projectLayout } from '../storage/layout.js';
 import type { CoreCliRunOutcome, CoreCliSeriesOutcome } from '../eval-workflows/projections/contracts.js';
 import type { ExecutorFn } from '../executors/contracts/ports.js';
 import type { EvalConfig } from '../eval-workflows/inputs/contracts/config.js';

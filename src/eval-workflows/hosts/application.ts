@@ -23,8 +23,8 @@ import { projectCoreCliBatchOutcome } from '../projections/cli.js';
 import type { CoreCliBatchOutcome, CoreCliDryRunProjection } from '../projections/contracts.js';
 import type { OmkEvaluationProgressSink } from '../projections/runtime-progress.js';
 import { discoverBatchSkills } from '../inputs/batch-discovery.js';
-import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
-import { generateRunId } from '../../evidence/storage/run-id.js';
+import { globalLayout, projectLayout } from '../../storage/layout.js';
+import { generateRunId } from '../artifact-store/run-id.js';
 
 export { parseCliEvaluationRequest, CliEvaluationInputError, type CliEvaluationRequest, type CliEvaluationParseInput } from '../input-compilation/index.js';
 export { NodeCliProductionCompositionError, type NodeEvaluationEnvironment } from './composition/node-runtime.js';

@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
-import { globalLayout } from './layout.js';
-import { withFileLock } from '../../shared/file-lock.js';
-import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { resolveLanguagePreference } from '../../shared/language-preference.js';
+import { globalLayout } from '../storage/layout.js';
+import { withFileLock } from '../shared/file-lock.js';
+import { writeJsonFileAtomic } from '../shared/atomic-json.js';
+import { resolveLanguagePreference } from '../shared/language-preference.js';
 
 const text = z.string().trim().min(1).max(4096);
 export const UserSettingsSchema = z.strictObject({

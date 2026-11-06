@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { globalLayout, type GlobalOmkLayout } from '../../../src/evidence/storage/layout.js';
+import { globalLayout, type GlobalOmkLayout } from '../../../src/storage/layout.js';
 import {
   agentCollectionReportPath,
   AgentCollectionReportOutdatedError,

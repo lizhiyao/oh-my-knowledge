@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { coreRunArtifactDirectoryName, type StoredCoreRunArtifacts } from '../artifact-store/index.js';
 import { projectCoreArtifactGraph } from '../projections/artifact-graph.js';
 import { writeJsonFileAtomic } from '../../shared/atomic-json.js';
-import { writeTextFileAtomic } from '../../evidence/storage/atomic-text.js';
+import { writeTextFileAtomic } from '../../storage/atomic-text.js';
 
 export interface PersistedCoreArtifactSidecars {
   readonly graphPath: string;

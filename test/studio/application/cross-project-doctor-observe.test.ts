@@ -14,8 +14,8 @@ import {
   indexDoctorWrite as writeDoctorIndex,
   indexObserveWrite as writeObserveIndex,
   listDoctorCards,
-} from '../../../src/evidence/storage/discovery-index.js';
-import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+} from '../../../src/storage/discovery-index.js';
+import { writeMeasurementReportBundle } from '../../../src/storage/report-bundle.js';
 import { pruneDoctorHistory } from '../../../src/knowledge/artifacts/doctor/persistence.js';
 import type { DoctorReport } from '../../../src/knowledge/artifacts/doctor/contracts.js';
 

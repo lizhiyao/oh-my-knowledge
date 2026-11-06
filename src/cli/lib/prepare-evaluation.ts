@@ -6,7 +6,7 @@ import {
   parseCliEvaluationRequest,
   type CliEvaluationParseInput,
 } from '../../eval-workflows/hosts/application.js';
-import { globalLayout, projectLayout } from '../../evidence/storage/layout.js';
+import { globalLayout, projectLayout } from '../../storage/layout.js';
 import { captureNodeCliEvaluationEnvironment } from '../../eval-workflows/hosts/node-environment.js';
 import { discoverSamplesPath } from './parse-run-config/samples-discovery.js';
 import { envJudgeModels, resolveRuntimeSelection, type RuntimeResolutionOptions } from './runtime-defaults.js';

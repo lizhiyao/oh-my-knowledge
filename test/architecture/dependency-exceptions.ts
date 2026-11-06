@@ -78,6 +78,11 @@ const KNOWLEDGE_AGGREGATE_RUNTIME_EDGES = [
   'knowledge/application/local.ts → knowledge/adapters/relation-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/review-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/source-store.ts',
+  // 工作区写入／迁移防护归知识适配层；只登记原有应用调用点。
+  'knowledge/application/local-source-updates.ts → knowledge/adapters/workspace-guard.ts',
+  'knowledge/application/local.ts → knowledge/adapters/workspace-guard.ts',
+  'knowledge/application/operations.ts → knowledge/adapters/workspace-guard.ts',
+  'knowledge/application/study-local.ts → knowledge/adapters/workspace-guard.ts',
   // Source review host composes storage; the application verifies strict extraction input/output.
   'knowledge/application/local.ts → knowledge/adapters/source-review-store.ts',
   'knowledge/application/local.ts → knowledge/adapters/source-review-original.ts',
@@ -268,7 +273,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/bench/studio-baseline.ts',
     expression: 'pathToFileURL(resolve(REPO_ROOT, path)).href',
-    sourceSha256: 'fc3508290cbb6f88f56a5a38054c943890b845b9300a6c0c7a15b165ff9e02e0',
+    sourceSha256: 'c3ba9f2b30bb387b36ecda2ddbd7cbd6b5d3733c49ba847b5057cc6a6fdb2e38',
     rationale: 'Loads only three fixed built modules for the isolated Studio benchmark; the sealed source fixes all callers and paths.',
   },
 ] as const;
@@ -277,22 +282,11 @@ export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => 
   'knowledge/adapters↔knowledge/extraction': isRegisteredKnowledgeBoundary,
   'knowledge/adapters↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
   'knowledge/application↔knowledge/entity-linking': isRegisteredKnowledgeBoundary,
-  'evidence/graph↔knowledge/artifacts/doctor': (edge) => {
-    // Doctor owns report persistence; the graph producer consumes only its wire types.
-    // This is not a runtime back-edge, and no other doctor/graph imports are admitted.
+  'knowledge/artifacts/doctor↔storage': (edge) => {
     if (edge.importerDomain === 'knowledge/artifacts/doctor') {
-      return edge.importer === 'knowledge/artifacts/doctor/persistence.ts'
-        && edge.target === 'evidence/graph/doctor.ts';
+      return edge.targetDomain === 'storage';
     }
-    return edge.importer === 'evidence/graph/doctor.ts'
-      && edge.typeOnly
-      && edge.target === 'knowledge/artifacts/doctor/contracts.ts';
-  },
-  'evidence/storage↔knowledge/artifacts/doctor': (edge) => {
-    if (edge.importerDomain === 'knowledge/artifacts/doctor') {
-      return edge.targetDomain === 'evidence/storage';
-    }
-    return edge.importer === 'evidence/storage/discovery-index.ts'
+    return edge.importer === 'storage/discovery-index.ts'
       && edge.typeOnly
       && edge.target === 'knowledge/artifacts/doctor/contracts.ts';
   },

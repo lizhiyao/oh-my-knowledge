@@ -7,9 +7,9 @@ import {
   projectObserveHealthDir, globalObserveHealthDir, resolveObserveHealthDir,
   projectDoctorsDir, globalDoctorsDir, resolveDoctorsDir,
   projectReportsDir, globalReportsDir,
-} from '../../../src/evidence/storage/directories.js';
-import { OMK_HOME } from '../../../src/evidence/storage/default-dirs.js';
-import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+} from '../../src/storage/directories.js';
+import { OMK_HOME } from '../../src/storage/default-dirs.js';
+import { writeMeasurementReportBundle } from '../../src/storage/report-bundle.js';
 
 function mkTmp(tag: string): string {
   const d = join(tmpdir(), `omk-mdir-${tag}-${Date.now()}-${Math.round(performance.now())}`);

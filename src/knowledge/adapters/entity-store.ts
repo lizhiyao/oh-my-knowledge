@@ -6,7 +6,7 @@ import { applyEntityAnalysisWrite, validateEntityAnalysisHistory } from '../enti
 import { EntityAnalysisWriteCapacityError, EntityAnalysisEnvelopeSchema, EntityAnalysisWriteSchema, type EntityAnalysisEnvelope, type EntityAnalysisStore, type EntityAnalysisWrite } from '../entities/contracts.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
-import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceFileWrite, type SourceMigrationWriteContext } from './workspace-guard.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 export class FileEntityAnalysisStore implements EntityAnalysisStore {

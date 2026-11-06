@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createExecutor } from '../../../executors/index.js';
 import type { DoctorReport, DoctorRuleResult } from './contracts.js';
-import { projectLayout } from '../../../evidence/storage/layout.js';
+import { projectLayout } from '../../../storage/layout.js';
 import { extractJsonObject } from '../../../shared/llm-json.js';
-import { writeTextFileAtomic } from '../../../evidence/storage/atomic-text.js';
+import { writeTextFileAtomic } from '../../../storage/atomic-text.js';
 import { applySkillTextEdits, SKILL_EDIT_SYSTEM_PROMPT } from '../authoring/text-edits.js';
 
 interface FixIssue {

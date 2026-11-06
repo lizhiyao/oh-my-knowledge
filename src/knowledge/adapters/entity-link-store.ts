@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { EntityLinkWriteCapacityError, type EntityLinkInvocation, type EntityLinkInvocationStore, type EntityLinkInvocationTransaction } from '../entities/link-invocation.js';
 import { validateEntityLinkInvocation, projectEntityLinkInvocation } from '../entities/link-invocation-state.js';
 import { canonicalJson } from '../store.js';
-import { checkStorageDirectory, KnowledgeStorageStateError } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, KnowledgeStorageStateError } from './workspace-guard.js';
 import { entityLinkDigest } from '../entity-linking/entity-link-hash.js';
 import { createHash } from 'node:crypto';
 import { FileLibraryStore } from './library-store.js';

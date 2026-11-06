@@ -41,6 +41,34 @@ interface ForbiddenRule {
 }
 
 const RULES: ForbiddenRule[] = [
+  ...['eval-core/', 'eval-runtime/', 'shared/'].flatMap((from) => (
+    ['storage/', 'settings/'].map((to) => ({
+      from, to, reason: '测量内核与技术叶子不依赖本地持久化、全局路径或用户配置。',
+    }))
+  )),
+  ...['storage/', 'settings/', 'evidence/graph/'].flatMap((from) => (
+    ['cli/', 'studio/', 'dsh-plugin/', 'mcp/'].map((to) => ({
+      from, to, reason: '共用存储、配置与图谱协议不得反向依赖交付入口。',
+    }))
+  )),
+  ...['storage/', 'settings/'].map((from) => ({
+    from, to: 'eval-workflows/', reason: '本地持久化与配置不依赖评测编排。',
+  })),
+  ...['storage/', 'knowledge/', 'settings/'].map((to) => ({
+    from: 'evidence/graph/', to, reason: '共用图谱只拥有契约和校验；各领域拥有生产、持久化与配置。',
+  })),
+  {
+    from: 'storage/', to: 'settings/', reason: '配置消费存储路径，存储不反向读取用户选项。',
+  },
+  {
+    from: 'storage/', to: 'knowledge/',
+    allowedTargets: ['knowledge/artifacts/doctor/contracts.ts'],
+    reason: '发现索引只消费 Doctor wire 类型，不依赖知识领域执行与迁移。',
+  },
+  {
+    from: 'settings/', to: 'knowledge/',
+    reason: '用户配置只声明选项，不依赖知识工作区或领域执行。',
+  },
   {
     from: 'observe/application.ts', to: 'knowledge/',
     reason: '观测提供来源和投影，不聚合知识用例；交付层直接消费知识所属领域。',
@@ -206,9 +234,9 @@ const RULES: ForbiddenRule[] = [
     reason: 'Executor 负责 Runtime 与工具结果事实，不得反向依赖由这些事实派生的 Observe 投影。',
   },
   {
-    from: 'evidence/storage/',
+    from: 'storage/',
     to: 'observe/',
-    reason: 'Evidence Storage 只拥有产物命名、目录、索引与定位能力；跨域 prompt 冻结属于 CI 测量治理。',
+    reason: '共用存储只拥有产物命名、目录、索引与定位能力；不依赖观测分析。',
   },
   {
     from: 'evidence/',
@@ -555,6 +583,19 @@ describe('架构边界守门', () => {
       'observe/inbox/review-state.ts',
       'observe/inbox/paths.ts',
     ]);
+  });
+
+  it('共用存储、配置与图谱协议保留职责方向', () => {
+    for (const [from, to] of [
+      ['eval-core/contracts/example.ts', 'storage/layout.ts'],
+      ['eval-runtime/example.ts', 'settings/user-settings.ts'],
+      ['shared/example.ts', 'storage/layout.ts'],
+      ['storage/example.ts', 'knowledge/adapters/workspace-guard.ts'],
+      ['storage/example.ts', 'settings/user-settings.ts'],
+      ['settings/example.ts', 'studio/http/next-server.ts'],
+      ['evidence/graph/schema.ts', 'knowledge/artifacts/doctor/graph.ts'],
+    ]) expect(RULES.some(rule => violatesRule(from, to, rule)), `${from} → ${to}`).toBe(true);
+    expect(RULES.some(rule => violatesRule('settings/user-settings.ts', 'storage/layout.ts', rule))).toBe(false);
   });
 
   it('迁出的知识执行子域仍只消费执行器契约，载体保留具体执行能力', () => {

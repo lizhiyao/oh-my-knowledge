@@ -8,10 +8,10 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { OMK_HOME } from '../../../src/evidence/storage/default-dirs.js';
-import { globalReportsDir } from '../../../src/evidence/storage/directories.js';
-import { globalObserveHealthDir, globalDoctorsDir } from '../../../src/evidence/storage/directories.js';
-import { globalObservationsDir } from '../../../src/observe/inbox/paths.js';
+import { OMK_HOME } from '../../src/storage/default-dirs.js';
+import { globalReportsDir } from '../../src/storage/directories.js';
+import { globalObserveHealthDir, globalDoctorsDir } from '../../src/storage/directories.js';
+import { globalObservationsDir } from '../../src/observe/inbox/paths.js';
 
 describe('OMK_HOME 测试隔离守卫', () => {
   const realHome = join(homedir(), '.oh-my-knowledge');

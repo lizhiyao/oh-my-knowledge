@@ -3,7 +3,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { withFileLock } from '../../../shared/file-lock.js';
-import { projectLayout } from '../../../evidence/storage/layout.js';
+import { projectLayout } from '../../../storage/layout.js';
 
 interface ScaffoldFile {
   relativePath: string;

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { canonicalJson } from '../store.js';
 import { ExtractionOutcomeSchema, ExtractionOutcomeRefSchema, ExtractionRunSchema,
   type ExtractionOutcome, type ExtractionOutcomeRef, type ExtractionRun, type ExtractionRunStore } from '../extraction/runs.js';
-import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceWrite } from './workspace-guard.js';
 import { assertCurrentStorage } from './storage-state.js';
 import { accountExtractionOutcome } from '../extraction/generation-policy.js';
 import { WINDOW_EXTRACTION_WIRE_ID } from '../extraction/model-wire.js';

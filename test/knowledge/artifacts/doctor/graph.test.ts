@@ -8,8 +8,8 @@ import {
   persistDoctorGraphSidecars,
   removeDoctorGraphSidecars,
   renderDoctorEvidenceCard,
-} from '../../../src/evidence/graph/doctor.js';
-import type { DoctorReport } from '../../../src/knowledge/artifacts/doctor/contracts.js';
+} from '../../../../src/knowledge/artifacts/doctor/graph.js';
+import type { DoctorReport } from '../../../../src/knowledge/artifacts/doctor/contracts.js';
 
 function makeReport(cwd: string, skillPath: string): DoctorReport {
   return {

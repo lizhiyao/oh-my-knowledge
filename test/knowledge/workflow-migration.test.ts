@@ -13,7 +13,7 @@ import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.j
 import { createLocalKnowledgeReview } from '../../src/knowledge/application/local.js';
 import { knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import { knowledgeReviewSources } from '../../src/knowledge/reviews.js';
-import { assertSourceMigrationComplete } from '../../src/evidence/storage/knowledge-workspace.js';
+import { assertSourceMigrationComplete } from '../../src/knowledge/adapters/workspace-guard.js';
 import { seedKnowledgeWorkspace } from '../cli/knowledge-fixtures.js';
 import { testDirectory } from '../helpers/temp-directory.js';
 

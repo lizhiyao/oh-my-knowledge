@@ -1,4 +1,4 @@
-import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveObserveHealthDir } from '../../../evidence/storage/directories.js';
+import { projectDoctorsDir, projectObserveHealthDir, resolveDoctorsDir, resolveObserveHealthDir } from '../../../storage/directories.js';
 import { buildSkillIndex, createSkillIndexCache, type SkillIndexCache } from './skill-index.js';
 import type { Lang } from '../../../shared/language.js';
 

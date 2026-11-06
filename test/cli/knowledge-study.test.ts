@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
-import { UserSettingsStore } from '../../src/evidence/storage/user-settings.js';
+import { UserSettingsStore } from '../../src/settings/user-settings.js';
 import * as studyHost from '../../src/knowledge/adapters/study-host.js';
 import * as studyInspection from '../../src/knowledge/application/study-inspection.js';
 import * as studyService from '../../src/knowledge/application/study-inspection-service.js';

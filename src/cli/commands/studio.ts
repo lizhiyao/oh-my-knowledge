@@ -8,7 +8,7 @@ import {
   resolveObserveHealthDir, projectObserveHealthDir, globalObserveHealthDir,
   resolveDoctorsDir, projectDoctorsDir, globalDoctorsDir,
   projectReportsDir, globalReportsDir,
-} from '../../evidence/storage/directories.js';
+} from '../../storage/directories.js';
 import { globalObservationsDir } from '../../observe/inbox/index.js';
 import type { ReportServer } from '../../studio/http/contracts.js';
 import { CliExit } from '../lib/cli-exit.js';

@@ -7,7 +7,7 @@ import { EvaluationStatusSchema } from '../../eval-core/contracts/index.js';
 import { CORE_CLI_RUN_OUTCOME_SCHEMA_VERSION } from '../projections/contracts.js';
 import { CarrierLibrary } from '../../knowledge/artifacts/authoring/carrier-library.js';
 import { distributableCopyFilter, hashArtifactSource } from '../../knowledge/artifacts/sources/content-hash.js';
-import { projectLayout } from '../../evidence/storage/layout.js';
+import { projectLayout } from '../../storage/layout.js';
 import { createJsonFileAtomic, writeJsonFileAtomic } from '../../shared/atomic-json.js';
 import { withFileLock } from '../../shared/file-lock.js';
 import { listSampleFilesInDir, loadSamples } from '../inputs/load-samples.js';

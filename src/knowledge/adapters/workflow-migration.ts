@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { z } from 'zod';
 import { assertSourceMigrationComplete, assertSourceMigrationWriteContext, SOURCE_MIGRATION_STATE_FILE,
   SOURCE_MIGRATION_LOCK_FILE, WORKSPACE_LOCK_FILE, withSourceMigrationWorkspaceWrite,
-  type SourceMigrationWriteContext } from '../../evidence/storage/knowledge-workspace.js';
+  type SourceMigrationWriteContext } from './workspace-guard.js';
 import { KnowledgeActorSchema, type EvidenceSelection } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';

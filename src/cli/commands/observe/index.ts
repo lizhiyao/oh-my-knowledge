@@ -6,7 +6,7 @@ import { CliExit } from '../../lib/cli-exit.js';
 import { tCli } from '../../lib/i18n.js';
 import { sanitizeCell } from '../../lib/cell-format.js';
 import { resolveObservationWindow } from '../../lib/observation-window.js';
-import { projectObserveHealthDir, globalObserveHealthDir } from '../../../evidence/storage/directories.js';
+import { projectObserveHealthDir, globalObserveHealthDir } from '../../../storage/directories.js';
 import { persistObserveHealthReport } from '../../../observe/skill-health/persistence.js';
 
 // `omk observe <sessions-dir>` 是默认命令 —— 分析 sessions 目录的 skill 调用健康度，产出 observe-health 报告(JSON)，

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'vitest';
 import { computeSkillHealthFromSegments } from '../../../src/observe/skill-health/analyzer.js';
-import { writeMeasurementReportBundle } from '../../../src/evidence/storage/report-bundle.js';
+import { writeMeasurementReportBundle } from '../../../src/storage/report-bundle.js';
 import { querySkillDiff, querySkillTrend } from '../../../src/studio/application/knowledge/knowledge-reports.js';
 import type { SkillSegment } from '../../../src/observe/trace/index.js';
 

@@ -2,7 +2,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import { recoverStorageLock, withWorkspaceWrite } from '../../../evidence/storage/knowledge-workspace.js';
+import { recoverStorageLock, withWorkspaceWrite } from '../../adapters/workspace-guard.js';
 import { withFileLock } from '../../../shared/file-lock.js';
 import { validateCarrierSkill } from './knowledge-content.js';
 import { distributableCopyFilter, hashArtifactSource } from '../sources/content-hash.js';

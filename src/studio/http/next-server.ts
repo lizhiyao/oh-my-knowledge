@@ -1,5 +1,5 @@
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
-import { globalLayout } from '../../evidence/storage/layout.js';
+import { globalLayout } from '../../storage/layout.js';
 import { createKnowledgeQuery } from '../application/knowledge/knowledge-query.js';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';

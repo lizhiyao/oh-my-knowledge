@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { KnowledgeStorageStateError, withWorkspaceFileWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
 import type { KnowledgeActor } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { KnowledgeReviewActorSchema } from '../reviews.js';

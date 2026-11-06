@@ -6,7 +6,7 @@ import { applyLibraryWrite, validateLibraryHistory } from '../entity-library/his
 import { LibraryWriteCapacityError } from '../entity-library/write-errors.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
-import { checkStorageDirectory, withWorkspaceWrite } from '../../evidence/storage/knowledge-workspace.js';
+import { checkStorageDirectory, withWorkspaceWrite } from './workspace-guard.js';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 /** All object writes share the workspace lock so one entity cannot acquire competing owners. */

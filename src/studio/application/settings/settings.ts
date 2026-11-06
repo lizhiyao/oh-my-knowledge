@@ -1,5 +1,5 @@
-import { globalLayout } from '../../../evidence/storage/layout.js';
-import { UserSettingsStore } from '../../../evidence/storage/user-settings.js';
+import { globalLayout } from '../../../storage/layout.js';
+import { UserSettingsStore } from '../../../settings/user-settings.js';
 export function studioSettings(store = new UserSettingsStore()) {
   return { ...store.read(), effective: store.resolve(), path: store.path,
     // 语言不在 defaults 里：它的内置默认就是「没有保存过」，实际取值由 effective 反映
