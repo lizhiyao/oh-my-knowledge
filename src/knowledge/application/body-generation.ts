@@ -414,6 +414,7 @@ export class BodyGenerationApplication {
       const associationWrites = bodies.map((body, index) => {
         try {
           const association = response.associations.find(item => item.bodyKey === `b${index}`)!;
+          if (association.typedRelations === null) throw new Error('Requested typed relation projection was not returned.');
           const segmentIds = new Set(body.content.segments.map(segment => segment.segmentId));
           if (association.segmentDecisions.length !== segmentIds.size || new Set(association.segmentDecisions.map(decision => decision.segmentId)).size !== segmentIds.size
             || association.segmentDecisions.some(decision => !segmentIds.has(decision.segmentId))) throw new Error('Association segment decisions are not closed.');

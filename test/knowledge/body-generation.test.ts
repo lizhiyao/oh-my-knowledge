@@ -179,7 +179,7 @@ async function prepareTwoSourceRebuildWithActualReview(f: Fixture) {
     qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: ['Cross-window identity remains unknown.'], referentKind: 'object', componentLink: null, collectionLink: null,
     mentions: [{ mentionKey: 'm1', selection: { evidenceRef: source.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: 'Own literal mention in this exact source.' }] }] }));
   f.association.associations = [{ bodyKey: 'b0', segmentDecisions: [f.window, second].map((source, index) => ({ segmentId: `s${index + 1}`, decisionKind: 'mapped',
-    entityRefs: [{ sourceKey: `s${sources.findIndex(value => value.snapshotId === source.snapshotId)}`, entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Each paragraph discusses its own exact source object.' })), typedRelations: null, issues: [] }];
+    entityRefs: [{ sourceKey: `s${sources.findIndex(value => value.snapshotId === source.snapshotId)}`, entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Each paragraph discusses its own exact source object.' })), typedRelations: [], issues: [] }];
   const bodyFile = join(f.root, 'items', readdirSync(join(f.root, 'items')).find(name => name.endsWith('.json'))!);
   return { ref, second, bodyFile, bodyBytes: readFileSync(bodyFile), prepared: f.app.prepareAssociationRebuild([ref], f.model, decision) };
 }
@@ -480,12 +480,24 @@ describe('source-first generation and zero-model recovery', () => {
     expect(f.reopen().resume(result.journal.runId)).toEqual(result); expect(f.dispatched).toEqual(stages);
   });
 
+  it('records a failed association when the requested semantic projection is missing without editing the body or replaying the call', async () => {
+    const f = setup(), prepared = await preparePhase(f, 'association');
+    f.association.associations[0].typedRelations = null;
+    const bodyFiles = readdirSync(join(f.root, 'items')).map(file => join(f.root, 'items', file));
+    const before = bodyFiles.map(file => readFileSync(file));
+    const result = await dispatch(f, prepared), detail = f.library.detail(result.journal.bodies[0].knowledgeId);
+    expect(detail.derivedAssociations).toMatchObject({ status: 'failed', revision: { issues: ['Requested typed relation projection was not returned.'] } });
+    expect(bodyFiles.map(file => readFileSync(file))).toEqual(before);
+    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { output: JSON.stringify(f.association) } });
+    expect(f.reopen().resume(result.journal.runId)).toEqual(result); expect(f.dispatched).toEqual(stages);
+  });
+
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
     expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v20', outputName: 'knowledge_body_v3',
       profileId: 'sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189',
       wireId: 'sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d' });
-    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
-      profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
+    expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v9',
+      profileId: 'sha256:a5c24a7183d5bc5291479eb28561e4419aaafa63fa7a1888c8b276baf20eac91',
       wireId: 'sha256:2c9acd3fc02d852587b89dc6fa8c5b6d91c0bea41073ebaa0a64bbad066fa226' });
     const f = setup(true), proposal = f.body.proposals[0], evidence = { ...proposal.segments[0].evidence[0],
       ...passageRange(bodySourcePassages([f.window]).index, f.window.excerpts[1].evidenceRef, f.window.excerpts[1].text) };
@@ -493,7 +505,9 @@ describe('source-first generation and zero-model recovery', () => {
       { ...proposal, proposalId: 'p2', segments: [{ ...proposal.segments[0], text: 'Alpha in other environments remains unknown.', evidence: [evidence] }] }];
     f.association.catalogs = [{ sourceKey: 's0', entities: [{ entityId: 'e1', label: 'Alpha', description: 'Source-local fixture subject.', qualifiers: [], identityStatus: 'proposed', possibleEntityIds: [], uncertainties: [],
       referentKind: 'object', componentLink: null, collectionLink: null, mentions: [{ mentionKey: 'm1', selection: { evidenceRef: f.window.excerpts[0].evidenceRef, quote: 'Alpha', contextBefore: null, contextAfter: null }, basis: 'explicit', rationale: 'Exact own mention in the uncited excerpt.' }] }] }];
-    f.association.associations = ['b0', 'b1'].map(bodyKey => ({ bodyKey, segmentDecisions: [{ segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'The paragraph discusses the exact source-local subject.' }], typedRelations: [], issues: [] }));
+    f.association.associations = ['b0', 'b1'].map(bodyKey => ({ bodyKey, segmentDecisions: [{ segmentId: 's1', decisionKind: 'mapped', entityRefs: [{ sourceKey: 's0', entityId: 'e1', mentionKeys: ['m1'] }], reason: 'The paragraph discusses the exact source-local subject.' }], typedRelations: [{ relationId: 'r1', segmentIds: ['s1'], subject: { sourceKey: 's0', entityId: 'e1' }, object: null,
+      relation: bodyKey === 'b0' ? 'works only in this test' : 'other environments remain unknown', modality: 'descriptive', polarity: 'positive',
+      evidence: [{ segmentId: 's1', evidenceIndex: 0 }], issues: [] }], issues: [] }));
     const paths: string[] = [], execute = vi.fn(async request => {
       paths.push(request.cwd); expect(request.cwd).toMatch(/omk-knowledge-text-[A-Za-z0-9]{6}$/); expect(request.timeoutMs).toBe(300000);
       if (request.outputFormat.name.includes('association')) expect(request.system).toContain(KNOWLEDGE_RECORD_SCOPE_POLICY);
@@ -509,6 +523,10 @@ describe('source-first generation and zero-model recovery', () => {
       const saved = f.library.detail(ref.knowledgeId); expect(saved.derivedAssociations.reviewStatus).toBe('pending'); expect(saved.maintenance).toBeNull();
       expect(saved.revision.content.segments[0].evidence[0].selection.quote).not.toContain('Alpha');
       expect(saved.derivedCatalogs[0]).not.toHaveProperty('source');
+      const projected = saved.derivedAssociations.revision!;
+      expect(projected.typedRelations).toEqual([expect.objectContaining({ subject: { ...projected.catalogRefs[0], entityId },
+        relation: ref === result.journal.bodies[0] ? 'works only in this test' : 'other environments remain unknown',
+        evidence: [saved.revision.content.segments[0].evidence[0]] })]);
     }
     for (const original of f.reopen().inspect(result.journal.runId).nativeOutcomes) expect(original.outcome).toMatchObject({ result: { opaqueNestedField: { preserved: ['original', 1] } } });
   });
