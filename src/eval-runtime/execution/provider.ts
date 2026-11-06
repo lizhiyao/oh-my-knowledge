@@ -1,16 +1,16 @@
 import type {
   EvaluationSeriesDefinition,
   EvaluationSeriesMemberSource,
-  EvaluationSeriesPlan,} from '../eval-core/contracts/index.js';
+  EvaluationSeriesPlan,} from '../../eval-core/contracts/index.js';
 import {  prepareEvaluationSeriesPlan,
-} from '../eval-core/verify/index.js';
+} from '../../eval-core/verify/index.js';
 import {
   runEvaluationSeries,
   type EvaluationSeriesRuntimePorts,
   type EvaluationSeriesRunOptions,
   type EvaluationSeriesRunResult,
-} from '../eval-core/series/index.js';
-import type { EvaluationExecutionInput, PreparedEvaluationExecution } from './execution.js';
+} from '../../eval-core/series/index.js';
+import type { EvaluationExecutionInput, PreparedEvaluationExecution } from './lifecycle.js';
 
 export interface EvaluationPreparationOptions {
   readonly signal?: AbortSignal;

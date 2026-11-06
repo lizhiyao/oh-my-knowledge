@@ -12,7 +12,7 @@ import {
   type WorkspaceLease,
   type WorkspaceOpenRequest,
   type WorkspaceProvider,
-} from '../workspace.js';
+} from '../resources/workspace.js';
 
 export interface WorkspaceProviderConformanceProbeInput {
   readonly provider: WorkspaceProvider;

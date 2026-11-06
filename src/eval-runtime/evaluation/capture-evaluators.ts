@@ -23,7 +23,7 @@ import {
 } from '../../eval-core/contracts/index.js';
 import {
   type RuntimePortRegistration,
-} from '../runtime.js';
+} from '../execution/assembly.js';
 import {
   type EvaluationEvaluator,
 } from '../../eval-core/evaluation/index.js';

@@ -78,6 +78,18 @@ Directories under `src` express domain ownership rather than one mechanical repo
 
 Core stages share run-resource acquisition and disposal, abort forwarding, elapsed-time projection and the default event buffer through `eval-core/runtime`. Budget outcome projection, trust minima and topological ordering are shared invariants. Analysis schedules one ready node at a time; Series schedules a ready frontier. These explicit ordering policies retain existing event order. Execution and Evaluation keep their own record, cache identity, timeout-result and Bundle contracts.
 
+Within `eval-runtime`, source modules are grouped by responsibility:
+
+| Directory | Responsibility |
+|---|---|
+| `execution/` | Core port assembly, run observation, lifecycle, execution controls and provider injection |
+| `resources/` | Workspace, MCP, mock interception and tool-policy declarations and leases |
+| `content/` | Content ports, caches and result serialization through injected stores; no filesystem layout |
+| `debug/` | Evaluator and rubric inspection |
+| `evaluation/` | Input capture, compilation, preparation and result reuse behind the public façade |
+
+Execution and resource modules cannot depend on input compilation, result storage, debugging or concrete evaluators. Internal modules consume leaf contracts instead of importing the public `evaluate.ts` façade. Package exports and stored measurement identities are independent of these source paths.
+
 ```text
 eval-core ← eval-runtime ← product orchestration
                 ↑                   ↑

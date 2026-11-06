@@ -17,8 +17,8 @@ import {
 import { createExactMatchDefinition } from '../builders/exact-match.js';
 import { createMeasurementPolicy } from '../builders/policy.js';
 import { createExactMatchEvaluator } from '../evaluators/exact-match.js';
-import { runEvaluation } from '../runner.js';
-import { createEvaluationRuntime } from '../runtime.js';
+import { runEvaluation } from '../execution/run.js';
+import { createEvaluationRuntime } from '../execution/assembly.js';
 
 export interface ExecutorConformanceProbeCase {
   readonly input: JsonValue;

@@ -119,7 +119,7 @@ describe('eval-runtime façade architecture guard', () => {
       '../../eval-runtime/index.js',
     ];
     const allowed = [
-      '../../eval-runtime/runtime.js',
+      '../../eval-runtime/execution/assembly.js',
       '../../eval-runtime/identity.js',
       '../../eval-runtime/judges/rubric-contracts.js',
       '../../eval-core/contracts/index.js',

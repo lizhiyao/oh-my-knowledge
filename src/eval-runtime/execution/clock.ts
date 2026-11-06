@@ -1,4 +1,4 @@
-import type { EvaluationEngineClock } from '../eval-core/engine/index.js';
+import type { EvaluationEngineClock } from '../../eval-core/engine/index.js';
 
 /** Node.js clock for Core orchestration. It owns waiting only, never measurement identity. */
 export function createNodeEvaluationClock(): EvaluationEngineClock {

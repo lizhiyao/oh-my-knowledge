@@ -1,15 +1,15 @@
-import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   deepFreezeCanonicalJson,
   type TargetExecutionControls,
-} from '../eval-core/contracts/index.js';
-import type { CapturedAllowedToolsPlan } from './tool-policy.js';
-import type { CapturedMcpConfigPlan, McpConfigDescriptor } from './mcp-config.js';
+} from '../../eval-core/contracts/index.js';
+import type { CapturedAllowedToolsPlan } from '../resources/tool-policy.js';
+import type { CapturedMcpConfigPlan, McpConfigDescriptor } from '../resources/mcp-config.js';
 import type {
   CapturedMockInterceptionPlan,
   MockInterceptionDescriptor,
-} from './mock-interception.js';
-import type { CapturedWorkspacePlan, WorkspaceDescriptor } from './workspace.js';
+} from '../resources/mock-interception.js';
+import type { CapturedWorkspacePlan, WorkspaceDescriptor } from '../resources/workspace.js';
 
 
 function workspaceControl(descriptor: WorkspaceDescriptor | null | undefined) {

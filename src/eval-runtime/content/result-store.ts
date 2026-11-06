@@ -11,16 +11,15 @@ import {
   type CapturedContent,
   type JsonValue,
   type Sha256Digest,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 import {  evaluationRecordCapturedContents,
-} from '../eval-core/verify/index.js';
+} from '../../eval-core/verify/index.js';
 import {
   getPreparedEvaluationPlanDigest,
   getRestorableEvaluationResultPlanDigest,
-  restorePreparedEvaluationResult,
-  type EvaluationResult,
-  type PreparedEvaluation,
-} from './evaluate.js';
+} from '../evaluation/result-state.js';
+import { restorePreparedEvaluationResult } from '../evaluation/reuse.js';
+import type { EvaluationResult, PreparedEvaluation } from '../evaluation/contracts.js';
 import type {
   ContentDescriptor,
   ContentResolver,

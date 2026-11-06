@@ -49,7 +49,7 @@ import {
   type OmkLlmJudgeInvocationPort,
   type OmkLlmJudgeInvocationResult,
 } from './invocation.js';
-import type { RuntimePortRegistration } from '../runtime.js';
+import type { RuntimePortRegistration } from '../execution/assembly.js';
 import {
   RUBRIC_JUDGE_BINDINGS,
   RUBRIC_JUDGE_CONTEXT_SCHEMA,

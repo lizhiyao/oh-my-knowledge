@@ -4,15 +4,15 @@ import {
   type EvaluationDefinition,
   type JsonValue,
   type MeasurementPolicy,
-} from '../eval-core/contracts/index.js';
-import type { SealedRunPlan } from '../eval-core/compiler/index.js';
+} from '../../eval-core/contracts/index.js';
+import type { SealedRunPlan } from '../../eval-core/compiler/index.js';
 import {
   createEvaluationEngine,
   type EvaluationEngineEventWriter,
   type EvaluationEngineRuntime,
   type EvaluationRun,
   type EvaluationRunResult,
-} from '../eval-core/engine/index.js';
+} from '../../eval-core/engine/index.js';
 
 /** Product compilers supply measurement declarations, never CLI configuration or locators. */
 export interface EvaluationExecutionInput {

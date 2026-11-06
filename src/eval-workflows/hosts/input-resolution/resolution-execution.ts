@@ -1,7 +1,7 @@
 import { canonicalizeJson, type JsonValue, type TargetExecutionControls } from '../../../eval-core/contracts/index.js';
 import type { Mock } from '../../../executors/contracts/mock.js';
 import type { Sample } from '../../inputs/contracts/sample.js';
-import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../eval-runtime/mock-interception.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../eval-runtime/resources/mock-interception.js';
 import { CliEvaluationInputError, type ResolvedMockBinding, type ResolvedResourceDescriptor } from '../../input-compilation/index.js';
 import { absolute, fail, fileResource, materializeBytes, treeResource, type ResourceRegistry } from './resolution-resources.js';
 

@@ -1,4 +1,4 @@
-import type { EvaluationRuntimeProvider } from '../../../eval-runtime/provider.js';
+import type { EvaluationRuntimeProvider } from '../../../eval-runtime/execution/provider.js';
 import type { EvaluationContentResolver } from '../../../eval-core/evaluation/index.js';
 import type { CoreSchemaValidator } from '../../../eval-core/contracts/index.js';
 import type { CliEvaluationCompileResult } from '../../input-compilation/index.js';

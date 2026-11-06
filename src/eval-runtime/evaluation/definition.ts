@@ -23,7 +23,7 @@ import {
 } from './capture-input.js';
 import {
   evaluationExecutionControls,
-} from '../execution-controls.js';
+} from '../execution/controls.js';
 import {
   type CapturedEvaluators,
 } from './capture-evaluators.js';

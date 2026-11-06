@@ -6,7 +6,7 @@ import { deepFreezeCanonicalJson, digestCanonicalJson, type JsonValue } from '..
 import { prepareEvaluation } from '../../../eval-runtime/evaluation/prepare.js';
 import { rescore } from '../../../eval-runtime/evaluation/reuse.js';
 import type { EvaluateInput, EvaluationResult } from '../../../eval-runtime/evaluation/contracts.js';
-import { saveEvaluationResult } from '../../../eval-runtime/result-store.js';
+import { saveEvaluationResult } from '../../../eval-runtime/content/result-store.js';
 import { createNodeCoreContentStore, createNodeCoreRunArtifactStore, type StoredCoreRunArtifacts } from '../../artifact-store/index.js';
 import { persistCoreArtifactSidecars } from '../../orchestration/artifact-graph-persistence.js';
 import { LocalTaskDefinitionSchema, LocalTaskOutputSchema, type LocalTaskDefinition, type TaskFile } from '../../inputs/contracts/local-task.js';

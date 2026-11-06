@@ -36,7 +36,7 @@ import {
   type ExecutorRunContext,
   type ExecutorTrialContext,
 } from '../../../../eval-core/execution/index.js';
-import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../../eval-runtime/mock-interception.js';
+import { MOCK_INTERCEPTION_PLAN_MEDIA_TYPE } from '../../../../eval-runtime/resources/mock-interception.js';
 import {
   spawnWithSigintPropagation,
   type SpawnHelperError,

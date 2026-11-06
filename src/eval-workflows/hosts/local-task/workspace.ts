@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { WorkspaceDescriptor, WorkspaceProvider } from '../../../eval-runtime/workspace.js';
+import type { WorkspaceDescriptor, WorkspaceProvider } from '../../../eval-runtime/resources/workspace.js';
 import type { TaskFile } from '../../inputs/contracts/local-task.js';
 import { materializeTaskFiles, taskTreeDigest } from './files.js';
 

@@ -1,4 +1,4 @@
-import { compareStrings } from '../eval-core/primitives/ordering.js';
+import { compareStrings } from '../../eval-core/primitives/ordering.js';
 import {
   ExecutionResourceDescriptorSchema,
   IdentifierSchema,
@@ -7,7 +7,7 @@ import {
   deepFreezeCanonicalJson,
   type ExecutionResourceDescriptor,
   type JsonValue,
-} from '../eval-core/contracts/index.js';
+} from '../../eval-core/contracts/index.js';
 
 export const MOCK_INTERCEPTION_PLAN_MEDIA_TYPE =
   'application/vnd.omk.mock-interception-plan+json' as const;

@@ -33,7 +33,7 @@ import {
   type PreparedEvaluation,
   type PreparedEvaluationPlan,
 } from './evaluate.js';
-import { createNodeEvaluationClock } from './clock.js';
+import { createNodeEvaluationClock } from './execution/clock.js';
 
 const SERIES_STABILITY_NODE_ID = 'run-stability';
 const SERIES_SCHEDULING_EXTENSION_URI =

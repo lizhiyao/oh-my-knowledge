@@ -8,7 +8,7 @@ import {
 } from '../../eval-core/contracts/index.js';
 import type { EvaluationEvaluator } from '../../eval-core/evaluation/index.js';
 import type { EvaluatorRuntimeRequirement } from '../../eval-core/compiler/index.js';
-import type { RuntimePortRegistration } from '../runtime.js';
+import type { RuntimePortRegistration } from '../execution/assembly.js';
 import type {
   OmkLlmJudgeEffort,
   OmkLlmJudgeInvocationPort,

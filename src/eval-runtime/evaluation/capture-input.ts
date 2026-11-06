@@ -30,19 +30,19 @@ import {
   captureWorkspaceProvider,
   type CapturedWorkspacePlan,
   captureWorkspacePlan,
-} from '../workspace.js';
+} from '../resources/workspace.js';
 import {
   type CapturedMcpConfigProvider,
   captureMcpConfigProvider,
   type CapturedMcpConfigPlan,
   captureMcpConfigPlan,
-} from '../mcp-config.js';
+} from '../resources/mcp-config.js';
 import {
   type CapturedMockInterceptionProvider,
   captureMockInterceptionProvider,
   type CapturedMockInterceptionPlan,
   captureMockInterceptionPlan,
-} from '../mock-interception.js';
+} from '../resources/mock-interception.js';
 import {
   EvaluationConfigurationError,
   configurationFailure,
@@ -60,7 +60,7 @@ import {
 import {
   type CapturedAllowedToolsPlan,
   captureAllowedToolsPlan,
-} from '../tool-policy.js';
+} from '../resources/tool-policy.js';
 
 interface CapturedExecutor<
   Input extends JsonValue,

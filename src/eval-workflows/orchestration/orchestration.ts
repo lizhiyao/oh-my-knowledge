@@ -30,7 +30,7 @@ import {
   type StoredCoreRunArtifacts,
 } from '../artifact-store/index.js';
 import type { CoreResumeVerificationContexts } from '../resume-disposition/index.js';
-import type { EvaluationPreparationOptions as OmkEvaluationPreflightOptions } from '../../eval-runtime/provider.js';
+import type { EvaluationPreparationOptions as OmkEvaluationPreflightOptions } from '../../eval-runtime/execution/provider.js';
 import {
   projectCoreEvolutionEvidence,
 } from '../projections/evolution.js';

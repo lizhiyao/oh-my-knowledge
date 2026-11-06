@@ -14,7 +14,7 @@ import type {
   ExecutionCache,
   ExecutionCacheEntry,
   ExecutorIdentityVerifier,
-} from '../infrastructure.js';
+} from '../content/infrastructure.js';
 import type { CustomEvaluator } from '../custom-evaluator.js';
 
 export type CacheConformanceProbeInput = Readonly<

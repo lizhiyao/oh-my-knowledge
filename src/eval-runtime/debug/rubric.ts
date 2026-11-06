@@ -1,8 +1,8 @@
-import { deepFreezeCanonicalJson, type UsageRecord } from '../eval-core/contracts/index.js';
-import type { Judge, RubricJudgeEvaluator } from './evaluation/contracts.js';
-import { captureRubricDeclaration } from './evaluation/rubric-declaration.js';
-import { assertLlmJudgeInvocationResult, redactLlmJudgeFailureUsage, type OmkLlmJudgeInvocationRequest } from './judges/invocation.js';
-import { decodeRubricReadings, type RubricReading } from './judges/rubric-readings.js';
+import { deepFreezeCanonicalJson, type UsageRecord } from '../../eval-core/contracts/index.js';
+import type { Judge, RubricJudgeEvaluator } from '../evaluation/contracts.js';
+import { captureRubricDeclaration } from '../evaluation/rubric-declaration.js';
+import { assertLlmJudgeInvocationResult, redactLlmJudgeFailureUsage, type OmkLlmJudgeInvocationRequest } from '../judges/invocation.js';
+import { decodeRubricReadings, type RubricReading } from '../judges/rubric-readings.js';
 
 export type DebugRubricReading = RubricReading;
 

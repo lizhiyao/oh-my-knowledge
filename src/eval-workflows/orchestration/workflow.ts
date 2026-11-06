@@ -1,4 +1,4 @@
-import { EvaluationRuntimeLifecycleError } from '../../eval-runtime/execution.js';
+import { EvaluationRuntimeLifecycleError } from '../../eval-runtime/execution/lifecycle.js';
 import {
   TimestampSchema,
   type CoreSchemaValidator,
@@ -27,8 +27,8 @@ import type {
   EvaluationPreparationOptions as OmkEvaluationPreflightOptions,
   EvaluationReadiness as OmkEvaluationPreflightResult,
   PreparedRuntimeEvaluation,
-} from '../../eval-runtime/provider.js';
-import type { EvaluationExecutionInput, EvaluationExecutionOptions } from '../../eval-runtime/execution.js';
+} from '../../eval-runtime/execution/provider.js';
+import type { EvaluationExecutionInput, EvaluationExecutionOptions } from '../../eval-runtime/execution/lifecycle.js';
 import {
   attachOmkEvaluationProgressProjection,
   captureOmkEvaluationProgressProjection,
