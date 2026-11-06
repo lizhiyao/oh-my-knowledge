@@ -20,7 +20,7 @@ import {
   projectCoreArtifactGraph,
   projectCoreEvolutionEvidence,
 } from '../../src/eval-workflows/projections/index.js';
-import { parseArtifactGraphDocument } from '../../src/evidence/graph/schema.js';
+import { parseArtifactGraphDocument } from '../../src/storage/artifact-graph/schema.js';
 import {
   coreRunArtifactDirectoryName,
   createNodeCoreRunArtifactStore,

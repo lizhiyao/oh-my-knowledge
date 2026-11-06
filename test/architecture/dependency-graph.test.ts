@@ -94,7 +94,7 @@ function moduleDomain(path: string): string {
   ) {
     return `${topLevel}/${subdomain}`;
   }
-  if (topLevel === 'evidence' && subdomain === 'graph') {
+  if (topLevel === 'storage' && subdomain === 'artifact-graph') {
     return `${topLevel}/${subdomain}`;
   }
   if (topLevel === 'executors' && subdomain === 'preflight') {
@@ -248,7 +248,7 @@ describe('src 与 scripts 依赖图', () => {
     expect(moduleDomain('eval-workflows/resume-disposition/disposition.ts')).toBe('eval-workflows/resume-disposition');
     expect(moduleDomain('eval-workflows/measurement/analysis/composite-node.ts')).toBe('eval-workflows/measurement');
     expect(moduleDomain('eval-workflows/hosts/composition/assembly.ts')).toBe('eval-workflows/hosts');
-    expect(moduleDomain('evidence/graph/schema.ts')).toBe('evidence/graph');
+    expect(moduleDomain('storage/artifact-graph/schema.ts')).toBe('storage/artifact-graph');
     expect(moduleDomain('storage/report-bundle.ts')).toBe('storage');
     expect(moduleDomain('settings/user-settings.ts')).toBe('settings');
     expect(moduleDomain('executors/preflight/dependencies.ts')).toBe('executors/preflight');
@@ -364,28 +364,28 @@ describe('src 与 scripts 依赖图', () => {
       ...fixture,
       {
         importer: 'observe/diagnosis/index.ts',
-        target: 'evidence/index.ts',
+        target: 'storage/artifact-graph/index.ts',
         importerDomain: 'observe/diagnosis',
-        targetDomain: 'evidence',
+        targetDomain: 'storage/artifact-graph',
         typeOnly: false,
       },
       {
-        importer: 'evidence/index.ts',
+        importer: 'storage/artifact-graph/index.ts',
         target: 'observe/index.ts',
-        importerDomain: 'evidence',
+        importerDomain: 'storage/artifact-graph',
         targetDomain: 'observe',
         typeOnly: false,
       },
     ];
     expect(runtimeCycles(fixture)).toHaveLength(1);
     expect(runtimeCycles(expandedFixture)[0]?.domains).toEqual([
-      'evidence',
       'observe',
       'observe/diagnosis',
+      'storage/artifact-graph',
     ]);
     expect(runtimeCycles(expandedFixture)).not.toEqual(runtimeCycles(fixture));
     const typeOnlyExpansion = expandedFixture.map((edge) =>
-      edge.importerDomain === 'evidence' || edge.targetDomain === 'evidence'
+      edge.importerDomain === 'storage/artifact-graph' || edge.targetDomain === 'storage/artifact-graph'
         ? { ...edge, typeOnly: true } : edge);
     expect(runtimeCycles(typeOnlyExpansion)).toEqual(runtimeCycles(fixture));
   });

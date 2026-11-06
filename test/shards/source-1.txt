@@ -89,7 +89,7 @@ test/eval-workflows/orchestration/sample-content-resolution.test.ts
 test/eval-workflows/orchestration/workflow.test.ts
 test/eval-workflows/projections/runtime-progress.test.ts
 test/eval-workflows/sample-generation/generator.test.ts
-test/evidence/graph/schema.test.ts
+test/storage/artifact-graph/schema.test.ts
 test/storage/directory-selection.test.ts
 test/storage/file-names.test.ts
 test/storage/home-isolation.test.ts

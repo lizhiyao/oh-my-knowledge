@@ -24,7 +24,7 @@ import {
   parseSkillHealthReport,
 } from '../../../observe/application.js';
 
-import { parseArtifactGraphDocument } from '../../../evidence/graph/schema.js';
+import { parseArtifactGraphDocument } from '../../../storage/artifact-graph/schema.js';
 import { parseDoctorReport } from '../../../knowledge/artifacts/doctor/report-parser.js';
 import { ownRecordValue } from '../../../shared/record-count.js';
 import type { Insight } from '../../view-models/knowledge/insight.js';
@@ -38,7 +38,7 @@ import type {
 } from '../../view-models/knowledge/skill-index.js';
 import type { Diagnosis } from '../../../observe/view-models/index.js';
 import type { DoctorReport } from '../../../knowledge/artifacts/doctor/contracts.js';
-import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../evidence/graph/contracts.js';
+import type { ArtifactGraphDocument, ArtifactGraphNode } from '../../../storage/artifact-graph/contracts.js';
 import { healthBand } from './skill-health.js';
 import { detectInsights } from './skill-insights.js';
 import type { Lang } from '../../../shared/language.js';

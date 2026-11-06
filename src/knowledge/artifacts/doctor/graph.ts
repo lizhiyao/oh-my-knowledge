@@ -4,7 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalArtifactFileStem } from '../../../storage/file-names.js';
 import { measurementDerivedDir } from '../../../storage/report-bundle.js';
 import { hashArtifactSource } from '../sources/content-hash.js';
-import { parseArtifactGraphDocument } from '../../../evidence/graph/schema.js';
+import { parseArtifactGraphDocument } from '../../../storage/artifact-graph/schema.js';
 import { writeJsonFileAtomic } from '../../../shared/atomic-json.js';
 import { writeTextFileAtomic } from '../../../storage/atomic-text.js';
 import {
@@ -29,7 +29,7 @@ import type {
   ArtifactGraphNodeKind,
   ArtifactGraphNodeRole,
   ArtifactGraphStatus,
-} from '../../../evidence/graph/contracts.js';
+} from '../../../storage/artifact-graph/contracts.js';
 
 export interface BuildDoctorGraphOptions {
   report: DoctorReport;

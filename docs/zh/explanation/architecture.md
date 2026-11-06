@@ -221,7 +221,7 @@ Workflow／CLI 既有行为；合理的缺失能力应在所属下层补齐，�
 | Executors | 内部调用；宿主适配、评委、doctor、sample、evolve 与观测分析 | 复用调用协议与机制；不能整体当作旧评测路径删除；验证参数、环境、Trace、用量与错误 |
 | Knowledge | 内部调用；CLI、Studio、Workflow 与观测 | 纯内容／实体／知识库契约，提炼、关联及持久化，载体编写、健康检查与来源解析；验证不可变历史、来源身份、恢复、隔离副本、安装与 doctor |
 | Observe | MCP、DSH、CLI 与 Studio 消费；诊断协议在观测存储边界解析 | 分开维护证据、信号与诊断；验证来源、覆盖范围和稳定协议 |
-| Storage／Settings／Evidence | 各产品领域与交付入口 | 共用持久化、用户偏好与图谱协议；各领域保留自己的生产流程 |
+| Storage／Settings | 各产品领域与交付入口 | 共用持久化、用户偏好与图谱协议；各领域保留自己的生产流程 |
 | CLI／DSH／MCP／Studio | `omk`、`dsh-plugin`、`mcp`／`omk-mcp`、`studio` | 入口协议、上下文、身份和展示策略各自拥有；验证真实命令、插件、服务与界面 |
 | Shared | 内部叶子工具 | 不引入领域决策；验证文件原子性、锁与基础数据操作 |
 
@@ -265,10 +265,11 @@ Codex 参数抽取保持参数顺序、prompt 字节和各调用方的空值处�
 
 后续新增共用机制时，需要同时验证参数、环境、输出、Trace、用量、取消、错误与清理。现有共享层已能覆盖的部分直接复用；对不同契约保留适配，不为减少函数数量合并测量身份或修改协议。对应回归集中在 `test/executors`、`test/eval-workflows/hosts` 和 `test/eval-runtime`；产品评分与统计测试位于 `test/eval-workflows/measurement`。
 
-共用持久化、用户配置与证据图谱协议分别归属：
+Storage 拥有共用持久化与文档协议，Settings 拥有跨入口共用的用户偏好：
 
 ```text
 storage/
+├── artifact-graph/  # 共用持久化图谱契约与校验
 ├── layout.ts  # 项目／全局规范路径
 ├── default-dirs.ts  # 全局默认目录
 ├── directories.ts  # 报告目录查询
@@ -285,8 +286,9 @@ settings/
 ```
 
 ```text
-evidence/
-└── graph/  # 共用图谱契约与 Schema 校验
+storage/artifact-graph/
+├── contracts.ts  # 持久化图谱文档协议
+└── schema.ts  # 结构校验与规范化
 ```
 
 知识工作区锁与迁移防护归属 `knowledge/adapters/workspace-guard.ts`。
@@ -294,6 +296,7 @@ Doctor 图谱生产归属 `knowledge/artifacts/doctor/graph.ts`，评测图谱�
 `eval-workflows/projections/artifact-graph.ts` 拥有。运行编号分配归属
 `eval-workflows/artifact-store/run-id.ts`。这些源码迁移保留存储路径、锁与迁移协议、
 图谱身份、报告格式、配置优先级和测量语义。共用存储不调用领域执行，发现索引只消费 Doctor wire 类型。
+图谱协议子域不依赖目录布局、文件发布或发现索引。Doctor 和评测工作流拥有图谱生产，Studio 消费共用文档协议。
 
 公开 package 入口位于所属领域的自然 `index.ts` 或语义文件，`package.json#exports` 是唯一公开清单。
 内部生产模块直接依赖具体领域文件，不经这些 package barrel 跨域。
@@ -327,7 +330,7 @@ observe/
 覆盖 `.js` 和 Next 无扩展名 import、再导出及字面量模块加载。私有子域不能反向导入根应用／展示入口。
 客户端运行时闭包守卫另行保证展示入口不引入 Node 能力；`view-models/` 只提供类型。
 `test/architecture/architecture-docs.test.ts` 对账本文列出的全部目录树
-（`knowledge`、`knowledge/artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`evidence`、`storage`、`settings`、`observe`）
+（`knowledge`、`knowledge/artifacts`、`eval-workflows`、`executors`、`eval-workflows/hosts`、`storage/artifact-graph`、`storage`、`settings`、`observe`）
 与源码目录，中英文同步。
 
 Trace 的 `message-classification.ts` 只判断消息来源与协议语义；Experience 的 `text-signals.ts` 才判断硬规则、进展与交付信号。因此 adapter 不会反向依赖其下游的体验投影。旧根路径不保留 re-export 或兼容 shim。

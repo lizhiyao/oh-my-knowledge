@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseArtifactGraphDocument } from '../../../src/evidence/graph/schema.js';
-import type { ArtifactGraphDocument } from '../../../src/evidence/graph/contracts.js';
+import { parseArtifactGraphDocument } from '../../../src/storage/artifact-graph/schema.js';
+import type { ArtifactGraphDocument } from '../../../src/storage/artifact-graph/contracts.js';
 
 function graph(): ArtifactGraphDocument {
   return {
