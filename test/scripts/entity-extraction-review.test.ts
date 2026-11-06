@@ -871,7 +871,7 @@ globalThis.fetch = async (url, init) => {
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
-  it('fails closed for unknown usage, reservations, env/permission/budget drift and unsupported Codex caps without invoking even a fake binary', async () => {
+  it('fails closed for environment and permission drift, unknown usage and incomplete reservations', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-gates-'));
     try {
       const f = fixture(root); const directory = join(root, 'unknown'); const prepared = await f.prepare(directory); const permission = f.permit(directory);
@@ -890,18 +890,42 @@ globalThis.fetch = async (url, init) => {
       rmSync(join(directory, 'ledger', 'capture-repeat-1.attempt.json'));
       await f.fail(f.execute(directory, prepared.planId, permission, 'capture-repeat-1'));
       expect(f.requests()).toHaveLength(1);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  // Independent guards get independent default deadlines; do not aggregate 20 CLI startups in one test.
+  it('rejects an insufficient frozen token budget without dispatch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-budget-'));
+    try {
+      const f = fixture(root);
       const poor = join(root, 'poor'); writeFileSync(f.config, JSON.stringify({ ...f.configuration, maxTokens: 1 }));
       const poorPlan = await f.prepare(poor); await f.fail(['check', '--plan', poor]);
       await f.fail(f.execute(poor, poorPlan.planId, f.permit(poor), 'capture-repeat-1'));
+      expect(f.requests()).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects unsupported Codex output caps without invoking even a fake binary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-codex-'));
+    try {
+      const f = fixture(root);
       const binaryDirectory = join(root, 'bin'); mkdirSync(binaryDirectory); const marker = join(root, 'codex-invoked');
       const binary = join(binaryDirectory, 'codex'); writeFileSync(binary, '#!/bin/sh\ntouch "' + marker + '"\n'); chmodSync(binary, 0o700);
       f.env.PATH = binaryDirectory + ':' + (process.env.PATH ?? '');
       writeFileSync(f.config, JSON.stringify({ ...f.configuration, executor: 'codex' }));
       const codex = join(root, 'codex'); const codexPlan = await f.prepare(codex);
-      await f.fail(['check', '--plan', codex]);
-      await f.fail(f.execute(codex, codexPlan.planId, join(codex, 'permission-template.json'), 'capture-repeat-1'));
-      expect(existsSync(marker)).toBe(false); expect(f.requests()).toHaveLength(1);
-      writeFileSync(f.config, JSON.stringify(f.configuration));
+      const reason = 'Codex has no enforceable output token cap; no dispatch allowed.';
+      expect(JSON.parse((await f.fail(['check', '--plan', codex])).stdout)).toMatchObject({ executable: false, reasons: ['Error: ' + reason], requestsByThisCommand: 0 });
+      expect((await f.fail(f.execute(codex, codexPlan.planId, f.permit(codex), 'capture-repeat-1'))).stderr).toContain(reason);
+      expect(existsSync(marker)).toBe(false); expect(f.requests()).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects validator identity drift in check, comparison and execution without dispatch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-validator-'));
+    try {
+      const f = fixture(root);
+      const directory = join(root, 'unchanged'); await f.prepare(directory);
       const drift = join(root, 'validator-drift'); await f.prepare(drift);
       const previous = JSON.parse(readFileSync(join(drift, 'plan.json'), 'utf8'));
       const identity = { ...previous }; delete identity.planId;
@@ -910,7 +934,14 @@ globalThis.fetch = async (url, init) => {
       expect((await f.fail(['check', '--plan', drift])).stderr).toContain('Capture plan/host/checker identity mismatch');
       await f.fail(['compare', '--left', drift, '--right', directory]);
       expect((await f.fail(f.execute(drift, identityDigest(identity), join(drift, 'permission-template.json'), 'capture-repeat-1'))).stderr).toContain('Capture plan/host/checker identity mismatch');
-      expect(f.requests()).toHaveLength(1);
+      expect(f.requests()).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('rejects both injected Node loader spellings for an otherwise executable official profile', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-live-capture-loaders-'));
+    try {
+      const f = fixture(root);
       writeFileSync(f.config, JSON.stringify({ ...f.configuration, model: 'gpt-5.4-2026-03-05', profileId: 'openai-gpt54-snapshot-context/v1', maxCalls: 1, maxTokens: 1_050_064 }));
       const officialEnv = { ...f.env, NODE_OPTIONS: '', OPENAI_BASE_URL: 'https://api.openai.com' };
       const official = join(root, 'official-offline');
@@ -922,7 +953,7 @@ globalThis.fetch = async (url, init) => {
         const rejected = await runCliFailing([JSON.stringify(flags), entry, 'check', '--plan', official], 1, { entry: wrapper, cwd: root, env: officialEnv });
         expect(JSON.parse(rejected.stdout)).toMatchObject({ executable: false, reasons: ['Error: Official profile rejects injected Node loaders.'], requestsByThisCommand: 0 });
       }
-      expect(f.requests()).toHaveLength(1);
+      expect(f.requests()).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
