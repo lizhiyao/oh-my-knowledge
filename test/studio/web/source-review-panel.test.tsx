@@ -82,9 +82,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('explicit source review panel', () => {
-  it('shows pending units and unknowns, records every disposition, then requires a separate prepare click', async () => {
-    const f = fixture(), prepare = vi.fn();
-    const mounted = render(<SourceReviewPanel workspace="/source-review" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
+  it('shows pending units and unknowns, records every disposition, without preparing a model request', async () => {
+    const f = fixture();
+    const mounted = render(<SourceReviewPanel workspace="/source-review" coverageRef={f.f.coverageRef}/>, { wrapper });
     await screen.findByRole('combobox', { name: '本次来源决定' });
     expect(screen.getAllByText('具体事实值仍未知。').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/尚待判断/).length).toBeGreaterThan(0);
@@ -92,14 +92,11 @@ describe('explicit source review panel', () => {
     expect(saveButton().disabled).toBe(true);
     expect(screen.queryByRole('button', { name: '按此意见准备关联' })).toBeNull();
     await fillDecision(f); expect(saveButton().disabled).toBe(false); fireEvent.click(saveButton());
-    const prepareButton = await screen.findByRole('button', { name: '按此意见准备关联' });
+    await screen.findAllByText(/已明确允许保留限制后继续/);
     expect(f.writes).toHaveLength(1); const command = f.writes[0];
     if (command.commandKind !== 'record_decision') throw new Error('Expected an actual decision.');
     expect(command.decision.dispositions.map(value => value.unresolvedId)).toEqual(f.status().unresolvedIds);
     expect(command).not.toHaveProperty('actor'); expect(command.decision).not.toHaveProperty('actor');
-    expect(prepare).not.toHaveBeenCalled(); fireEvent.click(prepareButton);
-    expect(prepare).toHaveBeenCalledWith({ coverageRef: f.f.coverageRef, sourceSetId: f.f.coverage.data.manifest.sourceSetId,
-      ledgerRef: f.f.ledgerRef, bodyRefs: f.f.coverage.data.bodyRefs, eventId: command.requestId });
     expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
   });
   it('fills only explicitly selected drafts in a matching group without saving, then sends every individual disposition', async () => {
@@ -108,8 +105,7 @@ describe('explicit source review panel', () => {
       f.coverage.data.checks.push({ ...structuredClone(f.coverage.data.checks[3]), checkId: 'c6',
         target: { targetKind: 'ledger_facet', itemId: 'i1', facetId: 'f2' }, reason: 'No supported platform was stated.' });
     });
-    const prepare = vi.fn();
-    render(<SourceReviewPanel workspace="/batch-draft" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
+    render(<SourceReviewPanel workspace="/batch-draft" coverageRef={f.f.coverageRef}/>, { wrapper });
     await fillDecision(f);
     choose('问题 check:c4 的处置', ''); change('问题 check:c4 的理由', '');
     choose('问题 check:c6 的处置', 'blocks'); change('问题 check:c6 的理由', 'Keep this separate existing draft.');
@@ -132,13 +128,13 @@ describe('explicit source review panel', () => {
     expect((screen.getByRole('combobox', { name: '问题 check:c6 的处置' }) as HTMLSelectElement).value).toBe('blocks');
     expect((screen.getByRole('textbox', { name: '问题 check:c6 的理由' }) as HTMLTextAreaElement).value).toBe('Keep this separate existing draft.');
     expect((screen.getByRole('textbox', { name: '问题 unit:s1/metadata 的理由' }) as HTMLTextAreaElement).value).toBe('Preserve the bounded uncertainty without inventing a value.');
-    expect(f.writes).toEqual([]); expect(prepare).not.toHaveBeenCalled();
+    expect(f.writes).toEqual([]); expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
     expect(f.operations).toEqual(operationsBefore);
     expect(apply.disabled).toBe(true); expect(saveButton().disabled).toBe(true);
     choose('问题 check:c6 的处置', 'resolved'); change('问题 check:c6 的理由', 'Individually reviewed after filling the other draft.');
     change('问题 check:c4 的理由', 'The selected draft remains individually editable.');
     expect(saveButton().disabled).toBe(false); fireEvent.click(saveButton());
-    await screen.findByRole('button', { name: '按此意见准备关联' });
+    await screen.findAllByText(/已明确允许保留限制后继续/);
     expect(f.writes).toHaveLength(1);
     const command = f.writes[0]; if (command.commandKind !== 'record_decision') throw new Error('Expected a complete decision.');
     expect(command.decision.dispositions.map(value => value.unresolvedId)).toEqual(f.status().unresolvedIds);
@@ -146,7 +142,7 @@ describe('explicit source review panel', () => {
     expect(command.decision.dispositions.find(value => value.unresolvedId === 'check:c6')).toMatchObject({ disposition: 'resolved', reason: 'Individually reviewed after filling the other draft.' });
     expect(command.decision).toMatchObject({ coverageRef: f.f.coverageRef, ledgerRef: f.f.ledgerRef, bodyRefs: f.f.coverage.data.bodyRefs });
     expect(command).toMatchObject({ expectedGeneration: 1, expectedHeadEventId: f.f.coverageCommand.requestId });
-    expect(command).not.toHaveProperty('actor'); expect(prepare).not.toHaveBeenCalled();
+    expect(command).not.toHaveProperty('actor'); expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
   });
   it('shows the original reason and object beside each unit, item, check and finding without rendering source HTML', async () => {
     const f = fixture(false, f => {
@@ -170,15 +166,15 @@ describe('explicit source review panel', () => {
     expect(mounted.container.querySelector('img')).toBeNull(); expect(f.writes).toEqual([]);
   });
   it('locks an unknown write and confirms the exact saved event without posting again', async () => {
-    const f = fixture(), prepare = vi.fn(); f.loseAcknowledgement();
-    render(<SourceReviewPanel workspace="/lost-receipt" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
+    const f = fixture(); f.loseAcknowledgement();
+    render(<SourceReviewPanel workspace="/lost-receipt" coverageRef={f.f.coverageRef}/>, { wrapper });
     await fillDecision(f); fireEvent.click(saveButton());
     await screen.findByText('保存结果未知。草稿已锁定，请核对回执；不会自动重发。');
     const requestId = f.writes[0].requestId;
     expect(saveButton().disabled).toBe(true); expect((screen.getByRole('textbox', { name: '来源决定理由' }) as HTMLTextAreaElement).readOnly).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '核对本次回执' }));
-    await screen.findByRole('button', { name: '按此意见准备关联' });
-    expect(f.writes).toHaveLength(1); expect(f.writes[0].requestId).toBe(requestId); expect(prepare).not.toHaveBeenCalled();
+    await screen.findAllByText(/已明确允许保留限制后继续/);
+    expect(f.writes).toHaveLength(1); expect(f.writes[0].requestId).toBe(requestId); expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
   });
   it('preserves a conflicting draft and stops stale resubmission', async () => {
     const f = fixture(); f.conflict();
@@ -190,18 +186,18 @@ describe('explicit source review panel', () => {
     expect(saveButton().disabled).toBe(true); fireEvent.click(saveButton()); expect(f.writes).toHaveLength(1);
   });
   it('keeps zero-body omissions visible and allows explicit revocation while sources are unavailable', async () => {
-    const f = fixture(true), prior = f.presetDecision(), prepare = vi.fn(); f.hideSources(); f.hideLedger();
-    render(<SourceReviewPanel workspace="/no-content" coverageRef={f.f.coverageRef} onProceed={prepare}/>, { wrapper });
+    const f = fixture(true), prior = f.presetDecision(); f.hideSources(); f.hideLedger();
+    render(<SourceReviewPanel workspace="/no-content" coverageRef={f.f.coverageRef}/>, { wrapper });
     await screen.findByText('本轮没有保存正文，来源遗漏仍须核对。');
     expect(screen.queryByRole('button', { name: '按此意见准备关联' })).toBeNull();
     expect(screen.getByText(/未决项状态未知，不能保存新决定。/)).toBeTruthy();
-    expect((screen.getByRole('button', { name: '按此意见结束本轮（无正文）' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: '按此意见结束本轮（无正文）' })).toBeNull();
     expect(saveButton().disabled).toBe(true);
     choose('来源复核操作', 'revoke'); choose('要撤销的意见', prior.requestId); change('来源决定理由', 'Withdraw this prior opinion while the source is unavailable.');
     expect(saveButton().disabled).toBe(false); fireEvent.click(saveButton());
     await waitFor(() => expect(f.status().decision.status).toBe('not_reviewed'));
     expect(f.writes).toHaveLength(1); expect(f.writes[0]).toMatchObject({ commandKind: 'revoke_decision', targetEventId: prior.requestId,
       expectedGeneration: 2, expectedHeadEventId: prior.requestId });
-    expect(prepare).not.toHaveBeenCalled();
+    expect(f.operations.every(value => ['source-ledger', 'source-coverage-status', 'review-source-coverage'].includes(value))).toBe(true);
   });
 });

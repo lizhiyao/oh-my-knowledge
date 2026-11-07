@@ -10,7 +10,7 @@ import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferen
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../adapters/body-digest.js';
 import type { KnowledgeGenerationModel, KnowledgeGenerationProfile } from '../adapters/generation-executor.js';
 import { MAX_GENERATION_OUTCOME_BYTES } from '../adapters/generation-journal-store.js';
-import type { GenerationJournal, GenerationJournalStore, GenerationStage } from '../extraction/generation-journal.js';
+import { GENERATION_JOURNAL_SCHEMA_VERSION, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies,
   generationTextDigest } from '../extraction/body-generation-wire.js';
 import { WRITING_DRAFT_PROFILE, checkWritingDraft } from '../extraction/writing-draft.js';
@@ -22,7 +22,7 @@ import { readSourceReviewOriginal } from '../adapters/source-review-original.js'
 import { sourceReviewRevisionDigest } from '../adapters/source-review-store.js';
 import { sourceCoverageUnresolved } from '../source-review-history.js';
 import { SourceCoverageWriteSchema, type SourceLedgerStore, type SourceCoverageStore,
-  type SourceLedgerRef, type SourceCoverageDecisionRef, type SourceLedgerWrite } from '../source-review.js';
+  type SourceLedgerRef, type SourceLedgerWrite } from '../source-review.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from '../extraction/source-review-input.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, sourceLedgerModelInput, sourceCoverageModelInput,
   checkGeneratedSourceLedger, checkGeneratedSourceCoverage } from '../extraction/source-review-wire.js';
@@ -148,8 +148,13 @@ export class BodyGenerationApplication {
     return sourceCoverageModelInput(journal.sources.map(source => this.snapshot(source)), this.ledger(journal), this.bodies(journal));
   }
   private associationInput(journal: GenerationJournal): string {
+    const bodies = this.bodies(journal);
+    if (bodies.some(body => body.content.segments.some(segment => segment.evidence.some(evidence =>
+      !journal.sources.some(source => source.snapshotId === evidence.source.snapshotId && source.sourceVersion === evidence.source.sourceVersion))))) {
+      throw new Error('Association sources omit a body evidence source.');
+    }
     return canonicalJson({ inputVersion: SOURCE_GENERATION_INPUT_VERSION, sourceSetId: journal.sourceSetId,
-      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput), bodies: this.bodies(journal).map((body, index) => ({ bodyKey: `b${index}`,
+      sources: journal.sources.map(source => this.snapshot(source)).map(generationSourceInput), bodies: bodies.map((body, index) => ({ bodyKey: `b${index}`,
         bodyRef: knowledgeBodyRef(body), title: body.title, content: body.content, reuseRationale: body.reuseRationale })) });
   }
   private idle(signal?: AbortSignal) {
@@ -157,13 +162,13 @@ export class BodyGenerationApplication {
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
   }
   private seed(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId: string, mode: GenerationJournal['mode'], bodies: KnowledgeBodyRef[] = []) {
-    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow7 run.');
+    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow8 run.');
     const sourceSet = sourceSetPreimage(sources);
     const snapshots = sourceSet.sources.map(ref => {
       const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
       if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`); return source.snapshot;
     });
-    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 7 as const, workflowId: WORKFLOW_ID,
+    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: GENERATION_JOURNAL_SCHEMA_VERSION, workflowId: WORKFLOW_ID,
       inputVersion: SOURCE_REVIEW_INPUT_VERSION, sourceSetId: generationTextDigest(canonicalJson(sourceSet)),
       runId, generation: 1, mode, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
       sources: snapshots.map(snapshot => ({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(snapshot)) })),
@@ -215,27 +220,22 @@ export class BodyGenerationApplication {
     if (j.status !== 'active' || j.stages.length !== 1 || j.stages[0].state !== 'prepared') return this.resume(j.runId);
     return this.state(await this.invoke(j, model, signal, options));
   }
-  prepareAssociationRebuild(bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
+  prepareAssociationRebuild(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
     runId = this.ports.id(), signal?: AbortSignal) {
-    const existing = this.ports.journals.read(runId);
+    const existing = this.ports.journals.read(runId), sourceSetId = generationTextDigest(canonicalJson(sourceSetPreimage(sources)));
     if (existing) {
-      if (existing.mode !== 'rebuild_associations' || !same(existing.bodies, bodyRefs) || !same(existing.sourceCoverageDecisionRef, decision)) throw new Error('Association rebuild conflicts with existing journal.');
+      if (existing.mode !== 'rebuild_associations' || existing.sourceSetId !== sourceSetId || !same(existing.bodies, bodyRefs)) throw new Error('Association rebuild conflicts with existing journal.');
       this.sameModel(existing, model); return this.state(existing);
     }
     this.idle(signal);
-    this.review().assertDecision(decision);
     if (!bodyRefs.length || bodyRefs.length > 256 || new Set(bodyRefs.map(canonicalJson)).size !== bodyRefs.length) throw new Error('Association rebuild requires distinct exact body references.');
     if (new Set(bodyRefs.map(ref => ref.knowledgeId)).size !== bodyRefs.length) throw new Error('Association rebuild selects at most one revision per knowledge identity.');
-    if (bodyRefs.some(ref => !decision.bodyRefs.some(body => same(body, ref)))) throw new Error('Association rebuild body is outside its exact coverage decision.');
-    const coverage = this.review().coverage(decision.coverageRef.coverageId, decision.coverageRef.revisionId);
-    const refs = coverage.revision.data.manifest.sources.map(source => source.sourceRef);
-    const seed = { ...this.seed(refs, model, runId, 'rebuild_associations', [...bodyRefs]), ledgerRef: decision.ledgerRef,
-      coverageRef: decision.coverageRef, sourceCoverageDecisionRef: decision };
+    const seed = this.seed(sources, model, runId, 'rebuild_associations', [...bodyRefs]);
     return this.state(this.ports.journals.write({ ...seed, stages: [this.phase(model, ASSOCIATION_GENERATION_PROFILE, this.associationInput(seed))] }, 0));
   }
-  async rebuild(bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
+  async rebuild(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
     runId?: string, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
-    const j = this.prepareAssociationRebuild(bodyRefs, model, decision, runId, signal).journal;
+    const j = this.prepareAssociationRebuild(sources, bodyRefs, model, runId, signal).journal;
     if (j.status !== 'active' || j.stages.at(-1)?.state !== 'prepared') return this.resume(j.runId);
     return this.state(await this.invoke(j, model, signal, options));
   }
@@ -253,10 +253,6 @@ export class BodyGenerationApplication {
     const input = stage.stageKind === 'source_ledger' ? sourceLedgerModelInput(sources) : stage.stageKind === 'body_draft' ? this.writingInput(j) : stage.stageKind === 'body' ? this.bodyInput(j)
       : stage.stageKind === 'source_coverage' ? this.coverageInput(j) : this.associationInput(j);
     if (input !== stage.input) throw new Error('Generation complete request changed before claim.');
-    if (stage.stageKind === 'association') {
-      if (!j.sourceCoverageDecisionRef) throw new Error('An exact source coverage decision is required.');
-      this.review().assertDecision(j.sourceCoverageDecisionRef);
-    }
   }
   private async invoke(journal: GenerationJournal, model: KnowledgeGenerationModel, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}): Promise<GenerationJournal> {
     this.idle(signal); const index = journal.stages.length - 1, stage = journal.stages[index];

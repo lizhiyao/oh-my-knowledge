@@ -610,7 +610,7 @@ omk observe knowledge <operation> [flags]
 
 - `--analysis` `option`:明确实体分析 UUID，省略时 entities 搜索目录。
 - `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
-- `--body-digest` `option`:relations／rebuild/apply-associations：精确正文 sha256 摘要。
+- `--body-digest` `option`:relations／apply-associations：精确正文 sha256 摘要。
 - `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
 - `--confirm-plan` `option`:migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
 - `--confirm-request` `option`:generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。
@@ -624,7 +624,7 @@ omk observe knowledge <operation> [flags]
 - `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
-- `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources, sourceCoverageDecisionRef?}；prepare-source-review 为 {sources, bodyRefs, ledgerRef?}；重建为 {sourceCoverageDecisionRef}；来源决定为完整 command，也接受完整修订／复核草稿。
+- `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources}；关联重建为 {sources, bodyRefs}，来源复核为 {sources, bodyRefs, ledgerRef?}；来源决定为完整 command，也接受完整修订／复核草稿。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
 - `--json` `boolean`:完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。

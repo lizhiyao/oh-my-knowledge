@@ -7,7 +7,7 @@ import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources.js';
 import { SourceCaptureError } from './source-capture.js';
 import { SourceStoreError } from '../adapters/source-store.js';
-import { SourceLedgerRefSchema, SourceCoverageDecisionRefSchema, SourceCoverageWriteSchema } from '../source-review.js';
+import { SourceLedgerRefSchema, SourceCoverageWriteSchema } from '../source-review.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();
@@ -36,8 +36,8 @@ export const knowledgeOperationSchemas = {
   generate: z.strictObject({ operation: z.literal('generate'), sources: z.array(SourceRefSchema).min(1).max(256), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
   inspect: z.strictObject({ operation: z.literal('inspect'), id: uuid }),
   'continue-stage': z.strictObject({ operation: z.literal('continue-stage'), id: uuid, generation: z.number().int().positive(), executor: text, model: text, confirmedRequestDigest: SourceDigestSchema }),
-  'prepare-rebuild-associations': z.strictObject({ bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('prepare-rebuild-associations'), executor: text, model: text, runId: uuid.optional(), sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }),
-  'rebuild-associations': z.strictObject({ bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema, sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }),
+  'prepare-rebuild-associations': z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256), bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('prepare-rebuild-associations'), executor: text, model: text, runId: uuid.optional() }),
+  'rebuild-associations': z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256), bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
   retrieve: z.strictObject({ ...KnowledgeRetrievalRequestSchema.shape, operation: z.literal('retrieve'),
     format: z.enum(['json', 'text']).optional(),
     maxBytes: KnowledgeRetrievalRequestSchema.shape.maxBytes.unwrap().optional(),
@@ -103,8 +103,8 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'prepare-source-review': { if (!model) throw new Error('Generation model adapter unavailable.');
         return app.prepareSourceReview(request.sources, request.bodyRefs, model(request.executor, request.model), request.ledgerRef, request.runId, signal); }
       case 'continue-stage': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.continueStage(request.id, request.generation, model(request.executor, request.model), signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
-      case 'prepare-rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareAssociationRebuild(request.bodyRefs, model(request.executor, request.model), request.sourceCoverageDecisionRef, request.runId, signal); }
-      case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations(request.bodyRefs, model(request.executor, request.model), request.sourceCoverageDecisionRef, request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
+      case 'prepare-rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareAssociationRebuild(request.sources, request.bodyRefs, model(request.executor, request.model), request.runId, signal); }
+      case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations(request.sources, request.bodyRefs, model(request.executor, request.model), request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
       case 'review-associations': return app.reviewAssociations(request.id, request.revision, request.generation, request.choice, request.reason);
       case 'apply-associations': return app.applyAssociations(request.id, request.revision, request.bodyDigest, request.generation, request.draft, request.reason);
       case 'preview-sources': return app.previewSources(request.selections, { afterDeletion: request.afterDeletion, signal });

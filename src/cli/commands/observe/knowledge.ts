@@ -76,7 +76,7 @@ export default class ObserveKnowledge extends BaseCommand {
     snapshot: Flags.string({ description: description('source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。', 'source/delete-source/retrieve: source snapshot UUID, requiring --source-version.') }),
     id: Flags.string({ description: description('知识 ID；inspect/resume/continue-stage 为运行 UUID。', 'Knowledge ID; run UUID for inspect/resume/continue-stage.') }),
     revision: Flags.string({ description: description('明确知识或派生修订身份。', 'Exact knowledge or projection revision identity.') }),
-    'body-digest': Flags.string({ description: description('relations／rebuild/apply-associations：精确正文 sha256 摘要。', 'relations/rebuild/apply-associations: exact body sha256 digest.') }),
+    'body-digest': Flags.string({ description: description('relations／apply-associations：精确正文 sha256 摘要。', 'relations/apply-associations: exact body sha256 digest.') }),
     analysis: Flags.string({ description: description('明确实体分析 UUID，省略时 entities 搜索目录。', 'Exact entity analysis UUID; entities searches catalog when omitted.') }),
     'entity-revision': Flags.string({ description: description('明确实体分析修订 UUID。', 'Exact entity analysis revision UUID.') }),
     query: Flags.string({ description: description('retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。', 'Required natural question for retrieve; literal ASCII/code and Han run/bigram recall, without semantic inference.') }),
@@ -91,7 +91,7 @@ export default class ObserveKnowledge extends BaseCommand {
     'page-size': Flags.integer({ min: 1, max: 100, description: description('entities 每页条数。', 'entities page size.') }),
     generation: Flags.integer({ min: 0, description: description('预先读取的 generation，防并发覆盖。', 'Previously read generation, preventing concurrent overwrite.') }),
     reason: Flags.string({ description: description('修订或维护理由。保留和关联审查均不证明真值。', 'Revision or maintenance reason. Retention and association review do not verify truth.') }),
-    input: Flags.string({ description: description('普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources, sourceCoverageDecisionRef?}；prepare-source-review 为 {sources, bodyRefs, ledgerRef?}；重建为 {sourceCoverageDecisionRef}；来源决定为完整 command，也接受完整修订／复核草稿。', 'Regular UTF-8 JSON is normally limited to 16 MiB; fixed migrate-sources plans have a separate 128 MiB bound. preview-sources uses {selections}, capture the complete preview, prepare-generation uses {sources, sourceCoverageDecisionRef?}, prepare-source-review {sources, bodyRefs, ledgerRef?}, rebuilding {sourceCoverageDecisionRef}, and source review a complete command; revision/review drafts are also accepted.') }),
+    input: Flags.string({ description: description('普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources}；关联重建为 {sources, bodyRefs}，来源复核为 {sources, bodyRefs, ledgerRef?}；来源决定为完整 command，也接受完整修订／复核草稿。', 'Regular UTF-8 JSON is normally limited to 16 MiB; fixed migrate-sources plans have a separate 128 MiB bound. preview-sources uses {selections}, capture the complete preview, prepare-generation {sources}, association rebuilding {sources, bodyRefs}, source review {sources, bodyRefs, ledgerRef?}, and source decisions a complete command; revision/review drafts are also accepted.') }),
     choice: Flags.string({ options: ['accept', 'reject'], description: description('review-associations：派生修订的明确审查决定。', 'review-associations: explicit projection review decision.') }),
     'projection-revision': Flags.string({ description: description('review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。', 'review-status: inspect coverage for an exact association projection; defaults to the projection matching this body.') }),
     executor: Flags.string({ description: description('生成/继续/重建的执行器。', 'Executor for generation/continuation/rebuild.') }),
@@ -152,7 +152,7 @@ export default class ObserveKnowledge extends BaseCommand {
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
         || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
         || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
-        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow7 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow7 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow8 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow8 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
       }
       try {
         const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),
@@ -371,7 +371,7 @@ export default class ObserveKnowledge extends BaseCommand {
       case 'review-source-coverage': operation = { operation: 'review-source-coverage', command: draft() } as KnowledgeOperation; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured', confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break;
       case 'prepare-rebuild-associations': case 'rebuild-associations': { const parsed = knowledgeOperationSchemas['prepare-rebuild-associations'].omit({ operation: true, executor: true, model: true, runId: true }).safeParse(draft());
-        if (!parsed.success) this.error(t('重建需要 --input 中完整的 bodyRefs 与 sourceCoverageDecisionRef。', 'Rebuilding requires complete bodyRefs and sourceCoverageDecisionRef in --input.'), { exit: 2 });
+        if (!parsed.success) this.error(t('重建需要 --input 中完整的 sources 与精确 bodyRefs。', 'Rebuilding requires complete sources and exact bodyRefs in --input.'), { exit: 2 });
         const ref = { ...parsed.data, executor: 'configured', model: 'configured', runId: flags['run-id'] };
         operation = args.operation === 'prepare-rebuild-associations' ? { operation: args.operation, ...ref } : { operation: args.operation, ...ref, confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break; }
       case 'runs': case 'quality': case 'list': operation = { operation: args.operation }; break;

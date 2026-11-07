@@ -7,7 +7,7 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v7` |
+| 生产流程 | `knowledge-body-first/v8` |
 | 来源清单 prompt | `knowledge-source-ledger-generation/v4` |
 | 写作稿 prompt | `knowledge-writing-draft/v1` |
 | 写作稿 profile 摘要 | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -32,7 +32,7 @@
 | 复核与使用反馈历史 Schema | `1` |
 | 跨知识关系历史 Schema | `1` |
 | 知识图谱投影 Schema | `3` |
-| 生成日志 Schema | `7` |
+| 生成日志 Schema | `8` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |
 | 实体历史 Schema | `2` |

@@ -53,7 +53,7 @@ function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchive
   const nextAction = generationNextAction(journal);
   const association = journal.stages.find(s => s.stageKind === 'association'), catalogs = association?.entityWrites?.slice(0, association.committed) ?? [];
   const prepared = journal.stages.at(-1);
-  return { runId: journal.runId, mode: journal.mode, ledgerRef: journal.ledgerRef, coverageRef: journal.coverageRef, sourceCoverageDecisionRef: journal.sourceCoverageDecisionRef, journalGeneration: journal.generation, workflowId: journal.workflowId, inputVersion: journal.inputVersion, sourceSetId: journal.sourceSetId,
+  return { runId: journal.runId, mode: journal.mode, ledgerRef: journal.ledgerRef, coverageRef: journal.coverageRef, journalGeneration: journal.generation, workflowId: journal.workflowId, inputVersion: journal.inputVersion, sourceSetId: journal.sourceSetId,
     ...(nextAction === 'continue_stage' && prepared?.state === 'prepared' ? { preparedStage: prepared } : {}), schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
     executor: journal.executor, model: journal.model,
     ...frozenSourceMetadata(journal), archiveChecks, archiveVerification, bodies: journal.bodies,

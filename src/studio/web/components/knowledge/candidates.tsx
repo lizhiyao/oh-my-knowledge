@@ -14,7 +14,6 @@ import { KnowledgeReader } from './reader';
 import type { KnowledgeReaderSelection } from './reader';
 import { SourceReviewPanel } from './source-review';
 import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
-import type { SourceCoverageDecisionRef } from '../../../../knowledge/source-review';
 import { KnowledgeReviewDrawer } from './review-drawer';
 import { ExtractionQualityPanel, NativeArchiveChecks } from './extraction-quality';
 import { KnowledgeStudyInspectionDrawer } from './study-inspection';
@@ -179,14 +178,13 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     }
     showPreparedStage(current);
   }
-  async function prepareReviewedAssociations(decision: SourceCoverageDecisionRef) {
-    if (!sourceReviewTarget || sourceReviewTarget.workspace !== workspace) return;
-    const { run, bodyRef } = sourceReviewTarget, bodyRefs = bodyRef ? [bodyRef] : run.bodies;
-    if (!bodyRefs.length) throw new Error('No saved content is available for association rebuilding.');
+  async function prepareBodyAssociations(bodyRef: KnowledgeBodyRef) {
+    const run = runs.find(run => run.sources?.length && run.bodies.some(body => body.knowledgeId === bodyRef.knowledgeId
+      && body.revisionId === bodyRef.revisionId && body.bodyDigest === bodyRef.bodyDigest));
+    if (!run?.sources?.length) throw new Error('The complete selected source set is unavailable. Select it explicitly before rebuilding associations.');
     const prepared = await api<KnowledgeCandidateRun>('prepare-rebuild-associations', {
-      executor: run.executor ?? executor, model: run.model ?? model, bodyRefs, sourceCoverageDecisionRef: decision,
+      executor, model, bodyRefs: [bodyRef], sources: run.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })),
     });
-    setSourceReviewTarget(undefined);
     if (prepared.status === 'completed' && prepared.nextAction === 'none') { await handleRun(prepared); return; }
     showPreparedStage(prepared);
   }
@@ -309,7 +307,10 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
               generation: detail.derivedAssociations.generation, choice, reason });
             await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId);
           })}
-          onRebuildAssociations={model.trim() && runs.some(run => run.sources?.length && run.bodies.some(body => body.knowledgeId === detail.revision.knowledgeId)) ? () => void work(async () => {
+          onRebuildAssociations={model.trim() && runs.some(run => run.sources?.length && run.bodies.some(body => body.knowledgeId === detail.revision.knowledgeId && body.revisionId === detail.revision.revisionId && body.bodyDigest === detail.revision.bodyDigest)) ? () => void work(async () => {
+            await prepareBodyAssociations({ knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest });
+          }) : undefined}
+          onReviewSources={model.trim() && runs.some(run => run.sources?.length && run.bodies.some(body => body.knowledgeId === detail.revision.knowledgeId)) ? () => void work(async () => {
             await reviewBodySources({ knowledgeId: detail.revision.knowledgeId, revisionId: detail.revision.revisionId, bodyDigest: detail.revision.bodyDigest });
           }) : undefined}
           onDeleteSource={snapshot => Modal.confirm({ title: t('删除此来源快照？', 'Delete this source snapshot?'), content: t('共享此来源的候选将无法再查看原文，知识修订仍保留。', 'Candidates sharing this source will lose original text access. Knowledge revisions remain.'), onOk: () => work(async () => { await api('delete-source', { source: snapshot }); await open(detail.revision.knowledgeId, detail.revision.revisionId); }) })}
@@ -366,9 +367,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       })}/>}
     {sourceReviewTarget && sourceReviewTarget.workspace === workspace && <Drawer open title={t('来源与正文核对', 'Source and content review')} size={760} onClose={() => !busy && setSourceReviewTarget(undefined)}
       styles={{ body: { overflow: 'auto', overscrollBehavior: 'contain' } }}>
-      <SourceReviewPanel workspace={workspace} ledgerRef={sourceReviewTarget.run.ledgerRef} coverageRef={sourceReviewTarget.run.coverageRef} lang={lang}
-        onProceed={sourceReviewTarget.bodyRef || sourceReviewTarget.run.bodies.length > 0
-          ? decision => void work(() => prepareReviewedAssociations(decision)) : undefined}/>
+      <SourceReviewPanel workspace={workspace} ledgerRef={sourceReviewTarget.run.ledgerRef} coverageRef={sourceReviewTarget.run.coverageRef} lang={lang}/>
     </Drawer>}
     {contentReview && contentReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${contentReview.detail.revision.revisionId}`} detail={contentReview.detail} workspace={workspace} lang={lang} onClose={() => setContentReview(undefined)}/>}
     {editing && detail && <KnowledgeRevisionDrawer key={`${workspace}:${detail.revision.knowledgeId}:${detail.revision.revisionId}`} detail={detail} workspace={workspace} lang={lang} initialReason={detail.revision.knowledgeId === initialId && detail.revision.revisionId === initialRevision ? initialReason : undefined}

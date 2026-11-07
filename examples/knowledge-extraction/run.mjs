@@ -30,7 +30,7 @@ try {
   const operator = { actorKind: 'agent', actorId: 'knowledge-extraction-example-operator', executionRef: `node-example:${randomUUID()}` };
   const selections = [{ sourceKind: 'agent_trace', sourceId: 'authored-teaching-source', traceKind: 'codex',
     recordRanges: [{ startRecord: 1, endRecord: 1 }] }];
-  const app = createLocalKnowledgeApplication(workspace, { actor: operator, reviewActor: operator, sourceScope: { scopeVersion: 'knowledge-source-scope/v1', projects: [],
+  const app = createLocalKnowledgeApplication(workspace, { actor: operator, sourceScope: { scopeVersion: 'knowledge-source-scope/v1', projects: [],
     traces: [{ sourceId: 'authored-teaching-source', traceKind: 'codex', path: source,
       material: { materialType: 'discussion', reason: 'Authored teaching message, not a native model execution.' } }] } });
   const preview = app.previewSources(selections);
@@ -68,81 +68,34 @@ try {
     catalogs: [{ sourceKey: 's0', entities }],
     associations: [{ bodyKey: 'b0', segmentDecisions: [{ segmentId: 'usage', decisionKind: 'mapped',
       entityRefs: entities.map(entity => ({ sourceKey: 's0', entityId: entity.entityId, mentionKeys: ['name'] })),
-      reason: '合成来源明确命名两个对象；关联仍待核对。' }], typedRelations: [], issues: [] }],
+      reason: '合成来源明确命名两个对象；关联仍待核对。' }], typedRelations: [{ relationId: 'reported-use', segmentIds: ['usage'], subject: { sourceKey: 's0', entityId: 'entity-0' },
+      object: { sourceKey: 's0', entityId: 'entity-1' }, relation: 'source reports use, limited to this authored window', modality: 'descriptive', polarity: 'positive',
+      evidence: [{ segmentId: 'usage', evidenceIndex: 0 }], issues: [] }], issues: [] }],
   };
-  const quote = (unitKey, text) => ({ unitKey, quote: text, contextBefore: null, contextAfter: null });
-  function authoredLedger(input) {
-    return { responseKind: 'knowledge-source-ledger', schemaVersion: 3, passageIndexDigest: input.passageIndexDigest,
-      unitDispositions: input.units.map(unit => ({ unitKey: unit.unitKey, disposition: 'retain',
-        reason: 'Authored demonstration only; preserve each delivered unit explicitly.' })),
-      items: input.units.map((unit, index) => ({ itemId: `item-${index}`,
-        statement: unit.unitKind === 'source_metadata' ? 'The metadata identifies this teaching source and its selected range.' : 'The teaching message reports Alpha using Beta.',
-        disposition: 'retain', reason: 'Authored demonstration only, without factual acceptance.', equivalentItemIds: [], evidence: [{ startPassageId: unit.passages[0].passageId, endPassageId: unit.passages.at(-1).passageId }],
-        facets: unit.unitKind === 'excerpt_text' ? [{ facetId: 'time-unknown', statement: 'The selected message does not supply the fact-occurrence time.',
-          epistemicStatus: 'not_stated', evidence: [] }] : [] })),
-      limitations: ['Authored demonstration only; the proposed inventory is fallible and is not Gold.'] };
-  }
-  function authoredCoverage(input) {
-    const base = { coverageTarget: 'knowledge_meaning', status: 'unassessable', factualValue: 'not_applicable',
-      reason: 'Authored demonstration only; this check does not establish semantic coverage.', bodyEvidence: [], boundedInput: null };
-    const sourceQuote = unitKey => quote(unitKey, input.units.find(unit => unit.unitKey === unitKey).text);
-    return { responseKind: 'knowledge-source-coverage', schemaVersion: 3,
-      checks: input.targets.map(({ targetKey, target }) => {
-        const result = { ...base, checkId: `check-${targetKey}`, targetKey, sourceEvidence: [] };
-        if (target.targetKind === 'source_unit') return { ...result, sourceEvidence: [sourceQuote(target.unitKey)] };
-        if (target.targetKind === 'ledger_item' || target.targetKind === 'ledger_facet') {
-          const item = input.ledger.data.items.find(item => item.itemId === target.itemId);
-          return target.targetKind === 'ledger_facet' ? { ...result, coverageTarget: 'factual_value', factualValue: 'unknown' }
-            : { ...result, sourceEvidence: item.evidence.map(anchor => sourceQuote(anchor.unitKey)) };
-        }
-        const body = input.bodies.find(body => body.bodyRef.knowledgeId === target.bodyRef.knowledgeId && body.bodyRef.revisionId === target.bodyRef.revisionId && body.bodyRef.bodyDigest === target.bodyRef.bodyDigest);
-        const segment = body.segments.find(segment => segment.segmentId === target.segmentId);
-        return { ...result, bodyEvidence: [{ bodyKey: body.bodyKey, segmentId: segment.segmentId, quote: segment.text, contextBefore: null, contextAfter: null }] };
-      }),
-      findings: [], limitations: ['Authored demonstration only; unknown factual values remain unknown and no model response approves continuation.'] };
-  }
   const rawByStage = {};
   let fixtureInvocations = 0;
   const fixture = {
     executor: 'authored-fixture', model: 'not-a-model', timeoutMs: 300_000,
     inspect() {
-      return { producerId: 'authored-example/v3', producerRevision: 'body-first-with-explicit-review', sourceChannels: [],
+      return { producerId: 'authored-example/v3', producerRevision: 'body-first-direct-association', sourceChannels: [],
         maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false, scope: 'authored demonstration only' } };
     },
     async invoke(profile, input, _signal, beforeDispatch) {
-      const parsed = JSON.parse(input), review = profile.stageKind === 'source_ledger' || profile.stageKind === 'source_coverage';
+      const parsed = JSON.parse(input);
       assert.ok(!input.includes(sandbox)); assert.equal(parsed.rawUnits, undefined);
-      if (review) {
-        assert.equal(parsed.manifest.inputVersion, 'knowledge-source-generation-input/v2');
-        assert.equal(parsed.manifest.sourceSetId, prepared.journal.sourceSetId);
-        assert.deepEqual(parsed.manifest.sources.map(value => value.sourceRef), sourceRefs);
-        assert.deepEqual(parsed.units.map(unit => unit.unitKind), ['source_metadata', 'excerpt_text']);
-        const unitText = unit => profile.stageKind === 'source_ledger' ? unit.passages.map(part => part.text).join('') : unit.text;
-        const metadata = JSON.parse(unitText(parsed.units[0]));
-        assert.deepEqual(metadata.source.identity, snapshot.identity); assert.deepEqual(metadata.source.selection, snapshot.selection);
-        assert.deepEqual(metadata.source.material, snapshot.material); assert.deepEqual(metadata.source.provenance, snapshot.provenance);
-        assert.deepEqual(metadata.excerpts, snapshot.excerpts.map(({ text, ...descriptor }) => { void text; return descriptor; }));
-        assert.deepEqual(metadata.limitations, snapshot.limitations); assert.equal(metadata.source.rawUnits, undefined); assert.equal(metadata.source.capturedAt, undefined);
-        assert.equal(unitText(parsed.units[1]), message); assert.equal(parsed.units[1].evidenceRef, evidenceRef);
-      } else {
-        assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v5' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
-        assert.equal(parsed.sourceSetId, prepared.journal.sourceSetId); assert.equal(parsed.sources.length, 1);
-        const selected = parsed.sources[0];
-        assert.equal(selected.sourceKey, 's0');
-        const excerpts = profile.stageKind === 'body' ? selected.excerpts.map(({ passages, ...excerpt }) => ({ ...excerpt, text: passages.map(part => part.text).join('') })) : selected.excerpts;
-        assert.deepEqual(excerpts, snapshot.excerpts); assert.deepEqual(selected.limitations, snapshot.limitations);
-        assert.equal(selected.source.snapshotId, snapshot.snapshotId); assert.equal(selected.source.sourceVersion, snapshot.sourceVersion);
-        assert.equal(selected.source.sourcePath, undefined); assert.equal(selected.source.capturedAt, undefined); assert.equal(selected.rawUnits, undefined);
-        assert.equal(selected.source.sourceKind, 'agent_trace'); assert.deepEqual(selected.source.identity, { sourceId: 'authored-teaching-source', traceKind: 'codex' });
-      }
-      if (profile.stageKind === 'source_coverage') {
-        const ledger = app.sourceLedger(parsed.ledger.ref.ledgerId, parsed.ledger.ref.revisionId);
-        assert.deepEqual(parsed.ledger.ref, ledger.ref); assert.deepEqual(parsed.ledger.data, ledger.revision.data);
-      }
-      if (profile.stageKind === 'source_coverage' || profile.stageKind === 'association') {
+      assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v5' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
+      assert.equal(parsed.sourceSetId, prepared.journal.sourceSetId); assert.equal(parsed.sources.length, 1);
+      const selected = parsed.sources[0];
+      assert.equal(selected.sourceKey, 's0');
+      const excerpts = profile.stageKind === 'body' ? selected.excerpts.map(({ passages, ...excerpt }) => ({ ...excerpt, text: passages.map(part => part.text).join('') })) : selected.excerpts;
+      assert.deepEqual(excerpts, snapshot.excerpts); assert.deepEqual(selected.limitations, snapshot.limitations);
+      assert.equal(selected.source.snapshotId, snapshot.snapshotId); assert.equal(selected.source.sourceVersion, snapshot.sourceVersion);
+      for (const key of ['identity', 'selection', 'material', 'provenance']) assert.deepEqual(selected.source[key], snapshot[key]);
+      assert.equal(selected.source.sourcePath, undefined); assert.equal(selected.source.capturedAt, undefined); assert.equal(selected.rawUnits, undefined);
+      assert.equal(selected.source.sourceKind, 'agent_trace');
+      if (profile.stageKind === 'association') {
         assert.equal(app.list().length, 1); assert.equal(parsed.bodies.length, 1); assert.equal(parsed.bodies[0].bodyKey, 'b0');
-        const segments = profile.stageKind === 'association' ? parsed.bodies[0].content.segments : parsed.bodies[0].segments;
-        assert.equal(segments[0].text, bodyText);
+        assert.equal(parsed.bodies[0].content.segments[0].text, bodyText);
         assert.equal(app.detail(parsed.bodies[0].bodyRef.knowledgeId).revision.bodyDigest, parsed.bodies[0].bodyRef.bodyDigest);
       } else assert.equal(parsed.bodies, undefined);
       if (profile.stageKind === 'body') {
@@ -150,8 +103,7 @@ try {
         assert.equal(parsed.writingDraft.text, 'Unverified teaching draft; use original source evidence.');
         bodyResponse.passageIndexDigest = parsed.passageIndexDigest;
       }
-      const output = profile.stageKind === 'source_ledger' ? authoredLedger(parsed) : profile.stageKind === 'source_coverage' ? authoredCoverage(parsed)
-        : profile.stageKind === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified teaching draft; use original source evidence.' } : profile.stageKind === 'body' ? bodyResponse : associationResponse;
+      const output = profile.stageKind === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified teaching draft; use original source evidence.' } : profile.stageKind === 'body' ? bodyResponse : associationResponse;
       beforeDispatch(); fixtureInvocations++;
       assert.equal(rawByStage[profile.stageKind], undefined); rawByStage[profile.stageKind] = JSON.stringify(output);
       // Missing provider token/cost measurements remain missing, not fabricated zeros.
@@ -168,7 +120,7 @@ try {
     return result;
   }
   const prepared = app.prepareGeneration(sourceRefs, fixture);
-  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v7'); assert.equal(prepared.journal.schemaVersion, 7);
+  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v8'); assert.equal(prepared.journal.schemaVersion, 8);
   assert.equal(prepared.journal.stages[0].stageKind, 'body_draft'); assert.equal(prepared.journal.stages[0].state, 'prepared'); assert.equal(fixtureInvocations, 0);
   await assert.rejects(app.generate(sourceRefs, fixture, prepared.journal.runId), /Confirm the exact prepared generation request/);
   const written = await confirmPhase(prepared);
@@ -178,42 +130,20 @@ try {
   const body = await confirmPhase(bodyPrepared);
   assert.equal(body.journal.bodies.length, 1); assert.equal(body.journal.stages.length, 2); assert.equal(body.journal.status, 'completed');
   assert.equal(body.journal.ledgerRef, undefined); assert.equal(body.journal.coverageRef, undefined);
-  // Optional source review is a separate explicit run after the canonical body is already saved.
-  const inventoryPrepared = app.prepareSourceReview(sourceRefs, body.journal.bodies, fixture);
-  const inventoried = await confirmPhase(inventoryPrepared);
-  const coveragePrepared = app.prepareSourceReview(sourceRefs, body.journal.bodies, fixture, undefined, inventoried.journal.runId);
-  const checked = await confirmPhase(coveragePrepared);
-  assert.equal(checked.journal.status, 'completed'); assert.equal(fixtureInvocations, 4);
-  const status = app.sourceCoverageStatus(checked.journal.coverageRef.coverageId, checked.journal.coverageRef.revisionId);
-  assert.equal(status.decision.status, 'not_reviewed'); assert.ok(status.unresolvedIds.length > 0);
-  assert.deepEqual(app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId), body);
-
-  // The actual Node example runner explicitly accepts only this authored demonstration's limits.
-  // This is not a native callback, human review, factual certification or a semantic-quality pass.
-  const requestId = randomUUID(), decision = { coverageRef: status.ref, sourceSetId: checked.journal.sourceSetId, ledgerRef: checked.journal.ledgerRef, bodyRefs: checked.journal.bodies,
-    decisionKind: 'proceed_with_limits', reason: 'Authored demonstration only; exercise the application contract without accepting model quality.',
-    limitations: ['Authored demonstration only; all semantic checks and unknown factual values remain limited, without human Gold.'], supersedesEventIds: [],
-    dispositions: status.unresolvedIds.map(unresolvedId => ({ unresolvedId, disposition: 'accepted_limit', reason: 'Authored demonstration only; retain this unresolved item as a visible limitation.' })) };
-  const command = { commandKind: 'record_decision', coverageId: status.ref.coverageId, requestId, expectedGeneration: status.history.generation,
-    expectedHeadEventId: status.history.writeHeadEventId, decision };
-  const receipt = app.reviewSourceCoverage(command); assert.equal(receipt.requestId, requestId); assert.equal(fixtureInvocations, 4);
-  const reviewed = app.sourceCoverageStatus(status.ref.coverageId, status.ref.revisionId);
-  assert.deepEqual(reviewed.history.events.at(-1).actor, operator); assert.equal(reviewed.decision.status, 'proceed_with_limits');
-  const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision;
-  const sourceCoverageDecisionRef = { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: requestId };
-  const associationPrepared = app.prepareAssociationRebuild(bodyRefs, fixture, sourceCoverageDecisionRef);
-  assert.equal(fixtureInvocations, 4); assert.equal(associationPrepared.journal.stages.at(-1).stageKind, 'association');
+  // Association is explicitly prepared after saving the body; no source analysis or decision is needed.
+  const associationPrepared = app.prepareAssociationRebuild(sourceRefs, body.journal.bodies, fixture);
+  assert.equal(fixtureInvocations, 2); assert.equal(associationPrepared.journal.stages[0].stageKind, 'association');
   const run = await confirmPhase(associationPrepared);
-  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v7'); assert.equal(run.journal.bodies.length, 1);
+  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v8'); assert.equal(run.journal.bodies.length, 1);
   assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['association']);
   for (const stage of run.journal.stages) { assert.equal(stage.state, 'completed'); assert.deepEqual(stage.rejected ?? [], []); }
 
   // Reopening the same identity only replays durable publication; it never calls any fixture phase again.
   const reopened = createLocalKnowledgeApplication(workspace);
   const replay = await reopened.generate(sourceRefs, fixture);
-  assert.deepEqual(replay, body); assert.equal(fixtureInvocations, 5);
-  const originals = [body, checked, run].flatMap(state => reopened.inspect(state.journal.runId).nativeOutcomes);
-  assert.equal(originals.length, 5);
+  assert.deepEqual(replay, body); assert.equal(fixtureInvocations, 3);
+  const originals = [body, run].flatMap(state => reopened.inspect(state.journal.runId).nativeOutcomes);
+  assert.equal(originals.length, 3);
   for (const original of originals) {
     assert.equal(original.outcome.outcomeKind, 'result');
     assert.equal(original.outcome.result.output, rawByStage[original.stageKind]);
@@ -233,6 +163,9 @@ try {
   assert.equal(stored.derivedAssociations.status, 'available');
   assert.equal(stored.derivedAssociations.reviewStatus, 'pending');
   const projection = stored.derivedAssociations.revision;
+  assert.equal(projection.typedRelations.length, 1);
+  assert.equal(reopened.graph().edges.filter(edge => edge.edgeKind === 'typed_relation').length, 1);
+  assert.equal(existsSync(join(workspace, 'source-ledgers')), false); assert.equal(existsSync(join(workspace, 'source-coverage')), false);
   assert.deepEqual(projection.bodyRef, run.journal.bodies[0]);
   const analysis = reopened.entities(projection.catalogRefs[0].analysisId, projection.catalogRefs[0].entityRevisionId);
   assert.equal(analysis.revision.entities.length, 2);
@@ -245,11 +178,11 @@ try {
   assert.equal(readFileSync(source, 'utf8'), sourceBytes);
   summary = {
     fixtureInvocations, modelCalls: 0, workflowId: run.journal.workflowId,
-    phaseKinds: [body, checked, run].flatMap(state => state.journal.stages.map(stage => stage.stageKind)), generationPhaseKinds: body.journal.stages.map(stage => stage.stageKind), runStatus: run.journal.status,
+    phaseKinds: [body, run].flatMap(state => state.journal.stages.map(stage => stage.stageKind)), generationPhaseKinds: body.journal.stages.map(stage => stage.stageKind), runStatus: run.journal.status,
     candidateCount: run.journal.bodies.length, entityCount: analysis.revision.entities.length,
     reopened: true, sourceBindingVerified: true, entitySearchMatches: found.total,
     linkedKnowledgeCount: found.rows[0].knowledgeCount, reviewStatus: stored.reviewStatus,
-    sourceCoverageDecision: reviewed.decision.status, sourceReviewActorKind: operator.actorKind, semanticQuality: 'not_assessed',
+    relationCount: projection.typedRelations.length, semanticQuality: 'not_assessed',
     humanReview: 'pending', independentReview: 'pending', associationReview: stored.derivedAssociations.reviewStatus, usageReported: false,
   };
 } finally {

@@ -127,7 +127,16 @@ describe('Source3 manual transmission boundary', () => {
     cleanup();
     render(<KnowledgeCandidates lang="en" initialWorkspace={workspace} initialId={generated.bodies[0].knowledgeId}/>, { wrapper });
     fireEvent.click(await screen.findByRole('button', { name: 'Entities and associations' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Regenerate associations' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate entities and relations' }));
+    await screen.findByText('Confirm entity association request');
+    const sendAssociation = screen.getByRole('button', { name: 'Send this stage' }) as HTMLButtonElement;
+    expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(2);
+    fireEvent.click(approval()); fireEvent.click(sendAssociation);
+    await waitFor(() => expect(app.detail(generated.bodies[0].knowledgeId).derivedAssociations.status).toBe('available'));
+    expect(invocations).toEqual(['body_draft', 'body', 'association']);
+    expect(requests.some(item => item.body.operation === 'prepare-source-review')).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: 'Entities and associations' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review source coverage' }));
     for (const title of ['Confirm Source inventory request', 'Confirm Source coverage request']) {
       await screen.findByText(title);
       const send = screen.getByRole('button', { name: 'Send this stage' }) as HTMLButtonElement;
@@ -135,7 +144,7 @@ describe('Source3 manual transmission boundary', () => {
       fireEvent.click(approval()); fireEvent.click(send);
     }
     await screen.findByRole('combobox', { name: 'Source decision' });
-    expect(invocations).toEqual(['body_draft', 'body', 'source_ledger', 'source_coverage']);
+    expect(invocations).toEqual(['body_draft', 'body', 'association', 'source_ledger', 'source_coverage']);
     fireEvent.change(screen.getByRole('combobox', { name: 'Source decision' }), { target: { value: 'proceed_with_limits' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Source decision reason' }), { target: { value: 'Explicit authored browser operator review.' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Preserved limitations' }), { target: { value: 'Authored protocol fixture, not verified factual quality.' } });
@@ -146,14 +155,9 @@ describe('Source3 manual transmission boundary', () => {
       fireEvent.change(element, { target: { value: 'Explicitly retain the authored-test limitation.' } });
     }
     fireEvent.click(screen.getByRole('button', { name: 'Save this decision' }));
-    const proceed = await screen.findByRole('button', { name: 'Prepare associations with this opinion' });
-    expect(invocations).toHaveLength(4); fireEvent.click(proceed);
-    await screen.findByText('Confirm entity association request');
-    const sendAssociation = screen.getByRole('button', { name: 'Send this stage' }) as HTMLButtonElement;
-    expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(4);
-    fireEvent.click(approval()); fireEvent.click(sendAssociation);
-    await waitFor(() => expect(app.detail(generated.bodies[0].knowledgeId).derivedAssociations.status).toBe('available'));
-    expect(invocations).toEqual(['body_draft', 'body', 'source_ledger', 'source_coverage', 'association']);
+    await screen.findAllByText('Proceed with limits recorded', { exact: false });
+    expect(screen.queryByRole('button', { name: 'Prepare associations with this opinion' })).toBeNull();
+    expect(invocations).toEqual(['body_draft', 'body', 'association', 'source_ledger', 'source_coverage']);
     const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
     expect(dispatches).toHaveLength(5); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(5);
     expect(new Set(dispatches.map(item => item.id)).size).toBe(3);

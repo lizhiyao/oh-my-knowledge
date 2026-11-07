@@ -46,21 +46,21 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 - 可信宿主先固定有限 `scope.json`；选区只含获准逻辑 ID、相对路径与明确行／原记录范围，Git 先解析固定对象。模型、浏览器和来源文本不能扩大宿主授权。
 - `preview-sources --input selections.json --scope scope.json --json` 零保存、零模型，核对完整选中片段及读／存／发送范围。消息选择纳入其原始记录中的可读事件，可能包括同条工具事件；未选材料不自动扩入，正文已有路径仍可能发送。
 - `capture --input preview.json --scope scope.json --json` 重建并核对固定预览，只保存。由 `saveManifest.items` 的精确 snapshotId／sourceVersion 生成 `{sources:[…]}` 输入；保存不授权模型发送。
-- 默认 workflow7 只执行未核验写作稿 → 有据正文。先 `prepare-generation --input sources.json --executor <executor> --model <model> --json`，读完整 system／input／producer／模型和 requestDigest，再在已有发送授权内 `generate --confirm-request <digest>`；首次只发送写作稿请求。
+- 默认 workflow8 只执行未核验写作稿 → 有据正文。先 `prepare-generation --input sources.json --executor <executor> --model <model> --json`，读完整 system／input／producer／模型和 requestDigest，再在已有发送授权内 `generate --confirm-request <digest>`；首次只发送写作稿请求。
 - 草稿完成后，以同一 run 和精确来源再次 `prepare-generation --run-id ...` 准备有据正文，再 `continue-stage --id ... --generation ... --confirm-request ...`。正文保存即完成生成，仍为待审候选；草稿不是来源，正文引用只回完整原 Source3。零正文也正常结束，不造占位、不自动发起覆盖或关联。
 - 以 `source-ledger --id ... --revision ...`、`source-coverage-status --id ... --revision ...` 读精确结果；清单是可错建议，不是 Gold，覆盖可纠正清单自身遗漏。核对完整原来源、正文、排除／待定及每个未决项后，实际 Agent／人用 `review-source-coverage --input command.json` 记录完整 record_decision 或 revoke_decision command，不加 operation wrapper 或自报 actor。绑定精确分析／ledger／bodyRefs／SourceSet、CAS／幂等身份、理由及限制；缺可信实际 actor 时只读，不伪装真人。模型 all-covered／无 finding 不自动批准。
-- 需要来源复核时，单独 `prepare-source-review --input {sources,bodyRefs,ledgerRef?}`，无匹配清单则先清单再覆盖，每个阶段单独确认；完整来源不能从正文引文缩减。实际决定允许继续后，将显式选定的 `bodyRefs` 数组和精确 `sourceCoverageDecisionRef` 放入重建输入，用同一明确新 run 分别 prepare-rebuild-associations／rebuild-associations。一次可选择多篇正文，共用同次来源实体目录。准备与 claim 前重验决定，失效不发送；派发后撤销保留原件，结果 pending。手工维护不产生来源批准。
+- 需要实体与关系时，用完整选定的 `sources` 和精确 `bodyRefs` 准备 prepare-rebuild-associations，再以同一明确新 run 核对并确认 rebuild-associations；不能从正文引文自动缩减来源。一次可选多篇不同知识，共用同次来源实体目录，每个 knowledgeId 只选一个修订。无需先运行来源清单、覆盖或记录继续决定；结果保持待审，关联失败不删除正文。需要诊断来源覆盖时另行 `prepare-source-review --input {sources,bodyRefs,ledgerRef?}`，各阶段单独确认，实际来源意见不自动触发关联或批准内容。
 - 默认导入绑定 workflow 身份及排序去重的精确 SourceSet，复用完成、失败、未知日志；不靠新 run 绕过 unknown claim。`inspect`／`runs` 先查回执，`resume` 零模型，未知不重发。富化完整输入超容量明确停止，不裁剪来源、清单或正文。
 - `source-updates` 只读核对完整 SourceRef 及可选 replacementSelection，不保存、生成或改知识；固定 Git 不代表最新，部分清单不证明零影响。
 - 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；旧 journal5／6／来源清单／覆盖／auto 仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。当前构建不提供自动调度或重新授权入口，只逐阶段确认。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow7／journal Schema7 仅执行未核验写作稿（body_draft）→ 有据正文，保存正文后完成，仍为待审候选。写作保持 input1／wire1／prompt1；正文改为 input5／wire3／prompt20，只绑定同次精确草稿及完整 Source3，不再依赖清单。正文使用完整宿主编号原文并回显 passageIndexDigest。来源清单、覆盖和实际决定改由独立 prepare-source-review／review-source-coverage 操作按需完成；关联重建以 bodyRefs 数组显式选择多篇不同知识的精确正文，每个 knowledgeId 仅选一个修订，并携带匹配的 sourceCoverageDecisionRef，保持完整来源、共享实体目录及决定前置校验。清单 input1／wire3／prompt4、覆盖 input2／wire3／prompt6、关联阶段 input1／wire3／prompt9 及 Source3／正文3／实体2／关联2／reviews1／来源分析历史1 均保持。每请求单独准备、确认、claim 和归档，恢复零模型。使用新工作区或 knowledge-workflow-to7 显式独立副本迁移；旧日志、分析、自动许可原样归档，保留旧目录及匹配构建，不用新 reader 续跑或重算旧测量。流程完成不等于内容核实、图谱质量或实际收益通过。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow8／journal Schema8 只执行未核验写作稿（body_draft）→ 有据正文，保存待审正文即完成生成。写作 input1／wire1／prompt1、正文 input5／wire3／prompt20 保持，正文绑定同次精确草稿及完整 Source3。需要实体与关系时，显式以 `{sources, bodyRefs}` 准备关联，每个 knowledgeId 至多选一个精确修订；核对完整请求后单独确认，完整来源和正文在共享锁内 claim 前重新校验。关联 prompt9 明确要求保留条件和归因的语义关系，未返回请求投影时记录失败；关联 input1／wire3 及来源、正文、实体、关联和 reviews 的活动格式保持。来源清单、覆盖及实际决定是独立可选操作，不作为待审关联准入凭据，也不自动批准知识。旧 journal7 及更早日志由匹配旧版本处理；`knowledge-workflow-to8` 仅迁入独立副本，旧日志、分析、原件和自动许可原样归档并保留匹配构建。不回写历史测量，不自动切换在用工作区或发版；流程完成不证明知识、图谱或净收益已验收。
 
 所有命令使用已选 `--workspace`。journal 的来源复核 manifest 仍为 input2，不能与独立清单 input1、写作 input1、正文 input5 或关联阶段 input1 混用。覆盖仅当 bounded target 且 covered 时可带完整 witness，其余 boundedInput=null；模型自报范围不证明实际阅读、内容真值或实际接受。
 
 旧 C3 编译记录可被动读取，原件状态为 `not_verified`，不继承 C4 原件验证、新覆盖决定、关联准备或 claim 资格。保留旧目录及匹配构建供旧执行／回退；C4 仅在获准的独立完整副本中启用，不改写历史原件或重算旧实验。
 
-旧 journal Schema6 及更早日志全部由保留的匹配构建继续或零模型恢复；新 reader 不将旧请求解释为 workflow7。独立副本保留旧日志、原件与分析的全部字节，不继承它们的新执行资格或质量结论。
+旧 journal Schema7 及更早日志全部由保留的匹配构建继续或零模型恢复；新 reader 不将旧请求解释为 workflow8。独立副本保留旧日志、原件与分析的全部字节，不继承它们的新执行资格或质量结论。
 
 已获授权的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associations`、`review-associations` 在识别到 Codex Desktop 启动声明及有效线程身份时，将新维护记录归属于实际 Agent；其它上下文仍为既有 `human/local-user` 默认，不证明真人直接操作。不要自报 actor 或伪造启动声明；这不是身份认证或异构 Agent 支持。只影响新的维护 actor／revisedBy，不回写旧 actor／回执，不改变知识 createdBy、capture、生成或独立复核入口，也不改变存储 Schema／prompt 身份。
 

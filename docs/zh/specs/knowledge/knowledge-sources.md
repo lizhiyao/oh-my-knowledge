@@ -51,11 +51,11 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 ## 发送与默认导入身份 {#generation}
 
-完整 system 加模型 input 另有 1 MiB 上限，来源、草稿、清单和正文不能静默截断。默认 journal Schema7／workflow7 只执行写作 input1 与正文 input5，绑定完整 Source3 及同次归档草稿，保存正文后完成。按需另行复核来源，保留 manifest／input2、清单 input1、覆盖 input2；关联 input1 仍要求精确实际决定。本次属于 BREAKING-SCHEMA/API/COMPARABILITY，使用新工作区或显式独立副本迁移。可携带归因和已交付单元保持显式，原始 envelope、捕获时间、绝对根与 cwd 留在本地。
+完整 system 与模型 input 另有 1 MiB 上限，来源、草稿、清单和正文不能静默截断。默认 journal Schema8／workflow8 只执行写作 input1 与正文 input5，绑定完整 Source3 及同次归档草稿，保存正文后完成。关联以显式完整 sources 与精确 bodyRefs 单独准备，使用阶段 input1；可选来源复核保留 manifest／input2、清单 input1 和覆盖 input2。各阶段协议和原件身份不得混用。
 
-`prepare-generation` 零模型准备首阶段；核对完整 system、input、模型、producer proof 和 requestDigest 后，`generate --confirm-request` 只发送写作稿。每个后续阶段单独核对并以 `continue-stage` 确认。覆盖完成后，实际 Agent／人须记录绑定精确清单、覆盖、正文和完整来源的决定；关联准备及 claim 前重验，不能以 capture、摘要确认或模型 all-covered 代替。重建同样要求精确决定，不能只从正文引文推断完整来源。普通宿主继续只移除已观测为逐工具调用变化的 CODEX_TOOL_CALL_ID，proof 与执行环境一致；其它环境值及历史冻结身份保持。
+`prepare-generation` 零模型准备写作稿；核对完整 system、input、模型、producer proof 和 requestDigest 后才确认发送。有据正文单独核对并以 `continue-stage` 确认。显式关联请求无需覆盖决定，完整来源与精确正文在 claim 锁内重新核对；结果保持待审。需要来源覆盖诊断时另行准备来源复核并记录实际意见，意见本身不触发模型。
 
-`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v3` 绑定 workflow7 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；旧 journal5／6 由匹配旧构建处理。
+`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v3` 绑定 workflow8 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；旧 journal7 及更早 由匹配旧构建处理。
 
 ## 变化与删除 {#updates}
 

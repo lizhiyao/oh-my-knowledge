@@ -7,7 +7,7 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v7` |
+| Production workflow | `knowledge-body-first/v8` |
 | Source ledger prompt | `knowledge-source-ledger-generation/v4` |
 | Writing draft prompt | `knowledge-writing-draft/v1` |
 | Writing draft profile digest | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -32,7 +32,7 @@ This page is generated from the current source build’s runtime constants and S
 | Review and use feedback history Schema | `1` |
 | Cross-knowledge relation history Schema | `1` |
 | Knowledge graph projection Schema | `3` |
-| Generation journal Schema | `7` |
+| Generation journal Schema | `8` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |
 | Entity history Schema | `2` |

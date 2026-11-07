@@ -6,10 +6,10 @@ import { KnowledgeAssociationRevisionSchema } from '../associations.js';
 import { GenerationOutcomeRefSchema, type GenerationOutcome } from './native-outcome.js';
 import { WORKFLOW_ID } from './source-input.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from './source-review-input.js';
-import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema,
-  SourceCoverageDecisionRefSchema } from '../source-review.js';
+import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../source-review.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+export const GENERATION_JOURNAL_SCHEMA_VERSION = 8 as const;
 export const WritingDraftRefSchema = z.strictObject({ runId: uuid, invocationId: uuid, requestDigest: digest, archiveDigest: digest, outputDigest: digest });
 const associationWrite = z.strictObject({ commandKind: z.literal('append_revision'), requestId: uuid,
   knowledgeId: z.string().min(1), expectedGeneration: z.number().int().nonnegative(), expectedHeadRevisionId: z.string().nullable(),
@@ -31,7 +31,7 @@ export const GenerationStageSchema = z.strictObject({
   coverageWrites: z.array(SourceCoverageWriteSchema.options[0]).length(1).optional(),
 });
 export const GenerationJournalSchema = z.strictObject({
-  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(7), workflowId: z.literal(WORKFLOW_ID),
+  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(GENERATION_JOURNAL_SCHEMA_VERSION), workflowId: z.literal(WORKFLOW_ID),
   inputVersion: z.literal(SOURCE_REVIEW_INPUT_VERSION), sourceSetId: digest,
   runId: uuid, generation: z.number().int().positive(), mode: z.enum(['generate', 'review_sources', 'rebuild_associations']),
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,
@@ -39,7 +39,6 @@ export const GenerationJournalSchema = z.strictObject({
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
   bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(2),
   writingDraftRef: WritingDraftRefSchema.optional(), ledgerRef: SourceLedgerRefSchema.optional(), coverageRef: SourceCoverageRefSchema.optional(),
-  sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema.optional(),
 });
 export type GenerationStage = z.infer<typeof GenerationStageSchema>;
 export type GenerationJournal = z.infer<typeof GenerationJournalSchema>;
@@ -60,7 +59,7 @@ export interface GenerationJournalInventory {
 export interface GenerationJournalStore {
   read(runId: string): GenerationJournal | undefined;
   list(): GenerationJournalInventory;
-  /** The association dispatch witness is checked under the same workspace lock that publishes its claim. */
+  /** Complete source and body identities are rechecked under the lock publishing the native claim. */
   write(journal: GenerationJournal, expectedGeneration: number,
     validateClaim?: (journal: GenerationJournal, stage: GenerationStage) => void): GenerationJournal;
   archive(journal: GenerationJournal, stage: GenerationStage, outcome: GenerationOutcome): z.infer<typeof GenerationOutcomeRefSchema>;

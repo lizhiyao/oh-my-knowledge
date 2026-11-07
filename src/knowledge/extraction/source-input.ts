@@ -7,7 +7,7 @@ import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema, sourc
 export const SOURCE_GENERATION_INPUT_VERSION = 'knowledge-source-generation-input/v1' as const;
 export const WRITING_DRAFT_INPUT_VERSION = 'knowledge-writing-draft-input/v1' as const;
 export const BODY_GENERATION_INPUT_VERSION = 'knowledge-body-generation-input/v5' as const;
-export const WORKFLOW_ID = 'knowledge-body-first/v7' as const;
+export const WORKFLOW_ID = 'knowledge-body-first/v8' as const;
 export const SOURCE_IMPORT_RUN_IDENTITY = 'knowledge-source-set-import-run/v3' as const;
 
 /** UUIDv8: reuse only this workflow's default journal, including failed or unknown results. */

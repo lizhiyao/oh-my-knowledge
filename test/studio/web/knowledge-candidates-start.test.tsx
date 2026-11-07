@@ -102,7 +102,7 @@ it('shows complete literal local material and separate read/send/save boundaries
 it('shows the exact complete prepared stage and target rather than treating capture as send permission', () => {
   const digest = `sha256:${'d'.repeat(64)}`;
   const run: KnowledgeCandidateRun = { ...latest, status: 'active', nextAction: 'continue_stage', journalGeneration: 1, executor: 'codex', model: 'authored-target',
-    workflowId: 'knowledge-body-first/v7', inputVersion: 'knowledge-source-generation-input/v2', preparedStage: { stageKind: 'body', invocationId: '00000000-0000-4000-8000-000000000003',
+    workflowId: 'knowledge-body-first/v8', inputVersion: 'knowledge-source-generation-input/v2', preparedStage: { stageKind: 'body', invocationId: '00000000-0000-4000-8000-000000000003',
       state: 'prepared', profileId: digest, promptVersion: 'authored-profile', wireId: digest, wireSchema: { type: 'object' }, system: '<script>complete system</script>',
       input: '{"material":"complete input","tail":"<script>final tail</script>"}', inputDigest: digest, requestDigest: digest,
       producer: { producerId: 'authored-ui', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1000, proof: { nativeObserved: false } }, committed: 0, issues: [] } };
