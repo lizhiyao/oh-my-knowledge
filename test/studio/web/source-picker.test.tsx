@@ -48,10 +48,7 @@ const workspaceFiles = (path: string): [string, string][] => readdirSync(path, {
   ? workspaceFiles(join(path, entry.name)) : [[join(path, entry.name), readFileSync(join(path, entry.name), 'utf8')]]);
 
 describe('Source3 manual transmission boundary', () => {
-  it.each([
-    { unavailable: false, empty: false, long: false }, { unavailable: true, empty: false, long: false },
-    { unavailable: false, empty: true, long: false }, { unavailable: false, empty: false, long: true },
-  ])('confirms each stage before publishing pending content and keeps source review separate (%j)', async ({ unavailable, empty, long }) => {
+  async function exerciseExtraction({ unavailable, empty, long }: { unavailable: boolean; empty: boolean; long: boolean }) {
     const root = mkdtempSync(join(tmpdir(), 'omk-source-picker-')); roots.push(root);
     const project = join(root, 'project'), workspace = join(root, 'workspace'); mkdirSync(project);
     const literal = 'Alpha 使用 Beta。<script>authored literal</script>';
@@ -128,22 +125,24 @@ describe('Source3 manual transmission boundary', () => {
     if (long) {
       const prepareWindow = async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
-        await screen.findByText('Confirm Source window request');
+        await screen.findByText('Confirm Source window request', { selector: 'h3' });
       };
       await prepareWindow();
       const app = createLocalKnowledgeApplication(workspace);
       windowCount = app.runs().current[0].bodyPlan!.windows.length;
       expect(windowCount).toBeGreaterThan(1);
-      expect(screen.getByText(`Source windows completed 0/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`)).toBeTruthy();
+      expect(screen.getByText(`Source windows completed 0/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`,
+        { selector: '[role="status"]' })).toBeTruthy();
       expect(app.list()).toHaveLength(0);
       for (let completed = 0; completed < windowCount; completed++) {
         if (completed) await prepareWindow();
-        expect(screen.getByText('Archive this window. After the final window, consolidate and save candidate bodies locally.', { exact: false })).toBeTruthy();
+        expect(screen.getByText('Archive this window. After the final window, consolidate and save candidate bodies locally.', { selector: 'p', exact: false })).toBeTruthy();
         const sendWindow = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
         expect(sendWindow.disabled).toBe(true); expect(approval().checked).toBe(false);
         expect(invocations).toHaveLength(1 + completed);
         fireEvent.click(approval()); fireEvent.click(sendWindow);
-        await screen.findByText(`Source windows completed ${completed + 1}/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`);
+        await screen.findByText(`Source windows completed ${completed + 1}/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`,
+          { selector: '[role="status"]' });
         if (completed + 1 < windowCount) expect(app.list()).toHaveLength(0);
       }
       expect(screen.queryByRole('button', { name: 'Prepare and review the next stage' })).toBeNull();
@@ -220,7 +219,17 @@ describe('Source3 manual transmission boundary', () => {
     expect(requests.filter(item => item.body.operation === 'review-source-coverage')).toHaveLength(1);
     expect(requests.find(item => item.body.operation === 'prepare-rebuild-associations')!.body.bodyRefs).toEqual(generated.bodies);
     expect(requests.some(item => item.body.operation === 'generate')).toBe(false);
-  });
+  }
+
+  it.each([
+    { unavailable: false, empty: false, long: false }, { unavailable: true, empty: false, long: false },
+    { unavailable: false, empty: true, long: false },
+  ])('confirms each stage before publishing pending content and keeps source review separate (%j)', exerciseExtraction);
+
+  // This path uses the real long-source size gate and repeats full request preparation and journal IO per window.
+  it('confirms all long-source windows before publishing the locally consolidated content', { timeout: 90_000 },
+    () => exerciseExtraction({ unavailable: false, empty: false, long: true }));
+
   it('distinguishes an unreadable project catalog from unconfigured sources and retries only the failed catalog', async () => {
     let available = false;
     const requests: string[] = [];
