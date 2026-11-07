@@ -53,7 +53,7 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 完整 system 与模型 input 合计上限为 1 MiB。当前 journal Schema 10／workflow10 的普通流程从写作 input1 开始。普通正文 input5 绑定完整 Source3 及同次归档草稿。关联以显式完整 sources 与精确 bodyRefs 单独准备，使用阶段 input1。可选来源复核保留 manifest／input2、清单 input1 和覆盖 input2。
 
-Codex 的完整正文来源 input JSON 在计入 writingDraft 字段前已超过 512 KiB 时，宿主在首次模型请求前将完整、有序的 passage 索引划分为最多 8 个连续窗口。每窗序列化 passage 列表至多 128 KiB，完整 input 至多 192 KiB。窗口采用 `knowledge-body-window/v3` 提示词和 `knowledge-body-window-input/v3` 输入格式，由 `bodyWindow` 标识进度。各请求使用本窗可见的原文。`knowledge-long-body-plan/v2` 摘要绑定所有选定来源的可移植归属，供 Studio 按范围筛选，也涵盖首窗之外的来源。窗口采用专用响应 wire1，passage 索引由宿主绑定。每窗结果至多 24 KiB，最多 4 篇、每篇 2 段、合计 6 段，所有引文必须在本窗可见范围内。宿主归档各窗精确结果，全部成功后才统一发布。宿主在本地按序汇集已验证的候选，仅调整候选内部标识，保留段落文字与原文引文。此步零模型调用。独立取证的事实保留各自时间与归属，语义整合、去重与完整主张覆盖不在此步范围内。Codex 窗口使用低推理强度，每窗至多 150 秒。
+Codex 的完整正文来源 input JSON 在计入 writingDraft 字段前已超过 512 KiB 时，宿主在首次模型请求前将完整、有序的 passage 索引划分为最多 8 个连续窗口。每窗序列化 passage 列表至多 128 KiB，完整 input 至多 192 KiB。窗口采用 `knowledge-body-window/v4` 提示词和 `knowledge-body-window-input/v4` 输入格式，由 `bodyWindow` 标识进度。各请求使用本窗可见的原文。 宿主可加入两个至四个连续的 `coverageRegions` 供定位，按序列化片段字节均衡划分，尽量对齐附近的来源边界。若超出 input 上限则省略区间，不增加原文或引文范围。提示词先跨不同主题挑选有据的具体事实，再用剩余篇幅保留相关变化、条件和方法。继续派发 v3 窗口须使用匹配构建。`knowledge-long-body-plan/v2` 摘要绑定所有选定来源的可移植归属，供 Studio 按范围筛选，也涵盖首窗之外的来源。窗口采用专用响应 wire1，passage 索引由宿主绑定。每窗结果至多 24 KiB，最多 4 篇、每篇 2 段、合计 6 段，所有引文必须在本窗可见范围内。宿主归档各窗精确结果，全部成功后才统一发布。宿主在本地按序汇集已验证的候选，仅调整候选内部标识，保留段落文字与原文引文。此步零模型调用。独立取证的事实保留各自时间与归属，语义整合、去重与完整主张覆盖不在此步范围内。Codex 窗口使用低推理强度，每窗至多 150 秒。
 
 宿主在准备首个请求时核对每窗精确 input，来源超出窗口容量即停止准备。处在阈值以内的 Codex 来源及其他执行器走普通草稿和正文流程。
 

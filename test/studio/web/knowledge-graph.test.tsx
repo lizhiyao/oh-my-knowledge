@@ -427,7 +427,7 @@ describe('knowledge graph browsing and evidence', () => {
       let value: unknown;
       if (call.operation === 'knowledge') value = catalog;
       else if (call.operation === 'retrieve') value = { projectionKind: 'knowledge-body-segments', schemaVersion: 3,
-        rankingPolicyId: 'knowledge-body-literal-topic-priority/v3', omitted: { oversizedSegments: 0, budgetSegments: 0 },
+        rankingPolicyId: 'knowledge-body-verified-evidence-phrases/v4', omitted: { oversizedSegments: 0, budgetSegments: 0 },
         knowledge: [{ bodyRef: data.detail.derivedAssociations.bodyRef, generation: 1, title: data.detail.revision.title, choice: 'retain', reviewStatus: 'pending',
           segmentScope: { returned: 1, total: 1 }, derivedAssociations: data.detail.derivedAssociations }],
         sources: [{ ...data.source, status: 'available', sourceKind: 'agent_trace', source: sourceSummaryFixture(data.snapshot) }],

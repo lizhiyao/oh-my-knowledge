@@ -130,7 +130,7 @@ describe('Source3 manual transmission boundary', () => {
       expect(windowCount).toBeGreaterThan(1);
       expect(prepared.stages.map(stage => stage.stageKind)).toEqual(['body_window']);
       const firstInput = JSON.parse(prepared.stages[0].input);
-      expect(firstInput).toMatchObject({ inputVersion: 'knowledge-body-window-input/v3', bodyWindow: { index: 1, count: windowCount } });
+      expect(firstInput).toMatchObject({ inputVersion: 'knowledge-body-window-input/v4', bodyWindow: { index: 1, count: windowCount } });
       expect(firstInput).not.toHaveProperty('writingDraft');
       expect(screen.getByText(`Source windows completed 0/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`,
         { selector: '[role="status"]' })).toBeTruthy();

@@ -7,9 +7,9 @@ import type { SourceRef } from '../../src/knowledge/sources.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;
-function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适用于用户输入，成本未知。']) {
+function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适用于用户输入，成本未知。'],
+  quote = '🙂 用户报告初始化问题，尚未独立验证。') {
   const knowledgeId = randomUUID(), revisionId = randomUUID(), snapshotId = randomUUID();
-  const quote = '🙂 用户报告初始化问题，尚未独立验证。';
   const snapshot = traceSnapshotFixture(quote, { snapshotId, evidenceRef: 'record:0' }), sourceVersion = snapshot.sourceVersion;
   const segments = texts.map((text, index) => ({ segmentId: `segment-${index}`, text, evidence: [{
     source: { snapshotId, sourceVersion }, selection: { evidenceRef: 'record:0', start: 0, end: quote.length, quote },
@@ -63,6 +63,34 @@ describe('canonical body segment retrieval', () => {
     }
     expect(retrieveKnowledge(f.app, { query: '独立验证' }).items).toEqual([]);
   });
+  it('recalls the stored body through a verified evidence phrase and ranks its longer topic ahead of distractors', () => {
+    const target = fixture(['柏木样件干燥 48 小时后可上第二层。'],
+      'A freshly sealed cedar sample must dry 48 hours before a second coat.');
+    const distractor = fixture(['橡木样件干燥 24 小时后可上第二层。'],
+      'A freshly sealed oak sample must dry 24 hours before a second coat.');
+    const app = corpus(distractor, target);
+    const query = 'How long should a freshly sealed cedar sample dry before a second coat?';
+    const result = retrieveKnowledge(app, { query });
+    expect(result.items.map(item => item.segment)).toEqual([target.segments[0], distractor.segments[0]]);
+    expect(result.items[0].evidenceChecks[0].positionStatus).toBe('matched');
+    expect(retrieveKnowledge(app, { query: 'How long is the nonexistent cedar quibplock?' }).items).toEqual([]);
+
+    target.segments[0].evidence[0].selection.start = 1;
+    expect(retrieveKnowledge(app, { query }).items.map(item => item.segment)).toEqual([distractor.segments[0]]);
+    distractor.source.mockReturnValue({ status: 'unavailable', reason: 'deleted' });
+    expect(retrieveKnowledge(app, { query }).items).toEqual([]);
+  });
+
+  it('only recalls from citations inside the exact selected source scope', () => {
+    const target = fixture(['柏木样件需晾干后再施涂。']);
+    const other = fixture(['另外的原文。'], 'A freshly sealed cedar sample must dry 48 hours.');
+    const app = corpus(target, other);
+    target.segments[0].evidence.push(other.segments[0].evidence[0]);
+    const query = 'freshly sealed cedar sample';
+    expect(retrieveKnowledge(app, { query }).items).toHaveLength(2);
+    expect(retrieveKnowledge(app, { query, snapshot: target.snapshotId, sourceVersion: target.sourceVersion }).items).toEqual([]);
+  });
+
   it('keeps large derived catalogs outside the body budget and scopes only exact current-body associations, still pending', () => {
     const f = fixture(); f.retain(); const entityId = randomUUID(), analysisId = randomUUID(), entityRevisionId = randomUUID(), scope = { analysisId, entityRevisionId }, associations = f.detail.derivedAssociations;
     associations.status = 'available'; associations.revision = { revisionId: randomUUID(), bodyRef: associations.bodyRef,
@@ -137,7 +165,7 @@ describe('canonical body segment retrieval', () => {
   });
   it('prioritizes a larger ASCII topic set without dropping a smaller set containing necessary constraints', () => {
     const constrained = fixture(['Vue Transition 初始化条件：仅第一次挂载可用；后续更新不适用。']);
-    const extended = fixture(['Vue Transition 的 v-model 初始化条件尚未确认，成本未知。']);
+    const extended = fixture(['Vue 的 v-model 与 Transition 配合时，初始化条件尚未确认，成本未知。']);
     const result = retrieveKnowledge(corpus(constrained, extended), { query: 'Vue Transition v-model 初始化条件', maxBytes: 65536 });
     expect(result.rankingPolicyId).toBe(KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID);
     expect(result.knowledge.map(item => item.bodyRef.knowledgeId)).toEqual([extended.row.knowledgeId, constrained.row.knowledgeId]);

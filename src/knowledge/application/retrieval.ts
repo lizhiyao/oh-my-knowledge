@@ -9,7 +9,7 @@ import { sourceSummary, type SourceSummary } from './source-summary.js';
 export const KNOWLEDGE_RETRIEVAL_MIN_BYTES = 1024;
 export const KNOWLEDGE_RETRIEVAL_DEFAULT_BYTES = 65536;
 export const KNOWLEDGE_RETRIEVAL_MAX_BYTES = 1024 * 1024;
-export const KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID = 'knowledge-body-literal-topic-priority/v3' as const;
+export const KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID = 'knowledge-body-verified-evidence-phrases/v4' as const;
 export const KnowledgeRetrievalRequestSchema = z.strictObject({
   query: z.string().trim().min(1).max(512)
     .refine(value => knowledgeRetrievalTerms(value).length > 0, 'Query has no searchable literal fragments.')
@@ -27,7 +27,7 @@ export type KnowledgeRetrievalRequest = z.input<typeof KnowledgeRetrievalRequest
 type Detail = ReturnType<KnowledgeApplication['detail']>;
 type Segment = KnowledgeDraft['content']['segments'][number];
 type Resolution = ReturnType<KnowledgeApplication['source']>;
-type Unit = { detail: Detail; segment: Segment; segmentIndex: number; hits: Set<string>; documentHits: Set<string>; topicHits: Set<string> };
+type Unit = { detail: Detail; segment: Segment; segmentIndex: number; hits: Set<string>; documentHits: Set<string>; topicHits: Set<string>; evidencePhraseLength: number };
 type SourceContext = { snapshotId: string; sourceVersion: string } & (
   { status: 'available'; sourceKind: Extract<Resolution, { status: 'available' }>['snapshot']['sourceKind']; source: SourceSummary }
   | { status: 'unavailable'; reason: string }
@@ -57,10 +57,13 @@ export class KnowledgeRetrievalBudgetError extends Error {
     super(`Knowledge retrieval metadata requires at least ${minimumBytes} UTF-8 bytes.`); this.name = 'KnowledgeRetrievalBudgetError';
   }
 }
-/** Literal recall only: strings and Han bigrams do not establish identity or truth. */
+function asciiLexemes(text: string): string[] {
+  return [...text.matchAll(/[a-z0-9_$]+(?:[.:/#-][a-z0-9_$]+)*/g)].map(match => match[0]);
+}
+/** Literal terms support retrieval; they do not establish identity or truth. */
 export function knowledgeRetrievalTerms(query: string): string[] {
   const text = query.normalize('NFKC').toLowerCase();
-  const terms = [...text.matchAll(/[a-z0-9_$]+(?:[.:/#-][a-z0-9_$]+)*/g)].map(match => match[0]);
+  const terms = asciiLexemes(text);
   for (const match of text.matchAll(/\p{Script=Han}+/gu)) {
     terms.push(match[0]); const characters = Array.from(match[0]);
     for (let index = 0; index + 1 < characters.length; index++) terms.push(characters[index] + characters[index + 1]);
@@ -86,6 +89,42 @@ const measure = (value: KnowledgeRetrievalResult) => Buffer.byteLength(JSON.stri
 function hits(fields: string[], terms: string[]): Set<string> {
   const normalized = fields.map(value => value.normalize('NFKC').toLowerCase());
   return new Set(terms.filter(term => normalized.some(value => value.includes(term))));
+}
+// Contiguous content words corroborate a query topic more strongly than isolated substrings.
+const NON_TOPIC_WORDS = new Set('a an and are as at be been between by can could did do does for from had has have how i in is it many may me might my of on or our should that the their them there these they this to was we were what when where which who why will with would you your'.split(' '));
+function phraseWords(text: string): string[] {
+  return asciiLexemes(text.normalize('NFKC').toLowerCase())
+    .filter(term => !NON_TOPIC_WORDS.has(term) && (term.length >= 3 || /[0-9_$]/u.test(term)));
+}
+const MAX_TOPIC_PHRASE_WORDS = 4;
+function topicPhrases(query: string): Map<string, string[][]> {
+  const words = phraseWords(query), phrases = new Map<string, string[][]>();
+  for (let length = MAX_TOPIC_PHRASE_WORDS; length >= 2; length--) {
+    for (let index = 0; index + length <= words.length; index++) {
+      const first = words[index];
+      const suffix = words.slice(index + 1, index + length);
+      const existing = phrases.get(first);
+      if (existing) existing.push(suffix);
+      else phrases.set(first, [suffix]);
+    }
+  }
+  return phrases;
+}
+function matchingPhraseLength(text: string, phrases: ReturnType<typeof topicPhrases>): number {
+  if (!phrases.size) return 0;
+  const words = phraseWords(text);
+  let longest = 0;
+  for (const [index, word] of words.entries()) {
+    for (const suffix of phrases.get(word) ?? []) {
+      const length = suffix.length + 1;
+      if (length <= longest) break;
+      if (!suffix.every((term, offset) => term === words[index + offset + 1])) continue;
+      longest = length;
+      if (longest === MAX_TOPIC_PHRASE_WORDS) return longest;
+      break;
+    }
+  }
+  return longest;
 }
 function stableOrder(a: Unit, b: Unit): number {
   return Date.parse(b.detail.revision.revisedAt) - Date.parse(a.detail.revision.revisedAt)
@@ -126,10 +165,11 @@ function project(units: Unit[], matched: number, oversized: number, resolutions:
   }
   return result;
 }
-/** Current canonical bodies only; no executor, mutation, source-text fallback or name-based merging. */
+/** Retrieve current canonical bodies through body text and verified, attached citations. */
 function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | 'source'>, input: KnowledgeRetrievalRequest, format: 'json' | 'text'): KnowledgeRetrievalResult {
   const request = KnowledgeRetrievalRequestSchema.parse(input), terms = knowledgeRetrievalTerms(request.query);
   const measureResult = format === 'text' ? (value: KnowledgeRetrievalResult) => Buffer.byteLength(formatKnowledgeRetrievalText(value), 'utf8') + 1 : measure;
+  const phrases = topicPhrases(request.query);
   const asciiTerms = terms.filter(term => /^[a-z0-9_$]+(?:[.:/#-][a-z0-9_$]+)*$/.test(term));
   const fullHanRuns = new Set([...request.query.normalize('NFKC').toLowerCase().matchAll(/\p{Script=Han}+/gu)].map(match => match[0]));
   const derivedBigrams = new Set(terms.filter(term => /^\p{Script=Han}{2}$/u.test(term) && !fullHanRuns.has(term)));
@@ -137,12 +177,22 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
   const scopeDiagnostics: ScopeDiagnostics = source ? { source: source.status === 'available' ? { status: 'available' }
     : { status: 'unavailable', reason: source.reason } } : {};
   const candidates: Unit[] = [], resolutions = new Map<string, Resolution>(); let entityMatched = false;
+  if (source) resolutions.set(sourceKey({ snapshotId: request.snapshot!, sourceVersion: request.sourceVersion! }), source);
+  const resolve = (ref: Parameters<typeof app.source>[0]): Resolution => {
+    const key = sourceKey(ref), existing = resolutions.get(key);
+    if (existing) return existing;
+    const resolution = app.source(ref);
+    resolutions.set(key, resolution);
+    return resolution;
+  };
   for (const row of app.list()) {
     if (row.choice !== 'retain' && !(request.includeCandidates && row.choice === null)) continue;
     const detail = app.detail(row.knowledgeId, row.revisionId);
     if (detail.history.writeHeadRevisionId !== row.revisionId) throw new Error('Knowledge changed during retrieval. Reload and retry.');
     if (detail.maintenance?.choice !== 'retain' && !(request.includeCandidates && !detail.maintenance)) continue;
-    const recalled = hits([detail.revision.title, ...detail.tagging.tags], terms);
+    const documentFields = [detail.revision.title, ...detail.tagging.tags];
+    const recalled = hits(documentFields, terms);
+    const documentPhraseLength = Math.max(...documentFields.map(text => matchingPhraseLength(text, phrases)));
     const association = request.entityId ? currentAssociation(detail) : undefined;
     const scopedSegments = detail.revision.content.segments.map((segment, segmentIndex) => ({ segment, segmentIndex })).filter(({ segment }) => {
       if (request.snapshot && !segment.evidence.some(evidence => evidence.source.snapshotId === request.snapshot
@@ -153,12 +203,21 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
     scopedSegments.forEach(({ segment, segmentIndex }) => {
       if (request.entityId) entityMatched = true;
       const local = hits([segment.text], terms);
-      if (!local.size && !recalled.size) return;
+      const bodyPhraseLength = Math.max(documentPhraseLength, matchingPhraseLength(segment.text, phrases));
+      let evidencePhraseLength = 0;
       for (const evidence of segment.evidence) {
-        const key = sourceKey(evidence.source);
-        if (!resolutions.has(key)) resolutions.set(key, app.source(evidence.source));
+        if (Math.max(bodyPhraseLength, evidencePhraseLength) === MAX_TOPIC_PHRASE_WORDS) break;
+        if (request.snapshot && (evidence.source.snapshotId !== request.snapshot || evidence.source.sourceVersion !== request.sourceVersion)) continue;
+        const length = matchingPhraseLength(evidence.selection.quote, phrases);
+        if (length <= Math.max(bodyPhraseLength, evidencePhraseLength)) continue;
+        const resolution = resolve(evidence.source);
+        if (resolution.status === 'available' && !validateEvidenceSelection(evidence.selection, resolution.snapshot.excerpts).length) {
+          evidencePhraseLength = length;
+        }
       }
-      candidates.push({ detail, segment, segmentIndex, hits: local, documentHits: recalled, topicHits });
+      if (!evidencePhraseLength && !local.size && !recalled.size) return;
+      for (const evidence of segment.evidence) resolve(evidence.source);
+      candidates.push({ detail, segment, segmentIndex, hits: local, documentHits: recalled, topicHits, evidencePhraseLength });
     });
   }
   if (request.entityId) scopeDiagnostics.entity = { analysisId: request.analysisId!, entityRevisionId: request.entityRevisionId!, entityId: request.entityId, status: entityMatched ? 'matched_segments' : 'no_eligible_segments' };
@@ -183,7 +242,8 @@ function retrieveForFormat(app: Pick<KnowledgeApplication, 'list' | 'detail' | '
       const novelty = novelTerms.reduce((gain, term) => gain + (derivedBigrams.has(term) ? 1 : 4), 0);
       const documentNovel = [...unit.documentHits].filter(term => !coveredDocuments.has(term)).length;
       const gain = Math.max(1, novelty + unit.hits.size + documentNovel), cost = Math.max(1, nextBytes - currentBytes);
-      const priority = dominated.has(unit.detail.revision.knowledgeId) ? 1 : 0;
+      // Rank stronger attached evidence first, keeping the original topic priority within each tier.
+      const priority = -unit.evidencePhraseLength * 2 + (dominated.has(unit.detail.revision.knowledgeId) ? 1 : 0);
       if (!best || priority < best.priority || priority === best.priority && (gain * best.cost > best.gain * cost
         || gain * best.cost === best.gain * cost && (novel > best.novel
           || novel === best.novel && (unit.hits.size > best.unit.hits.size || unit.hits.size === best.unit.hits.size && stableOrder(unit, best.unit) < 0)))) {

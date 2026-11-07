@@ -277,7 +277,7 @@ omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未�
 
 默认 JSON 视图的 **65536 UTF-8 字节计算整个单行 JSON 和换行**，不是知识存储或模型上下文限制。仍支持显式 `--max-bytes 8192`，最大保持 1 MiB；完整段落及其 inline evidence 原子装入，超大或预算排除的段落记入 `omitted`，不截条件。这一初始预算不证明任务覆盖完整或选择最优，也不升级旧小预算失败记录。下方可选 text 视图按自身完整输出计算预算。
 
-召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和 `--source-version` 必须成对提供，限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
+召回使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-verified-evidence-phrases/v4`。当前范围内已逐字回源的段落引文可以补充召回。与查询连续命中两个及以上 ASCII 内容词时，只有引文短语长于该段正文、标题和标签的匹配才增加优先级。该机制适合查询与引文共享原文词汇的场景，例如用英文查来自英文来源的中文正文。响应仍返回保存的完整正文和绑定的引文信息。同一引文短语优先级内，保留基于范围内 ASCII 词集合和字面增量覆盖／成本的顺序。所有超大或预算排除的候选均记入 `omitted`。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和 `--source-version` 必须成对提供，限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
 
 ### 用新材料维护已有认识 {#maintain-existing-knowledge}
 

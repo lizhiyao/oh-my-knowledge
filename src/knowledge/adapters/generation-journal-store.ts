@@ -13,14 +13,16 @@ import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source
 import { validateSourceReviewManifest } from '../source-review-history.js';
 import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, assertBodyGenerationSources, generationSourceMetadata } from '../extraction/source-input.js';
 import { SOURCE_LEDGER_INPUT_VERSION, restoreSourceLedgerInput } from '../extraction/source-review-input.js';
-import { LONG_BODY_WINDOW_INPUT_VERSION, longBodyPlanDigest } from '../extraction/long-body.js';
+import { LONG_BODY_WINDOW_INPUT_VERSION, LongBodyCoverageRegionsSchema, longBodyPlanDigest } from '../extraction/long-body.js';
 import { SOURCE_PASSAGE_POLICY, SourcePassagesSchema } from '../extraction/source-passages.js';
 
 const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
 const uuid = z.string().uuid();
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
-const windowInputSchema = z.strictObject({ inputVersion: z.literal(LONG_BODY_WINDOW_INPUT_VERSION), sourceSetId: SourceDigestSchema, planDigest: SourceDigestSchema,
+const previousWindowInputVersion = 'knowledge-body-window-input/v3';
+const windowInputSchema = z.strictObject({ inputVersion: z.enum([LONG_BODY_WINDOW_INPUT_VERSION, previousWindowInputVersion]),
+  sourceSetId: SourceDigestSchema, planDigest: SourceDigestSchema, coverageRegions: LongBodyCoverageRegionsSchema.optional(),
   passagePolicy: z.literal(SOURCE_PASSAGE_POLICY.policyVersion), passageIndexDigest: SourceDigestSchema,
   bodyWindow: z.strictObject({ index: z.number().int().positive(), count: z.number().int().positive(), visiblePassageCount: z.number().int().positive() }),
   sources: z.array(z.object({ sourceKey: z.string(), source: SourceRefSchema.loose(),
@@ -83,6 +85,18 @@ function validateWindowInput(j: GenerationJournal, stageIndex: number, value: un
   if (!expected || !same(input.bodyWindow, { index: stageIndex + 1, count: plan.windows.length, visiblePassageCount: expected.visiblePassageCount })
     || `p${firstPassage}` !== expected.startPassageId || `p${previousPassage}` !== expected.endPassageId || count !== expected.visiblePassageCount) {
     throw new Error('Generation long body window input does not match its planned position.');
+  }
+  if (input.coverageRegions) {
+    if (input.inputVersion !== LONG_BODY_WINDOW_INPUT_VERSION) throw new Error('Generation long body coverage regions require the current input.');
+    let next = firstPassage;
+    for (const region of input.coverageRegions) {
+      const end = Number(region.endPassageId.slice(1));
+      if (region.startPassageId !== `p${next}` || !Number.isSafeInteger(end) || end < next || end > previousPassage) {
+        throw new Error('Generation long body coverage regions must partition the visible window.');
+      }
+      next = end + 1;
+    }
+    if (next !== previousPassage + 1) throw new Error('Generation long body coverage regions must partition the visible window.');
   }
 }
 
