@@ -246,6 +246,8 @@ after source, dependency or build-config changes. Removed or renamed emitted
 files may require `yarn clean` before rebuilding. Preserve incremental caches
 between unchanged checks; use clean builds when the tested boundary requires it.
 
+When concurrent work needs isolation (for example, another task has uncommitted changes), create one checkout outside the repository for the task and reuse it for subsequent implementation and validation rather than creating one per phase. Explain any second checkout, such as a baseline or dependency-version comparison. Remove only temporary checkouts created by this task that have no unsaved changes or running processes and that the user no longer needs to inspect; also remove their registrations.
+
 Keep the writable per-checkout state local to that checkout: incremental build
 info, type-check state and lint caches decide work from that tree's file
 signatures rather than from whether its output files already exist. A second
