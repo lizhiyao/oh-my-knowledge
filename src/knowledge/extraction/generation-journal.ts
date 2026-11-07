@@ -5,17 +5,18 @@ import { EntityAnalysisWriteSchema } from '../entities/contracts.js';
 import { KnowledgeAssociationRevisionSchema } from '../associations.js';
 import { GenerationOutcomeRefSchema, type GenerationOutcome } from './native-outcome.js';
 import { WORKFLOW_ID } from './source-input.js';
+import { LongBodyPlanSchema } from './long-body.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from './source-review-input.js';
 import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../source-review.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-export const GENERATION_JOURNAL_SCHEMA_VERSION = 8 as const;
+export const GENERATION_JOURNAL_SCHEMA_VERSION = 9 as const;
 export const WritingDraftRefSchema = z.strictObject({ runId: uuid, invocationId: uuid, requestDigest: digest, archiveDigest: digest, outputDigest: digest });
 const associationWrite = z.strictObject({ commandKind: z.literal('append_revision'), requestId: uuid,
   knowledgeId: z.string().min(1), expectedGeneration: z.number().int().nonnegative(), expectedHeadRevisionId: z.string().nullable(),
   revision: KnowledgeAssociationRevisionSchema });
 export const GenerationStageSchema = z.strictObject({
-  stageKind: z.enum(['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']), invocationId: uuid,
+  stageKind: z.enum(['source_ledger', 'body_draft', 'body', 'body_window', 'source_coverage', 'association']), invocationId: uuid,
   state: z.enum(['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed']),
   profileId: digest, promptVersion: z.string(), system: z.string(), wireId: digest, wireSchema: z.record(z.string(), z.unknown()),
   input: z.string(), inputDigest: digest, requestDigest: digest,
@@ -37,10 +38,17 @@ export const GenerationJournalSchema = z.strictObject({
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,
   sources: z.array(z.strictObject({ snapshotId: uuid, sourceVersion: digest, sourceDigest: digest })).min(1).max(256),
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
-  bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(2),
+  bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(9),
+  bodyPlan: LongBodyPlanSchema.optional(),
   writingDraftRef: WritingDraftRefSchema.optional(), ledgerRef: SourceLedgerRefSchema.optional(), coverageRef: SourceCoverageRefSchema.optional(),
 });
 export type GenerationStage = z.infer<typeof GenerationStageSchema>;
+
+/** Only the last planned window can publish the aggregate, after all native windows are archived. */
+export function isBodyPublicationStage(journal: GenerationJournal, index: number): boolean {
+  const stageKind = journal.stages[index]?.stageKind;
+  return stageKind === 'body' || stageKind === 'body_window' && index === journal.bodyPlan?.windows.length;
+}
 export type GenerationJournal = z.infer<typeof GenerationJournalSchema>;
 /** Inventory observations never claim that a native original has been decoded or verified. */
 export interface GenerationArchiveCheck {

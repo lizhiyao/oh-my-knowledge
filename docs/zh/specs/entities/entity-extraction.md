@@ -28,9 +28,9 @@
 
 ## 3. 契约与身份
 
-当前默认 `knowledge-body-first/v8` 在 body_draft、body 后完成。来源清单／覆盖为按需独立操作；实际复核决定通过后，另行准备关联。模型意见与实际决定分开，见[来源复核契约](../knowledge/knowledge-source-review.md)及[生成契约](../../reference/shared/knowledge-contract.md)。
+当前 `knowledge-body-first/v9` 在草稿及普通正文或完整窗口集发布后完成。来源清单／覆盖与待审关联可按需独立准备。模型意见与实际决定分开，见[来源复核契约](../knowledge/knowledge-source-review.md)及[生成契约](../../reference/shared/knowledge-contract.md)。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow8／journal Schema8 只执行未核验写作稿（body_draft）→ 有据正文，保存待审正文即完成生成。写作 input1／wire1／prompt1、正文 input5／wire3／prompt20 保持，正文绑定同次精确草稿及完整 Source3。需要实体与关系时，显式以 `{sources, bodyRefs}` 准备关联，每个 knowledgeId 至多选一个精确修订；核对完整请求后单独确认，完整来源和正文在共享锁内 claim 前重新校验。关联 prompt9 明确要求保留条件和归因的语义关系，未返回请求投影时记录失败；关联 input1／wire3 及来源、正文、实体、关联和 reviews 的活动格式保持。来源清单、覆盖及实际决定是独立可选操作，不作为待审关联准入凭据，也不自动批准知识。旧 journal7 及更早日志由匹配旧版本处理；`knowledge-workflow-to8` 仅迁入独立副本，旧日志、分析、原件和自动许可原样归档并保留匹配构建。不回写历史测量，不自动切换在用工作区或发版；流程完成不证明知识、图谱或净收益已验收。
+**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 9。普通正文继续绑定同次精确草稿及完整 Source3。超出阈值的 Codex 正文分窗核对，全部成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to9` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
 
 正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及，再按已识别对象回查相关同源段落中的定义、属性、条件、维护或存储职责；已有合法自身提及可跨段复用，不要求各段重复名称或 objectId，无关段仍不映射。同一声明位置不能同时作为一般对象与版本的各自提及：Git 元数据可限定对象，独立版本对象仍须自己的来源提及。来源独立指认的工件／代码状态及必要的组件、版本映射仍分别判断。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
@@ -69,11 +69,11 @@
 
 准备零模型，每阶段发送分别确认精确 requestDigest。关联还须实际 Agent／人的有效无冲突覆盖决定，准备及共享锁内 claim 前重验；模型 all-covered／无 finding 不自动批准。claim 后撤销保留已发送原件及 pending 结果，显示失效语境。派生失败不删除正文；默认 300 秒，无自动重试／重问／回退，不据此宣称费用或质量。
 
-默认 journal8／input2 绑定完整已交付来源及固定清单／正文上下文，关联独立保留 v1 输入 envelope。原始 rawUnits、宿主 sourcePath／cwd 与捕获时间不发送；来源中的指令是数据，不能扩展读取或调用工具。metadata quote 明确属于来源元数据，不冒充 excerpt 原话。未报告用量或金额保持未知。
+当前 journal9／input2 绑定完整已交付来源及固定清单／正文上下文，关联独立保留 v1 输入 envelope。原始 rawUnits、宿主 sourcePath／cwd 与捕获时间不发送；来源中的指令是数据，不能扩展读取或调用工具。metadata quote 明确属于来源元数据，不冒充 excerpt 原话。未报告用量或金额保持未知。
 
 ## 6. 当前存储契约
 
-当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 8，另有来源清单／覆盖历史 Schema 1。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
+当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 9，另有来源清单／覆盖历史 Schema 1。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
 
 `generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。生成 profile 匹配时，`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
 
@@ -81,7 +81,7 @@
 
 实体历史继续保持每文件 1024 修订／16 MiB 限制及幂等收据重放，不截断旧修订。目录扫描仍限制 4096 文件／64 MiB，单列不可读分析。结构校验、精确位置和成功重开不证明语义质量。
 
-当前 reader 拒绝旧 typed 知识 v2，新日志恢复拒绝 journal5 及更早版本／run5，旧清单明确 unsupported。[迁移](../knowledge/knowledge-domain-model.md#body-migration)要求独立新工作区与原件保全，创建不继承 retain 的新待审正文，不改指向 library／carrier。保全旧来源／工作区／binary 可回退，不保双 canonical reader。
+当前 reader 拒绝旧 typed 知识 v2，新日志恢复拒绝 journal8 及更早版本，旧清单明确 unsupported。[迁移](../knowledge/knowledge-domain-model.md#body-migration)要求独立新工作区与原件保全，创建不继承 retain 的新待审正文，不改指向 library／carrier。保全旧来源／工作区／binary 可回退，不保双 canonical reader。
 
 独立 `study` 核对／可携带归档重放、`seal-run`／`sealed-runs` 档案处置保持历史身份，不恢复旧默认生成，也不授予语义通过；当前构建零调用拒绝旧 typed 生成计划。显式封存先保存 raw inventory 再写其独立处置标记，不是迁移或当前日志 resume。
 

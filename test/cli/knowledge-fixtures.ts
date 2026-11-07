@@ -8,11 +8,12 @@ import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapt
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import type { SourceCoverageData, SourceCoverageWrite, SourceLedgerData, SourceReviewManifest } from '../../src/knowledge/source-review.js';
 import type { EvidenceExcerpt } from '../../src/knowledge/contracts.js';
+import type { GenerationStage } from '../../src/knowledge/extraction/generation-journal.js';
 import { readTraceSource } from '../../src/knowledge/adapters/trace-source-reader.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 
 /** Authored protocol responses, never a model quality observation. */
-export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' | 'body_draft' | 'body' | 'source_coverage' | 'association') {
+export function authoredKnowledgeResponse(input: string, stage: GenerationStage['stageKind']) {
   type Passages = { passageId: string; text: string }[];
   type Excerpt = EvidenceExcerpt & { passages?: Passages };
   const data = JSON.parse(input) as { excerpts?: Excerpt[]; sources?: { sourceKey: string; excerpts: Excerpt[] }[];
@@ -48,10 +49,16 @@ export function authoredKnowledgeResponse(input: string, stage: 'source_ledger' 
   }
   const excerpt = (data.excerpts ?? data.sources?.[0].excerpts ?? [])[0];
   const sourceKey = data.sources?.[0].sourceKey ?? 's0';
-  if (stage === 'body') return { responseKind: 'knowledge-body-generation', schemaVersion: 3, passageIndexDigest: data.passageIndexDigest, proposals: [{ proposalId: 'p1', title: '选定来源的完整条件', requiredContexts: [],
-    segments: [{ segmentId: 's1', text: `来源报告：${excerpt.passages!.map(part => part.text).join('')}。事实发生时间及未来适用范围未知。`,
-      evidence: [{ startPassageId: excerpt.passages![0].passageId, endPassageId: excerpt.passages!.at(-1)!.passageId,
-        basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }] };
+  if (stage === 'body' || stage === 'body_window') {
+    const passages = stage === 'body_window' ? excerpt.passages!.slice(0, 1) : excerpt.passages!;
+    const proposals = [{ proposalId: 'p1', title: '选定来源的完整条件', requiredContexts: [],
+      segments: [{ segmentId: 's1', text: `来源报告：${passages.map(part => part.text).join('')}。事实发生时间及未来适用范围未知。`,
+        evidence: [{ startPassageId: passages[0].passageId, endPassageId: passages.at(-1)!.passageId,
+          basis: 'source_assertion', interpretation: null }] }], organization: null, reuseRationale: '后续核对相同条件' }];
+    return stage === 'body_window'
+      ? { responseKind: 'knowledge-body-window-generation', schemaVersion: 1, proposals }
+      : { responseKind: 'knowledge-body-generation', schemaVersion: 3, passageIndexDigest: data.passageIndexDigest, proposals };
+  }
   return { responseKind: 'knowledge-association-generation', schemaVersion: 3,
     catalogs: [{ sourceKey, entities: ['Alpha', 'Beta'].map((label, index) => ({ entityId: `e${index}`, label, description: `所选来源中的${label}`, qualifiers: [], identityStatus: 'proposed',
       possibleEntityIds: [], uncertainties: [], referentKind: 'object', componentLink: null, collectionLink: null,

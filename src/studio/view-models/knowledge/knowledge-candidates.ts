@@ -24,7 +24,7 @@ export interface KnowledgeCandidateRun {
   createdAt?: string; executor?: string; model?: string; sources?: { snapshotId: string; sourceVersion: string; sourceKind?: SourceSnapshot['sourceKind']; projectId?: string; origin?: TraceOrigin }[];
   sourceMetadataStatus?: 'frozen_input' | 'unknown';
   archiveVerification: 'not_verified' | 'verified'; archiveChecks: GenerationArchiveCheck[];
-  bodies: KnowledgeBodyRef[]; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef;
+  bodies: KnowledgeBodyRef[]; bodyWindowCount?: number; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef;
   phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
     producerId: string; producerRevision: string; rejectedCount: number | null;
   })[];

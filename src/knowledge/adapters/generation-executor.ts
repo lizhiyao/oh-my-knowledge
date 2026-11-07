@@ -20,8 +20,12 @@ export function configuredKnowledgeGenerationModel(executor: string, model: stri
   if (!['codex', 'openai-api'].includes(executor) || !model.trim()) throw new Error('Unsupported knowledge generation model.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new Error('Invalid generation timeout.');
   const inspected = new Map<string, string>();
-  const request = (profile: KnowledgeGenerationProfile, input: string): ExecutorInput => ({ model, system: profile.system, prompt: input, timeoutMs,
-    outputFormat: { mode: 'json-schema', name: profile.outputName, schema: profile.wireSchema } });
+  const request = (profile: KnowledgeGenerationProfile, input: string): ExecutorInput => ({
+    model, system: profile.system, prompt: input,
+    timeoutMs: 'stageTimeoutMs' in profile && profile.stageTimeoutMs !== undefined ? Math.min(timeoutMs, profile.stageTimeoutMs) : timeoutMs,
+    ...(executor === 'codex' && profile.stageKind === 'body_window' ? { effort: 'low' as const } : {}),
+    outputFormat: { mode: 'json-schema', name: profile.outputName, schema: profile.wireSchema },
+  });
   const inspect = (profile: KnowledgeGenerationProfile, input: string) => {
     const execution = request(profile, input); producer.assertCapabilities(executor, execution);
     const evidence = producer.inspect(executor, execution); inspected.set(canonicalJson(execution), canonicalJson(evidence)); return evidence;

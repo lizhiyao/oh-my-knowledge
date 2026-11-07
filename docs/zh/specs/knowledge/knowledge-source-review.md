@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow8／journal Schema8 只执行未核验写作稿（body_draft）→ 有据正文，保存待审正文即完成生成。写作 input1／wire1／prompt1、正文 input5／wire3／prompt20 保持，正文绑定同次精确草稿及完整 Source3。需要实体与关系时，显式以 `{sources, bodyRefs}` 准备关联，每个 knowledgeId 至多选一个精确修订；核对完整请求后单独确认，完整来源和正文在共享锁内 claim 前重新校验。关联 prompt9 明确要求保留条件和归因的语义关系，未返回请求投影时记录失败；关联 input1／wire3 及来源、正文、实体、关联和 reviews 的活动格式保持。来源清单、覆盖及实际决定是独立可选操作，不作为待审关联准入凭据，也不自动批准知识。旧 journal7 及更早日志由匹配旧版本处理；`knowledge-workflow-to8` 仅迁入独立副本，旧日志、分析、原件和自动许可原样归档并保留匹配构建。不回写历史测量，不自动切换在用工作区或发版；流程完成不证明知识、图谱或净收益已验收。
+**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 9。普通正文继续绑定同次精确草稿及完整 Source3。超出阈值的 Codex 正文分窗核对，全部成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to9` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
 
 覆盖 prompt6 还要求：同一完整来源单位或正文段落内重复的引文，必须扩为唯一连续原文或给出真实紧邻的消歧上下文。宿主继续拒收模糊位置；prompt5 的失败原件仍失败，不修补历史结果。
 
@@ -54,7 +54,7 @@
 
 `source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command，携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不自报 actor。模型分析、意见保存、关联生成和手工维护互不冒充批准。
 
-Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal5／6／7、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow8 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
+Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，journal8 及更早、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow9 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
 
 ### 覆盖 profile 边界 {#coverage-profile}
 
@@ -62,4 +62,4 @@ Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migr
 
 继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt6 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
 
-只替换覆盖时，复用的清单必须能通过当前 journal8 原件核验。journal5／6／7 的清单／覆盖在迁入 workflow8 的副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。
+只替换覆盖时，复用的清单必须能通过当前 journal9 原件核验。journal8 及更早的清单／覆盖在迁入 workflow9 的副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。

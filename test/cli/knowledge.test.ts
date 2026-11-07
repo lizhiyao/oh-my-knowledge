@@ -25,6 +25,7 @@ import { authoredKnowledgeResponse, authoredSourceDecision, seedKnowledgeWorkspa
 import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
 import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
+import { BODY_WINDOW_PROFILE } from '../../src/knowledge/extraction/long-body.js';
 import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 
 const roots: string[] = [];
@@ -119,14 +120,14 @@ describe('observe knowledge command wiring', () => {
     const next = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout);
     expect(next.journal.stages.at(-1).stageKind).toBe('body'); run = await dispatch(next);
     const generated = run;
-    expect(generated.journal).toMatchObject({ schemaVersion: 8, workflowId: 'knowledge-body-first/v8', status: 'completed',
+    expect(generated.journal).toMatchObject({ schemaVersion: 9, workflowId: 'knowledge-body-first/v9', status: 'completed',
       stages: ['body_draft', 'body'].map(stageKind => ({ stageKind, state: 'completed' })) });
     expect(fetch).toHaveBeenCalledTimes(2); expect(generated.journal.coverageRef).toBeUndefined();
     const { bodies: bodyRefs } = generated.journal;
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], bodyRefs }));
     const associationBase = [...base]; associationBase[associationBase.indexOf('--run-id') + 1] = randomUUID();
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-rebuild-associations', ...associationBase], { cwd: root })).stdout));
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v8', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v9', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
       stages: [{ stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
     expect(fetch).toHaveBeenCalledTimes(3); expect(requests[0].messages).not.toEqual(requests[1].messages);
     const associated = run;
@@ -163,7 +164,7 @@ describe('observe knowledge command wiring', () => {
     vi.stubEnv('OMK_HOME', root);
     const settings = join(root, 'settings.json'); writeFileSync(settings, '{invalid');
     const workspace = join(root, 'unused-workspace');
-    for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, WRITING_DRAFT_PROFILE, BODY_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
+    for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, WRITING_DRAFT_PROFILE, BODY_GENERATION_PROFILE, BODY_WINDOW_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE]) {
       const args = ['schema', '--workspace', workspace, '--stage', profile.stageKind];
       const raw = JSON.parse((await runCommand(ObserveKnowledge, args, { cwd: root })).stdout);
       const bundle = JSON.parse((await runCommand(ObserveKnowledge, [...args, '--json'], { cwd: root })).stdout);

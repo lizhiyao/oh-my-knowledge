@@ -52,6 +52,7 @@ export function SourcePreviewContent({ preview, capture, lang }: { preview: Know
 
 export function generationStageLabel(stage: KnowledgeCandidateRun['phases'][number]['stageKind'], lang: Language): string {
   return ({ source_ledger: ['来源清单', 'Source inventory'], body_draft: ['写作草稿', 'Writing draft'], body: ['知识正文', 'Knowledge content'],
+    body_window: ['分段取证', 'Source window'],
     source_coverage: ['来源覆盖核对', 'Source coverage'], association: ['实体关联', 'Entity associations'] })[stage][lang === 'zh' ? 0 : 1];
 }
 
@@ -61,10 +62,14 @@ export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirm
 }) {
   const stage = run.preparedStage, t = (cn: string, en: string) => lang === 'zh' ? cn : en;
   if (!stage || run.nextAction !== 'continue_stage') return <Alert type="warning" title={t('没有可发送的已准备阶段；请核对现有日志。', 'No prepared stage is sendable. Inspect the existing journal.')}/>;
+  const published = stage.stageKind === 'body' || stage.stageKind === 'association';
+  const outcome = stage.stageKind === 'body_draft' ? t('保存未核验草稿，正文仍须回原来源取证', 'Save an unverified draft; ground content against original sources.')
+    : stage.stageKind === 'body_window' ? t('归档本段取证结果。全部分段完成后，在本地汇整并保存候选正文。', 'Archive this window. After the final window, consolidate and save candidate bodies locally.')
+      : published ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately');
   return <section>
     <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : stage.stageKind === 'association' ? t('确认实体关联请求', 'Confirm entity association request') : t(`确认${generationStageLabel(stage.stageKind, lang)}请求`, `Confirm ${generationStageLabel(stage.stageKind, lang)} request`)}</h3>
     <p>{t('仅发送下面这个精确阶段。每个阶段单独确认，来源复核决定与模型发送分开。', 'Send only this exact stage. Confirm every stage separately; source review decisions and model dispatch are separate.')}</p>
-    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {stage.stageKind === 'body_draft' ? t('保存未核验草稿，正文仍须回原来源取证', 'Save an unverified draft; ground content against original sources.') : stage.stageKind === 'body' || stage.stageKind === 'association' ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately')}</p>
+    <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {outcome}</p>
     <p>{t('完整输入 UTF-8 字节：', 'Complete input UTF-8 bytes: ')}{new TextEncoder().encode(stage.input).length} · system: {new TextEncoder().encode(stage.system).length}</p>
     <details><summary>{t('请求详情', 'Request details')}</summary><p>{run.workflowId} · {run.inputVersion}</p><dl><dt>runId</dt><dd><code>{run.runId}</code></dd><dt>invocationId</dt><dd><code>{stage.invocationId}</code></dd>
       <dt>requestDigest</dt><dd><code>{stage.requestDigest}</code></dd><dt>inputDigest</dt><dd><code>{stage.inputDigest}</code></dd>
@@ -115,7 +120,8 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
       if (native) setPhase('result');
       setError(controller.signal.aborted ? t('已请求取消。请检查提炼记录，不要重新派发未知结果。', 'Cancellation requested. Inspect extraction history; do not redispatch an unknown outcome.')
         : cause instanceof Error && cause.message === 'knowledge_conflict' ? t('来源、授权范围或任务有变化，请重新预览或读取现有日志。', 'The source, scope or run changed. Preview again or inspect the existing journal.')
-          : t('未能完成。请核对已配置来源、选区、保存位置及模型设置。', 'Could not complete. Check configured sources, selection, destination and model settings.'));
+          : cause instanceof Error && cause.message === 'knowledge_capacity_exceeded' ? t('本次来源超出可完整处理的范围。请关闭窗口，重新选择较小的完整来源范围。', 'This source selection exceeds the processing limit. Close this dialog and choose a smaller, complete range.')
+            : t('未能完成。请核对已配置来源、选区、保存位置及模型设置。', 'Could not complete. Check configured sources, selection, destination and model settings.'));
     } finally { if (native && controller.signal.aborted) { setPhase('result'); setConfirmed(false); } if (active.current === controller) { active.current = null; setBusy(false); } }
   }
   async function conversationPreview(next: ConversationScope, signal: AbortSignal, indexes?: number[], root = workspace) {
@@ -167,6 +173,7 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
     } catch { setError(t('请填写已配置的来源与有效选区，例如 1-20,30-40。', 'Choose a configured source and a valid range, for example 1-20,30-40.')); }
   }
   const locked = busy || ['captured', 'prepared', 'result'].includes(phase);
+  const completedWindows = run?.phases.filter(stage => stage.stageKind === 'body_window' && stage.state === 'completed').length ?? 0;
   return <Modal centered title={t('选择来源并提炼知识', 'Choose sources and extract knowledge')} open width={760} onCancel={() => { active.current?.abort(); onClose(); }}
     styles={{ body: { maxHeight: '68vh', overflow: 'auto', overscrollBehavior: 'contain' } }} footer={<Space wrap>
       {busy ? <Button onClick={() => active.current?.abort()}>{t('请求取消', 'Request cancellation')}</Button> : <Button onClick={onClose}>{t('关闭', 'Close')}</Button>}
@@ -232,9 +239,11 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
         {phase === 'captured' && <details><summary>{t('同一来源的任务复用与新任务', 'Reuse this source set or create an independent run')}</summary><Checkbox checked={freshRun} disabled={busy} onChange={event => setFreshRun(event.target.checked)}>{t('明确新建独立任务；默认会复用同一来源集的既有任务，失败或未知结果不会自动重发。', 'Explicitly create an independent run. By default the same source set reuses its existing run; failed or unknown outcomes are not redispatched.')}</Checkbox></details>}</>}
       {capture && kind !== 'conversation' && capture.sources.map(({ snapshot }) => <SourceUpdates key={`${snapshot.snapshotId}/${snapshot.sourceVersion}`}
         source={{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }} snapshot={snapshot} workspace={workspace} lang={lang} busy={busy} run={work}/>)}
+      {run?.bodyWindowCount !== undefined && <p role="status">{t(`分段取证进度 ${completedWindows}/${run.bodyWindowCount}。全部完成后在本地汇整并保存候选正文。`,
+        `Source windows completed ${completedWindows}/${run.bodyWindowCount}. After the final window, candidate bodies are consolidated and saved locally.`)}</p>}
       {phase === 'prepared' && run && <PreparedGenerationConfirmation key={run.preparedStage?.requestDigest} run={run} lang={lang} confirmed={confirmed} onConfirmed={setConfirmed}/>}
       {run && !!run.bodies.length && <><p>{t(`已保存 ${run.bodies.length} 条候选正文，内容仍待核对。`, `${run.bodies.length} candidate bodies are saved and await review.`)}</p>{run.bodies.map(body => onReview ? <Button key={body.knowledgeId} disabled={busy} onClick={() => void work(signal => onReview(workspace, body.knowledgeId, signal))}>{t('核对已保存正文', 'Review saved content')}</Button> : <Link key={body.knowledgeId} href={`${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id: body.knowledgeId })}`} onClick={onClose}>{t('核对已保存正文', 'Review saved content')}</Link>)}</>}
-      {phase === 'result' && <Alert type={run?.status === 'completed' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('正文已保存，可开始使用；内容仍待核对，来源复核和实体关联可稍后按需进行。', 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.') : t('本轮未生成可保存正文；不代表来源已核验或没有价值。', 'No content was saved. This does not establish source verification or lack of value.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段已保存；准备下一阶段后，仍需核对完整请求。', 'This stage is saved. Prepare the next stage and inspect its complete request.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
+      {phase === 'result' && <Alert type={run?.status === 'completed' || run?.nextAction === 'prepare_next_stage' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('正文已保存，可开始使用；内容仍待核对，来源复核和实体关联可稍后按需进行。', 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.') : t('本轮未生成可保存正文；不代表来源已核验或没有价值。', 'No content was saved. This does not establish source verification or lack of value.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段结果已归档；准备下一阶段后，仍需核对完整请求。', 'This stage is archived. Prepare the next stage and inspect its complete request.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
     </div>
   </Modal>;
 }

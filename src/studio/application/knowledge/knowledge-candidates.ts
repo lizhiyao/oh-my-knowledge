@@ -57,6 +57,7 @@ function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchive
     ...(nextAction === 'continue_stage' && prepared?.state === 'prepared' ? { preparedStage: prepared } : {}), schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
     executor: journal.executor, model: journal.model,
     ...frozenSourceMetadata(journal), archiveChecks, archiveVerification, bodies: journal.bodies,
+    ...(journal.bodyPlan ? { bodyWindowCount: journal.bodyPlan.windows.length } : {}),
     phases: journal.stages.map(s => ({ stageKind: s.stageKind, state: s.state, invocationId: s.invocationId, profileId: s.profileId,
       promptVersion: s.promptVersion, wireId: s.wireId, ...(s.outcomeRef ? { outcomeRef: s.outcomeRef } : {}), committed: s.committed,
       issues: s.issues, producerId: s.producer.producerId, producerRevision: s.producer.producerRevision, rejectedCount: s.rejected?.length ?? null })),
