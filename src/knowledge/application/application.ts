@@ -63,8 +63,7 @@ export class KnowledgeApplication {
         phases: j.stages.map(s => ({ stageKind: s.stageKind, state: s.state, rejected: s.rejected?.length ?? null, issues: s.issues })) })),
       unsupported: inventory.unsupported, unavailable: inventory.unavailable, archiveChecks: inventory.archiveChecks, semanticQuality: 'not_assessed' as const };
   }
-  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal,
-    decision?: SourceCoverageDecisionRef) { return this.generation.prepareGeneration(sources, model, runId, signal, decision); }
+  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) { return this.generation.prepareGeneration(sources, model, runId, signal); }
   prepareSourceReview(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
     ledgerRef?: SourceLedgerRef, runId?: string, signal?: AbortSignal) {
     return this.generation.prepareSourceReview(sources, bodyRefs, model, ledgerRef, runId, signal);

@@ -9,7 +9,7 @@
 | 能力 | 可用边界 |
 |---|---|
 | 知识库、载体生成、持续修订与变化核对的核心流程 | 从已发布的 `1.0.0-beta.14` 开始提供；Beta.13 不包含该维护界面。 |
-| Source3 项目／轨迹选区、逐请求确认的来源清单／正文／覆盖／关联五阶段生成、独立派生关联、当前日志及显式副本迁移 | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
+| Source3 项目／轨迹选区、两阶段正文生成、独立来源复核及关联重建、当前日志和显式副本迁移 | 本指南说明当前 main；已发布 Beta.14 不包含这些后续能力。使用当前源码构建，并在后续发行时核对发布说明。 |
 | 按任务 `retrieve`、text v2 阅读与官方 Skill 的已有知识维护分支 | 当前 main；已发布 Beta.14 没有 retrieve/text v1 或 v2，不能只按相同包版本号判断能力。 |
 | 读取重试、保存恢复与 CLI 操作指引的后续修复 | 同样以当前 main 为准；不把已发布 Beta.14 当作修复完成的证据。 |
 
@@ -103,7 +103,7 @@ omk observe knowledge record-use --workspace ./knowledge --input ./use-feedback.
 
 ### 逐阶段提炼与项目待办 {#automatic-extraction}
 
-当前构建只提供显式逐阶段提炼，不再开启对话自动调度。旧 auto3 授权、调度、预约和 unknown claim 保留原件，在独立迁移中只归档，不升级为五阶段许可；迁移后也不能重新开启自动模式。预览／开启入口拒绝，状态说明 `explicit_stages_required`，停止或关闭不改写旧历史。
+当前构建只提供显式逐阶段提炼，不再开启对话自动调度。旧 auto3 授权、调度、预约和 unknown claim 保留原件，在独立迁移中只归档，不升级为新流程许可；迁移后也不能重新开启自动模式。预览／开启入口拒绝，状态说明 `explicit_stages_required`，停止或关闭不改写旧历史。
 
 使用“提炼整条对话”或“选择来源并提炼知识”，逐阶段核对完整请求及覆盖决定。知识待办继续汇集候选，明确刷新或同工作区维护事件更新显示，不自动保留知识、决定跨窗身份或改写载体。
 
@@ -163,19 +163,19 @@ omk observe knowledge capture --workspace ./knowledge --scope ./scope.json --inp
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
-omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <ledger-request-digest> --json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <draft-request-digest> --json
 ```
 
-默认按五阶段明确执行：**来源清单 → 未核验写作稿 → 有据正文 → 来源覆盖 → 关联**。准备不调用模型。读完整 prepared `system`、`input`、模型、producer 和 `requestDigest`；`generate` 只发送首个来源清单请求，捕获同意不等于发送同意。原始 envelope 与宿主根留在本地，发送选定文本、可携带归因与限制。清单只是可错的模型建议，不是 Gold，也不授权丢掉未列出的来源含义。
+默认只执行两阶段：**未核验写作稿 → 有据正文**。准备不调用模型。核对完整 prepared `system`、`input`、模型、producer 和 `requestDigest`；`generate` 只发送写作稿请求，捕获同意不等于发送同意。正文直接回完整原 Source3 取证，不依赖来源清单。
 
-清单完成后，以同一 run 和精确来源准备、确认未核验写作稿，再准备、确认有据正文，最后为来源覆盖重复下面一组命令；每次核对新准备的完整请求，使用当时的 generation／digest：
+写作稿完成后，以同一 run 和精确来源准备有据正文，核对完整请求后使用当时的 generation／digest 单独确认：
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --run-id <run-id> --executor codex --model <model> --json > next-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <prepared-stage-digest> --json
 ```
 
-每阶段只 claim 一次，完整返回先归档再解码。接纳正文保持**待审且未保留**；正文零条也继续覆盖，不造占位正文。覆盖独立核对全部原来源、清单 item／facet、排除、待定与正文段，也可发现清单自己的错误或遗漏。模型 all-covered／无 finding 不是实际批准。
+每阶段只 claim 一次，完整返回先归档再解码。正文保存即完成生成，保持**待审且未保留**；零正文也正常结束，不造占位。需要覆盖复核或实体关联时，另按[来源复核与重建](#source-review-corrections)选择完整原来源和精确正文，先独立清单，再覆盖；模型 all-covered／无 finding 不是实际批准。
 
 读取精确分析，再记录实际决定：
 
@@ -188,10 +188,10 @@ omk observe knowledge review-source-coverage --workspace ./knowledge --input ./c
 
 `coverage-decision.json` 是完整 `record_decision` command，不带 operation wrapper 或客户端自报 actor。从读回结果复制精确 coverage／ledger／body／SourceSet 绑定、generation／head 与未决 ID，逐项给出处置、理由和限制，选择 `proceed_with_limits`、`needs_revision` 或 `stop`。缺少可信实际操作者上下文会拒绝写入，不自行伪造 actor。`revoke_decision` command 指定先前 event，撤销时保留历史。字段见[决定契约](../../specs/knowledge/knowledge-source-review.md#decisions)。
 
-允许继续时，将精确 `sourceCoverageDecisionRef` 与 `sources` 一并放入 `association-input.json`，以同一 run 准备关联，再单独确认发送：
+独立来源复核的实际决定允许继续时，将精确 `sourceCoverageDecisionRef` 与显式选择的 `bodyRefs` 数组放入 `association-input.json`，用新 run 准备关联，再单独确认发送：
 
 ```bash
-omk observe knowledge prepare-generation --workspace ./knowledge --input ./association-input.json --run-id <run-id> --executor codex --model <model> --json > association-request.json
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-input.json --run-id <run-id> --executor codex --model <model> --json > association-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <association-request-digest> --json
 ```
 
@@ -209,7 +209,7 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow6／journal Schema6 保留来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作仍为 input1／wire1／prompt1；正文 input4／wire3／prompt19 绑定同次精确草稿、原来源和清单；清单使用独立的 `knowledge-source-ledger-input/v1`、wire3／prompt4。两者交付完整宿主编号原文，响应逐字回显 passageIndexDigest。只有不可变 Source3 提供依据，草稿和清单都是可错输入，不是知识接受意见。覆盖保留 manifest／input2 及 wire3／prompt6，关联保留阶段 input1／wire3／prompt8。Source3／正文3／实体2／关联2／reviews1 和清单／覆盖历史1 保持。每个模型请求分别准备、确认、claim 和归档，恢复零模型。仅用新工作区或显式 workflow5→6 独立副本迁移，保全旧原件及匹配构建；不将 journal5 或旧原生 profile 解码为新流程。新正文仍待审，历史测量不回算，流程准入不证明语义质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow7／journal Schema7 仅执行未核验写作稿（body_draft）→ 有据正文，保存正文后完成，仍为待审候选。写作保持 input1／wire1／prompt1；正文改为 input5／wire3／prompt20，只绑定同次精确草稿及完整 Source3，不再依赖清单。正文使用完整宿主编号原文并回显 passageIndexDigest。来源清单、覆盖和实际决定改由独立 prepare-source-review／review-source-coverage 操作按需完成；关联重建以 bodyRefs 数组显式选择多篇不同知识的精确正文，每个 knowledgeId 仅选一个修订，并携带匹配的 sourceCoverageDecisionRef，保持完整来源、共享实体目录及决定前置校验。清单 input1／wire3／prompt4、覆盖 input2／wire3／prompt6、关联阶段 input1／wire3／prompt8 及 Source3／正文3／实体2／关联2／reviews1／来源分析历史1 均保持。每请求单独准备、确认、claim 和归档，恢复零模型。使用新工作区或 knowledge-workflow-to7 显式独立副本迁移；旧日志、分析、自动许可原样归档，保留旧目录及匹配构建，不用新 reader 续跑或重算旧测量。流程完成不等于内容核实、图谱质量或实际收益通过。
 
 旧 wire2／prompt3 及 wire3／prompt4—5 覆盖仍可被动读取，显示 `originalVerification=not_verified`；在当前构建中不能用于新决定、关联准备或派发 claim，不提供旧 wire decoder 或自动迁移。保留原工作区和匹配可安装构建，用于旧 profile 执行与回退。要使用当前覆盖，先创建完整、独立的工作区副本，再按[修订后重新查漏](#source-review-corrections)，明确使用新的 review-run UUID、完整原来源、匹配清单及精确 bodyRefs，准备新的 wire3／prompt6 分析并记录实际决定。复用已完成的匹配清单／正文；原件／请求 custody 不能重验则停止。不修补旧 raw 或改判失败运行；该边界不表示已经发版。
 
@@ -322,16 +322,16 @@ OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若�
 
 ## 迁移旧工作区 {#workspace-migration}
 
-### workflow5 迁入独立 workflow6 副本 {#workflow-migration}
+### 旧流程迁入独立 workflow7 副本 {#workflow-migration}
 
 先保留旧目录和匹配旧安装包，停止旧目录写入。仅支持健康的 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据；全部字节、身份、历史、既有保留和复核意见保持，但不变成来源覆盖批准。包含 library、carriers、entity-links 等其它内容时保留旧目录并报告 unsupported，不静默丢弃或改指向。
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./workflow5 --workspace ./workflow6 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
+omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow7 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
 omk observe knowledge migrate-workflow --input ./workflow-plan.json --confirm-plan <plan-digest> --json
 ```
 
-计划不写盘；核对实际目标、完整原件清单、摘要、旧包、容量和限制后，应用同一固定计划及摘要。旧 journal5（含 outcomes）、source-ledgers、source-coverage、auto-extraction、旧 migration／marker 只归档，不恢复旧调用或自动额度。目标须独立且不相交；步骤／回执中断后只续同计划，未知临时文件停止核实，完成后新增／改删不被覆盖或复活。新五阶段由显式请求启动；回退用旧目录和匹配构建。Source2 的来源引用转换仍走下面的独立路径，不将历史测量升级。
+计划不写盘；核对实际目标、完整原件清单、摘要、旧包、容量和限制后，应用同一固定计划及摘要。旧 journal5／6（含 outcomes）、source-ledgers、source-coverage、auto-extraction、旧 migration／marker 只归档，不恢复旧调用或自动额度。目标须独立且不相交；步骤／回执中断后只续同计划，未知临时文件停止核实，完成后新增／改删不被覆盖或复活。新两阶段正文与独立复核均由显式请求启动；回退用旧目录和匹配构建。Source2 的来源引用转换仍走下面的独立路径，不将历史测量升级。
 
 ### 关联 Schema 1 迁入独立副本 {#association-migration}
 
@@ -381,16 +381,16 @@ omk observe knowledge continue-stage --workspace ./knowledge --id <review-run-id
 
 没有 ledgerRef 时，上面首次 continue 发送清单；清单完成后用同一输入及 review-run-id 再次 `prepare-source-review`，核对并确认覆盖阶段。有匹配 ledgerRef 时只需覆盖请求。
 
-读回分析并按前述 `review-source-coverage` 记录新决定；撤销时以完整 `revoke_decision` command 指定 targetEventId、理由及 CAS／幂等字段。准备重建的 `association-decision.json` 仅含完整 `sourceCoverageDecisionRef`，由该决定定位完整来源。以下两次命令沿用同一明确新 run UUID：
+读回分析并按前述 `review-source-coverage` 记录新决定；撤销时以完整 `revoke_decision` command 指定 targetEventId、理由及 CAS／幂等字段。准备重建的 `association-decision.json` 包含显式选择的精确 `bodyRefs` 数组（每个 knowledgeId 至多一个修订）和完整 `sourceCoverageDecisionRef`，由该决定定位完整来源。以下两次命令沿用同一明确新 run UUID：
 
 ```bash
-omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-decision.json --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
-omk observe knowledge rebuild-associations --workspace ./knowledge --input ./association-decision.json --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-decision.json --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
+omk observe knowledge rebuild-associations --workspace ./knowledge --input ./association-decision.json --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
 ```
 
 重建只创建独立待审投影，不重新生成正文。手工 `correct-entities`／`apply-associations` 保持现有明确维护路径，不伪造来源覆盖批准。
 
-当前 journal6 位于 `generation-journals/<run-id>.json`，完整原件位于 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。journal5 及更早／旧 typed 或来源格式明确 unsupported，不当作健康空数据。保留原目录和匹配构建；按[流程副本](#workflow-migration)、[正文迁移](../../specs/knowledge/knowledge-domain-model.md#body-migration)或[来源迁移](#source-migration)的对应边界处理，不恢复旧 claim。
+当前 journal7 位于 `generation-journals/<run-id>.json`，完整原件位于 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。journal5 及更早／旧 typed 或来源格式明确 unsupported，不当作健康空数据。保留原目录和匹配构建；按[流程副本](#workflow-migration)、[正文迁移](../../specs/knowledge/knowledge-domain-model.md#body-migration)或[来源迁移](#source-migration)的对应边界处理，不恢复旧 claim。
 
 ### 核对来源变化 {#source-updates}
 

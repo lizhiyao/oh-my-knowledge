@@ -27,7 +27,7 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       JSON.stringify({ sources: journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })),
         ...(journal.mode === 'review_sources' ? { bodyRefs: journal.bodies, ...(journal.ledgerRef ? { ledgerRef: journal.ledgerRef } : {}) } : {}) }, null, 2),
       knowledgeCommand(workspace, journal.mode === 'review_sources' ? 'prepare-source-review' : 'prepare-generation', { input: 'next-stage.json', 'run-id': journal.runId, executor: journal.executor, model: journal.model, json: true }));
-    if (result.nextAction === 'review_source_coverage') lines.push(t('来源核对已保存，仍需实际操作者逐项复核并记录决定。全部 covered 不会自动准备关联。', 'Source coverage is saved. An actual operator must inspect every unresolved item and record a decision; all-covered does not automatically prepare associations.'),
+    if (journal.mode === 'review_sources' && journal.status === 'completed' && journal.coverageRef) lines.push(t('来源核对已保存，仍需实际操作者逐项复核并记录决定。全部 covered 不会自动准备关联。', 'Source coverage is saved. An actual operator must inspect every unresolved item and record a decision; all-covered does not automatically prepare associations.'),
       ...(journal.ledgerRef ? [knowledgeCommand(workspace, 'source-ledger', { id: journal.ledgerRef.ledgerId, revision: journal.ledgerRef.revisionId, json: true })] : []),
       ...(journal.coverageRef ? [knowledgeCommand(workspace, 'source-coverage-status', { id: journal.coverageRef.coverageId, revision: journal.coverageRef.revisionId, json: true })] : []),
       knowledgeCommand(workspace, 'review-source-coverage', { input: 'source-decision.json', json: true }));

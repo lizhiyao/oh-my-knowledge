@@ -24,8 +24,7 @@ import { sourceSetPreimage, type SourceRef } from '../../src/knowledge/sources.j
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, generationTextDigest, type BodyGenerationResponseSchema, type AssociationGenerationResponse } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { SOURCE_REVIEW_INPUT_VERSION, type sourceLedgerInput, type SourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
-import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE,
-  type SourceLedgerResponseSchema, type SourceCoverageResponseSchema } from '../../src/knowledge/extraction/source-review-wire.js';
+import { type SourceLedgerResponseSchema, type SourceCoverageResponseSchema } from '../../src/knowledge/extraction/source-review-wire.js';
 import { KNOWLEDGE_RECORD_SCOPE_POLICY } from '../../src/knowledge/extraction/knowledge-semantic-policy.js';
 import { configuredKnowledgeGenerationModel, type KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import { createCodexArchiveProducer } from '../../src/executors/openai/codex/archive.js';
@@ -33,7 +32,7 @@ import type { ExecResult } from '../../src/executors/contracts/result.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const stages = ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'] as const;
+const stages = ['body_draft', 'body', 'source_ledger', 'source_coverage', 'association'] as const;
 const testReviewActor = { actorKind: 'agent' as const, actorId: 'explicit-test-source-reviewer', executionRef: 'test:actual-review-operation' };
 type State = ReturnType<BodyGenerationApplication['resume']>;
 type CoverageResponse = z.infer<typeof SourceCoverageResponseSchema>;
@@ -109,15 +108,23 @@ async function dispatch(f: Fixture, prepared: State, model = f.model, options: K
   return f.app.continueStage(prepared.journal.runId, prepared.journal.generation, model, undefined,
     { ...options, confirmedRequestDigest: prepared.journal.stages.at(-1)!.requestDigest });
 }
-/** Stops at coverage. This helper never records a decision or starts association. */
-async function runAnalyses(f: Fixture, model = f.model, runId?: string, refs: SourceRef[] = [sourceRef(f.window)]) {
+async function runBodies(f: Fixture, model = f.model, runId?: string, refs: SourceRef[] = [sourceRef(f.window)]) {
   let state = f.app.prepareGeneration(refs, model, runId);
-  for (const stage of stages.slice(0, 4)) {
+  for (const stage of ['body_draft', 'body']) {
     if (state.journal.stages.at(-1)!.stageKind !== stage) state = f.app.prepareGeneration(refs, model, state.journal.runId);
     state = await dispatch(f, state, model);
     if (state.journal.status === 'failed') return state;
   }
   return state;
+}
+/** Review is explicitly separate from completed body generation; never supplies a decision. */
+async function runAnalyses(f: Fixture, model = f.model, runId?: string, refs: SourceRef[] = [sourceRef(f.window)]) {
+  const body = await runBodies(f, model, runId, refs);
+  if (body.journal.status === 'failed') return body;
+  let state = f.app.prepareSourceReview(refs, body.journal.bodies, model);
+  state = await dispatch(f, state, model);
+  if (state.journal.status === 'failed') return state;
+  return dispatch(f, f.app.prepareSourceReview(refs, body.journal.bodies, model, undefined, state.journal.runId), model);
 }
 /** An explicit actual test actor opinion, never a model callback or an implicit all-covered approval. */
 function recordActualTestDecision(f: Fixture, state: State, kind: 'proceed_with_limits' | 'needs_revision' | 'stop'): SourceCoverageDecisionRef {
@@ -133,8 +140,8 @@ function recordActualTestDecision(f: Fixture, state: State, kind: 'proceed_with_
 async function generateWithActualTestReview(f: Fixture, model = f.model, runId?: string) {
   const analyses = await runAnalyses(f, model, runId);
   const decision = recordActualTestDecision(f, analyses, 'proceed_with_limits');
-  const prepared = f.app.prepareGeneration([sourceRef(f.window)], model, analyses.journal.runId, undefined, decision);
-  return prepared.journal.status === 'completed' ? prepared : dispatch(f, prepared, model);
+  const prepared = f.app.prepareAssociationRebuild(analyses.journal.bodies, model, decision);
+  return dispatch(f, prepared, model);
 }
 function revokeActualTestDecision(f: Fixture, decision: SourceCoverageDecisionRef) {
   const status = f.app.sourceCoverageStatus(decision.coverageRef.coverageId, decision.coverageRef.revisionId);
@@ -143,13 +150,18 @@ function revokeActualTestDecision(f: Fixture, decision: SourceCoverageDecisionRe
 }
 async function preparePhase(f: Fixture, kind: GenerationStage['stageKind']) {
   let state = f.app.prepareGeneration([sourceRef(f.window)], f.model);
-  for (const stage of stages) {
+  for (const stage of ['body_draft', 'body'] as const) {
     if (stage === kind) return state;
     state = await dispatch(f, state);
-    const decision = stage === 'source_coverage' ? recordActualTestDecision(f, state, 'proceed_with_limits') : undefined;
-    state = f.app.prepareGeneration([sourceRef(f.window)], f.model, state.journal.runId, undefined, decision);
+    if (stage === 'body_draft') state = f.app.prepareGeneration([sourceRef(f.window)], f.model, state.journal.runId);
   }
-  throw new Error('Unknown test phase.');
+  state = f.app.prepareSourceReview([sourceRef(f.window)], state.journal.bodies, f.model);
+  if (kind === 'source_ledger') return state;
+  state = await dispatch(f, state);
+  state = f.app.prepareSourceReview([sourceRef(f.window)], state.journal.bodies, f.model, undefined, state.journal.runId);
+  if (kind === 'source_coverage') return state;
+  state = await dispatch(f, state);
+  return f.app.prepareAssociationRebuild(state.journal.bodies, f.model, recordActualTestDecision(f, state, 'proceed_with_limits'));
 }
 /** A real revision adds a second source, so it needs its own source-ledger/coverage analyses and actual review. */
 async function prepareTwoSourceRebuildWithActualReview(f: Fixture) {
@@ -169,48 +181,42 @@ async function prepareTwoSourceRebuildWithActualReview(f: Fixture) {
   f.association.associations = [{ bodyKey: 'b0', segmentDecisions: [f.window, second].map((source, index) => ({ segmentId: `s${index + 1}`, decisionKind: 'mapped',
     entityRefs: [{ sourceKey: `s${sources.findIndex(value => value.snapshotId === source.snapshotId)}`, entityId: 'e1', mentionKeys: ['m1'] }], reason: 'Each paragraph discusses its own exact source object.' })), typedRelations: null, issues: [] }];
   const bodyFile = join(f.root, 'items', readdirSync(join(f.root, 'items')).find(name => name.endsWith('.json'))!);
-  return { ref, second, bodyFile, bodyBytes: readFileSync(bodyFile), prepared: f.app.prepareAssociationRebuild(ref, f.model, decision) };
+  return { ref, second, bodyFile, bodyBytes: readFileSync(bodyFile), prepared: f.app.prepareAssociationRebuild([ref], f.model, decision) };
 }
 const archivePath = (f: Fixture, j: GenerationJournal, stage: GenerationStage) => join(f.root, 'generation-journals', 'outcomes', j.runId, `${stage.invocationId}.json`);
 
 describe('source-first generation and zero-model recovery', () => {
-  it('prepares exact five-stage requests separately, requires an actual decision, and replays completed identity with zero calls', async () => {
+  it('completes canonical generation after two separately confirmed requests, without review or association calls', async () => {
     const f = setup(), refs = [sourceRef(f.window)], prepared = f.app.prepareGeneration(refs, f.model);
     expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
-    expect(prepared.journal).toMatchObject({ schemaVersion: 6, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
-      runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'source_ledger', state: 'prepared', system: SOURCE_LEDGER_GENERATION_PROFILE.system }] });
+    expect(prepared.journal).toMatchObject({ schemaVersion: 7, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
+      runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'body_draft', state: 'prepared', system: WRITING_DRAFT_PROFILE.system }] });
     const input = JSON.parse(prepared.journal.stages[0].input);
-    expect(input.manifest.sources).toMatchObject([{ sourceKey: 's0', sourceRef: refs[0] }]);
-    expect(input.units.map((unit: { unitKind: string }) => unit.unitKind)).toEqual(['source_metadata', 'excerpt_text']);
-    expect(prepared.journal.stages[0].input).not.toContain(f.root); expect(prepared.journal.stages[0].input).not.toContain('rawUnits');
+    expect(input.sources[0].source).toMatchObject(refs[0]);
+    expect(input.ledger).toBeUndefined(); expect(prepared.journal.stages[0].input).not.toContain(f.root);
     for (const confirmedRequestDigest of [undefined, `sha256:${'0'.repeat(64)}`]) {
       await expect(f.app.generate(refs, f.model, undefined, undefined, { confirmedRequestDigest })).rejects.toThrow('Confirm the exact');
       expect(f.invoke).not.toHaveBeenCalled(); expect(f.app.inspect(prepared.journal.runId).journal).toEqual(prepared.journal);
     }
     let state = await f.app.generate(refs, f.model, undefined, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
-    expect(state.journal.stages).toHaveLength(1); expect(state.journal.ledgerRef).toBeDefined(); expect(state.journal.bodies).toEqual([]);
+    expect(state.journal.stages).toHaveLength(1); expect(state.journal.writingDraftRef).toBeDefined();
+    expect(f.library.list()).toEqual([]); expect(state.journal.ledgerRef).toBeUndefined();
     state = f.app.prepareGeneration(refs, f.model, state.journal.runId);
-    expect(state.journal.stages[1].system).toBe(WRITING_DRAFT_PROFILE.system);
-    expect(JSON.parse(state.journal.stages[1].input).ledger).toBeUndefined();
-    await expect(f.app.continueStage(state.journal.runId, state.journal.generation, f.model, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest })).rejects.toThrow('Confirm the exact');
-    state = await dispatch(f, state); expect(f.library.list()).toHaveLength(0); expect(state.journal.writingDraftRef).toBeDefined();
-    state = f.app.prepareGeneration(refs, f.model, state.journal.runId);
-    expect(JSON.parse(state.journal.stages[2].input).writingDraft).toEqual({ ref: state.journal.writingDraftRef, text: 'Unverified Alpha writing fixture.' });
-    expect(JSON.parse(state.journal.stages[2].input).ledger.ref).toEqual(state.journal.ledgerRef);
-    state = await dispatch(f, state); expect(f.library.list()).toHaveLength(1); expect(state.journal.stages).toHaveLength(3);
-    state = f.app.prepareGeneration(refs, f.model, state.journal.runId); expect(state.journal.stages[3].system).toBe(SOURCE_COVERAGE_GENERATION_PROFILE.system);
+    const bodyInput = JSON.parse(state.journal.stages[1].input);
+    expect(state.journal.stages[1].system).toBe(BODY_GENERATION_PROFILE.system);
+    expect(bodyInput.writingDraft).toEqual({ ref: state.journal.writingDraftRef, text: 'Unverified Alpha writing fixture.' });
+    expect(bodyInput.ledger).toBeUndefined();
+    await expect(f.app.continueStage(state.journal.runId, state.journal.generation, f.model, undefined,
+      { confirmedRequestDigest: prepared.journal.stages[0].requestDigest })).rejects.toThrow('Confirm the exact');
     state = await dispatch(f, state);
-    expect(state.nextAction).toBe('review_source_coverage'); expect(state.journal.stages).toHaveLength(4); expect(f.dispatched).toEqual(stages.slice(0, 4));
-    expect(f.app.sourceCoverageStatus(state.journal.coverageRef!.coverageId).decision.status).toBe('not_reviewed');
-    expect(f.app.prepareGeneration(refs, f.model, state.journal.runId)).toEqual(state); expect(f.dispatched).toHaveLength(4);
-    const decision = recordActualTestDecision(f, state, 'proceed_with_limits');
-    state = f.app.prepareGeneration(refs, f.model, state.journal.runId, undefined, decision);
-    expect(state.journal.sourceCoverageDecisionRef).toEqual(decision); expect(state.journal.stages.at(-1)?.stageKind).toBe('association');
-    state = await dispatch(f, state); expect(state.journal.status).toBe('completed'); expect(f.dispatched).toEqual(stages);
-    const detail = f.library.detail(state.journal.bodies[0].knowledgeId); expect(detail.maintenance).toBeNull();
-    expect(detail.derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
-    expect(f.reopen().inspect(state.journal.runId).nativeOutcomes).toHaveLength(5);
-    expect(await f.app.generate(refs, f.model)).toEqual(f.reopen().resume(state.journal.runId)); expect(f.dispatched).toHaveLength(5);
+    expect(state.journal.status).toBe('completed'); expect(state.nextAction).toBe('none');
+    expect(state.journal.stages).toHaveLength(2); expect(f.dispatched).toEqual(['body_draft', 'body']);
+    expect(state.journal.coverageRef).toBeUndefined(); expect(state.journal.sourceCoverageDecisionRef).toBeUndefined();
+    const detail = f.library.detail(state.journal.bodies[0].knowledgeId);
+    expect(detail.maintenance).toBeNull(); expect(detail.derivedAssociations.status).toBe('absent');
+    expect(f.reopen().inspect(state.journal.runId).nativeOutcomes).toHaveLength(2);
+    expect(f.app.prepareGeneration(refs, f.model, state.journal.runId)).toEqual(state);
+    expect(await f.app.generate(refs, f.model)).toEqual(f.reopen().resume(state.journal.runId)); expect(f.dispatched).toHaveLength(2);
   });
 
   it('reviews zero saved bodies against the full ledger and does not invent a body, approval or association call', async () => {
@@ -220,8 +226,9 @@ describe('source-first generation and zero-model recovery', () => {
     const status = f.app.sourceCoverageStatus(state.journal.coverageRef!.coverageId);
     expect(status.revision.data.bodyRefs).toEqual([]); expect(status.unresolvedIds!.length).toBeGreaterThan(0); expect(status.decision.status).toBe('not_reviewed');
     const decision = recordActualTestDecision(f, state, 'proceed_with_limits');
-    const done = f.app.prepareGeneration([sourceRef(f.window)], f.model, state.journal.runId, undefined, decision);
-    expect(done.journal.status).toBe('completed'); expect(done.journal.stages).toHaveLength(4); expect(f.dispatched).toHaveLength(4);
+    expect(state.journal.status).toBe('completed'); expect(state.journal.stages).toHaveLength(2);
+    expect(() => f.app.prepareAssociationRebuild([{ knowledgeId: randomUUID(), revisionId: randomUUID(), bodyDigest: `sha256:${'0'.repeat(64)}` }], f.model, decision)).toThrow();
+    expect(f.dispatched).toHaveLength(4);
   });
 
   it.each(['source_ledger', 'source_coverage'] as const)('archives and rejects a %s response that tries to self-approve instead of silently coercing it', async kind => {
@@ -232,7 +239,7 @@ describe('source-first generation and zero-model recovery', () => {
     expect(failed.journal.status).toBe('failed'); expect(failed.journal.stages.at(-1)?.issues.join(' ')).toContain('wire rejected');
     expect(f.reopen().inspect(failed.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: raw } });
     const calls = f.dispatched.length; expect(f.app.resume(failed.journal.runId).journal).toEqual(failed.journal);
-    expect(await f.app.generate([sourceRef(f.window)], f.model)).toEqual(f.app.resume(failed.journal.runId)); expect(f.dispatched).toHaveLength(calls);
+    expect(f.app.prepareSourceReview([sourceRef(f.window)], failed.journal.bodies, f.model, undefined, failed.journal.runId)).toEqual(f.app.resume(failed.journal.runId)); expect(f.dispatched).toHaveLength(calls);
     expect(f.app.prepareGeneration([sourceRef(f.window)], f.model, randomUUID()).journal.runId).not.toBe(failed.journal.runId);
   });
 
@@ -242,7 +249,7 @@ describe('source-first generation and zero-model recovery', () => {
     await expect(dispatch(f, prepared)).rejects.toThrow('lost native');
     const reopened = f.reopen(), state = reopened.resume(prepared.journal.runId);
     expect(state.nextAction).toBe('outcome_unknown_do_not_redispatch');
-    expect(f.ports.journals.list().archiveChecks.at(-1)).toMatchObject({ invocationId: prepared.journal.stages.at(-1)!.invocationId, archiveStatus: 'unknown', verificationStatus: 'not_verified' });
+    expect(f.ports.journals.list().archiveChecks.find(check => check.invocationId === prepared.journal.stages.at(-1)!.invocationId)).toMatchObject({ invocationId: prepared.journal.stages.at(-1)!.invocationId, archiveStatus: 'unknown', verificationStatus: 'not_verified' });
     await expect(reopened.continueStage(state.journal.runId, state.journal.generation, f.model)).rejects.toThrow('never-claimed');
     expect(f.dispatched).toHaveLength(before + 1);
   });
@@ -307,9 +314,9 @@ describe('source-first generation and zero-model recovery', () => {
     expect(f.reopen().inspect(result.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: JSON.stringify(f.body) } });
   });
 
-  it('refuses a new workflow6 run in an unmigrated journal5 workspace without changing the old claim', () => {
+  it('refuses a new workflow7 run in an unmigrated journal6 workspace without changing the old claim', () => {
     const f = setup(), runId = randomUUID(); mkdirSync(join(f.root, 'generation-journals'));
-    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 5, unknownClaim: true });
+    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 6, unknownClaim: true });
     writeFileSync(path, bytes);
     expect(() => f.app.prepareGeneration([sourceRef(f.window)], f.model)).toThrow('explicit independent-copy');
     expect(readFileSync(path, 'utf8')).toBe(bytes); expect(f.invoke).not.toHaveBeenCalled();
@@ -318,9 +325,9 @@ describe('source-first generation and zero-model recovery', () => {
   it('retains a returned native outcome under archive backpressure and resumes without another dispatch', async () => {
     const f = setup(), prepared = f.app.prepareGeneration([sourceRef(f.window)], f.model);
     vi.spyOn(f.ports.journals, 'archive').mockImplementationOnce(() => { throw new Error('archive disk failure'); });
-    await expect(dispatch(f, prepared)).rejects.toThrow('archive disk failure'); expect(f.dispatched).toEqual(['source_ledger']);
+    await expect(dispatch(f, prepared)).rejects.toThrow('archive disk failure'); expect(f.dispatched).toEqual(['body_draft']);
     expect(f.library.list()).toEqual([]); expect(f.ports.ledgers.read(randomUUID())).toBeUndefined();
-    const recovered = f.app.resume(prepared.journal.runId); expect(recovered.journal.ledgerRef).toBeDefined(); expect(recovered.journal.bodies).toEqual([]);
+    const recovered = f.app.resume(prepared.journal.runId); expect(recovered.journal.writingDraftRef).toBeDefined(); expect(recovered.journal.bodies).toEqual([]);
     expect(f.reopen().inspect(recovered.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { opaqueNestedField: { preserved: ['original', 1] } } });
     expect(f.dispatched).toHaveLength(1);
   });
@@ -333,7 +340,7 @@ describe('source-first generation and zero-model recovery', () => {
     const prepared = await preparePhase(f, 'association'), calls = f.dispatched.length;
     await expect(dispatch(f, prepared, f.model, { beforeDispatch() { throw new Error('phase quota exhausted'); } })).rejects.toThrow('phase quota exhausted');
     const state = f.app.inspect(prepared.journal.runId); expect(state.journal.stages.at(-1)?.state).toBe('prepared'); expect(f.dispatched).toHaveLength(calls);
-    expect(f.ports.journals.list().archiveChecks.at(-1)).toMatchObject({ archiveStatus: 'not_recorded' });
+    expect(f.ports.journals.list().archiveChecks.find(check => check.invocationId === prepared.journal.stages.at(-1)!.invocationId)).toMatchObject({ archiveStatus: 'not_recorded' });
     expect((await dispatch(f, state)).journal.status).toBe('completed');
   });
 
@@ -367,16 +374,36 @@ describe('source-first generation and zero-model recovery', () => {
     const phase = before.journal.stages[0], bytes = state === 'completed' ? readFileSync(archivePath(f, before.journal, phase)) : undefined;
     revokeActualTestDecision(f, decision);
     const reopened = f.reopen();
-    expect(reopened.prepareAssociationRebuild(ref, f.model, decision, before.journal.runId).journal).toEqual(before.journal);
-    expect(await reopened.rebuild(ref, f.model, decision, before.journal.runId)).toEqual(before);
+    expect(reopened.prepareAssociationRebuild([ref], f.model, decision, before.journal.runId).journal).toEqual(before.journal);
+    expect(await reopened.rebuild([ref], f.model, decision, before.journal.runId)).toEqual(before);
     expect(f.dispatched).toHaveLength(calls);
     if (bytes) expect(readFileSync(archivePath(f, before.journal, phase))).toEqual(bytes);
     else expect(before.nextAction).toBe('outcome_unknown_do_not_redispatch');
   });
 
+  it('rejects empty, duplicate or uncovered rebuild bodies before creating another journal or invoking a model', async () => {
+    const f = setup(), state = await runAnalyses(f), decision = recordActualTestDecision(f, state, 'proceed_with_limits');
+    const ref = state.journal.bodies[0], calls = f.dispatched.length, journals = f.ports.journals.list().current.length;
+    for (const bodyRefs of [[], [ref, ref], [{ ...ref, revisionId: randomUUID() }]]) {
+      expect(() => f.app.prepareAssociationRebuild(bodyRefs, f.model, decision)).toThrow(/distinct exact|outside its exact coverage/);
+      expect(f.dispatched).toHaveLength(calls); expect(f.ports.journals.list().current).toHaveLength(journals);
+    }
+    const first = f.library.detail(ref.knowledgeId);
+    const revised = f.library.revise(ref.knowledgeId, ref.revisionId, first.history.generation, {
+      title: first.revision.title, content: first.revision.content,
+      reuseRationale: `${first.revision.reuseRationale} Maintained revision.`,
+    }, 'Authored second revision with the same source evidence.');
+    const revisions = [ref, knowledgeBodyRef(revised.revision)];
+    const prepared = f.app.prepareSourceReview([sourceRef(f.window)], revisions, f.model, state.journal.ledgerRef);
+    const checked = await dispatch(f, prepared), opinion = recordActualTestDecision(f, checked, 'proceed_with_limits');
+    const before = { calls: f.dispatched.length, journals: f.ports.journals.list().current.length };
+    expect(() => f.app.prepareAssociationRebuild(revisions, f.model, opinion)).toThrow('one revision per knowledge identity');
+    expect(f.dispatched).toHaveLength(before.calls); expect(f.ports.journals.list().current).toHaveLength(before.journals);
+  });
+
   it('refuses actorless or needs-revision decisions and requires exact CAS before association preparation', async () => {
     const f = setup(), state = await runAnalyses(f), decision = recordActualTestDecision(f, state, 'needs_revision');
-    expect(() => f.app.prepareGeneration([sourceRef(f.window)], f.model, state.journal.runId, undefined, decision)).toThrow('active nonconflicting');
+    expect(() => f.app.prepareAssociationRebuild(state.journal.bodies, f.model, decision)).toThrow('active nonconflicting');
     const readonly = new BodyGenerationApplication({ ...f.ports, reviewActor: undefined });
     expect(() => recordActualTestDecision({ ...f, app: readonly }, state, 'proceed_with_limits')).toThrow('trusted actual');
     const history = f.ports.coverage.read(state.journal.coverageRef!.coverageId)!;
@@ -391,10 +418,10 @@ describe('source-first generation and zero-model recovery', () => {
     Object.assign(f.body.proposals[0].segments[0].evidence[0],
       passageRange(bodySourcePassages([second, f.window]).index, f.window.excerpts[0].evidenceRef, 'Alpha'));
     const refs = [sourceRef(second), sourceRef(f.window)], state = await runAnalyses(f, f.model, undefined, refs);
-    const reordered = f.app.prepareGeneration([...refs].reverse(), f.model); expect(reordered.journal.runId).toBe(state.journal.runId);
+    const reordered = f.app.prepareGeneration([...refs].reverse(), f.model); expect(reordered.journal.bodies).toEqual(state.journal.bodies);
     const oldDecision = recordActualTestDecision(f, state, 'proceed_with_limits');
     f.association.catalogs = sourceSetPreimage(refs).sources.map((_, index) => ({ sourceKey: `s${index}`, entities: [] }));
-    await dispatch(f, f.app.prepareGeneration(refs, f.model, state.journal.runId, undefined, oldDecision));
+    await dispatch(f, f.app.prepareAssociationRebuild(state.journal.bodies, f.model, oldDecision));
     const original = f.library.detail(state.journal.bodies[0].knowledgeId);
     const draft = { title: original.revision.title, content: structuredClone(original.revision.content), reuseRationale: original.revision.reuseRationale };
     draft.content.segments[0].evidence[0].selection.quote = 'wrong';
@@ -402,18 +429,18 @@ describe('source-first generation and zero-model recovery', () => {
     draft.content = structuredClone(original.revision.content); draft.content.segments[0].text += ' This maintained revision still has no evidence of behavior elsewhere.';
     const revised = f.library.revise(original.revision.knowledgeId, original.revision.revisionId, original.history.generation, draft, 'Explicit bounded revision'), ref = knowledgeBodyRef(revised.revision);
     expect(revised.derivedAssociations.status).toBe('stale');
-    expect(() => f.app.prepareAssociationRebuild(ref, f.model, oldDecision)).toThrow('outside its exact coverage');
+    expect(() => f.app.prepareAssociationRebuild([ref], f.model, oldDecision)).toThrow('outside its exact coverage');
     expect(() => f.app.prepareSourceReview([sourceRef(f.window)], [ref], f.model, state.journal.ledgerRef)).toThrow('manifest mismatch');
     const review = f.app.prepareSourceReview(refs, [ref], f.model, state.journal.ledgerRef);
     expect(review.journal).toMatchObject({ mode: 'review_sources', bodies: [ref], stages: [{ stageKind: 'source_coverage', state: 'prepared' }] });
     const reviewed = await dispatch(f, review), decision = recordActualTestDecision(f, reviewed, 'proceed_with_limits');
     f.association.catalogs = sourceSetPreimage(refs).sources.map((_, index) => ({ sourceKey: `s${index}`, entities: [] }));
-    const rebuild = f.app.prepareAssociationRebuild(ref, f.model, decision), input = JSON.parse(rebuild.journal.stages[0].input);
+    const rebuild = f.app.prepareAssociationRebuild([ref], f.model, decision), input = JSON.parse(rebuild.journal.stages[0].input);
     expect(input.sources.map((source: { source: SourceRef }) => ({ snapshotId: source.source.snapshotId, sourceVersion: source.source.sourceVersion }))).toEqual(sourceSetPreimage(refs).sources);
     const done = await dispatch(f, rebuild); expect(done.journal.status).toBe('completed');
     expect(f.library.detail(ref.knowledgeId, original.revision.revisionId).revision).toEqual(original.revision);
     expect(f.library.detail(ref.knowledgeId).derivedAssociations).toMatchObject({ status: 'available', reviewStatus: 'pending' });
-    expect(f.dispatched).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage', 'association', 'source_coverage', 'association']);
+    expect(f.dispatched).toEqual(['body_draft', 'body', 'source_ledger', 'source_coverage', 'association', 'source_coverage', 'association']);
   });
 
   it('replays an interrupted second catalog publication without merging identities or adding another native call', async () => {
@@ -449,13 +476,13 @@ describe('source-first generation and zero-model recovery', () => {
     f.association.associations[0].segmentDecisions = [{ segmentId, decisionKind: 'abstained', entityRefs: [], reason }];
     const result = await generateWithActualTestReview(f), detail = f.library.detail(result.journal.bodies[0].knowledgeId);
     expect(detail.derivedAssociations.revision?.issues).toEqual([`AI association abstained for ${segmentId}; reason follows.`, reason]);
-    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes[4].outcome).toMatchObject({ result: { output: JSON.stringify(f.association) } });
+    expect(f.reopen().inspect(result.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { output: JSON.stringify(f.association) } });
     expect(f.reopen().resume(result.journal.runId)).toEqual(result); expect(f.dispatched).toEqual(stages);
   });
 
   it('uses the real producer, retains every native field and reads two bodies through a subject in an uncited excerpt', async () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v19', outputName: 'knowledge_body_v3',
-      profileId: 'sha256:363f93c915f4bf6081a72ba0c4199340edfb942a78cf56f4813c83a1c3df37e1',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v20', outputName: 'knowledge_body_v3',
+      profileId: 'sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189',
       wireId: 'sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',
@@ -488,30 +515,30 @@ describe('source-first generation and zero-model recovery', () => {
 
   it('keeps archive inventory observations unverified and refuses same-size corruption or missing originals during full recovery', async () => {
     const f = setup(), result = await generateWithActualTestReview(f), decode = vi.spyOn(f.ports.journals, 'outcome');
-    expect(f.ports.journals.list().archiveChecks).toEqual(result.journal.stages.map(stage => expect.objectContaining({ invocationId: stage.invocationId, archiveStatus: 'present', verificationStatus: 'not_verified' })));
+    expect(f.ports.journals.list().archiveChecks.filter(check => check.runId === result.journal.runId)).toEqual(result.journal.stages.map(stage => expect.objectContaining({ invocationId: stage.invocationId, archiveStatus: 'present', verificationStatus: 'not_verified' })));
     expect(decode).not.toHaveBeenCalled();
     const first = result.journal.stages[0], path = archivePath(f, result.journal, first), bytes = readFileSync(path, 'utf8');
     writeFileSync(path, bytes.replace('knowledge-generation-native', 'knowledge-generation-broken'));
-    expect(f.ports.journals.list().archiveChecks[0]).toMatchObject({ archiveStatus: 'present', verificationStatus: 'not_verified' });
+    expect(f.ports.journals.list().archiveChecks.find(check => check.runId === result.journal.runId)).toMatchObject({ archiveStatus: 'present', verificationStatus: 'not_verified' });
     expect(() => f.reopen().inspect(result.journal.runId)).toThrow('digest mismatch'); expect(() => f.reopen().resume(result.journal.runId)).toThrow('digest mismatch');
     writeFileSync(path, bytes); rmSync(path);
-    expect(f.ports.journals.list().archiveChecks[0].archiveStatus).toBe('missing'); expect(() => f.reopen().resume(result.journal.runId)).toThrow('missing');
+    expect(f.ports.journals.list().archiveChecks.find(check => check.runId === result.journal.runId)!.archiveStatus).toBe('missing'); expect(() => f.reopen().resume(result.journal.runId)).toThrow('missing');
     expect(f.dispatched).toEqual(stages);
   });
 
-  it('lists corrupt identities separately and refuses journal3 in every state without decoding its native archive or replaying writes', async () => {
+  it('lists corrupt identities separately and refuses journal3 and journal6 in every state without decoding its native archive or replaying writes', async () => {
     const f = setup(), prepared = f.app.prepareGeneration([sourceRef(f.window)], f.model), root = join(f.root, 'generation-journals');
     writeFileSync(join(root, 'bad-name.json'), '{}'); const corrupt = randomUUID(); writeFileSync(join(root, `${corrupt}.json`), '{broken');
     const decoder = vi.spyOn(f.ports.journals, 'outcome');
-    for (const state of ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed']) {
+    for (const state of ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed']) for (const schemaVersion of [3, 6]) {
       const id = randomUUID(), invocationId = randomUUID(), legacyPath = join(root, `${id}.json`), legacyArchive = join(root, 'outcomes', id, `${invocationId}.json`);
-      const legacy = JSON.stringify({ ...prepared.journal, runId: id, schemaVersion: 3, workflowId: 'knowledge-body-first/v3', inputVersion: 'knowledge-source-generation-input/v1', stages: [{ ...prepared.journal.stages[0], stageKind: 'body', invocationId, state }] });
+      const legacy = JSON.stringify({ ...prepared.journal, runId: id, schemaVersion, workflowId: `knowledge-body-first/v${schemaVersion}`, inputVersion: 'knowledge-source-generation-input/v1', stages: [{ ...prepared.journal.stages[0], stageKind: 'body', invocationId, state }] });
       mkdirSync(join(root, 'outcomes', id), { recursive: true }); writeFileSync(legacyArchive, '{original-legacy-native-bytes'); writeFileSync(legacyPath, legacy);
       expect(() => f.ports.journals.read(id)).toThrow('knowledge_storage_unsupported'); expect(() => f.app.inspect(id)).toThrow('knowledge_storage_unsupported'); expect(() => f.app.resume(id)).toThrow('knowledge_storage_unsupported');
       await expect(f.app.continueStage(id, 1, f.model)).rejects.toThrow('knowledge_storage_unsupported');
       expect(readFileSync(legacyPath, 'utf8')).toBe(legacy); expect(readFileSync(legacyArchive, 'utf8')).toBe('{original-legacy-native-bytes');
     }
-    const inventory = f.ports.journals.list(); expect(inventory.current).toEqual([prepared.journal]); expect(inventory.unsupported).toHaveLength(6);
+    const inventory = f.ports.journals.list(); expect(inventory.current).toEqual([prepared.journal]); expect(inventory.unsupported).toHaveLength(12);
     expect(inventory.unavailable).toEqual(expect.arrayContaining([expect.objectContaining({ runId: 'bad-name', reason: 'invalid_identity' }), expect.objectContaining({ runId: corrupt, reason: 'unreadable' })]));
     expect(decoder).not.toHaveBeenCalled(); expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
   });

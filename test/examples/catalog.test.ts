@@ -74,7 +74,7 @@ describe('public examples catalog', () => {
     });
     assert.equal(stderr, '');
     assert.deepEqual(JSON.parse(stdout), {
-      fixtureInvocations: 5, modelCalls: 0, workflowId: 'knowledge-body-first/v6', phaseKinds: ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'], runStatus: 'completed',
+      fixtureInvocations: 5, modelCalls: 0, workflowId: 'knowledge-body-first/v7', phaseKinds: ['body_draft', 'body', 'source_ledger', 'source_coverage', 'association'], generationPhaseKinds: ['body_draft', 'body'], runStatus: 'completed',
       candidateCount: 1, entityCount: 2, reopened: true, sourceBindingVerified: true,
       entitySearchMatches: 1, linkedKnowledgeCount: 1, reviewStatus: 'pending',
       sourceCoverageDecision: 'proceed_with_limits', sourceReviewActorKind: 'agent', semanticQuality: 'not_assessed',

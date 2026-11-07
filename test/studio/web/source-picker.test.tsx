@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SourceOriginalContext } from '../../../src/studio/web/components/knowledge/source-locator';
 import { fileSourceFixture } from './source-fixture';
+import { KnowledgeCandidates } from '../../../src/studio/web/components/knowledge/candidates';
 import { SourceExtractionDialog } from '../../../src/studio/web/components/knowledge/source-picker';
 import { KnowledgeReader } from '../../../src/studio/web/components/knowledge/reader';
 import { SourceUpdates } from '../../../src/studio/web/components/knowledge/source-updates';
@@ -32,7 +33,7 @@ const native = vi.hoisted(() => ({ model: null as KnowledgeGenerationModel | nul
 vi.mock('../../../src/knowledge/adapters/generation-executor', () => ({ configuredKnowledgeGenerationModel: () => {
   if (!native.model) throw Error('Authored adapter not configured.'); return native.model;
 } }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {} }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {}, replace() {}, refresh() {} }), useSearchParams: () => new URLSearchParams(), usePathname: () => '/knowledge/candidates' }));
 const roots: string[] = [];
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('TextEncoder', TextEncoder); vi.stubGlobal('TextDecoder', TextDecoder);
@@ -47,7 +48,7 @@ const workspaceFiles = (path: string): [string, string][] => readdirSync(path, {
   ? workspaceFiles(join(path, entry.name)) : [[join(path, entry.name), readFileSync(join(path, entry.name), 'utf8')]]);
 
 describe('Source3 manual transmission boundary', () => {
-  it.each([{ unavailable: false, empty: false }, { unavailable: true, empty: false }, { unavailable: false, empty: true }])('previews and captures, confirms each native stage and explicitly proceeds after source review (%j)', async ({ unavailable, empty }) => {
+  it.each([{ unavailable: false, empty: false }, { unavailable: true, empty: false }, { unavailable: false, empty: true }])('saves pending content in two confirmed stages and optionally reviews it from saved knowledge (%j)', async ({ unavailable, empty }) => {
     const root = mkdtempSync(join(tmpdir(), 'omk-source-picker-')); roots.push(root);
     const project = join(root, 'project'), workspace = join(root, 'workspace'); mkdirSync(project);
     writeFileSync(join(project, 'notes.md'), 'Alpha 使用 Beta。<script>authored literal</script>');
@@ -91,7 +92,7 @@ describe('Source3 manual transmission boundary', () => {
     expect(existsSync(join(workspace, 'sources'))).toBe(true); expect(invocations).toEqual([]);
     expect(screen.queryByRole('textbox', { name: 'Compare Git commit or branch' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Prepare and review complete model request' }));
-    await screen.findByText('Confirm Source inventory request');
+    await screen.findByText('Confirm Writing draft request');
     const sendBody = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
     expect(sendBody.disabled).toBe(true); expect(invocations).toEqual([]);
     if (unavailable) {
@@ -106,17 +107,35 @@ describe('Source3 manual transmission boundary', () => {
     const approval = () => screen.getByRole('checkbox', { name: 'Approve sending this exact request to the executor/model shown above.' }) as HTMLInputElement;
     fireEvent.click(approval()); fireEvent.click(sendBody);
     await screen.findByRole('button', { name: 'Prepare and review the next stage' });
-    expect(invocations).toEqual(['source_ledger']);
-    for (const [title, invoked] of [['Confirm Writing draft request', 'body_draft'], ['Confirm content request', 'body'], ['Confirm Source coverage request', 'source_coverage']]) {
-      fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
+    expect(invocations).toEqual(['body_draft']);
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
+    await screen.findByText('Confirm content request');
+    const sendContent = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
+    expect(sendContent.disabled).toBe(true); expect(approval().checked).toBe(false);
+    fireEvent.click(approval()); fireEvent.click(sendContent);
+    await screen.findByText(empty ? 'No content was saved. This does not establish source verification or lack of value.'
+      : 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.');
+    expect(invocations).toEqual(['body_draft', 'body']);
+    const app = createLocalKnowledgeApplication(workspace), generated = app.runs().current[0];
+    expect(generated).toMatchObject({ status: 'completed', mode: 'generate' });
+    expect(generated.bodies).toHaveLength(empty ? 0 : 1); expect(generated.ledgerRef).toBeUndefined(); expect(generated.coverageRef).toBeUndefined();
+    expect(screen.queryByRole('combobox', { name: 'Source decision' })).toBeNull();
+    expect(requests.some(item => item.body.operation === 'prepare-source-review')).toBe(false);
+    expect(existsSync(join(workspace, 'associations'))).toBe(false);
+    if (empty || unavailable) return;
+    expect(app.detail(generated.bodies[0].knowledgeId).maintenance).toBeNull();
+    cleanup();
+    render(<KnowledgeCandidates lang="en" initialWorkspace={workspace} initialId={generated.bodies[0].knowledgeId}/>, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'Entities and associations' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Regenerate associations' }));
+    for (const title of ['Confirm Source inventory request', 'Confirm Source coverage request']) {
       await screen.findByText(title);
-      const send = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
+      const send = screen.getByRole('button', { name: 'Send this stage' }) as HTMLButtonElement;
       expect(send.disabled).toBe(true); expect(approval().checked).toBe(false);
       fireEvent.click(approval()); fireEvent.click(send);
-      if (invoked !== 'source_coverage') await screen.findByRole('button', { name: 'Prepare and review the next stage' });
-      else await screen.findByRole('combobox', { name: 'Source decision' });
     }
-    expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
+    await screen.findByRole('combobox', { name: 'Source decision' });
+    expect(invocations).toEqual(['body_draft', 'body', 'source_ledger', 'source_coverage']);
     fireEvent.change(screen.getByRole('combobox', { name: 'Source decision' }), { target: { value: 'proceed_with_limits' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Source decision reason' }), { target: { value: 'Explicit authored browser operator review.' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Preserved limitations' }), { target: { value: 'Authored protocol fixture, not verified factual quality.' } });
@@ -127,32 +146,19 @@ describe('Source3 manual transmission boundary', () => {
       fireEvent.change(element, { target: { value: 'Explicitly retain the authored-test limitation.' } });
     }
     fireEvent.click(screen.getByRole('button', { name: 'Save this decision' }));
-    const proceed = await screen.findByRole('button', { name: empty ? 'End this run with this opinion (no content)' : 'Prepare associations with this opinion' });
-    expect(invocations).toHaveLength(4);
-    if (empty) {
-      expect(createLocalKnowledgeApplication(workspace).runs().current[0].status).toBe('active');
-      expect(screen.getByText('No content was saved in this run; source omissions still require review.')).toBeTruthy();
-    }
-    fireEvent.click(proceed);
-    if (empty) {
-      await screen.findByText('This run ended with an actual review decision; no content was saved.');
-      const completed = createLocalKnowledgeApplication(workspace).runs().current[0];
-      expect(completed).toMatchObject({ status: 'completed', bodies: [], sourceCoverageDecisionRef: expect.any(Object) });
-      expect(completed.stages.map(stage => stage.stageKind)).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
-      expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage']);
-      expect(existsSync(join(workspace, 'associations'))).toBe(false);
-    } else {
-      await screen.findByText('Confirm entity association request');
-      const sendAssociation = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
-      expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(4);
-      fireEvent.click(approval()); fireEvent.click(sendAssociation);
-      await screen.findByText('This run ended. Review the candidate content.');
-      expect(invocations).toEqual(['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']);
-    }
+    const proceed = await screen.findByRole('button', { name: 'Prepare associations with this opinion' });
+    expect(invocations).toHaveLength(4); fireEvent.click(proceed);
+    await screen.findByText('Confirm entity association request');
+    const sendAssociation = screen.getByRole('button', { name: 'Send this stage' }) as HTMLButtonElement;
+    expect(sendAssociation.disabled).toBe(true); expect(approval().checked).toBe(false); expect(invocations).toHaveLength(4);
+    fireEvent.click(approval()); fireEvent.click(sendAssociation);
+    await waitFor(() => expect(app.detail(generated.bodies[0].knowledgeId).derivedAssociations.status).toBe('available'));
+    expect(invocations).toEqual(['body_draft', 'body', 'source_ledger', 'source_coverage', 'association']);
     const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
-    expect(dispatches).toHaveLength(empty ? 4 : 5); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(empty ? 4 : 5);
-    expect(dispatches.every(item => item.id === dispatches[0].id)).toBe(true);
+    expect(dispatches).toHaveLength(5); expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(5);
+    expect(new Set(dispatches.map(item => item.id)).size).toBe(3);
     expect(requests.filter(item => item.body.operation === 'review-source-coverage')).toHaveLength(1);
+    expect(requests.find(item => item.body.operation === 'prepare-rebuild-associations')!.body.bodyRefs).toEqual(generated.bodies);
     expect(requests.some(item => item.body.operation === 'generate')).toBe(false);
   });
   it('distinguishes an unreadable project catalog from unconfigured sources and retries only the failed catalog', async () => {

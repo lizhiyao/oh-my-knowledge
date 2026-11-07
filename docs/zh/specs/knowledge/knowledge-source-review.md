@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow6／journal Schema6 保留来源清单 → 未核验写作稿（body_draft）→ 有据正文 → 来源覆盖 → 实际决定 → 关联。写作仍为 input1／wire1／prompt1；正文 input4／wire3／prompt19 绑定同次精确草稿、原来源和清单；清单使用独立的 `knowledge-source-ledger-input/v1`、wire3／prompt4。两者交付完整宿主编号原文，响应逐字回显 passageIndexDigest。只有不可变 Source3 提供依据，草稿和清单都是可错输入，不是知识接受意见。覆盖保留 manifest／input2 及 wire3／prompt6，关联保留阶段 input1／wire3／prompt8。Source3／正文3／实体2／关联2／reviews1 和清单／覆盖历史1 保持。每个模型请求分别准备、确认、claim 和归档，恢复零模型。仅用新工作区或显式 workflow5→6 独立副本迁移，保全旧原件及匹配构建；不将 journal5 或旧原生 profile 解码为新流程。新正文仍待审，历史测量不回算，流程准入不证明语义质量或任务收益。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow7／journal Schema7 仅执行未核验写作稿（body_draft）→ 有据正文，保存正文后完成，仍为待审候选。写作保持 input1／wire1／prompt1；正文改为 input5／wire3／prompt20，只绑定同次精确草稿及完整 Source3，不再依赖清单。正文使用完整宿主编号原文并回显 passageIndexDigest。来源清单、覆盖和实际决定改由独立 prepare-source-review／review-source-coverage 操作按需完成；关联重建以 bodyRefs 数组显式选择多篇不同知识的精确正文，每个 knowledgeId 仅选一个修订，并携带匹配的 sourceCoverageDecisionRef，保持完整来源、共享实体目录及决定前置校验。清单 input1／wire3／prompt4、覆盖 input2／wire3／prompt6、关联阶段 input1／wire3／prompt8 及 Source3／正文3／实体2／关联2／reviews1／来源分析历史1 均保持。每请求单独准备、确认、claim 和归档，恢复零模型。使用新工作区或 knowledge-workflow-to7 显式独立副本迁移；旧日志、分析、自动许可原样归档，保留旧目录及匹配构建，不用新 reader 续跑或重算旧测量。流程完成不等于内容核实、图谱质量或实际收益通过。
 
 覆盖 prompt6 还要求：同一完整来源单位或正文段落内重复的引文，必须扩为唯一连续原文或给出真实紧邻的消歧上下文。宿主继续拒收模糊位置；prompt5 的失败原件仍失败，不修补历史结果。
 
@@ -54,7 +54,7 @@
 
 `source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command：共同携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不在 payload 自报 actor。关联在准备时及共享锁内 claim 前重验决定和所有上游绑定。claim 后的撤销保留已发送请求及原件，投影仍 pending，并显示失效的复核语境。手工实体／关联维护不自动产生来源覆盖批准。
 
-Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal5、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow6 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
+Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，旧 journal5／6、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow7 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
 
 ### 覆盖 profile 边界 {#coverage-profile}
 
@@ -62,4 +62,4 @@ Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migr
 
 继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt6 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
 
-只替换覆盖时，复用的清单必须能通过当前 journal6 原件核验。journal5 的清单／覆盖在 5→6 副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。
+只替换覆盖时，复用的清单必须能通过当前 journal7 原件核验。journal5／6 的清单／覆盖在迁入 workflow7 的副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。

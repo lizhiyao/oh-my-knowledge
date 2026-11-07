@@ -15,7 +15,7 @@ export class KnowledgeStorageStateError extends Error {
     super(stateCode); this.name = 'KnowledgeStorageStateError';
   }
 }
-const migrationHeader = z.object({ migrationKind: z.enum(['knowledge-source2-to3', 'knowledge-workflow3-to4', 'knowledge-workflow4-to5', 'knowledge-workflow5-to6']), schemaVersion: z.literal(1),
+const migrationHeader = z.object({ migrationKind: z.enum(['knowledge-source2-to3', 'knowledge-workflow3-to4', 'knowledge-workflow4-to5', 'knowledge-workflow5-to6', 'knowledge-workflow-to7']), schemaVersion: z.literal(1),
   migrationId: z.string().uuid(), planDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u), state: z.enum(['in_progress', 'complete']) });
 function unsupported(): never { throw new KnowledgeStorageStateError('knowledge_storage_unsupported'); }
 /** Stable, bounded metadata read. A dangling symbolic link is an invalid marker, never absence. */

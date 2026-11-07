@@ -23,12 +23,14 @@ function validateJournal(j: GenerationJournal): void {
   const refs = j.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
   if (sourceSet.sources.length !== j.sources.length || generationTextDigest(canonicalJson(sourceSet)) !== j.sourceSetId
     || !same(sourceSet.sources, refs)) throw new Error('Invalid generation source set identity.');
-  const order = j.mode === 'generate' ? ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']
+  const order = j.mode === 'generate' ? ['body_draft', 'body']
     : j.mode === 'rebuild_associations' ? ['association']
       : j.stages[0].stageKind === 'source_ledger' ? ['source_ledger', 'source_coverage'] : ['source_coverage'];
   if (j.stages.length > order.length || j.stages.some((stage, index) => stage.stageKind !== order[index]
     || index > 0 && j.stages[index - 1].state !== 'completed')
-    || j.mode === 'rebuild_associations' && j.bodies.length !== 1) throw new Error('Invalid generation phase order.');
+    || j.mode === 'rebuild_associations' && (!j.bodies.length
+      || new Set(j.bodies.map(body => body.knowledgeId)).size !== j.bodies.length)) throw new Error('Invalid generation phase order.');
+  if (j.mode === 'generate' && (j.ledgerRef || j.coverageRef || j.sourceCoverageDecisionRef)) throw new Error('Body-first generation cannot inherit source-review decisions.');
   if (new Set(j.bodies.map(canonicalJson)).size !== j.bodies.length) throw new Error('Duplicate generation body references.');
   for (const s of j.stages) {
     const input = JSON.parse(s.input);
@@ -55,7 +57,7 @@ function validateJournal(j: GenerationJournal): void {
       })) throw new Error('Generation source unit manifest mismatch.');
     }
     if (s.stageKind === 'body') assertBodyGenerationSources(input);
-    if (s.stageKind === 'body' || s.stageKind === 'source_coverage') {
+    if (s.stageKind === 'source_coverage') {
       if (!j.ledgerRef || !same(input.ledger?.ref, j.ledgerRef)) throw new Error('Generation exact ledger reference missing.');
     }
     if (s.stageKind === 'body' && (!j.writingDraftRef || !same(input.writingDraft?.ref, j.writingDraftRef) || typeof input.writingDraft?.text !== 'string')) throw new Error('Generation exact writing draft reference missing.');
@@ -115,7 +117,7 @@ function validateJournal(j: GenerationJournal): void {
   const last = j.stages.at(-1)!;
   if (j.status === 'completed' && (last.state !== 'completed' || !(last.stageKind === 'association'
     || j.mode === 'review_sources' && last.stageKind === 'source_coverage'
-    || j.mode === 'generate' && last.stageKind === 'source_coverage' && !j.bodies.length && j.sourceCoverageDecisionRef))
+    || j.mode === 'generate' && last.stageKind === 'body'))
     || j.status === 'failed' && last.state !== 'failed') throw new Error('Generation terminal state mismatch.');
 }
 /** Current-only journal. Legacy filenames remain visible, never decoded as this workflow. */
@@ -142,7 +144,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 6) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 7) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -206,7 +208,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     const old = join(this.workspaceRoot, 'extraction-runs'); checkStorageDirectory(old);
     for (const file of existsSync(old) ? readdirSync(old).filter(f => f.endsWith('.json')).sort() : []) {
-      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v6 does not decode legacy dispatch claims.' });
+      unsupported.push({ runId: file.slice(0, -5), schemaStatus: 'unsupported', reason: 'Legacy extraction run requires the matching old binary; generation-journal/v7 does not decode legacy dispatch claims.' });
     }
     return { current, unsupported, unavailable, archiveChecks };
   }

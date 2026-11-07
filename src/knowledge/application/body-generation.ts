@@ -57,7 +57,7 @@ export function generationNextAction(journal: GenerationJournal) {
   return pending?.state === 'prepared' ? 'continue_stage' as const
     : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch' as const
       : pending ? 'resume_publication' as const : journal.status !== 'active' ? 'none' as const
-        : journal.stages.at(-1)?.stageKind === 'source_coverage' ? 'review_source_coverage' as const : 'prepare_next_stage' as const;
+        : 'prepare_next_stage' as const;
 }
 /** Each explicit phase is separately confirmed, claimed once and archived before publication. */
 export class BodyGenerationApplication {
@@ -141,7 +141,7 @@ export class BodyGenerationApplication {
   }
   private bodyInput(journal: GenerationJournal): string {
     return canonicalJson({ inputVersion: BODY_GENERATION_INPUT_VERSION, sourceSetId: journal.sourceSetId,
-      ...bodyGenerationSources(journal.sources.map(source => this.snapshot(source))), ledger: this.ledger(journal),
+      ...bodyGenerationSources(journal.sources.map(source => this.snapshot(source))),
       writingDraft: this.writingDraft(journal) });
   }
   private coverageInput(journal: GenerationJournal): string {
@@ -157,13 +157,13 @@ export class BodyGenerationApplication {
     if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
   }
   private seed(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId: string, mode: GenerationJournal['mode'], bodies: KnowledgeBodyRef[] = []) {
-    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow6 run.');
+    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow7 run.');
     const sourceSet = sourceSetPreimage(sources);
     const snapshots = sourceSet.sources.map(ref => {
       const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
       if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`); return source.snapshot;
     });
-    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 6 as const, workflowId: WORKFLOW_ID,
+    return { storeKind: 'knowledge-generation-journal' as const, schemaVersion: 7 as const, workflowId: WORKFLOW_ID,
       inputVersion: SOURCE_REVIEW_INPUT_VERSION, sourceSetId: generationTextDigest(canonicalJson(sourceSet)),
       runId, generation: 1, mode, status: 'active' as const, createdAt: this.ports.now(), actor: this.ports.actor,
       sources: snapshots.map(snapshot => ({ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion, sourceDigest: generationTextDigest(canonicalJson(snapshot)) })),
@@ -172,15 +172,7 @@ export class BodyGenerationApplication {
   private sameModel(j: GenerationJournal, model: KnowledgeGenerationModel) {
     if (j.executor !== model.executor || j.model !== model.model || j.timeoutMs !== model.timeoutMs) throw new Error('Generation continuation model changed.');
   }
-  private prepareAssociation(j: GenerationJournal, model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef): GenerationJournal {
-    this.review().assertDecision(decision);
-    if (decision.sourceSetId !== j.sourceSetId || !same(decision.ledgerRef, j.ledgerRef) || !same(decision.coverageRef, j.coverageRef)
-      || !same(decision.bodyRefs, j.bodies)) throw new Error('Generation source coverage decision does not bind this exact run.');
-    const next = { ...j, sourceCoverageDecisionRef: decision };
-    if (!j.bodies.length) return this.persist({ ...next, status: 'completed' });
-    return this.persist({ ...next, stages: [...j.stages, this.phase(model, ASSOCIATION_GENERATION_PROFILE, this.associationInput(j))] });
-  }
-  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, decision?: SourceCoverageDecisionRef) {
+  prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
     const sourceSetId = generationTextDigest(canonicalJson(sourceSetPreimage(sources)));
     runId ??= generationImportRunId(sourceSetId);
     const existing = this.ports.journals.read(runId);
@@ -189,14 +181,12 @@ export class BodyGenerationApplication {
       this.sameModel(existing, model);
       if (existing.status !== 'active' || generationNextAction(existing) === 'unsupported' || existing.stages.at(-1)!.state !== 'completed') return this.state(existing);
       this.idle(signal); const last = existing.stages.at(-1)!;
-      if (last.stageKind === 'source_coverage') return this.state(decision ? this.prepareAssociation(existing, model, decision) : existing);
-      const profile = last.stageKind === 'source_ledger' ? WRITING_DRAFT_PROFILE : last.stageKind === 'body_draft' ? BODY_GENERATION_PROFILE : SOURCE_COVERAGE_GENERATION_PROFILE;
-      const input = last.stageKind === 'source_ledger' ? this.writingInput(existing) : last.stageKind === 'body_draft' ? this.bodyInput(existing) : this.coverageInput(existing);
-      return this.state(this.persist({ ...existing, stages: [...existing.stages, this.phase(model, profile, input)] }));
+      if (last.stageKind !== 'body_draft') throw new Error('Generation body-first phase order mismatch.');
+      return this.state(this.persist({ ...existing, stages: [...existing.stages, this.phase(model, BODY_GENERATION_PROFILE, this.bodyInput(existing))] }));
     }
-    this.idle(signal); if (decision) throw new Error('A new generation cannot inherit a source coverage decision.');
+    this.idle(signal);
     const seed = this.seed(sources, model, runId, 'generate');
-    const stage = this.phase(model, SOURCE_LEDGER_GENERATION_PROFILE, sourceLedgerModelInput(seed.sources.map(source => this.snapshot(source))));
+    const stage = this.phase(model, WRITING_DRAFT_PROFILE, this.writingInput(seed));
     return this.state(this.ports.journals.write({ ...seed, stages: [stage] }, 0));
   }
   prepareSourceReview(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
@@ -225,25 +215,27 @@ export class BodyGenerationApplication {
     if (j.status !== 'active' || j.stages.length !== 1 || j.stages[0].state !== 'prepared') return this.resume(j.runId);
     return this.state(await this.invoke(j, model, signal, options));
   }
-  prepareAssociationRebuild(ref: KnowledgeBodyRef, model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
+  prepareAssociationRebuild(bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
     runId = this.ports.id(), signal?: AbortSignal) {
     const existing = this.ports.journals.read(runId);
     if (existing) {
-      if (existing.mode !== 'rebuild_associations' || !same(existing.bodies, [ref]) || !same(existing.sourceCoverageDecisionRef, decision)) throw new Error('Association rebuild conflicts with existing journal.');
+      if (existing.mode !== 'rebuild_associations' || !same(existing.bodies, bodyRefs) || !same(existing.sourceCoverageDecisionRef, decision)) throw new Error('Association rebuild conflicts with existing journal.');
       this.sameModel(existing, model); return this.state(existing);
     }
     this.idle(signal);
     this.review().assertDecision(decision);
-    if (!decision.bodyRefs.some(body => same(body, ref))) throw new Error('Association rebuild body is outside its exact coverage decision.');
+    if (!bodyRefs.length || bodyRefs.length > 256 || new Set(bodyRefs.map(canonicalJson)).size !== bodyRefs.length) throw new Error('Association rebuild requires distinct exact body references.');
+    if (new Set(bodyRefs.map(ref => ref.knowledgeId)).size !== bodyRefs.length) throw new Error('Association rebuild selects at most one revision per knowledge identity.');
+    if (bodyRefs.some(ref => !decision.bodyRefs.some(body => same(body, ref)))) throw new Error('Association rebuild body is outside its exact coverage decision.');
     const coverage = this.review().coverage(decision.coverageRef.coverageId, decision.coverageRef.revisionId);
     const refs = coverage.revision.data.manifest.sources.map(source => source.sourceRef);
-    const seed = { ...this.seed(refs, model, runId, 'rebuild_associations', [ref]), ledgerRef: decision.ledgerRef,
+    const seed = { ...this.seed(refs, model, runId, 'rebuild_associations', [...bodyRefs]), ledgerRef: decision.ledgerRef,
       coverageRef: decision.coverageRef, sourceCoverageDecisionRef: decision };
     return this.state(this.ports.journals.write({ ...seed, stages: [this.phase(model, ASSOCIATION_GENERATION_PROFILE, this.associationInput(seed))] }, 0));
   }
-  async rebuild(ref: KnowledgeBodyRef, model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
+  async rebuild(bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel, decision: SourceCoverageDecisionRef,
     runId?: string, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
-    const j = this.prepareAssociationRebuild(ref, model, decision, runId, signal).journal;
+    const j = this.prepareAssociationRebuild(bodyRefs, model, decision, runId, signal).journal;
     if (j.status !== 'active' || j.stages.at(-1)?.state !== 'prepared') return this.resume(j.runId);
     return this.state(await this.invoke(j, model, signal, options));
   }
@@ -383,7 +375,8 @@ export class BodyGenerationApplication {
     }
     stage = { ...stage, state: 'completed' };
     return this.persist({ ...j, stages: j.stages.map((s, n) => n === index ? stage : s),
-      status: stage.stageKind === 'association' || j.mode === 'review_sources' && stage.stageKind === 'source_coverage' ? 'completed' : 'active' });
+      status: stage.stageKind === 'association' || j.mode === 'generate' && stage.stageKind === 'body'
+        || j.mode === 'review_sources' && stage.stageKind === 'source_coverage' ? 'completed' : 'active' });
   }
   private associationIntents(j: GenerationJournal, stage: GenerationStage, output: string | undefined, cleanupFailure: boolean): GenerationStage {
     const bodies = this.bodies(j), actor = this.actor(j, stage), at = this.ports.now();
