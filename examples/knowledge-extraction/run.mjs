@@ -106,7 +106,7 @@ try {
   const fixture = {
     executor: 'authored-fixture', model: 'not-a-model', timeoutMs: 300_000,
     inspect() {
-      return { producerId: 'authored-example/v3', producerRevision: 'four-stage-source-first', sourceChannels: [],
+      return { producerId: 'authored-example/v3', producerRevision: 'body-first-with-explicit-review', sourceChannels: [],
         maxOutcomeJsonBytes: 1024 * 1024, proof: { nativeObserved: false, scope: 'authored demonstration only' } };
     },
     async invoke(profile, input, _signal, beforeDispatch) {
@@ -125,7 +125,7 @@ try {
         assert.deepEqual(metadata.limitations, snapshot.limitations); assert.equal(metadata.source.rawUnits, undefined); assert.equal(metadata.source.capturedAt, undefined);
         assert.equal(unitText(parsed.units[1]), message); assert.equal(parsed.units[1].evidenceRef, evidenceRef);
       } else {
-        assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v4' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
+        assert.equal(parsed.inputVersion, profile.stageKind === 'body' ? 'knowledge-body-generation-input/v5' : profile.stageKind === 'body_draft' ? 'knowledge-writing-draft-input/v1' : 'knowledge-source-generation-input/v1');
         assert.equal(parsed.sourceSetId, prepared.journal.sourceSetId); assert.equal(parsed.sources.length, 1);
         const selected = parsed.sources[0];
         assert.equal(selected.sourceKey, 's0');
@@ -135,7 +135,7 @@ try {
         assert.equal(selected.source.sourcePath, undefined); assert.equal(selected.source.capturedAt, undefined); assert.equal(selected.rawUnits, undefined);
         assert.equal(selected.source.sourceKind, 'agent_trace'); assert.deepEqual(selected.source.identity, { sourceId: 'authored-teaching-source', traceKind: 'codex' });
       }
-      if (profile.stageKind === 'body' || profile.stageKind === 'source_coverage') {
+      if (profile.stageKind === 'source_coverage') {
         const ledger = app.sourceLedger(parsed.ledger.ref.ledgerId, parsed.ledger.ref.revisionId);
         assert.deepEqual(parsed.ledger.ref, ledger.ref); assert.deepEqual(parsed.ledger.data, ledger.revision.data);
       }
@@ -145,7 +145,11 @@ try {
         assert.equal(segments[0].text, bodyText);
         assert.equal(app.detail(parsed.bodies[0].bodyRef.knowledgeId).revision.bodyDigest, parsed.bodies[0].bodyRef.bodyDigest);
       } else assert.equal(parsed.bodies, undefined);
-      if (profile.stageKind === 'body') bodyResponse.passageIndexDigest = parsed.passageIndexDigest;
+      if (profile.stageKind === 'body') {
+        assert.equal(parsed.ledger, undefined);
+        assert.equal(parsed.writingDraft.text, 'Unverified teaching draft; use original source evidence.');
+        bodyResponse.passageIndexDigest = parsed.passageIndexDigest;
+      }
       const output = profile.stageKind === 'source_ledger' ? authoredLedger(parsed) : profile.stageKind === 'source_coverage' ? authoredCoverage(parsed)
         : profile.stageKind === 'body_draft' ? { responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified teaching draft; use original source evidence.' } : profile.stageKind === 'body' ? bodyResponse : associationResponse;
       beforeDispatch(); fixtureInvocations++;
@@ -164,27 +168,25 @@ try {
     return result;
   }
   const prepared = app.prepareGeneration(sourceRefs, fixture);
-  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v6'); assert.equal(prepared.journal.schemaVersion, 6);
-  assert.equal(prepared.journal.stages[0].stageKind, 'source_ledger'); assert.equal(prepared.journal.stages[0].state, 'prepared'); assert.equal(fixtureInvocations, 0);
+  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v7'); assert.equal(prepared.journal.schemaVersion, 7);
+  assert.equal(prepared.journal.stages[0].stageKind, 'body_draft'); assert.equal(prepared.journal.stages[0].state, 'prepared'); assert.equal(fixtureInvocations, 0);
   await assert.rejects(app.generate(sourceRefs, fixture, prepared.journal.runId), /Confirm the exact prepared generation request/);
-  assert.equal(fixtureInvocations, 0);
-  const inventoried = await confirmPhase(prepared);
-  assert.ok(inventoried.journal.ledgerRef); assert.equal(inventoried.journal.bodies.length, 0); assert.equal(inventoried.journal.stages.length, 1);
-  const writingPrepared = app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId);
-  assert.equal(writingPrepared.journal.stages.at(-1).stageKind, 'body_draft');
-  const written = await confirmPhase(writingPrepared);
+  const written = await confirmPhase(prepared);
   assert.ok(written.journal.writingDraftRef); assert.equal(app.list().length, 0);
   const bodyPrepared = app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId);
-  assert.equal(fixtureInvocations, 2); assert.equal(bodyPrepared.journal.stages.at(-1).stageKind, 'body');
+  assert.equal(fixtureInvocations, 1); assert.equal(bodyPrepared.journal.stages.at(-1).stageKind, 'body');
   const body = await confirmPhase(bodyPrepared);
-  assert.equal(body.journal.bodies.length, 1); assert.equal(body.journal.stages.length, 3);
-  const coveragePrepared = app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId);
-  assert.equal(fixtureInvocations, 3); assert.equal(coveragePrepared.journal.stages.at(-1).stageKind, 'source_coverage');
+  assert.equal(body.journal.bodies.length, 1); assert.equal(body.journal.stages.length, 2); assert.equal(body.journal.status, 'completed');
+  assert.equal(body.journal.ledgerRef, undefined); assert.equal(body.journal.coverageRef, undefined);
+  // Optional source review is a separate explicit run after the canonical body is already saved.
+  const inventoryPrepared = app.prepareSourceReview(sourceRefs, body.journal.bodies, fixture);
+  const inventoried = await confirmPhase(inventoryPrepared);
+  const coveragePrepared = app.prepareSourceReview(sourceRefs, body.journal.bodies, fixture, undefined, inventoried.journal.runId);
   const checked = await confirmPhase(coveragePrepared);
-  assert.equal(checked.nextAction, 'review_source_coverage'); assert.equal(fixtureInvocations, 4);
+  assert.equal(checked.journal.status, 'completed'); assert.equal(fixtureInvocations, 4);
   const status = app.sourceCoverageStatus(checked.journal.coverageRef.coverageId, checked.journal.coverageRef.revisionId);
   assert.equal(status.decision.status, 'not_reviewed'); assert.ok(status.unresolvedIds.length > 0);
-  assert.deepEqual(app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId), checked);
+  assert.deepEqual(app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId), body);
 
   // The actual Node example runner explicitly accepts only this authored demonstration's limits.
   // This is not a native callback, human review, factual certification or a semantic-quality pass.
@@ -199,18 +201,18 @@ try {
   assert.deepEqual(reviewed.history.events.at(-1).actor, operator); assert.equal(reviewed.decision.status, 'proceed_with_limits');
   const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision;
   const sourceCoverageDecisionRef = { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: requestId };
-  const associationPrepared = app.prepareGeneration(sourceRefs, fixture, prepared.journal.runId, undefined, sourceCoverageDecisionRef);
+  const associationPrepared = app.prepareAssociationRebuild(bodyRefs, fixture, sourceCoverageDecisionRef);
   assert.equal(fixtureInvocations, 4); assert.equal(associationPrepared.journal.stages.at(-1).stageKind, 'association');
   const run = await confirmPhase(associationPrepared);
-  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v6'); assert.equal(run.journal.bodies.length, 1);
-  assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association']);
+  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v7'); assert.equal(run.journal.bodies.length, 1);
+  assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['association']);
   for (const stage of run.journal.stages) { assert.equal(stage.state, 'completed'); assert.deepEqual(stage.rejected ?? [], []); }
 
   // Reopening the same identity only replays durable publication; it never calls any fixture phase again.
   const reopened = createLocalKnowledgeApplication(workspace);
   const replay = await reopened.generate(sourceRefs, fixture);
-  assert.deepEqual(replay, run); assert.equal(fixtureInvocations, 5);
-  const originals = reopened.inspect(run.journal.runId).nativeOutcomes;
+  assert.deepEqual(replay, body); assert.equal(fixtureInvocations, 5);
+  const originals = [body, checked, run].flatMap(state => reopened.inspect(state.journal.runId).nativeOutcomes);
   assert.equal(originals.length, 5);
   for (const original of originals) {
     assert.equal(original.outcome.outcomeKind, 'result');
@@ -243,7 +245,7 @@ try {
   assert.equal(readFileSync(source, 'utf8'), sourceBytes);
   summary = {
     fixtureInvocations, modelCalls: 0, workflowId: run.journal.workflowId,
-    phaseKinds: run.journal.stages.map(stage => stage.stageKind), runStatus: run.journal.status,
+    phaseKinds: [body, checked, run].flatMap(state => state.journal.stages.map(stage => stage.stageKind)), generationPhaseKinds: body.journal.stages.map(stage => stage.stageKind), runStatus: run.journal.status,
     candidateCount: run.journal.bodies.length, entityCount: analysis.revision.entities.length,
     reopened: true, sourceBindingVerified: true, entitySearchMatches: found.total,
     linkedKnowledgeCount: found.rows[0].knowledgeCount, reviewStatus: stored.reviewStatus,

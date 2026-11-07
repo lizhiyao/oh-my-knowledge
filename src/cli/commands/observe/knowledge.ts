@@ -4,7 +4,6 @@ import { prepareKnowledgeMigration, applyKnowledgeMigration } from '../../../kno
 import { prepareAssociationMigration, applyAssociationMigration, type AssociationMigrationPlan } from '../../../knowledge/adapters/association-migration.js';
 import { prepareSourceMigration, applySourceMigration, SOURCE_MIGRATION_PLAN_MAX_BYTES, type SourceMigrationPlan } from '../../../knowledge/adapters/source-migration.js';
 import { planKnowledgeWorkflowMigration, applyKnowledgeWorkflowMigration, type KnowledgeWorkflowMigrationPlan } from '../../../knowledge/adapters/workflow-migration.js';
-import { SourceCoverageDecisionRefSchema } from '../../../knowledge/source-review.js';
 import { WRITING_DRAFT_PROFILE } from '../../../knowledge/extraction/writing-draft.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../../knowledge/extraction/source-review-wire.js';
 import { readLocalSourceScope } from '../../../knowledge/application/local-source-host.js';
@@ -135,8 +134,8 @@ export default class ObserveKnowledge extends BaseCommand {
       'continue-stage': ['id', 'generation', 'executor', 'model', 'confirm-request'],
       'prepare-source-review': ['input', 'executor', 'model', 'run-id'],
       'source-ledger': ['id', 'revision'], 'source-coverage-status': ['id', 'revision'], 'review-source-coverage': ['input'],
-      'prepare-rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id', 'input'],
-      'rebuild-associations': ['id', 'revision', 'body-digest', 'executor', 'model', 'run-id', 'confirm-request', 'input'],
+      'prepare-rebuild-associations': [ 'executor', 'model', 'run-id', 'input'],
+      'rebuild-associations': [ 'executor', 'model', 'run-id', 'confirm-request', 'input'],
     };
     const selectedFlags = sourceFlags[args.operation];
     if (selectedFlags && Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && ![...selectedFlags, 'workspace', 'lang', 'json'].includes(name))) {
@@ -153,7 +152,7 @@ export default class ObserveKnowledge extends BaseCommand {
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
         || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
         || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
-        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow6 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow6 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow7 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow7 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
       }
       try {
         const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),
@@ -371,9 +370,9 @@ export default class ObserveKnowledge extends BaseCommand {
       case 'source-ledger': case 'source-coverage-status': operation = { operation: args.operation, id: need(flags.id, 'id'), revision: flags.revision }; break;
       case 'review-source-coverage': operation = { operation: 'review-source-coverage', command: draft() } as KnowledgeOperation; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured', confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break;
-      case 'prepare-rebuild-associations': case 'rebuild-associations': { const parsed = z.strictObject({ sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema }).safeParse(draft());
-        if (!parsed.success) this.error(t('重建需要 --input 中完整的 sourceCoverageDecisionRef。', 'Rebuilding requires a complete sourceCoverageDecisionRef in --input.'), { exit: 2 });
-        const ref = { sourceCoverageDecisionRef: parsed.data.sourceCoverageDecisionRef, knowledgeId: need(flags.id, 'id'), revisionId: need(flags.revision, 'revision'), bodyDigest: need(flags['body-digest'], 'body-digest'), executor: 'configured', model: 'configured', runId: flags['run-id'] };
+      case 'prepare-rebuild-associations': case 'rebuild-associations': { const parsed = knowledgeOperationSchemas['prepare-rebuild-associations'].omit({ operation: true, executor: true, model: true, runId: true }).safeParse(draft());
+        if (!parsed.success) this.error(t('重建需要 --input 中完整的 bodyRefs 与 sourceCoverageDecisionRef。', 'Rebuilding requires complete bodyRefs and sourceCoverageDecisionRef in --input.'), { exit: 2 });
+        const ref = { ...parsed.data, executor: 'configured', model: 'configured', runId: flags['run-id'] };
         operation = args.operation === 'prepare-rebuild-associations' ? { operation: args.operation, ...ref } : { operation: args.operation, ...ref, confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break; }
       case 'runs': case 'quality': case 'list': operation = { operation: args.operation }; break;
       case 'inspect': case 'resume': operation = { operation: args.operation, id: need(flags.id, 'id') }; break;
@@ -414,7 +413,7 @@ export default class ObserveKnowledge extends BaseCommand {
       this.log(operation.operation === 'retrieve' ? flags.format === 'text' ? String(result) : JSON.stringify(result)
         : flags.json ? JSON.stringify(result, null, 2) : formatKnowledgeResult(result, this.lang, operation, settings.workspace));
       if (result && typeof result === 'object' && 'journal' in result && (result.journal as { status: string }).status !== 'completed'
-        && (!('nextAction' in result) || !['continue_stage', 'prepare_next_stage', 'review_source_coverage'].includes(String(result.nextAction)))) this.exit(1);
+        && (!('nextAction' in result) || !['continue_stage', 'prepare_next_stage'].includes(String(result.nextAction)))) this.exit(1);
     });
   }
 }

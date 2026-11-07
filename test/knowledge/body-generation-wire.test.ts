@@ -46,8 +46,8 @@ describe('versioned body and association generation wire', () => {
   });
 
   it('publishes new strict identities without exposing the ordinal or model-supplied mention ID', () => {
-    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v19', outputName: 'knowledge_body_v3',
-      profileId: 'sha256:363f93c915f4bf6081a72ba0c4199340edfb942a78cf56f4813c83a1c3df37e1',
+    expect(BODY_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-generation/v20', outputName: 'knowledge_body_v3',
+      profileId: 'sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189',
       wireId: 'sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d' });
     expect(ASSOCIATION_GENERATION_PROFILE).toMatchObject({ promptVersion: 'knowledge-association-generation/v8', outputName: 'knowledge_association_v3',
       profileId: 'sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80',

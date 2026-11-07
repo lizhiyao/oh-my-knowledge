@@ -31,13 +31,13 @@ export const GenerationStageSchema = z.strictObject({
   coverageWrites: z.array(SourceCoverageWriteSchema.options[0]).length(1).optional(),
 });
 export const GenerationJournalSchema = z.strictObject({
-  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(6), workflowId: z.literal(WORKFLOW_ID),
+  storeKind: z.literal('knowledge-generation-journal'), schemaVersion: z.literal(7), workflowId: z.literal(WORKFLOW_ID),
   inputVersion: z.literal(SOURCE_REVIEW_INPUT_VERSION), sourceSetId: digest,
   runId: uuid, generation: z.number().int().positive(), mode: z.enum(['generate', 'review_sources', 'rebuild_associations']),
   status: z.enum(['active', 'completed', 'failed']), createdAt: z.iso.datetime({ offset: true }), actor: KnowledgeActorSchema,
   sources: z.array(z.strictObject({ snapshotId: uuid, sourceVersion: digest, sourceDigest: digest })).min(1).max(256),
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
-  bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(5),
+  bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(2),
   writingDraftRef: WritingDraftRefSchema.optional(), ledgerRef: SourceLedgerRefSchema.optional(), coverageRef: SourceCoverageRefSchema.optional(),
   sourceCoverageDecisionRef: SourceCoverageDecisionRefSchema.optional(),
 });

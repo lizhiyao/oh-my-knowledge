@@ -6,8 +6,7 @@ import type { ExecResult } from '../../src/executors/contracts/result.js';
 import { createExtractionArchiveProducer } from '../../src/executors/archive.js';
 import { createLocalKnowledgeGenerationModel, knowledgeGenerationEnvironment, KNOWLEDGE_GENERATION_ENVIRONMENT_POLICY } from '../../src/knowledge/adapters/generation-host.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
-import { SOURCE_LEDGER_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
-import { sourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';
+import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 
 const fake = vi.hoisted(() => ({ environments: [] as NodeJS.ProcessEnv[], executionEnvironments: [] as NodeJS.ProcessEnv[], execute: vi.fn(async (): Promise<ExecResult> => ({ ok: true, output: '' } as ExecResult)) }));
@@ -44,15 +43,11 @@ it('confirms a prepared Codex request across distinct host instances while retai
       { confirmedRequestDigest: request.requestDigest })).rejects.toThrow('producer/profile changed');
     expect(fake.execute).not.toHaveBeenCalled();
   }
-  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-source-ledger', schemaVersion: 3,
-    passageIndexDigest: JSON.parse(request.input).passageIndexDigest,
-    unitDispositions: sourceReviewInput([source]).units.map(unit => ({ unitKey: unit.unitKey, disposition: 'exclude',
-      reason: 'Authored transport fixture only; no semantic acceptance.' })),
-    items: [], limitations: ['Transport and native custody verification only.'] }) } as ExecResult);
+  fake.execute.mockResolvedValueOnce({ ok: true, output: JSON.stringify({ responseKind: 'knowledge-writing-draft', schemaVersion: 1, text: 'Unverified transport fixture.' }) } as ExecResult);
   const second = createLocalKnowledgeGenerationModel('codex', 'fixture', createExtractionArchiveProducer, { CODEX_TOOL_CALL_ID: 'second-tool-call', OPENAI_API_KEY: env.OPENAI_API_KEY, PATH: env.PATH });
-  expect(second.inspect(SOURCE_LEDGER_GENERATION_PROFILE, request.input)).toEqual(request.producer);
+  expect(second.inspect(WRITING_DRAFT_PROFILE, request.input)).toEqual(request.producer);
   const sent = await createLocalKnowledgeApplication(root).generate(refs, second, prepared.journal.runId, undefined, { confirmedRequestDigest: request.requestDigest });
-  expect(sent.journal.ledgerRef).toBeDefined(); expect(sent.journal.bodies).toHaveLength(0);
+  expect(sent.journal.writingDraftRef).toBeDefined(); expect(sent.journal.bodies).toHaveLength(0);
   expect(sent.nextAction).toBe('prepare_next_stage'); expect(fake.execute).toHaveBeenCalledTimes(1);
   expect(fake.environments.every(value => !Object.hasOwn(value, 'CODEX_TOOL_CALL_ID'))).toBe(true);
   expect(fake.environments.at(-1)).toEqual(env); expect(fake.executionEnvironments).toEqual([env]);

@@ -7,7 +7,6 @@ import type { Language } from '../layout/shell';
 import type { SourceSelection } from '../../../../knowledge/sources';
 import type { KnowledgeCandidateRun, KnowledgeConversation, KnowledgeConversationDetail, KnowledgeConversationPreview,
   KnowledgeSourceCapture, KnowledgeSourceCatalog, KnowledgeSourcePreview, KnowledgeSourceRef } from '../../../view-models/knowledge/knowledge-candidates';
-import { SourceReviewPanel } from './source-review';
 import { requestKnowledge } from './request';
 import { SourceUpdates } from './source-updates';
 import { notifyKnowledgeChange, resolveKnowledgeWorkspace } from './workspace';
@@ -235,13 +234,7 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
         source={{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }} snapshot={snapshot} workspace={workspace} lang={lang} busy={busy} run={work}/>)}
       {phase === 'prepared' && run && <PreparedGenerationConfirmation key={run.preparedStage?.requestDigest} run={run} lang={lang} confirmed={confirmed} onConfirmed={setConfirmed}/>}
       {run && !!run.bodies.length && <><p>{t(`已保存 ${run.bodies.length} 条候选正文，内容仍待核对。`, `${run.bodies.length} candidate bodies are saved and await review.`)}</p>{run.bodies.map(body => onReview ? <Button key={body.knowledgeId} disabled={busy} onClick={() => void work(signal => onReview(workspace, body.knowledgeId, signal))}>{t('核对已保存正文', 'Review saved content')}</Button> : <Link key={body.knowledgeId} href={`${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id: body.knowledgeId })}`} onClick={onClose}>{t('核对已保存正文', 'Review saved content')}</Link>)}</>}
-      {phase === 'result' && run?.coverageRef && <SourceReviewPanel workspace={workspace} ledgerRef={run.ledgerRef} coverageRef={run.coverageRef} lang={lang}
-        onProceed={run.nextAction === 'review_source_coverage' ? decision => void work(async signal => {
-          const prepared = await api<KnowledgeCandidateRun>('prepare-generation', { sources: refs, runId: run.runId,
-            executor: run.executor, model: run.model, sourceCoverageDecisionRef: decision }, signal);
-          if (!signal.aborted) { setRun(prepared); setConfirmed(false); setPhase(prepared.preparedStage ? 'prepared' : 'result'); notifyKnowledgeChange(workspace); onFinished?.(workspace); }
-        }) : undefined}/>}
-      {phase === 'result' && <Alert type={run?.status === 'completed' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('本次任务已结束，请核对候选内容。', 'This run ended. Review the candidate content.') : t('本轮已按实际复核意见结束，没有保存正文。', 'This run ended with an actual review decision; no content was saved.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段已保存；准备下一阶段后，仍需核对完整请求。', 'This stage is saved. Prepare the next stage and inspect its complete request.') : run?.nextAction === 'review_source_coverage' ? t('来源核对已保存，请在下面记录实际决定。', 'Source coverage is saved. Record your actual decision below.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
+      {phase === 'result' && <Alert type={run?.status === 'completed' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('正文已保存，可开始使用；内容仍待核对，来源复核和实体关联可稍后按需进行。', 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.') : t('本轮未生成可保存正文；不代表来源已核验或没有价值。', 'No content was saved. This does not establish source verification or lack of value.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段已保存；准备下一阶段后，仍需核对完整请求。', 'This stage is saved. Prepare the next stage and inspect its complete request.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
     </div>
   </Modal>;
 }

@@ -28,7 +28,7 @@ export interface KnowledgeCandidateRun {
   phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
     producerId: string; producerRevision: string; rejectedCount: number | null;
   })[];
-  nextAction: 'prepare_next_stage' | 'review_source_coverage' | 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
+  nextAction: 'prepare_next_stage' | 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
   entityAnalyses?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' }[];
   unsupportedReason?: string;
   unavailableReason?: 'unreadable' | 'invalid_identity' | 'invalid_source_metadata' | 'project_membership_unavailable';

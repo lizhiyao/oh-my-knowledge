@@ -17,7 +17,7 @@ import { FileKnowledgeStore } from './knowledge-store.js';
 import { FileKnowledgeReviewStore } from './review-store.js';
 import { FileSourceStore } from './source-store.js';
 
-const KIND = 'knowledge-workflow5-to6' as const;
+const KIND = 'knowledge-workflow-to7' as const;
 const MAX_FILES = 16_384, MAX_BYTES = 512 * 1024 * 1024, MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const activeRoots = new Set(['sources', 'items', 'entities', 'associations', 'reviews', 'tags']);
 const archiveRoots = new Set(['generation-journals', 'source-ledgers', 'source-coverage', 'auto-extraction', 'migration']);

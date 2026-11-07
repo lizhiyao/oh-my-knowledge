@@ -49,21 +49,28 @@ function captureAuthoredSource(workspace: string, input: { path: string; records
 }
 async function generateAuthored(app: KnowledgeApplication, snapshot: SourceSnapshot, model: KnowledgeGenerationModel) {
   const sources = [{ snapshotId: snapshot.snapshotId, sourceVersion: snapshot.sourceVersion }], prepared = await app.prepareGeneration(sources, model);
+  const relatedRunIds = [prepared.journal.runId];
   let result = await app.continueStage(prepared.journal.runId, prepared.journal.generation, model, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
   while (result.nextAction === 'prepare_next_stage') {
     result = app.prepareGeneration(sources, model, result.journal.runId);
     const stage = result.journal.stages.at(-1)!;
     result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
   }
-  if (result.nextAction === 'review_source_coverage') {
-    const status = app.sourceCoverageStatus(result.journal.coverageRef!.coverageId), command = authoredSourceDecision(status);
+  if (result.journal.status === 'completed' && result.journal.bodies.length) {
+    let review = app.prepareSourceReview(sources, result.journal.bodies, model);
+    review = await app.continueStage(review.journal.runId, review.journal.generation, model, undefined, { confirmedRequestDigest: review.journal.stages[0].requestDigest });
+    review = app.prepareSourceReview(sources, result.journal.bodies, model, undefined, review.journal.runId);
+    review = await app.continueStage(review.journal.runId, review.journal.generation, model, undefined, { confirmedRequestDigest: review.journal.stages.at(-1)!.requestDigest });
+    relatedRunIds.unshift(review.journal.runId);
+    const status = app.sourceCoverageStatus(review.journal.coverageRef!.coverageId), command = authoredSourceDecision(status);
     app.reviewSourceCoverage(command);
     const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = command.decision;
-    result = app.prepareGeneration(sources, model, result.journal.runId, undefined, { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: command.requestId });
+    result = app.prepareAssociationRebuild(bodyRefs, model, { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: command.requestId });
+    relatedRunIds.unshift(result.journal.runId);
     const stage = result.journal.stages.at(-1)!;
-    if (stage.state === 'prepared') result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
+    result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
   }
-  return result;
+  return { ...result, relatedRunIds };
 }
 
 describe('Studio candidate action boundary', () => {
@@ -324,7 +331,7 @@ describe('Studio candidate action boundary', () => {
     const scoped = await queue(); expect(scoped.status).toBe(200);
     const result = await scoped.json(); expect(result.rows).toHaveLength(2); expect(result.rows).toEqual(expected);
     expect(result.rows.find((row: { knowledgeId: string }) => row.knowledgeId === id)).toMatchObject({ choice: 'retain', tags: ['候选/待核对'] });
-    expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual([chosen.journal.runId]);
+    expect(result.runs.map((run: { runId: string }) => run.runId)).toEqual(chosen.relatedRunIds);
     const sourceRead = vi.spyOn(KnowledgeApplication.prototype, 'source').mockImplementation(() => { throw new Error('Full source reads are forbidden for the queue.'); });
     const inspection = vi.spyOn(KnowledgeApplication.prototype, 'inspect').mockImplementation(() => { throw new Error('Full archive reads are forbidden for the queue.'); });
     try {
@@ -427,7 +434,7 @@ describe('Studio candidate action boundary', () => {
         failure: { failureKind: 'network' }, trace: { privateDetail: 'private-native-trace' } } }));
     const response = await post({ workspace: selected, operation: 'runs' }); expect(response.status).toBe(200);
     const text = await response.text(), rows = JSON.parse(text);
-    expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'source_ledger', state: 'failed', outcomeRef: expect.any(Object) })] })]);
+    expect(rows).toEqual([expect.objectContaining({ runId: run.journal.runId, status: 'failed', phases: [expect.objectContaining({ stageKind: 'body_draft', state: 'failed', outcomeRef: expect.any(Object) })] })]);
     expect(rows[0]).toMatchObject({ archiveVerification: 'not_verified', archiveChecks: [{ archiveStatus: 'present', verificationStatus: 'not_verified' }] });
     for (const privateValue of ['private-native-', 'sourceChannels', 'rawOutput', root]) expect(text).not.toContain(privateValue);
     const inspect = await post({ workspace: selected, operation: 'inspect', id: run.journal.runId }); expect(inspect.status).toBe(200);

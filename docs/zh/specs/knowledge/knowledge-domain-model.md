@@ -100,7 +100,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；其 `application/` 拥有 CLI／Studio 共用用例与本地装配，`adapters/` 负责来源读取、模型传输和文件持久化。观测层提供轨迹解析，交付层负责宿主配置与展示。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 6，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 7，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -204,8 +204,8 @@ CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associatio
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 关联历史保持 Schema 2。prompt8 仅改变提示词／profile／request 身份（**BREAKING-COMPARABILITY**），wire3 及阶段 v1 envelope 不变，不要求数据迁移。默认 journal Schema 6／knowledge-body-first/v6 仍绑定五阶段、清单／覆盖／决定引用与逐请求确认。流程副本迁移仅归档旧 journal5／来源分析／自动许可；旧 profile 的 active 工作使用保全的匹配构建恢复，固定 prepared_writes 按既有规则恢复。此前投影转换与历史 profile 改动保留其原身份及重新待审边界。 |
-| 来源盘点与覆盖 | 默认 workflow6 使用 journal6／input2：source_ledger → body_draft → body → source_coverage → 明确批准的关联。独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开表达模型意见与实际决定；claim 锁内重验精确决定，拒绝旧自动授权，仅迁移受支持独立副本。Source3、未改正文／实体／关联／review／tag 身份及历史测量保留。 |
+| 关联与生成日志 | 关联历史保持 Schema 2，关联 prompt8／wire3 保持。默认 journal Schema 7／knowledge-body-first/v7 在草稿与有据正文后完成。独立 review_sources 与 rebuild_associations 保留精确清单／覆盖／决定绑定及逐请求确认。显式副本迁移逐字节归档旧 journal5／6 和来源分析，保留匹配旧构建供恢复与回退。 |
+| 来源盘点与覆盖 | 按需发起的 review_sources 依次执行清单 → source_coverage，独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开模型意见与实际决定。关联准备及共享锁内 claim 校验覆盖每个显式选择的精确 bodyRef 的实际决定；模型不自我批准。 |
 | 操作者上下文 | 第 8.3 节六命令 CLI 维护范围仅为新写入复用 human／agent 数据形状，不改变创建归属、旧 actor／回执、请求 DTO、存储 Schema 或生成身份，无需迁移。未知操作者拒绝与更广服务上下文保持独立设计及确认边界；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 

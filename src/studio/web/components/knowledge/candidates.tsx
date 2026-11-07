@@ -156,10 +156,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     // Initial workspace comes from the explicit page URL; subsequent changes use Open.
   }, []);
   async function handleRun(run: KnowledgeCandidateRun) {
-    setNotice(run.mode === 'review_sources' ? t('来源核对已保存，仍需记录实际复核决定。', 'Source analysis is saved; an actual review decision is still required.') : run.status === 'completed'
+    setNotice(run.mode === 'review_sources' && run.status === 'completed' ? t('来源核对已保存，仍需记录实际复核决定。', 'Source analysis is saved; an actual review decision is still required.') : run.status === 'completed'
       ? t(`生成完成：${run.bodies.length} 条候选，${run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} 条输出未接纳。`, `Generated ${run.bodies.length} candidates; ${run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} outputs rejected.`)
       : t(`运行状态：${run.status}。请在生成记录中查看或恢复。`, `Run status: ${run.status}. Inspect or resume it in history.`));
-    if (run.coverageRef && (run.nextAction === 'review_source_coverage' || run.mode === 'review_sources')) setSourceReviewTarget({ workspace, run });
+    if (run.coverageRef && (run.mode === 'review_sources')) setSourceReviewTarget({ workspace, run });
+    if (run.mode === 'review_sources' && run.nextAction === 'prepare_next_stage') await prepareNextStage(run);
     await refresh(); if (run.bodies[0]) { await open(run.bodies[0].knowledgeId); setBatchRunId(run.runId); setPreviousId(null); }
   }
   function showPreparedStage(run: KnowledgeCandidateRun) {
@@ -180,14 +181,11 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   }
   async function prepareReviewedAssociations(decision: SourceCoverageDecisionRef) {
     if (!sourceReviewTarget || sourceReviewTarget.workspace !== workspace) return;
-    const { run, bodyRef } = sourceReviewTarget, target = bodyRef ?? (run.bodies.length === 1 ? run.bodies[0] : undefined);
-    const configured = { executor: run.executor ?? executor, model: run.model ?? model };
-    const prepared = run.mode === 'generate' && run.nextAction === 'review_source_coverage' && !bodyRef
-      ? await api<KnowledgeCandidateRun>('prepare-generation', { ...configured, runId: run.runId,
-        sources: run.sources?.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })), sourceCoverageDecisionRef: decision })
-      : target ? await api<KnowledgeCandidateRun>('prepare-rebuild-associations', { ...configured, ...target, sourceCoverageDecisionRef: decision })
-        : undefined;
-    if (!prepared) throw new Error('Select one exact body before rebuilding associations.');
+    const { run, bodyRef } = sourceReviewTarget, bodyRefs = bodyRef ? [bodyRef] : run.bodies;
+    if (!bodyRefs.length) throw new Error('No saved content is available for association rebuilding.');
+    const prepared = await api<KnowledgeCandidateRun>('prepare-rebuild-associations', {
+      executor: run.executor ?? executor, model: run.model ?? model, bodyRefs, sourceCoverageDecisionRef: decision,
+    });
     setSourceReviewTarget(undefined);
     if (prepared.status === 'completed' && prepared.nextAction === 'none') { await handleRun(prepared); return; }
     showPreparedStage(prepared);
@@ -369,7 +367,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
     {sourceReviewTarget && sourceReviewTarget.workspace === workspace && <Drawer open title={t('来源与正文核对', 'Source and content review')} size={760} onClose={() => !busy && setSourceReviewTarget(undefined)}
       styles={{ body: { overflow: 'auto', overscrollBehavior: 'contain' } }}>
       <SourceReviewPanel workspace={workspace} ledgerRef={sourceReviewTarget.run.ledgerRef} coverageRef={sourceReviewTarget.run.coverageRef} lang={lang}
-        onProceed={sourceReviewTarget.run.mode === 'generate' && sourceReviewTarget.run.nextAction === 'review_source_coverage' || sourceReviewTarget.bodyRef || sourceReviewTarget.run.bodies.length === 1
+        onProceed={sourceReviewTarget.bodyRef || sourceReviewTarget.run.bodies.length > 0
           ? decision => void work(() => prepareReviewedAssociations(decision)) : undefined}/>
     </Drawer>}
     {contentReview && contentReview.workspace === workspace && <KnowledgeReviewDrawer key={`${workspace}/${contentReview.detail.revision.revisionId}`} detail={contentReview.detail} workspace={workspace} lang={lang} onClose={() => setContentReview(undefined)}/>}
