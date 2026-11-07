@@ -635,7 +635,7 @@ omk observe knowledge <operation> [flags]
 - `--max-bytes` `option`:retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
-- `--operation-id` `option`:seal-run／migrate-associations／migrate-sources：稳定操作 UUID，重入必须复用。
+- `--operation-id` `option`:seal-run／migrate-associations／migrate-sources／migrate-workflow：稳定操作 UUID，重入必须复用。
 - `--operator` `option`:seal-run：显式声明的人类操作者身份，不认证真人。
 - `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
 - `--page` `option`:entities 页码。
@@ -651,7 +651,7 @@ omk observe knowledge <operation> [flags]
 - `--snapshot` `option`:source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。
 - `--source-status` `all|available|unavailable`:entities 来源可读状态筛选。
 - `--source-version` `option`:source／delete-source／retrieve：精确来源 sha256，须配 --snapshot。
-- `--stage` `source_ledger|body_draft|body|source_coverage|association`:schema：响应阶段，默认 body。
+- `--stage` `source_ledger|body_draft|body|body_window|source_coverage|association`:schema：响应阶段，默认 body。
 - `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
 - `--workspace` `option`:显式知识工作区，省略使用设置。
 
@@ -703,6 +703,14 @@ omk observe knowledge migrate-sources --from-workspace ./source2 --workspace ./s
 
 ```bash
 omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan sha256:<digest> --json
+```
+
+```bash
+omk observe knowledge migrate-workflow --from-workspace ./workflow8 --workspace ./workflow9 --operation-id <uuid> --matching-build ./omk-v8.tgz --matching-build-id <build-id> --plan-only --json
+```
+
+```bash
+omk observe knowledge migrate-workflow --input ./workflow-migration-plan.json --confirm-plan sha256:<digest> --json
 ```
 
 ```bash

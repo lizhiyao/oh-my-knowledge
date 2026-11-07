@@ -5,6 +5,7 @@ import { prepareAssociationMigration, applyAssociationMigration, type Associatio
 import { prepareSourceMigration, applySourceMigration, SOURCE_MIGRATION_PLAN_MAX_BYTES, type SourceMigrationPlan } from '../../../knowledge/adapters/source-migration.js';
 import { planKnowledgeWorkflowMigration, applyKnowledgeWorkflowMigration, type KnowledgeWorkflowMigrationPlan } from '../../../knowledge/adapters/workflow-migration.js';
 import { WRITING_DRAFT_PROFILE } from '../../../knowledge/extraction/writing-draft.js';
+import { BODY_WINDOW_PROFILE } from '../../../knowledge/extraction/long-body.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../../knowledge/extraction/source-review-wire.js';
 import { readLocalSourceScope } from '../../../knowledge/application/local-source-host.js';
 import { SourceDigestSchema, SourceRefSchema, ResolvedSourceSelectionSchema } from '../../../knowledge/sources.js';
@@ -32,6 +33,14 @@ import { KnowledgeRelationOperationSchema, executeKnowledgeRelationOperation, kn
 import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
 
 const description = (zh: string, en: string) => bilingual({ zh, en });
+const generationStageProfiles = {
+  source_ledger: SOURCE_LEDGER_GENERATION_PROFILE,
+  body_draft: WRITING_DRAFT_PROFILE,
+  body: BODY_GENERATION_PROFILE,
+  body_window: BODY_WINDOW_PROFILE,
+  source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE,
+  association: ASSOCIATION_GENERATION_PROFILE,
+};
 const studyFlags = ['evidence', 'author-review', 'reference-review', 'output-review', 'judge-review'] as const;
 function readInputJson(path: string, maxBytes = 16 * 1024 * 1024): unknown {
   const before = lstatSync(path, { bigint: true });
@@ -55,7 +64,7 @@ export default class ObserveKnowledge extends BaseCommand {
   static flags = {
     lang: LANG_FLAG,
     'from-workspace': Flags.string({ description: description('迁移：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。', 'Migration: explicit old workspace; requires a separate new --workspace target, preserving originals without models.') }),
-    'operation-id': Flags.string({ description: description('seal-run／migrate-associations／migrate-sources：稳定操作 UUID，重入必须复用。', 'seal-run/migrate-associations/migrate-sources: stable operation UUID; reuse it on replay.') }),
+    'operation-id': Flags.string({ description: description('seal-run／migrate-associations／migrate-sources／migrate-workflow：稳定操作 UUID，重入必须复用。', 'seal-run/migrate-associations/migrate-sources/migrate-workflow: stable operation UUID; reuse it on replay.') }),
     operator: Flags.string({ description: description('seal-run：显式声明的人类操作者身份，不认证真人。', 'seal-run: explicitly declared human actor identity; not authenticated human identity.') }),
     'manifest-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的原 manifest SHA-256。', 'seal-run: original manifest SHA-256 from sealed-runs.') }),
     'inventory-digest': Flags.string({ description: description('seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。', 'seal-run: exact inventory SHA-256 from sealed-runs.') }),
@@ -98,7 +107,7 @@ export default class ObserveKnowledge extends BaseCommand {
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
     'confirm-request': Flags.string({ description: description('generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。', 'generate/continue-stage/rebuild-associations: confirm the requestDigest for the complete system/input shown by prepare/inspect; each phase requires separate confirmation.') }),
-    stage: Flags.string({ options: ['source_ledger', 'body_draft', 'body', 'source_coverage', 'association'], description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
+    stage: Flags.string({ options: Object.keys(generationStageProfiles), description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
     json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。', 'Complete JSON; retrieve defaults to budgeted single-line JSON, also selected by --format json. Cannot be combined with --format text.') }),
   };
   static examples = [
@@ -114,6 +123,8 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request sha256:<digest>',
     '<%= config.bin %> observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <uuid> --matching-build ./omk-old.tgz --matching-build-id <build-id> --plan-only --json',
     '<%= config.bin %> observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan sha256:<digest> --json',
+    '<%= config.bin %> observe knowledge migrate-workflow --from-workspace ./workflow8 --workspace ./workflow9 --operation-id <uuid> --matching-build ./omk-v8.tgz --matching-build-id <build-id> --plan-only --json',
+    '<%= config.bin %> observe knowledge migrate-workflow --input ./workflow-migration-plan.json --confirm-plan sha256:<digest> --json',
     '<%= config.bin %> observe knowledge inspect --workspace ./knowledge --id <run-id> --json',
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
     '<%= config.bin %> observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation 5 --confirm-request sha256:<digest>',
@@ -152,7 +163,7 @@ export default class ObserveKnowledge extends BaseCommand {
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
         || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
         || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
-        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow8 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow8 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow9 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow9 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
       }
       try {
         const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),
@@ -288,7 +299,7 @@ export default class ObserveKnowledge extends BaseCommand {
     }
     const need = (value: string | undefined, name: string) => { if (!value?.trim()) this.error(`--${name} ${t('必填', 'is required')}`, { exit: 2 }); return value!; };
     if (args.operation === 'schema') {
-      const profile = { source_ledger: SOURCE_LEDGER_GENERATION_PROFILE, body_draft: WRITING_DRAFT_PROFILE, body: BODY_GENERATION_PROFILE, source_coverage: SOURCE_COVERAGE_GENERATION_PROFILE, association: ASSOCIATION_GENERATION_PROFILE }[(flags.stage ?? 'body') as 'source_ledger' | 'body_draft' | 'body' | 'source_coverage' | 'association'];
+      const profile = generationStageProfiles[(flags.stage ?? 'body') as keyof typeof generationStageProfiles];
       this.log(JSON.stringify({ profileId: profile.profileId, promptVersion: profile.promptVersion, wireId: profile.wireId, schema: profile.wireSchema }, null, 2)); return;
     }
     if (flags.stage !== undefined) this.error(t('--stage 仅用于 schema。', '--stage is only valid for schema.'), { exit: 2 });

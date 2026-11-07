@@ -132,7 +132,7 @@ describe('omk agents 与本机登记表扩展', () => {
     expect(result.capture).toMatchObject({ sendAuthorization: 'not_granted', saveManifest: { items: [{ reused: false }] } });
     expect(result.sources).toEqual(result.capture.saveManifest.items.map(({ snapshotId, sourceVersion }: { snapshotId: string; sourceVersion: string }) => ({ snapshotId, sourceVersion })));
     expect(result.generationInput).toEqual({ sources: result.sources }); expect(result.modelCalls).toBe(0);
-    expect(result.prepared.journal).toMatchObject({ schemaVersion: 8, workflowId: 'knowledge-body-first/v8', status: 'active', bodies: [],
+    expect(result.prepared.journal).toMatchObject({ schemaVersion: 9, workflowId: 'knowledge-body-first/v9', status: 'active', bodies: [],
       sources: result.sources.map((source: unknown) => expect.objectContaining(source)), stages: [{ stageKind: 'body_draft', state: 'prepared' }] });
     const stage = result.prepared.journal.stages[0];
     expect(stage.input).toContain('Alpha 使用 Beta'); expect(stage.input).not.toContain('中'); expect(stage.system.length).toBeGreaterThan(0);

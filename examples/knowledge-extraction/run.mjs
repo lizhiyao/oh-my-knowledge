@@ -120,7 +120,7 @@ try {
     return result;
   }
   const prepared = app.prepareGeneration(sourceRefs, fixture);
-  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v8'); assert.equal(prepared.journal.schemaVersion, 8);
+  assert.equal(prepared.journal.workflowId, 'knowledge-body-first/v9'); assert.equal(prepared.journal.schemaVersion, 9);
   assert.equal(prepared.journal.stages[0].stageKind, 'body_draft'); assert.equal(prepared.journal.stages[0].state, 'prepared'); assert.equal(fixtureInvocations, 0);
   await assert.rejects(app.generate(sourceRefs, fixture, prepared.journal.runId), /Confirm the exact prepared generation request/);
   const written = await confirmPhase(prepared);
@@ -134,7 +134,7 @@ try {
   const associationPrepared = app.prepareAssociationRebuild(sourceRefs, body.journal.bodies, fixture);
   assert.equal(fixtureInvocations, 2); assert.equal(associationPrepared.journal.stages[0].stageKind, 'association');
   const run = await confirmPhase(associationPrepared);
-  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v8'); assert.equal(run.journal.bodies.length, 1);
+  assert.equal(run.journal.status, 'completed'); assert.equal(run.journal.workflowId, 'knowledge-body-first/v9'); assert.equal(run.journal.bodies.length, 1);
   assert.deepEqual(run.journal.stages.map(stage => stage.stageKind), ['association']);
   for (const stage of run.journal.stages) { assert.equal(stage.state, 'completed'); assert.deepEqual(stage.rejected ?? [], []); }
 

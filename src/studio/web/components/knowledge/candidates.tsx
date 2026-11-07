@@ -384,7 +384,7 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
       }}/>}
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
       <Button onClick={() => { setShowRuns(false); setShowStudy(true); }}>{t('核对研究证据', 'Inspect study evidence')}</Button>
-      <p className="candidate-help">{t('显示当前来源清单、正文、来源核对与关联四阶段流程。旧格式运行会明确标记；旧知识需显式迁入新工作区。', 'Current source inventory, content, coverage and association workflow. Older runs are explicitly marked; old knowledge requires explicit migration to a new workspace.')}</p>
+      <p className="candidate-help">{t('显示正文提炼记录，长来源也会列出分段取证。来源复核和实体关联各有独立记录。旧格式运行会明确标记。', 'View content extraction, including planned source windows for long sources. Source review and entity associations have separate records. Older formats are marked.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 
       {runs.length ? runs.map((run) => <section className="candidate-statement" key={run.runId}><strong>{extractionRunStatusLabel(run.status, lang)}</strong><p>{run.runId}</p><p>{run.createdAt}</p>{run.schemaStatus === 'current' && <p>{run.bodies.length} {t('条候选', 'candidates')} / {run.phases.reduce((sum, phase) => sum + (phase.rejectedCount ?? 0), 0)} {t('条拒绝输出', 'rejected outputs')}</p>}
@@ -485,7 +485,7 @@ export function KnowledgeCandidateStart({ lang, loading, busy, latest, failedToL
           <ExtractionInvocationSummary run={latest} lang={lang}/>
           {onEntities && <EntityAnalysisSummary run={latest} lang={lang} disabled={busy} onOpen={onEntities}/>}
           <Button type="link" disabled={busy} onClick={onHistory}>{t('查看提炼记录', 'View extraction history')}</Button>
-        </> : <p>{t('尚无当前四阶段提炼记录。请选择来源开始；旧运行保留为历史记录。', 'No current four-stage runs. Select sources to begin; older runs remain historical records.')}</p>}
+        </> : <p>{t('尚无当前提炼记录。请选择来源开始；旧运行保留为历史记录。', 'No current extraction runs. Select sources to begin; older runs remain historical records.')}</p>}
       </div>
     </aside>
   </div>;
