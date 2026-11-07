@@ -123,7 +123,7 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request sha256:<digest>',
     '<%= config.bin %> observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <uuid> --matching-build ./omk-old.tgz --matching-build-id <build-id> --plan-only --json',
     '<%= config.bin %> observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan sha256:<digest> --json',
-    '<%= config.bin %> observe knowledge migrate-workflow --from-workspace ./workflow8 --workspace ./workflow9 --operation-id <uuid> --matching-build ./omk-v8.tgz --matching-build-id <build-id> --plan-only --json',
+    '<%= config.bin %> observe knowledge migrate-workflow --from-workspace ./workflow9 --workspace ./workflow10 --operation-id <uuid> --matching-build ./omk-v9.tgz --matching-build-id <build-id> --plan-only --json',
     '<%= config.bin %> observe knowledge migrate-workflow --input ./workflow-migration-plan.json --confirm-plan sha256:<digest> --json',
     '<%= config.bin %> observe knowledge inspect --workspace ./knowledge --id <run-id> --json',
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
@@ -163,7 +163,7 @@ export default class ObserveKnowledge extends BaseCommand {
       if (Object.entries(flags).some(([name, value]) => value !== undefined && value !== false && !allowed.has(name))
         || applying && !SourceDigestSchema.safeParse(flags['confirm-plan']).success
         || !applying && (!flags['plan-only'] || !flags['from-workspace']?.trim() || !flags.workspace?.trim() || !z.string().uuid().safeParse(flags['operation-id']).success || !flags['matching-build']?.trim() || !flags['matching-build-id']?.trim())) {
-        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定 workflow9 副本计划；执行只接受 --input 和 --confirm-plan。', 'Fix a workflow9 copy plan with separate roots, matching build and --plan-only; apply accepts only --input and --confirm-plan.'), { exit: 2 });
+        this.error(t('先以独立旧／新目录、匹配构建及 --plan-only 固定工作流副本迁移计划；执行只接受 --input 和 --confirm-plan。', 'Prepare a workflow copy migration plan with separate roots, a matching build and --plan-only. Apply accepts only --input and --confirm-plan.'), { exit: 2 });
       }
       try {
         const plan = applying ? readInputJson(flags.input!) as KnowledgeWorkflowMigrationPlan : planKnowledgeWorkflowMigration({ sourceRoot: resolve(flags['from-workspace']!), targetRoot: resolve(flags.workspace!),

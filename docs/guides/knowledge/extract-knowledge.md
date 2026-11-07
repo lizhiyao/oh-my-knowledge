@@ -23,7 +23,7 @@ omk studio
 
 Use the returned address and check the current knowledge location first. Changing the default directory does not move saved data. Connected conversations use the host's conversation catalog. For project files, local Git files or configured trace files, the host first supplies a [finite source scope](#source-scope), then starts Studio with `omk studio --source-scope ./scope.json`. The browser chooses configured IDs and relative paths; it cannot grant an arbitrary project root.
 
-1. **Select and preview sources**: Choose explicitly authorized material from a conversation turn or **Choose sources and extract knowledge**. Read complete excerpts and separate read/save/send scopes. **Capture selected sources only** saves locally. Confirm the writing draft and subsequent body requests separately. Long histories may require separate confirmation of each window. Prepare source review or pending associations separately as needed. Every sent stage may incur cost; model analysis never approves itself.
+1. **Select and preview sources**. Choose explicitly authorized material from a conversation turn or **Choose sources and extract knowledge**. Read complete excerpts and separate read/save/send scopes. **Capture selected sources only** saves locally. Confirm each request separately. Ordinary generation uses a writing draft followed by a grounded body. Long Codex sources start with the first window of original source passages. Prepare source review or pending associations separately as needed. Each dispatch may incur a cost. Model analysis never approves itself.
 2. **Review candidates**: Read complete body segments, conditions, attribution, exceptions and unknowns; open source evidence. Record a reason to retain, discard, or revise. New revisions require review again.
 3. **Review entities as needed**: Check names, references, levels, and original text from a candidate or entity list. Entity corrections do not rewrite body; independently apply and review exact segment/entity associations.
 4. **Accumulate across records**: Create an object in the knowledge library, check whether source entities from different windows refer to the same object, and confirm with reasons. Equal names do not merge identities; resolve ambiguity and missing sources first.
@@ -163,19 +163,19 @@ Use actual saved values. The two fields together form the `SourceRef`; an ID alo
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
-omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <draft-request-digest> --json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <first-request-digest> --json
 ```
 
-Generation starts with an **unverified writing draft**. Preparation calls no model. Inspect the complete prepared `system`, `input`, model, producer and `requestDigest` before using `generate` to send the draft request. Capture and transmission require separate approval. Ordinary body requests take complete original Source3 as evidence. Source inventory can be prepared separately.
+Preparation calls no model. Inspect the complete prepared `system`, `input`, model, producer and `requestDigest` before using `generate` to send the first request. Capture and transmission require separate approval. Ordinary generation starts with an **unverified writing draft** and then grounds the body in complete original Source3. The long Codex route starts with the first window of original source passages. Source inventory can be prepared separately.
 
-After the draft completes, prepare the next stage with the same run and exact sources. Inspect the complete new request and confirm it using its current generation/digest:
+After the first stage completes, prepare any next stage with the same run and exact sources. Inspect the complete new request and confirm it using its current generation and digest.
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --run-id <run-id> --executor codex --model <model> --json > next-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <prepared-stage-digest> --json
 ```
 
-When the full grounded-body input JSON exceeds 512 KiB and fits the window limits, Codex processes consecutive windows over the complete ordered source passages. Use the same pair of commands above to prepare, inspect and confirm each window in order. Window outputs are archived as they return. After all windows succeed, the host combines their validated bodies and source references locally and publishes them together. Use `inspect` to check saved stage status.
+When the full Codex source input JSON exceeds 512 KiB before accounting for a draft, the host checks the capacity of all consecutive source windows before preparing the first request. Preparation stops if the sources exceed the window limits. Prepare, inspect and confirm each remaining window in order with the commands above. Window outputs are archived as they return. After all windows succeed, the host combines their validated bodies and source references locally and publishes them together. Use `inspect` to check saved stage status.
 
 Each stage claims once and archives the complete returned outcome before decoding. The ordinary body stage or completed set of windows produces **pending and unretained** candidates. Zero bodies also complete without placeholders. Use [source review and rebuilding](#source-review-corrections) with complete original sources and exact saved bodies when optional coverage or entity associations are needed.
 
@@ -212,7 +212,7 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-**BREAKING-SCHEMA/API/COMPARABILITY**. Current journals use Schema 9. Ordinary body requests still bind the exact same-run draft and complete Source3. Codex body requests above the threshold use ordered windows. The host publishes only after every window succeeds. Source review and pending association generation remain independent. Matching older builds read older journals. `knowledge-workflow-to9` migrates only to an independent copy and archives older journals, analyses, originals and automatic permissions unchanged. Historical measurements retain their original identities.
+**BREAKING-SCHEMA/API/COMPARABILITY**. Current journals use Schema 10. Ordinary body requests bind the exact same-run draft and complete Source3. For Codex sources above the threshold, generation starts with the first original-source window. The host publishes only after every window succeeds. Source review and pending association generation remain independent. Matching older builds read older journals. `knowledge-workflow-to10` migrates only to an independent copy and archives older journals, analyses, originals and automatic permissions unchanged. Historical measurements retain their original identities.
 
 Old wire2/prompt3 and wire3/prompt4–5 coverage retains passive-read semantics with `originalVerification=not_verified`, without inheriting current source-review verification. Current coverage originals still use wire3/prompt6; there is no compatibility decoder or rewriting of old outputs. Use the preserved old workspace and matching build for old execution or rollback. Association generation independently binds explicit sources and bodyRefs, without using old coverage or its decisions as admission credentials.
 
@@ -277,7 +277,7 @@ omk observe knowledge retrieve --workspace ./knowledge --query 'What remains unk
 
 For the default JSON view, **65536 UTF-8 bytes counts the entire single-line JSON plus newline**, not stored knowledge or a model context limit. Explicit `--max-bytes 8192` remains supported; the maximum stays 1 MiB. Complete segments and their inline evidence are atomic: oversized or budget-excluded segments are reported in `omitted`, never condition-truncated. This initial budget does not establish complete task coverage or optimal selection, and does not upgrade previously recorded smaller-budget failures. The optional text view below is budgeted against its own complete output.
 
-Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and `--source-version` must be provided together to scope an exact source reference. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
+Recall uses deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-verified-evidence-phrases/v4`. Verified, attached in-scope citations can contribute recall. A citation gains priority when it matches at least two consecutive ASCII content terms and the phrase is longer than any match in the segment, title or tags. This supports queries that share source vocabulary, such as an English query for a Chinese body with English evidence. Results still carry the complete saved body and its bound citations. Within each citation phrase tier, ordering continues to use scoped ASCII topic sets and incremental literal coverage per byte. All oversized or budget-excluded candidates count in `omitted`. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and `--source-version` must be provided together to scope an exact source reference. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
 
 ### Maintain existing knowledge with new material {#maintain-existing-knowledge}
 
@@ -325,16 +325,16 @@ OMK uses `codex` from the current process PATH. Check `codex --version`; if the 
 
 ## Migrate an older workspace {#workspace-migration}
 
-### Copy an old workflow into an independent workflow9 workspace {#workflow-migration}
+### Copy an old workflow into an independent workflow10 workspace {#workflow-migration}
 
-Preserve the old directory and matching installable package, then stop old writers. This slice supports only healthy active Source3/body3/entity2/association2/reviews1/tags. All bytes, identities, history, retention and review opinions stay unchanged; they do not become source-coverage approval. Library, carriers, entity-links or other unsupported content require retaining the old directory and reporting unsupported, never silent dropping or retargeting.
+Preserve the old directory and matching installable package, then stop old writers. This slice supports only healthy active Source3/body3/entity2/association2/reviews1/tags. All bytes, identities, history, retention and review opinions stay unchanged; they do not become source-coverage approval. Library, carriers, entity-links, knowledge-relations or other unsupported content require retaining the old directory and reporting unsupported, never silent dropping or retargeting.
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow9 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
+omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow10 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
 omk observe knowledge migrate-workflow --input ./workflow-plan.json --confirm-plan <plan-digest> --json
 ```
 
-Planning writes nothing. Review actual roots, full inventory/digests, old package, capacity and limits before applying that fixed plan and digest. Journal8 and earlier (including outcomes), source-ledgers, source-coverage, auto-extraction and old migration/marker are archive-only: no old call or automatic allowance resumes. Roots must be independent and non-overlapping. Interrupted steps/receipts resume only the same plan; unknown temporary files stop for inspection. Completed additions/edits/deletions are never overwritten or resurrected. Explicit requests start the new stages; rollback uses the old directory and matching build. Source2 reference conversion remains the separate path below, without upgrading historical measurements.
+Planning writes nothing. Review actual roots, full inventory/digests, old package, capacity and limits before applying that fixed plan and digest. Journal9 and earlier (including outcomes), source-ledgers, source-coverage, auto-extraction and old migration/marker are archive-only: no old call or automatic allowance resumes. Roots must be independent and non-overlapping. Interrupted steps/receipts resume only the same plan; unknown temporary files stop for inspection. Completed additions/edits/deletions are never overwritten or resurrected. Explicit requests start the new stages; rollback uses the old directory and matching build. Source2 reference conversion remains the separate path below, without upgrading historical measurements.
 
 ### Migrate association Schema 1 into a separate copy {#association-migration}
 
@@ -393,7 +393,7 @@ omk observe knowledge rebuild-associations --workspace ./knowledge --input ./ass
 
 Rebuilding creates an independent pending projection without another body generation. Manual `correct-entities`/`apply-associations` retain their explicit maintenance paths and do not fabricate source-coverage approval.
 
-Current journal9 records live at `generation-journals/<run-id>.json`, with complete originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Journal8 and earlier, old typed and source formats are explicitly unsupported, never healthy empty data. Preserve the original directory and matching build; follow the applicable [workflow copy](#workflow-migration), [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) or [source migration](#source-migration), without resuming old claims.
+Current journal10 records live at `generation-journals/<run-id>.json`, with complete originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Journal9 and earlier, old typed and source formats are explicitly unsupported, never healthy empty data. Preserve the original directory and matching build; follow the applicable [workflow copy](#workflow-migration), [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) or [source migration](#source-migration), without resuming old claims.
 
 ### Check source changes {#source-updates}
 

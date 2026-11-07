@@ -105,7 +105,7 @@ describe('Source3 manual transmission boundary', () => {
     expect(existsSync(join(workspace, 'sources'))).toBe(true); expect(invocations).toEqual([]);
     expect(screen.queryByRole('textbox', { name: 'Compare Git commit or branch' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Prepare and review complete model request' }));
-    await screen.findByText('Confirm Writing draft request');
+    await screen.findByText(long ? 'Confirm Source window request' : 'Confirm Writing draft request');
     const sendBody = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
     expect(sendBody.disabled).toBe(true); expect(invocations).toEqual([]);
     if (unavailable) {
@@ -118,28 +118,29 @@ describe('Source3 manual transmission boundary', () => {
       expect(invocations).toEqual([]); expect(sendBody.disabled).toBe(true);
     }
     const approval = () => screen.getByRole('checkbox', { name: 'Approve sending this exact request to the executor/model shown above.' }) as HTMLInputElement;
-    fireEvent.click(approval()); fireEvent.click(sendBody);
-    await screen.findByRole('button', { name: 'Prepare and review the next stage' });
-    expect(invocations).toEqual(['body_draft']);
     let windowCount = 0;
     if (long) {
       const prepareWindow = async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Prepare and review the next stage' }));
         await screen.findByText('Confirm Source window request', { selector: 'h3' });
       };
-      await prepareWindow();
       const app = createLocalKnowledgeApplication(workspace);
-      windowCount = app.runs().current[0].bodyPlan!.windows.length;
+      const prepared = app.runs().current[0];
+      windowCount = prepared.bodyPlan!.windows.length;
       expect(windowCount).toBeGreaterThan(1);
+      expect(prepared.stages.map(stage => stage.stageKind)).toEqual(['body_window']);
+      const firstInput = JSON.parse(prepared.stages[0].input);
+      expect(firstInput).toMatchObject({ inputVersion: 'knowledge-body-window-input/v4', bodyWindow: { index: 1, count: windowCount } });
+      expect(firstInput).not.toHaveProperty('writingDraft');
       expect(screen.getByText(`Source windows completed 0/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`,
         { selector: '[role="status"]' })).toBeTruthy();
       expect(app.list()).toHaveLength(0);
       for (let completed = 0; completed < windowCount; completed++) {
         if (completed) await prepareWindow();
-        expect(screen.getByText('Archive this window. After the final window, consolidate and save candidate bodies locally.', { selector: 'p', exact: false })).toBeTruthy();
+        expect(screen.getByText('Extract grounded content directly from this source window and archive the result. After the final window, consolidate and save candidate bodies locally.', { selector: 'p', exact: false })).toBeTruthy();
         const sendWindow = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
         expect(sendWindow.disabled).toBe(true); expect(approval().checked).toBe(false);
-        expect(invocations).toHaveLength(1 + completed);
+        expect(invocations).toHaveLength(completed);
         fireEvent.click(approval()); fireEvent.click(sendWindow);
         await screen.findByText(`Source windows completed ${completed + 1}/${windowCount}. After the final window, candidate bodies are consolidated and saved locally.`,
           { selector: '[role="status"]' });
@@ -147,7 +148,10 @@ describe('Source3 manual transmission boundary', () => {
       }
       expect(screen.queryByRole('button', { name: 'Prepare and review the next stage' })).toBeNull();
     } else {
-      fireEvent.click(screen.getByRole('button', { name: 'Prepare and review the next stage' }));
+      fireEvent.click(approval()); fireEvent.click(sendBody);
+      const prepareContent = await screen.findByRole('button', { name: 'Prepare and review the next stage' });
+      expect(invocations).toEqual(['body_draft']);
+      fireEvent.click(prepareContent);
       await screen.findByText('Confirm content request');
       const sendContent = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
       expect(sendContent.disabled).toBe(true); expect(approval().checked).toBe(false);
@@ -155,7 +159,7 @@ describe('Source3 manual transmission boundary', () => {
     }
     await screen.findByText(empty ? 'No content was saved. This does not establish source verification or lack of value.'
       : 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.');
-    expect(invocations).toEqual(long ? ['body_draft', ...Array(windowCount).fill('body_window')] : ['body_draft', 'body']);
+    expect(invocations).toEqual(long ? Array(windowCount).fill('body_window') : ['body_draft', 'body']);
     const app = createLocalKnowledgeApplication(workspace), generated = app.runs().current[0];
     expect(generated).toMatchObject({ status: 'completed', mode: 'generate' });
     expect(generated.bodies).toHaveLength(long ? windowCount : empty ? 0 : 1);
@@ -165,8 +169,8 @@ describe('Source3 manual transmission boundary', () => {
     expect(existsSync(join(workspace, 'associations'))).toBe(false);
     if (long) {
       const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
-      expect(dispatches).toHaveLength(windowCount + 1);
-      expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(windowCount + 1);
+      expect(dispatches).toHaveLength(windowCount);
+      expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(windowCount);
       expect(new Set(dispatches.map(item => item.id))).toEqual(new Set([generated.runId]));
       const windows = generated.stages.filter(stage => stage.stageKind === 'body_window');
       for (const [index, body] of generated.bodies.entries()) {

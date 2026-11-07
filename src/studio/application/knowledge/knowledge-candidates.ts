@@ -27,6 +27,7 @@ const frozenSourceSchema = z.object({ source: z.object({ snapshotId: z.string(),
 /** Frozen attribution is metadata only; it does not assert that the sources can still be read. */
 function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandidateRun, 'sources' | 'sourceMetadataStatus'> {
   const sources = journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
+  if (journal.bodySourceMetadata) return { sources: journal.bodySourceMetadata, sourceMetadataStatus: 'frozen_input' };
   try {
     const stored: unknown = JSON.parse(journal.stages[0]!.input);
     const input = journal.stages[0]!.stageKind === 'source_ledger' ? restoreSourceLedgerInput(stored) : stored;

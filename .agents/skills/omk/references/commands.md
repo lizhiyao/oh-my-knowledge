@@ -706,7 +706,7 @@ omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-pl
 ```
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./workflow8 --workspace ./workflow9 --operation-id <uuid> --matching-build ./omk-v8.tgz --matching-build-id <build-id> --plan-only --json
+omk observe knowledge migrate-workflow --from-workspace ./workflow9 --workspace ./workflow10 --operation-id <uuid> --matching-build ./omk-v9.tgz --matching-build-id <build-id> --plan-only --json
 ```
 
 ```bash

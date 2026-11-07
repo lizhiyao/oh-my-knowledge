@@ -12,7 +12,7 @@ const digest = `sha256:${'a'.repeat(64)}`;
 const source = { snapshotId: uuid(3), sourceVersion: digest };
 function result(): KnowledgeTaskRetrieval {
   const bodyRef = { knowledgeId: uuid(1), revisionId: uuid(2), bodyDigest: digest };
-  return { projectionKind: 'knowledge-body-segments', schemaVersion: 3, rankingPolicyId: 'knowledge-body-literal-topic-priority/v3',
+  return { projectionKind: 'knowledge-body-segments', schemaVersion: 3, rankingPolicyId: 'knowledge-body-verified-evidence-phrases/v4',
     omitted: { oversizedSegments: 0, budgetSegments: 2 }, scopeDiagnostics: { source: { status: 'available' } },
     knowledge: [{ bodyRef, generation: 1, title: 'Conditions for reusing diagnostics', choice: null, reviewStatus: 'pending', segmentScope: { returned: 1, total: 3 },
       derivedAssociations: { status: 'absent', reviewStatus: 'pending', bodyRef } }], sources: [{ ...source, status: 'available', sourceKind: 'project_file', source: sourceSummaryFixture(fileSourceFixture(source, 'Alpha', { relativePath: 'config/diagnostics.json', materialType: 'configuration' })) }],

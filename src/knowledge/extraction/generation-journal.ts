@@ -4,13 +4,13 @@ import { KnowledgeWriteSchema } from '../store.js';
 import { EntityAnalysisWriteSchema } from '../entities/contracts.js';
 import { KnowledgeAssociationRevisionSchema } from '../associations.js';
 import { GenerationOutcomeRefSchema, type GenerationOutcome } from './native-outcome.js';
-import { WORKFLOW_ID } from './source-input.js';
+import { GenerationSourceMetadataSchema, WORKFLOW_ID } from './source-input.js';
 import { LongBodyPlanSchema } from './long-body.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from './source-review-input.js';
 import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../source-review.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-export const GENERATION_JOURNAL_SCHEMA_VERSION = 9 as const;
+export const GENERATION_JOURNAL_SCHEMA_VERSION = 10 as const;
 export const WritingDraftRefSchema = z.strictObject({ runId: uuid, invocationId: uuid, requestDigest: digest, archiveDigest: digest, outputDigest: digest });
 const associationWrite = z.strictObject({ commandKind: z.literal('append_revision'), requestId: uuid,
   knowledgeId: z.string().min(1), expectedGeneration: z.number().int().nonnegative(), expectedHeadRevisionId: z.string().nullable(),
@@ -40,6 +40,7 @@ export const GenerationJournalSchema = z.strictObject({
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
   bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(9),
   bodyPlan: LongBodyPlanSchema.optional(),
+  bodySourceMetadata: z.array(GenerationSourceMetadataSchema).min(1).max(256).optional(),
   writingDraftRef: WritingDraftRefSchema.optional(), ledgerRef: SourceLedgerRefSchema.optional(), coverageRef: SourceCoverageRefSchema.optional(),
 });
 export type GenerationStage = z.infer<typeof GenerationStageSchema>;
@@ -47,7 +48,7 @@ export type GenerationStage = z.infer<typeof GenerationStageSchema>;
 /** Only the last planned window can publish the aggregate, after all native windows are archived. */
 export function isBodyPublicationStage(journal: GenerationJournal, index: number): boolean {
   const stageKind = journal.stages[index]?.stageKind;
-  return stageKind === 'body' || stageKind === 'body_window' && index === journal.bodyPlan?.windows.length;
+  return stageKind === 'body' || stageKind === 'body_window' && journal.bodyPlan !== undefined && index === journal.bodyPlan.windows.length - 1;
 }
 export type GenerationJournal = z.infer<typeof GenerationJournalSchema>;
 /** Inventory observations never claim that a native original has been decoded or verified. */

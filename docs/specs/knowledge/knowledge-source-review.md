@@ -4,7 +4,7 @@
 
 Source review separates a proposed inventory of reusable source meaning, an independent comparison with saved bodies, and the actual operator's decision. Both histories use Schema 1. They do not replace content reviews, segment/entity coverage or task-use feedback in `reviews/`.
 
-**BREAKING-SCHEMA/API/COMPARABILITY**. Current journals use Schema 9. Ordinary body requests still bind the exact same-run draft and complete Source3. Codex body requests above the threshold use ordered windows. The host publishes only after every window succeeds. Source review and pending association generation remain independent. Matching older builds read older journals. `knowledge-workflow-to9` migrates only to an independent copy and archives older journals, analyses, originals and automatic permissions unchanged. Historical measurements retain their original identities.
+**BREAKING-SCHEMA/API/COMPARABILITY**. Current journals use Schema 10. Ordinary body requests bind the exact same-run draft and complete Source3. For Codex sources above the threshold, generation starts with the first original-source window. The host publishes only after every window succeeds. Source review and pending association generation remain independent. Matching older builds read older journals. `knowledge-workflow-to10` migrates only to an independent copy and archives older journals, analyses, originals and automatic permissions unchanged. Historical measurements retain their original identities.
 
 Coverage prompt6 also requires a quote repeated within the complete source unit or body segment to use a unique continuous excerpt or genuine adjacent disambiguating context. The host still rejects ambiguous locations; failed prompt5 originals remain failed, and no historical result is repaired.
 
@@ -48,13 +48,13 @@ Existing opinions can still be revoked when original evidence is unavailable. As
 
 ## Integration boundary {#integration}
 
-`prepare-generation` prepares a writing draft from complete sources and finishes after separately confirmed writing and grounded-body stages. `prepare-rebuild-associations`/`rebuild-associations` independently accept `{sources, bodyRefs}`. Bodies and associations remain pending, without mandatory inventory, coverage or actual-decision prerequisites. Zero bodies do not create placeholders or automatic associations.
+`prepare-generation` prepares a writing draft for ordinary generation or the first original-source window for long Codex sources. Each request is separately confirmed, and the run finishes after body publication. `prepare-rebuild-associations`/`rebuild-associations` independently accept `{sources, bodyRefs}`. Bodies and associations remain pending, without mandatory inventory, coverage or actual-decision prerequisites. Zero bodies do not create placeholders or automatic associations.
 
 `prepare-source-review` accepts complete original `sources`, exact `bodyRefs` and optional `ledgerRef`. Without a ledger it inventories then checks coverage; a matching ledger runs coverage only, without generating bodies or automatic associations. Reviewing new content requires analyses and actual opinions bound to the new bodyRefs. Association sources explicitly define its complete selected scope, without inferring or automatically reducing it from body quotations.
 
 `source-ledger` and `source-coverage-status` read exact revisions. `review-source-coverage` accepts a complete `record_decision` or `revoke_decision` command with coverageId, stable requestId, expectedGeneration and expectedHeadEventId; decisions add the complete decision, revocations add targetEventId and reason, without self-reported actor. Model analysis, opinion storage, association generation and manual maintenance do not impersonate approval.
 
-Source3, body, entity, association, reviews and tags retain their identities. `migrate-workflow` copies only the six supported formats to an independent target and archives journal8 and earlier, source-ledger/coverage analyses and automatic permissions. This build provides no workflow9 scheduler or renewed automatic grant. Rollback uses the untouched old directory and matching build.
+Source3, body, entity, association, reviews and tags retain their identities. `migrate-workflow` copies only the six supported formats to an independent target and archives journal9 and earlier, source-ledger/coverage analyses and automatic permissions. This build provides no workflow10 scheduler or renewed automatic grant. Rollback uses the untouched old directory and matching build.
 
 ### Coverage profile boundary {#coverage-profile}
 
@@ -62,4 +62,4 @@ Old wire2/prompt3 and wire3/prompt4–5 coverage retains passive-read semantics 
 
 Preserve the original workspace and its matching installable build to continue an old-profile execution or roll back. To use current coverage, make an explicit complete independent workspace copy and prepare a new wire3/prompt6 analysis using the complete original sources, a matching ledger and exact saved body references. Do not rerun a completed matching ledger or body merely to replace coverage. Original/request custody must still revalidate; otherwise stop. Preserve original sources, bodies, IDs, failed outcomes, measurement identities and scores. A new analysis requires its own actual decision; neither copying nor passive readability supplies one. This is a source-build boundary, not a release announcement.
 
-For coverage-only replacement, a reused ledger must pass current journal9 original verification. Journal8 and earlier ledger/coverage histories are archive-only in a copy to workflow9 and cannot confer current execution eligibility; independently prepare source inventory for the new workflow, without rewriting or redispatching the old run.
+For coverage-only replacement, a reused ledger must pass current journal10 original verification. Journal9 and earlier ledger/coverage histories are archive-only in a copy to workflow10 and cannot confer current execution eligibility; independently prepare source inventory for the new workflow, without rewriting or redispatching the old run.

@@ -189,7 +189,7 @@ describe('source-first generation and zero-model recovery', () => {
   it('completes canonical generation after two separately confirmed requests, without review or association calls', async () => {
     const f = setup(), refs = [sourceRef(f.window)], prepared = f.app.prepareGeneration(refs, f.model);
     expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
-    expect(prepared.journal).toMatchObject({ schemaVersion: 9, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
+    expect(prepared.journal).toMatchObject({ schemaVersion: 10, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
       runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'body_draft', state: 'prepared', system: WRITING_DRAFT_PROFILE.system }] });
     const input = JSON.parse(prepared.journal.stages[0].input);
     expect(input.sources[0].source).toMatchObject(refs[0]);
@@ -236,22 +236,20 @@ describe('source-first generation and zero-model recovery', () => {
     } })).join('\n'));
     const refs = [sourceRef(captureTraceFixture(f.root, { path }))];
     const execute = vi.fn(async request => {
-      if (request.outputFormat.name === 'knowledge_body_draft_v1') {
-        expect(request).toMatchObject({ timeoutMs: 300_000 });
-        expect(request.effort).toBeUndefined();
-        return { ok: true, output: JSON.stringify(f.output('body_draft', request.prompt)) } as unknown as ExecResult;
-      }
-      expect(request).toMatchObject({ timeoutMs: 150_000, effort: 'low' });
-      expect(JSON.parse(request.prompt).bodyWindow).toMatchObject({ index: 1 });
+      expect(request).toMatchObject({ outputFormat: { name: 'knowledge_body_window_v1' }, timeoutMs: 150_000, effort: 'low' });
+      const input = JSON.parse(request.prompt);
+      expect(input.bodyWindow).toMatchObject({ index: 1 });
+      expect(input).not.toHaveProperty('writingDraft');
       return { ok: false, output: null, durationMs: 150_001, failure: { failureKind: 'timeout' } } as unknown as ExecResult;
     });
     const model = configuredKnowledgeGenerationModel('codex', 'fixture-model', createCodexArchiveProducer({}, () => execute));
-    const draft = await dispatch(f, f.app.prepareGeneration(refs, model), model);
-    const prepared = f.app.prepareGeneration(refs, model, draft.journal.runId);
+    const prepared = f.app.prepareGeneration(refs, model);
     expect(prepared.journal.bodyPlan!.windows.length).toBeGreaterThan(1);
-    expect(prepared.journal.stages.at(-1)).toMatchObject({ stageKind: 'body_window', state: 'prepared' });
-    expect(execute).toHaveBeenCalledTimes(1);
-    const failed = await dispatch(f, prepared, model);
+    expect(prepared.journal.stages).toEqual([expect.objectContaining({ stageKind: 'body_window', state: 'prepared' })]);
+    expect(prepared.journal.writingDraftRef).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+    const failed = await f.app.generate(refs, model, prepared.journal.runId, undefined,
+      { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
     expect(failed).toMatchObject({ journal: { status: 'failed', bodies: [] }, nextAction: 'none' });
     expect(failed.journal.stages.at(-1)).toMatchObject({ stageKind: 'body_window', state: 'failed', committed: 0 });
     const reopened = f.reopen();
@@ -259,7 +257,7 @@ describe('source-first generation and zero-model recovery', () => {
     expect(reopened.resume(failed.journal.runId)).toEqual(failed);
     expect(reopened.prepareGeneration(refs, model, failed.journal.runId)).toEqual(failed);
     expect(f.library.list()).toEqual([]);
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it('reviews zero saved bodies against the full ledger and does not invent a body, approval or association call', async () => {
@@ -357,9 +355,9 @@ describe('source-first generation and zero-model recovery', () => {
     expect(f.reopen().inspect(result.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: JSON.stringify(f.body) } });
   });
 
-  it('refuses a new workflow9 run in an unmigrated journal8 workspace without changing the old claim', () => {
+  it.each([8, 9])('refuses a new workflow10 run in a journal%s workspace without changing the old claim', schemaVersion => {
     const f = setup(), runId = randomUUID(); mkdirSync(join(f.root, 'generation-journals'));
-    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 8, unknownClaim: true });
+    const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion, unknownClaim: true });
     writeFileSync(path, bytes);
     expect(() => f.app.prepareGeneration([sourceRef(f.window)], f.model)).toThrow('explicit independent-copy');
     expect(readFileSync(path, 'utf8')).toBe(bytes); expect(f.invoke).not.toHaveBeenCalled();

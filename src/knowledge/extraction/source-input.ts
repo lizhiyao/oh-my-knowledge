@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SourceDigestSchema, SourceExcerptSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
+import { SourceDigestSchema, SourceExcerptSchema, SourceIdentitySchema, SourceNamespaceSchema, SourceRefSchema, TraceOriginSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
 import { canonicalJson } from '../store.js';
 import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema, sourcePassageText, assertSourcePassageInput } from './source-passages.js';
 
 export const SOURCE_GENERATION_INPUT_VERSION = 'knowledge-source-generation-input/v1' as const;
 export const WRITING_DRAFT_INPUT_VERSION = 'knowledge-writing-draft-input/v1' as const;
 export const BODY_GENERATION_INPUT_VERSION = 'knowledge-body-generation-input/v5' as const;
-export const WORKFLOW_ID = 'knowledge-body-first/v9' as const;
-export const SOURCE_IMPORT_RUN_IDENTITY = 'knowledge-source-set-import-run/v4' as const;
+export const WORKFLOW_ID = 'knowledge-body-first/v10' as const;
+export const SOURCE_IMPORT_RUN_IDENTITY = 'knowledge-source-set-import-run/v5' as const;
 
 /** UUIDv8: reuse only this workflow's default journal, including failed or unknown results. */
 export function generationImportRunId(sourceSetId: string): string {
@@ -28,6 +28,25 @@ export function generationSourceInput(snapshot: SourceSnapshot, sourceOrdinal: n
     identity: snapshot.identity, selection: snapshot.selection, material: snapshot.material, provenance: snapshot.provenance,
     ...(origin ? { origin: { threadId: origin.threadId, ...(origin.turnId === undefined ? {} : { turnId: origin.turnId }), title: origin.title } } : {}),
   }, excerpts: snapshot.excerpts, limitations: snapshot.limitations };
+}
+
+const portableTraceOriginSchema = TraceOriginSchema.omit({ cwd: true });
+const portableSourceMetadataInputSchema = SourceRefSchema.extend({
+  sourceKind: z.enum(['agent_trace', 'project_file', 'git_blob']),
+  identity: z.record(z.string(), z.unknown()), origin: portableTraceOriginSchema.optional(),
+}).loose();
+export const GenerationSourceMetadataSchema = z.discriminatedUnion('sourceKind', [
+  SourceRefSchema.extend({ sourceKind: z.literal('agent_trace'), origin: portableTraceOriginSchema.optional() }),
+  SourceRefSchema.extend({ sourceKind: z.enum(['project_file', 'git_blob']), projectId: SourceNamespaceSchema }),
+]);
+
+/** Portable source attribution for read-only views. Raw evidence and host paths stay local. */
+export function generationSourceMetadata(value: unknown): z.infer<typeof GenerationSourceMetadataSchema> {
+  const { snapshotId, sourceVersion, sourceKind, identity, origin } = portableSourceMetadataInputSchema.parse(value);
+  const source = SourceIdentitySchema.parse({ ...identity, sourceKind });
+  return source.sourceKind === 'agent_trace'
+    ? { snapshotId, sourceVersion, sourceKind: source.sourceKind, ...(origin ? { origin } : {}) }
+    : { snapshotId, sourceVersion, sourceKind: source.sourceKind, projectId: source.projectId };
 }
 
 export function bodySourcePassages(sources: readonly SourceSnapshot[]) {

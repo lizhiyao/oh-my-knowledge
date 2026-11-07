@@ -4,7 +4,7 @@
 
 来源复核将可复用含义的候选清单、对已存正文的独立比较、实际操作者的决定分别记录。两份历史均采用 Schema 1，不替换 `reviews/` 中的内容复核、段落／实体覆盖或任务使用反馈。
 
-**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 9。普通正文继续绑定同次精确草稿及完整 Source3。超出阈值的 Codex 正文分窗核对，全部成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to9` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
+**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 10。普通正文绑定同次精确草稿及完整 Source3。超出阈值的 Codex 来源直接从首个原文窗口开始，全部窗口成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to10` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
 
 覆盖 prompt6 还要求：同一完整来源单位或正文段落内重复的引文，必须扩为唯一连续原文或给出真实紧邻的消歧上下文。宿主继续拒收模糊位置；prompt5 的失败原件仍失败，不修补历史结果。
 
@@ -48,13 +48,13 @@
 
 ## 集成边界 {#integration}
 
-`prepare-generation` 从完整来源准备写作稿，分别确认写作与有据正文后结束。`prepare-rebuild-associations`／`rebuild-associations` 独立接收 `{sources, bodyRefs}`，正文和关联都保持待审，不以来源清单、覆盖分析或实际决定作为强制前置。零正文不虚构占位或自动生成关联。
+`prepare-generation` 为普通流程准备写作稿，为 Codex 长来源准备首个原文窗口。每个请求均须单独确认，发布正文后结束。`prepare-rebuild-associations`／`rebuild-associations` 独立接收 `{sources, bodyRefs}`，正文和关联都保持待审，不以来源清单、覆盖分析或实际决定作为强制前置。零正文不虚构占位或自动生成关联。
 
 `prepare-source-review` 接收完整原始 `sources`、精确 `bodyRefs` 和可选 `ledgerRef`。没有清单引用时先盘点再覆盖；匹配引用只做覆盖，不生成正文或自动关联。需要复核新正文时按新 bodyRefs 分别准备分析和实际意见。关联输入中的 sources 明确定义本次完整选区，不由正文引文推断或自动缩减。
 
 `source-ledger` 和 `source-coverage-status` 支持精确修订读取。`review-source-coverage` 接收完整 `record_decision` 或 `revoke_decision` command，携带 coverageId、稳定 requestId、expectedGeneration、expectedHeadEventId；记录决定还带完整 decision，撤销带 targetEventId 和理由，不自报 actor。模型分析、意见保存、关联生成和手工维护互不冒充批准。
 
-Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，journal8 及更早、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow9 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
+Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migrate-workflow` 只将支持的六类格式复制到独立目标，journal9 及更早、来源清单／覆盖分析和自动许可仅归档。当前构建不提供 workflow10 自动调度或重新授权入口；回退使用未改动旧目录及匹配构建。
 
 ### 覆盖 profile 边界 {#coverage-profile}
 
@@ -62,4 +62,4 @@ Source3、正文、实体、关联、reviews 和 tags 保持既有身份；`migr
 
 继续旧 profile 执行或回退时，保留原工作区及匹配的可安装构建。要使用当前覆盖，须明确创建完整、独立的工作区副本，以完整原来源、匹配清单和精确已存正文引用准备新的 wire3／prompt6 分析；不为替换覆盖而重跑已完成的匹配清单或正文。原件／请求 custody 仍须能重验，否则停止。原来源、正文、ID、失败结果、测量身份和分数均保留。新分析须有自己的实际决定，复制或被动可读不代替决定。该边界描述源码构建，不表示已经发版。
 
-只替换覆盖时，复用的清单必须能通过当前 journal9 原件核验。journal8 及更早的清单／覆盖在迁入 workflow9 的副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。
+只替换覆盖时，复用的清单必须能通过当前 journal10 原件核验。journal9 及更早的清单／覆盖在迁入 workflow10 的副本中仅归档，不能继承当前执行资格；新流程须独立准备来源盘点，不改写或重发旧 run。

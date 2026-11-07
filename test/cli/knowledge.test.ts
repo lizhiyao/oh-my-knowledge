@@ -120,14 +120,14 @@ describe('observe knowledge command wiring', () => {
     const next = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout);
     expect(next.journal.stages.at(-1).stageKind).toBe('body'); run = await dispatch(next);
     const generated = run;
-    expect(generated.journal).toMatchObject({ schemaVersion: 9, workflowId: 'knowledge-body-first/v9', status: 'completed',
+    expect(generated.journal).toMatchObject({ schemaVersion: 10, workflowId: 'knowledge-body-first/v10', status: 'completed',
       stages: ['body_draft', 'body'].map(stageKind => ({ stageKind, state: 'completed' })) });
     expect(fetch).toHaveBeenCalledTimes(2); expect(generated.journal.coverageRef).toBeUndefined();
     const { bodies: bodyRefs } = generated.journal;
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], bodyRefs }));
     const associationBase = [...base]; associationBase[associationBase.indexOf('--run-id') + 1] = randomUUID();
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-rebuild-associations', ...associationBase], { cwd: root })).stdout));
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v9', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v10', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
       stages: [{ stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
     expect(fetch).toHaveBeenCalledTimes(3); expect(requests[0].messages).not.toEqual(requests[1].messages);
     const associated = run;

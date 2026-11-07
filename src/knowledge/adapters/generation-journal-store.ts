@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { constants as bufferConstants } from 'node:buffer';
 import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
-import { GENERATION_JOURNAL_SCHEMA_VERSION, GenerationJournalSchema, isBodyPublicationStage, WritingDraftRefSchema, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { GENERATION_JOURNAL_SCHEMA_VERSION, GenerationJournalSchema, isBodyPublicationStage, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
@@ -11,41 +11,43 @@ import { generationTextDigest } from '../extraction/body-generation-wire.js';
 import { SourceDigestSchema, SourceRefSchema, sourceSetPreimage } from '../sources.js';
 import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
 import { validateSourceReviewManifest } from '../source-review-history.js';
-import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, assertBodyGenerationSources } from '../extraction/source-input.js';
+import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, assertBodyGenerationSources, generationSourceMetadata } from '../extraction/source-input.js';
 import { SOURCE_LEDGER_INPUT_VERSION, restoreSourceLedgerInput } from '../extraction/source-review-input.js';
-import { LONG_BODY_WINDOW_INPUT_VERSION } from '../extraction/long-body.js';
-import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema } from '../extraction/source-passages.js';
+import { LONG_BODY_WINDOW_INPUT_VERSION, LongBodyCoverageRegionsSchema, longBodyPlanDigest } from '../extraction/long-body.js';
+import { SOURCE_PASSAGE_POLICY, SourcePassagesSchema } from '../extraction/source-passages.js';
 
 const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
 const uuid = z.string().uuid();
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
-const windowInputSchema = z.strictObject({ inputVersion: z.literal(LONG_BODY_WINDOW_INPUT_VERSION), sourceSetId: SourceDigestSchema, planDigest: SourceDigestSchema,
+const previousWindowInputVersion = 'knowledge-body-window-input/v3';
+const windowInputSchema = z.strictObject({ inputVersion: z.enum([LONG_BODY_WINDOW_INPUT_VERSION, previousWindowInputVersion]),
+  sourceSetId: SourceDigestSchema, planDigest: SourceDigestSchema, coverageRegions: LongBodyCoverageRegionsSchema.optional(),
   passagePolicy: z.literal(SOURCE_PASSAGE_POLICY.policyVersion), passageIndexDigest: SourceDigestSchema,
-  writingDraft: z.strictObject({ ref: WritingDraftRefSchema, text: z.string().optional() }),
   bodyWindow: z.strictObject({ index: z.number().int().positive(), count: z.number().int().positive(), visiblePassageCount: z.number().int().positive() }),
   sources: z.array(z.object({ sourceKey: z.string(), source: SourceRefSchema.loose(),
     excerpts: z.array(z.object({ passages: SourcePassagesSchema.min(1) })).min(1) })).max(256),
 });
-const draftSources = z.object({ sources: z.array(z.object({ source: SourceRefSchema.loose(),
-  excerpts: z.array(z.object({ evidenceRef: z.string(), text: z.string() })) })) });
 const windowTransitions: Record<GenerationStage['state'], readonly GenerationStage['state'][]> = {
   prepared: ['claimed'], claimed: ['archived'], archived: ['completed', 'failed', 'prepared_writes'],
   prepared_writes: ['completed'], completed: [], failed: [],
 };
 
 function validateBodyPlan(j: GenerationJournal): void {
-  if (!j.bodyPlan) return;
-  if (j.mode !== 'generate' || j.stages.length < 2 || j.stages[0].stageKind !== 'body_draft' || j.stages[0].state !== 'completed') {
-    throw new Error('Generation body plan requires a completed writing draft and a first window.');
+  if (!j.bodyPlan) {
+    if (j.bodySourceMetadata) throw new Error('Generation source metadata requires a body plan.');
+    return;
+  }
+  if (j.mode !== 'generate' || j.stages[0].stageKind !== 'body_window' || j.writingDraftRef) {
+    throw new Error('Generation body plan requires a first window without a writing draft.');
+  }
+  const refs = ({ snapshotId, sourceVersion }: GenerationJournal['sources'][number]) => ({ snapshotId, sourceVersion });
+  if (!j.bodySourceMetadata || !same(j.bodySourceMetadata.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })), j.sources.map(refs))) {
+    throw new Error('Generation body plan requires complete frozen source metadata.');
   }
   const { planDigest, ...preimage } = j.bodyPlan;
-  if (generationTextDigest(canonicalJson(preimage)) !== planDigest) throw new Error('Generation body plan digest mismatch.');
-  const draft = draftSources.parse(JSON.parse(j.stages[0].input));
-  const sources = draft.sources.map(({ source: { snapshotId, sourceVersion }, excerpts }) => ({ source: { snapshotId, sourceVersion }, excerpts }));
-  const index = buildSourcePassages(sources.flatMap(({ source, excerpts }) => excerpts.map(({ evidenceRef, text }) => ({
-    source, unitKey: evidenceRef, text,
-  }))), sources.map(({ source }) => source));
+  if (longBodyPlanDigest(preimage, j.bodySourceMetadata) !== planDigest) throw new Error('Generation body plan digest mismatch.');
+  // The application reconstructs the complete passage index from immutable sources when preparing and claiming windows.
   let next = 0;
   for (const window of preimage.windows) {
     const end = next + window.visiblePassageCount - 1;
@@ -54,22 +56,20 @@ function validateBodyPlan(j: GenerationJournal): void {
     }
     next = end + 1;
   }
-  if (next !== index.entries.size || preimage.passageIndexDigest !== index.digest) {
-    throw new Error('Generation body plan does not cover the complete writing draft source passages.');
-  }
 }
 
 function validateWindowInput(j: GenerationJournal, stageIndex: number, value: unknown): void {
   const plan = j.bodyPlan, input = windowInputSchema.parse(value);
-  if (!plan || !j.writingDraftRef || !same(input.writingDraft.ref, j.writingDraftRef) || input.sourceSetId !== j.sourceSetId
+  if (!plan || input.sourceSetId !== j.sourceSetId
     || input.planDigest !== plan.planDigest || input.passageIndexDigest !== plan.passageIndexDigest) {
-    throw new Error('Generation long body plan, source set or writing draft mismatch.');
+    throw new Error('Generation long body plan or source set mismatch.');
   }
   let previousSource = -1, previousPassage = -1, count = 0, firstPassage = -1;
   const lastPlanPassage = Number(plan.windows.at(-1)!.endPassageId.slice(1));
   for (const source of input.sources) {
     const index = j.sources.findIndex(ref => ref.snapshotId === source.source.snapshotId && ref.sourceVersion === source.source.sourceVersion);
-    if (index <= previousSource || source.sourceKey !== `s${index}`) throw new Error('Generation long body source projection mismatch.');
+    if (index <= previousSource || source.sourceKey !== `s${index}`
+      || !same(generationSourceMetadata(source.source), j.bodySourceMetadata![index])) throw new Error('Generation long body source projection mismatch.');
     previousSource = index;
     for (const excerpt of source.excerpts) for (const passage of excerpt.passages) {
       const ordinal = Number(passage.passageId.slice(1));
@@ -81,10 +81,22 @@ function validateWindowInput(j: GenerationJournal, stageIndex: number, value: un
       count++;
     }
   }
-  const expected = plan.windows[stageIndex - 1];
-  if (!expected || !same(input.bodyWindow, { index: stageIndex, count: plan.windows.length, visiblePassageCount: expected.visiblePassageCount })
+  const expected = plan.windows[stageIndex];
+  if (!expected || !same(input.bodyWindow, { index: stageIndex + 1, count: plan.windows.length, visiblePassageCount: expected.visiblePassageCount })
     || `p${firstPassage}` !== expected.startPassageId || `p${previousPassage}` !== expected.endPassageId || count !== expected.visiblePassageCount) {
     throw new Error('Generation long body window input does not match its planned position.');
+  }
+  if (input.coverageRegions) {
+    if (input.inputVersion !== LONG_BODY_WINDOW_INPUT_VERSION) throw new Error('Generation long body coverage regions require the current input.');
+    let next = firstPassage;
+    for (const region of input.coverageRegions) {
+      const end = Number(region.endPassageId.slice(1));
+      if (region.startPassageId !== `p${next}` || !Number.isSafeInteger(end) || end < next || end > previousPassage) {
+        throw new Error('Generation long body coverage regions must partition the visible window.');
+      }
+      next = end + 1;
+    }
+    if (next !== previousPassage + 1) throw new Error('Generation long body coverage regions must partition the visible window.');
   }
 }
 
@@ -94,7 +106,7 @@ function validateJournal(j: GenerationJournal): void {
   if (sourceSet.sources.length !== j.sources.length || generationTextDigest(canonicalJson(sourceSet)) !== j.sourceSetId
     || !same(sourceSet.sources, refs)) throw new Error('Invalid generation source set identity.');
   validateBodyPlan(j);
-  const order = j.mode === 'generate' ? ['body_draft', ...(j.bodyPlan ? j.bodyPlan.windows.map(() => 'body_window') : ['body'])]
+  const order = j.mode === 'generate' ? (j.bodyPlan ? j.bodyPlan.windows.map(() => 'body_window') : ['body_draft', 'body'])
     : j.mode === 'rebuild_associations' ? ['association']
       : j.stages[0].stageKind === 'source_ledger' ? ['source_ledger', 'source_coverage'] : ['source_coverage'];
   if (new Set(j.stages.map(s => s.invocationId)).size !== j.stages.length || j.stages.length > order.length
@@ -180,7 +192,7 @@ function validateJournal(j: GenerationJournal): void {
   if (j.mode === 'generate') {
     const body = j.stages.find((_, index) => isBodyPublicationStage(j, index));
     if (body?.stageKind === 'body_window' && body.bodyWrites) {
-      const authors = new Set(j.stages.slice(1).map(stage => `${j.runId}:${stage.invocationId}`));
+      const authors = new Set(j.stages.map(stage => `${j.runId}:${stage.invocationId}`));
       if (body.bodyWrites.some(write => {
         if (write.commandKind !== 'append_revision') return true;
         const { createdBy, revisedBy } = write.revision;
@@ -298,13 +310,19 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const old = this.read(next.runId);
       if ((old?.generation ?? 0) !== expectedGeneration || next.generation !== expectedGeneration + 1) throw new Error('Generation journal conflict.');
-      if (next.bodyPlan && (!old || next.stages.length > old.stages.length + 1
-        || next.stages.length > old.stages.length && (old.stages.at(-1)!.state !== 'completed' || next.stages.at(-1)!.state !== 'prepared')
-        || !old.bodyPlan && (old.stages.length !== 1 || old.stages[0].state !== 'completed'))) {
-        throw new Error('Generation body plan prefix cannot skip a durable phase.');
+      if (next.bodyPlan) {
+        const previousStageCount = old?.stages.length ?? 0;
+        const previousStage = old?.stages.at(-1);
+        if (next.stages.length > previousStageCount + 1 || next.stages.length > previousStageCount
+          && (next.stages.at(-1)!.state !== 'prepared' || previousStage && previousStage.state !== 'completed')) {
+          throw new Error('Generation body plan prefix cannot skip a durable phase.');
+        }
       }
       if (old) {
-        if (old.bodyPlan && (!next.bodyPlan || !same(old.bodyPlan, next.bodyPlan))) throw new Error('Generation pinned body plan changed.');
+        if (old.bodyPlan === undefined ? next.bodyPlan !== undefined : !next.bodyPlan || !same(old.bodyPlan, next.bodyPlan)
+          || !same(old.bodySourceMetadata, next.bodySourceMetadata)) {
+          throw new Error('Generation pinned body plan or source metadata changed.');
+        }
         const immutable = (j: GenerationJournal) => ({ runId: j.runId, mode: j.mode, createdAt: j.createdAt, actor: j.actor,
           sources: j.sources, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
         for (const key of ['writingDraftRef', 'ledgerRef', 'coverageRef'] as const) {

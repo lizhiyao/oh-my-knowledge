@@ -7,7 +7,7 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v9` |
+| Production workflow | `knowledge-body-first/v10` |
 | Source ledger prompt | `knowledge-source-ledger-generation/v4` |
 | Writing draft prompt | `knowledge-writing-draft/v1` |
 | Writing draft profile digest | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -32,7 +32,7 @@ This page is generated from the current source build’s runtime constants and S
 | Review and use feedback history Schema | `1` |
 | Cross-knowledge relation history Schema | `1` |
 | Knowledge graph projection Schema | `3` |
-| Generation journal Schema | `9` |
+| Generation journal Schema | `10` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |
 | Entity history Schema | `2` |
@@ -40,7 +40,7 @@ This page is generated from the current source build’s runtime constants and S
 | Source projection | `knowledge-window-v3` |
 | Source generation input | `knowledge-source-generation-input/v2` |
 | Preserved association input envelope | `knowledge-source-generation-input/v1` |
-| Default source import run identity | `knowledge-source-set-import-run/v4` |
+| Default source import run identity | `knowledge-source-set-import-run/v5` |
 | Complete native archive capacity | 536,870,887 bytes |
 | Default retrieval response budget (adjustable) | 65,536 bytes |
 | Minimum retrieval response budget | 1,024 bytes |
