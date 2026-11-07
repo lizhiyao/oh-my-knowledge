@@ -6,6 +6,7 @@
 
 - `contracts/artifacts.ts` 的 `EvaluationReportSchema` 字段语义是跨版本报告可比性的锚点，不得静默改变。
 - Core 不读取文件系统、网络、环境变量或进程状态，也不依赖 CLI、Studio、具体执行器或 `eval-workflows`。需要外部能力时，只声明由宿主实现的窄接口。
+- Core 是 Node 侧内核；「宿主无关」指上述外部依赖，不排除 Node 运行时。规范化摘要直接使用 `node:crypto`，不为此注入哈希接口，也不声明浏览器或边缘运行时支持。
 - 公开 Schema identity、事件语义和状态转换必须显式版本化；内部文件路径不是公开 identity。
 
 ## Code Review Rules

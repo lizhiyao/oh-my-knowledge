@@ -29,9 +29,9 @@ describe('autonomous review governance', () => {
     expect(agents).toContain('## Code Review Rules');
     expect(agents).toContain('必须完整阅读 [`CODE_REVIEW.md`](./CODE_REVIEW.md)');
     expect(agents).toContain('### CR 运行产物隔离');
-    expect(agents).toContain('只有实际运行会写盘的 CR 工具时');
-    expect(agents).toContain('不得在仓库内创建或保留');
-    expect(agents).toContain('不得执行回写仓库的结果同步');
+    expect(agents).toContain('CR 工具产物不得写入源码工作树');
+    expect(agents).toContain('artifacts/cr/');
+    expect(agents).toContain('knowledge/cr/');
     expect(Buffer.byteLength(agents, 'utf8')).toBeLessThan(32 * 1024);
     expect(agents).toContain('帮助人和 Agent 沉淀、维护并复用有价值的知识');
     expect(agents).toContain('区分产品意图、当前实现、已发布能力与历史记录');
