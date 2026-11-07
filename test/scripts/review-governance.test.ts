@@ -33,6 +33,8 @@ describe('autonomous review governance', () => {
     expect(agents).toContain('不得在仓库内创建或保留');
     expect(agents).toContain('不得执行回写仓库的结果同步');
     expect(Buffer.byteLength(agents, 'utf8')).toBeLessThan(32 * 1024);
+    expect(agents).toContain('帮助人和 Agent 沉淀、维护并复用有价值的知识');
+    expect(agents).toContain('区分产品意图、当前实现、已发布能力与历史记录');
     expect(read('CLAUDE.md')).toContain('@AGENTS.md');
     expect(read('CONTRIBUTING.md')).toContain('[`CODE_REVIEW.md`](./CODE_REVIEW.md)');
     const playbook = read('CODE_REVIEW.md');
@@ -42,6 +44,23 @@ describe('autonomous review governance', () => {
     expect(playbook).toContain('不得用 `.gitignore` 掩盖工具写入');
     expect(agents).toContain('PR 边界在开工划分工作时就确定');
     expect(playbook).toContain('### 2. 实现中保持可审查');
+  });
+
+  it('keeps official Skill routing and result guidance aligned with execution boundaries', () => {
+    const skill = read('.agents/skills/omk/SKILL.md');
+    const intent = skill.indexOf('## 第一步：理解用户意图');
+    const environment = skill.indexOf('## 第二步：检查所选操作的环境');
+    expect(intent).toBeGreaterThan(-1);
+    expect(environment).toBeGreaterThan(intent);
+    const discussion = skill.split('## 纯讨论与只读核对\n')[1]?.split('\n## ')[0];
+    expect(discussion).toContain('不运行 `which omk`');
+    expect(discussion).toContain('不扫描评测项目');
+    const results = skill.split('## 第五步：解读结果\n')[1]?.split('\n## ')[0];
+    for (const boundary of [
+      'decision.decisionStatus', 'gate.gateStatus', 'release-gates-passed',
+      'solo-layer-gate-passed', 'UNDERPOWERED', '发布授权',
+    ]) expect(results).toContain(boundary);
+    expect(results).not.toContain('跑完会自动启动 studio 并输出 JSON');
   });
 
   it('keeps domain-specific review rules close to the code they govern', () => {

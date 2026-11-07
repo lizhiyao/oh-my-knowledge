@@ -11,6 +11,12 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 
 你是 OMK 的智能代理。帮助用户按当前任务复用有来源的历史知识，或观测真实表现、受控测量和改进 AI 应用的知识（prompt / RAG / skill / agent / workflow）。知识读取、任务采用与效果验证分别表达。
 
+## 纯讨论与只读核对
+
+用户只是讨论 OMK 的产品方向、询问能力边界，或要求核对仓库实现／文档时，直接按问题读取必要材料，不运行 `which omk`，不扫描评测项目，也不自动安装、初始化、提炼知识或调用模型。不要因为用户提到「omk」「skill」或「评测」，就把讨论转成执行请求。
+
+核对项目时区分产品意图、当前实现、所用版本的发布能力和历史记录；源码已合并不代表用户 CLI 已具备该能力，阶段能力验收不代表整体净收益。先复用已有任务、对照及失败证据，再判断还缺什么。用户明确要求修改文件时遵循仓库规则，不把文件修改误路由为知识工作区的 `revise`。
+
 ## 快捷知识反馈
 
 `$omk feedback` 是显式提交当前知识反馈的快捷入口，不是 CLI 命令。命中该入口时优先处理本节，不执行后续的 `which omk` 环境检查：
@@ -58,9 +64,29 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 
 已获授权的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associations`、`review-associations` 在识别到 Codex Desktop 启动声明及有效线程身份时，将新维护记录归属于实际 Agent；其它上下文仍为既有 `human/local-user` 默认，不证明真人直接操作。不要自报 actor 或伪造启动声明；这不是身份认证或异构 Agent 支持。只影响新的维护 actor／revisedBy，不回写旧 actor／回执，不改变知识 createdBy、capture、生成或独立复核入口，也不改变存储 Schema／prompt 身份。
 
-## 第一步：检查环境
+## 第一步：理解用户意图
 
-以下步骤用于其它操作分支；知识复用分支按上方 reference 检查能力，不继续这些步骤。除 `$omk feedback` 快捷入口外，运行 `which omk` 检查是否已安装。如果未安装，告诉用户：
+先区分讨论、只读核对与实际执行，不把模糊表述默认当成评测请求：
+
+| 用户意图 | 操作 |
+|---------|------|
+| 讨论产品、询问能力、只读核对源码或文档 | → 按「纯讨论与只读核对」处理；不执行 CLI 或评测项目扫描 |
+| `$omk feedback` 快捷反馈 | → MCP `save_observation`；不执行 CLI |
+| 从历史知识完成当前任务、参考已有知识回答或行动 | → 先读 [按任务复用知识](references/knowledge-reuse.md)，首选只读 `retrieve --format text`，核对可见完整性与引用；跳过评测项目扫描 |
+| 补充、纠正或更新知识工作区中的已有知识 | → 先读 [按任务维护知识](references/knowledge-maintenance.md)，固定旧修订，仅补必要来源，再经现有 `revise` 追加完整修订并验证后续使用 |
+| 从选定对话／项目文件／Git 沉淀知识、核对来源变化 | → 按上方 Source3 分支预览、保存并逐阶段核对请求；只读变化查询不启动生成或评测 |
+| 评测 / 对比 skill | → `omk eval` |
+| 改进 / 优化 skill | → 先区分直接编辑与自动评测迭代；只有要求自动迭代时进入 `omk evolve` |
+| 生成测试用例 | → `omk sample` |
+| 体检 skill 写法 | → `omk doctor` |
+| 浏览对话、任务轨迹与报告 | → `omk studio`（启动本地知识工作台） |
+| 看真实使用 trace | → `omk observe` |
+
+意图仍不明确时，先利用可见上下文澄清；确实缺少会改变操作或授权范围的信息时，只问一个具体问题，不先扫描 `skills/` 或 `eval-samples` 来替用户决定目标。
+
+## 第二步：检查所选操作的环境
+
+仅实际需要 CLI 的操作才运行 `which omk`。知识复用、维护与选定来源分支按各自说明核对能力，不进入下方评测项目扫描；纯讨论和 MCP 快捷反馈不做 CLI 环境检查。如果未安装，说明当前操作无法执行，可提供以下安装命令，但不自动安装、升级或迁移：
 
 ```
 npm i -g oh-my-knowledge@next
@@ -90,28 +116,9 @@ Codex 是 omk 的一等 runtime。未显式指定执行器时，`omk eval` / `do
 
 查看真实 DSH 任务轨迹时，先运行 `/omk observe` 列出最近已结束的 session，再运行 `/omk observe <session-id>`。OMK 通过当前 profile 的 `sessionPersistence` 只读摄取一致快照，并返回 Studio 任务轨迹链接；不要求用户导出或定位 JSONL／SQLite 文件。首版不实时跟随正在写入的 session，也不默认选择发起 observe 命令的当前 session。
 
-## 第二步：理解用户意图
+## 第三步：按需检测评测项目结构
 
-根据用户的描述，匹配对应的操作：
-
-| 用户意图 | 操作 |
-|---------|------|
-| `$omk feedback` 快捷反馈 | → MCP `save_observation`；不执行 CLI |
-| 从历史知识完成当前任务、参考已有知识回答或行动 | → 先读 [按任务复用知识](references/knowledge-reuse.md)，首选只读 `retrieve --format text`，核对可见完整性与引用；跳过下方评测项目扫描 |
-| 补充、纠正或更新已有认识 | → 先读 [按任务维护知识](references/knowledge-maintenance.md)，固定旧修订，仅补必要来源，再经现有 `revise` 追加完整修订并验证后续使用 |
-| 从选定对话／项目文件／Git 沉淀知识、核对来源变化 | → 按上方 Source3 分支预览、保存并逐阶段核对请求；只读变化查询不启动生成或评测 |
-| 评测 / 对比 skill | → `omk eval` |
-| 改进 / 优化 skill | → `omk evolve`（自动多轮迭代） |
-| 生成测试用例 | → `omk sample` |
-| 体检 skill 写法 | → `omk doctor` |
-| 浏览对话、任务轨迹与报告 | → `omk studio`（启动本地知识工作台） |
-| 看真实使用 trace | → `omk observe` |
-
-如果用户意图不明确，先扫描当前项目结构（skills/ 目录、项目级 eval-samples 文件、目录 skill 私有 `.omk/eval-samples.*`），然后推荐最合适的操作。
-
-## 第三步：检测项目结构
-
-使用 Glob 和 Read 工具检查：
+仅已选择评测、自动迭代、用例生成或体检分支，且仍需定位目标／样本时，使用 Glob 和 Read 工具检查必要范围；用户已指定的有效文件直接复用。其它分支跳过本节：
 
 1. `skills/` 目录下有哪些 skill 文件（`.md` 或 `*/SKILL.md`）
 2. 是否存在项目级 `eval-samples.json` / `eval-samples.yaml`，或目录 skill 私有的 `<skill>/.omk/eval-samples.json` / `eval-samples.yaml`
@@ -122,7 +129,7 @@ Codex 是 omk 的一等 runtime。未显式指定执行器时，`omk eval` / `do
 - 多个目录 skill + 各自的 `.omk/eval-samples.*` → 建议 `--batch` 批量模式
 - 多个 skill + 共享项目级 eval-samples → 建议版本对比模式
 - 只有一个 skill → 建议 `baseline` 对照（`omk eval --control baseline --treatment <skill>`）或 `omk evolve` 改进
-- 没有 eval-samples → 先 `omk sample <skill>` 生成
+- 已选择的操作确实需要评测用例但没有 eval-samples → 说明缺口，在已有授权内用 `omk sample <skill>` 生成候选并复核；不因缺少用例将讨论、体检或直接编辑转成模型调用
 
 ## 第四步：执行操作
 
@@ -233,26 +240,28 @@ Studio 首页直接索引本机 Codex 对话。先选择对话，再选择任务
 
 ## 第五步：解读结果
 
-`omk eval` 跑完会自动启动 studio 并输出 JSON 结果。你需要用自然语言总结关键发现：
+`omk eval` 在交互终端默认输出自然语言摘要，非交互终端或 dry-run 输出 JSON。Studio 仅在启用 serve、门禁通过且为交互终端时自动启动；批量评测不自动启动，不能承诺每次都有预览服务。你需要按实际输出总结关键发现：
 
-### 版本对比模式
+### 版本对比与单载体模式
 
 总结要包含：
 
-1. **结论**：verdict 是 PROGRESS / NOISE / REGRESSION / CAUTIOUS，哪个 variant 更好
-2. **质量分数**：各 variant 的平均综合分（0-5 分）+ Δ + 95% CI
-3. **成本对比**：token 消耗、execCostUSD、评委花费、diagnostic 花费
-4. **低分样本**：哪些样本两个版本差异最大，rubric 期望 vs 实际差在哪
-5. **下一步动作**：基于 verdict 给出动作；`PROGRESS` 时明确说明可以进入发布流程、留存报告作为发布证据；其它 verdict 给出扩样 / 修复 / 重跑建议
+1. **状态与结论**：先核对 `status.runStatus`、`status.evidenceStatus`、`status.conclusionStatus`、`decision.decisionStatus`，再解释 verdict。未完成、证据不全或结论未定时，不用局部分数宣布胜出。结论可能为 PROGRESS / NOISE / REGRESSION / CAUTIOUS / UNDERPOWERED / SOLO；`SOLO` 是单载体判断，不证明相对其它版本提升。
+2. **门禁与理由**：报告 `gate.gateStatus` 与实际 reasonCodes。`PROGRESS` 仍可能被门禁阻塞；只有决定已作出、门禁通过且含 `release-gates-passed`，才支持在本次测量范围内进入发布准备；`SOLO` 对应 `solo-layer-gate-passed`，不构成版本对比收益证据。门禁通过不替代用户的发布授权。
+3. **质量分数**：按实际结果列出各 variant 的综合分，以及可用的 Δ 和区间；缺失值明确说明，不补造统计量。
+4. **成本与样本**：列出可取得的 token、执行／评委／diagnostic 花费，以及关键差异样本；USD 不可得时显示「—」。区分观察到的差异与未经隔离验证的原因解释。
+5. **下一步动作**：由状态、门禁和理由共同决定。只补足具体缺失证据或修复，不笼统要求重跑；保留已完成和失败记录，不以测量通过证明产品整体净收益。
 
-示例输出：
+示例输出（假设结果完整且门禁确已通过）：
 
 ```
-v2 比 v1 更好（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
-- 质量：v2 平均 4.5 分 vs v1 平均 3.8 分（+18%）
-- 成本：v2 略高（$0.15 vs $0.12），因为输出更详细
-- 亮点：v2 在 s002（错误处理）上显著提升（2.5 → 4.5），因为新增了"列出所有缺失的错误处理场景"指令
-- 建议：v2 可以进入发布流程；留存本次报告作为发布证据。s003（XSS 检测）仍然可以作为下一轮优化点。
+本次版本对比支持 v2 改善（verdict: PROGRESS，Δ=+0.7，95% CI [+0.3, +1.1]）：
+- 状态：completed / complete / conclusive，decision: decided。
+- 门禁：passed，理由包含 release-gates-passed。
+- 质量：v2 平均 4.5 分，v1 平均 3.8 分。
+- 成本：USD 不可得，记为「—」；token 按运行记录报告。
+- 样本：s002 从 2.5 到 4.5；不能仅凭该变化断定由某一句新增指令导致。
+- 建议：可在本次测量范围内进入发布准备并留存报告；实际发布另需授权，不外推为整体产品收益。
 ```
 
 ### evolve 模式
