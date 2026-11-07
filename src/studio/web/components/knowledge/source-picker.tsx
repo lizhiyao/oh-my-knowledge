@@ -64,7 +64,7 @@ export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirm
   if (!stage || run.nextAction !== 'continue_stage') return <Alert type="warning" title={t('没有可发送的已准备阶段；请核对现有日志。', 'No prepared stage is sendable. Inspect the existing journal.')}/>;
   const published = stage.stageKind === 'body' || stage.stageKind === 'association';
   const outcome = stage.stageKind === 'body_draft' ? t('保存未核验草稿，正文仍须回原来源取证', 'Save an unverified draft; ground content against original sources.')
-    : stage.stageKind === 'body_window' ? t('归档本段取证结果。全部分段完成后，在本地汇整并保存候选正文。', 'Archive this window. After the final window, consolidate and save candidate bodies locally.')
+    : stage.stageKind === 'body_window' ? t('直接从本段原文取证并归档结果。全部分段完成后，在本地汇整并保存候选正文。', 'Extract grounded content directly from this source window and archive the result. After the final window, consolidate and save candidate bodies locally.')
       : published ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately');
   return <section>
     <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : stage.stageKind === 'association' ? t('确认实体关联请求', 'Confirm entity association request') : t(`确认${generationStageLabel(stage.stageKind, lang)}请求`, `Confirm ${generationStageLabel(stage.stageKind, lang)} request`)}</h3>

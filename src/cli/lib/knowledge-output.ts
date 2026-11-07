@@ -19,7 +19,7 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
         `Source windows completed ${journal.stages.filter(stage => stage.stageKind === 'body_window' && stage.state === 'completed').length}/${journal.bodyPlan.windows.length}. After the final window, candidate bodies are consolidated and saved locally.`)] : []),
       ...journal.stages.map(s => `${s.stageKind}: ${s.state} · ${s.invocationId} · ${s.outcomeRef?.digest ?? 'archive pending'}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`),
       `nextAction: ${result.nextAction}`, knowledgeCommand(workspace, 'inspect', { id: journal.runId, json: true }));
-    if (result.nextAction === 'continue_stage') lines.push(t('仅显式 continue-stage 可发送尚未 claim 的阶段；resume 永不调用模型。', 'Only explicit continue-stage may dispatch a never-claimed phase; resume never calls a model.'),
+    if (result.nextAction === 'continue_stage') lines.push(t('核对下方完整请求后，以 continue-stage 显式确认发送；resume 永不调用模型。', 'Review the complete request below, then explicitly confirm dispatch with continue-stage. Resume never calls a model.'),
       JSON.stringify(journal.stages.filter(stage => stage.state === 'prepared').map(stage => ({ stageKind: stage.stageKind, requestDigest: stage.requestDigest,
         system: stage.system, input: stage.input, wireId: stage.wireId, wireSchema: stage.wireSchema, producer: stage.producer })), null, 2),
       knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation, executor: journal.executor, model: journal.model,

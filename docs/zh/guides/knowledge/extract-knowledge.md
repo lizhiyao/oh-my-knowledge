@@ -23,7 +23,7 @@ omk studio
 
 使用命令返回的地址，先核对当前知识保存位置。改变默认目录不会移动已有数据。已接入对话使用宿主的对话目录；项目文件、本地 Git 文件或已配置轨迹文件须由宿主先提供[有限来源 scope](#source-scope)，再用 `omk studio --source-scope ./scope.json` 启动。浏览器只选择已配置 ID 和相对路径，不能授予任意项目根目录。
 
-1. **选择并预览来源**：从对话轮次或“选择来源并提炼知识”选择明确获准材料，读完整选中片段及读取／保存／拟发送范围。“仅捕获选定来源”只在本地保存。随后逐次确认写作稿和正文请求。长历史可能需要分别确认每个窗口。按需另行准备来源复核或待审关联。每个发送阶段均可能产生费用，模型分析不自动批准。
+1. **选择并预览来源**。从对话轮次或“选择来源并提炼知识”选择明确获准的材料，阅读完整选区及读取／保存／拟发送范围。“仅捕获选定来源”只在本地保存。每个请求须单独确认。普通流程先生成写作稿，再生成有据正文。Codex 长来源从首个原文窗口开始。按需另行准备来源复核或待审关联。每个发送阶段均可能产生费用，模型分析不自动批准。
 2. **核对候选**：阅读完整正文段、条件、归因、例外和未知信息，点击“查看依据”回到原文。填写理由后保留、舍弃或修订；新修订需要重新核对。
 3. **按需核对实体**：从候选或“知识 → 实体”检查名称、指代、层次与原文。实体纠正不改正文；核对后独立应用、审查精确段落／实体关联。
 4. **持续积累**：从“知识 → 知识库”建立对象，核对不同窗口的来源实体是否谈论同一对象，填写关联理由并确认。同名不自动归并；先处理歧义与来源缺失。
@@ -163,19 +163,19 @@ omk observe knowledge capture --workspace ./knowledge --scope ./scope.json --inp
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json > request.json
-omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <draft-request-digest> --json
+omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request <first-request-digest> --json
 ```
 
-正文生成从**未核验写作稿**开始。准备不调用模型。核对完整的 `system`、`input`、模型、producer 和 `requestDigest` 后，`generate` 只发送写作稿请求。捕获和发送分别授权。普通正文直接用完整原 Source3 取证，来源清单可另行准备。
+准备不调用模型。核对完整的 `system`、`input`、模型、producer 和 `requestDigest` 后，用 `generate` 发送首个请求。捕获和发送分别授权。普通流程先生成**未核验写作稿**，再以完整原 Source3 生成有据正文。Codex 长来源从首个原文窗口开始。来源清单可另行准备。
 
-写作稿完成后，以同一 run 和精确来源准备下一阶段，核对完整请求后使用当时的 generation／digest 单独确认：
+首阶段完成后，以同一 run 和精确来源准备后续阶段。核对完整新请求后，使用当前 generation 和请求摘要单独确认。
 
 ```bash
 omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --run-id <run-id> --executor codex --model <model> --json > next-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <prepared-stage-digest> --json
 ```
 
-完整正文 input JSON 超过 512 KiB 且满足窗口容量时，Codex 将按原顺序处理完整来源的连续窗口。用上面同一对命令逐窗准备、核对和确认。窗口结果逐个归档。全部成功后，宿主在本地汇集已验证的窗口正文和原文引文并统一发布。各阶段保存状态可用 `inspect` 核对。
+Codex 的完整来源 input JSON 在计入草稿前已超过 512 KiB 时，宿主在准备首个请求前检查所有连续窗口的容量。超出窗口容量则停止准备。用上面的命令按顺序准备、核对和确认后续窗口。窗口结果逐个归档。全部成功后，宿主在本地汇集已验证的窗口正文和原文引文并统一发布。各阶段保存状态可用 `inspect` 核对。
 
 每阶段只 claim 一次，完整返回先归档再解码。普通正文阶段或完整窗口集发布后，正文保持**待审且未保留**，零正文也正常结束。需要覆盖复核或实体关联时，另按[来源复核与重建](#source-review-corrections)选择完整原来源和精确正文。
 
@@ -212,7 +212,7 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 9。普通正文继续绑定同次精确草稿及完整 Source3。超出阈值的 Codex 正文分窗核对，全部成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to9` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
+**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 10。普通正文绑定同次精确草稿及完整 Source3。超出阈值的 Codex 来源直接从首个原文窗口开始，全部窗口成功后由宿主统一发布。来源复核及待审关联仍可独立执行。旧日志由匹配旧构建读取，`knowledge-workflow-to10` 只迁入独立副本，旧日志、分析、原件及自动许可原样归档。历史测量保留其原有身份。
 
 旧 wire2／prompt3 及 wire3／prompt4—5 覆盖记录仅保留被动读取语义，显示 `originalVerification=not_verified`，不继承当前来源复核的原件核验资格。当前覆盖原件核对仍使用 wire3／prompt6，不提供旧 wire 的兼容 decoder，不改写旧输出。需要旧流程执行或回退时使用保留的旧目录和匹配构建；关联生成独立绑定显式 sources 与 bodyRefs，不以旧覆盖或其决定作为准入凭据。
 
@@ -325,16 +325,16 @@ OMK 使用当前进程 PATH 中的 `codex`。先执行 `codex --version`；若�
 
 ## 迁移旧工作区 {#workspace-migration}
 
-### 旧流程迁入独立 workflow9 副本 {#workflow-migration}
+### 旧流程迁入独立 workflow10 副本 {#workflow-migration}
 
-先保留旧目录和匹配旧安装包，停止旧目录写入。仅支持健康的 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据；全部字节、身份、历史、既有保留和复核意见保持，但不变成来源覆盖批准。包含 library、carriers、entity-links 等其它内容时保留旧目录并报告 unsupported，不静默丢弃或改指向。
+先保留旧目录和匹配旧安装包，停止旧目录写入。仅支持健康的 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据；全部字节、身份、历史、既有保留和复核意见保持，但不变成来源覆盖批准。包含 library、carriers、entity-links、knowledge-relations 等其它内容时保留旧目录并报告 unsupported，不静默丢弃或改指向。
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow9 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
+omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow10 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
 omk observe knowledge migrate-workflow --input ./workflow-plan.json --confirm-plan <plan-digest> --json
 ```
 
-计划不写盘；核对实际目标、完整原件清单、摘要、旧包、容量和限制后，应用同一固定计划及摘要。journal8 及更早日志（含 outcomes）、source-ledgers、source-coverage、auto-extraction、旧 migration／marker 只归档，不恢复旧调用或自动额度。目标须独立且不相交；步骤／回执中断后只续同计划，未知临时文件停止核实，完成后新增／改删不被覆盖或复活。新正文生成与独立复核均由显式请求启动；回退用旧目录和匹配构建。Source2 的来源引用转换仍走下面的独立路径，不将历史测量升级。
+计划不写盘；核对实际目标、完整原件清单、摘要、旧包、容量和限制后，应用同一固定计划及摘要。journal9 及更早日志（含 outcomes）、source-ledgers、source-coverage、auto-extraction、旧 migration／marker 只归档，不恢复旧调用或自动额度。目标须独立且不相交；步骤／回执中断后只续同计划，未知临时文件停止核实，完成后新增／改删不被覆盖或复活。新正文生成与独立复核均由显式请求启动；回退用旧目录和匹配构建。Source2 的来源引用转换仍走下面的独立路径，不将历史测量升级。
 
 ### 关联 Schema 1 迁入独立副本 {#association-migration}
 
@@ -393,7 +393,7 @@ omk observe knowledge rebuild-associations --workspace ./knowledge --input ./ass
 
 重建只创建独立待审投影，不重新生成正文。手工 `correct-entities`／`apply-associations` 保持现有明确维护路径，不伪造来源覆盖批准。
 
-当前 journal9 位于 `generation-journals/<run-id>.json`，完整原件位于 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。journal8 及更早／旧 typed 或来源格式明确 unsupported，不当作健康空数据。保留原目录和匹配构建；按[流程副本](#workflow-migration)、[正文迁移](../../specs/knowledge/knowledge-domain-model.md#body-migration)或[来源迁移](#source-migration)的对应边界处理，不恢复旧 claim。
+当前 journal10 位于 `generation-journals/<run-id>.json`，完整原件位于 `generation-journals/outcomes/<run-id>/<invocation-id>.json`。journal9 及更早／旧 typed 或来源格式明确 unsupported，不当作健康空数据。保留原目录和匹配构建；按[流程副本](#workflow-migration)、[正文迁移](../../specs/knowledge/knowledge-domain-model.md#body-migration)或[来源迁移](#source-migration)的对应边界处理，不恢复旧 claim。
 
 ### 核对来源变化 {#source-updates}
 

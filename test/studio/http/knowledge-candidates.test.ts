@@ -354,6 +354,49 @@ describe('Studio candidate action boundary', () => {
     } finally { writeFileSync(journalPath, originalJournal); }
   });
 
+  it('reopens a scoped direct window before every selected source has appeared in a request', async () => {
+    const selected = join(root, 'multi-source-direct-queue'), app = createLocalKnowledgeApplication(selected);
+    const literal = 'This selected record describes a constrained source example. '.repeat(110);
+    const snapshots = ['direct-first', 'direct-second'].map(threadId => {
+      const origin = { threadId, title: threadId };
+      const { snapshotId, sourceVersion } = captureAuthoredSource(selected, {
+        path: join(root, `${threadId}.jsonl`), origin: { ...origin, cwd: '/private-host-path' },
+        records: Array.from({ length: 46 }, (_, recordIndex) => ({ recordIndex, raw: message('user', `Record ${recordIndex}: ${literal}`) })),
+      });
+      return { snapshotId, sourceVersion, origin };
+    });
+    const model = { ...currentModel(), executor: 'codex' };
+    const refs = snapshots.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
+    const { journal } = app.prepareGeneration(refs, model);
+    const first = journal.stages[0];
+    expect(first.stageKind).toBe('body_window');
+    const visible: { source: { snapshotId: string } }[] = JSON.parse(first.input).sources;
+    expect(visible).toHaveLength(1);
+    const omitted = snapshots.find(snapshot => snapshot.snapshotId !== visible[0].source.snapshotId)!;
+    const sourceRead = vi.spyOn(KnowledgeApplication.prototype, 'source').mockImplementation(() => { throw new Error('Full source reads are forbidden for the queue.'); });
+    try {
+      const response = await post({ workspace: selected, operation: 'queue', threadId: omitted.origin.threadId });
+      expect(response.status).toBe(200);
+      const queue = await response.json();
+      expect(queue.runs).toEqual([expect.objectContaining({ runId: journal.runId, schemaStatus: 'current', nextAction: 'continue_stage',
+        sourceMetadataStatus: 'frozen_input', preparedStage: expect.objectContaining({ requestDigest: first.requestDigest }),
+        sources: expect.arrayContaining(snapshots.map(snapshot => ({ ...snapshot, sourceKind: 'agent_trace' }))) })]);
+      expect(JSON.stringify(queue)).not.toContain('/private-host-path');
+
+      const unrelatedThread = 'unrelated-direct-thread';
+      const bodySourceMetadata = journal.bodySourceMetadata!.map(source => source.snapshotId === omitted.snapshotId && source.sourceKind === 'agent_trace'
+        ? { ...source, origin: { ...omitted.origin, threadId: unrelatedThread } } : source);
+      const path = join(selected, 'generation-journals', `${journal.runId}.json`);
+      writeFileSync(path, JSON.stringify({ ...journal, bodySourceMetadata }));
+      const corrupt = await post({ workspace: selected, operation: 'queue', threadId: unrelatedThread });
+      expect(corrupt.status).toBe(200);
+      const unavailable = await corrupt.json();
+      expect(unavailable).toMatchObject({ rows: [], runs: [{ runId: journal.runId, schemaStatus: 'unavailable', unavailableReason: 'unreadable', bodies: [] }] });
+      expect(unavailable.runs[0]).not.toHaveProperty('preparedStage');
+      expect(sourceRead).not.toHaveBeenCalled();
+    } finally { sourceRead.mockRestore(); }
+  });
+
   it('includes only exact declared project sources when no Observe project matches', async () => {
     const selected = join(root, 'explicit-project-scope'), app = createLocalKnowledgeApplication(selected, { reviewActor: actualReviewActor, sourceScope: {
       scopeVersion: 'knowledge-source-scope/v1', projects: [{ projectId: 'explicit-project', root }], traces: [],

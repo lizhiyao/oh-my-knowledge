@@ -19,9 +19,9 @@ node examples/knowledge-extraction/run.mjs
 
 It uses the checkout's built internal modules, not a public SDK integration recipe, and needs no API credentials or model account. For isolated validation, `OMK_PACKAGE_ROOT` may select another source checkout with current build artifacts.
 
-Output includes `fixtureInvocations: 3`, `modelCalls: 0`, `workflowId: "knowledge-body-first/v9"`, `phaseKinds: ["body_draft", "body", "association"]`, `candidateCount: 1`, `entityCount: 2`, `relationCount: 1`, `sourceBindingVerified: true`, `entitySearchMatches: 1`, `reviewStatus: "pending"` and `associationReview: "pending"`.
+Output includes `fixtureInvocations: 3`, `modelCalls: 0`, `workflowId: "knowledge-body-first/v10"`, `phaseKinds: ["body_draft", "body", "association"]`, `candidateCount: 1`, `entityCount: 2`, `relationCount: 1`, `sourceBindingVerified: true`, `entitySearchMatches: 1`, `reviewStatus: "pending"` and `associationReview: "pending"`.
 
-Capture and preparation make no invocation; each transmission confirms its own exact requestDigest. Schema 9 journals, three complete authored responses and source/body/entity/association histories stay in an owned OS temporary directory. Reopening a completed source set makes no new call. Success or failure removes that directory without writing user workspaces or global settings; unmeasured tokens and costs remain missing.
+Capture and preparation make no invocation; each transmission confirms its own exact requestDigest. Schema 10 journals, three complete authored responses and source/body/entity/association histories stay in an owned OS temporary directory. Reopening a completed source set makes no new call. Success or failure removes that directory without writing user workspaces or global settings; unmeasured tokens and costs remain missing.
 
 ## Evidence boundary
 

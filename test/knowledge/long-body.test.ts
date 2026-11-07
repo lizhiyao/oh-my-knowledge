@@ -16,13 +16,12 @@ const beta = traceSnapshotFixture('Later state.\n' + 'beta 中文\r\n'.repeat(72
 });
 const sources = [beta, alpha];
 const sourceSetId = generationTextDigest(canonicalJson(sourceSetPreimage(sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })))));
-const draft = { ref: { draftId: 'previous-output' }, text: 'Unverified draft with no independently citable passages.' };
 const plan = createLongBodyPlan(sources);
 const full = bodyGenerationSources(sources);
 type Projection = ReturnType<typeof bodyGenerationSources>;
 type Response = z.infer<typeof BodyWindowGenerationResponseSchema>;
 function decode(input: string) {
-  return JSON.parse(input) as Projection & { planDigest: string; writingDraft: { ref: typeof draft.ref; text?: string };
+  return JSON.parse(input) as Projection & { planDigest: string;
     inputVersion: string; bodyWindow: { index: number; count: number; visiblePassageCount: number } };
 }
 const passages = (projection: Projection) => projection.sources.flatMap(source => source.excerpts.flatMap(excerpt => excerpt.passages));
@@ -41,10 +40,10 @@ describe('bounded source windows and deterministic publication', () => {
     expect(plan.windows.length).toBeGreaterThan(1);
     expect(LongBodyPlanSchema.parse(plan)).toEqual(createLongBodyPlan([alpha, beta]));
     const windows = plan.windows.map((window, ordinal) => {
-      const input = decode(bodyWindowInput(sources, sourceSetId, draft, plan, ordinal));
+      const input = decode(bodyWindowInput(sources, sourceSetId, plan, ordinal));
       expect(input.planDigest).toBe(plan.planDigest);
       expect(input.passageIndexDigest).toBe(full.passageIndexDigest);
-      expect(input.writingDraft).toEqual(draft);
+      expect(input).not.toHaveProperty('writingDraft');
       expect(input.inputVersion).toBe(LONG_BODY_WINDOW_INPUT_VERSION);
       expect(input.bodyWindow).toEqual({ index: ordinal + 1, count: plan.windows.length, visiblePassageCount: window.visiblePassageCount });
       const visible = passages(input);
@@ -55,23 +54,21 @@ describe('bounded source windows and deterministic publication', () => {
     });
     expect(windows.flat()).toEqual(passages(full));
     expect(windows.map(window => window.length)).toEqual(plan.windows.map(window => window.visiblePassageCount));
-    expect(() => bodyWindowInput(sources, sourceSetId, draft, { ...plan, planDigest: generationTextDigest('other') }, 0)).toThrow('plan mismatch');
-    expect(() => bodyWindowInput(sources, sourceSetId, draft, plan, -1)).toThrow('Unknown long body window');
-    expect(BODY_WINDOW_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-window/v2', outputName: 'knowledge_body_window_v1' });
+    expect(() => bodyWindowInput(sources, sourceSetId, { ...plan, planDigest: generationTextDigest('other') }, 0)).toThrow('plan mismatch');
+    expect(() => bodyWindowInput(sources, sourceSetId, plan, -1)).toThrow('Unknown long body window');
+    expect(BODY_WINDOW_PROFILE).toMatchObject({ promptVersion: 'knowledge-body-window/v3', outputName: 'knowledge_body_window_v1' });
     expect(BODY_WINDOW_PROFILE.wireSchema.properties).not.toHaveProperty('passageIndexDigest');
     expect(BODY_GENERATION_PROFILE.wireSchema.properties).toHaveProperty('passageIndexDigest');
     expect(BODY_WINDOW_PROFILE.wireId).not.toBe(BODY_GENERATION_PROFILE.wireId);
     expect(BODY_WINDOW_PROFILE.profileId).not.toBe(BODY_GENERATION_PROFILE.profileId);
-    expect(() => assertLongBodyWindowInputs(sources, sourceSetId, draft, plan)).not.toThrow();
-    expect(() => assertLongBodyWindowInputs(sources, sourceSetId, { ...draft, ref: 'x'.repeat(192 * 1024) }, plan)).toThrow(LongBodyCapacityError);
+    expect(() => assertLongBodyWindowInputs(sources, sourceSetId, plan)).not.toThrow();
     expect(() => createLongBodyPlan([traceSnapshotFixture('\\'.repeat(550 * 1024))])).toThrow(LongBodyCapacityError);
   });
 
-  it('includes exact draft text only when the whole window JSON fits', () => {
-    const escapedDraft = { ...draft, text: '\\'.repeat(48 * 1024) };
-    expect(decode(bodyWindowInput(sources, sourceSetId, escapedDraft, plan, 0)).writingDraft).toEqual({ ref: draft.ref });
-    expect(decode(bodyWindowInput(sources, sourceSetId, escapedDraft, plan, plan.windows.length - 1)).writingDraft).toEqual(escapedDraft);
-    expect(() => assertLongBodyWindowInputs(sources, sourceSetId, escapedDraft, plan)).not.toThrow();
+  it('preflights complete serialized windows including portable metadata', () => {
+    const withOversizedMetadata = [beta, { ...alpha, limitations: ['x'.repeat(192 * 1024)] }];
+    expect(createLongBodyPlan(withOversizedMetadata)).toEqual(plan);
+    expect(() => assertLongBodyWindowInputs(withOversizedMetadata, sourceSetId, plan)).toThrow('Long body model input capacity exceeded');
   });
 
   it('rejects out-of-window references, rejected native proposals and oversized output before accepting window evidence', () => {
