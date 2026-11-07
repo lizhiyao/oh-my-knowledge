@@ -14,7 +14,7 @@
 |---|---|
 | 来源窗口 | 保存选定片段、来源身份、范围及限制；后续判断可回到同一证据 |
 | 来源清单 | 对完整获准来源及每个已交付单元记录可错 item／facet 和排除／待定意见；不是真值或实体全集 |
-| 来源覆盖与决定 | 独立核对来源、清单及精确正文；模型分析与实际 Agent／人的继续／待修／停止决定分开，关联 claim 重验 |
+| 来源覆盖与决定 | 按需独立核对来源／清单／精确正文；分开模型分析与实际 Agent／人的继续、修订或停止意见，不作为待审关联生成的准入凭据。 |
 | 来源实体分析 | 保存窗口内对象、提及及不可变分析修订；不提供跨窗口统一身份 |
 | 实体关联核对 | 固定两个窗口的实体、精确模型请求／结果、结构接纳、独立人工决定及可恢复的知识库意图 |
 | 知识正文 | 稳定知识／修订／段落身份、完整自然语言段及 inline 精确来源证据；新修订待审 |
@@ -70,7 +70,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 任务阅读使用 `knowledge-body-text/v2`／`knowledge-body-text-packing/v2` 派生视图：正文原样，精确来源身份与相同解释去重，逐引用保留来源／解释索引、basis 和定位状态，所有不同解释完整展示。索引仅在本视图有效，不建立对象身份；完整引文、evidenceRef 和 UTF-16 定位由知识／修订／段落／引用序号精确读回 JSON3。独立复核另查精确 bodyRef。text 按实际完整 UTF-8 输出加一个 LF 预算，v1／v2 的装包结果不保证相同；排名身份、持久化正文和历史原件不因此变化。未发布的 v1 归档保留匹配构建，不回写升级。
 
-当前正文生成输出 v3／prompt v19 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v8 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。宿主片段选择、关联的精确相邻上下文定位及这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
+当前正文生成输出 v3／prompt v20 声明共享 `requiredContexts`：每个 literal 逐字出现于来源 quote 与每段正文，宿主不改写 text，将相应证据编译到每段。关联输出 v3／prompt v9 将提及归属到实体，由宿主编译限定引用，并要求每段明确映射或弃权及理由。prompt8 要求模型按已识别对象回查相关同源段落中的属性、维护和存储语义，并禁止将同一声明位置复制为一般对象与版本的各自提及；这些仍是模型指令。宿主片段选择、关联的精确相邻上下文定位及这些声明只检查结构缺项，不证明语义完整、身份正确或覆盖已复核；容量及恢复边界见[提取契约](../entities/entity-extraction.md)。其它独立版本化的提取／测量协议保持各自冻结的定位规则。
 
 知识历史使用 Schema 3，不可变修订新增 `bodyDigest`，按版本化 canonical title／content／reuseRationale 计算。独立关联历史绑定精确 `{knowledgeId, revisionId, bodyDigest}`、完整 `catalogRefs` 目录修订集合、`segmentEntityRefs`、可选 `typedRelations` 与未决 issues。typedRelations 省略表示未请求，空数组表示请求后未形成关系；`available` 只表示结构可读，不表示身份或真值已确认。接受／拒绝审查只作用于该投影，每个新投影重新待审。
 
@@ -100,7 +100,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；其 `application/` 拥有 CLI／Studio 共用用例与本地装配，`adapters/` 负责来源读取、模型传输和文件持久化。观测层提供轨迹解析，交付层负责宿主配置与展示。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 7，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 8，不把各阶段原生原件装成 run5。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -204,8 +204,8 @@ CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associatio
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 关联历史保持 Schema 2，关联 prompt8／wire3 保持。默认 journal Schema 7／knowledge-body-first/v7 在草稿与有据正文后完成。独立 review_sources 与 rebuild_associations 保留精确清单／覆盖／决定绑定及逐请求确认。显式副本迁移逐字节归档旧 journal5／6 和来源分析，保留匹配旧构建供恢复与回退。 |
-| 来源盘点与覆盖 | 按需发起的 review_sources 依次执行清单 → source_coverage，独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开模型意见与实际决定。关联准备及共享锁内 claim 校验覆盖每个显式选择的精确 bodyRef 的实际决定；模型不自我批准。 |
+| 关联与生成日志 | 关联历史保持 Schema 2，关联采用 prompt9／wire3。默认 journal Schema8／knowledge-body-first/v8 在草稿与有据正文后完成。rebuild_associations 独立绑定完整 sources、精确 bodyRefs 及逐请求确认。显式副本迁移逐字节归档旧 journal7 及更早日志与来源分析，保留匹配旧构建供恢复与回退。 |
+| 来源盘点与覆盖 | 按需 review_sources 执行清单 → source_coverage，独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开模型意见和实际决定；不自动生成关联或批准内容。关联 claim 校验完整来源、正文及请求身份。 |
 | 操作者上下文 | 第 8.3 节六命令 CLI 维护范围仅为新写入复用 human／agent 数据形状，不改变创建归属、旧 actor／回执、请求 DTO、存储 Schema 或生成身份，无需迁移。未知操作者拒绝与更广服务上下文保持独立设计及确认边界；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |
 

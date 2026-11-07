@@ -4,7 +4,7 @@ This page owns implemented tags, explicit extraction and retired scheduling, car
 
 ## Conversation auto extraction and project inbox
 
-Current `knowledge-body-first/v7` saves an unverified writing draft then a grounded body and completes with pending candidates. Optional source inventory → coverage → actual decision and association rebuilding are separate explicit operations. Preview and confirm each complete model request independently. Source-coverage opinions never retain a body, approve content or update a carrier.
+Current `knowledge-body-first/v8` completes after saving the unverified writing draft and grounded body; content remains pending. Prepare entities and semantic relations separately when needed, using complete sources and exact bodyRefs. Source inventory, coverage and actual decisions form another optional review path, without being prerequisites for association generation. Each model request is separately inspected and confirmed; source opinions never automatically retain content, approve it or update artifacts.
 
 Conversation scheduling is retired. Status returns `unsupported`/`explicit_stages_required`; preview, enable and background tick create no model, configure no executor, dispatch nothing and write no permission. Stop/close do not alter old permissions, reservations, unknown claims or originals; migration archives them. A migrated workspace cannot receive a renewed automatic grant: use explicit stages.
 

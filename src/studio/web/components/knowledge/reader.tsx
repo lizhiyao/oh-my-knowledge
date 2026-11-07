@@ -36,11 +36,11 @@ export function CandidateDecisionHeader({ title, maintenance, lang }: {
 }
 
 /** Canonical text remains readable independently of source availability and derived associations. */
-export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, navigationWorkspace = workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onDeleteSource, onRetry, onReviewContent, onReviewBody }: {
+export function KnowledgeReader({ detail, lang, busy = false, header, tools, footer, workspace, navigationWorkspace = workspace, selection, onSelectionChange, onRevision, onEntities, onEntity, onMapAssociations, onReviewAssociations, onRebuildAssociations, onReviewSources, onDeleteSource, onRetry, onReviewContent, onReviewBody }: {
   detail: KnowledgeCandidateDetail; lang: Language; busy?: boolean; header?: ReactNode; tools?: ReactNode; footer?: ReactNode;
   onReviewContent?(): void; workspace?: string; navigationWorkspace?: string; selection?: KnowledgeReaderSelection; onSelectionChange?(selection: KnowledgeReaderSelection): void; onEntity?(target: KnowledgeReaderEntityTarget): void;
   onReviewBody?(bodyRef: KnowledgeBodyRef): void;
-  onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onDeleteSource?(source: SourceRef): void; onRetry(): void;
+  onRevision(revision: string): void; onEntities?(): void; onMapAssociations?(): void; onReviewAssociations?(choice: 'accept' | 'reject', reason: string): void; onRebuildAssociations?(): void; onReviewSources?(): void; onDeleteSource?(source: SourceRef): void; onRetry(): void;
 }) {
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [localSelection, setLocalSelection] = useState<KnowledgeReaderSelection>({ tab: 'body' });
@@ -207,7 +207,8 @@ export function KnowledgeReader({ detail, lang, busy = false, header, tools, foo
           </>}
           <Space wrap>
             {onMapAssociations && <Button disabled={busy} onClick={onMapAssociations}>{t('编辑实体映射', 'Edit entity mappings')}</Button>}
-            {onRebuildAssociations && <Button disabled={busy} onClick={onRebuildAssociations}>{t('重新生成关联', 'Regenerate associations')}</Button>}
+            {onRebuildAssociations && <Button disabled={busy} onClick={onRebuildAssociations}>{t('生成实体与关系', 'Generate entities and relations')}</Button>}
+            {onReviewSources && <Button disabled={busy} onClick={onReviewSources}>{t('复核来源覆盖', 'Review source coverage')}</Button>}
             {onEntities && derived.status === 'available' && !!derived.revision?.catalogRefs.length && <Button disabled={busy} onClick={onEntities}>{t('核对关联对象', 'Inspect associated entities')}</Button>}
           </Space>
         </>}

@@ -188,14 +188,14 @@ omk observe knowledge review-source-coverage --workspace ./knowledge --input ./c
 
 `coverage-decision.json` is the complete `record_decision` command, without an operation wrapper or client-supplied actor. Copy the exact coverage/ledger/body/SourceSet bindings, generation/head and unresolved IDs from the readback. Give every unresolved item a disposition, reasons and limitations; choose `proceed_with_limits`, `needs_revision` or `stop`. Missing trusted actual-actor context refuses writes; do not invent an actor. A `revoke_decision` command names the prior event and preserves history. See the [decision contract](../../specs/knowledge/knowledge-source-review.md#decisions).
 
-When the actual separate source-review decision permits continuation, put the exact `sourceCoverageDecisionRef` and explicitly selected `bodyRefs` array in `association-input.json`. Prepare a new association run, then confirm its request separately:
+For entities and semantic relations, put the complete explicitly selected `sources` and exact `bodyRefs` array in `association-input.json`, with at most one revision per knowledgeId. Prepare a new run and confirm it separately. Prior source coverage analysis or a continuation decision is not required; do not automatically reduce sources to existing body quotations.
 
 ```bash
 omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-input.json --run-id <run-id> --executor codex --model <model> --json > association-request.json
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation <journal-generation> --executor codex --model <model> --confirm-request <association-request-digest> --json
 ```
 
-Preparation and the shared-lock dispatch claim both recheck that exact active, nonconflicting decision and its upstream identities. An invalidated decision makes no new model call. Revocation after dispatch preserves the request/original and leaves the result pending with the invalidated review context. Association failure never deletes saved bodies.
+Preparation and the dispatch claim under the shared lock revalidate complete sources, exact bodies and request identity; missing, out-of-scope or changed input is not sent. Associations stay pending. Source opinions are stored independently and never automatically approve associations; an association failure does not delete saved content.
 
 Each model stage defaults to 300 seconds; there is no automatic retry, validation reask or fallback. Enriched complete input must fit the 1 MiB request limit; capacity failure never trims sources, ledger or bodies. Default imports bind the workflow and sorted exact SourceSet, reusing completed, failed and unknown journals. A completed reimport makes no new call or duplicate body. A new run is only for deliberately independent generation, never an unknown-claim bypass. Calls/tokens/time and unreported costs remain separate from quality.
 
@@ -209,9 +209,9 @@ omk observe knowledge schema --stage source_coverage --json
 omk observe knowledge schema --stage association --json
 ```
 
-**BREAKING-SCHEMA/API/COMPARABILITY:** Default workflow7/journal Schema7 runs only unverified writing draft (body_draft) → grounded body and completes after saving pending candidates. Writing stays input1/wire1/prompt1; body input5/wire3/prompt20 binds the exact same-run draft and complete Source3, without a ledger dependency. Body input retains complete host-numbered passages and echoes passageIndexDigest. Source inventory, coverage and an actual decision are optional separate prepare-source-review/review-source-coverage operations. Association rebuilding explicitly selects exact bodyRefs in an array, with at most one revision per knowledgeId and requires a matching sourceCoverageDecisionRef, retaining full sources, shared source catalogs and decision checks. Ledger input1/wire3/prompt4, coverage input2/wire3/prompt6, association stage input1/wire3/prompt8 and Source3/body3/entity2/association2/reviews1/source-analysis-history1 remain unchanged. Each request is separately prepared, confirmed, claimed and archived; recovery is zero-model. Use a new workspace or explicit knowledge-workflow-to7 independent-copy migration. Old journals, analyses and automatic permissions are archived unchanged alongside a matching build; keep the original workspace for rollback, without continuing old journals in a new reader or rescoring historical measurements. Workflow completion does not establish verified content, graph quality or actual benefit.
+**BREAKING-SCHEMA/API/COMPARABILITY:** Default workflow8/journal Schema8 runs only unverified writing draft (body_draft) → grounded body and completes after saving pending content. Writing input1/wire1/prompt1 and body input5/wire3/prompt20 stay unchanged; the body binds the exact same-run draft and complete Source3. For entities and relations, explicitly prepare `{sources, bodyRefs}`, with at most one exact revision per knowledgeId, inspect the complete request and confirm it separately. Full sources and bodies are revalidated under the shared claim lock. Association prompt9 explicitly requests semantic relations retaining conditions and attribution; a missing requested projection is recorded as failed. Association input1/wire3 and active source/body/entity/association/reviews formats remain unchanged. Source inventory, coverage and actual decisions are independent optional operations, without granting admission to pending associations or automatically approving knowledge. Journal7 and earlier remain with matching old runtimes. `knowledge-workflow-to8` migrates only to an independent copy, archiving old journals, analyses, originals and automatic permissions unchanged alongside the matching build. Historical measurements are not rewritten, in-use workspaces are not switched and no release is implied. Workflow completion does not establish accepted knowledge, graph quality or net benefit.
 
-Old wire2/prompt3 and wire3/prompt4–5 coverage remain passively readable with `originalVerification=not_verified`. It cannot qualify new decisions, association preparation or dispatch claims in the current build; no legacy wire decoder or automatic migration is supplied. Preserve the old workspace and matching installable build for old-profile execution and rollback. To use current coverage, create a complete independent workspace copy, then use [`prepare-source-review`](#source-review-corrections) with a new explicit review-run UUID, the complete original sources, matching ledger and exact bodyRefs for a new wire3/prompt6 analysis and actual decision. Reuse completed matching ledger/body results; stop if original/request custody cannot be revalidated. Do not repair old raw output or regrade failed runs. This boundary is not a release announcement.
+Old wire2/prompt3 and wire3/prompt4–5 coverage retains passive-read semantics with `originalVerification=not_verified`, without inheriting current source-review verification. Current coverage originals still use wire3/prompt6; there is no compatibility decoder or rewriting of old outputs. Use the preserved old workspace and matching build for old execution or rollback. Association generation independently binds explicit sources and bodyRefs, without using old coverage or its decisions as admission credentials.
 
 Active journals containing old profiles, including body v18 and association v7 in prepared/claimed/archived states, require their preserved matching build; do not resend or rewrite their requests with the new profile. Recorded `prepared_writes` can recover fixed publication intents with zero model calls under the existing rules; remaining unfinished old-profile work then returns to unsupported. Completed/failed history and existing current-format data remain readable. The [supported workflow copy](#workflow-migration) handles older journal formats separately. Parameter errors exit 2, business failures exit 1 and success exits 0. After an unclear acknowledgement, inspect durable state before repeating a mutation.
 
@@ -322,12 +322,12 @@ OMK uses `codex` from the current process PATH. Check `codex --version`; if the 
 
 ## Migrate an older workspace {#workspace-migration}
 
-### Copy an old workflow into an independent workflow7 workspace {#workflow-migration}
+### Copy an old workflow into an independent workflow8 workspace {#workflow-migration}
 
 Preserve the old directory and matching installable package, then stop old writers. This slice supports only healthy active Source3/body3/entity2/association2/reviews1/tags. All bytes, identities, history, retention and review opinions stay unchanged; they do not become source-coverage approval. Library, carriers, entity-links or other unsupported content require retaining the old directory and reporting unsupported, never silent dropping or retargeting.
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow7 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
+omk observe knowledge migrate-workflow --from-workspace ./old-workflow --workspace ./workflow8 --operation-id <stable-uuid> --matching-build ./omk-old.tgz --matching-build-id <old-build-id> --plan-only --json > workflow-plan.json
 omk observe knowledge migrate-workflow --input ./workflow-plan.json --confirm-plan <plan-digest> --json
 ```
 
@@ -381,16 +381,16 @@ omk observe knowledge continue-stage --workspace ./knowledge --id <review-run-id
 
 Without ledgerRef, the first continuation sends inventory. After it completes, repeat `prepare-source-review` with the same input and review-run-id, then inspect and confirm coverage. With a matching ledgerRef, only the coverage request is needed.
 
-Read the analysis and record a new decision with `review-source-coverage` as above. To withdraw one, pass a complete `revoke_decision` command with targetEventId, reason and CAS/idempotence fields. For rebuilding, `association-decision.json` contains an explicitly selected array of exact `bodyRefs` with at most one revision per knowledgeId and the complete `sourceCoverageDecisionRef`; its coverage record supplies the full sources. Reuse the same explicit new run UUID in both commands:
+When source review is needed, read the analysis and record the actual opinion with `review-source-coverage`; revocation still uses a complete `revoke_decision` with targetEventId, reason and CAS/idempotence fields. Association rebuilding independently uses `{sources, bodyRefs}` and does not accept `sourceCoverageDecisionRef`. Both commands below use the same explicit new run UUID.
 
 ```bash
-omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-decision.json --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
-omk observe knowledge rebuild-associations --workspace ./knowledge --input ./association-decision.json --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
+omk observe knowledge prepare-rebuild-associations --workspace ./knowledge --input ./association-input.json --run-id <new-stable-uuid> --executor codex --model <model> --json > association-request.json
+omk observe knowledge rebuild-associations --workspace ./knowledge --input ./association-input.json --run-id <new-stable-uuid> --executor codex --model <model> --confirm-request <prepared-request-digest> --json
 ```
 
 Rebuilding creates an independent pending projection without another body generation. Manual `correct-entities`/`apply-associations` retain their explicit maintenance paths and do not fabricate source-coverage approval.
 
-Current journal7 records live at `generation-journals/<run-id>.json`, with complete originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Journal5 and earlier, old typed and source formats are explicitly unsupported, never healthy empty data. Preserve the original directory and matching build; follow the applicable [workflow copy](#workflow-migration), [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) or [source migration](#source-migration), without resuming old claims.
+Current journal8 records live at `generation-journals/<run-id>.json`, with complete originals at `generation-journals/outcomes/<run-id>/<invocation-id>.json`. Journal7 and earlier, old typed and source formats are explicitly unsupported, never healthy empty data. Preserve the original directory and matching build; follow the applicable [workflow copy](#workflow-migration), [body migration](../../specs/knowledge/knowledge-domain-model.md#body-migration) or [source migration](#source-migration), without resuming old claims.
 
 ### Check source changes {#source-updates}
 

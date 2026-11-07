@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Space, Spin } from 'antd';
 import type { SourceReviewApplication } from '../../../../knowledge/application/source-review';
-import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageDecisionRef, SourceCoverageWrite,
+import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageWrite,
   SourceReviewReceipt, SourceCoverageData, SourceReviewEvidence } from '../../../../knowledge/source-review';
 import type { Language } from '../layout/shell';
 import { requestKnowledge, KnowledgeRequestError } from './request';
@@ -18,8 +18,7 @@ type ReviewIssue = { id: string; group: string; groupLabel: string; reason: stri
   target?: SourceCoverageData['checks'][number]['target']; sourceEvidence: SourceReviewEvidence[];
   bodyEvidence: SourceCoverageData['checks'][number]['bodyEvidence']; unknown?: boolean;
   boundedInput?: SourceCoverageData['checks'][number]['boundedInput'] };
-type Props = { workspace: string; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef; lang?: Language;
-  onProceed?(ref: SourceCoverageDecisionRef): void };
+type Props = { workspace: string; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef; lang?: Language };
 const lines = (value: string) => value.split('\n').map(line => line.trim()).filter(Boolean);
 function comparable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(comparable).join(',')}]`;
@@ -58,7 +57,7 @@ export function SourceReviewPanel(props: Props) {
 }
 function SourceReviewSession(props: Props) {
   const [{ workspace, ledgerRef, coverageRef }] = useState(() => structuredClone({ workspace: props.workspace, ledgerRef: props.ledgerRef, coverageRef: props.coverageRef }));
-  const { lang = 'zh', onProceed } = props;
+  const { lang = 'zh' } = props;
   const t = (zh: string, en: string) => lang === 'zh' ? zh : en;
   const [coverage, setCoverage] = useState<Coverage>(), [ledger, setLedger] = useState<Ledger>();
   const [loading, setLoading] = useState(true), [failed, setFailed] = useState(false), [ledgerFailed, setLedgerFailed] = useState(false);
@@ -91,19 +90,10 @@ function SourceReviewSession(props: Props) {
       {ledger && <LedgerSummary ledger={ledger} lang={lang}/>}
       {!coverage ? <p>{t('尚未指定覆盖核对记录。请先单独准备并确认来源核对请求。', 'No coverage analysis was selected. Prepare and confirm a source coverage request separately.')}</p> : <>
         <CoverageSummary coverage={coverage} lang={lang}/>
-        {!ready && <p role="status">{t('来源、正文或清单当前不可读；不会据此准备新的关联请求。', 'A source, body or inventory is unavailable; a new association request cannot be prepared here.')}</p>}
+        {!ready && <p role="status">{t('来源、正文或清单当前不可读，不能保存新的来源复核决定；仍可撤销旧意见。', 'A source, body or inventory is unavailable. New source decisions cannot be saved; prior opinions can still be revoked.')}</p>}
         <DecisionForm key={`${coverage.history.generation}/${coverage.history.writeHeadEventId}`} workspace={workspace} baseline={coverage} ledger={ledger}
           writable={!!ready} lang={lang} onSaved={() => { setNotice(t('已保存本次来源意见，正在读回记录。', 'The source opinion was saved; reloading its record.')); refresh(); }}/>
-        {onProceed && coverage.decision.status === 'proceed_with_limits'
-          && coverage.decision.events.map(event => <section key={event.eventId} className="candidate-statement">
-            <p>{t('实际复核意见：', 'Actual review opinion: ')}{event.decision.reason}</p>
-            <p className="candidate-help">{event.actor.actorKind}/{event.actor.actorId} · <code>{event.eventId}</code></p>
-            <Button disabled={!ready} onClick={() => {
-              const { coverageRef: ref, sourceSetId, ledgerRef: selectedLedger, bodyRefs } = event.decision;
-              onProceed({ coverageRef: ref, sourceSetId, ledgerRef: selectedLedger, bodyRefs, eventId: event.eventId });
-            }}>{coverage.revision.data.bodyRefs.length ? t('按此意见准备关联', 'Prepare associations with this opinion') : t('按此意见结束本轮（无正文）', 'End this run with this opinion (no content)')}</Button>
-            <p className="candidate-help">{coverage.revision.data.bodyRefs.length ? t('只准备请求；发送到模型仍需另一次明确确认。', 'This only prepares a request. Sending it to a model requires separate confirmation.') : t('只结束本轮，不生成关联或调用模型。', 'This only ends the run, without generating associations or calling a model.')}</p>
-          </section>)}
+
       </>}
     </>}
   </section>;

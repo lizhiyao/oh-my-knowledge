@@ -119,7 +119,7 @@ ${contextMentionBoundaryPolicy}
 在结束目录前，回查source独立指认、比较、测试或归档的有界工件与固定代码状态。已发布包、包含新契约的构建、最终验收的制品或固定代码状态须按各自实际所指判断；缺少编号、提交hash或发布状态时保留未知，不据此省掉有据对象，也不自动并入持续移动的分支、一般工具或另一构建。只有来源证明是同一状态时才在同一目录内处理其明确指代，字节相同等关系按其实际范围保留，不由名称、先后或同一任务推出身份相同。
 只有instance/version可声明componentLink；其entityId必须指本目录有来源支持且identityStatus=proposed的component，mentionKeys只能选当前instance/version自身mentions内支持该组件归属的提及。不能引用父对象的mentionKey，也不能自动把普通object改成component或version来绕过校验。collectionLink的mentionKeys同样只属于当前集合，成员范围、完整性和未知按原文保留。componentLink/collectionLink无依据时用null，不补造关系。
 对每个bodyKey的每个segmentId恰好返回一个segmentDecisions。decisionKind=mapped时entityRefs非空，每项明确sourceKey/entityId及该实体自身mentionKeys；decisionKind=abstained时entityRefs=[]，reason说明为何没有可靠关联。逐段检查主产品及其它必要对象，选择已有来源支持的提及后明确关联，不靠标题或另一个segment补选择。对确实同时涉及某组件及其固定版本的段落，分别检查两个层次的显式entityRefs，按各自合法own mentions关联；componentLink不使检索自动继承映射。一般组件方法不因此强绑某版本，两个层次也不能合并或互换。不把缺少提及、主体不明或未决状态藏在遗漏的segment里。每项reason仅为AI关联诊断，不是人工覆盖复核；有决定不代表实体召回完整或关系正确。
-typedRelations只投影正文segment已经明确表达的关系，允许[]；不要求把全部正文转换为三元组。若未请求该投影用null。使用原descriptive/normative/capability/permission和positive/negative，按实际语义保留角色、否定与归因，不能靠转述包装改变原语气。每条relation引用原body的segmentIds，evidence仅用相应segment已有evidenceIndex，不增加来源或知识。未能无歧义投影时写issues或不形成关系，不修补正文。
+本次关联请求同时要求typedRelations语义关系投影；没有可靠关系时返回[]，不能用null表示未请求。只投影正文segment已经明确表达的关系，不要求把全部正文转换为三元组。关系文字保留改变判断的前置条件、适用范围和来源归因，不能把“满足某条件才可采用”缩成无条件关系；无法无歧义表达这些限定时写issues并不形成该关系。使用原descriptive/normative/capability/permission和positive/negative，按实际语义保留角色、否定与归因，不能靠转述包装改变原语气。每条relation引用原body的segmentIds，evidence仅用相应segment已有evidenceIndex，不增加来源或知识。未能无歧义投影时写issues或不形成关系，不修补正文。
 所有结果都是AI候选、pending，不是人工确认或真实性认证。实体仅用各sourceKey目录内局部ID，不同sourceKey下同名或同局部ID是独立对象；跨目录关系不表示身份合并。associations.bodyKey必须来自输入且每个bodyKey恰好一项；无关联也逐段明确abstained及原因。正文的核心遗漏无法通过增加实体或关系修复。只返回提供的关联JSON。`;
 
 export function strictGenerationWire(schema: unknown): Record<string, unknown> {
@@ -144,7 +144,7 @@ export function strictGenerationWire(schema: unknown): Record<string, unknown> {
   return visit(schema) as Record<string, unknown>;
 }
 function profile(stageKind: 'body' | 'association', schema: z.ZodType, system: string): GenerationProfile {
-  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v20' : 'knowledge-association-generation/v8';
+  const promptVersion = stageKind === 'body' ? 'knowledge-body-generation/v20' : 'knowledge-association-generation/v9';
   const outputVersion = 3;
   const wireVersion = `omk-knowledge-${stageKind}-wire/v${outputVersion}`;
   const domain = z.toJSONSchema(schema, { target: 'draft-2020-12', io: 'input', reused: 'ref', cycles: 'throw', unrepresentable: 'throw' });

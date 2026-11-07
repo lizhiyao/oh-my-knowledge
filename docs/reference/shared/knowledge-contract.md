@@ -7,7 +7,7 @@ This page is generated from the current source build’s runtime constants and S
 
 | Current contract | Value |
 |---|---|
-| Production workflow | `knowledge-body-first/v7` |
+| Production workflow | `knowledge-body-first/v8` |
 | Source ledger prompt | `knowledge-source-ledger-generation/v4` |
 | Writing draft prompt | `knowledge-writing-draft/v1` |
 | Writing draft profile digest | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -16,9 +16,9 @@ This page is generated from the current source build’s runtime constants and S
 | Grounded body input | `knowledge-body-generation-input/v5` |
 | Body prompt | `knowledge-body-generation/v20` |
 | Source coverage prompt | `knowledge-source-coverage-generation/v6` |
-| Association prompt | `knowledge-association-generation/v8` |
+| Association prompt | `knowledge-association-generation/v9` |
 | Body profile digest | `sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189` |
-| Association profile digest | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
+| Association profile digest | `sha256:a5c24a7183d5bc5291479eb28561e4419aaafa63fa7a1888c8b276baf20eac91` |
 | Source ledger profile digest | `sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c` |
 | Source coverage profile digest | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
 | Body structural wire digest | `sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d` |
@@ -32,7 +32,7 @@ This page is generated from the current source build’s runtime constants and S
 | Review and use feedback history Schema | `1` |
 | Cross-knowledge relation history Schema | `1` |
 | Knowledge graph projection Schema | `3` |
-| Generation journal Schema | `7` |
+| Generation journal Schema | `8` |
 | Source ledger history Schema | `1` |
 | Source coverage history Schema | `1` |
 | Entity history Schema | `2` |

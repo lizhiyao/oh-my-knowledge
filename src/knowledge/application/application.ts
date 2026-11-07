@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EntityModelSchema } from '../extraction/entities.js';
 import { mapEntityIdentity } from '../entities/identity.js';
 import type { KnowledgeActor, KnowledgeBodyRef } from '../contracts.js';
-import type { SourceLedgerStore, SourceCoverageStore, SourceLedgerRef, SourceCoverageDecisionRef } from '../source-review.js';
+import type { SourceLedgerStore, SourceCoverageStore, SourceLedgerRef } from '../source-review.js';
 import { EntityMentionSchema, KnowledgeDraftSchema } from '../contracts.js';
 import { EntityAnalysisDraftSchema, type EntityAnalysisStore } from '../entities/contracts.js';
 import { validateEntityAnalysis, validateEntityMentionSelection } from '../entities/validation.js';
@@ -74,13 +74,13 @@ export class KnowledgeApplication {
   generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.generate(sources, model, runId, signal, options); }
   resume(runId: string, signal?: AbortSignal) { signal?.throwIfAborted(); return this.generation.resume(runId); }
   continueStage(runId: string, generation: number, model: KnowledgeGenerationModel, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.continueStage(runId, generation, model, signal, options); }
-  prepareAssociationRebuild(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel,
-    decision: SourceCoverageDecisionRef, runId?: string, signal?: AbortSignal) {
-    return this.generation.prepareAssociationRebuild(ref, model, decision, runId, signal);
+  prepareAssociationRebuild(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
+    runId?: string, signal?: AbortSignal) {
+    return this.generation.prepareAssociationRebuild(sources, bodyRefs, model, runId, signal);
   }
-  rebuildAssociations(ref: Parameters<BodyGenerationApplication['rebuild']>[0], model: KnowledgeGenerationModel,
-    decision: SourceCoverageDecisionRef, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
-    return this.generation.rebuild(ref, model, decision, runId, signal, options);
+  rebuildAssociations(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
+    runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
+    return this.generation.rebuild(sources, bodyRefs, model, runId, signal, options);
   }
   readContext() { return new KnowledgeReadContext(this.ports); }
   list(knowledgeIds?: ReadonlySet<string>) { return this.readContext().list(knowledgeIds); }

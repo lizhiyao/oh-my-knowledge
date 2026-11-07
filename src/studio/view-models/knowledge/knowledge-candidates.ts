@@ -1,6 +1,6 @@
 import type { KnowledgeApplication } from '../../../knowledge/application/application.js';
 import type { SourceSnapshot, SourceResolution, TraceOrigin, SourceRef } from '../../../knowledge/sources.js';
-import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageDecisionRef } from '../../../knowledge/source-review.js';
+import type { SourceLedgerRef, SourceCoverageRef } from '../../../knowledge/source-review.js';
 import type { KnowledgeBodyRef } from '../../../knowledge/contracts.js';
 import type { GenerationArchiveCheck, GenerationStage, GenerationJournal } from '../../../knowledge/extraction/generation-journal.js';
 import type { KnowledgeRetrievalRequest, KnowledgeRetrievalResult } from '../../../knowledge/application/retrieval.js';
@@ -24,7 +24,7 @@ export interface KnowledgeCandidateRun {
   createdAt?: string; executor?: string; model?: string; sources?: { snapshotId: string; sourceVersion: string; sourceKind?: SourceSnapshot['sourceKind']; projectId?: string; origin?: TraceOrigin }[];
   sourceMetadataStatus?: 'frozen_input' | 'unknown';
   archiveVerification: 'not_verified' | 'verified'; archiveChecks: GenerationArchiveCheck[];
-  bodies: KnowledgeBodyRef[]; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef; sourceCoverageDecisionRef?: SourceCoverageDecisionRef;
+  bodies: KnowledgeBodyRef[]; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef;
   phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
     producerId: string; producerRevision: string; rejectedCount: number | null;
   })[];

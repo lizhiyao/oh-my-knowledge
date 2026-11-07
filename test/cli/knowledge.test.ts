@@ -119,14 +119,22 @@ describe('observe knowledge command wiring', () => {
     const next = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base], { cwd: root })).stdout);
     expect(next.journal.stages.at(-1).stageKind).toBe('body'); run = await dispatch(next);
     const generated = run;
-    expect(generated.journal).toMatchObject({ schemaVersion: 7, workflowId: 'knowledge-body-first/v7', status: 'completed',
+    expect(generated.journal).toMatchObject({ schemaVersion: 8, workflowId: 'knowledge-body-first/v8', status: 'completed',
       stages: ['body_draft', 'body'].map(stageKind => ({ stageKind, state: 'completed' })) });
     expect(fetch).toHaveBeenCalledTimes(2); expect(generated.journal.coverageRef).toBeUndefined();
+    const { bodies: bodyRefs } = generated.journal;
+    writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], bodyRefs }));
+    const associationBase = [...base]; associationBase[associationBase.indexOf('--run-id') + 1] = randomUUID();
+    run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-rebuild-associations', ...associationBase], { cwd: root })).stdout));
+    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v8', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
+      stages: [{ stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
+    expect(fetch).toHaveBeenCalledTimes(3); expect(requests[0].messages).not.toEqual(requests[1].messages);
+    const associated = run;
     const reviewId = randomUUID(), reviewBase = [...base]; reviewBase[reviewBase.indexOf('--run-id') + 1] = reviewId;
     writeFileSync(input, JSON.stringify({ sources: [{ snapshotId: captured.snapshotId, sourceVersion: captured.sourceVersion }], bodyRefs: generated.journal.bodies }));
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-source-review', ...reviewBase], { cwd: root })).stdout));
     run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-source-review', ...reviewBase], { cwd: root })).stdout));
-    expect(run.journal.status).toBe('completed'); expect(fetch).toHaveBeenCalledTimes(4);
+    expect(run.journal.status).toBe('completed'); expect(fetch).toHaveBeenCalledTimes(5);
     const status = JSON.parse((await runCommand(ObserveKnowledge, ['source-coverage-status', '--workspace', workspace, '--id', run.journal.coverageRef.coverageId, '--json'], { cwd: root })).stdout);
     const decision = authoredSourceDecision(status), decisionPath = join(root, 'decision.json'); writeFileSync(decisionPath, JSON.stringify(decision));
     vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'unknown');
@@ -134,13 +142,7 @@ describe('observe knowledge command wiring', () => {
     vi.stubEnv('CODEX_THREAD_ID', threadId); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'Codex Desktop');
     const receipt = JSON.parse((await runCommand(ObserveKnowledge, ['review-source-coverage', '--workspace', workspace, '--input', decisionPath, '--json'], { cwd: root })).stdout);
     expect(JSON.parse((await runCommand(ObserveKnowledge, ['review-source-coverage', '--workspace', workspace, '--input', decisionPath, '--json'], { cwd: root })).stdout)).toEqual(receipt);
-    const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = decision.decision;
-    writeFileSync(input, JSON.stringify({ bodyRefs, sourceCoverageDecisionRef: { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: decision.requestId } }));
-    const associationBase = [...base]; associationBase[associationBase.indexOf('--run-id') + 1] = randomUUID();
-    run = await dispatch(JSON.parse((await runCommand(ObserveKnowledge, ['prepare-rebuild-associations', ...associationBase], { cwd: root })).stdout));
-    expect(run.journal).toMatchObject({ workflowId: 'knowledge-body-first/v7', mode: 'rebuild_associations', status: 'completed', bodies: bodyRefs,
-      stages: [{ stageKind: 'association', state: 'completed', outcomeRef: expect.any(Object) }] });
-    expect(fetch).toHaveBeenCalledTimes(5); expect(requests[0].messages).not.toEqual(requests[1].messages);
+    run = associated;
     const app = createLocalKnowledgeApplication(workspace); expect(app.inspect(runId).nativeOutcomes).toHaveLength(2);
     expect(app.inspect(runId).journal.actor).toEqual({ actorKind: 'human', actorId: 'local-user' });
     expect(app.detail(bodyRefs[0].knowledgeId)).toMatchObject({ maintenance: null, derivedAssociations: { status: 'available', reviewStatus: 'pending' } });

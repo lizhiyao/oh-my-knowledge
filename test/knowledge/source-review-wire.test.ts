@@ -3,7 +3,7 @@ import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
 import { sourceReviewInput, sourceLedgerPassages } from '../../src/knowledge/extraction/source-review-input.js';
-import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
+import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { checkGeneratedSourceCoverage, checkGeneratedSourceLedger, sourceCoverageModelInput, sourceLedgerModelInput,
   SOURCE_COVERAGE_GENERATION_PROFILE, SOURCE_LEDGER_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
 import { sourceReviewModelFixture } from './source-review-model-fixtures.js';
@@ -35,7 +35,7 @@ describe('source review wire and deterministic unit compilation', () => {
       wireId: 'sha256:e04d50b8fe84b48339888651df392b10a5580bf37527a7a64ffd2d85877c2e67' });
     expect(SOURCE_COVERAGE_GENERATION_PROFILE).toMatchObject({ stageKind: 'source_coverage', outputName: 'knowledge_source_coverage_v3', promptVersion: 'knowledge-source-coverage-generation/v6' });
     expect(BODY_GENERATION_PROFILE.profileId).toBe('sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189');
-    expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80');
+    expect(ASSOCIATION_GENERATION_PROFILE.profileId).toBe('sha256:a5c24a7183d5bc5291479eb28561e4419aaafa63fa7a1888c8b276baf20eac91');
     expect(SOURCE_LEDGER_GENERATION_PROFILE.profileId).not.toBe(SOURCE_COVERAGE_GENERATION_PROFILE.profileId);
     for (const profile of [SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE]) {
       expect(Object.isFrozen(profile.wireSchema)).toBe(true);

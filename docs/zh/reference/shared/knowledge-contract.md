@@ -7,7 +7,7 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v7` |
+| 生产流程 | `knowledge-body-first/v8` |
 | 来源清单 prompt | `knowledge-source-ledger-generation/v4` |
 | 写作稿 prompt | `knowledge-writing-draft/v1` |
 | 写作稿 profile 摘要 | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -16,9 +16,9 @@
 | 有据正文输入 | `knowledge-body-generation-input/v5` |
 | 正文 prompt | `knowledge-body-generation/v20` |
 | 来源覆盖 prompt | `knowledge-source-coverage-generation/v6` |
-| 关联 prompt | `knowledge-association-generation/v8` |
+| 关联 prompt | `knowledge-association-generation/v9` |
 | 正文 profile 摘要 | `sha256:9170f3c707305a5b970628bb16ae0e3d4a2286ee2f23c35885e48020426ca189` |
-| 关联 profile 摘要 | `sha256:7b4ae125132697ac9c251c3b6d75f6dfaa09c07f253a53e190811ed9ed9fdb80` |
+| 关联 profile 摘要 | `sha256:a5c24a7183d5bc5291479eb28561e4419aaafa63fa7a1888c8b276baf20eac91` |
 | 来源清单 profile 摘要 | `sha256:a211c0c6a3a8ca48e256a66488d8c87079d00be9cbdb8df92f19d6581f35024c` |
 | 来源覆盖 profile 摘要 | `sha256:0de76effdddb72462cf8497266f678512d724431832096ec88ae0a3c65c70686` |
 | 正文结构线协议摘要 | `sha256:bc3089693087eb4eef0a03cfc141a0c6eabb8e7b838526228d22c689fb4b797d` |
@@ -32,7 +32,7 @@
 | 复核与使用反馈历史 Schema | `1` |
 | 跨知识关系历史 Schema | `1` |
 | 知识图谱投影 Schema | `3` |
-| 生成日志 Schema | `7` |
+| 生成日志 Schema | `8` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |
 | 实体历史 Schema | `2` |

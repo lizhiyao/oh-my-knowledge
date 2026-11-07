@@ -64,8 +64,8 @@ async function generateAuthored(app: KnowledgeApplication, snapshot: SourceSnaps
     relatedRunIds.unshift(review.journal.runId);
     const status = app.sourceCoverageStatus(review.journal.coverageRef!.coverageId), command = authoredSourceDecision(status);
     app.reviewSourceCoverage(command);
-    const { coverageRef, sourceSetId, ledgerRef, bodyRefs } = command.decision;
-    result = app.prepareAssociationRebuild(bodyRefs, model, { coverageRef, sourceSetId, ledgerRef, bodyRefs, eventId: command.requestId });
+    const { bodyRefs } = command.decision;
+    result = app.prepareAssociationRebuild(sources, bodyRefs, model);
     relatedRunIds.unshift(result.journal.runId);
     const stage = result.journal.stages.at(-1)!;
     result = await app.continueStage(result.journal.runId, result.journal.generation, model, undefined, { confirmedRequestDigest: stage.requestDigest });
@@ -166,7 +166,8 @@ describe('Studio candidate action boundary', () => {
     const captured = captureAuthoredSource(selected, { path: join(root, 'source-review-http.jsonl'), records: [{ recordIndex: 0, raw: message('user', 'Alpha 使用 Beta') }] });
     const model = currentModel(), invoke = vi.spyOn(model, 'invoke'), run = await generateAuthored(app, captured, model);
     expect(invoke).toHaveBeenCalledTimes(5);
-    const coverageRef = run.journal.coverageRef!, ledgerRef = run.journal.ledgerRef!;
+    const reviewed = app.runs().current.find(candidate => candidate.mode === 'review_sources' && run.relatedRunIds.includes(candidate.runId))!;
+    const coverageRef = reviewed.coverageRef!, ledgerRef = reviewed.ledgerRef!;
     expect(await (await post({ workspace: selected, operation: 'source-ledger', id: ledgerRef.ledgerId, revision: ledgerRef.revisionId })).json()).toMatchObject({ ref: ledgerRef, originalVerification: 'not_verified' });
     const status = await (await post({ workspace: selected, operation: 'source-coverage-status', id: coverageRef.coverageId, revision: coverageRef.revisionId })).json();
     expect(status).toMatchObject({ ref: coverageRef, ledgerStatus: 'available', originalVerification: 'not_verified', decision: { status: 'proceed_with_limits' } });

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { constants as bufferConstants } from 'node:buffer';
 import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
-import { GenerationJournalSchema, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { GENERATION_JOURNAL_SCHEMA_VERSION, GenerationJournalSchema, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
@@ -30,7 +30,7 @@ function validateJournal(j: GenerationJournal): void {
     || index > 0 && j.stages[index - 1].state !== 'completed')
     || j.mode === 'rebuild_associations' && (!j.bodies.length
       || new Set(j.bodies.map(body => body.knowledgeId)).size !== j.bodies.length)) throw new Error('Invalid generation phase order.');
-  if (j.mode === 'generate' && (j.ledgerRef || j.coverageRef || j.sourceCoverageDecisionRef)) throw new Error('Body-first generation cannot inherit source-review decisions.');
+  if (j.mode !== 'review_sources' && (j.ledgerRef || j.coverageRef)) throw new Error('Generation cannot inherit source-review analyses.');
   if (new Set(j.bodies.map(canonicalJson)).size !== j.bodies.length) throw new Error('Duplicate generation body references.');
   for (const s of j.stages) {
     const input = JSON.parse(s.input);
@@ -65,13 +65,6 @@ function validateJournal(j: GenerationJournal): void {
       if (!Array.isArray(input.bodies) || !same(input.bodies.map((body: { bodyRef: unknown }) => body.bodyRef), j.bodies)) {
         throw new Error('Generation exact input bodies mismatch.');
       }
-    }
-    if (s.stageKind === 'association') {
-      const decision = j.sourceCoverageDecisionRef;
-      if (!decision || !j.coverageRef || !same(decision.coverageRef, j.coverageRef) || !same(decision.ledgerRef, j.ledgerRef)
-        || decision.sourceSetId !== j.sourceSetId || !j.bodies.length
-        || j.bodies.some(body => !decision.bodyRefs.some(ref => same(ref, body)))
-        || j.mode === 'generate' && !same(decision.bodyRefs, j.bodies)) throw new Error('Generation source coverage decision witness mismatch.');
     }
     const entityIds = (s.entityWrites ?? []).map(write => write.analysisId);
     if (new Set(entityIds).size !== entityIds.length || (s.entityWrites ?? []).some(write => !j.sources.some(source => source.snapshotId === write.snapshotId && source.sourceVersion === write.sourceVersion))) {
@@ -144,7 +137,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     }
     let parsed: unknown; try { parsed = JSON.parse(this.readBytes(path, MAX_JOURNAL)); } catch (error) { throw new Error('Generation journal unreadable.', { cause: error }); }
     if ((parsed as { storeKind?: unknown; schemaVersion?: unknown })?.storeKind !== 'knowledge-generation-journal'
-      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== 7) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
+      || (parsed as { schemaVersion?: unknown })?.schemaVersion !== GENERATION_JOURNAL_SCHEMA_VERSION) throw new KnowledgeStorageStateError('knowledge_storage_unsupported');
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId || new Set(journal.stages.map(s => s.stageKind)).size !== journal.stages.length
@@ -222,7 +215,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
       if (old) {
         const immutable = (j: GenerationJournal) => ({ runId: j.runId, mode: j.mode, createdAt: j.createdAt, actor: j.actor,
           sources: j.sources, executor: j.executor, model: j.model, timeoutMs: j.timeoutMs });
-        for (const key of ['writingDraftRef', 'ledgerRef', 'coverageRef', 'sourceCoverageDecisionRef'] as const) {
+        for (const key of ['writingDraftRef', 'ledgerRef', 'coverageRef'] as const) {
           if (old[key] && !same(old[key], next[key])) throw new Error('Generation pinned review identity changed.');
         }
         if (old.mode !== 'generate' && !same(old.bodies, next.bodies)) throw new Error('Generation review/rebuild bodies changed.');

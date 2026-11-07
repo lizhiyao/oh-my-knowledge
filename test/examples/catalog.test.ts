@@ -66,7 +66,7 @@ describe('public examples catalog', () => {
     }
   });
 
-  it('round-trips five authored phases and an explicit example-operator decision through source-bound storage and entity search without model calls', async () => {
+  it('round-trips two body phases and an explicit pending association through source-bound storage and entity search without model calls', async () => {
     const { stdout, stderr } = await runCli([], {
       entry: resolve(examplesRoot, 'knowledge-extraction/run.mjs'),
       cwd: resolve('.'),
@@ -74,10 +74,10 @@ describe('public examples catalog', () => {
     });
     assert.equal(stderr, '');
     assert.deepEqual(JSON.parse(stdout), {
-      fixtureInvocations: 5, modelCalls: 0, workflowId: 'knowledge-body-first/v7', phaseKinds: ['body_draft', 'body', 'source_ledger', 'source_coverage', 'association'], generationPhaseKinds: ['body_draft', 'body'], runStatus: 'completed',
+      fixtureInvocations: 3, modelCalls: 0, workflowId: 'knowledge-body-first/v8', phaseKinds: ['body_draft', 'body', 'association'], generationPhaseKinds: ['body_draft', 'body'], runStatus: 'completed',
       candidateCount: 1, entityCount: 2, reopened: true, sourceBindingVerified: true,
       entitySearchMatches: 1, linkedKnowledgeCount: 1, reviewStatus: 'pending',
-      sourceCoverageDecision: 'proceed_with_limits', sourceReviewActorKind: 'agent', semanticQuality: 'not_assessed',
+      relationCount: 1, semanticQuality: 'not_assessed',
       humanReview: 'pending', independentReview: 'pending', associationReview: 'pending', usageReported: false,
       temporaryWorkspaceRemoved: true,
     });

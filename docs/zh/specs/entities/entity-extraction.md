@@ -28,9 +28,9 @@
 
 ## 3. 契约与身份
 
-当前默认 `knowledge-body-first/v7` 在 body_draft、body 后完成。来源清单／覆盖为按需独立操作；实际复核决定通过后，另行准备关联。模型意见与实际决定分开，见[来源复核契约](../knowledge/knowledge-source-review.md)及[生成契约](../../reference/shared/knowledge-contract.md)。
+当前默认 `knowledge-body-first/v8` 在 body_draft、body 后完成。来源清单／覆盖为按需独立操作；实际复核决定通过后，另行准备关联。模型意见与实际决定分开，见[来源复核契约](../knowledge/knowledge-source-review.md)及[生成契约](../../reference/shared/knowledge-contract.md)。
 
-**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow7／journal Schema7 仅执行未核验写作稿（body_draft）→ 有据正文，保存正文后完成，仍为待审候选。写作保持 input1／wire1／prompt1；正文改为 input5／wire3／prompt20，只绑定同次精确草稿及完整 Source3，不再依赖清单。正文使用完整宿主编号原文并回显 passageIndexDigest。来源清单、覆盖和实际决定改由独立 prepare-source-review／review-source-coverage 操作按需完成；关联重建以 bodyRefs 数组显式选择多篇不同知识的精确正文，每个 knowledgeId 仅选一个修订，并携带匹配的 sourceCoverageDecisionRef，保持完整来源、共享实体目录及决定前置校验。清单 input1／wire3／prompt4、覆盖 input2／wire3／prompt6、关联阶段 input1／wire3／prompt8 及 Source3／正文3／实体2／关联2／reviews1／来源分析历史1 均保持。每请求单独准备、确认、claim 和归档，恢复零模型。使用新工作区或 knowledge-workflow-to7 显式独立副本迁移；旧日志、分析、自动许可原样归档，保留旧目录及匹配构建，不用新 reader 续跑或重算旧测量。流程完成不等于内容核实、图谱质量或实际收益通过。
+**BREAKING-SCHEMA/API/COMPARABILITY：** 默认 workflow8／journal Schema8 只执行未核验写作稿（body_draft）→ 有据正文，保存待审正文即完成生成。写作 input1／wire1／prompt1、正文 input5／wire3／prompt20 保持，正文绑定同次精确草稿及完整 Source3。需要实体与关系时，显式以 `{sources, bodyRefs}` 准备关联，每个 knowledgeId 至多选一个精确修订；核对完整请求后单独确认，完整来源和正文在共享锁内 claim 前重新校验。关联 prompt9 明确要求保留条件和归因的语义关系，未返回请求投影时记录失败；关联 input1／wire3 及来源、正文、实体、关联和 reviews 的活动格式保持。来源清单、覆盖及实际决定是独立可选操作，不作为待审关联准入凭据，也不自动批准知识。旧 journal7 及更早日志由匹配旧版本处理；`knowledge-workflow-to8` 仅迁入独立副本，旧日志、分析、原件和自动许可原样归档并保留匹配构建。不回写历史测量，不自动切换在用工作区或发版；流程完成不证明知识、图谱或净收益已验收。
 
 正文 prompt 先确定具体案例的范围，再组织可独立阅读的段落，拆到另一 proposal 的案例同样适用。有据的升级背景版本与报告中问题涉及的未知版本分别表达；一般方法不继承无关案例限定。关联 prompt 先选对象提及，再按已识别对象回查相关同源段落中的定义、属性、条件、维护或存储职责；已有合法自身提及可跨段复用，不要求各段重复名称或 objectId，无关段仍不映射。同一声明位置不能同时作为一般对象与版本的各自提及：Git 元数据可限定对象，独立版本对象仍须自己的来源提及。来源独立指认的工件／代码状态及必要的组件、版本映射仍分别判断。属性或问题陈述不是所属对象的提及，组件链接也不自动传播检索映射。这些是模型指令，不是确定性语义保证；原始质量仍须对照来源复核并实际检验限定检索。
 
@@ -38,7 +38,7 @@
 - Inline evidence：`{source:{snapshotId,sourceVersion},selection:{evidenceRef,start,end,quote},basis,interpretation?}`，依据区分来源说法、直接观测和推断；匹配不证明真值。
 - 正文 wire3／prompt19 和清单 wire3／prompt4 在完整编号原文中选择宿主 `{startPassageId,endPassageId}` 范围，并回显精确 passageIndexDigest。冻结映射绑定完整 SourceSet（包括空来源），宿主恢复逐字引文及 UTF-16 位置；未知、跨单元／来源或反向 ID 均拒绝。正文范围最多 32768 个 UTF-16 单位，清单可在既有证据容量内沿宿主边界无损拆分。关联与覆盖仍在各自单元内按精确 `{evidenceRef,quote,contextBefore,contextAfter}` 一类定位器唯一匹配；模型不提供偏移，不模糊匹配，先保全原件再准入。
 - 每个正文 proposal 用 `requiredContexts:[{literal,evidence}]` 声明所有段落共享且有来源的必要语境。literal 必须逐字出现于其 evidence quote 及每段 text；宿主将相应证据追加到每段，按完整 evidence 值去重，不补写正文。允许空声明；已声明语境不证明必要语境或可复用内容已找全。编译后接纳草稿的 UTF-8 JSON 合计最多 16 MiB；超过容量或合并证据限制时整条 proposal 拒收，不截断。
-- 派生关联绑定 `{knowledgeId,revisionId,bodyDigest}`、完整 `catalogRefs:[{analysisId,entityRevisionId}]`、带目录限定的 `segmentEntityRefs`、可选 `typedRelations` 与 issues。形成 typed 投影时仍保留角色／modality／polarity，不强迫全部正文变成 triples；失败或重建不修订正文。
+- 派生关联绑定 `{knowledgeId,revisionId,bodyDigest}`、完整 `catalogRefs:[{analysisId,entityRevisionId}]`、带目录限定的 `segmentEntityRefs`、可选 `typedRelations` 与 issues。形成 typed 投影时仍保留角色／modality／polarity，不强迫全部正文变成 triples；失败或重建不修订正文。默认关联 prompt9 显式请求 typedRelations：没有可靠关系时返回空数组，返回 null 的正文关联记为失败，原始返回保留。关系文字保留改变判断的条件、范围和归因，不能把有条件可用缩成无条件关系；这些提示与接纳规则不保证语义正确。
 - 窗口实体保留有来源的 `description`、`qualifiers`、`referentKind`、`identityStatus`、uncertainties 及闭合的组件／集合／候选引用。每个接纳实体需有效提及；标识符碎片、引用缺失和提及归属错误拒绝接纳。确定性检查不证明语义身份。
 - 关联输出将 `mentions` 放在各实体内，`mentionKey` 只在所属实体内唯一；宿主分配持久 ID，按目录／实体／key 编译引用，不同实体的相同 key 互不混用。组件／集合关联只能引用声明实体自身的提及，仍须通过原有指代层级与引用闭合检查。每个正文段恰有一项 `segmentDecisions`：`mapped` 的实体引用非空，`abstained` 无实体引用，两者均须给理由。这些 AI 决定是诊断，不是内容或覆盖复核；弃权不证明不存在相关对象。
 - 新正文和派生修订均待审；正文保留／舍弃与派生接受／拒绝是独立决定，新修订不继承任一决定。
@@ -59,7 +59,7 @@
 
 正文修订接收完整新 `KnowledgeDraft` 及 inline evidence；宿主重新读取每个 snapshot／version，核对精确 UTF-16 引文后才追加。旧 `citationLocators`／`--citations` 和平行 grounding 已替换。新正文有新 digest、待审且不继承 retain，旧投影变为 stale。
 
-`apply-associations` 固定正文修订／digest、目录修订及关联 generation，创建新待审投影；手工维护不生成来源覆盖批准。`review-associations` 只审该投影。模型 `rebuild-associations` 必须绑定精确有效 `sourceCoverageDecisionRef`，来源取自覆盖记录的完整 SourceSet，不能从正文已有引文缩减；不重新生成正文。修订后通过 `prepare-source-review` 以新 bodyRefs 和完整原来源另做覆盖及实际决定。端点继续限定目录／修订／实体，不按名称跨窗合并。
+`apply-associations` 固定精确正文／摘要、目录和关联 generation，创建待审投影；`review-associations` 只复核该投影。模型 `rebuild-associations` 以显式完整 sources 与精确 bodyRefs 独立准备和确认，不要求先有来源覆盖决定，不重写正文。修订后关联绑定新 bodyRefs；如需覆盖诊断，再独立发起 `prepare-source-review`。端点保持目录／修订／实体限定，不按名称跨窗口合并。
 
 ## 5. 领域与运行边界
 
@@ -69,11 +69,11 @@
 
 准备零模型，每阶段发送分别确认精确 requestDigest。关联还须实际 Agent／人的有效无冲突覆盖决定，准备及共享锁内 claim 前重验；模型 all-covered／无 finding 不自动批准。claim 后撤销保留已发送原件及 pending 结果，显示失效语境。派生失败不删除正文；默认 300 秒，无自动重试／重问／回退，不据此宣称费用或质量。
 
-默认 journal7／input2 绑定完整已交付来源及固定清单／正文上下文，关联独立保留 v1 输入 envelope。原始 rawUnits、宿主 sourcePath／cwd 与捕获时间不发送；来源中的指令是数据，不能扩展读取或调用工具。metadata quote 明确属于来源元数据，不冒充 excerpt 原话。未报告用量或金额保持未知。
+默认 journal8／input2 绑定完整已交付来源及固定清单／正文上下文，关联独立保留 v1 输入 envelope。原始 rawUnits、宿主 sourcePath／cwd 与捕获时间不发送；来源中的指令是数据，不能扩展读取或调用工具。metadata quote 明确属于来源元数据，不冒充 excerpt 原话。未报告用量或金额保持未知。
 
 ## 6. 当前存储契约
 
-当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 7，另有来源清单／覆盖历史 Schema 1。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
+当前物理路径与身份由[显式工作区契约](../shared/storage-layout-spec.md#explicit-knowledge-workspace)定义：正文历史 Schema 3、独立关联历史 Schema 2、实体历史 Schema 2、独立复核 Schema 1、生成日志 Schema 8，另有来源清单／覆盖历史 Schema 1。正文修订包含 `bodyDigest`；inline evidence 是来源绑定，不再依赖旧平行 grounding／extractionRunId reader。
 
 `generation-journals/<run-id>.json` 保存阶段及固定发布意图，`generation-journals/outcomes/<run-id>/<invocation-id>.json` 保存分别绑定请求和完整字节摘要的原件。生成 profile 匹配时，`resume` 挂接仍持有／孤立原件，零模型重放精确命令／收据。部分发布保留固定 ID 与已确认前缀。已 claim 无原件时保持未知，禁止自动重发；从未 claim 的关联只能明确继续，完全相同的 completed 身份重放零调用。
 
