@@ -1,4 +1,4 @@
-import type { SourceLedgerRevision } from '../source-review.js';
+import type { SourceLedgerRevision } from '../sources/source-review.js';
 import type { GenerationJournalStore } from '../extraction/generation-journal.js';
 import type { SourceReviewGenerationProfile } from '../extraction/source-review-wire.js';
 import { generationTextDigest } from '../extraction/body-generation-wire.js';

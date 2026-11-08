@@ -6,7 +6,7 @@ import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { FileKnowledgeRelationStore } from '../../src/knowledge/adapters/relation-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import { KnowledgeRelationsApplication } from '../../src/knowledge/application/relations.js';
-import type { KnowledgeRelationProposeInput, KnowledgeRelationReviewInput, KnowledgeRelationWithdrawInput } from '../../src/knowledge/relations.js';
+import type { KnowledgeRelationProposeInput, KnowledgeRelationReviewInput, KnowledgeRelationWithdrawInput } from '../../src/knowledge/relations/relations.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { testDirectory } from '../helpers/temp-directory.js';
 import { bodyWrite } from './body-fixtures.js';

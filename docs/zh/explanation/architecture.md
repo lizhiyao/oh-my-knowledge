@@ -62,7 +62,7 @@ flowchart TD
 
 ## 源码依赖模型
 
-`knowledge/` 是知识建设与维护的伞形域，收拢纯内容契约、实体与知识库规则、提炼、跨窗关联、应用流程、适配器和载体生命周期。CLI 与 Studio 按职责直接消费。纯核心仅包括根目录 TypeScript 模块、`entities/` 和 `entity-library/`；来源读取、模型调用与持久化由伞内执行子域及适配器负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。当前已实现候选提炼与核对、不可变修订、实体知识库组织和载体维护；实现范围与限制分别见[提炼规范](../specs/entities/entity-extraction.md)及[知识库规范](../specs/knowledge/knowledge-library.md)，不能由概念图推定自动关联或效果已获验证。
+`knowledge/` 是知识建设与维护的伞形域，收拢纯内容契约、实体与知识库规则、提炼、跨窗关联、应用流程、适配器和载体生命周期。CLI 与 Studio 按职责直接消费。纯核心仅包括根目录通用 TypeScript 模块、`sources/`、`reviews/`、`relations/`、`entities/` 和 `entity-library/`；来源读取、模型调用与持久化由伞内执行子域及适配器负责。引用校验只证明来源定位与结构有效，不证明主张得到支持。当前已实现候选提炼与核对、不可变修订、实体知识库组织和载体维护；实现范围与限制分别见[提炼规范](../specs/entities/entity-extraction.md)及[知识库规范](../specs/knowledge/knowledge-library.md)，不能由概念图推定自动关联或效果已获验证。
 
 `src` 的目录表达领域所有权，不机械套用一组全仓分层。维护时需要区分三类依赖：
 
@@ -110,6 +110,9 @@ knowledge/
 ├── store.ts      # 存储端口与规范身份
 ├── tags.ts       # 标签契约
 ├── validation.ts # 确定性的引用与证据校验
+├── sources/      # 来源快照、存储端口、复核契约与历史
+├── reviews/      # 知识复核契约与不可变历史
+├── relations/    # 知识关系契约与不可变历史
 ├── entities/     # 纯窗口身份、关联复核与调用契约
 ├── entity-library/      # 纯跨窗组织契约与修订
 ├── extraction/   # 选定窗口、模型协议与输出接纳

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SourceRefSchema, sourceSetPreimage, type SourceRef } from '../sources.js';
+import { SourceRefSchema, sourceSetPreimage, type SourceRef } from '../sources/sources.js';
 import type { EvidenceSelection } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 

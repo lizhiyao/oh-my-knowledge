@@ -1,5 +1,5 @@
 import type { ExtractionRunSealPreview, ExtractionRunSealRequest, ExtractionRunSealSummary } from './run-sealing.js';
-import { TraceOriginSchema } from '../sources.js';
+import { TraceOriginSchema } from '../sources/sources.js';
 import { z } from 'zod';
 import { KnowledgeActorSchema } from '../contracts.js';
 import { canonicalJson } from '../store.js';

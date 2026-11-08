@@ -8,9 +8,9 @@ import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, ob
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
 import { generationTextDigest } from '../extraction/body-generation-wire.js';
-import { SourceDigestSchema, SourceRefSchema, sourceSetPreimage } from '../sources.js';
-import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
-import { validateSourceReviewManifest } from '../source-review-history.js';
+import { SourceDigestSchema, SourceRefSchema, sourceSetPreimage } from '../sources/sources.js';
+import { SourceReviewManifestSchema, type SourceReviewManifest } from '../sources/source-review.js';
+import { validateSourceReviewManifest } from '../sources/source-review-history.js';
 import { SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, assertBodyGenerationSources } from '../extraction/source-input.js';
 import { SOURCE_LEDGER_INPUT_VERSION, restoreSourceLedgerInput } from '../extraction/source-review-input.js';
 import { LONG_BODY_WINDOW_INPUT_VERSION } from '../extraction/long-body.js';

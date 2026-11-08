@@ -3,11 +3,11 @@ import { KnowledgeBodyRefSchema, type KnowledgeActor, type KnowledgeBodyEvidence
 import type { KnowledgeStore } from '../store.js';
 import type { EntityAnalysisStore } from '../entities/contracts.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
-import type { SourceStore } from '../source-store.js';
+import type { SourceStore } from '../sources/source-store.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { KnowledgeReviewActorSchema, KnowledgeContentReviewInputSchema, KnowledgeCoverageReviewInputSchema, KnowledgeUseInputSchema, KnowledgeReviewWriteSchema,
-  knowledgeReviewSources, sameReviewBody, selectKnowledgeReviews, type KnowledgeContentReviewInput, type KnowledgeCoverageReviewInput, type KnowledgeUseInput, type KnowledgeReviewStore, type KnowledgeReviewWrite } from '../reviews.js';
-import { validateKnowledgeReviewBodyReferences, validateKnowledgeReviewReferences } from '../review-history.js';
+  knowledgeReviewSources, sameReviewBody, selectKnowledgeReviews, type KnowledgeContentReviewInput, type KnowledgeCoverageReviewInput, type KnowledgeUseInput, type KnowledgeReviewStore, type KnowledgeReviewWrite } from '../reviews/reviews.js';
+import { validateKnowledgeReviewBodyReferences, validateKnowledgeReviewReferences } from '../reviews/review-history.js';
 
 export interface KnowledgeReviewPorts {
   knowledge: KnowledgeStore; associations: KnowledgeAssociationStore; entities: EntityAnalysisStore; sources: SourceStore;

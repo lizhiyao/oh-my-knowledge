@@ -6,7 +6,7 @@ import {
   SourceProjectionSchema, SourceRelativePathSchema, SourceResolutionSchema, SourceSelectionSchema, SourceSnapshotSchema,
   TraceOriginSchema, normalizeLineRanges, normalizeRecordRanges, resolveSourceLineRanges, sourceSetPreimage,
   sourceSnapshotProjection, sourceVersionPreimage, type SourceProjection,
-} from '../../src/knowledge/sources.js';
+} from '../../src/knowledge/sources/sources.js';
 
 const digest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 const firstId = '00000000-0000-4000-8000-000000000001', secondId = '00000000-0000-4000-8000-000000000002';

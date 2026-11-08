@@ -8,7 +8,7 @@ import { displayTime } from '../../../application/display/format';
 import { candidateDecisionLabel } from '../../../application/knowledge/candidate-status';
 import { KnowledgeReviewSummary } from './review-summary';
 import { KNOWLEDGE_ENTITIES_PATH } from '../../../http/page-paths';
-import type { SourceRef } from '../../../../knowledge/sources';
+import type { SourceRef } from '../../../../knowledge/sources/sources';
 import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
 import { SourceLocator, SourceOriginalContext } from './source-locator';
 import { SourceUpdates } from './source-updates';

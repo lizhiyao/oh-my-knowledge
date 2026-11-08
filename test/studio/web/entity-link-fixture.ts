@@ -9,7 +9,7 @@ import type { KnowledgeEntityLibraryDetail } from '../../../src/studio/view-mode
 import type { EntityLinkStudioInspection } from '../../../src/studio/view-models/knowledge/entity-links.js';
 import { FileEntityAnalysisStore } from '../../../src/knowledge/adapters/entity-store.js';
 import { FileSourceStore } from '../../../src/knowledge/adapters/source-store';
-import { sourceSnapshotProjection } from '../../../src/knowledge/sources';
+import { sourceSnapshotProjection } from '../../../src/knowledge/sources/sources';
 import { traceSourceFixture } from './source-fixture';
 
 export async function entityLinkFixture(options: { terminate?: boolean; existingMember?: boolean } = {}) {

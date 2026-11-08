@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileSourceCoverageStore, FileSourceLedgerStore, sourceReviewRevisionDigest } from '../../src/knowledge/adapters/source-review-store.js';
-import { selectSourceCoverageDecision, validateSourceCoverageData, validateSourceCoverageDecisionDispositions, validateSourceLedgerData } from '../../src/knowledge/source-review-history.js';
+import { selectSourceCoverageDecision, validateSourceCoverageData, validateSourceCoverageDecisionDispositions, validateSourceLedgerData } from '../../src/knowledge/sources/source-review-history.js';
 import { bodyAt } from './body-fixtures.js';
 import { reviewActor, reviewId, sourceReviewFixture } from './source-review-fixtures.js';
 

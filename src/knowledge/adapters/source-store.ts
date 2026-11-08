@@ -8,8 +8,8 @@ import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWri
 import { canonicalJson } from '../store.js';
 import { SOURCE_PROJECTION_VERSION, SourceDeletionMarkerSchema, SourceDigestSchema, SourceProjectionSchema,
   SourceSnapshotSchema, sourceSnapshotProjection, sourceVersionPreimage,
-  type SourceDeletionMarker, type SourceProjection, type SourceResolution, type SourceSnapshot } from '../sources.js';
-import type { SourceBatchCaptureResult, SourceCaptureOptions, SourceCaptureResult, SourceStore, SourceStoreErrorCode } from '../source-store.js';
+  type SourceDeletionMarker, type SourceProjection, type SourceResolution, type SourceSnapshot } from '../sources/sources.js';
+import type { SourceBatchCaptureResult, SourceCaptureOptions, SourceCaptureResult, SourceStore, SourceStoreErrorCode } from '../sources/source-store.js';
 
 export const SOURCE_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 export const SOURCE_STORAGE_MAX_BYTES = 64 * 1024 * 1024;

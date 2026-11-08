@@ -610,12 +610,12 @@ describe('架构边界守门', () => {
     expect(RULES.some((rule) => violatesRule('knowledge/artifacts/doctor/fixture.ts', 'executors/index.ts', rule))).toBe(false);
   });
 
-  it('knowledge 根契约、entities 与 entity-library 保持纯核心且不依赖伞内应用和适配器', () => {
+  it('knowledge 纯核心不依赖宿主能力或伞内执行子域', () => {
     const isKnowledgeCoreFile = (file: string): boolean => {
       const path = toSrcRelative(file);
       return /^knowledge\/[^/]+\.ts$/.test(path)
-        || path.startsWith('knowledge/entities/')
-        || path.startsWith('knowledge/entity-library/');
+        || ['sources', 'reviews', 'relations', 'entities', 'entity-library']
+          .some(directory => path.startsWith(`knowledge/${directory}/`));
     };
     expect(collectPureCapabilityViolations({
       files: listTsFiles(join(SRC_DIR, 'knowledge')).filter(isKnowledgeCoreFile),

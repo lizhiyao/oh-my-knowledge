@@ -10,9 +10,9 @@ import { FileSourceLedgerStore, FileSourceCoverageStore, sourceReviewRevisionDig
 import { generationTextDigest } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { checkGeneratedSourceLedger, checkGeneratedSourceCoverage, sourceLedgerModelInput, sourceCoverageModelInput,
   SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../src/knowledge/extraction/source-review-wire.js';
-import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
-import { SourceCoverageWriteSchema, type SourceLedgerWrite, type SourceCoverageWrite } from '../../src/knowledge/source-review.js';
-import type { SourceStore } from '../../src/knowledge/source-store.js';
+import { sourceCoverageUnresolved } from '../../src/knowledge/sources/source-review-history.js';
+import { SourceCoverageWriteSchema, type SourceLedgerWrite, type SourceCoverageWrite } from '../../src/knowledge/sources/source-review.js';
+import type { SourceStore } from '../../src/knowledge/sources/source-store.js';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const actor = { actorKind: 'agent' as const, actorId: 'source-review-operator', executionRef: 'test:actual-host-operation' };

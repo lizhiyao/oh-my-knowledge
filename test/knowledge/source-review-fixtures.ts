@@ -1,5 +1,5 @@
 import { sourceReviewRevisionDigest } from '../../src/knowledge/adapters/source-review-store.js';
-import type { SourceCoverageData, SourceCoverageRevision, SourceCoverageWrite, SourceLedgerData, SourceLedgerRevision, SourceLedgerWrite } from '../../src/knowledge/source-review.js';
+import type { SourceCoverageData, SourceCoverageRevision, SourceCoverageWrite, SourceLedgerData, SourceLedgerRevision, SourceLedgerWrite } from '../../src/knowledge/sources/source-review.js';
 import { bodyAt, bodyWrite } from './body-fixtures.js';
 
 export const reviewActor = { actorKind: 'agent' as const, actorId: 'source-review-fixture', executionRef: 'test:source-review' };

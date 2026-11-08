@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SourceSnapshotSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
-import { SourceReviewManifestSchema, type SourceReviewManifest } from '../source-review.js';
+import { SourceSnapshotSchema, sourceSetPreimage, type SourceSnapshot } from '../sources/sources.js';
+import { SourceReviewManifestSchema, type SourceReviewManifest } from '../sources/source-review.js';
 import { canonicalJson } from '../store.js';
 import { generationSourceInput } from './source-input.js';
 import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema, sourcePassageText, assertSourcePassageInput } from './source-passages.js';

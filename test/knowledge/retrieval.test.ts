@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID, KnowledgeRetrievalRequestSchema, knowledgeRetrievalTerms, retrieveKnowledge, retrieveKnowledgeText } from '../../src/knowledge/application/retrieval.js';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
-import type { SourceRef } from '../../src/knowledge/sources.js';
+import type { SourceRef } from '../../src/knowledge/sources/sources.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;

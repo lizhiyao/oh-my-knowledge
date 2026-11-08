@@ -6,7 +6,7 @@ import { canonicalJson } from '../store.js';
 import { ResolvedSourceSelectionSchema, SOURCE_PROJECTION_VERSION, SourceMaterialAttributionSchema,
   SourceProjectionSchema, SourceSelectionSchema, resolveSourceLineRanges, sourceVersionPreimage,
   type ResolvedSourceSelection, type SourceLineRange, type SourceMaterialAttribution,
-  type SourceProjection, type SourceProvenance, type SourceSelection } from '../sources.js';
+  type SourceProjection, type SourceProvenance, type SourceSelection } from '../sources/sources.js';
 
 export const PROJECT_SOURCE_MAX_READ_BYTES = 16 * 1024 * 1024;
 const MAX_GIT_METADATA_BYTES = 128 * 1024;

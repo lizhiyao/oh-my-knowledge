@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SourceCoverageWriteSchema, SourceLedgerDataSchema, SourceReviewActorSchema, SourceReviewEvidenceSchema } from '../../src/knowledge/source-review.js';
+import { SourceCoverageWriteSchema, SourceLedgerDataSchema, SourceReviewActorSchema, SourceReviewEvidenceSchema } from '../../src/knowledge/sources/source-review.js';
 import { applySourceCoverageWrite, applySourceLedgerWrite, assertSourceCoverageDecision, selectSourceCoverageDecision, sourceCoverageUnresolved,
-  validateSourceCoverageData, validateSourceCoverageDecisionDispositions, validateSourceCoverageHistory, validateSourceLedgerData, validateSourceLedgerHistory } from '../../src/knowledge/source-review-history.js';
+  validateSourceCoverageData, validateSourceCoverageDecisionDispositions, validateSourceCoverageHistory, validateSourceLedgerData, validateSourceLedgerHistory } from '../../src/knowledge/sources/source-review-history.js';
 import { bodyAt } from './body-fixtures.js';
 import { reviewActor, reviewDigest, reviewId, sourceReviewFixture } from './source-review-fixtures.js';
 

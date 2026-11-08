@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { z } from 'zod';
 import { KnowledgeDraftSchema, type KnowledgeBodyEvidence, type KnowledgeDraft } from '../contracts.js';
-import { SourceDigestSchema, type SourceSnapshot } from '../sources.js';
+import { SourceDigestSchema, type SourceSnapshot } from '../sources/sources.js';
 import { SOURCE_GENERATION_INPUT_VERSION } from './source-input.js';
 import { BODY_GENERATION_INPUT_VERSION, bodySourcePassages } from './source-input.js';
 import { EntityModelSchema } from './entities.js';

@@ -1,4 +1,4 @@
-import type { SourceResolution } from '../../../knowledge/sources.js';
+import type { SourceResolution } from '../../../knowledge/sources/sources.js';
 import type { SourceViewResolution } from '../../view-models/knowledge/knowledge-candidates.js';
 
 /** Routine reader projections omit raw envelopes; explicit source/preview readback retains complete originals. */

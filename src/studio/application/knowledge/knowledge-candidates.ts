@@ -11,7 +11,7 @@ import { type KnowledgeApplication } from '../../../knowledge/application/applic
 import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
 import { type KnowledgeOperation, executeKnowledgeOperation, knowledgeOperationSchemas } from '../../../knowledge/application/operations.js';
 import { previewConversationSource } from './source-picker.js';
-import { SourceDigestSchema, SourceIdentitySchema } from '../../../knowledge/sources.js';
+import { SourceDigestSchema, SourceIdentitySchema } from '../../../knowledge/sources/sources.js';
 import { z } from 'zod';
 import type { KnowledgeCandidateDetail, KnowledgeEntityAnalysisDetail, KnowledgeCandidateRun } from '../../view-models/knowledge/knowledge-candidates.js';
 

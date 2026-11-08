@@ -20,7 +20,7 @@ import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { runCommand } from '../helpers/run-command.js';
 import { createLocalKnowledgeApplication, createLocalKnowledgeReview } from '../../src/knowledge/application/local.js';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
-import { sourceSnapshotProjection } from '../../src/knowledge/sources.js';
+import { sourceSnapshotProjection } from '../../src/knowledge/sources/sources.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

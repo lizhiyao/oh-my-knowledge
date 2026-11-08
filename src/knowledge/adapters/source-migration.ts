@@ -16,7 +16,7 @@ import { EvidenceWindowSchema, type EvidenceWindow } from '../extraction/evidenc
 import { applyKnowledgeWrite } from '../history.js';
 import { canonicalJson, type KnowledgeEnvelope, type KnowledgeWrite } from '../store.js';
 import { SOURCE_PROJECTION_VERSION, SourceProjectionSchema, SourceSnapshotSchema, normalizeRecordRanges, sourceSnapshotProjection,
-  sourceVersionPreimage, type SourceProjection, type SourceRef, type SourceSnapshot } from '../sources.js';
+  sourceVersionPreimage, type SourceProjection, type SourceRef, type SourceSnapshot } from '../sources/sources.js';
 import { FileKnowledgeAssociationStore } from './association-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from './body-digest.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';

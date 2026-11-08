@@ -7,7 +7,7 @@ import { canonicalJson } from '../store.js';
 import { ResolvedSourceSelectionSchema, SOURCE_PROJECTION_VERSION, SourceMaterialAttributionSchema,
   SourceProjectionSchema, SourceProvenanceSchema, SourceSelectionSchema, TraceOriginSchema, normalizeRecordRanges, sourceVersionPreimage,
   type ResolvedSourceSelection, type SourceMaterialAttribution, type SourceProjection, type SourceProvenance,
-  type SourceSelection, type TraceOrigin } from '../sources.js';
+  type SourceSelection, type TraceOrigin } from '../sources/sources.js';
 
 export const TRACE_SOURCE_MAX_READ_BYTES = 16 * 1024 * 1024;
 const MAX_RECORDS = 100_000;

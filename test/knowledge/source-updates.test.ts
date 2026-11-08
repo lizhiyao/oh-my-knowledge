@@ -8,7 +8,7 @@ import { readProjectSource, readResolvedProjectSource } from '../../src/knowledg
 import { SourceUpdatesError, SourceUpdatesService, type SourceCurrentReadResult, type SourceUpdateInventory,
   type SourceUpdatesPorts } from '../../src/knowledge/application/source-updates.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { sourceVersionPreimage, type SourceProjection, type SourceRef, type SourceResolution, type SourceSnapshot } from '../../src/knowledge/sources.js';
+import { sourceVersionPreimage, type SourceProjection, type SourceRef, type SourceResolution, type SourceSnapshot } from '../../src/knowledge/sources/sources.js';
 
 const sha = (text: string | Uint8Array) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const material = { materialType: 'unknown' as const, attributionBasis: 'unknown' as const, reason: 'Authored source comparison fixture.' };

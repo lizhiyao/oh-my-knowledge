@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AnalyzedEntity } from '../entities/contracts.js';
-import type { TraceOrigin, SourceResolution } from '../sources.js';
+import type { TraceOrigin, SourceResolution } from '../sources/sources.js';
 import type { SourceSummary } from './source-summary.js';
 
 export const EntityQuerySchema = z.strictObject({

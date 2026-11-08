@@ -7,7 +7,7 @@ import { GenerationOutcomeRefSchema, type GenerationOutcome } from './native-out
 import { WORKFLOW_ID } from './source-input.js';
 import { LongBodyPlanSchema } from './long-body.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from './source-review-input.js';
-import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../source-review.js';
+import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../sources/source-review.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const GENERATION_JOURNAL_SCHEMA_VERSION = 9 as const;

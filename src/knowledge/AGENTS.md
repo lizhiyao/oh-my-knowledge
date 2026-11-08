@@ -1,10 +1,10 @@
 # Knowledge 领域规则
 
-本文件补充仓库根 `AGENTS.md`，适用于 `src/knowledge/`。本域是知识建设与维护的伞形域：根目录 TypeScript 模块、`entities/` 和 `entity-library/` 构成纯核心；`extraction/` 负责选定窗口、模型协议和输出接纳，`entity-linking/` 负责跨窗关联的摘要、prompt 与质量投影，`application/` 负责共用用例、关联执行与本地装配，`adapters/` 实现模型传输、来源读取与持久化，`artifacts/` 拥有知识载体生命周期。纯核心约束不扩展到这些执行子域；载体规则由最近的 `artifacts/AGENTS.md` 补充。
+本文件补充仓库根 `AGENTS.md`，适用于 `src/knowledge/`。本域是知识建设与维护的伞形域：根目录通用 TypeScript 模块、`sources/`、`reviews/`、`relations/`、`entities/` 和 `entity-library/` 构成纯核心；`extraction/` 负责选定窗口、模型协议和输出接纳，`entity-linking/` 负责跨窗关联的摘要、prompt 与质量投影，`application/` 负责共用用例、关联执行与本地装配，`adapters/` 实现模型传输、来源读取与持久化，`artifacts/` 拥有知识载体生命周期。纯核心约束不扩展到这些执行子域；载体规则由最近的 `artifacts/AGENTS.md` 补充。
 
 ## 领域不变量
 
-- 纯核心零宿主副作用：根目录 TypeScript 模块、`entities/` 和 `entity-library/` 不读文件系统、网络、环境变量、时钟或进程状态，只依赖核心自身与 `zod`，不得反向依赖伞内执行子域。需要外部能力时只声明窄端口（如 `KnowledgeStore`、`EntityAnalysisStore`），由适配器实现。`test/architecture/import-boundaries.test.ts` 冻结这条边界。
+- 纯核心零宿主副作用：根目录通用 TypeScript 模块、`sources/`、`reviews/`、`relations/`、`entities/` 和 `entity-library/` 不读文件系统、网络、环境变量、时钟或进程状态，只依赖核心自身与 `zod`，不得反向依赖伞内执行子域。需要外部能力时只声明窄端口（如 `KnowledgeStore`、`EntityAnalysisStore`），由适配器实现。`test/architecture/import-boundaries.test.ts` 冻结这条边界。
 - 执行子域保持单向依赖：应用流程消费适配器、提炼与关联机制；适配器消费提炼与关联的协议叶子。提炼与关联不得反向依赖应用或适配器，包括仅类型导入；关联执行与来源检查归应用用例，会话来源读取归适配器。运行时与仅类型依赖分别审计，不通过新增聚合入口或合并依赖图节点隐藏环。领域实现不得反向依赖 CLI 或 Studio。
 - 修订不可变：知识条目、实体分析、组织库一律以 append-only 修订演进，写入携带 `expectedGeneration`／`expectedHeadRevisionId` 乐观并发与幂等 `requestId`；任何路径不得改写或丢弃历史修订。
 - 身份红线：名称、路径、类型或字符串／向量相似度都不证明同一对象；跨窗口实体关联只经显式人工确认（`entities/links.ts` 的人审事件流），不做自动合并、不按时间先后裁决矛盾。

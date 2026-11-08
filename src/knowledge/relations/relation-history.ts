@@ -1,5 +1,5 @@
-import type { KnowledgeActor } from './contracts.js';
-import { KnowledgeReviewActorSchema } from './reviews.js';
+import type { KnowledgeActor } from '../contracts.js';
+import { KnowledgeReviewActorSchema } from '../reviews/reviews.js';
 import { KnowledgeRelationError, KnowledgeRelationEnvelopeSchema, KnowledgeRelationEventSchema, KnowledgeRelationWriteSchema,
   type KnowledgeRelationEnvelope, type KnowledgeRelationEvent, type KnowledgeRelationProposedEvent, type KnowledgeRelationWrite } from './relations.js';
 

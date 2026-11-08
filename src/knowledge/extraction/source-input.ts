@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SourceDigestSchema, SourceExcerptSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
+import { SourceDigestSchema, SourceExcerptSchema, sourceSetPreimage, type SourceSnapshot } from '../sources/sources.js';
 import { canonicalJson } from '../store.js';
 import { buildSourcePassages, SOURCE_PASSAGE_POLICY, SourcePassagesSchema, sourcePassageText, assertSourcePassageInput } from './source-passages.js';
 

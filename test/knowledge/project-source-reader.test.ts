@@ -7,7 +7,7 @@ import { dirname, join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROJECT_SOURCE_MAX_READ_BYTES, ProjectSourceReadError, readProjectSource,
   readResolvedProjectSource } from '../../src/knowledge/adapters/project-source-reader.js';
-import type { SourceSelection } from '../../src/knowledge/sources.js';
+import type { SourceSelection } from '../../src/knowledge/sources/sources.js';
 
 const readFault = vi.hoisted(() => ({ afterRead: undefined as ((fd: number) => void) | undefined }));
 vi.mock('node:fs', async original => {

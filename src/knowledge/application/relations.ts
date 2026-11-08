@@ -1,13 +1,13 @@
 import { KnowledgeBodyRefSchema, type KnowledgeActor, type KnowledgeBodyRef, type KnowledgeRevision } from '../contracts.js';
-import { KnowledgeReviewActorSchema, knowledgeReviewSources, sameReviewBody } from '../reviews.js';
+import { KnowledgeReviewActorSchema, knowledgeReviewSources, sameReviewBody } from '../reviews/reviews.js';
 import { KnowledgeRelationError, KnowledgeRelationEnvelopeSchema, KnowledgeRelationProposeInputSchema, KnowledgeRelationReviewInputSchema, KnowledgeRelationWithdrawInputSchema,
   KnowledgeRelationWriteSchema, type KnowledgeRelationEnvelope, type KnowledgeRelationEndpoint, type KnowledgeRelationProposeInput, type KnowledgeRelationProposedEvent,
-  type KnowledgeRelationReviewInput, type KnowledgeRelationStore, type KnowledgeRelationWithdrawInput, type KnowledgeRelationWrite } from '../relations.js';
-import { sameKnowledgeRelationActor, selectKnowledgeRelation } from '../relation-history.js';
+  type KnowledgeRelationReviewInput, type KnowledgeRelationStore, type KnowledgeRelationWithdrawInput, type KnowledgeRelationWrite } from '../relations/relations.js';
+import { sameKnowledgeRelationActor, selectKnowledgeRelation } from '../relations/relation-history.js';
 import type { KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
-import type { SourceStore } from '../source-store.js';
-import type { SourceRef } from '../sources.js';
+import type { SourceStore } from '../sources/source-store.js';
+import type { SourceRef } from '../sources/sources.js';
 import { validateEvidenceSelection } from '../validation.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../adapters/body-digest.js';
 

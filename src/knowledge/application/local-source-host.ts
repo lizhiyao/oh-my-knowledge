@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { SourceCaptureError, SourceCaptureService, type SourceCapturePorts } from './source-capture.js';
 import { canonicalJson } from '../store.js';
 import { SourceMaterialAttributionSchema, SourceNamespaceSchema, SourceRelativePathSchema, type ResolvedSourceSelection,
-  type SourceMaterialAttribution, type SourceSelection } from '../sources.js';
+  type SourceMaterialAttribution, type SourceSelection } from '../sources/sources.js';
 import { readProjectSource, readResolvedProjectSource } from '../adapters/project-source-reader.js';
 import { readTraceSource } from '../adapters/trace-source-reader.js';
 import { FileSourceStore } from '../adapters/source-store.js';

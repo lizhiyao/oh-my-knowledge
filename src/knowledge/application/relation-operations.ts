@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { KnowledgeBodyRefSchema } from '../contracts.js';
-import { KnowledgeRelationError, KnowledgeRelationProposeInputSchema, KnowledgeRelationReviewInputSchema, KnowledgeRelationWithdrawInputSchema } from '../relations.js';
+import { KnowledgeRelationError, KnowledgeRelationProposeInputSchema, KnowledgeRelationReviewInputSchema, KnowledgeRelationWithdrawInputSchema } from '../relations/relations.js';
 import type { KnowledgeRelationsApplication } from './relations.js';
 import { knowledgeFailureCode } from './operations.js';
 

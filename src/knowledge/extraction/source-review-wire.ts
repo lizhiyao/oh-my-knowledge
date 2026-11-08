@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { z } from 'zod';
 import { KnowledgeRevisionSchema, type KnowledgeRevision } from '../contracts.js';
-import { SourceDigestSchema, type SourceSnapshot } from '../sources.js';
+import { SourceDigestSchema, type SourceSnapshot } from '../sources/sources.js';
 import { canonicalJson } from '../store.js';
 import { SourceCoverageDataSchema, SourceLedgerDataSchema, SourceLedgerRefSchema,
-  type SourceCoverageData, type SourceLedgerData, type SourceLedgerRef } from '../source-review.js';
-import { validateSourceCoverageData, validateSourceLedgerData } from '../source-review-history.js';
+  type SourceCoverageData, type SourceLedgerData, type SourceLedgerRef } from '../sources/source-review.js';
+import { validateSourceCoverageData, validateSourceLedgerData } from '../sources/source-review-history.js';
 import type { GenerationProfile } from './body-generation-wire.js';
 import { locateQuoteContext } from './quote-context.js';
 import { sourceReviewInput, sourceLedgerInput, sourceLedgerPassages, SOURCE_LEDGER_INPUT_VERSION,

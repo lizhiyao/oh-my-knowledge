@@ -1,5 +1,5 @@
-import type { KnowledgeActor, KnowledgeRevision } from './contracts.js';
-import { canonicalJson } from './store.js';
+import type { KnowledgeActor, KnowledgeRevision } from '../contracts.js';
+import { canonicalJson } from '../store.js';
 import { SourceCoverageEnvelopeSchema, SourceCoverageWriteSchema, SourceLedgerEnvelopeSchema, SourceLedgerWriteSchema, SourceReviewActorSchema,
   type SourceCoverageData, type SourceCoverageDecisionRef, type SourceCoverageEnvelope, type SourceCoverageRef, type SourceCoverageRevision,
   type SourceCoverageWrite, type SourceLedgerData, type SourceLedgerEnvelope, type SourceLedgerRevision, type SourceLedgerWrite,

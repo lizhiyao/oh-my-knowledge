@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { KnowledgeRelationProposeInputSchema } from '../../src/knowledge/relations.js';
-import { applyKnowledgeRelationWrite, selectKnowledgeRelation, validateKnowledgeRelationHistory } from '../../src/knowledge/relation-history.js';
+import { KnowledgeRelationProposeInputSchema } from '../../src/knowledge/relations/relations.js';
+import { applyKnowledgeRelationWrite, selectKnowledgeRelation, validateKnowledgeRelationHistory } from '../../src/knowledge/relations/relation-history.js';
 import { relationActor, relationAt, relationOtherActor, relationsFixture } from './relations-fixtures.js';
 
 describe('knowledge relation opinions', () => {

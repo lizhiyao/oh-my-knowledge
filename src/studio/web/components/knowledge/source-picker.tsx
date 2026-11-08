@@ -4,7 +4,7 @@ import { KNOWLEDGE_CANDIDATES_PATH } from '../../../http/page-paths';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Empty, Input, Modal, Select, Space, Spin } from 'antd';
 import type { Language } from '../layout/shell';
-import type { SourceSelection } from '../../../../knowledge/sources';
+import type { SourceSelection } from '../../../../knowledge/sources/sources';
 import type { KnowledgeCandidateRun, KnowledgeConversation, KnowledgeConversationDetail, KnowledgeConversationPreview,
   KnowledgeSourceCapture, KnowledgeSourceCatalog, KnowledgeSourcePreview, KnowledgeSourceRef } from '../../../view-models/knowledge/knowledge-candidates';
 import { requestKnowledge } from './request';

@@ -1,8 +1,8 @@
 import type { KnowledgeActor, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { KnowledgeStore, KnowledgeWrite } from '../store.js';
 import { canonicalJson } from '../store.js';
-import type { SourceStore } from '../source-store.js';
-import { sourceSetPreimage, type SourceRef, type SourceSnapshot } from '../sources.js';
+import type { SourceStore } from '../sources/source-store.js';
+import { sourceSetPreimage, type SourceRef, type SourceSnapshot } from '../sources/sources.js';
 import { generationImportRunId, generationSourceInput, bodyGenerationSources, SOURCE_GENERATION_INPUT_VERSION, WRITING_DRAFT_INPUT_VERSION, BODY_GENERATION_INPUT_VERSION, WORKFLOW_ID } from '../extraction/source-input.js';
 import type { EntityAnalysisStore, EntityAnalysisWrite } from '../entities/contracts.js';
 import type { KnowledgeAssociationStore, KnowledgeAssociationWrite } from '../associations.js';
@@ -22,9 +22,9 @@ import { observeGenerationException, type GenerationOutcome, type GenerationOutc
 import { SourceReviewApplication } from './source-review.js';
 import { readSourceReviewOriginal } from '../adapters/source-review-original.js';
 import { sourceReviewRevisionDigest } from '../adapters/source-review-store.js';
-import { sourceCoverageUnresolved } from '../source-review-history.js';
+import { sourceCoverageUnresolved } from '../sources/source-review-history.js';
 import { SourceCoverageWriteSchema, type SourceLedgerStore, type SourceCoverageStore,
-  type SourceLedgerRef, type SourceLedgerWrite } from '../source-review.js';
+  type SourceLedgerRef, type SourceLedgerWrite } from '../sources/source-review.js';
 import { SOURCE_REVIEW_INPUT_VERSION } from '../extraction/source-review-input.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE, sourceLedgerModelInput, sourceCoverageModelInput,
   checkGeneratedSourceLedger, checkGeneratedSourceCoverage } from '../extraction/source-review-wire.js';

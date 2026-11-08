@@ -3,10 +3,10 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
 import type { KnowledgeActor } from '../contracts.js';
-import { applySourceCoverageWrite, applySourceLedgerWrite, validateSourceCoverageHistory, validateSourceLedgerHistory } from '../source-review-history.js';
+import { applySourceCoverageWrite, applySourceLedgerWrite, validateSourceCoverageHistory, validateSourceLedgerHistory } from '../sources/source-review-history.js';
 import { SourceCoverageEnvelopeSchema, SourceCoverageWriteSchema, SourceLedgerEnvelopeSchema, SourceLedgerWriteSchema, SourceReviewActorSchema,
   type SourceCoverageEnvelope, type SourceCoverageRevision, type SourceCoverageStore, type SourceCoverageWrite, type SourceLedgerEnvelope,
-  type SourceLedgerRevision, type SourceLedgerStore, type SourceLedgerWrite, type SourceReviewReceipt } from '../source-review.js';
+  type SourceLedgerRevision, type SourceLedgerStore, type SourceLedgerWrite, type SourceReviewReceipt } from '../sources/source-review.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 
