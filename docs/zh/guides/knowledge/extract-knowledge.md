@@ -279,6 +279,16 @@ omk observe knowledge retrieve --workspace ./knowledge --query '还有哪些未�
 
 召回与排序使用确定性的 ASCII／代码标识符和中文连续／双字片段。响应记录 `rankingPolicyId: knowledge-body-literal-topic-priority/v3`。完成来源／实体范围筛选后，以每条正文的标题、标签及范围内合格段落计算查询 ASCII／代码词的命中集合。严格子集只降低装包优先级，不证明正文冗余，也不删除候选；相等集合处于同一优先级，互不包含的集合不彼此降级，纯中文或所有 ASCII 词均未命中时保留既有排序。能装入预算的段落先按极大主题集合优先，再按字面增量覆盖／成本选择；较低优先级候选仍可利用剩余预算，所有超大或预算排除的候选均记入 `omitted`。这不使用 embedding，也不推断语义身份。`--include-candidates` 明确纳入未保留待审正文，已舍弃修订始终排除。`--snapshot` 和 `--source-version` 必须成对提供，限定精确来源引用；`--entity-id` 须同时提供 `--analysis` 和 `--entity-revision`，使用匹配当前正文的可用派生投影，拒绝／不可用／过期的关联不能提供该范围，不按名称自动归并。来源不可用时证据明确标记，已存正文仍可读。
 
+### 回查指定来源原文 {#search-captured-source}
+
+已获准读取某份归档来源时，可以用 `search-source` 查找正文可能遗漏的片段。快照 ID 和版本取自采集回执或已有证据引用。
+
+```bash
+omk observe knowledge search-source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --query 'EOS 80D' --json
+```
+
+命令只读，直接在指定版本的归档摘录中做字面匹配和排序，无需调用模型。匹配使用拉丁文字词项和汉字双字片段或单字，忽略常见英文虚词。每条命中包含逐字引文、引文在摘录内的 UTF-16 偏移和来源坐标。会话采集有发言角色和时间戳时会随坐标返回，文件坐标则指向归档摘录范围。单行 JSON 连同末尾换行默认预算为 16384 个 UTF-8 字节，可设为 1024 至 65536。`omittedMatches` 记录因预算省略的匹配片段数，`source.status` 区分来源版本不可用与来源可用但没有命中。使用命中时标明它来自原文，片段未交代清楚归因、日期或条件时继续核对上下文。
+
 ### 用新材料维护已有认识 {#maintain-existing-knowledge}
 
 更新已有知识时，先按实际任务检索并用 `show` 固定 `knowledgeId`、`revisionId`、`bodyDigest` 及正文 `history.generation`，读有关复核意见。同名不自动认作同一知识；区分补充条件、纠正、不同立场及独立新案例。稳定方法与有时间／版本的案例分别表达，不让历史版本变成永久要求，也不按新旧时间裁决矛盾。

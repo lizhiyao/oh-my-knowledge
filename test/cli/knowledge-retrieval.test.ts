@@ -138,3 +138,61 @@ describe('body retrieve command wiring', () => {
     expect(existsSync(workspace)).toBe(false); expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
   });
 });
+
+describe('source evidence search command wiring', () => {
+  it('searches a saved source before body generation and emits the exact selection as one budgeted JSON line', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-source-search-cli-')); roots.push(root);
+    const workspace = join(root, 'workspace');
+    vi.stubEnv('OMK_HOME', join(root, 'home')); vi.stubEnv('OMK_SKIP_UPDATE_CHECK', '1');
+    const configureModel = vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Search must not configure an executor.'); });
+    const capture = (name: string, text: string) => captureTraceFixture(workspace, {
+      path: join(root, name), records: [{ recordIndex: 0, raw: JSON.stringify({ type: 'response_item',
+        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }) }],
+    });
+    const snapshot = capture('source.jsonl', '🙂 仅初始化时 v-model 不更新。');
+    const other = capture('other.jsonl', '另一版本的 v-model 不受影响。');
+    const before = workspaceBytes(workspace);
+    const command = (version: string, extra: string[] = []) => runCommand(ObserveKnowledge, [
+      'search-source', '--workspace', workspace, '--snapshot', snapshot.snapshotId, '--source-version', version,
+      '--query', 'v-model', '--max-bytes', '1024', ...extra,
+    ], { cwd: root });
+    const { stdout } = await command(snapshot.sourceVersion);
+    const result = JSON.parse(stdout);
+    expect(result).toMatchObject({
+      projectionKind: 'source-evidence-search', schemaVersion: 1, omittedMatches: 0,
+      source: { ...sourceRef(snapshot), status: 'available', sourceKind: 'agent_trace' },
+    });
+    expect(result.hits).toHaveLength(1);
+    const { evidenceRef, start, end, quote } = result.hits[0].selection;
+    expect(evidenceRef).toBe(snapshot.excerpts[0].evidenceRef);
+    expect(quote).toBe(snapshot.excerpts[0].text.slice(start, end));
+    expect(quote).toContain('v-model');
+    expect(stdout.split('\n')).toEqual([JSON.stringify(result), '']);
+    expect(Buffer.byteLength(stdout)).toBeLessThanOrEqual(1024);
+    expect((await command(snapshot.sourceVersion, ['--json'])).stdout).toBe(stdout);
+    expect(JSON.parse((await command(other.sourceVersion)).stdout)).toMatchObject({
+      source: { snapshotId: snapshot.snapshotId, sourceVersion: other.sourceVersion, status: 'unavailable', reason: 'version_mismatch' },
+      hits: [], omittedMatches: 0,
+    });
+    expect(workspaceBytes(workspace)).toEqual(before);
+    expect(configureModel).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing or malformed source identity and unrelated flags before settings resolution', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-source-search-args-')); roots.push(root);
+    const workspace = join(root, 'absent'), snapshot = ['--snapshot', randomUUID()], version = ['--source-version', `sha256:${'a'.repeat(64)}`];
+    vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
+    const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve');
+    for (const args of [[], snapshot, version, [...snapshot, ...version], ['--query', 'needle', ...snapshot],
+      ['--query', 'needle', ...version], ['--query', 'needle', ...snapshot, '--source-version', 'wrong']]) {
+      await expect(runCommand(ObserveKnowledge, ['search-source', '--workspace', workspace, ...args], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    for (const args of [['--max-bytes', '1023'], ['--max-bytes', '65537'], ['--executor', 'codex'], ['--include-candidates'], ['--format', 'text']]) {
+      await expect(runCommand(ObserveKnowledge, [
+        'search-source', '--workspace', workspace, '--query', 'needle', ...snapshot, ...version, ...args,
+      ], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    }
+    expect(settings).not.toHaveBeenCalled();
+    expect(existsSync(workspace)).toBe(false);
+  });
+});
