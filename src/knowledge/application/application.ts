@@ -74,6 +74,9 @@ export class KnowledgeApplication {
   generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.generate(sources, model, runId, signal, options); }
   resume(runId: string, signal?: AbortSignal) { signal?.throwIfAborted(); return this.generation.resume(runId); }
   continueStage(runId: string, generation: number, model: KnowledgeGenerationModel, signal?: AbortSignal, options?: KnowledgeGenerationOptions) { return this.generation.continueStage(runId, generation, model, signal, options); }
+  continueWindows(runId: string, generation: number, model: KnowledgeGenerationModel, concurrency: 1 | 2, signal?: AbortSignal, options?: KnowledgeGenerationOptions) {
+    return this.generation.continueWindows(runId, generation, model, concurrency, signal, options);
+  }
   prepareAssociationRebuild(sources: readonly SourceRef[], bodyRefs: readonly KnowledgeBodyRef[], model: KnowledgeGenerationModel,
     runId?: string, signal?: AbortSignal) {
     return this.generation.prepareAssociationRebuild(sources, bodyRefs, model, runId, signal);

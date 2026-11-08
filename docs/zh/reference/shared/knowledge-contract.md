@@ -7,7 +7,7 @@
 
 | 当前契约 | 值 |
 |---|---|
-| 生产流程 | `knowledge-body-first/v10` |
+| 生产流程 | `knowledge-body-first/v11` |
 | 来源清单 prompt | `knowledge-source-ledger-generation/v4` |
 | 写作稿 prompt | `knowledge-writing-draft/v1` |
 | 写作稿 profile 摘要 | `sha256:aebc7105045a69553fe356708f93bc526fe77e389501a0b204f6cb4c9dd95574` |
@@ -32,7 +32,7 @@
 | 复核与使用反馈历史 Schema | `1` |
 | 跨知识关系历史 Schema | `1` |
 | 知识图谱投影 Schema | `3` |
-| 生成日志 Schema | `10` |
+| 生成日志 Schema | `11` |
 | 来源清单历史 Schema | `1` |
 | 来源覆盖历史 Schema | `1` |
 | 实体历史 Schema | `2` |
@@ -40,7 +40,7 @@
 | 来源投影 | `knowledge-window-v3` |
 | 来源生成输入 | `knowledge-source-generation-input/v2` |
 | 保留的关联输入封装 | `knowledge-source-generation-input/v1` |
-| 默认来源导入运行身份 | `knowledge-source-set-import-run/v5` |
+| 默认来源导入运行身份 | `knowledge-source-set-import-run/v6` |
 | 完整原生归档容量 | 536,870,887 字节 |
 | 默认检索响应预算（可调） | 65,536 字节 |
 | 最小检索响应预算 | 1,024 字节 |

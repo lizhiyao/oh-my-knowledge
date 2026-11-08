@@ -205,9 +205,9 @@ export function bodyWindowInput(sources: readonly SourceSnapshot[], sourceSetId:
   return serializeWindow(windowProjection(sources, sourceSetId, plan), sourceSetId, plan, ordinal);
 }
 
-export function assertLongBodyWindowInputs(sources: readonly SourceSnapshot[], sourceSetId: string, plan: LongBodyPlan): void {
+export function longBodyWindowInputs(sources: readonly SourceSnapshot[], sourceSetId: string, plan: LongBodyPlan): string[] {
   const projection = windowProjection(sources, sourceSetId, plan);
-  for (const ordinal of plan.windows.keys()) serializeWindow(projection, sourceSetId, plan, ordinal);
+  return plan.windows.map((_, ordinal) => serializeWindow(projection, sourceSetId, plan, ordinal));
 }
 
 function allRanges(response: WindowResponse): SourcePassageRange[] {

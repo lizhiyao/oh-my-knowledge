@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { constants as bufferConstants } from 'node:buffer';
 import { checkStorageDirectory, KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
-import { GENERATION_JOURNAL_SCHEMA_VERSION, GenerationJournalSchema, isBodyPublicationStage, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { GENERATION_JOURNAL_SCHEMA_VERSION, GenerationJournalSchema, MAX_BODY_WINDOW_IN_FLIGHT, generationJournalAttempts, isBodyPublicationStage, isInterruptedGenerationOutcome, type GenerationArchiveCheck, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { checkGenerationOutcome, generationJSONChunks, measureGenerationJSON, observeGenerationJSON, type GenerationOutcome } from '../extraction/native-outcome.js';
 import { canonicalJson } from '../store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes, publishKnowledgeChunks } from './durable-publication.js';
@@ -20,8 +20,7 @@ const MAX_JOURNAL = 32 * 1024 * 1024;
 export const MAX_GENERATION_OUTCOME_BYTES = Math.min(512 * 1024 * 1024, bufferConstants.MAX_STRING_LENGTH - 1);
 const uuid = z.string().uuid();
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
-const previousWindowInputVersion = 'knowledge-body-window-input/v3';
-const windowInputSchema = z.strictObject({ inputVersion: z.enum([LONG_BODY_WINDOW_INPUT_VERSION, previousWindowInputVersion]),
+const windowInputSchema = z.strictObject({ inputVersion: z.literal(LONG_BODY_WINDOW_INPUT_VERSION),
   sourceSetId: SourceDigestSchema, planDigest: SourceDigestSchema, coverageRegions: LongBodyCoverageRegionsSchema.optional(),
   passagePolicy: z.literal(SOURCE_PASSAGE_POLICY.policyVersion), passageIndexDigest: SourceDigestSchema,
   bodyWindow: z.strictObject({ index: z.number().int().positive(), count: z.number().int().positive(), visiblePassageCount: z.number().int().positive() }),
@@ -29,18 +28,36 @@ const windowInputSchema = z.strictObject({ inputVersion: z.enum([LONG_BODY_WINDO
     excerpts: z.array(z.object({ passages: SourcePassagesSchema.min(1) })).min(1) })).max(256),
 });
 const windowTransitions: Record<GenerationStage['state'], readonly GenerationStage['state'][]> = {
-  prepared: ['claimed'], claimed: ['archived'], archived: ['completed', 'failed', 'prepared_writes'],
-  prepared_writes: ['completed'], completed: [], failed: [],
+  prepared: ['claimed'], claimed: ['archived'], archived: ['completed', 'failed', 'interrupted', 'prepared_writes'],
+  prepared_writes: ['completed'], completed: [], failed: [], interrupted: [],
 };
+const windowRequest = (stage: GenerationStage) => ({ stageKind: stage.stageKind, profileId: stage.profileId,
+  promptVersion: stage.promptVersion, system: stage.system, wireId: stage.wireId, wireSchema: stage.wireSchema,
+  input: stage.input, inputDigest: stage.inputDigest, requestDigest: stage.requestDigest, producer: stage.producer });
 
 function validateBodyPlan(j: GenerationJournal): void {
   if (!j.bodyPlan) {
-    if (j.bodySourceMetadata) throw new Error('Generation source metadata requires a body plan.');
+    if (j.bodySourceMetadata || j.bodyAttempts) throw new Error('Generation window state requires a body plan.');
     return;
   }
   if (j.mode !== 'generate' || j.stages[0].stageKind !== 'body_window' || j.writingDraftRef) {
     throw new Error('Generation body plan requires a first window without a writing draft.');
   }
+  if (j.stages.length !== j.bodyPlan.windows.length || j.stages.filter(stage => stage.state === 'claimed').length > MAX_BODY_WINDOW_IN_FLIGHT) {
+    throw new Error('Generation body plan requires all windows with bounded native claims.');
+  }
+  const final = j.stages.at(-1)!;
+  if (['prepared_writes', 'completed'].includes(final.state) && j.stages.slice(0, -1).some(stage => stage.state !== 'completed')) {
+    throw new Error('Generation body publication requires every window.');
+  }
+  const attempts = j.bodyAttempts ?? [];
+  if (new Set(attempts.map(attempt => attempt.windowIndex)).size !== attempts.length || attempts.some(({ windowIndex, stage }) => {
+    const current = j.stages[windowIndex];
+    return !current || current.state === 'interrupted' || stage.state !== 'interrupted' || !stage.outcomeRef || stage.committed !== 0
+      || stage.bodyWrites !== undefined || stage.rejected !== undefined || stage.entityWrites !== undefined
+      || stage.associationWrites !== undefined || stage.ledgerWrites !== undefined || stage.coverageWrites !== undefined
+      || !same(windowRequest(stage), windowRequest(current));
+  })) throw new Error('Invalid generation window attempt history.');
   const refs = ({ snapshotId, sourceVersion }: GenerationJournal['sources'][number]) => ({ snapshotId, sourceVersion });
   if (!j.bodySourceMetadata || !same(j.bodySourceMetadata.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })), j.sources.map(refs))) {
     throw new Error('Generation body plan requires complete frozen source metadata.');
@@ -87,7 +104,6 @@ function validateWindowInput(j: GenerationJournal, stageIndex: number, value: un
     throw new Error('Generation long body window input does not match its planned position.');
   }
   if (input.coverageRegions) {
-    if (input.inputVersion !== LONG_BODY_WINDOW_INPUT_VERSION) throw new Error('Generation long body coverage regions require the current input.');
     let next = firstPassage;
     for (const region of input.coverageRegions) {
       const end = Number(region.endPassageId.slice(1));
@@ -109,9 +125,10 @@ function validateJournal(j: GenerationJournal): void {
   const order = j.mode === 'generate' ? (j.bodyPlan ? j.bodyPlan.windows.map(() => 'body_window') : ['body_draft', 'body'])
     : j.mode === 'rebuild_associations' ? ['association']
       : j.stages[0].stageKind === 'source_ledger' ? ['source_ledger', 'source_coverage'] : ['source_coverage'];
-  if (new Set(j.stages.map(s => s.invocationId)).size !== j.stages.length || j.stages.length > order.length
+  const attempts = generationJournalAttempts(j);
+  if (new Set(attempts.map(stage => stage.invocationId)).size !== attempts.length || j.stages.length > order.length
     || j.stages.some((stage, index) => stage.stageKind !== order[index]
-    || index > 0 && j.stages[index - 1].state !== 'completed')
+    || !j.bodyPlan && (stage.state === 'interrupted' || index > 0 && j.stages[index - 1].state !== 'completed'))
     || j.mode === 'rebuild_associations' && (!j.bodies.length
       || new Set(j.bodies.map(body => body.knowledgeId)).size !== j.bodies.length)) throw new Error('Invalid generation phase order.');
   if (j.mode !== 'review_sources' && (j.ledgerRef || j.coverageRef)) throw new Error('Generation cannot inherit source-review analyses.');
@@ -164,9 +181,9 @@ function validateJournal(j: GenerationJournal): void {
     if (s.committed > total || s.state === 'completed' && s.committed !== total
       || ['prepared_writes', 'completed'].includes(s.state) && !archiveOnly && writes === undefined
       || archiveOnly && s.state === 'prepared_writes'
-      || window && (archiveOnly && s.rejected !== undefined || s.state === 'completed' && s.issues.length !== 0
-        || s.bodyWrites !== undefined && !['prepared_writes', 'completed'].includes(s.state))
-      || ['archived', 'prepared_writes', 'completed', 'failed'].includes(s.state) !== !!s.outcomeRef
+      || window && (s.state === 'completed' && s.issues.length !== 0
+        || (s.bodyWrites !== undefined || s.rejected !== undefined) && (archiveOnly || !['prepared_writes', 'completed'].includes(s.state)))
+      || ['archived', 'prepared_writes', 'completed', 'failed', 'interrupted'].includes(s.state) !== !!s.outcomeRef
       || !publishesBody && s.bodyWrites || s.stageKind !== 'association' && (s.associationWrites || s.entityWrites)
       || s.stageKind !== 'source_ledger' && s.ledgerWrites || s.stageKind !== 'source_coverage' && s.coverageWrites) throw new Error('Invalid generation publication state.');
     for (const write of [...(s.ledgerWrites ?? []), ...(s.coverageWrites ?? [])]) {
@@ -192,7 +209,7 @@ function validateJournal(j: GenerationJournal): void {
   if (j.mode === 'generate') {
     const body = j.stages.find((_, index) => isBodyPublicationStage(j, index));
     if (body?.stageKind === 'body_window' && body.bodyWrites) {
-      const authors = new Set(j.stages.map(stage => `${j.runId}:${stage.invocationId}`));
+      const authors = new Set(j.stages.map(stage => `window-batch/${j.runId}/${stage.invocationId}`));
       if (body.bodyWrites.some(write => {
         if (write.commandKind !== 'append_revision') return true;
         const { createdBy, revisedBy } = write.revision;
@@ -200,7 +217,8 @@ function validateJournal(j: GenerationJournal): void {
           || !authors.has(revisedBy.executionRef) || !same(createdBy, revisedBy);
       })) throw new Error('Generation window body write requires an original window actor.');
     }
-    const expected = (body?.bodyWrites ?? []).slice(0, body?.committed ?? 0).map(w => {
+    const visible = body?.stageKind !== 'body_window' || j.status === 'completed';
+    const expected = (body?.bodyWrites ?? []).slice(0, visible ? body?.committed ?? 0 : 0).map(w => {
       if (w.commandKind !== 'append_revision') throw new Error('Generation must not record maintenance.');
       return { knowledgeId: w.knowledgeId, revisionId: w.revision.revisionId, bodyDigest: w.revision.bodyDigest };
     });
@@ -209,8 +227,9 @@ function validateJournal(j: GenerationJournal): void {
   const last = j.stages.at(-1)!;
   const finalPhase = last.stageKind === 'association' || j.mode === 'review_sources' && last.stageKind === 'source_coverage'
     || j.mode === 'generate' && isBodyPublicationStage(j, j.stages.length - 1);
+  const failed = j.bodyPlan ? j.stages.some(stage => stage.state === 'failed') : last.state === 'failed';
   if ((j.status === 'completed') !== (finalPhase && last.state === 'completed')
-    || (j.status === 'failed') !== (last.state === 'failed')) throw new Error('Generation terminal state mismatch.');
+    || (j.status === 'failed') !== failed) throw new Error('Generation terminal state mismatch.');
 }
 /** Current-only journal. Legacy filenames remain visible, never decoded as this workflow. */
 export class FileGenerationJournalStore implements GenerationJournalStore {
@@ -240,7 +259,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     const journal = GenerationJournalSchema.parse(parsed);
     validateJournal(journal);
     if (journal.runId !== runId) throw new Error('Generation journal identity mismatch.');
-    for (const stage of journal.stages) {
+    for (const stage of generationJournalAttempts(journal)) {
       if (generationTextDigest(stage.input) !== stage.inputDigest) throw new Error('Generation input digest mismatch.');
       const requestDigest = generationTextDigest(canonicalJson({ executor: journal.executor, model: journal.model, timeoutMs: journal.timeoutMs,
         profileId: stage.profileId, system: stage.system, wireId: stage.wireId, input: stage.input, producer: stage.producer }));
@@ -251,8 +270,11 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
   /** Execution, recovery and publication continue to require the complete archive checks. */
   read(runId: string): GenerationJournal | undefined {
     const journal = this.journal(runId);
-    if (journal) for (const stage of journal.stages) {
-      if (stage.outcomeRef && !this.outcome(journal, stage)) throw new Error('Generation native archive is missing.');
+    if (journal) for (const stage of generationJournalAttempts(journal)) {
+      if (!stage.outcomeRef) continue;
+      const outcome = this.outcome(journal, stage);
+      if (!outcome) throw new Error('Generation native archive is missing.');
+      if (stage.state === 'interrupted' && !isInterruptedGenerationOutcome(outcome)) throw new Error('Generation interrupted phase requires a terminal native cancellation or timeout.');
     }
     return journal;
   }
@@ -288,7 +310,7 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
         totalBytes += lstatSync(join(this.root, file)).size;
         if (totalBytes > 64 * 1024 * 1024) throw new Error('Generation inventory capacity exceeded.');
         const journal = this.journal(runId);
-        if (journal) { current.push(journal); archiveChecks.push(...journal.stages.map(stage => this.archiveCheck(journal, stage))); }
+        if (journal) { current.push(journal); archiveChecks.push(...generationJournalAttempts(journal).map(stage => this.archiveCheck(journal, stage))); }
         else unavailable.push({ runId, reason: 'unreadable', detail: 'Generation journal disappeared during inventory.' });
       } catch (error) {
         if (totalBytes > 64 * 1024 * 1024) throw error;
@@ -310,15 +332,16 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
       const old = this.read(next.runId);
       if ((old?.generation ?? 0) !== expectedGeneration || next.generation !== expectedGeneration + 1) throw new Error('Generation journal conflict.');
-      if (next.bodyPlan) {
-        const previousStageCount = old?.stages.length ?? 0;
-        const previousStage = old?.stages.at(-1);
-        if (next.stages.length > previousStageCount + 1 || next.stages.length > previousStageCount
-          && (next.stages.at(-1)!.state !== 'prepared' || previousStage && previousStage.state !== 'completed')) {
-          throw new Error('Generation body plan prefix cannot skip a durable phase.');
-        }
+      if (next.bodyPlan && !old && (next.stages.some(stage => stage.state !== 'prepared') || next.bodyAttempts?.length)) {
+        throw new Error('Generation body plan must start with only prepared windows.');
       }
       if (old) {
+        const previousAttempts = old.bodyAttempts ?? [], attempts = next.bodyAttempts ?? [];
+        if (!same(previousAttempts, attempts.slice(0, previousAttempts.length))) throw new Error('Generation window attempt history changed.');
+        const appended = new Map(attempts.slice(previousAttempts.length).map(attempt => [attempt.windowIndex, attempt.stage]));
+        if (appended.size && old.stages.some(stage => stage.state === 'claimed')) {
+          throw new Error('Generation window retry requires all outstanding claims to be resolved.');
+        }
         if (old.bodyPlan === undefined ? next.bodyPlan !== undefined : !next.bodyPlan || !same(old.bodyPlan, next.bodyPlan)
           || !same(old.bodySourceMetadata, next.bodySourceMetadata)) {
           throw new Error('Generation pinned body plan or source metadata changed.');
@@ -332,33 +355,43 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
         if (canonicalJson(immutable(old)) !== canonicalJson(immutable(next))) throw new Error('Generation journal identity changed.');
         for (const [i, stage] of old.stages.entries()) {
           const updated = next.stages[i]; if (!updated) throw new Error('Generation phase removed.');
-          const identity = (s: GenerationStage) => ({ stageKind: s.stageKind, invocationId: s.invocationId, profileId: s.profileId,
-            promptVersion: s.promptVersion, system: s.system, wireId: s.wireId, wireSchema: s.wireSchema, input: s.input,
-            inputDigest: s.inputDigest, requestDigest: s.requestDigest, producer: s.producer });
-          if (canonicalJson(identity(stage)) !== canonicalJson(identity(updated)) || updated.committed < stage.committed
-            || stage.outcomeRef && canonicalJson(stage.outcomeRef) !== canonicalJson(updated.outcomeRef)) throw new Error('Generation phase identity changed.');
+          if (stage.invocationId !== updated.invocationId) {
+            const retired = appended.get(i);
+            if (!old.bodyPlan || old.status !== 'active' || stage.state !== 'interrupted' || updated.state !== 'prepared'
+              || !retired || !same(stage, retired) || !same(windowRequest(stage), windowRequest(updated))) {
+              throw new Error('Generation window retry requires its exact interrupted attempt.');
+            }
+            appended.delete(i);
+            continue;
+          }
+          if (!same(windowRequest(stage), windowRequest(updated)) || updated.committed < stage.committed
+            || stage.outcomeRef && (!updated.outcomeRef || !same(stage.outcomeRef, updated.outcomeRef))) throw new Error('Generation phase identity changed.');
           if (stage.bodyWrites && canonicalJson(stage.bodyWrites) !== canonicalJson(updated.bodyWrites)
             || stage.entityWrites && canonicalJson(stage.entityWrites) !== canonicalJson(updated.entityWrites)
             || stage.associationWrites && canonicalJson(stage.associationWrites) !== canonicalJson(updated.associationWrites)
             || stage.ledgerWrites && !same(stage.ledgerWrites, updated.ledgerWrites)
             || stage.coverageWrites && !same(stage.coverageWrites, updated.coverageWrites)) throw new Error('Generation prepared writes changed.');
-          const states = ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed'];
-          if (states.indexOf(updated.state) < states.indexOf(stage.state) || ['completed', 'failed'].includes(stage.state) && updated.state !== stage.state) throw new Error('Generation phase moved backwards.');
-          if (stage.stageKind === 'body_window' && updated.state !== stage.state
-            && (!windowTransitions[stage.state].includes(updated.state)
-              || stage.state === 'archived' && updated.state !== 'failed'
-                && updated.state !== (isBodyPublicationStage(next, i) ? 'prepared_writes' : 'completed')
-              || updated.state === 'archived' && !this.outcome(next, updated))) {
-            throw new Error('Long body phase requires its durable claim and native archive in order.');
+          if (updated.state === stage.state) continue;
+          if (stage.stageKind === 'body_window') {
+            if (!windowTransitions[stage.state].includes(updated.state)
+              || stage.state === 'archived' && !['failed', 'interrupted', isBodyPublicationStage(next, i) ? 'prepared_writes' : 'completed'].includes(updated.state)
+              || updated.state === 'archived' && !this.outcome(next, updated)
+              || updated.state === 'interrupted' && !isInterruptedGenerationOutcome(this.outcome(next, updated))) {
+              throw new Error('Long body phase requires its durable claim and native archive in order.');
+            }
+          } else {
+            const states = ['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed'];
+            if (states.indexOf(updated.state) < states.indexOf(stage.state) || ['completed', 'failed'].includes(stage.state)) throw new Error('Generation phase moved backwards.');
           }
         }
+        if (appended.size) throw new Error('Generation window attempt history was appended without a retry.');
       }
       const claims = next.stages.filter((stage, index) => stage.state === 'claimed' && old?.stages[index]?.state !== 'claimed');
       for (const stage of claims) {
         if (old?.stages.find(s => s.invocationId === stage.invocationId)?.state !== 'prepared') throw new Error('Generation claim requires a prepared phase.');
         if (stage.stageKind === 'association' && !validateClaim) throw new Error('Association claim requires locked source review validation.');
-        if (stage.stageKind === 'body_window' && !validateClaim) {
-          throw new Error('Long body claim requires locked source validation.');
+        if (stage.stageKind === 'body_window' && (!validateClaim || old?.status !== 'active' || next.status !== 'active')) {
+          throw new Error('Long body claim requires an active run and locked source validation.');
         }
         validateClaim?.(next, stage);
       }
@@ -373,8 +406,8 @@ export class FileGenerationJournalStore implements GenerationJournalStore {
     const maximum = Math.min(MAX_GENERATION_OUTCOME_BYTES, stage.producer.maxOutcomeJsonBytes + 64 * 1024);
     const ref = measureGenerationJSON(record, maximum), path = this.archivePath(journal.runId, stage.invocationId);
     return withWorkspaceFileWrite(this.workspaceRoot, path, () => {
-      const saved = this.read(journal.runId), claimed = saved?.stages.find(s => s.invocationId === stage.invocationId);
-      if (!claimed || claimed.requestDigest !== stage.requestDigest || !['claimed', 'archived', 'prepared_writes', 'completed', 'failed'].includes(claimed.state)) throw new Error('Native archive requires its durable phase claim.');
+      const saved = this.read(journal.runId), claimed = saved && generationJournalAttempts(saved).find(s => s.invocationId === stage.invocationId);
+      if (!claimed || claimed.requestDigest !== stage.requestDigest || !['claimed', 'archived', 'prepared_writes', 'completed', 'failed', 'interrupted'].includes(claimed.state)) throw new Error('Native archive requires its durable phase claim.');
       if (existsSync(path)) {
         const previous = this.readBytes(path, maximum);
         if (Buffer.byteLength(previous) !== ref.bytes || generationTextDigest(previous) !== ref.digest) throw new Error('Native archive identity conflict.');

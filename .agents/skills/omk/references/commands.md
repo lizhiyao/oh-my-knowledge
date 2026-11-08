@@ -604,16 +604,18 @@ omk observe knowledge <operation> [flags]
 
 **参数:**
 
-- `operation`(必填):preview 只读，capture 仅保存；prepare 展示完整模型请求，generate／continue-stage 须逐阶段确认摘要；resume 零模型恢复。
+- `operation`(必填):preview 只读，capture 仅保存。prepare 展示完整模型请求，发送须确认对应的单阶段或批量摘要。resume 零模型恢复。
 
 **Flags:**
 
 - `--analysis` `option`:明确实体分析 UUID，省略时 entities 搜索目录。
 - `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
 - `--body-digest` `option`:relations／apply-associations：精确正文 sha256 摘要。
+- `--budget-ms` `option`:仅 continue-windows：本次分窗批次的可选时间预算，单位毫秒。到期请求取消，仍保留已完成归档。
 - `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
+- `--concurrency` `option`:仅 continue-windows：同时发送的分窗数，默认 1。
 - `--confirm-plan` `option`:migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
-- `--confirm-request` `option`:generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。
+- `--confirm-request` `option`:核对完整 system/input 后确认单阶段 requestDigest。continue-windows 使用已准备分窗的 batchRequestDigest。
 - `--entity-id` `option`:retrieve 须配 --analysis 和 --entity-revision，按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。
 - `--entity-revision` `option`:明确实体分析修订 UUID。
 - `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
@@ -621,7 +623,7 @@ omk observe knowledge <operation> [flags]
 - `--format` `json|text`:仅 retrieve：json 为完整结构，text 为正文消费视图；省略保持 JSON。text 不可与 --json 同用。
 - `--from-workspace` `option`:迁移：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。
 - `--generation` `option`:预先读取的 generation，防并发覆盖。
-- `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
+- `--id` `option`:知识 ID。inspect、resume、continue-stage、continue-windows 使用运行 UUID。
 - `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
 - `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources}；关联重建为 {sources, bodyRefs}，来源复核为 {sources, bodyRefs, ledgerRef?}；来源决定为完整 command，也接受完整修订／复核草稿。
@@ -706,7 +708,7 @@ omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-pl
 ```
 
 ```bash
-omk observe knowledge migrate-workflow --from-workspace ./workflow9 --workspace ./workflow10 --operation-id <uuid> --matching-build ./omk-v9.tgz --matching-build-id <build-id> --plan-only --json
+omk observe knowledge migrate-workflow --from-workspace ./workflow10 --workspace ./workflow11 --operation-id <uuid> --matching-build ./omk-v10.tgz --matching-build-id <build-id> --plan-only --json
 ```
 
 ```bash
@@ -723,6 +725,10 @@ omk observe knowledge resume --workspace ./knowledge --id <run-id>
 
 ```bash
 omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation 5 --confirm-request sha256:<digest>
+```
+
+```bash
+omk observe knowledge continue-windows --workspace ./knowledge --id <run-id> --generation <journal-generation> --concurrency 2 --confirm-request <batch-request-digest>
 ```
 
 ```bash

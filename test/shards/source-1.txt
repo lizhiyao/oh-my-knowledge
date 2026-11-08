@@ -208,6 +208,7 @@ test/knowledge/artifacts/authoring/carrier-library.test.ts
 test/eval-workflows/hosts/carrier-measurement.test.ts
 test/knowledge/auto-extraction.test.ts
 test/knowledge/body-generation.test.ts
+test/knowledge/knowledge-batch-store.test.ts
 test/knowledge/long-body.test.ts
 test/knowledge/reviews.test.ts
 test/knowledge/graph.test.ts
@@ -221,5 +222,6 @@ test/knowledge/legacy-migration.test.ts
 test/knowledge/association-migration.test.ts
 test/knowledge/source-review.test.ts
 test/knowledge/workflow-migration.test.ts
+test/knowledge/window-journal-store.test.ts
 test/cli/knowledge-relations.test.ts
 test/knowledge/relations-application.test.ts

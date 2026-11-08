@@ -20,13 +20,13 @@ export type KnowledgeEntityCatalog = Omit<ReturnType<KnowledgeApplication['query
 export type KnowledgeEntityLibraryDetail = Omit<ReturnType<KnowledgeApplication['entityDetail']>, 'source' | 'knowledgeStatus'> & Pick<KnowledgeEntityAnalysisDetail, 'source'> & { knowledgeStatus: 'available' | 'unavailable' };
 export interface KnowledgeCandidateRun {
   runId: string; schemaStatus: 'current' | 'unsupported' | 'unavailable'; status: 'active' | 'completed' | 'failed' | 'unsupported' | 'unavailable';
-  journalGeneration?: number; workflowId?: GenerationJournal['workflowId']; mode?: GenerationJournal['mode']; inputVersion?: string; sourceSetId?: string; preparedStage?: GenerationStage;
+  journalGeneration?: number; workflowId?: GenerationJournal['workflowId']; mode?: GenerationJournal['mode']; inputVersion?: string; sourceSetId?: string; preparedStage?: GenerationStage; preparedWindowNumber?: number;
   createdAt?: string; executor?: string; model?: string; sources?: { snapshotId: string; sourceVersion: string; sourceKind?: SourceSnapshot['sourceKind']; projectId?: string; origin?: TraceOrigin }[];
   sourceMetadataStatus?: 'frozen_input' | 'unknown';
   archiveVerification: 'not_verified' | 'verified'; archiveChecks: GenerationArchiveCheck[];
   bodies: KnowledgeBodyRef[]; bodyWindowCount?: number; ledgerRef?: SourceLedgerRef; coverageRef?: SourceCoverageRef;
   phases: (Pick<GenerationStage, 'stageKind' | 'state' | 'invocationId' | 'profileId' | 'promptVersion' | 'wireId' | 'outcomeRef' | 'committed' | 'issues'> & {
-    producerId: string; producerRevision: string; rejectedCount: number | null;
+    producerId: string; producerRevision: string; rejectedCount: number | null; windowNumber?: number; previousAttempt?: true;
   })[];
   nextAction: 'prepare_next_stage' | 'continue_stage' | 'outcome_unknown_do_not_redispatch' | 'resume_publication' | 'none' | 'unsupported' | 'unavailable';
   entityAnalyses?: { analysisId: string; revisionId: string; entityCount: number; mentionCount: number; unresolvedCount: number; reviewStatus: 'pending' }[];

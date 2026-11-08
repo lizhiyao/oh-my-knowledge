@@ -117,16 +117,17 @@ v2 是唯一受支持的 `.omk` 项目运行布局。OMK 不读取旧 `.omk` 存
 | `source-ledgers/<identity-digest>.json` | `knowledge-source-ledger-history` Schema 1：来源盘点分析及模型原件引用；[详细契约](../knowledge/knowledge-source-review.md) |
 | `source-coverage/<identity-digest>.json` | `knowledge-source-coverage-history` Schema 1：绑定精确清单／正文的覆盖分析、实际决定、撤销及收据；[详细契约](../knowledge/knowledge-source-review.md) |
 | `entities/<analysis-id>.json` | `entity-analysis-history` Schema 2：窗口实体、提及与不可变修订 |
-| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 10、流程 `knowledge-body-first/v10`：来源／请求／profile／wire／producer 身份、原件引用与固定写入意图 |
+| `generation-journals/<run-id>.json` | `knowledge-generation-journal` Schema 11、流程 `knowledge-body-first/v11`。记录来源／请求／profile／wire／producer 身份、当前阶段、旧分窗尝试、原件引用与固定写入意图 |
+| `items/window-batches/<run-id>.json` | `knowledge-window-batch-publication` Schema 1。提交全部窗口待发布正文的精确引用，整批一起可见 |
 | `generation-journals/outcomes/<run-id>/<invocation-id>.json` | 不可变清单、写作稿、正文、覆盖或关联原生完整返回，分别绑定请求与摘要 |
 | `library/<object-id>.json` | 既有 `knowledge-library-object-history` Schema 1，明确确认的跨窗组织 |
 | `entity-links/<review-id>.json` | 既有 `entity-link-invocation-history` Schema 1，独立跨窗建议／决定／应用日志 |
 
 来源、标签和载体版本各有契约。读取已存正文不以实体目录或投影成功为前提。投影绑定 `{knowledgeId, revisionId, bodyDigest}`，修改／重建／审查投影不改正文、不继承正文 retain。损坏／过期／被拒投影明确显示。
 
-当前 workflow10／journal10 的普通流程记录写作 input1，再记录正文 input5。Codex [长历史流程](../knowledge/knowledge-sources.md#generation)从首个原文窗口开始记录。保存正文后完成。独立 review_sources 使用 manifest／input2、清单 input1、覆盖 input2。rebuild_associations 使用关联阶段 v1 envelope，显式绑定完整 sources 与精确 bodyRefs。Schema1 来源历史分开模型意见与实际决定。来源复核按需独立进行，不授予待审关联准入资格。
+当前 workflow11／journal11 的普通流程记录写作 input1，再记录正文 input5。Codex [长历史流程](../knowledge/knowledge-sources.md#generation)一次准备所有原文窗口。保存正文后完成。独立 review_sources 使用 manifest／input2、清单 input1、覆盖 input2。rebuild_associations 使用关联阶段 v1 envelope，显式绑定完整 sources 与精确 bodyRefs。Schema1 来源历史分开模型意见与实际决定。来源复核按需独立进行，不授予待审关联准入资格。
 
-Prepare 零模型记录当前完整请求。generate 只派发首个阶段，也就是写作稿或首个原文窗口。每个请求均须独立确认。按需另起来源复核与关联请求。草稿和单窗输出逐一归档。普通正文阶段或全部窗口成功后由宿主发布待审正文。每阶段只 claim 一次，完整返回先归档再接纳。普通正文的 writingDraftRef 绑定同次精确草稿原件。`resume` 只挂接原证据、重放固定写入，不调用模型。已 claim 无原件保持未知，禁止重发。流程完成不证明内容、关联、来源保真或真值。
+Prepare 零模型记录完整请求。generate 只派发初始写作稿或首个窗口。凭单个精确请求摘要或已准备分窗的批量摘要确认发送。每次尝试只 claim 一次，完整返回先归档再接纳。所有窗口成功后，宿主先保存固定正文写入，再原子发布批次标记。批次标记提交后，正文整批可见。普通正文的 writingDraftRef 绑定同次精确草稿原件。`resume` 只挂接原证据、重放固定写入，零模型调用。已 claim 无原件保持未知，禁止重发。流程完成不证明内容、关联、来源保真或真值。
 
 **BREAKING-SCHEMA/API/COMPARABILITY：**当前正文 reader 拒绝 typed 知识 Schema 2，当前日志恢复拒绝 run5；旧 `extraction-runs/` 清单明确 unsupported，原文件不动。[显式迁入独立新工作区](../knowledge/knowledge-domain-model.md#body-migration)把所有原字节保存在 `migration/<migrationId>/original/<relative-path>.base64`，保留原字节摘要、固定 `plan.json`、精确修订／段落映射与 `complete.json`。复制支持的 source／entity 记录，机械渲染的新正文待审、不隐式保留。Library／carrier／既有跨窗引用只归档、不改指向。旧目录与匹配旧 binary 用于回退，不提供永久双 canonical reader，也不虚构迁移 CLI。
 
@@ -138,7 +139,7 @@ Source3 还通过[独立副本显式迁移](../knowledge/knowledge-sources.md#mi
 
 所有写入共享 `.knowledge-write.lock` 及适用的 CAS／幂等收据；争用报告 `knowledge_workspace_busy`，只恢复证实本机退出的 owner，拒绝存储目录软链。可调的检索默认 65536 UTF-8 字节计算整个响应及换行，不是存储、正文、模型上下文或金额上限；producer 与 store 容量仍分别显式检查。运行身份来自[生成契约](../../reference/shared/knowledge-contract.md)；历史 typed study 核对／重放保留冻结身份与结论，当前构建零调用拒绝旧 typed 生成计划。工作区记录可能包含私有来源与输出。
 
-`migrate-workflow` 只复制健康 sources3／items3／entities2／associations2／reviews1／tags 六类活动文件，保留全部原字节、历史、身份及既有意见；不将旧 review／retain 当作来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 与旧 marker 仅存于迁移归档，匹配构建一并保留。library／carriers／entity-links／knowledge-relations 等不在此切片支持范围，应拒绝并保留旧目录。完成哨兵标记 `knowledge-workflow-to10`，未完成目标拒绝普通访问和写入；固定计划的步骤／回执可续，改删的已完成输出不覆盖或复活。旧自动调度不会因迁移重新启用。
+`migrate-workflow` 只复制健康 sources3／items3／entities2／associations2／reviews1／tags 六类活动文件，保留全部原字节、历史、身份及既有意见；不将旧 review／retain 当作来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 与旧 marker 仅存于迁移归档，匹配构建一并保留。library／carriers／entity-links／knowledge-relations 等不在此切片支持范围，应拒绝并保留旧目录。完成哨兵标记 `knowledge-workflow-to11`，未完成目标拒绝普通访问和写入；固定计划的步骤／回执可续，改删的已完成输出不覆盖或复活。旧自动调度不会因迁移重新启用。
 
 ## 为什么这样命名
 

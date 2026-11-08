@@ -42,7 +42,7 @@ function fingerprint(root: string) {
 function fixture() {
   const root = realpathSync(testDirectory('omk-workflow-migration-')), sourceRoot = join(root, 'old'), targetRoot = join(root, 'new');
   mkdirSync(sourceRoot);
-  const seeded = seedKnowledgeWorkspace(sourceRoot, 'workflow9-migration');
+  const seeded = seedKnowledgeWorkspace(sourceRoot, 'workflow10-migration');
   const knowledge = new FileKnowledgeStore(join(sourceRoot, 'items'), 'local', sourceRoot);
   const entities = new FileEntityAnalysisStore(join(sourceRoot, 'entities'), sourceRoot);
   const associations = new FileKnowledgeAssociationStore(join(sourceRoot, 'associations'), 'local', knowledge, entities, sourceRoot);
@@ -60,7 +60,7 @@ function fixture() {
   new FileKnowledgeTags(join(sourceRoot, 'tags'), 'local', sourceRoot).write(seeded.body.knowledgeId, 0, ['migration/preserved'], actor);
 
   const oldRunId = randomUUID();
-  put(sourceRoot, `generation-journals/${oldRunId}.json`, JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 9, workflowId: 'knowledge-body-first/v9',
+  put(sourceRoot, `generation-journals/${oldRunId}.json`, JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion: 10, workflowId: 'knowledge-body-first/v10',
     runId: oldRunId, status: 'active', stage: { state: 'claimed', dispatchOutcome: 'unknown' }, fixtureKind: 'opaque-original-not-an-admitted-journal' }) + '\n');
   put(sourceRoot, `generation-journals/outcomes/${oldRunId}.native`, Buffer.from([0, 255, 13, 10, 240, 159, 153, 130]));
   put(sourceRoot, 'source-ledgers/old-analysis.json', '{"schemaVersion":1,"fixtureKind":"opaque-historical-analysis"}\n');
@@ -68,21 +68,21 @@ function fixture() {
   put(sourceRoot, 'auto-extraction/old-permission.json', '{"schemaVersion":3,"workflowId":"knowledge-body-first/v5","enabled":true,"maxCalls":20,"callsUsed":2}\r\n');
   put(sourceRoot, 'auto-extraction/schedule-old.json', '{"workflowId":"knowledge-body-first/v3","firstCallNumber":3,"mustNotResume":true}\n');
   put(sourceRoot, 'migration/previous/original/evidence.bin', Buffer.from([255, 0, 10]));
-  put(sourceRoot, marker, JSON.stringify({ migrationKind: 'knowledge-workflow-to9', schemaVersion: 1, migrationId: randomUUID(), planDigest: sha('historical plan'), state: 'complete' }) + '\n');
+  put(sourceRoot, marker, JSON.stringify({ migrationKind: 'knowledge-workflow-to10', schemaVersion: 1, migrationId: randomUUID(), planDigest: sha('historical plan'), state: 'complete' }) + '\n');
   mkdirSync(join(sourceRoot, 'empty-historical-directory'));
-  const matchingBuildArchivePath = put(root, 'matching-workflow9.tgz', Buffer.from([31, 139, 8, 0, 255, 10]));
+  const matchingBuildArchivePath = put(root, 'matching-workflow10.tgz', Buffer.from([31, 139, 8, 0, 255, 10]));
   const input = { migrationId: randomUUID(), sourceRoot, targetRoot, namespace: 'local', actor, at, matchingBuildArchivePath,
     matchingBuildId: 'authored-archive-bytes-not-an-installable-runtime' };
   return { root, sourceRoot, targetRoot, input, oldRunId, seeded, bodyRef, knowledge, entities, associations };
 }
 
-describe('explicit workflow9 to workflow10 independent-copy migration', () => {
+describe('explicit workflow10 to workflow11 independent-copy migration', () => {
   it('preflights without writing and preserves exact source, content, catalog, association, review and tag identities', () => {
     const f = fixture(), original = fingerprint(f.sourceRoot), plan = planKnowledgeWorkflowMigration(f.input);
     expect(existsSync(f.targetRoot)).toBe(false);
     expect(planKnowledgeWorkflowMigration(f.input)).toEqual(plan);
     expect(fingerprint(f.sourceRoot)).toEqual(original);
-    expect(plan.migrationKind).toBe('knowledge-workflow-to10');
+    expect(plan.migrationKind).toBe('knowledge-workflow-to11');
     const oldJournals = new FileGenerationJournalStore(join(f.sourceRoot, 'generation-journals'), f.sourceRoot);
     expect(oldJournals.list().unsupported).toEqual([expect.objectContaining({ runId: f.oldRunId, schemaStatus: 'unsupported' })]);
     expect(() => oldJournals.read(f.oldRunId)).toThrow('knowledge_storage_unsupported');
@@ -118,12 +118,32 @@ describe('explicit workflow9 to workflow10 independent-copy migration', () => {
     expect(existsSync(join(f.targetRoot, 'source-ledgers'))).toBe(false);
     expect(existsSync(join(f.targetRoot, 'source-coverage'))).toBe(false);
     const state = JSON.parse(readFileSync(join(f.targetRoot, marker), 'utf8'));
-    expect(state).toMatchObject({ migrationKind: 'knowledge-workflow-to10', migrationId: plan.migrationId, planDigest: plan.planDigest, state: 'complete' });
+    expect(state).toMatchObject({ migrationKind: 'knowledge-workflow-to11', migrationId: plan.migrationId, planDigest: plan.planDigest, state: 'complete' });
     expect(plan.activePaths.some(path => /^(?:generation-journals|auto-extraction|migration)\//u.test(path) || path === marker)).toBe(false);
     expect(fingerprint(f.sourceRoot)).toEqual(original);
     const completed = fingerprint(f.targetRoot);
     expect(applyKnowledgeWorkflowMigration(plan, plan.planDigest)).toEqual(result);
     expect(fingerprint(f.targetRoot)).toEqual(completed);
+  });
+
+  it('copies committed batch manifests and keeps uncommitted items hidden in the independent workspace', () => {
+    const f = fixture();
+    const stageBody = (runId: string) => {
+      const generated = { actorKind: 'agent' as const, actorId: 'extractor:fixture', executionRef: `window-batch/${runId}/${randomUUID()}` };
+      const revision = { ...f.seeded.body, knowledgeId: randomUUID(), revisionId: randomUUID(), createdBy: generated, revisedBy: generated };
+      f.knowledge.write({ commandKind: 'append_revision', requestId: randomUUID(), knowledgeId: revision.knowledgeId,
+        expectedGeneration: 0, expectedHeadRevisionId: null, revision }, generated);
+      return knowledgeBodyRef(revision);
+    };
+    const publishedRun = randomUUID(), visible = stageBody(publishedRun), pending = stageBody(randomUUID());
+    f.knowledge.commitBodyBatch(publishedRun, [visible]);
+    const plan = planKnowledgeWorkflowMigration(f.input);
+    expect(plan.activePaths).toContain(`items/window-batches/${publishedRun}.json`);
+    applyKnowledgeWorkflowMigration(plan, plan.planDigest);
+    const target = new FileKnowledgeStore(join(f.targetRoot, 'items'), 'local', f.targetRoot);
+    expect(target.read(visible.knowledgeId)).toEqual(f.knowledge.read(visible.knowledgeId));
+    expect(target.list().map(entry => entry.knowledgeId)).not.toContain(pending.knowledgeId);
+    expect(() => target.read(pending.knowledgeId)).toThrow('not published');
   });
 
   it.each(['request_digest', 'plan_payload', 'source_bytes', 'source_inventory', 'matching_build'] as const)('refuses changed %s before creating a destination', change => {

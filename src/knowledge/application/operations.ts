@@ -36,6 +36,8 @@ export const knowledgeOperationSchemas = {
   generate: z.strictObject({ operation: z.literal('generate'), sources: z.array(SourceRefSchema).min(1).max(256), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
   inspect: z.strictObject({ operation: z.literal('inspect'), id: uuid }),
   'continue-stage': z.strictObject({ operation: z.literal('continue-stage'), id: uuid, generation: z.number().int().positive(), executor: text, model: text, confirmedRequestDigest: SourceDigestSchema }),
+  'continue-windows': z.strictObject({ operation: z.literal('continue-windows'), id: uuid, generation: z.number().int().positive(), executor: text, model: text,
+    confirmedRequestDigest: SourceDigestSchema, concurrency: z.union([z.literal(1), z.literal(2)]), budgetMs: z.number().int().min(1000).max(900_000).optional() }),
   'prepare-rebuild-associations': z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256), bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('prepare-rebuild-associations'), executor: text, model: text, runId: uuid.optional() }),
   'rebuild-associations': z.strictObject({ sources: z.array(SourceRefSchema).min(1).max(256), bodyRefs: z.array(KnowledgeBodyRefSchema).min(1).max(256), operation: z.literal('rebuild-associations'), executor: text, model: text, runId: uuid.optional(), confirmedRequestDigest: SourceDigestSchema }),
   retrieve: z.strictObject({ ...KnowledgeRetrievalRequestSchema.shape, operation: z.literal('retrieve'),
@@ -55,6 +57,7 @@ export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas.list, knowledgeOperationSchemas.tag, knowledgeOperationSchemas.runs, knowledgeOperationSchemas.quality,
   knowledgeOperationSchemas['prepare-source-review'], knowledgeOperationSchemas['source-ledger'],
   knowledgeOperationSchemas['source-coverage-status'], knowledgeOperationSchemas['review-source-coverage'],
+  knowledgeOperationSchemas['continue-windows'],
   knowledgeOperationSchemas.show, knowledgeOperationSchemas.entities, knowledgeOperationSchemas['entity-catalog'],
   knowledgeOperationSchemas['entity-detail'], knowledgeOperationSchemas['correct-entities'], knowledgeOperationSchemas.inspect, knowledgeOperationSchemas['continue-stage'], knowledgeOperationSchemas['prepare-rebuild-associations'], knowledgeOperationSchemas['rebuild-associations'], knowledgeOperationSchemas.retrieve,
   knowledgeOperationSchemas['review-associations'], knowledgeOperationSchemas['apply-associations'], knowledgeOperationSchemas['preview-sources'], knowledgeOperationSchemas.capture, knowledgeOperationSchemas['prepare-generation'], knowledgeOperationSchemas.generate, knowledgeOperationSchemas.resume,
@@ -72,6 +75,7 @@ type Results = {
   entities: ReturnType<KnowledgeApplication['entities']>; 'entity-catalog': ReturnType<KnowledgeApplication['queryEntities']>;
   'entity-detail': ReturnType<KnowledgeApplication['entityDetail']>; 'correct-entities': ReturnType<KnowledgeApplication['correctEntities']>;
   inspect: ReturnType<KnowledgeApplication['inspect']>; retrieve: ReturnType<typeof retrieveKnowledge> | string; 'continue-stage': Awaited<ReturnType<KnowledgeApplication['continueStage']>>; 'rebuild-associations': Awaited<ReturnType<KnowledgeApplication['rebuildAssociations']>>;
+  'continue-windows': Awaited<ReturnType<KnowledgeApplication['continueWindows']>>;
   'preview-sources': ReturnType<KnowledgeApplication['previewSources']>; capture: ReturnType<KnowledgeApplication['captureSources']>;
   'prepare-generation': Awaited<ReturnType<KnowledgeApplication['prepareGeneration']>>; 'prepare-rebuild-associations': Awaited<ReturnType<KnowledgeApplication['prepareAssociationRebuild']>>;
   generate: Awaited<ReturnType<KnowledgeApplication['generate']>>; resume: ReturnType<KnowledgeApplication['resume']>;
@@ -103,6 +107,13 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'prepare-source-review': { if (!model) throw new Error('Generation model adapter unavailable.');
         return app.prepareSourceReview(request.sources, request.bodyRefs, model(request.executor, request.model), request.ledgerRef, request.runId, signal); }
       case 'continue-stage': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.continueStage(request.id, request.generation, model(request.executor, request.model), signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
+      case 'continue-windows': {
+        if (!model) throw new Error('Generation model adapter unavailable.');
+        const deadline = request.budgetMs === undefined ? undefined : AbortSignal.timeout(request.budgetMs);
+        const batchSignal = signal && deadline ? AbortSignal.any([signal, deadline]) : deadline ?? signal;
+        return app.continueWindows(request.id, request.generation, model(request.executor, request.model), request.concurrency, batchSignal,
+          { confirmedRequestDigest: request.confirmedRequestDigest });
+      }
       case 'prepare-rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.prepareAssociationRebuild(request.sources, request.bodyRefs, model(request.executor, request.model), request.runId, signal); }
       case 'rebuild-associations': { if (!model) throw new Error('Generation model adapter unavailable.'); return app.rebuildAssociations(request.sources, request.bodyRefs, model(request.executor, request.model), request.runId, signal, { confirmedRequestDigest: request.confirmedRequestDigest }); }
       case 'review-associations': return app.reviewAssociations(request.id, request.revision, request.generation, request.choice, request.reason);

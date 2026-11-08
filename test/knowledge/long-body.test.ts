@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
 import { BODY_GENERATION_PROFILE, generationTextDigest } from '../../src/knowledge/extraction/body-generation-wire.js';
-import { BODY_WINDOW_PROFILE, type BodyWindowGenerationResponseSchema, LONG_BODY_WINDOW_INPUT_VERSION, LongBodyCapacityError, LongBodyPlanSchema, assertLongBodyWindowInputs, bodyWindowInput,
+import { BODY_WINDOW_PROFILE, type BodyWindowGenerationResponseSchema, LONG_BODY_WINDOW_INPUT_VERSION, LongBodyCapacityError, LongBodyPlanSchema, longBodyWindowInputs, bodyWindowInput,
   checkLongBodyWindowOutput, collectLongBodyWindows, createLongBodyPlan } from '../../src/knowledge/extraction/long-body.js';
 import { bodyGenerationSources } from '../../src/knowledge/extraction/source-input.js';
 import { sourceSetPreimage } from '../../src/knowledge/sources.js';
@@ -62,7 +62,8 @@ describe('bounded source windows and deterministic publication', () => {
     expect(BODY_GENERATION_PROFILE.wireSchema.properties).toHaveProperty('passageIndexDigest');
     expect(BODY_WINDOW_PROFILE.wireId).not.toBe(BODY_GENERATION_PROFILE.wireId);
     expect(BODY_WINDOW_PROFILE.profileId).not.toBe(BODY_GENERATION_PROFILE.profileId);
-    expect(() => assertLongBodyWindowInputs(sources, sourceSetId, plan)).not.toThrow();
+    expect(longBodyWindowInputs(sources, sourceSetId, plan).map(decode)).toEqual(
+      plan.windows.map((_, index) => decode(bodyWindowInput(sources, sourceSetId, plan, index))));
     expect(() => createLongBodyPlan([traceSnapshotFixture('\\'.repeat(550 * 1024))])).toThrow(LongBodyCapacityError);
   });
 
@@ -100,7 +101,7 @@ describe('bounded source windows and deterministic publication', () => {
   it('preflights complete serialized windows including portable metadata', () => {
     const withOversizedMetadata = [beta, { ...alpha, limitations: ['x'.repeat(192 * 1024)] }];
     expect(createLongBodyPlan(withOversizedMetadata)).toEqual(plan);
-    expect(() => assertLongBodyWindowInputs(withOversizedMetadata, sourceSetId, plan)).toThrow('Long body model input capacity exceeded');
+    expect(() => longBodyWindowInputs(withOversizedMetadata, sourceSetId, plan)).toThrow('Long body model input capacity exceeded');
   });
 
   it('rejects out-of-window references, rejected native proposals and oversized output before accepting window evidence', () => {

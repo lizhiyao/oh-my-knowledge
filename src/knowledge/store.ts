@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { KnowledgeActorSchema, KnowledgeRevisionSchema } from './contracts.js';
-import type { KnowledgeActor } from './contracts.js';
+import type { KnowledgeActor, KnowledgeBodyRef } from './contracts.js';
 
 const id = z.string().min(1).max(256);
 export const MaintenanceSchema = z.strictObject({
@@ -28,6 +28,7 @@ export interface KnowledgeStore {
   list(knowledgeIds?: ReadonlySet<string>): KnowledgeEnvelope[];
   read(knowledgeId: string): KnowledgeEnvelope;
   write(command: KnowledgeWrite, actor: KnowledgeActor): KnowledgeEnvelope['receipts'][number];
+  commitBodyBatch?(runId: string, bodies: readonly KnowledgeBodyRef[]): void;
 }
 
 /** Key ordering is UTF-16, matching the documented canonical-json-v1 contract. */

@@ -17,7 +17,7 @@ import { FileKnowledgeStore } from './knowledge-store.js';
 import { FileKnowledgeReviewStore } from './review-store.js';
 import { FileSourceStore } from './source-store.js';
 
-const KIND = 'knowledge-workflow-to10' as const;
+const KIND = 'knowledge-workflow-to11' as const;
 const MAX_FILES = 16_384, MAX_BYTES = 512 * 1024 * 1024, MAX_DOCUMENT_BYTES = 16 * 1024 * 1024;
 const activeRoots = new Set(['sources', 'items', 'entities', 'associations', 'reviews', 'tags']);
 const archiveRoots = new Set(['generation-journals', 'source-ledgers', 'source-coverage', 'auto-extraction', 'migration']);
@@ -120,10 +120,15 @@ function inventory(root: string, context?: SourceMigrationWriteContext, target =
 }
 function validateCurrent(root: string, namespace: string, files: FileEntry[], directories: string[], context?: SourceMigrationWriteContext) {
   if (context) assertSourceMigrationWriteContext(root, context); else assertSourceMigrationComplete(root);
+  const directoryPaths = new Set(directories);
+  const batchDirectory = 'items/window-batches', batchFile = z.string().uuid();
   for (const path of [...files.map(file => file.path), ...directories]) {
     const first = path.split('/')[0];
     if (activeRoots.has(first)) {
-      if (path !== first && (dirname(path) !== first || !path.endsWith('.json') || directories.includes(path))) refuse('Unsupported active workflow migration entry.', 'unsupported');
+      if (path === batchDirectory && directoryPaths.has(path)) continue;
+      if (dirname(path) === batchDirectory && !directoryPaths.has(path) && path.endsWith('.json')
+        && batchFile.safeParse(basename(path, '.json')).success) continue;
+      if (path !== first && (dirname(path) !== first || !path.endsWith('.json') || directoryPaths.has(path))) refuse('Unsupported active workflow migration entry.', 'unsupported');
     } else if (!archiveRoots.has(first) && path !== SOURCE_MIGRATION_STATE_FILE
       && !(directories.includes(path) && !files.some(file => file.path.startsWith(`${path}/`)))) refuse('Unsupported workflow migration entry.', 'unsupported');
   }

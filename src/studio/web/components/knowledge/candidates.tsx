@@ -391,7 +391,8 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         {run.schemaStatus === 'current' && run.nextAction === 'unsupported' && <Alert type="warning" title={t('此任务使用旧生成协议', 'This run uses an older generation protocol')}
           description={t('请使用保留的匹配构建恢复此任务。当前程序保留原件，不重新解释输出或重新派发；已准备好的固定写入意图仍可恢复。', 'Recover this run with the preserved matching build. Originals are retained without reinterpreting output or redispatching. Already prepared write intents remain recoverable.')}/>}
         <ExtractionInvocationSummary run={run} lang={lang}/>{['continue_stage', 'prepare_next_stage'].includes(run.nextAction) && <Button disabled={busy} onClick={() => void work(() => prepareNextStage(run))}>
-          {run.preparedStage ? t('核对并发送已准备阶段', 'Review and send prepared stage') : t('准备并核对下一阶段', 'Prepare and review next stage')}</Button>}
+          {run.preparedStage ? t('核对并发送已准备阶段', 'Review and send prepared stage') : run.bodyWindowCount === undefined
+            ? t('准备并核对下一阶段', 'Prepare and review next stage') : t('准备并核对中断分窗的新尝试', 'Prepare and review a new attempt for the interrupted window')}</Button>}
         {(run.ledgerRef || run.coverageRef) && <Button disabled={busy} onClick={() => setSourceReviewTarget({ workspace, run })}>{t('核对来源清单与遗漏', 'Review source inventory and omissions')}</Button>}
         <EntityAnalysisSummary run={run} lang={lang} disabled={busy} onOpen={analysisId => { setShowRuns(false); setEntityTarget({ analysisId }); }}/>
         {run.bodies.length > 0 && <Button disabled={busy} onClick={() => void work(async () => { const current = await refresh(); const batch = projectCandidateBatch(run, current.rows); await open(batch?.rows.find(row => row.choice === null)?.knowledgeId ?? run.bodies[0]!.knowledgeId); setBatchRunId(run.runId); setPreviousId(null); setShowRuns(false); })}>{t('核对本批候选', 'Review this batch')}</Button>}<Button disabled={busy || !['active'].includes(run.status) || run.nextAction === 'unsupported'} onClick={() => void work(async () => { await handleRun(await api('resume', { id: run.runId })); setRuns(await api('runs')); })}>{t('恢复归档或保存', 'Resume archiving or saving')}</Button></section>) : <Empty/>}
@@ -412,7 +413,8 @@ function ExtractionInvocationSummary({ run, lang }: { run: KnowledgeCandidateRun
         : <>{run.sourceMetadataStatus === 'frozen_input' && <p>{t('来源归因取自冻结请求，不表示来源当前可读。', 'Source attribution comes from the frozen request and does not establish current source availability.')}</p>}
           {run.sourceMetadataStatus === 'unknown' && <p>{t('来源归因元数据未知。', 'Source attribution metadata is unknown.')}</p>}
           {run.phases.map(phase => <div key={phase.invocationId}>
-        <p>{generationStageLabel(phase.stageKind, lang)} · {phase.state}</p>
+        <p>{generationStageLabel(phase.stageKind, lang)}{phase.windowNumber === undefined ? '' : ` ${phase.windowNumber}/${run.bodyWindowCount}`} · {phase.state}
+          {phase.previousAttempt && t(' · 上次尝试', ' · Previous attempt')}</p>
         <p>{phase.issues.join('；')}</p><code>{phase.profileId} · {phase.promptVersion}</code>
       </div>)}<NativeArchiveChecks checks={run.archiveChecks} verification={run.archiveVerification} lang={lang}/></>}
     <p>{t('恢复只处理已有原件，不重新调用模型。保存成功不代表内容已经核对。', 'Resume processes existing outcomes without calling models again. Saving does not establish reviewed content.')}</p>

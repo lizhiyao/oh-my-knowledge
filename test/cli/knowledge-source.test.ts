@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import { formatKnowledgeResult } from '../../src/cli/lib/knowledge-output.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { createLocalSourceCapture, LocalSourceScopeSchema, readLocalSourceScope, type LocalSourceScope } from '../../src/knowledge/application/local-source-host.js';
 import { executeKnowledgeOperation, KnowledgeOperationSchema, knowledgeFailureCode } from '../../src/knowledge/application/operations.js';
@@ -131,6 +132,46 @@ describe('Source3 public source CLI and trusted local host', () => {
     expect(factory).toHaveBeenCalledExactlyOnceWith('openai-api', model.model, createExtractionArchiveProducer); expect(inspect).toHaveBeenCalledOnce(); expect(invoke).not.toHaveBeenCalled();
     expect(prepared.journal).toMatchObject({ executor: model.executor, model: model.model, stages: [{ state: 'prepared', producer: { producerId: 'authored-cli-host' } }] });
     expect(existsSync(join(f.workspace, 'generation-journals', 'outcomes'))).toBe(false);
+  });
+
+  it('dispatches the exact prepared window batch through the CLI and resumes without a second dispatch', { timeout: 90_000 }, async () => {
+    const f = fixture();
+    writeFileSync(f.source, 'Header\n' + 'Long fixture source asserts the stated engineering condition. '.repeat(9000));
+    const app = createLocalKnowledgeApplication(f.workspace, { sourceScope: f.scope });
+    const preview = app.previewSources([f.selections[0]]);
+    const captured = app.captureSources({ previewId: preview.previewId, previewDigest: preview.previewDigest });
+    const input = join(f.root, 'sources.json');
+    writeFileSync(input, JSON.stringify({ sources: captured.sources.map(({ snapshot: { snapshotId, sourceVersion } }) => ({ snapshotId, sourceVersion })) }));
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, _input, _signal, beforeDispatch) => {
+      beforeDispatch?.();
+      return { outcomeKind: 'result', result: { ok: true,
+        output: JSON.stringify({ responseKind: 'knowledge-body-window-generation', schemaVersion: 1, proposals: [] }) } };
+    });
+    const model: KnowledgeGenerationModel = { executor: 'codex', model: 'authored-window-batch', timeoutMs: 300_000,
+      inspect: () => ({ producerId: 'authored-cli-host', producerRevision: 'fixture-v1', sourceChannels: [],
+        maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }), invoke };
+    vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockReturnValue(model);
+    const base = ['--workspace', f.workspace, '--executor', model.executor, '--model', model.model, '--json'];
+    const prepared = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', ...base, '--input', input], { cwd: f.root })).stdout);
+    const { journal, batchRequestDigest } = prepared;
+    const count = journal.bodyPlan.windows.length;
+    expect(count).toBeGreaterThan(1);
+    expect(journal.stages).toHaveLength(count);
+    expect(journal.stages.every((stage: { state: string }) => stage.state === 'prepared')).toBe(true);
+    expect(batchRequestDigest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(invoke).not.toHaveBeenCalled();
+    const instructions = formatKnowledgeResult(prepared, 'en', { operation: 'resume', id: journal.runId }, f.workspace);
+    expect(instructions).toContain(`batchRequestDigest: ${batchRequestDigest}`);
+    expect(instructions).toContain('continue-windows');
+    expect(instructions.match(/omk observe knowledge continue-stage/gu)).toHaveLength(count);
+    const batch = ['continue-windows', ...base, '--id', journal.runId, '--generation', String(journal.generation), '--concurrency', '2', '--budget-ms', '90000'];
+    await expect(runCommand(ObserveKnowledge, [...batch, '--confirm-request', journal.stages[0].requestDigest], { cwd: f.root })).rejects.toMatchObject({ code: 1 });
+    expect(invoke).not.toHaveBeenCalled();
+    const result = JSON.parse((await runCommand(ObserveKnowledge, [...batch, '--confirm-request', batchRequestDigest], { cwd: f.root })).stdout);
+    expect(result.journal).toMatchObject({ runId: journal.runId, status: 'completed', bodies: [] });
+    expect(invoke).toHaveBeenCalledTimes(count);
+    expect(JSON.parse((await runCommand(ObserveKnowledge, ['resume', '--workspace', f.workspace, '--id', journal.runId, '--json'], { cwd: f.root })).stdout).journal).toEqual(result.journal);
+    expect(invoke).toHaveBeenCalledTimes(count);
   });
 
   it('exports and confirms a fixed Source2 migration plan without settings, models or original-byte changes', async () => {

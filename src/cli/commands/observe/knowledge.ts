@@ -59,8 +59,8 @@ function readInputJson(path: string, maxBytes = 16 * 1024 * 1024): unknown {
 }
 export default class ObserveKnowledge extends BaseCommand {
   static description = description('生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。', 'Generate and maintain complete knowledge bodies, with separately reviewed derived associations. Saved bodies are pending; matching quotes does not verify truth.');
-  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow', 'source-ledger', 'source-coverage-status', 'review-source-coverage', 'prepare-source-review', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use', 'graph', 'relations', 'relation', 'propose-relation', 'review-relation', 'withdraw-relation'],
-    description: description('preview 只读，capture 仅保存；prepare 展示完整模型请求，generate／continue-stage 须逐阶段确认摘要；resume 零模型恢复。', 'Preview reads only; capture saves only. Prepare displays the complete model request; generate/continue-stage require per-stage digest confirmation. Resume never calls a model.') }) };
+  static args = { operation: Args.string({ required: true, options: ['schema', 'study', 'seal-run', 'sealed-runs', 'migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow', 'source-ledger', 'source-coverage-status', 'review-source-coverage', 'prepare-source-review', 'preview-sources', 'capture', 'prepare-generation', 'generate', 'runs', 'inspect', 'quality', 'resume', 'continue-stage', 'continue-windows', 'prepare-rebuild-associations', 'rebuild-associations', 'retrieve', 'list', 'show', 'retain', 'discard', 'revise', 'source', 'source-updates', 'delete-source', 'entities', 'correct-entities', 'apply-associations', 'review-associations', 'review-status', 'review-content', 'review-coverage', 'record-use', 'graph', 'relations', 'relation', 'propose-relation', 'review-relation', 'withdraw-relation'],
+    description: description('preview 只读，capture 仅保存。prepare 展示完整模型请求，发送须确认对应的单阶段或批量摘要。resume 零模型恢复。', 'Preview reads only and capture saves only. Prepare displays complete model requests. Dispatch requires the matching stage or batch digest. Resume never calls a model.') }) };
   static flags = {
     lang: LANG_FLAG,
     'from-workspace': Flags.string({ description: description('迁移：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。', 'Migration: explicit old workspace; requires a separate new --workspace target, preserving originals without models.') }),
@@ -83,7 +83,7 @@ export default class ObserveKnowledge extends BaseCommand {
     'plan-only': Flags.boolean({ description: description('migrate-sources／migrate-workflow：只读导出独立副本迁移计划，不创建目标。', 'migrate-sources/migrate-workflow: export the independent-copy migration plan read-only without creating the target.') }),
     'confirm-plan': Flags.string({ description: description('migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。', 'migrate-sources/migrate-workflow: confirm the exact SHA-256 of the fixed --input plan to apply or resume the same migration.') }),
     snapshot: Flags.string({ description: description('source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。', 'source/delete-source/retrieve: source snapshot UUID, requiring --source-version.') }),
-    id: Flags.string({ description: description('知识 ID；inspect/resume/continue-stage 为运行 UUID。', 'Knowledge ID; run UUID for inspect/resume/continue-stage.') }),
+    id: Flags.string({ description: description('知识 ID。inspect、resume、continue-stage、continue-windows 使用运行 UUID。', 'Knowledge ID. Inspect, resume, continue-stage and continue-windows take a run UUID.') }),
     revision: Flags.string({ description: description('明确知识或派生修订身份。', 'Exact knowledge or projection revision identity.') }),
     'body-digest': Flags.string({ description: description('relations／apply-associations：精确正文 sha256 摘要。', 'relations/apply-associations: exact body sha256 digest.') }),
     analysis: Flags.string({ description: description('明确实体分析 UUID，省略时 entities 搜索目录。', 'Exact entity analysis UUID; entities searches catalog when omitted.') }),
@@ -106,7 +106,9 @@ export default class ObserveKnowledge extends BaseCommand {
     executor: Flags.string({ description: description('生成/继续/重建的执行器。', 'Executor for generation/continuation/rebuild.') }),
     model: Flags.string({ description: description('生成模型，沿用已配置模型。', 'Generation model, defaulting to configuration.') }),
     'run-id': Flags.string({ description: description('生成/重建稳定 UUID；重复只恢复，绝不重发模型。', 'Stable generation/rebuild UUID; repeat only recovers, never redispatches a model.') }),
-    'confirm-request': Flags.string({ description: description('generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。', 'generate/continue-stage/rebuild-associations: confirm the requestDigest for the complete system/input shown by prepare/inspect; each phase requires separate confirmation.') }),
+    'confirm-request': Flags.string({ description: description('核对完整 system/input 后确认单阶段 requestDigest。continue-windows 使用已准备分窗的 batchRequestDigest。', 'Review the complete system/input, then confirm a stage requestDigest. Continue-windows takes the batchRequestDigest for the prepared windows.') }),
+    concurrency: Flags.integer({ min: 1, max: 2, description: description('仅 continue-windows：同时发送的分窗数，默认 1。', 'Continue-windows only. Maximum simultaneous window requests, default 1.') }),
+    'budget-ms': Flags.integer({ min: 1000, max: 900000, description: description('仅 continue-windows：本次分窗批次的可选时间预算，单位毫秒。到期请求取消，仍保留已完成归档。', 'Continue-windows only. Optional time budget in milliseconds. Expiry requests cancellation and completed archives are retained.') }),
     stage: Flags.string({ options: Object.keys(generationStageProfiles), description: description('schema：响应阶段，默认 body。', 'schema response stage, default body.') }),
     json: Flags.boolean({ default: false, description: description('完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。', 'Complete JSON; retrieve defaults to budgeted single-line JSON, also selected by --format json. Cannot be combined with --format text.') }),
   };
@@ -123,11 +125,12 @@ export default class ObserveKnowledge extends BaseCommand {
     '<%= config.bin %> observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request sha256:<digest>',
     '<%= config.bin %> observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <uuid> --matching-build ./omk-old.tgz --matching-build-id <build-id> --plan-only --json',
     '<%= config.bin %> observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan sha256:<digest> --json',
-    '<%= config.bin %> observe knowledge migrate-workflow --from-workspace ./workflow9 --workspace ./workflow10 --operation-id <uuid> --matching-build ./omk-v9.tgz --matching-build-id <build-id> --plan-only --json',
+    '<%= config.bin %> observe knowledge migrate-workflow --from-workspace ./workflow10 --workspace ./workflow11 --operation-id <uuid> --matching-build ./omk-v10.tgz --matching-build-id <build-id> --plan-only --json',
     '<%= config.bin %> observe knowledge migrate-workflow --input ./workflow-migration-plan.json --confirm-plan sha256:<digest> --json',
     '<%= config.bin %> observe knowledge inspect --workspace ./knowledge --id <run-id> --json',
     '<%= config.bin %> observe knowledge resume --workspace ./knowledge --id <run-id>',
     '<%= config.bin %> observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation 5 --confirm-request sha256:<digest>',
+    '<%= config.bin %> observe knowledge continue-windows --workspace ./knowledge --id <run-id> --generation <journal-generation> --concurrency 2 --confirm-request <batch-request-digest>',
     '<%= config.bin %> observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates',
     '<%= config.bin %> observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json',
     '<%= config.bin %> observe knowledge review-content --workspace ./knowledge --input ./review.json --json',
@@ -143,6 +146,7 @@ export default class ObserveKnowledge extends BaseCommand {
       'preview-sources': ['scope', 'input'], capture: ['scope', 'input'], source: ['snapshot', 'source-version'], 'source-updates': ['scope', 'input'], 'delete-source': ['snapshot', 'source-version'],
       'prepare-generation': ['input', 'executor', 'model', 'run-id'], generate: ['input', 'executor', 'model', 'run-id', 'confirm-request'],
       'continue-stage': ['id', 'generation', 'executor', 'model', 'confirm-request'],
+      'continue-windows': ['id', 'generation', 'executor', 'model', 'confirm-request', 'concurrency', 'budget-ms'],
       'prepare-source-review': ['input', 'executor', 'model', 'run-id'],
       'source-ledger': ['id', 'revision'], 'source-coverage-status': ['id', 'revision'], 'review-source-coverage': ['input'],
       'prepare-rebuild-associations': [ 'executor', 'model', 'run-id', 'input'],
@@ -155,7 +159,8 @@ export default class ObserveKnowledge extends BaseCommand {
     if (flags.format !== undefined && args.operation !== 'retrieve') this.error(t('--format 仅用于 retrieve。', '--format is only valid for retrieve.'), { exit: 2 });
     if (flags.format === 'text' && flags.json) this.error(t('--format text 不可与 --json 同用。', '--format text cannot be combined with --json.'), { exit: 2 });
     if (flags.scope !== undefined && !['preview-sources', 'capture', 'source-updates'].includes(args.operation)) this.error(t('--scope 仅用于来源预览、保存和变化查询。', '--scope is only valid for source preview/capture/update checks.'), { exit: 2 });
-    if (flags['confirm-request'] !== undefined && !['generate', 'continue-stage', 'rebuild-associations'].includes(args.operation)) this.error(t('--confirm-request 仅用于明确发送阶段。', '--confirm-request is only valid for explicit stage dispatch.'), { exit: 2 });
+    if (flags['confirm-request'] !== undefined && !['generate', 'continue-stage', 'continue-windows', 'rebuild-associations'].includes(args.operation)) this.error(t('--confirm-request 仅用于明确发送请求。', '--confirm-request is only valid for explicit dispatch.'), { exit: 2 });
+    if (args.operation !== 'continue-windows' && (flags.concurrency !== undefined || flags['budget-ms'] !== undefined)) this.error(t('--concurrency 和 --budget-ms 仅用于 continue-windows。', '--concurrency and --budget-ms are only valid for continue-windows.'), { exit: 2 });
     if (!['migrate', 'migrate-associations', 'migrate-sources', 'migrate-workflow'].includes(args.operation) && flags['from-workspace'] !== undefined) this.error(t('--from-workspace 仅用于迁移。', '--from-workspace is only valid for migration.'), { exit: 2 });
     if (!['migrate-sources', 'migrate-workflow'].includes(args.operation) && [flags['matching-build'], flags['matching-build-id'], flags['confirm-plan'], flags['plan-only'] || undefined].some(value => value !== undefined)) this.error(t('来源迁移参数仅用于 migrate-sources。', 'Source migration flags are only valid for migrate-sources.'), { exit: 2 });
     if (args.operation === 'migrate-workflow') {
@@ -381,6 +386,8 @@ export default class ObserveKnowledge extends BaseCommand {
       case 'source-ledger': case 'source-coverage-status': operation = { operation: args.operation, id: need(flags.id, 'id'), revision: flags.revision }; break;
       case 'review-source-coverage': operation = { operation: 'review-source-coverage', command: draft() } as KnowledgeOperation; break;
       case 'continue-stage': operation = { operation: 'continue-stage', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured', confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request') }; break;
+      case 'continue-windows': operation = { operation: 'continue-windows', id: need(flags.id, 'id'), generation: generation(), executor: 'configured', model: 'configured',
+        confirmedRequestDigest: need(flags['confirm-request'], 'confirm-request'), concurrency: flags.concurrency === 2 ? 2 : 1, budgetMs: flags['budget-ms'] }; break;
       case 'prepare-rebuild-associations': case 'rebuild-associations': { const parsed = knowledgeOperationSchemas['prepare-rebuild-associations'].omit({ operation: true, executor: true, model: true, runId: true }).safeParse(draft());
         if (!parsed.success) this.error(t('重建需要 --input 中完整的 sources 与精确 bodyRefs。', 'Rebuilding requires complete sources and exact bodyRefs in --input.'), { exit: 2 });
         const ref = { ...parsed.data, executor: 'configured', model: 'configured', runId: flags['run-id'] };
@@ -406,7 +413,7 @@ export default class ObserveKnowledge extends BaseCommand {
       catch { this.error(t('--scope 必须是 1 MiB 内的独立可信宿主绑定 JSON。', '--scope must be independent trusted host bindings JSON within 1 MiB.'), { exit: 2 }); }
     }
     const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
-    if (['prepare-generation', 'prepare-source-review', 'generate', 'continue-stage', 'prepare-rebuild-associations', 'rebuild-associations'].includes(operation.operation)) operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') } as KnowledgeOperation;
+    if (['prepare-generation', 'prepare-source-review', 'generate', 'continue-stage', 'continue-windows', 'prepare-rebuild-associations', 'rebuild-associations'].includes(operation.operation)) operation = { ...operation, executor: settings.executor, model: need(settings.model, 'model') } as KnowledgeOperation;
     const reviewActor = operation.operation === 'review-source-coverage' ? knowledgeReviewCliActor(process.env) : undefined;
     if (operation.operation === 'review-source-coverage' && !reviewActor) this.error(t('来源决定需要可信宿主的实际操作者上下文，不能回落为真人。', 'Source decisions require actual-actor context from a trusted host; no human fallback is inferred.'), { exit: 2 });
     const actor = ['retain', 'discard', 'revise', 'correct-entities', 'apply-associations', 'review-associations'].includes(args.operation)

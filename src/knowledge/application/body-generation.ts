@@ -10,11 +10,12 @@ import { KnowledgeAssociationRevisionSchema, validateKnowledgeAssociationReferen
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../adapters/body-digest.js';
 import type { KnowledgeGenerationModel, KnowledgeGenerationProfile } from '../adapters/generation-executor.js';
 import { MAX_GENERATION_OUTCOME_BYTES } from '../adapters/generation-journal-store.js';
-import { GENERATION_JOURNAL_SCHEMA_VERSION, isBodyPublicationStage, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
+import { GENERATION_JOURNAL_SCHEMA_VERSION, generationJournalAttempts, isBodyPublicationStage, isInterruptedGenerationOutcome,
+  MAX_BODY_WINDOW_IN_FLIGHT, type GenerationJournal, type GenerationJournalStore, type GenerationStage } from '../extraction/generation-journal.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, checkGeneratedAssociations, checkGeneratedBodies,
   generationTextDigest } from '../extraction/body-generation-wire.js';
 import { WRITING_DRAFT_PROFILE, checkWritingDraft } from '../extraction/writing-draft.js';
-import { BODY_WINDOW_PROFILE, assertLongBodyWindowInputs, bodyWindowInput, checkLongBodyWindowOutput,
+import { BODY_WINDOW_PROFILE, longBodyWindowInputs, bodyWindowInput, checkLongBodyWindowOutput,
   collectLongBodyWindows, createLongBodyPlan } from '../extraction/long-body.js';
 import { associationMentionKey, compileAssociationCatalog } from '../extraction/association-catalog.js';
 import { observeGenerationException, type GenerationOutcome, type GenerationOutcomeRef } from '../extraction/native-outcome.js';
@@ -59,10 +60,27 @@ function currentStage(stage: GenerationStage): boolean {
   return stage.profileId === profile.profileId && stage.wireId === profile.wireId && stage.promptVersion === profile.promptVersion
     && stage.system === profile.system && same(stage.wireSchema, profile.wireSchema);
 }
+function preparedWindows(journal: GenerationJournal) {
+  return journal.stages.flatMap((stage, index) => stage.state === 'prepared' ? [{ stage, index }] : []);
+}
+function windowBatchRequestDigest(journal: GenerationJournal) {
+  return generationTextDigest(canonicalJson({ runId: journal.runId, dispatchVersion: 'knowledge-window-dispatch/v1',
+    windows: preparedWindows(journal).map(({ index, stage }) => ({ index, invocationId: stage.invocationId, requestDigest: stage.requestDigest })) }));
+}
 /** Stored write intents replay exactly. Neither recovery nor successful analysis supplies a semantic decision. */
 export function generationNextAction(journal: GenerationJournal) {
-  const pending = journal.stages.find(stage => !['completed', 'failed'].includes(stage.state));
   if (journal.status === 'active' && journal.stages.at(-1)?.state !== 'prepared_writes' && journal.stages.some(stage => !currentStage(stage))) return 'unsupported' as const;
+  if (journal.bodyPlan) {
+    const last = journal.stages.at(-1), preceding = journal.stages.slice(0, -1);
+    if (last?.state === 'prepared_writes') return 'resume_publication' as const;
+    if (journal.stages.some(stage => stage.state === 'claimed')) return 'outcome_unknown_do_not_redispatch' as const;
+    if (preceding.some(stage => stage.state === 'archived') || last?.state === 'archived'
+      && (journal.status === 'active' && preceding.every(stage => stage.state === 'completed'))) return 'resume_publication' as const;
+    if (journal.status !== 'active') return 'none' as const;
+    if (journal.stages.some(stage => stage.state === 'interrupted')) return 'prepare_next_stage' as const;
+    return preparedWindows(journal).length ? 'continue_stage' as const : 'none' as const;
+  }
+  const pending = journal.stages.find(stage => !['completed', 'failed'].includes(stage.state));
   return pending?.state === 'prepared' ? 'continue_stage' as const
     : pending?.state === 'claimed' ? 'outcome_unknown_do_not_redispatch' as const
       : pending ? 'resume_publication' as const : journal.status !== 'active' ? 'none' as const
@@ -71,6 +89,7 @@ export function generationNextAction(journal: GenerationJournal) {
 /** Each explicit phase is separately confirmed, claimed once and archived before publication. */
 export class BodyGenerationApplication {
   private held?: { runId: string; invocationId: string; outcome: GenerationOutcome };
+  private readonly heldWindows = new Map<string, { runId: string; outcome: GenerationOutcome }>();
   private inFlight?: string;
   constructor(private readonly ports: BodyGenerationPorts) {}
   private review(actor = this.ports.reviewActor) {
@@ -93,14 +112,17 @@ export class BodyGenerationApplication {
   }
   inspect(runId: string) {
     const journal = this.required(runId);
-    return { ...this.state(journal), nativeOutcomes: journal.stages.map(stage => ({ stageKind: stage.stageKind,
+    return { ...this.state(journal), nativeOutcomes: generationJournalAttempts(journal).map(stage => ({ stageKind: stage.stageKind,
       invocationId: stage.invocationId, ...(stage.outcomeRef ? { outcome: this.ports.journals.outcome(journal, stage) } : {}) })) };
   }
   private required(runId: string) { const j = this.ports.journals.read(runId); if (!j) throw new Error('Generation journal is missing.'); return j; }
   private persist(j: GenerationJournal, validateClaim?: (journal: GenerationJournal, stage: GenerationStage) => void) {
     this.ports.assertWritable?.(); return this.ports.journals.write({ ...j, generation: j.generation + 1 }, j.generation, validateClaim);
   }
-  private state(journal: GenerationJournal) { return { journal, nextAction: generationNextAction(journal) }; }
+  private state(journal: GenerationJournal) {
+    const nextAction = generationNextAction(journal);
+    return { journal, nextAction, batchRequestDigest: journal.bodyPlan && nextAction === 'continue_stage' ? windowBatchRequestDigest(journal) : undefined };
+  }
   private snapshot(sourceRef: GenerationJournal['sources'][number]) {
     const source = this.ports.sources.read(sourceRef.snapshotId, sourceRef.sourceVersion);
     if (source.status !== 'available') throw new Error(`Generation source unavailable: ${source.reason}.`);
@@ -119,7 +141,8 @@ export class BodyGenerationApplication {
       inputDigest: generationTextDigest(input), requestDigest, producer, committed: 0, issues: [] };
   }
   private actor(journal: GenerationJournal, stage: GenerationStage): KnowledgeActor {
-    return { actorKind: 'agent', actorId: `extractor:${journal.executor}`, executionRef: `${journal.runId}:${stage.invocationId}` };
+    const executionRef = journal.bodyPlan ? `window-batch/${journal.runId}/${stage.invocationId}` : `${journal.runId}:${stage.invocationId}`;
+    return { actorKind: 'agent', actorId: `extractor:${journal.executor}`, executionRef };
   }
   private bodies(journal: Pick<GenerationJournal, 'bodies'>): KnowledgeRevision[] {
     return journal.bodies.map(ref => {
@@ -183,10 +206,10 @@ export class BodyGenerationApplication {
   }
   private idle(signal?: AbortSignal) {
     this.ports.assertWritable?.(); signal?.throwIfAborted();
-    if (this.inFlight || this.held) throw new Error('A generation outcome is in flight or awaiting durable archive.');
+    if (this.inFlight || this.held || this.heldWindows.size) throw new Error('A generation outcome is in flight or awaiting durable archive.');
   }
   private seed(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId: string, mode: GenerationJournal['mode'], bodies: KnowledgeBodyRef[] = []) {
-    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow10 run.');
+    if (this.ports.journals.list().unsupported.length) throw new Error('Use a new workspace or an explicit independent-copy workflow migration before creating a workflow11 run.');
     const sourceSet = sourceSetPreimage(sources);
     const snapshots = sourceSet.sources.map(ref => {
       const source = this.ports.sources.read(ref.snapshotId, ref.sourceVersion);
@@ -202,23 +225,33 @@ export class BodyGenerationApplication {
     if (j.executor !== model.executor || j.model !== model.model || j.timeoutMs !== model.timeoutMs) throw new Error('Generation continuation model changed.');
   }
   prepareGeneration(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal) {
+    return this.prepareBody(sources, model, true, runId, signal);
+  }
+  private prepareBody(sources: readonly SourceRef[], model: KnowledgeGenerationModel, prepareWindowRetry: boolean, runId?: string, signal?: AbortSignal) {
     const sourceSetId = generationTextDigest(canonicalJson(sourceSetPreimage(sources)));
     runId ??= generationImportRunId(sourceSetId);
     const existing = this.ports.journals.read(runId);
     if (existing) {
       if (existing.mode !== 'generate' || existing.sourceSetId !== sourceSetId) throw new Error('Generation request conflicts with existing journal.');
       this.sameModel(existing, model);
+      if (existing.bodyPlan) {
+        if (!prepareWindowRetry || generationNextAction(existing) !== 'prepare_next_stage') return this.state(existing);
+        this.idle(signal);
+        const bodyAttempts = [...(existing.bodyAttempts ?? [])];
+        const stages = existing.stages.map((stage, index) => {
+          if (stage.state !== 'interrupted') return stage;
+          const replacement = this.phase(model, BODY_WINDOW_PROFILE, stage.input);
+          if (replacement.requestDigest !== stage.requestDigest) throw new Error('Interrupted window request changed.');
+          bodyAttempts.push({ windowIndex: index, stage });
+          return replacement;
+        });
+        return this.state(this.persist({ ...existing, stages, bodyAttempts }));
+      }
       if (existing.status !== 'active' || generationNextAction(existing) === 'unsupported' || existing.stages.at(-1)!.state !== 'completed') return this.state(existing);
       this.idle(signal);
       const last = existing.stages.at(-1)!;
-      let phase: GenerationStage;
-      if (last.stageKind === 'body_draft') {
-        phase = this.phase(model, BODY_GENERATION_PROFILE, this.bodyInput(existing));
-      } else if (last.stageKind === 'body_window' && existing.bodyPlan) {
-        phase = this.phase(model, BODY_WINDOW_PROFILE, this.longBodyInput(existing, existing.stages.length));
-      } else {
-        throw new Error('Generation body-first phase order mismatch.');
-      }
+      if (last.stageKind !== 'body_draft') throw new Error('Generation body-first phase order mismatch.');
+      const phase = this.phase(model, BODY_GENERATION_PROFILE, this.bodyInput(existing));
       return this.state(this.persist({ ...existing, stages: [...existing.stages, phase] }));
     }
     this.idle(signal);
@@ -228,11 +261,11 @@ export class BodyGenerationApplication {
       const projection = bodyGenerationSources(snapshots);
       const fullInput = canonicalJson({ inputVersion: BODY_GENERATION_INPUT_VERSION, sourceSetId, ...projection });
       if (Buffer.byteLength(fullInput) > LONG_CODEX_SOURCE_INPUT_BYTES) {
+        if (!this.ports.knowledge.commitBodyBatch) throw new Error('The knowledge store does not support durable body batches.');
         const bodyPlan = createLongBodyPlan(snapshots);
         const bodySourceMetadata = projection.sources.map(({ source }) => generationSourceMetadata(source));
-        assertLongBodyWindowInputs(snapshots, sourceSetId, bodyPlan);
-        const stage = this.phase(model, BODY_WINDOW_PROFILE, bodyWindowInput(snapshots, sourceSetId, bodyPlan, 0));
-        return this.state(this.ports.journals.write({ ...seed, bodyPlan, bodySourceMetadata, stages: [stage] }, 0));
+        const stages = longBodyWindowInputs(snapshots, sourceSetId, bodyPlan).map(input => this.phase(model, BODY_WINDOW_PROFILE, input));
+        return this.state(this.ports.journals.write({ ...seed, bodyPlan, bodySourceMetadata, stages }, 0));
       }
     }
     const stage = this.phase(model, WRITING_DRAFT_PROFILE, this.writingInput(seed));
@@ -261,7 +294,13 @@ export class BodyGenerationApplication {
     return this.state(this.ports.journals.write({ ...seed, stages: [this.phase(model, profile, input)] }, 0));
   }
   async generate(sources: readonly SourceRef[], model: KnowledgeGenerationModel, runId?: string, signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
-    const j = this.prepareGeneration(sources, model, runId, signal).journal;
+    const j = this.prepareBody(sources, model, false, runId, signal).journal;
+    if (j.bodyPlan) {
+      if (j.generation !== 1 || generationNextAction(j) !== 'continue_stage') return this.resume(j.runId);
+      const first = { stage: j.stages[0], index: 0 };
+      if (options.confirmedRequestDigest !== first.stage.requestDigest) throw new Error('Confirm the exact prepared generation request before dispatch.');
+      return this.runWindowJobs(j, [first], model, 1, signal, options);
+    }
     if (j.status !== 'active' || j.stages.length !== 1 || j.stages[0].state !== 'prepared') return this.resume(j.runId);
     return this.state(await this.invoke(j, model, signal, options));
   }
@@ -289,14 +328,30 @@ export class BodyGenerationApplication {
     if (j.generation !== expectedGeneration || j.status !== 'active') throw new Error('Generation continuation conflict.');
     if (generationNextAction(j) === 'unsupported') throw new Error('Generation profile changed; use the preserved matching build to recover this run.');
     this.sameModel(j, model);
+    if (j.bodyPlan) {
+      const job = preparedWindows(j).find(({ stage }) => stage.requestDigest === options.confirmedRequestDigest);
+      if (generationNextAction(j) !== 'continue_stage' || !job) {
+        throw new Error('Confirm the exact prepared generation request before dispatch.');
+      }
+      return this.runWindowJobs(j, [job], model, 1, signal, options);
+    }
     if (j.stages.at(-1)!.state !== 'prepared') throw new Error('Prepare the next request; only a never-claimed phase may be continued.');
     return this.state(await this.invoke(j, model, signal, options));
+  }
+  async continueWindows(runId: string, expectedGeneration: number, model: KnowledgeGenerationModel, concurrency: 1 | 2,
+    signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+    const j = this.required(runId);
+    if (j.generation !== expectedGeneration || !j.bodyPlan || generationNextAction(j) !== 'continue_stage') throw new Error('Window batch continuation conflict.');
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_BODY_WINDOW_IN_FLIGHT) throw new Error('Invalid window concurrency.');
+    this.sameModel(j, model);
+    if (options.confirmedRequestDigest !== windowBatchRequestDigest(j)) throw new Error('Confirm the exact prepared window batch before dispatch.');
+    return this.runWindowJobs(j, preparedWindows(j), model, concurrency, signal, options);
   }
   private validateClaim(j: GenerationJournal, stage: GenerationStage) {
     if (!currentStage(stage)) throw new Error('Generation profile changed before claim.');
     const sources = j.sources.map(source => this.snapshot(source));
     const input = stage.stageKind === 'source_ledger' ? sourceLedgerModelInput(sources) : stage.stageKind === 'body_draft' ? this.writingInput(j) : stage.stageKind === 'body' ? this.bodyInput(j)
-      : stage.stageKind === 'body_window' ? this.longBodyInput(j, j.stages.length - 1)
+      : stage.stageKind === 'body_window' ? this.longBodyInput(j, j.stages.findIndex(s => s.invocationId === stage.invocationId))
         : stage.stageKind === 'source_coverage' ? this.coverageInput(j) : this.associationInput(j);
     if (input !== stage.input) throw new Error('Generation complete request changed before claim.');
   }
@@ -325,10 +380,115 @@ export class BodyGenerationApplication {
       return this.finish(journal);
     } finally { this.inFlight = undefined; }
   }
+  private updateWindow(journal: GenerationJournal, index: number, stage: GenerationStage,
+    validateClaim?: (journal: GenerationJournal, stage: GenerationStage) => void) {
+    return this.persist({ ...journal, stages: journal.stages.map((s, i) => i === index ? stage : s),
+      status: stage.state === 'failed' ? 'failed' : journal.status }, validateClaim);
+  }
+  private async runWindowJobs(journal: GenerationJournal, jobs: ReturnType<typeof preparedWindows>, model: KnowledgeGenerationModel,
+    concurrency: 1 | 2, signal: AbortSignal | undefined, options: KnowledgeGenerationOptions) {
+    this.idle();
+    const reconciled = this.advanceWindows(journal);
+    if (reconciled.generation !== journal.generation) return this.state(reconciled);
+    const { runId } = journal, claims = new Set<string>();
+    this.inFlight = runId;
+    let cursor = 0, halted = false;
+    const work = async () => {
+      while (!halted && !signal?.aborted && cursor < jobs.length) {
+        const { index, stage } = jobs[cursor++];
+        try {
+          const saved = await this.invokeWindow(runId, index, stage, model, claims, signal, options);
+          if (saved.status !== 'active' || saved.stages.some(s => s.state === 'interrupted')) halted = true;
+        } catch (error) {
+          halted = true;
+          if (!signal?.aborted || error !== signal.reason) throw error;
+        }
+      }
+    };
+    try {
+      const workers = await Promise.allSettled(Array.from({ length: Math.min(jobs.length, concurrency) }, work));
+      const failure = workers.find(worker => worker.status === 'rejected');
+      if (failure) throw failure.reason;
+      return this.state(this.required(runId));
+    } finally { this.inFlight = undefined; }
+  }
+  private async invokeWindow(runId: string, index: number, stage: GenerationStage, model: KnowledgeGenerationModel, claims: Set<string>,
+    signal: AbortSignal | undefined, options: KnowledgeGenerationOptions) {
+    if (!currentStage(stage) || !same(model.inspect(BODY_WINDOW_PROFILE, stage.input), stage.producer)) throw new Error('Generation producer/profile changed.');
+    const outcome = await model.invoke(BODY_WINDOW_PROFILE, stage.input, signal, () => {
+      signal?.throwIfAborted();
+      const j = this.required(runId), pending = j.stages[index];
+      if (j.status !== 'active' || pending.state !== 'prepared' || pending.invocationId !== stage.invocationId
+        || j.stages.some(s => s.state === 'interrupted' || s.state === 'claimed' && !claims.has(s.invocationId))) {
+        throw new Error('Window dispatch conflicts with a changed or unresolved run.');
+      }
+      options.beforeDispatch?.({ runId, invocationId: stage.invocationId, stageKind: stage.stageKind, requestDigest: stage.requestDigest });
+      this.updateWindow(j, index, { ...pending, state: 'claimed' }, (next, claimed) => this.validateClaim(next, claimed));
+      claims.add(stage.invocationId);
+    });
+    if (!claims.has(stage.invocationId)) throw new Error('Native adapter did not prove exactly one window dispatch claim.');
+    this.heldWindows.set(stage.invocationId, { runId, outcome });
+    const j = this.archiveWindow(this.required(runId), index, outcome);
+    claims.delete(stage.invocationId);
+    options.onOutcomeArchived?.({ runId, invocationId: stage.invocationId, stageKind: stage.stageKind, outcome, ref: j.stages[index].outcomeRef! });
+    return this.advanceWindows(j);
+  }
+  private archiveWindow(journal: GenerationJournal, index: number, outcome: GenerationOutcome) {
+    const stage = journal.stages[index], outcomeRef = this.ports.journals.archive(journal, stage, outcome);
+    // Once the original is durable, recovery can reattach it even if the journal write is interrupted.
+    this.heldWindows.delete(stage.invocationId);
+    return stage.state === 'claimed' ? this.updateWindow(journal, index, { ...stage, state: 'archived', outcomeRef }) : journal;
+  }
+  private advanceWindows(journal: GenerationJournal) {
+    const plan = journal.bodyPlan!, final = journal.stages.length - 1;
+    let j = journal;
+    for (const [index, stage] of j.stages.entries()) {
+      if (stage.state !== 'archived') continue;
+      const outcome = this.ports.journals.outcome(j, stage);
+      if (!outcome) throw new Error('Native window outcome missing.');
+      const output = cleanNativeOutput(outcome);
+      if (isInterruptedGenerationOutcome(outcome) && !stage.issues.length) {
+        const exhausted = j.bodyAttempts?.some(attempt => attempt.windowIndex === index);
+        j = this.updateWindow(j, index, { ...stage, state: exhausted ? 'failed' : 'interrupted',
+          issues: [exhausted ? 'Body window interruption retry exhausted.' : 'Body window cancelled or timed out with a terminal native receipt.'] });
+        continue;
+      }
+      try {
+        if (output === undefined || outcome.cleanupFailure || stage.issues.length) throw new Error('Body window native execution did not complete cleanly.');
+        checkLongBodyWindowOutput(output, j.sources.map(source => this.snapshot(source)), plan, index);
+      } catch (error) {
+        j = this.updateWindow(j, index, { ...stage, state: 'failed', issues: [...stage.issues, message(error)] });
+        continue;
+      }
+      if (index !== final) j = this.updateWindow(j, index, { ...stage, state: 'completed' });
+    }
+    const last = j.stages[final];
+    if (last.state === 'prepared_writes' || last.state === 'archived' && j.status === 'active'
+      && j.stages.slice(0, final).every(stage => stage.state === 'completed')) return this.finish(j);
+    return j;
+  }
+  private resumeWindows(journal: GenerationJournal) {
+    if (generationJournalAttempts(journal).some(stage => this.heldWindows.has(stage.invocationId)
+      || ['claimed', 'archived', 'prepared_writes'].includes(stage.state))) this.ports.assertWritable?.();
+    for (const { stage } of journal.bodyAttempts ?? []) {
+      const held = this.heldWindows.get(stage.invocationId);
+      if (held?.runId !== journal.runId) continue;
+      this.ports.journals.archive(journal, stage, held.outcome);
+      this.heldWindows.delete(stage.invocationId);
+    }
+    let j = journal;
+    for (const [index, stage] of j.stages.entries()) {
+      const held = this.heldWindows.get(stage.invocationId);
+      const outcome = held?.runId === j.runId ? held.outcome : stage.state === 'claimed' ? this.ports.journals.outcome(j, stage) : undefined;
+      if (outcome) j = this.archiveWindow(j, index, outcome);
+    }
+    return this.advanceWindows(j);
+  }
   /** Zero-model recovery attaches original evidence and replays only fixed publication intents. */
   resume(runId: string) {
     let j = this.required(runId), stage = j.stages.at(-1)!;
     if (this.inFlight === runId || generationNextAction(j) === 'unsupported') return this.state(j);
+    if (j.bodyPlan) return this.state(this.resumeWindows(j));
     if (this.held?.runId === runId || ['claimed', 'archived', 'prepared_writes'].includes(stage.state)) this.ports.assertWritable?.();
     if (this.held?.runId === runId && this.held.invocationId === stage.invocationId) {
       const ref = this.ports.journals.archive(j, stage, this.held.outcome);
@@ -357,12 +517,6 @@ export class BodyGenerationApplication {
           checkWritingDraft(output);
           j = { ...j, writingDraftRef: { runId: j.runId, invocationId: stage.invocationId,
             requestDigest: stage.requestDigest, archiveDigest: stage.outcomeRef.digest, outputDigest: generationTextDigest(output) } };
-          stage = { ...stage, state: 'completed' };
-        } catch (error) { stage = { ...stage, state: 'failed', issues: [...stage.issues, message(error)] }; }
-      } else if (stage.stageKind === 'body_window' && !publishesBody) {
-        try {
-          if (output === undefined || outcome.cleanupFailure || stage.issues.length || !j.bodyPlan) throw new Error('Body window native execution did not complete cleanly.');
-          checkLongBodyWindowOutput(output, j.sources.map(source => this.snapshot(source)), j.bodyPlan, index);
           stage = { ...stage, state: 'completed' };
         } catch (error) { stage = { ...stage, state: 'failed', issues: [...stage.issues, message(error)] }; }
       } else if (publishesBody) {
@@ -421,13 +575,20 @@ export class BodyGenerationApplication {
       else if ('analysisId' in write) this.ports.entities.write(write as EntityAnalysisWrite, actor);
       else this.ports.associations.write(write as KnowledgeAssociationWrite, actor);
       stage = { ...stage, committed: i + 1 };
-      const bindings = publishesBody ? { bodies: (stage.bodyWrites ?? []).slice(0, i + 1)
+      const bindings = publishesBody && !j.bodyPlan ? { bodies: (stage.bodyWrites ?? []).slice(0, i + 1)
         .flatMap(w => w.commandKind === 'append_revision' ? [knowledgeBodyRef(w.revision)] : []) }
         : stage.stageKind === 'source_ledger' ? { ledgerRef: { ledgerId: stage.ledgerWrites![0].ledgerId,
           revisionId: stage.ledgerWrites![0].revision.revisionId, digest: stage.ledgerWrites![0].revision.digest } }
           : stage.stageKind === 'source_coverage' ? { coverageRef: { coverageId: stage.coverageWrites![0].coverageId,
             revisionId: stage.coverageWrites![0].revision.revisionId, digest: stage.coverageWrites![0].revision.digest } } : {};
       j = this.persist({ ...j, ...bindings, stages: j.stages.map((s, n) => n === index ? stage : s) });
+    }
+    if (j.bodyPlan) {
+      const { knowledge } = this.ports;
+      if (!knowledge.commitBodyBatch) throw new Error('The knowledge store does not support durable body batches.');
+      const bodies = (stage.bodyWrites ?? []).flatMap(write => write.commandKind === 'append_revision' ? [knowledgeBodyRef(write.revision)] : []);
+      knowledge.commitBodyBatch(j.runId, bodies);
+      j = { ...j, bodies };
     }
     stage = { ...stage, state: 'completed' };
     return this.persist({ ...j, stages: j.stages.map((s, n) => n === index ? stage : s),

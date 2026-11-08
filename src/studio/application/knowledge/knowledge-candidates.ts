@@ -5,7 +5,7 @@ import { type ConversationCatalog } from '../../../observe/application.js';
 import { createLocalKnowledgeApplication } from '../../../knowledge/application/local.js';
 import { generationNextAction } from '../../../knowledge/application/body-generation.js';
 import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters/generation-host.js';
-import type { GenerationArchiveCheck, GenerationJournal, GenerationJournalInventory } from '../../../knowledge/extraction/generation-journal.js';
+import type { GenerationArchiveCheck, GenerationJournal, GenerationJournalInventory, GenerationStage } from '../../../knowledge/extraction/generation-journal.js';
 import { restoreSourceLedgerInput } from '../../../knowledge/extraction/source-review-input.js';
 import { type KnowledgeApplication } from '../../../knowledge/application/application.js';
 import { KnowledgeGraphRequestSchema } from '../../../knowledge/application/graph.js';
@@ -53,15 +53,18 @@ function frozenSourceMetadata(journal: GenerationJournal): Pick<KnowledgeCandida
 function runSummary(journal: GenerationJournal, archiveChecks: GenerationArchiveCheck[] = [], archiveVerification: KnowledgeCandidateRun['archiveVerification'] = 'not_verified'): KnowledgeCandidateRun {
   const nextAction = generationNextAction(journal);
   const association = journal.stages.find(s => s.stageKind === 'association'), catalogs = association?.entityWrites?.slice(0, association.committed) ?? [];
-  const prepared = journal.stages.at(-1);
+  const preparedIndex = journal.stages.findIndex(stage => stage.state === 'prepared'), prepared = journal.stages[preparedIndex];
+  const phase = (s: GenerationStage): KnowledgeCandidateRun['phases'][number] => ({ stageKind: s.stageKind, state: s.state, invocationId: s.invocationId,
+    profileId: s.profileId, promptVersion: s.promptVersion, wireId: s.wireId, ...(s.outcomeRef ? { outcomeRef: s.outcomeRef } : {}), committed: s.committed,
+    issues: s.issues, producerId: s.producer.producerId, producerRevision: s.producer.producerRevision, rejectedCount: s.rejected?.length ?? null });
   return { runId: journal.runId, mode: journal.mode, ledgerRef: journal.ledgerRef, coverageRef: journal.coverageRef, journalGeneration: journal.generation, workflowId: journal.workflowId, inputVersion: journal.inputVersion, sourceSetId: journal.sourceSetId,
-    ...(nextAction === 'continue_stage' && prepared?.state === 'prepared' ? { preparedStage: prepared } : {}), schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
+    ...(nextAction === 'continue_stage' && prepared ? { preparedStage: prepared, ...(journal.bodyPlan ? { preparedWindowNumber: preparedIndex + 1 } : {}) } : {}),
+    schemaStatus: 'current', status: journal.status, createdAt: journal.createdAt,
     executor: journal.executor, model: journal.model,
     ...frozenSourceMetadata(journal), archiveChecks, archiveVerification, bodies: journal.bodies,
     ...(journal.bodyPlan ? { bodyWindowCount: journal.bodyPlan.windows.length } : {}),
-    phases: journal.stages.map(s => ({ stageKind: s.stageKind, state: s.state, invocationId: s.invocationId, profileId: s.profileId,
-      promptVersion: s.promptVersion, wireId: s.wireId, ...(s.outcomeRef ? { outcomeRef: s.outcomeRef } : {}), committed: s.committed,
-      issues: s.issues, producerId: s.producer.producerId, producerRevision: s.producer.producerRevision, rejectedCount: s.rejected?.length ?? null })),
+    phases: [...journal.stages.map((stage, index) => ({ ...phase(stage), ...(journal.bodyPlan ? { windowNumber: index + 1 } : {}) })),
+      ...(journal.bodyAttempts ?? []).map(({ windowIndex, stage }) => ({ ...phase(stage), windowNumber: windowIndex + 1, previousAttempt: true as const }))],
     nextAction,
     ...(nextAction === 'unsupported' ? { unsupportedReason: 'generation_profile_changed_use_matching_build' } : {}),
     ...(catalogs.length ? { entityAnalyses: catalogs.map(catalog => ({ analysisId: catalog.analysisId, revisionId: catalog.revision.revisionId,

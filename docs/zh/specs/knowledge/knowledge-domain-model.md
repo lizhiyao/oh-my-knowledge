@@ -100,7 +100,7 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 `knowledge/` 拥有纯内容契约、校验和历史规则；其 `application/` 拥有 CLI／Studio 共用用例与本地装配，`adapters/` 负责来源读取、模型传输和文件持久化。观测层提供轨迹解析，交付层负责宿主配置与展示。知识库组织不成为第二份知识内容存储。
 
-写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 10，各阶段原件单独存储。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
+写入携带预期版本，冲突时重新读取并核对；只通过允许的工作区位置保存。生成使用 current-only 的 `knowledge-generation-journal` Schema 11，各阶段原件单独存储。当前格式和恢复行为以[实体提取](../entities/entity-extraction.md)及[存储布局](../shared/storage-layout-spec.md)为准。本页不另列一份会漂移的 Schema。
 
 ### 5.1 失败与恢复交接 {#construction-recovery}
 
@@ -204,7 +204,7 @@ CLI 的 `retain`、`discard`、`revise`、`correct-entities`、`apply-associatio
 |---|---|
 | 来源窗口与 capture／source DTO | SourceSnapshot 采用 knowledge-window-v3；SourceExcerpt、SourceSelection、SourceResolution、SourceStore 和 capture API 一起替换，selection 不再只有 path／记录范围，resolution 增加权限等状态。旧 v2 原始字节与摘要原样归档，显式适配器在新目录生成 v3 快照及引用映射；不重解释旧 sourceVersion，不增加永久双 reader。 |
 | 正文与实体历史 | 现有正文 Schema 3 已能表达多来源证据，实体历史 v2 可保持一个目录一个快照。旧引用若迁移为新快照引用，则创建新待审正文修订及明确目录映射，不沿用旧正文 digest、保留或关联接受状态；旧目录、正文与载体引用不自动重定向。单纯新增派生投影不改变正文或其维护决定。 |
-| 关联与生成日志 | 关联历史保持 Schema 2，关联采用 prompt9／wire3。当前 journal Schema 10／knowledge-body-first/v10 在发布普通正文或直接从原文取证的完整窗口结果后完成。rebuild_associations 独立绑定完整 sources、精确 bodyRefs 及逐请求确认。显式副本迁移逐字节归档 journal9 及更早日志与来源分析，保留匹配旧构建供恢复与回退。 |
+| 关联与生成日志 | 关联历史保持 Schema 2，关联采用 prompt9／wire3。当前 journal Schema 11／knowledge-body-first/v11 在发布普通正文或直接从原文取证的完整窗口结果后完成。rebuild_associations 独立绑定完整 sources、精确 bodyRefs 及逐请求确认。显式副本迁移逐字节归档 journal10 及更早日志与来源分析，保留匹配旧构建供恢复与回退。 |
 | 来源盘点与覆盖 | 按需 review_sources 执行清单 → source_coverage，独立 Schema1 [清单／覆盖历史](knowledge-source-review.md)分开模型意见和实际决定；不自动生成关联或批准内容。关联 claim 校验完整来源、正文及请求身份。 |
 | 操作者上下文 | 第 8.3 节六命令 CLI 维护范围仅为新写入复用 human／agent 数据形状，不改变创建归属、旧 actor／回执、请求 DTO、存储 Schema 或生成身份，无需迁移。未知操作者拒绝与更广服务上下文保持独立设计及确认边界；如需新增落盘授权记录，先单独版本化其契约与保留范围。 |
 | 组织、载体与测量 | 组织成员、精确载体引用及历史测量保持原身份。需要重新关联时显式核对后保存新修订；既有 prompt、wire、评分、历史分母与旧实验不重算，新生成／关联行为以独立测量身份验证。 |

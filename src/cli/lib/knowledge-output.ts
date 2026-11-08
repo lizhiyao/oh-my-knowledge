@@ -18,14 +18,24 @@ export function formatKnowledgeResult(value: unknown, lang: 'zh' | 'en', operati
       ...(journal.bodyPlan ? [t(`分段取证 ${journal.stages.filter(stage => stage.stageKind === 'body_window' && stage.state === 'completed').length}/${journal.bodyPlan.windows.length}；全部完成后在本地汇整并保存候选正文。`,
         `Source windows completed ${journal.stages.filter(stage => stage.stageKind === 'body_window' && stage.state === 'completed').length}/${journal.bodyPlan.windows.length}. After the final window, candidate bodies are consolidated and saved locally.`)] : []),
       ...journal.stages.map(s => `${s.stageKind}: ${s.state} · ${s.invocationId} · ${s.outcomeRef?.digest ?? 'archive pending'}${s.issues.length ? `\n${s.issues.join('\n')}` : ''}`),
+      ...(journal.bodyAttempts ?? []).map(({ windowIndex, stage }) => t(`分窗 ${windowIndex + 1} 的上次尝试：${stage.state} · ${stage.invocationId} · ${stage.outcomeRef?.digest}`,
+        `Window ${windowIndex + 1} previous attempt: ${stage.state} · ${stage.invocationId} · ${stage.outcomeRef?.digest}`)),
       `nextAction: ${result.nextAction}`, knowledgeCommand(workspace, 'inspect', { id: journal.runId, json: true }));
-    if (result.nextAction === 'continue_stage') lines.push(t('核对下方完整请求后，以 continue-stage 显式确认发送；resume 永不调用模型。', 'Review the complete request below, then explicitly confirm dispatch with continue-stage. Resume never calls a model.'),
-      JSON.stringify(journal.stages.filter(stage => stage.state === 'prepared').map(stage => ({ stageKind: stage.stageKind, requestDigest: stage.requestDigest,
-        system: stage.system, input: stage.input, wireId: stage.wireId, wireSchema: stage.wireSchema, producer: stage.producer })), null, 2),
-      knowledgeCommand(workspace, 'continue-stage', { id: journal.runId, generation: journal.generation, executor: journal.executor, model: journal.model,
-        'confirm-request': journal.stages.at(-1)!.requestDigest }));
+    if (result.nextAction === 'continue_stage') {
+      const dispatch = { id: journal.runId, generation: journal.generation, executor: journal.executor, model: journal.model };
+      const prepared = journal.stages.flatMap((stage, index) => stage.state === 'prepared' ? [{ stageKind: stage.stageKind,
+        ...(stage.stageKind === 'body_window' ? { windowNumber: index + 1 } : {}), requestDigest: stage.requestDigest,
+        system: stage.system, input: stage.input, wireId: stage.wireId, wireSchema: stage.wireSchema, producer: stage.producer }] : []);
+      lines.push(t('核对下方完整请求后，以 continue-stage 显式确认发送单个请求。resume 永不调用模型。', 'Review the complete requests below, then explicitly confirm one request with continue-stage. Resume never calls a model.'),
+        JSON.stringify(prepared, null, 2), ...prepared.map(stage => knowledgeCommand(workspace, 'continue-stage', { ...dispatch, 'confirm-request': stage.requestDigest })));
+      if (result.batchRequestDigest) lines.push(t('核对上述所有已准备分窗后，可以确认批量摘要并发送这些请求。', 'After reviewing every prepared window above, confirm the batch digest to dispatch those requests.'),
+        `batchRequestDigest: ${result.batchRequestDigest}`,
+        knowledgeCommand(workspace, 'continue-windows', { ...dispatch, concurrency: 1, 'confirm-request': result.batchRequestDigest }));
+    }
     if (result.nextAction === 'outcome_unknown_do_not_redispatch') lines.push(t('已 claim 但没有可读原件；发送/费用未知，禁止自动重发。', 'Claimed without a readable original; dispatch/cost unknown, do not redispatch.'));
-    if (result.nextAction === 'prepare_next_stage') lines.push(t('上一阶段已保存。先准备下一阶段的完整请求，再单独确认发送。', 'The prior stage is saved. Prepare the complete next request, then confirm its dispatch separately.'),
+    if (result.nextAction === 'prepare_next_stage') lines.push(journal.bodyPlan
+      ? t('已归档的中断分窗可准备一次新尝试。核对新请求及摘要后再确认发送。', 'Prepare one new attempt for an archived interrupted window, then review and confirm the new request and digest.')
+      : t('上一阶段已保存。先准备下一阶段的完整请求，再单独确认发送。', 'The prior stage is saved. Prepare the complete next request, then confirm its dispatch separately.'),
       JSON.stringify({ sources: journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion })),
         ...(journal.mode === 'review_sources' ? { bodyRefs: journal.bodies, ...(journal.ledgerRef ? { ledgerRef: journal.ledgerRef } : {}) } : {}) }, null, 2),
       knowledgeCommand(workspace, journal.mode === 'review_sources' ? 'prepare-source-review' : 'prepare-generation', { input: 'next-stage.json', 'run-id': journal.runId, executor: journal.executor, model: journal.model, json: true }));

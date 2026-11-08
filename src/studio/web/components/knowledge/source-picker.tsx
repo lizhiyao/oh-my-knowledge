@@ -68,6 +68,8 @@ export function PreparedGenerationConfirmation({ run, lang, confirmed, onConfirm
       : published ? t('保存为待核对候选', 'save as pending candidates') : t('保存模型意见，实际决定另行记录', 'save model opinions; record actual decisions separately');
   return <section>
     <h3>{stage.stageKind === 'body' ? t('确认正文请求', 'Confirm content request') : stage.stageKind === 'association' ? t('确认实体关联请求', 'Confirm entity association request') : t(`确认${generationStageLabel(stage.stageKind, lang)}请求`, `Confirm ${generationStageLabel(stage.stageKind, lang)} request`)}</h3>
+    {run.preparedWindowNumber !== undefined && run.bodyWindowCount !== undefined && <p>{t(`正在核对分窗 ${run.preparedWindowNumber}/${run.bodyWindowCount}。`,
+      `Reviewing source window ${run.preparedWindowNumber}/${run.bodyWindowCount}.`)}</p>}
     <p>{t('仅发送下面这个精确阶段。每个阶段单独确认，来源复核决定与模型发送分开。', 'Send only this exact stage. Confirm every stage separately; source review decisions and model dispatch are separate.')}</p>
     <p>{t('发送到：', 'Send to: ')}<strong>{run.executor} / {run.model}</strong> · {outcome}</p>
     <p>{t('完整输入 UTF-8 字节：', 'Complete input UTF-8 bytes: ')}{new TextEncoder().encode(stage.input).length} · system: {new TextEncoder().encode(stage.system).length}</p>
@@ -195,7 +197,8 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
       {phase === 'result' && run?.nextAction === 'prepare_next_stage' && <Button type="primary" disabled={busy} onClick={() => void work(async signal => {
         const prepared = await api<KnowledgeCandidateRun>('prepare-generation', { sources: refs, runId: run.runId, executor: run.executor, model: run.model }, signal);
         if (!signal.aborted) { setRun(prepared); setConfirmed(false); setPhase(prepared.preparedStage ? 'prepared' : 'result'); }
-      })}>{t('准备并核对下一阶段', 'Prepare and review the next stage')}</Button>}
+      })}>{run.bodyWindowCount === undefined ? t('准备并核对下一阶段', 'Prepare and review the next stage')
+        : t('准备并核对中断分窗的新尝试', 'Prepare and review a new attempt for the interrupted window')}</Button>}
     </Space>}>
     <div className="candidate-form">
       {error && <Alert type="error" title={error}/>}{busy && <Spin/>}
@@ -243,7 +246,10 @@ export function SourceExtractionDialog({ source: initialSource, initialMode = 'p
         `Source windows completed ${completedWindows}/${run.bodyWindowCount}. After the final window, candidate bodies are consolidated and saved locally.`)}</p>}
       {phase === 'prepared' && run && <PreparedGenerationConfirmation key={run.preparedStage?.requestDigest} run={run} lang={lang} confirmed={confirmed} onConfirmed={setConfirmed}/>}
       {run && !!run.bodies.length && <><p>{t(`已保存 ${run.bodies.length} 条候选正文，内容仍待核对。`, `${run.bodies.length} candidate bodies are saved and await review.`)}</p>{run.bodies.map(body => onReview ? <Button key={body.knowledgeId} disabled={busy} onClick={() => void work(signal => onReview(workspace, body.knowledgeId, signal))}>{t('核对已保存正文', 'Review saved content')}</Button> : <Link key={body.knowledgeId} href={`${KNOWLEDGE_CANDIDATES_PATH}?${new URLSearchParams({ workspace, id: body.knowledgeId })}`} onClick={onClose}>{t('核对已保存正文', 'Review saved content')}</Link>)}</>}
-      {phase === 'result' && <Alert type={run?.status === 'completed' || run?.nextAction === 'prepare_next_stage' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('正文已保存，可开始使用；内容仍待核对，来源复核和实体关联可稍后按需进行。', 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.') : t('本轮未生成可保存正文；不代表来源已核验或没有价值。', 'No content was saved. This does not establish source verification or lack of value.') : run?.nextAction === 'prepare_next_stage' ? t('本阶段结果已归档；准备下一阶段后，仍需核对完整请求。', 'This stage is archived. Prepare the next stage and inspect its complete request.') : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
+      {phase === 'result' && <Alert type={run?.status === 'completed' || run?.nextAction === 'prepare_next_stage' ? 'info' : 'warning'} title={run?.status === 'completed' ? run.bodies.length ? t('正文已保存，可开始使用；内容仍待核对，来源复核和实体关联可稍后按需进行。', 'Content is saved and ready to use as a pending candidate. Review sources and build associations when needed.') : t('本轮未生成可保存正文；不代表来源已核验或没有价值。', 'No content was saved. This does not establish source verification or lack of value.') : run?.nextAction === 'prepare_next_stage' ? run.bodyWindowCount === undefined
+        ? t('本阶段结果已归档；准备下一阶段后，仍需核对完整请求。', 'This stage is archived. Prepare the next stage and inspect its complete request.')
+        : t('中断结果已归档。可以准备一次新尝试，并单独核对和确认新请求。', 'The interruption is archived. You can prepare one new attempt, then review and confirm its request separately.')
+        : t('请检查提炼记录；未完成或未知状态不代表可以重新发送。', 'Inspect extraction history. Incomplete or unknown status does not authorize redispatch.')}/>}
     </div>
   </Modal>;
 }

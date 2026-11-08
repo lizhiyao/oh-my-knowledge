@@ -120,15 +120,12 @@ describe('Source3 manual transmission boundary', () => {
     const approval = () => screen.getByRole('checkbox', { name: 'Approve sending this exact request to the executor/model shown above.' }) as HTMLInputElement;
     let windowCount = 0;
     if (long) {
-      const prepareWindow = async () => {
-        fireEvent.click(await screen.findByRole('button', { name: 'Prepare and review the next stage' }));
-        await screen.findByText('Confirm Source window request', { selector: 'h3' });
-      };
       const app = createLocalKnowledgeApplication(workspace);
       const prepared = app.runs().current[0];
       windowCount = prepared.bodyPlan!.windows.length;
       expect(windowCount).toBeGreaterThan(1);
-      expect(prepared.stages.map(stage => stage.stageKind)).toEqual(['body_window']);
+      expect(prepared.stages).toHaveLength(windowCount);
+      expect(prepared.stages.every(stage => stage.stageKind === 'body_window' && stage.state === 'prepared')).toBe(true);
       const firstInput = JSON.parse(prepared.stages[0].input);
       expect(firstInput).toMatchObject({ inputVersion: 'knowledge-body-window-input/v4', bodyWindow: { index: 1, count: windowCount } });
       expect(firstInput).not.toHaveProperty('writingDraft');
@@ -136,7 +133,7 @@ describe('Source3 manual transmission boundary', () => {
         { selector: '[role="status"]' })).toBeTruthy();
       expect(app.list()).toHaveLength(0);
       for (let completed = 0; completed < windowCount; completed++) {
-        if (completed) await prepareWindow();
+        await screen.findByText(`Reviewing source window ${completed + 1}/${windowCount}.`);
         expect(screen.getByText('Extract grounded content directly from this source window and archive the result. After the final window, consolidate and save candidate bodies locally.', { selector: 'p', exact: false })).toBeTruthy();
         const sendWindow = screen.getByRole('button', { name: 'Send this stage request' }) as HTMLButtonElement;
         expect(sendWindow.disabled).toBe(true); expect(approval().checked).toBe(false);
@@ -168,6 +165,7 @@ describe('Source3 manual transmission boundary', () => {
     expect(requests.some(item => item.body.operation === 'prepare-source-review')).toBe(false);
     expect(existsSync(join(workspace, 'associations'))).toBe(false);
     if (long) {
+      expect(requests.filter(item => item.body.operation === 'prepare-generation')).toHaveLength(1);
       const dispatches = requests.filter(item => item.body.operation === 'continue-stage').map(item => item.body);
       expect(dispatches).toHaveLength(windowCount);
       expect(new Set(dispatches.map(item => item.confirmedRequestDigest)).size).toBe(windowCount);
@@ -176,7 +174,7 @@ describe('Source3 manual transmission boundary', () => {
       for (const [index, body] of generated.bodies.entries()) {
         expect(app.detail(body.knowledgeId, body.revisionId).revision).toMatchObject({
           title: `分段 ${index + 1} 的工程条件`,
-          revisedBy: { actorKind: 'agent', executionRef: `${generated.runId}:${windows[index].invocationId}` },
+          revisedBy: { actorKind: 'agent', executionRef: `window-batch/${generated.runId}/${windows[index].invocationId}` },
         });
       }
       expect(app.list()).toHaveLength(windowCount);

@@ -46,16 +46,17 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|observe|sample|studio> [
 - 可信宿主先固定有限 `scope.json`；选区只含获准逻辑 ID、相对路径与明确行／原记录范围，Git 先解析固定对象。模型、浏览器和来源文本不能扩大宿主授权。
 - `preview-sources --input selections.json --scope scope.json --json` 零保存、零模型，核对完整选中片段及读／存／发送范围。消息选择纳入其原始记录中的可读事件，可能包括同条工具事件；未选材料不自动扩入，正文已有路径仍可能发送。
 - `capture --input preview.json --scope scope.json --json` 重建并核对固定预览，只保存。由 `saveManifest.items` 的精确 snapshotId／sourceVersion 生成 `{sources:[…]}` 输入；保存不授权模型发送。
-- 当前 workflow10 在准备阶段选择首个请求。先 `prepare-generation --input sources.json --executor <executor> --model <model> --json`，读完整 system／input／producer／模型和 requestDigest，再在已有发送授权内 `generate --confirm-request <digest>`。普通流程先生成未核验写作稿。Codex 的完整来源输入在计入草稿前已超过 512 KiB 时，直接准备首个原文窗口。
-- 首阶段完成后，以同一 run 和精确来源再次 `prepare-generation --run-id ...` 准备下一阶段。核对完整请求后用 `continue-stage --id ... --generation ... --confirm-request ...` 确认。普通正文直接引用原 Source3，保存为待审候选，允许零正文。
-- Codex 长来源按原序切为最多 8 个连续窗口，每窗序列化 passages 至多 128 KiB，完整窗口 input 至多 192 KiB。宿主在准备首窗时检查所有窗口的容量，超限即停止准备。各窗口直接从可见原文取证，以低推理强度运行，每窗至多 150 秒。宿主逐窗归档，全部成功后在本地汇集已验证的正文和引文并统一发布。汇集是确定性操作，零模型调用。未成功的窗口停在原日志，先检查状态和回执。
+- 当前 workflow11 在准备阶段固定完整请求。先 `prepare-generation --input sources.json --executor <executor> --model <model> --json`，核对完整 system／input／producer／模型和 requestDigest。普通流程先准备未核验写作稿，Codex 的完整来源输入在计入草稿前已超过 512 KiB 时则准备全部原文窗口。已有发送授权内可用 `generate --confirm-request <digest>` 发送初始写作稿或首窗。
+- 普通写作稿完成后，以同一 run 和精确来源再次 `prepare-generation --run-id ...` 准备正文。核对完整请求后用 `continue-stage --id ... --generation ... --confirm-request ...` 确认。已准备窗口直接用此命令逐个确认。普通正文引用原 Source3，保存为待审候选，允许零正文。
+- Codex 长来源按原序切为最多 8 个连续窗口，每窗序列化 passages 至多 128 KiB，完整窗口 input 至多 192 KiB。各窗口直接从可见原文取证，以低推理强度运行，每窗至多 150 秒。可在核对所有已准备请求后，用 `continue-windows --id ... --generation ... --confirm-request <batchRequestDigest>` 明确派发整批。`--concurrency` 默认 1，可设为 2。`--budget-ms` 可选 1,000–900,000，超时请求取消。逐次尝试分别归档，所有窗口成功后零模型汇集有据正文，整批一起发布。
+- `resume` 只接回已有归档或继续发布。原生超时或取消已归档时，每窗最多一次新尝试。须用同一 run 和来源显式重新 prepare，并按新的 journal generation 确认发送。已 claim 却缺少可读原件时保持未知，禁止重发。
 - 以 `source-ledger --id ... --revision ...`、`source-coverage-status --id ... --revision ...` 读精确结果；清单是可错建议，不是 Gold，覆盖可纠正清单自身遗漏。核对完整原来源、正文、排除／待定及每个未决项后，实际 Agent／人用 `review-source-coverage --input command.json` 记录完整 record_decision 或 revoke_decision command，不加 operation wrapper 或自报 actor。绑定精确分析／ledger／bodyRefs／SourceSet、CAS／幂等身份、理由及限制；缺可信实际 actor 时只读，不伪装真人。模型 all-covered／无 finding 不自动批准。
 - 需要实体与关系时，用完整选定的 `sources` 和精确 `bodyRefs` 准备 prepare-rebuild-associations，再以同一明确新 run 核对并确认 rebuild-associations；不能从正文引文自动缩减来源。一次可选多篇不同知识，共用同次来源实体目录，每个 knowledgeId 只选一个修订。无需先运行来源清单、覆盖或记录继续决定；结果保持待审，关联失败不删除正文。需要诊断来源覆盖时另行 `prepare-source-review --input {sources,bodyRefs,ledgerRef?}`，各阶段单独确认，实际来源意见不自动触发关联或批准内容。
 - 默认导入绑定 workflow 身份及排序去重的精确 SourceSet，复用完成、失败、未知日志；不靠新 run 绕过 unknown claim。`inspect`／`runs` 先查回执，`resume` 零模型，未知不重发。富化完整输入超容量明确停止，不裁剪来源、清单或正文。
 - `source-updates` 只读核对完整 SourceRef 及可选 replacementSelection，不保存、生成或改知识；固定 Git 不代表最新，部分清单不证明零影响。
-- 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；journal9 及更早日志、来源清单／覆盖和自动许可仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links／knowledge-relations 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。当前构建不提供自动调度或重新授权入口，只逐阶段确认。
+- 旧数据先保留原目录及匹配构建。`migrate-workflow` 仅支持健康 Source3／正文3／实体2／关联2／reviews1／tags 六类活动数据，按固定计划／摘要复制到独立目标，保留全部字节与身份；journal10 及更早日志、来源清单／覆盖和自动许可仅归档，既有 review／retain 不等于来源覆盖批准。library／carriers／entity-links／knowledge-relations 等不受支持内容先报告边界，不静默丢弃。Source2→3 保持独立映射流程。旧自动许可不授权当前请求。
 
-**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 10，默认导入身份为 `knowledge-source-set-import-run/v5`。普通正文仍使用 input5／wire3／prompt20。长历史分窗采用独立请求身份。关联 input1／wire3／prompt9 和来源、正文、实体、关联及 reviews 活动格式保持。使用 `knowledge-workflow-to10` 迁入独立副本，旧构建和原目录保留用于回退。
+**BREAKING-SCHEMA/API/COMPARABILITY**　当前日志为 Schema 11，默认导入身份为 `knowledge-source-set-import-run/v6`。普通正文仍使用 input5／wire3／prompt20。长历史分窗采用独立请求身份。关联 input1／wire3／prompt9 和来源、正文、实体、关联及 reviews 活动格式保持。使用 `knowledge-workflow-to11` 迁入独立副本，旧构建和原目录保留用于回退。
 
 所有命令使用已选 `--workspace`。journal 的来源复核 manifest 仍为 input2，不能与独立清单 input1、写作 input1、正文 input5 或关联阶段 input1 混用。覆盖仅当 bounded target 且 covered 时可带完整 witness，其余 boundedInput=null；模型自报范围不证明实际阅读、内容真值或实际接受。
 

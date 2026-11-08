@@ -10,14 +10,15 @@ import { SOURCE_REVIEW_INPUT_VERSION } from './source-review-input.js';
 import { SourceLedgerWriteSchema, SourceCoverageWriteSchema, SourceLedgerRefSchema, SourceCoverageRefSchema } from '../source-review.js';
 
 const uuid = z.string().uuid(), digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
-export const GENERATION_JOURNAL_SCHEMA_VERSION = 10 as const;
+export const GENERATION_JOURNAL_SCHEMA_VERSION = 11 as const;
+export const MAX_BODY_WINDOW_IN_FLIGHT = 2;
 export const WritingDraftRefSchema = z.strictObject({ runId: uuid, invocationId: uuid, requestDigest: digest, archiveDigest: digest, outputDigest: digest });
 const associationWrite = z.strictObject({ commandKind: z.literal('append_revision'), requestId: uuid,
   knowledgeId: z.string().min(1), expectedGeneration: z.number().int().nonnegative(), expectedHeadRevisionId: z.string().nullable(),
   revision: KnowledgeAssociationRevisionSchema });
 export const GenerationStageSchema = z.strictObject({
   stageKind: z.enum(['source_ledger', 'body_draft', 'body', 'body_window', 'source_coverage', 'association']), invocationId: uuid,
-  state: z.enum(['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed']),
+  state: z.enum(['prepared', 'claimed', 'archived', 'prepared_writes', 'completed', 'failed', 'interrupted']),
   profileId: digest, promptVersion: z.string(), system: z.string(), wireId: digest, wireSchema: z.record(z.string(), z.unknown()),
   input: z.string(), inputDigest: digest, requestDigest: digest,
   producer: z.strictObject({ producerId: z.string().min(1), producerRevision: z.string().min(1),
@@ -40,6 +41,7 @@ export const GenerationJournalSchema = z.strictObject({
   executor: z.string().min(1), model: z.string().min(1), timeoutMs: z.number().int().positive(),
   bodies: z.array(KnowledgeBodyRefSchema).max(256), stages: z.array(GenerationStageSchema).min(1).max(9),
   bodyPlan: LongBodyPlanSchema.optional(),
+  bodyAttempts: z.array(z.strictObject({ windowIndex: z.number().int().nonnegative(), stage: GenerationStageSchema })).max(8).optional(),
   bodySourceMetadata: z.array(GenerationSourceMetadataSchema).min(1).max(256).optional(),
   writingDraftRef: WritingDraftRefSchema.optional(), ledgerRef: SourceLedgerRefSchema.optional(), coverageRef: SourceCoverageRefSchema.optional(),
 });
@@ -51,6 +53,19 @@ export function isBodyPublicationStage(journal: GenerationJournal, index: number
   return stageKind === 'body' || stageKind === 'body_window' && journal.bodyPlan !== undefined && index === journal.bodyPlan.windows.length - 1;
 }
 export type GenerationJournal = z.infer<typeof GenerationJournalSchema>;
+
+export function generationJournalAttempts(journal: GenerationJournal): GenerationStage[] {
+  return [...journal.stages, ...(journal.bodyAttempts ?? []).map(({ stage }) => stage)];
+}
+
+/** A locally terminal cancellation or timeout must be proved by its archived native result. */
+export function isInterruptedGenerationOutcome(outcome: GenerationOutcome | undefined): boolean {
+  if (outcome?.outcomeKind !== 'result' || outcome.result.ok || outcome.cleanupFailure) return false;
+  const { failure, stopReason } = outcome.result;
+  if (!failure || typeof failure !== 'object' || Array.isArray(failure)) return false;
+  return stopReason === 'timeout' && failure.failureKind === 'timeout'
+    || stopReason === 'interrupted' && failure.failureKind === 'cancelled';
+}
 /** Inventory observations never claim that a native original has been decoded or verified. */
 export interface GenerationArchiveCheck {
   runId: string;

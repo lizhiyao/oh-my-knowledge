@@ -51,15 +51,19 @@ reader 为定位选区可能读取整个文件或扫描轨迹前缀，读取清�
 
 ## 发送与默认导入身份 {#generation}
 
-完整 system 与模型 input 合计上限为 1 MiB。当前 journal Schema 10／workflow10 的普通流程从写作 input1 开始。普通正文 input5 绑定完整 Source3 及同次归档草稿。关联以显式完整 sources 与精确 bodyRefs 单独准备，使用阶段 input1。可选来源复核保留 manifest／input2、清单 input1 和覆盖 input2。
+完整 system 与模型 input 合计上限为 1 MiB。当前 journal Schema 11／workflow11 的普通流程从写作 input1 开始。普通正文 input5 绑定完整 Source3 及同次归档草稿。关联以显式完整 sources 与精确 bodyRefs 单独准备，使用阶段 input1。可选来源复核保留 manifest／input2、清单 input1 和覆盖 input2。
 
 Codex 的完整正文来源 input JSON 在计入 writingDraft 字段前已超过 512 KiB 时，宿主在首次模型请求前将完整、有序的 passage 索引划分为最多 8 个连续窗口。每窗序列化 passage 列表至多 128 KiB，完整 input 至多 192 KiB。窗口采用 `knowledge-body-window/v4` 提示词和 `knowledge-body-window-input/v4` 输入格式，由 `bodyWindow` 标识进度。各请求使用本窗可见的原文。 宿主可加入两个至四个连续的 `coverageRegions` 供定位，按序列化片段字节均衡划分，尽量对齐附近的来源边界。若超出 input 上限则省略区间，不增加原文或引文范围。提示词先跨不同主题挑选有据的具体事实，再用剩余篇幅保留相关变化、条件和方法。继续派发 v3 窗口须使用匹配构建。`knowledge-long-body-plan/v2` 摘要绑定所有选定来源的可移植归属，供 Studio 按范围筛选，也涵盖首窗之外的来源。窗口采用专用响应 wire1，passage 索引由宿主绑定。每窗结果至多 24 KiB，最多 4 篇、每篇 2 段、合计 6 段，所有引文必须在本窗可见范围内。宿主归档各窗精确结果，全部成功后才统一发布。宿主在本地按序汇集已验证的候选，仅调整候选内部标识，保留段落文字与原文引文。此步零模型调用。独立取证的事实保留各自时间与归属，语义整合、去重与完整主张覆盖不在此步范围内。Codex 窗口使用低推理强度，每窗至多 150 秒。
 
-宿主在准备首个请求时核对每窗精确 input，来源超出窗口容量即停止准备。处在阈值以内的 Codex 来源及其他执行器走普通草稿和正文流程。
+宿主在准备阶段核对每窗精确 input，一次准备所有窗口。来源超出窗口容量即停止准备。处在阈值以内的 Codex 来源及其他执行器走普通草稿和正文流程。
 
-`prepare-generation` 零模型准备首个请求。核对完整 system、input、模型、producer proof 和 requestDigest 后，用 `generate` 或 `continue-stage` 确认发送。在同一 run 中逐次准备并核对后续请求，再以各自精确摘要调用 `continue-stage`。显式关联请求无需覆盖决定。宿主在 claim 锁内重新核对完整来源与精确正文，结果保持待审。需要来源覆盖诊断时另行准备来源复核并记录实际意见。保存意见不触发模型。
+`prepare-generation` 零模型记录完整请求。`generate` 可凭精确请求摘要发送初始写作稿或首窗。`continue-stage` 确认单个已准备分窗。`continue-windows` 使用 `batchRequestDigest` 和当前日志 generation，确认当前已准备尝试的精确有序集合。批量摘要绑定 run 和每次尝试的序号、invocation ID 与完整请求摘要。显式批次允许一到两个窗口同时执行，并可选用协作式时间预算。
 
-`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v5` 绑定 workflow10 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；journal9 及更早由匹配旧构建处理。
+每次派发都有持久 claim，每份原生结果都有独立的不可变归档。已归档的原生取消或超时允许每窗最多一次新尝试，须明确准备，并按当前日志 generation 重新确认。请求字节可复用，invocation ID 必须是新的。旧尝试保存在 `bodyAttempts`。已 claim 但缺少精确可读结果时阻止派发，直到找回匹配原件。终止失败或重试耗尽会停止发布。`resume` 只接回已有归档或重放固定写入，零模型调用。宿主在发布前核对全部窗口，提交批次标记后整批正文一起可见。
+
+显式关联请求无需覆盖决定。宿主在 claim 锁内重新核对完整来源与精确正文，结果保持待审。需要来源覆盖诊断时另行准备来源复核并记录实际意见。保存意见不触发模型。
+
+`knowledge-source-set/v1` 对精确 SourceRef 排序去重。默认 UUIDv8 用 `knowledge-source-set-import-run/v6` 绑定 workflow11 和来源集合摘要，避免与旧完成／未知 run 碰撞；同一默认导入复用日志，不重复正文或派发。显式新 run 只用于有意独立生成，不能绕过 unknown claim。恢复零模型，只接回当前匹配原件、重放固定写入；journal10 及更早由匹配旧构建处理。
 
 ## 变化与删除 {#updates}
 
@@ -77,6 +81,6 @@ Codex 的完整正文来源 input JSON 在计入 writingDraft 字段前已超过
 
 预检在创建目标前核对源／目标身份、容量及完整恢复记录。固定迁移计划文档最多 128 MiB（含 CLI 换行），导出、adapter 接纳与 CLI reader 使用同一容量。已归属的中断迁移复用同一计划恢复，未完成目标不能当普通工作区打开。包括已打开实例在内，普通写入均在共享工作区锁内重验此边界；迁移仅在同步应用期间持有绑定计划的显式临时写入能力。已完成输出被改删时不悄悄复活。启动阶段所有者不明的锁保持拒绝，须明确核实所有者。回退使用未改动的旧工作区与匹配构建，不依靠兼容 reader。周边契约见[存储布局](../shared/storage-layout-spec.md#explicit-knowledge-workspace)。
 
-`migrate-workflow` 将旧流程复制到独立 workflow10 工作区，不改 Source3 摘要算法。仅支持健康的 sources3、items3、entities2、associations2、reviews1 和 tags 六类活动数据，保留所有字节、身份、历史和既有意见；这些意见不变成新的来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 和旧 marker 只归档，匹配旧包一并保留。包含 library、carriers、entity-links、knowledge-relations 或其它不受支持内容时须保留旧目录并报告 unsupported，不静默丢弃或改指向；并非所有历史工作区都可用此入口。
+`migrate-workflow` 将旧流程复制到独立 workflow11 工作区，不改 Source3 摘要算法。仅支持健康的 sources3、items3、entities2、associations2、reviews1 和 tags 六类活动数据，保留所有字节、身份、历史和既有意见；这些意见不变成新的来源覆盖批准。旧 generation-journals（含 outcomes）、source-ledgers、source-coverage、auto-extraction、既有 migration 和旧 marker 只归档，匹配旧包一并保留。包含 library、carriers、entity-links、knowledge-relations 或其它不受支持内容时须保留旧目录并报告 unsupported，不静默丢弃或改指向；并非所有历史工作区都可用此入口。
 
 计划绑定实际源／目标、完整 inventory／摘要、实际 actor、旧包及容量。`--plan-only` 零写入；应用只认固定 `--input` 和精确 `--confirm-plan`，在双锁及完成哨兵下复制，未知临时文件安全停止。只恢复同计划的已确认步骤／回执；完成后目标增改删均拒绝覆盖，unknown 旧调用不重发。回退用旧目录及匹配构建。

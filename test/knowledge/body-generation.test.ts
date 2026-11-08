@@ -185,11 +185,41 @@ async function prepareTwoSourceRebuildWithActualReview(f: Fixture) {
 }
 const archivePath = (f: Fixture, j: GenerationJournal, stage: GenerationStage) => join(f.root, 'generation-journals', 'outcomes', j.runId, `${stage.invocationId}.json`);
 
+function longSource(f: Fixture) {
+  const path = join(f.root, 'long-source.jsonl');
+  const literal = 'This selected record describes a constrained source example. '.repeat(100);
+  writeFileSync(path, Array.from({ length: 92 }, (_, index) => JSON.stringify({ type: 'response_item', payload: {
+    type: 'message', role: 'user', content: [{ type: 'input_text', text: `Record ${index}: ${literal}` }],
+  } })).join('\n'));
+  return [sourceRef(captureTraceFixture(f.root, { path }))];
+}
+function windowOutput(input: string) {
+  const request = JSON.parse(input), index = request.bodyWindow.index;
+  const passageId = request.sources[0].excerpts[0].passages[0].passageId;
+  return { outcomeKind: 'result' as const, result: { ok: true, output: JSON.stringify({
+    responseKind: 'knowledge-body-window-generation', schemaVersion: 1,
+    proposals: [{ proposalId: 'first', title: `Example from window ${index}`, requiredContexts: [], organization: null,
+      reuseRationale: 'Preserve this distinct window context for later comparisons.',
+      segments: [{ segmentId: 'claim', text: `The source describes an example in window ${index}.`,
+        evidence: [{ startPassageId: passageId, endPassageId: passageId, basis: 'source_assertion', interpretation: null }] }] }],
+  }) } };
+}
+function dispatchWindows(app: BodyGenerationApplication, prepared: State, model: KnowledgeGenerationModel, concurrency: 1 | 2,
+  signal?: AbortSignal, options: KnowledgeGenerationOptions = {}) {
+  return app.continueWindows(prepared.journal.runId, prepared.journal.generation, model, concurrency, signal,
+    { ...options, confirmedRequestDigest: prepared.batchRequestDigest });
+}
+function windowBarrier() {
+  let open!: () => void;
+  const promise = new Promise<void>(resolve => { open = resolve; });
+  return { promise, open };
+}
+
 describe('source-first generation and zero-model recovery', () => {
   it('completes canonical generation after two separately confirmed requests, without review or association calls', async () => {
     const f = setup(), refs = [sourceRef(f.window)], prepared = f.app.prepareGeneration(refs, f.model);
     expect(f.invoke).not.toHaveBeenCalled(); expect(f.library.list()).toEqual([]);
-    expect(prepared.journal).toMatchObject({ schemaVersion: 10, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
+    expect(prepared.journal).toMatchObject({ schemaVersion: 11, workflowId: WORKFLOW_ID, inputVersion: SOURCE_REVIEW_INPUT_VERSION,
       runId: generationImportRunId(prepared.journal.sourceSetId), stages: [{ stageKind: 'body_draft', state: 'prepared', system: WRITING_DRAFT_PROFILE.system }] });
     const input = JSON.parse(prepared.journal.stages[0].input);
     expect(input.sources[0].source).toMatchObject(refs[0]);
@@ -228,13 +258,7 @@ describe('source-first generation and zero-model recovery', () => {
   });
 
   it('archives a failed long-body window without publishing or redispatching it on recovery', async () => {
-    const f = setup();
-    const path = join(f.root, 'long-source.jsonl');
-    const literal = 'This selected record describes a constrained source example. '.repeat(110);
-    writeFileSync(path, Array.from({ length: 92 }, (_, index) => JSON.stringify({ type: 'response_item', payload: {
-      type: 'message', role: 'user', content: [{ type: 'input_text', text: `Record ${index}: ${literal}` }],
-    } })).join('\n'));
-    const refs = [sourceRef(captureTraceFixture(f.root, { path }))];
+    const f = setup(), refs = longSource(f);
     const execute = vi.fn(async request => {
       expect(request).toMatchObject({ outputFormat: { name: 'knowledge_body_window_v1' }, timeoutMs: 150_000, effort: 'low' });
       const input = JSON.parse(request.prompt);
@@ -245,19 +269,158 @@ describe('source-first generation and zero-model recovery', () => {
     const model = configuredKnowledgeGenerationModel('codex', 'fixture-model', createCodexArchiveProducer({}, () => execute));
     const prepared = f.app.prepareGeneration(refs, model);
     expect(prepared.journal.bodyPlan!.windows.length).toBeGreaterThan(1);
-    expect(prepared.journal.stages).toEqual([expect.objectContaining({ stageKind: 'body_window', state: 'prepared' })]);
+    expect(prepared.journal.stages.map(s => s.state)).toEqual(prepared.journal.bodyPlan!.windows.map(() => 'prepared'));
     expect(prepared.journal.writingDraftRef).toBeUndefined();
     expect(execute).not.toHaveBeenCalled();
     const failed = await f.app.generate(refs, model, prepared.journal.runId, undefined,
       { confirmedRequestDigest: prepared.journal.stages[0].requestDigest });
     expect(failed).toMatchObject({ journal: { status: 'failed', bodies: [] }, nextAction: 'none' });
-    expect(failed.journal.stages.at(-1)).toMatchObject({ stageKind: 'body_window', state: 'failed', committed: 0 });
+    expect(failed.journal.stages[0]).toMatchObject({ stageKind: 'body_window', state: 'failed', committed: 0 });
     const reopened = f.reopen();
-    expect(reopened.inspect(failed.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { ok: false, durationMs: 150_001 } });
+    expect(reopened.inspect(failed.journal.runId).nativeOutcomes[0].outcome).toMatchObject({ result: { ok: false, durationMs: 150_001 } });
     expect(reopened.resume(failed.journal.runId)).toEqual(failed);
     expect(reopened.prepareGeneration(refs, model, failed.journal.runId)).toEqual(failed);
     expect(f.library.list()).toEqual([]);
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('after three of five windows, archives a deadline cancellation and continues only the two missing windows', { timeout: 90_000 }, async () => {
+    const f = setup(), refs = longSource(f), controller = new AbortController(), calls: number[] = [];
+    const stopped = { outcomeKind: 'result' as const, result: { ok: false, output: null, stopReason: 'interrupted', failure: { failureKind: 'cancelled' } } };
+    const model: KnowledgeGenerationModel = { ...f.model, executor: 'codex', async invoke(_profile, input, signal, gate) {
+      gate?.();
+      const index = JSON.parse(input).bodyWindow.index;
+      calls.push(index);
+      if (index === 4 && signal === controller.signal) {
+        controller.abort(new Error('batch budget expired'));
+        return stopped;
+      }
+      return windowOutput(input);
+    } };
+    const prepared = f.app.prepareGeneration(refs, model), { runId } = prepared.journal;
+    expect(prepared.journal.stages).toHaveLength(5);
+    const paused = await dispatchWindows(f.app, prepared, model, 1, controller.signal);
+    expect(calls).toEqual([1, 2, 3, 4]);
+    expect(paused.nextAction).toBe('prepare_next_stage');
+    expect(paused.journal.stages.map(s => s.state)).toEqual(['completed', 'completed', 'completed', 'interrupted', 'prepared']);
+    expect(f.library.list()).toEqual([]);
+    const firstArchives = paused.journal.stages.slice(0, 4).map(stage => archivePath(f, paused.journal, stage));
+    const originals = firstArchives.map(path => readFileSync(path));
+    const app = f.reopen();
+    expect(app.resume(runId)).toEqual(paused);
+    expect(await app.generate(refs, model, runId, undefined, { confirmedRequestDigest: prepared.journal.stages[0].requestDigest })).toEqual(paused);
+    expect(calls).toEqual([1, 2, 3, 4]);
+    const retry = app.prepareGeneration(refs, model, runId);
+    expect(retry.journal.stages.slice(0, 3)).toEqual(paused.journal.stages.slice(0, 3));
+    expect(retry.journal.stages[3].invocationId).not.toBe(paused.journal.stages[3].invocationId);
+    expect(retry.journal.stages[3].requestDigest).toBe(paused.journal.stages[3].requestDigest);
+    expect(retry.journal.stages[4]).toEqual(paused.journal.stages[4]);
+    expect(retry.batchRequestDigest).not.toBe(prepared.batchRequestDigest);
+    const result = await dispatchWindows(app, retry, model, 2);
+    expect(calls).toEqual([1, 2, 3, 4, 4, 5]);
+    expect(result.journal).toMatchObject({ status: 'completed', bodyAttempts: [{ windowIndex: 3, stage: paused.journal.stages[3] }] });
+    expect(result.journal.bodies).toHaveLength(5);
+    expect(f.library.list()).toHaveLength(5);
+    expect(firstArchives.map(path => readFileSync(path))).toEqual(originals);
+    expect(app.inspect(runId).nativeOutcomes.find(s => s.invocationId === paused.journal.stages[3].invocationId)?.outcome).toEqual(stopped);
+  });
+
+  it('keeps publication atomic when window five finishes before window one and a write loses its acknowledgement', { timeout: 90_000 }, async () => {
+    const f = setup(), refs = longSource(f), archived: number[] = [];
+    const first = windowBarrier(), final = windowBarrier();
+    let active = 0, peak = 0, calls = 0;
+    const model: KnowledgeGenerationModel = { ...f.model, executor: 'codex', async invoke(_profile, input, _signal, gate) {
+      gate?.();
+      const index = JSON.parse(input).bodyWindow.index;
+      calls++;
+      peak = Math.max(peak, ++active);
+      try {
+        await (index === 1 ? first.promise : Promise.resolve());
+        return windowOutput(input);
+      } finally { active--; }
+    } };
+    const prepared = f.app.prepareGeneration(refs, model), { runId } = prepared.journal;
+    const write = f.ports.knowledge.write.bind(f.ports.knowledge);
+    vi.spyOn(f.ports.knowledge, 'write').mockImplementationOnce((...args) => { write(...args); throw new Error('after staged publication'); });
+    const running = dispatchWindows(f.app, prepared, model, 2, undefined, { onOutcomeArchived(event) {
+      const index = prepared.journal.stages.findIndex(s => s.invocationId === event.invocationId) + 1;
+      archived.push(index);
+      if (index === 5) final.open();
+    } });
+    const rejection = expect(running).rejects.toThrow('after staged publication');
+    try {
+      await Promise.race([final.promise, running]);
+      expect(archived).toEqual([2, 3, 4, 5]);
+      expect(f.library.list()).toEqual([]);
+    } finally { first.open(); }
+    await rejection;
+    expect(peak).toBe(2);
+    const checkpoint = f.ports.journals.read(runId)!;
+    expect(checkpoint.bodies).toEqual([]);
+    expect(checkpoint.stages[4]).toMatchObject({ state: 'prepared_writes', committed: 0 });
+    expect(f.library.list()).toEqual([]);
+    const reopened = f.reopen(), result = reopened.resume(runId);
+    expect(result.journal.status).toBe('completed');
+    expect(f.library.list()).toHaveLength(5);
+    expect(calls).toBe(5);
+    const serial = await dispatchWindows(reopened, reopened.prepareGeneration(refs, model, randomUUID()), model, 1);
+    expect(serial.journal.bodies.map(ref => ref.bodyDigest)).toEqual(result.journal.bodies.map(ref => ref.bodyDigest));
+    expect(calls).toBe(10);
+  });
+
+  it('quarantines a claimed long window without a receipt and does not resend or advance the queue', { timeout: 90_000 }, async () => {
+    const f = setup(), refs = longSource(f);
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, _input, _signal, gate) => {
+      gate?.(); throw new Error('lost window outcome');
+    });
+    const model = { ...f.model, executor: 'codex', invoke }, prepared = f.app.prepareGeneration(refs, model);
+    await expect(dispatchWindows(f.app, prepared, model, 1)).rejects.toThrow('lost window outcome');
+    const app = f.reopen(), state = app.resume(prepared.journal.runId);
+    expect(state.nextAction).toBe('outcome_unknown_do_not_redispatch');
+    expect(state.journal.stages.map(s => s.state)).toEqual(['claimed', 'prepared', 'prepared', 'prepared', 'prepared']);
+    expect(app.prepareGeneration(refs, model, prepared.journal.runId)).toEqual(state);
+    await expect(dispatchWindows(app, state, model, 2)).rejects.toThrow('continuation conflict');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(f.library.list()).toEqual([]);
+  });
+
+  it('reconciles a terminal receipt from the last window before dispatching an earlier window', { timeout: 90_000 }, async () => {
+    const f = setup(), refs = longSource(f);
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, _input, _signal, gate) => {
+      gate?.();
+      return { outcomeKind: 'result', result: { ok: false, output: null, stopReason: 'timeout', failure: { failureKind: 'timeout' } } };
+    });
+    const model = { ...f.model, executor: 'codex', invoke }, prepared = f.app.prepareGeneration(refs, model);
+    const { runId, generation } = prepared.journal;
+    await expect(f.app.continueStage(runId, generation, model, undefined, { confirmedRequestDigest: prepared.journal.stages.at(-1)!.requestDigest,
+      onOutcomeArchived: () => { throw new Error('lost archive acknowledgement'); } })).rejects.toThrow('lost archive acknowledgement');
+    const app = f.reopen(), pending = app.inspect(runId);
+    expect(pending.journal.stages.at(-1)?.state).toBe('archived');
+    const reconciled = await dispatchWindows(app, pending, model, 2);
+    expect(reconciled.nextAction).toBe('prepare_next_stage');
+    expect(reconciled.journal.stages.at(-1)?.state).toBe('interrupted');
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a held window after another process reconciles and retires its durable archive', { timeout: 90_000 }, async () => {
+    const f = setup(), refs = longSource(f);
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, input, _signal, gate) => { gate?.(); return windowOutput(input); });
+    invoke.mockImplementationOnce(async (_profile, _input, _signal, gate) => {
+      gate?.();
+      return { outcomeKind: 'result', result: { ok: false, output: null, stopReason: 'timeout', failure: { failureKind: 'timeout' } } };
+    });
+    const model = { ...f.model, executor: 'codex', invoke }, prepared = f.app.prepareGeneration(refs, model);
+    const { runId } = prepared.journal;
+    const archive = f.ports.journals.archive.bind(f.ports.journals);
+    vi.spyOn(f.ports.journals, 'archive').mockImplementationOnce((...args) => { archive(...args); throw new Error('after durable native archive'); });
+    await expect(dispatchWindows(f.app, prepared, model, 1)).rejects.toThrow('after durable native archive');
+    const reopened = f.reopen();
+    expect(reopened.resume(runId).nextAction).toBe('prepare_next_stage');
+    const retry = reopened.prepareGeneration(refs, model, runId);
+    expect(f.app.resume(runId)).toEqual(retry);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect((await dispatchWindows(f.app, retry, model, 1)).journal.status).toBe('completed');
+    expect(invoke).toHaveBeenCalledTimes(6);
   });
 
   it('reviews zero saved bodies against the full ledger and does not invent a body, approval or association call', async () => {
@@ -355,7 +518,7 @@ describe('source-first generation and zero-model recovery', () => {
     expect(f.reopen().inspect(result.journal.runId).nativeOutcomes.at(-1)?.outcome).toMatchObject({ result: { output: JSON.stringify(f.body) } });
   });
 
-  it.each([8, 9])('refuses a new workflow10 run in a journal%s workspace without changing the old claim', schemaVersion => {
+  it.each([8, 9, 10])('refuses a new workflow11 run in a journal%s workspace without changing the old claim', schemaVersion => {
     const f = setup(), runId = randomUUID(); mkdirSync(join(f.root, 'generation-journals'));
     const path = join(f.root, 'generation-journals', `${runId}.json`), bytes = JSON.stringify({ storeKind: 'knowledge-generation-journal', schemaVersion, unknownClaim: true });
     writeFileSync(path, bytes);

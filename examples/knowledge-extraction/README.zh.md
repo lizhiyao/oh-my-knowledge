@@ -19,9 +19,9 @@ node examples/knowledge-extraction/run.mjs
 
 使用该检出的内部构建模块，不是公共 SDK 集成方法；不需要 API 凭证或模型账号。隔离验收时可用 `OMK_PACKAGE_ROOT` 指向另一份有当前构建产物的源码检出。
 
-输出包括 `fixtureInvocations: 3`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v10"`、`phaseKinds: ["body_draft", "body", "association"]`、`candidateCount: 1`、`entityCount: 2`、`relationCount: 1`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。
+输出包括 `fixtureInvocations: 3`、`modelCalls: 0`、`workflowId: "knowledge-body-first/v11"`、`phaseKinds: ["body_draft", "body", "association"]`、`candidateCount: 1`、`entityCount: 2`、`relationCount: 1`、`sourceBindingVerified: true`、`entitySearchMatches: 1`、`reviewStatus: "pending"` 和 `associationReview: "pending"`。
 
-捕获与准备零调用，每次发送须确认各自精确的 requestDigest。Schema 10 日志、三份完整作者响应、来源及正文／实体／关联历史保存在脚本自己的系统临时目录；重复打开已完成来源集不派发新请求。成功或失败后都删除该临时目录，不写用户工作区或全局设置，未知 token／费用保持缺失。
+捕获与准备零调用，每次发送须确认各自精确的 requestDigest。Schema 11 日志、三份完整作者响应、来源及正文／实体／关联历史保存在脚本自己的系统临时目录；重复打开已完成来源集不派发新请求。成功或失败后都删除该临时目录，不写用户工作区或全局设置，未知 token／费用保持缺失。
 
 ## 证据边界
 
