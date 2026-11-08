@@ -2,11 +2,49 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { KNOWLEDGE_RETRIEVAL_RANKING_POLICY_ID, KnowledgeRetrievalRequestSchema, knowledgeRetrievalTerms, retrieveKnowledge, retrieveKnowledgeText } from '../../src/knowledge/application/retrieval.js';
-import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
+import { sourceRef, traceSnapshotFixture } from '../helpers/knowledge-source.js';
+import { searchSourceEvidence } from '../../src/knowledge/application/source-evidence-search.js';
 import type { SourceRef } from '../../src/knowledge/sources/sources.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8') + 1;
+
+describe('selected source evidence search', () => {
+  it('ranks literal matches and preserves exact overlapping excerpts, UTF-16 ranges and attribution', () => {
+    const longIdentifier = 'c'.repeat(200);
+    const text = `${'x'.repeat(1020)} bonfire${'🙂'.repeat(490)}\r\nCanon EOS 80D 三次旅行。`;
+    const snapshot = traceSnapshotFixture(text), source = sourceRef(snapshot);
+    const app = { source: vi.fn(() => ({ status: 'available' as const, snapshot })) };
+    expect(searchSourceEvidence(app, { source, query: 'bon' }).hits).toEqual([]);
+    expect(searchSourceEvidence(app, { source, query: '旅' }).hits[0].selection.quote).toContain('三次旅行');
+    const { hits } = searchSourceEvidence(app, { source, query: 'Canon EOS 三次旅行' });
+    expect(hits[0].selection.quote).toContain('Canon EOS 80D 三次旅行。');
+    for (const { selection, coordinate } of hits) {
+      expect(selection.start).toBeGreaterThan(0);
+      expect(selection.quote).toBe(text.slice(selection.start, selection.end));
+      expect(Buffer.from(selection.quote).toString()).toBe(selection.quote);
+      expect(selection.evidenceRef).toBe(snapshot.excerpts[0].evidenceRef);
+      expect(coordinate).toMatchObject({ coordinateKind: 'trace_event', role: 'user', recordIndex: 0 });
+    }
+    const seam = traceSnapshotFixture(`${' '.repeat(885)}${longIdentifier}${' '.repeat(180)}`);
+    app.source.mockReturnValue({ status: 'available', snapshot: seam });
+    expect(searchSourceEvidence(app, { source: sourceRef(seam), query: longIdentifier }).hits[0].selection.quote).toContain(longIdentifier);
+  });
+
+  it('omits complete matches to fit the serialized budget and fails closed on a wrong source version', () => {
+    const snapshot = traceSnapshotFixture('活动名称 '.repeat(720)), source = sourceRef(snapshot);
+    const app = { source: vi.fn(() => ({ status: 'available' as const, snapshot })) };
+    const query = '活动名称';
+    const full = searchSourceEvidence(app, { source, query });
+    const limited = searchSourceEvidence(app, { source, query, maxBytes: 1024 });
+    expect(full.hits.length).toBeGreaterThan(limited.hits.length);
+    expect(limited.omittedMatches + limited.hits.length).toBe(full.omittedMatches + full.hits.length);
+    expect(bytes(limited)).toBeLessThanOrEqual(1024);
+    expect(searchSourceEvidence(app, { source: { ...source, sourceVersion: digest }, query })).toMatchObject({
+      source: { status: 'unavailable', reason: 'version_mismatch' }, hits: [], omittedMatches: 0,
+    });
+  });
+});
 function fixture(texts = ['仅父组件初始化时 v-model 不更新；不适用于用户输入，成本未知。']) {
   const knowledgeId = randomUUID(), revisionId = randomUUID(), snapshotId = randomUUID();
   const quote = '🙂 用户报告初始化问题，尚未独立验证。';

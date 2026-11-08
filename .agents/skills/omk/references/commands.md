@@ -626,13 +626,13 @@ omk observe knowledge <operation> [flags]
 - `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
 - `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources}；关联重建为 {sources, bodyRefs}，来源复核为 {sources, bodyRefs, ledgerRef?}；来源决定为完整 command，也接受完整修订／复核草稿。
 - `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
-- `--json` `boolean`:完整 JSON；retrieve 默认或 --format json 为单行预算内 JSON，不可与 --format text 同用。
+- `--json` `boolean`:完整 JSON。retrieve 默认输出预算内单行 JSON，亦可用 --format json，不可与 --format text 同用。search-source 始终输出预算内单行 JSON。
 - `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
 - `--matching-build` `option`:migrate-sources／migrate-workflow：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。
 - `--matching-build-id` `option`:migrate-sources／migrate-workflow：宿主声明的旧构建身份；不等同于实际安装和回退已验收。
-- `--max-bytes` `option`:retrieve 所选完整视图加一个换行的 UTF-8 预算，默认 65536，可显式设 8192；不是正文上限。整段省略，不截条件。
+- `--max-bytes` `option`:输出加一个换行的 UTF-8 预算。retrieve 默认 65536，预算不足时省略完整段落。search-source 默认 16384，范围 1024–65536，预算不足时省略完整命中。
 - `--model` `option`:生成模型，沿用已配置模型。
 - `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
 - `--operation-id` `option`:seal-run／migrate-associations／migrate-sources／migrate-workflow：稳定操作 UUID，重入必须复用。
@@ -642,15 +642,15 @@ omk observe knowledge <operation> [flags]
 - `--page-size` `option`:entities 每页条数。
 - `--plan-only` `boolean`:migrate-sources／migrate-workflow：只读导出独立副本迁移计划，不创建目标。
 - `--projection-revision` `option`:review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。
-- `--query` `option`:retrieve 必填自然问题；ASCII/代码及中文连续/双字片段字面召回，不作语义推断。
+- `--query` `option`:retrieve 必填自然问题，字面召回 ASCII／代码及中文连续／双字片段。search-source 必填原文字面查询，零模型。
 - `--reason` `option`:修订或维护理由。保留和关联审查均不证明真值。
 - `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
 - `--revision` `option`:明确知识或派生修订身份。
 - `--run-id` `option`:生成/重建稳定 UUID；重复只恢复，绝不重发模型。
 - `--scope` `option`:preview-sources／capture／source-updates：独立可信宿主绑定 JSON（1 MiB 内），声明项目 root 或 trace path；选区 JSON 仅使用逻辑 ID 和相对路径。
-- `--snapshot` `option`:source／delete-source／retrieve：来源 snapshot UUID，必须同时给出 --source-version。
+- `--snapshot` `option`:source／delete-source／retrieve／search-source：来源 snapshot UUID，必须同时给出 --source-version。search-source 必填。
 - `--source-status` `all|available|unavailable`:entities 来源可读状态筛选。
-- `--source-version` `option`:source／delete-source／retrieve：精确来源 sha256，须配 --snapshot。
+- `--source-version` `option`:source／delete-source／retrieve／search-source：精确来源 sha256，须配 --snapshot。search-source 必填。
 - `--stage` `source_ledger|body_draft|body|body_window|source_coverage|association`:schema：响应阶段，默认 body。
 - `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
 - `--workspace` `option`:显式知识工作区，省略使用设置。
@@ -727,6 +727,10 @@ omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --gen
 
 ```bash
 omk observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates
+```
+
+```bash
+omk observe knowledge search-source --workspace ./knowledge --snapshot <uuid> --source-version sha256:<digest> --query "v-model"
 ```
 
 ```bash

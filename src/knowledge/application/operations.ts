@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { KnowledgeGenerationModel, KnowledgeApplication } from './application.js';
 import { KnowledgeBodyRefSchema } from '../contracts.js';
 import { KnowledgeRetrievalRequestSchema, retrieveKnowledge, retrieveKnowledgeText } from './retrieval.js';
+import { SourceEvidenceSearchRequestSchema, searchSourceEvidence } from './source-evidence-search.js';
 import { KnowledgeStorageStateError } from '../adapters/workspace-guard.js';
 import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
 import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources/sources.js';
@@ -44,6 +45,10 @@ export const knowledgeOperationSchemas = {
     includeCandidates: KnowledgeRetrievalRequestSchema.shape.includeCandidates.unwrap().optional(),
   }).refine(value => [value.analysisId, value.entityRevisionId, value.entityId].filter(value => value !== undefined).length % 3 === 0,
     { message: 'Entity scope requires analysisId, entityRevisionId and entityId.' }).refine(value => !!value.sourceVersion === !!value.snapshot, { path: ['sourceVersion'], message: 'Source scope requires both snapshot and sourceVersion.' }),
+  'search-source': SourceEvidenceSearchRequestSchema.extend({
+    operation: z.literal('search-source'),
+    maxBytes: SourceEvidenceSearchRequestSchema.shape.maxBytes.unwrap().optional(),
+  }),
   resume: z.strictObject({ operation: z.literal('resume'), id: text }),
   source: z.strictObject({ operation: z.literal('source'), source: SourceRefSchema }),
   'source-updates': z.strictObject({ operation: z.literal('source-updates'), source: SourceRefSchema, replacementSelection: SourceSelectionSchema.optional() }),
@@ -57,6 +62,7 @@ export const KnowledgeOperationSchema = z.discriminatedUnion('operation', [
   knowledgeOperationSchemas['source-coverage-status'], knowledgeOperationSchemas['review-source-coverage'],
   knowledgeOperationSchemas.show, knowledgeOperationSchemas.entities, knowledgeOperationSchemas['entity-catalog'],
   knowledgeOperationSchemas['entity-detail'], knowledgeOperationSchemas['correct-entities'], knowledgeOperationSchemas.inspect, knowledgeOperationSchemas['continue-stage'], knowledgeOperationSchemas['prepare-rebuild-associations'], knowledgeOperationSchemas['rebuild-associations'], knowledgeOperationSchemas.retrieve,
+  knowledgeOperationSchemas['search-source'],
   knowledgeOperationSchemas['review-associations'], knowledgeOperationSchemas['apply-associations'], knowledgeOperationSchemas['preview-sources'], knowledgeOperationSchemas.capture, knowledgeOperationSchemas['prepare-generation'], knowledgeOperationSchemas.generate, knowledgeOperationSchemas.resume,
   knowledgeOperationSchemas.source, knowledgeOperationSchemas['source-updates'], knowledgeOperationSchemas['delete-source'], knowledgeOperationSchemas.maintain, knowledgeOperationSchemas.revise,
 ]);
@@ -72,6 +78,7 @@ type Results = {
   entities: ReturnType<KnowledgeApplication['entities']>; 'entity-catalog': ReturnType<KnowledgeApplication['queryEntities']>;
   'entity-detail': ReturnType<KnowledgeApplication['entityDetail']>; 'correct-entities': ReturnType<KnowledgeApplication['correctEntities']>;
   inspect: ReturnType<KnowledgeApplication['inspect']>; retrieve: ReturnType<typeof retrieveKnowledge> | string; 'continue-stage': Awaited<ReturnType<KnowledgeApplication['continueStage']>>; 'rebuild-associations': Awaited<ReturnType<KnowledgeApplication['rebuildAssociations']>>;
+  'search-source': ReturnType<typeof searchSourceEvidence>;
   'preview-sources': ReturnType<KnowledgeApplication['previewSources']>; capture: ReturnType<KnowledgeApplication['captureSources']>;
   'prepare-generation': Awaited<ReturnType<KnowledgeApplication['prepareGeneration']>>; 'prepare-rebuild-associations': Awaited<ReturnType<KnowledgeApplication['prepareAssociationRebuild']>>;
   generate: Awaited<ReturnType<KnowledgeApplication['generate']>>; resume: ReturnType<KnowledgeApplication['resume']>;
@@ -96,6 +103,7 @@ export async function executeKnowledgeOperation<C extends KnowledgeOperation>(ap
       case 'correct-entities': return app.correctEntities(request.analysisId, request.revision, request.generation, request.draft, request.reason);
       case 'retrieve': return (request.format === 'text' ? retrieveKnowledgeText : retrieveKnowledge)(app, { query: request.query, maxBytes: request.maxBytes,
         includeCandidates: request.includeCandidates, snapshot: request.snapshot, sourceVersion: request.sourceVersion, analysisId: request.analysisId, entityRevisionId: request.entityRevisionId, entityId: request.entityId });
+      case 'search-source': return searchSourceEvidence(app, { source: request.source, query: request.query, maxBytes: request.maxBytes });
       case 'inspect': return app.inspect(request.id);
       case 'source-ledger': return app.sourceLedger(request.id, request.revision);
       case 'source-coverage-status': return app.sourceCoverageStatus(request.id, request.revision);

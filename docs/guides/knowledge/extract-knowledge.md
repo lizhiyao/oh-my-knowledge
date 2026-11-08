@@ -279,6 +279,16 @@ For the default JSON view, **65536 UTF-8 bytes counts the entire single-line JSO
 
 Recall and ordering use deterministic literal ASCII/code identifiers and Han runs/bigrams. The response records `rankingPolicyId: knowledge-body-literal-topic-priority/v3`. After source/entity scoping, each body's title, tags and eligible segment text determine its matched query ASCII/code term set. A strict subset lowers packing priority only: it does not prove redundant content or remove candidates. Equal sets tie, and incomparable sets do not demote each other; pure Han queries and queries with no ASCII hits retain the existing ordering. Among fitting segments, maximal topic sets come first, followed by incremental literal coverage/cost; lower-priority candidates remain eligible for remaining budget. All oversized or budget-excluded candidates count in `omitted`. This uses no embeddings and infers no semantic identity. `--include-candidates` explicitly includes unretained pending bodies; discarded revisions remain excluded. `--snapshot` and `--source-version` must be provided together to scope an exact source reference. `--entity-id` requires both `--analysis` and `--entity-revision` and uses an available matching derived projection, without automatic name merging; rejected/unavailable/stale associations cannot supply that scope. Unavailable source evidence remains explicitly unavailable while stored body text is readable.
 
+### Search an exact captured source {#search-captured-source}
+
+When you have permission to read a specific saved source version, `search-source` can locate passages that the knowledge body may have omitted. Use the snapshot ID and version from its capture receipt or existing evidence reference.
+
+```bash
+omk observe knowledge search-source --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<source-digest> --query 'EOS 80D' --json
+```
+
+The read-only command ranks literal matches in that version's captured excerpts without a model. Matching uses Latin terms and Han bigrams or individual Han characters, ignoring common English words. Each hit includes the exact quote, UTF-16 offsets into the excerpt, and the source coordinate, including speaker and timestamp when the capture provides them. File coordinates describe the captured excerpt. The compact JSON and its newline share a UTF-8 budget of 16384 bytes by default, adjustable from 1024 to 65536. `omittedMatches` counts matched passages excluded by that budget. `source.status` distinguishes an unavailable version from an available source with no hits. When using a hit, cite it as original evidence and check nearby context if the passage leaves an attribution, date, or condition unresolved.
+
 ### Maintain existing knowledge with new material {#maintain-existing-knowledge}
 
 For an update, retrieve for the actual task and use `show` to pin `knowledgeId`, `revisionId`, `bodyDigest` and the body's `history.generation`; read relevant review opinions. Matching names do not establish identity. Distinguish added conditions, corrections, different positions and independent new cases. Express stable methods separately from dated/versioned cases: historical versions are not permanent requirements, and recency does not resolve contradictions.
