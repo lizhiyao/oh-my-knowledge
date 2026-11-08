@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SourceDigestSchema, sourceSetPreimage, type SourceSnapshot } from '../sources.js';
+import { SourceDigestSchema, sourceSetPreimage, type SourceSnapshot } from '../sources/sources.js';
 import { canonicalJson } from '../store.js';
 import { BODY_GENERATION_PROFILE, BODY_PASSAGE_INDEX_ECHO, BodyGenerationResponseSchema, checkGeneratedBodies,
   freezeGenerationWire, generationTextDigest, strictGenerationWire, type GenerationProfile } from './body-generation-wire.js';

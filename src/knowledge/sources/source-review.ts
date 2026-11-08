@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KnowledgeActorSchema, KnowledgeBodyRefSchema, type KnowledgeActor } from './contracts.js';
+import { KnowledgeActorSchema, KnowledgeBodyRefSchema, type KnowledgeActor } from '../contracts.js';
 import { SourceDigestSchema, SourceRefSchema } from './sources.js';
 
 const id = z.string().min(1).max(256).refine(value => !!value.trim());

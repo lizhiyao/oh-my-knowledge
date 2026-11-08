@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Input, Space } from 'antd';
 import Link from 'next/link';
 import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
-import type { SourceRef } from '../../../../knowledge/sources';
+import type { SourceRef } from '../../../../knowledge/sources/sources';
 import type { KnowledgeSourceUpdates, SourceViewSnapshot } from '../../../view-models/knowledge/knowledge-candidates';
 import { KNOWLEDGE_LIBRARY_PATH } from '../../../http/page-paths';
 import type { Language } from '../layout/shell';

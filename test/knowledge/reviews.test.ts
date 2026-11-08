@@ -13,8 +13,8 @@ import { FileKnowledgeReviewStore } from '../../src/knowledge/adapters/review-st
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
-import { knowledgeReviewSources, type KnowledgeContentReviewInput } from '../../src/knowledge/reviews.js';
-import { validateKnowledgeReviewHistory } from '../../src/knowledge/review-history.js';
+import { knowledgeReviewSources, type KnowledgeContentReviewInput } from '../../src/knowledge/reviews/reviews.js';
+import { validateKnowledgeReviewHistory } from '../../src/knowledge/reviews/review-history.js';
 import { bodyActor, bodyAt, bodyWrite } from './body-fixtures.js';
 
 const roots: string[] = [];

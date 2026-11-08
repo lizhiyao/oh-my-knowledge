@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { EntityMention, EvidenceSelection, KnowledgeActor, KnowledgeBodyEvidence, KnowledgeBodyRef, KnowledgeRevision } from '../contracts.js';
 import type { AnalyzedEntity, EntityAnalysisEnvelope, EntityAnalysisRevisionSchema } from '../entities/contracts.js';
-import type { SourceStore } from '../source-store.js';
-import type { TraceOrigin, SourceResolution } from '../sources.js';
+import type { SourceStore } from '../sources/source-store.js';
+import type { TraceOrigin, SourceResolution } from '../sources/sources.js';
 import { sourceOrigin, sourceSummary, type SourceSummary } from './source-summary.js';
 import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationEnvelope, type KnowledgeAssociationRevision, type KnowledgeAssociationSelection } from '../associations.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';

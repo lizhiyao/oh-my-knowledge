@@ -9,7 +9,7 @@ import { FileSourceStore, SOURCE_SNAPSHOT_MAX_BYTES, SOURCE_STORAGE_MAX_BYTES, S
   SourceStoreError } from '../../src/knowledge/adapters/source-store.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { WORKSPACE_LOCK_FILE } from '../../src/knowledge/adapters/workspace-guard.js';
-import type { SourceProjection, SourceSnapshot } from '../../src/knowledge/sources.js';
+import type { SourceProjection, SourceSnapshot } from '../../src/knowledge/sources/sources.js';
 
 const fault = vi.hoisted(() => ({ tempWrite: false, tempWriteCountdown: undefined as number | undefined, afterLink: false, denied: false,
   afterPublished: undefined as (() => void) | undefined,

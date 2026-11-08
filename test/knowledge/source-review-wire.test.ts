@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
-import { sourceCoverageUnresolved } from '../../src/knowledge/source-review-history.js';
+import { sourceCoverageUnresolved } from '../../src/knowledge/sources/source-review-history.js';
 import { sourceReviewInput, sourceLedgerPassages } from '../../src/knowledge/extraction/source-review-input.js';
 import { BODY_GENERATION_PROFILE, ASSOCIATION_GENERATION_PROFILE } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { checkGeneratedSourceCoverage, checkGeneratedSourceLedger, sourceCoverageModelInput, sourceLedgerModelInput,

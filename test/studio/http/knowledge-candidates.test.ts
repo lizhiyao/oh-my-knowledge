@@ -1,6 +1,6 @@
 import { FileSourceStore } from '../../../src/knowledge/adapters/source-store.js';
 import { readTraceSource } from '../../../src/knowledge/adapters/trace-source-reader.js';
-import type { SourceSnapshot, TraceOrigin } from '../../../src/knowledge/sources.js';
+import type { SourceSnapshot, TraceOrigin } from '../../../src/knowledge/sources/sources.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { SourceExcerpt, SourceMaterialAttribution, SourceRef, SourceSnapshot, TraceOrigin } from '../../../src/knowledge/sources';
-import { normalizeRecordRanges } from '../../../src/knowledge/sources';
+import type { SourceExcerpt, SourceMaterialAttribution, SourceRef, SourceSnapshot, TraceOrigin } from '../../../src/knowledge/sources/sources';
+import { normalizeRecordRanges } from '../../../src/knowledge/sources/sources';
 import { sourceSummary } from '../../../src/knowledge/application/source-summary';
 
 const digest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;

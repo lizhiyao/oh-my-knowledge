@@ -4,7 +4,7 @@ import { BODY_GENERATION_PROFILE, generationTextDigest } from '../../src/knowled
 import { BODY_WINDOW_PROFILE, type BodyWindowGenerationResponseSchema, LONG_BODY_WINDOW_INPUT_VERSION, LongBodyCapacityError, LongBodyPlanSchema, assertLongBodyWindowInputs, bodyWindowInput,
   checkLongBodyWindowOutput, collectLongBodyWindows, createLongBodyPlan } from '../../src/knowledge/extraction/long-body.js';
 import { bodyGenerationSources } from '../../src/knowledge/extraction/source-input.js';
-import { sourceSetPreimage } from '../../src/knowledge/sources.js';
+import { sourceSetPreimage } from '../../src/knowledge/sources/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import type { z } from 'zod';
 

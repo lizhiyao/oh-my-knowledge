@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { canonicalJson } from '../store.js';
 import { ResolvedSourceSelectionSchema, SourceDigestSchema, SourceProjectionSchema, SourceSelectionSchema,
   normalizeLineRanges, normalizeRecordRanges, sourceVersionPreimage,
-  type ResolvedSourceSelection, type SourceProjection, type SourceSelection } from '../sources.js';
-import type { SourceCaptureOptions, SourceStore } from '../source-store.js';
+  type ResolvedSourceSelection, type SourceProjection, type SourceSelection } from '../sources/sources.js';
+import type { SourceCaptureOptions, SourceStore } from '../sources/source-store.js';
 
 export const SOURCE_CAPTURE_MAX_SOURCES = 256;
 export const SOURCE_CAPTURE_MAX_READ_BYTES = 64 * 1024 * 1024;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { KnowledgeBodyRefSchema } from '../contracts.js';
-import { KnowledgeContentReviewInputSchema, KnowledgeCoverageReviewInputSchema, KnowledgeUseInputSchema } from '../reviews.js';
+import { KnowledgeContentReviewInputSchema, KnowledgeCoverageReviewInputSchema, KnowledgeUseInputSchema } from '../reviews/reviews.js';
 import type { KnowledgeReviewApplication } from './review.js';
 
 export const knowledgeReviewOperationSchemas = {

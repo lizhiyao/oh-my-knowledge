@@ -13,14 +13,14 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileSourceLedgerStore, FileSourceCoverageStore } from '../../src/knowledge/adapters/source-review-store.js';
 import { knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { GenerationJournal, GenerationStage } from '../../src/knowledge/extraction/generation-journal.js';
-import type { SourceCoverageData, SourceCoverageDecisionRef, SourceLedgerData } from '../../src/knowledge/source-review.js';
+import type { SourceCoverageData, SourceCoverageDecisionRef, SourceLedgerData } from '../../src/knowledge/sources/source-review.js';
 import { FileKnowledgeTags } from '../../src/knowledge/adapters/knowledge-tags.js';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { captureTraceFixture, sourceRef } from '../helpers/knowledge-source.js';
 import { WRITING_DRAFT_PROFILE } from '../../src/knowledge/extraction/writing-draft.js';
 import { generationImportRunId, bodySourcePassages, WORKFLOW_ID } from '../../src/knowledge/extraction/source-input.js';
 import { passageRange } from '../helpers/source-passages.js';
-import { sourceSetPreimage, type SourceRef } from '../../src/knowledge/sources.js';
+import { sourceSetPreimage, type SourceRef } from '../../src/knowledge/sources/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { ASSOCIATION_GENERATION_PROFILE, BODY_GENERATION_PROFILE, generationTextDigest, type BodyGenerationResponseSchema, type AssociationGenerationResponse } from '../../src/knowledge/extraction/body-generation-wire.js';
 import { SOURCE_REVIEW_INPUT_VERSION, type sourceLedgerInput, type SourceReviewInput } from '../../src/knowledge/extraction/source-review-input.js';

@@ -6,7 +6,7 @@ import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-sto
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
 import type { KnowledgeApplication } from '../../src/knowledge/application/application.js';
-import type { SourceCoverageData, SourceCoverageWrite, SourceLedgerData, SourceReviewManifest } from '../../src/knowledge/source-review.js';
+import type { SourceCoverageData, SourceCoverageWrite, SourceLedgerData, SourceReviewManifest } from '../../src/knowledge/sources/source-review.js';
 import type { EvidenceExcerpt } from '../../src/knowledge/contracts.js';
 import type { GenerationStage } from '../../src/knowledge/extraction/generation-journal.js';
 import { readTraceSource } from '../../src/knowledge/adapters/trace-source-reader.js';

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { checkStorageDirectory } from '../adapters/workspace-guard.js';
 import { SourceUpdatesService, type SourceCurrentReadResult, type SourceUpdateInventory } from './source-updates.js';
 import { canonicalJson, type KnowledgeEnvelope } from '../store.js';
-import { ResolvedSourceSelectionSchema, type SourceRef, type SourceSnapshot } from '../sources.js';
+import { ResolvedSourceSelectionSchema, type SourceRef, type SourceSnapshot } from '../sources/sources.js';
 import { FileSourceStore } from '../adapters/source-store.js';
 import { createLocalSourceReader, LocalSourceScopeSchema, type LocalSourceScope } from './local-source-host.js';
 import { ProjectSourceReadError } from '../adapters/project-source-reader.js';

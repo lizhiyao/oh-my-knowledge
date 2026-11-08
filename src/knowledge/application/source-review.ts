@@ -1,13 +1,13 @@
 import type { KnowledgeActor, KnowledgeBodyRef } from '../contracts.js';
 import type { KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
-import type { SourceStore } from '../source-store.js';
+import type { SourceStore } from '../sources/source-store.js';
 import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageDecisionRef, SourceReviewManifest,
-  SourceLedgerRevision, SourceCoverageRevision, SourceLedgerStore, SourceCoverageStore } from '../source-review.js';
+  SourceLedgerRevision, SourceCoverageRevision, SourceLedgerStore, SourceCoverageStore } from '../sources/source-review.js';
 import { SourceLedgerRefSchema, SourceCoverageRefSchema, SourceCoverageDecisionRefSchema, SourceReviewActorSchema,
-  SourceLedgerWriteSchema, SourceCoverageWriteSchema } from '../source-review.js';
+  SourceLedgerWriteSchema, SourceCoverageWriteSchema } from '../sources/source-review.js';
 import { assertSourceCoverageDecision, selectSourceCoverageDecision, validateSourceCoverageData,
-  validateSourceCoverageDecisionDispositions } from '../source-review-history.js';
+  validateSourceCoverageDecisionDispositions } from '../sources/source-review-history.js';
 import { generationTextDigest } from '../extraction/body-generation-wire.js';
 import { checkGeneratedSourceLedger, checkGeneratedSourceCoverage, sourceLedgerModelInput, sourceCoverageModelInput,
   SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE,

@@ -8,7 +8,7 @@ import { WRITING_DRAFT_PROFILE } from '../../../knowledge/extraction/writing-dra
 import { BODY_WINDOW_PROFILE } from '../../../knowledge/extraction/long-body.js';
 import { SOURCE_LEDGER_GENERATION_PROFILE, SOURCE_COVERAGE_GENERATION_PROFILE } from '../../../knowledge/extraction/source-review-wire.js';
 import { readLocalSourceScope } from '../../../knowledge/application/local-source-host.js';
-import { SourceDigestSchema, SourceRefSchema, ResolvedSourceSelectionSchema } from '../../../knowledge/sources.js';
+import { SourceDigestSchema, SourceRefSchema, ResolvedSourceSelectionSchema } from '../../../knowledge/sources/sources.js';
 import { FileExtractionRunStore } from '../../../knowledge/adapters/run-store.js';
 import { ExtractionRunSealRequestSchema, ExtractionRunSealError } from '../../../knowledge/extraction/run-sealing.js';
 import { ExtractionStudyInspectionError, ExtractionStudyFileError } from '../../../knowledge/adapters/study-inspection-errors.js';

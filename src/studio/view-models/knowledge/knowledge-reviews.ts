@@ -5,4 +5,4 @@ export type {
   KnowledgeContentReviewInput as KnowledgeReviewContentInput,
   KnowledgeCoverageReviewInput as KnowledgeReviewCoverageInput,
   KnowledgeUseInput as KnowledgeReviewUseInput,
-} from '../../../knowledge/reviews.js';
+} from '../../../knowledge/reviews/reviews.js';

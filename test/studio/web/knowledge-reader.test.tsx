@@ -13,7 +13,7 @@ import { bodyWrite, bodyActor } from '../../knowledge/body-fixtures.js';
 import { FileKnowledgeStore } from '../../../src/knowledge/adapters/knowledge-store.js';
 import { knowledgeBodyDigest } from '../../../src/knowledge/adapters/body-digest.js';
 import { FileSourceStore } from '../../../src/knowledge/adapters/source-store';
-import { sourceSnapshotProjection } from '../../../src/knowledge/sources';
+import { sourceSnapshotProjection } from '../../../src/knowledge/sources/sources';
 import { fileSourceFixture } from './source-fixture';
 it('reads exact persisted knowledge, context and source classification in both entries without claiming verification', async () => {
   const root = mkdtempSync(join(tmpdir(), 'omk-reader-'));

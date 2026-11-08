@@ -4,10 +4,10 @@ import { KnowledgeBodyRefSchema } from '../contracts.js';
 import { KnowledgeRetrievalRequestSchema, retrieveKnowledge, retrieveKnowledgeText } from './retrieval.js';
 import { KnowledgeStorageStateError } from '../adapters/workspace-guard.js';
 import { EntityAnalysisWriteCapacityError } from '../entities/contracts.js';
-import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources.js';
+import { SourceDigestSchema, SourceRefSchema, SourceSelectionSchema, ResolvedSourceSelectionSchema } from '../sources/sources.js';
 import { SourceCaptureError } from './source-capture.js';
 import { SourceStoreError } from '../adapters/source-store.js';
-import { SourceLedgerRefSchema, SourceCoverageWriteSchema } from '../source-review.js';
+import { SourceLedgerRefSchema, SourceCoverageWriteSchema } from '../sources/source-review.js';
 
 const text = z.string().trim().min(1);
 const uuid = z.string().uuid();

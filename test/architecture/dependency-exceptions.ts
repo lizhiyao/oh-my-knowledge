@@ -127,8 +127,8 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: '5d44ebefb9d9feed42e1309a563f28205b19495fc8336e3993884c5e8ffb58b5',
-    rationale: 'Documentation generation loads only fixed compiled current body, Source3, independent review/relation contracts and the Graph3 version constant to derive identities and limits. All file arguments, including relations.js and application/graph.js, are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
+    sourceSha256: 'fd62893958a2052b0729cfee0b04e319b20ff91e9024f88dbe33785033b33e04',
+    rationale: 'Documentation generation loads only fixed compiled current body, Source3, independent review/relation contracts and the Graph3 version constant to derive identities and limits. All file arguments, including relations/relations.js and application/graph.js, are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {
     importer: 'scripts/bench/studio-baseline.ts',

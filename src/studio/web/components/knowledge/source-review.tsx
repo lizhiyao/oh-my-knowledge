@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Space, Spin } from 'antd';
 import type { SourceReviewApplication } from '../../../../knowledge/application/source-review';
 import type { SourceLedgerRef, SourceCoverageRef, SourceCoverageWrite,
-  SourceReviewReceipt, SourceCoverageData, SourceReviewEvidence } from '../../../../knowledge/source-review';
+  SourceReviewReceipt, SourceCoverageData, SourceReviewEvidence } from '../../../../knowledge/sources/source-review';
 import type { Language } from '../layout/shell';
 import { requestKnowledge, KnowledgeRequestError } from './request';
 import { useKnowledgeSave } from './save-session';

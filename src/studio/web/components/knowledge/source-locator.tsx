@@ -4,7 +4,7 @@ import { Button } from 'antd';
 import { requestKnowledge } from './request';
 import type { SourceViewSnapshot } from '../../../view-models/knowledge/knowledge-candidates';
 import Link from 'next/link';
-import type { SourceExcerpt, SourceExcerptCoordinate, SourceMaterialAttribution, SourceRef, SourceResolution, SourceUnitCoordinate } from '../../../../knowledge/sources';
+import type { SourceExcerpt, SourceExcerptCoordinate, SourceMaterialAttribution, SourceRef, SourceResolution, SourceUnitCoordinate } from '../../../../knowledge/sources/sources';
 import type { SourceSummary } from '../../../../knowledge/application/source-summary';
 import type { Language } from '../layout/shell';
 import { displayTime } from '../../../application/display/format';

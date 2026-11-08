@@ -21,11 +21,11 @@ export interface CurrentKnowledgeContract {
 export async function loadCurrentKnowledgeContract(root: string): Promise<CurrentKnowledgeContract> {
   const load = (file: string) => import(pathToFileURL(resolve(root, 'dist/knowledge', file)).href);
   const [wire, knowledge, associations, reviews, journal, entities, archive, retrieval, plan, inspection, sources, sourceStore, sourceInput, sourceReview, reviewWire, relations, graph, writing] = await Promise.all([
-    load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews.js'), load('extraction/generation-journal.js'),
+    load('extraction/body-generation-wire.js'), load('store.js'), load('associations.js'), load('reviews/reviews.js'), load('extraction/generation-journal.js'),
     load('entities/contracts.js'), load('adapters/generation-journal-store.js'), load('application/retrieval.js'),
     load('extraction/study-plan.js'), load('extraction/study-capacity.js'),
-    load('sources.js'), load('adapters/source-store.js'), load('extraction/source-input.js'),
-    load('source-review.js'), load('extraction/source-review-wire.js'), load('relations.js'), load('application/graph.js'), load('extraction/writing-draft.js'),
+    load('sources/sources.js'), load('adapters/source-store.js'), load('extraction/source-input.js'),
+    load('sources/source-review.js'), load('extraction/source-review-wire.js'), load('relations/relations.js'), load('application/graph.js'), load('extraction/writing-draft.js'),
   ]);
   const body = wire.BODY_GENERATION_PROFILE, association = wire.ASSOCIATION_GENERATION_PROFILE;
   return {

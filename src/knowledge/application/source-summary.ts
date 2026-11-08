@@ -1,4 +1,4 @@
-import type { SourceSnapshot, TraceOrigin } from '../sources.js';
+import type { SourceSnapshot, TraceOrigin } from '../sources/sources.js';
 
 type WithoutRawUnits<T> = T extends unknown ? Omit<T, 'rawUnits'> : never;
 type SourceSummaryInput = WithoutRawUnits<SourceSnapshot>;

@@ -9,7 +9,7 @@ import { SourceCaptureService, SOURCE_CAPTURE_MAX_SOURCES, SOURCE_CAPTURE_READ_R
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { readProjectSource, readResolvedProjectSource } from '../../src/knowledge/adapters/project-source-reader.js';
 import { readTraceSource, type TraceSourceReadContext } from '../../src/knowledge/adapters/trace-source-reader.js';
-import type { SourceSelection } from '../../src/knowledge/sources.js';
+import type { SourceSelection } from '../../src/knowledge/sources/sources.js';
 
 const roots: string[] = [];
 const sha = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;

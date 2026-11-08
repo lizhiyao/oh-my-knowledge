@@ -1,6 +1,6 @@
 import type { KnowledgeApplication } from '../../../knowledge/application/application.js';
-import type { SourceSnapshot, SourceResolution, TraceOrigin, SourceRef } from '../../../knowledge/sources.js';
-import type { SourceLedgerRef, SourceCoverageRef } from '../../../knowledge/source-review.js';
+import type { SourceSnapshot, SourceResolution, TraceOrigin, SourceRef } from '../../../knowledge/sources/sources.js';
+import type { SourceLedgerRef, SourceCoverageRef } from '../../../knowledge/sources/source-review.js';
 import type { KnowledgeBodyRef } from '../../../knowledge/contracts.js';
 import type { GenerationArchiveCheck, GenerationStage, GenerationJournal } from '../../../knowledge/extraction/generation-journal.js';
 import type { KnowledgeRetrievalRequest, KnowledgeRetrievalResult } from '../../../knowledge/application/retrieval.js';

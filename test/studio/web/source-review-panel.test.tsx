@@ -4,10 +4,10 @@ import type { PropsWithChildren } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SourceReviewPanel } from '../../../src/studio/web/components/knowledge/source-review';
-import { applySourceLedgerWrite, applySourceCoverageWrite, selectSourceCoverageDecision, sourceCoverageUnresolved } from '../../../src/knowledge/source-review-history.js';
+import { applySourceLedgerWrite, applySourceCoverageWrite, selectSourceCoverageDecision, sourceCoverageUnresolved } from '../../../src/knowledge/sources/source-review-history.js';
 import { sourceReviewRevisionDigest } from '../../../src/knowledge/adapters/source-review-store.js';
 import { sourceReviewFixture, reviewActor, reviewDigest } from '../../knowledge/source-review-fixtures.js';
-import type { SourceCoverageWrite } from '../../../src/knowledge/source-review.js';
+import type { SourceCoverageWrite } from '../../../src/knowledge/sources/source-review.js';
 
 const at = '2026-10-30T00:00:00Z';
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });

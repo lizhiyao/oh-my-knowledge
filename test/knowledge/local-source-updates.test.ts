@@ -13,7 +13,7 @@ import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapt
 import { KnowledgeOperationSchema } from '../../src/knowledge/application/operations.js';
 import type { LocalSourceScope } from '../../src/knowledge/application/local-source-host.js';
 import type { KnowledgeRevision } from '../../src/knowledge/contracts.js';
-import type { SourceSelection, SourceSnapshot } from '../../src/knowledge/sources.js';
+import type { SourceSelection, SourceSnapshot } from '../../src/knowledge/sources/sources.js';
 import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
 import { sourceRef } from '../helpers/knowledge-source.js';
 import { runCommand } from '../helpers/run-command.js';

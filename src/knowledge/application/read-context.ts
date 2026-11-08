@@ -3,8 +3,8 @@ import type { EntityAnalysisEnvelope, EntityAnalysisStore } from '../entities/co
 import type { KnowledgeEnvelope, KnowledgeStore } from '../store.js';
 import { canonicalJson } from '../store.js';
 import type { KnowledgeTagStore } from '../tags.js';
-import type { SourceStore } from '../source-store.js';
-import type { KnowledgeRelationStore } from '../relations.js';
+import type { SourceStore } from '../sources/source-store.js';
+import type { KnowledgeRelationStore } from '../relations/relations.js';
 import { selectKnowledgeAssociation, knowledgeAssociationCatalogKey, type KnowledgeAssociationSelection, type KnowledgeAssociationStore } from '../associations.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
 import { knowledgeBodyRef } from '../adapters/body-digest.js';

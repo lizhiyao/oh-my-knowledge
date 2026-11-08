@@ -4,10 +4,10 @@ import { join, resolve } from 'node:path';
 import { KnowledgeStorageStateError, withWorkspaceFileWrite } from './workspace-guard.js';
 import type { KnowledgeActor } from '../contracts.js';
 import { canonicalJson } from '../store.js';
-import { KnowledgeReviewActorSchema } from '../reviews.js';
+import { KnowledgeReviewActorSchema } from '../reviews/reviews.js';
 import { KnowledgeRelationEnvelopeSchema, KnowledgeRelationWriteSchema, type KnowledgeRelationEnvelope,
-  type KnowledgeRelationInventory, type KnowledgeRelationStore, type KnowledgeRelationWrite } from '../relations.js';
-import { applyKnowledgeRelationWrite, validateKnowledgeRelationHistory } from '../relation-history.js';
+  type KnowledgeRelationInventory, type KnowledgeRelationStore, type KnowledgeRelationWrite } from '../relations/relations.js';
+import { applyKnowledgeRelationWrite, validateKnowledgeRelationHistory } from '../relations/relation-history.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 
 const MAX_BYTES = 16 * 1024 * 1024;

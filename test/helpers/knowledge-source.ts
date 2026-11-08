@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { FileSourceStore } from '../../src/knowledge/adapters/source-store.js';
 import { readTraceSource, type TraceSourceReadContext } from '../../src/knowledge/adapters/trace-source-reader.js';
-import { sourceVersionPreimage, type SourceRef, type SourceSnapshot, type TraceOrigin } from '../../src/knowledge/sources.js';
+import { sourceVersionPreimage, type SourceRef, type SourceSnapshot, type TraceOrigin } from '../../src/knowledge/sources/sources.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 
 type RawRecord = { recordIndex: number; raw: string };

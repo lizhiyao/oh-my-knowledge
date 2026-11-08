@@ -1,6 +1,6 @@
-import type { KnowledgeAssociationRevision } from './associations.js';
-import { type KnowledgeActor, type KnowledgeRevision } from './contracts.js';
-import { canonicalJson } from './store.js';
+import type { KnowledgeAssociationRevision } from '../associations.js';
+import { type KnowledgeActor, type KnowledgeRevision } from '../contracts.js';
+import { canonicalJson } from '../store.js';
 import { KnowledgeReviewActorSchema, KnowledgeReviewEnvelopeSchema, KnowledgeReviewEventSchema, KnowledgeReviewWriteSchema, knowledgeReviewSources, sameReviewBody,
   type KnowledgeReviewEnvelope, type KnowledgeReviewEvent, type KnowledgeReviewWrite } from './reviews.js';
 

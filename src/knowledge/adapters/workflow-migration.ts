@@ -8,7 +8,7 @@ import { assertSourceMigrationComplete, assertSourceMigrationWriteContext, SOURC
 import { KnowledgeActorSchema, type EvidenceSelection } from '../contracts.js';
 import { canonicalJson } from '../store.js';
 import { validateKnowledgeAssociationCatalogReferences } from '../entities/association-references.js';
-import { validateKnowledgeReviewReferences } from '../review-history.js';
+import { validateKnowledgeReviewReferences } from '../reviews/review-history.js';
 import { FileKnowledgeAssociationStore } from './association-store.js';
 import { confirmKnowledgePublication, publishKnowledgeBytes } from './durable-publication.js';
 import { FileEntityAnalysisStore } from './entity-store.js';

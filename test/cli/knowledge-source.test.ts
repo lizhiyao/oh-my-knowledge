@@ -10,7 +10,7 @@ import { executeKnowledgeOperation, KnowledgeOperationSchema, knowledgeFailureCo
 import { SourceCaptureError } from '../../src/knowledge/application/source-capture.js';
 import { SourceStoreError } from '../../src/knowledge/adapters/source-store.js';
 import { EvidenceWindowSchema } from '../../src/knowledge/extraction/evidence.js';
-import type { SourceSelection } from '../../src/knowledge/sources.js';
+import type { SourceSelection } from '../../src/knowledge/sources/sources.js';
 import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
 import type { KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import { createExtractionArchiveProducer } from '../../src/executors/archive.js';

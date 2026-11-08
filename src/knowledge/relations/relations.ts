@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { KnowledgeBodyEvidenceSchema, KnowledgeBodyRefSchema, type KnowledgeActor } from './contracts.js';
-import { KnowledgeReviewActorSchema } from './reviews.js';
+import { KnowledgeBodyEvidenceSchema, KnowledgeBodyRefSchema, type KnowledgeActor } from '../contracts.js';
+import { KnowledgeReviewActorSchema } from '../reviews/reviews.js';
 
 const id = z.string().uuid();
 const text = z.string().trim().min(1).max(4096);

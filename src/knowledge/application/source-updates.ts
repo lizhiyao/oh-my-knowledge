@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { KnowledgeAssociationCatalogRefSchema } from '../associations.js';
 import { KnowledgeBodyRefSchema, type KnowledgeBodyRef } from '../contracts.js';
-import type { SourceStore } from '../source-store.js';
+import type { SourceStore } from '../sources/source-store.js';
 import { canonicalJson } from '../store.js';
 import { SourceCurrentStateSchema, SourceIdentitySchema, SourceProjectionSchema, SourceRefSchema, SourceResolutionSchema, SourceSelectionSchema,
   normalizeLineRanges, normalizeRecordRanges, sourceSnapshotProjection,
-  type SourceCurrentState, type SourceProjection, type SourceRef, type SourceResolution, type SourceSelection, type SourceSnapshot } from '../sources.js';
+  type SourceCurrentState, type SourceProjection, type SourceRef, type SourceResolution, type SourceSelection, type SourceSnapshot } from '../sources/sources.js';
 
 const id = z.string().min(1).max(256);
 const projectionRefSchema = z.strictObject({ namespace: id, bodyRef: KnowledgeBodyRefSchema, projectionRevisionId: id });
