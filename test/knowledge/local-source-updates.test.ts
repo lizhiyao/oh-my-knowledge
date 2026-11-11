@@ -14,7 +14,7 @@ import { KnowledgeOperationSchema } from '../../src/knowledge/application/operat
 import type { LocalSourceScope } from '../../src/knowledge/application/local-source-host.js';
 import type { KnowledgeRevision } from '../../src/knowledge/contracts.js';
 import type { SourceSelection, SourceSnapshot } from '../../src/knowledge/sources/sources.js';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import KnowSources from '../../src/cli/commands/know/sources.js';
 import { sourceRef } from '../helpers/knowledge-source.js';
 import { runCommand } from '../helpers/run-command.js';
 
@@ -73,7 +73,7 @@ describe('trusted local source currentness and exact-impact wiring', () => {
     expect(report.inventoryCompleteness).toBe('complete'); expect(report.affectedExactBodyRefs).toEqual(expect.arrayContaining(linked.bodies.map(knowledgeBodyRef)));
     expect(report.catalogRefs).toHaveLength(2); expect(report.projectionRefs.map(ref => ref.projectionRevisionId).sort()).toEqual([...linked.projections].sort());
     const scope = join(f.root, 'scope.json'), input = join(f.root, 'check.json'); writeFileSync(scope, JSON.stringify(f.scope)); writeFileSync(input, JSON.stringify({ source: sourceRef(f.snapshot) }));
-    const cliBefore = bytes(f.root), result = JSON.parse((await runCommand(ObserveKnowledge, ['source-updates', '--workspace', f.workspace, '--scope', scope, '--input', input, '--json'], { cwd: f.root })).stdout);
+    const cliBefore = bytes(f.root), result = JSON.parse((await runCommand(KnowSources, ['updates', '--workspace', f.workspace, '--scope', scope, '--input', input, '--json'], { cwd: f.root })).stdout);
     expect(result).toMatchObject({ current: { state: 'content_changed' }, inventoryCompleteness: 'complete' }); expect(bytes(f.root)).toEqual(cliBefore);
     expect(capture).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(before).toEqual(cliBefore.filter(([path]) => !['scope.json', 'check.json'].includes(path)));
   });
@@ -148,7 +148,7 @@ describe('trusted local source currentness and exact-impact wiring', () => {
       { operation: 'source-updates', source: sourceRef(f.snapshot), replacementSelection: { ...f.selection, root: f.root } },
       { operation: 'source-updates', source: sourceRef(f.snapshot), scope: f.scope }]) expect(KnowledgeOperationSchema.safeParse(input).success).toBe(false);
     const request = join(f.root, 'bad-request.json'); writeFileSync(request, JSON.stringify({ source: sourceRef(f.snapshot), replacementSelection: { ...f.selection, relativePath: '../outside.txt' } }));
-    await expect(runCommand(ObserveKnowledge, ['source-updates', '--workspace', f.workspace, '--input', request, '--scope', '/must-not-read'], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
+    await expect(runCommand(KnowSources, ['updates', '--workspace', f.workspace, '--input', request, '--scope', '/must-not-read'], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
     expect(existsSync(join(f.workspace, 'generation-journals'))).toBe(false);
   });
 });

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+
+import KnowReview from '../../src/cli/commands/know/review.js';
 import { knowledgeReviewCliActor } from '../../src/cli/lib/knowledge-review-actor.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { knowledgeBodyDigest, knowledgeBodyRef } from '../../src/knowledge/adapters/body-digest.js';
@@ -28,9 +29,14 @@ function fixture() {
   command.revision.bodyDigest = knowledgeBodyDigest(command.revision);
   const store = new FileKnowledgeStore(join(workspace, 'items'), 'local', workspace); store.write(command, bodyActor);
   const bodyRef = knowledgeBodyRef(command.revision), sources = [{ snapshotId: source.snapshotId, sourceVersion: source.sourceVersion }];
-  const statusArgs = (ref = bodyRef) => ['review-status', '--id', ref.knowledgeId, '--revision', ref.revisionId, '--body-digest', ref.bodyDigest];
-  const run = (args: string[]) => runCommand(ObserveKnowledge, [...args, '--workspace', workspace, '--json'], { cwd: root });
-  const save = (operation: string, value: unknown) => { const path = join(root, `${operation}.json`); writeFileSync(path, JSON.stringify(value)); return run([operation, '--input', path]); };
+  const statusArgs = (ref = bodyRef) => ['status', '--id', ref.knowledgeId, '--revision', ref.revisionId, '--body-digest', ref.bodyDigest];
+  const run = (args: string[]) => runCommand(KnowReview, [...args, '--workspace', workspace, '--json'], { cwd: root });
+  const save = (operation: string, value: unknown) => {
+    const path = join(root, `${operation}.json`); writeFileSync(path, JSON.stringify(value));
+    const action = { 'review-content': 'content', 'review-coverage': 'coverage', 'record-use': 'record-use' }[operation];
+    if (!action) throw new Error(`Unexpected review fixture operation: ${operation}`);
+    return run([action, '--input', path]);
+  };
   const review = { requestId: randomUUID(), bodyRef, sources, expectedGeneration: 0, expectedHeadEventId: null,
     status: 'needs_revision', reason: '测试夹具的明确复核意见，非模型测量。', limitations: ['只检查当前测试来源'],
     findings: [{ problemKind: 'omission', description: '需要保留案例适用范围', segmentIds: ['s1'], evidence: [] }] };
@@ -63,7 +69,7 @@ describe('knowledge review CLI boundaries', () => {
     expect(status.history.events).toHaveLength(1); expect(status.history.receipts).toHaveLength(1);
     expect(status.history.events[0]).toMatchObject({ bodyRef: f.bodyRef, actor: { actorKind: 'agent', actorId: `codex:${threadId}`, executionRef: `codex-thread:${threadId}` } });
     expect(readFileSync(bodyPath)).toEqual(original);
-    await expect(f.run(['review-content', '--input', join(f.root, 'review-content.json'), '--model', 'not-allowed'])).rejects.toMatchObject({ code: 2 });
+    await expect(f.run(['content', '--input', join(f.root, 'review-content.json'), '--model', 'not-allowed'])).rejects.toMatchObject({ code: 2 });
     expect(generationHost.createLocalKnowledgeGenerationModel).not.toHaveBeenCalled();
   });
 

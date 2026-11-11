@@ -83,7 +83,7 @@ Entity histories keep their 1,024-revision/16-MiB per-file limits and idempotent
 
 Current readers reject old typed knowledge v2 and current journal recovery rejects journal8 and earlier. Old run inventory is explicit unsupported. [Migration](../knowledge/knowledge-domain-model.md#body-migration) requires a separate new workspace and preserved originals, creates new pending body revisions without retain inheritance, and does not retarget library/carrier refs. Old source/workspace/binary can be retained for rollback; there is no dual canonical reader.
 
-Standalone `study` inspection/portable archive replay and `seal-run`/`sealed-runs` archive dispositions keep their independent historical identities; they do not restore old default generation or grant semantic acceptance. Current builds explicitly reject old typed generation plans with zero calls. Explicit sealing preserves raw inventory before its own disposition marker; it is not a migration or current journal resume.
+`seal-run`/`sealed-runs` archive dispositions keep their independent historical identities; they do not restore old default generation or grant semantic acceptance. The retired study runtime is available only in matching historical builds, not in the current command tree. Explicit sealing preserves raw inventory before its own disposition marker; it is not a migration or current journal resume.
 
 Writes share `.knowledge-write.lock`; only a local owner proven exited permits lock recovery. Body reading remains available if its derived association or source is unavailable, with explicit diagnostics rather than a healthy-empty result.
 

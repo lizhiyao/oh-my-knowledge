@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (initialize an omk project) · `install` (install the official omk Agent Skill) · `doctor` (LLM health audit) · `eval` (offline A/B) · `observe` (online trace) · `know` (knowledge work) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (browse local conversations, task trajectories, and knowledge-artifact reports).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build/docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -277,13 +277,41 @@ Persisted experience reports use `schemaVersion: 4`: the timeline evidence kinds
 
 Supported trace formats: Codex rollout JSONL (`.jsonl`), Claude Code session JSONL (`.jsonl`), Qoder session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
-### C. Knowledge maintenance
-
-`omk observe knowledge` captures sources locally, generates candidates with the selected model, and supports entity/knowledge review, revisions and source inspection. `schema` and `study` are zero-model-call inspection operations; `generate` sends selected content. Follow the [knowledge maintenance guide](../guides/knowledge/extract-knowledge.md), including its [capability tiers](../guides/knowledge/extract-knowledge.md#availability), and inspect `omk observe knowledge --help` for operation-specific flags.
-
-### D. Cross-window entity-link review
+### C. Cross-window entity-link review
 
 `omk observe entity-links` previews source/configuration locally, explicitly sends one confirmed `propose` invocation, and retains human accept/reject decisions. Matching names do not merge identities; failure or unknown execution does not authorize a resend. Use the [cross-window review steps](../guides/knowledge/extract-knowledge.md) and `omk observe entity-links --help` before dispatching.
+
+## `omk know`
+
+Use `know` for knowledge work: browse and retrieve existing knowledge, manage sources, extract candidates, revise or review content, recover runs, and migrate old workspaces.
+
+<!-- omk:cli:know:flags:start -->
+
+**Flags:**
+
+```text
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > saved settings > system locale > zh.
+```
+
+For full descriptions: `omk know --help`.
+
+<!-- omk:cli:know:flags:end -->
+
+```bash
+omk know list
+omk know retrieve --query "What conditions apply at initialization?" --format text
+omk know show --id <knowledge-id>
+omk know sources --help                         # manage sources, including deletion
+omk know sources delete --snapshot <id> --source-version sha256:<digest>
+omk know extract prepare --input ./sources.json --json
+omk know extract generate --input ./sources.json --confirm-request sha256:<digest>
+omk know revise --input ./revision.json --id <id> --revision <revision> --generation 1 --reason "Checked sources"
+omk know review status --id <id> --revision <revision> --body-digest sha256:<digest>
+omk know runs resume --id <run-id>               # zero model calls
+omk know migrate workflow --help
+```
+
+Follow the [knowledge maintenance guide](../guides/knowledge/extract-knowledge.md), including its [capability tiers](../guides/knowledge/extract-knowledge.md#availability). Each action accepts only its own flags; model dispatch and migration retain their explicit digest confirmations. The retired `schema` export and `study` runtime are not replacement commands.
 
 ## `omk agents`
 
@@ -315,7 +343,7 @@ For full descriptions: `omk agents --help`.
 
 <!-- omk:cli:agents:flags:end -->
 
-`list` reads the agent registry against your `PATH` and home directory and writes `inventory.json`. The registry is the built-in entries merged with a local extension file, `~/.oh-my-knowledge/agents.json` (contract `agent-catalog-v1`): declaring your own host's install directories and log roots there makes it detectable and collectible without changing code, and an extension entry with the same identity replaces the built-in entry wholesale. Built-in entries cover public products such as Codex, Claude Code, Qoder and OpenClaw. `collect` walks each installed agent's declared log roots, parses every session log into the same Trace IR that `observe` uses, and writes one normalized artifact per session under `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`, plus `collection.json` (contract `agent-collection-v2`) describing what was found, collected, skipped and failed. It is incremental: a file whose digest and mtime already appear in the previous report is skipped, so a second run normally collects nothing new. `extract` archives one collected session as an evidence snapshot and asks the configured executor for candidate knowledge — the same `entities` / `evidence` contract as `omk observe knowledge`.
+`list` reads the agent registry against your `PATH` and home directory and writes `inventory.json`. The registry is the built-in entries merged with a local extension file, `~/.oh-my-knowledge/agents.json` (contract `agent-catalog-v1`): declaring your own host's install directories and log roots there makes it detectable and collectible without changing code, and an extension entry with the same identity replaces the built-in entry wholesale. Built-in entries cover public products such as Codex, Claude Code, Qoder and OpenClaw. `collect` walks each installed agent's declared log roots, parses every session log into the same Trace IR that `observe` uses, and writes one normalized artifact per session under `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`, plus `collection.json` (contract `agent-collection-v2`) describing what was found, collected, skipped and failed. It is incremental: a file whose digest and mtime already appear in the previous report is skipped, so a second run normally collects nothing new. `extract` archives one collected session as an evidence snapshot and asks the configured executor for candidate knowledge — the same `entities` / `evidence` contract as `omk know`.
 
 Records the adapter cannot turn into events no longer share a single count. `collection.json` buckets them per session: `unknownEventCount` is unsupported format — the adapter cannot read the record at all, which is a real capability gap; `duplicateViewCount` is duplicate view ignored — another view already carried the same fact, or the record is a cumulative snapshot, so mapping it again would double count and no event is produced on purpose. A second write is now matched by native identity: mapped events record every call and item id they saw in `sourceIds`, and the per-family count ceiling is only the fallback when identity cannot be established. `unmappedEvidenceCount` is evidence pending mapping — the record family is recognized but what event it should become is undecided, and the raw record stays in the artifact. Families whose semantics are decided no longer sit in that bucket: Codex `FileChange` becomes `observed_effect` (an effect the runtime observed, not a model-initiated call, so it never enters tool counts), `SubAgentActivity` becomes `agent_activity`, entering review becomes `lifecycle`, web search now carried by `Extension` reuses the `WebSearch` mapping, and a shell result view's exit code and duration merge into the `tool_result` of the same call — when one bridge call runs several commands, each result view attaches only when exactly one call contains its commands, durations sum across that group, and the exit code is filled only when every member reports one and the group agrees, otherwise omitted rather than guessed. When one raw record exceeds 8 KB the artifact keeps only a leading excerpt plus its byte count and digest, while the family name and the record's own id always survive: the log file remains the evidence, addressed by `sourceIndex` and the session's `sourcePath`. The buckets are disjoint and add up to the single unrecognized total this report used to print; merging a gap and a deliberate omission into one number would suggest you had seen everything. Bucketing is a collection-time derivation, and its scheme version is recorded in `unknownDispositionRulesVersion`: when the previous report uses a superseded scheme such as `agent-collection-v1`, its counts are not carried over, the run recollects everything, says so in `limitations`, and replaces the old file wholesale rather than migrating it field by field; `extract` refuses a superseded report instead of refining from stale counts.
 

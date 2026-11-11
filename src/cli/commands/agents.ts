@@ -251,9 +251,9 @@ export default class AgentsCommand extends BaseCommand {
         (executor, model) => createLocalKnowledgeGenerationModel(executor, model, createExtractionArchiveProducer));
         const { journal } = prepared, pending = journal.stages.find(stage => stage.state === 'prepared');
         const nextCommand = prepared.nextAction === 'continue_stage' && pending
-          ? knowledgeCommand(settings.workspace, 'continue-stage', { id: journal.runId, generation: journal.generation,
+          ? knowledgeCommand(settings.workspace, 'extract continue', { id: journal.runId, generation: journal.generation,
             executor: journal.executor, model: journal.model, 'confirm-request': pending.requestDigest, json: true })
-          : knowledgeCommand(settings.workspace, 'inspect', { id: journal.runId, json: true });
+          : knowledgeCommand(settings.workspace, 'runs inspect', { id: journal.runId, json: true });
         const result = { session, preview, capture, sources, prepared, generationInput: { sources }, modelCalls: 0, nextCommand };
         if (flags.json) { this.log(JSON.stringify(result, null, 2)); return; }
         this.log(lang === 'zh'
@@ -261,10 +261,10 @@ export default class AgentsCommand extends BaseCommand {
           : `Sources saved locally; generation run ${journal.runId} is ${journal.status}. Model calls in this command: 0. Complete preview, capture and prepared request:`);
         this.log(JSON.stringify(result, null, 2));
         this.logToStderr(lang === 'zh'
-          ? `先准备并核对每次完整请求，再用 continue-stage 单独确认发送。长来源按计划分段取证，全部完成后在本地汇整并保存待核对正文。来源复核和实体关联按需另行准备。generationInput 可用于准备下一阶段；重复导入复用默认任务，未知结果不重发。\n${nextCommand}`
-          : `Prepare and inspect each complete request, then confirm it separately with continue-stage. Long sources are grounded in planned windows. When all windows are complete, the host consolidates and saves pending content locally. Review sources and generate associations separately as needed. Reuse generationInput to prepare the next stage; reimport reuses the default run and never redispatches unknown outcomes.\n${nextCommand}`);
+          ? `先准备并核对每次完整请求，再用 know extract continue 单独确认发送。长来源按计划分段取证，全部完成后在本地汇整并保存待核对正文。来源复核和实体关联按需另行准备。generationInput 可用于准备下一阶段；重复导入复用默认任务，未知结果不重发。\n${nextCommand}`
+          : `Prepare and inspect each complete request, then confirm it separately with know extract continue. Long sources are grounded in planned windows. When all windows are complete, the host consolidates and saves pending content locally. Review sources and generate associations separately as needed. Reuse generationInput to prepare the next stage; reimport reuses the default run and never redispatches unknown outcomes.\n${nextCommand}`);
       } catch (cause) {
-        this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${knowledgeCommand(settings.workspace, 'runs', { json: true })}`, { exit: 1 });
+        this.error(`${knowledgeFailureCode(cause)} · ${cause instanceof Error ? cause.message : String(cause)}\n${knowledgeCommand(settings.workspace, 'runs list', { json: true })}`, { exit: 1 });
       }
     });
   }

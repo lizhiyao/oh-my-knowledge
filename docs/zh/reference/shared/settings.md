@@ -6,7 +6,7 @@ Studio 侧栏底部的“设置与帮助”管理这台电脑上的用户偏好�
 
 | 配置 | 内置默认 | 作用范围 |
 | --- | --- | --- |
-| 知识保存目录 | `$OMK_HOME/knowledge` | Studio 提炼与 `omk observe knowledge`；显式 `workspace`／`--workspace` 可覆盖 |
+| 知识保存目录 | `$OMK_HOME/knowledge` | Studio 提炼与 `omk know`；显式 `workspace`／`--workspace` 可覆盖 |
 | 知识提炼调用方式 | `codex` | 知识提炼；支持 `codex`、`openai-api` |
 | 知识提炼默认模型 | 未设置 | 未设置时必须在提炼前选择；切换调用方式不沿用其他调用方式的模型 |
 | 默认语言 | 自动：系统 locale，兜底 `zh` | Studio 与 CLI；`lang`／`--lang` 可覆盖 |

@@ -83,7 +83,7 @@
 
 当前 reader 拒绝旧 typed 知识 v2，新日志恢复拒绝 journal8 及更早版本，旧清单明确 unsupported。[迁移](../knowledge/knowledge-domain-model.md#body-migration)要求独立新工作区与原件保全，创建不继承 retain 的新待审正文，不改指向 library／carrier。保全旧来源／工作区／binary 可回退，不保双 canonical reader。
 
-独立 `study` 核对／可携带归档重放、`seal-run`／`sealed-runs` 档案处置保持历史身份，不恢复旧默认生成，也不授予语义通过；当前构建零调用拒绝旧 typed 生成计划。显式封存先保存 raw inventory 再写其独立处置标记，不是迁移或当前日志 resume。
+`seal-run`／`sealed-runs` 档案处置保持历史身份，不恢复旧默认生成，也不授予语义通过；已退役的 study 运行时只在匹配历史构建中可查，不进入当前命令树。显式封存先保存 raw inventory 再写其独立处置标记，不是迁移或当前日志 resume。
 
 写入共用 `.knowledge-write.lock`，只恢复证实本机退出的 owner。派生关联或来源不可用时正文仍可读，给出明确诊断，不显示健康空结果。
 

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import KnowMigrate from '../../src/cli/commands/know/migrate.js';
 import { canonicalJson } from '../../src/knowledge/store.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import * as executor from '../../src/knowledge/adapters/generation-executor.js';
@@ -27,13 +27,13 @@ describe('explicit workspace migration command', () => {
     }
     writeFileSync(path, JSON.stringify(history)); const original = readFileSync(path);
     vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('No model configuration during migration.'); });
-    const args = ['migrate-associations', '--from-workspace', source, '--workspace', target];
-    await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const args = ['associations', '--from-workspace', source, '--workspace', target];
+    await expect(runCommand(KnowMigrate, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
     const full = [...args, '--operation-id', randomUUID(), '--json'];
-    await expect(runCommand(ObserveKnowledge, [...full, '--model', 'forbidden'], { cwd: root })).rejects.toMatchObject({ code: 2 });
-    const result = JSON.parse((await runCommand(ObserveKnowledge, full, { cwd: root })).stdout);
+    await expect(runCommand(KnowMigrate, [...full, '--model', 'forbidden'], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    const result = JSON.parse((await runCommand(KnowMigrate, full, { cwd: root })).stdout);
     expect(result).toMatchObject({ migratedRevisions: 1, pending: true, modelCalls: 0, semanticAcceptance: false });
-    expect(JSON.parse((await runCommand(ObserveKnowledge, full, { cwd: root })).stdout)).toEqual(result);
+    expect(JSON.parse((await runCommand(KnowMigrate, full, { cwd: root })).stdout)).toEqual(result);
     expect(readFileSync(path)).toEqual(original); expect(executor.configuredKnowledgeGenerationModel).not.toHaveBeenCalled();
     expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
   });
@@ -42,7 +42,7 @@ describe('explicit workspace migration command', () => {
     writeFileSync(join(root, 'settings.json'), '{invalid');
     for (const args of [[], ['--from-workspace', './old'], ['--workspace', './new'],
       ['--from-workspace', './old', '--workspace', './new', '--model', 'forbidden']]) {
-      await expect(runCommand(ObserveKnowledge, ['migrate', ...args], { cwd: root })).rejects.toMatchObject({ code: 2 });
+      await expect(runCommand(KnowMigrate, ['knowledge', ...args], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
     expect(existsSync(join(root, 'new'))).toBe(false); expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
   });
@@ -62,7 +62,7 @@ describe('explicit workspace migration command', () => {
         sourceBindings: [{ snapshotId: randomUUID(), sourceVersion: hash('authored source'), evidenceRefs: ['e1'] }], reuseRationale: 'Authored reuse.', identityUncertainties: [] }],
       maintenance: [], receipts: [{ requestId: 'create', commandDigest: 'authored', committedGeneration: 1, revisionId: 'r1' }] };
     const path = join(old, 'items', `${hash(canonicalJson(['local', 'old'])).slice(7)}.json`), original = JSON.stringify(envelope, null, 1) + '\n'; writeFileSync(path, original);
-    const report = JSON.parse((await runCommand(ObserveKnowledge, ['migrate', '--from-workspace', old, '--workspace', target, '--json'], { cwd: root })).stdout);
+    const report = JSON.parse((await runCommand(KnowMigrate, ['knowledge', '--from-workspace', old, '--workspace', target, '--json'], { cwd: root })).stdout);
     expect(report).toMatchObject({ migratedRevisions: 1, pending: true, originalBytesPreserved: true, modelCalls: 0, semanticAcceptance: false });
     expect(readFileSync(path, 'utf8')).toBe(original); const item = new FileKnowledgeStore(join(target, 'items'), 'local', target).list()[0];
     expect(item.schemaVersion).toBe(3); expect(item.maintenance).toEqual([]); expect(item.revisions[0].content.segments[0].text).toContain('negative');

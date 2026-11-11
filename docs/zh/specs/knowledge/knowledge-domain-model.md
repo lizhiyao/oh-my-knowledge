@@ -117,9 +117,9 @@ Canonical 草稿为 `{title, content: {segments: [{segmentId, text, evidence}], 
 
 ### 5.2 显式迁移旧数据 {#body-migration}
 
-这是 **BREAKING-SCHEMA/API/COMPARABILITY**。当前 reader 只接受正文历史 Schema 3 和新日志，不静默读取旧 typed 知识 v2 或恢复 run5；旧运行清单明确 unsupported。历史 typed study 的只读核对／可携带归档重放保留冻结测量身份，当前构建不支持旧 typed 生成计划，并且零调用。
+这是 **BREAKING-SCHEMA/API/COMPARABILITY**。当前 reader 只接受正文历史 Schema 3 和新日志，不静默读取旧 typed 知识 v2 或恢复 run5；旧运行清单明确 unsupported。历史 typed 证据在匹配归档版本中保留原测量身份；当前构建不提供 typed study 运行时。
 
-显式运行 `omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-knowledge`，两个路径均须提供。源码构建 adapter 依次调用 `adapters/knowledge-migration` 的 `inspectLegacyKnowledgeWorkspace`、`prepareKnowledgeMigration`、`applyKnowledgeMigration(plan, expectedPlanDigest)`；命令不调用模型，也不覆盖旧工作区。Prepare 只接受独立的新空工作区，固定 ID、来源 pin 与计划摘要但不写目标。Apply 将所有原始字节以 base64 保存在 `migration/<migrationId>/original/`，发布精确计划／映射，并复制支持的 source／entity 记录。每个旧修订机械渲染为**新的待审**正文修订；原 typed 字段、原生记录、决定与谱系留档。旧 retain 不继承，library／carrier／跨窗精确引用不自动改指向。
+显式运行 `omk know migrate knowledge --from-workspace ./old-knowledge --workspace ./new-knowledge`，两个路径均须提供。源码构建 adapter 依次调用 `adapters/knowledge-migration` 的 `inspectLegacyKnowledgeWorkspace`、`prepareKnowledgeMigration`、`applyKnowledgeMigration(plan, expectedPlanDigest)`；命令不调用模型，也不覆盖旧工作区。Prepare 只接受独立的新空工作区，固定 ID、来源 pin 与计划摘要但不写目标。Apply 将所有原始字节以 base64 保存在 `migration/<migrationId>/original/`，发布精确计划／映射，并复制支持的 source／entity 记录。每个旧修订机械渲染为**新的待审**正文修订；原 typed 字段、原生记录、决定与谱系留档。旧 retain 不继承，library／carrier／跨窗精确引用不自动改指向。
 
 Apply 核对原清单和计划正文写入；同计划恢复幂等，目标被编辑时拒绝。机械字段保留与映射不等于来源保真或任务验收。保留或使用前仍需核对新段落及证据。旧工作区不变，可继续用匹配旧 binary 读取；回退是重新打开保全的旧目录与旧程序，不引入永久双 canonical reader。
 

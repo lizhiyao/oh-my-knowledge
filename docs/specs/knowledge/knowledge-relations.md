@@ -44,12 +44,12 @@ The shared application factory is `createLocalKnowledgeRelations(workspace, acto
 | `withdraw-relation` | The same write identity, exact current relation revision and reason/limits. |
 
 ```bash
-omk observe knowledge graph --workspace ./knowledge --input ./graph-scope.json --json
-omk observe knowledge relations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --json
-omk observe knowledge relation --workspace ./knowledge --id <relation-id> --revision <relation-revision-id> --json
-omk observe knowledge propose-relation --workspace ./knowledge --input ./proposal.json --json
-omk observe knowledge review-relation --workspace ./knowledge --input ./review.json --json
-omk observe knowledge withdraw-relation --workspace ./knowledge --input ./withdrawal.json --json
+omk know show graph --workspace ./knowledge --input ./graph-scope.json --json
+omk know show relations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --json
+omk know show relation --workspace ./knowledge --id <relation-id> --revision <relation-revision-id> --json
+omk know revise propose-relation --workspace ./knowledge --input ./proposal.json --json
+omk know review relation --workspace ./knowledge --input ./review.json --json
+omk know revise withdraw-relation --workspace ./knowledge --input ./withdrawal.json --json
 ```
 
 Write JSON contains the complete domain input without an `operation` wrapper or `actor`. New ledgers use `expectedGeneration: 0`, `expectedHeadEventId: null` and `parentRelationRevisionId: null`; later writes use the actual read head. The CLI recognizes trusted Codex Desktop launcher context as an Agent, and never falls back to human attribution for an unknown writer. Studio injects its declared local UI actor; isolated Agent acceptance explicitly injects the actual Agent on the server.

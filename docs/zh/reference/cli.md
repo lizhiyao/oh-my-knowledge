@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 提供知识建设工作流命令：`init`（初始化项目）、`install`（安装 skill）、`doctor`（健康体检）、`eval`（受控评测）、`observe`（真实工作观测）、`evolve`（自动迭代）、`sample`（生成或补充用例）、`agents`（识别本机 Agent）与 `studio`（浏览知识及证据）。
+omk 提供知识建设工作流命令：`init`（初始化项目）、`install`（安装 skill）、`doctor`（健康体检）、`eval`（受控评测）、`observe`（真实工作观测）、`know`（知识建设）、`evolve`（自动迭代）、`sample`（生成或补充用例）、`agents`（识别本机 Agent）与 `studio`（浏览知识及证据）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build/docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -277,13 +277,41 @@ omk observe show <inbox_id>
 
 支持 trace 格式：Codex rollout JSONL（`.jsonl`）、Claude Code session JSONL（`.jsonl`）、Qoder session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
 
-### C. 知识维护
-
-`omk observe knowledge` 在本地归档来源，用选定模型生成候选，并支持实体／知识核对、修订与来源检查。`schema`、`study` 是零模型调用的核对操作，`generate` 会发送选定内容。先阅读[知识维护指南](../guides/knowledge/extract-knowledge.md)及其[能力分档](../guides/knowledge/extract-knowledge.md#availability)，具体操作参数见 `omk observe knowledge --help`。
-
-### D. 跨窗口实体关联复核
+### C. 跨窗口实体关联复核
 
 `omk observe entity-links` 先在本地预览原文与配置，再明确发送一次已确认的 `propose` 调用，并保存人工接受／拒绝决定。同名不自动归并，执行失败或未知不授权重发。派发前阅读[跨窗口复核步骤](../guides/knowledge/extract-knowledge.md)与 `omk observe entity-links --help`。
+
+## `omk know`
+
+`know` 用于知识工作：浏览与检索已有知识、管理来源、提炼候选、修订或复核内容、恢复运行以及迁移旧工作区。
+
+<!-- omk:cli:know:flags:start -->
+
+**Flags:**
+
+```text
+  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+```
+
+完整描述见 `omk know --help`。
+
+<!-- omk:cli:know:flags:end -->
+
+```bash
+omk know list
+omk know retrieve --query "初始化时的条件是什么？" --format text
+omk know show --id <knowledge-id>
+omk know sources --help                         # 管理来源，包括删除
+omk know sources delete --snapshot <id> --source-version sha256:<digest>
+omk know extract prepare --input ./sources.json --json
+omk know extract generate --input ./sources.json --confirm-request sha256:<digest>
+omk know revise --input ./revision.json --id <id> --revision <revision> --generation 1 --reason "核对来源"
+omk know review status --id <id> --revision <revision> --body-digest sha256:<digest>
+omk know runs resume --id <run-id>               # 零模型调用
+omk know migrate workflow --help
+```
+
+先阅读[知识维护指南](../guides/knowledge/extract-knowledge.md)及其[能力分档](../guides/knowledge/extract-knowledge.md#availability)。每个动作只接受自己的参数；模型发送与迁移仍须显式摘要确认。已退役的 `schema` 导出与 `study` 运行时没有替代命令。
 
 ## `omk agents`
 
@@ -315,7 +343,7 @@ omk agents extract --session <runId>     # 从一份已采集会话提炼候选�
 
 <!-- omk:cli:agents:flags:end -->
 
-`list` 按 Agent 登记表核对 `PATH` 与主目录，写出 `inventory.json`。登记表是内置条目与本机扩展文件 `~/.oh-my-knowledge/agents.json`（契约 `agent-catalog-v1`）合并的结果：你在扩展文件里声明自己宿主的安装目录与日志根，就能被识别和采集，不需要改动代码；同身份时扩展条目整条替换内置条目。内置表覆盖 Codex、Claude Code、Qoder、OpenClaw 等公开产品。`collect` 遍历每个已安装 Agent 声明的日志根，把会话日志解析成与 `observe` 同源的 Trace IR，每个会话落一份归一化产物到 `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`，并写出 `collection.json`（契约 `agent-collection-v2`）说明发现、采集、跳过与失败各多少。采集是增量的：摘要与修改时间已出现在上一轮报告里的文件会被跳过，因此第二轮通常零新增。`extract` 把一份已采集会话归档成证据快照，再让配置的执行器提炼候选知识，走的是与 `omk observe knowledge` 相同的 `entities`／`evidence` 契约。
+`list` 按 Agent 登记表核对 `PATH` 与主目录，写出 `inventory.json`。登记表是内置条目与本机扩展文件 `~/.oh-my-knowledge/agents.json`（契约 `agent-catalog-v1`）合并的结果：你在扩展文件里声明自己宿主的安装目录与日志根，就能被识别和采集，不需要改动代码；同身份时扩展条目整条替换内置条目。内置表覆盖 Codex、Claude Code、Qoder、OpenClaw 等公开产品。`collect` 遍历每个已安装 Agent 声明的日志根，把会话日志解析成与 `observe` 同源的 Trace IR，每个会话落一份归一化产物到 `~/.oh-my-knowledge/observe/agents/traces/<agentId>/<traceId>.json`，并写出 `collection.json`（契约 `agent-collection-v2`）说明发现、采集、跳过与失败各多少。采集是增量的：摘要与修改时间已出现在上一轮报告里的文件会被跳过，因此第二轮通常零新增。`extract` 把一份已采集会话归档成证据快照，再让配置的执行器提炼候选知识，走的是与 `omk know` 相同的 `entities`／`evidence` 契约。
 
 读不出的记录不再只有一个计数。`collection.json` 按会话把它们分成三档：`unknownEventCount` 是未支持格式，适配器完全读不出语义，属于真正的能力缺口；`duplicateViewCount` 是重复视图已忽略，同一条事实已被另一个视图映射过、或者它本身是累计快照，再映射一遍会变成双计，因此刻意不产出事件；第二次写入现在按原生 id 精确判定——映射事件会把它见过的调用 id 与 item id 都登记在 `sourceIds` 上，只有身份对不上时才退回「同类已映射事件数」的上界近似。`unmappedEvidenceCount` 是待映射证据，记录族已经识别但还没决定映射成什么事件，原始记录仍留在产物里。已经定论的族不再留在未知档：Codex 的 `FileChange` 映射成 `observed_effect`（运行时观测到的效果，不算模型发起的调用，也不进工具计数）、`SubAgentActivity` 映射成 `agent_activity`、进入评审映射成 `lifecycle`，改由 `Extension` 承载的网页搜索沿用 `WebSearch` 的同一口径，shell 结果视图的退出码与时长并入同一次调用的 `tool_result`——一次桥接跑多条命令时，每个结果视图只在被唯一一次调用包含时才归入该调用，时长取同组求和，退出码仅在同组每条都报告且取值唯一时才填，否则宁缺不猜。单条原始记录超过 8 KB 时，产物只留开头节选、字节数与摘要，族名和记录自身的 id 始终保留：完整证据仍是原始日志本身，靠 `sourceIndex` 与会话的 `sourcePath` 回指。三档互不重叠，相加等于改动前那个未识别总数；把缺口和刻意不映射混成一个数，会让人误以为已经看过了全部事实。分桶是采集期推导的结论，口径版本记在 `unknownDispositionRulesVersion`；上一轮报告是旧口径（例如 `agent-collection-v1`）时，旧计数不再沿用，本轮按全量重新采集并如实写进 `limitations`，磁盘上的旧文件被整份覆盖而不是逐字段迁移，`extract` 也会直接拒绝旧口径报告，不拿旧计数继续提炼。
 

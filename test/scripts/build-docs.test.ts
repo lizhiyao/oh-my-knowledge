@@ -180,7 +180,7 @@ describe('scripts/build-docs codegen', () => {
         assert.ok(modified.includes(typeof replacement === 'number' ? replacement.toLocaleString('en-US') : replacement));
       }
     }
-    assert.throws(() => renderCurrentKnowledgeContract({ ...current, studyPlanMaxBytes: Infinity }, 'en'));
+    assert.throws(() => renderCurrentKnowledgeContract({ ...current, retrievalMinBytes: Infinity }, 'en'));
     assert.throws(() => renderCurrentKnowledgeContract({ ...current, bodyPromptVersion: '' }, 'zh'));
   });
 

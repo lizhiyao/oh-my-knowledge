@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import KnowExtract from '../../src/cli/commands/know/extract.js';
+import KnowMigrate from '../../src/cli/commands/know/migrate.js';
+import KnowRetrieve from '../../src/cli/commands/know/retrieve.js';
+import KnowSources from '../../src/cli/commands/know/sources.js';
 import { createLocalKnowledgeApplication } from '../../src/knowledge/application/local.js';
 import { createLocalSourceCapture, LocalSourceScopeSchema, readLocalSourceScope, type LocalSourceScope } from '../../src/knowledge/application/local-source-host.js';
 import { executeKnowledgeOperation, KnowledgeOperationSchema, knowledgeFailureCode } from '../../src/knowledge/application/operations.js';
@@ -35,8 +38,8 @@ function fixture() {
   writeFileSync(input, JSON.stringify({ selections }));
   const base = ['--workspace', workspace, '--scope', scopePath, '--json'];
   return { root, workspace, project, source, trace, scope, scopePath, input, previewPath, selections, base,
-    preview: async () => { const output = await runCommand(ObserveKnowledge, ['preview-sources', ...base, '--input', input], { cwd: root }); writeFileSync(previewPath, output.stdout); return JSON.parse(output.stdout); },
-    capture: () => runCommand(ObserveKnowledge, ['capture', ...base, '--input', previewPath], { cwd: root }) };
+    preview: async () => { const output = await runCommand(KnowSources, ['preview', ...base, '--input', input], { cwd: root }); writeFileSync(previewPath, output.stdout); return JSON.parse(output.stdout); },
+    capture: () => runCommand(KnowSources, ['capture', ...base, '--input', previewPath], { cwd: root }) };
 }
 
 describe('Source3 public source CLI and trusted local host', () => {
@@ -51,9 +54,9 @@ describe('Source3 public source CLI and trusted local host', () => {
     const retry = JSON.parse((await f.capture()).stdout); expect(retry.saveManifest.actualWrittenBytes).toBe(0); expect(retry.sources.every((value: { reused: boolean }) => value.reused)).toBe(true);
     expect(retry.saveManifest.items.map((value: { snapshotId: string }) => value.snapshotId)).toEqual(captured.saveManifest.items.map((value: { snapshotId: string }) => value.snapshotId));
     const ref = captured.saveManifest.items[0], args = ['--workspace', f.workspace, '--snapshot', ref.snapshotId, '--source-version', ref.sourceVersion, '--json'];
-    expect(JSON.parse((await runCommand(ObserveKnowledge, ['source', ...args], { cwd: f.root })).stdout).status).toBe('available');
-    await runCommand(ObserveKnowledge, ['delete-source', ...args], { cwd: f.root });
-    expect(JSON.parse((await runCommand(ObserveKnowledge, ['source', ...args], { cwd: f.root })).stdout)).toMatchObject({ status: 'unavailable', reason: 'deleted' });
+    expect(JSON.parse((await runCommand(KnowSources, ['show', ...args], { cwd: f.root })).stdout).status).toBe('available');
+    await runCommand(KnowSources, ['delete', ...args], { cwd: f.root });
+    expect(JSON.parse((await runCommand(KnowSources, ['show', ...args], { cwd: f.root })).stdout)).toMatchObject({ status: 'unavailable', reason: 'deleted' });
     await expect(f.capture()).rejects.toMatchObject({ code: 1 }); expect(readdirSync(join(f.workspace, 'sources'))).toHaveLength(2); expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -92,13 +95,20 @@ describe('Source3 public source CLI and trusted local host', () => {
 
   it('rejects retired source/snapshot generation inputs and incomplete exact refs before settings/storage/model access', async () => {
     const f = fixture(); vi.stubEnv('OMK_HOME', f.root); writeFileSync(join(f.root, 'settings.json'), '{invalid');
-    for (const args of [['capture', '--source', f.trace], ['generate', '--snapshot', randomUUID()], ['source', '--snapshot', randomUUID()],
-      ['delete-source', '--snapshot', randomUUID()], ['retrieve', '--query', 'q', '--snapshot', randomUUID()], ['retrieve', '--query', 'q', '--source-version', sha('x')]]) {
-      await expect(runCommand(ObserveKnowledge, [...args, '--workspace', f.workspace], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
+    for (const invoke of [
+      () => runCommand(KnowSources, ['capture', '--source', f.trace, '--workspace', f.workspace], { cwd: f.root }),
+      () => runCommand(KnowExtract, ['generate', '--snapshot', randomUUID(), '--workspace', f.workspace], { cwd: f.root }),
+      () => runCommand(KnowSources, ['show', '--snapshot', randomUUID(), '--workspace', f.workspace], { cwd: f.root }),
+      () => runCommand(KnowSources, ['delete', '--snapshot', randomUUID(), '--workspace', f.workspace], { cwd: f.root }),
+      () => runCommand(KnowRetrieve, ['--query', 'q', '--snapshot', randomUUID(), '--workspace', f.workspace], { cwd: f.root }),
+      () => runCommand(KnowRetrieve, ['--query', 'q', '--source-version', sha('x'), '--workspace', f.workspace], { cwd: f.root }),
+    ]) await expect(invoke()).rejects.toMatchObject({ code: 2 });
+    for (const action of ['preview', 'capture', 'updates']) {
+      await expect(runCommand(KnowSources, [action, '--workspace', f.workspace], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
     }
-    for (const operation of ['generate', 'prepare-generation']) {
+    for (const action of ['generate', 'prepare']) {
       writeFileSync(f.input, JSON.stringify({ sources: [{ snapshotId: randomUUID() }] }));
-      await expect(runCommand(ObserveKnowledge, [operation, '--input', f.input, '--workspace', f.workspace], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
+      await expect(runCommand(KnowExtract, [action, '--input', f.input, '--workspace', f.workspace], { cwd: f.root })).rejects.toMatchObject({ code: 2 });
     }
     const ref = { snapshotId: randomUUID(), sourceVersion: sha('source') };
     expect(KnowledgeOperationSchema.safeParse({ operation: 'generate', sources: [ref], executor: 'openai-api', model: 'fixture' }).success).toBe(false);
@@ -126,7 +136,7 @@ describe('Source3 public source CLI and trusted local host', () => {
       maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }));
     const model: KnowledgeGenerationModel = { executor: 'openai-api', model: 'authored-cli-model', timeoutMs: 300_000, inspect, invoke };
     const factory = vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockReturnValue(model);
-    const prepared = JSON.parse((await runCommand(ObserveKnowledge, ['prepare-generation', '--workspace', f.workspace, '--input', input,
+    const prepared = JSON.parse((await runCommand(KnowExtract, ['prepare', '--workspace', f.workspace, '--input', input,
       '--executor', 'openai-api', '--model', model.model, '--json'], { cwd: f.root })).stdout);
     expect(factory).toHaveBeenCalledExactlyOnceWith('openai-api', model.model, createExtractionArchiveProducer); expect(inspect).toHaveBeenCalledOnce(); expect(invoke).not.toHaveBeenCalled();
     expect(prepared.journal).toMatchObject({ executor: model.executor, model: model.model, stages: [{ state: 'prepared', producer: { producerId: 'authored-cli-host' } }] });
@@ -141,13 +151,13 @@ describe('Source3 public source CLI and trusted local host', () => {
     const originalPath = join(old, 'sources', `${snapshotId}.json`), original = JSON.stringify({ ...source, windowDigest: sha(JSON.stringify(source, null, 2)) }); writeFileSync(originalPath, original);
     const build = join(f.root, 'matching-fixture.tgz'); writeFileSync(build, 'authored archive fixture; no installation claim');
     vi.stubEnv('OMK_HOME', f.root); writeFileSync(join(f.root, 'settings.json'), '{invalid'); const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
-    const plan = JSON.parse((await runCommand(ObserveKnowledge, ['migrate-sources', '--from-workspace', old, '--workspace', target, '--operation-id', randomUUID(),
+    const plan = JSON.parse((await runCommand(KnowMigrate, ['sources', '--from-workspace', old, '--workspace', target, '--operation-id', randomUUID(),
       '--matching-build', build, '--matching-build-id', 'authored-fixture', '--plan-only', '--json'], { cwd: f.root })).stdout);
     expect(existsSync(target)).toBe(false); const input = join(f.root, 'plan.json'); writeFileSync(input, JSON.stringify(plan));
-    await expect(runCommand(ObserveKnowledge, ['migrate-sources', '--input', input, '--confirm-plan', sha('forged')], { cwd: f.root })).rejects.toMatchObject({ code: 1 }); expect(existsSync(target)).toBe(false);
-    const command = ['migrate-sources', '--input', input, '--confirm-plan', plan.planDigest, '--json'];
-    const result = JSON.parse((await runCommand(ObserveKnowledge, command, { cwd: f.root })).stdout); expect(result).toMatchObject({ state: 'complete', modelCalls: 0, semanticAcceptance: false });
-    expect(JSON.parse((await runCommand(ObserveKnowledge, command, { cwd: f.root })).stdout)).toEqual(result); expect(readFileSync(originalPath, 'utf8')).toBe(original);
+    await expect(runCommand(KnowMigrate, ['sources', '--input', input, '--confirm-plan', sha('forged')], { cwd: f.root })).rejects.toMatchObject({ code: 1 }); expect(existsSync(target)).toBe(false);
+    const command = ['sources', '--input', input, '--confirm-plan', plan.planDigest, '--json'];
+    const result = JSON.parse((await runCommand(KnowMigrate, command, { cwd: f.root })).stdout); expect(result).toMatchObject({ state: 'complete', modelCalls: 0, semanticAcceptance: false });
+    expect(JSON.parse((await runCommand(KnowMigrate, command, { cwd: f.root })).stdout)).toEqual(result); expect(readFileSync(originalPath, 'utf8')).toBe(original);
     expect(readFileSync(join(plan.archiveRoot, 'matching-build', 'matching-fixture.tgz'), 'utf8')).toContain('no installation claim'); expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+
+import KnowReview from '../../src/cli/commands/know/review.js';
+import KnowRevise from '../../src/cli/commands/know/revise.js';
+import KnowShow from '../../src/cli/commands/know/show.js';
 import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
 import { relationsFixture } from '../knowledge/relations-fixtures.js';
 import { runCommand } from '../helpers/run-command.js';
@@ -14,7 +17,13 @@ function fixture() {
   vi.stubEnv('OMK_HOME', join(f.root, 'home')); vi.stubEnv('OMK_SKIP_UPDATE_CHECK', '1');
   vi.stubEnv('CODEX_THREAD_ID', ''); vi.stubEnv('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', '');
   vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Relation commands cannot configure a model.'); });
-  const run = (args: string[]) => runCommand(ObserveKnowledge, [...args, '--workspace', f.root, '--json'], { cwd: f.root });
+  const run = (args: string[]) => {
+    const [operation, ...rest] = args;
+    if (operation === 'relations' || operation === 'relation' || operation === 'graph') return runCommand(KnowShow, [operation, ...rest, '--workspace', f.root, '--json'], { cwd: f.root });
+    if (operation === 'propose-relation' || operation === 'withdraw-relation') return runCommand(KnowRevise, [operation, ...rest, '--workspace', f.root, '--json'], { cwd: f.root });
+    if (operation === 'review-relation') return runCommand(KnowReview, ['relation', ...rest, '--workspace', f.root, '--json'], { cwd: f.root });
+    throw new Error(`Unexpected relation fixture operation: ${operation}`);
+  };
   const save = (operation: string, value: unknown) => { const path = join(f.root, `${operation}.json`); writeFileSync(path, JSON.stringify(value)); return run([operation, '--input', path]); };
   const list = () => run(['relations', '--id', f.bodyRefs[0].knowledgeId, '--revision', f.bodyRefs[0].revisionId, '--body-digest', f.bodyRefs[0].bodyDigest]);
   return { ...f, run, save, list };

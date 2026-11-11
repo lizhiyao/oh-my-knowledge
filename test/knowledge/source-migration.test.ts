@@ -16,7 +16,7 @@ import { canonicalJson } from '../../src/knowledge/store.js';
 import type { KnowledgeRevision } from '../../src/knowledge/contracts.js';
 import type { EntityAnalysisEnvelope } from '../../src/knowledge/entities/contracts.js';
 import { EvidenceWindowSchema, type EvidenceWindow } from '../../src/knowledge/extraction/evidence.js';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import KnowMigrate from '../../src/cli/commands/know/migrate.js';
 import { runCommand } from '../helpers/run-command.js';
 import { createLocalKnowledgeApplication, createLocalKnowledgeReview } from '../../src/knowledge/application/local.js';
 import { traceSnapshotFixture } from '../helpers/knowledge-source.js';
@@ -291,12 +291,12 @@ describe('explicit Source2 to Source3 independent-copy migration', () => {
 
   it('round-trips a real multi-source CLI migration plan larger than 16 MiB through the fixed plan reader', async () => {
     const f = fixture(); additionalLargeSources(f, 3, 3 * 1024 * 1024);
-    const original = fingerprint(f.sourceRoot), output = await runCommand(ObserveKnowledge, ['migrate-sources', '--from-workspace', f.sourceRoot, '--workspace', f.targetRoot,
+    const original = fingerprint(f.sourceRoot), output = await runCommand(KnowMigrate, ['sources', '--from-workspace', f.sourceRoot, '--workspace', f.targetRoot,
       '--operation-id', f.input.migrationId, '--matching-build', f.input.matchingBuildArchivePath, '--matching-build-id', f.input.matchingBuildId, '--plan-only', '--json'], { cwd: f.root });
     expect(Buffer.byteLength(output.stdout)).toBeGreaterThan(16 * 1024 * 1024); expect(Buffer.byteLength(output.stdout)).toBeLessThan(SOURCE_MIGRATION_PLAN_MAX_BYTES);
     const plan = JSON.parse(output.stdout), path = put(f.root, 'large-plan.json', output.stdout);
     expect(existsSync(f.targetRoot)).toBe(false);
-    const result = JSON.parse((await runCommand(ObserveKnowledge, ['migrate-sources', '--input', path, '--confirm-plan', plan.planDigest, '--json'], { cwd: f.root })).stdout);
+    const result = JSON.parse((await runCommand(KnowMigrate, ['sources', '--input', path, '--confirm-plan', plan.planDigest, '--json'], { cwd: f.root })).stdout);
     expect(result).toMatchObject({ state: 'complete', pending: true, modelCalls: 0 }); expect(result.sources).toHaveLength(4);
     expect(fingerprint(f.sourceRoot)).toEqual(original); expect(sha(readFileSync(join(plan.archiveRoot, 'plan.json')))).toBe(sha(JSON.stringify(plan, null, 2)));
   });
@@ -309,7 +309,7 @@ describe('explicit Source2 to Source3 independent-copy migration', () => {
     expect(() => applySourceMigration(atJsonBoundary, plan.planDigest))
       .toThrowError(expect.objectContaining({ code: 'capacity_exceeded', message: 'Migration plan exceeds the 128 MiB capacity.' }));
     const path = put(small.root, 'over-plan.json', '{}'); truncateSync(path, SOURCE_MIGRATION_PLAN_MAX_BYTES + 1);
-    await expect(runCommand(ObserveKnowledge, ['migrate-sources', '--input', path, '--confirm-plan', plan.planDigest, '--json'], { cwd: small.root })).rejects.toMatchObject({ code: 1 });
+    await expect(runCommand(KnowMigrate, ['sources', '--input', path, '--confirm-plan', plan.planDigest, '--json'], { cwd: small.root })).rejects.toMatchObject({ code: 1 });
     expect(existsSync(small.targetRoot)).toBe(false);
     const f = fixture(); additionalLargeSources(f, 9, 15 * 1024 * 1024 / 2);
     const original = fingerprint(f.sourceRoot);
