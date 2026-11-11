@@ -436,18 +436,7 @@ describe('src 与 scripts 依赖图', () => {
     }
   });
 
-  it('跨域双向依赖只允许已审计的 contracts／producer 边界', () => {
-    const diagnosisBoundary = MUTUAL_BOUNDARY_VALIDATORS['observe↔observe/diagnosis'];
-    for (const importer of ['observe/inbox/report-building.ts', 'observe/application.ts']) {
-      expect(diagnosisBoundary({
-        importer, target: 'observe/diagnosis/observe-producer.ts',
-        importerDomain: 'observe', targetDomain: 'observe/diagnosis', typeOnly: false,
-      })).toBe(false);
-    }
-    expect(diagnosisBoundary({
-      importer: 'observe/diagnosis/observe-mapper.ts', target: 'observe/skill-health/advisories.ts',
-      importerDomain: 'observe/diagnosis', targetDomain: 'observe', typeOnly: false,
-    })).toBe(false);
+  it('跨域双向依赖只允许已审计边界', () => {
     const directionsByPair = new Map<string, Set<string>>();
     for (const edge of edges) {
       const pair = domainPair(edge.importerDomain, edge.targetDomain);

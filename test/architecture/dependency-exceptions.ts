@@ -7,25 +7,13 @@ interface BoundaryEdge {
   typeOnly: boolean;
 }
 
-const DIAGNOSIS_OBSERVE_PRODUCER_TARGETS = new Set([
-  'observe/experience.ts',
-  'observe/inbox/index.ts',
-  'observe/inbox/problem-patterns.ts',
-  'observe/skill-health/advisories.ts',
-  'observe/skill-health/skill-chain.ts',
-]);
-export const REGISTERED_RUNTIME_CYCLES = [
-  {
-    domains: ['observe', 'observe/diagnosis'],
-    edges: [
-      'observe/application.ts → observe/diagnosis/lifecycle.ts',
-      'observe/application.ts → observe/diagnosis/studio-projection.ts',
-      'observe/diagnosis/observe-producer.ts → observe/skill-health/advisories.ts',
-      'observe/inbox/report-store.ts → observe/diagnosis/contracts/parser.ts',
-    ],
-    rationale: '诊断是 Observe 子域，仍单独审计依赖：事实侧只消费诊断契约／parser，诊断 producer 消费观测事实，根应用入口向 Studio 提供诊断摘要与生命周期查询。',
-  },
-] as const;
+interface RuntimeCycle {
+  domains: readonly string[];
+  edges: readonly string[];
+  rationale: string;
+}
+
+export const REGISTERED_RUNTIME_CYCLES: readonly RuntimeCycle[] = [];
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
@@ -146,17 +134,6 @@ export const MUTUAL_BOUNDARY_VALIDATORS: Record<string, (edge: BoundaryEdge) => 
     return edge.importer === 'storage/discovery-index.ts'
       && edge.typeOnly
       && edge.target === 'knowledge/artifacts/doctor/contracts.ts';
-  },
-  'observe↔observe/diagnosis': (edge) => {
-    if (edge.importerDomain === 'observe') {
-      return edge.target.startsWith('observe/diagnosis/contracts')
-        || (edge.importer === 'observe/application.ts' && [
-          'observe/diagnosis/lifecycle.ts',
-          'observe/diagnosis/studio-projection.ts',
-        ].includes(edge.target));
-    }
-    return edge.importer === 'observe/diagnosis/observe-producer.ts'
-      && DIAGNOSIS_OBSERVE_PRODUCER_TARGETS.has(edge.target);
   },
 };
 

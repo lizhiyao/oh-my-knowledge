@@ -61,6 +61,10 @@ export {
   inferObservationSourceKind,
 } from './report-building.js';
 export {
+  buildObserveDiagnosticsFromReport,
+  type BuildObserveDiagnosticsFromReportOptions,
+} from './diagnosis-producer.js';
+export {
   findObservationInboxItem,
   loadLatestObservationInboxReports,
   loadObservationInboxReports,

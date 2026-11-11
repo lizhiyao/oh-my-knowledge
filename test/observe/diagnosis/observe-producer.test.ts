@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildObserveDiagnosticsFromReport } from '../../../src/observe/diagnosis/observe-producer.js';
+import { buildObserveDiagnosticsFromReport } from '../../../src/observe/inbox/diagnosis-producer.js';
 import {
   buildSkillChainsForEvidence,
   skillNamesFromReports,
