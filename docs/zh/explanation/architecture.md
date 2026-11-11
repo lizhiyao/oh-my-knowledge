@@ -318,7 +318,7 @@ Doctor 图谱生产归属 `knowledge/artifacts/doctor/graph.ts`，评测图谱�
 公开 package 入口位于所属领域的自然 `index.ts` 或语义文件，`package.json#exports` 是唯一公开清单。
 内部生产模块直接依赖具体领域文件，不经这些 package barrel 跨域。
 
-诊断归属 `src/observe/diagnosis/`。当前生产者从 Observe 事实派生诊断；契约声明的 doctor、eval 来源尚无对应生产者。事实侧只消费诊断契约与 wire parser，`diagnosis/observe-producer.ts` 消费已登记的观测事实派生诊断。根 `application.ts` 向 Studio 提供诊断摘要、bundle 合并与活跃生命周期查询，`view-models/` 提供所需类型。依赖守卫继续将诊断子域与观测事实分开审计。
+诊断归属 `src/observe/diagnosis/`。`inbox/diagnosis-producer.ts` 将观测报告适配为诊断输入，再调用 `diagnosis/observe-mapper.ts`；契约声明的 doctor、eval 来源尚无对应生产者。事实侧消费诊断契约、wire parser 与映射入口，Diagnosis 不反向依赖观测事实。根 `application.ts` 向 Studio 提供诊断摘要、bundle 合并与活跃生命周期查询，`view-models/` 提供所需类型。依赖守卫继续将诊断子域与观测事实分开审计，不登记运行时环。
 
 ## Observe 子域
 

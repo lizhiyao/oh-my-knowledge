@@ -343,7 +343,7 @@ Public package entrypoints live at their owning domains'
 natural `index.ts` or semantic file; `package.json#exports` is the only publication allowlist.
 Internal production modules import concrete domain files rather than those package barrels.
 
-Diagnosis belongs to `src/observe/diagnosis/`. Its current producer derives diagnoses from Observe facts; the declared doctor and eval source variants have no producers yet. The facts side consumes only diagnosis contracts and the wire parser; `diagnosis/observe-producer.ts` consumes the registered observation facts to derive diagnoses. The root `application.ts` exposes diagnosis summaries, bundle merging, and active-lifecycle queries to Studio, while `view-models/` exposes the needed types. Dependency guards continue to audit the diagnosis subdomain separately from observation facts.
+Diagnosis belongs to `src/observe/diagnosis/`. `inbox/diagnosis-producer.ts` adapts observation reports into diagnosis inputs and then calls `diagnosis/observe-mapper.ts`; the declared doctor and eval source variants have no producers yet. The facts side consumes diagnosis contracts, the wire parser, and the mapping entrypoint, while Diagnosis has no reverse dependency on observation facts. The root `application.ts` exposes diagnosis summaries, bundle merging, and active-lifecycle queries to Studio, while `view-models/` exposes the needed types. Dependency guards continue to audit the diagnosis subdomain separately from observation facts without registering a runtime cycle.
 
 ## Observe subdomains
 

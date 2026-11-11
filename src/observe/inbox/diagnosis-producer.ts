@@ -1,15 +1,15 @@
 import type { ObservationRuntimeCheck, ObservationSkillChain } from '../skill-health/skill-chain.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../skill-health/advisories.js';
-import type { ObservationInboxReport } from '../inbox/index.js';
+import type { ObservationInboxReport } from '../contracts/inbox.js';
 import type {
   ExperienceEvidenceRef,
   ExperienceRuleFinding,
   ExperienceSkillSummary,
   ObservationExperienceReport,
-} from '../experience.js';
-import type { ExperienceProblemPattern } from '../inbox/problem-patterns.js';
-import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from './observe-mapper.js';
-import type { DiagnosisBundle, DiagnosisEvidenceRef } from './contracts.js';
+} from '../contracts/experience.js';
+import type { ExperienceProblemPattern } from '../contracts/problem-patterns.js';
+import { buildObserveDiagnostics, type ExperienceReviewerReportFindingSource } from '../diagnosis/observe-mapper.js';
+import type { DiagnosisBundle, DiagnosisEvidenceRef } from '../diagnosis/contracts.js';
 
 export interface BuildObserveDiagnosticsFromReportOptions {
   /** 由上游单一生产者（observe/inbox/skill-chains.ts）建好的链；诊断层不再碰文件系统。 */
