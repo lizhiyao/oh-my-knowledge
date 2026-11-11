@@ -45,10 +45,8 @@
 | 默认检索响应预算（可调） | 65,536 字节 |
 | 最小检索响应预算 | 1,024 字节 |
 | 最大检索响应预算 | 1,048,576 字节 |
-| 历史 typed 研究计划容量 | 16,777,216 字节 |
-| 可携带研究核对容量 | 134,217,728 字节 |
 <!-- omk:knowledge-contract:end -->
 
 检索默认值是整个序列化响应及换行的可调预算，不是知识正文定义、存储硬 cap 或模型限制。原生归档容量、producer 证明、来源／请求准入与 store 限额分别检查。正文与关联阶段各保留独立原生原件，当前生成不再使用旧 single／bounded 政策；阶段恢复与明确继续见[知识指南](../../guides/knowledge/extract-knowledge.md)。
 
-这些身份相对 typed 历史 v2／run5 属于 BREAKING-SCHEMA/API/COMPARABILITY，不改写旧 prompt 字节，也不继承历史质量结论。上表历史 typed study 容量只描述独立冻结测量／核对契约，当前构建不支持其生成计划。见[建设与迁移契约](../../specs/knowledge/knowledge-domain-model.md)及[提取规范](../../specs/entities/entity-extraction.md)。
+这些身份相对 typed 历史 v2／run5 属于 BREAKING-SCHEMA/API/COMPARABILITY，不改写旧 prompt 字节，也不继承历史质量结论。见[建设与迁移契约](../../specs/knowledge/knowledge-domain-model.md)及[提取规范](../../specs/entities/entity-extraction.md)。

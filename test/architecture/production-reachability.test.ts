@@ -73,13 +73,20 @@ const NON_STATIC_ENTRIES: Array<{
     evidence: 'scripts/bench/entity-capture-provider.ts',
   },
   {
-    path: 'src/cli/runtime/knowledge-study.ts',
+    path: 'src/knowledge/extraction/prompt.ts',
     reason: 'build-script',
-    evidence: 'scripts/bench/knowledge-study.ts',
+    evidence: 'scripts/bench/entity-extraction-review.ts',
   },
-  { path: 'src/cli/runtime/knowledge-study-panel.ts', reason: 'build-script', evidence: 'scripts/bench/knowledge-study-panel.ts' },
-  { path: 'src/cli/runtime/knowledge-study-worker.ts', reason: 'subprocess', evidence: 'src/cli/runtime/knowledge-study.ts' },
-  { path: 'src/knowledge/application/study-inspection-worker.ts', reason: 'subprocess', evidence: 'src/knowledge/application/study-inspection-service.ts' },
+  {
+    path: 'src/knowledge/extraction/strict-prompt.ts',
+    reason: 'build-script',
+    evidence: 'scripts/bench/assets/entity-extraction-five-positive-strict-v4/verify.mjs',
+  },
+  {
+    path: 'src/knowledge/extraction/generation.ts',
+    reason: 'build-script',
+    evidence: 'scripts/bench/entity-link-live.ts',
+  },
   { path: 'src/eval-workflows/inputs/eval-samples.ts', reason: 'package-entrypoint' },
   { path: 'src/eval-workflows/projections/index.ts', reason: 'package-entrypoint' },
 ];

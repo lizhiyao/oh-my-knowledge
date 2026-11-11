@@ -6,7 +6,7 @@ Studio’s settings entry at the bottom of the sidebar manages local user prefer
 
 | Setting | Built-in default | Scope |
 | --- | --- | --- |
-| Knowledge folder | `$OMK_HOME/knowledge` | Studio extraction and `omk observe knowledge`; `workspace` / `--workspace` overrides it |
+| Knowledge folder | `$OMK_HOME/knowledge` | Studio extraction and `omk know`; `workspace` / `--workspace` overrides it |
 | Extraction provider | `codex` | Knowledge extraction; supports `codex`, `openai-api` |
 | Extraction model | Unset | Must be selected before extraction; changing provider does not inherit another provider’s model |
 | Default language | Auto: system locale, falling back to `zh` | Studio and CLI; `lang` / `--lang` overrides it |

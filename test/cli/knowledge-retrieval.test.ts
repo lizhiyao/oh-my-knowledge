@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ObserveKnowledge from '../../src/cli/commands/observe/knowledge.js';
+import KnowList from '../../src/cli/commands/know/list.js';
+import KnowRetrieve from '../../src/cli/commands/know/retrieve.js';
+import KnowSources from '../../src/cli/commands/know/sources.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
 import { FileKnowledgeAssociationStore } from '../../src/knowledge/adapters/association-store.js';
 import { FileEntityAnalysisStore } from '../../src/knowledge/adapters/entity-store.js';
@@ -37,7 +39,7 @@ function persistedBody() {
       createdBy: actor, revisedAt: at, revisedBy: actor, revisionReason: 'Authored CLI retrieval fixture, not native generation.' } }, actor);
   vi.stubEnv('OMK_HOME', join(root, 'home')); vi.stubEnv('OMK_SKIP_UPDATE_CHECK', '1');
   vi.spyOn(executor, 'configuredKnowledgeGenerationModel').mockImplementation(() => { throw new Error('Retrieval must not configure an executor.'); });
-  const command = (extra: string[] = []) => runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, '--query', '初始化时 v-model 的条件是什么？', ...extra], { cwd: root });
+  const command = (extra: string[] = []) => runCommand(KnowRetrieve, [ '--workspace', workspace, '--query', '初始化时 v-model 的条件是什么？', ...extra], { cwd: root });
   return { root, workspace, snapshot, draft, knowledgeId, revisionId, command,
     failedAssociations() {
       const directory = join(workspace, 'associations'), associations = new FileKnowledgeAssociationStore(directory, 'local', store,
@@ -72,10 +74,10 @@ describe('body retrieve command wiring', () => {
   it('keeps the stored body readable after source deletion while marking citation availability honestly', async () => {
     const f = persistedBody(); f.retain();
     const exactSource = ['--snapshot', f.snapshot.snapshotId, '--source-version', f.snapshot.sourceVersion];
-    const deleted = await runCommand(ObserveKnowledge, ['delete-source', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
+    const deleted = await runCommand(KnowSources, ['delete', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
     expect(JSON.parse(deleted.stdout)).toEqual({ deleted: sourceRef(f.snapshot) });
     const before = workspaceBytes(f.workspace);
-    const source = await runCommand(ObserveKnowledge, ['source', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
+    const source = await runCommand(KnowSources, ['show', '--workspace', f.workspace, ...exactSource, '--json'], { cwd: f.root });
     expect(JSON.parse(source.stdout)).toMatchObject({ status: 'unavailable', reason: 'deleted' });
     const result = JSON.parse((await f.command(exactSource)).stdout);
     expect(result).toMatchObject({ sources: [{ status: 'unavailable', reason: 'deleted' }], items: [{ evidenceChecks: [{ positionStatus: 'unavailable' }] }] });
@@ -121,19 +123,18 @@ describe('body retrieve command wiring', () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-retrieve-args-')); roots.push(root); const workspace = join(root, 'absent');
     vi.stubEnv('OMK_HOME', root); writeFileSync(join(root, 'settings.json'), '{invalid');
     const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve');
-    const invoke = (args: string[]) => runCommand(ObserveKnowledge, ['retrieve', '--workspace', workspace, ...args], { cwd: root });
+    const invoke = (args: string[]) => runCommand(KnowRetrieve, [ '--workspace', workspace, ...args], { cwd: root });
     for (const args of [[], ['--query', 'x', '--max-bytes', '1023'], ['--query', 'x', '--source-version', `sha256:${'a'.repeat(64)}`],
       ['--query', 'x', '--snapshot', randomUUID()],
       ['--query', 'x', '--executor', 'codex'], ['--query', 'x', '--reason', 'must not mutate'],
       ['--query', 'x', '--format', 'text', '--json'], ['--query', 'x', '--format', 'yaml']]) {
       await expect(invoke(args)).rejects.toMatchObject({ code: 2 });
     }
-    for (const args of [['list', '--workspace', workspace, '--format', 'json'], ['schema', '--format', 'text'],
-      ['study', '--format', 'text', '--evidence', join(root, 'absent-evidence.json')],
-      ['source', '--workspace', workspace, '--snapshot', randomUUID()],
-      ['delete-source', '--workspace', workspace, '--snapshot', randomUUID()]]) {
-      await expect(runCommand(ObserveKnowledge, args, { cwd: root })).rejects.toMatchObject({ code: 2 });
-    }
+    for (const invoke of [
+      () => runCommand(KnowList, ['--workspace', workspace, '--format', 'json'], { cwd: root }),
+      () => runCommand(KnowSources, ['show', '--workspace', workspace, '--snapshot', randomUUID()], { cwd: root }),
+      () => runCommand(KnowSources, ['delete', '--workspace', workspace, '--snapshot', randomUUID()], { cwd: root }),
+    ]) await expect(invoke()).rejects.toMatchObject({ code: 2 });
     expect(settings).not.toHaveBeenCalled();
     expect(existsSync(workspace)).toBe(false); expect(readFileSync(join(root, 'settings.json'), 'utf8')).toBe('{invalid');
   });
@@ -152,8 +153,7 @@ describe('source evidence search command wiring', () => {
     const snapshot = capture('source.jsonl', '🙂 仅初始化时 v-model 不更新。');
     const other = capture('other.jsonl', '另一版本的 v-model 不受影响。');
     const before = workspaceBytes(workspace);
-    const command = (version: string, extra: string[] = []) => runCommand(ObserveKnowledge, [
-      'search-source', '--workspace', workspace, '--snapshot', snapshot.snapshotId, '--source-version', version,
+    const command = (version: string, extra: string[] = []) => runCommand(KnowSources, ['search', '--workspace', workspace, '--snapshot', snapshot.snapshotId, '--source-version', version,
       '--query', 'v-model', '--max-bytes', '1024', ...extra,
     ], { cwd: root });
     const { stdout } = await command(snapshot.sourceVersion);
@@ -185,11 +185,10 @@ describe('source evidence search command wiring', () => {
     const settings = vi.spyOn(UserSettingsStore.prototype, 'resolve');
     for (const args of [[], snapshot, version, [...snapshot, ...version], ['--query', 'needle', ...snapshot],
       ['--query', 'needle', ...version], ['--query', 'needle', ...snapshot, '--source-version', 'wrong']]) {
-      await expect(runCommand(ObserveKnowledge, ['search-source', '--workspace', workspace, ...args], { cwd: root })).rejects.toMatchObject({ code: 2 });
+      await expect(runCommand(KnowSources, ['search', '--workspace', workspace, ...args], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
     for (const args of [['--max-bytes', '1023'], ['--max-bytes', '65537'], ['--executor', 'codex'], ['--include-candidates'], ['--format', 'text']]) {
-      await expect(runCommand(ObserveKnowledge, [
-        'search-source', '--workspace', workspace, '--query', 'needle', ...snapshot, ...version, ...args,
+      await expect(runCommand(KnowSources, ['search', '--workspace', workspace, '--query', 'needle', ...snapshot, ...version, ...args,
       ], { cwd: root })).rejects.toMatchObject({ code: 2 });
     }
     expect(settings).not.toHaveBeenCalled();

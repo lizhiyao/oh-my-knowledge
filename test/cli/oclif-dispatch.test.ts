@@ -19,17 +19,29 @@ describe('oclif dispatcher', () => {
     assert.ok(stdout.includes('--control'), 'should list --control flag');
   });
 
+  it('know 帮助展示任务入口，来源帮助直接提供管理与删除命令', async () => {
+    const topic = await runCli(['know', '--help']);
+    for (const command of ['list', 'retrieve', 'show', 'sources', 'extract', 'revise', 'review', 'runs', 'migrate']) {
+      assert.ok(topic.stdout.includes(`know:${command}`) || topic.stdout.includes(`know ${command}`), command);
+    }
+    const sources = await runCli(['know', 'sources', '--help']);
+    assert.ok(sources.stdout.includes('管理来源'));
+    assert.ok(sources.stdout.includes('sources delete'));
+  });
+
   it('dispatcher 区分未知命令与枚举、缺参校验失败，且不输出堆栈', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-dispatch-errors-'));
     try {
       for (const [args, code] of [
         [['nope-command'], 1],
+        [['observe', 'knowledge', 'list'], 2],
+        [['know', 'schema'], 1],
+        [['know', 'study'], 1],
         [['agents', 'bogus-op'], 2],
         [['install', 'omk-agent-skill', '--kind', 'bogus'], 2],
         [['evolve', 'missing.md', '--improve-mode', 'bogus'], 2],
         [['init', '--samples', '5'], 2],
         [['observe'], 2],
-        [['observe', 'knowledge', 'bogus'], 2],
       ] as const) {
         const { stderr } = await runCliFailing([...args], code, { cwd: dir, env: { ...process.env, OMK_SKIP_UPDATE_CHECK: '1', OMK_DEBUG: '' } });
         assert.ok(stderr.trim(), args.join(' '));

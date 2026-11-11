@@ -4,7 +4,7 @@
 
 ## 确认能力与范围
 
-先用 `which omk`、`omk --version` 和 `omk observe knowledge --help` 核对本机入口。当前 main 支持下列操作不代表已安装的发行版也支持；缺少 CLI、`retrieve --format text` 或当前知识格式时，说明版本差异及受阻范围，不自动安装、升级、迁移或把 unsupported 当空库。
+先用 `which omk`、`omk --version` 和 `omk know --help` 核对本机入口。当前 main 支持下列操作不代表已安装的发行版也支持；缺少 CLI、`retrieve --format text` 或当前知识格式时，说明版本差异及受阻范围，不自动安装、升级、迁移或把 unsupported 当空库。
 
 沿用用户已选工作区；没有逐次指定目录时，可省略 `--workspace` 使用 CLI 已配置默认。不要猜测新目录、扫描其它项目的知识库或改变设置。下例变量须替换为用户已选目录和当前完整问题；如果使用 CLI 默认工作区，在各命令中省略 `--workspace` 参数，不凭示例创建目录。
 
@@ -12,7 +12,7 @@
 knowledge_workspace='/absolute/path/to/already-selected-knowledge'
 knowledge_task='替换为用户当前的完整任务问题，保留名称、版本和约束'
 knowledge_read_bytes=16384
-omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$knowledge_task" --format text --max-bytes "$knowledge_read_bytes"
+omk know retrieve --workspace "$knowledge_workspace" --query "$knowledge_task" --format text --max-bytes "$knowledge_read_bytes"
 ```
 
 `16384` 只是较小的单次读取示例，不是产品默认、模型容量或知识大小上限，也不保证任意工具都能完整展示。按当前工具的可见容量调整；工具若支持 `max_output_tokens` 等展示上限，也要与预计返回量匹配。不要仅把 CLI 预算调大就视为已读完。
@@ -34,8 +34,8 @@ omk observe knowledge retrieve --workspace "$knowledge_workspace" --query "$know
 已有正文足以支持任务时不追加查询。补查没有带来新的任务依据时停止重复改写，如实说明缺口；确需核对引文、来源状态或补充正文之外的信息时，仍可按已选结果的精确修订读回，不无条件重读整库。下列 ID 从本次结果取值，不自行猜测；`show` 的 `--revision` 使用所选 `bodyRef.revisionId`，并核对返回的 `bodyDigest`。
 
 ```bash
-omk observe knowledge show --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --json
-omk observe knowledge source --workspace "$knowledge_workspace" --snapshot "$snapshot_id" --source-version "$source_version" --json
+omk know show --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --json
+omk know sources show --workspace "$knowledge_workspace" --snapshot "$snapshot_id" --source-version "$source_version" --json
 ```
 
 `source` 用于需要时核对原文、引用或来源状态；snapshot ID 与 source version 均从所选 evidence 的精确 `source` 引用取值，核对返回的 `snapshot.sourceVersion`。来源 unavailable、定位 mismatch 或版本不符时如实说明，不能称证据已核实。若任务确需正文之外的来源补充，明确区分它与已保存知识，不能拿原文悄悄补正文遗漏并称提炼完整。引文 matched 只证明定位匹配，`source_assertion`、`direct_observation` 和 `inference` 的依据性质仍须区分。
@@ -45,7 +45,7 @@ omk observe knowledge source --workspace "$knowledge_workspace" --snapshot "$sna
 对准备引用或采用的正文，按本次实际返回的 bodyRef 读取独立复核状态，不用最新修订替代：
 
 ```bash
-omk observe knowledge review-status --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --body-digest "$body_digest" --json
+omk know review status --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --body-digest "$body_digest" --json
 ```
 
 先确认已安装入口支持 `review-status`；旧版本不支持时说明未读到复核状态，不自动升级。核对 `storageStatus`、正文的 `content.status` 与相关 findings、逐段 coverage 和来源可读性。缺少记录才是尚未复核；不可读账本不是没有问题。复核记录独立于 retrieve 的响应预算，历史可能很长，只读取、展示与本任务有关的状态和理由，并保留工具截断边界。

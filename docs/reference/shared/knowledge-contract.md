@@ -45,10 +45,8 @@ This page is generated from the current source build’s runtime constants and S
 | Default retrieval response budget (adjustable) | 65,536 bytes |
 | Minimum retrieval response budget | 1,024 bytes |
 | Maximum retrieval response budget | 1,048,576 bytes |
-| Historical typed study plan capacity | 16,777,216 bytes |
-| Portable study inspection capacity | 134,217,728 bytes |
 <!-- omk:knowledge-contract:end -->
 
 The retrieval default is an adjustable budget for the whole serialized response plus newline, not a knowledge-body definition, storage cap or model limit. Native archive capacity, producer proof, source/request admission and store limits remain separate checks. The body and association phases use distinct native originals; current generation does not use the old single/bounded policy. See the [knowledge guide](../../guides/knowledge/extract-knowledge.md) for phase recovery and explicit continuation.
 
-These identities are BREAKING-SCHEMA/API/COMPARABILITY relative to typed history v2/run5. They neither rewrite historical prompt bytes nor inherit historical quality conclusions. Historical typed study capacities above describe only the independent frozen measurement/inspection contract; its generation plans are unsupported in this build. See the [construction and migration contract](../../specs/knowledge/knowledge-domain-model.md) and [extraction specification](../../specs/entities/entity-extraction.md).
+These identities are BREAKING-SCHEMA/API/COMPARABILITY relative to typed history v2/run5. They neither rewrite historical prompt bytes nor inherit historical quality conclusions. See the [construction and migration contract](../../specs/knowledge/knowledge-domain-model.md) and [extraction specification](../../specs/entities/entity-extraction.md).

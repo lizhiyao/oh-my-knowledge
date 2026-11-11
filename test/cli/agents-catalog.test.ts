@@ -138,7 +138,7 @@ describe('omk agents 与本机登记表扩展', () => {
     expect(stage.input).toContain('Alpha 使用 Beta'); expect(stage.input).not.toContain('中'); expect(stage.system.length).toBeGreaterThan(0);
     // A collection display title comes from a message; it is not an original trace title.
     expect(result.capture.sources[0].snapshot.origin).toBeUndefined();
-    expect(result.nextCommand).toContain('omk observe knowledge continue-stage');
+    expect(result.nextCommand).toContain('omk know extract continue');
     expect(result.nextCommand).toContain(`--workspace ${workspace}`); expect(result.nextCommand).toContain(`--id ${result.prepared.journal.runId}`);
     expect(result.nextCommand).toContain(`--generation ${result.prepared.journal.generation}`);
     expect(result.nextCommand).toContain(`--confirm-request ${stage.requestDigest}`);
@@ -162,7 +162,7 @@ describe('omk agents 与本机登记表扩展', () => {
     const bodyPrepared = JSON.parse((await runCommand(AgentsCommand, selectedArgs, options)).stdout);
     expect(bodyPrepared.prepared.journal.stages.map((phase: { stageKind: string; state: string }) => [phase.stageKind, phase.state]))
       .toEqual([['body_draft', 'completed'], ['body', 'prepared']]);
-    expect(bodyPrepared.nextCommand).toContain('omk observe knowledge continue-stage');
+    expect(bodyPrepared.nextCommand).toContain('omk know extract continue');
     expect(bodyPrepared.nextCommand).toContain(`--generation ${bodyPrepared.prepared.journal.generation}`);
     expect(bodyPrepared.nextCommand).not.toContain('knowledge generate'); expect(invoke).toHaveBeenCalledOnce();
 

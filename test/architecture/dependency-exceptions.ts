@@ -17,18 +17,6 @@ export const REGISTERED_RUNTIME_CYCLES: readonly RuntimeCycle[] = [];
 
 export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
-    importer: 'scripts/bench/knowledge-study-panel.ts',
-    expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/knowledge-study-panel.js')).href",
-    sourceSha256: 'c2e54d4e0afd607f58613fa06af07d6fb41ed464b742073c67883e5164548d7e',
-    rationale: '多人复核只加载固定构建的离线组合根，原始研究和回执不能选择代码；没有模型调用入口。',
-  },
-  {
-    importer: 'scripts/bench/knowledge-study.ts',
-    expression: "pathToFileURL(resolve(repository, 'dist/cli/runtime/knowledge-study.js')).href",
-    sourceSha256: 'dfc47c5956f6598179a059eda75a83c76b1adb4ad1e2ab8a5bcfe34d92012146',
-    rationale: '研究入口只加载固定构建组合根；语料和证据不能选择代码。当前宿主仅支持 prepare/report，旧 typed run 在配置执行器或占槽前明确拒绝。',
-  },
-  {
     importer: 'scripts/bench/entity-semantic-review.ts',
     expression: "pathToFileURL(resolve(repository, 'dist/knowledge/extraction/prompt.js')).href",
     sourceSha256: 'f7d024c120b88d810548b541df9a5da1ffd4eb37bdda81ce71847cad92577f03',
@@ -115,7 +103,7 @@ export const REGISTERED_NON_LITERAL_DYNAMIC_IMPORTS = [
   {
     importer: 'scripts/build/knowledge-contract.ts',
     expression: "pathToFileURL(resolve(root, 'dist/knowledge', file)).href",
-    sourceSha256: 'fd62893958a2052b0729cfee0b04e319b20ff91e9024f88dbe33785033b33e04',
+    sourceSha256: 'bae436910cbcc6c5ce78240ee8db57f11261dc47300bccd4f361ed21507b2b8b',
     rationale: 'Documentation generation loads only fixed compiled current body, Source3, independent review/relation contracts and the Graph3 version constant to derive identities and limits. All file arguments, including relations/relations.js and application/graph.js, are source literals inside this loader; documentation content cannot choose executable code, and generation makes no model calls.',
   },
   {

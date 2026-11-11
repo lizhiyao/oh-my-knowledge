@@ -16,7 +16,6 @@ import { SourceReviewPanel } from './source-review';
 import type { KnowledgeBodyRef } from '../../../../knowledge/contracts';
 import { KnowledgeReviewDrawer } from './review-drawer';
 import { ExtractionQualityPanel, NativeArchiveChecks } from './extraction-quality';
-import { KnowledgeStudyInspectionDrawer } from './study-inspection';
 import { KnowledgeSectionNav } from './section-nav';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Dropdown, Empty, Input, Modal, Select, Space } from 'antd';
@@ -53,7 +52,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [preparedSend, setPreparedSend] = useState<{ run: KnowledgeCandidateRun; operation: 'continue-stage'; fields: Record<string, unknown> }>();
   const [sourceReviewTarget, setSourceReviewTarget] = useState<{ workspace: string; run: KnowledgeCandidateRun; bodyRef?: KnowledgeBodyRef }>();
   const [showRuns, setShowRuns] = useState(false);
-  const [showStudy, setShowStudy] = useState(false);
   const [entityTarget, setEntityTarget] = useState<{ analysisId: string; revision?: string }>();
   const [runs, setRuns] = useState<KnowledgeCandidateRun[]>([]);
   const [batchRunId, setBatchRunId] = useState<string | null>(null);
@@ -70,11 +68,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
   const [directory, setDirectory] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const moreControl = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
-  const studyWasOpen = useRef(false);
-  useEffect(() => {
-    if (studyWasOpen.current && !showStudy) moreControl.current?.focus();
-    studyWasOpen.current = showStudy;
-  }, [showStudy]);
   useEffect(() => { setTagsDraft(detail?.tagging.tags ?? []); setDecisionChoice(null); }, [detail]);
   async function api<T>(operation: string, fields: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
     const data = await requestKnowledge<T>('candidates', { workspace, operation, ...fields }, signal ?? controller.current?.signal);
@@ -259,11 +252,9 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         {!embedded && rows.length > 0 && <Button type="primary" disabled={busy} onClick={chooseConversation}>{t('提炼新知识', 'Extract new knowledge')}</Button>}
         {busy && <Button onClick={() => controller.current?.abort()}>{t('取消', 'Cancel')}</Button>}
         <Dropdown trigger={['click']} menu={{ items: [
-          { key: 'study', label: t('核对研究证据', 'Inspect study evidence') },
           { key: 'history', label: t('提炼记录', 'Extraction history'), disabled: busy || !workspace },
           { key: 'import', label: t('导入项目文件或原始记录', 'Import project files or original traces'), disabled: busy || !workspace || embedded },
         ], onClick: ({ key }) => {
-          if (key === 'study') setShowStudy(true);
           if (key === 'history') void work(async () => { await refresh(); setShowRuns(true); });
           if (key === 'import') { setShowImport(true); }
         } }}><Button ref={moreControl}>{t('更多', 'More')}</Button></Dropdown>
@@ -321,7 +312,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
           : <div className="knowledge-reader knowledge-reader-empty"><Empty description={t('没有匹配知识，请调整筛选。', 'No matching knowledge. Adjust the filters.')} image={Empty.PRESENTED_IMAGE_SIMPLE}/></div>}
     </div>}
     {authoringIds && <ArtifactAuthoringDialog key={workspace} workspace={workspace} lang={lang} ids={authoringIds} onClose={() => setAuthoringIds(null)}/>}
-    {showStudy && <KnowledgeStudyInspectionDrawer lang={lang} onClose={() => setShowStudy(false)}/>}
     {entityTarget && <EntityAnalysisDrawer key={`${workspace}:${entityTarget.analysisId}:${entityTarget.revision ?? ''}`} workspace={workspace} analysisId={entityTarget.analysisId} initialRevision={entityTarget.revision}
       lang={lang} onClose={() => setEntityTarget(undefined)} onSaved={() => void work(async () => {
         if (detail) { await refresh(); await open(detail.revision.knowledgeId, detail.revision.revisionId); }
@@ -383,7 +373,6 @@ export function KnowledgeCandidates({ lang, initialWorkspace = '', initialId, in
         void work(async () => { await refresh(); await open(saved.revision.knowledgeId, saved.revision.revisionId); });
       }}/>}
     <Drawer title={t('提炼记录', 'Extraction history')} open={showRuns} onClose={() => setShowRuns(false)} size="min(620px, 100vw)">
-      <Button onClick={() => { setShowRuns(false); setShowStudy(true); }}>{t('核对研究证据', 'Inspect study evidence')}</Button>
       <p className="candidate-help">{t('显示正文提炼记录，长来源也会列出分段取证。来源复核和实体关联各有独立记录。旧格式运行会明确标记。', 'View content extraction, including planned source windows for long sources. Source review and entity associations have separate records. Older formats are marked.')}</p>
       {showRuns && workspace && <ExtractionQualityPanel workspace={workspace} lang={lang}/>}
 

@@ -45,7 +45,7 @@ function assertJsonContentType(request: IncomingMessage): void {
 }
 
 /** Bounded byte intake; selected consumers parse JSON in a fixed worker. Own backing storage is transferable. */
-export function readJsonBodyBytes(request: IncomingMessage, maxBytes = 1024 * 1024, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+function readJsonBodyBytes(request: IncomingMessage, maxBytes = 1024 * 1024, signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
   assertJsonContentType(request);
   return new Promise((resolve, reject) => {
     let size = 0, settled = false;

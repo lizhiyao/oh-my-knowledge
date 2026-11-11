@@ -44,12 +44,12 @@
 | `withdraw-relation` | 相同写入身份、精确当前关系修订及理由／限制。 |
 
 ```bash
-omk observe knowledge graph --workspace ./knowledge --input ./graph-scope.json --json
-omk observe knowledge relations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --json
-omk observe knowledge relation --workspace ./knowledge --id <relation-id> --revision <relation-revision-id> --json
-omk observe knowledge propose-relation --workspace ./knowledge --input ./proposal.json --json
-omk observe knowledge review-relation --workspace ./knowledge --input ./review.json --json
-omk observe knowledge withdraw-relation --workspace ./knowledge --input ./withdrawal.json --json
+omk know show graph --workspace ./knowledge --input ./graph-scope.json --json
+omk know show relations --workspace ./knowledge --id <knowledge-id> --revision <body-revision-id> --body-digest sha256:<digest> --json
+omk know show relation --workspace ./knowledge --id <relation-id> --revision <relation-revision-id> --json
+omk know revise propose-relation --workspace ./knowledge --input ./proposal.json --json
+omk know review relation --workspace ./knowledge --input ./review.json --json
+omk know revise withdraw-relation --workspace ./knowledge --input ./withdrawal.json --json
 ```
 
 写入 JSON 是完整领域输入，不加 `operation` wrapper 或 `actor`。新账本使用 `expectedGeneration: 0`、`expectedHeadEventId: null`、`parentRelationRevisionId: null`，后续写入使用实际读到的头。CLI 只将可信 Codex Desktop 启动上下文识别为 Agent，未知写入者不回落为真人。Studio 注入声明的本地界面操作者；隔离 Agent 验收时在服务端显式注入实际 Agent。

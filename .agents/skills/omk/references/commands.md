@@ -423,6 +423,316 @@ omk install git:main:skills/review
 omk install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review
 ```
 
+## omk know
+
+知识工作：list／retrieve／show／sources／extract／revise／review／runs／migrate。
+
+**用法:**
+
+```bash
+omk know [flags]
+```
+
+**Flags:**
+
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+
+## omk know extract
+
+提炼知识：准备完整请求、逐阶段确认发送，或继续尚未发送的阶段。
+
+**用法:**
+
+```bash
+omk know extract <action> [flags]
+```
+
+**参数:**
+
+- `action`(必填):prepare、generate 或 continue。
+
+**Flags:**
+
+- `--confirm-request` `option`:generate／continue：已核对完整请求的 requestDigest。
+- `--executor` `option`:生成执行器，沿用运行配置。
+- `--generation` `option`:continue：已读取的日志 generation。
+- `--id` `option`:continue：运行 UUID。
+- `--input` `option`:prepare／generate 的精确来源 JSON。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--model` `option`:生成模型，沿用运行配置。
+- `--run-id` `option`:prepare／generate：稳定运行 UUID。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+**示例:**
+
+```bash
+omk know extract prepare --workspace ./knowledge --input ./sources.json --json
+```
+
+```bash
+omk know extract generate --workspace ./knowledge --input ./sources.json --confirm-request sha256:<digest>
+```
+
+```bash
+omk know extract continue --workspace ./knowledge --id <run-id> --generation 5 --confirm-request sha256:<digest>
+```
+
+## omk know list
+
+浏览当前知识。
+
+**用法:**
+
+```bash
+omk know list [flags]
+```
+
+**Flags:**
+
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+## omk know migrate
+
+将旧知识工作区显式迁移到独立副本。
+
+**用法:**
+
+```bash
+omk know migrate <action> [flags]
+```
+
+**参数:**
+
+- `action`(必填):迁移数据类型。
+
+**Flags:**
+
+- `--confirm-plan` `option`:sources／workflow：确认固定计划 SHA-256。
+- `--from-workspace` `option`:显式旧工作区。
+- `--input` `option`:sources／workflow：执行固定计划 JSON。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--matching-build` `option`:sources／workflow：匹配旧版本安装档案。
+- `--matching-build-id` `option`:sources／workflow：宿主声明的旧构建身份。
+- `--operation-id` `option`:稳定迁移操作 UUID，重入沿用。
+- `--plan-only` `boolean`:sources／workflow：只读导出固定迁移计划。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+## omk know retrieve
+
+按任务检索可复用知识。
+
+**用法:**
+
+```bash
+omk know retrieve [flags]
+```
+
+**Flags:**
+
+- `--analysis` `option`:实体分析 UUID。
+- `--entity-id` `option`:精确实体 ID，须配 --analysis 和 --entity-revision。
+- `--entity-revision` `option`:实体分析修订 UUID。
+- `--format` `json|text`:输出 JSON 或正文阅读视图。
+- `--include-candidates` `boolean`:显式纳入未保留候选，不表示内容已证实。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--max-bytes` `option`:输出 UTF-8 字节预算。
+- `--query` `option`:任务问题或检索词。
+- `--snapshot` `option`:来源 snapshot UUID，须配 --source-version。
+- `--source-version` `option`:精确来源 SHA-256，须配 --snapshot。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+**示例:**
+
+```bash
+omk know retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --format text
+```
+
+## omk know review
+
+复核知识、记录保留或使用反馈，并核对来源覆盖。
+
+**用法:**
+
+```bash
+omk know review <action> [flags]
+```
+
+**参数:**
+
+- `action`(必填):复核动作。
+
+**Flags:**
+
+- `--body-digest` `option`:status：精确正文 SHA-256。
+- `--choice` `accept|reject`:associations：接受或拒绝派生修订。
+- `--executor` `option`:source-prepare：执行器。
+- `--generation` `option`:预先读取的 generation。
+- `--id` `option`:知识、来源清单或覆盖记录 ID。
+- `--input` `option`:完整复核、来源决定或准备输入 JSON。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--model` `option`:source-prepare：模型。
+- `--projection-revision` `option`:status：精确关联投影修订。
+- `--reason` `option`:保留、舍弃或复核理由。
+- `--revision` `option`:精确修订 ID。
+- `--run-id` `option`:source-prepare：稳定运行 UUID。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+## omk know revise
+
+修订知识及其实体、关联和关系。
+
+**用法:**
+
+```bash
+omk know revise [action] [flags]
+```
+
+**参数:**
+
+- `action`(可选):修订的资源类型。
+
+**Flags:**
+
+- `--analysis` `option`:entities：实体分析 UUID。
+- `--body-digest` `option`:associations：精确正文 SHA-256。
+- `--entity-revision` `option`:entities：实体分析修订 UUID。
+- `--generation` `option`:预先读取的 generation，防并发覆盖。
+- `--id` `option`:知识 ID。
+- `--input` `option`:完整修订或关系草稿 JSON。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--reason` `option`:修订理由。
+- `--revision` `option`:当前精确修订 ID。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+## omk know runs
+
+查看、核对、恢复或封存知识提炼执行。
+
+**用法:**
+
+```bash
+omk know runs <action> [flags]
+```
+
+**参数:**
+
+- `action`(必填):运行管理动作。
+
+**Flags:**
+
+- `--confirm-request` `option`:rebuild-associations：已核对完整请求的 requestDigest。
+- `--executor` `option`:关联重建执行器。
+- `--id` `option`:运行 UUID。
+- `--input` `option`:关联重建的完整 sources／bodyRefs JSON。
+- `--inventory-digest` `option`:seal：预先读取的归档清单 SHA-256。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--manifest-digest` `option`:seal：预先读取的原 manifest SHA-256。
+- `--model` `option`:关联重建模型。
+- `--offline` `boolean`:seal：声明相关旧程序已停写／离线，不代表进程退出证明。
+- `--operation-id` `option`:seal：稳定操作 UUID。
+- `--operator` `option`:seal：显式声明的人类操作者，不构成身份认证。
+- `--reason` `option`:seal：人工处置理由。
+- `--run-id` `option`:关联重建的稳定运行 UUID。
+- `--storage-namespace` `current|legacy`:current extraction-runs/ 或明确选择的 legacy runs/。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+**示例:**
+
+```bash
+omk know runs inspect --workspace ./knowledge --id <run-id> --json
+```
+
+```bash
+omk know runs resume --workspace ./knowledge --id <run-id>
+```
+
+```bash
+omk know runs seal --workspace ./knowledge --id <run-id> --operation-id <uuid> --operator <human-id> --reason "reviewed offline disposition" --manifest-digest sha256:<digest> --inventory-digest sha256:<digest> --offline --json
+```
+
+## omk know show
+
+按精确身份读回知识、实体、关系或图。
+
+**用法:**
+
+```bash
+omk know show [action] [flags]
+```
+
+**参数:**
+
+- `action`(可选):读取的资源类型。
+
+**Flags:**
+
+- `--analysis` `option`:entities：实体分析 UUID；省略时查询目录。
+- `--body-digest` `option`:relations：精确正文 SHA-256。
+- `--entity-revision` `option`:entities：实体分析修订 UUID。
+- `--id` `option`:知识或关系 ID。
+- `--identity-status` `all|proposed|unresolved`:entities：身份状态筛选。
+- `--input` `option`:graph：可选范围 JSON，仅含 knowledgeIds／includeHistory。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--page` `option`:entities：页码。
+- `--page-size` `option`:entities：每页条数。
+- `--query` `option`:entities：目录查询。
+- `--revision` `option`:精确修订 ID。
+- `--source-status` `all|available|unavailable`:entities：来源可读状态筛选。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+## omk know sources
+
+管理来源：预览、保存、读回、检索、检查更新和删除来源。
+
+**用法:**
+
+```bash
+omk know sources <action> [flags]
+```
+
+**参数:**
+
+- `action`(必填):来源管理动作。
+
+**Flags:**
+
+- `--input` `option`:preview／capture／updates：选区、完整预览或变化查询 JSON。
+- `--json` `boolean`:输出完整机器 JSON。
+- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--max-bytes` `option`:search：输出 UTF-8 字节预算。
+- `--query` `option`:search：原文字面查询。
+- `--scope` `option`:preview／capture／updates：可信宿主范围绑定 JSON。
+- `--snapshot` `option`:show／search／delete：来源 snapshot UUID。
+- `--source-version` `option`:精确来源 SHA-256，须配 --snapshot。
+- `--workspace` `option`:显式知识工作区，省略使用设置。
+
+**示例:**
+
+```bash
+omk know sources preview --workspace ./knowledge --scope ./scope.json --input ./selections.json --json
+```
+
+```bash
+omk know sources capture --workspace ./knowledge --scope ./scope.json --input ./preview.json --json
+```
+
+```bash
+omk know sources updates --workspace ./knowledge --scope ./scope.json --input ./source-check.json --json
+```
+
+```bash
+omk know sources delete --workspace ./knowledge --snapshot <snapshot-id> --source-version sha256:<digest>
+```
+
 ## omk observe
 
 把 Codex、Claude Code、OpenClaw 或 markdown trace 统一为 Trace IR，分析 skill 调用健康度（默认行为）。子命令：ingest / inbox / show / knowledge / entity-links。
@@ -591,175 +901,6 @@ omk observe ingest <traceDir> [flags]
 - `--json` `boolean`:把完整 observation inbox 报告输出到 stdout；默认只输出摘要。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
 - `--output-dir` `option`:输出目录，默认 .omk/observe/inbox（项目级，相对于 cwd；--global 写全局）。
-
-## omk observe knowledge
-
-生成并维护完整知识正文，独立审查派生关联。正文保存为 pending，匹配引文不证明真值。
-
-**用法:**
-
-```bash
-omk observe knowledge <operation> [flags]
-```
-
-**参数:**
-
-- `operation`(必填):preview 只读，capture 仅保存；prepare 展示完整模型请求，generate／continue-stage 须逐阶段确认摘要；resume 零模型恢复。
-
-**Flags:**
-
-- `--analysis` `option`:明确实体分析 UUID，省略时 entities 搜索目录。
-- `--author-review` `option`:study：输出前作者参考复核 JSON 文件。
-- `--body-digest` `option`:relations／apply-associations：精确正文 sha256 摘要。
-- `--choice` `accept|reject`:review-associations：派生修订的明确审查决定。
-- `--confirm-plan` `option`:migrate-sources／migrate-workflow：确认 --input 中固定计划的精确 SHA-256，执行或恢复相同迁移。
-- `--confirm-request` `option`:generate／continue-stage／rebuild-associations：明确确认 prepare／inspect 展示的完整 system/input 对应 requestDigest；每阶段单独确认。
-- `--entity-id` `option`:retrieve 须配 --analysis 和 --entity-revision，按当前正文 revision/hash 匹配的派生段关联限定精确实体 ID，显示独立复核状态；已拒绝关联不命中，不按名称合并。
-- `--entity-revision` `option`:明确实体分析修订 UUID。
-- `--evidence` `option`:study：仓内研究工具导出的 evidence.json，只读重算原始证据；所有输入合计最多 128 MiB，不读取知识工作区。
-- `--executor` `option`:生成/继续/重建的执行器。
-- `--format` `json|text`:仅 retrieve：json 为完整结构，text 为正文消费视图；省略保持 JSON。text 不可与 --json 同用。
-- `--from-workspace` `option`:迁移：显式旧工作区；须同时明确 --workspace 独立新目标，零模型迁移并保留原件。
-- `--generation` `option`:预先读取的 generation，防并发覆盖。
-- `--id` `option`:知识 ID；inspect/resume/continue-stage 为运行 UUID。
-- `--identity-status` `all|proposed|unresolved`:entities 身份状态筛选。
-- `--include-candidates` `boolean`:retrieve 显式纳入未保留候选，不表示内容真值已确认；已舍弃修订始终排除。
-- `--input` `option`:普通 UTF-8 JSON 通常限 16 MiB；固定 migrate-sources 计划单独限 128 MiB。preview-sources 为 {selections}，capture 为完整预览，prepare-generation 为 {sources}；关联重建为 {sources, bodyRefs}，来源复核为 {sources, bodyRefs, ledgerRef?}；来源决定为完整 command，也接受完整修订／复核草稿。
-- `--inventory-digest` `option`:seal-run：sealed-runs 预先查询的精确归档清单 SHA-256。
-- `--json` `boolean`:完整 JSON。retrieve 默认输出预算内单行 JSON，亦可用 --format json，不可与 --format text 同用。search-source 始终输出预算内单行 JSON。
-- `--judge-review` `option`:study：带版本身份和独立用量声明的模型评委 JSON 文件，与人工判断比较；不执行评委。
-- `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
-- `--manifest-digest` `option`:seal-run：sealed-runs 预先查询的原 manifest SHA-256。
-- `--matching-build` `option`:migrate-sources／migrate-workflow：保留原文件名的匹配版本安装档案（tgz、tar.gz、tar 或 zip）。
-- `--matching-build-id` `option`:migrate-sources／migrate-workflow：宿主声明的旧构建身份；不等同于实际安装和回退已验收。
-- `--max-bytes` `option`:输出加一个换行的 UTF-8 预算。retrieve 默认 65536，预算不足时省略完整段落。search-source 默认 16384，范围 1024–65536，预算不足时省略完整命中。
-- `--model` `option`:生成模型，沿用已配置模型。
-- `--offline` `boolean`:seal-run：声明相关旧程序已停写／离线，不代表进程退出证明；opaque 封存必填。
-- `--operation-id` `option`:seal-run／migrate-associations／migrate-sources／migrate-workflow：稳定操作 UUID，重入必须复用。
-- `--operator` `option`:seal-run：显式声明的人类操作者身份，不认证真人。
-- `--output-review` `option`:study：绑定实际输出的逐项复核 JSON 文件；AI 探索不代表独立真人通过。
-- `--page` `option`:entities 页码。
-- `--page-size` `option`:entities 每页条数。
-- `--plan-only` `boolean`:migrate-sources／migrate-workflow：只读导出独立副本迁移计划，不创建目标。
-- `--projection-revision` `option`:review-status：查看精确关联投影的覆盖复核，默认读取该正文匹配的投影。
-- `--query` `option`:retrieve 必填自然问题，字面召回 ASCII／代码及中文连续／双字片段。search-source 必填原文字面查询，零模型。
-- `--reason` `option`:修订或维护理由。保留和关联审查均不证明真值。
-- `--reference-review` `option`:study：输出前独立真人参考复核 JSON 文件，缺失时不产生 goldReady。
-- `--revision` `option`:明确知识或派生修订身份。
-- `--run-id` `option`:生成/重建稳定 UUID；重复只恢复，绝不重发模型。
-- `--scope` `option`:preview-sources／capture／source-updates：独立可信宿主绑定 JSON（1 MiB 内），声明项目 root 或 trace path；选区 JSON 仅使用逻辑 ID 和相对路径。
-- `--snapshot` `option`:source／delete-source／retrieve／search-source：来源 snapshot UUID，必须同时给出 --source-version。search-source 必填。
-- `--source-status` `all|available|unavailable`:entities 来源可读状态筛选。
-- `--source-version` `option`:source／delete-source／retrieve／search-source：精确来源 sha256，须配 --snapshot。search-source 必填。
-- `--stage` `source_ledger|body_draft|body|body_window|source_coverage|association`:schema：响应阶段，默认 body。
-- `--storage-namespace` `current|legacy`:封存／查询 current extraction-runs/ 或明确选择的 legacy runs/，默认 current。
-- `--workspace` `option`:显式知识工作区，省略使用设置。
-
-**示例:**
-
-```bash
-omk observe knowledge migrate --from-workspace ./old-knowledge --workspace ./new-body-knowledge --json
-```
-
-```bash
-omk observe knowledge migrate-associations --from-workspace ./schema1 --workspace ./schema2 --operation-id <uuid> --json
-```
-
-```bash
-omk observe knowledge study --evidence ./evidence.json --json
-```
-
-```bash
-omk observe knowledge sealed-runs --workspace ./knowledge --id <run-id> --json
-```
-
-```bash
-omk observe knowledge seal-run --workspace ./knowledge --id <run-id> --operation-id <uuid> --operator <human-id> --reason "reviewed offline disposition" --manifest-digest sha256:<digest> --inventory-digest sha256:<digest> --offline --json
-```
-
-```bash
-omk observe knowledge preview-sources --workspace ./knowledge --scope ./scope.json --input ./selections.json --json
-```
-
-```bash
-omk observe knowledge capture --workspace ./knowledge --scope ./scope.json --input ./preview.json --json
-```
-
-```bash
-omk observe knowledge source-updates --workspace ./knowledge --scope ./scope.json --input ./source-check.json --json
-```
-
-```bash
-omk observe knowledge prepare-generation --workspace ./knowledge --input ./sources.json --executor codex --model <model> --json
-```
-
-```bash
-omk observe knowledge generate --workspace ./knowledge --input ./sources.json --executor codex --model <model> --confirm-request sha256:<digest>
-```
-
-```bash
-omk observe knowledge migrate-sources --from-workspace ./source2 --workspace ./source3 --operation-id <uuid> --matching-build ./omk-old.tgz --matching-build-id <build-id> --plan-only --json
-```
-
-```bash
-omk observe knowledge migrate-sources --input ./migration-plan.json --confirm-plan sha256:<digest> --json
-```
-
-```bash
-omk observe knowledge migrate-workflow --from-workspace ./workflow8 --workspace ./workflow9 --operation-id <uuid> --matching-build ./omk-v8.tgz --matching-build-id <build-id> --plan-only --json
-```
-
-```bash
-omk observe knowledge migrate-workflow --input ./workflow-migration-plan.json --confirm-plan sha256:<digest> --json
-```
-
-```bash
-omk observe knowledge inspect --workspace ./knowledge --id <run-id> --json
-```
-
-```bash
-omk observe knowledge resume --workspace ./knowledge --id <run-id>
-```
-
-```bash
-omk observe knowledge continue-stage --workspace ./knowledge --id <run-id> --generation 5 --confirm-request sha256:<digest>
-```
-
-```bash
-omk observe knowledge retrieve --workspace ./knowledge --query "初始化时的条件是什么？" --max-bytes 8192 --include-candidates
-```
-
-```bash
-omk observe knowledge search-source --workspace ./knowledge --snapshot <uuid> --source-version sha256:<digest> --query "v-model"
-```
-
-```bash
-omk observe knowledge review-status --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
-```
-
-```bash
-omk observe knowledge review-content --workspace ./knowledge --input ./review.json --json
-```
-
-```bash
-omk observe knowledge relations --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --body-digest sha256:<digest> --json
-```
-
-```bash
-omk observe knowledge propose-relation --workspace ./knowledge --input ./relation.json --json
-```
-
-```bash
-omk observe knowledge relation --workspace ./knowledge --id <relation-id> --json
-```
-
-```bash
-omk observe knowledge graph --workspace ./knowledge --input ./graph-scope.json --json
-```
-
-```bash
-omk observe knowledge revise --workspace ./knowledge --id <knowledge-id> --revision <revision-id> --generation 1 --input ./body.json --reason "核对来源"
-```
 
 ## omk observe show
 

@@ -60,7 +60,7 @@ for (const current of [{ promptVersion: EXTRACTION_PROMPT_VERSION, system: EXTRA
   }
 }
 
-/** Explicit study profiles preserve raw bytes and cannot relabel registered published versions. */
+/** Explicit profiles preserve raw bytes and cannot relabel registered published versions. */
 export function extractionPrompt(model: Pick<ExtractionModel, 'outputMode'>, profileInput?: ExtractionPromptProfile) {
   const standard = model.outputMode === 'json-schema'
     ? { system: STRICT_EXTRACTION_PROMPT, promptVersion: STRICT_EXTRACTION_PROMPT_VERSION }

@@ -67,17 +67,6 @@ test/knowledge/association-catalog.test.ts
 test/knowledge/body-generation-wire.test.ts
 test/knowledge/storage.test.ts
 test/knowledge/entity-first-bound-knowledge-profile.test.ts
-test/knowledge/body-occurrence-guide.test.ts
-test/knowledge/extraction-study-review.test.ts
-test/knowledge/extraction-study-panel.test.ts
-test/knowledge/extraction-study-analysis.test.ts
-test/knowledge/extraction-study-inspection.test.ts
-test/cli/knowledge-study.test.ts
-test/studio/http/knowledge-study-server.test.ts
-test/studio/web/knowledge-study-inspection.test.tsx
-test/knowledge/extraction-study-runner.test.ts
-test/scripts/knowledge-study.test.ts
-test/scripts/knowledge-study-panel.test.ts
 test/knowledge/library.test.ts
 test/knowledge/entity-link-host.test.ts
 test/knowledge/link-invocation.test.ts

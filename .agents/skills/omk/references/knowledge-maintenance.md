@@ -21,7 +21,7 @@
 宿主 Agent 可在已有授权内起草修订，但要把它记为 Agent 维护，不能称原生自动提炼已自行更新。交付前对照旧修订及完整新增材料，核对本次声称改变的条件及未变的必要信息。若无实质变化，不制造空修订。
 
 ```bash
-omk observe knowledge revise --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --generation "$body_generation" --input ./revision.json --reason '补充新材料所支持的适用条件' --json
+omk know revise --workspace "$knowledge_workspace" --id "$knowledge_id" --revision "$revision_id" --generation "$body_generation" --input ./revision.json --reason '补充新材料所支持的适用条件' --json
 ```
 
 generation 必须取正文 history，不是关联或 reviews 的 generation。发生并发冲突时读当前写头与差异，再明确重做草稿；不能只把 generation 加一。回执未知时先按 `show` 核对写头、精确正文与历史，不凭失败返回或超时认定没写入，也不盲目重发。

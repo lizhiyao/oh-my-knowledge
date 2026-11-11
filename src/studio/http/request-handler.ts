@@ -2,7 +2,6 @@ import { createExtractionArchiveProducer } from '../../executors/archive.js';
 import { LocalSourceScopeSchema } from '../../knowledge/application/local-source-host.js';
 import { createOpenAiArchiveProducer } from '../../executors/openai/archive.js';
 import { createEntityLinkRoutes } from './routes/entity-links.js';
-import { FALLBACK_LANG } from '../../shared/language-preference.js';
 import { carrierMeasureCatalog } from '../application/measure/carrier-measurement.js';
 import { createCarrierMeasurementRoutes } from './routes/carrier-measurement.js';
 import { createSettingsRoutes } from './routes/settings.js';
@@ -23,7 +22,6 @@ import { createArtifactAuthoringRoutes } from './routes/artifact-authoring.js';
 import { createKnowledgeCandidateRoutes } from './routes/knowledge-candidates.js';
 import { createKnowledgeReviewRoutes } from './routes/knowledge-reviews.js';
 import { createKnowledgeRelationRoutes } from './routes/knowledge-relations.js';
-import { createKnowledgeStudyRoutes } from './routes/knowledge-study.js';
 import { createObservationRoutes } from './routes/observations.js';
 import { createStudioRouter } from './routes/router.js';
 
@@ -62,7 +60,6 @@ export function createStudioRequestHandler({
   const candidateRoutes = createKnowledgeCandidateRoutes(liveStreamClosers, catalog, automation, trustedSourceScope, actualReviewActor);
   const reviewRoutes = createKnowledgeReviewRoutes(actualReviewActor);
   const relationRoutes = createKnowledgeRelationRoutes(actualReviewActor);
-  const studyRoutes = createKnowledgeStudyRoutes(liveStreamClosers);
   const artifactRoutes = createArtifactAuthoringRoutes();
   const measurements = createCarrierMeasurementRoutes(liveStreamClosers);
   let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,8 +121,6 @@ export function createStudioRequestHandler({
         response.end('Not Found');
         return;
       }
-      // Portable studies do not resolve or open active workspace/settings paths.
-      if (studioPages && await studyRoutes({ request, response, url, path, lang: FALLBACK_LANG })) return;
       const selectedCoreRoute = studioPages && url.searchParams.get('workspace')
         ? createCoreStudioRouteHandler({ catalog: carrierMeasureCatalog(url.searchParams.get('workspace')!, coreStudioCatalog), apiBasePath: '/api/reports' }) : coreStudioRoute;
       if (selectedCoreRoute !== undefined) {
