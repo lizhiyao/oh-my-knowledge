@@ -303,6 +303,9 @@ omk know retrieve --query "初始化时的条件是什么？" --format text
 omk know show --id <knowledge-id>
 omk know sources --help                         # 管理来源，包括删除
 omk know sources delete --snapshot <id> --source-version sha256:<digest>
+omk know extract                                # 引导式提炼
+omk know extract --file PRODUCT.md --lines 1:80
+omk know extract --run-id <run-id>               # 恢复引导流程
 omk know extract prepare --input ./sources.json --json
 omk know extract generate --input ./sources.json --confirm-request sha256:<digest>
 omk know revise --input ./revision.json --id <id> --revision <revision> --generation 1 --reason "核对来源"

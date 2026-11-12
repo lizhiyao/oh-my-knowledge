@@ -303,6 +303,9 @@ omk know retrieve --query "What conditions apply at initialization?" --format te
 omk know show --id <knowledge-id>
 omk know sources --help                         # manage sources, including deletion
 omk know sources delete --snapshot <id> --source-version sha256:<digest>
+omk know extract                                # guided extraction
+omk know extract --file PRODUCT.md --lines 1:80
+omk know extract --run-id <run-id>               # resume the guided flow
 omk know extract prepare --input ./sources.json --json
 omk know extract generate --input ./sources.json --confirm-request sha256:<digest>
 omk know revise --input ./revision.json --id <id> --revision <revision> --generation 1 --reason "Checked sources"

@@ -439,32 +439,55 @@ omk know [flags]
 
 ## omk know extract
 
-提炼知识：准备完整请求、逐阶段确认发送，或继续尚未发送的阶段。
+引导提炼知识，或使用 prepare／generate／continue 显式控制逐阶段请求。
 
 **用法:**
 
 ```bash
-omk know extract <action> [flags]
+omk know extract [action] [flags]
 ```
 
 **参数:**
 
-- `action`(必填):prepare、generate 或 continue。
+- `action`(可选):高级阶段操作；省略则进入引导流程。
 
 **Flags:**
 
-- `--confirm-request` `option`:generate／continue：已核对完整请求的 requestDigest。
+- `--confirm-request` `option`:显式发送：已核对完整请求的 requestDigest。
 - `--executor` `option`:生成执行器，沿用运行配置。
-- `--generation` `option`:continue：已读取的日志 generation。
-- `--id` `option`:continue：运行 UUID。
-- `--input` `option`:prepare／generate 的精确来源 JSON。
+- `--file` `option`:引导：直接选择当前目录中的项目文件。
+- `--generation` `option`:显式 continue：日志 generation。
+- `--id` `option`:显式 continue：运行 UUID。
+- `--input` `option`:显式阶段的精确来源 JSON。
 - `--json` `boolean`:输出完整机器 JSON。
 - `--lang` `option`:输出语言 zh|en，优先级 CLI > OMK_LANG env > 全局设置 > 系统 locale > zh。
+- `--lines` `option`:file：行范围 start:end，从 1 开始；省略选择整个文件。
 - `--model` `option`:生成模型，沿用运行配置。
-- `--run-id` `option`:prepare／generate：稳定运行 UUID。
+- `--records` `option`:trace：原记录范围 start:end，从 0 开始。
+- `--run-id` `option`:稳定运行 UUID；引导模式可用它恢复已有运行。
+- `--scope` `option`:引导：已有可信来源范围 JSON。
+- `--selection` `option`:引导：与 scope 对应的选区 JSON。
+- `--trace` `option`:引导：直接选择一份轨迹文件。
+- `--trace-kind` `option`:trace：轨迹类型，如 codex／claude／qoder。
 - `--workspace` `option`:显式知识工作区，省略使用设置。
 
 **示例:**
+
+```bash
+omk know extract
+```
+
+```bash
+omk know extract --file PRODUCT.md --lines 1:80
+```
+
+```bash
+omk know extract --trace ./session.jsonl --trace-kind codex --records 0:20
+```
+
+```bash
+omk know extract --run-id <run-id>
+```
 
 ```bash
 omk know extract prepare --workspace ./knowledge --input ./sources.json --json
