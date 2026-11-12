@@ -7,11 +7,11 @@ Use a demo to walk through “preview → evaluate → inspect evidence”, then
 You need Node.js >=22 and an authenticated runtime: Codex CLI or an API executor. See [Executors](../../reference/integration/executors.md) for setup.
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 ```
 
-This installs the actively evolving 1.0 Beta. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading from 0.54.
+This installs the stable release. Read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading from 0.x or a 1.0 Beta.
 
 Inside a Codex task, OMK defaults to Codex, reads the locally configured model, and reuses it as the judge. In a regular terminal you can select it explicitly:
 

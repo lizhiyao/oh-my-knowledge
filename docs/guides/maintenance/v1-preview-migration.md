@@ -1,13 +1,13 @@
-# Migrate from 0.54 to the 1.0 preview
+# Upgrade to OMK 1.0
 
-This guide covers upgrading from `0.54` or an earlier 1.0 Beta to the current preview on npm’s `next` tag. Beta iteration continues; these are the current migration boundaries, not an API freeze or an RC release plan.
+This guide covers switching from 0.x or a 1.0 Beta to the stable 1.0 release on npm.
 
 ```bash
-npm install --global oh-my-knowledge@next
+npm install --global oh-my-knowledge
 omk --version
 ```
 
-Use a disposable project or back up both the project `.omk/` directory and `~/.oh-my-knowledge/` before trying the preview. To return to the stable channel, run `npm install --global oh-my-knowledge@latest`.
+Before upgrading, preserve the selected knowledge workspace, the project `.omk/` directory, and machine data under `~/.oh-my-knowledge/` or `OMK_HOME`. Start a new 1.0 workspace when coming from 0.x. Read the preserved history with its matching old version. For supported Beta workspaces, check the [copy migration requirements](../knowledge/extract-knowledge.md#workspace-migration).
 
 ## Upgrade from Beta.14 to Beta.15
 
@@ -37,7 +37,7 @@ The maintenance path supports sources, precise revisions, and retained history. 
 
 ## 1. Start a new evidence history
 
-The preview uses the domain-oriented storage v2 layout. It does not read, move, delete, or convert the earlier layout. Existing data remains on disk but is invisible to the new readers.
+OMK 1.0 uses the domain-oriented storage v2 layout. It does not read, move, delete, or convert the earlier layout. Existing data remains on disk but is invisible to the new readers.
 
 - New project records live under `.omk/eval/`, `.omk/doctor/`, `.omk/observe/`, `.omk/backups/`, and `.omk/state/`.
 - Machine-level data uses the same domains under `~/.oh-my-knowledge/`.
@@ -49,7 +49,7 @@ Do not copy scores from an old report into the new layout. Re-run the evaluation
 
 ## 2. Create a new eval-samples document
 
-The preview uses the strict `omk.eval-sample-set/v3` contract. Earlier sample documents are not read or converted. Generate a new document with `omk init` or `omk sample`, then review its criteria and weights before using it as evidence.
+OMK 1.0 uses the strict `omk.eval-sample-set/v3` contract. Earlier sample documents are not read or converted. Generate a new document with `omk init` or `omk sample`, then review its criteria and weights before using it as evidence.
 
 Each rubric is a map of independently judged dimensions. Every dimension contains one `criterion` and a positive `weight`; weights within a sample must sum to 1. Keep exactly one canonical `eval-samples.json` or `eval-samples.yaml` in each auto-discovery scope.
 

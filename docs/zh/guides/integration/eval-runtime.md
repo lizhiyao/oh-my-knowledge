@@ -114,7 +114,7 @@ OMK 会把每道题分别交给这两个版本，所以三道题一共调用这�
 - **运行能力：** 随机模型不能照抄示例的 `deterministic`。没有模型种子控制时，声明 `stochastic`、`seedControl: 'unsupported'`，并将 `experiment.sampling` 改为 `{ samplingKind: 'paired', seedCoupling: 'uncontrolled' }`。声明支持取消，就要把 `signal` 传给真实调用。
 - **凭证与失败：** 客户端和密钥放在调用函数的闭包里，不放进会被记录的 `config` 或 `runtimeContext`。调用失败应抛错或返回稳定的 `errorCode`，不要编造一个答案继续打分。
 
-完整的模型接入写法在本页下方的[「完全匹配与模型接入代码」](../../reference/integration/eval-runtime-recipes.md#exact-match-评测)中。它使用你自己的模型客户端；部署前按服务容量设置[并发、超时和预算](../../reference/integration/eval-runtime-recipes.md#生产策略)。在独立项目安装 `npm install oh-my-knowledge@next zod`，并使用与已安装版本匹配的示例；尚未发布的能力先用源码运行。
+完整的模型接入写法在本页下方的[「完全匹配与模型接入代码」](../../reference/integration/eval-runtime-recipes.md#exact-match-评测)中。它使用你自己的模型客户端；部署前按服务容量设置[并发、超时和预算](../../reference/integration/eval-runtime-recipes.md#生产策略)。在独立项目安装 `npm install oh-my-knowledge zod`，并使用与已安装版本匹配的示例；尚未发布的能力先用源码运行。
 
 <a id="read-results"></a>
 <a id="如何解读结果"></a>

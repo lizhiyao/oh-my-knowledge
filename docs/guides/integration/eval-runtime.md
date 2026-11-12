@@ -114,7 +114,7 @@ Three other parts must match your real service:
 - **Runtime capabilities:** A stochastic model must not copy `deterministic`. Without model seed control, declare `stochastic` and `seedControl: 'unsupported'`, and set `experiment.sampling` to `{ samplingKind: 'paired', seedCoupling: 'uncontrolled' }`. If you declare cancellation support, forward `signal` to the real call.
 - **Credentials and failures:** Keep clients and secrets in the invocation closure, outside recorded `config` and `runtimeContext`. Throw or return a stable `errorCode` on failure rather than inventing an answer to score.
 
-Expand [“Exact match and model integration code”](../../reference/integration/eval-runtime-recipes.md#exact-match-evaluation) below for the complete model integration pattern. It uses your own model client. Set [concurrency, timeouts, and budgets](../../reference/integration/eval-runtime-recipes.md#production-policy) for your service before deployment. In an independent project, install `npm install oh-my-knowledge@next zod` and use examples matching the installed version; run unreleased capabilities from source first.
+Expand [“Exact match and model integration code”](../../reference/integration/eval-runtime-recipes.md#exact-match-evaluation) below for the complete model integration pattern. It uses your own model client. Set [concurrency, timeouts, and budgets](../../reference/integration/eval-runtime-recipes.md#production-policy) for your service before deployment. In an independent project, install `npm install oh-my-knowledge zod` and use examples matching the installed version; run unreleased capabilities from source first.
 
 <a id="read-results"></a>
 <a id="read-the-results"></a>

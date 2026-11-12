@@ -17,7 +17,7 @@ node examples/eval-runtime/run.mjs
 
 命令输出一行 JSON：`runStatus: "completed"` 表示运行完成；`estimate: 0.3333333333333333` 表示候选版本的完全匹配率比对照版本高约 33.3 个百分点；`verdict: "NOISE"` 表示这三条用例尚不足以确认进步，不能据此发布。输出还包含报告 ID。
 
-在独立服务中使用时，先运行 `npm install oh-my-knowledge@next zod`，再复制 `run.mjs`，并用自己的服务调用替换 `executor.execute()`，同时更新 schema、版本与真实能力声明。首次接入见[使用指南](../../docs/zh/guides/integration/eval-runtime.md)。凭证、租户鉴权、队列与存储仍由宿主持有。
+在独立服务中使用时，先运行 `npm install oh-my-knowledge zod`，再复制 `run.mjs`，并用自己的服务调用替换 `executor.execute()`，同时更新 schema、版本与真实能力声明。首次接入见[使用指南](../../docs/zh/guides/integration/eval-runtime.md)。凭证、租户鉴权、队列与存储仍由宿主持有。
 
 ## 证据边界
 

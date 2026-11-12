@@ -3,7 +3,7 @@
 Local task acceptance requires `1.0.0-beta.13` or later. Install and check the version:
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 ```
 

@@ -2,7 +2,7 @@
 
 Form candidates from selected conversation records, UTF-8 project files or fixed local Git files, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. For a first use, start with the [guided CLI](#quickstart) or [Studio](#studio). To use saved knowledge in a new task, see [complete a task with existing knowledge](#task-knowledge-reuse).
 
-This guide's release baseline is `1.0.0-beta.15`; a source build may contain later changes. Run `omk --version` after installation and read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
+This guide's release baseline is `1.0.0`; a source build may contain later changes. Run `omk --version` after installation and read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
 
 ## Capabilities and versions {#availability}
 
@@ -11,16 +11,16 @@ This guide's release baseline is `1.0.0-beta.15`; a source build may contain lat
 | Core library, artifact authoring, ongoing revision and change review | Available since published `1.0.0-beta.14`; Beta.13 does not include this maintenance UI. |
 | Source3 project/trace selection, body generation with windows for long histories, independent source review and association rebuilding, current journals and explicit copy migration | Available in `1.0.0-beta.15`; published Beta.14 does not contain these capabilities. |
 | Task retrieval, text v2 reading and the official Skill's existing-knowledge maintenance branch | Available in `1.0.0-beta.15`; published Beta.14 contains neither retrieve/text v1 nor v2. |
-| Read retry, save recovery and guided CLI extraction | Available in `1.0.0-beta.15`; Beta.14 is not evidence that these fixes and entry points are present. |
+| Read retry, save recovery and guided CLI extraction | Available since `1.0.0-beta.15`. The Codex default model and resume fixes are available in `1.0.0`. |
 
 The [current knowledge extraction contract](../../reference/shared/knowledge-contract.md) generates prompt, Schema and capacity values from runtime code. It identifies the build rather than replacing [release records](https://github.com/lizhiyao/oh-my-knowledge/releases). `@next` is a release channel and does not automatically contain unpublished main changes.
 
 ## Complete your first extraction {#quickstart}
 
-Install the Beta and prepare an [authenticated runtime](../../reference/integration/executors.md#prerequisites), then start the guide:
+Install OMK 1.0 and prepare an [authenticated runtime](../../reference/integration/executors.md#prerequisites), then start the guide:
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk know extract
 ```
 

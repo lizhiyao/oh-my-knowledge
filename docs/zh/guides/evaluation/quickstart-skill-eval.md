@@ -7,11 +7,11 @@
 需要 Node.js >=22，以及一个已认证的 runtime：Codex CLI 或 API 执行器。配置方法见[执行器](../../reference/integration/executors.md)。
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 ```
 
-这里安装的是持续迭代的 1.0 Beta；从 0.54 升级请先看[迁移指南](../maintenance/v1-preview-migration.md)。
+这里安装的是稳定版。从 0.x 或 1.0 Beta 升级请先看[迁移指南](../maintenance/v1-preview-migration.md)。
 
 在 Codex 任务中，OMK 默认选择 Codex，读取本机配置的模型，并沿用该模型作为评委。普通终端可显式选择：
 

@@ -175,9 +175,12 @@ describe('官网与 README 的首次使用落点', () => {
     }
   });
 
-  it('官网与 README 的静态产品图均存在且声明真实尺寸', () => {
+  it('官网与 README 使用稳定版安装入口，静态产品图声明真实尺寸', () => {
+    const install = 'npm i -g oh-my-knowledge';
     for (const name of ['landing-body.html', 'landing-body.en.html']) {
       const html = readFileSync(join(DOCS_ROOT, '.vitepress/theme', name), 'utf8');
+      assert.ok(html.includes(`<code>${install}</code>`), `${name}: show the stable install command`);
+      assert.ok(html.includes(`data-copy-command="${install}"`), `${name}: copy the stable install command`);
       for (const [, attributes, src] of html.matchAll(/<img([^>]*src="([^"]+)"[^>]*)>/g)) {
         assert.ok(!src!.endsWith('.gif'), 'Product evidence should be static by default');
         const file = join(DOCS_ROOT, 'public', src!);
@@ -190,7 +193,8 @@ describe('官网与 README 的首次使用落点', () => {
     for (const name of ['README.md', 'README.zh.md']) {
       const text = readFileSync(join(PROJECT_ROOT, name), 'utf8');
       for (const [, src] of text.matchAll(/!\[[^\]]*\]\((\.\/[^)]+)\)/g)) assert.ok(existsSync(resolve(PROJECT_ROOT, src!)), `${name}: missing image ${src}`);
-      assert.ok(text.includes('npm/v/oh-my-knowledge/next.svg'), `${name}: badge must match the install channel`);
+      assert.ok(text.split('\n').includes(install), `${name}: show the stable install command`);
+      assert.ok(text.includes('npm/v/oh-my-knowledge.svg'), `${name}: badge must match the install channel`);
     }
   });
 });

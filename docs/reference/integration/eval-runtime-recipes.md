@@ -56,7 +56,7 @@ The example below connects a model service, supplies expected answers, and compa
 Install OMK and a runtime schema library. A schema only needs a `parse(unknown)` method; this example uses Zod:
 
 ```bash
-npm install oh-my-knowledge@next zod
+npm install oh-my-knowledge zod
 ```
 
 ## 1. Connect your service
@@ -277,7 +277,7 @@ node examples/eval-runtime/retrieval-abstention.mjs
 The synthetic example needs no API key or business service. In a separate project, copy this one `.mjs` file and install an OMK version containing `AbstentionEvaluator`, plus Zod, which the example imports directly:
 
 ```bash
-npm install oh-my-knowledge@next zod
+npm install oh-my-knowledge zod
 node retrieval-abstention.mjs
 ```
 
