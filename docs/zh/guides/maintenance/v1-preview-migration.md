@@ -9,6 +9,17 @@ omk --version
 
 请先在一次性项目中试用，或备份项目 `.omk/` 与 `~/.oh-my-knowledge/` 后再安装预览版。需要回到稳定渠道时，运行 `npm install --global oh-my-knowledge@latest`。
 
+## 从 Beta.14 升级到 Beta.15
+
+Beta.15 在 `@next` 发布 Source3 选区、正文优先提炼、任务检索、独立复核与 CLI 引导提炼，同时包含 `BREAKING-CLI`、`BREAKING-SCHEMA`、`BREAKING-RUNTIME`、`BREAKING-COMPATIBILITY` 与 `BREAKING-COMPARABILITY` 改动：
+
+1. **更新知识命令。** 知识工作统一使用 `omk know` 的九个任务入口：`list`、`retrieve`、`show`、`sources`、`extract`、`revise`、`review`、`runs` 和 `migrate`。旧 `observe knowledge` 入口无别名退场；`schema` 导出与 `study` 运行时也已退役，没有替代命令。
+2. **检查其它 CLI 脚本。** `omk install` 现在只安装 skill，目标仅支持 `--to auto` 或 `--to codex`，目标列表与 `--to all` 会被拒绝。Studio 遇到端口冲突不再停止已有监听者：请选择空闲端口，或验证服务后显式使用 `--takeover`。详见 [CLI 参考](../../reference/cli.md)及本文下方说明。
+3. **使用引导式提炼入口。** 运行 `omk know extract` 即可选择来源并逐阶段确认，无需手工衔接内部 JSON。Agent、CI 和需要显式控制的用户可以继续使用 `extract prepare`、`extract generate` 与 `extract continue`。
+4. **保留原工作区。** 安装或普通运行 Beta.15 不会自动改写工作区数据。当前生成日志使用 Schema 9；符合迁移条件时，用 `omk know migrate …` 创建独立副本，具体格式边界见[迁移旧工作区](../knowledge/extract-knowledge.md#workspace-migration)。回退使用保留的旧工作区及匹配旧构建。
+5. **更新受影响的运行时。** Anthropic 执行器已退役，请改用受支持的执行器。可选 `@openai/codex-sdk` peer 要求现为 `>=0.165.0`；请在同一安装作用域同时升级 OMK 与 SDK。此依赖变化不需要迁移存量数据。见[运行时前置要求](../../reference/integration/executors.md#前置要求)。
+6. **建立新的可比测量。** Beta.14 之后的提示词、Schema、请求／运行身份、运行时要求与接纳语义均有变化。历史报告与分数不重算，不把不兼容的新旧结果合并成同一比较系列。
+
 ## 从 Beta.13 升级到 Beta.14
 
 知识库、载体生成、持续修订与变化核对需要 **1.0.0-beta.14 或更新版本**。官网 SDK 截图来自 main 源码验收，不是 Beta.13 的界面。安装后用 `omk --version` 核对版本，再按[知识维护动线](../knowledge/extract-knowledge.md)开始；本地阅读不调用模型。
@@ -23,8 +34,6 @@ omk --version
 新维护链路支持来源、精确修订和历史保留，不自动证明 SDK 动态效果、节省时间或跨 Agent 复用收益。
 
 **Gold 限制：** `omk eval gold init` 仍生成通用脚手架，真实 sample ID 需要人工对齐。Gold compare 提供人工标注与评委的一致性及事后可靠性评估，不改变已有 run 的发布判定。具体选择器见下方 CLI 迁移说明。
-
-上面的 Beta.14 身份描述该次已发布版本。当前 main 另有后续提炼与复核能力，其身份和存储边界不同；使用当前 main 命令前，先核对[能力分档](../knowledge/extract-knowledge.md#availability)与[当前生成契约](../../reference/shared/knowledge-contract.md)。合并 main 不等于发版，上述历史步骤也不提供后续格式的迁移。
 
 ## 一、重新建立证据历史
 

@@ -1,19 +1,38 @@
 # Accumulate, maintain, and use knowledge
 
-Form candidates from selected conversation records, UTF-8 project files or fixed local Git files, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. Start with Studio for a first use; CLI steps follow. To use saved knowledge in a new task, see [complete a task with existing knowledge](#task-knowledge-reuse).
+Form candidates from selected conversation records, UTF-8 project files or fixed local Git files, review and retain them in a library, revise outdated content, and maintain carriers that cite it. Retention, carrier saving, and effect verification have separate records. For a first use, start with the [guided CLI](#quickstart) or [Studio](#studio). To use saved knowledge in a new task, see [complete a task with existing knowledge](#task-knowledge-reuse).
 
-This guide describes current main. Check the capability’s version boundary before choosing an installed package or source build. Run `omk --version` after installation and read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
+This guide's release baseline is `1.0.0-beta.15`; a source build may contain later changes. Run `omk --version` after installation and read the [migration guide](../maintenance/v1-preview-migration.md) before upgrading.
 
 ## Capabilities and versions {#availability}
 
 | Capability | Availability boundary |
 |---|---|
 | Core library, artifact authoring, ongoing revision and change review | Available since published `1.0.0-beta.14`; Beta.13 does not include this maintenance UI. |
-| Source3 project/trace selection, body generation with windows for long histories, independent source review and association rebuilding, current journals and explicit copy migration | This guide describes current main; published Beta.14 does not contain these later capabilities. Build current source and check release notes when a later version is published. |
-| Task retrieval, text v2 reading and the official Skill's existing-knowledge maintenance branch | Current main; published Beta.14 contains neither retrieve/text v1 nor v2. Matching package version strings do not establish feature availability. |
-| Later read-retry, save-recovery and CLI-guidance fixes | Also described against current main; the published Beta.14 version is not evidence that these fixes are present. |
+| Source3 project/trace selection, body generation with windows for long histories, independent source review and association rebuilding, current journals and explicit copy migration | Available in `1.0.0-beta.15`; published Beta.14 does not contain these capabilities. |
+| Task retrieval, text v2 reading and the official Skill's existing-knowledge maintenance branch | Available in `1.0.0-beta.15`; published Beta.14 contains neither retrieve/text v1 nor v2. |
+| Read retry, save recovery and guided CLI extraction | Available in `1.0.0-beta.15`; Beta.14 is not evidence that these fixes and entry points are present. |
 
 The [current knowledge extraction contract](../../reference/shared/knowledge-contract.md) generates prompt, Schema and capacity values from runtime code. It identifies the build rather than replacing [release records](https://github.com/lizhiyao/oh-my-knowledge/releases). `@next` is a release channel and does not automatically contain unpublished main changes.
+
+## Complete your first extraction {#quickstart}
+
+Install the Beta and prepare an [authenticated runtime](../../reference/integration/executors.md#prerequisites), then start the guide:
+
+```bash
+npm i -g oh-my-knowledge@next
+omk know extract
+```
+
+Without arguments, the CLI helps you choose a source type. To select part of a project file directly:
+
+```bash
+omk know extract --file PRODUCT.md --lines 1:80
+```
+
+You do not need to assemble SourceRefs or stage JSON by hand. Review the complete source preview before saving, and each complete model request before sending; saving a source does not authorize model dispatch. Extraction calls a model and may incur costs. Completed bodies remain pending candidates rather than becoming retained knowledge automatically.
+
+Use `omk know list` to find the candidates, then follow [inspect and maintain](#inspect-and-maintain) to read and retain them. See [guided CLI extraction](#guided-extraction) for traces, existing scopes, interruption recovery, and the fixed JSON interfaces for Agents and CI.
 
 ## Studio {#studio}
 

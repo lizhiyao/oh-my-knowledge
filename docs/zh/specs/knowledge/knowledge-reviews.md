@@ -1,6 +1,6 @@
 # 内容复核、关联覆盖与任务反馈
 
-本规范描述当前 main 的独立复核记录。它不修改知识正文、保留决定、关联接受、身份确认或历史测量，也不代表已发布 Beta.14 包含这些能力。操作步骤见[知识提炼与复用指南](../../guides/knowledge/extract-knowledge.md#review-feedback)。
+本规范描述从 `1.0.0-beta.15` 开始提供的独立复核记录。它不修改知识正文、保留决定、关联接受、身份确认或历史测量，已发布 Beta.14 不包含这些能力。操作步骤见[知识提炼与复用指南](../../guides/knowledge/extract-knowledge.md#review-feedback)。
 
 ## 精确对象与存储 {#review-identity}
 

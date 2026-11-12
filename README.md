@@ -14,7 +14,7 @@ For agent users and AI application developers, extract candidates from selected 
 
 ## Start with local work records
 
-Requires **Node.js ≥22**. The library, artifact authoring, and change review described here require **1.0.0-beta.14 or later**, from the **`@next` channel**; npm `latest` is a separate stable channel. Beta.13 does not include this maintenance UI. Strict extraction, native outcome archives, bounded retries, model-assisted cross-window link review and study review belong to later main development; a Beta.14 version alone does not establish their availability. See the [capability tiers](docs/guides/knowledge/extract-knowledge.md#availability) for release and source boundaries. Read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
+Requires **Node.js ≥22**. The complete knowledge workflow described here requires **1.0.0-beta.15 or later**, from the **`@next` channel**; npm `latest` is a separate stable channel. Beta.15 includes Source3 selection, body-first extraction, task retrieval, independent review, and guided CLI extraction. See the [capability tiers](docs/guides/knowledge/extract-knowledge.md#availability) for version boundaries, and read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
 
 ```bash
 npm i -g oh-my-knowledge@next
@@ -24,7 +24,9 @@ omk studio
 
 Open the local URL returned by the command and inspect an existing Codex task and its source records. This step makes no model call; Studio offers source and collection guidance when no conversations exist. Follow the [observation guide](docs/guides/observe/observe-production.md) for other log sources.
 
-Next, choose a conversation and turns under “Knowledge → Candidate review”, inspect the material to send, and extract candidates. **Extraction calls a model**, so prepare an [authenticated runtime](docs/reference/integration/executors.md#prerequisites) first. Link sources in the library, revise outdated content, then explicitly generate and save an artifact. Its detail view lets you review knowledge changes and old and new references. Follow the [knowledge maintenance workflow](docs/guides/knowledge/extract-knowledge.md).
+If you prefer the terminal, run `omk know extract` directly. The guide selects sources with you and presents each model request for confirmation; no internal JSON assembly is required.
+
+Alternatively, in Studio choose a conversation and turns under “Knowledge → Candidate review”, inspect the material to send, and extract candidates. **Extraction calls a model**, so prepare an [authenticated runtime](docs/reference/integration/executors.md#prerequisites) first. Link sources in the library, revise outdated content, then explicitly generate and save an artifact. Its detail view lets you review knowledge changes and old and new references. Follow the [knowledge maintenance workflow](docs/guides/knowledge/extract-knowledge.md).
 
 ## When knowledge changes, review its artifacts
 
