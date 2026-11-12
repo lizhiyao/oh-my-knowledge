@@ -203,7 +203,7 @@ Studio 打开的是经过校验的 Core run，而不是第二套报告模型。R
 
 ## `omk observe`
 
-`omk observe` 默认生成 skill 健康度报告；子命令还提供观测收件箱（`ingest`／`inbox`／`show`）、知识维护（`knowledge`）及跨窗口实体关联复核（`entity-links`）。
+`omk observe` 默认生成 skill 健康度报告；子命令还提供观测收件箱（`ingest`／`inbox`／`show`）及跨窗口实体关联复核（`entity-links`）。知识维护统一使用 `omk know`。
 
 ### A. skill 健康度报告（默认）
 

@@ -1,6 +1,6 @@
 # Cross-knowledge relation opinions
 
-This contract adds explicit supplement/conflict opinions between two exact bodies in one selected workspace. It does not generate relationships, merge identities, change content, or decide which claim is true. It is a current-main capability, not a released Beta.14 feature.
+This contract adds explicit supplement/conflict opinions between two exact bodies in one selected workspace. It does not generate relationships, merge identities, change content, or decide which claim is true. It is available in `1.0.0-beta.15`; released Beta.14 does not include it.
 
 ## Meaning and scope {#relation-meaning}
 

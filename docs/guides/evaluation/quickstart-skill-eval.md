@@ -87,7 +87,7 @@ Conclusions apply only to these cases, criteria, and conditions. AI-generated ca
 omk install omk-agent-skill
 ```
 
-The default installs into detected supported targets: Codex/AGENTS for `~/.codex` or `~/.agents`. `--to all` forces all currently known targets; `--dest` selects a custom skill root.
+The default installs into detected supported targets: Codex/AGENTS for `~/.codex` or `~/.agents`. Use `--to codex` to install there without prior detection, or `--dest` to select a custom skill root.
 
 Explicitly use the OMK Skill in your agent and describe your goal, for example: “Use omk to compare skills/my-skill-v1 and skills/my-skill-v2; preview the plan first.” Ask the agent to execute the `omk` CLI. Review generated cases before running the real evaluation.
 

@@ -1,6 +1,6 @@
 # Content review, association coverage and task feedback
 
-This specification describes independent review records on current main. They do not change knowledge content, retention, association acceptance, identity confirmation or historical measurements, and are not included in released Beta.14. See the [extraction and reuse guide](../../guides/knowledge/extract-knowledge.md#review-feedback) for operations.
+This specification describes independent review records available in `1.0.0-beta.15`. They do not change knowledge content, retention, association acceptance, identity confirmation or historical measurements, and are not included in released Beta.14. See the [extraction and reuse guide](../../guides/knowledge/extract-knowledge.md#review-feedback) for operations.
 
 ## Exact targets and storage {#review-identity}
 

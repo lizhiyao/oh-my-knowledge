@@ -14,7 +14,7 @@ OMK 帮助人和 Agent 沉淀、维护并复用有价值的知识：将真实工
 
 ## 从本地工作记录开始
 
-需要 **Node.js ≥22**。本页的知识库、载体生成与变化核对需要 **1.0.0-beta.14 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.13 不包含这里的维护界面。严格结构化提炼、原生结果归档、有界重试、模型辅助的跨窗口关联复核与研究复核属于后续 main 能力，不能仅凭 Beta.14 版本号视为可用；对应发行与源码能力见[能力分档](docs/zh/guides/knowledge/extract-knowledge.md#availability)。旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
+需要 **Node.js ≥22**。本页完整知识动线需要 **1.0.0-beta.15 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.15 包含 Source3 选区、正文优先提炼、任务检索、独立复核与 CLI 引导提炼。版本边界见[能力分档](docs/zh/guides/knowledge/extract-knowledge.md#availability)，旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
 
 ```bash
 npm i -g oh-my-knowledge@next
@@ -24,7 +24,9 @@ omk studio
 
 打开命令返回的本地地址，从已有 Codex 对话核对任务与原始记录。这一步不调用模型；没有对话时，Studio 提供来源与采集入口。其他日志来源按[观测指南](docs/zh/guides/observe/observe-production.md)接入。
 
-接下来，在“知识 → 候选核对”选择会话和轮次，核对发送范围后提炼候选。**提炼会调用模型**，需先准备[已认证的运行时](docs/zh/reference/integration/executors.md#前置要求)。在知识库关联来源、修订过时内容，再明确生成和保存载体；载体详情可核对知识变化和新旧引用。完整步骤见[知识维护动线](docs/zh/guides/knowledge/extract-knowledge.md)。
+如果更熟悉终端，可以直接运行 `omk know extract`。引导会协助选择来源，并逐阶段核对模型请求，无需手工拼接内部 JSON。
+
+也可以在 Studio 的“知识 → 候选核对”选择会话和轮次，核对发送范围后提炼候选。**提炼会调用模型**，需先准备[已认证的运行时](docs/zh/reference/integration/executors.md#前置要求)。在知识库关联来源、修订过时内容，再明确生成和保存载体；载体详情可核对知识变化和新旧引用。完整步骤见[知识维护动线](docs/zh/guides/knowledge/extract-knowledge.md)。
 
 ## 知识变化，载体也需要核对
 

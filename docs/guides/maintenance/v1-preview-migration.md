@@ -9,6 +9,17 @@ omk --version
 
 Use a disposable project or back up both the project `.omk/` directory and `~/.oh-my-knowledge/` before trying the preview. To return to the stable channel, run `npm install --global oh-my-knowledge@latest`.
 
+## Upgrade from Beta.14 to Beta.15
+
+Beta.15 publishes Source3 selection, body-first extraction, task retrieval, independent review, and guided CLI extraction on `@next`. It also includes `BREAKING-CLI`, `BREAKING-SCHEMA`, `BREAKING-RUNTIME`, `BREAKING-COMPATIBILITY`, and `BREAKING-COMPARABILITY` changes:
+
+1. **Update knowledge commands.** Knowledge work now uses nine task groups under `omk know`: `list`, `retrieve`, `show`, `sources`, `extract`, `revise`, `review`, `runs`, and `migrate`. The former `observe knowledge` entry is retired without an alias. The `schema` export and `study` runtime are also retired, with no replacement commands.
+2. **Review other CLI scripts.** `omk install` now installs only skills, with `--to auto` or `--to codex`; target lists and `--to all` are rejected. Studio no longer stops an existing listener on a port conflict: choose a free port or explicitly use `--takeover` after verifying the service. See the [CLI reference](../../reference/cli.md) and the detailed sections below.
+3. **Use the guided extraction entry.** Run `omk know extract` to select sources and confirm each stage without manually connecting internal JSON. Agents, CI, and users needing explicit control can continue with `extract prepare`, `extract generate`, and `extract continue`.
+4. **Preserve the original workspace.** Installing or ordinarily running Beta.15 does not rewrite workspace data automatically. Current generation journals use Schema 9. Where a supported migration applies, use `omk know migrate …` to create an independent copy; review the exact format boundaries in the [workspace migration guide](../knowledge/extract-knowledge.md#workspace-migration). Roll back with the preserved old workspace and its matching old build.
+5. **Update affected runtimes.** The Anthropic executor is retired; use a supported executor instead. The optional `@openai/codex-sdk` peer requirement is now `>=0.165.0`; upgrade OMK and the SDK together in the same installation scope. No stored-data migration is needed for this dependency change. See [runtime prerequisites](../../reference/integration/executors.md#prerequisites).
+6. **Start new comparable measurements.** Prompts, Schemas, request/run identities, runtime requirements, and admission semantics changed after Beta.14. Historical reports and scores are not recomputed; do not merge incompatible old and new results into one comparison series.
+
 ## Upgrade from Beta.13 to Beta.14
 
 The library, artifact authoring, ongoing revision, and change review require **1.0.0-beta.14 or later**. The website's SDK screenshots come from a main-source acceptance run, not Beta.13. Check `omk --version` after installing, then follow the [knowledge maintenance workflow](../knowledge/extract-knowledge.md); local reading makes no model call.
@@ -23,8 +34,6 @@ This release includes `BREAKING-CLI`, `BREAKING-SCHEMA`, and `BREAKING-COMPARABI
 The maintenance path supports sources, precise revisions, and retained history. It does not automatically prove dynamic SDK effects, time saved, or cross-agent reuse benefits.
 
 **Gold limitation:** `omk eval gold init` still creates a generic scaffold; align real sample IDs manually. Gold comparison reports human/judge agreement and post-hoc reliability without changing an existing run’s release decision. See the CLI migration selectors below.
-
-The Beta.14 identities above describe that published release. Current main has later extraction and review capabilities with different identities and storage boundaries; use the [capability tiers](../knowledge/extract-knowledge.md#availability) and [current generated contract](../../reference/shared/knowledge-contract.md) before following current-main commands. A main merge is not a release, and the historical instructions above do not supply a migration for later formats.
 
 ## 1. Start a new evidence history
 
@@ -51,7 +60,7 @@ omk eval --dry-run --samples eval-samples.yaml \
   --control code-review-v1 --treatment code-review-v2
 ```
 
-See the [eval sample format](../../reference/evaluation/eval-sample-format.md) and its published JSON Schema for the complete v2 contract.
+See the [eval sample format](../../reference/evaluation/eval-sample-format.md) and its published JSON Schema for the complete v3 contract.
 
 ## 3. Re-check external URL inputs
 

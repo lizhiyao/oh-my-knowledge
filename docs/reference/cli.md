@@ -203,7 +203,7 @@ Studio opens the validated Core run rather than a second report model. The run d
 
 ## `omk observe`
 
-`omk observe` defaults to the skill-health report. Subcommands also support the observation inbox (`ingest` / `inbox` / `show`), knowledge maintenance (`knowledge`) and cross-window entity-link review (`entity-links`).
+`omk observe` defaults to the skill-health report. Subcommands also support the observation inbox (`ingest` / `inbox` / `show`) and cross-window entity-link review (`entity-links`). Knowledge maintenance is under `omk know`.
 
 ### A. Skill-health report (default)
 
