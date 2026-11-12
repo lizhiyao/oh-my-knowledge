@@ -1,6 +1,6 @@
 # OMK
 
-[![Beta @next](https://img.shields.io/npm/v/oh-my-knowledge/next.svg?label=Beta)](https://www.npmjs.com/package/oh-my-knowledge?activeTab=versions)
+[![npm](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge?activeTab=versions)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
@@ -14,10 +14,10 @@ OMK 帮助人和 Agent 沉淀、维护并复用有价值的知识：将真实工
 
 ## 从本地工作记录开始
 
-需要 **Node.js ≥22**。本页完整知识动线需要 **1.0.0-beta.15 或更新版本**，使用 **`@next` 通道**；npm 的 `latest` 是另一条稳定通道。Beta.15 包含 Source3 选区、正文优先提炼、任务检索、独立复核与 CLI 引导提炼。版本边界见[能力分档](docs/zh/guides/knowledge/extract-knowledge.md#availability)，旧版用户先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
+需要 **Node.js ≥22**。以下步骤使用 npm 上的 OMK **1.0**。旧版用户请先阅读[迁移指南](docs/zh/guides/maintenance/v1-preview-migration.md)。
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 omk studio
 ```
@@ -49,7 +49,7 @@ omk studio
 
 [文档入口](docs/zh/README.md) · [官网](https://oh-my-knowledge.pages.dev/zh/) · [CLI](docs/zh/reference/cli.md) · [运行时与执行器](docs/zh/reference/integration/executors.md) · [配置与环境变量](docs/zh/reference/shared/settings.md) · [示例](examples/README.zh.md)
 
-Beta 接口和存储契约仍可能变化。知识在显式选定的工作区维护；运行证据与机器偏好各有自己的存储范围。升级前备份，再按迁移指南建立新证据。
+知识在显式选定的工作区维护；运行证据与机器偏好各有自己的存储范围。升级前备份，再按迁移指南建立新证据。
 
 ## 安全说明
 

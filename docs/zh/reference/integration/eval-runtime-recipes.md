@@ -57,7 +57,7 @@
 安装 OMK 和一个运行时 schema 库。Schema 只需提供 `parse(unknown)` 方法；下面使用 Zod：
 
 ```bash
-npm install oh-my-knowledge@next zod
+npm install oh-my-knowledge zod
 ```
 
 ## 1．接入自己的服务
@@ -274,7 +274,7 @@ node examples/eval-runtime/retrieval-abstention.mjs
 示例使用合成数据，不需要 API Key 或业务服务。独立项目只需复制这一个 `.mjs` 文件，安装包含 `AbstentionEvaluator` 的 OMK 版本及示例直接使用的 Zod：
 
 ```bash
-npm install oh-my-knowledge@next zod
+npm install oh-my-knowledge zod
 node retrieval-abstention.mjs
 ```
 

@@ -1,13 +1,13 @@
-# 从 0.54 迁移到 1.0 预览版
+# 升级到 OMK 1.0
 
-本文面向从 `0.54` 或较早的 1.0 Beta 升级到当前预览版的用户。Beta 使用 npm 的 `next` 标签，仍会继续迭代；本文说明当前迁移边界，不代表接口冻结或 RC 发布计划。
+本文说明如何从 0.x 或 1.0 Beta 切换到 npm 上的 1.0 稳定版。
 
 ```bash
-npm install --global oh-my-knowledge@next
+npm install --global oh-my-knowledge
 omk --version
 ```
 
-请先在一次性项目中试用，或备份项目 `.omk/` 与 `~/.oh-my-knowledge/` 后再安装预览版。需要回到稳定渠道时，运行 `npm install --global oh-my-knowledge@latest`。
+升级前保留已选知识工作区、项目 `.omk/` 与 `~/.oh-my-knowledge/` 或 `OMK_HOME` 下的机器数据。从 0.x 切换时，新建 1.0 工作区，历史数据用原版本回看。受支持的 Beta 工作区见[副本迁移条件](../knowledge/extract-knowledge.md#workspace-migration)。
 
 ## 从 Beta.14 升级到 Beta.15
 
@@ -37,7 +37,7 @@ Beta.15 在 `@next` 发布 Source3 选区、正文优先提炼、任务检索、
 
 ## 一、重新建立证据历史
 
-预览版使用领域化的存储布局 v2，不读取、搬动、删除或转换旧布局。原数据仍留在磁盘上，但新读侧不可见。
+OMK 1.0 使用领域化的存储布局 v2，不读取、搬动、删除或转换旧布局。原数据仍留在磁盘上，但新读侧不可见。
 
 - 新的项目记录分别进入 `.omk/eval/`、`.omk/doctor/`、`.omk/observe/`、`.omk/backups/` 与 `.omk/state/`。
 - 机器级数据在 `~/.oh-my-knowledge/` 下采用相同领域。
@@ -49,7 +49,7 @@ Beta.15 在 `@next` 发布 Source3 选区、正文优先提炼、任务检索、
 
 ## 二、新建评测用例文档
 
-预览版只使用严格的 `omk.eval-sample-set/v3` 契约，不读取或转换更早的用例文档。请通过 `omk init` 或 `omk sample` 生成新文档，并在作为证据使用前复核准则与权重。
+OMK 1.0 使用严格的 `omk.eval-sample-set/v3` 契约，不读取或转换更早的用例文档。请通过 `omk init` 或 `omk sample` 生成新文档，并在作为证据使用前复核准则与权重。
 
 每条 rubric 是独立判定维度的映射。每个维度包含一条 `criterion` 与一个正 `weight`，同一 sample 的权重和必须为 1。每个自动发现作用域只保留一份 canonical `eval-samples.json` 或 `eval-samples.yaml`。
 

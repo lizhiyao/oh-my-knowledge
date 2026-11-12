@@ -1,6 +1,6 @@
 # OMK
 
-[![Beta @next](https://img.shields.io/npm/v/oh-my-knowledge/next.svg?label=Beta)](https://www.npmjs.com/package/oh-my-knowledge?activeTab=versions)
+[![npm](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge?activeTab=versions)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
@@ -14,10 +14,10 @@ For agent users and AI application developers, extract candidates from selected 
 
 ## Start with local work records
 
-Requires **Node.js ≥22**. The complete knowledge workflow described here requires **1.0.0-beta.15 or later**, from the **`@next` channel**; npm `latest` is a separate stable channel. Beta.15 includes Source3 selection, body-first extraction, task retrieval, independent review, and guided CLI extraction. See the [capability tiers](docs/guides/knowledge/extract-knowledge.md#availability) for version boundaries, and read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
+Requires **Node.js ≥22**. These steps use OMK **1.0** from npm. Read the [migration guide](docs/guides/maintenance/v1-preview-migration.md) before upgrading an older installation.
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 omk studio
 ```
@@ -49,7 +49,7 @@ Starter cases check the workflow; `UNDERPOWERED` is expected. Release decisions 
 
 [Documentation start](docs/README.md) · [Website](https://oh-my-knowledge.pages.dev/) · [CLI](docs/reference/cli.md) · [Runtimes and executors](docs/reference/integration/executors.md) · [Settings and environment variables](docs/reference/shared/settings.md) · [Examples](examples/README.md)
 
-Beta APIs and storage contracts may change. Knowledge stays in the explicitly selected workspace; execution evidence and machine preferences have their own storage scopes. Back up before upgrading, then establish new evidence through the migration guide.
+Knowledge stays in the explicitly selected workspace; execution evidence and machine preferences have their own storage scopes. Back up before upgrading, then establish new evidence through the migration guide.
 
 ## Security notice
 

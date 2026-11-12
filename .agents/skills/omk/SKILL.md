@@ -93,10 +93,10 @@ argument-hint: "<agents|doctor|eval|evolve|init|install|know|observe|sample|stud
 仅实际需要 CLI 的操作才运行 `which omk`。知识复用、维护与选定来源分支按各自说明核对能力，不进入下方评测项目扫描；纯讨论和 MCP 快捷反馈不做 CLI 环境检查。如果未安装，说明当前操作无法执行，可提供以下安装命令，但不自动安装、升级或迁移：
 
 ```
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 ```
 
-omk CLI 顶层命令包括：`init` / `install` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
+omk CLI 顶层命令包括：`init` / `install` / `doctor` / `eval` / `know` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
 ### 在 Codex / 支持 MCP 的客户端中
 

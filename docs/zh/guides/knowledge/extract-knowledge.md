@@ -2,7 +2,7 @@
 
 从选定的对话记录、UTF-8 项目文件或固定本地 Git 文件形成候选，核对后保留到知识库，修订过时内容，再维护引用它的载体。保留、保存载体和验证效果各有自己的记录。第一次使用可以从 [CLI 引导](#quickstart)或 [Studio](#studio) 开始。让 Agent 依据已存知识处理新任务，见[从已有知识完成任务](#task-knowledge-reuse)。
 
-本指南的发布基线是 `1.0.0-beta.15`；源码构建可能包含更新改动。安装后运行 `omk --version`，升级前阅读[迁移指南](../maintenance/v1-preview-migration.md)。
+本指南的发布基线是 `1.0.0`；源码构建可能包含更新改动。安装后运行 `omk --version`，升级前阅读[迁移指南](../maintenance/v1-preview-migration.md)。
 
 ## 能力与版本 {#availability}
 
@@ -11,16 +11,16 @@
 | 知识库、载体生成、持续修订与变化核对的核心流程 | 从已发布的 `1.0.0-beta.14` 开始提供；Beta.13 不包含该维护界面。 |
 | Source3 项目／轨迹选区、正文生成与长历史分窗、独立来源复核及关联重建、当前日志和显式副本迁移 | 从 `1.0.0-beta.15` 开始提供；已发布 Beta.14 不包含这些能力。 |
 | 按任务 `retrieve`、text v2 阅读与官方 Skill 的已有知识维护分支 | 从 `1.0.0-beta.15` 开始提供；已发布 Beta.14 没有 retrieve/text v1 或 v2。 |
-| 读取重试、保存恢复与 CLI 引导提炼 | 从 `1.0.0-beta.15` 开始提供；不能把 Beta.14 当作这些修复与入口可用的证据。 |
+| 读取重试、保存恢复与 CLI 引导提炼 | 从 `1.0.0-beta.15` 开始提供。Codex 默认模型和引导续跑修复随 `1.0.0` 发布。 |
 
 当前 prompt、Schema 和容量由[当前知识提炼契约](../../reference/shared/knowledge-contract.md)从运行时代码生成。该页描述构建身份，不代替[发行记录](https://github.com/lizhiyao/oh-my-knowledge/releases)；`@next` 是发行通道，不会自动包含未发布的 main 改动。
 
 ## 先完成第一次提炼 {#quickstart}
 
-安装 Beta 并准备[已认证的运行时](../../reference/integration/executors.md#前置要求)，然后启动引导：
+安装 OMK 1.0 并准备[已认证的运行时](../../reference/integration/executors.md#前置要求)，然后启动引导：
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk know extract
 ```
 

@@ -3,7 +3,7 @@
 本地任务验收需要 `1.0.0-beta.13` 或更新版本。安装后核对版本：
 
 ```bash
-npm i -g oh-my-knowledge@next
+npm i -g oh-my-knowledge
 omk --version
 ```
 
