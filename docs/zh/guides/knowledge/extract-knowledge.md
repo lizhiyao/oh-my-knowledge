@@ -107,6 +107,26 @@ omk know review record-use --workspace ./knowledge --input ./use-feedback.json -
 
 使用“提炼整条对话”或“选择来源并提炼知识”，逐阶段核对完整请求。需要覆盖复核时再独立记录实际决定。知识待办继续汇集候选，明确刷新或同工作区维护事件更新显示，不自动保留知识、决定跨窗身份或改写载体。
 
+## CLI 引导提炼 {#guided-extraction}
+
+普通用户可以从裸 `omk know extract` 开始，不必先理解内部生成协议：
+
+```bash
+omk know extract
+omk know extract --file PRODUCT.md --lines 1:80
+omk know extract --trace ./session.jsonl --trace-kind codex --records 0:20
+omk know extract --scope ./scope.json --selection ./selections.json
+omk know extract --run-id <run-id>
+```
+
+无参数时选择来源类型；`--file` 直接选择当前目录内的项目文件，`--lines` 使用从 1 开始、包含终点的行范围，省略时选择整个文件。轨迹使用 `--trace`、`--trace-kind` 和从 0 开始、包含终点的 `--records`。已有可信 scope 可用 `--selection` 提供选区 JSON 数组，或在提示中选择已绑定来源。
+
+引导会展示完整来源预览，经确认后保存；保存不授权模型发送。每个模型阶段继续展示完整 system、input、producer、模型和 requestDigest，逐项确认后才发送。SourceRef、runId、generation 和阶段摘要由流程内部接续，不需要手工复制到新的 JSON 文件。
+
+在确认前停止不会发送该阶段；之后用同一 `--run-id` 恢复引导。失败、取消或未知回执保留记录，不自动重试或重发。完成后正文仍是待审候选，不自动保留或接受关联。需要来源覆盖复核或实体关联时，仍使用相应的独立入口。
+
+`extract prepare`、`extract generate` 和 `extract continue` 继续为 Agent、CI 和需要显式控制的用户提供固定 JSON 接口。引导与显式阶段共用同一应用用例和请求摘要，不建立第二套生成协议。
+
 ## 选择来源并生成 {#select-sources}
 
 CLI 与 Studio 使用同一份选定知识工作区。预览负责读取，捕获负责保存，准备请求供核对，发送需要明确确认。精确格式及容量见[来源契约](../../specs/knowledge/knowledge-sources.md)。

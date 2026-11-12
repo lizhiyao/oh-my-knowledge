@@ -8,6 +8,8 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+const guidedConfirm = vi.hoisted(() => vi.fn());
+vi.mock('@inquirer/prompts', async original => ({ ...await original(), confirm: guidedConfirm }));
 import { UserSettingsStore } from '../../src/settings/user-settings.js';
 import KnowExtract from '../../src/cli/commands/know/extract.js';
 import KnowList from '../../src/cli/commands/know/list.js';
@@ -22,6 +24,8 @@ import { runCommand } from '../helpers/run-command.js';
 import { CLI_ENTRY, runCli, runCliFailing } from '../helpers/cli-process.js';
 import { createLocalKnowledgeApplication, createLocalEntityLinks, createLocalKnowledgeLibrary, parseEntityLinkPreview } from '../../src/knowledge/application/local.js';
 import { createOpenAiArchiveProducer } from '../../src/executors/openai/archive.js';
+import * as generationHost from '../../src/knowledge/adapters/generation-host.js';
+import type { KnowledgeGenerationModel } from '../../src/knowledge/adapters/generation-executor.js';
 import { KnowledgeApplication } from '../../src/knowledge/application/application.js';
 import { EntityAnalysisWriteCapacityError } from '../../src/knowledge/entities/contracts.js';
 import { FileKnowledgeStore } from '../../src/knowledge/adapters/knowledge-store.js';
@@ -160,6 +164,99 @@ describe('know command wiring', () => {
     const waiting = formatKnowledgeResult({ ...run, nextAction: 'continue_stage', journal: { ...run.journal, status: 'active',
       stages: [{ ...run.journal.stages[0], state: 'prepared', outcomeRef: undefined }] } }, 'zh', { operation: 'resume', id: run.journal.runId }, workspace);
     expect(waiting).toContain('association: prepared'); expect(waiting).toContain('resume 永不调用模型'); expect(waiting).toContain('extract continue');
+  });
+  it('guides a file from capture through a stopped stage and resumes by run ID without manual protocol identifiers', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-guided-extract-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root); vi.stubEnv('OPENAI_API_KEY', 'guided-fixture'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9322');
+    const workspace = join(root, 'knowledge'), file = join(root, 'PRODUCT.md');
+    writeFileSync(file, 'Alpha 使用 Beta；保留这个来源条件。');
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      const stage = request.response_format.json_schema.name.includes('body_draft') ? 'body_draft' : 'body';
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(authoredKnowledgeResponse(request.messages.at(-1).content, stage)) }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3 } }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const decisions = guidedConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const stopped = await runCommand(KnowExtract, ['--file', 'PRODUCT.md', '--workspace', workspace,
+      '--executor', 'openai-api', '--model', 'guided-fixture', '--json'], { cwd: root });
+    expect(stopped.stdout).toContain('已停止');
+    expect(fetch).not.toHaveBeenCalled();
+    const runId = createLocalKnowledgeApplication(workspace).runs().current[0].runId;
+    expect(stopped.stdout).toContain(runId);
+    decisions.mockReset().mockResolvedValue(true);
+    const completed = await runCommand(KnowExtract, ['--run-id', runId, '--workspace', workspace,
+      '--executor', 'openai-api', '--model', 'guided-fixture', '--json'], { cwd: root });
+    expect(createLocalKnowledgeApplication(workspace).inspect(runId).journal.status).toBe('completed');
+    expect(completed.stdout).toContain('提炼已完成');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const bodies = createLocalKnowledgeApplication(workspace).inspect(runId).journal.bodies;
+    expect(bodies).toHaveLength(1);
+    expect(createLocalKnowledgeApplication(workspace).detail(bodies[0].knowledgeId).maintenance).toBeNull();
+    expect(decisions).toHaveBeenCalledTimes(2);
+  });
+  it('guides long sources through every prepared window with separate confirmation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-guided-long-cli-')); roots.push(root);
+    vi.stubEnv('OMK_HOME', root); vi.stubEnv('OPENAI_API_KEY', 'guided-long-fixture'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9323');
+    const workspace = join(root, 'knowledge');
+    writeFileSync(join(root, 'PRODUCT.md'), 'Alpha 使用 Beta；保留来源条件。\n'.repeat(20000));
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (profile, input, _signal, gate) => {
+      gate?.();
+      return { outcomeKind: 'result', result: { ok: true, output: JSON.stringify(authoredKnowledgeResponse(input, profile.stageKind)) } };
+    });
+    vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockReturnValue({
+      executor: 'codex', model: 'guided-long-fixture', timeoutMs: 300000,
+      inspect: () => ({ producerId: 'guided-long-fixture', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }),
+      invoke,
+    });
+    guidedConfirm.mockReset().mockResolvedValue(true);
+    const result = await runCommand(KnowExtract, ['--file', 'PRODUCT.md', '--workspace', workspace,
+      '--executor', 'codex', '--model', 'guided-long-fixture', '--json'], { cwd: root });
+    expect(result.stdout).toContain('提炼已完成');
+    const journal = createLocalKnowledgeApplication(workspace).runs().current[0];
+    const windows = journal.stages.filter(stage => stage.stageKind === 'body_window');
+    expect(windows.length).toBeGreaterThan(0);
+    expect(invoke).toHaveBeenCalledTimes(1 + windows.length);
+    expect(guidedConfirm).toHaveBeenCalledTimes(1 + journal.stages.length);
+    expect(createLocalKnowledgeApplication(workspace).detail(journal.bodies[0].knowledgeId).maintenance).toBeNull();
+  });
+  it('stops after a native model failure without retrying or accepting pending content', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-guided-failure-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    const workspace = join(root, 'knowledge'); writeFileSync(join(root, 'PRODUCT.md'), 'Alpha 使用 Beta。');
+    const invoke = vi.fn<KnowledgeGenerationModel['invoke']>(async (_profile, _input, _signal, gate) => {
+      gate?.();
+      return { outcomeKind: 'result', result: { ok: false, output: null, durationMs: 1, failure: { failureKind: 'timeout' } } };
+    });
+    vi.spyOn(generationHost, 'createLocalKnowledgeGenerationModel').mockReturnValue({
+      executor: 'codex', model: 'guided-failure-fixture', timeoutMs: 300000,
+      inspect: () => ({ producerId: 'guided-failure-fixture', producerRevision: 'v1', sourceChannels: [], maxOutcomeJsonBytes: 1024 * 1024, proof: { synthetic: true } }), invoke,
+    });
+    guidedConfirm.mockReset().mockResolvedValue(true);
+    await expect(runCommand(KnowExtract, ['--file', 'PRODUCT.md', '--workspace', workspace,
+      '--executor', 'codex', '--model', 'guided-failure-fixture'], { cwd: root })).rejects.toMatchObject({ code: 1 });
+    expect(invoke).toHaveBeenCalledOnce();
+    const journal = createLocalKnowledgeApplication(workspace).runs().current[0];
+    expect(journal.status).toBe('failed');
+    expect(journal.bodies).toEqual([]);
+  });
+  it('supports direct traces and existing scope selections without bypassing capture confirmation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-guided-inputs-cli-')); roots.push(root); vi.stubEnv('OMK_HOME', root);
+    const workspace = join(root, 'knowledge'), trace = join(root, 'trace.jsonl');
+    writeFileSync(trace, JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Alpha 使用 Beta' }] } }) + '\n');
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    guidedConfirm.mockReset().mockResolvedValue(false);
+    const direct = await runCommand(KnowExtract, ['--trace', trace, '--trace-kind', 'codex', '--records', '0:0',
+      '--workspace', workspace, '--executor', 'openai-api', '--model', 'guided-fixture'], { cwd: root });
+    expect(direct.stdout).toContain('已停止');
+    writeFileSync(join(root, 'scope.json'), JSON.stringify({ scopeVersion: 'knowledge-source-scope/v1',
+      projects: [{ projectId: 'project', root }], traces: [] }));
+    writeFileSync(join(root, 'selection.json'), JSON.stringify([{ sourceKind: 'project_file', projectId: 'project', relativePath: 'trace.jsonl', lineRanges: null }]));
+    const scoped = await runCommand(KnowExtract, ['--scope', join(root, 'scope.json'), '--selection', join(root, 'selection.json'),
+      '--workspace', workspace, '--executor', 'openai-api', '--model', 'guided-fixture'], { cwd: root });
+    expect(scoped.stdout).toContain('已停止');
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(runCommand(KnowExtract, ['--file', 'trace.jsonl', '--lines', '0:2', '--workspace', workspace,
+      '--executor', 'openai-api', '--model', 'guided-fixture'], { cwd: root })).rejects.toMatchObject({ code: 2 });
   });
   it('captures one selected source, inspects it and deletes its snapshot through shared operations', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-knowledge-cli-')); roots.push(root);

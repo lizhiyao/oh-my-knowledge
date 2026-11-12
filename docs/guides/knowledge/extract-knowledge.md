@@ -107,6 +107,26 @@ This build provides explicit stages only; conversation scheduling is retired. Ol
 
 Use **Extract conversation** or **Choose sources and extract knowledge**, reviewing each complete request. Record an actual coverage decision separately if source review is needed. The inbox still gathers candidates; explicit refresh or scoped maintenance events update it without automatically retaining knowledge, confirming cross-window identity or rewriting carriers.
 
+## Guided CLI extraction {#guided-extraction}
+
+Start with bare `omk know extract` instead of learning the internal generation protocol:
+
+```bash
+omk know extract
+omk know extract --file PRODUCT.md --lines 1:80
+omk know extract --trace ./session.jsonl --trace-kind codex --records 0:20
+omk know extract --scope ./scope.json --selection ./selections.json
+omk know extract --run-id <run-id>
+```
+
+Without arguments, choose a source type interactively. `--file` selects a project file inside the current directory; `--lines` is an inclusive start:end range starting at 1, and omitting it selects the whole file. Traces use `--trace`, `--trace-kind`, and an inclusive zero-based `--records` range. With an existing trusted scope, provide a selection JSON array through `--selection`, or select a bound source interactively.
+
+The guide shows the complete source preview and saves only after confirmation; saving does not authorize model dispatch. Every model stage still shows the complete system, input, producer, model, and requestDigest, and is dispatched only after separate confirmation. SourceRefs, run IDs, generations, and stage digests are continued internally rather than copied into new JSON files by hand.
+
+Stopping before confirmation does not dispatch that stage; resume the guide with the same `--run-id`. Failures, cancellation, and unknown outcomes preserve their records without automatic retry or redispatch. Completed bodies remain pending candidates; retention and association approval are not automatic. Source coverage review and entity associations remain separate optional workflows.
+
+`extract prepare`, `extract generate`, and `extract continue` remain fixed JSON interfaces for Agents, CI, and explicit control. Guided and explicit paths share the same application use cases and request digests rather than a second generation protocol.
+
 ## Select sources and generate knowledge {#select-sources}
 
 CLI and Studio use the same selected knowledge workspace. Preview reads; capture saves; preparing a request makes it inspectable; sending requires an explicit confirmation. See the [source contract](../../specs/knowledge/knowledge-sources.md) for exact formats and limits.
