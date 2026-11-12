@@ -12,6 +12,7 @@ import { createLocalKnowledgeGenerationModel } from '../../../knowledge/adapters
 import type { KnowledgeGenerationModel } from '../../../knowledge/adapters/generation-executor.js';
 import { createExtractionArchiveProducer } from '../../../executors/archive.js';
 import { UserSettingsStore } from '../../../settings/user-settings.js';
+import { getCodexModelSuggestion } from '../../lib/codex-model-hint.js';
 import { KnowCommand, knowJsonFlag, knowWorkspaceFlag } from '../../lib/know-command.js';
 import { knowledgeCommand } from '../../lib/knowledge-output.js';
 
@@ -116,45 +117,58 @@ export default class KnowExtract extends KnowCommand {
     if (advancedOnly.some(name => flags[name] !== undefined)) {
       this.error(this.t('引导流程不接受显式阶段参数；请先选择 prepare／generate／continue。', 'The guided flow does not accept explicit-stage flags; select prepare/generate/continue first.'), { exit: 2 });
     }
-    const selectedResume = flags['run-id'] !== undefined;
-    if (selectedResume && guidedFlags.some(name => flags[name] !== undefined)) {
+    const runId = flags['run-id'];
+    if (runId !== undefined && guidedFlags.some(name => flags[name] !== undefined)) {
       this.error(this.t('恢复已有运行时不能重新选择来源。', 'Resuming an existing run cannot change its source selection.'), { exit: 2 });
     }
-    if (!selectedResume && (['trace-kind', 'lines', 'records'] as const).some(name => flags[name] !== undefined)
+    if (runId === undefined && (['trace-kind', 'lines', 'records'] as const).some(name => flags[name] !== undefined)
       && !flags.file && !flags.trace) {
       this.error(this.t('范围参数须与 --file 或 --trace 一起使用。', 'Range flags require --file or --trace.'), { exit: 2 });
     }
-    const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
-    const model = createLocalKnowledgeGenerationModel(settings.executor, this.required(settings.model, 'model'), createExtractionArchiveProducer);
     await this.runWithCancellation(async signal => {
-      let app: KnowledgeApplication;
-      let sources: readonly SourceRef[];
-      if (selectedResume) {
-        app = createLocalKnowledgeApplication(settings.workspace);
-        const inspected = app.inspect(flags['run-id']!);
-        sources = inspected.journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
-      } else {
-        const selected = await this.guideSources(flags);
-        app = createLocalKnowledgeApplication(settings.workspace, { sourceScope: selected.scope });
-        const preview = app.previewSources(selected.selections, { signal });
-        this.log(JSON.stringify(preview, null, 2));
-        const save = await confirm({
-          message: this.t(`将上述选定来源保存到 ${settings.workspace}？保存不授权发送模型。`, `Save the selected sources to ${settings.workspace}? Saving does not authorize model dispatch.`),
-          default: false,
-        });
-        if (!save) {
-          this.log(this.t('已停止；没有保存来源或调用模型。', 'Stopped; no sources were saved and no model was called.'));
-          return;
+      if (runId !== undefined) {
+        const workspace = this.workspace(flags.workspace);
+        const app = createLocalKnowledgeApplication(workspace);
+        const { journal } = app.inspect(runId);
+        const executorOverride = flags.executor?.trim();
+        const modelOverride = flags.model?.trim();
+        if ((executorOverride && executorOverride !== journal.executor) || (modelOverride && modelOverride !== journal.model)) {
+          this.error(this.t('恢复须沿用原运行的执行器和模型。请移除不匹配的 --executor 或 --model。',
+            'Resuming requires the recorded executor and model. Remove the mismatched --executor or --model.'), { exit: 2 });
         }
-        const rebuilt = app.previewResolvedSources(preview.items.map(item => item.resolvedSelection), {
-          expectedDigest: preview.previewDigest,
-          signal,
-        });
-        const captured = await app.captureSources({ previewId: rebuilt.previewId, previewDigest: rebuilt.previewDigest }, signal);
-        sources = captured.saveManifest.items.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
-        this.log(this.t(`已保存 ${sources.length} 份来源。接下来逐阶段核对模型请求。`, `Saved ${sources.length} source(s). Each model request will be reviewed next.`));
+        const model = createLocalKnowledgeGenerationModel(journal.executor, journal.model, createExtractionArchiveProducer);
+        const sources = journal.sources.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
+        return this.runGuidedStages(app, sources, model, workspace, runId, signal);
       }
-      await this.runGuidedStages(app, sources, model, settings.workspace, flags['run-id'], signal);
+
+      const settings = new UserSettingsStore().resolve({ workspace: flags.workspace, executor: flags.executor, model: flags.model });
+      const codex = settings.executor === 'codex' && !settings.model ? getCodexModelSuggestion() : undefined;
+      const modelName = settings.model || (codex?.fromConfig ? codex.model : '');
+      if (!modelName) {
+        this.error(this.t('请通过 --model 或 OMK_MODEL 指定提炼模型。使用 Codex 时，也可以在 Codex 配置中设置默认模型。',
+          'Set an extraction model with --model or OMK_MODEL. For Codex, you can also set a default model in the Codex config.'), { exit: 2 });
+      }
+      const model = createLocalKnowledgeGenerationModel(settings.executor, modelName, createExtractionArchiveProducer);
+      const selected = await this.guideSources(flags);
+      const app = createLocalKnowledgeApplication(settings.workspace, { sourceScope: selected.scope });
+      const preview = app.previewSources(selected.selections, { signal });
+      this.log(JSON.stringify(preview, null, 2));
+      const save = await confirm({
+        message: this.t(`将上述选定来源保存到 ${settings.workspace}？保存不授权发送模型。`, `Save the selected sources to ${settings.workspace}? Saving does not authorize model dispatch.`),
+        default: false,
+      });
+      if (!save) {
+        this.log(this.t('已停止；没有保存来源或调用模型。', 'Stopped; no sources were saved and no model was called.'));
+        return;
+      }
+      const rebuilt = app.previewResolvedSources(preview.items.map(item => item.resolvedSelection), {
+        expectedDigest: preview.previewDigest,
+        signal,
+      });
+      const captured = await app.captureSources({ previewId: rebuilt.previewId, previewDigest: rebuilt.previewDigest }, signal);
+      const sources = captured.saveManifest.items.map(({ snapshotId, sourceVersion }) => ({ snapshotId, sourceVersion }));
+      this.log(this.t(`已保存 ${sources.length} 份来源。接下来逐阶段核对模型请求。`, `Saved ${sources.length} source(s). Each model request will be reviewed next.`));
+      await this.runGuidedStages(app, sources, model, settings.workspace, undefined, signal);
     });
   }
 

@@ -165,9 +165,31 @@ describe('know command wiring', () => {
       stages: [{ ...run.journal.stages[0], state: 'prepared', outcomeRef: undefined }] } }, 'zh', { operation: 'resume', id: run.journal.runId }, workspace);
     expect(waiting).toContain('association: prepared'); expect(waiting).toContain('resume 永不调用模型'); expect(waiting).toContain('extract continue');
   });
-  it('guides a file from capture through a stopped stage and resumes by run ID without manual protocol identifiers', async () => {
+  it('uses the selected Codex profile for first-time guided extraction', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-guided-default-model-')); roots.push(root);
+    const codexConfig = join(root, 'codex');
+    mkdirSync(codexConfig);
+    writeFileSync(join(codexConfig, 'config.toml'), 'model = "top-level-model"\nprofile = "work"\n[profiles.work]\nmodel = "profile-model"\n');
+    writeFileSync(join(root, 'PRODUCT.md'), 'Alpha 使用 Beta。');
+    vi.stubEnv('OMK_HOME', root);
+    vi.stubEnv('CODEX_HOME', codexConfig);
+    vi.stubEnv('OMK_EXECUTOR', undefined);
+    vi.stubEnv('OMK_MODEL', undefined);
+    const decisions = guidedConfirm.mockReset().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const output = await runCommand(KnowExtract, ['--file', 'PRODUCT.md'], { cwd: root });
+    const journal = createLocalKnowledgeApplication(join(root, 'knowledge')).runs().current[0];
+    expect(journal).toMatchObject({ executor: 'codex', model: 'profile-model', stages: [{ stageKind: 'body_draft', state: 'prepared' }] });
+    expect(output.stdout).toContain('"model": "profile-model"');
+    expect(decisions).toHaveBeenCalledTimes(2);
+
+    await expect(runCommand(KnowExtract, ['--file', 'PRODUCT.md', '--executor', 'openai-api'], { cwd: root }))
+      .rejects.toMatchObject({ code: 2 });
+    expect(decisions).toHaveBeenCalledTimes(2);
+  });
+  it('resumes the printed command with the original model and only dispatches the unsent stage', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-guided-extract-cli-')); roots.push(root);
     vi.stubEnv('OMK_HOME', root); vi.stubEnv('OPENAI_API_KEY', 'guided-fixture'); vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:9322');
+    vi.stubEnv('OMK_EXECUTOR', undefined); vi.stubEnv('OMK_MODEL', undefined);
     const workspace = join(root, 'knowledge'), file = join(root, 'PRODUCT.md');
     writeFileSync(file, 'Alpha 使用 Beta；保留这个来源条件。');
     const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
@@ -177,23 +199,32 @@ describe('know command wiring', () => {
         usage: { prompt_tokens: 12, completion_tokens: 3 } }));
     });
     vi.stubGlobal('fetch', fetch);
-    const decisions = guidedConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const decisions = guidedConfirm.mockReset().mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     const stopped = await runCommand(KnowExtract, ['--file', 'PRODUCT.md', '--workspace', workspace,
       '--executor', 'openai-api', '--model', 'guided-fixture', '--json'], { cwd: root });
     expect(stopped.stdout).toContain('已停止');
-    expect(fetch).not.toHaveBeenCalled();
-    const runId = createLocalKnowledgeApplication(workspace).runs().current[0].runId;
-    expect(stopped.stdout).toContain(runId);
+    expect(fetch).toHaveBeenCalledOnce();
+    const app = createLocalKnowledgeApplication(workspace);
+    const runId = app.runs().current[0].runId;
+    const paused = app.inspect(runId).journal;
+    expect(paused.stages.map(stage => stage.state)).toEqual(['completed', 'prepared']);
+    expect(stopped.stdout).toContain(`omk know extract --workspace ${workspace} --run-id ${runId}`);
+    new UserSettingsStore(root).save({ schemaVersion: 2, knowledge: { executor: 'codex', model: 'different-model' } }, 'missing');
+    const resume = ['--workspace', workspace, '--run-id', runId];
     decisions.mockReset().mockResolvedValue(true);
-    const completed = await runCommand(KnowExtract, ['--run-id', runId, '--workspace', workspace,
-      '--executor', 'openai-api', '--model', 'guided-fixture', '--json'], { cwd: root });
-    expect(createLocalKnowledgeApplication(workspace).inspect(runId).journal.status).toBe('completed');
+    await expect(runCommand(KnowExtract, [...resume, '--model', 'different-model'], { cwd: root })).rejects.toMatchObject({ code: 2 });
+    expect(decisions).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(app.inspect(runId).journal).toEqual(paused);
+
+    const completed = await runCommand(KnowExtract, resume, { cwd: root });
+    expect(app.inspect(runId).journal).toMatchObject({ status: 'completed', executor: 'openai-api', model: 'guided-fixture' });
     expect(completed.stdout).toContain('提炼已完成');
     expect(fetch).toHaveBeenCalledTimes(2);
     const bodies = createLocalKnowledgeApplication(workspace).inspect(runId).journal.bodies;
     expect(bodies).toHaveLength(1);
     expect(createLocalKnowledgeApplication(workspace).detail(bodies[0].knowledgeId).maintenance).toBeNull();
-    expect(decisions).toHaveBeenCalledTimes(2);
+    expect(decisions).toHaveBeenCalledOnce();
   });
   it('guides long sources through every prepared window with separate confirmation', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omk-guided-long-cli-')); roots.push(root);
