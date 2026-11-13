@@ -138,13 +138,11 @@ class FakeCoreDshHost implements DshHostContextLike {
           }, { once: true });
         });
       }
-      const events: UnknownRecord[] = [];
       const actualSessionId = this.behavior.sessionIdMismatch
         ? `${options.sessionId}-changed`
         : options.sessionId;
       const session: DshSessionLike = {
         id: actualSessionId,
-        events,
         header: {
           cwd: options.meta.cwd,
           ...(options.meta.parentSession === undefined
@@ -159,9 +157,7 @@ class FakeCoreDshHost implements DshHostContextLike {
       let settle: (() => void) | undefined;
       let idle = Promise.resolve();
       type SetupContext = Parameters<typeof options.setup>[0];
-      const scope = { agent: undefined as DshAgentLike | undefined };
       const agentContext: SetupContext = {
-        get agent() { return scope.agent; },
         systemPrompt: {
           section: (section) => {
             this.promptSections.push(section);
@@ -170,7 +166,7 @@ class FakeCoreDshHost implements DshHostContextLike {
           suppressRuntimeContext: () => () => undefined,
         },
         tools: {
-          get: () => ({}),
+          get: (name) => this.currentSchemas.find(schema => schema.name === name),
           restrict: ({ allow, deny }) => {
             if (allow !== undefined) this.allowedToolSets.push([...allow]);
             if (deny !== undefined) this.deniedTools.push([...deny]);
@@ -193,7 +189,6 @@ class FakeCoreDshHost implements DshHostContextLike {
           ...(ignorable === undefined ? {} : { ignorable }),
         };
         sequence += 1;
-        events.push(event);
         for (const listener of this.eventListeners) listener(session, event);
         return event;
       };
@@ -241,8 +236,7 @@ class FakeCoreDshHost implements DshHostContextLike {
           if (this.behavior.cancelSettles !== false) settle?.();
         },
       };
-      scope.agent = agent;
-      options.setup(agentContext);
+      options.setup(agentContext, agent);
       this.created.push({
         sessionId: options.sessionId,
         cwd: options.meta.cwd,
@@ -301,7 +295,6 @@ const parentAgent = {
   ctx: { name: 'interactive-agent-context' },
   session: {
     id: 'interactive-session',
-    events: [],
     header: { cwd: '/project', agentPreset: 'stale-preset' },
   },
   followup() {},
@@ -618,6 +611,20 @@ describe('DSH host-only Core Executor adapter', () => {
     expect(host.allowedToolSets).toEqual([['read']]);
     expect(host.toolGuards[0]?.({ name: 'read' })).toBeUndefined();
     expect(host.toolGuards[0]?.({ name: 'write' })).toContain('allow-list denied');
+  });
+
+  it('excludes project knowledge from runtime-default measurement tools and identity', async () => {
+    const value = await fixture();
+    const host = new FakeCoreDshHost();
+    const port = await createAdapter(value, host);
+    host.currentSchemas.push({
+      name: 'omk_knowledge_retrieve',
+      description: 'project knowledge',
+      parameters: { type: 'object' },
+    });
+    await execute(port, value.target.config as JsonValue);
+    expect(host.deniedTools[0]).toContain('omk_knowledge_retrieve');
+    expect(host.toolGuards[0]?.({ name: 'omk_knowledge_retrieve' })).toContain('disabled project knowledge');
   });
 
   it('derives distinct host session identities for the same trial across runs', async () => {

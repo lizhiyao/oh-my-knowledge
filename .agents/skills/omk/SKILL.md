@@ -118,7 +118,7 @@ Codex 是 omk 的一等 runtime。未显式指定执行器时，`omk eval` / `do
 
 如果当前 DSH profile 已安装 `oh-my-knowledge` bundle，使用 `/omk eval <eval.yaml>`。该路径直接复用现有 DSH 的模型、凭证、工具与 sandbox，并为每条用例创建隔离 session；不要要求用户另起 DSH runtime。
 
-查看真实 DSH 任务轨迹时，先运行 `/omk observe` 列出最近已结束的 session，再运行 `/omk observe <session-id>`。OMK 通过当前 profile 的 `sessionPersistence` 只读摄取一致快照，并返回 Studio 任务轨迹链接；不要求用户导出或定位 JSONL／SQLite 文件。首版不实时跟随正在写入的 session，也不默认选择发起 observe 命令的当前 session。
+在 DSH 中提炼并复用项目知识时，另开一个同目录会话，用 `/omk observe` 选取已结束的 session，再用 `/omk observe <session-id>` 打开 Studio。通过「提炼这轮」选择来源消息、确认发送，并核对、保留或修订候选。项目知识保存在会话创建目录的 `.omk/knowledge`。后续同项目任务可用 `omk_knowledge_retrieve` 查询当前已保留的修订，检查正文的适用条件并引用知识及修订 ID。
 
 ## 第三步：按需检测评测项目结构
 

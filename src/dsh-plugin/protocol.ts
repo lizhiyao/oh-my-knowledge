@@ -83,7 +83,8 @@ function boundedToolOutput(value: unknown): unknown {
 
 function resultBlock(data: UnknownRecord): UnknownRecord | undefined {
   const message = isRecord(data.message) ? data.message : undefined;
-  return contentBlocks(message?.content).find((block) => block.type === 'tool-result');
+  return message?.role === 'tool' && typeof message.toolCallId === 'string' ? message
+    : contentBlocks(message?.content).find((block) => block.type === 'tool-result');
 }
 
 function collectEvents(result: DshHostRunResult): DshEventRecord[] {

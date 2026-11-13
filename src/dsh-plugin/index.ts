@@ -6,6 +6,7 @@ import {
   type DshHostContextLike,
 } from './host-executor.js';
 import { runDshCoreEvaluation } from './core-command.js';
+import { canonicalDshProject, dshKnowledgeTool, dshProjectLayout } from './knowledge.js';
 
 export {
   DSH_HOST_CORE_ADAPTER_IMPLEMENTATION_VERSION,
@@ -35,6 +36,9 @@ type DshCommandResultLike =
 
 interface DshPluginContextLike extends DshHostContextLike {
   get?(name: 'sessionPersistence'): DshSessionPersistenceLike | undefined;
+  readonly tools: NonNullable<DshHostContextLike['tools']> & {
+    register(tool: typeof dshKnowledgeTool): () => void;
+  };
   readonly commands: {
     register(definition: {
       readonly name: string;
@@ -56,8 +60,10 @@ const HELP = [
   '受控评测：/omk eval <eval.yaml>',
   '查看最近任务：/omk observe',
   '打开任务轨迹：/omk observe <session-id>',
+  '在 Studio 里提炼这轮，并保留或修订候选。',
+  '复用：请 DSH Agent 用 omk_knowledge_retrieve 查询当前项目已保留的知识。',
   '',
-  '文档：https://oh-my-knowledge.pages.dev/zh/reference/executors',
+  '文档：https://oh-my-knowledge.pages.dev/zh/guides/observe-production#在-deepseek-harness-中沉淀和复用知识',
 ].join('\n');
 const USAGE = '用法：/omk eval <eval.yaml> 或 /omk observe [session-id]；运行 /omk 查看帮助。';
 
@@ -162,17 +168,20 @@ function persistenceFor(ctx: DshPluginContextLike): DshSessionPersistenceLike {
   if (!persistence) {
     throw new Error('当前 DSH profile 没有启用 sessionPersistence；/omk eval 仍可使用，但任务轨迹需要配置 JSONL 或 SQLite persistence backend。');
   }
+  if (typeof persistence.list !== 'function' || typeof persistence.open !== 'function') {
+    throw new Error('当前 DSH 会话存储缺少只读句柄接口，请升级 DSH。');
+  }
   return persistence;
 }
 
 async function studioUrl(
-  invocation: DshCommandInvocationLike,
+  layout: ReturnType<typeof projectLayout>,
   state: DshObserveState,
 ): Promise<string> {
   if (state.disposed) throw new Error('OMK DSH 插件已关闭。');
   if (state.serverUrl) return state.serverUrl;
   if (state.starting) return state.starting;
-  state.starting = startStudio(invocation, state);
+  state.starting = startStudio(layout, state);
   try {
     return await state.starting;
   } finally {
@@ -181,11 +190,9 @@ async function studioUrl(
 }
 
 async function startStudio(
-  invocation: DshCommandInvocationLike,
+  layout: ReturnType<typeof projectLayout>,
   state: DshObserveState,
 ): Promise<string> {
-  const cwd = invocation.agent.session.header.cwd ?? process.cwd();
-  const layout = projectLayout(cwd);
   const { createNextStudioServer } = await import('../studio/http/next-server.js');
   const { createStudioDirectorySources } = await import('../studio/application/directory-sources.js');
   if (state.disposed) throw new Error('OMK DSH 插件已关闭。');
@@ -229,10 +236,17 @@ async function executeObserveCommand(
   state: DshObserveState,
 ): Promise<DshCommandResultLike> {
   const persistence = persistenceFor(ctx);
+  const layout = dshProjectLayout(invocation.agent.session.header.cwd);
+  const project = dirname(layout.root);
+  const currentSession = String(invocation.agent.session.id);
+  const readOptions = {
+    signal: invocation.signal,
+    includesCwd: (cwd: string | undefined) => canonicalDshProject(cwd) === project,
+  };
   if (!sessionId) {
     const candidates = await listDshObserveCandidates(persistence, {
-      excludeSessionId: String(invocation.agent.session.id),
-      signal: invocation.signal,
+      ...readOptions,
+      excludeSessionId: currentSession,
     });
     if (candidates.length === 0) {
       return {
@@ -252,7 +266,8 @@ async function executeObserveCommand(
       ].join('\n'),
     };
   }
-  const group = await readDshObservedGroup(persistence, sessionId, invocation.signal);
+  if (sessionId === currentSession) throw new Error('请从另一个 DSH session 打开这条会话。');
+  const group = await readDshObservedGroup(persistence, sessionId, readOptions);
   const selected = group.traces.find((trace) => trace.session.runId === sessionId);
   if (!selected) throw new Error(`DSH session 一致快照缺少目标 session：${sessionId}。`);
   const incomplete = group.traces.filter((trace) => !trace.integrity.complete);
@@ -270,8 +285,7 @@ async function executeObserveCommand(
     }).join('；');
     throw new Error(`DSH session group 无法形成完整任务轨迹：${details}。`);
   }
-  const cwd = invocation.agent.session.header.cwd ?? process.cwd();
-  const observationsDir = projectLayout(cwd).observeInboxDir;
+  const observationsDir = layout.observeInboxDir;
   const {
     buildObservationInboxReportFromTraceSessions,
     buildObserveDiagnosticsFromReport,
@@ -290,25 +304,28 @@ async function executeObserveCommand(
   report.diagnostics = buildObserveDiagnosticsFromReport(report, { skillChains: chains });
   const inboxPath = saveObservationInboxReport(report, observationsDir);
   const target = state.catalog.upsert(group);
-  const baseUrl = await studioUrl(invocation, state);
-  const trajectoryUrl = `${baseUrl}/observe/conversations/${encodeURIComponent(target.threadId)}/tasks/${encodeURIComponent(target.turnId)}`;
+  const baseUrl = await studioUrl(layout, state);
+  const trajectoryUrl = new URL(`/observe/conversations/${encodeURIComponent(target.threadId)}/tasks/${encodeURIComponent(target.turnId)}`, baseUrl);
+  trajectoryUrl.searchParams.set('workspace', layout.knowledgeDir);
   return {
     kind: 'success',
     text: [
       `已只读摄取 DSH session：${sessionId}`,
       `任务状态：${selected.integrity.status}`,
-      `任务轨迹：${trajectoryUrl}`,
+      `任务轨迹与知识提炼：${trajectoryUrl}`,
       `观测收件箱：${inboxPath}`,
     ].join('\n'),
   };
 }
 
-/** Register `/omk eval` and `/omk observe` in every DSH command-capable surface. */
-export function apply(ctx: DshPluginContextLike): () => void {
+/** Register the human command and the Agent's read-only project knowledge tool. */
+// Cordis treats constructible callbacks as classes. Use a function without a prototype so it collects the disposer.
+export const apply = (ctx: DshPluginContextLike): (() => Promise<void>) => {
   const observeState: DshObserveState = { catalog: createDshConversationCatalog() };
+  const disposeTool = ctx.tools.register(dshKnowledgeTool);
   const disposeCommand = ctx.commands.register({
     name: 'omk',
-    description: '在当前 DeepSeek Harness 中运行 OMK 对照评测或查看任务轨迹',
+    description: '在当前 DeepSeek Harness 中运行 OMK 对照评测、查看任务轨迹和提炼知识',
     input: { hint: 'eval <eval.yaml> | observe [session-id]' },
     async handler(invocation) {
       const command = parseCommand(invocation.rawInput);
@@ -326,9 +343,10 @@ export function apply(ctx: DshPluginContextLike): () => void {
       }
     },
   });
-  return () => {
+  return async () => {
     observeState.disposed = true;
     disposeCommand();
-    void observeState.server?.stop().catch(() => undefined);
+    disposeTool();
+    await observeState.server?.stop();
   };
-}
+};

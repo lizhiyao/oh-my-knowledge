@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DSH_KNOWLEDGE_TOOL } from './knowledge.js';
 import type { ExecResult } from '../executors/contracts/result.js';
 import type { ExecutorFn, ExecutorInput } from '../executors/contracts/ports.js';
 import { buildDshHostResult, type DshHostRunResult } from './protocol.js';
@@ -10,7 +11,6 @@ type UnknownRecord = Record<string, unknown>;
 
 export interface DshSessionLike {
   readonly id: string;
-  readonly events: readonly UnknownRecord[];
   readonly header: {
     readonly cwd?: string;
     readonly parentSession?: string;
@@ -33,7 +33,6 @@ export interface DshAgentLike {
 }
 
 interface DshAgentScopeLike {
-  readonly agent?: DshAgentLike;
   readonly systemPrompt: {
     section(section: {
       readonly name: string;
@@ -78,7 +77,7 @@ export interface DshHostContextLike {
         readonly model: string;
       };
       readonly signal?: AbortSignal;
-      readonly setup: (ctx: DshAgentScopeLike) => void;
+      readonly setup: (ctx: DshAgentScopeLike, agent: DshAgentLike) => void;
     }): Promise<DshAgentHandleLike>;
   };
   readonly tools?: {
@@ -230,7 +229,7 @@ export function createDshHostExecutor(
     : undefined;
   // Preserve host schema order because DSH sends this order to the model; it is part of runtime identity.
   const toolSchemas = ctx.tools?.schemas(options.parentAgent)
-    .filter((schema) => schema.name !== 'skill');
+    .filter((schema) => schema.name !== 'skill' && schema.name !== DSH_KNOWLEDGE_TOOL);
   const runtimeFingerprint: NonNullable<ExecutorFn['runtimeFingerprint']> = (model) => (
     createDshHostRuntimeFingerprint(model, {
       ...(provider ? { provider } : {}),
@@ -283,7 +282,7 @@ export function createDshHostExecutor(
           ...(provider ? { provider } : {}),
           model: input.model,
         },
-        setup(agentCtx) {
+        setup(agentCtx, agent) {
           if (options.parentAgent) {
             const composedPreset = ctx.agentPresets.composeFrom(agentCtx, options.parentAgent.ctx);
             if (composedPreset !== activeAgentPreset) {
@@ -297,9 +296,10 @@ export function createDshHostExecutor(
             complete: true,
           });
           agentCtx.systemPrompt.suppressRuntimeContext();
-          const scopedAgent = agentCtx.agent;
-          if (agentCtx.tools?.get('skill', scopedAgent) !== undefined) {
-            agentCtx.tools.restrict({ deny: ['skill'] });
+          const tools = agentCtx.tools;
+          if (tools) {
+            const deny = ['skill', DSH_KNOWLEDGE_TOOL].filter(name => tools.get(name, agent) !== undefined);
+            if (deny.length > 0) tools.restrict({ deny });
           }
         },
       });
@@ -314,10 +314,10 @@ export function createDshHostExecutor(
         cleanupTimeoutMs,
       );
       const wallClockDurationMs = Date.now() - startedAt;
-      const events = [...handle.agent.session.events];
       const result = buildDshHostResult({
         rootSessionId,
-        finalResponse: lastAssistantText(events),
+        finalResponse: lastAssistantText(orderedEvents
+          .filter(({ sessionId }) => sessionId === rootSessionId).map(({ event }) => event)),
         events: orderedEvents,
         childSessionIds: [...descendants],
       }, wallClockDurationMs);

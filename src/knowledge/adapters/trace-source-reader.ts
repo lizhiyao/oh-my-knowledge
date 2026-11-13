@@ -151,7 +151,9 @@ export function readTraceSource(input: TraceSelection, context: TraceSourceReadC
       catch { malformed++; return undefined; }
     });
     // A stable virtual filename is used only for parser bookkeeping. Host paths never influence projection identity.
-    const detected = detectJsonlTraceSource('source.jsonl', parsed);
+    const detected = detectJsonlTraceSource('source.jsonl', parsed, {
+      hostBoundDshRecords: context.source.sourceType === 'records' && selection.traceKind === 'dsh',
+    });
     if (!detected || detected.sourceKind !== selection.traceKind) unsupported('Selected records do not uniquely identify the declared supported agent log format.');
     const material = declared ?? unknownMaterial;
     const rawUnits = selected.map((record, unitId) => ({ unitId, text: record.raw, rawByteDigest: hash(record.raw),
